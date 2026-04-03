@@ -59,6 +59,7 @@ interface PaymentStatus {
 interface PaymentStatusVerificationProps {
   userId?: string;
   transactionId?: string;
+  sessionId?: string;
   onMembershipCreated?: (membershipCard: MembershipCard) => void;
 }
 
@@ -75,21 +76,37 @@ function normalizeStatus(payload: unknown): PaymentStatus | null {
     return null;
   }
 
-  const raw = payload as Partial<PaymentStatus>;
-  if (typeof raw.id !== 'string') {
+  const raw = payload as Partial<PaymentStatus> & {
+    sessionId?: string;
+    paymentCompleted?: boolean;
+    paymentStatus?: string;
+    completedAt?: string;
+  };
+  const resolvedId =
+    typeof raw.id === 'string'
+      ? raw.id
+      : typeof raw.sessionId === 'string'
+        ? raw.sessionId
+        : null;
+  if (!resolvedId) {
     return null;
   }
 
+  const resolvedStatus =
+    raw.status ??
+    (raw.paymentCompleted || raw.paymentStatus === 'paid' ? 'completed' : 'pending');
+
   return {
-    id: raw.id,
-    status: raw.status ?? 'pending',
+    id: resolvedId,
+    status: resolvedStatus,
     amount: typeof raw.amount === 'number' ? raw.amount : 0,
     currency: typeof raw.currency === 'string' ? raw.currency : 'NOK',
-    paymentMethod: raw.paymentMethod ?? 'card',
-    transactionId: typeof raw.transactionId === 'string' ? raw.transactionId : raw.id,
+    paymentMethod: raw.paymentMethod ?? (raw.sessionId ? 'stripe' : 'card'),
+    transactionId:
+      typeof raw.transactionId === 'string' ? raw.transactionId : resolvedId,
     planName: typeof raw.planName === 'string' ? raw.planName : 'CreatorHub Plan',
     createdAt: typeof raw.createdAt === 'string' ? raw.createdAt : new Date().toISOString(),
-    completedAt: raw.completedAt,
+    completedAt: typeof raw.completedAt === 'string' ? raw.completedAt : undefined,
     membershipCard: raw.membershipCard,
   };
 }
@@ -97,6 +114,7 @@ function normalizeStatus(payload: unknown): PaymentStatus | null {
 export default function PaymentStatusVerification({
   userId,
   transactionId,
+  sessionId,
   onMembershipCreated,
 }: PaymentStatusVerificationProps) {
   const { toast } = useToast();
@@ -107,8 +125,20 @@ export default function PaymentStatusVerification({
   const effectiveUserId = userId ?? user?.id ?? undefined;
 
   const paymentQuery = useQuery({
-    queryKey: ['/api/payments/status', transactionId ?? effectiveUserId ?? 'unknown'],
+    queryKey: ['/api/payments/status', sessionId ?? transactionId ?? effectiveUserId ?? 'unknown'],
     queryFn: async () => {
+      if (sessionId) {
+        try {
+          return normalizeStatus(
+            await apiRequest(
+              `/api/platform/billing/session-status?sessionId=${encodeURIComponent(sessionId)}`,
+            ),
+          );
+        } catch {
+          return null;
+        }
+      }
+
       if (transactionId) {
         try {
           return normalizeStatus(await apiRequest(`/api/payments/status/${encodeURIComponent(transactionId)}`));
@@ -127,7 +157,7 @@ export default function PaymentStatusVerification({
 
       return null;
     },
-    enabled: Boolean(transactionId || effectiveUserId),
+    enabled: Boolean(sessionId || transactionId || effectiveUserId),
     refetchInterval: (query) => {
       const status = query.state.data?.status;
       return status === 'pending' ? 4000 : false;

@@ -62,7 +62,7 @@ const landingCopy = {
         'Administrer prosjekter, samarbeid med team og gjennomfør produksjon i ett system.',
       support:
         'Creatorhub er en plattform for å administrere, gjennomføre og skalere kreativt arbeid med innebygde verktøy, produkter og fellesskap.',
-      primaryCta: 'Se plattformen',
+      primaryCta: 'Se planer og priser',
       secondaryCta: 'Se produktene',
       systemLine: 'Kjerneplattform / Produkter / Community-lag',
       architectureTitle: 'Creatorhub AS',
@@ -147,6 +147,52 @@ const landingCopy = {
         { title: 'Community', body: 'Et lag for tilknytning, samarbeid og retensjon.' },
       ],
     },
+    pricing: {
+      label: 'Abonnement',
+      title: 'Velg inngangen inn i CreatorHub',
+      body:
+        'Abonnementene er bygget for ulike faser av kreativ drift, fra solooperatører til studioer og større team. Checkout går videre til Stripe på en egen sikker side.',
+      trustLine: 'Månedlig abonnement / Stripe Checkout / Retur til CreatorHub etter betaling',
+      cards: [
+        {
+          id: 'basic',
+          name: 'Basic Creator',
+          price: '199 kr',
+          cadence: 'per måned',
+          summary: 'For solo kreatører som trenger struktur rundt prosjekter, kunder og leveranser.',
+          points: ['Opptil 25 prosjekter', 'Avansert CRM', 'Kontraktstyring'],
+          cta: 'Velg Basic',
+        },
+        {
+          id: 'professional',
+          name: 'Professional Creator',
+          price: '399 kr',
+          cadence: 'per måned',
+          summary: 'For profesjonelle kreatører som trenger full arbeidsflyt, rapportering og høyere kapasitet.',
+          points: ['Ubegrensede prosjekter', 'Ubegrensede klienter', '25 GB lagring'],
+          cta: 'Velg Professional',
+          highlight: true,
+        },
+        {
+          id: 'premium',
+          name: 'Premium Studio',
+          price: '699 kr',
+          cadence: 'per måned',
+          summary: 'For team og studioer som trenger mer kapasitet, automatisering og prioritet.',
+          points: ['Teamtilgang', 'Prioritert støtte', '100 GB lagring'],
+          cta: 'Velg Premium',
+        },
+        {
+          id: 'enterprise',
+          name: 'Enterprise',
+          price: '1499 kr',
+          cadence: 'per måned',
+          summary: 'For større miljøer som trenger dedikert onboarding, white label og egne integrasjoner.',
+          points: ['White label', 'Dedikert onboarding', 'Tilpassede integrasjoner'],
+          cta: 'Velg Enterprise',
+        },
+      ],
+    },
     why: {
       label: 'Hvorfor dette er kraftfullt',
       title: 'Hvorfor dette er kraftfullt',
@@ -161,7 +207,7 @@ const landingCopy = {
       title: 'Ett system for å styre og skalere kreativt arbeid.',
       body:
         'Creatorhub er laget for kreative profesjoner som trenger struktur, produkter og et økosystem rundt arbeidet sitt.',
-      primary: 'Logg inn',
+      primary: 'Velg abonnement',
       secondary: 'Åpne Community',
     },
     footer: 'Creatorhub AS - laget av kreative, for kreative.',
@@ -181,7 +227,7 @@ const landingCopy = {
       subtitle: 'Manage projects, collaborate with teams and execute production in one system.',
       support:
         'Creatorhub is a platform for managing, executing and scaling creative work with built-in tools, products and community.',
-      primaryCta: 'Explore the platform',
+      primaryCta: 'See plans & pricing',
       secondaryCta: 'See the products',
       systemLine: 'Core platform / Products / Community layer',
       architectureTitle: 'Creatorhub AS',
@@ -267,6 +313,52 @@ const landingCopy = {
         { title: 'Community', body: 'A retention layer built around connection and real work.' },
       ],
     },
+    pricing: {
+      label: 'Subscriptions',
+      title: 'Choose your CreatorHub entry point',
+      body:
+        'The plans are designed for different stages of creative operations, from solo creators to studios and larger teams. Checkout continues in Stripe on a dedicated secure page.',
+      trustLine: 'Monthly subscription / Stripe Checkout / Return to CreatorHub after payment',
+      cards: [
+        {
+          id: 'basic',
+          name: 'Basic Creator',
+          price: 'NOK 199',
+          cadence: 'per month',
+          summary: 'For solo creatives who need structure around projects, clients and delivery.',
+          points: ['Up to 25 projects', 'Advanced CRM', 'Contract management'],
+          cta: 'Choose Basic',
+        },
+        {
+          id: 'professional',
+          name: 'Professional Creator',
+          price: 'NOK 399',
+          cadence: 'per month',
+          summary: 'For professionals who need a fuller workflow, reporting and higher operating capacity.',
+          points: ['Unlimited projects', 'Unlimited clients', '25 GB storage'],
+          cta: 'Choose Professional',
+          highlight: true,
+        },
+        {
+          id: 'premium',
+          name: 'Premium Studio',
+          price: 'NOK 699',
+          cadence: 'per month',
+          summary: 'For teams and studios that need more capacity, automation and priority support.',
+          points: ['Team access', 'Priority support', '100 GB storage'],
+          cta: 'Choose Premium',
+        },
+        {
+          id: 'enterprise',
+          name: 'Enterprise',
+          price: 'NOK 1499',
+          cadence: 'per month',
+          summary: 'For larger environments that need dedicated onboarding, white label and custom integrations.',
+          points: ['White label', 'Dedicated onboarding', 'Custom integrations'],
+          cta: 'Choose Enterprise',
+        },
+      ],
+    },
     why: {
       label: 'Why This Is Powerful',
       title: 'Why this is powerful',
@@ -281,14 +373,14 @@ const landingCopy = {
       title: 'One system for managing and scaling creative work.',
       body:
         'Creatorhub is built for creative professionals who need structure, products and a connected ecosystem around their work.',
-      primary: 'Sign in',
+      primary: 'Choose a plan',
       secondary: 'Open Community',
     },
     footer: 'Creatorhub AS - built by creatives, for creatives.',
   },
 } as const;
 
-const sectionOrder = ['platform', 'role-room', 'academy', 'community'] as const;
+const sectionOrder = ['platform', 'role-room', 'academy', 'community', 'pricing'] as const;
 
 const MotionDiv = motion.div;
 
@@ -415,6 +507,15 @@ export default function CreatorHubInvestorLanding({
     setLocation(path);
   };
 
+  const openSubscriptionSelection = (planId?: string) => {
+    const params = new URLSearchParams();
+    params.set('profession', 'creatorhub');
+    if (planId) {
+      params.set('plan', planId);
+    }
+    openRoute(`/subscription-selection?${params.toString()}`);
+  };
+
   const openExternalUrl = (url: string) => {
     if (typeof window !== 'undefined') {
       window.location.href = url;
@@ -426,6 +527,7 @@ export default function CreatorHubInvestorLanding({
     { id: 'role-room', label: copy.nav.roleRoom },
     { id: 'academy', label: copy.nav.academy },
     { id: 'community', label: copy.nav.community },
+    { id: 'pricing', label: locale === 'no' ? 'Priser' : 'Pricing' },
   ];
 
   return (
@@ -686,7 +788,7 @@ export default function CreatorHubInvestorLanding({
 
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
                   <Button
-                    onClick={() => navigateToSection('platform')}
+                    onClick={() => openSubscriptionSelection('professional')}
                     variant="contained"
                     endIcon={<ArrowForward />}
                     sx={{
@@ -1286,6 +1388,182 @@ export default function CreatorHubInvestorLanding({
               </Box>
             </Box>
           </MotionDiv>
+
+          <MotionDiv
+            initial={{ opacity: 0, y: 28 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, amount: 0.18 }}
+            transition={{ duration: 0.65 }}
+          >
+            <Box id="pricing" sx={{ py: { xs: 6, md: 10 } }}>
+              <SectionHeading
+                label={copy.pricing.label}
+                title={copy.pricing.title}
+                body={copy.pricing.body}
+              />
+
+              <Stack
+                direction={{ xs: 'column', md: 'row' }}
+                justifyContent="space-between"
+                spacing={2}
+                sx={{ mt: 3.5, mb: 5 }}
+              >
+                <Typography
+                  sx={{
+                    fontFamily: '"Space Grotesk", "Manrope", sans-serif',
+                    fontSize: '0.8rem',
+                    letterSpacing: '0.18em',
+                    textTransform: 'uppercase',
+                    color: 'rgba(255,186,108,0.82)',
+                  }}
+                >
+                  {copy.pricing.trustLine}
+                </Typography>
+                <Button
+                  onClick={() => openSubscriptionSelection('professional')}
+                  variant="outlined"
+                  endIcon={<ArrowForward />}
+                  sx={{
+                    alignSelf: { xs: 'flex-start', md: 'center' },
+                    borderRadius: '999px',
+                    borderColor: 'rgba(255,186,108,0.36)',
+                    color: '#ffba6c',
+                    '&:hover': {
+                      borderColor: '#ffba6c',
+                      bgcolor: 'rgba(255,186,108,0.08)',
+                    },
+                  }}
+                >
+                  {copy.hero.primaryCta}
+                </Button>
+              </Stack>
+
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))', xl: 'repeat(4, minmax(0, 1fr))' },
+                  gap: 2,
+                }}
+              >
+                {copy.pricing.cards.map((plan) => (
+                  <Box
+                    key={plan.id}
+                    sx={{
+                      position: 'relative',
+                      overflow: 'hidden',
+                      borderRadius: '28px',
+                      border: plan.highlight
+                        ? '1px solid rgba(255,186,108,0.44)'
+                        : '1px solid rgba(255,255,255,0.08)',
+                      background: plan.highlight
+                        ? 'linear-gradient(180deg, rgba(255,186,108,0.13) 0%, rgba(255,255,255,0.03) 100%)'
+                        : 'linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.02) 100%)',
+                      p: { xs: 2.6, md: 3 },
+                      minHeight: '100%',
+                    }}
+                  >
+                    {plan.highlight ? (
+                      <Typography
+                        sx={{
+                          position: 'absolute',
+                          top: 18,
+                          right: 18,
+                          borderRadius: '999px',
+                          bgcolor: '#ffba6c',
+                          color: '#150d05',
+                          px: 1.3,
+                          py: 0.55,
+                          fontSize: '0.72rem',
+                          fontWeight: 800,
+                          letterSpacing: '0.08em',
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        {locale === 'no' ? 'Anbefalt' : 'Recommended'}
+                      </Typography>
+                    ) : null}
+
+                    <Stack spacing={2.1} sx={{ height: '100%' }}>
+                      <Stack spacing={1}>
+                        <Typography
+                          sx={{
+                            fontFamily: '"Space Grotesk", "Manrope", sans-serif',
+                            fontSize: '1.28rem',
+                            fontWeight: 700,
+                            color: '#fbf5ee',
+                            pr: plan.highlight ? 8 : 0,
+                          }}
+                        >
+                          {plan.name}
+                        </Typography>
+                        <Stack direction="row" spacing={1} alignItems="baseline">
+                          <Typography
+                            sx={{
+                              fontFamily: '"Space Grotesk", "Manrope", sans-serif',
+                              fontSize: { xs: '2.2rem', md: '2.6rem' },
+                              lineHeight: 0.95,
+                              letterSpacing: '-0.05em',
+                              color: '#ffba6c',
+                              fontWeight: 700,
+                            }}
+                          >
+                            {plan.price}
+                          </Typography>
+                          <Typography sx={{ color: 'rgba(246,242,234,0.58)' }}>{plan.cadence}</Typography>
+                        </Stack>
+                      </Stack>
+
+                      <Typography sx={{ color: 'rgba(246,242,234,0.72)', lineHeight: 1.75 }}>
+                        {plan.summary}
+                      </Typography>
+
+                      <Stack spacing={1}>
+                        {plan.points.map((point) => (
+                          <Stack key={point} direction="row" spacing={1.1} alignItems="flex-start">
+                            <Box
+                              sx={{
+                                width: 7,
+                                height: 7,
+                                borderRadius: '999px',
+                                flexShrink: 0,
+                                mt: 0.9,
+                                bgcolor: '#ffba6c',
+                              }}
+                            />
+                            <Typography sx={{ color: 'rgba(246,242,234,0.84)', lineHeight: 1.65 }}>{point}</Typography>
+                          </Stack>
+                        ))}
+                      </Stack>
+
+                      <Box sx={{ mt: 'auto', pt: 1 }}>
+                        <Button
+                          onClick={() => openSubscriptionSelection(plan.id)}
+                          fullWidth
+                          variant={plan.highlight ? 'contained' : 'outlined'}
+                          endIcon={<ArrowForward />}
+                          sx={{
+                            borderRadius: '999px',
+                            py: 1.25,
+                            fontWeight: 700,
+                            textTransform: 'none',
+                            bgcolor: plan.highlight ? '#ffba6c' : 'transparent',
+                            color: plan.highlight ? '#150d05' : '#fff5e8',
+                            borderColor: plan.highlight ? '#ffba6c' : 'rgba(255,255,255,0.16)',
+                            '&:hover': {
+                              bgcolor: plan.highlight ? '#ffc788' : 'rgba(255,255,255,0.05)',
+                              borderColor: plan.highlight ? '#ffc788' : '#fff5e8',
+                            },
+                          }}
+                        >
+                          {plan.cta}
+                        </Button>
+                      </Box>
+                    </Stack>
+                  </Box>
+                ))}
+              </Box>
+            </Box>
+          </MotionDiv>
         </Container>
 
         <Box
@@ -1334,7 +1612,7 @@ export default function CreatorHubInvestorLanding({
 
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.4}>
                 <Button
-                  onClick={() => openRoute('/login')}
+                  onClick={() => openSubscriptionSelection('professional')}
                   variant="contained"
                   endIcon={<ArrowForward />}
                   sx={{
@@ -1439,19 +1717,37 @@ export default function CreatorHubInvestorLanding({
 
           <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
 
-          <Button
-            onClick={() => openRoute('/login')}
-            variant="contained"
-            sx={{
-              borderRadius: '999px',
-              bgcolor: '#ffba6c',
-              color: '#150d05',
-              fontWeight: 800,
-              '&:hover': { bgcolor: '#ffcb91' },
-            }}
-          >
-            {copy.nav.signIn}
-          </Button>
+          <Stack spacing={1.2}>
+            <Button
+              onClick={() => openSubscriptionSelection('professional')}
+              variant="contained"
+              sx={{
+                borderRadius: '999px',
+                bgcolor: '#ffba6c',
+                color: '#150d05',
+                fontWeight: 800,
+                '&:hover': { bgcolor: '#ffcb91' },
+              }}
+            >
+              {copy.hero.primaryCta}
+            </Button>
+            <Button
+              onClick={() => openRoute('/login')}
+              variant="outlined"
+              sx={{
+                borderRadius: '999px',
+                borderColor: 'rgba(255,245,232,0.22)',
+                color: '#fff5e8',
+                fontWeight: 700,
+                '&:hover': {
+                  borderColor: '#fff5e8',
+                  bgcolor: 'rgba(255,255,255,0.04)',
+                },
+              }}
+            >
+              {copy.nav.signIn}
+            </Button>
+          </Stack>
         </Stack>
       </Drawer>
 

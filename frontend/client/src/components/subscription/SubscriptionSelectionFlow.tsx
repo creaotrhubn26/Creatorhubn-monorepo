@@ -4,18 +4,12 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
-import getProfessionIcon from '@/utils/profession-icons';
-import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
 import { useLocation } from 'wouter';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
-import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
-import { useTheming } from '../../utils/theming-helper';
 import {
   Box,
-  Container,
   Typography,
   Card,
   CardContent,
@@ -31,39 +25,20 @@ import {
   DialogActions,
   LinearProgress,
   Alert,
-  Paper,
   List,
   ListItem,
   ListItemIcon,
   ListItemText,
-  FormControl,
-  FormControlLabel,
-  Radio,
-  RadioGroup,
-  IconButton,
-  Tooltip,
-  Badge,
 } from '@mui/material';
 import {
   CheckCircle as CheckIcon,
   CreditCard as CreditCardIcon,
-  Google as GoogleIcon,
-  Phone as VippsIcon,
   AttachMoney as MoneyIcon,
-  Star as StarIcon,
-  TrendingUp as TrendingUpIcon,
-  Security as SecurityIcon,
-  Speed as SpeedIcon,
-  AutoAwesome as AutoAwesomeIcon,
-  Business as BusinessIcon,
   ArrowBack as ArrowBackIcon,
   ArrowForward as ArrowForwardIcon,
-  Info as InfoIcon,
-  Diamond as DiamondIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
-import { googlePayService } from '@/services/GooglePayService';
 
 interface SubscriptionPlan {
   id: string;
@@ -91,45 +66,27 @@ interface PaymentMethod {
 
 const PAYMENT_METHODS: PaymentMethod[] = [
   {
-    id: 'google-pay',
-    name: 'Google Pay',
-    icon: <GoogleIcon />,
-    color: '#4285F0',
-    available: false,
-  },
-  {
     id: 'stripe',
-    name: 'Kort (Visa/Mastercard)',
+    name: 'Stripe Checkout',
     icon: <CreditCardIcon />,
     color: '#635BF0',
     available: true,
   },
-  {
-    id: 'vipps',
-    name: 'Vipps',
-    icon: <VippsIcon />,
-    color: '#FF5B20',
-    available: true,
-  },
 ];
 
-const PROFESSION_ICONS = {
-  photographer: <BusinessIcon sx={{ color: '#2e7d32'}} />,
-  videographer: <SpeedIcon sx={{ color: '#1565c0'}} />,
-  music_producer: <AutoAwesomeIcon sx={{ color: '#7b1fa2'}} />,
-  vendor: <TrendingUpIcon sx={{ color: '#ff8c00'}} />,
-};
-
 const PROFESSION_COLORS = {
+  creatorhub: '#ff8c00',
   photographer: '#2e7d30',
   videographer: '#1565c0',
   music_producer: '#7b1fa0',
   vendor: '#ff8c00',
+  education_institution: '#b8860b',
 };
 
 interface SubscriptionSelectionFlowProps {
   profession: string;
   requestId?: string | null;
+  initialPlanId?: string | null;
   fromInvite?: boolean;
   onComplete?: (
     plan: SubscriptionPlan,
@@ -142,6 +99,7 @@ interface SubscriptionSelectionFlowProps {
 export default function SubscriptionSelectionFlow({
   profession: propProfession,
   requestId,
+  initialPlanId,
   fromInvite = false,
   onComplete,
   onBack,
@@ -149,13 +107,10 @@ export default function SubscriptionSelectionFlow({
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const { user } = useAuth();
-  const { auth } = useEnhancedMasterIntegration();
   const { profession: adapterProfession } = useProfessionAdapter();
 
-  const activeProfession = propProfession || adapterProfession || (user as any)?.profession || 'photographer';
-  
-  // Theming system - use dynamic profession
-  const theming = useTheming(activeProfession);
+  const activeProfession =
+    propProfession || adapterProfession || (user as any)?.profession || 'creatorhub';
 
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(
@@ -227,76 +182,59 @@ export default function SubscriptionSelectionFlow({
 
   const plans: SubscriptionPlan[] = plansData?.plans || [];
 
+  useEffect(() => {
+    if (!initialPlanId || plans.length === 0 || selectedPlan) {
+      return;
+    }
+
+    const matchedPlan = plans.find((plan) => plan.id === initialPlanId);
+    if (matchedPlan) {
+      setSelectedPlan(matchedPlan);
+    }
+  }, [initialPlanId, plans, selectedPlan]);
+
   // Payment mutation
   const paymentMutation = useMutation({
     mutationFn: async ({ plan, paymentMethod }: { plan: SubscriptionPlan; paymentMethod: string }) => {
       setPaymentProcessing(true);
-      
-      if (paymentMethod === 'google-pay') {
-        // Use Google Pay service for Google Pay payments
-        const paymentIntent = {
-          id: `payment_${Date.now()}`,
+
+      const returnParams = new URLSearchParams();
+      returnParams.set('profession', activeProfession);
+      returnParams.set('plan', plan.id);
+      if (requestId) {
+        returnParams.set('requestId', requestId);
+      }
+      if (fromInvite) {
+        returnParams.set('fromInvite', 'true');
+      }
+
+      return apiRequest('/api/platform/billing/checkout-session', {
+        method: 'POST',
+        body: {
+          planId: plan.id,
+          paymentMethod,
           amount: plan.price,
           currency: plan.currency,
-          productName: plan.name,
-          description: plan.description || `Subscription for ${plan.name}`,
           userId: user?.id,
-          metadata: {
-            planId: plan.id,
-            profession: activeProfession,
-            requestId,
-            recurring: plan.interval === 'month' || plan.interval === 'year',
-            billingPeriod: plan.interval,
-          },
-        };
-
-        const result = await googlePayService.processSubscriptionPayment(
-          paymentIntent,
-          {
-            recurringInterval: plan.interval === 'year' ? 'yearly' : 'monthly',
-            trialPeriod: plan.trialDays || 0,
-          },
-          {
-            requestEmail: true,
-            requestShipping: false,
-          }
-        );
-
-        if (!result.success) {
-          throw new Error(result.error || 'Google Pay payment failed');
-        }
-
-        return {
-          success: true,
-          transactionId: (result as any).transactionId || (result as any).transactiond,
-          paymentMethod: 'google-pay',
-          plan: plan,
-      };
-    } else {
-        // Use generic payment processing for other methods
-        const authHeader = await auth.getAuthHeader();
-        const response = await fetch('/api/payments/create-payment-intent', {
-          method: 'POST',
-          headers: {
-            ...authHeader,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            planId: plan.id,
-            paymentMethod,
-            amount: plan.price,
-            currency: plan.currency,
-            userId: user?.id,
-            requestId,
-            profession: activeProfession,
-          }),
-        });
-
-        if (!response.ok) throw new Error('Payment failed');
-        return response.json();
-      }
+          userEmail: user?.email,
+          requestId,
+          profession: activeProfession,
+          browserOrigin: window.location.origin,
+          returnPath: `/subscription-selection?${returnParams.toString()}`,
+        },
+      });
     },
     onSuccess: (result) => {
+      if (typeof (result as any)?.checkoutUrl === 'string' && (result as any).checkoutUrl.length > 0) {
+        toast({
+          title: 'Sender deg til Stripe',
+          description: 'Du blir sendt til sikker betaling i Stripe Checkout.',
+          variant: 'default',
+        });
+        window.location.assign((result as any).checkoutUrl);
+        return;
+      }
+
       const transactionId = (result as any).transactionId || (result as any).transactiond;
       // Store payment success (server-first)
       const payload = {
@@ -321,6 +259,7 @@ export default function SubscriptionSelectionFlow({
 
       const nextParams = new URLSearchParams();
       nextParams.set('profession', activeProfession);
+      nextParams.set('plan', selectedPlan!.id);
       nextParams.set('payment', 'success');
       if (requestId) {
         nextParams.set('requestId', requestId);
@@ -351,6 +290,13 @@ export default function SubscriptionSelectionFlow({
       currency,
       minimumFractionDigits: 0,
     }).format(price / 100);
+  };
+
+  const formatPlanLimit = (value: number) => {
+    if (value < 0) {
+      return '∞';
+    }
+    return String(value);
   };
 
   const handlePlanSelect = (plan: SubscriptionPlan) => {
@@ -393,10 +339,9 @@ export default function SubscriptionSelectionFlow({
 
   const handleBack = () => {
     onBack?.();
-};
+  };
 
   const professionColor = PROFESSION_COLORS[activeProfession as keyof typeof PROFESSION_COLORS] || '#ff8c00';
-  const professionIcon = PROFESSION_ICONS[activeProfession as keyof typeof PROFESSION_ICONS] || <BusinessIcon />;
 
   if (plansLoading) {
     return (
@@ -513,6 +458,73 @@ export default function SubscriptionSelectionFlow({
 
   return (
     <Box sx={{ py: 2 }}>
+      <Box
+        sx={{
+          mb: 4,
+          borderRadius: '24px',
+          border: '1px solid rgba(255,255,255,0.08)',
+          background:
+            'linear-gradient(135deg, rgba(255,140,0,0.14) 0%, rgba(255,255,255,0.04) 52%, rgba(255,255,255,0.02) 100%)',
+          p: { xs: 2.5, md: 3.2 },
+        }}
+      >
+        <Stack
+          direction={{ xs: 'column', md: 'row' }}
+          spacing={{ xs: 2.5, md: 4 }}
+          justifyContent="space-between"
+          alignItems={{ xs: 'flex-start', md: 'center' }}
+        >
+          <Stack spacing={1.1} sx={{ maxWidth: 720 }}>
+            <Typography
+              sx={{
+                fontSize: '0.8rem',
+                letterSpacing: '0.18em',
+                textTransform: 'uppercase',
+                color: 'rgba(255,186,108,0.84)',
+                fontWeight: 700,
+              }}
+            >
+              CreatorHub-abonnement
+            </Typography>
+            <Typography
+              variant="h5"
+              sx={{
+                color: '#fff',
+                fontWeight: 700,
+                fontSize: { xs: '1.4rem', md: '1.8rem' },
+              }}
+            >
+              Velg nivået som matcher arbeidsflyten din, og fullfør betalingen i Stripe.
+            </Typography>
+            <Typography sx={{ color: 'rgba(255,255,255,0.68)', lineHeight: 1.75 }}>
+              Du velger plan her, går til sikker betaling i Stripe Checkout, og returnerer deretter til CreatorHub
+              med bekreftet abonnement.
+            </Typography>
+          </Stack>
+
+          <Stack
+            spacing={1.1}
+            sx={{
+              minWidth: { md: 260 },
+              width: { xs: '100%', md: 'auto' },
+            }}
+          >
+            {[
+              'Sikker betaling via Stripe Checkout',
+              'Månedlig abonnement med klar pris per plan',
+              'Returnerer automatisk til CreatorHub etter betaling',
+            ].map((line) => (
+              <Stack key={line} direction="row" spacing={1.2} alignItems="flex-start">
+                <CheckIcon sx={{ color: '#ffba6c', fontSize: 20, mt: 0.2 }} />
+                <Typography sx={{ color: 'rgba(255,255,255,0.78)', lineHeight: 1.6 }}>
+                  {line}
+                </Typography>
+              </Stack>
+            ))}
+          </Stack>
+        </Stack>
+      </Box>
+
       {/* Plans Grid */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         {plans.map((plan) => (
@@ -651,7 +663,7 @@ export default function SubscriptionSelectionFlow({
                       color: '#fff',
                       fontSize: '1rem',
                     }}>
-                      {plan.maxUsers}
+                      {formatPlanLimit(plan.maxUsers)}
                     </Typography>
                   </Grid>
                   <Grid size={{ xs: 4 }}>
@@ -667,7 +679,7 @@ export default function SubscriptionSelectionFlow({
                       color: '#fff',
                       fontSize: '1rem',
                     }}>
-                      {plan.maxProjects}
+                      {formatPlanLimit(plan.maxProjects)}
                     </Typography>
                   </Grid>
                   <Grid size={{ xs: 4 }}>
@@ -683,7 +695,7 @@ export default function SubscriptionSelectionFlow({
                       color: '#fff',
                       fontSize: '1rem',
                     }}>
-                      {plan.storageLimit}GB
+                      {plan.storageLimit < 0 ? '∞' : `${plan.storageLimit}GB`}
                     </Typography>
                   </Grid>
                 </Grid>
@@ -730,6 +742,33 @@ export default function SubscriptionSelectionFlow({
 
       {/* Continue Button */}
       <Box sx={{ textAlign: 'center', mt: 4 }}>
+        {selectedPlan && (
+          <Alert
+            severity="info"
+            sx={{
+              mb: 2,
+              maxWidth: 760,
+              mx: 'auto',
+              textAlign: 'left',
+              backgroundColor: 'rgba(99, 91, 240, 0.12)',
+              border: '1px solid rgba(99, 91, 240, 0.35)',
+              borderRadius: '16px',
+              '& .MuiAlert-icon': {
+                color: '#8e89ff',
+              },
+            }}
+          >
+            <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.6 }}>
+              Valgt plan: {selectedPlan.name}
+            </Typography>
+            <Typography sx={{ color: 'rgba(255,255,255,0.72)', lineHeight: 1.7 }}>
+              {formatPrice(selectedPlan.price, selectedPlan.currency)} per{' '}
+              {selectedPlan.interval === 'month' ? 'måned' : 'år'}.
+              Stripe viser full betalingsdetalj og eventuell avgiftsberegning i checkout før du bekrefter.
+            </Typography>
+          </Alert>
+        )}
+
         <Button
           variant="contained"
           size="large"
@@ -819,93 +858,69 @@ export default function SubscriptionSelectionFlow({
             }}>
               <MoneyIcon sx={{ fontSize: 24 }} />
             </Box>
-            <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700 }}>Betalingsmetode</Typography>
+            <Box>
+              <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700 }}>Sikker betaling</Typography>
+              <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.6)' }}>
+                CreatorHub bruker Stripe Checkout for abonnement og kortbetaling.
+              </Typography>
+            </Box>
           </Stack>
         </DialogTitle>
         <DialogContent sx={{ pt: 3 }}>
-          <Typography variant="body2" sx={{ 
-            color: 'rgba(255, 255, 255, 0.7)',
-            mb: 3,
-            lineHeight: 1.6,
-          }}>
-            Velg hvordan du vil betale for {selectedPlan?.name}
+          <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)', mb: 3, lineHeight: 1.7 }}>
+            Du er i ferd med å aktivere <strong>{selectedPlan?.name}</strong>. Betalingen fullføres i Stripe Checkout
+            før du sendes tilbake til CreatorHub.
           </Typography>
 
-          <FormControl component="fieldset" fullWidth>
-            <RadioGroup
-              value={selectedPaymentMethod}
-              onChange={(e) => handlePaymentSelect(e.target.value)}
-            >
-              {PAYMENT_METHODS.map((method) => (
-                <FormControlLabel
-                  key={method.id}
-                  value={method.id}
-                  control={<Radio sx={{ 
-                    color: method.available ? method.color : 'rgba(255, 255, 255, 0.3)',
-                    '&.Mui-checked': {
-                      color: method.color,
-                    }
-                  }} />}
-                  label={
-                    <Stack 
-                      direction="row" 
-                      alignItems="center" 
-                      spacing={2}
-                      sx={{
-                        px: 2,
-                        py: 1.5,
-                        borderRadius: '12px',
-                        background: selectedPaymentMethod === method.id 
-                          ? `${method.color}20`
-                          : 'rgba(255, 255, 255, 0.05)',
-                        border: selectedPaymentMethod === method.id
-                          ? `1.5px solid ${method.color}60`
-                          : '1px solid rgba(255, 255, 255, 0.1)',
-                        transition: 'all 0.2s ease',
-                        width: '100%',
-                      }}
-                    >
-                      <Box sx={{ 
-                        color: method.color,
-                        display: 'flex',
-                        alignItems: 'center',
-                      }}>
-                        {method.icon}
-                      </Box>
-                      <Typography sx={{ 
-                        color: method.available ? '#fff' : 'rgba(255, 255, 255, 0.4)',
-                        fontWeight: 600,
-                      }}>
-                        {method.name}
-                      </Typography>
-                      {!method.available && (
-                        <Chip 
-                          label="Kommer snart" 
-                          size="small" 
-                          sx={{
-                            bgcolor: 'rgba(255, 255, 255, 0.1)',
-                            color: 'rgba(255, 255, 255, 0.6)',
-                            fontSize: '0.7rem',
-                          }}
-                        />
-                      )}
-                    </Stack>
-                }
-                  disabled={!method.available}
-                  sx={{
-                    width: '100%',
-                    m: 0,
-                    mb: 1.5,
-                  }}
-                />
-              ))}
-            </RadioGroup>
-          </FormControl>
+          <Box
+            sx={{
+              p: 2.25,
+              borderRadius: '18px',
+              border: '1px solid rgba(99, 91, 240, 0.35)',
+              background: 'linear-gradient(135deg, rgba(99,91,240,0.18) 0%, rgba(255,255,255,0.04) 100%)',
+            }}
+          >
+            <Stack direction="row" spacing={2} alignItems="flex-start">
+              <Box
+                sx={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: '14px',
+                  backgroundColor: 'rgba(99,91,240,0.18)',
+                  color: '#8e89ff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <CreditCardIcon />
+              </Box>
+              <Stack spacing={0.75}>
+                <Typography sx={{ color: '#fff', fontWeight: 700 }}>Stripe Checkout</Typography>
+                <Typography sx={{ color: 'rgba(255,255,255,0.68)', lineHeight: 1.65 }}>
+                  Kortdetaljer og eventuell avgiftsberegning håndteres på Stripes sikre betalingsside.
+                </Typography>
+              </Stack>
+            </Stack>
+          </Box>
+
+          <Typography
+            variant="caption"
+            sx={{
+              display: 'block',
+              mt: 1,
+              color: 'rgba(255, 255, 255, 0.5)',
+              lineHeight: 1.7,
+            }}
+          >
+            Du blir sendt til Stripe Checkout for å fullføre abonnementet på en sikker side før du returnerer til CreatorHub.
+          </Typography>
 
           {selectedPlan && (
-            <Alert 
-              severity="info" 
-              sx={{ 
+            <Alert
+              severity="info"
+              sx={{
                 mt: 3,
                 backgroundColor: `${professionColor}20`,
                 border: `1px solid ${professionColor}40`,
@@ -915,8 +930,10 @@ export default function SubscriptionSelectionFlow({
                 }
               }}
             >
-              <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.9)' }}>
-                Du vil bli belastet <strong>{formatPrice(selectedPlan.price, selectedPlan.currency)}</strong> per {selectedPlan.interval === 'month' ? 'måned' : 'år'}
+              <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.9)', lineHeight: 1.7 }}>
+                Du vil starte et abonnement på <strong>{selectedPlan.name}</strong> til{' '}
+                <strong>{formatPrice(selectedPlan.price, selectedPlan.currency)}</strong> per{' '}
+                {selectedPlan.interval === 'month' ? 'måned' : 'år'}.
               </Typography>
             </Alert>
           )}
@@ -961,7 +978,7 @@ export default function SubscriptionSelectionFlow({
               }
             }}
           >
-            {paymentProcessing ? 'Behandler betaling...' : 'Betal nå'}
+            {paymentProcessing ? 'Sender til Stripe...' : 'Gå til Stripe Checkout'}
           </Button>
         </DialogActions>
       </Dialog>

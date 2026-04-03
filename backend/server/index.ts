@@ -441,6 +441,72 @@ app.post(
   },
 );
 
+app.post(
+  "/api/platform/billing/webhook",
+  express.raw({ type: "application/json" }),
+  async (req, res) => {
+    const stripe = getCreatorHubStripeClient();
+    if (!stripe) {
+      return res.status(503).json({
+        error: "Stripe er ikke konfigurert for CreatorHub.",
+      });
+    }
+
+    const signatureHeader = req.headers["stripe-signature"];
+    const webhookSecret = getCreatorHubStripeWebhookSecret();
+    const rawBody = Buffer.isBuffer(req.body)
+      ? req.body
+      : Buffer.from(String(req.body ?? ""), "utf8");
+
+    let event: Stripe.Event;
+    try {
+      if (webhookSecret) {
+        if (typeof signatureHeader !== "string" || !signatureHeader.trim()) {
+          return res.status(400).json({
+            error: "Mangler stripe-signature-header.",
+          });
+        }
+        event = stripe.webhooks.constructEvent(
+          rawBody,
+          signatureHeader,
+          webhookSecret,
+        );
+      } else if (process.env.NODE_ENV === "production") {
+        return res.status(503).json({
+          error: "CreatorHub Stripe webhook-secret mangler på serveren.",
+        });
+      } else {
+        event = JSON.parse(rawBody.toString("utf8")) as Stripe.Event;
+      }
+    } catch (error) {
+      console.error("CreatorHub Stripe webhook signature error:", error);
+      return res.status(400).json({
+        error: "Kunne ikke verifisere CreatorHub Stripe-webhooken.",
+      });
+    }
+
+    try {
+      switch (event.type) {
+        case "checkout.session.completed":
+        case "checkout.session.async_payment_succeeded":
+          await syncCreatorHubStripeCheckoutSession(
+            event.data.object as Stripe.Checkout.Session,
+          );
+          break;
+        default:
+          break;
+      }
+
+      return res.json({ received: true });
+    } catch (error) {
+      console.error("CreatorHub Stripe webhook handling error:", error);
+      return res.status(500).json({
+        error: "Kunne ikke behandle CreatorHub Stripe-webhooken.",
+      });
+    }
+  },
+);
+
 const PORT = Number(process.env.PORT) || 3003;
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -18315,7 +18381,7 @@ type CompatPaymentStatusRecord = {
   status: "pending" | "completed" | "failed" | "refunded";
   createdAt: string;
   completedAt: string | null;
-  provider: "compat" | "google-pay";
+  provider: "compat" | "google-pay" | "stripe";
   metadata: Record<string, unknown>;
   receiptSentAt: string | null;
   membershipCard: CompatPaymentStatusCardSummary | null;
@@ -23717,6 +23783,267 @@ app.get("/api/platform/subscription-plans", async (_req, res) => {
   });
 });
 
+app.post("/api/platform/billing/checkout-session", async (req, res) => {
+  try {
+    const body = isRecord(req.body) ? req.body : {};
+    const email =
+      compatHeaderString(body.email ?? body.userEmail ?? body.user_email) ||
+      compatResolveUserEmail(req);
+    const requestId =
+      compatHeaderString(body.requestId ?? body.request_id) || null;
+    const userId = resolveCompatPaymentUserScope(
+      compatHeaderString(body.userId ?? body.user_id) || compatResolveUserId(req),
+      requestId,
+      email,
+    );
+    const profession = readString(body.profession);
+    const paymentMethod = normalizeCompatPaymentMethod(
+      body.paymentMethod ?? body.payment_method,
+    );
+    const planId = normalizeBillingPlanId(body.planId ?? body.plan_id);
+    const plan = getCompatPlatformSubscriptionPlan(planId);
+
+    if (!plan || !plan.isActive) {
+      return res.status(400).json({
+        error: "Velg en gyldig abonnementsplan før du fortsetter.",
+      });
+    }
+
+    if (paymentMethod !== "stripe") {
+      return res.status(400).json({
+        error: "CreatorHub Checkout støtter foreløpig bare Stripe.",
+      });
+    }
+
+    if (plan.price <= 0) {
+      const createdAt = new Date().toISOString();
+      const record: CompatPaymentStatusRecord = {
+        id: `pay_${crypto.randomUUID()}`,
+        transactionId: `free_${crypto.randomUUID()}`,
+        userId,
+        email,
+        requestId,
+        planId: plan.id,
+        planName: plan.displayName,
+        amountMinor: 0,
+        amountMajor: 0,
+        currency: plan.currency,
+        paymentMethod: "stripe",
+        status: "completed",
+        createdAt,
+        completedAt: createdAt,
+        provider: "compat",
+        metadata: {
+          profession,
+          requestId,
+          flow: "creatorhub_free_plan",
+        },
+        receiptSentAt: null,
+        membershipCard: null,
+      };
+
+      await recordCompatPaymentCompletion(record);
+
+      return res.status(200).json({
+        success: true,
+        alreadyPaid: true,
+        freePlan: true,
+        planId: plan.id,
+        planName: plan.displayName,
+        amount: record.amountMinor,
+        currency: record.currency,
+        transactionId: record.transactionId,
+        paymentCompleted: true,
+      });
+    }
+
+    const stripe = getCreatorHubStripeClient();
+    if (!stripe) {
+      return res.status(503).json({
+        error:
+          "Stripe Checkout er ikke konfigurert for CreatorHub. Legg inn STRIPE_SECRET_KEY før du fortsetter.",
+      });
+    }
+
+    const browserOrigin = normalizeCreatorHubBrowserOrigin(body.browserOrigin);
+    const returnPath =
+      typeof body.returnPath === "string"
+        ? body.returnPath
+        : "/subscription-selection";
+    const successUrl = buildCreatorHubCheckoutReturnUrl({
+      browserOrigin,
+      returnPath,
+      status: "success",
+      includeSessionId: true,
+    });
+    const cancelUrl = buildCreatorHubCheckoutReturnUrl({
+      browserOrigin,
+      returnPath,
+      status: "cancel",
+      includeSessionId: false,
+    });
+
+    const configuredPriceId = getCreatorHubStripePriceId(plan.id);
+    const amountMinor = Math.round(plan.price * 100);
+    const session = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+      customer_email: email || undefined,
+      billing_address_collection: "auto",
+      allow_promotion_codes: true,
+      locale: "nb",
+      client_reference_id: [plan.id, userId, requestId || email || "creatorhub"]
+        .filter(Boolean)
+        .join(":"),
+      line_items: [
+        configuredPriceId
+          ? {
+              quantity: 1,
+              price: configuredPriceId,
+            }
+          : {
+              quantity: 1,
+              price_data: {
+                currency: plan.currency.toLowerCase(),
+                unit_amount: amountMinor,
+                recurring: {
+                  interval: plan.billingCycle === "yearly" ? "year" : "month",
+                },
+                product_data: {
+                  name: `CreatorHub — ${plan.displayName}`,
+                  description: plan.description,
+                },
+              },
+            },
+      ],
+      metadata: {
+        ch_user_id: userId,
+        ch_email: email || "",
+        ch_request_id: requestId || "",
+        ch_profession: profession || "",
+        ch_plan_id: plan.id,
+        ch_plan_name: plan.displayName,
+        ch_amount_minor: String(amountMinor),
+        ch_currency: plan.currency,
+      },
+      subscription_data: {
+        metadata: {
+          ch_user_id: userId,
+          ch_email: email || "",
+          ch_request_id: requestId || "",
+          ch_profession: profession || "",
+          ch_plan_id: plan.id,
+          ch_plan_name: plan.displayName,
+          ch_amount_minor: String(amountMinor),
+          ch_currency: plan.currency,
+        },
+      },
+    });
+
+    if (!session.url) {
+      throw new Error("Stripe Checkout returnerte ingen checkout-url.");
+    }
+
+    const nowIso = new Date().toISOString();
+    await writeCreatorHubStripeCheckoutSessionRecord({
+      sessionId: session.id,
+      userId,
+      email,
+      requestId,
+      profession,
+      planId: plan.id,
+      planName: plan.displayName,
+      amountMinor,
+      amountMajor: Number(plan.price.toFixed(2)),
+      currency: plan.currency,
+      paymentCompleted: false,
+      checkoutStatus: "created",
+      paymentTimestamp: null,
+      transactionId: null,
+      stripeSubscriptionId: null,
+      stripeCustomerId: getStripeCheckoutSessionCustomerId(session) || null,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    });
+
+    return res.status(201).json({
+      success: true,
+      checkoutUrl: session.url,
+      sessionId: session.id,
+      planId: plan.id,
+      planName: plan.displayName,
+      amount: amountMinor,
+      currency: plan.currency,
+      paymentMethod: "stripe",
+    });
+  } catch (error) {
+    console.error("Error creating CreatorHub Stripe checkout session:", error);
+    return res.status(500).json({
+      error: "Kunne ikke starte Stripe Checkout for CreatorHub.",
+    });
+  }
+});
+
+app.get("/api/platform/billing/session-status", async (req, res) => {
+  try {
+    const sessionId = normalizeMailConfigValue(req.query?.sessionId);
+    if (!sessionId) {
+      return res.status(400).json({
+        error: "sessionId er påkrevd.",
+      });
+    }
+
+    const stripe = getCreatorHubStripeClient();
+    if (!stripe) {
+      return res.status(503).json({
+        error:
+          "Stripe Checkout er ikke konfigurert for CreatorHub. Legg inn STRIPE_SECRET_KEY før du fortsetter.",
+      });
+    }
+
+    const session = await stripe.checkout.sessions.retrieve(sessionId, {
+      expand: ["subscription"],
+    });
+    const syncedRecord =
+      (await syncCreatorHubStripeCheckoutSession(session)) ||
+      (await readCreatorHubStripeCheckoutSessionRecord(sessionId));
+    const createdAt =
+      syncedRecord?.createdAt ||
+      new Date((session.created || Math.floor(Date.now() / 1000)) * 1000).toISOString();
+    const status = syncedRecord?.paymentCompleted
+      ? "completed"
+      : syncedRecord?.checkoutStatus === "payment_failed" ||
+          syncedRecord?.checkoutStatus === "expired"
+        ? "failed"
+        : "pending";
+
+    return res.json({
+      success: true,
+      id: syncedRecord?.sessionId || session.id,
+      sessionId,
+      status,
+      amount: syncedRecord?.amountMinor || 0,
+      currency: syncedRecord?.currency || "NOK",
+      paymentMethod: "stripe",
+      transactionId:
+        syncedRecord?.transactionId || getStripeCheckoutSessionTransactionId(session),
+      planId: syncedRecord?.planId || null,
+      planName: syncedRecord?.planName || null,
+      createdAt,
+      completedAt: syncedRecord?.paymentTimestamp || null,
+      paymentCompleted: Boolean(syncedRecord?.paymentCompleted),
+      checkoutStatus: session.status,
+      paymentStatus: session.payment_status,
+    });
+  } catch (error) {
+    console.error("Error reading CreatorHub Stripe checkout session:", error);
+    return res.status(500).json({
+      error: "Kunne ikke lese Stripe Checkout-status for CreatorHub.",
+    });
+  }
+});
+
 app.get("/api/price-administration/currency-rates", async (_req, res) => {
   res.json({
     rates: buildCompatPriceAdministrationCurrencyRates(),
@@ -26697,11 +27024,37 @@ type RoleRoomCommercialCheckoutSessionRecord = {
   updatedAt: string;
 };
 
+type CreatorHubStripeCheckoutSessionRecord = {
+  sessionId: string;
+  userId: string;
+  email: string | null;
+  requestId: string | null;
+  profession: string | null;
+  planId: string;
+  planName: string;
+  amountMinor: number;
+  amountMajor: number;
+  currency: string;
+  paymentCompleted: boolean;
+  checkoutStatus: "created" | "completed" | "payment_failed" | "expired";
+  paymentTimestamp: string | null;
+  transactionId: string | null;
+  stripeSubscriptionId: string | null;
+  stripeCustomerId: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+const CREATORHUB_STRIPE_CHECKOUT_RECORD_PREFIX =
+  "creatorhub:billing:checkout-session:";
+const CREATORHUB_STRIPE_SUBSCRIPTION_RECORD_PREFIX =
+  "creatorhub:billing:subscription:";
 const ROLE_ROOM_STRIPE_CHECKOUT_RECORD_PREFIX =
   "role-room:billing:checkout-session:";
 const ROLE_ROOM_STRIPE_SUBSCRIPTION_RECORD_PREFIX =
   "role-room:billing:subscription:";
 
+let creatorHubStripeClient: Stripe | null | undefined;
 let roleRoomStripeClient: Stripe | null | undefined;
 const ROLE_ROOM_STRIPE_PRODUCT_TAX_CODE = "txcd_10103001";
 const ROLE_ROOM_ACTIVATION_REQUIRED_JOURNEY_STATUS =
@@ -26805,6 +27158,109 @@ function getStripeCheckoutSessionCustomerId(session: Stripe.Checkout.Session) {
     return String(customer.id || "");
   }
   return "";
+}
+
+function creatorHubStripeCheckoutSessionKey(sessionId: string) {
+  return `${CREATORHUB_STRIPE_CHECKOUT_RECORD_PREFIX}${sessionId}`;
+}
+
+function creatorHubStripeSubscriptionKey(subscriptionId: string) {
+  return `${CREATORHUB_STRIPE_SUBSCRIPTION_RECORD_PREFIX}${subscriptionId}`;
+}
+
+function getCreatorHubStripeSecretKey() {
+  return normalizeMailConfigValue(
+    process.env.CREATORHUB_STRIPE_SECRET_KEY ||
+      process.env.STRIPE_SECRET_KEY ||
+      process.env.STRIPE_API_KEY,
+  );
+}
+
+function getCreatorHubStripeWebhookSecret() {
+  return normalizeMailConfigValue(
+    process.env.CREATORHUB_STRIPE_WEBHOOK_SECRET,
+  );
+}
+
+function getCreatorHubStripePriceId(planId: string | null | undefined) {
+  switch (normalizeBillingPlanId(planId)) {
+    case "basic":
+      return normalizeMailConfigValue(process.env.CREATORHUB_STRIPE_PRICE_ID_BASIC);
+    case "professional":
+      return normalizeMailConfigValue(
+        process.env.CREATORHUB_STRIPE_PRICE_ID_PROFESSIONAL,
+      );
+    case "premium":
+      return normalizeMailConfigValue(
+        process.env.CREATORHUB_STRIPE_PRICE_ID_PREMIUM,
+      );
+    case "enterprise":
+      return normalizeMailConfigValue(
+        process.env.CREATORHUB_STRIPE_PRICE_ID_ENTERPRISE,
+      );
+    default:
+      return "";
+  }
+}
+
+function getCreatorHubStripeClient() {
+  const secretKey = getCreatorHubStripeSecretKey();
+  if (!secretKey) {
+    return null;
+  }
+  if (creatorHubStripeClient) {
+    return creatorHubStripeClient;
+  }
+
+  creatorHubStripeClient = new Stripe(secretKey);
+  return creatorHubStripeClient;
+}
+
+function getDefaultCreatorHubPublicOrigin() {
+  return (
+    normalizeMailConfigValue(process.env.CREATORHUB_PUBLIC_URL) ||
+    normalizeMailConfigValue(process.env.PUBLIC_APP_URL) ||
+    "https://creatorhubn.com"
+  );
+}
+
+function normalizeCreatorHubBrowserOrigin(value: unknown) {
+  const raw = typeof value === "string" ? value.trim() : "";
+  if (!raw) {
+    return getDefaultCreatorHubPublicOrigin();
+  }
+
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return getDefaultCreatorHubPublicOrigin();
+    }
+    return parsed.origin;
+  } catch {
+    return getDefaultCreatorHubPublicOrigin();
+  }
+}
+
+function buildCreatorHubCheckoutReturnUrl(input: {
+  browserOrigin: string;
+  returnPath?: string | null;
+  status: "success" | "cancel";
+  includeSessionId?: boolean;
+}) {
+  const rawPath =
+    typeof input.returnPath === "string" && input.returnPath.trim().startsWith("/")
+      ? input.returnPath.trim()
+      : "/subscription-selection";
+  const url = new URL(rawPath, input.browserOrigin);
+  url.searchParams.set("payment", input.status);
+  if (input.includeSessionId) {
+    url.searchParams.set("session_id", "{CHECKOUT_SESSION_ID}");
+  } else {
+    url.searchParams.delete("session_id");
+  }
+  return url
+    .toString()
+    .replace("%7BCHECKOUT_SESSION_ID%7D", "{CHECKOUT_SESSION_ID}");
 }
 
 function getRoleRoomStripeSecretKey() {
@@ -27332,6 +27788,193 @@ function getStripeCheckoutSessionTransactionId(
     return String(paymentIntent.id || "");
   }
   return session.id;
+}
+
+function isCreatorHubStripeSessionPaid(session: Stripe.Checkout.Session) {
+  if (session.payment_status === "paid") {
+    return true;
+  }
+
+  const subscription = session.subscription;
+  if (subscription && typeof subscription === "object" && "status" in subscription) {
+    return (
+      subscription.status === "active" || subscription.status === "trialing"
+    );
+  }
+
+  return false;
+}
+
+function deriveCreatorHubCheckoutStatus(
+  session: Stripe.Checkout.Session,
+): CreatorHubStripeCheckoutSessionRecord["checkoutStatus"] {
+  if (isCreatorHubStripeSessionPaid(session)) {
+    return "completed";
+  }
+  if (session.status === "expired") {
+    return "expired";
+  }
+  if (session.status === "complete" && session.payment_status !== "paid") {
+    return "payment_failed";
+  }
+  return "created";
+}
+
+function getCreatorHubStripeCheckoutEmail(session: Stripe.Checkout.Session) {
+  const email =
+    normalizeMailConfigValue(session.customer_details?.email) ||
+    normalizeMailConfigValue(session.customer_email) ||
+    normalizeMailConfigValue(session.metadata?.ch_email);
+  return email ? email.toLowerCase() : null;
+}
+
+function deriveCreatorHubStripeCheckoutRecordFromSession(
+  session: Stripe.Checkout.Session,
+): CreatorHubStripeCheckoutSessionRecord | null {
+  const metadata = session.metadata || {};
+  const planId =
+    normalizeBillingPlanId(metadata.ch_plan_id) ||
+    normalizeBillingPlanId(metadata.planId);
+  const plan = getCompatPlatformSubscriptionPlan(planId);
+  const planName =
+    normalizeMailConfigValue(metadata.ch_plan_name) ||
+    plan?.displayName ||
+    "CreatorHub Plan";
+  const userId = normalizeMailConfigValue(metadata.ch_user_id) || "guest";
+  const amountMinor = Number(
+    metadata.ch_amount_minor || (plan ? Math.round(plan.price * 100) : 0),
+  );
+  const amountMajor = Number((amountMinor / 100).toFixed(2));
+  const currency =
+    normalizeMailConfigValue(metadata.ch_currency) || plan?.currency || "NOK";
+  const createdAt = new Date(
+    (session.created || Math.floor(Date.now() / 1000)) * 1000,
+  ).toISOString();
+
+  if (!planId || !planName || !Number.isFinite(amountMinor) || amountMinor < 0) {
+    return null;
+  }
+
+  return {
+    sessionId: session.id,
+    userId,
+    email: getCreatorHubStripeCheckoutEmail(session),
+    requestId: normalizeMailConfigValue(metadata.ch_request_id),
+    profession: normalizeMailConfigValue(metadata.ch_profession),
+    planId,
+    planName,
+    amountMinor,
+    amountMajor,
+    currency,
+    paymentCompleted: isCreatorHubStripeSessionPaid(session),
+    checkoutStatus: deriveCreatorHubCheckoutStatus(session),
+    paymentTimestamp: null,
+    transactionId: null,
+    stripeSubscriptionId: getStripeCheckoutSessionSubscriptionId(session) || null,
+    stripeCustomerId: getStripeCheckoutSessionCustomerId(session) || null,
+    createdAt,
+    updatedAt: createdAt,
+  };
+}
+
+async function writeCreatorHubStripeCheckoutSessionRecord(
+  record: CreatorHubStripeCheckoutSessionRecord,
+) {
+  await compatStoreSet(creatorHubStripeCheckoutSessionKey(record.sessionId), record);
+  if (record.stripeSubscriptionId) {
+    await compatStoreSet(
+      creatorHubStripeSubscriptionKey(record.stripeSubscriptionId),
+      record,
+    );
+  }
+}
+
+async function readCreatorHubStripeCheckoutSessionRecord(
+  sessionId: string,
+): Promise<CreatorHubStripeCheckoutSessionRecord | null> {
+  return compatStoreGet<CreatorHubStripeCheckoutSessionRecord>(
+    creatorHubStripeCheckoutSessionKey(sessionId),
+  );
+}
+
+async function syncCreatorHubStripeCheckoutSession(
+  session: Stripe.Checkout.Session,
+) {
+  const derived = deriveCreatorHubStripeCheckoutRecordFromSession(session);
+  if (!derived) {
+    return null;
+  }
+
+  const nowIso = new Date().toISOString();
+  const existing = await readCreatorHubStripeCheckoutSessionRecord(session.id);
+  const transactionId =
+    getStripeCheckoutSessionTransactionId(session) ||
+    existing?.transactionId ||
+    session.id;
+  const paymentCompleted = isCreatorHubStripeSessionPaid(session);
+  const paymentTimestamp = paymentCompleted
+    ? existing?.paymentTimestamp || nowIso
+    : existing?.paymentTimestamp || null;
+
+  const record: CreatorHubStripeCheckoutSessionRecord = {
+    ...existing,
+    ...derived,
+    transactionId,
+    paymentCompleted,
+    checkoutStatus: deriveCreatorHubCheckoutStatus(session),
+    paymentTimestamp,
+    stripeSubscriptionId:
+      getStripeCheckoutSessionSubscriptionId(session) ||
+      existing?.stripeSubscriptionId ||
+      null,
+    stripeCustomerId:
+      getStripeCheckoutSessionCustomerId(session) ||
+      existing?.stripeCustomerId ||
+      null,
+    createdAt: existing?.createdAt || derived.createdAt,
+    updatedAt: nowIso,
+  };
+
+  await writeCreatorHubStripeCheckoutSessionRecord(record);
+
+  if (!paymentCompleted) {
+    return record;
+  }
+
+  const existingPaymentRecord =
+    (await findCompatPaymentStatusRecord(transactionId)) ||
+    (await readCompatPaymentStatusRecord(`pay_${session.id}`));
+
+  const compatRecord: CompatPaymentStatusRecord = {
+    id: existingPaymentRecord?.id || `pay_${session.id}`,
+    transactionId,
+    userId: record.userId,
+    email: record.email,
+    requestId: record.requestId,
+    planId: record.planId,
+    planName: record.planName,
+    amountMinor: record.amountMinor,
+    amountMajor: record.amountMajor,
+    currency: record.currency,
+    paymentMethod: "stripe",
+    status: "completed",
+    createdAt: existingPaymentRecord?.createdAt || record.createdAt,
+    completedAt: paymentTimestamp,
+    provider: "stripe",
+    metadata: {
+      ...(existingPaymentRecord?.metadata || {}),
+      profession: record.profession,
+      requestId: record.requestId,
+      stripeSessionId: session.id,
+      stripeSubscriptionId: record.stripeSubscriptionId,
+      stripeCustomerId: record.stripeCustomerId,
+    },
+    receiptSentAt: existingPaymentRecord?.receiptSentAt || null,
+    membershipCard: existingPaymentRecord?.membershipCard || null,
+  };
+
+  await recordCompatPaymentCompletion(compatRecord);
+  return record;
 }
 
 function isRoleRoomStripeSessionPaid(session: Stripe.Checkout.Session) {

@@ -18,26 +18,53 @@ import {
 import { ArrowBack as ArrowBackIcon, Home as HomeIcon } from '@mui/icons-material';
 import SubscriptionSelectionFlow from '../components/subscription/SubscriptionSelectionFlow';
 import PaymentStatusVerification from '../components/subscription/PaymentStatusVerification';
+import { apiRequest } from '../lib/queryClient';
 
 export default function SubscriptionSelectionPage() {
   const [, navigate] = useLocation();
-  
-  // Theming system
-  const theming = useTheming('photographer');
   const [showPaymentStatus, setShowPaymentStatus] = useState(false);
   const [paymentData, setPaymentData] = useState<any>(null);
 
   // Get profession from URL params
   const urlParams = new URLSearchParams(window.location.search);
-  const profession = urlParams.get('profession') || 'photographer';
+  const requestedProfession = urlParams.get('profession') || 'creatorhub';
+  const profession = requestedProfession || 'creatorhub';
+  const initialPlanId = urlParams.get('plan');
   const requestId = urlParams.get('requestId');
   const fromInvite = urlParams.get('fromInvite') === 'true';
+  const stripeSessionId = urlParams.get('session_id');
+  const isCreatorHubCheckout = profession === 'creatorhub';
+  const theming = useTheming(isCreatorHubCheckout ? 'vendor' : profession);
 
   // Check if user came from payment completion
   const paymentCompleted = urlParams.get('payment') === 'success';
+  const paymentCancelled = urlParams.get('payment') === 'cancel';
 
   useEffect(() => {
     if (paymentCompleted) {
+      if (stripeSessionId) {
+        apiRequest(`/api/platform/billing/session-status?sessionId=${encodeURIComponent(stripeSessionId)}`)
+          .then((status) => {
+            setPaymentData({
+              ...(typeof status === 'object' && status !== null ? status : {}),
+              sessionId: stripeSessionId,
+              transactionId:
+                typeof (status as any)?.transactionId === 'string'
+                  ? (status as any).transactionId
+                  : stripeSessionId,
+            });
+            setShowPaymentStatus(true);
+          })
+          .catch(() => {
+            setPaymentData({
+              sessionId: stripeSessionId,
+              transactionId: stripeSessionId,
+            });
+            setShowPaymentStatus(true);
+          });
+        return;
+      }
+
       // Server-first payment data
       fetch('/api/user/kv/paymentCompleted', { credentials: 'include' })
         .then((r) => (r.ok ? r.json() : null))
@@ -171,13 +198,14 @@ export default function SubscriptionSelectionPage() {
                 Betaling fullført! 🎉
               </Typography>
               <Typography variant="h6" color="text.secondary" sx={{ color: theming.colors.primary }}>
-                Din abonnementsplan er aktivert
+                CreatorHub-abonnementet ditt er aktivert
               </Typography>
             </Box>
           </Stack>
         </Paper>
 
         <PaymentStatusVerification
+          sessionId={paymentData.sessionId}
           transactionId={paymentData.transactionId}
           onMembershipCreated={handleMembershipCreated}
         />
@@ -193,8 +221,7 @@ export default function SubscriptionSelectionPage() {
           </Button>
           <Alert severity="info" sx={{ mt: 2, maxWidth: 600, mx: 'auto' }}>
             <Typography variant="body2">
-              Du vil motta en e-post når din konto er godkjent av CreatorHub Norge. 
-              Deretter kan du logge inn og fullføre onboarding.
+              Stripe-betalingen er registrert. CreatorHub oppdaterer medlemskap og tilgang etter bekreftet betaling.
             </Typography>
           </Alert>
         </Box>
@@ -219,10 +246,10 @@ export default function SubscriptionSelectionPage() {
         <Stack direction="row" alignItems="center" spacing={3}>
           <Box sx={{ flex:  1 }}>
             <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary, mb: 1 }}>
-              Velg din abonnementsplan
+              Velg CreatorHub-abonnement
             </Typography>
             <Typography variant="h6" color="text.secondary" sx={{ ...{}, color: theming.colors.primary }}>
-              Kom i gang med CreatorHub Norge
+              Velg plan og fullfør betalingen i Stripe Checkout
             </Typography>
           </Box>
           <Button
@@ -236,9 +263,16 @@ export default function SubscriptionSelectionPage() {
         </Stack>
       </Paper>
 
+      {paymentCancelled && (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          Stripe Checkout ble avbrutt. Den valgte planen din er fortsatt valgt, så du kan fortsette når du er klar.
+        </Alert>
+      )}
+
       <SubscriptionSelectionFlow
         profession={profession}
         requestId={requestId}
+        initialPlanId={initialPlanId}
         fromInvite={fromInvite}
         onComplete={handlePaymentComplete}
         onBack={handleBack}
