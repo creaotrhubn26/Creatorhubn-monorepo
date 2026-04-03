@@ -26406,8 +26406,81 @@ const ROLE_ROOM_ACTIVATION_REQUIRED_JOURNEY_STATUS =
   "role_room_activation_required";
 const ROLE_ROOM_ACTIVATED_JOURNEY_STATUS = "role_room_access_activated";
 const ROLE_ROOM_ACTIVATION_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 14;
+const ROLE_ROOM_PAYMENT_REMINDER_HOURS = parseRoleRoomReminderHours(
+  process.env.ROLE_ROOM_PAYMENT_REMINDER_HOURS,
+  [2, 24, 72, 168],
+);
+const ROLE_ROOM_ACTIVATION_REMINDER_HOURS = parseRoleRoomReminderHours(
+  process.env.ROLE_ROOM_ACTIVATION_REMINDER_HOURS,
+  [24, 72, 168],
+);
+const ROLE_ROOM_PAYMENT_REMINDER_REPEAT_HOURS =
+  parseRoleRoomReminderHours(
+    process.env.ROLE_ROOM_PAYMENT_REMINDER_REPEAT_HOURS,
+    [168],
+  )[0] || 168;
+const ROLE_ROOM_ACTIVATION_REMINDER_REPEAT_HOURS =
+  parseRoleRoomReminderHours(
+    process.env.ROLE_ROOM_ACTIVATION_REMINDER_REPEAT_HOURS,
+    [168],
+  )[0] || 168;
+const ROLE_ROOM_REMINDER_INTERVAL_MS =
+  Math.max(
+    15,
+    Number.parseInt(
+      normalizeMailConfigValue(process.env.ROLE_ROOM_REMINDER_INTERVAL_MINUTES) ||
+        "60",
+      10,
+    ) || 60,
+  ) *
+  60 *
+  1000;
+const ROLE_ROOM_REMINDER_STATUS_COMPAT_KEY = "role-room:billing:reminders:status";
 
 type RoleRoomCommercialActivationStatus = "pending_approval" | "approved";
+
+type RoleRoomCommercialReminderDeliverySummary = {
+  sent: boolean;
+  reason: string | null;
+  accepted: string[];
+  provider: string | null;
+  messageId: string | null;
+};
+
+type RoleRoomCommercialReminderSweepSummary = {
+  reason: "startup" | "interval" | "manual";
+  startedAt: string;
+  finishedAt: string;
+  isRunning: boolean;
+  paymentCandidates: number;
+  paymentRemindersSent: number;
+  activationCandidates: number;
+  activationRemindersSent: number;
+  failures: number;
+  skipped: number;
+  notes: string[];
+};
+
+function parseRoleRoomReminderHours(
+  value: unknown,
+  fallback: number[],
+): number[] {
+  const normalized = normalizeMailConfigValue(value);
+  const parsed = normalized
+    .split(",")
+    .map((entry) => Number.parseInt(entry.trim(), 10))
+    .filter((entry) => Number.isFinite(entry) && entry > 0)
+    .map((entry) => Math.floor(entry));
+
+  return parsed.length > 0 ? parsed : [...fallback];
+}
+
+function isRoleRoomReminderRunnerEnabled() {
+  const normalized = normalizeMailConfigValue(
+    process.env.ROLE_ROOM_REMINDERS_ENABLED,
+  ).toLowerCase();
+  return !["0", "false", "off", "no"].includes(normalized);
+}
 
 function roleRoomCommercialCheckoutSessionKey(sessionId: string) {
   return `${ROLE_ROOM_STRIPE_CHECKOUT_RECORD_PREFIX}${sessionId}`;
@@ -26598,6 +26671,67 @@ function getRoleRoomCommercialActivationStatus(
   };
 }
 
+function getRoleRoomCommercialPaymentPendingSince(
+  inviteRequest: Record<string, unknown> | null | undefined,
+  snapshot?: RoleRoomCommercialAccessSnapshot | null,
+) {
+  const parsedSnapshot =
+    snapshot || parseRoleRoomCommercialAccessSnapshot(inviteRequest?.message);
+  return (
+    parsedSnapshot?.paymentPendingSince ||
+    toAdminString(inviteRequest?.updated_at) ||
+    toAdminString(inviteRequest?.created_at) ||
+    null
+  );
+}
+
+function shouldSendRoleRoomReminder(input: {
+  anchorAt?: string | null;
+  lastSentAt?: string | null;
+  sentCount?: number | null;
+  thresholdHours: number[];
+  repeatHours: number;
+}) {
+  const anchorTime = Date.parse(String(input.anchorAt || ""));
+  if (!Number.isFinite(anchorTime) || anchorTime <= 0) {
+    return false;
+  }
+
+  const count = Math.max(0, Math.floor(input.sentCount || 0));
+  const now = Date.now();
+  if (count < input.thresholdHours.length) {
+    return (
+      now - anchorTime >= input.thresholdHours[count] * 60 * 60 * 1000
+    );
+  }
+
+  const lastSentTime = Date.parse(String(input.lastSentAt || ""));
+  if (!Number.isFinite(lastSentTime) || lastSentTime <= 0) {
+    return false;
+  }
+
+  return now - lastSentTime >= input.repeatHours * 60 * 60 * 1000;
+}
+
+function buildRoleRoomCommercialReminderSummary(
+  reason: "startup" | "interval" | "manual",
+): RoleRoomCommercialReminderSweepSummary {
+  const startedAt = new Date().toISOString();
+  return {
+    reason,
+    startedAt,
+    finishedAt: startedAt,
+    isRunning: true,
+    paymentCandidates: 0,
+    paymentRemindersSent: 0,
+    activationCandidates: 0,
+    activationRemindersSent: 0,
+    failures: 0,
+    skipped: 0,
+    notes: [],
+  };
+}
+
 function doesRoleRoomCommercialPaymentMatchCurrentSetup(input: {
   inviteRequest: Record<string, unknown> | null | undefined;
   planId: string;
@@ -26620,6 +26754,34 @@ function doesRoleRoomCommercialPaymentMatchCurrentSetup(input: {
     typeof paymentAmount === "number" &&
     Number.isFinite(paymentAmount) &&
     Math.abs(paymentAmount - input.monthlyTotalExVat) < 0.0001
+  );
+}
+
+function shouldPreserveRoleRoomCommercialPendingPaymentState(input: {
+  existingSnapshot: RoleRoomCommercialAccessSnapshot | null;
+  inviteRequest: Record<string, unknown> | null | undefined;
+  planId: string;
+  organizationNumber: string;
+  teamLeadEmail: string;
+  teamSize: number;
+  monthlyTotalExVat: number;
+}) {
+  if (
+    !input.existingSnapshot ||
+    Boolean(input.inviteRequest?.payment_completed)
+  ) {
+    return false;
+  }
+
+  return (
+    input.existingSnapshot.subscriptionType === input.planId &&
+    input.existingSnapshot.organizationNumber === input.organizationNumber &&
+    input.existingSnapshot.teamLeadEmail === input.teamLeadEmail &&
+    input.existingSnapshot.teamSize === input.teamSize &&
+    typeof input.existingSnapshot.monthlyTotalExVat === "number" &&
+    Math.abs(
+      input.existingSnapshot.monthlyTotalExVat - input.monthlyTotalExVat,
+    ) < 0.0001
   );
 }
 
@@ -26650,6 +26812,30 @@ async function resetRoleRoomCommercialInvitePaymentState(
   }
   if (inviteColumns.has("payment_timestamp")) {
     pushValue("payment_timestamp", null);
+  }
+  if (inviteColumns.has("message")) {
+    const existingInvite = await pool
+      .query("SELECT * FROM invite_requests WHERE id = $1 LIMIT 1", [
+        inviteRequestId,
+      ])
+      .then((result) => (result.rows[0] as Record<string, unknown> | undefined) || null)
+      .catch(() => null);
+    const existingSnapshot = parseRoleRoomCommercialAccessSnapshot(
+      existingInvite?.message,
+    );
+    if (existingSnapshot) {
+      pushValue(
+        "message",
+        serializeRoleRoomCommercialAccessSnapshot({
+          ...existingSnapshot,
+          paymentPendingSince: new Date().toISOString(),
+          paymentReminderCount: 0,
+          paymentReminderLastSentAt: null,
+          paymentReminderProvider: null,
+          paymentReminderMessageId: null,
+        }),
+      );
+    }
   }
   if (inviteColumns.has("user_journey_status")) {
     pushValue("user_journey_status", journeyStatus);
@@ -27157,6 +27343,7 @@ async function ensureRoleRoomCommercialAccess(input: {
   const monthlyTotalExVat = dedupedMembers.length * plan.seatPriceExVat;
   const requests: Record<string, unknown>[] = [];
   let currentSetupPaid = true;
+  const pendingPaymentStartedAt = new Date().toISOString();
 
   for (const member of dedupedMembers) {
     const existingInvite = await findAdminInviteRequest(member.email, member.email);
@@ -27178,6 +27365,18 @@ async function ensureRoleRoomCommercialAccess(input: {
       await resetRoleRoomCommercialInvitePaymentState(String(existingInvite.id));
     }
 
+    const preservePendingState = shouldPreserveRoleRoomCommercialPendingPaymentState(
+      {
+        existingSnapshot,
+        inviteRequest: existingInvite,
+        planId: plan.planId,
+        organizationNumber,
+        teamLeadEmail: teamLead.email,
+        teamSize: dedupedMembers.length,
+        monthlyTotalExVat,
+      },
+    );
+
     const serializedMetadata = buildRoleRoomCommercialInviteMessage({
       persona,
       plan,
@@ -27188,6 +27387,32 @@ async function ensureRoleRoomCommercialAccess(input: {
       member,
       monthlyTotalExVat,
       existingSnapshot,
+      payment: currentPaymentCompleted
+        ? {
+            pendingSince: null,
+            reminderCount: 0,
+            reminderLastSentAt: null,
+            reminderProvider: null,
+            reminderMessageId: null,
+          }
+        : {
+            pendingSince:
+              preservePendingState && existingSnapshot?.paymentPendingSince
+                ? existingSnapshot.paymentPendingSince
+                : pendingPaymentStartedAt,
+            reminderCount: preservePendingState
+              ? existingSnapshot?.paymentReminderCount ?? 0
+              : 0,
+            reminderLastSentAt: preservePendingState
+              ? existingSnapshot?.paymentReminderLastSentAt ?? null
+              : null,
+            reminderProvider: preservePendingState
+              ? existingSnapshot?.paymentReminderProvider ?? null
+              : null,
+            reminderMessageId: preservePendingState
+              ? existingSnapshot?.paymentReminderMessageId ?? null
+              : null,
+          },
     });
 
     const inviteRequest = await upsertAdminInviteRequest({
@@ -27627,15 +27852,12 @@ async function updateRoleRoomCommercialInviteRecord(input: {
   return (result.rows[0] as Record<string, unknown> | undefined) || input.inviteRequest;
 }
 
-async function sendRoleRoomCommercialActivationEmail(options: {
-  companyName: string;
-  planName: string;
+async function sendRoleRoomCommercialEmail(options: {
   recipientEmail: string;
-  recipientName: string;
-  activationUrl: string;
-  memberRoleLabel?: string | null;
-  isLeader?: boolean;
-  monthlyTotalExVat: number;
+  replyTo?: string | null;
+  subject: string;
+  text: string;
+  html: string;
 }) {
   const transporter = getRoleRoomEducationInquiryMailer();
   if (!transporter) {
@@ -27655,59 +27877,11 @@ async function sendRoleRoomCommercialActivationEmail(options: {
     normalizeMailConfigValue(process.env.GMAIL_USER) ||
     normalizeMailConfigValue(process.env.GOOGLE_WORKSPACE_EMAIL) ||
     adminEmail;
-  const subject = `The Role Room er klar — godkjenn kontoen din`;
-  const text = [
-    `Hei ${options.recipientName},`,
-    "",
-    `Betalingen for ${options.companyName} er registrert i The Role Room.`,
-    `Plan: ${options.planName}`,
-    `Beløp: ${options.monthlyTotalExVat.toFixed(2).replace(".", ",")} kr per måned eks. mva.`,
-    "",
-    "Før første innlogging må du godkjenne kontoen din via denne lenken:",
-    options.activationUrl,
-    "",
-    "Når godkjenningen er fullført, kan du logge inn med samme e-postadresse.",
-    "",
-    "Hvis du ikke forventet denne e-posten, kan du se bort fra den.",
-  ].join("\n");
-  const html = `
-    <div style="font-family:Arial,sans-serif;background:#f6f3ee;padding:24px;color:#181512">
-      <div style="max-width:680px;margin:0 auto;background:#fff;border-radius:18px;border:1px solid #e9e0d4;overflow:hidden">
-        <div style="padding:20px 24px;background:#171410;color:#f8f5ef">
-          <div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:#f6c358;font-weight:700">The Role Room</div>
-          <h1 style="margin:8px 0 0;font-size:24px;line-height:1.2">Betalingen er bekreftet</h1>
-        </div>
-        <div style="padding:24px">
-          <p style="margin:0 0 12px;font-size:14px;line-height:1.7;color:#4d473f">Hei ${options.recipientName},</p>
-          <p style="margin:0 0 14px;font-size:14px;line-height:1.7;color:#4d473f">
-            Betalingen for <strong>${options.companyName}</strong> er registrert. Kontoen din i The Role Room er klargjort.
-          </p>
-          <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:18px">
-            <tr><td style="padding:8px 0;color:#7b7368">Plan</td><td style="padding:8px 0;font-weight:700">${options.planName}</td></tr>
-            <tr><td style="padding:8px 0;color:#7b7368">Rolle</td><td style="padding:8px 0">${options.memberRoleLabel || "Teammedlem"}${options.isLeader ? " · Teamleder" : ""}</td></tr>
-            <tr><td style="padding:8px 0;color:#7b7368">Pris</td><td style="padding:8px 0">${options.monthlyTotalExVat.toFixed(2).replace(".", ",")} kr / mnd eks. mva.</td></tr>
-            <tr><td style="padding:8px 0;color:#7b7368">E-post</td><td style="padding:8px 0">${options.recipientEmail}</td></tr>
-          </table>
-          <p style="margin:0 0 16px;font-size:14px;line-height:1.7;color:#4d473f">
-            Før første innlogging må du godkjenne kontoen din.
-          </p>
-          <a href="${options.activationUrl}" style="display:inline-block;padding:14px 20px;border-radius:999px;background:#f6c358;color:#171410;text-decoration:none;font-weight:700">Godkjenn kontoen din</a>
-          <p style="margin:18px 0 0;font-size:12px;line-height:1.7;color:#7b7368">
-            Hvis knappen ikke virker, kan du kopiere denne lenken:
-            <br />
-            <span style="word-break:break-all">${options.activationUrl}</span>
-          </p>
-        </div>
-      </div>
-    </div>
-  `;
+  const replyTo = normalizeMailConfigValue(options.replyTo) || adminEmail;
 
   const gmailSender = await resolveRoleRoomEducationInquiryGmailSender().catch(
     (error) => {
-      console.error(
-        "Role Room commercial activation Gmail API sender lookup failed:",
-        error,
-      );
+      console.error("Role Room commercial Gmail API sender lookup failed:", error);
       return null;
     },
   );
@@ -27720,12 +27894,12 @@ async function sendRoleRoomCommercialActivationEmail(options: {
     const rawMessage = [
       `To: ${options.recipientEmail}`,
       `From: CreatorHub Norge <${gmailSender.senderEmail}>`,
-      `Reply-To: ${adminEmail}`,
-      `Subject: ${subject}`,
+      `Reply-To: ${replyTo}`,
+      `Subject: ${options.subject}`,
       'Content-Type: text/html; charset="UTF-8"',
       "MIME-Version: 1.0",
       "",
-      html,
+      options.html,
     ].join("\r\n");
 
     const response = await gmail.users.messages.send({
@@ -27747,10 +27921,10 @@ async function sendRoleRoomCommercialActivationEmail(options: {
   const info = await transporter.sendMail({
     from: `CreatorHub Norge <${fromEmail}>`,
     to: options.recipientEmail,
-    replyTo: adminEmail,
-    subject,
-    text,
-    html,
+    replyTo,
+    subject: options.subject,
+    text: options.text,
+    html: options.html,
   });
 
   return {
@@ -27764,10 +27938,170 @@ async function sendRoleRoomCommercialActivationEmail(options: {
   };
 }
 
+async function sendRoleRoomCommercialActivationEmail(options: {
+  companyName: string;
+  planName: string;
+  recipientEmail: string;
+  recipientName: string;
+  activationUrl: string;
+  memberRoleLabel?: string | null;
+  isLeader?: boolean;
+  monthlyTotalExVat: number;
+  isReminder?: boolean;
+}) {
+  const adminEmail =
+    normalizeMailConfigValue(process.env.GOOGLE_ADMIN_EMAIL) ||
+    "daniel@creatorhubn.com";
+  const subject = options.isReminder
+    ? `Påminnelse: godkjenn kontoen din i The Role Room`
+    : `The Role Room er klar — godkjenn kontoen din`;
+  const text = [
+    `Hei ${options.recipientName},`,
+    "",
+    options.isReminder
+      ? `Dette er en påminnelse om at kontoen din i ${options.companyName} fortsatt venter på godkjenning i The Role Room.`
+      : `Betalingen for ${options.companyName} er registrert i The Role Room.`,
+    `Plan: ${options.planName}`,
+    `Beløp: ${options.monthlyTotalExVat.toFixed(2).replace(".", ",")} kr per måned eks. mva.`,
+    "",
+    options.isReminder
+      ? "Du må fortsatt godkjenne kontoen din før første innlogging. Bruk denne lenken:"
+      : "Før første innlogging må du godkjenne kontoen din via denne lenken:",
+    options.activationUrl,
+    "",
+    "Når godkjenningen er fullført, kan du logge inn med samme e-postadresse.",
+    "",
+    "Hvis du ikke forventet denne e-posten, kan du se bort fra den.",
+  ].join("\n");
+  const html = `
+    <div style="font-family:Arial,sans-serif;background:#f6f3ee;padding:24px;color:#181512">
+      <div style="max-width:680px;margin:0 auto;background:#fff;border-radius:18px;border:1px solid #e9e0d4;overflow:hidden">
+        <div style="padding:20px 24px;background:#171410;color:#f8f5ef">
+          <div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:#f6c358;font-weight:700">The Role Room</div>
+          <h1 style="margin:8px 0 0;font-size:24px;line-height:1.2">${
+            options.isReminder
+              ? "Påminnelse om kontogodkjenning"
+              : "Betalingen er bekreftet"
+          }</h1>
+        </div>
+        <div style="padding:24px">
+          <p style="margin:0 0 12px;font-size:14px;line-height:1.7;color:#4d473f">Hei ${options.recipientName},</p>
+          <p style="margin:0 0 14px;font-size:14px;line-height:1.7;color:#4d473f">
+            ${
+              options.isReminder
+                ? `Kontoen din i <strong>${options.companyName}</strong> er snart klar, men du må fortsatt godkjenne den før første innlogging.`
+                : `Betalingen for <strong>${options.companyName}</strong> er registrert. Kontoen din i The Role Room er klargjort.`
+            }
+          </p>
+          <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:18px">
+            <tr><td style="padding:8px 0;color:#7b7368">Plan</td><td style="padding:8px 0;font-weight:700">${options.planName}</td></tr>
+            <tr><td style="padding:8px 0;color:#7b7368">Rolle</td><td style="padding:8px 0">${options.memberRoleLabel || "Teammedlem"}${options.isLeader ? " · Teamleder" : ""}</td></tr>
+            <tr><td style="padding:8px 0;color:#7b7368">Pris</td><td style="padding:8px 0">${options.monthlyTotalExVat.toFixed(2).replace(".", ",")} kr / mnd eks. mva.</td></tr>
+            <tr><td style="padding:8px 0;color:#7b7368">E-post</td><td style="padding:8px 0">${options.recipientEmail}</td></tr>
+          </table>
+          <p style="margin:0 0 16px;font-size:14px;line-height:1.7;color:#4d473f">
+            Før første innlogging må du godkjenne kontoen din.
+          </p>
+          <a href="${options.activationUrl}" style="display:inline-block;padding:14px 20px;border-radius:999px;background:#f6c358;color:#171410;text-decoration:none;font-weight:700">Godkjenn kontoen din</a>
+          <p style="margin:18px 0 0;font-size:12px;line-height:1.7;color:#7b7368">
+            Hvis knappen ikke virker, kan du kopiere denne lenken:
+            <br />
+            <span style="word-break:break-all">${options.activationUrl}</span>
+          </p>
+        </div>
+      </div>
+    </div>
+  `;
+
+  return sendRoleRoomCommercialEmail({
+    recipientEmail: options.recipientEmail,
+    replyTo: adminEmail,
+    subject,
+    text,
+    html,
+  });
+}
+
+async function sendRoleRoomCommercialPaymentReminderEmail(options: {
+  companyName: string;
+  planName: string;
+  recipientEmail: string;
+  recipientName: string;
+  organizationNumber: string;
+  monthlyTotalExVat: number;
+  memberCount: number;
+  roleRoomUrl: string;
+}) {
+  const adminEmail =
+    normalizeMailConfigValue(process.env.GOOGLE_ADMIN_EMAIL) ||
+    "daniel@creatorhubn.com";
+  const subject = `Påminnelse: fullfør betalingen for The Role Room`;
+  const text = [
+    `Hei ${options.recipientName},`,
+    "",
+    `Vi mangler fortsatt en aktiv betaling for ${options.companyName} i The Role Room.`,
+    `Plan: ${options.planName}`,
+    `Organisasjonsnummer: ${options.organizationNumber}`,
+    `Teamstørrelse: ${options.memberCount}`,
+    `Beløp: ${options.monthlyTotalExVat.toFixed(2).replace(".", ",")} kr per måned eks. mva.`,
+    "",
+    "For å aktivere tilgang for teamet, gå tilbake til The Role Room og fullfør betalingen.",
+    options.roleRoomUrl,
+    "",
+    "Hvis betalingen allerede er gjennomført, kan du se bort fra denne e-posten.",
+  ].join("\n");
+  const html = `
+    <div style="font-family:Arial,sans-serif;background:#f6f3ee;padding:24px;color:#181512">
+      <div style="max-width:680px;margin:0 auto;background:#fff;border-radius:18px;border:1px solid #e9e0d4;overflow:hidden">
+        <div style="padding:20px 24px;background:#171410;color:#f8f5ef">
+          <div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:#f6c358;font-weight:700">The Role Room</div>
+          <h1 style="margin:8px 0 0;font-size:24px;line-height:1.2">Betalingen mangler fortsatt</h1>
+        </div>
+        <div style="padding:24px">
+          <p style="margin:0 0 12px;font-size:14px;line-height:1.7;color:#4d473f">Hei ${options.recipientName},</p>
+          <p style="margin:0 0 14px;font-size:14px;line-height:1.7;color:#4d473f">
+            Vi mangler fortsatt en aktiv betaling for <strong>${options.companyName}</strong> i The Role Room. Teamet blir ikke aktivert før betalingen er fullført.
+          </p>
+          <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:18px">
+            <tr><td style="padding:8px 0;color:#7b7368">Plan</td><td style="padding:8px 0;font-weight:700">${options.planName}</td></tr>
+            <tr><td style="padding:8px 0;color:#7b7368">Organisasjonsnummer</td><td style="padding:8px 0">${options.organizationNumber}</td></tr>
+            <tr><td style="padding:8px 0;color:#7b7368">Team</td><td style="padding:8px 0">${options.memberCount} ${options.memberCount === 1 ? "person" : "personer"}</td></tr>
+            <tr><td style="padding:8px 0;color:#7b7368">Beløp</td><td style="padding:8px 0">${options.monthlyTotalExVat.toFixed(2).replace(".", ",")} kr / mnd eks. mva.</td></tr>
+          </table>
+          <a href="${options.roleRoomUrl}" style="display:inline-block;padding:14px 20px;border-radius:999px;background:#f6c358;color:#171410;text-decoration:none;font-weight:700">Gå til The Role Room</a>
+          <p style="margin:18px 0 0;font-size:12px;line-height:1.7;color:#7b7368">
+            Hvis betalingen allerede er fullført, kan du se bort fra denne e-posten.
+          </p>
+        </div>
+      </div>
+    </div>
+  `;
+
+  return sendRoleRoomCommercialEmail({
+    recipientEmail: options.recipientEmail,
+    replyTo: adminEmail,
+    subject,
+    text,
+    html,
+  });
+}
+
 async function ensureRoleRoomCommercialActivationEmails(
   record: RoleRoomCommercialCheckoutSessionRecord,
   inviteRequests: Record<string, unknown>[],
+  options?: {
+    forceResend?: boolean;
+    isReminder?: boolean;
+  },
 ) {
+  const results: Array<{
+    inviteRequestId: string | null;
+    email: string;
+    sent: boolean;
+    provider: string | null;
+    messageId: string | null;
+  }> = [];
+
   for (const inviteRequest of inviteRequests) {
     const snapshot = parseRoleRoomCommercialAccessSnapshot(inviteRequest.message);
     const activationState = getRoleRoomCommercialActivationStatus(inviteRequest);
@@ -27780,7 +28114,11 @@ async function ensureRoleRoomCommercialActivationEmails(
       continue;
     }
 
-    if (activationState.pendingApproval && activationState.emailSent) {
+    if (
+      !options?.forceResend &&
+      activationState.pendingApproval &&
+      activationState.emailSent
+    ) {
       continue;
     }
 
@@ -27810,6 +28148,13 @@ async function ensureRoleRoomCommercialActivationEmails(
     const tokenExpiresAt = new Date(
       Date.now() + ROLE_ROOM_ACTIVATION_TOKEN_TTL_MS,
     ).toISOString();
+    const paymentClearedState = {
+      pendingSince: null,
+      reminderCount: 0,
+      reminderLastSentAt: null,
+      reminderProvider: null,
+      reminderMessageId: null,
+    } as const;
     const preparedMessage = buildRoleRoomCommercialInviteMessage({
       persona: record.persona,
       plan,
@@ -27824,6 +28169,7 @@ async function ensureRoleRoomCommercialActivationEmails(
       member,
       monthlyTotalExVat: record.monthlyTotalExVat,
       existingSnapshot: snapshot,
+      payment: paymentClearedState,
       activation: {
         status: "pending_approval",
         tokenHash,
@@ -27861,10 +28207,28 @@ async function ensureRoleRoomCommercialActivationEmails(
         memberRoleLabel: member.roleLabel,
         isLeader: member.isLeader,
         monthlyTotalExVat: record.monthlyTotalExVat,
+        isReminder: options?.isReminder === true,
       });
     } catch (error) {
       console.error("Role Room commercial activation email failed:", error);
     }
+
+    const reminderSentAt =
+      options?.isReminder === true && emailResult?.sent
+        ? new Date().toISOString()
+        : null;
+    const activationEmailSentAt =
+      emailResult?.sent
+        ? new Date().toISOString()
+        : snapshot?.activationEmailSentAt || null;
+    const activationTokenHash =
+      emailResult?.sent || !snapshot?.activationTokenHash
+        ? tokenHash
+        : snapshot.activationTokenHash;
+    const activationTokenExpiresAt =
+      emailResult?.sent || !snapshot?.activationTokenHash
+        ? tokenExpiresAt
+        : snapshot?.activationTokenExpiresAt || null;
 
     const finalMessage = buildRoleRoomCommercialInviteMessage({
       persona: record.persona,
@@ -27882,15 +28246,40 @@ async function ensureRoleRoomCommercialActivationEmails(
       existingSnapshot: parseRoleRoomCommercialAccessSnapshot(
         preparedInvite.message,
       ),
+      payment: paymentClearedState,
       activation: {
         status: "pending_approval",
-        tokenHash,
-        tokenExpiresAt,
+        tokenHash: activationTokenHash,
+        tokenExpiresAt: activationTokenExpiresAt,
         approvedAt: null,
-        emailSentAt: emailResult?.sent ? new Date().toISOString() : null,
-        emailProvider: emailResult?.provider || null,
-        emailMessageId: emailResult?.messageId || null,
+        emailSentAt: activationEmailSentAt,
+        emailProvider:
+          emailResult?.sent
+            ? emailResult?.provider || null
+            : snapshot?.activationEmailProvider || null,
+        emailMessageId:
+          emailResult?.sent
+            ? emailResult?.messageId || null
+            : snapshot?.activationEmailMessageId || null,
       },
+      activationReminder:
+        options?.isReminder === true
+          ? {
+              count:
+                (snapshot?.activationReminderCount || 0) +
+                (emailResult?.sent ? 1 : 0),
+              lastSentAt:
+                reminderSentAt || snapshot?.activationReminderLastSentAt || null,
+              provider:
+                emailResult?.sent
+                  ? emailResult?.provider || null
+                  : snapshot?.activationReminderProvider || null,
+              messageId:
+                emailResult?.sent
+                  ? emailResult?.messageId || null
+                  : snapshot?.activationReminderMessageId || null,
+            }
+          : undefined,
     });
 
     await updateRoleRoomCommercialInviteRecord({
@@ -27900,7 +28289,493 @@ async function ensureRoleRoomCommercialActivationEmails(
       status: "approved",
       processed: true,
     });
+
+    results.push({
+      inviteRequestId: toAdminString(inviteRequest.id),
+      email: inviteEmail,
+      sent: Boolean(emailResult?.sent),
+      provider: emailResult?.provider || null,
+      messageId: emailResult?.messageId || null,
+    });
   }
+
+  return results;
+}
+
+function compareRoleRoomInviteRowsByRecency(
+  left: Record<string, unknown>,
+  right: Record<string, unknown>,
+) {
+  const leftTime =
+    Date.parse(
+      toAdminString(left.updated_at) || toAdminString(left.created_at) || "",
+    ) || 0;
+  const rightTime =
+    Date.parse(
+      toAdminString(right.updated_at) || toAdminString(right.created_at) || "",
+    ) || 0;
+
+  return rightTime - leftTime;
+}
+
+function buildRoleRoomCommercialReminderTeamKey(
+  snapshot: RoleRoomCommercialAccessSnapshot,
+) {
+  return [
+    snapshot.persona || "",
+    snapshot.organizationNumber || "",
+    snapshot.subscriptionType || "",
+    snapshot.teamLeadEmail || "",
+    snapshot.monthlyTotalExVat || 0,
+  ].join("::");
+}
+
+function buildRoleRoomCommercialReminderActivationKey(
+  inviteRequest: Record<string, unknown>,
+  snapshot: RoleRoomCommercialAccessSnapshot,
+) {
+  return [
+    toAdminString(inviteRequest.email)?.trim().toLowerCase() || "",
+    snapshot.organizationNumber || "",
+    snapshot.subscriptionType || "",
+  ].join("::");
+}
+
+async function listRoleRoomCommercialReminderInviteRequests() {
+  if (!(await hasTable("invite_requests"))) {
+    return [] as Record<string, unknown>[];
+  }
+
+  const inviteColumns = await getTableColumns("invite_requests");
+  const selectColumns =
+    inviteColumns.size > 0 ? Array.from(inviteColumns).join(", ") : "*";
+  const clauses: string[] = [];
+  const orderBy = [
+    inviteColumns.has("updated_at")
+      ? "updated_at DESC NULLS LAST"
+      : inviteColumns.has("created_at")
+        ? "created_at DESC NULLS LAST"
+        : null,
+    inviteColumns.has("created_at") ? "created_at DESC NULLS LAST" : null,
+    "email ASC",
+  ]
+    .filter(Boolean)
+    .join(", ");
+  if (inviteColumns.has("source")) {
+    clauses.push("LOWER(COALESCE(source, '')) = 'role_room'");
+  }
+  const result = await pool.query(
+    `SELECT ${selectColumns}
+     FROM invite_requests${
+       clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : ""
+     }
+     ORDER BY ${orderBy}`,
+  );
+
+  return (result.rows as Record<string, unknown>[]).filter((row) => {
+    const snapshot = parseRoleRoomCommercialAccessSnapshot(row.message);
+    return Boolean(
+      snapshot && normalizeRoleRoomCommercialPersona(snapshot.persona) != null,
+    );
+  });
+}
+
+function buildRoleRoomCommercialCheckoutRecordFromInviteRequest(
+  inviteRequest: Record<string, unknown>,
+) {
+  const snapshot = parseRoleRoomCommercialAccessSnapshot(inviteRequest.message);
+  const persona = normalizeRoleRoomCommercialPersona(snapshot?.persona);
+  if (!snapshot || !persona) {
+    return null;
+  }
+
+  const plan = getRoleRoomCommercialPlan(persona);
+  const createdAt =
+    toAdminString(inviteRequest.created_at) || new Date().toISOString();
+  const updatedAt = toAdminString(inviteRequest.updated_at) || createdAt;
+  const memberEmails =
+    snapshot.members.length > 0
+      ? snapshot.members.map((entry) => entry.email)
+      : [
+          snapshot.memberEmail ||
+            toAdminString(inviteRequest.email)?.trim().toLowerCase() ||
+            "",
+        ].filter(Boolean);
+
+  return {
+    sessionId: `invite:${toAdminString(inviteRequest.id) || snapshot.memberEmail || crypto.randomUUID()}`,
+    requestIds: [toAdminString(inviteRequest.id)].filter(
+      (value): value is string => Boolean(value),
+    ),
+    organizationNumber:
+      snapshot.organizationNumber ||
+      toAdminString(inviteRequest.organization_number) ||
+      "",
+    companyName:
+      snapshot.companyName ||
+      toAdminString(inviteRequest.company_name) ||
+      "The Role Room",
+    persona,
+    planId: snapshot.subscriptionType || plan.planId,
+    planName: snapshot.subscriptionLabel || plan.planName,
+    teamLeadEmail:
+      snapshot.teamLeadEmail ||
+      memberEmails[0] ||
+      toAdminString(inviteRequest.email)?.trim().toLowerCase() ||
+      "",
+    memberEmails,
+    monthlyTotalExVat:
+      snapshot.monthlyTotalExVat ||
+      Number(inviteRequest.payment_amount || inviteRequest.plan_price || 0),
+    seatPriceExVat: snapshot.seatPriceExVat || plan.seatPriceExVat,
+    billableSeatCount: snapshot.teamSize || memberEmails.length || 1,
+    paymentCompleted: Boolean(inviteRequest.payment_completed),
+    checkoutStatus: Boolean(inviteRequest.payment_completed)
+      ? "completed"
+      : "created",
+    paymentTimestamp: toAdminString(inviteRequest.payment_timestamp),
+    transactionId: toAdminString(inviteRequest.payment_transaction_id),
+    stripeSubscriptionId: toAdminString(inviteRequest.payment_transaction_id),
+    createdAt,
+    updatedAt,
+  } satisfies RoleRoomCommercialCheckoutSessionRecord;
+}
+
+async function writeRoleRoomCommercialReminderStatus(
+  summary: RoleRoomCommercialReminderSweepSummary,
+) {
+  await compatStoreSet(ROLE_ROOM_REMINDER_STATUS_COMPAT_KEY, summary);
+}
+
+async function readRoleRoomCommercialReminderStatus() {
+  return compatStoreGet<RoleRoomCommercialReminderSweepSummary>(
+    ROLE_ROOM_REMINDER_STATUS_COMPAT_KEY,
+  );
+}
+
+async function sendRoleRoomCommercialPaymentReminderForRows(input: {
+  leaderRow: Record<string, unknown>;
+  teamRows: Record<string, unknown>[];
+}) {
+  const snapshot = parseRoleRoomCommercialAccessSnapshot(input.leaderRow.message);
+  if (!snapshot) {
+    return {
+      sent: false,
+      reason: "missing_snapshot",
+      accepted: [],
+      provider: null,
+      messageId: null,
+    } satisfies RoleRoomCommercialReminderDeliverySummary;
+  }
+
+  const recipientEmail =
+    snapshot.teamLeadEmail ||
+    toAdminString(input.leaderRow.email)?.trim().toLowerCase() ||
+    "";
+  if (!recipientEmail) {
+    return {
+      sent: false,
+      reason: "missing_team_lead_email",
+      accepted: [],
+      provider: null,
+      messageId: null,
+    } satisfies RoleRoomCommercialReminderDeliverySummary;
+  }
+
+  const delivery = await sendRoleRoomCommercialPaymentReminderEmail({
+    companyName:
+      snapshot.companyName ||
+      toAdminString(input.leaderRow.company_name) ||
+      "The Role Room",
+    planName: snapshot.subscriptionLabel || "The Role Room",
+    recipientEmail,
+    recipientName:
+      snapshot.teamLeadName ||
+      recipientEmail.split("@")[0] ||
+      "Role Room-teamleder",
+    organizationNumber:
+      snapshot.organizationNumber ||
+      toAdminString(input.leaderRow.organization_number) ||
+      "",
+    monthlyTotalExVat:
+      snapshot.monthlyTotalExVat ||
+      Number(input.leaderRow.plan_price || input.leaderRow.payment_amount || 0),
+    memberCount: snapshot.teamSize || snapshot.members.length || input.teamRows.length,
+    roleRoomUrl: getDefaultRoleRoomPublicOrigin(),
+  });
+
+  if (!delivery.sent) {
+    return delivery;
+  }
+
+  const sentAt = new Date().toISOString();
+  for (const row of input.teamRows) {
+    const rowSnapshot = parseRoleRoomCommercialAccessSnapshot(row.message);
+    if (!rowSnapshot) {
+      continue;
+    }
+
+    await updateRoleRoomCommercialInviteRecord({
+      inviteRequest: row,
+      message: serializeRoleRoomCommercialAccessSnapshot({
+        ...rowSnapshot,
+        paymentReminderCount: (rowSnapshot.paymentReminderCount || 0) + 1,
+        paymentReminderLastSentAt: sentAt,
+        paymentReminderProvider: delivery.provider || null,
+        paymentReminderMessageId: delivery.messageId || null,
+      }),
+    });
+  }
+
+  return delivery;
+}
+
+let roleRoomCommercialReminderSweepPromise:
+  | Promise<RoleRoomCommercialReminderSweepSummary>
+  | null = null;
+let roleRoomCommercialReminderSchedulerStarted = false;
+
+async function runRoleRoomCommercialReminderSweep(
+  reason: "startup" | "interval" | "manual",
+) {
+  if (roleRoomCommercialReminderSweepPromise) {
+    const current = await readRoleRoomCommercialReminderStatus();
+    return (
+      current || {
+        ...buildRoleRoomCommercialReminderSummary(reason),
+        isRunning: true,
+        notes: ["En reminder-kjøring pågår allerede."],
+      }
+    );
+  }
+
+  const task = (async () => {
+    const summary = buildRoleRoomCommercialReminderSummary(reason);
+    await writeRoleRoomCommercialReminderStatus(summary);
+
+    try {
+      const rows = await listRoleRoomCommercialReminderInviteRequests();
+      const paymentGroups = new Map<
+        string,
+        {
+          latestRow: Record<string, unknown>;
+          leaderRow: Record<string, unknown> | null;
+          rows: Record<string, unknown>[];
+        }
+      >();
+      const activationRows = new Map<string, Record<string, unknown>>();
+
+      for (const row of rows) {
+        const snapshot = parseRoleRoomCommercialAccessSnapshot(row.message);
+        if (!snapshot) {
+          continue;
+        }
+
+        const normalizedEmail =
+          toAdminString(row.email)?.trim().toLowerCase() || "";
+        const isLeaderRow =
+          snapshot.memberIsLeader === true ||
+          (snapshot.teamLeadEmail || "") === normalizedEmail;
+
+        if (!Boolean(row.payment_completed)) {
+          const teamKey = buildRoleRoomCommercialReminderTeamKey(snapshot);
+          const existingGroup = paymentGroups.get(teamKey);
+          if (!existingGroup) {
+            paymentGroups.set(teamKey, {
+              latestRow: row,
+              leaderRow: isLeaderRow ? row : null,
+              rows: [row],
+            });
+          } else {
+            existingGroup.rows.push(row);
+            if (compareRoleRoomInviteRowsByRecency(row, existingGroup.latestRow) < 0) {
+              existingGroup.latestRow = row;
+            }
+            if (
+              isLeaderRow &&
+              (!existingGroup.leaderRow ||
+                compareRoleRoomInviteRowsByRecency(row, existingGroup.leaderRow) < 0)
+            ) {
+              existingGroup.leaderRow = row;
+            }
+          }
+        } else {
+          const activationState = getRoleRoomCommercialActivationStatus(row);
+          if (!activationState.approved) {
+            const activationKey = buildRoleRoomCommercialReminderActivationKey(
+              row,
+              snapshot,
+            );
+            const existingRow = activationRows.get(activationKey);
+            if (
+              !existingRow ||
+              compareRoleRoomInviteRowsByRecency(row, existingRow) < 0
+            ) {
+              activationRows.set(activationKey, row);
+            }
+          }
+        }
+      }
+
+      const paymentCandidates = Array.from(paymentGroups.values()).map((group) => ({
+        leaderRow: group.leaderRow || group.latestRow,
+        rows: group.rows,
+      }));
+      summary.paymentCandidates = paymentCandidates.length;
+
+      for (const candidate of paymentCandidates) {
+        const snapshot = parseRoleRoomCommercialAccessSnapshot(
+          candidate.leaderRow.message,
+        );
+        if (!snapshot) {
+          summary.skipped += 1;
+          continue;
+        }
+
+        const due = shouldSendRoleRoomReminder({
+          anchorAt: getRoleRoomCommercialPaymentPendingSince(
+            candidate.leaderRow,
+            snapshot,
+          ),
+          lastSentAt: snapshot.paymentReminderLastSentAt,
+          sentCount: snapshot.paymentReminderCount,
+          thresholdHours: ROLE_ROOM_PAYMENT_REMINDER_HOURS,
+          repeatHours: ROLE_ROOM_PAYMENT_REMINDER_REPEAT_HOURS,
+        });
+        if (!due) {
+          summary.skipped += 1;
+          continue;
+        }
+
+        try {
+          const delivery = await sendRoleRoomCommercialPaymentReminderForRows({
+            leaderRow: candidate.leaderRow,
+            teamRows: candidate.rows,
+          });
+          if (delivery.sent) {
+            summary.paymentRemindersSent += 1;
+          } else {
+            summary.failures += 1;
+            if (delivery.reason) {
+              summary.notes.push(
+                `Betalingspåminnelse hoppet over for ${
+                  snapshot.teamLeadEmail || snapshot.companyName || "ukjent team"
+                }: ${delivery.reason}`,
+              );
+            }
+          }
+        } catch (error) {
+          summary.failures += 1;
+          summary.notes.push(
+            `Betalingspåminnelse feilet for ${
+              snapshot.teamLeadEmail || snapshot.companyName || "ukjent team"
+            }.`,
+          );
+          console.error("Role Room payment reminder sweep failed:", error);
+        }
+      }
+
+      const activationCandidates = Array.from(activationRows.values());
+      summary.activationCandidates = activationCandidates.length;
+
+      for (const row of activationCandidates) {
+        const snapshot = parseRoleRoomCommercialAccessSnapshot(row.message);
+        if (!snapshot) {
+          summary.skipped += 1;
+          continue;
+        }
+        const activationState = getRoleRoomCommercialActivationStatus(row);
+        const due =
+          !activationState.emailSent ||
+          shouldSendRoleRoomReminder({
+            anchorAt:
+              snapshot.activationEmailSentAt ||
+              toAdminString(row.payment_timestamp) ||
+              toAdminString(row.updated_at) ||
+              toAdminString(row.created_at),
+            lastSentAt: snapshot.activationReminderLastSentAt,
+            sentCount: snapshot.activationReminderCount,
+            thresholdHours: ROLE_ROOM_ACTIVATION_REMINDER_HOURS,
+            repeatHours: ROLE_ROOM_ACTIVATION_REMINDER_REPEAT_HOURS,
+          });
+
+        if (!due) {
+          summary.skipped += 1;
+          continue;
+        }
+
+        const record = buildRoleRoomCommercialCheckoutRecordFromInviteRequest(row);
+        if (!record) {
+          summary.failures += 1;
+          summary.notes.push(
+            `Aktiveringspåminnelse hoppet over for ${snapshot.memberEmail || toAdminString(row.email) || "ukjent bruker"}: mangler billing-kontekst.`,
+          );
+          continue;
+        }
+
+        try {
+          const deliveries = await ensureRoleRoomCommercialActivationEmails(
+            record,
+            [row],
+            {
+              forceResend: true,
+              isReminder: true,
+            },
+          );
+          if (deliveries.some((delivery) => delivery.sent)) {
+            summary.activationRemindersSent += 1;
+          } else {
+            summary.failures += 1;
+            summary.notes.push(
+              `Aktiveringspåminnelse hoppet over for ${snapshot.memberEmail || toAdminString(row.email) || "ukjent bruker"}.`,
+            );
+          }
+        } catch (error) {
+          summary.failures += 1;
+          summary.notes.push(
+            `Aktiveringspåminnelse feilet for ${snapshot.memberEmail || toAdminString(row.email) || "ukjent bruker"}.`,
+          );
+          console.error("Role Room activation reminder sweep failed:", error);
+        }
+      }
+    } catch (error) {
+      summary.failures += 1;
+      summary.notes.push("Reminder-sweepen feilet på servernivå.");
+      console.error("Role Room reminder sweep failed:", error);
+    } finally {
+      summary.isRunning = false;
+      summary.finishedAt = new Date().toISOString();
+      await writeRoleRoomCommercialReminderStatus(summary);
+    }
+
+    return summary;
+  })();
+
+  roleRoomCommercialReminderSweepPromise = task;
+  try {
+    return await task;
+  } finally {
+    if (roleRoomCommercialReminderSweepPromise === task) {
+      roleRoomCommercialReminderSweepPromise = null;
+    }
+  }
+}
+
+function maybeStartRoleRoomCommercialReminderSweep() {
+  if (
+    roleRoomCommercialReminderSchedulerStarted ||
+    !isRoleRoomReminderRunnerEnabled()
+  ) {
+    return;
+  }
+
+  roleRoomCommercialReminderSchedulerStarted = true;
+  setTimeout(() => {
+    void runRoleRoomCommercialReminderSweep("startup");
+  }, 15000).unref();
+  setInterval(() => {
+    void runRoleRoomCommercialReminderSweep("interval");
+  }, ROLE_ROOM_REMINDER_INTERVAL_MS).unref();
 }
 
 async function findRoleRoomCommercialInviteByActivationToken(token: string) {
@@ -28224,6 +29099,63 @@ app.post("/api/role-room/billing/checkout-session", async (req, res) => {
     }
     return res.status(500).json({
       error: "Kunne ikke starte Stripe Checkout for The Role Room.",
+    });
+  }
+});
+
+app.get("/api/role-room/billing/reminders/status", async (req, res) => {
+  if (!requireAdminSession(req, res)) {
+    return;
+  }
+
+  try {
+    const status = await readRoleRoomCommercialReminderStatus();
+    return res.json({
+      success: true,
+      enabled: isRoleRoomReminderRunnerEnabled(),
+      intervalMinutes: Math.round(ROLE_ROOM_REMINDER_INTERVAL_MS / 60000),
+      paymentReminderHours: ROLE_ROOM_PAYMENT_REMINDER_HOURS,
+      activationReminderHours: ROLE_ROOM_ACTIVATION_REMINDER_HOURS,
+      repeatPaymentReminderHours: ROLE_ROOM_PAYMENT_REMINDER_REPEAT_HOURS,
+      repeatActivationReminderHours: ROLE_ROOM_ACTIVATION_REMINDER_REPEAT_HOURS,
+      status:
+        status || {
+          reason: "manual",
+          startedAt: null,
+          finishedAt: null,
+          isRunning: false,
+          paymentCandidates: 0,
+          paymentRemindersSent: 0,
+          activationCandidates: 0,
+          activationRemindersSent: 0,
+          failures: 0,
+          skipped: 0,
+          notes: [],
+        },
+    });
+  } catch (error) {
+    console.error("Error reading Role Room reminder status:", error);
+    return res.status(500).json({
+      error: "Kunne ikke lese reminder-status for The Role Room.",
+    });
+  }
+});
+
+app.post("/api/role-room/billing/reminders/trigger", async (req, res) => {
+  if (!requireAdminSession(req, res)) {
+    return;
+  }
+
+  try {
+    const summary = await runRoleRoomCommercialReminderSweep("manual");
+    return res.json({
+      success: true,
+      summary,
+    });
+  } catch (error) {
+    console.error("Error triggering Role Room reminder sweep:", error);
+    return res.status(500).json({
+      error: "Kunne ikke trigge reminder-sweep for The Role Room.",
     });
   }
 });
@@ -41305,6 +42237,11 @@ type RoleRoomCommercialAccessSnapshot = {
   memberRoleId: string | null;
   memberRoleLabel: string | null;
   memberIsLeader: boolean;
+  paymentPendingSince: string | null;
+  paymentReminderCount: number;
+  paymentReminderLastSentAt: string | null;
+  paymentReminderProvider: string | null;
+  paymentReminderMessageId: string | null;
   activationStatus: RoleRoomCommercialActivationStatus | null;
   activationTokenHash: string | null;
   activationTokenExpiresAt: string | null;
@@ -41312,7 +42249,54 @@ type RoleRoomCommercialAccessSnapshot = {
   activationEmailSentAt: string | null;
   activationEmailProvider: string | null;
   activationEmailMessageId: string | null;
+  activationReminderCount: number;
+  activationReminderLastSentAt: string | null;
+  activationReminderProvider: string | null;
+  activationReminderMessageId: string | null;
 };
+
+function serializeRoleRoomCommercialAccessSnapshot(
+  snapshot: RoleRoomCommercialAccessSnapshot,
+) {
+  return JSON.stringify({
+    kind: "role_room_commercial_access",
+    version: 1,
+    persona: snapshot.persona,
+    personaLabel: snapshot.personaLabel,
+    subscriptionType: snapshot.subscriptionType,
+    subscriptionLabel: snapshot.subscriptionLabel,
+    companyName: snapshot.companyName,
+    organizationNumber: snapshot.organizationNumber,
+    teamLeadName: snapshot.teamLeadName,
+    teamLeadEmail: snapshot.teamLeadEmail,
+    teamSize: snapshot.teamSize,
+    seatPriceExVat: snapshot.seatPriceExVat,
+    monthlyTotalExVat: snapshot.monthlyTotalExVat,
+    taxMode: snapshot.taxMode,
+    members: snapshot.members,
+    memberName: snapshot.memberName,
+    memberEmail: snapshot.memberEmail,
+    memberRoleId: snapshot.memberRoleId,
+    memberRoleLabel: snapshot.memberRoleLabel,
+    memberIsLeader: snapshot.memberIsLeader,
+    paymentPendingSince: snapshot.paymentPendingSince,
+    paymentReminderCount: snapshot.paymentReminderCount,
+    paymentReminderLastSentAt: snapshot.paymentReminderLastSentAt,
+    paymentReminderProvider: snapshot.paymentReminderProvider,
+    paymentReminderMessageId: snapshot.paymentReminderMessageId,
+    activationStatus: snapshot.activationStatus,
+    activationTokenHash: snapshot.activationTokenHash,
+    activationTokenExpiresAt: snapshot.activationTokenExpiresAt,
+    activationApprovedAt: snapshot.activationApprovedAt,
+    activationEmailSentAt: snapshot.activationEmailSentAt,
+    activationEmailProvider: snapshot.activationEmailProvider,
+    activationEmailMessageId: snapshot.activationEmailMessageId,
+    activationReminderCount: snapshot.activationReminderCount,
+    activationReminderLastSentAt: snapshot.activationReminderLastSentAt,
+    activationReminderProvider: snapshot.activationReminderProvider,
+    activationReminderMessageId: snapshot.activationReminderMessageId,
+  });
+}
 
 function buildRoleRoomCommercialInviteMessage(input: {
   persona: RoleRoomCommercialPersona;
@@ -41333,12 +42317,24 @@ function buildRoleRoomCommercialInviteMessage(input: {
     emailProvider: string | null;
     emailMessageId: string | null;
   }>;
+  payment?: Partial<{
+    pendingSince: string | null;
+    reminderCount: number | null;
+    reminderLastSentAt: string | null;
+    reminderProvider: string | null;
+    reminderMessageId: string | null;
+  }>;
+  activationReminder?: Partial<{
+    count: number | null;
+    lastSentAt: string | null;
+    provider: string | null;
+    messageId: string | null;
+  }>;
 }) {
   const existing = input.existingSnapshot;
 
-  return JSON.stringify({
+  return serializeRoleRoomCommercialAccessSnapshot({
     kind: "role_room_commercial_access",
-    version: 1,
     persona: input.persona,
     personaLabel: input.plan.personaLabel,
     subscriptionType: input.plan.planId,
@@ -41357,6 +42353,22 @@ function buildRoleRoomCommercialInviteMessage(input: {
     memberRoleId: input.member.roleId,
     memberRoleLabel: input.member.roleLabel,
     memberIsLeader: input.member.isLeader,
+    paymentPendingSince:
+      input.payment?.pendingSince ?? existing?.paymentPendingSince ?? null,
+    paymentReminderCount:
+      input.payment?.reminderCount ?? existing?.paymentReminderCount ?? 0,
+    paymentReminderLastSentAt:
+      input.payment?.reminderLastSentAt ??
+      existing?.paymentReminderLastSentAt ??
+      null,
+    paymentReminderProvider:
+      input.payment?.reminderProvider ??
+      existing?.paymentReminderProvider ??
+      null,
+    paymentReminderMessageId:
+      input.payment?.reminderMessageId ??
+      existing?.paymentReminderMessageId ??
+      null,
     activationStatus: input.activation?.status ?? existing?.activationStatus ?? null,
     activationTokenHash:
       input.activation?.tokenHash ?? existing?.activationTokenHash ?? null,
@@ -41375,6 +42387,22 @@ function buildRoleRoomCommercialInviteMessage(input: {
     activationEmailMessageId:
       input.activation?.emailMessageId ??
       existing?.activationEmailMessageId ??
+      null,
+    activationReminderCount:
+      input.activationReminder?.count ??
+      existing?.activationReminderCount ??
+      0,
+    activationReminderLastSentAt:
+      input.activationReminder?.lastSentAt ??
+      existing?.activationReminderLastSentAt ??
+      null,
+    activationReminderProvider:
+      input.activationReminder?.provider ??
+      existing?.activationReminderProvider ??
+      null,
+    activationReminderMessageId:
+      input.activationReminder?.messageId ??
+      existing?.activationReminderMessageId ??
       null,
   });
 }
@@ -41454,6 +42482,11 @@ function parseRoleRoomCommercialAccessSnapshot(
     memberRoleId: toAdminString(record.memberRoleId),
     memberRoleLabel: toAdminString(record.memberRoleLabel),
     memberIsLeader: record.memberIsLeader === true,
+    paymentPendingSince: toAdminString(record.paymentPendingSince),
+    paymentReminderCount: Math.max(0, readNumber(record.paymentReminderCount) || 0),
+    paymentReminderLastSentAt: toAdminString(record.paymentReminderLastSentAt),
+    paymentReminderProvider: toAdminString(record.paymentReminderProvider),
+    paymentReminderMessageId: toAdminString(record.paymentReminderMessageId),
     activationStatus:
       record.activationStatus === "pending_approval" ||
       record.activationStatus === "approved"
@@ -41465,6 +42498,15 @@ function parseRoleRoomCommercialAccessSnapshot(
     activationEmailSentAt: toAdminString(record.activationEmailSentAt),
     activationEmailProvider: toAdminString(record.activationEmailProvider),
     activationEmailMessageId: toAdminString(record.activationEmailMessageId),
+    activationReminderCount:
+      Math.max(0, readNumber(record.activationReminderCount) || 0),
+    activationReminderLastSentAt: toAdminString(
+      record.activationReminderLastSentAt,
+    ),
+    activationReminderProvider: toAdminString(record.activationReminderProvider),
+    activationReminderMessageId: toAdminString(
+      record.activationReminderMessageId,
+    ),
   };
 }
 
@@ -96337,6 +97379,7 @@ httpServer.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Backend server running on port ${PORT} (HTTP + WebSocket)`);
   maybeStartRoleRoomGoogleRedirectBridge();
   maybeStartRoleRoomLinkedInRedirectBridge();
+  maybeStartRoleRoomCommercialReminderSweep();
   if (isStoryArcV2Enabled() && STORY_ARC_V2_STARTUP_WARMUP_ENABLED) {
     void runStoryArcV2StartupWarmup();
   }
