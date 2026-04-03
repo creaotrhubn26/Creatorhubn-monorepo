@@ -255,6 +255,81 @@ export interface RoleRoomTalentPortalCandidateProfile {
   languages: string[];
 }
 
+export interface RoleRoomCommercialBillingMember {
+  name: string;
+  email: string;
+  roleId?: string | null;
+  roleLabel?: string | null;
+  isLeader: boolean;
+  activationApproved: boolean;
+  activationPendingApproval: boolean;
+  activationEmailSent: boolean;
+  inviteRequestId?: string | null;
+  registeredUserId?: string | null;
+}
+
+export interface RoleRoomCommercialBillingAccount {
+  persona?: string | null;
+  personaLabel?: string | null;
+  planId?: string | null;
+  planName?: string | null;
+  companyName?: string | null;
+  organizationNumber?: string | null;
+  teamSize?: number | null;
+  seatPriceExVat?: number | null;
+  monthlyTotalExVat?: number | null;
+  taxMode?: string | null;
+  paymentCompleted: boolean;
+  paymentStatus: 'pending_payment' | 'active' | 'payment_failed';
+  paymentStatusLabel: string;
+  paymentMessage: string;
+  paymentPendingSince?: string | null;
+  paymentFailedAt?: string | null;
+  paymentFailureMessage?: string | null;
+  paymentTimestamp?: string | null;
+  transactionId?: string | null;
+  stripeSubscriptionId?: string | null;
+  stripeCustomerId?: string | null;
+  stripeSubscriptionStatus?: string | null;
+  latestInvoiceId?: string | null;
+  latestInvoiceStatus?: string | null;
+  nextPaymentAttemptAt?: string | null;
+  canManageBilling: boolean;
+  managementLockedReason?: string | null;
+  canRetryPayment: boolean;
+  currentUser: {
+    email: string;
+    name: string;
+    roleId?: string | null;
+    roleLabel?: string | null;
+    isLeader: boolean;
+    activationApproved: boolean;
+    activationPendingApproval: boolean;
+    activationEmailSent: boolean;
+  };
+  teamLead: {
+    name?: string | null;
+    email?: string | null;
+  };
+  members: RoleRoomCommercialBillingMember[];
+}
+
+export interface RoleRoomCommercialBillingPortalResponse {
+  success: boolean;
+  url: string;
+}
+
+export interface RoleRoomCommercialRetryPaymentResponse {
+  success: boolean;
+  alreadyPaid?: boolean;
+  paymentCompleted: boolean;
+  invoiceId?: string | null;
+  invoiceStatus?: string | null;
+  subscriptionStatus?: string | null;
+  transactionId?: string | null;
+  stripeSubscriptionId?: string | null;
+}
+
 export interface RoleRoomTalentPortalCandidate {
   id: string;
   projectId: string;
@@ -2184,6 +2259,35 @@ export const linkedInWorkspaceApi = {
   ),
 };
 
+export const roleRoomBillingApi = {
+  getAccount: async (): Promise<RoleRoomCommercialBillingAccount> => {
+    const result = await apiRequest<{ success: boolean; account: RoleRoomCommercialBillingAccount }>(
+      '/billing/account',
+    );
+    return result.account;
+  },
+
+  openBillingPortal: async (payload?: {
+    browserOrigin?: string;
+    returnPath?: string;
+  }): Promise<RoleRoomCommercialBillingPortalResponse> => (
+    apiRequest<RoleRoomCommercialBillingPortalResponse>('/billing/manage', {
+      method: 'POST',
+      body: JSON.stringify({
+        browserOrigin: payload?.browserOrigin,
+        returnPath: payload?.returnPath,
+      }),
+    })
+  ),
+
+  retryPayment: async (): Promise<RoleRoomCommercialRetryPaymentResponse> => (
+    apiRequest<RoleRoomCommercialRetryPaymentResponse>('/billing/retry-payment', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    })
+  ),
+};
+
 export const castingApi = {
   favorites: favoritesApi,
   projects: projectsApi,
@@ -2213,6 +2317,7 @@ export const castingApi = {
   shotDetails: shotDetailsApi,
   googleWorkspace: googleWorkspaceApi,
   linkedInWorkspace: linkedInWorkspaceApi,
+  roleRoomBilling: roleRoomBillingApi,
 };
 
 export default castingApi;

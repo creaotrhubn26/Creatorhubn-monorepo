@@ -26387,10 +26387,11 @@ type RoleRoomCommercialCheckoutSessionRecord = {
   seatPriceExVat: number;
   billableSeatCount: number;
   paymentCompleted: boolean;
-  checkoutStatus: "created" | "completed";
+  checkoutStatus: "created" | "completed" | "payment_failed";
   paymentTimestamp: string | null;
   transactionId: string | null;
   stripeSubscriptionId: string | null;
+  stripeCustomerId: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -26438,6 +26439,10 @@ const ROLE_ROOM_REMINDER_INTERVAL_MS =
 const ROLE_ROOM_REMINDER_STATUS_COMPAT_KEY = "role-room:billing:reminders:status";
 
 type RoleRoomCommercialActivationStatus = "pending_approval" | "approved";
+type RoleRoomCommercialBillingStatus =
+  | "pending_payment"
+  | "active"
+  | "payment_failed";
 
 type RoleRoomCommercialReminderDeliverySummary = {
   sent: boolean;
@@ -26488,6 +26493,17 @@ function roleRoomCommercialCheckoutSessionKey(sessionId: string) {
 
 function roleRoomCommercialSubscriptionKey(subscriptionId: string) {
   return `${ROLE_ROOM_STRIPE_SUBSCRIPTION_RECORD_PREFIX}${subscriptionId}`;
+}
+
+function getStripeCheckoutSessionCustomerId(session: Stripe.Checkout.Session) {
+  const customer = session.customer;
+  if (typeof customer === "string") {
+    return customer;
+  }
+  if (customer && typeof customer === "object" && "id" in customer) {
+    return String(customer.id || "");
+  }
+  return "";
 }
 
 function getRoleRoomStripeSecretKey() {
@@ -26570,6 +26586,19 @@ function buildRoleRoomCheckoutReturnUrl(input: {
   return url
     .toString()
     .replace("%7BCHECKOUT_SESSION_ID%7D", "{CHECKOUT_SESSION_ID}");
+}
+
+function buildRoleRoomBillingReturnUrl(input: {
+  browserOrigin: string;
+  returnPath?: string | null;
+}) {
+  const rawPath =
+    typeof input.returnPath === "string" && input.returnPath.trim().startsWith("/")
+      ? input.returnPath.trim()
+      : "/";
+  const url = new URL(rawPath, input.browserOrigin);
+  url.searchParams.set("rrBilling", "updated");
+  return url.toString();
 }
 
 function isRoleRoomClientReviewerRole(value: unknown) {
@@ -26788,6 +26817,15 @@ function shouldPreserveRoleRoomCommercialPendingPaymentState(input: {
 async function resetRoleRoomCommercialInvitePaymentState(
   inviteRequestId: string,
   journeyStatus = "role_room_pending_payment",
+  options?: {
+    billingStatus?: RoleRoomCommercialBillingStatus;
+    stripeSubscriptionId?: string | null;
+    stripeCustomerId?: string | null;
+    latestInvoiceId?: string | null;
+    latestInvoiceStatus?: string | null;
+    paymentFailureMessage?: string | null;
+    paymentFailedAt?: string | null;
+  },
 ) {
   if (!(await hasTable("invite_requests"))) {
     return null;
@@ -26828,6 +26866,31 @@ async function resetRoleRoomCommercialInvitePaymentState(
         "message",
         serializeRoleRoomCommercialAccessSnapshot({
           ...existingSnapshot,
+          billingStatus: options?.billingStatus || "pending_payment",
+          stripeSubscriptionId:
+            options?.stripeSubscriptionId === undefined
+              ? existingSnapshot.stripeSubscriptionId
+              : options.stripeSubscriptionId,
+          stripeCustomerId:
+            options?.stripeCustomerId === undefined
+              ? existingSnapshot.stripeCustomerId
+              : options.stripeCustomerId,
+          latestInvoiceId:
+            options?.latestInvoiceId === undefined
+              ? existingSnapshot.latestInvoiceId
+              : options.latestInvoiceId,
+          latestInvoiceStatus:
+            options?.latestInvoiceStatus === undefined
+              ? existingSnapshot.latestInvoiceStatus
+              : options.latestInvoiceStatus,
+          paymentFailedAt:
+            options?.paymentFailedAt === undefined
+              ? existingSnapshot.paymentFailedAt
+              : options.paymentFailedAt,
+          paymentFailureMessage:
+            options?.paymentFailureMessage === undefined
+              ? existingSnapshot.paymentFailureMessage
+              : options.paymentFailureMessage,
           paymentPendingSince: new Date().toISOString(),
           paymentReminderCount: 0,
           paymentReminderLastSentAt: null,
@@ -27003,6 +27066,7 @@ function deriveRoleRoomCommercialCheckoutRecordFromStripeSession(
     paymentTimestamp: null,
     transactionId: null,
     stripeSubscriptionId: getStripeCheckoutSessionSubscriptionId(session) || null,
+    stripeCustomerId: getStripeCheckoutSessionCustomerId(session) || null,
     createdAt,
     updatedAt: createdAt,
   };
@@ -27058,6 +27122,9 @@ async function markRoleRoomCommercialCheckoutRecordPaid(
     completedAt: string;
     amountMajor: number;
     stripeSubscriptionId?: string | null;
+    stripeCustomerId?: string | null;
+    latestInvoiceId?: string | null;
+    latestInvoiceStatus?: string | null;
   },
 ) {
   const inviteRequests =
@@ -27112,12 +27179,31 @@ async function markRoleRoomCommercialCheckoutRecordPaid(
             .then((result) => result.rows[0] || updated)
             .catch(() => updated)) as Record<string, unknown>)
         : ((updated || inviteRequest) as Record<string, unknown>);
+    const billingUpdatedInvite = await updateRoleRoomCommercialInviteBillingSnapshot(
+      refreshedInvite,
+      {
+        billingStatus: "active",
+        stripeSubscriptionId:
+          input.stripeSubscriptionId || record.stripeSubscriptionId || null,
+        stripeCustomerId:
+          input.stripeCustomerId || record.stripeCustomerId || null,
+        latestInvoiceId: input.latestInvoiceId || null,
+        latestInvoiceStatus: input.latestInvoiceStatus || "paid",
+        paymentFailedAt: null,
+        paymentFailureMessage: null,
+        paymentPendingSince: null,
+        paymentReminderCount: 0,
+        paymentReminderLastSentAt: null,
+        paymentReminderProvider: null,
+        paymentReminderMessageId: null,
+      },
+    );
 
-    const updatedId = toAdminString(refreshedInvite?.id) || requestId;
+    const updatedId = toAdminString(billingUpdatedInvite?.id) || requestId;
     if (updatedId) {
       requestIds.push(updatedId);
     }
-    refreshedInviteRequests.push(refreshedInvite);
+    refreshedInviteRequests.push(billingUpdatedInvite);
   }
 
   const nextRecord: RoleRoomCommercialCheckoutSessionRecord = {
@@ -27129,9 +27215,27 @@ async function markRoleRoomCommercialCheckoutRecordPaid(
     transactionId: input.transactionId,
     stripeSubscriptionId:
       input.stripeSubscriptionId || record.stripeSubscriptionId,
+    stripeCustomerId: input.stripeCustomerId || record.stripeCustomerId,
     updatedAt: new Date().toISOString(),
   };
   await writeRoleRoomCommercialCheckoutSessionRecord(nextRecord);
+  if (record.checkoutStatus === "payment_failed") {
+    await sendRoleRoomCommercialPaymentRecoveryEmail({
+      companyName: record.companyName,
+      planName: record.planName,
+      recipientEmail: record.teamLeadEmail,
+      recipientName: record.teamLeadEmail.split("@")[0] || "Role Room-teamleder",
+      organizationNumber: record.organizationNumber,
+      monthlyTotalExVat: input.amountMajor,
+      memberCount: record.billableSeatCount,
+      roleRoomUrl: getDefaultRoleRoomPublicOrigin(),
+    }).catch((error) => {
+      console.error(
+        "Role Room commercial payment recovery email failed:",
+        error,
+      );
+    });
+  }
   await ensureRoleRoomCommercialActivationEmails(
     nextRecord,
     refreshedInviteRequests.length > 0 ? refreshedInviteRequests : inviteRequests,
@@ -27141,6 +27245,13 @@ async function markRoleRoomCommercialCheckoutRecordPaid(
 
 async function markRoleRoomCommercialCheckoutRecordPending(
   record: RoleRoomCommercialCheckoutSessionRecord,
+  options?: {
+    billingStatus?: RoleRoomCommercialBillingStatus;
+    latestInvoiceId?: string | null;
+    latestInvoiceStatus?: string | null;
+    paymentFailureMessage?: string | null;
+    paymentFailedAt?: string | null;
+  },
 ) {
   const inviteRequests =
     await getRoleRoomCommercialInviteRequestsForBillingRecord(record);
@@ -27151,7 +27262,15 @@ async function markRoleRoomCommercialCheckoutRecordPending(
     if (!requestId) {
       continue;
     }
-    await resetRoleRoomCommercialInvitePaymentState(requestId);
+    await resetRoleRoomCommercialInvitePaymentState(requestId, "role_room_pending_payment", {
+      billingStatus: options?.billingStatus || "pending_payment",
+      stripeSubscriptionId: record.stripeSubscriptionId,
+      stripeCustomerId: record.stripeCustomerId,
+      latestInvoiceId: options?.latestInvoiceId || null,
+      latestInvoiceStatus: options?.latestInvoiceStatus || null,
+      paymentFailureMessage: options?.paymentFailureMessage || null,
+      paymentFailedAt: options?.paymentFailedAt || null,
+    });
     requestIds.push(requestId);
   }
 
@@ -27159,7 +27278,8 @@ async function markRoleRoomCommercialCheckoutRecordPending(
     ...record,
     requestIds: requestIds.length > 0 ? requestIds : record.requestIds,
     paymentCompleted: false,
-    checkoutStatus: "created",
+    checkoutStatus:
+      options?.billingStatus === "payment_failed" ? "payment_failed" : "created",
     paymentTimestamp: null,
     transactionId: null,
     updatedAt: new Date().toISOString(),
@@ -27186,6 +27306,8 @@ async function syncRoleRoomCommercialStripeCheckoutSession(
       stripeSubscriptionId:
         getStripeCheckoutSessionSubscriptionId(session) ||
         storedRecord.stripeSubscriptionId,
+      stripeCustomerId:
+        getStripeCheckoutSessionCustomerId(session) || storedRecord.stripeCustomerId,
       updatedAt: new Date().toISOString(),
     });
     return storedRecord;
@@ -27198,6 +27320,8 @@ async function syncRoleRoomCommercialStripeCheckoutSession(
     stripeSubscriptionId:
       getStripeCheckoutSessionSubscriptionId(session) ||
       storedRecord.stripeSubscriptionId,
+    stripeCustomerId:
+      getStripeCheckoutSessionCustomerId(session) || storedRecord.stripeCustomerId,
   });
 }
 
@@ -27229,6 +27353,14 @@ async function syncRoleRoomCommercialStripeInvoice(
         ? invoice.amount_paid / 100
         : storedRecord.monthlyTotalExVat,
     stripeSubscriptionId: subscriptionId,
+    stripeCustomerId:
+      (typeof invoice.customer === "string"
+        ? invoice.customer
+        : invoice.customer && typeof invoice.customer === "object"
+          ? String(invoice.customer.id || "")
+          : "") || storedRecord.stripeCustomerId,
+    latestInvoiceId: invoice.id,
+    latestInvoiceStatus: invoice.status || "paid",
   });
 }
 
@@ -27254,7 +27386,39 @@ async function clearRoleRoomCommercialStripeSubscription(
     return null;
   }
 
-  return markRoleRoomCommercialCheckoutRecordPending(storedRecord);
+  const failureMessage =
+    "status_transitions" in source
+      ? "Stripe registrerte manglende betaling på abonnementet. Oppdater betalingsinformasjonen for å fortsette."
+      : "Abonnementet ble avsluttet i Stripe. Oppdater betalingsinformasjonen for å gjenoppta tilgangen.";
+  const clearedRecord = await markRoleRoomCommercialCheckoutRecordPending(
+    storedRecord,
+    {
+      billingStatus: "payment_failed",
+      latestInvoiceId: "id" in source ? String(source.id || "") : null,
+      latestInvoiceStatus:
+        "status" in source && typeof source.status === "string"
+          ? source.status
+          : null,
+      paymentFailureMessage: failureMessage,
+      paymentFailedAt: new Date().toISOString(),
+    },
+  );
+
+  await sendRoleRoomCommercialPaymentFailedEmail({
+    companyName: storedRecord.companyName,
+    planName: storedRecord.planName,
+    recipientEmail: storedRecord.teamLeadEmail,
+    recipientName: storedRecord.teamLeadEmail.split("@")[0] || "Role Room-teamleder",
+    organizationNumber: storedRecord.organizationNumber,
+    monthlyTotalExVat: storedRecord.monthlyTotalExVat,
+    memberCount: storedRecord.billableSeatCount,
+    roleRoomUrl: getDefaultRoleRoomPublicOrigin(),
+    failureMessage,
+  }).catch((error) => {
+    console.error("Role Room commercial payment failure email failed:", error);
+  });
+
+  return clearedRecord;
 }
 
 async function ensureRoleRoomCommercialAccess(input: {
@@ -27852,6 +28016,84 @@ async function updateRoleRoomCommercialInviteRecord(input: {
   return (result.rows[0] as Record<string, unknown> | undefined) || input.inviteRequest;
 }
 
+async function updateRoleRoomCommercialInviteBillingSnapshot(
+  inviteRequest: Record<string, unknown>,
+  input: {
+    billingStatus?: RoleRoomCommercialBillingStatus | null;
+    stripeSubscriptionId?: string | null;
+    stripeCustomerId?: string | null;
+    latestInvoiceId?: string | null;
+    latestInvoiceStatus?: string | null;
+    paymentFailedAt?: string | null;
+    paymentFailureMessage?: string | null;
+    paymentPendingSince?: string | null;
+    paymentReminderCount?: number | null;
+    paymentReminderLastSentAt?: string | null;
+    paymentReminderProvider?: string | null;
+    paymentReminderMessageId?: string | null;
+  },
+) {
+  const snapshot = parseRoleRoomCommercialAccessSnapshot(inviteRequest.message);
+  if (!snapshot) {
+    return inviteRequest;
+  }
+
+  return updateRoleRoomCommercialInviteRecord({
+    inviteRequest,
+    message: serializeRoleRoomCommercialAccessSnapshot({
+      ...snapshot,
+      billingStatus:
+        input.billingStatus === undefined
+          ? snapshot.billingStatus
+          : input.billingStatus,
+      stripeSubscriptionId:
+        input.stripeSubscriptionId === undefined
+          ? snapshot.stripeSubscriptionId
+          : input.stripeSubscriptionId,
+      stripeCustomerId:
+        input.stripeCustomerId === undefined
+          ? snapshot.stripeCustomerId
+          : input.stripeCustomerId,
+      latestInvoiceId:
+        input.latestInvoiceId === undefined
+          ? snapshot.latestInvoiceId
+          : input.latestInvoiceId,
+      latestInvoiceStatus:
+        input.latestInvoiceStatus === undefined
+          ? snapshot.latestInvoiceStatus
+          : input.latestInvoiceStatus,
+      paymentFailedAt:
+        input.paymentFailedAt === undefined
+          ? snapshot.paymentFailedAt
+          : input.paymentFailedAt,
+      paymentFailureMessage:
+        input.paymentFailureMessage === undefined
+          ? snapshot.paymentFailureMessage
+          : input.paymentFailureMessage,
+      paymentPendingSince:
+        input.paymentPendingSince === undefined
+          ? snapshot.paymentPendingSince
+          : input.paymentPendingSince,
+      paymentReminderCount:
+        input.paymentReminderCount === undefined
+          ? snapshot.paymentReminderCount
+          : Math.max(0, input.paymentReminderCount || 0),
+      paymentReminderLastSentAt:
+        input.paymentReminderLastSentAt === undefined
+          ? snapshot.paymentReminderLastSentAt
+          : input.paymentReminderLastSentAt,
+      paymentReminderProvider:
+        input.paymentReminderProvider === undefined
+          ? snapshot.paymentReminderProvider
+          : input.paymentReminderProvider,
+      paymentReminderMessageId:
+        input.paymentReminderMessageId === undefined
+          ? snapshot.paymentReminderMessageId
+          : input.paymentReminderMessageId,
+    }),
+  });
+}
+
 async function sendRoleRoomCommercialEmail(options: {
   recipientEmail: string;
   replyTo?: string | null;
@@ -28072,6 +28314,130 @@ async function sendRoleRoomCommercialPaymentReminderEmail(options: {
           <p style="margin:18px 0 0;font-size:12px;line-height:1.7;color:#7b7368">
             Hvis betalingen allerede er fullført, kan du se bort fra denne e-posten.
           </p>
+        </div>
+      </div>
+    </div>
+  `;
+
+  return sendRoleRoomCommercialEmail({
+    recipientEmail: options.recipientEmail,
+    replyTo: adminEmail,
+    subject,
+    text,
+    html,
+  });
+}
+
+async function sendRoleRoomCommercialPaymentFailedEmail(options: {
+  companyName: string;
+  planName: string;
+  recipientEmail: string;
+  recipientName: string;
+  organizationNumber: string;
+  monthlyTotalExVat: number;
+  memberCount: number;
+  roleRoomUrl: string;
+  failureMessage?: string | null;
+}) {
+  const adminEmail =
+    normalizeMailConfigValue(process.env.GOOGLE_ADMIN_EMAIL) ||
+    "daniel@creatorhubn.com";
+  const subject = "Betalingen for The Role Room må oppdateres";
+  const text = [
+    `Hei ${options.recipientName},`,
+    "",
+    `Stripe klarte ikke å gjennomføre betalingen for ${options.companyName} i The Role Room.`,
+    `Plan: ${options.planName}`,
+    `Organisasjonsnummer: ${options.organizationNumber}`,
+    `Teamstørrelse: ${options.memberCount}`,
+    `Beløp: ${options.monthlyTotalExVat.toFixed(2).replace(".", ",")} kr per måned eks. mva.`,
+    "",
+    options.failureMessage ||
+      "Oppdater betalingsinformasjonen for abonnementet, så prøver vi betalingen på nytt når du kommer tilbake til The Role Room.",
+    "",
+    options.roleRoomUrl,
+  ].join("\n");
+  const html = `
+    <div style="font-family:Arial,sans-serif;background:#f6f3ee;padding:24px;color:#181512">
+      <div style="max-width:680px;margin:0 auto;background:#fff;border-radius:18px;border:1px solid #e9e0d4;overflow:hidden">
+        <div style="padding:20px 24px;background:#171410;color:#f8f5ef">
+          <div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:#f6c358;font-weight:700">The Role Room</div>
+          <h1 style="margin:8px 0 0;font-size:24px;line-height:1.2">Betalingen må oppdateres</h1>
+        </div>
+        <div style="padding:24px">
+          <p style="margin:0 0 12px;font-size:14px;line-height:1.7;color:#4d473f">Hei ${options.recipientName},</p>
+          <p style="margin:0 0 14px;font-size:14px;line-height:1.7;color:#4d473f">
+            Stripe klarte ikke å gjennomføre betalingen for <strong>${options.companyName}</strong>. Kun teamleder kan oppdatere betalingsinformasjonen.
+          </p>
+          <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:18px">
+            <tr><td style="padding:8px 0;color:#7b7368">Plan</td><td style="padding:8px 0;font-weight:700">${options.planName}</td></tr>
+            <tr><td style="padding:8px 0;color:#7b7368">Organisasjonsnummer</td><td style="padding:8px 0">${options.organizationNumber}</td></tr>
+            <tr><td style="padding:8px 0;color:#7b7368">Team</td><td style="padding:8px 0">${options.memberCount} ${options.memberCount === 1 ? "person" : "personer"}</td></tr>
+            <tr><td style="padding:8px 0;color:#7b7368">Beløp</td><td style="padding:8px 0">${options.monthlyTotalExVat.toFixed(2).replace(".", ",")} kr / mnd eks. mva.</td></tr>
+          </table>
+          <div style="margin-bottom:18px;padding:16px;border-radius:14px;background:#fff5f5;border:1px solid #fecaca;color:#7f1d1d;font-size:14px;line-height:1.6">
+            ${options.failureMessage || "Oppdater betalingsinformasjonen for abonnementet. Når du kommer tilbake til The Role Room, prøver vi betalingen på nytt og sender deg en ny status på e-post."}
+          </div>
+          <a href="${options.roleRoomUrl}" style="display:inline-block;padding:14px 20px;border-radius:999px;background:#f6c358;color:#171410;text-decoration:none;font-weight:700">Åpne The Role Room</a>
+        </div>
+      </div>
+    </div>
+  `;
+
+  return sendRoleRoomCommercialEmail({
+    recipientEmail: options.recipientEmail,
+    replyTo: adminEmail,
+    subject,
+    text,
+    html,
+  });
+}
+
+async function sendRoleRoomCommercialPaymentRecoveryEmail(options: {
+  companyName: string;
+  planName: string;
+  recipientEmail: string;
+  recipientName: string;
+  organizationNumber: string;
+  monthlyTotalExVat: number;
+  memberCount: number;
+  roleRoomUrl: string;
+}) {
+  const adminEmail =
+    normalizeMailConfigValue(process.env.GOOGLE_ADMIN_EMAIL) ||
+    "daniel@creatorhubn.com";
+  const subject = "Betalingen for The Role Room er godkjent";
+  const text = [
+    `Hei ${options.recipientName},`,
+    "",
+    `Betalingen for ${options.companyName} i The Role Room er nå godkjent igjen.`,
+    `Plan: ${options.planName}`,
+    `Organisasjonsnummer: ${options.organizationNumber}`,
+    `Teamstørrelse: ${options.memberCount}`,
+    `Beløp: ${options.monthlyTotalExVat.toFixed(2).replace(".", ",")} kr per måned eks. mva.`,
+    "",
+    "Abonnementet er aktivt, og teamet kan fortsette som normalt.",
+    options.roleRoomUrl,
+  ].join("\n");
+  const html = `
+    <div style="font-family:Arial,sans-serif;background:#f6f3ee;padding:24px;color:#181512">
+      <div style="max-width:680px;margin:0 auto;background:#fff;border-radius:18px;border:1px solid #e9e0d4;overflow:hidden">
+        <div style="padding:20px 24px;background:#171410;color:#f8f5ef">
+          <div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:#f6c358;font-weight:700">The Role Room</div>
+          <h1 style="margin:8px 0 0;font-size:24px;line-height:1.2">Betalingen er godkjent</h1>
+        </div>
+        <div style="padding:24px">
+          <p style="margin:0 0 12px;font-size:14px;line-height:1.7;color:#4d473f">Hei ${options.recipientName},</p>
+          <p style="margin:0 0 14px;font-size:14px;line-height:1.7;color:#4d473f">
+            Betalingen for <strong>${options.companyName}</strong> er nå registrert igjen. Abonnementet i The Role Room er aktivt.
+          </p>
+          <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:18px">
+            <tr><td style="padding:8px 0;color:#7b7368">Plan</td><td style="padding:8px 0;font-weight:700">${options.planName}</td></tr>
+            <tr><td style="padding:8px 0;color:#7b7368">Organisasjonsnummer</td><td style="padding:8px 0">${options.organizationNumber}</td></tr>
+            <tr><td style="padding:8px 0;color:#7b7368">Team</td><td style="padding:8px 0">${options.memberCount} ${options.memberCount === 1 ? "person" : "personer"}</td></tr>
+            <tr><td style="padding:8px 0;color:#7b7368">Beløp</td><td style="padding:8px 0">${options.monthlyTotalExVat.toFixed(2).replace(".", ",")} kr / mnd eks. mva.</td></tr>
+          </table>
+          <a href="${options.roleRoomUrl}" style="display:inline-block;padding:14px 20px;border-radius:999px;background:#f6c358;color:#171410;text-decoration:none;font-weight:700">Gå tilbake til The Role Room</a>
         </div>
       </div>
     </div>
@@ -28432,13 +28798,253 @@ function buildRoleRoomCommercialCheckoutRecordFromInviteRequest(
     paymentCompleted: Boolean(inviteRequest.payment_completed),
     checkoutStatus: Boolean(inviteRequest.payment_completed)
       ? "completed"
-      : "created",
+      : snapshot.billingStatus === "payment_failed"
+        ? "payment_failed"
+        : "created",
     paymentTimestamp: toAdminString(inviteRequest.payment_timestamp),
     transactionId: toAdminString(inviteRequest.payment_transaction_id),
-    stripeSubscriptionId: toAdminString(inviteRequest.payment_transaction_id),
+    stripeSubscriptionId:
+      snapshot.stripeSubscriptionId ||
+      toAdminString(inviteRequest.payment_transaction_id),
+    stripeCustomerId: snapshot.stripeCustomerId || null,
     createdAt,
     updatedAt,
   } satisfies RoleRoomCommercialCheckoutSessionRecord;
+}
+
+type RoleRoomCommercialRequestIdentity = {
+  userId: string | null;
+  email: string | null;
+  role: string | null;
+  loginAs: string | null;
+  requestedRole: string | null;
+};
+
+type RoleRoomCommercialResolvedAccount = {
+  identity: RoleRoomCommercialRequestIdentity;
+  currentRow: Record<string, unknown>;
+  leaderRow: Record<string, unknown>;
+  teamRows: Record<string, unknown>[];
+  snapshot: RoleRoomCommercialAccessSnapshot;
+  currentMember: RoleRoomCommercialAccessMemberSnapshot | null;
+  teamLeadMember: RoleRoomCommercialAccessMemberSnapshot | null;
+  record: RoleRoomCommercialCheckoutSessionRecord | null;
+  paymentStatus: RoleRoomCommercialBillingStatus;
+  subscriptionStatus: string | null;
+  stripeSubscriptionId: string | null;
+  stripeCustomerId: string | null;
+  latestInvoiceId: string | null;
+  latestInvoiceStatus: string | null;
+  nextPaymentAttemptAt: string | null;
+};
+
+function readRoleRoomCommercialRequestIdentity(
+  req: express.Request,
+): RoleRoomCommercialRequestIdentity {
+  const session = getActiveSessionFromRequest(req);
+  const readHeaderValue = (headerName: string) => {
+    const raw = req.headers[headerName.toLowerCase()];
+    const value = Array.isArray(raw) ? raw[0] : raw;
+    return typeof value === "string" && value.trim().length > 0
+      ? value.trim()
+      : null;
+  };
+
+  const sessionEmail = normalizeMailConfigValue(session?.email).toLowerCase();
+
+  return {
+    userId:
+      normalizeMailConfigValue(session?.userId) ||
+      readHeaderValue("x-role-room-user-id") ||
+      readHeaderValue("x-user-id") ||
+      null,
+    email:
+      sessionEmail ||
+      normalizeMailConfigValue(readHeaderValue("x-role-room-email")).toLowerCase() ||
+      null,
+    role:
+      normalizeMailConfigValue(session?.role) ||
+      readHeaderValue("x-role-room-role") ||
+      null,
+    loginAs:
+      normalizeMailConfigValue(session?.loginAs) ||
+      readHeaderValue("x-role-room-login-as") ||
+      null,
+    requestedRole:
+      normalizeMailConfigValue(session?.requestedRole) ||
+      readHeaderValue("x-role-room-requested-role") ||
+      null,
+  };
+}
+
+function scoreRoleRoomCommercialInviteRow(row: Record<string, unknown>) {
+  const paymentCompleted = Boolean(row.payment_completed) ? 1000 : 0;
+  const updatedAt = Date.parse(toAdminString(row.updated_at) || "") || 0;
+  const createdAt = Date.parse(toAdminString(row.created_at) || "") || 0;
+  return paymentCompleted + Math.max(updatedAt, createdAt);
+}
+
+function deriveRoleRoomCommercialPaymentStatus(input: {
+  snapshot: RoleRoomCommercialAccessSnapshot;
+  rowPaymentCompleted: boolean;
+  record: RoleRoomCommercialCheckoutSessionRecord | null;
+  subscriptionStatus: string | null;
+  latestInvoiceStatus: string | null;
+}) {
+  if (
+    input.subscriptionStatus &&
+    ["past_due", "unpaid", "incomplete", "incomplete_expired", "canceled"].includes(
+      input.subscriptionStatus,
+    )
+  ) {
+    return "payment_failed" as const;
+  }
+
+  if (
+    input.latestInvoiceStatus &&
+    ["open", "uncollectible", "void"].includes(input.latestInvoiceStatus)
+  ) {
+    return "payment_failed" as const;
+  }
+
+  if (input.rowPaymentCompleted || input.record?.paymentCompleted) {
+    return "active" as const;
+  }
+
+  if (
+    input.snapshot.billingStatus === "payment_failed" ||
+    Boolean(input.snapshot.stripeSubscriptionId) ||
+    input.record?.checkoutStatus === "payment_failed"
+  ) {
+    return "payment_failed" as const;
+  }
+
+  return "pending_payment" as const;
+}
+
+async function resolveRoleRoomCommercialAccountForRequest(
+  req: express.Request,
+): Promise<RoleRoomCommercialResolvedAccount | null> {
+  const identity = readRoleRoomCommercialRequestIdentity(req);
+  if (!identity.userId && !identity.email) {
+    return null;
+  }
+
+  const allRows = await listRoleRoomCommercialReminderInviteRequests();
+  const candidateRows = allRows
+    .filter((row) => {
+      const rowEmail = toAdminString(row.email)?.trim().toLowerCase() || "";
+      const registeredUserId = toAdminString(row.registered_user_id);
+      return (
+        (identity.email && rowEmail === identity.email) ||
+        (identity.userId && registeredUserId === identity.userId)
+      );
+    })
+    .sort((left, right) => scoreRoleRoomCommercialInviteRow(right) - scoreRoleRoomCommercialInviteRow(left));
+
+  const currentRow = candidateRows.find((row) =>
+    Boolean(parseRoleRoomCommercialAccessSnapshot(row.message)),
+  );
+  if (!currentRow) {
+    return null;
+  }
+
+  const snapshot = parseRoleRoomCommercialAccessSnapshot(currentRow.message);
+  if (!snapshot) {
+    return null;
+  }
+
+  const teamKey = buildRoleRoomCommercialReminderTeamKey(snapshot);
+  const teamRows = allRows.filter((row) => {
+    const rowSnapshot = parseRoleRoomCommercialAccessSnapshot(row.message);
+    return rowSnapshot && buildRoleRoomCommercialReminderTeamKey(rowSnapshot) === teamKey;
+  });
+  const leaderRow =
+    teamRows.find((row) => {
+      const rowEmail = toAdminString(row.email)?.trim().toLowerCase() || "";
+      return snapshot.teamLeadEmail && rowEmail === snapshot.teamLeadEmail;
+    }) || currentRow;
+
+  const currentEmail =
+    identity.email ||
+    toAdminString(currentRow.email)?.trim().toLowerCase() ||
+    snapshot.memberEmail ||
+    null;
+  const currentMember =
+    snapshot.members.find((member) => member.email === currentEmail) || null;
+  const teamLeadMember =
+    snapshot.members.find((member) => member.isLeader) ||
+    (snapshot.teamLeadEmail
+      ? snapshot.members.find((member) => member.email === snapshot.teamLeadEmail) ||
+        null
+      : null);
+
+  const record = buildRoleRoomCommercialCheckoutRecordFromInviteRequest(leaderRow);
+  const stripe = getRoleRoomStripeClient();
+
+  let subscriptionStatus: string | null = null;
+  let stripeSubscriptionId =
+    snapshot.stripeSubscriptionId || record?.stripeSubscriptionId || null;
+  let stripeCustomerId =
+    snapshot.stripeCustomerId || record?.stripeCustomerId || null;
+  let latestInvoiceId = snapshot.latestInvoiceId || null;
+  let latestInvoiceStatus = snapshot.latestInvoiceStatus || null;
+  let nextPaymentAttemptAt: string | null = null;
+
+  if (stripe && stripeSubscriptionId) {
+    try {
+      const subscription = await stripe.subscriptions.retrieve(stripeSubscriptionId, {
+        expand: ["latest_invoice"],
+      });
+      subscriptionStatus = subscription.status || null;
+      stripeCustomerId =
+        stripeCustomerId ||
+        (typeof subscription.customer === "string"
+          ? subscription.customer
+          : subscription.customer && typeof subscription.customer === "object"
+            ? String(subscription.customer.id || "")
+            : null);
+      if (subscription.latest_invoice) {
+        if (typeof subscription.latest_invoice === "string") {
+          latestInvoiceId = latestInvoiceId || subscription.latest_invoice;
+        } else if (typeof subscription.latest_invoice === "object") {
+          latestInvoiceId = latestInvoiceId || String(subscription.latest_invoice.id || "");
+          latestInvoiceStatus =
+            latestInvoiceStatus || subscription.latest_invoice.status || null;
+          const nextPaymentAttempt = subscription.latest_invoice.next_payment_attempt;
+          if (typeof nextPaymentAttempt === "number" && Number.isFinite(nextPaymentAttempt)) {
+            nextPaymentAttemptAt = new Date(nextPaymentAttempt * 1000).toISOString();
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Role Room commercial subscription lookup failed:", error);
+    }
+  }
+
+  return {
+    identity,
+    currentRow,
+    leaderRow,
+    teamRows,
+    snapshot,
+    currentMember,
+    teamLeadMember,
+    record,
+    paymentStatus: deriveRoleRoomCommercialPaymentStatus({
+      snapshot,
+      rowPaymentCompleted: Boolean(currentRow.payment_completed),
+      record,
+      subscriptionStatus,
+      latestInvoiceStatus,
+    }),
+    subscriptionStatus,
+    stripeSubscriptionId,
+    stripeCustomerId,
+    latestInvoiceId,
+    latestInvoiceStatus,
+    nextPaymentAttemptAt,
+  };
 }
 
 async function writeRoleRoomCommercialReminderStatus(
@@ -29077,6 +29683,7 @@ app.post("/api/role-room/billing/checkout-session", async (req, res) => {
       paymentTimestamp: null,
       transactionId: null,
       stripeSubscriptionId: null,
+      stripeCustomerId: getStripeCheckoutSessionCustomerId(session) || null,
       createdAt: nowIso,
       updatedAt: nowIso,
     });
@@ -29233,6 +29840,370 @@ app.get("/api/role-room/billing/session-status", async (req, res) => {
     console.error("Error reading Role Room Stripe checkout session:", error);
     return res.status(500).json({
       error: "Kunne ikke lese Stripe Checkout-status for The Role Room.",
+    });
+  }
+});
+
+app.get("/api/role-room/billing/account", async (req, res) => {
+  try {
+    const account = await resolveRoleRoomCommercialAccountForRequest(req);
+    if (!account) {
+      return res.status(404).json({
+        error: "Fant ingen Role Room-abonnementskonto for denne brukeren.",
+      });
+    }
+
+    const currentEmail =
+      account.identity.email ||
+      toAdminString(account.currentRow.email)?.trim().toLowerCase() ||
+      account.snapshot.memberEmail ||
+      "";
+    const currentActivation = getRoleRoomCommercialActivationStatus(account.currentRow);
+    const leaderCanManageBilling =
+      Boolean(currentEmail) &&
+      (account.currentMember?.isLeader === true ||
+        account.snapshot.teamLeadEmail === currentEmail);
+
+    const members = account.snapshot.members.map((member) => {
+      const memberRow =
+        account.teamRows.find((row) => {
+          const rowEmail = toAdminString(row.email)?.trim().toLowerCase() || "";
+          return rowEmail === member.email;
+        }) || null;
+      const activationState = getRoleRoomCommercialActivationStatus(memberRow);
+
+      return {
+        name: member.name,
+        email: member.email,
+        roleId: member.roleId,
+        roleLabel: member.roleLabel,
+        isLeader: member.isLeader,
+        activationApproved: activationState.approved,
+        activationPendingApproval: activationState.pendingApproval,
+        activationEmailSent: activationState.emailSent,
+        inviteRequestId: memberRow ? toAdminString(memberRow.id) : null,
+        registeredUserId: memberRow
+          ? toAdminString(memberRow.registered_user_id)
+          : null,
+      };
+    });
+
+    const paymentStatusLabel =
+      account.paymentStatus === "active"
+        ? "Aktivt abonnement"
+        : account.paymentStatus === "payment_failed"
+          ? "Betaling må oppdateres"
+          : "Venter på betaling";
+    const paymentMessage =
+      account.paymentStatus === "active"
+        ? "Abonnementet er aktivt."
+        : account.paymentStatus === "payment_failed"
+          ? "Stripe klarte ikke å gjennomføre betalingen. Kun teamleder kan oppdatere betalingsinformasjonen."
+          : "Betalingen mangler fortsatt. Teamet aktiveres når abonnementet er registrert.";
+
+    return res.json({
+      success: true,
+      account: {
+        persona: account.snapshot.persona,
+        personaLabel: account.snapshot.personaLabel,
+        planId: account.snapshot.subscriptionType,
+        planName: account.snapshot.subscriptionLabel,
+        companyName: account.snapshot.companyName,
+        organizationNumber: account.snapshot.organizationNumber,
+        teamSize: account.snapshot.teamSize || account.snapshot.members.length,
+        seatPriceExVat: account.snapshot.seatPriceExVat,
+        monthlyTotalExVat: account.snapshot.monthlyTotalExVat,
+        taxMode: account.snapshot.taxMode,
+        paymentCompleted: Boolean(account.currentRow.payment_completed),
+        paymentStatus: account.paymentStatus,
+        paymentStatusLabel,
+        paymentMessage,
+        paymentPendingSince: account.snapshot.paymentPendingSince,
+        paymentFailedAt: account.snapshot.paymentFailedAt,
+        paymentFailureMessage: account.snapshot.paymentFailureMessage,
+        paymentTimestamp:
+          toAdminString(account.currentRow.payment_timestamp) ||
+          account.record?.paymentTimestamp ||
+          null,
+        transactionId:
+          toAdminString(account.currentRow.payment_transaction_id) ||
+          account.record?.transactionId ||
+          null,
+        stripeSubscriptionId: account.stripeSubscriptionId,
+        stripeCustomerId: account.stripeCustomerId,
+        stripeSubscriptionStatus: account.subscriptionStatus,
+        latestInvoiceId: account.latestInvoiceId,
+        latestInvoiceStatus: account.latestInvoiceStatus,
+        nextPaymentAttemptAt: account.nextPaymentAttemptAt,
+        canManageBilling: leaderCanManageBilling,
+        managementLockedReason: leaderCanManageBilling
+          ? null
+          : "Kun teamleder kan oppdatere betalingsinformasjon.",
+        canRetryPayment:
+          leaderCanManageBilling && account.paymentStatus === "payment_failed",
+        currentUser: {
+          email: currentEmail,
+          name:
+            account.currentMember?.name ||
+            toAdminString(account.currentRow.first_name) ||
+            currentEmail.split("@")[0] ||
+            "Role Room-medlem",
+          roleId: account.currentMember?.roleId || account.snapshot.memberRoleId,
+          roleLabel:
+            account.currentMember?.roleLabel || account.snapshot.memberRoleLabel,
+          isLeader: leaderCanManageBilling,
+          activationApproved: currentActivation.approved,
+          activationPendingApproval: currentActivation.pendingApproval,
+          activationEmailSent: currentActivation.emailSent,
+        },
+        teamLead: {
+          name:
+            account.teamLeadMember?.name ||
+            account.snapshot.teamLeadName ||
+            account.snapshot.teamLeadEmail ||
+            "Teamleder",
+          email: account.snapshot.teamLeadEmail,
+        },
+        members,
+      },
+    });
+  } catch (error) {
+    console.error("Error reading Role Room commercial billing account:", error);
+    return res.status(500).json({
+      error: "Kunne ikke lese abonnementsinformasjonen for The Role Room.",
+    });
+  }
+});
+
+app.post("/api/role-room/billing/manage", async (req, res) => {
+  try {
+    const stripe = getRoleRoomStripeClient();
+    if (!stripe) {
+      return res.status(503).json({
+        error: "Stripe Billing er ikke konfigurert på serveren.",
+      });
+    }
+
+    const account = await resolveRoleRoomCommercialAccountForRequest(req);
+    if (!account) {
+      return res.status(404).json({
+        error: "Fant ingen Role Room-abonnementskonto for denne brukeren.",
+      });
+    }
+
+    const currentEmail =
+      account.identity.email ||
+      toAdminString(account.currentRow.email)?.trim().toLowerCase() ||
+      account.snapshot.memberEmail ||
+      "";
+    const isLeader =
+      Boolean(currentEmail) &&
+      (account.currentMember?.isLeader === true ||
+        account.snapshot.teamLeadEmail === currentEmail);
+    if (!isLeader) {
+      return res.status(403).json({
+        error: "Kun teamleder kan oppdatere betalingsinformasjon.",
+      });
+    }
+
+    if (!account.stripeCustomerId) {
+      return res.status(409).json({
+        error:
+          "Fant ingen Stripe-kunde for dette abonnementet. Kontakt CreatorHub for hjelp.",
+      });
+    }
+
+    const browserOrigin = normalizeRoleRoomBrowserOrigin(req.body?.browserOrigin);
+    const returnPath =
+      typeof req.body?.returnPath === "string" ? req.body.returnPath : "/";
+    const session = await stripe.billingPortal.sessions.create({
+      customer: account.stripeCustomerId,
+      return_url: buildRoleRoomBillingReturnUrl({
+        browserOrigin,
+        returnPath,
+      }),
+    });
+
+    return res.json({
+      success: true,
+      url: session.url,
+    });
+  } catch (error) {
+    console.error("Error creating Role Room billing portal session:", error);
+    return res.status(500).json({
+      error: "Kunne ikke åpne betalingsportalen for The Role Room.",
+    });
+  }
+});
+
+app.post("/api/role-room/billing/retry-payment", async (req, res) => {
+  try {
+    const stripe = getRoleRoomStripeClient();
+    if (!stripe) {
+      return res.status(503).json({
+        error: "Stripe Billing er ikke konfigurert på serveren.",
+      });
+    }
+
+    const account = await resolveRoleRoomCommercialAccountForRequest(req);
+    if (!account) {
+      return res.status(404).json({
+        error: "Fant ingen Role Room-abonnementskonto for denne brukeren.",
+      });
+    }
+
+    const currentEmail =
+      account.identity.email ||
+      toAdminString(account.currentRow.email)?.trim().toLowerCase() ||
+      account.snapshot.memberEmail ||
+      "";
+    const isLeader =
+      Boolean(currentEmail) &&
+      (account.currentMember?.isLeader === true ||
+        account.snapshot.teamLeadEmail === currentEmail);
+    if (!isLeader) {
+      return res.status(403).json({
+        error: "Kun teamleder kan prøve betalingen på nytt.",
+      });
+    }
+
+    if (!account.stripeSubscriptionId) {
+      return res.status(409).json({
+        error:
+          "Fant ikke et aktivt Stripe-abonnement å prøve på nytt. Start betalingsflyten på nytt i The Role Room.",
+      });
+    }
+
+    const subscription = await stripe.subscriptions.retrieve(
+      account.stripeSubscriptionId,
+      {
+        expand: ["latest_invoice"],
+      },
+    );
+
+    let invoice:
+      | Stripe.Invoice
+      | null = null;
+    if (
+      subscription.latest_invoice &&
+      typeof subscription.latest_invoice === "object"
+    ) {
+      invoice = subscription.latest_invoice as Stripe.Invoice;
+    } else if (
+      subscription.latest_invoice &&
+      typeof subscription.latest_invoice === "string"
+    ) {
+      invoice = await stripe.invoices.retrieve(subscription.latest_invoice);
+    } else {
+      const invoices = await stripe.invoices.list({
+        customer:
+          typeof subscription.customer === "string"
+            ? subscription.customer
+            : account.stripeCustomerId || undefined,
+        subscription: subscription.id,
+        status: "open",
+        limit: 1,
+      });
+      invoice = invoices.data[0] || null;
+    }
+
+    if (!invoice) {
+      if (subscription.status === "active" || subscription.status === "trialing") {
+        return res.json({
+          success: true,
+          alreadyPaid: true,
+          paymentCompleted: true,
+          subscriptionStatus: subscription.status,
+        });
+      }
+      return res.status(409).json({
+        error:
+          "Fant ingen åpen faktura å prøve på nytt. Oppdater betalingsinformasjonen og prøv igjen senere.",
+      });
+    }
+
+    if (invoice.status === "draft") {
+      invoice = await stripe.invoices.finalizeInvoice(invoice.id);
+    }
+
+    if (invoice.status === "paid") {
+      return res.json({
+        success: true,
+        alreadyPaid: true,
+        paymentCompleted: true,
+        invoiceId: invoice.id,
+        invoiceStatus: invoice.status,
+      });
+    }
+
+    try {
+      const paidInvoice = await stripe.invoices.pay(invoice.id);
+      const synced = await syncRoleRoomCommercialStripeInvoice(
+        paidInvoice,
+        new Date().toISOString(),
+      );
+      return res.json({
+        success: true,
+        paymentCompleted:
+          paidInvoice.status === "paid" || paidInvoice.paid === true,
+        invoiceId: paidInvoice.id,
+        invoiceStatus: paidInvoice.status,
+        transactionId: synced?.transactionId || account.record?.transactionId || null,
+        stripeSubscriptionId:
+          synced?.stripeSubscriptionId || account.stripeSubscriptionId,
+      });
+    } catch (retryError) {
+      const failureMessage =
+        retryError instanceof Error
+          ? retryError.message
+          : "Stripe kunne ikke gjennomføre et nytt betalingsforsøk.";
+
+      if (account.record) {
+        await markRoleRoomCommercialCheckoutRecordPending(account.record, {
+          billingStatus: "payment_failed",
+          latestInvoiceId: invoice.id,
+          latestInvoiceStatus: invoice.status || "open",
+          paymentFailureMessage: failureMessage,
+          paymentFailedAt: new Date().toISOString(),
+        }).catch((error) => {
+          console.error(
+            "Role Room commercial retry failure state update failed:",
+            error,
+          );
+        });
+      }
+
+      await sendRoleRoomCommercialPaymentFailedEmail({
+        companyName: account.snapshot.companyName || "The Role Room",
+        planName: account.snapshot.subscriptionLabel || "The Role Room",
+        recipientEmail:
+          account.snapshot.teamLeadEmail || currentEmail || "daniel@creatorhubn.com",
+        recipientName:
+          account.snapshot.teamLeadName ||
+          (account.snapshot.teamLeadEmail || currentEmail || "teamleder").split("@")[0],
+        organizationNumber: account.snapshot.organizationNumber || "",
+        monthlyTotalExVat: account.snapshot.monthlyTotalExVat || 0,
+        memberCount: account.snapshot.teamSize || account.snapshot.members.length || 1,
+        roleRoomUrl: getDefaultRoleRoomPublicOrigin(),
+        failureMessage:
+          "Vi prøvde betalingen på nytt etter oppdatert betalingsinformasjon, men Stripe godkjente den fortsatt ikke. Oppdater betalingsinformasjonen på nytt eller kontakt banken.",
+      }).catch((error) => {
+        console.error(
+          "Role Room commercial retry failure email failed:",
+          error,
+        );
+      });
+
+      return res.status(402).json({
+        error:
+          "Stripe kunne ikke gjennomføre et nytt betalingsforsøk. Oppdater betalingsinformasjonen og prøv igjen.",
+        detail: failureMessage,
+      });
+    }
+  } catch (error) {
+    console.error("Error retrying Role Room billing payment:", error);
+    return res.status(500).json({
+      error: "Kunne ikke prøve betalingen på nytt for The Role Room.",
     });
   }
 });
@@ -42223,6 +43194,7 @@ type RoleRoomCommercialAccessSnapshot = {
   personaLabel: string | null;
   subscriptionType: string | null;
   subscriptionLabel: string | null;
+  billingStatus: RoleRoomCommercialBillingStatus | null;
   companyName: string | null;
   organizationNumber: string | null;
   teamLeadName: string | null;
@@ -42231,6 +43203,12 @@ type RoleRoomCommercialAccessSnapshot = {
   seatPriceExVat: number | null;
   monthlyTotalExVat: number | null;
   taxMode: string | null;
+  stripeSubscriptionId: string | null;
+  stripeCustomerId: string | null;
+  latestInvoiceId: string | null;
+  latestInvoiceStatus: string | null;
+  paymentFailedAt: string | null;
+  paymentFailureMessage: string | null;
   members: RoleRoomCommercialAccessMemberSnapshot[];
   memberName: string | null;
   memberEmail: string | null;
@@ -42265,6 +43243,7 @@ function serializeRoleRoomCommercialAccessSnapshot(
     personaLabel: snapshot.personaLabel,
     subscriptionType: snapshot.subscriptionType,
     subscriptionLabel: snapshot.subscriptionLabel,
+    billingStatus: snapshot.billingStatus,
     companyName: snapshot.companyName,
     organizationNumber: snapshot.organizationNumber,
     teamLeadName: snapshot.teamLeadName,
@@ -42273,6 +43252,12 @@ function serializeRoleRoomCommercialAccessSnapshot(
     seatPriceExVat: snapshot.seatPriceExVat,
     monthlyTotalExVat: snapshot.monthlyTotalExVat,
     taxMode: snapshot.taxMode,
+    stripeSubscriptionId: snapshot.stripeSubscriptionId,
+    stripeCustomerId: snapshot.stripeCustomerId,
+    latestInvoiceId: snapshot.latestInvoiceId,
+    latestInvoiceStatus: snapshot.latestInvoiceStatus,
+    paymentFailedAt: snapshot.paymentFailedAt,
+    paymentFailureMessage: snapshot.paymentFailureMessage,
     members: snapshot.members,
     memberName: snapshot.memberName,
     memberEmail: snapshot.memberEmail,
@@ -42323,6 +43308,13 @@ function buildRoleRoomCommercialInviteMessage(input: {
     reminderLastSentAt: string | null;
     reminderProvider: string | null;
     reminderMessageId: string | null;
+    billingStatus: RoleRoomCommercialBillingStatus | null;
+    stripeSubscriptionId: string | null;
+    stripeCustomerId: string | null;
+    latestInvoiceId: string | null;
+    latestInvoiceStatus: string | null;
+    failedAt: string | null;
+    failureMessage: string | null;
   }>;
   activationReminder?: Partial<{
     count: number | null;
@@ -42339,6 +43331,8 @@ function buildRoleRoomCommercialInviteMessage(input: {
     personaLabel: input.plan.personaLabel,
     subscriptionType: input.plan.planId,
     subscriptionLabel: input.plan.planName,
+    billingStatus:
+      input.payment?.billingStatus ?? existing?.billingStatus ?? "pending_payment",
     companyName: input.companyName,
     organizationNumber: input.organizationNumber,
     teamLeadName: input.teamLead.name,
@@ -42347,6 +43341,17 @@ function buildRoleRoomCommercialInviteMessage(input: {
     seatPriceExVat: input.plan.seatPriceExVat,
     monthlyTotalExVat: input.monthlyTotalExVat,
     taxMode: "ex_vat",
+    stripeSubscriptionId:
+      input.payment?.stripeSubscriptionId ?? existing?.stripeSubscriptionId ?? null,
+    stripeCustomerId:
+      input.payment?.stripeCustomerId ?? existing?.stripeCustomerId ?? null,
+    latestInvoiceId:
+      input.payment?.latestInvoiceId ?? existing?.latestInvoiceId ?? null,
+    latestInvoiceStatus:
+      input.payment?.latestInvoiceStatus ?? existing?.latestInvoiceStatus ?? null,
+    paymentFailedAt: input.payment?.failedAt ?? existing?.paymentFailedAt ?? null,
+    paymentFailureMessage:
+      input.payment?.failureMessage ?? existing?.paymentFailureMessage ?? null,
     members: input.members,
     memberName: input.member.name,
     memberEmail: input.member.email,
@@ -42468,6 +43473,12 @@ function parseRoleRoomCommercialAccessSnapshot(
     personaLabel: toAdminString(record.personaLabel),
     subscriptionType: toAdminString(record.subscriptionType),
     subscriptionLabel: toAdminString(record.subscriptionLabel),
+    billingStatus:
+      record.billingStatus === "pending_payment" ||
+      record.billingStatus === "active" ||
+      record.billingStatus === "payment_failed"
+        ? record.billingStatus
+        : null,
     companyName: toAdminString(record.companyName),
     organizationNumber: toAdminString(record.organizationNumber),
     teamLeadName: toAdminString(record.teamLeadName),
@@ -42476,6 +43487,12 @@ function parseRoleRoomCommercialAccessSnapshot(
     seatPriceExVat: readNumber(record.seatPriceExVat),
     monthlyTotalExVat: readNumber(record.monthlyTotalExVat),
     taxMode: toAdminString(record.taxMode),
+    stripeSubscriptionId: toAdminString(record.stripeSubscriptionId),
+    stripeCustomerId: toAdminString(record.stripeCustomerId),
+    latestInvoiceId: toAdminString(record.latestInvoiceId),
+    latestInvoiceStatus: toAdminString(record.latestInvoiceStatus),
+    paymentFailedAt: toAdminString(record.paymentFailedAt),
+    paymentFailureMessage: toAdminString(record.paymentFailureMessage),
     members,
     memberName: toAdminString(record.memberName),
     memberEmail: toAdminString(record.memberEmail)?.trim().toLowerCase() || null,

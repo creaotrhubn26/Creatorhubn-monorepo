@@ -35,6 +35,7 @@ import {
   Stack,
   CircularProgress,
   Tooltip,
+  Alert,
 } from '@mui/material';
 import {
   Close as CloseIcon,
@@ -93,6 +94,7 @@ import {
   ViewCarousel as ViewCarouselIcon,
   Search as SearchIcon,
   AttachMoney as AttachMoneyIcon,
+  CreditCard as CreditCardIcon,
   FactCheck as FactCheckIcon,
   ImportExport as ImportExportIcon,
   PermMedia as PermMediaIcon,
@@ -133,7 +135,12 @@ import { storyLogicService, type StoryLogicState } from '../services/storyLogicS
 
 // Custom icon: Person holding camera with list/clipboard
 import { castingService } from '../services/castingService';
-import { googleWorkspaceApi, linkedInWorkspaceApi } from '../services/castingApiService';
+import {
+  googleWorkspaceApi,
+  linkedInWorkspaceApi,
+  roleRoomBillingApi,
+  type RoleRoomCommercialBillingAccount,
+} from '../services/castingApiService';
 import { resetMockCastingData } from '../data/mockCastingData';
 import { consentService } from '../services/consentService';
 import { castingAuthService } from '../services/castingAuthService';
@@ -212,6 +219,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '@/lib/queryClient';
 import NewProjectCreationModal from './Planning/NewProjectCreationModal';
 import RoleRoomBrandMark from './shared/RoleRoomBrandMark';
+import RoleRoomBillingAccountDialog from './RoleRoomBillingAccountDialog';
 
 interface CastingPlannerPanelProps {
   onClose?: () => void;
@@ -923,6 +931,11 @@ export function CastingPlannerPanel({
   const [sendConsentOnSave, setSendConsentOnSave] = useState(false);
   const [adminDashboardOpen, setAdminDashboardOpen] = useState(false);
   const [loginDialogOpen, setLoginDialogOpen] = useState(false);
+  const [billingAccountDialogOpen, setBillingAccountDialogOpen] = useState(false);
+  const [billingAccount, setBillingAccount] = useState<RoleRoomCommercialBillingAccount | null>(null);
+  const [billingAccountLoading, setBillingAccountLoading] = useState(false);
+  const [billingAccountError, setBillingAccountError] = useState<string | null>(null);
+  const [billingActionPending, setBillingActionPending] = useState(false);
   type RoleRoomAdminUser = {
     id: number | string;
     email: string;
@@ -1717,6 +1730,26 @@ export function CastingPlannerPanel({
   const isContentProducerSession = mappedSessionProjectRole === 'content_producer';
   const isClientReviewerSession = mappedSessionProjectRole === 'client_reviewer';
   const isProducerWorkspaceSession = isContentProducerSession || isClientReviewerSession;
+  const currentCommercialPersona = useMemo<'production_team' | 'content_producer' | null>(() => {
+    if (!adminUser) return null;
+    const loginAs = (adminUser.loginAs || '').trim().toLowerCase();
+    const requestedRole = (adminUser.requestedRole || '').trim().toLowerCase();
+    const role = (adminUser.role || '').trim().toLowerCase();
+
+    if (loginAs === 'production_team') {
+      return 'production_team';
+    }
+    if (
+      loginAs === 'content_producer'
+      || requestedRole === 'content_producer'
+      || role === 'content_producer'
+      || role === 'client_reviewer'
+    ) {
+      return 'content_producer';
+    }
+    return null;
+  }, [adminUser]);
+  const isRoleRoomCommercialSession = currentCommercialPersona !== null;
   const headerProfessionLabel = isContentProducerSession
     ? 'Innholdsprodusent'
     : isClientReviewerSession
@@ -2621,6 +2654,134 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
     setCurrentProjectId(null);
     setActiveTab(0);
   }, [adminUser, authLoaded]);
+
+  const clearRoleRoomBillingParams = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete('rrBilling');
+    window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+  }, []);
+
+  const loadBillingAccount = useCallback(async () => {
+    if (!adminUser || !isRoleRoomCommercialSession) {
+      setBillingAccount(null);
+      setBillingAccountError(null);
+      return null;
+    }
+
+    setBillingAccountLoading(true);
+    setBillingAccountError(null);
+    try {
+      const account = await roleRoomBillingApi.getAccount();
+      setBillingAccount(account);
+      return account;
+    } catch (billingError) {
+      const message = billingError instanceof Error
+        ? billingError.message
+        : 'Kunne ikke hente abonnementsinformasjon';
+      setBillingAccountError(message);
+      return null;
+    } finally {
+      setBillingAccountLoading(false);
+    }
+  }, [adminUser, isRoleRoomCommercialSession]);
+
+  const handleOpenBillingAccountDialog = useCallback(() => {
+    startTransition(() => setBillingAccountDialogOpen(true));
+    void loadBillingAccount();
+  }, [loadBillingAccount]);
+
+  const handleOpenBillingPortal = useCallback(async () => {
+    if (!billingAccount?.canManageBilling) {
+      toast.showError('Kun teamleder kan oppdatere betalingsinformasjon.');
+      return;
+    }
+
+    setBillingActionPending(true);
+    setBillingAccountError(null);
+    try {
+      const result = await roleRoomBillingApi.openBillingPortal({
+        browserOrigin: typeof window !== 'undefined' ? window.location.origin : undefined,
+        returnPath: typeof window !== 'undefined'
+          ? `${window.location.pathname}${window.location.search}`
+          : '/',
+      });
+      window.location.assign(result.url);
+    } catch (billingError) {
+      const message = billingError instanceof Error
+        ? billingError.message
+        : 'Kunne ikke åpne betalingsportalen';
+      setBillingAccountError(message);
+      toast.showError(message);
+    } finally {
+      setBillingActionPending(false);
+    }
+  }, [billingAccount?.canManageBilling, toast]);
+
+  const handleRetryBillingPayment = useCallback(async () => {
+    if (!adminUser) {
+      return;
+    }
+
+    setBillingActionPending(true);
+    setBillingAccountError(null);
+    try {
+      const result = await roleRoomBillingApi.retryPayment();
+      if (result.paymentCompleted || result.alreadyPaid) {
+        toast.showSuccess('Betalingen er registrert. Abonnementet er aktivt igjen.');
+      } else {
+        toast.showInfo('Stripe behandler fortsatt betalingen. Oppdater status om et øyeblikk.');
+      }
+      await loadBillingAccount();
+    } catch (billingError) {
+      const message = billingError instanceof Error
+        ? billingError.message
+        : 'Kunne ikke prøve betalingen på nytt';
+      setBillingAccountError(message);
+      toast.showError(message);
+      await loadBillingAccount();
+    } finally {
+      setBillingActionPending(false);
+    }
+  }, [billingAccount?.canRetryPayment, loadBillingAccount, toast]);
+
+  useEffect(() => {
+    if (!adminUser || !isRoleRoomCommercialSession) {
+      setBillingAccount(null);
+      setBillingAccountError(null);
+      return;
+    }
+    void loadBillingAccount();
+  }, [adminUser, isRoleRoomCommercialSession, loadBillingAccount]);
+
+  useEffect(() => {
+    if (!adminUser || !isRoleRoomCommercialSession || typeof window === 'undefined') {
+      return;
+    }
+
+    const params = new URL(window.location.href).searchParams;
+    if (params.get('rrBilling') !== 'updated') {
+      return;
+    }
+
+    clearRoleRoomBillingParams();
+    setBillingAccountDialogOpen(true);
+    void (async () => {
+      const account = await loadBillingAccount();
+      if (account?.canManageBilling) {
+        await handleRetryBillingPayment();
+      } else {
+        toast.showInfo('Betalingsstatusen er oppdatert.');
+      }
+    })();
+  }, [
+    adminUser,
+    clearRoleRoomBillingParams,
+    handleRetryBillingPayment,
+    isRoleRoomCommercialSession,
+    loadBillingAccount,
+    toast,
+  ]);
 
   const defaultProfessionForSession = useMemo<'photographer' | 'videographer' | null>(() => {
     if (!adminUser) return null;
@@ -5366,6 +5527,72 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                   },
                 }}
               />
+              {isRoleRoomCommercialSession && (
+                <>
+                  <Button
+                    onClick={handleOpenBillingAccountDialog}
+                    variant="outlined"
+                    startIcon={<CreditCardIcon sx={{ fontSize: 16 }} />}
+                    sx={{
+                      display: { xs: 'none', lg: 'inline-flex' },
+                      minWidth: 0,
+                      px: 1.2,
+                      py: 0.6,
+                      borderColor:
+                        billingAccount?.paymentStatus === 'payment_failed'
+                          ? 'rgba(248,113,113,0.46)'
+                          : 'rgba(246,195,88,0.34)',
+                      color:
+                        billingAccount?.paymentStatus === 'payment_failed'
+                          ? '#fda4af'
+                          : '#f6c358',
+                      bgcolor:
+                        billingAccount?.paymentStatus === 'payment_failed'
+                          ? 'rgba(127,29,29,0.18)'
+                          : 'rgba(246,195,88,0.08)',
+                      fontSize: '0.76rem',
+                      fontWeight: 700,
+                      textTransform: 'none',
+                      '&:hover': {
+                        borderColor:
+                          billingAccount?.paymentStatus === 'payment_failed'
+                            ? 'rgba(248,113,113,0.62)'
+                            : 'rgba(246,195,88,0.54)',
+                        bgcolor:
+                          billingAccount?.paymentStatus === 'payment_failed'
+                            ? 'rgba(127,29,29,0.26)'
+                            : 'rgba(246,195,88,0.14)',
+                      },
+                    }}
+                  >
+                    {billingAccount?.paymentStatus === 'payment_failed'
+                      ? 'Betaling må oppdateres'
+                      : 'Abonnement'}
+                  </Button>
+                  <IconButton
+                    onClick={handleOpenBillingAccountDialog}
+                    aria-label="Åpne abonnement og team"
+                    title="Åpne abonnement og team"
+                    sx={{
+                      display: { xs: 'inline-flex', lg: 'none' },
+                      color:
+                        billingAccount?.paymentStatus === 'payment_failed'
+                          ? '#fda4af'
+                          : '#f6c358',
+                      width: navActionButtonSizePx,
+                      height: navActionButtonSizePx,
+                      '&:hover': {
+                        bgcolor:
+                          billingAccount?.paymentStatus === 'payment_failed'
+                            ? 'rgba(248,113,113,0.12)'
+                            : 'rgba(246,195,88,0.12)',
+                      },
+                    }}
+                  >
+                    <CreditCardIcon sx={{ fontSize: navIconSizePx }} />
+                  </IconButton>
+                </>
+              )}
               {/* Bytt profesjon - tilgjengelig for alle innloggede brukere */}
               <IconButton
                 onClick={openProfessionDialog}
@@ -5493,6 +5720,33 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
         </Box>
 
       </Box>
+
+      {adminUser && isRoleRoomCommercialSession && billingAccount?.paymentStatus === 'payment_failed' && (
+        <Box sx={{ px: { xs: 1.25, sm: 1.75 }, pt: 1.1, pb: 0.35 }}>
+          <Alert
+            severity="warning"
+            action={billingAccount.canManageBilling ? (
+              <Button
+                color="inherit"
+                size="small"
+                onClick={handleOpenBillingAccountDialog}
+                sx={{ fontWeight: 700 }}
+              >
+                Oppdater
+              </Button>
+            ) : undefined}
+            sx={{
+              borderRadius: 2,
+              border: '1px solid rgba(248,113,113,0.26)',
+              bgcolor: 'rgba(127,29,29,0.16)',
+              color: '#ffe4e6',
+              '& .MuiAlert-icon': { color: '#fda4af' },
+            }}
+          >
+            {billingAccount.paymentFailureMessage || billingAccount.paymentMessage}
+          </Alert>
+        </Box>
+      )}
 
       {/* Tabs */}
       <Box 
@@ -11658,6 +11912,18 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
           />
         </Suspense>
       )}
+
+      <RoleRoomBillingAccountDialog
+        open={billingAccountDialogOpen}
+        onClose={() => setBillingAccountDialogOpen(false)}
+        account={billingAccount}
+        loading={billingAccountLoading}
+        error={billingAccountError}
+        actionPending={billingActionPending}
+        onRefresh={loadBillingAccount}
+        onManageBilling={handleOpenBillingPortal}
+        onRetryPayment={handleRetryBillingPayment}
+      />
 
       {loginDialogOpen && (
         <Suspense fallback={null}>
