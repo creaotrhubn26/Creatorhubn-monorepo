@@ -2419,6 +2419,10 @@ export default function LoginDialog({
     : [...PRODUCTION_TEAM_ROLE_IDS];
   const showPersonaChooserInLeftPanel = false;
   const showPersonaChooserInRightPanel = !(isStepwiseContentProducerFlow && isMobile);
+  const showContentProducerPersonaSummary =
+    isStepwiseContentProducerFlow
+    && !isMobile
+    && loginPersona === 'content_producer';
   const showContentProducerAccessChooser = loginPersona === 'content_producer' && Boolean(clientPortalIntent);
   const showContentProducerCompanyStep = !isStepwiseContentProducerFlow || contentProducerStep === 'company';
   const showContentProducerRoleStep = !isStepwiseContentProducerFlow || contentProducerStep === 'role';
@@ -2597,6 +2601,63 @@ export default function LoginDialog({
         </Typography>
         <Typography sx={{ fontSize: '0.76rem', color: 'rgba(234,228,245,0.84)' }}>
           Plasser: {billableSeatCount}
+        </Typography>
+      </Box>
+    </Box>
+  ) : null;
+  const contentProducerPersonaSummary = showContentProducerPersonaSummary ? (
+    <Box
+      sx={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 1.25,
+        p: { xs: 1.05, sm: 1.15 },
+        borderRadius: '16px',
+        bgcolor: 'rgba(255,255,255,0.035)',
+        border: '1px solid rgba(255,255,255,0.08)',
+      }}
+    >
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.2 }}>
+        <Typography
+          sx={{
+            fontSize: '0.64rem',
+            fontWeight: 700,
+            letterSpacing: '0.1em',
+            textTransform: 'uppercase',
+            color: 'rgba(188,176,222,0.66)',
+          }}
+        >
+          Plan
+        </Typography>
+        <Typography
+          sx={{
+            fontSize: '0.92rem',
+            fontWeight: 700,
+            color: 'rgba(245,240,255,0.96)',
+          }}
+        >
+          Innholdsprodusent
+        </Typography>
+      </Box>
+      <Box
+        sx={{
+          px: 1.1,
+          py: 0.55,
+          borderRadius: '999px',
+          bgcolor: `rgba(${aR},${aG},${aB},0.14)`,
+          border: `1px solid rgba(${aR},${aG},${aB},0.26)`,
+        }}
+      >
+        <Typography
+          sx={{
+            fontSize: '0.74rem',
+            fontWeight: 600,
+            color: `rgba(${aR},${aG},${aB},0.95)`,
+            letterSpacing: '0.01em',
+          }}
+        >
+          {selectedRoleLabel || 'Velg hovedfokus'}
         </Typography>
       </Box>
     </Box>
@@ -3379,7 +3440,8 @@ export default function LoginDialog({
           )}
 
           {/* ── login persona chooser ── */}
-          {showPersonaChooserInRightPanel && loginPersonaChooser}
+          {showContentProducerPersonaSummary ? contentProducerPersonaSummary : null}
+          {showPersonaChooserInRightPanel && !showContentProducerPersonaSummary && loginPersonaChooser}
           {contentProducerStepNavigation}
           {contentProducerAccessChooser}
           {isLandingPage && !effectiveLoginPersona && (
@@ -4067,33 +4129,34 @@ export default function LoginDialog({
                             </MenuItem>
                           ))}
                         </TextField>
-                        <Box
-                          sx={{
-                            display: 'flex',
-                            justifyContent: { xs: 'stretch', sm: 'flex-end' },
-                            alignItems: 'center',
-                          }}
-                        >
-                          <Button
-                            type="button"
-                            onClick={() => removeProductionTeamSeat(index)}
-                            disabled={productionTeamMembers.length <= minimumSeatCount}
+                        {productionTeamMembers.length > minimumSeatCount ? (
+                          <Box
                             sx={{
-                              textTransform: 'none',
-                              fontSize: '0.74rem',
-                              borderRadius: '12px',
-                              color: 'rgba(220,212,242,0.82)',
-                              minWidth: { xs: '100%', sm: 112 },
-                              bgcolor: 'rgba(255,255,255,0.04)',
-                              border: '1px solid rgba(255,255,255,0.08)',
-                              '&:hover': {
-                                bgcolor: 'rgba(255,255,255,0.08)',
-                              },
+                              display: 'flex',
+                              justifyContent: { xs: 'stretch', sm: 'flex-end' },
+                              alignItems: 'center',
                             }}
                           >
-                            Fjern plass
-                          </Button>
-                        </Box>
+                            <Button
+                              type="button"
+                              onClick={() => removeProductionTeamSeat(index)}
+                              sx={{
+                                textTransform: 'none',
+                                fontSize: '0.74rem',
+                                borderRadius: '12px',
+                                color: 'rgba(220,212,242,0.82)',
+                                minWidth: { xs: '100%', sm: 112 },
+                                bgcolor: 'rgba(255,255,255,0.04)',
+                                border: '1px solid rgba(255,255,255,0.08)',
+                                '&:hover': {
+                                  bgcolor: 'rgba(255,255,255,0.08)',
+                                },
+                              }}
+                            >
+                              Fjern plass
+                            </Button>
+                          </Box>
+                        ) : null}
                       </Box>
                     ))}
 
