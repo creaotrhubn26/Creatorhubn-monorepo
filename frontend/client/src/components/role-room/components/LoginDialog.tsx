@@ -1404,6 +1404,19 @@ export default function LoginDialog({
   const clientPortalIntent = parseClientPortalIntentFromWindow();
   const talentPortalIntent = parseTalentPortalIntentFromWindow();
   const backdropStillUrl = getRoleRoomVideoStillUrl(DESIGN.backdrop.src, '/role-room-assets/landing_backdrop.webp');
+  const resetCommercialPanelScroll = useCallback(() => {
+    if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+    const panel = rightPanelRef.current;
+    const rolePicker = rolePickerScrollRef.current;
+    const scrollToTop = () => {
+      panel?.scrollTo({ top: 0, behavior: 'auto' });
+      rolePicker?.scrollTo({ top: 0, behavior: 'auto' });
+    };
+    window.requestAnimationFrame(scrollToTop);
+    window.setTimeout(scrollToTop, 70);
+  }, []);
 
   useEffect(() => {
     setBackdropVideoReady(false);
@@ -2418,20 +2431,6 @@ export default function LoginDialog({
       handleLogin();
     }
   };
-
-  const resetCommercialPanelScroll = useCallback(() => {
-    if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
-      document.activeElement.blur();
-    }
-    const panel = rightPanelRef.current;
-    const rolePicker = rolePickerScrollRef.current;
-    const scrollToTop = () => {
-      panel?.scrollTo({ top: 0, behavior: 'auto' });
-      rolePicker?.scrollTo({ top: 0, behavior: 'auto' });
-    };
-    window.requestAnimationFrame(scrollToTop);
-    window.setTimeout(scrollToTop, 70);
-  }, []);
 
   const updateProductionTeamMember = useCallback((
     index: number,
