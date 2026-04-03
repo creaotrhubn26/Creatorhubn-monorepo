@@ -5336,7 +5336,7 @@ export default function LoginDialog({
               <Typography sx={{ fontSize: '0.78rem', lineHeight: 1.6, color: 'rgba(210,204,228,0.72)' }}>
                 {isCommercialPaymentSatisfied
                   ? `Planen er registrert på ${organizationCompanyName || 'bedriften'} med ${formatRoleRoomStatValue(planMonthlyTotal)} kr per måned eks. mva.`
-                  : `Du sendes til Stripe for å aktivere ${billableSeatCount} ${billableSeatCount === 1 ? 'plass' : 'plasser'} til ${formatRoleRoomStatValue(planMonthlyTotal)} kr per måned eks. mva.`}
+                  : `Du sendes til Stripe for å aktivere ${billableSeatCount} ${billableSeatCount === 1 ? 'plass' : 'plasser'} til ${formatRoleRoomStatValue(planMonthlyTotal)} kr per måned eks. mva. Eventuell mva. beregnes i Stripe ved checkout.`}
               </Typography>
               {!isCommercialPaymentSatisfied && (
                 <Button

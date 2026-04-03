@@ -26382,6 +26382,7 @@ const ROLE_ROOM_STRIPE_SUBSCRIPTION_RECORD_PREFIX =
   "role-room:billing:subscription:";
 
 let roleRoomStripeClient: Stripe | null | undefined;
+const ROLE_ROOM_STRIPE_PRODUCT_TAX_CODE = "txcd_10103001";
 
 function roleRoomCommercialCheckoutSessionKey(sessionId: string) {
   return `${ROLE_ROOM_STRIPE_CHECKOUT_RECORD_PREFIX}${sessionId}`;
@@ -27499,7 +27500,13 @@ app.post("/api/role-room/billing/checkout-session", async (req, res) => {
       success_url: successUrl,
       cancel_url: cancelUrl,
       customer_email: access.teamLead.email,
-      billing_address_collection: "auto",
+      billing_address_collection: "required",
+      automatic_tax: {
+        enabled: true,
+      },
+      tax_id_collection: {
+        enabled: true,
+      },
       allow_promotion_codes: true,
       locale: "nb",
       client_reference_id: [
@@ -27518,6 +27525,7 @@ app.post("/api/role-room/billing/checkout-session", async (req, res) => {
               price_data: {
                 currency: "nok",
                 unit_amount: Math.round(access.plan.seatPriceExVat * 100),
+                tax_behavior: "exclusive",
                 recurring: {
                   interval: "month",
                 },
@@ -27526,6 +27534,7 @@ app.post("/api/role-room/billing/checkout-session", async (req, res) => {
                   description: `${access.companyName} · ${access.members.length} ${
                     access.members.length === 1 ? "sete" : "seter"
                   } · eks. mva.`,
+                  tax_code: ROLE_ROOM_STRIPE_PRODUCT_TAX_CODE,
                 },
               },
             },
