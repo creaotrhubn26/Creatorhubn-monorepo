@@ -3336,6 +3336,9 @@ export default function LoginDialog({
   }, [isStepwiseProductionTeamFlow, productionTeamStepIndex, resetCommercialPanelScroll]);
 
   const selectedRoleLabel = allRoles.find((r) => r.id === selectedRole)?.label;
+  const effectiveLoginPersonaOption = effectiveLoginPersona
+    ? LOGIN_PERSONA_OPTIONS.find((option) => option.id === effectiveLoginPersona) || null
+    : null;
   const teamRoleOptions = effectiveLoginPersona === 'content_producer'
     ? (clientPortalIntent ? ['client'] : [...CONTENT_TEAM_ROLE_IDS])
     : effectiveLoginPersona === 'education_institution'
@@ -4572,6 +4575,65 @@ export default function LoginDialog({
             </Alert>
           )}
 
+          {isLandingPage && effectiveLoginPersona && !clientPortalIntent && !talentPortalIntent && (
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: { xs: 'flex-start', sm: 'center' },
+                justifyContent: 'space-between',
+                gap: 1,
+                flexDirection: { xs: 'column', sm: 'row' },
+                mb: 0.15,
+              }}
+            >
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.18 }}>
+                <Typography
+                  sx={{
+                    fontSize: '0.66rem',
+                    fontWeight: 600,
+                    letterSpacing: '0.1em',
+                    textTransform: 'uppercase',
+                    color: 'rgba(181,171,212,0.62)',
+                  }}
+                >
+                  Valgt inngang
+                </Typography>
+                <Typography
+                  sx={{
+                    fontSize: { xs: '0.9rem', sm: '0.96rem' },
+                    fontWeight: 600,
+                    color: 'rgba(244,240,255,0.96)',
+                  }}
+                >
+                  {effectiveLoginPersonaOption?.label || 'The Role Room'}
+                </Typography>
+              </Box>
+              <Button
+                type="button"
+                onClick={() => resetRoleRoomPersonaSelection()}
+                sx={{
+                  minHeight: 34,
+                  px: 0,
+                  py: 0,
+                  textTransform: 'none',
+                  fontSize: '0.76rem',
+                  fontWeight: 600,
+                  borderRadius: 0,
+                  color: 'rgba(214,206,238,0.82)',
+                  alignSelf: { xs: 'flex-start', sm: 'center' },
+                  justifyContent: 'flex-start',
+                  minWidth: 0,
+                  '&:hover': {
+                    bgcolor: 'transparent',
+                    color: 'rgba(242,236,255,0.96)',
+                  },
+                }}
+              >
+                Bytt inngang
+              </Button>
+            </Box>
+          )}
+
           {/* ── login persona chooser ── */}
           {showContentProducerPersonaSummary ? contentProducerPersonaSummary : null}
           {showProductionTeamPersonaSummary ? productionTeamPersonaSummary : null}
@@ -4579,31 +4641,6 @@ export default function LoginDialog({
           {contentProducerStepNavigation}
           {productionTeamStepNavigation}
           {contentProducerAccessChooser}
-          {isLandingPage && effectiveLoginPersona && !clientPortalIntent && !talentPortalIntent && (
-            <Box sx={{ display: 'flex', justifyContent: 'flex-start' }}>
-              <Button
-                type="button"
-                onClick={() => resetRoleRoomPersonaSelection()}
-                sx={{
-                  minHeight: 38,
-                  px: 1.4,
-                  textTransform: 'none',
-                  fontSize: '0.76rem',
-                  fontWeight: 600,
-                  borderRadius: '999px',
-                  color: 'rgba(238,232,250,0.9)',
-                  bgcolor: 'rgba(255,255,255,0.045)',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  '&:hover': {
-                    bgcolor: 'rgba(255,255,255,0.095)',
-                    borderColor: 'rgba(255,255,255,0.16)',
-                  },
-                }}
-              >
-                Tilbake til valg
-              </Button>
-            </Box>
-          )}
           {isLandingPage && !effectiveLoginPersona && (
             <Box
               sx={{
