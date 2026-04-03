@@ -4579,14 +4579,16 @@ export default function LoginDialog({
             <Box
               sx={{
                 display: 'flex',
-                alignItems: { xs: 'flex-start', sm: 'center' },
-                justifyContent: 'space-between',
+                alignItems: { xs: 'flex-start', md: 'center' },
+                justifyContent: { xs: 'flex-start', md: 'space-between' },
                 gap: 1,
-                flexDirection: { xs: 'column', sm: 'row' },
+                flexDirection: { xs: 'column', md: 'row' },
+                width: '100%',
+                minWidth: 0,
                 mb: 0.15,
               }}
             >
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.18 }}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.18, minWidth: 0 }}>
                 <Typography
                   sx={{
                     fontSize: '0.66rem',
@@ -4620,7 +4622,7 @@ export default function LoginDialog({
                   fontWeight: 600,
                   borderRadius: 0,
                   color: 'rgba(214,206,238,0.82)',
-                  alignSelf: { xs: 'flex-start', sm: 'center' },
+                  alignSelf: { xs: 'flex-start', md: 'center' },
                   justifyContent: 'flex-start',
                   minWidth: 0,
                   '&:hover': {
