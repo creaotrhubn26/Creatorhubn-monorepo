@@ -113,6 +113,34 @@ interface RoleRoomCommercialAccessResponse {
   error?: string;
 }
 
+interface RoleRoomCommercialCheckoutResponse {
+  success: boolean;
+  alreadyPaid?: boolean;
+  paymentCompleted?: boolean;
+  checkoutUrl?: string;
+  sessionId?: string;
+  planId?: string;
+  planName?: string;
+  monthlyTotalExVat?: number;
+  membersRegistered?: number;
+  error?: string;
+}
+
+interface RoleRoomCommercialSessionStatusResponse {
+  success: boolean;
+  sessionId?: string;
+  status?: string | null;
+  paymentStatus?: string | null;
+  paymentCompleted?: boolean;
+  transactionId?: string | null;
+  paymentAmount?: number | null;
+  paymentTimestamp?: string | null;
+  planId?: string | null;
+  planName?: string | null;
+  stripeSubscriptionId?: string | null;
+  error?: string;
+}
+
 interface RoleRoomEducationInquiryResponse {
   success: boolean;
   requestId?: string | null;
@@ -358,7 +386,7 @@ const CONTENT_PRODUCER_ONBOARDING_STEPS: ReadonlyArray<{
   { id: 'company', label: 'Bedrift', description: 'Verifiser foretaket før oppsettet åpnes.' },
   { id: 'role', label: 'Fokus', description: 'Velg hovedrollen som best beskriver hvordan dere jobber.' },
   { id: 'team', label: 'Team', description: 'Sett opp kontoeier, eventuelle ekstra plasser og plan.' },
-  { id: 'auth', label: 'Innlogging', description: 'Opprett tilgang når team og plan er klare.' },
+  { id: 'auth', label: 'Betaling', description: 'Aktiver planen i Stripe før innlogging åpnes.' },
 ];
 const PRODUCTION_TEAM_ONBOARDING_STEPS: ReadonlyArray<{
   id: ProductionTeamOnboardingStep;
@@ -368,7 +396,7 @@ const PRODUCTION_TEAM_ONBOARDING_STEPS: ReadonlyArray<{
   { id: 'company', label: 'Bedrift', description: 'Verifiser foretaket før produksjonsteamet åpnes.' },
   { id: 'role', label: 'Rolle', description: 'Velg hvilken rolle som leder produksjonen inn i plattformen.' },
   { id: 'team', label: 'Team', description: 'Legg inn minst tre personer, fordel roller og se planoppsummeringen.' },
-  { id: 'auth', label: 'Innlogging', description: 'Opprett tilgang når team og plan er klare.' },
+  { id: 'auth', label: 'Betaling', description: 'Aktiver planen i Stripe før innlogging åpnes.' },
 ];
 const PRODUCTION_TEAM_MIN_MEMBERS = 3;
 const CONTENT_PRODUCER_MIN_MEMBERS = 1;
@@ -429,6 +457,27 @@ const EDUCATION_START_WINDOW_OPTIONS: ReadonlyArray<{
   { id: 'exploring', label: 'Vi sonderer fortsatt' },
 ];
 const ROLE_ROOM_EDUCATION_INQUIRY_ENDPOINT = '/api/role-room/education-inquiries';
+const ROLE_ROOM_COMMERCIAL_CHECKOUT_ENDPOINT = '/api/role-room/billing/checkout-session';
+const ROLE_ROOM_COMMERCIAL_SESSION_STATUS_ENDPOINT = '/api/role-room/billing/session-status';
+const ROLE_ROOM_COMMERCIAL_DRAFT_STORAGE_KEY = 'role-room-commercial-draft-v1';
+
+type RoleRoomCommercialDraft = {
+  loginPersona: LoginPersona;
+  selectedRole: string;
+  email: string;
+  organizationNumber: string;
+  organizationCompanyName: string;
+  organizationValidatedNumber: string;
+  paidCommercialSetupSignature: string;
+  contentProducerStep: ContentProducerOnboardingStep;
+  productionTeamStep: ProductionTeamOnboardingStep;
+  productionTeamMembers: TeamMemberDraft[];
+};
+
+type CommercialPaymentNotice = {
+  severity: 'success' | 'warning' | 'info';
+  message: string;
+};
 
 function createBlankTeamMember(): TeamMemberDraft {
   return {
@@ -568,6 +617,93 @@ function getRoleCardPreviewAsset(roleId: string): string | undefined {
   return card.icon
     || getRoleRoomVideoPosterUrl(card.video)
     || getRoleRoomVideoStillUrl(card.video);
+}
+
+function readRoleRoomCommercialDraft(): RoleRoomCommercialDraft | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    const raw = window.sessionStorage.getItem(ROLE_ROOM_COMMERCIAL_DRAFT_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw) as Partial<RoleRoomCommercialDraft> | null;
+    if (!parsed || typeof parsed !== 'object') {
+      return null;
+    }
+
+    const productionTeamMembers = Array.isArray(parsed.productionTeamMembers)
+      ? parsed.productionTeamMembers
+          .filter((member): member is TeamMemberDraft => Boolean(member && typeof member === 'object'))
+          .map((member) => ({
+            name: String(member.name || ''),
+            email: String(member.email || ''),
+            roleId: String(member.roleId || ''),
+          }))
+      : createInitialTeamMembers();
+
+    return {
+      loginPersona:
+        parsed.loginPersona === 'production_team'
+        || parsed.loginPersona === 'content_producer'
+        || parsed.loginPersona === 'education_institution'
+          ? parsed.loginPersona
+          : '',
+      selectedRole: String(parsed.selectedRole || ''),
+      email: String(parsed.email || ''),
+      organizationNumber: String(parsed.organizationNumber || ''),
+      organizationCompanyName: String(parsed.organizationCompanyName || ''),
+      organizationValidatedNumber: String(parsed.organizationValidatedNumber || ''),
+      paidCommercialSetupSignature: String(parsed.paidCommercialSetupSignature || ''),
+      contentProducerStep:
+        parsed.contentProducerStep === 'company'
+        || parsed.contentProducerStep === 'role'
+        || parsed.contentProducerStep === 'team'
+        || parsed.contentProducerStep === 'auth'
+          ? parsed.contentProducerStep
+          : 'company',
+      productionTeamStep:
+        parsed.productionTeamStep === 'company'
+        || parsed.productionTeamStep === 'role'
+        || parsed.productionTeamStep === 'team'
+        || parsed.productionTeamStep === 'auth'
+          ? parsed.productionTeamStep
+          : 'company',
+      productionTeamMembers:
+        productionTeamMembers.length > 0 ? productionTeamMembers : createInitialTeamMembers(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeRoleRoomCommercialDraft(draft: RoleRoomCommercialDraft) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.sessionStorage.setItem(
+      ROLE_ROOM_COMMERCIAL_DRAFT_STORAGE_KEY,
+      JSON.stringify(draft),
+    );
+  } catch {
+    // Ignore storage persistence errors.
+  }
+}
+
+function clearRoleRoomCommercialDraft() {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.sessionStorage.removeItem(ROLE_ROOM_COMMERCIAL_DRAFT_STORAGE_KEY);
+  } catch {
+    // Ignore storage cleanup errors.
+  }
 }
 
 /* ── categories: list role ids — all card data lives in ROLE_CARDS ─── *
@@ -1379,6 +1515,9 @@ export default function LoginDialog({
   const [organizationLookupError, setOrganizationLookupError] = useState('');
   const [organizationLookupLoading, setOrganizationLookupLoading] = useState(false);
   const [organizationValidatedNumber, setOrganizationValidatedNumber] = useState('');
+  const [commercialPaymentNotice, setCommercialPaymentNotice] = useState<CommercialPaymentNotice | null>(null);
+  const [commercialPaymentPending, setCommercialPaymentPending] = useState(false);
+  const [paidCommercialSetupSignature, setPaidCommercialSetupSignature] = useState('');
   const [educationInstitutionType, setEducationInstitutionType] = useState<EducationInstitutionType>('');
   const [educationProgramName, setEducationProgramName] = useState('');
   const [educationStudentSeatRange, setEducationStudentSeatRange] = useState<EducationSeatRange>('');
@@ -1398,6 +1537,8 @@ export default function LoginDialog({
   );
   const hasSeenHint = useRef(false);
   const orgLookupAbortRef = useRef<AbortController | null>(null);
+  const restoredCommercialDraftRef = useRef(false);
+  const handledCheckoutSessionRef = useRef('');
   const persistedCommercialSetupRef = useRef('');
   const rightPanelRef = useRef<HTMLDivElement>(null);
   const rolePickerScrollRef = useRef<HTMLDivElement>(null);
@@ -1417,12 +1558,23 @@ export default function LoginDialog({
     window.requestAnimationFrame(scrollToTop);
     window.setTimeout(scrollToTop, 70);
   }, []);
+  const clearCommercialCheckoutParams = useCallback(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    const url = new URL(window.location.href);
+    url.searchParams.delete('rrCheckout');
+    url.searchParams.delete('session_id');
+    window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
+  }, []);
 
   useEffect(() => {
     setBackdropVideoReady(false);
     setBackdropVideoFailed(false);
     if (!open) {
       persistedCommercialSetupRef.current = '';
+      restoredCommercialDraftRef.current = false;
+      handledCheckoutSessionRef.current = '';
     }
   }, [open]);
 
@@ -1492,6 +1644,40 @@ export default function LoginDialog({
     : isEducationInstitutionFlow
       ? 'Institusjonsansvarlig'
       : 'Kontoeier';
+  const buildCommercialSetupPayload = useCallback((
+    persona: Exclude<LoginPersona, '' | 'education_institution'>,
+  ) => {
+    const normalizedMembers = productionTeamMembers
+      .map((member, index) => {
+        const roleLabel = allRoles.find((entry) => entry.id === member.roleId)?.label || member.roleId;
+        return {
+          name: member.name.trim(),
+          email: member.email.trim().toLowerCase(),
+          roleId: member.roleId,
+          roleLabel,
+          isLeader: index === 0,
+        };
+      })
+      .filter((member) => member.name && member.email && member.roleId);
+
+    const plan = getCommercialSubscriptionPlan(persona);
+    return {
+      persona,
+      organizationNumber: normalizedOrganizationNumber,
+      companyName: organizationCompanyName.trim(),
+      selectedRole,
+      planId: plan.planId,
+      planName: plan.planName,
+      monthlyTotalExVat: planMonthlyTotal,
+      teamMembers: normalizedMembers,
+    };
+  }, [
+    normalizedOrganizationNumber,
+    organizationCompanyName,
+    planMonthlyTotal,
+    productionTeamMembers,
+    selectedRole,
+  ]);
   const isTeamOwnerConfigured = Boolean(
     teamOwner.name.trim() && teamOwner.email.trim() && teamOwner.roleId,
   );
@@ -1517,10 +1703,40 @@ export default function LoginDialog({
           )
     )
   );
+  const isCommercialPaymentRequired = Boolean(
+    requiresCommercialSetup
+    && effectiveLoginPersona
+    && effectiveLoginPersona !== 'education_institution'
+    && !isAdminRoleSelection,
+  );
+  const commercialSetupSignature = (
+    isCommercialPaymentRequired
+    && effectiveLoginPersona
+    && effectiveLoginPersona !== 'education_institution'
+  )
+    ? JSON.stringify(buildCommercialSetupPayload(effectiveLoginPersona))
+    : '';
+  const isCommercialPaymentSatisfied = !isCommercialPaymentRequired || (
+    paidCommercialSetupSignature.length > 0
+    && paidCommercialSetupSignature === commercialSetupSignature
+  );
   const shouldShowCommercialDetails = !requiresCommercialSetup || hasVerifiedOrganization;
+  const shouldShowCommercialPaymentGate = shouldShowSetupFlow && (
+    isCommercialPaymentRequired
+    && isCommercialSetupComplete
+    && (
+      !isStepwiseCommercialFlow
+      || (
+        isStepwiseContentProducerFlow
+          ? contentProducerStep === 'auth'
+          : productionTeamStep === 'auth'
+      )
+    )
+  );
   const shouldShowAuthFields = shouldShowSetupFlow && (
     !isEducationInstitutionFlow
     && (!requiresCommercialSetup || isCommercialSetupComplete)
+    && isCommercialPaymentSatisfied
     && (
       !isStepwiseCommercialFlow
       || (
@@ -1630,6 +1846,9 @@ export default function LoginDialog({
         setOrganizationLookupError('');
         setOrganizationLookupLoading(false);
         setOrganizationValidatedNumber('');
+        setCommercialPaymentNotice(null);
+        setCommercialPaymentPending(false);
+        setPaidCommercialSetupSignature('');
         setEducationInstitutionType('');
         setEducationProgramName('');
         setEducationStudentSeatRange('');
@@ -1669,20 +1888,6 @@ export default function LoginDialog({
           ]
     ));
   }, [loginPersona]);
-
-  useEffect(() => {
-    if (!open || loginPersona !== 'content_producer' || clientPortalIntent) {
-      return;
-    }
-    setContentProducerStep('company');
-  }, [clientPortalIntent, loginPersona, open]);
-
-  useEffect(() => {
-    if (!open || loginPersona !== 'production_team' || clientPortalIntent || talentPortalIntent) {
-      return;
-    }
-    setProductionTeamStep('company');
-  }, [clientPortalIntent, loginPersona, open, talentPortalIntent]);
 
   useEffect(() => {
     if (!isStepwiseContentProducerFlow) {
@@ -1872,6 +2077,36 @@ export default function LoginDialog({
   }, [clientPortalIntent, initialPersona, open, talentPortalIntent]);
 
   useEffect(() => {
+    if (!open || !requiresCommercialSetup || clientPortalIntent || talentPortalIntent) {
+      return;
+    }
+    if (restoredCommercialDraftRef.current) {
+      return;
+    }
+
+    restoredCommercialDraftRef.current = true;
+    const draft = readRoleRoomCommercialDraft();
+    if (!draft) {
+      return;
+    }
+
+    setLoginPersona(draft.loginPersona);
+    setSelectedRole(draft.selectedRole);
+    setEmail(draft.email);
+    setOrganizationNumber(draft.organizationNumber);
+    setOrganizationCompanyName(draft.organizationCompanyName);
+    setOrganizationValidatedNumber(draft.organizationValidatedNumber);
+    setPaidCommercialSetupSignature(draft.paidCommercialSetupSignature);
+    setContentProducerStep(draft.contentProducerStep);
+    setProductionTeamStep(draft.productionTeamStep);
+    setProductionTeamMembers(
+      draft.productionTeamMembers.length > 0
+        ? draft.productionTeamMembers
+        : createInitialTeamMembers(),
+    );
+  }, [clientPortalIntent, open, requiresCommercialSetup, talentPortalIntent]);
+
+  useEffect(() => {
     if (loginPersona === 'content_producer') {
       if (!selectedRole) {
         if (!isStepwiseContentProducerFlow) {
@@ -1945,6 +2180,58 @@ export default function LoginDialog({
       return next;
     });
   }, [selectedRole]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    if (!requiresCommercialSetup) {
+      clearRoleRoomCommercialDraft();
+      return;
+    }
+
+    if (!loginPersona && !selectedRole && !organizationNumber.trim()) {
+      clearRoleRoomCommercialDraft();
+      return;
+    }
+
+    writeRoleRoomCommercialDraft({
+      loginPersona,
+      selectedRole,
+      email,
+      organizationNumber,
+      organizationCompanyName,
+      organizationValidatedNumber,
+      paidCommercialSetupSignature,
+      contentProducerStep,
+      productionTeamStep,
+      productionTeamMembers,
+    });
+  }, [
+    contentProducerStep,
+    email,
+    loginPersona,
+    open,
+    organizationCompanyName,
+    organizationNumber,
+    organizationValidatedNumber,
+    paidCommercialSetupSignature,
+    productionTeamMembers,
+    productionTeamStep,
+    requiresCommercialSetup,
+    selectedRole,
+  ]);
+
+  useEffect(() => {
+    if (
+      paidCommercialSetupSignature
+      && commercialSetupSignature
+      && paidCommercialSetupSignature !== commercialSetupSignature
+    ) {
+      setCommercialPaymentNotice(null);
+    }
+  }, [commercialSetupSignature, paidCommercialSetupSignature]);
 
   useEffect(() => {
     if (!open || !requiresCommercialSetup || !effectiveLoginPersona) {
@@ -2111,30 +2398,7 @@ export default function LoginDialog({
       return null;
     }
 
-    const normalizedMembers = productionTeamMembers
-      .map((member, index) => {
-        const roleLabel = allRoles.find((entry) => entry.id === member.roleId)?.label || member.roleId;
-        return {
-          name: member.name.trim(),
-          email: member.email.trim().toLowerCase(),
-          roleId: member.roleId,
-          roleLabel,
-          isLeader: index === 0,
-        };
-      })
-      .filter((member) => member.name && member.email && member.roleId);
-
-    const plan = getCommercialSubscriptionPlan(persona);
-    const payload = {
-      persona,
-      organizationNumber: normalizedOrganizationNumber,
-      companyName: organizationCompanyName.trim(),
-      selectedRole,
-      planId: plan.planId,
-      planName: plan.planName,
-      monthlyTotalExVat: planMonthlyTotal,
-      teamMembers: normalizedMembers,
-    };
+    const payload = buildCommercialSetupPayload(persona);
     const signature = JSON.stringify(payload);
     if (persistedCommercialSetupRef.current === signature) {
       return null;
@@ -2154,14 +2418,133 @@ export default function LoginDialog({
     }
 
     persistedCommercialSetupRef.current = signature;
+    if (result.paymentCompleted) {
+      setPaidCommercialSetupSignature(signature);
+    }
     return result;
   }, [
-    normalizedOrganizationNumber,
-    organizationCompanyName,
-    planMonthlyTotal,
-    productionTeamMembers,
+    buildCommercialSetupPayload,
     requiresCommercialSetup,
+  ]);
+
+  const markCommercialPaymentComplete = useCallback((
+    signature: string,
+    options?: {
+      message?: string;
+      severity?: CommercialPaymentNotice['severity'];
+    },
+  ) => {
+    setPaidCommercialSetupSignature(signature);
+    setCommercialPaymentNotice({
+      severity: options?.severity || 'success',
+      message:
+        options?.message ||
+        'Betalingen er registrert. Du kan nå fortsette til innlogging.',
+    });
+  }, []);
+
+  const handleCommercialCheckout = useCallback(async () => {
+    if (commercialPaymentPending || loading) {
+      return;
+    }
+
+    const persona = effectiveLoginPersona;
+    if (!persona || persona === 'education_institution') {
+      setError('Velg Produksjonsteam eller Innholdsprodusent før du går til betaling.');
+      return;
+    }
+    if (!validateCommercialSetup(persona)) {
+      return;
+    }
+
+    setCommercialPaymentPending(true);
+    setCommercialPaymentNotice(null);
+    setError('');
+
+    try {
+      writeRoleRoomCommercialDraft({
+        loginPersona,
+        selectedRole,
+        email,
+        organizationNumber,
+        organizationCompanyName,
+        organizationValidatedNumber,
+        paidCommercialSetupSignature,
+        contentProducerStep,
+        productionTeamStep,
+        productionTeamMembers,
+      });
+
+      const persisted = await persistCommercialSetup(persona);
+      if (persisted?.paymentCompleted) {
+        markCommercialPaymentComplete(commercialSetupSignature, {
+          message: 'Betaling er allerede registrert på dette teamoppsettet.',
+        });
+        return;
+      }
+
+      const payload = buildCommercialSetupPayload(persona);
+      const browserOrigin = typeof window !== 'undefined' ? window.location.origin : undefined;
+      const returnPath = typeof window !== 'undefined'
+        ? getRoleRoomReturnPath(window.location)
+        : '/';
+
+      const response = await fetch(ROLE_ROOM_COMMERCIAL_CHECKOUT_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...payload,
+          browserOrigin,
+          returnPath,
+        }),
+      });
+      const result = await response.json() as RoleRoomCommercialCheckoutResponse;
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Kunne ikke starte Stripe Checkout');
+      }
+
+      if (result.alreadyPaid || result.paymentCompleted) {
+        markCommercialPaymentComplete(commercialSetupSignature, {
+          message: 'Betalingen er allerede registrert på dette teamoppsettet.',
+        });
+        return;
+      }
+
+      if (!result.checkoutUrl) {
+        throw new Error('Mangler checkout-url fra Stripe Checkout');
+      }
+
+      window.location.assign(result.checkoutUrl);
+    } catch (checkoutError) {
+      setError(
+        checkoutError instanceof Error
+          ? checkoutError.message
+          : 'Kunne ikke starte Stripe Checkout',
+      );
+    } finally {
+      setCommercialPaymentPending(false);
+    }
+  }, [
+    buildCommercialSetupPayload,
+    commercialPaymentPending,
+    commercialSetupSignature,
+    contentProducerStep,
+    effectiveLoginPersona,
+    email,
+    loading,
+    markCommercialPaymentComplete,
+    organizationCompanyName,
+    organizationNumber,
+    organizationValidatedNumber,
+    paidCommercialSetupSignature,
+    persistCommercialSetup,
+    productionTeamMembers,
+    productionTeamStep,
     selectedRole,
+    validateCommercialSetup,
   ]);
 
   const handleEducationInquirySubmit = useCallback(async () => {
@@ -2232,6 +2615,88 @@ export default function LoginDialog({
     validateCommercialSetup,
   ]);
 
+  useEffect(() => {
+    if (!open || typeof window === 'undefined') {
+      return;
+    }
+
+    const url = new URL(window.location.href);
+    const checkoutStatus = url.searchParams.get('rrCheckout');
+    const sessionId = url.searchParams.get('session_id');
+
+    if (checkoutStatus === 'cancel') {
+      if (handledCheckoutSessionRef.current === 'cancel') {
+        return;
+      }
+      handledCheckoutSessionRef.current = 'cancel';
+      setCommercialPaymentNotice({
+        severity: 'warning',
+        message: 'Betalingen ble avbrutt. Du kan fortsette når du er klar.',
+      });
+      clearCommercialCheckoutParams();
+      return;
+    }
+
+    if (
+      checkoutStatus !== 'success'
+      || !sessionId
+      || !commercialSetupSignature
+      || handledCheckoutSessionRef.current === sessionId
+    ) {
+      return;
+    }
+
+    handledCheckoutSessionRef.current = sessionId;
+    setCommercialPaymentPending(true);
+    setCommercialPaymentNotice(null);
+    setError('');
+
+    void (async () => {
+      try {
+        const response = await fetch(
+          `${ROLE_ROOM_COMMERCIAL_SESSION_STATUS_ENDPOINT}?sessionId=${encodeURIComponent(sessionId)}`,
+        );
+        const result = await response.json() as RoleRoomCommercialSessionStatusResponse;
+
+        if (!response.ok || !result.success) {
+          throw new Error(result.error || 'Kunne ikke verifisere Stripe-betalingen');
+        }
+
+        if (!result.paymentCompleted) {
+          setCommercialPaymentNotice({
+            severity: 'info',
+            message: 'Stripe-betalingen behandles fortsatt. Oppdater siden om noen sekunder hvis statusen ikke endrer seg.',
+          });
+          return;
+        }
+
+        if (effectiveLoginPersona === 'content_producer') {
+          setContentProducerStep('auth');
+        }
+        if (effectiveLoginPersona === 'production_team') {
+          setProductionTeamStep('auth');
+        }
+
+        markCommercialPaymentComplete(commercialSetupSignature);
+      } catch (sessionError) {
+        setError(
+          sessionError instanceof Error
+            ? sessionError.message
+            : 'Kunne ikke verifisere Stripe-betalingen',
+        );
+      } finally {
+        clearCommercialCheckoutParams();
+        setCommercialPaymentPending(false);
+      }
+    })();
+  }, [
+    clearCommercialCheckoutParams,
+    commercialSetupSignature,
+    effectiveLoginPersona,
+    markCommercialPaymentComplete,
+    open,
+  ]);
+
   /* submit */
   const handleLogin = useCallback(async () => {
     if (loading) return;
@@ -2260,6 +2725,10 @@ export default function LoginDialog({
     if (!validateCommercialSetup(effectiveLoginPersona)) {
       return;
     }
+    if (isCommercialPaymentRequired && !isCommercialPaymentSatisfied) {
+      setError('Aktiver planen i Stripe før du logger inn.');
+      return;
+    }
 
     setLoading(true);
     setError('');
@@ -2282,6 +2751,7 @@ export default function LoginDialog({
       };
       await authSessionService.setAdminUser(mockUser);
       await authSessionService.setCurrentUserId(String(mockUser.id));
+      clearRoleRoomCommercialDraft();
       onLoginSuccess(mockUser);
     };
 
@@ -2345,6 +2815,7 @@ export default function LoginDialog({
         await authSessionService.setSessionToken(data.token ?? null);
         await authSessionService.setAdminUser(normalizedUser);
         await authSessionService.setCurrentUserId(String(normalizedUser.id));
+        clearRoleRoomCommercialDraft();
         onLoginSuccess(normalizedUser);
       } else {
         setError(data.detail ?? data.error ?? 'Ugyldig e-post eller passord');
@@ -2363,6 +2834,8 @@ export default function LoginDialog({
     isLandingPage,
     onLoginSuccess,
     persistCommercialSetup,
+    isCommercialPaymentRequired,
+    isCommercialPaymentSatisfied,
     shouldUseStandaloneDemoAuth,
     validateCommercialSetup,
   ]);
@@ -2383,6 +2856,10 @@ export default function LoginDialog({
       return;
     }
     if (!validateCommercialSetup(effectiveLoginPersona)) {
+      return;
+    }
+    if (isCommercialPaymentRequired && !isCommercialPaymentSatisfied) {
+      setError('Aktiver planen i Stripe før du logger inn.');
       return;
     }
 
@@ -2421,6 +2898,8 @@ export default function LoginDialog({
     selectedRole,
     clientPortalIntent?.projectId,
     email,
+    isCommercialPaymentRequired,
+    isCommercialPaymentSatisfied,
     persistCommercialSetup,
     validateCommercialSetup,
   ]);
@@ -2648,6 +3127,8 @@ export default function LoginDialog({
               type="button"
               onClick={() => {
                 setLoginPersona(option.id);
+                setContentProducerStep('company');
+                setProductionTeamStep('company');
                 if (option.id === 'content_producer' && !clientPortalIntent) {
                   setSelectedRole('');
                 } else {
@@ -3768,6 +4249,42 @@ export default function LoginDialog({
             maxHeight: isFullScreen ? 'calc(100vh - 132px)' : '100%',
           }}
         >
+          {commercialPaymentNotice && (
+            <Alert
+              icon={false}
+              severity={commercialPaymentNotice.severity}
+              sx={{
+                bgcolor:
+                  commercialPaymentNotice.severity === 'success'
+                    ? 'rgba(38,178,103,0.10)'
+                    : commercialPaymentNotice.severity === 'warning'
+                      ? 'rgba(255,186,73,0.11)'
+                      : 'rgba(97,177,255,0.10)',
+                border:
+                  commercialPaymentNotice.severity === 'success'
+                    ? '1px solid rgba(38,178,103,0.22)'
+                    : commercialPaymentNotice.severity === 'warning'
+                      ? '1px solid rgba(255,186,73,0.24)'
+                      : '1px solid rgba(97,177,255,0.20)',
+                borderRadius: '14px',
+                color:
+                  commercialPaymentNotice.severity === 'success'
+                    ? 'rgba(140,255,194,0.94)'
+                    : commercialPaymentNotice.severity === 'warning'
+                      ? 'rgba(255,222,145,0.95)'
+                      : 'rgba(184,225,255,0.95)',
+                fontSize: '0.83rem',
+                fontWeight: 400,
+                py: 1,
+                px: 1.75,
+                backdropFilter: 'blur(12px)',
+                '& .MuiAlert-message': { width: '100%', textAlign: 'center' },
+              }}
+            >
+              {commercialPaymentNotice.message}
+            </Alert>
+          )}
+
           {/* error */}
           {error && (
             <Alert
@@ -4779,14 +5296,74 @@ export default function LoginDialog({
                         ? 'Fortsett til rolle'
                         : productionTeamStep === 'role'
                           ? 'Fortsett til team'
-                          : 'Fortsett til innlogging'
+                          : 'Fortsett til betaling'
                     ) : (
                       contentProducerStep === 'company'
                         ? 'Fortsett til fokus'
                         : contentProducerStep === 'role'
                           ? 'Fortsett til team'
-                          : 'Fortsett til innlogging'
+                          : 'Fortsett til betaling'
                     )}
+                </Button>
+              )}
+            </Box>
+          )}
+
+          {shouldShowCommercialPaymentGate && (
+            <Box
+              sx={{
+                p: { xs: 1.35, sm: 1.6 },
+                borderRadius: '18px',
+                bgcolor: isCommercialPaymentSatisfied
+                  ? 'rgba(38,178,103,0.08)'
+                  : 'rgba(17,12,34,0.78)',
+                border: isCommercialPaymentSatisfied
+                  ? '1px solid rgba(38,178,103,0.2)'
+                  : '1px solid rgba(160,140,255,0.16)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 1,
+              }}
+            >
+              <Typography sx={{ fontSize: '0.74rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: isCommercialPaymentSatisfied ? 'rgba(142,255,196,0.88)' : 'rgba(184,170,226,0.74)' }}>
+                {isCommercialPaymentSatisfied ? 'Plan aktivert' : 'Stripe Checkout'}
+              </Typography>
+              <Typography sx={{ fontSize: { xs: '0.96rem', sm: '1.02rem' }, fontWeight: 700, color: 'rgba(250,247,255,0.96)' }}>
+                {isCommercialPaymentSatisfied
+                  ? 'Betalingen er registrert. Innloggingen er nå åpen.'
+                  : `Aktiver ${isProductionTeamFlow ? 'produksjonsteamet' : 'innholdsprodusent-planen'} før innlogging.`}
+              </Typography>
+              <Typography sx={{ fontSize: '0.78rem', lineHeight: 1.6, color: 'rgba(210,204,228,0.72)' }}>
+                {isCommercialPaymentSatisfied
+                  ? `Planen er registrert på ${organizationCompanyName || 'bedriften'} med ${formatRoleRoomStatValue(planMonthlyTotal)} kr per måned eks. mva.`
+                  : `Du sendes til Stripe for å aktivere ${billableSeatCount} ${billableSeatCount === 1 ? 'plass' : 'plasser'} til ${formatRoleRoomStatValue(planMonthlyTotal)} kr per måned eks. mva.`}
+              </Typography>
+              {!isCommercialPaymentSatisfied && (
+                <Button
+                  type="button"
+                  onClick={handleCommercialCheckout}
+                  disabled={commercialPaymentPending || loading}
+                  variant="contained"
+                  disableElevation
+                  sx={{
+                    mt: 0.2,
+                    minHeight: 48,
+                    borderRadius: '15px',
+                    textTransform: 'none',
+                    fontSize: '0.88rem',
+                    fontWeight: 700,
+                    bgcolor: '#f6c358',
+                    color: '#171410',
+                    '&:hover': {
+                      bgcolor: '#ffd981',
+                    },
+                    '&.Mui-disabled': {
+                      bgcolor: 'rgba(246,195,88,0.34)',
+                      color: 'rgba(23,20,16,0.48)',
+                    },
+                  }}
+                >
+                  {commercialPaymentPending ? 'Starter Stripe Checkout…' : 'Gå til sikker betaling'}
                 </Button>
               )}
             </Box>

@@ -22,6 +22,7 @@ import nodemailer from "nodemailer";
 import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 import { load as loadHtml } from "cheerio";
+import Stripe from "stripe";
 import {
   GetObjectCommand,
   HeadObjectCommand,
@@ -356,6 +357,90 @@ const projectFileUpload = multer({
 });
 
 const app = express();
+
+app.post(
+  "/api/role-room/billing/webhook",
+  express.raw({ type: "application/json" }),
+  async (req, res) => {
+    const stripe = getRoleRoomStripeClient();
+    if (!stripe) {
+      return res.status(503).json({
+        error: "Stripe er ikke konfigurert på serveren.",
+      });
+    }
+
+    const signatureHeader = req.headers["stripe-signature"];
+    const webhookSecret = getRoleRoomStripeWebhookSecret();
+    const rawBody = Buffer.isBuffer(req.body)
+      ? req.body
+      : Buffer.from(String(req.body ?? ""), "utf8");
+
+    let event: Stripe.Event;
+    try {
+      if (webhookSecret) {
+        if (typeof signatureHeader !== "string" || !signatureHeader.trim()) {
+          return res.status(400).json({
+            error: "Mangler stripe-signature-header.",
+          });
+        }
+        event = stripe.webhooks.constructEvent(
+          rawBody,
+          signatureHeader,
+          webhookSecret,
+        );
+      } else if (process.env.NODE_ENV === "production") {
+        return res.status(503).json({
+          error: "Stripe webhook-secret mangler på serveren.",
+        });
+      } else {
+        event = JSON.parse(rawBody.toString("utf8")) as Stripe.Event;
+      }
+    } catch (error) {
+      console.error("Role Room Stripe webhook signature error:", error);
+      return res.status(400).json({
+        error: "Kunne ikke verifisere Stripe-webhooken.",
+      });
+    }
+
+    try {
+      const eventTimestamp = event.created
+        ? new Date(event.created * 1000).toISOString()
+        : new Date().toISOString();
+
+      switch (event.type) {
+        case "checkout.session.completed":
+        case "checkout.session.async_payment_succeeded":
+          await syncRoleRoomCommercialStripeCheckoutSession(
+            event.data.object as Stripe.Checkout.Session,
+            eventTimestamp,
+          );
+          break;
+        case "invoice.paid":
+          await syncRoleRoomCommercialStripeInvoice(
+            event.data.object as Stripe.Invoice,
+            eventTimestamp,
+          );
+          break;
+        case "invoice.payment_failed":
+        case "customer.subscription.deleted":
+          await clearRoleRoomCommercialStripeSubscription(
+            event.data.object as Stripe.Invoice | Stripe.Subscription,
+          );
+          break;
+        default:
+          break;
+      }
+
+      return res.json({ received: true });
+    } catch (error) {
+      console.error("Role Room Stripe webhook handling error:", error);
+      return res.status(500).json({
+        error: "Kunne ikke behandle Stripe-webhooken.",
+      });
+    }
+  },
+);
+
 const PORT = Number(process.env.PORT) || 3003;
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -18721,6 +18806,7 @@ async function updateInviteRequestPaymentState(input: {
   amountMajor: number;
   transactionId: string;
   completedAt: string;
+  journeyStatus?: string | null;
 }) {
   if (!(await hasTable("invite_requests"))) {
     return null;
@@ -18764,6 +18850,9 @@ async function updateInviteRequestPaymentState(input: {
   }
   if (inviteColumns.has("payment_timestamp")) {
     pushValue("payment_timestamp", input.completedAt);
+  }
+  if (inviteColumns.has("user_journey_status") && input.journeyStatus) {
+    pushValue("user_journey_status", input.journeyStatus);
   }
   if (
     inviteColumns.has("registered_user_id") &&
@@ -26243,6 +26332,749 @@ function getRoleRoomCommercialPlan(persona: RoleRoomCommercialPersona) {
   };
 }
 
+class RoleRoomCommercialAccessError extends Error {
+  statusCode: number;
+
+  constructor(statusCode: number, message: string) {
+    super(message);
+    this.statusCode = statusCode;
+  }
+}
+
+type RoleRoomCommercialAccessResult = {
+  persona: RoleRoomCommercialPersona;
+  organizationNumber: string;
+  companyName: string;
+  plan: ReturnType<typeof getRoleRoomCommercialPlan>;
+  teamLead: RoleRoomCommercialAccessPayloadMember;
+  members: RoleRoomCommercialAccessPayloadMember[];
+  monthlyTotalExVat: number;
+  paymentCompleted: boolean;
+  requestIds: string[];
+  requests: Record<string, unknown>[];
+};
+
+type RoleRoomCommercialCheckoutSessionRecord = {
+  sessionId: string;
+  requestIds: string[];
+  organizationNumber: string;
+  companyName: string;
+  persona: RoleRoomCommercialPersona;
+  planId: string;
+  planName: string;
+  teamLeadEmail: string;
+  memberEmails: string[];
+  monthlyTotalExVat: number;
+  seatPriceExVat: number;
+  billableSeatCount: number;
+  paymentCompleted: boolean;
+  checkoutStatus: "created" | "completed";
+  paymentTimestamp: string | null;
+  transactionId: string | null;
+  stripeSubscriptionId: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+const ROLE_ROOM_STRIPE_CHECKOUT_RECORD_PREFIX =
+  "role-room:billing:checkout-session:";
+const ROLE_ROOM_STRIPE_SUBSCRIPTION_RECORD_PREFIX =
+  "role-room:billing:subscription:";
+
+let roleRoomStripeClient: Stripe | null | undefined;
+
+function roleRoomCommercialCheckoutSessionKey(sessionId: string) {
+  return `${ROLE_ROOM_STRIPE_CHECKOUT_RECORD_PREFIX}${sessionId}`;
+}
+
+function roleRoomCommercialSubscriptionKey(subscriptionId: string) {
+  return `${ROLE_ROOM_STRIPE_SUBSCRIPTION_RECORD_PREFIX}${subscriptionId}`;
+}
+
+function getRoleRoomStripeSecretKey() {
+  return normalizeMailConfigValue(
+    process.env.STRIPE_SECRET_KEY || process.env.STRIPE_API_KEY,
+  );
+}
+
+function getRoleRoomStripeWebhookSecret() {
+  return normalizeMailConfigValue(process.env.STRIPE_WEBHOOK_SECRET);
+}
+
+function getRoleRoomStripePriceId(persona: RoleRoomCommercialPersona) {
+  if (persona === "production_team") {
+    return normalizeMailConfigValue(
+      process.env.ROLE_ROOM_STRIPE_PRICE_ID_PRODUCTION_TEAM,
+    );
+  }
+
+  return normalizeMailConfigValue(
+    process.env.ROLE_ROOM_STRIPE_PRICE_ID_CONTENT_PRODUCER,
+  );
+}
+
+function getRoleRoomStripeClient() {
+  const secretKey = getRoleRoomStripeSecretKey();
+  if (!secretKey) {
+    return null;
+  }
+  if (roleRoomStripeClient) {
+    return roleRoomStripeClient;
+  }
+
+  roleRoomStripeClient = new Stripe(secretKey);
+  return roleRoomStripeClient;
+}
+
+function getDefaultRoleRoomPublicOrigin() {
+  return (
+    normalizeMailConfigValue(process.env.ROLE_ROOM_PUBLIC_URL) ||
+    normalizeMailConfigValue(process.env.PUBLIC_APP_URL) ||
+    "https://theroleroom.com"
+  );
+}
+
+function normalizeRoleRoomBrowserOrigin(value: unknown) {
+  const raw = typeof value === "string" ? value.trim() : "";
+  if (!raw) {
+    return getDefaultRoleRoomPublicOrigin();
+  }
+
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return getDefaultRoleRoomPublicOrigin();
+    }
+    return parsed.origin;
+  } catch {
+    return getDefaultRoleRoomPublicOrigin();
+  }
+}
+
+function buildRoleRoomCheckoutReturnUrl(input: {
+  browserOrigin: string;
+  returnPath?: string | null;
+  status: "success" | "cancel";
+  includeSessionId?: boolean;
+}) {
+  const rawPath =
+    typeof input.returnPath === "string" && input.returnPath.trim().startsWith("/")
+      ? input.returnPath.trim()
+      : "/";
+  const url = new URL(rawPath, input.browserOrigin);
+  url.searchParams.set("rrCheckout", input.status);
+  if (input.includeSessionId) {
+    url.searchParams.set("session_id", "{CHECKOUT_SESSION_ID}");
+  } else {
+    url.searchParams.delete("session_id");
+  }
+  return url.toString();
+}
+
+function doesRoleRoomCommercialPaymentMatchCurrentSetup(input: {
+  inviteRequest: Record<string, unknown> | null | undefined;
+  planId: string;
+  monthlyTotalExVat: number;
+}) {
+  const selectedPlan = normalizeInvitePlanId(
+    input.inviteRequest?.selected_plan || input.inviteRequest?.plan_name,
+  );
+  const paymentCompleted = Boolean(input.inviteRequest?.payment_completed);
+  const paymentAmount =
+    input.inviteRequest?.payment_amount != null
+      ? Number(input.inviteRequest.payment_amount)
+      : input.inviteRequest?.plan_price != null
+        ? Number(input.inviteRequest.plan_price)
+        : null;
+
+  return (
+    paymentCompleted &&
+    selectedPlan === input.planId &&
+    typeof paymentAmount === "number" &&
+    Number.isFinite(paymentAmount) &&
+    Math.abs(paymentAmount - input.monthlyTotalExVat) < 0.0001
+  );
+}
+
+async function resetRoleRoomCommercialInvitePaymentState(
+  inviteRequestId: string,
+  journeyStatus = "role_room_pending_payment",
+) {
+  if (!(await hasTable("invite_requests"))) {
+    return null;
+  }
+
+  const inviteColumns = await getTableColumns("invite_requests");
+  const updates: string[] = [];
+  const values: unknown[] = [];
+  const pushValue = (column: string, value: unknown) => {
+    values.push(value);
+    updates.push(`${column} = $${values.length}`);
+  };
+
+  if (inviteColumns.has("payment_completed")) {
+    pushValue("payment_completed", false);
+  }
+  if (inviteColumns.has("payment_transaction_id")) {
+    pushValue("payment_transaction_id", null);
+  }
+  if (inviteColumns.has("payment_amount")) {
+    pushValue("payment_amount", null);
+  }
+  if (inviteColumns.has("payment_timestamp")) {
+    pushValue("payment_timestamp", null);
+  }
+  if (inviteColumns.has("user_journey_status")) {
+    pushValue("user_journey_status", journeyStatus);
+  }
+  if (inviteColumns.has("updated_at")) {
+    updates.push("updated_at = NOW()");
+  }
+
+  if (updates.length === 0) {
+    return null;
+  }
+
+  values.push(inviteRequestId);
+  const result = await pool.query(
+    `UPDATE invite_requests
+     SET ${updates.join(", ")}
+     WHERE id = $${values.length}
+     RETURNING *`,
+    values,
+  );
+
+  return result.rows[0] || null;
+}
+
+async function writeRoleRoomCommercialCheckoutSessionRecord(
+  record: RoleRoomCommercialCheckoutSessionRecord,
+) {
+  await compatStoreSet(
+    roleRoomCommercialCheckoutSessionKey(record.sessionId),
+    record,
+  );
+  if (record.stripeSubscriptionId) {
+    await compatStoreSet(
+      roleRoomCommercialSubscriptionKey(record.stripeSubscriptionId),
+      record,
+    );
+  }
+}
+
+async function readRoleRoomCommercialCheckoutSessionRecord(
+  sessionId: string,
+): Promise<RoleRoomCommercialCheckoutSessionRecord | null> {
+  return compatStoreGet<RoleRoomCommercialCheckoutSessionRecord>(
+    roleRoomCommercialCheckoutSessionKey(sessionId),
+  );
+}
+
+async function readRoleRoomCommercialCheckoutRecordBySubscriptionId(
+  subscriptionId: string,
+): Promise<RoleRoomCommercialCheckoutSessionRecord | null> {
+  return compatStoreGet<RoleRoomCommercialCheckoutSessionRecord>(
+    roleRoomCommercialSubscriptionKey(subscriptionId),
+  );
+}
+
+function getStripeCheckoutSessionSubscriptionId(
+  session: Stripe.Checkout.Session,
+) {
+  const subscription = session.subscription;
+  if (typeof subscription === "string") {
+    return subscription;
+  }
+  if (subscription && typeof subscription === "object" && "id" in subscription) {
+    return String(subscription.id || "");
+  }
+  return "";
+}
+
+function getStripeCheckoutSessionTransactionId(
+  session: Stripe.Checkout.Session,
+) {
+  const subscriptionId = getStripeCheckoutSessionSubscriptionId(session);
+  if (subscriptionId) {
+    return subscriptionId;
+  }
+
+  const paymentIntent = session.payment_intent;
+  if (typeof paymentIntent === "string") {
+    return paymentIntent;
+  }
+  if (paymentIntent && typeof paymentIntent === "object" && "id" in paymentIntent) {
+    return String(paymentIntent.id || "");
+  }
+  return session.id;
+}
+
+function isRoleRoomStripeSessionPaid(session: Stripe.Checkout.Session) {
+  if (session.payment_status === "paid") {
+    return true;
+  }
+
+  const subscription = session.subscription;
+  if (subscription && typeof subscription === "object" && "status" in subscription) {
+    return (
+      subscription.status === "active" || subscription.status === "trialing"
+    );
+  }
+
+  return false;
+}
+
+function deriveRoleRoomCommercialCheckoutRecordFromStripeSession(
+  session: Stripe.Checkout.Session,
+): RoleRoomCommercialCheckoutSessionRecord | null {
+  const metadata = session.metadata || {};
+  const persona = normalizeRoleRoomCommercialPersona(metadata.rr_persona);
+  const organizationNumber = String(metadata.rr_org_number || "").replace(
+    /\D/g,
+    "",
+  );
+  const planId = normalizeMailConfigValue(metadata.rr_plan_id);
+  const planName = normalizeMailConfigValue(metadata.rr_plan_name);
+  const teamLeadEmail = normalizeMailConfigValue(
+    metadata.rr_team_lead_email,
+  ).toLowerCase();
+  const companyName = normalizeMailConfigValue(metadata.rr_company_name);
+  const monthlyTotalExVat = Number(metadata.rr_monthly_total_ex_vat || 0);
+  const seatPriceExVat = Number(metadata.rr_seat_price_ex_vat || 0);
+  const billableSeatCount = Number(metadata.rr_billable_seat_count || 0);
+
+  if (
+    !persona ||
+    !organizationNumber ||
+    !planId ||
+    !planName ||
+    !teamLeadEmail ||
+    !Number.isFinite(monthlyTotalExVat) ||
+    monthlyTotalExVat <= 0
+  ) {
+    return null;
+  }
+
+  const memberEmails = normalizeMailConfigValue(metadata.rr_member_emails)
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+
+  const createdAt = new Date(
+    (session.created || Math.floor(Date.now() / 1000)) * 1000,
+  ).toISOString();
+
+  return {
+    sessionId: session.id,
+    requestIds: [],
+    organizationNumber,
+    companyName,
+    persona,
+    planId,
+    planName,
+    teamLeadEmail,
+    memberEmails,
+    monthlyTotalExVat,
+    seatPriceExVat:
+      Number.isFinite(seatPriceExVat) && seatPriceExVat > 0
+        ? seatPriceExVat
+        : monthlyTotalExVat,
+    billableSeatCount:
+      Number.isFinite(billableSeatCount) && billableSeatCount > 0
+        ? billableSeatCount
+        : 1,
+    paymentCompleted: isRoleRoomStripeSessionPaid(session),
+    checkoutStatus: isRoleRoomStripeSessionPaid(session)
+      ? "completed"
+      : "created",
+    paymentTimestamp: null,
+    transactionId: null,
+    stripeSubscriptionId: getStripeCheckoutSessionSubscriptionId(session) || null,
+    createdAt,
+    updatedAt: createdAt,
+  };
+}
+
+async function getRoleRoomCommercialInviteRequestsForBillingRecord(
+  record: RoleRoomCommercialCheckoutSessionRecord,
+) {
+  if (!(await hasTable("invite_requests"))) {
+    return [] as Record<string, unknown>[];
+  }
+
+  if (record.requestIds.length > 0) {
+    const result = await pool.query(
+      `SELECT *
+       FROM invite_requests
+       WHERE id::text = ANY($1::text[])`,
+      [record.requestIds],
+    );
+    return result.rows as Record<string, unknown>[];
+  }
+
+  const result = await pool.query(
+    `SELECT *
+     FROM invite_requests
+     WHERE organization_number = $1
+       AND LOWER(COALESCE(source, '')) = 'role_room'
+       AND LOWER(COALESCE(selected_plan, '')) = LOWER($2)
+     ORDER BY created_at DESC`,
+    [record.organizationNumber, record.planId],
+  );
+
+  return (result.rows as Record<string, unknown>[]).filter((row) => {
+    const snapshot = parseRoleRoomCommercialAccessSnapshot(row.message);
+    if (!snapshot) {
+      return false;
+    }
+    return (
+      snapshot.persona === record.persona &&
+      snapshot.teamLeadEmail === record.teamLeadEmail &&
+      snapshot.organizationNumber === record.organizationNumber &&
+      snapshot.subscriptionType === record.planId &&
+      typeof snapshot.monthlyTotalExVat === "number" &&
+      Math.abs(snapshot.monthlyTotalExVat - record.monthlyTotalExVat) < 0.0001
+    );
+  });
+}
+
+async function markRoleRoomCommercialCheckoutRecordPaid(
+  record: RoleRoomCommercialCheckoutSessionRecord,
+  input: {
+    transactionId: string;
+    completedAt: string;
+    amountMajor: number;
+    stripeSubscriptionId?: string | null;
+  },
+) {
+  const inviteRequests =
+    await getRoleRoomCommercialInviteRequestsForBillingRecord(record);
+
+  const requestIds: string[] = [];
+  for (const inviteRequest of inviteRequests) {
+    const requestId = toAdminString(inviteRequest.id);
+    const email = toAdminString(inviteRequest.email);
+    if (!requestId && !email) {
+      continue;
+    }
+
+    const updated = await updateInviteRequestPaymentState({
+      requestId,
+      email,
+      userId: "guest",
+      planId: record.planId,
+      planName: record.planName,
+      amountMajor: input.amountMajor,
+      transactionId: input.transactionId,
+      completedAt: input.completedAt,
+      journeyStatus: "role_room_payment_completed",
+    });
+
+    const updatedId = toAdminString(updated?.id) || requestId;
+    if (updatedId) {
+      requestIds.push(updatedId);
+    }
+  }
+
+  const nextRecord: RoleRoomCommercialCheckoutSessionRecord = {
+    ...record,
+    requestIds: requestIds.length > 0 ? requestIds : record.requestIds,
+    paymentCompleted: true,
+    checkoutStatus: "completed",
+    paymentTimestamp: input.completedAt,
+    transactionId: input.transactionId,
+    stripeSubscriptionId:
+      input.stripeSubscriptionId || record.stripeSubscriptionId,
+    updatedAt: new Date().toISOString(),
+  };
+  await writeRoleRoomCommercialCheckoutSessionRecord(nextRecord);
+  return nextRecord;
+}
+
+async function markRoleRoomCommercialCheckoutRecordPending(
+  record: RoleRoomCommercialCheckoutSessionRecord,
+) {
+  const inviteRequests =
+    await getRoleRoomCommercialInviteRequestsForBillingRecord(record);
+
+  const requestIds: string[] = [];
+  for (const inviteRequest of inviteRequests) {
+    const requestId = toAdminString(inviteRequest.id);
+    if (!requestId) {
+      continue;
+    }
+    await resetRoleRoomCommercialInvitePaymentState(requestId);
+    requestIds.push(requestId);
+  }
+
+  const nextRecord: RoleRoomCommercialCheckoutSessionRecord = {
+    ...record,
+    requestIds: requestIds.length > 0 ? requestIds : record.requestIds,
+    paymentCompleted: false,
+    checkoutStatus: "created",
+    paymentTimestamp: null,
+    transactionId: null,
+    updatedAt: new Date().toISOString(),
+  };
+  await writeRoleRoomCommercialCheckoutSessionRecord(nextRecord);
+  return nextRecord;
+}
+
+async function syncRoleRoomCommercialStripeCheckoutSession(
+  session: Stripe.Checkout.Session,
+  completedAtOverride?: string | null,
+) {
+  const storedRecord =
+    (await readRoleRoomCommercialCheckoutSessionRecord(session.id)) ||
+    deriveRoleRoomCommercialCheckoutRecordFromStripeSession(session);
+
+  if (!storedRecord) {
+    return null;
+  }
+
+  if (!isRoleRoomStripeSessionPaid(session)) {
+    await writeRoleRoomCommercialCheckoutSessionRecord({
+      ...storedRecord,
+      stripeSubscriptionId:
+        getStripeCheckoutSessionSubscriptionId(session) ||
+        storedRecord.stripeSubscriptionId,
+      updatedAt: new Date().toISOString(),
+    });
+    return storedRecord;
+  }
+
+  return markRoleRoomCommercialCheckoutRecordPaid(storedRecord, {
+    transactionId: getStripeCheckoutSessionTransactionId(session),
+    completedAt: completedAtOverride || new Date().toISOString(),
+    amountMajor: storedRecord.monthlyTotalExVat,
+    stripeSubscriptionId:
+      getStripeCheckoutSessionSubscriptionId(session) ||
+      storedRecord.stripeSubscriptionId,
+  });
+}
+
+async function syncRoleRoomCommercialStripeInvoice(
+  invoice: Stripe.Invoice,
+  completedAtOverride?: string | null,
+) {
+  const subscriptionId =
+    typeof invoice.subscription === "string"
+      ? invoice.subscription
+      : invoice.subscription && typeof invoice.subscription === "object"
+        ? String(invoice.subscription.id || "")
+        : "";
+  if (!subscriptionId) {
+    return null;
+  }
+
+  const storedRecord =
+    await readRoleRoomCommercialCheckoutRecordBySubscriptionId(subscriptionId);
+  if (!storedRecord) {
+    return null;
+  }
+
+  return markRoleRoomCommercialCheckoutRecordPaid(storedRecord, {
+    transactionId: subscriptionId,
+    completedAt: completedAtOverride || new Date().toISOString(),
+    amountMajor:
+      typeof invoice.amount_paid === "number" && Number.isFinite(invoice.amount_paid)
+        ? invoice.amount_paid / 100
+        : storedRecord.monthlyTotalExVat,
+    stripeSubscriptionId: subscriptionId,
+  });
+}
+
+async function clearRoleRoomCommercialStripeSubscription(
+  source: Stripe.Invoice | Stripe.Subscription,
+) {
+  const subscriptionId =
+    "subscription" in source
+      ? typeof source.subscription === "string"
+        ? source.subscription
+        : source.subscription && typeof source.subscription === "object"
+          ? String(source.subscription.id || "")
+          : ""
+      : source.id;
+
+  if (!subscriptionId) {
+    return null;
+  }
+
+  const storedRecord =
+    await readRoleRoomCommercialCheckoutRecordBySubscriptionId(subscriptionId);
+  if (!storedRecord) {
+    return null;
+  }
+
+  return markRoleRoomCommercialCheckoutRecordPending(storedRecord);
+}
+
+async function ensureRoleRoomCommercialAccess(input: {
+  persona: unknown;
+  organizationNumber: unknown;
+  companyName?: unknown;
+  teamMembers?: unknown;
+}) {
+  const persona = normalizeRoleRoomCommercialPersona(input.persona);
+  if (!persona) {
+    throw new RoleRoomCommercialAccessError(
+      400,
+      "persona må være production_team eller content_producer",
+    );
+  }
+
+  const organizationNumber = String(input.organizationNumber || "").replace(
+    /\D/g,
+    "",
+  );
+  if (!isValidNorwegianOrgNumber(organizationNumber)) {
+    throw new RoleRoomCommercialAccessError(
+      400,
+      "Organisasjonsnummer må være et gyldig norsk organisasjonsnummer.",
+    );
+  }
+
+  const brregLookup = await lookupInviteRequestBrregCompany(organizationNumber);
+  if (brregLookup.lookupStatus === "not_found") {
+    throw new RoleRoomCommercialAccessError(
+      400,
+      "Organisasjonsnummeret ble ikke funnet i Brønnøysundregistrene.",
+    );
+  }
+
+  const plan = getRoleRoomCommercialPlan(persona);
+  const membersRaw = Array.isArray(input.teamMembers)
+    ? (input.teamMembers as Array<Record<string, unknown>>)
+    : [];
+
+  const normalizedMembers = membersRaw
+    .map((entry, index) => {
+      const name = toAdminString(entry?.name)?.trim() || "";
+      const email = toAdminString(entry?.email)?.trim().toLowerCase() || "";
+      const roleId = toAdminString(entry?.roleId)?.trim() || "";
+      const roleLabel = toAdminString(entry?.roleLabel)?.trim() || null;
+      if (!name || !email || !roleId) {
+        return null;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return null;
+      }
+      return {
+        name,
+        email,
+        roleId,
+        roleLabel,
+        isLeader: entry?.isLeader === true || index === 0,
+      } satisfies RoleRoomCommercialAccessPayloadMember;
+    })
+    .filter(
+      (entry): entry is RoleRoomCommercialAccessPayloadMember => Boolean(entry),
+    );
+
+  const dedupedMembers = Array.from(
+    new Map(
+      normalizedMembers.map((member) => [member.email, member] as const),
+    ).values(),
+  );
+
+  if (dedupedMembers.length < plan.minimumSeats) {
+    throw new RoleRoomCommercialAccessError(
+      400,
+      persona === "production_team"
+        ? "Produksjonsteam må ha minst 3 personer."
+        : "Innholdsprodusent må ha minst 1 person.",
+    );
+  }
+
+  const companyName =
+    brregLookup.company?.name?.trim() ||
+    toAdminString(input.companyName)?.trim() ||
+    `Foretak ${organizationNumber}`;
+  const teamLead =
+    dedupedMembers.find((member) => member.isLeader) || dedupedMembers[0];
+  const monthlyTotalExVat = dedupedMembers.length * plan.seatPriceExVat;
+  const metadata = {
+    kind: "role_room_commercial_access" as const,
+    version: 1,
+    persona,
+    personaLabel: plan.personaLabel,
+    subscriptionType: plan.planId,
+    subscriptionLabel: plan.planName,
+    companyName,
+    organizationNumber,
+    teamLeadName: teamLead.name,
+    teamLeadEmail: teamLead.email,
+    teamSize: dedupedMembers.length,
+    seatPriceExVat: plan.seatPriceExVat,
+    monthlyTotalExVat,
+    taxMode: "ex_vat",
+    members: dedupedMembers,
+  };
+  const serializedMetadata = JSON.stringify(metadata);
+
+  const requests: Record<string, unknown>[] = [];
+  let currentSetupPaid = true;
+
+  for (const member of dedupedMembers) {
+    const existingInvite = await findAdminInviteRequest(member.email, member.email);
+    const currentPaymentCompleted = doesRoleRoomCommercialPaymentMatchCurrentSetup(
+      {
+        inviteRequest: existingInvite,
+        planId: plan.planId,
+        monthlyTotalExVat,
+      },
+    );
+    const existingStatus = toAdminString(existingInvite?.status);
+    const existingJourneyStatus = toAdminString(existingInvite?.user_journey_status);
+    const { firstName, lastName } = splitRoleRoomContactName(member.name);
+
+    if (existingInvite?.id && Boolean(existingInvite.payment_completed) && !currentPaymentCompleted) {
+      await resetRoleRoomCommercialInvitePaymentState(String(existingInvite.id));
+    }
+
+    const inviteRequest = await upsertAdminInviteRequest({
+      email: member.email,
+      firstName,
+      lastName,
+      profession: member.roleId,
+      businessName: companyName,
+      organizationNumber,
+      status:
+        currentPaymentCompleted && existingStatus ? existingStatus : "pending",
+      userJourneyStatus: currentPaymentCompleted
+        ? existingJourneyStatus || "role_room_payment_completed"
+        : "role_room_pending_payment",
+      source: "role_room",
+      selectedPlan: plan.planId,
+      planName: plan.planName,
+      planPrice: monthlyTotalExVat,
+      paymentCompleted: currentPaymentCompleted,
+      message: serializedMetadata,
+    });
+
+    if (!currentPaymentCompleted) {
+      currentSetupPaid = false;
+    }
+    requests.push((inviteRequest as Record<string, unknown> | null) || {});
+  }
+
+  return {
+    persona,
+    organizationNumber,
+    companyName,
+    plan,
+    teamLead,
+    members: dedupedMembers,
+    monthlyTotalExVat,
+    paymentCompleted:
+      currentSetupPaid && requests.length === dedupedMembers.length,
+    requestIds: requests
+      .map((request) => toAdminString(request.id))
+      .filter((value): value is string => Boolean(value)),
+    requests,
+  } satisfies RoleRoomCommercialAccessResult;
+}
+
 type RoleRoomEducationInstitutionType =
   | "upper_secondary"
   | "folk_high_school"
@@ -26584,155 +27416,241 @@ async function sendRoleRoomEducationInquiryAdminEmail(options: {
 
 app.post("/api/role-room/commercial-access", async (req, res) => {
   try {
-    const persona = normalizeRoleRoomCommercialPersona(req.body?.persona);
-    if (!persona) {
-      return res.status(400).json({
-        error: "persona må være production_team eller content_producer",
-      });
-    }
-
-    const organizationNumber = String(req.body?.organizationNumber || "").replace(
-      /\D/g,
-      "",
-    );
-    if (!isValidNorwegianOrgNumber(organizationNumber)) {
-      return res.status(400).json({
-        error: "Organisasjonsnummer må være et gyldig norsk organisasjonsnummer.",
-      });
-    }
-
-    const brregLookup = await lookupInviteRequestBrregCompany(organizationNumber);
-    if (brregLookup.lookupStatus === "not_found") {
-      return res.status(400).json({
-        error:
-          "Organisasjonsnummeret ble ikke funnet i Brønnøysundregistrene.",
-      });
-    }
-
-    const plan = getRoleRoomCommercialPlan(persona);
-    const membersRaw = Array.isArray(req.body?.teamMembers)
-      ? (req.body.teamMembers as Array<Record<string, unknown>>)
-      : [];
-
-    const normalizedMembers = membersRaw
-      .map((entry, index) => {
-        const name = toAdminString(entry?.name)?.trim() || "";
-        const email =
-          toAdminString(entry?.email)?.trim().toLowerCase() || "";
-        const roleId = toAdminString(entry?.roleId)?.trim() || "";
-        const roleLabel = toAdminString(entry?.roleLabel)?.trim() || null;
-        if (!name || !email || !roleId) {
-          return null;
-        }
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-          return null;
-        }
-        return {
-          name,
-          email,
-          roleId,
-          roleLabel,
-          isLeader: entry?.isLeader === true || index === 0,
-        } satisfies RoleRoomCommercialAccessPayloadMember;
-      })
-      .filter(
-        (entry): entry is RoleRoomCommercialAccessPayloadMember =>
-          Boolean(entry),
-      );
-
-    const dedupedMembers = Array.from(
-      new Map(
-        normalizedMembers.map((member) => [member.email, member] as const),
-      ).values(),
-    );
-
-    if (dedupedMembers.length < plan.minimumSeats) {
-      return res.status(400).json({
-        error:
-          persona === "production_team"
-            ? "Produksjonsteam må ha minst 3 personer."
-            : "Innholdsprodusent må ha minst 1 person.",
-      });
-    }
-
-    const companyName =
-      brregLookup.company?.name?.trim() ||
-      toAdminString(req.body?.companyName)?.trim() ||
-      `Foretak ${organizationNumber}`;
-    const teamLead =
-      dedupedMembers.find((member) => member.isLeader) || dedupedMembers[0];
-    const monthlyTotalExVat =
-      dedupedMembers.length * plan.seatPriceExVat;
-    const metadata = {
-      kind: "role_room_commercial_access" as const,
-      version: 1,
-      persona,
-      personaLabel: plan.personaLabel,
-      subscriptionType: plan.planId,
-      subscriptionLabel: plan.planName,
-      companyName,
-      organizationNumber,
-      teamLeadName: teamLead.name,
-      teamLeadEmail: teamLead.email,
-      teamSize: dedupedMembers.length,
-      seatPriceExVat: plan.seatPriceExVat,
-      monthlyTotalExVat,
-      taxMode: "ex_vat",
-      members: dedupedMembers,
-    };
-    const serializedMetadata = JSON.stringify(metadata);
-    const requests = [] as Array<Record<string, unknown> | null>;
-
-    for (const member of dedupedMembers) {
-      const existingInvite = await findAdminInviteRequest(member.email, member.email);
-      const existingPaymentCompleted = Boolean(existingInvite?.payment_completed);
-      const existingStatus = toAdminString(existingInvite?.status);
-      const existingJourneyStatus = toAdminString(existingInvite?.user_journey_status);
-      const { firstName, lastName } = splitRoleRoomContactName(member.name);
-
-      const inviteRequest = await upsertAdminInviteRequest({
-        email: member.email,
-        firstName,
-        lastName,
-        profession: member.roleId,
-        businessName: companyName,
-        organizationNumber,
-        status:
-          existingPaymentCompleted && existingStatus
-            ? existingStatus
-            : "pending",
-        userJourneyStatus:
-          existingPaymentCompleted && existingJourneyStatus
-            ? existingJourneyStatus
-            : "role_room_pending_payment",
-        source: "role_room",
-        selectedPlan: plan.planId,
-        planName: plan.planName,
-        planPrice: monthlyTotalExVat,
-        paymentCompleted: existingPaymentCompleted,
-        message: serializedMetadata,
-      });
-
-      requests.push(inviteRequest as Record<string, unknown> | null);
-    }
+    const access = await ensureRoleRoomCommercialAccess({
+      persona: req.body?.persona,
+      organizationNumber: req.body?.organizationNumber,
+      companyName: req.body?.companyName,
+      teamMembers: req.body?.teamMembers,
+    });
 
     return res.status(201).json({
       success: true,
-      organizationNumber,
-      companyName,
-      planId: plan.planId,
-      planName: plan.planName,
-      monthlyTotalExVat,
-      paymentCompleted: requests.some(
-        (entry) => Boolean(entry?.payment_completed),
-      ),
-      membersRegistered: dedupedMembers.length,
-      teamLeadEmail: teamLead.email,
+      organizationNumber: access.organizationNumber,
+      companyName: access.companyName,
+      planId: access.plan.planId,
+      planName: access.plan.planName,
+      monthlyTotalExVat: access.monthlyTotalExVat,
+      paymentCompleted: access.paymentCompleted,
+      membersRegistered: access.members.length,
+      teamLeadEmail: access.teamLead.email,
     });
   } catch (error) {
     console.error("Error creating Role Room commercial access requests:", error);
+    if (error instanceof RoleRoomCommercialAccessError) {
+      return res.status(error.statusCode).json({
+        error: error.message,
+      });
+    }
     return res.status(500).json({
       error: "Kunne ikke opprette Role Room-tilgangsforespørselen.",
+    });
+  }
+});
+
+app.post("/api/role-room/billing/checkout-session", async (req, res) => {
+  try {
+    const stripe = getRoleRoomStripeClient();
+    if (!stripe) {
+      return res.status(503).json({
+        error:
+          "Stripe Checkout er ikke konfigurert på serveren. Legg inn STRIPE_SECRET_KEY før du fortsetter.",
+      });
+    }
+
+    const access = await ensureRoleRoomCommercialAccess({
+      persona: req.body?.persona,
+      organizationNumber: req.body?.organizationNumber,
+      companyName: req.body?.companyName,
+      teamMembers: req.body?.teamMembers,
+    });
+
+    if (access.paymentCompleted) {
+      return res.status(200).json({
+        success: true,
+        alreadyPaid: true,
+        paymentCompleted: true,
+        organizationNumber: access.organizationNumber,
+        planId: access.plan.planId,
+        planName: access.plan.planName,
+        monthlyTotalExVat: access.monthlyTotalExVat,
+      });
+    }
+
+    const browserOrigin = normalizeRoleRoomBrowserOrigin(req.body?.browserOrigin);
+    const returnPath =
+      typeof req.body?.returnPath === "string" ? req.body.returnPath : "/";
+    const successUrl = buildRoleRoomCheckoutReturnUrl({
+      browserOrigin,
+      returnPath,
+      status: "success",
+      includeSessionId: true,
+    });
+    const cancelUrl = buildRoleRoomCheckoutReturnUrl({
+      browserOrigin,
+      returnPath,
+      status: "cancel",
+      includeSessionId: false,
+    });
+
+    const memberEmails = access.members.map((member) => member.email);
+    const configuredPriceId = getRoleRoomStripePriceId(access.persona);
+    const session = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+      customer_email: access.teamLead.email,
+      billing_address_collection: "auto",
+      allow_promotion_codes: true,
+      locale: "nb",
+      client_reference_id: [
+        access.persona,
+        access.organizationNumber,
+        access.teamLead.email,
+      ].join(":"),
+      line_items: [
+        configuredPriceId
+          ? {
+              quantity: access.members.length,
+              price: configuredPriceId,
+            }
+          : {
+              quantity: access.members.length,
+              price_data: {
+                currency: "nok",
+                unit_amount: Math.round(access.plan.seatPriceExVat * 100),
+                recurring: {
+                  interval: "month",
+                },
+                product_data: {
+                  name: `The Role Room — ${access.plan.planName}`,
+                  description: `${access.companyName} · ${access.members.length} ${
+                    access.members.length === 1 ? "sete" : "seter"
+                  } · eks. mva.`,
+                },
+              },
+            },
+      ],
+      metadata: {
+        rr_persona: access.persona,
+        rr_org_number: access.organizationNumber,
+        rr_company_name: access.companyName,
+        rr_plan_id: access.plan.planId,
+        rr_plan_name: access.plan.planName,
+        rr_stripe_price_id: configuredPriceId || "",
+        rr_team_lead_email: access.teamLead.email,
+        rr_billable_seat_count: String(access.members.length),
+        rr_seat_price_ex_vat: String(access.plan.seatPriceExVat),
+        rr_monthly_total_ex_vat: String(access.monthlyTotalExVat),
+        rr_member_emails: memberEmails.join(","),
+      },
+      subscription_data: {
+        metadata: {
+          rr_persona: access.persona,
+          rr_org_number: access.organizationNumber,
+          rr_company_name: access.companyName,
+          rr_plan_id: access.plan.planId,
+          rr_plan_name: access.plan.planName,
+          rr_team_lead_email: access.teamLead.email,
+        },
+      },
+    });
+
+    if (!session.url) {
+      throw new Error("Stripe Checkout returnerte ingen checkout-url.");
+    }
+
+    const nowIso = new Date().toISOString();
+    await writeRoleRoomCommercialCheckoutSessionRecord({
+      sessionId: session.id,
+      requestIds: access.requestIds,
+      organizationNumber: access.organizationNumber,
+      companyName: access.companyName,
+      persona: access.persona,
+      planId: access.plan.planId,
+      planName: access.plan.planName,
+      teamLeadEmail: access.teamLead.email,
+      memberEmails,
+      monthlyTotalExVat: access.monthlyTotalExVat,
+      seatPriceExVat: access.plan.seatPriceExVat,
+      billableSeatCount: access.members.length,
+      paymentCompleted: false,
+      checkoutStatus: "created",
+      paymentTimestamp: null,
+      transactionId: null,
+      stripeSubscriptionId: null,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    });
+
+    return res.status(201).json({
+      success: true,
+      checkoutUrl: session.url,
+      sessionId: session.id,
+      planId: access.plan.planId,
+      planName: access.plan.planName,
+      monthlyTotalExVat: access.monthlyTotalExVat,
+      membersRegistered: access.members.length,
+    });
+  } catch (error) {
+    console.error("Error creating Role Room Stripe checkout session:", error);
+    if (error instanceof RoleRoomCommercialAccessError) {
+      return res.status(error.statusCode).json({
+        error: error.message,
+      });
+    }
+    return res.status(500).json({
+      error: "Kunne ikke starte Stripe Checkout for The Role Room.",
+    });
+  }
+});
+
+app.get("/api/role-room/billing/session-status", async (req, res) => {
+  try {
+    const sessionId = normalizeMailConfigValue(req.query?.sessionId);
+    if (!sessionId) {
+      return res.status(400).json({
+        error: "sessionId er påkrevd.",
+      });
+    }
+
+    const stripe = getRoleRoomStripeClient();
+    if (!stripe) {
+      return res.status(503).json({
+        error:
+          "Stripe Checkout er ikke konfigurert på serveren. Legg inn STRIPE_SECRET_KEY før du fortsetter.",
+      });
+    }
+
+    const session = await stripe.checkout.sessions.retrieve(sessionId, {
+      expand: ["subscription"],
+    });
+    const syncedRecord = await syncRoleRoomCommercialStripeCheckoutSession(
+      session,
+    );
+    const storedRecord =
+      syncedRecord || (await readRoleRoomCommercialCheckoutSessionRecord(sessionId));
+
+    return res.json({
+      success: true,
+      sessionId,
+      status: session.status,
+      paymentStatus: session.payment_status,
+      paymentCompleted: Boolean(storedRecord?.paymentCompleted),
+      transactionId:
+        storedRecord?.transactionId || getStripeCheckoutSessionTransactionId(session),
+      paymentAmount: storedRecord?.monthlyTotalExVat || null,
+      paymentTimestamp: storedRecord?.paymentTimestamp || null,
+      planId: storedRecord?.planId || null,
+      planName: storedRecord?.planName || null,
+      stripeSubscriptionId:
+        storedRecord?.stripeSubscriptionId ||
+        getStripeCheckoutSessionSubscriptionId(session) ||
+        null,
+    });
+  } catch (error) {
+    console.error("Error reading Role Room Stripe checkout session:", error);
+    return res.status(500).json({
+      error: "Kunne ikke lese Stripe Checkout-status for The Role Room.",
     });
   }
 });

@@ -5,6 +5,7 @@ import { ThemeProvider as MuiThemeProvider, createTheme } from '@mui/material/st
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { CastingPlannerPanel } from './components/CastingPlannerPanel';
 import { CastingLandingPage } from './components/CastingLandingPage';
+import RoleRoomEducationPartnershipPage from './components/RoleRoomEducationPartnershipPage';
 import TalentPortalView from './components/TalentPortalView';
 import { ToastProvider } from './components/ToastStack';
 import authSessionService from './services/authSessionService';
@@ -12,6 +13,7 @@ import { googleWorkspaceApi } from './services/castingApiService';
 import { EnhancedMasterIntegrationProvider } from '@/integration/EnhancedMasterIntegrationProvider';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { parseTalentPortalIntentFromWindow } from './utils/talentPortal';
+import { isRoleRoomEducationPathname } from './utils/runtime';
 
 const castingQueryClient = new QueryClient({
   defaultOptions: {
@@ -51,6 +53,21 @@ function upsertHeadLink(rel: string, href: string) {
 }
 
 function CastingStandaloneAppContent() {
+  const isEducationPath = useMemo(() => {
+    if (typeof window === 'undefined') {
+      return false;
+    }
+    return isRoleRoomEducationPathname(window.location.pathname, window.location);
+  }, []);
+
+  if (isEducationPath) {
+    return <RoleRoomEducationPartnershipPage />;
+  }
+
+  return <CastingStandaloneRuntimeContent />;
+}
+
+function CastingStandaloneRuntimeContent() {
   // Check if user is logged in - determines which view to show
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authResolved, setAuthResolved] = useState(false);
@@ -107,6 +124,11 @@ function CastingStandaloneAppContent() {
                 transfer.sessionToken,
               );
               if (!isMounted) return;
+              try {
+                sessionStorage.removeItem('role-room-commercial-draft-v1');
+              } catch {
+                // Ignore storage cleanup failures.
+              }
               setIsAuthenticated(true);
               clearGoogleIntentFromUrl();
               setProcessingGoogleLogin(false);

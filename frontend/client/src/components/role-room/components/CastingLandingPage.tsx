@@ -129,9 +129,25 @@ export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPage
 
   const handleStartClick   = () => setLoginDialogOpen(true);
   const handleLoginSuccess = () => {
+    try {
+      window.sessionStorage.removeItem('role-room-commercial-draft-v1');
+    } catch {
+      // Ignore storage cleanup failures.
+    }
     setLoginDialogOpen(false);
     onEnter();
   };
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('rrCheckout')) {
+      setLoginDialogOpen(true);
+    }
+  }, []);
 
   // The standalone casting shell sets html/body overflow:hidden.
   // Re-enable vertical scrolling while the landing page is mounted.
