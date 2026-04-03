@@ -26952,9 +26952,6 @@ async function readRoleRoomCommercialCheckoutRecordBySubscriptionId(
   const cached = await compatStoreGet<RoleRoomCommercialCheckoutSessionRecord>(
     roleRoomCommercialSubscriptionKey(subscriptionId),
   );
-  if (cached) {
-    return cached;
-  }
 
   const rows = await listRoleRoomCommercialReminderInviteRequests();
   const matchingRow =
@@ -26966,12 +26963,12 @@ async function readRoleRoomCommercialCheckoutRecordBySubscriptionId(
       );
     }) || null;
   if (!matchingRow) {
-    return null;
+    return cached;
   }
 
   const matchingSnapshot = parseRoleRoomCommercialAccessSnapshot(matchingRow.message);
   if (!matchingSnapshot) {
-    return null;
+    return cached;
   }
 
   const teamKey = buildRoleRoomCommercialReminderTeamKey(matchingSnapshot);
@@ -26988,29 +26985,18 @@ async function readRoleRoomCommercialCheckoutRecordBySubscriptionId(
       );
     }) || matchingRow;
 
-  const rebuilt = buildRoleRoomCommercialCheckoutRecordFromInviteRequest(leaderRow);
+  const rebuilt = expandRoleRoomCommercialCheckoutRecordWithTeamRows(
+    cached || buildRoleRoomCommercialCheckoutRecordFromInviteRequest(leaderRow),
+    matchingSnapshot,
+    teamRows,
+  );
   if (!rebuilt) {
-    return null;
+    return cached;
   }
-
-  const latestUpdatedAt = teamRows
-    .map((row) => Date.parse(toAdminString(row.updated_at) || ""))
-    .filter((value) => Number.isFinite(value))
-    .sort((left, right) => right - left)[0];
 
   const record: RoleRoomCommercialCheckoutSessionRecord = {
     ...rebuilt,
-    requestIds: teamRows
-      .map((row) => toAdminString(row.id))
-      .filter((value): value is string => Boolean(value)),
-    memberEmails:
-      matchingSnapshot.members.length > 0
-        ? matchingSnapshot.members.map((member) => member.email)
-        : rebuilt.memberEmails,
     stripeSubscriptionId: subscriptionId,
-    updatedAt: latestUpdatedAt
-      ? new Date(latestUpdatedAt).toISOString()
-      : rebuilt.updatedAt,
   };
   await writeRoleRoomCommercialCheckoutSessionRecord(record);
   return record;
@@ -28865,6 +28851,36 @@ function buildRoleRoomCommercialCheckoutRecordFromInviteRequest(
   } satisfies RoleRoomCommercialCheckoutSessionRecord;
 }
 
+function expandRoleRoomCommercialCheckoutRecordWithTeamRows(
+  record: RoleRoomCommercialCheckoutSessionRecord | null,
+  snapshot: RoleRoomCommercialAccessSnapshot | null,
+  teamRows: Record<string, unknown>[],
+) {
+  if (!record || !snapshot) {
+    return record;
+  }
+
+  const requestIds = teamRows
+    .map((row) => toAdminString(row.id))
+    .filter((value): value is string => Boolean(value));
+  const latestUpdatedAt = teamRows
+    .map((row) => Date.parse(toAdminString(row.updated_at) || ""))
+    .filter((value) => Number.isFinite(value))
+    .sort((left, right) => right - left)[0];
+
+  return {
+    ...record,
+    requestIds: requestIds.length > 0 ? requestIds : record.requestIds,
+    memberEmails:
+      snapshot.members.length > 0
+        ? snapshot.members.map((member) => member.email)
+        : record.memberEmails,
+    updatedAt: latestUpdatedAt
+      ? new Date(latestUpdatedAt).toISOString()
+      : record.updatedAt,
+  } satisfies RoleRoomCommercialCheckoutSessionRecord;
+}
+
 type RoleRoomCommercialRequestIdentity = {
   userId: string | null;
   email: string | null;
@@ -29090,7 +29106,11 @@ async function resolveRoleRoomCommercialAccountForRequest(
         null
       : null);
 
-  const record = buildRoleRoomCommercialCheckoutRecordFromInviteRequest(leaderRow);
+  const record = expandRoleRoomCommercialCheckoutRecordWithTeamRows(
+    buildRoleRoomCommercialCheckoutRecordFromInviteRequest(leaderRow),
+    snapshot,
+    teamRows,
+  );
   const stripe = getRoleRoomStripeClient();
 
   let subscriptionStatus: string | null = null;
