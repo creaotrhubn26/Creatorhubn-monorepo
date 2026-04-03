@@ -306,11 +306,11 @@ function RoleRoomTurnstileWidget({
         onErrorChange('Bekreftelsen kunne ikke initialiseres. Oppdater siden og prøv igjen.');
         return;
       }
-      window.turnstile.ready(renderWidget);
+      renderWidget();
     };
 
     if (window.turnstile) {
-      window.turnstile.ready(renderWidget);
+      renderWidget();
     } else if (existingScript) {
       existingScript.addEventListener('load', handleLoad);
       existingScript.addEventListener('error', () => {
@@ -320,8 +320,6 @@ function RoleRoomTurnstileWidget({
       const script = document.createElement('script');
       script.id = ROLE_ROOM_TURNSTILE_SCRIPT_ID;
       script.src = ROLE_ROOM_TURNSTILE_SCRIPT_SRC;
-      script.async = true;
-      script.defer = true;
       script.addEventListener('load', handleLoad);
       script.addEventListener('error', () => {
         onErrorChange('Bekreftelsen kunne ikke lastes. Oppdater siden og prøv igjen.');
