@@ -15487,26 +15487,327 @@ app.delete("/api/branding/logo/:userId", async (req, res) => {
   }
 });
 
-app.get("/api/branding/settings", async (req, res) => {
-  const userId =
-    readString(req.query.userId) ||
-    readString(req.query.user_id) ||
-    readString(req.headers["x-user-id"]);
+const ROLE_ROOM_BRANDING_SETTINGS_NAMESPACE = "role_room_branding_settings";
+const ROLE_ROOM_BRANDING_SETTINGS_USER_ID = "role-room-admin";
 
-  if (!userId) {
-    res.json({ settings: {} });
-    return;
-  }
+type RoleRoomPlatformEmailTemplateId =
+  | "role_room_activation"
+  | "role_room_activation_reminder"
+  | "role_room_payment_reminder"
+  | "role_room_payment_failed"
+  | "role_room_payment_recovered"
+  | "role_room_education_inquiry_admin";
 
-  try {
-    const stored = await getStoredBusinessBrandingInfo(userId);
-    res.json({
-      settings: {
-        businessInfo: stored,
+type RoleRoomPlatformEmailTemplate = {
+  id: RoleRoomPlatformEmailTemplateId;
+  name: string;
+  description: string;
+  subject: string;
+  title: string;
+  body: string;
+  ctaLabel?: string;
+  footerNote?: string;
+};
+
+type RoleRoomPlatformEmailTheme = {
+  canvasBackground: string;
+  cardBackground: string;
+  cardBorder: string;
+  headerBackground: string;
+  headerText: string;
+  brandLabelColor: string;
+  bodyText: string;
+  mutedText: string;
+  buttonBackground: string;
+  buttonText: string;
+  footerText: string;
+};
+
+type RoleRoomPlatformEmailSettings = {
+  replyToEmail: string;
+  footerText: string;
+  theme: RoleRoomPlatformEmailTheme;
+  templates: RoleRoomPlatformEmailTemplate[];
+};
+
+type RoleRoomPlatformBrandingIdentity = {
+  appName: string;
+  tagline: string;
+  domain: string;
+  supportEmail: string;
+  docsUrl: string;
+  emailLogoUrl: string;
+};
+
+type RoleRoomPlatformBrandingSettings = {
+  identity: RoleRoomPlatformBrandingIdentity;
+  email: RoleRoomPlatformEmailSettings;
+};
+
+const ROLE_ROOM_PLATFORM_BRANDING_DEFAULT_IDENTITY: RoleRoomPlatformBrandingIdentity = {
+  appName: "The Role Room",
+  tagline: "Casting. Roles. Together",
+  domain: "theroleroom.com",
+  supportEmail: "support@theroleroom.com",
+  docsUrl: "https://docs.theroleroom.com",
+  emailLogoUrl: "/role-room-assets/TheRoleRoom_Logo_Tagline.webp",
+};
+
+const ROLE_ROOM_PLATFORM_DEFAULT_EMAIL_THEME: RoleRoomPlatformEmailTheme = {
+  canvasBackground: "#f6f3ee",
+  cardBackground: "#ffffff",
+  cardBorder: "#e9e0d4",
+  headerBackground: "#171410",
+  headerText: "#f8f5ef",
+  brandLabelColor: "#a13bca",
+  bodyText: "#4d473f",
+  mutedText: "#7b7368",
+  buttonBackground: "#f6c358",
+  buttonText: "#171410",
+  footerText: "#7b7368",
+};
+
+const ROLE_ROOM_PLATFORM_DEFAULT_EMAIL_TEMPLATES: RoleRoomPlatformEmailTemplate[] = [
+  {
+    id: "role_room_activation",
+    name: "Kontogodkjenning",
+    description:
+      "Sendes når betalingen er registrert og brukeren må godkjenne kontoen før første innlogging.",
+    subject: "The Role Room er klar — godkjenn kontoen din",
+    title: "Betalingen er bekreftet",
+    body:
+      "<p>Hei {{recipientName}},</p><p>Betalingen for <strong>{{companyName}}</strong> er registrert. Kontoen din i The Role Room er klargjort.</p><p>Før første innlogging må du godkjenne kontoen din.</p>",
+    ctaLabel: "Godkjenn kontoen din",
+    footerNote:
+      "Hvis knappen ikke virker, kan du kopiere lenken manuelt fra e-posten.",
+  },
+  {
+    id: "role_room_activation_reminder",
+    name: "Påminnelse om kontogodkjenning",
+    description:
+      "Sendes til brukere som har betalt, men fortsatt ikke har godkjent kontoen sin.",
+    subject: "Påminnelse: godkjenn kontoen din i The Role Room",
+    title: "Påminnelse om kontogodkjenning",
+    body:
+      "<p>Hei {{recipientName}},</p><p>Kontoen din i <strong>{{companyName}}</strong> er snart klar, men du må fortsatt godkjenne den før første innlogging.</p><p>Når godkjenningen er fullført, kan du logge inn med samme e-postadresse.</p>",
+    ctaLabel: "Godkjenn kontoen din",
+    footerNote:
+      "Hvis du allerede har godkjent kontoen din, kan du se bort fra denne e-posten.",
+  },
+  {
+    id: "role_room_payment_reminder",
+    name: "Påminnelse om betaling",
+    description:
+      "Sendes til teamleder når vi fortsatt mangler aktiv betaling for abonnementet.",
+    subject: "Påminnelse: fullfør betalingen for The Role Room",
+    title: "Betalingen mangler fortsatt",
+    body:
+      "<p>Hei {{recipientName}},</p><p>Vi mangler fortsatt en aktiv betaling for <strong>{{companyName}}</strong> i The Role Room. Teamet blir ikke aktivert før betalingen er fullført.</p>",
+    ctaLabel: "Gå til The Role Room",
+    footerNote:
+      "Hvis betalingen allerede er fullført, kan du se bort fra denne e-posten.",
+  },
+  {
+    id: "role_room_payment_failed",
+    name: "Betaling feilet",
+    description:
+      "Sendes til teamleder når Stripe ikke klarer å gjennomføre en betaling.",
+    subject: "Betalingen for The Role Room må oppdateres",
+    title: "Betalingen må oppdateres",
+    body:
+      "<p>Hei {{recipientName}},</p><p>Stripe klarte ikke å gjennomføre betalingen for <strong>{{companyName}}</strong>. Kun teamleder kan oppdatere betalingsinformasjonen.</p><p>Når du kommer tilbake til The Role Room, prøver vi betalingen på nytt og sender deg en ny status på e-post.</p>",
+    ctaLabel: "Åpne The Role Room",
+  },
+  {
+    id: "role_room_payment_recovered",
+    name: "Betaling gjenopprettet",
+    description:
+      "Sendes når en tidligere mislykket betaling er registrert på nytt og abonnementet er aktivt igjen.",
+    subject: "Betalingen for The Role Room er godkjent",
+    title: "Betalingen er godkjent",
+    body:
+      "<p>Hei {{recipientName}},</p><p>Betalingen for <strong>{{companyName}}</strong> er nå registrert igjen. Abonnementet i The Role Room er aktivt.</p><p>Teamet kan fortsette som normalt.</p>",
+    ctaLabel: "Gå tilbake til The Role Room",
+  },
+  {
+    id: "role_room_education_inquiry_admin",
+    name: "Institusjonsforespørsel",
+    description:
+      "Sendes til admin når en utdanningsinstitusjon sender inn en samarbeidsforespørsel.",
+    subject: "Ny institusjonsforespørsel i The Role Room — {{companyName}}",
+    title: "Ny institusjonsforespørsel",
+    body:
+      "<p>En ny utdanningsinstitusjon har sendt inn en samarbeidsforespørsel via The Role Room.</p><p>Se detaljene under og følg opp henvendelsen direkte med kontaktpersonen.</p>",
+  },
+];
+
+function roleRoomBrandingSettingsStoreKey(userId?: string) {
+  return dbLegacySettingKey(
+    userId || ROLE_ROOM_BRANDING_SETTINGS_USER_ID,
+    ROLE_ROOM_BRANDING_SETTINGS_NAMESPACE,
+  );
+}
+
+function normalizeRoleRoomPlatformEmailTemplate(
+  value: unknown,
+  fallback: RoleRoomPlatformEmailTemplate,
+): RoleRoomPlatformEmailTemplate {
+  const record = normalizeJsonObjectField(value) || {};
+  return {
+    ...fallback,
+    ...(record as Partial<RoleRoomPlatformEmailTemplate>),
+    id: fallback.id,
+    name: readString(record.name) || fallback.name,
+    description: readString(record.description) || fallback.description,
+    subject: readString(record.subject) || fallback.subject,
+    title: readString(record.title) || fallback.title,
+    body: readString(record.body) || fallback.body,
+    ...(Object.prototype.hasOwnProperty.call(record, "ctaLabel")
+      ? { ctaLabel: readString(record.ctaLabel) || undefined }
+      : fallback.ctaLabel !== undefined
+        ? { ctaLabel: fallback.ctaLabel }
+        : {}),
+    ...(Object.prototype.hasOwnProperty.call(record, "footerNote")
+      ? { footerNote: readString(record.footerNote) || undefined }
+      : fallback.footerNote !== undefined
+        ? { footerNote: fallback.footerNote }
+        : {}),
+  };
+}
+
+function normalizeRoleRoomPlatformBrandingSettings(
+  payload: unknown,
+): Record<string, unknown> {
+  const record = normalizeJsonObjectField(payload) || {};
+  const identityRecord = normalizeJsonObjectField(record.identity) || {};
+  const emailRecord = normalizeJsonObjectField(record.email) || {};
+  const emailThemeRecord = normalizeJsonObjectField(emailRecord.theme) || {};
+  const configuredTemplates = Array.isArray(emailRecord.templates)
+    ? emailRecord.templates
+    : [];
+
+  const templates = ROLE_ROOM_PLATFORM_DEFAULT_EMAIL_TEMPLATES.map(
+    (template) =>
+      normalizeRoleRoomPlatformEmailTemplate(
+        configuredTemplates.find(
+          (entry) =>
+            normalizeJsonObjectField(entry)?.id === template.id,
+        ),
+        template,
+      ),
+  );
+
+  const identity = {
+    ...ROLE_ROOM_PLATFORM_BRANDING_DEFAULT_IDENTITY,
+    appName:
+      readString(identityRecord.appName) ||
+      readString(record.appName) ||
+      ROLE_ROOM_PLATFORM_BRANDING_DEFAULT_IDENTITY.appName,
+    tagline:
+      readString(identityRecord.tagline) ||
+      readString(record.tagline) ||
+      ROLE_ROOM_PLATFORM_BRANDING_DEFAULT_IDENTITY.tagline,
+    domain:
+      readString(identityRecord.domain) ||
+      readString(record.domain) ||
+      ROLE_ROOM_PLATFORM_BRANDING_DEFAULT_IDENTITY.domain,
+    supportEmail:
+      readString(identityRecord.supportEmail) ||
+      readString(record.supportEmail) ||
+      ROLE_ROOM_PLATFORM_BRANDING_DEFAULT_IDENTITY.supportEmail,
+    docsUrl:
+      readString(identityRecord.docsUrl) ||
+      readString(record.docsUrl) ||
+      ROLE_ROOM_PLATFORM_BRANDING_DEFAULT_IDENTITY.docsUrl,
+    emailLogoUrl:
+      readString(identityRecord.emailLogoUrl) ||
+      readString(record.emailLogoUrl) ||
+      ROLE_ROOM_PLATFORM_BRANDING_DEFAULT_IDENTITY.emailLogoUrl,
+  };
+
+  return {
+    ...record,
+    identity,
+    email: {
+      ...emailRecord,
+      replyToEmail:
+        readString(emailRecord.replyToEmail) || identity.supportEmail,
+      footerText:
+        readString(emailRecord.footerText) ||
+        `${identity.appName} • ${identity.domain}`,
+      theme: {
+        ...ROLE_ROOM_PLATFORM_DEFAULT_EMAIL_THEME,
+        ...emailThemeRecord,
       },
+      templates,
+    },
+    appName: identity.appName,
+    tagline: identity.tagline,
+    domain: identity.domain,
+    supportEmail: identity.supportEmail,
+    docsUrl: identity.docsUrl,
+    emailLogoUrl: identity.emailLogoUrl,
+  };
+}
+
+async function getStoredRoleRoomPlatformBrandingSettings(
+  userId?: string,
+): Promise<Record<string, unknown> | null> {
+  const entry = await compatStoreGet<LegacySettingEntry>(
+    roleRoomBrandingSettingsStoreKey(userId),
+  );
+  if (!entry?.data) {
+    return null;
+  }
+  return normalizeRoleRoomPlatformBrandingSettings(entry.data);
+}
+
+async function persistRoleRoomPlatformBrandingSettings(
+  payload: unknown,
+  userId?: string,
+) {
+  const normalized = normalizeRoleRoomPlatformBrandingSettings(payload);
+  const entry: LegacySettingEntry = {
+    userId: userId || ROLE_ROOM_BRANDING_SETTINGS_USER_ID,
+    namespace: ROLE_ROOM_BRANDING_SETTINGS_NAMESPACE,
+    data: normalized,
+  };
+
+  await compatStoreSet(roleRoomBrandingSettingsStoreKey(userId), entry);
+  return normalized;
+}
+
+app.get("/api/branding/settings", async (req, res) => {
+  try {
+    const userId =
+      readString(req.query.userId) ||
+      readString(req.query.user_id) ||
+      readString(req.headers["x-user-id"]) ||
+      ROLE_ROOM_BRANDING_SETTINGS_USER_ID;
+    const stored = await getStoredRoleRoomPlatformBrandingSettings(userId);
+    res.json({
+      settings: stored,
     });
   } catch {
     res.json({ settings: {} });
+  }
+});
+
+app.put("/api/branding/settings", async (req, res) => {
+  try {
+    const userId =
+      readString(req.body?.userId) ||
+      readString(req.body?.user_id) ||
+      readString(req.headers["x-user-id"]) ||
+      ROLE_ROOM_BRANDING_SETTINGS_USER_ID;
+    const normalized = await persistRoleRoomPlatformBrandingSettings(
+      req.body?.settings,
+      userId,
+    );
+    res.json({ ok: true, settings: normalized });
+  } catch (error) {
+    console.error("Role Room branding settings update failed:", error);
+    res.status(500).json({ error: "Failed to update branding settings" });
   }
 });
 
@@ -27807,8 +28108,6 @@ function getRoleRoomEducationInquiryMailer() {
   });
 }
 
-const ROLE_ROOM_EMAIL_BRAND_COLOR = "#a13bca";
-
 async function buildGmailRawMessage(options: {
   to: string;
   from: string;
@@ -27891,6 +28190,249 @@ async function resolveRoleRoomEducationInquiryGmailSender() {
   };
 }
 
+async function resolveRoleRoomPlatformBrandingSettings() {
+  const stored = await getStoredRoleRoomPlatformBrandingSettings();
+  return normalizeRoleRoomPlatformBrandingSettings(
+    stored || {
+      identity: ROLE_ROOM_PLATFORM_BRANDING_DEFAULT_IDENTITY,
+      email: {
+        replyToEmail: ROLE_ROOM_PLATFORM_BRANDING_DEFAULT_IDENTITY.supportEmail,
+        footerText: `${ROLE_ROOM_PLATFORM_BRANDING_DEFAULT_IDENTITY.appName} • ${ROLE_ROOM_PLATFORM_BRANDING_DEFAULT_IDENTITY.domain}`,
+        theme: ROLE_ROOM_PLATFORM_DEFAULT_EMAIL_THEME,
+        templates: ROLE_ROOM_PLATFORM_DEFAULT_EMAIL_TEMPLATES,
+      },
+    },
+  ) as unknown as RoleRoomPlatformBrandingSettings;
+}
+
+function escapeRoleRoomEmailHtml(value: unknown) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function replaceRoleRoomEmailVariables(
+  template: string,
+  variables: Record<string, string | number | null | undefined>,
+  mode: "html" | "text" = "html",
+) {
+  return template.replace(/\{\{([^}]+)\}\}/g, (_match, key) => {
+    const rawValue = variables[String(key).trim()];
+    const value = rawValue === null || rawValue === undefined ? "" : String(rawValue);
+    return mode === "html" ? escapeRoleRoomEmailHtml(value) : value;
+  });
+}
+
+function stripRoleRoomEmailHtml(html: string) {
+  return html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<li>/gi, "• ")
+    .replace(/<\/li>/gi, "\n")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function buildRoleRoomEmailDetailSection(rows: Array<{ label: string; value: string }>) {
+  const filteredRows = rows.filter((row) => row.label.trim() && row.value.trim());
+  if (!filteredRows.length) {
+    return { html: "", text: "" };
+  }
+
+  const html = `
+    <table style="width:100%;border-collapse:collapse;font-size:14px;margin:0 0 18px">
+      ${filteredRows
+        .map(
+          (row) =>
+            `<tr><td style="padding:8px 0;color:#7b7368">${escapeRoleRoomEmailHtml(
+              row.label,
+            )}</td><td style="padding:8px 0">${escapeRoleRoomEmailHtml(
+              row.value,
+            )}</td></tr>`,
+        )
+        .join("")}
+    </table>
+  `;
+  const text = filteredRows.map((row) => `${row.label}: ${row.value}`).join("\n");
+  return { html, text };
+}
+
+function buildRoleRoomEmailNoticeSection(options: {
+  label?: string;
+  body: string;
+  tone?: "neutral" | "danger";
+}) {
+  if (!options.body.trim()) {
+    return { html: "", text: "" };
+  }
+
+  const tone =
+    options.tone === "danger"
+      ? {
+          background: "#fff5f5",
+          border: "#fecaca",
+          text: "#7f1d1d",
+          label: "#b91c1c",
+        }
+      : {
+          background: "#faf7f1",
+          border: "#efe4d4",
+          text: "#3d372f",
+          label: "#8a4b00",
+        };
+
+  const html = `
+    <div style="margin:0 0 18px;padding:16px;border-radius:14px;background:${tone.background};border:1px solid ${tone.border};color:${tone.text};font-size:14px;line-height:1.7">
+      ${
+        options.label
+          ? `<div style="font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:${tone.label};font-weight:700;margin-bottom:8px">${escapeRoleRoomEmailHtml(
+              options.label,
+            )}</div>`
+          : ""
+      }
+      <div style="white-space:pre-wrap">${escapeRoleRoomEmailHtml(options.body)}</div>
+    </div>
+  `;
+
+  const text = [options.label ? `${options.label}:` : null, options.body]
+    .filter(Boolean)
+    .join("\n");
+
+  return { html, text };
+}
+
+async function renderRoleRoomPlatformEmail(input: {
+  templateId: RoleRoomPlatformEmailTemplateId;
+  variables: Record<string, string | number | null | undefined>;
+  ctaUrl?: string | null;
+  replyToEmail?: string | null;
+  detailRows?: Array<{ label: string; value: string }>;
+  noticeSection?: {
+    label?: string;
+    body: string;
+    tone?: "neutral" | "danger";
+  } | null;
+}) {
+  const settings = await resolveRoleRoomPlatformBrandingSettings();
+  const template =
+    settings.email.templates.find((entry) => entry.id === input.templateId) ||
+    ROLE_ROOM_PLATFORM_DEFAULT_EMAIL_TEMPLATES.find(
+      (entry) => entry.id === input.templateId,
+    );
+
+  if (!template) {
+    throw new Error(`Unknown Role Room email template: ${input.templateId}`);
+  }
+
+  const theme = settings.email.theme || ROLE_ROOM_PLATFORM_DEFAULT_EMAIL_THEME;
+  const subject = replaceRoleRoomEmailVariables(
+    template.subject,
+    input.variables,
+    "text",
+  );
+  const title = replaceRoleRoomEmailVariables(
+    template.title,
+    input.variables,
+    "text",
+  );
+  const bodyHtml = replaceRoleRoomEmailVariables(
+    template.body,
+    input.variables,
+    "html",
+  );
+  const bodyText = stripRoleRoomEmailHtml(bodyHtml);
+  const detailSection = buildRoleRoomEmailDetailSection(input.detailRows || []);
+  const noticeSection = input.noticeSection
+    ? buildRoleRoomEmailNoticeSection(input.noticeSection)
+    : { html: "", text: "" };
+  const footerNote = template.footerNote
+    ? replaceRoleRoomEmailVariables(
+        template.footerNote,
+        input.variables,
+        "text",
+      )
+    : "";
+  const footerText = replaceRoleRoomEmailVariables(
+    settings.email.footerText ||
+      `${settings.identity.appName} • ${settings.identity.domain}`,
+    input.variables,
+    "text",
+  );
+  const ctaLabel = template.ctaLabel
+    ? replaceRoleRoomEmailVariables(template.ctaLabel, input.variables, "text")
+    : "";
+  const ctaHtml =
+    ctaLabel && normalizeMailConfigValue(input.ctaUrl)
+      ? `<a href="${escapeRoleRoomEmailHtml(
+          normalizeMailConfigValue(input.ctaUrl),
+        )}" style="display:inline-block;padding:14px 20px;border-radius:999px;background:${theme.buttonBackground};color:${theme.buttonText};text-decoration:none;font-weight:700">${escapeRoleRoomEmailHtml(
+          ctaLabel,
+        )}</a>`
+      : "";
+
+  const html = `
+    <div style="font-family:Arial,sans-serif;background:${theme.canvasBackground};padding:24px;color:#181512">
+      <div style="max-width:720px;margin:0 auto;background:${theme.cardBackground};border-radius:18px;border:1px solid ${theme.cardBorder};overflow:hidden">
+        <div style="padding:20px 24px;background:${theme.headerBackground};color:${theme.headerText}">
+          <div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:${theme.brandLabelColor};font-weight:700">${escapeRoleRoomEmailHtml(
+            settings.identity.appName,
+          )}</div>
+          <h1 style="margin:8px 0 0;font-size:24px;line-height:1.2">${escapeRoleRoomEmailHtml(
+            title,
+          )}</h1>
+        </div>
+        <div style="padding:24px">
+          <div style="margin:0 0 16px;font-size:14px;line-height:1.7;color:${theme.bodyText}">${bodyHtml}</div>
+          ${detailSection.html}
+          ${noticeSection.html}
+          ${ctaHtml ? `<div style="margin:0 0 18px">${ctaHtml}</div>` : ""}
+          ${
+            footerNote
+              ? `<p style="margin:0 0 18px;font-size:12px;line-height:1.7;color:${theme.mutedText}">${escapeRoleRoomEmailHtml(
+                  footerNote,
+                )}</p>`
+              : ""
+          }
+          <p style="margin:0;font-size:12px;line-height:1.7;color:${theme.footerText}">${escapeRoleRoomEmailHtml(
+            footerText,
+          )}</p>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const textParts = [
+    bodyText,
+    detailSection.text,
+    noticeSection.text,
+    ctaLabel && normalizeMailConfigValue(input.ctaUrl)
+      ? `${ctaLabel}\n${normalizeMailConfigValue(input.ctaUrl)}`
+      : "",
+    footerNote,
+    footerText,
+  ].filter((value) => normalizeMailConfigValue(value));
+
+  return {
+    subject,
+    html,
+    text: textParts.join("\n\n"),
+    replyToEmail:
+      normalizeMailConfigValue(input.replyToEmail) ||
+      normalizeMailConfigValue(settings.email.replyToEmail) ||
+      normalizeMailConfigValue(settings.identity.supportEmail),
+  };
+}
+
 async function sendRoleRoomEducationInquiryAdminEmail(options: {
   requestId: string;
   companyName: string;
@@ -27917,58 +28459,42 @@ async function sendRoleRoomEducationInquiryAdminEmail(options: {
     adminEmail;
 
   const { metadata } = options;
-  const subject = `Ny institusjonsforespørsel i The Role Room — ${options.companyName}`;
-  const text = [
-    "Ny institusjonsforespørsel i The Role Room.",
-    "",
-    `Forespørsel-ID: ${options.requestId}`,
-    `Institusjon: ${options.companyName}`,
-    `Organisasjonsnummer: ${options.organizationNumber}`,
-    `Kontaktperson: ${options.contactName}`,
-    `Kontaktrolle: ${metadata.contactRole}`,
-    `Kontakt e-post: ${options.contactEmail}`,
-    `Institusjonstype: ${metadata.institutionTypeLabel}`,
-    `Studieprogram / fagområde: ${metadata.programName}`,
-    `Studentomfang: ${metadata.studentSeatLabel}`,
-    `Faglærere / koordinatorer: ${metadata.staffSeatLabel}`,
-    `Ønsket oppstart: ${metadata.desiredStartWindowLabel}`,
-    "",
-    "Bruksområde:",
-    metadata.useCase,
-  ].join("\n");
-
-  const html = `
-    <div style="font-family:Arial,sans-serif;background:#f6f3ee;padding:24px;color:#181512">
-      <div style="max-width:720px;margin:0 auto;background:#fff;border-radius:18px;border:1px solid #e9e0d4;overflow:hidden">
-        <div style="padding:20px 24px;background:#171410;color:#f8f5ef">
-          <div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:${ROLE_ROOM_EMAIL_BRAND_COLOR};font-weight:700">The Role Room</div>
-          <h1 style="margin:8px 0 0;font-size:24px;line-height:1.2">Ny institusjonsforespørsel</h1>
-        </div>
-        <div style="padding:24px">
-          <p style="margin:0 0 16px;font-size:14px;line-height:1.7;color:#4d473f">
-            En ny utdanningsinstitusjon har sendt inn en samarbeidsforespørsel via The Role Room.
-          </p>
-          <table style="width:100%;border-collapse:collapse;font-size:14px">
-            <tr><td style="padding:8px 0;color:#7b7368">Forespørsel-ID</td><td style="padding:8px 0;font-weight:700">${options.requestId}</td></tr>
-            <tr><td style="padding:8px 0;color:#7b7368">Institusjon</td><td style="padding:8px 0;font-weight:700">${options.companyName}</td></tr>
-            <tr><td style="padding:8px 0;color:#7b7368">Organisasjonsnummer</td><td style="padding:8px 0">${options.organizationNumber}</td></tr>
-            <tr><td style="padding:8px 0;color:#7b7368">Kontaktperson</td><td style="padding:8px 0">${options.contactName}</td></tr>
-            <tr><td style="padding:8px 0;color:#7b7368">Stilling</td><td style="padding:8px 0">${metadata.contactRole}</td></tr>
-            <tr><td style="padding:8px 0;color:#7b7368">E-post</td><td style="padding:8px 0">${options.contactEmail}</td></tr>
-            <tr><td style="padding:8px 0;color:#7b7368">Institusjonstype</td><td style="padding:8px 0">${metadata.institutionTypeLabel}</td></tr>
-            <tr><td style="padding:8px 0;color:#7b7368">Studieprogram</td><td style="padding:8px 0">${metadata.programName}</td></tr>
-            <tr><td style="padding:8px 0;color:#7b7368">Studentomfang</td><td style="padding:8px 0">${metadata.studentSeatLabel}</td></tr>
-            <tr><td style="padding:8px 0;color:#7b7368">Faglærere / koordinatorer</td><td style="padding:8px 0">${metadata.staffSeatLabel}</td></tr>
-            <tr><td style="padding:8px 0;color:#7b7368">Ønsket oppstart</td><td style="padding:8px 0">${metadata.desiredStartWindowLabel}</td></tr>
-          </table>
-          <div style="margin-top:20px;padding:16px;border-radius:14px;background:#faf7f1;border:1px solid #efe4d4">
-            <div style="font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:#8a4b00;font-weight:700;margin-bottom:8px">Bruksområde</div>
-            <div style="font-size:14px;line-height:1.7;color:#3d372f;white-space:pre-wrap">${metadata.useCase}</div>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
+  const rendered = await renderRoleRoomPlatformEmail({
+    templateId: "role_room_education_inquiry_admin",
+    variables: {
+      requestId: options.requestId,
+      companyName: options.companyName,
+      organizationNumber: options.organizationNumber,
+      contactName: options.contactName,
+      contactEmail: options.contactEmail,
+      contactRole: metadata.contactRole,
+      institutionTypeLabel: metadata.institutionTypeLabel,
+      programName: metadata.programName,
+      studentSeatLabel: metadata.studentSeatLabel,
+      staffSeatLabel: metadata.staffSeatLabel,
+      desiredStartWindowLabel: metadata.desiredStartWindowLabel,
+      useCase: metadata.useCase,
+    },
+    replyToEmail: options.contactEmail,
+    detailRows: [
+      { label: "Forespørsel-ID", value: options.requestId },
+      { label: "Institusjon", value: options.companyName },
+      { label: "Organisasjonsnummer", value: options.organizationNumber },
+      { label: "Kontaktperson", value: options.contactName },
+      { label: "Stilling", value: metadata.contactRole },
+      { label: "E-post", value: options.contactEmail },
+      { label: "Institusjonstype", value: metadata.institutionTypeLabel },
+      { label: "Studieprogram", value: metadata.programName },
+      { label: "Studentomfang", value: metadata.studentSeatLabel },
+      { label: "Faglærere / koordinatorer", value: metadata.staffSeatLabel },
+      { label: "Ønsket oppstart", value: metadata.desiredStartWindowLabel },
+    ],
+    noticeSection: {
+      label: "Bruksområde",
+      body: metadata.useCase,
+      tone: "neutral",
+    },
+  });
 
   const gmailSender = await resolveRoleRoomEducationInquiryGmailSender().catch(
     (error) => {
@@ -27993,9 +28519,9 @@ async function sendRoleRoomEducationInquiryAdminEmail(options: {
           to: gmailSender.adminEmail,
           from: `CreatorHub Norge <${gmailSender.senderEmail}>`,
           replyTo: options.contactEmail,
-          subject,
-          text,
-          html,
+          subject: rendered.subject,
+          text: rendered.text,
+          html: rendered.html,
         }),
       },
     });
@@ -28013,9 +28539,9 @@ async function sendRoleRoomEducationInquiryAdminEmail(options: {
     from: `CreatorHub Norge <${fromEmail}>`,
     to: adminEmail,
     replyTo: options.contactEmail,
-    subject,
-    text,
-    html,
+    subject: rendered.subject,
+    text: rendered.text,
+    html: rendered.html,
   });
 
   return {
@@ -28187,7 +28713,14 @@ async function sendRoleRoomCommercialEmail(options: {
     normalizeMailConfigValue(process.env.GMAIL_USER) ||
     normalizeMailConfigValue(process.env.GOOGLE_WORKSPACE_EMAIL) ||
     adminEmail;
-  const replyTo = normalizeMailConfigValue(options.replyTo) || adminEmail;
+  const brandingSettings = await resolveRoleRoomPlatformBrandingSettings().catch(
+    () => null,
+  );
+  const replyTo =
+    normalizeMailConfigValue(options.replyTo) ||
+    normalizeMailConfigValue(brandingSettings?.email?.replyToEmail) ||
+    normalizeMailConfigValue(brandingSettings?.identity?.supportEmail) ||
+    adminEmail;
 
   const gmailSender = await resolveRoleRoomEducationInquiryGmailSender().catch(
     (error) => {
@@ -28259,73 +28792,46 @@ async function sendRoleRoomCommercialActivationEmail(options: {
   const adminEmail =
     normalizeMailConfigValue(process.env.GOOGLE_ADMIN_EMAIL) ||
     "daniel@creatorhubn.com";
-  const subject = options.isReminder
-    ? `Påminnelse: godkjenn kontoen din i The Role Room`
-    : `The Role Room er klar — godkjenn kontoen din`;
-  const text = [
-    `Hei ${options.recipientName},`,
-    "",
-    options.isReminder
-      ? `Dette er en påminnelse om at kontoen din i ${options.companyName} fortsatt venter på godkjenning i The Role Room.`
-      : `Betalingen for ${options.companyName} er registrert i The Role Room.`,
-    `Plan: ${options.planName}`,
-    `Beløp: ${options.monthlyTotalExVat.toFixed(2).replace(".", ",")} kr per måned eks. mva.`,
-    "",
-    options.isReminder
-      ? "Du må fortsatt godkjenne kontoen din før første innlogging. Bruk denne lenken:"
-      : "Før første innlogging må du godkjenne kontoen din via denne lenken:",
-    options.activationUrl,
-    "",
-    "Når godkjenningen er fullført, kan du logge inn med samme e-postadresse.",
-    "",
-    "Hvis du ikke forventet denne e-posten, kan du se bort fra den.",
-  ].join("\n");
-  const html = `
-    <div style="font-family:Arial,sans-serif;background:#f6f3ee;padding:24px;color:#181512">
-      <div style="max-width:680px;margin:0 auto;background:#fff;border-radius:18px;border:1px solid #e9e0d4;overflow:hidden">
-        <div style="padding:20px 24px;background:#171410;color:#f8f5ef">
-          <div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:${ROLE_ROOM_EMAIL_BRAND_COLOR};font-weight:700">The Role Room</div>
-          <h1 style="margin:8px 0 0;font-size:24px;line-height:1.2">${
-            options.isReminder
-              ? "Påminnelse om kontogodkjenning"
-              : "Betalingen er bekreftet"
-          }</h1>
-        </div>
-        <div style="padding:24px">
-          <p style="margin:0 0 12px;font-size:14px;line-height:1.7;color:#4d473f">Hei ${options.recipientName},</p>
-          <p style="margin:0 0 14px;font-size:14px;line-height:1.7;color:#4d473f">
-            ${
-              options.isReminder
-                ? `Kontoen din i <strong>${options.companyName}</strong> er snart klar, men du må fortsatt godkjenne den før første innlogging.`
-                : `Betalingen for <strong>${options.companyName}</strong> er registrert. Kontoen din i The Role Room er klargjort.`
-            }
-          </p>
-          <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:18px">
-            <tr><td style="padding:8px 0;color:#7b7368">Plan</td><td style="padding:8px 0;font-weight:700">${options.planName}</td></tr>
-            <tr><td style="padding:8px 0;color:#7b7368">Rolle</td><td style="padding:8px 0">${options.memberRoleLabel || "Teammedlem"}${options.isLeader ? " · Teamleder" : ""}</td></tr>
-            <tr><td style="padding:8px 0;color:#7b7368">Pris</td><td style="padding:8px 0">${options.monthlyTotalExVat.toFixed(2).replace(".", ",")} kr / mnd eks. mva.</td></tr>
-            <tr><td style="padding:8px 0;color:#7b7368">E-post</td><td style="padding:8px 0">${options.recipientEmail}</td></tr>
-          </table>
-          <p style="margin:0 0 16px;font-size:14px;line-height:1.7;color:#4d473f">
-            Før første innlogging må du godkjenne kontoen din.
-          </p>
-          <a href="${options.activationUrl}" style="display:inline-block;padding:14px 20px;border-radius:999px;background:#f6c358;color:#171410;text-decoration:none;font-weight:700">Godkjenn kontoen din</a>
-          <p style="margin:18px 0 0;font-size:12px;line-height:1.7;color:#7b7368">
-            Hvis knappen ikke virker, kan du kopiere denne lenken:
-            <br />
-            <span style="word-break:break-all">${options.activationUrl}</span>
-          </p>
-        </div>
-      </div>
-    </div>
-  `;
+  const rendered = await renderRoleRoomPlatformEmail({
+    templateId: options.isReminder
+      ? "role_room_activation_reminder"
+      : "role_room_activation",
+    variables: {
+      recipientName: options.recipientName,
+      companyName: options.companyName,
+      planName: options.planName,
+      memberRoleLabel: `${options.memberRoleLabel || "Teammedlem"}${
+        options.isLeader ? " · Teamleder" : ""
+      }`,
+      monthlyTotalExVat: `${options.monthlyTotalExVat.toFixed(2).replace(".", ",")} kr / mnd eks. mva.`,
+      recipientEmail: options.recipientEmail,
+      activationUrl: options.activationUrl,
+    },
+    replyToEmail: adminEmail,
+    ctaUrl: options.activationUrl,
+    detailRows: [
+      { label: "Plan", value: options.planName },
+      {
+        label: "Rolle",
+        value: `${options.memberRoleLabel || "Teammedlem"}${
+          options.isLeader ? " · Teamleder" : ""
+        }`,
+      },
+      {
+        label: "Pris",
+        value: `${options.monthlyTotalExVat.toFixed(2).replace(".", ",")} kr / mnd eks. mva.`,
+      },
+      { label: "E-post", value: options.recipientEmail },
+      { label: "Aktiveringslenke", value: options.activationUrl },
+    ],
+  });
 
   return sendRoleRoomCommercialEmail({
     recipientEmail: options.recipientEmail,
-    replyTo: adminEmail,
-    subject,
-    text,
-    html,
+    replyTo: rendered.replyToEmail,
+    subject: rendered.subject,
+    text: rendered.text,
+    html: rendered.html,
   });
 }
 
@@ -28342,54 +28848,43 @@ async function sendRoleRoomCommercialPaymentReminderEmail(options: {
   const adminEmail =
     normalizeMailConfigValue(process.env.GOOGLE_ADMIN_EMAIL) ||
     "daniel@creatorhubn.com";
-  const subject = `Påminnelse: fullfør betalingen for The Role Room`;
-  const text = [
-    `Hei ${options.recipientName},`,
-    "",
-    `Vi mangler fortsatt en aktiv betaling for ${options.companyName} i The Role Room.`,
-    `Plan: ${options.planName}`,
-    `Organisasjonsnummer: ${options.organizationNumber}`,
-    `Teamstørrelse: ${options.memberCount}`,
-    `Beløp: ${options.monthlyTotalExVat.toFixed(2).replace(".", ",")} kr per måned eks. mva.`,
-    "",
-    "For å aktivere tilgang for teamet, gå tilbake til The Role Room og fullfør betalingen.",
-    options.roleRoomUrl,
-    "",
-    "Hvis betalingen allerede er gjennomført, kan du se bort fra denne e-posten.",
-  ].join("\n");
-  const html = `
-    <div style="font-family:Arial,sans-serif;background:#f6f3ee;padding:24px;color:#181512">
-      <div style="max-width:680px;margin:0 auto;background:#fff;border-radius:18px;border:1px solid #e9e0d4;overflow:hidden">
-        <div style="padding:20px 24px;background:#171410;color:#f8f5ef">
-          <div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:${ROLE_ROOM_EMAIL_BRAND_COLOR};font-weight:700">The Role Room</div>
-          <h1 style="margin:8px 0 0;font-size:24px;line-height:1.2">Betalingen mangler fortsatt</h1>
-        </div>
-        <div style="padding:24px">
-          <p style="margin:0 0 12px;font-size:14px;line-height:1.7;color:#4d473f">Hei ${options.recipientName},</p>
-          <p style="margin:0 0 14px;font-size:14px;line-height:1.7;color:#4d473f">
-            Vi mangler fortsatt en aktiv betaling for <strong>${options.companyName}</strong> i The Role Room. Teamet blir ikke aktivert før betalingen er fullført.
-          </p>
-          <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:18px">
-            <tr><td style="padding:8px 0;color:#7b7368">Plan</td><td style="padding:8px 0;font-weight:700">${options.planName}</td></tr>
-            <tr><td style="padding:8px 0;color:#7b7368">Organisasjonsnummer</td><td style="padding:8px 0">${options.organizationNumber}</td></tr>
-            <tr><td style="padding:8px 0;color:#7b7368">Team</td><td style="padding:8px 0">${options.memberCount} ${options.memberCount === 1 ? "person" : "personer"}</td></tr>
-            <tr><td style="padding:8px 0;color:#7b7368">Beløp</td><td style="padding:8px 0">${options.monthlyTotalExVat.toFixed(2).replace(".", ",")} kr / mnd eks. mva.</td></tr>
-          </table>
-          <a href="${options.roleRoomUrl}" style="display:inline-block;padding:14px 20px;border-radius:999px;background:#f6c358;color:#171410;text-decoration:none;font-weight:700">Gå til The Role Room</a>
-          <p style="margin:18px 0 0;font-size:12px;line-height:1.7;color:#7b7368">
-            Hvis betalingen allerede er fullført, kan du se bort fra denne e-posten.
-          </p>
-        </div>
-      </div>
-    </div>
-  `;
+  const rendered = await renderRoleRoomPlatformEmail({
+    templateId: "role_room_payment_reminder",
+    variables: {
+      recipientName: options.recipientName,
+      companyName: options.companyName,
+      planName: options.planName,
+      organizationNumber: options.organizationNumber,
+      memberCount: `${options.memberCount} ${
+        options.memberCount === 1 ? "person" : "personer"
+      }`,
+      monthlyTotalExVat: `${options.monthlyTotalExVat.toFixed(2).replace(".", ",")} kr / mnd eks. mva.`,
+      roleRoomUrl: options.roleRoomUrl,
+    },
+    replyToEmail: adminEmail,
+    ctaUrl: options.roleRoomUrl,
+    detailRows: [
+      { label: "Plan", value: options.planName },
+      { label: "Organisasjonsnummer", value: options.organizationNumber },
+      {
+        label: "Team",
+        value: `${options.memberCount} ${
+          options.memberCount === 1 ? "person" : "personer"
+        }`,
+      },
+      {
+        label: "Beløp",
+        value: `${options.monthlyTotalExVat.toFixed(2).replace(".", ",")} kr / mnd eks. mva.`,
+      },
+    ],
+  });
 
   return sendRoleRoomCommercialEmail({
     recipientEmail: options.recipientEmail,
-    replyTo: adminEmail,
-    subject,
-    text,
-    html,
+    replyTo: rendered.replyToEmail,
+    subject: rendered.subject,
+    text: rendered.text,
+    html: rendered.html,
   });
 }
 
@@ -28407,54 +28902,53 @@ async function sendRoleRoomCommercialPaymentFailedEmail(options: {
   const adminEmail =
     normalizeMailConfigValue(process.env.GOOGLE_ADMIN_EMAIL) ||
     "daniel@creatorhubn.com";
-  const subject = "Betalingen for The Role Room må oppdateres";
-  const text = [
-    `Hei ${options.recipientName},`,
-    "",
-    `Stripe klarte ikke å gjennomføre betalingen for ${options.companyName} i The Role Room.`,
-    `Plan: ${options.planName}`,
-    `Organisasjonsnummer: ${options.organizationNumber}`,
-    `Teamstørrelse: ${options.memberCount}`,
-    `Beløp: ${options.monthlyTotalExVat.toFixed(2).replace(".", ",")} kr per måned eks. mva.`,
-    "",
-    options.failureMessage ||
-      "Oppdater betalingsinformasjonen for abonnementet, så prøver vi betalingen på nytt når du kommer tilbake til The Role Room.",
-    "",
-    options.roleRoomUrl,
-  ].join("\n");
-  const html = `
-    <div style="font-family:Arial,sans-serif;background:#f6f3ee;padding:24px;color:#181512">
-      <div style="max-width:680px;margin:0 auto;background:#fff;border-radius:18px;border:1px solid #e9e0d4;overflow:hidden">
-        <div style="padding:20px 24px;background:#171410;color:#f8f5ef">
-          <div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:${ROLE_ROOM_EMAIL_BRAND_COLOR};font-weight:700">The Role Room</div>
-          <h1 style="margin:8px 0 0;font-size:24px;line-height:1.2">Betalingen må oppdateres</h1>
-        </div>
-        <div style="padding:24px">
-          <p style="margin:0 0 12px;font-size:14px;line-height:1.7;color:#4d473f">Hei ${options.recipientName},</p>
-          <p style="margin:0 0 14px;font-size:14px;line-height:1.7;color:#4d473f">
-            Stripe klarte ikke å gjennomføre betalingen for <strong>${options.companyName}</strong>. Kun teamleder kan oppdatere betalingsinformasjonen.
-          </p>
-          <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:18px">
-            <tr><td style="padding:8px 0;color:#7b7368">Plan</td><td style="padding:8px 0;font-weight:700">${options.planName}</td></tr>
-            <tr><td style="padding:8px 0;color:#7b7368">Organisasjonsnummer</td><td style="padding:8px 0">${options.organizationNumber}</td></tr>
-            <tr><td style="padding:8px 0;color:#7b7368">Team</td><td style="padding:8px 0">${options.memberCount} ${options.memberCount === 1 ? "person" : "personer"}</td></tr>
-            <tr><td style="padding:8px 0;color:#7b7368">Beløp</td><td style="padding:8px 0">${options.monthlyTotalExVat.toFixed(2).replace(".", ",")} kr / mnd eks. mva.</td></tr>
-          </table>
-          <div style="margin-bottom:18px;padding:16px;border-radius:14px;background:#fff5f5;border:1px solid #fecaca;color:#7f1d1d;font-size:14px;line-height:1.6">
-            ${options.failureMessage || "Oppdater betalingsinformasjonen for abonnementet. Når du kommer tilbake til The Role Room, prøver vi betalingen på nytt og sender deg en ny status på e-post."}
-          </div>
-          <a href="${options.roleRoomUrl}" style="display:inline-block;padding:14px 20px;border-radius:999px;background:#f6c358;color:#171410;text-decoration:none;font-weight:700">Åpne The Role Room</a>
-        </div>
-      </div>
-    </div>
-  `;
+  const rendered = await renderRoleRoomPlatformEmail({
+    templateId: "role_room_payment_failed",
+    variables: {
+      recipientName: options.recipientName,
+      companyName: options.companyName,
+      planName: options.planName,
+      organizationNumber: options.organizationNumber,
+      memberCount: `${options.memberCount} ${
+        options.memberCount === 1 ? "person" : "personer"
+      }`,
+      monthlyTotalExVat: `${options.monthlyTotalExVat.toFixed(2).replace(".", ",")} kr / mnd eks. mva.`,
+      roleRoomUrl: options.roleRoomUrl,
+      failureMessage:
+        options.failureMessage ||
+        "Oppdater betalingsinformasjonen for abonnementet. Når du kommer tilbake til The Role Room, prøver vi betalingen på nytt og sender deg en ny status på e-post.",
+    },
+    replyToEmail: adminEmail,
+    ctaUrl: options.roleRoomUrl,
+    detailRows: [
+      { label: "Plan", value: options.planName },
+      { label: "Organisasjonsnummer", value: options.organizationNumber },
+      {
+        label: "Team",
+        value: `${options.memberCount} ${
+          options.memberCount === 1 ? "person" : "personer"
+        }`,
+      },
+      {
+        label: "Beløp",
+        value: `${options.monthlyTotalExVat.toFixed(2).replace(".", ",")} kr / mnd eks. mva.`,
+      },
+    ],
+    noticeSection: options.failureMessage
+      ? {
+          label: "Stripe-melding",
+          body: options.failureMessage,
+          tone: "danger" as const,
+        }
+      : null,
+  });
 
   return sendRoleRoomCommercialEmail({
     recipientEmail: options.recipientEmail,
-    replyTo: adminEmail,
-    subject,
-    text,
-    html,
+    replyTo: rendered.replyToEmail,
+    subject: rendered.subject,
+    text: rendered.text,
+    html: rendered.html,
   });
 }
 
@@ -28471,49 +28965,43 @@ async function sendRoleRoomCommercialPaymentRecoveryEmail(options: {
   const adminEmail =
     normalizeMailConfigValue(process.env.GOOGLE_ADMIN_EMAIL) ||
     "daniel@creatorhubn.com";
-  const subject = "Betalingen for The Role Room er godkjent";
-  const text = [
-    `Hei ${options.recipientName},`,
-    "",
-    `Betalingen for ${options.companyName} i The Role Room er nå godkjent igjen.`,
-    `Plan: ${options.planName}`,
-    `Organisasjonsnummer: ${options.organizationNumber}`,
-    `Teamstørrelse: ${options.memberCount}`,
-    `Beløp: ${options.monthlyTotalExVat.toFixed(2).replace(".", ",")} kr per måned eks. mva.`,
-    "",
-    "Abonnementet er aktivt, og teamet kan fortsette som normalt.",
-    options.roleRoomUrl,
-  ].join("\n");
-  const html = `
-    <div style="font-family:Arial,sans-serif;background:#f6f3ee;padding:24px;color:#181512">
-      <div style="max-width:680px;margin:0 auto;background:#fff;border-radius:18px;border:1px solid #e9e0d4;overflow:hidden">
-        <div style="padding:20px 24px;background:#171410;color:#f8f5ef">
-          <div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:${ROLE_ROOM_EMAIL_BRAND_COLOR};font-weight:700">The Role Room</div>
-          <h1 style="margin:8px 0 0;font-size:24px;line-height:1.2">Betalingen er godkjent</h1>
-        </div>
-        <div style="padding:24px">
-          <p style="margin:0 0 12px;font-size:14px;line-height:1.7;color:#4d473f">Hei ${options.recipientName},</p>
-          <p style="margin:0 0 14px;font-size:14px;line-height:1.7;color:#4d473f">
-            Betalingen for <strong>${options.companyName}</strong> er nå registrert igjen. Abonnementet i The Role Room er aktivt.
-          </p>
-          <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:18px">
-            <tr><td style="padding:8px 0;color:#7b7368">Plan</td><td style="padding:8px 0;font-weight:700">${options.planName}</td></tr>
-            <tr><td style="padding:8px 0;color:#7b7368">Organisasjonsnummer</td><td style="padding:8px 0">${options.organizationNumber}</td></tr>
-            <tr><td style="padding:8px 0;color:#7b7368">Team</td><td style="padding:8px 0">${options.memberCount} ${options.memberCount === 1 ? "person" : "personer"}</td></tr>
-            <tr><td style="padding:8px 0;color:#7b7368">Beløp</td><td style="padding:8px 0">${options.monthlyTotalExVat.toFixed(2).replace(".", ",")} kr / mnd eks. mva.</td></tr>
-          </table>
-          <a href="${options.roleRoomUrl}" style="display:inline-block;padding:14px 20px;border-radius:999px;background:#f6c358;color:#171410;text-decoration:none;font-weight:700">Gå tilbake til The Role Room</a>
-        </div>
-      </div>
-    </div>
-  `;
+  const rendered = await renderRoleRoomPlatformEmail({
+    templateId: "role_room_payment_recovered",
+    variables: {
+      recipientName: options.recipientName,
+      companyName: options.companyName,
+      planName: options.planName,
+      organizationNumber: options.organizationNumber,
+      memberCount: `${options.memberCount} ${
+        options.memberCount === 1 ? "person" : "personer"
+      }`,
+      monthlyTotalExVat: `${options.monthlyTotalExVat.toFixed(2).replace(".", ",")} kr / mnd eks. mva.`,
+      roleRoomUrl: options.roleRoomUrl,
+    },
+    replyToEmail: adminEmail,
+    ctaUrl: options.roleRoomUrl,
+    detailRows: [
+      { label: "Plan", value: options.planName },
+      { label: "Organisasjonsnummer", value: options.organizationNumber },
+      {
+        label: "Team",
+        value: `${options.memberCount} ${
+          options.memberCount === 1 ? "person" : "personer"
+        }`,
+      },
+      {
+        label: "Beløp",
+        value: `${options.monthlyTotalExVat.toFixed(2).replace(".", ",")} kr / mnd eks. mva.`,
+      },
+    ],
+  });
 
   return sendRoleRoomCommercialEmail({
     recipientEmail: options.recipientEmail,
-    replyTo: adminEmail,
-    subject,
-    text,
-    html,
+    replyTo: rendered.replyToEmail,
+    subject: rendered.subject,
+    text: rendered.text,
+    html: rendered.html,
   });
 }
 

@@ -107,6 +107,38 @@ interface Recipient {
   type: 'candidate' | 'crew' | 'custom';
 }
 
+interface EmailVariableDefinition {
+  key: string;
+  label: string;
+  example: string;
+}
+
+interface EmailDesignerPreviewTheme {
+  canvasBackground?: string;
+  cardBackground?: string;
+  cardBorder?: string;
+  headerBackground?: string;
+  headerText?: string;
+  brandLabelColor?: string;
+  bodyText?: string;
+  mutedText?: string;
+  buttonBackground?: string;
+  buttonText?: string;
+  footerText?: string;
+}
+
+interface EmailDesignerPreviewConfig {
+  brandName?: string;
+  title?: string;
+  footerText?: string;
+  noteText?: string;
+  ctaLabel?: string;
+  ctaUrl?: string;
+  logoUrl?: string;
+  tagline?: string;
+  theme?: EmailDesignerPreviewTheme;
+}
+
 interface EmailDesignerProps {
   template?: EmailTemplate;
   recipients?: Recipient[];
@@ -114,6 +146,11 @@ interface EmailDesignerProps {
   onSend?: (template: EmailTemplate, recipients: Recipient[]) => void;
   projectVariables?: Record<string, string>;
   projectName?: string;
+  templateLibrary?: Array<Omit<EmailTemplate, 'createdAt' | 'updatedAt'>>;
+  availableVariables?: EmailVariableDefinition[];
+  allowSending?: boolean;
+  showHeaderSettings?: boolean;
+  previewConfig?: EmailDesignerPreviewConfig;
 }
 
 const AVAILABLE_VARIABLES = [
@@ -287,17 +324,43 @@ const TEMPLATE_TYPE_CONFIG: Record<string, {
 const CASTING_PLANNER_LOGO_URL = '/role-room-assets/TheRoleRoom_Logo_Tagline.webp';
 
 interface EmailHeaderConfig {
-  logoUrl: string;
-  tagline: string;
+  brandName: string;
+  title?: string;
+  footerText?: string;
+  noteText?: string;
+  ctaLabel?: string;
+  ctaUrl?: string;
+  logoUrl?: string;
+  tagline?: string;
+  theme?: EmailDesignerPreviewTheme;
 }
+
+const DEFAULT_PREVIEW_THEME: Required<EmailDesignerPreviewTheme> = {
+  canvasBackground: '#f6f3ee',
+  cardBackground: '#ffffff',
+  cardBorder: '#e9e0d4',
+  headerBackground: '#171410',
+  headerText: '#f8f5ef',
+  brandLabelColor: '#a13bca',
+  bodyText: '#4d473f',
+  mutedText: '#7b7368',
+  buttonBackground: '#f6c358',
+  buttonText: '#171410',
+  footerText: '#7b7368',
+};
 
 const generateEmailHTML = (
   subject: string, 
   body: string, 
   previewMode: 'desktop' | 'mobile',
-  headerConfig: EmailHeaderConfig = { logoUrl: CASTING_PLANNER_LOGO_URL, tagline: 'Profesjonell Casting Management' }
+  headerConfig: EmailHeaderConfig = { brandName: 'The Role Room' }
 ) => {
   const width = previewMode === 'mobile' ? '375px' : '600px';
+  const theme = {
+    ...DEFAULT_PREVIEW_THEME,
+    ...(headerConfig.theme ?? {}),
+  };
+  const resolvedTitle = headerConfig.title || subject || 'Forhåndsvisning';
   
   return `
 <!DOCTYPE html>
@@ -310,47 +373,69 @@ const generateEmailHTML = (
       margin: 0;
       padding: 0;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-      background-color: #f5f5f5;
+      background-color: ${theme.canvasBackground};
       -webkit-font-smoothing: antialiased;
     }
     .email-container {
       max-width: ${width};
       margin: 0 auto;
-      background-color: #ffffff;
-      border-radius: 12px;
+      background-color: ${theme.cardBackground};
+      border-radius: 18px;
       overflow: hidden;
-      box-shadow: 0 4px 20px rgba(139, 92, 246, 0.15);
+      border: 1px solid ${theme.cardBorder};
+      box-shadow: 0 10px 34px rgba(23, 20, 16, 0.08);
     }
     .email-header {
-      background: linear-gradient(135deg, ${BRAND_COLORS.primary} 0%, ${BRAND_COLORS.secondary} 100%);
-      padding: 28px 24px;
-      text-align: center;
+      background: ${theme.headerBackground};
+      padding: 20px 24px;
     }
-    .email-logo-container {
-      display: inline-block;
-      margin-bottom: 8px;
+    .email-brand-label {
+      font-size: 12px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: ${theme.brandLabelColor};
+      font-weight: 700;
+      margin: 0;
+    }
+    .email-logo {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 14px;
+    }
+    .email-logo img {
+      max-height: 42px;
+      width: auto;
+      display: block;
     }
     .email-tagline {
-      font-size: 11px;
-      color: rgba(255,255,255,0.85);
+      margin: 10px 0 0;
+      color: rgba(248,245,239,0.72);
+      font-size: 12px;
+      letter-spacing: 0.08em;
       text-transform: uppercase;
-      letter-spacing: 3px;
-      margin: 8px 0 0 0;
-      font-weight: 500;
+    }
+    .email-title {
+      margin: 8px 0 0;
+      font-size: 24px;
+      line-height: 1.2;
+      font-weight: 700;
+      color: ${theme.headerText};
     }
     .email-subject {
-      background-color: ${BRAND_COLORS.dark};
-      color: #ffffff;
-      padding: 18px 24px;
-      font-size: 17px;
-      font-weight: 600;
-      border-left: 4px solid ${BRAND_COLORS.primary};
+      padding: 0 24px;
+      margin-top: 20px;
+      font-size: 12px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: ${theme.mutedText};
+      font-weight: 700;
     }
     .email-body {
-      padding: 32px 24px;
-      color: #333333;
+      padding: 18px 24px 24px;
+      color: ${theme.bodyText};
       line-height: 1.7;
-      font-size: 15px;
+      font-size: 14px;
     }
     .email-body p {
       margin: 0 0 16px 0;
@@ -363,31 +448,35 @@ const generateEmailHTML = (
       margin-bottom: 8px;
     }
     .email-body strong {
-      color: ${BRAND_COLORS.primary};
+      color: ${theme.bodyText};
+    }
+    .email-cta {
+      display: inline-block;
+      padding: 14px 20px;
+      border-radius: 999px;
+      background: ${theme.buttonBackground};
+      color: ${theme.buttonText};
+      text-decoration: none;
+      font-weight: 700;
     }
     .email-footer {
-      background: linear-gradient(180deg, #f8f9fa 0%, #f0f0f5 100%);
-      padding: 24px;
-      text-align: center;
-      border-top: 1px solid rgba(139, 92, 246, 0.1);
+      padding: 0 24px 24px;
     }
-    .email-footer-logo {
-      margin-bottom: 12px;
-    }
-    .email-footer-brand {
-      font-size: 14px;
-      font-weight: 600;
-      color: ${BRAND_COLORS.primary};
-      margin: 0 0 4px 0;
+    .email-note-text {
+      font-size: 12px;
+      color: ${theme.mutedText};
+      margin: 0 0 16px;
+      line-height: 1.7;
     }
     .email-footer-text {
       font-size: 12px;
-      color: #6c757d;
+      color: ${theme.footerText};
       margin: 0;
+      line-height: 1.7;
     }
     .variable-highlight {
-      background-color: rgba(139, 92, 246, 0.1);
-      color: ${BRAND_COLORS.primary};
+      background-color: rgba(161, 59, 202, 0.1);
+      color: ${theme.brandLabelColor};
       padding: 2px 6px;
       border-radius: 4px;
       font-family: monospace;
@@ -399,20 +488,16 @@ const generateEmailHTML = (
   <div style="padding: 24px;">
     <div class="email-container">
       <div class="email-header">
-        <div class="email-logo-container">
-          <img src="${headerConfig.logoUrl}" alt="Logo" style="height: 50px; width: auto;" />
-        </div>
-        <p class="email-tagline">${headerConfig.tagline}</p>
+        ${headerConfig.logoUrl ? `<div class="email-logo"><img src="${headerConfig.logoUrl}" alt="${headerConfig.brandName}" /></div>` : ''}
+        <p class="email-brand-label">${headerConfig.brandName}</p>
+        <h1 class="email-title">${resolvedTitle}</h1>
+        ${headerConfig.tagline ? `<p class="email-tagline">${headerConfig.tagline}</p>` : ''}
       </div>
-      <div class="email-subject">${subject}</div>
+      <div class="email-subject">Emne: ${subject}</div>
       <div class="email-body">${body}</div>
-      <div class="email-footer">
-        <div class="email-footer-logo">
-          <img src="${CASTING_PLANNER_LOGO_URL}" alt="The Role Room" style="height: 32px; width: auto;" />
-        </div>
-        <p class="email-footer-brand">The Role Room</p>
-        <p class="email-footer-text">Sendt via The Role Room - Din profesjonelle castingpartner</p>
-      </div>
+      ${headerConfig.ctaLabel ? `<div style="padding: 0 24px 20px;"><a class="email-cta" href="${headerConfig.ctaUrl || '#'}">${headerConfig.ctaLabel}</a></div>` : ''}
+      ${headerConfig.noteText ? `<div style="padding: 0 24px;"><p class="email-note-text">${headerConfig.noteText}</p></div>` : ''}
+      <div class="email-footer"><p class="email-footer-text">${headerConfig.footerText || 'The Role Room • theroleroom.com'}</p></div>
     </div>
   </div>
 </body>
@@ -437,6 +522,11 @@ export function EmailDesigner({
   onSend,
   projectVariables = {},
   projectName = 'Aktuelt prosjekt',
+  templateLibrary,
+  availableVariables,
+  allowSending = true,
+  showHeaderSettings = true,
+  previewConfig,
 }: EmailDesignerProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery('(max-width:599px)');
@@ -447,6 +537,8 @@ export function EmailDesigner({
   const is4K = useMediaQuery('(min-width:2560px)');
   const isDesktop = !isMobile && !isTablet;
   const toast = useToast();
+  const resolvedAvailableVariables = availableVariables ?? AVAILABLE_VARIABLES;
+  const resolvedTemplateLibrary = templateLibrary ?? DEFAULT_TEMPLATES;
 
   const getResponsiveValue = <T,>(mobile: T, tablet: T, hd720: T, hd1080: T, qhd: T, uhd4k: T): T => {
     if (is4K) return uhd4k;
@@ -478,7 +570,7 @@ export function EmailDesigner({
   const [variableMenuAnchor, setVariableMenuAnchor] = useState<null | HTMLElement>(null);
   const [selectedRecipients, setSelectedRecipients] = useState<string[]>([]);
   const [recipientDialogOpen, setRecipientDialogOpen] = useState(false);
-    const [sendOptionsDialogOpen, setSendOptionsDialogOpen] = useState(false);
+  const [sendOptionsDialogOpen, setSendOptionsDialogOpen] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [templatePanelCollapsed, setTemplatePanelCollapsed] = useState(false);
@@ -503,6 +595,26 @@ export function EmailDesigner({
   });
 
   useEffect(() => {
+    if (!template) {
+      return;
+    }
+    setTemplateName(template.name || 'Ny mal');
+    setTemplateType(template.type || 'custom');
+    setSubject(template.subject || '');
+    setBody(template.body || '');
+    if (editor && editor.getHTML() !== (template.body || '')) {
+      editor.commands.setContent(template.body || '');
+    }
+  }, [
+    template?.id,
+    template?.name,
+    template?.type,
+    template?.subject,
+    template?.body,
+    editor,
+  ]);
+
+  useEffect(() => {
     const interval = setInterval(() => {
       if (hasUnsavedChanges && subject && body) {
         saveVersion();
@@ -519,7 +631,7 @@ export function EmailDesigner({
   const lastValidationRef = useRef<string>('');
   
   useEffect(() => {
-    const missingVars = AVAILABLE_VARIABLES.filter(
+    const missingVars = resolvedAvailableVariables.filter(
       v => !projectVariables[v.key] || projectVariables[v.key].trim() === ''
     );
     const missingKeys = missingVars.map(v => v.key).sort().join(',');
@@ -533,7 +645,7 @@ export function EmailDesigner({
     // Update the ref with current state
     lastValidationRef.current = validationSignature;
     
-    if (missingVars.length === AVAILABLE_VARIABLES.length) {
+    if (missingVars.length === resolvedAvailableVariables.length) {
       // All variables are missing
       toast.showWarning(`Ingen prosjektdata funnet for "${projectName}". Fyll inn variabelverdier for å sende personaliserte e-poster.`);
     } else if (missingVars.length > 0) {
@@ -543,7 +655,7 @@ export function EmailDesigner({
       toast.showInfo(`Noen variabler mangler fra "${projectName}": ${missingLabels}${moreCount}`);
     }
     // No toast when all variables are present
-  }, [projectVariables, projectName, toast]);
+  }, [projectVariables, projectName, toast, resolvedAvailableVariables]);
 
   const saveVersion = useCallback(() => {
     const newVersion: EmailVersion = {
@@ -649,16 +761,26 @@ export function EmailDesigner({
 
   const handleCopyHtmlToClipboard = useCallback(async () => {
     try {
-      const fullHtml = generateEmailHTML(subject, body, 'desktop', { logoUrl: headerLogoUrl, tagline: headerTagline });
+      const fullHtml = generateEmailHTML(subject, body, 'desktop', {
+        brandName: previewConfig?.brandName || 'The Role Room',
+        title: previewConfig?.title || subject,
+        footerText: previewConfig?.footerText,
+        noteText: previewConfig?.noteText,
+        ctaLabel: previewConfig?.ctaLabel,
+        ctaUrl: previewConfig?.ctaUrl,
+        logoUrl: previewConfig?.logoUrl || headerLogoUrl,
+        tagline: previewConfig?.tagline || headerTagline,
+        theme: previewConfig?.theme,
+      });
       await navigator.clipboard.writeText(fullHtml);
       toast.showSuccess('HTML-versjon kopiert til utklippstavlen');
       setSendOptionsDialogOpen(false);
     } catch {
       toast.showError('Kunne ikke kopiere til utklippstavlen');
     }
-  }, [subject, body, toast, headerLogoUrl, headerTagline]);
+  }, [subject, body, toast, previewConfig]);
 
-  const loadTemplate = useCallback((templateData: typeof DEFAULT_TEMPLATES[0]) => {
+  const loadTemplate = useCallback((templateData: Omit<EmailTemplate, 'createdAt' | 'updatedAt'>) => {
     setTemplateName(templateData.name);
     setTemplateType(templateData.type);
     setSubject(templateData.subject);
@@ -713,8 +835,18 @@ export function EmailDesigner({
   const previewHTML = useMemo(() => {
     const highlightedBody = replaceVariablesWithHighlight(body);
     const highlightedSubject = replaceVariablesWithHighlight(subject);
-    return generateEmailHTML(highlightedSubject, highlightedBody, previewMode, { logoUrl: headerLogoUrl, tagline: headerTagline });
-  }, [subject, body, previewMode, headerLogoUrl, headerTagline]);
+    return generateEmailHTML(highlightedSubject, highlightedBody, previewMode, {
+      brandName: previewConfig?.brandName || 'The Role Room',
+      title: previewConfig?.title || templateName || subject,
+      footerText: previewConfig?.footerText,
+      noteText: previewConfig?.noteText ? replaceVariablesWithHighlight(previewConfig.noteText) : undefined,
+      ctaLabel: previewConfig?.ctaLabel,
+      ctaUrl: previewConfig?.ctaUrl,
+      logoUrl: previewConfig?.logoUrl || headerLogoUrl,
+      tagline: previewConfig?.tagline || headerTagline,
+      theme: previewConfig?.theme,
+    });
+  }, [subject, body, previewMode, previewConfig, templateName, headerLogoUrl, headerTagline]);
 
   const toolbarButtonStyle = {
     color: 'rgba(255,255,255,0.87)',
@@ -809,20 +941,22 @@ export function EmailDesigner({
           >
             {isMobile ? <SaveIcon /> : 'Lagre'}
           </Button>
-          <Button
-            variant="contained"
-            startIcon={!isMobile && <SendIcon />}
-            onClick={() => setSendOptionsDialogOpen(true)}
-            sx={{ 
-              bgcolor: BRAND_COLORS.primary,
-              '&:hover': { bgcolor: BRAND_COLORS.accent },
-              minHeight: buttonMinHeight,
-              fontSize: fontSize.button,
-              flex: isMobile ? 1 : 'none',
-            }}
-          >
-            {isMobile ? <SendIcon /> : 'Send'}
-          </Button>
+          {allowSending && (
+            <Button
+              variant="contained"
+              startIcon={!isMobile && <SendIcon />}
+              onClick={() => setSendOptionsDialogOpen(true)}
+              sx={{ 
+                bgcolor: BRAND_COLORS.primary,
+                '&:hover': { bgcolor: BRAND_COLORS.accent },
+                minHeight: buttonMinHeight,
+                fontSize: fontSize.button,
+                flex: isMobile ? 1 : 'none',
+              }}
+            >
+              {isMobile ? <SendIcon /> : 'Send'}
+            </Button>
+          )}
         </Box>
       </Box>
 
@@ -896,7 +1030,7 @@ export function EmailDesigner({
           {!templatePanelCollapsed && (
             <Box sx={{ flex: 1, overflow: 'auto', p: 1.5 }}>
               <Stack spacing={1.5}>
-                {DEFAULT_TEMPLATES.map((tmpl, index) => {
+                {resolvedTemplateLibrary.map((tmpl, index) => {
                   const typeConfig = TEMPLATE_TYPE_CONFIG[tmpl.type] || TEMPLATE_TYPE_CONFIG.custom;
                   const isSelected = templateName === tmpl.name && templateType === tmpl.type;
                   
@@ -997,7 +1131,7 @@ export function EmailDesigner({
               pt: 2,
               gap: 1,
             }}>
-              {DEFAULT_TEMPLATES.slice(0, 5).map((tmpl, index) => {
+              {resolvedTemplateLibrary.slice(0, 5).map((tmpl, index) => {
                 const typeConfig = TEMPLATE_TYPE_CONFIG[tmpl.type] || TEMPLATE_TYPE_CONFIG.custom;
                 return (
                   <Tooltip key={index} title={tmpl.name} placement="right">
@@ -1101,7 +1235,7 @@ export function EmailDesigner({
               />
 
               {/* Header Settings - collapsed on mobile */}
-              {!isMobile && (
+              {!isMobile && showHeaderSettings && (
               <Box sx={{ 
                 border: '1px solid rgba(255,255,255,0.1)', 
                 borderRadius: 1, 
@@ -1445,7 +1579,7 @@ export function EmailDesigner({
           </Typography>
         </Box>
         
-        {AVAILABLE_VARIABLES.map((variable) => {
+        {resolvedAvailableVariables.map((variable) => {
           const currentValue = projectVariables[variable.key];
           const hasValue = currentValue && currentValue.trim() !== '';
           

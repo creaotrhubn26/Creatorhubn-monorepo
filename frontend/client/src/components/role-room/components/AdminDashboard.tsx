@@ -66,6 +66,7 @@ import {
   fetchBrandingSettings,
   getBrandingSettings,
   saveBrandingSettings,
+  type RoleRoomEmailTemplateId,
   updateBrandingSettings,
 } from '../config/branding';
 import { useBrandingSettings } from '../hooks/useBrandingSettings';
@@ -362,6 +363,39 @@ const variableConfig: Record<string, { label: string; icon: ReactNode; example: 
   docsLink: { label: 'Dokumentasjon', icon: <EditIcon />, example: 'https://docs.theroleroom.com' },
 };
 
+const ROLE_ROOM_EMAIL_TEMPLATE_TYPES: Record<RoleRoomEmailTemplateId, DesignerEmailTemplate['type']> = {
+  role_room_activation: 'confirmation',
+  role_room_activation_reminder: 'reminder',
+  role_room_payment_reminder: 'reminder',
+  role_room_payment_failed: 'reminder',
+  role_room_payment_recovered: 'confirmation',
+  role_room_education_inquiry_admin: 'custom',
+};
+
+const ROLE_ROOM_EMAIL_VARIABLES = [
+  { key: 'recipientName', label: 'Mottakernavn', example: 'Daniel Qazi' },
+  { key: 'companyName', label: 'Firmanavn', example: 'Nord Film Studio AS' },
+  { key: 'planName', label: 'Abonnement', example: 'Produksjonsteam' },
+  { key: 'organizationNumber', label: 'Organisasjonsnummer', example: '912 660 680' },
+  { key: 'monthlyTotalExVat', label: 'Pris eks. mva.', example: '2 385,00 kr / mnd eks. mva.' },
+  { key: 'memberCount', label: 'Antall medlemmer', example: '3 personer' },
+  { key: 'memberRoleLabel', label: 'Rolle i teamet', example: 'Produsent · Teamleder' },
+  { key: 'recipientEmail', label: 'Mottaker e-post', example: 'daniel@creatorhubn.com' },
+  { key: 'activationUrl', label: 'Aktiveringslenke', example: 'https://theroleroom.com/activate/demo-token' },
+  { key: 'roleRoomUrl', label: 'The Role Room-lenke', example: 'https://theroleroom.com' },
+  { key: 'requestId', label: 'Forespørsel-ID', example: 'req_0195a2b1' },
+  { key: 'contactName', label: 'Kontaktperson', example: 'Ragnhild E.' },
+  { key: 'contactEmail', label: 'Kontakt e-post', example: 'ragnhild@example.no' },
+  { key: 'contactRole', label: 'Kontaktrolle', example: 'Programansvarlig' },
+  { key: 'institutionTypeLabel', label: 'Institusjonstype', example: 'Høyskole / universitet' },
+  { key: 'programName', label: 'Studieprogram', example: 'Filmproduksjon' },
+  { key: 'studentSeatLabel', label: 'Studentomfang', example: '60-120 studenter' },
+  { key: 'staffSeatLabel', label: 'Faglærere / koordinatorer', example: '6-10 ansatte' },
+  { key: 'desiredStartWindowLabel', label: 'Ønsket oppstart', example: 'Høstsemester 2026' },
+  { key: 'useCase', label: 'Bruksområde', example: 'Koble kull, faglærere og praksisproduksjoner i ett arbeidsrom.' },
+  { key: 'failureMessage', label: 'Betalingsmelding', example: 'Kortet ble avvist. Oppdater betalingsinformasjonen for abonnementet.' },
+];
+
 export default function AdminDashboard({ open, onClose, projectName = 'Mitt Prosjekt' }: AdminDashboardProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery('(max-width:599px)');
@@ -448,6 +482,7 @@ export default function AdminDashboard({ open, onClose, projectName = 'Mitt Pros
     docsLink: 'https://docs.theroleroom.com',
   });
   const [brandingForm, setBrandingForm] = useState(getBrandingSettings());
+  const [selectedRoleRoomEmailTemplateId, setSelectedRoleRoomEmailTemplateId] = useState<RoleRoomEmailTemplateId>('role_room_activation');
 
   useEffect(() => {
     if (!open) return;
@@ -471,6 +506,19 @@ export default function AdminDashboard({ open, onClose, projectName = 'Mitt Pros
       setEditName(selectedTemplate.name);
     }
   }, [selectedTemplate]);
+
+  useEffect(() => {
+    const availableTemplateIds = new Set(
+      (brandingForm.email.templates || []).map((template) => template.id)
+    );
+    if (availableTemplateIds.has(selectedRoleRoomEmailTemplateId)) {
+      return;
+    }
+    const fallbackId = brandingForm.email.templates[0]?.id;
+    if (fallbackId) {
+      setSelectedRoleRoomEmailTemplateId(fallbackId);
+    }
+  }, [brandingForm.email.templates, selectedRoleRoomEmailTemplateId]);
 
   const loadAdmins = async () => {
     setLoading(true);
@@ -587,6 +635,127 @@ export default function AdminDashboard({ open, onClose, projectName = 'Mitt Pros
     } catch (error) {
       console.error('Failed to reset branding:', error);
       setSnackbar({ open: true, message: 'Kunne ikke nullstille branding', severity: 'error' });
+    }
+  };
+
+  const roleRoomEmailTemplates = brandingForm.email.templates || [];
+  const selectedRoleRoomEmailTemplate =
+    roleRoomEmailTemplates.find((template) => template.id === selectedRoleRoomEmailTemplateId) ||
+    roleRoomEmailTemplates[0] ||
+    null;
+  const roleRoomEmailDesignerTemplate: DesignerEmailTemplate | undefined = selectedRoleRoomEmailTemplate
+    ? {
+        id: selectedRoleRoomEmailTemplate.id,
+        name: selectedRoleRoomEmailTemplate.name,
+        type: ROLE_ROOM_EMAIL_TEMPLATE_TYPES[selectedRoleRoomEmailTemplate.id] || 'custom',
+        subject: selectedRoleRoomEmailTemplate.subject,
+        body: selectedRoleRoomEmailTemplate.body,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }
+    : undefined;
+  const roleRoomEmailVariableValues = useMemo(
+    () => ({
+      ...variableValues,
+      recipientName: 'Daniel Qazi',
+      companyName: 'Nord Film Studio AS',
+      planName: 'Produksjonsteam',
+      organizationNumber: '912 660 680',
+      monthlyTotalExVat: '2 385,00 kr / mnd eks. mva.',
+      memberCount: '3 personer',
+      memberRoleLabel: 'Produsent · Teamleder',
+      recipientEmail: 'daniel@creatorhubn.com',
+      activationUrl: `https://${brandingForm.identity.domain}/activate/demo-token`,
+      roleRoomUrl: `https://${brandingForm.identity.domain}`,
+      requestId: 'req_0195a2b1',
+      contactName: 'Ragnhild E.',
+      contactEmail: 'ragnhild@example.no',
+      contactRole: 'Programansvarlig',
+      institutionTypeLabel: 'Høyskole / universitet',
+      programName: 'Filmproduksjon',
+      studentSeatLabel: '60-120 studenter',
+      staffSeatLabel: '6-10 ansatte',
+      desiredStartWindowLabel: 'Høstsemester 2026',
+      useCase: 'Koble kull, faglærere og praksisproduksjoner i ett arbeidsrom.',
+      failureMessage: 'Kortet ble avvist. Oppdater betalingsinformasjonen for abonnementet.',
+      supportEmail: brandingForm.identity.supportEmail,
+      docsLink: brandingForm.identity.docsUrl,
+    }),
+    [brandingForm.identity.domain, brandingForm.identity.docsUrl, brandingForm.identity.supportEmail, variableValues]
+  );
+
+  const updateRoleRoomEmailTemplate = (
+    templateId: RoleRoomEmailTemplateId,
+    updater: (current: BrandingSettings['email']['templates'][number]) => BrandingSettings['email']['templates'][number]
+  ) => {
+    setBrandingForm((prev) => ({
+      ...prev,
+      email: {
+        ...prev.email,
+        templates: prev.email.templates.map((template) =>
+          template.id === templateId ? updater(template) : template
+        ),
+      },
+    }));
+  };
+
+  const persistRoleRoomEmailSettings = async (nextSettings: BrandingSettings, successMessage: string) => {
+    const updated = await updateBrandingSettings(nextSettings);
+    saveBrandingSettings(updated);
+    setBrandingForm(updated);
+    setSnackbar({ open: true, message: successMessage, severity: 'success' });
+  };
+
+  const handleSaveRoleRoomEmailTemplate = async (template: DesignerEmailTemplate) => {
+    if (!selectedRoleRoomEmailTemplate) {
+      return;
+    }
+
+    const nextSettings: BrandingSettings = {
+      ...brandingForm,
+      email: {
+        ...brandingForm.email,
+        templates: brandingForm.email.templates.map((entry) =>
+          entry.id === selectedRoleRoomEmailTemplate.id
+            ? {
+                ...entry,
+                name: template.name,
+                subject: template.subject,
+                body: template.body,
+              }
+            : entry
+        ),
+      },
+    };
+
+    try {
+      await persistRoleRoomEmailSettings(nextSettings, 'The Role Room-mal lagret');
+    } catch (error) {
+      console.error('Failed to persist Role Room email template:', error);
+      setSnackbar({ open: true, message: 'Kunne ikke lagre e-postmalen', severity: 'error' });
+    }
+  };
+
+  const handleSaveRoleRoomEmailMeta = async () => {
+    try {
+      await persistRoleRoomEmailSettings(brandingForm, 'The Role Room e-postoppsett lagret');
+    } catch (error) {
+      console.error('Failed to persist Role Room email settings:', error);
+      setSnackbar({ open: true, message: 'Kunne ikke lagre e-postoppsettet', severity: 'error' });
+    }
+  };
+
+  const handleResetRoleRoomEmailMeta = async () => {
+    const nextSettings: BrandingSettings = {
+      ...brandingForm,
+      email: DEFAULT_BRANDING_SETTINGS.email,
+    };
+
+    try {
+      await persistRoleRoomEmailSettings(nextSettings, 'The Role Room e-postoppsett nullstilt');
+    } catch (error) {
+      console.error('Failed to reset Role Room email settings:', error);
+      setSnackbar({ open: true, message: 'Kunne ikke nullstille e-postoppsettet', severity: 'error' });
     }
   };
 
@@ -2257,16 +2426,174 @@ export default function AdminDashboard({ open, onClose, projectName = 'Mitt Pros
 
           {mainTab === 1 && (
             <Box sx={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', flex: 1 }}>
-              <EmailDesigner
-                projectVariables={variableValues}
-                projectName={projectName}
-                onSave={(template) => {
-                  setSnackbar({
-                    open: true,
-                    message: 'E-postmal lagret',
-                    severity: 'success',
-                  });
+              <Box
+                sx={{
+                  p: spacing,
+                  borderBottom: '1px solid rgba(255,255,255,0.08)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: spacing,
+                  bgcolor: 'rgba(255,255,255,0.02)',
                 }}
+              >
+                <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, gap: spacing, alignItems: { lg: 'center' } }}>
+                  <FormControl size="small" sx={{ minWidth: { xs: '100%', md: 280 } }}>
+                    <InputLabel sx={{ color: 'rgba(255,255,255,0.7)' }}>The Role Room-mal</InputLabel>
+                    <Select
+                      value={selectedRoleRoomEmailTemplate?.id || ''}
+                      label="The Role Room-mal"
+                      onChange={(event) =>
+                        setSelectedRoleRoomEmailTemplateId(event.target.value as RoleRoomEmailTemplateId)
+                      }
+                      sx={{
+                        color: '#fff',
+                        '& fieldset': { borderColor: 'rgba(255,255,255,0.12)' },
+                        '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.22)' },
+                        '&.Mui-focused fieldset': { borderColor: '#8b5cf6' },
+                      }}
+                    >
+                      {roleRoomEmailTemplates.map((template) => (
+                        <MenuItem key={template.id} value={template.id}>
+                          {template.name}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+
+                  <TextField
+                    label="Svaradresse"
+                    size="small"
+                    value={brandingForm.email.replyToEmail}
+                    onChange={(event) =>
+                      setBrandingForm((prev) => ({
+                        ...prev,
+                        email: {
+                          ...prev.email,
+                          replyToEmail: event.target.value,
+                        },
+                      }))
+                    }
+                    sx={{ ...inputStyles, minWidth: { xs: '100%', lg: 260 } }}
+                  />
+
+                  <TextField
+                    label="Standard footer"
+                    size="small"
+                    value={brandingForm.email.footerText}
+                    onChange={(event) =>
+                      setBrandingForm((prev) => ({
+                        ...prev,
+                        email: {
+                          ...prev.email,
+                          footerText: event.target.value,
+                        },
+                      }))
+                    }
+                    sx={{ ...inputStyles, flex: 1 }}
+                  />
+
+                  <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                    <Button
+                      variant="contained"
+                      startIcon={<SaveIcon />}
+                      onClick={handleSaveRoleRoomEmailMeta}
+                      sx={{ bgcolor: '#8b5cf6', '&:hover': { bgcolor: '#7c3aed' }, minHeight: buttonMinHeight }}
+                    >
+                      Lagre
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      onClick={handleResetRoleRoomEmailMeta}
+                      sx={{ color: '#fff', borderColor: 'rgba(255,255,255,0.16)', minHeight: buttonMinHeight }}
+                    >
+                      Nullstill
+                    </Button>
+                  </Box>
+                </Box>
+
+                {selectedRoleRoomEmailTemplate && (
+                  <>
+                    <Alert
+                      severity="info"
+                      sx={{
+                        bgcolor: 'rgba(139,92,246,0.12)',
+                        color: '#f5f3ff',
+                        border: '1px solid rgba(139,92,246,0.24)',
+                        '& .MuiAlert-icon': { color: '#c4b5fd' },
+                      }}
+                    >
+                      Denne fanen styrer de faktiske The Role Room-systemmailene. Header, kort og CTA beholder samme uttrykk som dagens live-mails.
+                    </Alert>
+                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', xl: '1fr 1fr 1fr' }, gap: spacing }}>
+                      <TextField
+                        label="Tittel i e-posten"
+                        size="small"
+                        value={selectedRoleRoomEmailTemplate.title}
+                        onChange={(event) =>
+                          updateRoleRoomEmailTemplate(selectedRoleRoomEmailTemplate.id, (current) => ({
+                            ...current,
+                            title: event.target.value,
+                          }))
+                        }
+                        sx={inputStyles}
+                      />
+                      <TextField
+                        label="CTA-tekst"
+                        size="small"
+                        value={selectedRoleRoomEmailTemplate.ctaLabel || ''}
+                        onChange={(event) =>
+                          updateRoleRoomEmailTemplate(selectedRoleRoomEmailTemplate.id, (current) => ({
+                            ...current,
+                            ctaLabel: event.target.value || undefined,
+                          }))
+                        }
+                        sx={inputStyles}
+                      />
+                      <TextField
+                        label="Mal-spesifikk fotnote"
+                        size="small"
+                        value={selectedRoleRoomEmailTemplate.footerNote || ''}
+                        onChange={(event) =>
+                          updateRoleRoomEmailTemplate(selectedRoleRoomEmailTemplate.id, (current) => ({
+                            ...current,
+                            footerNote: event.target.value || undefined,
+                          }))
+                        }
+                        sx={inputStyles}
+                      />
+                    </Box>
+                    <Typography sx={{ color: 'rgba(255,255,255,0.72)', fontSize: fontSize.caption }}>
+                      {selectedRoleRoomEmailTemplate.description}
+                    </Typography>
+                  </>
+                )}
+              </Box>
+
+              <EmailDesigner
+                template={roleRoomEmailDesignerTemplate}
+                templateLibrary={roleRoomEmailTemplates.map((template) => ({
+                  id: template.id,
+                  name: template.name,
+                  type: ROLE_ROOM_EMAIL_TEMPLATE_TYPES[template.id] || 'custom',
+                  subject: template.subject,
+                  body: template.body,
+                }))}
+                availableVariables={ROLE_ROOM_EMAIL_VARIABLES}
+                projectVariables={roleRoomEmailVariableValues}
+                projectName="The Role Room systemvariabler"
+                allowSending={false}
+                showHeaderSettings={false}
+                previewConfig={{
+                  brandName: brandingForm.identity.appName,
+                  title: selectedRoleRoomEmailTemplate?.title,
+                  footerText: brandingForm.email.footerText,
+                  noteText: selectedRoleRoomEmailTemplate?.footerNote,
+                  ctaLabel: selectedRoleRoomEmailTemplate?.ctaLabel,
+                  logoUrl: brandingForm.identity.emailLogoUrl || ROLE_ROOM_BRAND_ASSETS.wordmark,
+                  tagline: brandingForm.identity.tagline,
+                  theme: brandingForm.email.theme,
+                }}
+                onSave={handleSaveRoleRoomEmailTemplate}
               />
             </Box>
           )}

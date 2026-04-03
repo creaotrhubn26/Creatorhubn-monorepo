@@ -1307,6 +1307,46 @@ export type BrandingTokens = {
   labels: Record<BrandingTextTokenKey, string>;
 };
 
+export type RoleRoomEmailTemplateId =
+  | 'role_room_activation'
+  | 'role_room_activation_reminder'
+  | 'role_room_payment_reminder'
+  | 'role_room_payment_failed'
+  | 'role_room_payment_recovered'
+  | 'role_room_education_inquiry_admin';
+
+export type RoleRoomEmailTheme = {
+  canvasBackground: string;
+  cardBackground: string;
+  cardBorder: string;
+  headerBackground: string;
+  headerText: string;
+  brandLabelColor: string;
+  bodyText: string;
+  mutedText: string;
+  buttonBackground: string;
+  buttonText: string;
+  footerText: string;
+};
+
+export type RoleRoomEmailTemplate = {
+  id: RoleRoomEmailTemplateId;
+  name: string;
+  description: string;
+  subject: string;
+  title: string;
+  body: string;
+  ctaLabel?: string;
+  footerNote?: string;
+};
+
+export type BrandingEmailSettings = {
+  replyToEmail: string;
+  footerText: string;
+  theme: RoleRoomEmailTheme;
+  templates: RoleRoomEmailTemplate[];
+};
+
 export type BrandingSettings = {
   version: number;
   identity: BrandingIdentity;
@@ -1314,6 +1354,7 @@ export type BrandingSettings = {
   typography: BrandingTypography;
   layout: BrandingLayout;
   tokens: BrandingTokens;
+  email: BrandingEmailSettings;
 } & BrandingIdentity;
 
 export const ROLE_ROOM_BRAND_ASSETS = {
@@ -2627,6 +2668,95 @@ const DEFAULT_TOKENS: BrandingTokens = {
   },
 };
 
+const DEFAULT_EMAIL_THEME: RoleRoomEmailTheme = {
+  canvasBackground: '#f6f3ee',
+  cardBackground: '#ffffff',
+  cardBorder: '#e9e0d4',
+  headerBackground: '#171410',
+  headerText: '#f8f5ef',
+  brandLabelColor: '#a13bca',
+  bodyText: '#4d473f',
+  mutedText: '#7b7368',
+  buttonBackground: '#f6c358',
+  buttonText: '#171410',
+  footerText: '#7b7368',
+};
+
+export const DEFAULT_ROLE_ROOM_EMAIL_TEMPLATES: RoleRoomEmailTemplate[] = [
+  {
+    id: 'role_room_activation',
+    name: 'Kontogodkjenning',
+    description: 'Sendes når betalingen er registrert og brukeren må godkjenne kontoen før første innlogging.',
+    subject: 'The Role Room er klar — godkjenn kontoen din',
+    title: 'Betalingen er bekreftet',
+    body:
+      '<p>Hei {{recipientName}},</p><p>Betalingen for <strong>{{companyName}}</strong> er registrert. Kontoen din i The Role Room er klargjort.</p><p>Før første innlogging må du godkjenne kontoen din.</p>',
+    ctaLabel: 'Godkjenn kontoen din',
+    footerNote:
+      'Hvis knappen ikke virker, kan du kopiere lenken manuelt fra e-posten.',
+  },
+  {
+    id: 'role_room_activation_reminder',
+    name: 'Påminnelse om kontogodkjenning',
+    description: 'Sendes til brukere som har betalt, men fortsatt ikke har godkjent kontoen sin.',
+    subject: 'Påminnelse: godkjenn kontoen din i The Role Room',
+    title: 'Påminnelse om kontogodkjenning',
+    body:
+      '<p>Hei {{recipientName}},</p><p>Kontoen din i <strong>{{companyName}}</strong> er snart klar, men du må fortsatt godkjenne den før første innlogging.</p><p>Når godkjenningen er fullført, kan du logge inn med samme e-postadresse.</p>',
+    ctaLabel: 'Godkjenn kontoen din',
+    footerNote:
+      'Hvis du allerede har godkjent kontoen din, kan du se bort fra denne e-posten.',
+  },
+  {
+    id: 'role_room_payment_reminder',
+    name: 'Påminnelse om betaling',
+    description: 'Sendes til teamleder når vi fortsatt mangler aktiv betaling for abonnementet.',
+    subject: 'Påminnelse: fullfør betalingen for The Role Room',
+    title: 'Betalingen mangler fortsatt',
+    body:
+      '<p>Hei {{recipientName}},</p><p>Vi mangler fortsatt en aktiv betaling for <strong>{{companyName}}</strong> i The Role Room. Teamet blir ikke aktivert før betalingen er fullført.</p>',
+    ctaLabel: 'Gå til The Role Room',
+    footerNote:
+      'Hvis betalingen allerede er fullført, kan du se bort fra denne e-posten.',
+  },
+  {
+    id: 'role_room_payment_failed',
+    name: 'Betaling feilet',
+    description: 'Sendes til teamleder når Stripe ikke klarer å gjennomføre en betaling.',
+    subject: 'Betalingen for The Role Room må oppdateres',
+    title: 'Betalingen må oppdateres',
+    body:
+      '<p>Hei {{recipientName}},</p><p>Stripe klarte ikke å gjennomføre betalingen for <strong>{{companyName}}</strong>. Kun teamleder kan oppdatere betalingsinformasjonen.</p><p>Når du kommer tilbake til The Role Room, prøver vi betalingen på nytt og sender deg en ny status på e-post.</p>',
+    ctaLabel: 'Åpne The Role Room',
+  },
+  {
+    id: 'role_room_payment_recovered',
+    name: 'Betaling gjenopprettet',
+    description: 'Sendes når en tidligere mislykket betaling er registrert på nytt og abonnementet er aktivt igjen.',
+    subject: 'Betalingen for The Role Room er godkjent',
+    title: 'Betalingen er godkjent',
+    body:
+      '<p>Hei {{recipientName}},</p><p>Betalingen for <strong>{{companyName}}</strong> er nå registrert igjen. Abonnementet i The Role Room er aktivt.</p><p>Teamet kan fortsette som normalt.</p>',
+    ctaLabel: 'Gå tilbake til The Role Room',
+  },
+  {
+    id: 'role_room_education_inquiry_admin',
+    name: 'Institusjonsforespørsel',
+    description: 'Sendes til admin når en utdanningsinstitusjon sender inn en samarbeidsforespørsel.',
+    subject: 'Ny institusjonsforespørsel i The Role Room — {{companyName}}',
+    title: 'Ny institusjonsforespørsel',
+    body:
+      '<p>En ny utdanningsinstitusjon har sendt inn en samarbeidsforespørsel via The Role Room.</p><p>Se detaljene under og følg opp henvendelsen direkte med kontaktpersonen.</p>',
+  },
+];
+
+export const DEFAULT_BRANDING_EMAIL_SETTINGS: BrandingEmailSettings = {
+  replyToEmail: DEFAULT_IDENTITY.supportEmail,
+  footerText: 'The Role Room • theroleroom.com',
+  theme: DEFAULT_EMAIL_THEME,
+  templates: DEFAULT_ROLE_ROOM_EMAIL_TEMPLATES,
+};
+
 export const DEFAULT_BRANDING_SETTINGS: BrandingSettings = {
   version: 1,
   identity: DEFAULT_IDENTITY,
@@ -2634,6 +2764,7 @@ export const DEFAULT_BRANDING_SETTINGS: BrandingSettings = {
   typography: DEFAULT_TYPOGRAPHY,
   layout: DEFAULT_LAYOUT,
   tokens: DEFAULT_TOKENS,
+  email: DEFAULT_BRANDING_EMAIL_SETTINGS,
   ...DEFAULT_IDENTITY,
 };
 
@@ -2722,6 +2853,30 @@ const normalizeSettings = (settings?: Partial<BrandingSettings>): BrandingSettin
     watermarkUrl: canonicalizeRoleRoomIdentityAsset(identity.watermarkUrl, 'logo') ?? DEFAULT_IDENTITY.watermarkUrl,
   };
 
+  const normalizedEmailTemplates = DEFAULT_ROLE_ROOM_EMAIL_TEMPLATES.map((template) => {
+    const override = settings?.email?.templates?.find((entry) => entry?.id === template.id);
+    return {
+      ...template,
+      ...(override ?? {}),
+      id: template.id,
+      name: override?.name?.trim() ? override.name : template.name,
+      description: override?.description?.trim() ? override.description : template.description,
+      subject: override?.subject?.trim() ? override.subject : template.subject,
+      title: override?.title?.trim() ? override.title : template.title,
+      body: override?.body?.trim() ? override.body : template.body,
+      ...(override?.ctaLabel !== undefined
+        ? { ctaLabel: override.ctaLabel?.trim() || undefined }
+        : template.ctaLabel !== undefined
+          ? { ctaLabel: template.ctaLabel }
+          : {}),
+      ...(override?.footerNote !== undefined
+        ? { footerNote: override.footerNote?.trim() || undefined }
+        : template.footerNote !== undefined
+          ? { footerNote: template.footerNote }
+          : {}),
+    };
+  });
+
   const merged: BrandingSettings = {
     ...DEFAULT_BRANDING_SETTINGS,
     ...(settings ?? {}),
@@ -2745,6 +2900,21 @@ const normalizeSettings = (settings?: Partial<BrandingSettings>): BrandingSettin
         ...DEFAULT_TOKENS.labels,
         ...(settings?.tokens?.labels ?? {}),
       },
+    },
+    email: {
+      ...DEFAULT_BRANDING_EMAIL_SETTINGS,
+      ...(settings?.email ?? {}),
+      replyToEmail:
+        settings?.email?.replyToEmail?.trim() ||
+        DEFAULT_BRANDING_EMAIL_SETTINGS.replyToEmail,
+      footerText:
+        settings?.email?.footerText?.trim() ||
+        DEFAULT_BRANDING_EMAIL_SETTINGS.footerText,
+      theme: {
+        ...DEFAULT_BRANDING_EMAIL_SETTINGS.theme,
+        ...(settings?.email?.theme ?? {}),
+      },
+      templates: normalizedEmailTemplates,
     },
   };
 
