@@ -65,6 +65,7 @@ type EducationInstitutionType = '' | 'upper_secondary' | 'folk_high_school' | 'v
 type EducationSeatRange = '' | 'up_to_15' | 'up_to_30' | 'up_to_60' | 'up_to_120' | 'more_than_120';
 type EducationStartWindow = '' | 'this_semester' | 'next_semester' | 'next_academic_year' | 'exploring';
 type ContentProducerOnboardingStep = 'company' | 'role' | 'team' | 'auth';
+type ProductionTeamOnboardingStep = 'company' | 'role' | 'team' | 'auth';
 type RoleChipVariant = 'default' | 'decision';
 
 interface RoleRoomPublicStats {
@@ -245,7 +246,7 @@ const CONTENT_PRODUCER_USE_CASES: { roleId: string; line: string }[] = [
   { roleId: 'director', line: 'Planlegg produksjon, shotlist og samarbeid i samme rom som leveransen faktisk skjer i.' },
   { roleId: 'camera_operator', line: 'Gi små videoteam en raskere og mer strukturert produksjonsflyt fra brief til eksport.' },
 ];
-const CONTENT_PRODUCER_ROLE_SPOTLIGHTS: Partial<Record<string, {
+const DECISION_ROLE_SPOTLIGHTS: Partial<Record<string, {
   eyebrow: string;
   summary: string;
 }>> = {
@@ -272,6 +273,30 @@ const CONTENT_PRODUCER_ROLE_SPOTLIGHTS: Partial<Record<string, {
   composer: {
     eyebrow: 'Utvid senere',
     summary: 'Koble musikk, versjoner og godkjenninger direkte til prosjektet når teamet vokser.',
+  },
+  producer: {
+    eyebrow: 'Teamleder',
+    summary: 'For produksjoner der produsenten holder sammen plan, fremdrift, bemanning og levering.',
+  },
+  casting_director: {
+    eyebrow: 'Castingflyt',
+    summary: 'For produksjoner som trenger tett samarbeid mellom roller, auditioner og planlegging.',
+  },
+  photo_director: {
+    eyebrow: 'Visuell ledelse',
+    summary: 'For team som bygger produksjonen rundt visuelt uttrykk, kamera og lysrigg.',
+  },
+  photo_assistant: {
+    eyebrow: 'Utvid senere',
+    summary: 'Legg til ekstra kapasitet når settet vokser og teamet trenger tydelig støttefunksjon.',
+  },
+  sound_mixer: {
+    eyebrow: 'Lydteam',
+    summary: 'Koble på miks og teknisk lydansvar når produksjonen trenger mer avansert lydflyt.',
+  },
+  boom_operator: {
+    eyebrow: 'Lydteam',
+    summary: 'For opptak der lyd jobber tett sammen med resten av crewet i samme plan og fremdrift.',
   },
 };
 
@@ -333,6 +358,16 @@ const CONTENT_PRODUCER_ONBOARDING_STEPS: ReadonlyArray<{
   { id: 'company', label: 'Bedrift', description: 'Verifiser foretaket før oppsettet åpnes.' },
   { id: 'role', label: 'Fokus', description: 'Velg hovedrollen som best beskriver hvordan dere jobber.' },
   { id: 'team', label: 'Team', description: 'Sett opp kontoeier, eventuelle ekstra plasser og plan.' },
+  { id: 'auth', label: 'Innlogging', description: 'Opprett tilgang når team og plan er klare.' },
+];
+const PRODUCTION_TEAM_ONBOARDING_STEPS: ReadonlyArray<{
+  id: ProductionTeamOnboardingStep;
+  label: string;
+  description: string;
+}> = [
+  { id: 'company', label: 'Bedrift', description: 'Verifiser foretaket før produksjonsteamet åpnes.' },
+  { id: 'role', label: 'Rolle', description: 'Velg hvilken rolle som leder produksjonen inn i plattformen.' },
+  { id: 'team', label: 'Team', description: 'Legg inn minst tre personer, fordel roller og se planoppsummeringen.' },
   { id: 'auth', label: 'Innlogging', description: 'Opprett tilgang når team og plan er klare.' },
 ];
 const PRODUCTION_TEAM_MIN_MEMBERS = 3;
@@ -562,6 +597,26 @@ const contentProducerCategories = [
     roleIds: ['sound_designer', 'composer'],
   },
 ] as const;
+const productionTeamCategories = [
+  {
+    id: 'kjerne',
+    label: 'Kjerne & ledelse',
+    description: 'Start med rollen som best beskriver hvem som leder produksjonen og eier hovedflyten i prosjektet.',
+    roleIds: ['producer', 'director', 'casting_director', 'photo_director'],
+  },
+  {
+    id: 'produksjon',
+    label: 'Crew & capture',
+    description: 'Legg til opptak, foto og settkapasitet når teamet settes opp i neste steg.',
+    roleIds: ['camera_operator', 'photographer', 'photo_assistant'],
+  },
+  {
+    id: 'utvid',
+    label: 'Lyd & musikk',
+    description: 'Aktiver spesialiserte lydroller når produksjonen trenger miks, boom eller originalmusikk.',
+    roleIds: ['sound_designer', 'sound_mixer', 'boom_operator', 'composer'],
+  },
+] as const;
 
 const allRoles = Object.entries(ROLE_CARDS).map(([id, v]) => ({ id, label: v.label }));
 
@@ -760,7 +815,7 @@ function RoleChip({
 }) {
   const shortLabel = role.label.split(' ')[0];
   const spotlight = variant === 'decision'
-    ? CONTENT_PRODUCER_ROLE_SPOTLIGHTS[role.id]
+    ? DECISION_ROLE_SPOTLIGHTS[role.id]
     : null;
   const showDecisionDetails = variant === 'decision' && selected;
   const videoRef   = useRef<HTMLVideoElement>(null);
@@ -1337,6 +1392,7 @@ export default function LoginDialog({
     message: string;
   } | null>(null);
   const [contentProducerStep, setContentProducerStep] = useState<ContentProducerOnboardingStep>('company');
+  const [productionTeamStep, setProductionTeamStep] = useState<ProductionTeamOnboardingStep>('company');
   const [productionTeamMembers, setProductionTeamMembers] = useState<TeamMemberDraft[]>(
     () => createInitialTeamMembers(),
   );
@@ -1369,6 +1425,12 @@ export default function LoginDialog({
     && effectiveLoginPersona === 'content_producer'
     && !clientPortalIntent,
   );
+  const isStepwiseProductionTeamFlow = Boolean(
+    isLandingPage
+    && requiresCommercialSetup
+    && effectiveLoginPersona === 'production_team',
+  );
+  const isStepwiseCommercialFlow = isStepwiseContentProducerFlow || isStepwiseProductionTeamFlow;
   const useCompactMobileHeader = isMobile && isLandingPage;
   const isProductionTeamFlow = effectiveLoginPersona === 'production_team';
   const isEducationInstitutionFlow = effectiveLoginPersona === 'education_institution';
@@ -1383,7 +1445,13 @@ export default function LoginDialog({
         )
       : null;
   const visibleProfessionCategories = allowedRoleIds
-    ? (isStepwiseContentProducerFlow ? contentProducerCategories : professionCategories)
+    ? (
+      isStepwiseContentProducerFlow
+        ? contentProducerCategories
+        : isStepwiseProductionTeamFlow
+          ? productionTeamCategories
+          : professionCategories
+    )
         .map((category) => ({
           ...category,
           roleIds: category.roleIds.filter((id) => allowedRoleIds.has(id)),
@@ -1440,7 +1508,14 @@ export default function LoginDialog({
   const shouldShowAuthFields = shouldShowSetupFlow && (
     !isEducationInstitutionFlow
     && (!requiresCommercialSetup || isCommercialSetupComplete)
-    && (!isStepwiseContentProducerFlow || contentProducerStep === 'auth')
+    && (
+      !isStepwiseCommercialFlow
+      || (
+        isStepwiseContentProducerFlow
+          ? contentProducerStep === 'auth'
+          : productionTeamStep === 'auth'
+      )
+    )
   );
   /* parse "roleId|Description" lines — fall back to compiled defaults */
   const activeUseCases: { roleId: string; line: string }[] = (() => {
@@ -1551,6 +1626,7 @@ export default function LoginDialog({
         setEducationUseCase('');
         setEducationInquirySubmitted(null);
         setContentProducerStep('company');
+        setProductionTeamStep('company');
         setError('');
         setLoading(false);
         setForgotPassword(false);
@@ -1589,6 +1665,13 @@ export default function LoginDialog({
   }, [clientPortalIntent, loginPersona, open]);
 
   useEffect(() => {
+    if (!open || loginPersona !== 'production_team' || clientPortalIntent || talentPortalIntent) {
+      return;
+    }
+    setProductionTeamStep('company');
+  }, [clientPortalIntent, loginPersona, open, talentPortalIntent]);
+
+  useEffect(() => {
     if (!isStepwiseContentProducerFlow) {
       return;
     }
@@ -1612,6 +1695,29 @@ export default function LoginDialog({
   ]);
 
   useEffect(() => {
+    if (!isStepwiseProductionTeamFlow) {
+      return;
+    }
+    if (!hasVerifiedOrganization && productionTeamStep !== 'company') {
+      setProductionTeamStep('company');
+      return;
+    }
+    if (!selectedRole && (productionTeamStep === 'team' || productionTeamStep === 'auth')) {
+      setProductionTeamStep('role');
+      return;
+    }
+    if (!isCommercialSetupComplete && productionTeamStep === 'auth') {
+      setProductionTeamStep('team');
+    }
+  }, [
+    hasVerifiedOrganization,
+    isCommercialSetupComplete,
+    isStepwiseProductionTeamFlow,
+    productionTeamStep,
+    selectedRole,
+  ]);
+
+  useEffect(() => {
     if (testimonialIdx < activeTestimonials.length) {
       return;
     }
@@ -1628,16 +1734,11 @@ export default function LoginDialog({
   }, [activeUseCases.length, ucIdx]);
 
   useEffect(() => {
-    if (!open || !isStepwiseContentProducerFlow) {
+    if (!open || !isStepwiseCommercialFlow) {
       return;
     }
-    const panel = rightPanelRef.current;
-    const rolePicker = rolePickerScrollRef.current;
-    window.requestAnimationFrame(() => {
-      panel?.scrollTo({ top: 0, behavior: 'auto' });
-      rolePicker?.scrollTo({ top: 0, behavior: 'auto' });
-    });
-  }, [contentProducerStep, isStepwiseContentProducerFlow, open]);
+    resetCommercialPanelScroll();
+  }, [contentProducerStep, isStepwiseCommercialFlow, open, productionTeamStep, resetCommercialPanelScroll]);
 
   useEffect(() => {
     if (!open || !isLandingPage) {
@@ -2318,6 +2419,20 @@ export default function LoginDialog({
     }
   };
 
+  const resetCommercialPanelScroll = useCallback(() => {
+    if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+    const panel = rightPanelRef.current;
+    const rolePicker = rolePickerScrollRef.current;
+    const scrollToTop = () => {
+      panel?.scrollTo({ top: 0, behavior: 'auto' });
+      rolePicker?.scrollTo({ top: 0, behavior: 'auto' });
+    };
+    window.requestAnimationFrame(scrollToTop);
+    window.setTimeout(scrollToTop, 70);
+  }, []);
+
   const updateProductionTeamMember = useCallback((
     index: number,
     field: keyof TeamMemberDraft,
@@ -2377,6 +2492,7 @@ export default function LoginDialog({
       }
       setError('');
       setContentProducerStep('role');
+      resetCommercialPanelScroll();
       return;
     }
     if (contentProducerStep === 'role') {
@@ -2386,6 +2502,7 @@ export default function LoginDialog({
       }
       setError('');
       setContentProducerStep('team');
+      resetCommercialPanelScroll();
       return;
     }
     if (contentProducerStep === 'team') {
@@ -2395,12 +2512,14 @@ export default function LoginDialog({
       }
       setError('');
       setContentProducerStep('auth');
+      resetCommercialPanelScroll();
     }
   }, [
     contentProducerStep,
     hasVerifiedOrganization,
     isCommercialSetupComplete,
     isStepwiseContentProducerFlow,
+    resetCommercialPanelScroll,
     selectedRole,
   ]);
   const handleContentProducerPreviousStep = useCallback(() => {
@@ -2409,25 +2528,110 @@ export default function LoginDialog({
     }
     setError('');
     setContentProducerStep(CONTENT_PRODUCER_ONBOARDING_STEPS[contentProducerStepIndex - 1].id);
-  }, [contentProducerStepIndex, isStepwiseContentProducerFlow]);
+    resetCommercialPanelScroll();
+  }, [contentProducerStepIndex, isStepwiseContentProducerFlow, resetCommercialPanelScroll]);
+  const productionTeamStepIndex = PRODUCTION_TEAM_ONBOARDING_STEPS.findIndex(
+    (step) => step.id === productionTeamStep,
+  );
+  const productionTeamCurrentStep = PRODUCTION_TEAM_ONBOARDING_STEPS[productionTeamStepIndex]
+    || PRODUCTION_TEAM_ONBOARDING_STEPS[0];
+  const productionTeamCanAdvance = productionTeamStep === 'company'
+    ? hasVerifiedOrganization
+    : productionTeamStep === 'role'
+      ? Boolean(selectedRole)
+      : productionTeamStep === 'team'
+        ? isCommercialSetupComplete
+        : false;
+  const handleProductionTeamNextStep = useCallback(() => {
+    if (!isStepwiseProductionTeamFlow) {
+      return;
+    }
+    if (productionTeamStep === 'company') {
+      if (!hasVerifiedOrganization) {
+        setError('Verifiser organisasjonsnummeret før du går videre.');
+        return;
+      }
+      setError('');
+      setProductionTeamStep('role');
+      resetCommercialPanelScroll();
+      return;
+    }
+    if (productionTeamStep === 'role') {
+      if (!selectedRole) {
+        setError('Velg rollen som leder produksjonsteamet inn i plattformen.');
+        return;
+      }
+      setError('');
+      setProductionTeamStep('team');
+      resetCommercialPanelScroll();
+      return;
+    }
+    if (productionTeamStep === 'team') {
+      if (!isCommercialSetupComplete) {
+        setError(`Legg inn minst ${PRODUCTION_TEAM_MIN_MEMBERS} personer med navn, e-post og rolle før du går videre til innlogging.`);
+        return;
+      }
+      setError('');
+      setProductionTeamStep('auth');
+      resetCommercialPanelScroll();
+    }
+  }, [
+    hasVerifiedOrganization,
+    isCommercialSetupComplete,
+    isStepwiseProductionTeamFlow,
+    productionTeamStep,
+    resetCommercialPanelScroll,
+    selectedRole,
+  ]);
+  const handleProductionTeamPreviousStep = useCallback(() => {
+    if (!isStepwiseProductionTeamFlow || productionTeamStepIndex <= 0) {
+      return;
+    }
+    setError('');
+    setProductionTeamStep(PRODUCTION_TEAM_ONBOARDING_STEPS[productionTeamStepIndex - 1].id);
+    resetCommercialPanelScroll();
+  }, [isStepwiseProductionTeamFlow, productionTeamStepIndex, resetCommercialPanelScroll]);
 
   const selectedRoleLabel = allRoles.find((r) => r.id === selectedRole)?.label;
   const teamRoleOptions = effectiveLoginPersona === 'content_producer'
     ? (clientPortalIntent ? ['client'] : [...CONTENT_TEAM_ROLE_IDS])
     : effectiveLoginPersona === 'education_institution'
       ? []
-    : [...PRODUCTION_TEAM_ROLE_IDS];
+      : [...PRODUCTION_TEAM_ROLE_IDS];
   const showPersonaChooserInLeftPanel = false;
-  const showPersonaChooserInRightPanel = !(isStepwiseContentProducerFlow && isMobile);
+  const showPersonaChooserInRightPanel = !(isStepwiseCommercialFlow && isMobile);
   const showContentProducerPersonaSummary =
     isStepwiseContentProducerFlow
     && !isMobile
     && loginPersona === 'content_producer';
+  const showProductionTeamPersonaSummary =
+    isStepwiseProductionTeamFlow
+    && !isMobile
+    && loginPersona === 'production_team';
   const showContentProducerAccessChooser = loginPersona === 'content_producer' && Boolean(clientPortalIntent);
   const showContentProducerCompanyStep = !isStepwiseContentProducerFlow || contentProducerStep === 'company';
   const showContentProducerRoleStep = !isStepwiseContentProducerFlow || contentProducerStep === 'role';
   const showContentProducerTeamStep = !isStepwiseContentProducerFlow || contentProducerStep === 'team';
   const showContentProducerAuthSummary = isStepwiseContentProducerFlow && contentProducerStep === 'auth';
+  const showProductionTeamCompanyStep = !isStepwiseProductionTeamFlow || productionTeamStep === 'company';
+  const showProductionTeamRoleStep = !isStepwiseProductionTeamFlow || productionTeamStep === 'role';
+  const showProductionTeamTeamStep = !isStepwiseProductionTeamFlow || productionTeamStep === 'team';
+  const showProductionTeamAuthSummary = isStepwiseProductionTeamFlow && productionTeamStep === 'auth';
+  const showCommercialCompanyStep = isStepwiseContentProducerFlow
+    ? showContentProducerCompanyStep
+    : isStepwiseProductionTeamFlow
+      ? showProductionTeamCompanyStep
+      : true;
+  const showCommercialRoleStep = isStepwiseContentProducerFlow
+    ? showContentProducerRoleStep
+    : isStepwiseProductionTeamFlow
+      ? showProductionTeamRoleStep
+      : true;
+  const showCommercialTeamStep = isStepwiseContentProducerFlow
+    ? showContentProducerTeamStep
+    : isStepwiseProductionTeamFlow
+      ? showProductionTeamTeamStep
+      : true;
   const loginPersonaChooser = (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
       <Box
@@ -2569,6 +2773,61 @@ export default function LoginDialog({
       </Box>
     </Box>
   ) : null;
+  const productionTeamStepNavigation = isStepwiseProductionTeamFlow ? (
+    <Box
+      sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 1,
+        p: { xs: 0.9, sm: 1.25 },
+        borderRadius: '16px',
+        bgcolor: 'rgba(255,255,255,0.035)',
+        border: '1px solid rgba(255,255,255,0.08)',
+      }}
+    >
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', sm: 'repeat(4, minmax(0, 1fr))' },
+          gap: { xs: 0.45, sm: 0.7 },
+        }}
+      >
+        {PRODUCTION_TEAM_ONBOARDING_STEPS.map((step, index) => {
+          const isActive = productionTeamStep === step.id;
+          const isComplete = index < productionTeamStepIndex;
+          return (
+            <Box
+              key={step.id}
+              sx={{
+                p: { xs: 0.68, sm: 0.85 },
+                borderRadius: '14px',
+                border: isActive
+                  ? `1px solid rgba(${aR},${aG},${aB},0.4)`
+                  : '1px solid rgba(255,255,255,0.08)',
+                bgcolor: isActive
+                  ? `rgba(${aR},${aG},${aB},0.14)`
+                  : isComplete
+                    ? 'rgba(80,230,140,0.08)'
+                    : 'rgba(255,255,255,0.03)',
+              }}
+            >
+              <Typography sx={{ fontSize: { xs: '0.56rem', sm: '0.62rem' }, textTransform: 'uppercase', letterSpacing: '0.08em', color: isActive ? glass.text : 'rgba(185,185,200,0.62)' }}>
+                {`${index + 1}. ${step.label}`}
+              </Typography>
+            </Box>
+          );
+        })}
+      </Box>
+      <Box>
+        <Typography sx={{ fontSize: { xs: '0.8rem', sm: '0.86rem' }, fontWeight: 600, color: 'rgba(245,240,255,0.96)' }}>
+          {productionTeamCurrentStep.label}
+        </Typography>
+        <Typography sx={{ mt: 0.2, fontSize: { xs: '0.7rem', sm: '0.76rem' }, lineHeight: 1.5, color: 'rgba(205,198,224,0.72)' }}>
+          {productionTeamCurrentStep.description}
+        </Typography>
+      </Box>
+    </Box>
+  ) : null;
   const contentProducerAuthSummary = showContentProducerAuthSummary ? (
     <Box
       sx={{
@@ -2598,6 +2857,42 @@ export default function LoginDialog({
         </Typography>
         <Typography sx={{ fontSize: '0.76rem', color: 'rgba(234,228,245,0.84)' }}>
           E-post: {teamOwner.email.trim() || 'Ikke satt ennå'}
+        </Typography>
+        <Typography sx={{ fontSize: '0.76rem', color: 'rgba(234,228,245,0.84)' }}>
+          Plasser: {billableSeatCount}
+        </Typography>
+      </Box>
+    </Box>
+  ) : null;
+  const productionTeamAuthSummary = showProductionTeamAuthSummary ? (
+    <Box
+      sx={{
+        display: 'grid',
+        gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
+        gap: 1,
+        p: { xs: 1.15, sm: 1.25 },
+        borderRadius: '18px',
+        bgcolor: 'rgba(255,255,255,0.035)',
+        border: '1px solid rgba(255,255,255,0.08)',
+      }}
+    >
+      <Box sx={{ display: 'grid', gap: 0.4 }}>
+        <Typography sx={{ fontSize: '0.7rem', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(184,170,226,0.72)' }}>
+          Klar til innlogging
+        </Typography>
+        <Typography sx={{ fontSize: '1rem', fontWeight: 600, color: 'rgba(245,240,255,0.95)' }}>
+          {organizationCompanyName || 'Foretak ikke satt'}
+        </Typography>
+        <Typography sx={{ fontSize: '0.78rem', color: 'rgba(214,208,230,0.72)' }}>
+          {selectedRoleLabel || 'Rolle ikke valgt'} · {formatRoleRoomStatValue(planMonthlyTotal)} kr / måned eks. mva.
+        </Typography>
+      </Box>
+      <Box sx={{ display: 'grid', gap: 0.35 }}>
+        <Typography sx={{ fontSize: '0.76rem', color: 'rgba(234,228,245,0.84)' }}>
+          Teamleder: {teamOwner.name.trim() || 'Ikke satt ennå'}
+        </Typography>
+        <Typography sx={{ fontSize: '0.76rem', color: 'rgba(234,228,245,0.84)' }}>
+          Teamlederrolle: {selectedRoleLabel || 'Ikke satt ennå'}
         </Typography>
         <Typography sx={{ fontSize: '0.76rem', color: 'rgba(234,228,245,0.84)' }}>
           Plasser: {billableSeatCount}
@@ -2658,6 +2953,63 @@ export default function LoginDialog({
           }}
         >
           {selectedRoleLabel || 'Velg hovedfokus'}
+        </Typography>
+      </Box>
+    </Box>
+  ) : null;
+  const productionTeamPersonaSummary = showProductionTeamPersonaSummary ? (
+    <Box
+      sx={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 1.25,
+        p: { xs: 1.05, sm: 1.15 },
+        borderRadius: '16px',
+        bgcolor: 'rgba(255,255,255,0.035)',
+        border: '1px solid rgba(255,255,255,0.08)',
+      }}
+    >
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.2 }}>
+        <Typography
+          sx={{
+            fontSize: '0.64rem',
+            fontWeight: 700,
+            letterSpacing: '0.1em',
+            textTransform: 'uppercase',
+            color: 'rgba(188,176,222,0.66)',
+          }}
+        >
+          Plan
+        </Typography>
+        <Typography
+          sx={{
+            fontSize: '0.92rem',
+            fontWeight: 700,
+            color: 'rgba(245,240,255,0.96)',
+          }}
+        >
+          Produksjonsteam
+        </Typography>
+      </Box>
+      <Box
+        sx={{
+          px: 1.1,
+          py: 0.55,
+          borderRadius: '999px',
+          bgcolor: `rgba(${aR},${aG},${aB},0.14)`,
+          border: `1px solid rgba(${aR},${aG},${aB},0.26)`,
+        }}
+      >
+        <Typography
+          sx={{
+            fontSize: '0.74rem',
+            fontWeight: 600,
+            color: `rgba(${aR},${aG},${aB},0.95)`,
+            letterSpacing: '0.01em',
+          }}
+        >
+          {selectedRoleLabel || 'Velg teamlederrolle'}
         </Typography>
       </Box>
     </Box>
@@ -3441,8 +3793,10 @@ export default function LoginDialog({
 
           {/* ── login persona chooser ── */}
           {showContentProducerPersonaSummary ? contentProducerPersonaSummary : null}
-          {showPersonaChooserInRightPanel && !showContentProducerPersonaSummary && loginPersonaChooser}
+          {showProductionTeamPersonaSummary ? productionTeamPersonaSummary : null}
+          {showPersonaChooserInRightPanel && !showContentProducerPersonaSummary && !showProductionTeamPersonaSummary && loginPersonaChooser}
           {contentProducerStepNavigation}
+          {productionTeamStepNavigation}
           {contentProducerAccessChooser}
           {isLandingPage && !effectiveLoginPersona && (
             <Box
@@ -3465,8 +3819,9 @@ export default function LoginDialog({
             </Box>
           )}
           {contentProducerAuthSummary}
+          {productionTeamAuthSummary}
 
-          {isLandingPage && effectiveLoginPersona && requiresCommercialSetup && (!isStepwiseContentProducerFlow || contentProducerStep !== 'auth') && (
+          {isLandingPage && effectiveLoginPersona && requiresCommercialSetup && (!isStepwiseCommercialFlow || (isStepwiseContentProducerFlow ? contentProducerStep !== 'auth' : productionTeamStep !== 'auth')) && (
             <Box
               sx={{
                 display: 'flex',
@@ -3478,7 +3833,7 @@ export default function LoginDialog({
                 border: '1px solid rgba(255,255,255,0.08)',
               }}
             >
-              {(!isStepwiseContentProducerFlow || showContentProducerCompanyStep) && (
+              {showCommercialCompanyStep && (
                 <>
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.35 }}>
                     <Typography
@@ -3561,7 +3916,7 @@ export default function LoginDialog({
           )}
 
           {/* ── role picker ── */}
-          {isLandingPage && shouldShowSetupFlow && shouldShowCommercialDetails && !isEducationInstitutionFlow && (!isStepwiseContentProducerFlow || showContentProducerRoleStep) && (
+          {isLandingPage && shouldShowSetupFlow && shouldShowCommercialDetails && !isEducationInstitutionFlow && showCommercialRoleStep && (
             <Box
               sx={{
                 display: 'flex',
@@ -3621,9 +3976,15 @@ export default function LoginDialog({
                   letterSpacing: '0.03em',
                 }}
               >
-                {isProductionTeamFlow ? 'Din rolle i teamet' : isStepwiseContentProducerFlow ? 'Velg hovedfokus for teamet' : 'Din rolle'}
+                {isStepwiseProductionTeamFlow
+                  ? 'Velg teamlederens rolle'
+                  : isProductionTeamFlow
+                    ? 'Din rolle i teamet'
+                    : isStepwiseContentProducerFlow
+                      ? 'Velg hovedfokus for teamet'
+                      : 'Din rolle'}
               </Typography>
-              {isStepwiseContentProducerFlow && (
+              {(isStepwiseContentProducerFlow || isStepwiseProductionTeamFlow) && (
                 <Typography
                   sx={{
                     mt: -0.55,
@@ -3633,7 +3994,9 @@ export default function LoginDialog({
                     maxWidth: 760,
                   }}
                 >
-                  Start med inngangen som best beskriver hvordan dere jobber i dag. Du kan utvide teamet med flere spesialiseringer senere.
+                  {isStepwiseProductionTeamFlow
+                    ? 'Start med rollen som best beskriver hvem som leder produksjonen. Resten av crewet legges inn i neste steg.'
+                    : 'Start med inngangen som best beskriver hvordan dere jobber i dag. Du kan utvide teamet med flere spesialiseringer senere.'}
                 </Typography>
               )}
               <Box
@@ -3659,15 +4022,15 @@ export default function LoginDialog({
                     selectedRole={selectedRole}
                     onSelect={setSelectedRole}
                     isMobile={isMobile}
-                    compact={isMobile || (isStepwiseContentProducerFlow && cat.id === 'utvid')}
-                    variant={isStepwiseContentProducerFlow ? 'decision' : 'default'}
+                    compact={isMobile || ((isStepwiseContentProducerFlow || isStepwiseProductionTeamFlow) && cat.id === 'utvid')}
+                    variant={isStepwiseCommercialFlow ? 'decision' : 'default'}
                   />
                 ))}
               </Box>
             </Box>
           )}
 
-          {isLandingPage && effectiveLoginPersona && shouldShowCommercialDetails && (!isStepwiseContentProducerFlow || showContentProducerTeamStep) && (
+          {isLandingPage && effectiveLoginPersona && shouldShowCommercialDetails && showCommercialTeamStep && (
             <Box
               sx={{
                 display: 'flex',
@@ -4359,7 +4722,7 @@ export default function LoginDialog({
             </Box>
           )}
 
-          {isStepwiseContentProducerFlow && (
+          {isStepwiseCommercialFlow && (
             <Box
               sx={{
                 display: 'flex',
@@ -4369,8 +4732,8 @@ export default function LoginDialog({
             >
               <Button
                 type="button"
-                onClick={handleContentProducerPreviousStep}
-                disabled={contentProducerStepIndex === 0 || loading}
+                onClick={isStepwiseProductionTeamFlow ? handleProductionTeamPreviousStep : handleContentProducerPreviousStep}
+                disabled={isStepwiseProductionTeamFlow ? productionTeamStepIndex === 0 || loading : contentProducerStepIndex === 0 || loading}
                 sx={{
                   minHeight: 44,
                   textTransform: 'none',
@@ -4388,11 +4751,11 @@ export default function LoginDialog({
               >
                 Tilbake
               </Button>
-              {contentProducerStep !== 'auth' && (
+              {((isStepwiseContentProducerFlow && contentProducerStep !== 'auth') || (isStepwiseProductionTeamFlow && productionTeamStep !== 'auth')) && (
                 <Button
                   type="button"
-                  onClick={handleContentProducerNextStep}
-                  disabled={!contentProducerCanAdvance || loading}
+                  onClick={isStepwiseProductionTeamFlow ? handleProductionTeamNextStep : handleContentProducerNextStep}
+                  disabled={isStepwiseProductionTeamFlow ? !productionTeamCanAdvance || loading : !contentProducerCanAdvance || loading}
                   sx={{
                     minHeight: 44,
                     textTransform: 'none',
@@ -4411,11 +4774,20 @@ export default function LoginDialog({
                     },
                   }}
                 >
-                  {contentProducerStep === 'company'
-                    ? 'Fortsett til fokus'
-                    : contentProducerStep === 'role'
-                      ? 'Fortsett til team'
-                      : 'Fortsett til innlogging'}
+                  {isStepwiseProductionTeamFlow
+                    ? (
+                      productionTeamStep === 'company'
+                        ? 'Fortsett til rolle'
+                        : productionTeamStep === 'role'
+                          ? 'Fortsett til team'
+                          : 'Fortsett til innlogging'
+                    ) : (
+                      contentProducerStep === 'company'
+                        ? 'Fortsett til fokus'
+                        : contentProducerStep === 'role'
+                          ? 'Fortsett til team'
+                          : 'Fortsett til innlogging'
+                    )}
                 </Button>
               )}
             </Box>
