@@ -1528,6 +1528,8 @@ export default function LoginDialog({
   const [educationContactRole, setEducationContactRole] = useState('');
   const [educationDesiredStartWindow, setEducationDesiredStartWindow] = useState<EducationStartWindow>('');
   const [educationUseCase, setEducationUseCase] = useState('');
+  const [educationInquiryStartedAt, setEducationInquiryStartedAt] = useState<number>(() => Date.now());
+  const [educationInquiryWebsite, setEducationInquiryWebsite] = useState('');
   const [educationInquirySubmitted, setEducationInquirySubmitted] = useState<{
     requestId: string | null;
     notificationEmailSent: boolean;
@@ -1587,8 +1589,18 @@ export default function LoginDialog({
       persistedCommercialSetupRef.current = '';
       restoredCommercialDraftRef.current = false;
       handledCheckoutSessionRef.current = '';
+      setEducationInquiryWebsite('');
+      setEducationInquiryStartedAt(Date.now());
     }
   }, [open]);
+
+  useEffect(() => {
+    if (!open || effectiveLoginPersona !== 'education_institution') {
+      return;
+    }
+    setEducationInquiryWebsite('');
+    setEducationInquiryStartedAt(Date.now());
+  }, [effectiveLoginPersona, open]);
 
   const loginEyebrow = ROLE_ROOM_LANDING_CONFIG.login.eyebrowText;
   const loginTitle = ROLE_ROOM_LANDING_CONFIG.login.title;
@@ -2587,6 +2599,8 @@ export default function LoginDialog({
           staffSeatRange: educationStaffSeatRange,
           desiredStartWindow: educationDesiredStartWindow,
           useCase: educationUseCase.trim(),
+          startedAt: new Date(educationInquiryStartedAt).toISOString(),
+          website: educationInquiryWebsite.trim(),
         }),
       });
       const result = await response.json() as RoleRoomEducationInquiryResponse;
@@ -2615,6 +2629,8 @@ export default function LoginDialog({
     educationContactRole,
     educationDesiredStartWindow,
     educationInstitutionType,
+    educationInquiryStartedAt,
+    educationInquiryWebsite,
     educationProgramName,
     educationStaffSeatRange,
     educationStudentSeatRange,
@@ -4638,6 +4654,30 @@ export default function LoginDialog({
                   }}
                 >
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    <Box
+                      aria-hidden="true"
+                      sx={{
+                        position: 'absolute',
+                        width: 1,
+                        height: 1,
+                        p: 0,
+                        m: -1,
+                        overflow: 'hidden',
+                        clip: 'rect(0 0 0 0)',
+                        whiteSpace: 'nowrap',
+                        border: 0,
+                      }}
+                    >
+                      <TextField
+                        label="Nettside"
+                        name="website"
+                        value={educationInquiryWebsite}
+                        onChange={(event) => setEducationInquiryWebsite(event.target.value)}
+                        autoComplete="off"
+                        tabIndex={-1}
+                        size="small"
+                      />
+                    </Box>
                     <Box
                       sx={{
                         display: 'grid',

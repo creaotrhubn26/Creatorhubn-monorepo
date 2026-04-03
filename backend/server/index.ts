@@ -28046,6 +28046,22 @@ type RoleRoomEducationInquiryMetadata = {
   taxMode: "ex_vat";
 };
 
+const ROLE_ROOM_EDUCATION_INQUIRY_MIN_FILL_MS = 2500;
+const ROLE_ROOM_EDUCATION_INQUIRY_IP_WINDOW_MS = 60 * 60 * 1000;
+const ROLE_ROOM_EDUCATION_INQUIRY_IP_MAX_ATTEMPTS = 6;
+const ROLE_ROOM_EDUCATION_INQUIRY_CONTACT_COOLDOWN_MS = 30 * 60 * 1000;
+const ROLE_ROOM_EDUCATION_INQUIRY_ORG_NOTIFICATION_COOLDOWN_MS =
+  6 * 60 * 60 * 1000;
+
+const roleRoomEducationInquiryAttemptsByIp = new Map<
+  string,
+  {
+    count: number;
+    windowStartedAt: number;
+    lastSeenAt: number;
+  }
+>();
+
 function isRoleRoomEducationInstitutionType(
   value: unknown,
 ): value is RoleRoomEducationInstitutionType {
@@ -28080,6 +28096,141 @@ function isRoleRoomEducationStartWindow(
       value,
     )
   );
+}
+
+function getRoleRoomRequestIpAddress(req: express.Request) {
+  const forwarded = req.headers["x-forwarded-for"];
+  const candidate = Array.isArray(forwarded) ? forwarded[0] : forwarded;
+  if (typeof candidate === "string" && candidate.trim()) {
+    return candidate.split(",")[0]?.trim() || "unknown";
+  }
+  return req.ip || req.socket?.remoteAddress || "unknown";
+}
+
+function registerRoleRoomEducationInquiryIpAttempt(ipAddress: string) {
+  const normalizedIp = ipAddress.trim() || "unknown";
+  const now = Date.now();
+
+  for (const [key, entry] of roleRoomEducationInquiryAttemptsByIp.entries()) {
+    if (now - entry.lastSeenAt > ROLE_ROOM_EDUCATION_INQUIRY_IP_WINDOW_MS * 2) {
+      roleRoomEducationInquiryAttemptsByIp.delete(key);
+    }
+  }
+
+  const existing = roleRoomEducationInquiryAttemptsByIp.get(normalizedIp);
+  if (
+    !existing ||
+    now - existing.windowStartedAt > ROLE_ROOM_EDUCATION_INQUIRY_IP_WINDOW_MS
+  ) {
+    roleRoomEducationInquiryAttemptsByIp.set(normalizedIp, {
+      count: 1,
+      windowStartedAt: now,
+      lastSeenAt: now,
+    });
+    return {
+      allowed: true,
+      retryAfterSeconds: 0,
+    };
+  }
+
+  existing.count += 1;
+  existing.lastSeenAt = now;
+  roleRoomEducationInquiryAttemptsByIp.set(normalizedIp, existing);
+
+  const retryAfterSeconds = Math.max(
+    1,
+    Math.ceil(
+      (ROLE_ROOM_EDUCATION_INQUIRY_IP_WINDOW_MS -
+        (now - existing.windowStartedAt)) /
+        1000,
+    ),
+  );
+
+  return {
+    allowed: existing.count <= ROLE_ROOM_EDUCATION_INQUIRY_IP_MAX_ATTEMPTS,
+    retryAfterSeconds,
+  };
+}
+
+async function readRoleRoomEducationInquirySpamState(input: {
+  contactEmail: string;
+  organizationNumber: string;
+}) {
+  const inviteRequestColumns = await getTableColumns("invite_requests");
+  const hasSourceColumn = inviteRequestColumns.has("source");
+  const result = await pool.query<{
+    id: string | null;
+    email: string | null;
+    organization_number: string | null;
+    created_at: string | null;
+    updated_at: string | null;
+  }>(
+    `SELECT id, email, organization_number, created_at, updated_at
+     FROM invite_requests
+     WHERE ${
+       hasSourceColumn ? "source = 'role_room_education' AND " : ""
+     }profession = 'education_institution'
+       AND (
+         LOWER(COALESCE(email, '')) = LOWER($1)
+         OR COALESCE(organization_number, '') = $2
+       )
+     ORDER BY COALESCE(updated_at, created_at) DESC NULLS LAST
+     LIMIT 25`,
+    [input.contactEmail, input.organizationNumber],
+  );
+
+  const now = Date.now();
+  let recentSameContactRequestId: string | null = null;
+  let suppressAdminNotification = false;
+
+  for (const row of result.rows) {
+    const rowEmail =
+      typeof row.email === "string" ? row.email.trim().toLowerCase() : "";
+    const rowOrg =
+      typeof row.organization_number === "string"
+        ? row.organization_number.replace(/\D/g, "")
+        : "";
+    const updatedAtValue =
+      row.updated_at instanceof Date
+        ? row.updated_at.toISOString()
+        : row.updated_at
+          ? String(row.updated_at)
+          : "";
+    const createdAtValue =
+      row.created_at instanceof Date
+        ? row.created_at.toISOString()
+        : row.created_at
+          ? String(row.created_at)
+          : "";
+    const timestamp = Date.parse(updatedAtValue || createdAtValue);
+    if (!Number.isFinite(timestamp)) {
+      continue;
+    }
+
+    const ageMs = Math.max(0, now - timestamp);
+    const requestId = normalizeMailConfigValue(row.id) || null;
+
+    if (
+      !recentSameContactRequestId &&
+      rowEmail === input.contactEmail &&
+      rowOrg === input.organizationNumber &&
+      ageMs <= ROLE_ROOM_EDUCATION_INQUIRY_CONTACT_COOLDOWN_MS
+    ) {
+      recentSameContactRequestId = requestId;
+    }
+
+    if (
+      rowOrg === input.organizationNumber &&
+      ageMs <= ROLE_ROOM_EDUCATION_INQUIRY_ORG_NOTIFICATION_COOLDOWN_MS
+    ) {
+      suppressAdminNotification = true;
+    }
+  }
+
+  return {
+    recentSameContactRequestId,
+    suppressAdminNotification,
+  };
 }
 
 function normalizeMailConfigValue(value: unknown): string {
@@ -31029,6 +31180,15 @@ app.post("/api/role-room/education-inquiries", async (req, res) => {
       /\D/g,
       "",
     );
+    const honeypotField = String(
+      req.body?.website || req.body?.websiteUrl || "",
+    ).trim();
+    const startedAtRaw =
+      typeof req.body?.startedAt === "string" || typeof req.body?.startedAt === "number"
+        ? String(req.body?.startedAt)
+        : "";
+    const startedAtMs = startedAtRaw ? Date.parse(startedAtRaw) : Number.NaN;
+    const ipAddress = getRoleRoomRequestIpAddress(req);
     const contactName = String(req.body?.contactName || "").trim();
     const contactEmail = String(req.body?.contactEmail || "")
       .trim()
@@ -31040,6 +31200,45 @@ app.post("/api/role-room/education-inquiries", async (req, res) => {
     const studentSeatRange = req.body?.studentSeatRange;
     const staffSeatRange = req.body?.staffSeatRange;
     const desiredStartWindow = req.body?.desiredStartWindow;
+
+    if (honeypotField) {
+      console.warn("Role Room education inquiry honeypot triggered", {
+        ipAddress,
+        contactEmail,
+        organizationNumber,
+      });
+      return res.status(202).json({
+        success: true,
+        requestId: null,
+        companyName: null,
+        organizationNumber,
+        status: "accepted",
+        notificationEmailSent: false,
+        notificationAcceptedRecipients: [],
+        notificationReason: "bot_filtered",
+        message:
+          "Forespørselen er mottatt. Vi tar kontakt for å sette opp en institusjonssamtale.",
+      });
+    }
+
+    if (
+      Number.isFinite(startedAtMs) &&
+      Date.now() - startedAtMs < ROLE_ROOM_EDUCATION_INQUIRY_MIN_FILL_MS
+    ) {
+      return res.status(429).json({
+        error:
+          "Forespørselen ble sendt litt for raskt. Gå gjennom feltene og prøv igjen om noen sekunder.",
+      });
+    }
+
+    const ipAttempt = registerRoleRoomEducationInquiryIpAttempt(ipAddress);
+    if (!ipAttempt.allowed) {
+      res.setHeader("Retry-After", String(ipAttempt.retryAfterSeconds));
+      return res.status(429).json({
+        error:
+          "Vi har mottatt mange forespørsler fra denne forbindelsen på kort tid. Vent litt og prøv igjen.",
+      });
+    }
 
     if (!isValidNorwegianOrgNumber(organizationNumber)) {
       return res.status(400).json({
@@ -31057,6 +31256,18 @@ app.post("/api/role-room/education-inquiries", async (req, res) => {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) {
       return res.status(400).json({
         error: "Kontaktpersonen må ha en gyldig e-postadresse.",
+      });
+    }
+
+    if (
+      contactName.length > 120 ||
+      contactRole.length > 120 ||
+      programName.length > 160 ||
+      useCase.length > 2000
+    ) {
+      return res.status(400).json({
+        error:
+          "Noen felt er for lange. Kort ned kontaktinfo eller beskrivelse og prøv igjen.",
       });
     }
 
@@ -31096,6 +31307,10 @@ app.post("/api/role-room/education-inquiries", async (req, res) => {
       brregLookup.company?.name?.trim() ||
       String(req.body?.companyName || "").trim() ||
       `Foretak ${organizationNumber}`;
+    const spamState = await readRoleRoomEducationInquirySpamState({
+      contactEmail,
+      organizationNumber,
+    });
     const metadata: RoleRoomEducationInquiryMetadata = {
       kind: "role_room_education_inquiry",
       version: 1,
@@ -31154,34 +31369,41 @@ app.post("/api/role-room/education-inquiries", async (req, res) => {
 
     let notification = {
       sent: false,
-      reason: "not_attempted",
+      reason: spamState.suppressAdminNotification
+        ? "duplicate_suppressed"
+        : "not_attempted",
       accepted: [] as string[],
     };
 
-    try {
-      notification = await sendRoleRoomEducationInquiryAdminEmail({
-        requestId: inviteRequestId || "unknown-request",
-        companyName,
-        organizationNumber,
-        contactName,
-        contactEmail,
-        metadata,
-      });
-    } catch (notificationError) {
-      console.error(
-        "Role Room education inquiry notification failed:",
-        notificationError,
-      );
-      notification = {
-        sent: false,
-        reason: "notification_failed",
-        accepted: [],
-      };
+    if (!spamState.suppressAdminNotification) {
+      try {
+        notification = await sendRoleRoomEducationInquiryAdminEmail({
+          requestId:
+            inviteRequestId ||
+            spamState.recentSameContactRequestId ||
+            "unknown-request",
+          companyName,
+          organizationNumber,
+          contactName,
+          contactEmail,
+          metadata,
+        });
+      } catch (notificationError) {
+        console.error(
+          "Role Room education inquiry notification failed:",
+          notificationError,
+        );
+        notification = {
+          sent: false,
+          reason: "notification_failed",
+          accepted: [],
+        };
+      }
     }
 
     return res.status(201).json({
       success: true,
-      requestId: inviteRequestId,
+      requestId: inviteRequestId || spamState.recentSameContactRequestId,
       companyName,
       organizationNumber,
       status: "pending",
@@ -31191,7 +31413,9 @@ app.post("/api/role-room/education-inquiries", async (req, res) => {
       notificationProvider: notification.provider ?? null,
       notificationMessageId: notification.messageId ?? null,
       message:
-        "Forespørselen er mottatt. Vi tar kontakt for å sette opp en institusjonssamtale.",
+        spamState.recentSameContactRequestId
+          ? "Vi har allerede mottatt en fersk institusjonsforespørsel fra dere. Teamet vårt følger opp den eksisterende henvendelsen."
+          : "Forespørselen er mottatt. Vi tar kontakt for å sette opp en institusjonssamtale.",
     });
   } catch (error) {
     console.error("Error creating Role Room education inquiry:", error);
