@@ -63,7 +63,7 @@ interface TabPanelProps {
 function TabPanel({ children, value, index }: TabPanelProps) {
   return (
     <div role="tabpanel" hidden={value !== index}>
-      {value === index && <Box sx={{ p: 3 }}>{children}</Box>}
+      {value === index && <Box sx={{ pt: 1, pb: 3 }}>{children}</Box>}
     </div>
   );
 }
@@ -688,6 +688,23 @@ export default function PriceManagementDashboard({
     () => selfServePlans.find((plan) => plan.id === 'professional') ?? selfServePlans[0] ?? null,
     [selfServePlans],
   );
+  const enabledFeatureCount = useMemo(
+    () => features.filter((feature) => feature.isEnabled).length,
+    [features],
+  );
+  const activeBillingTemplateCount = creatorHubEmailSettings.email.templates.length;
+  const priceManagementSurfaceSx = {
+    borderRadius: '24px',
+    border: '1px solid rgba(17, 24, 39, 0.08)',
+    bgcolor: '#ffffff',
+    boxShadow: '0 18px 44px rgba(15, 23, 42, 0.06)',
+  } as const;
+  const priceManagementInsetSx = {
+    borderRadius: '18px',
+    border: '1px solid rgba(17, 24, 39, 0.07)',
+    bgcolor: '#fcfaf7',
+    p: 1.75,
+  } as const;
 
   const getProfessionDisplayName = (profession: string) => {
     if (profession === 'all') return 'Alle Profesjoner';
@@ -1042,7 +1059,7 @@ export default function PriceManagementDashboard({
     return (
       <Box sx={{ width: '100%', mt: 2 }}>
         <LinearProgress />
-        <Typography sx={{ mt: 2, textAlign: 'center' }}>Laster Price Management System...</Typography>
+        <Typography sx={{ mt: 2, textAlign: 'center' }}>Laster prisstyring...</Typography>
       </Box>
     );
   }
@@ -1060,12 +1077,12 @@ export default function PriceManagementDashboard({
         }}
       >
         <Stack
-          direction={{ xs: 'column', lg: 'row' }}
-          spacing={2}
+          direction={{ xs: 'column', xl: 'row' }}
+          spacing={2.5}
           justifyContent="space-between"
-          alignItems={{ xs: 'flex-start', lg: 'center' }}
+          alignItems={{ xs: 'flex-start', xl: 'stretch' }}
         >
-          <Box sx={{ maxWidth: 720 }}>
+          <Box sx={{ maxWidth: 720, flex: 1 }}>
             <Typography variant="overline" sx={{ color: '#0f3460', fontWeight: 700, letterSpacing: '0.08em' }}>
               CreatorHub Commerce
             </Typography>
@@ -1076,47 +1093,89 @@ export default function PriceManagementDashboard({
               Hold selvbetjente planer, årsprising og enterprise-sporet samlet i én arbeidsflate.
               Endringene her skal være lesbare både for teamet og for det som faktisk publiseres på CreatorHub.
             </Typography>
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 2 }}>
+              <Chip label={`${activePlanCount} aktive planer`} sx={{ bgcolor: '#ffffff', border: '1px solid rgba(15, 52, 96, 0.08)' }} />
+              <Chip label={`${annualPlanCount} med årsbetaling`} sx={{ bgcolor: '#ffffff', border: '1px solid rgba(15, 52, 96, 0.08)' }} />
+              <Chip label={`${enabledFeatureCount} aktive features`} sx={{ bgcolor: '#ffffff', border: '1px solid rgba(15, 52, 96, 0.08)' }} />
+              {highlightedPlan ? (
+                <Chip
+                  label={`Hovedplan: ${highlightedPlan.name}`}
+                  sx={{ bgcolor: '#ffffff', border: '1px solid rgba(15, 52, 96, 0.08)' }}
+                />
+              ) : null}
+              {!plans.some((plan) => plan.monthlyPrice === 0 && plan.isActive) ? (
+                <Chip
+                  label="Ingen free-plan offentlig"
+                  sx={{ bgcolor: '#ffffff', border: '1px solid rgba(15, 52, 96, 0.08)' }}
+                />
+              ) : null}
+            </Stack>
           </Box>
 
-          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-            <Chip label={`${activePlanCount} aktive planer`} sx={{ bgcolor: '#ffffff', border: '1px solid rgba(15, 52, 96, 0.08)' }} />
-            <Chip label={`${annualPlanCount} med årsbetaling`} sx={{ bgcolor: '#ffffff', border: '1px solid rgba(15, 52, 96, 0.08)' }} />
-            {highlightedPlan ? (
-              <Chip
-                label={`Hovedplan: ${highlightedPlan.name}`}
-                sx={{ bgcolor: '#ffffff', border: '1px solid rgba(15, 52, 96, 0.08)' }}
-              />
-            ) : null}
-            {!plans.some((plan) => plan.monthlyPrice === 0 && plan.isActive) ? (
-              <Chip
-                label="Ingen free-plan offentlig"
-                sx={{ bgcolor: '#ffffff', border: '1px solid rgba(15, 52, 96, 0.08)' }}
-              />
-            ) : null}
-          </Stack>
+          <Box
+            sx={{
+              minWidth: { xl: 320 },
+              width: { xs: '100%', xl: 360 },
+              display: 'grid',
+              gap: 1.25,
+            }}
+          >
+            <Box
+              sx={{
+                borderRadius: '18px',
+                border: '1px solid rgba(17, 24, 39, 0.08)',
+                bgcolor: 'rgba(255,255,255,0.72)',
+                px: 1.75,
+                py: 1.5,
+              }}
+            >
+              <Typography sx={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#6b7280', fontWeight: 700 }}>
+                Det som publiseres nå
+              </Typography>
+              <Typography sx={{ mt: 0.6, fontWeight: 700, color: '#111827' }}>
+                {selfServePlans.length} selvbetjente planer og {annualPlanCount} årspriser er ute.
+              </Typography>
+            </Box>
+            <Box
+              sx={{
+                borderRadius: '18px',
+                border: '1px solid rgba(17, 24, 39, 0.08)',
+                bgcolor: 'rgba(255,255,255,0.72)',
+                px: 1.75,
+                py: 1.5,
+              }}
+            >
+              <Typography sx={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#6b7280', fontWeight: 700 }}>
+                Operativ kontroll
+              </Typography>
+              <Typography sx={{ mt: 0.6, color: '#5b6472', lineHeight: 1.6 }}>
+                Samme innhold styrer landingssiden, abonnementssiden, checkout og CreatorHub-mailene.
+              </Typography>
+            </Box>
+          </Box>
         </Stack>
       </Box>
 
       <Grid container spacing={2} sx={{ mb: 3 }}>
         <Grid size={{ xs: 12, sm: 6, xl: 3 }}>
-          <MetricCard icon={<MoneyIcon sx={{ fontSize: 34, color: '#0f766e', mb: 1 }} />} label="Laveste månedlige inngang">
+          <MetricCard tone="teal" icon={<MoneyIcon sx={{ fontSize: 30 }} />} label="Laveste månedlige inngang">
             {monthlyEntryPrice != null
               ? formatPrice(monthlyEntryPrice, 'NOK')
               : 'Ikke satt'}
           </MetricCard>
         </Grid>
         <Grid size={{ xs: 12, sm: 6, xl: 3 }}>
-          <MetricCard icon={<PeopleIcon sx={{ fontSize: 34, color: '#1d4ed8', mb: 1 }} />} label="Selvbetjente planer">
+          <MetricCard tone="blue" icon={<PeopleIcon sx={{ fontSize: 30 }} />} label="Selvbetjente planer">
             {selfServePlans.length}
           </MetricCard>
         </Grid>
         <Grid size={{ xs: 12, sm: 6, xl: 3 }}>
-          <MetricCard icon={<ToggleIcon sx={{ fontSize: 34, color: '#7c3aed', mb: 1 }} />} label="Årspris tilgjengelig">
+          <MetricCard tone="violet" icon={<ToggleIcon sx={{ fontSize: 30 }} />} label="Årspris tilgjengelig">
             {annualPlanCount}
           </MetricCard>
         </Grid>
         <Grid size={{ xs: 12, sm: 6, xl: 3 }}>
-          <MetricCard icon={<EnterpriseIcon sx={{ fontSize: 34, color: '#b45309', mb: 1 }} />} label="Kontakt salg-spor">
+          <MetricCard tone="amber" icon={<EnterpriseIcon sx={{ fontSize: 30 }} />} label="Kontakt salg-spor">
             {plans.some((plan) => plan.contactSalesOnly) ? 'Aktivt' : 'Av'}
           </MetricCard>
         </Grid>
@@ -1166,7 +1225,7 @@ export default function PriceManagementDashboard({
       </Box>
 
       <TabPanel value={tabValue} index={0}>
-        <Alert severity="info" sx={{ mb: 3 }}>
+        <Alert severity="info" sx={{ mb: 3, borderRadius: '16px' }}>
           Denne fanen styrer tekniske plattform-flagg. Hva som faktisk vises i abonnementene redigeres under
           <strong> Abonnementer</strong>, slik at landingssiden, subscription-flyten og checkout bruker samme innhold.
         </Alert>
@@ -1224,12 +1283,23 @@ export default function PriceManagementDashboard({
                 <Card
                   sx={{
                     height: '100%',
-                    border: `2px solid ${getProfessionColor(feature.professions[0])}`,
-                    '&:hover': { boxShadow: 6 },
-                    ...theming.getThemedCardSx(),
+                    borderRadius: '22px',
+                    border: '1px solid rgba(17, 24, 39, 0.08)',
+                    boxShadow: '0 14px 34px rgba(15, 23, 42, 0.05)',
+                    bgcolor: '#ffffff',
+                    '&:hover': { boxShadow: '0 20px 42px rgba(15, 23, 42, 0.08)' },
                   }}
                 >
-                  <CardContent sx={theming.getThemedCardSx()}>
+                  <CardContent sx={{ p: 2.4 }}>
+                    <Box
+                      sx={{
+                        mb: 2,
+                        height: 6,
+                        width: 56,
+                        borderRadius: '999px',
+                        bgcolor: getProfessionColor(feature.professions[0]),
+                      }}
+                    />
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
                       <Typography variant="h6" sx={{ fontWeight: 'bold', flex: 1, color: theming.colors.primary }}>
                         {feature.name}
@@ -1281,8 +1351,8 @@ export default function PriceManagementDashboard({
       <TabPanel value={tabValue} index={1}>
         <Grid container spacing={3}>
           <Grid size={{ xs: 12, md: 8 }}>
-            <Card sx={{ ...theming.getThemedCardSx(), borderRadius: '20px' }}>
-              <CardContent sx={theming.getThemedCardSx()}>
+            <Card sx={priceManagementSurfaceSx}>
+              <CardContent sx={{ p: { xs: 2.25, md: 3 } }}>
                 <Stack
                   direction={{ xs: 'column', md: 'row' }}
                   spacing={1.5}
@@ -1300,12 +1370,35 @@ export default function PriceManagementDashboard({
                     </Typography>
                   </Box>
                   <Chip
-                    label={`${selfServePlans.length} planer i salg`}
+                    label={`${selfServePlans.length} planer ute i salg`}
                     sx={{ bgcolor: '#f8fafc', border: '1px solid rgba(15, 23, 42, 0.08)', fontWeight: 700 }}
                   />
                 </Stack>
-                <TableContainer>
-                  <Table size="small">
+                <TableContainer
+                  sx={{
+                    borderRadius: '20px',
+                    border: '1px solid rgba(17, 24, 39, 0.08)',
+                    bgcolor: '#fffdfa',
+                  }}
+                >
+                  <Table
+                    size="small"
+                    sx={{
+                      '& thead th': {
+                        bgcolor: '#f8f5ef',
+                        color: '#6b6257',
+                        fontSize: '0.78rem',
+                        borderBottom: '1px solid rgba(17, 24, 39, 0.08)',
+                      },
+                      '& tbody td': {
+                        borderBottom: '1px solid rgba(17, 24, 39, 0.06)',
+                        verticalAlign: 'top',
+                      },
+                      '& tbody tr:hover': {
+                        bgcolor: '#fffaf1',
+                      },
+                    }}
+                  >
                     <TableHead>
                       <TableRow>
                         <TableCell>
@@ -1369,6 +1462,7 @@ export default function PriceManagementDashboard({
                               label={plan.isActive ? 'Aktiv' : 'Inaktiv'}
                               color={plan.isActive ? 'success' : 'default'}
                               size="small"
+                              sx={{ fontWeight: 700 }}
                             />
                             <Button
                               size="small"
@@ -1401,13 +1495,13 @@ export default function PriceManagementDashboard({
           </Grid>
 
           <Grid size={{ xs: 12, md: 4 }}>
-            <Card sx={{ ...theming.getThemedCardSx(), borderRadius: '20px' }}>
-              <CardContent sx={theming.getThemedCardSx()}>
+            <Card sx={priceManagementSurfaceSx}>
+              <CardContent sx={{ p: { xs: 2.25, md: 3 } }}>
                 <Typography variant="h6" sx={{ mb: 1.5, fontWeight: 700 }}>
-                  Prisstatus
+                  Publiseringsstatus
                 </Typography>
                 <Stack spacing={1.25}>
-                  <Box sx={{ p: 1.5, borderRadius: '14px', bgcolor: '#f8fafc' }}>
+                  <Box sx={priceManagementInsetSx}>
                     <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
                       Hovedplan for konvertering
                     </Typography>
@@ -1415,7 +1509,7 @@ export default function PriceManagementDashboard({
                       {highlightedPlan?.name || 'Ikke satt'}
                     </Typography>
                   </Box>
-                  <Box sx={{ p: 1.5, borderRadius: '14px', bgcolor: '#f8fafc' }}>
+                  <Box sx={priceManagementInsetSx}>
                     <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
                       Aktiv månedsinngang
                     </Typography>
@@ -1423,12 +1517,21 @@ export default function PriceManagementDashboard({
                       {monthlyEntryPrice != null ? formatPrice(monthlyEntryPrice, 'NOK') : 'Ikke satt'}
                     </Typography>
                   </Box>
-                  <Box sx={{ p: 1.5, borderRadius: '14px', bgcolor: '#f8fafc' }}>
+                  <Box sx={priceManagementInsetSx}>
                     <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
                       Enterprise-spor
                     </Typography>
                     <Typography variant="body1" sx={{ mt: 0.5, fontWeight: 700 }}>
                       {plans.some((plan) => plan.contactSalesOnly) ? 'Kontakt salg aktivert' : 'Ikke konfigurert'}
+                    </Typography>
+                  </Box>
+                  <Box sx={priceManagementInsetSx}>
+                    <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
+                      Hva oppdateres automatisk
+                    </Typography>
+                    <Typography variant="body2" sx={{ mt: 0.6, color: '#5b6472', lineHeight: 1.6 }}>
+                      Landingssiden, abonnementssiden og CreatorHub-checkout bruker samme planstruktur
+                      som denne tabellen.
                     </Typography>
                   </Box>
                 </Stack>
@@ -1441,8 +1544,8 @@ export default function PriceManagementDashboard({
       <TabPanel value={tabValue} index={2}>
         <Grid container spacing={3}>
           <Grid size={{ xs: 12, lg: 5 }}>
-            <Card sx={{ ...theming.getThemedCardSx(), borderRadius: '20px' }}>
-              <CardContent sx={theming.getThemedCardSx()}>
+            <Card sx={priceManagementSurfaceSx}>
+              <CardContent sx={{ p: { xs: 2.25, md: 3 } }}>
                 <Stack
                   direction={{ xs: 'column', md: 'row' }}
                   spacing={1.5}
@@ -1475,122 +1578,137 @@ export default function PriceManagementDashboard({
                   </Button>
                 </Stack>
 
-                <Stack spacing={2}>
-                  <TextField
-                    fullWidth
-                    label="Appnavn i e-post"
-                    value={creatorHubEmailSettings.identity.appName}
-                    onChange={(event) =>
-                      setCreatorHubEmailSettings((previous) => ({
-                        ...previous,
-                        identity: { ...previous.identity, appName: event.target.value },
-                      }))
-                    }
-                  />
-                  <TextField
-                    fullWidth
-                    label="Tagline"
-                    value={creatorHubEmailSettings.identity.tagline}
-                    onChange={(event) =>
-                      setCreatorHubEmailSettings((previous) => ({
-                        ...previous,
-                        identity: { ...previous.identity, tagline: event.target.value },
-                      }))
-                    }
-                  />
-                  <TextField
-                    fullWidth
-                    label="Support e-post"
-                    value={creatorHubEmailSettings.identity.supportEmail}
-                    onChange={(event) =>
-                      setCreatorHubEmailSettings((previous) => ({
-                        ...previous,
-                        identity: { ...previous.identity, supportEmail: event.target.value },
-                      }))
-                    }
-                  />
-                  <TextField
-                    fullWidth
-                    label="Fra-adresse"
-                    helperText="Bruk en Google Workspace-alias som finnes på avsenderbrukeren, for eksempel billing@creatorhubn.com."
-                    value={creatorHubEmailSettings.email.fromEmail}
-                    onChange={(event) =>
-                      setCreatorHubEmailSettings((previous) => ({
-                        ...previous,
-                        email: { ...previous.email, fromEmail: event.target.value },
-                      }))
-                    }
-                  />
-                  <TextField
-                    fullWidth
-                    label="Velkomst-avsender"
-                    helperText="Brukes for konto aktivert / velkomst, for eksempel hello@creatorhubn.com."
-                    value={creatorHubEmailSettings.email.welcomeFromEmail}
-                    onChange={(event) =>
-                      setCreatorHubEmailSettings((previous) => ({
-                        ...previous,
-                        email: { ...previous.email, welcomeFromEmail: event.target.value },
-                      }))
-                    }
-                  />
-                  <TextField
-                    fullWidth
-                    label="System-avsender"
-                    helperText="Brukes for enveis systemvarsler, for eksempel abonnement avsluttet og andre driftsmeldinger."
-                    value={creatorHubEmailSettings.email.systemFromEmail}
-                    onChange={(event) =>
-                      setCreatorHubEmailSettings((previous) => ({
-                        ...previous,
-                        email: { ...previous.email, systemFromEmail: event.target.value },
-                      }))
-                    }
-                  />
-                  <TextField
-                    fullWidth
-                    label="Reply-to"
-                    value={creatorHubEmailSettings.email.replyToEmail}
-                    onChange={(event) =>
-                      setCreatorHubEmailSettings((previous) => ({
-                        ...previous,
-                        email: { ...previous.email, replyToEmail: event.target.value },
-                      }))
-                    }
-                  />
-                  <TextField
-                    fullWidth
-                    label="Footer"
-                    value={creatorHubEmailSettings.email.footerText}
-                    onChange={(event) =>
-                      setCreatorHubEmailSettings((previous) => ({
-                        ...previous,
-                        email: { ...previous.email, footerText: event.target.value },
-                      }))
-                    }
-                  />
-                  <TextField
-                    fullWidth
-                    label="Domene"
-                    value={creatorHubEmailSettings.identity.domain}
-                    onChange={(event) =>
-                      setCreatorHubEmailSettings((previous) => ({
-                        ...previous,
-                        identity: { ...previous.identity, domain: event.target.value },
-                      }))
-                    }
-                  />
+                <Stack spacing={2.25}>
+                  <Box sx={priceManagementInsetSx}>
+                    <Typography variant="overline" sx={{ color: '#0f3460', fontWeight: 700 }}>
+                      Brand og support
+                    </Typography>
+                    <Stack spacing={1.5} sx={{ mt: 1 }}>
+                      <TextField
+                        fullWidth
+                        label="Appnavn i e-post"
+                        value={creatorHubEmailSettings.identity.appName}
+                        onChange={(event) =>
+                          setCreatorHubEmailSettings((previous) => ({
+                            ...previous,
+                            identity: { ...previous.identity, appName: event.target.value },
+                          }))
+                        }
+                      />
+                      <TextField
+                        fullWidth
+                        label="Tagline"
+                        value={creatorHubEmailSettings.identity.tagline}
+                        onChange={(event) =>
+                          setCreatorHubEmailSettings((previous) => ({
+                            ...previous,
+                            identity: { ...previous.identity, tagline: event.target.value },
+                          }))
+                        }
+                      />
+                      <TextField
+                        fullWidth
+                        label="Support e-post"
+                        value={creatorHubEmailSettings.identity.supportEmail}
+                        onChange={(event) =>
+                          setCreatorHubEmailSettings((previous) => ({
+                            ...previous,
+                            identity: { ...previous.identity, supportEmail: event.target.value },
+                          }))
+                        }
+                      />
+                      <TextField
+                        fullWidth
+                        label="Domene"
+                        value={creatorHubEmailSettings.identity.domain}
+                        onChange={(event) =>
+                          setCreatorHubEmailSettings((previous) => ({
+                            ...previous,
+                            identity: { ...previous.identity, domain: event.target.value },
+                          }))
+                        }
+                      />
+                    </Stack>
+                  </Box>
+
+                  <Box sx={priceManagementInsetSx}>
+                    <Typography variant="overline" sx={{ color: '#0f3460', fontWeight: 700 }}>
+                      Avsendere
+                    </Typography>
+                    <Stack spacing={1.5} sx={{ mt: 1 }}>
+                      <TextField
+                        fullWidth
+                        label="Fra-adresse"
+                        helperText="Bruk en Google Workspace-alias som finnes på avsenderbrukeren, for eksempel billing@creatorhubn.com."
+                        value={creatorHubEmailSettings.email.fromEmail}
+                        onChange={(event) =>
+                          setCreatorHubEmailSettings((previous) => ({
+                            ...previous,
+                            email: { ...previous.email, fromEmail: event.target.value },
+                          }))
+                        }
+                      />
+                      <TextField
+                        fullWidth
+                        label="Velkomst-avsender"
+                        helperText="Brukes for konto aktivert / velkomst, for eksempel hello@creatorhubn.com."
+                        value={creatorHubEmailSettings.email.welcomeFromEmail}
+                        onChange={(event) =>
+                          setCreatorHubEmailSettings((previous) => ({
+                            ...previous,
+                            email: { ...previous.email, welcomeFromEmail: event.target.value },
+                          }))
+                        }
+                      />
+                      <TextField
+                        fullWidth
+                        label="System-avsender"
+                        helperText="Brukes for enveis systemvarsler, for eksempel abonnement avsluttet og andre driftsmeldinger."
+                        value={creatorHubEmailSettings.email.systemFromEmail}
+                        onChange={(event) =>
+                          setCreatorHubEmailSettings((previous) => ({
+                            ...previous,
+                            email: { ...previous.email, systemFromEmail: event.target.value },
+                          }))
+                        }
+                      />
+                      <TextField
+                        fullWidth
+                        label="Reply-to"
+                        value={creatorHubEmailSettings.email.replyToEmail}
+                        onChange={(event) =>
+                          setCreatorHubEmailSettings((previous) => ({
+                            ...previous,
+                            email: { ...previous.email, replyToEmail: event.target.value },
+                          }))
+                        }
+                      />
+                      <TextField
+                        fullWidth
+                        label="Footer"
+                        value={creatorHubEmailSettings.email.footerText}
+                        onChange={(event) =>
+                          setCreatorHubEmailSettings((previous) => ({
+                            ...previous,
+                            email: { ...previous.email, footerText: event.target.value },
+                          }))
+                        }
+                      />
+                    </Stack>
+                  </Box>
                 </Stack>
               </CardContent>
             </Card>
           </Grid>
 
           <Grid size={{ xs: 12, lg: 7 }}>
-            <Card sx={{ ...theming.getThemedCardSx(), borderRadius: '20px', height: '100%' }}>
-              <CardContent sx={theming.getThemedCardSx()}>
+            <Card sx={{ ...priceManagementSurfaceSx, height: '100%' }}>
+              <CardContent sx={{ p: { xs: 2.25, md: 3 } }}>
                 <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>
                   Når disse mailene går ut
                 </Typography>
                 <Stack spacing={1.5}>
-                  <Box sx={{ p: 1.5, borderRadius: '16px', bgcolor: '#f8fafc', border: '1px solid rgba(15, 23, 42, 0.06)' }}>
+                  <Box sx={{ ...priceManagementInsetSx, bgcolor: '#f8fafc' }}>
                     <Typography variant="overline" sx={{ color: '#0f3460', fontWeight: 700 }}>
                       Første vellykkede betaling
                     </Typography>
@@ -1598,7 +1716,7 @@ export default function PriceManagementDashboard({
                       Sendes etter første vellykkede Stripe-checkout, slik at brukeren får en tydelig bekreftelse på at CreatorHub-abonnementet er aktivt.
                     </Typography>
                   </Box>
-                  <Box sx={{ p: 1.5, borderRadius: '16px', bgcolor: '#eff6ff', border: '1px solid rgba(37, 99, 235, 0.10)' }}>
+                  <Box sx={{ ...priceManagementInsetSx, bgcolor: '#eff6ff' }}>
                     <Typography variant="overline" sx={{ color: '#1d4ed8', fontWeight: 700 }}>
                       Konto aktivert
                     </Typography>
@@ -1606,7 +1724,7 @@ export default function PriceManagementDashboard({
                       Sendes sammen med første aktivering når kontoen faktisk er aktivert og brukeren kan logge inn i CreatorHub med den registrerte e-posten.
                     </Typography>
                   </Box>
-                  <Box sx={{ p: 1.5, borderRadius: '16px', bgcolor: '#fff7ed', border: '1px solid rgba(194, 65, 12, 0.08)' }}>
+                  <Box sx={{ ...priceManagementInsetSx, bgcolor: '#fff7ed' }}>
                     <Typography variant="overline" sx={{ color: '#c2410c', fontWeight: 700 }}>
                       Betaling feilet
                     </Typography>
@@ -1614,7 +1732,7 @@ export default function PriceManagementDashboard({
                       Sendes når Stripe melder `invoice.payment_failed` eller abonnementet blir stoppet før betalingen er tilbake på plass.
                     </Typography>
                   </Box>
-                  <Box sx={{ p: 1.5, borderRadius: '16px', bgcolor: '#ecfdf5', border: '1px solid rgba(5, 150, 105, 0.08)' }}>
+                  <Box sx={{ ...priceManagementInsetSx, bgcolor: '#ecfdf5' }}>
                     <Typography variant="overline" sx={{ color: '#047857', fontWeight: 700 }}>
                       Betaling gjenopprettet
                     </Typography>
@@ -1622,14 +1740,24 @@ export default function PriceManagementDashboard({
                       Sendes når en konto som tidligere sto som feilet får en ny vellykket `invoice.paid` og abonnementet blir aktivt igjen.
                     </Typography>
                   </Box>
+                  <Box sx={{ ...priceManagementInsetSx, bgcolor: '#f5f3ff' }}>
+                    <Typography variant="overline" sx={{ color: '#6d28d9', fontWeight: 700 }}>
+                      Alias i bruk
+                    </Typography>
+                    <Stack spacing={1} sx={{ mt: 1 }}>
+                      <Chip label={`billing: ${creatorHubEmailSettings.email.fromEmail}`} sx={{ width: 'fit-content', bgcolor: '#ffffff' }} />
+                      <Chip label={`hello: ${creatorHubEmailSettings.email.welcomeFromEmail}`} sx={{ width: 'fit-content', bgcolor: '#ffffff' }} />
+                      <Chip label={`noreply: ${creatorHubEmailSettings.email.systemFromEmail}`} sx={{ width: 'fit-content', bgcolor: '#ffffff' }} />
+                    </Stack>
+                  </Box>
                 </Stack>
               </CardContent>
             </Card>
           </Grid>
 
           <Grid size={{ xs: 12 }}>
-            <Card sx={{ ...theming.getThemedCardSx(), borderRadius: '20px' }}>
-              <CardContent sx={theming.getThemedCardSx()}>
+            <Card sx={priceManagementSurfaceSx}>
+              <CardContent sx={{ p: { xs: 2.25, md: 3 } }}>
                 <Stack
                   direction={{ xs: 'column', md: 'row' }}
                   spacing={1.5}
@@ -1646,16 +1774,40 @@ export default function PriceManagementDashboard({
                     </Typography>
                   </Box>
                   <Chip
-                    label={`${creatorHubEmailSettings.email.templates.length} aktive billing-maler`}
+                    label={`${activeBillingTemplateCount} aktive billing-maler`}
                     sx={{ bgcolor: '#f8fafc', border: '1px solid rgba(15, 23, 42, 0.08)', fontWeight: 700 }}
                   />
                 </Stack>
 
-                <TableContainer>
-                  <Table size="small">
+                <TableContainer
+                  sx={{
+                    borderRadius: '20px',
+                    border: '1px solid rgba(17, 24, 39, 0.08)',
+                    bgcolor: '#fffdfa',
+                  }}
+                >
+                  <Table
+                    size="small"
+                    sx={{
+                      '& thead th': {
+                        bgcolor: '#f8f5ef',
+                        color: '#6b6257',
+                        fontSize: '0.78rem',
+                        borderBottom: '1px solid rgba(17, 24, 39, 0.08)',
+                      },
+                      '& tbody td': {
+                        borderBottom: '1px solid rgba(17, 24, 39, 0.06)',
+                        verticalAlign: 'top',
+                      },
+                      '& tbody tr:hover': {
+                        bgcolor: '#fffaf1',
+                      },
+                    }}
+                  >
                     <TableHead>
                       <TableRow>
                         <TableCell><strong>Mal</strong></TableCell>
+                        <TableCell><strong>Avsender</strong></TableCell>
                         <TableCell><strong>Subject</strong></TableCell>
                         <TableCell><strong>CTA</strong></TableCell>
                         <TableCell><strong>Handling</strong></TableCell>
@@ -1671,6 +1823,16 @@ export default function PriceManagementDashboard({
                               </Typography>
                               <Typography variant="caption" color="text.secondary" sx={{ maxWidth: 360, display: 'block' }}>
                                 {template.description}
+                              </Typography>
+                            </Stack>
+                          </TableCell>
+                          <TableCell>
+                            <Stack spacing={0.35}>
+                              <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                                {getCreatorHubTemplateSenderInfo(template.id, creatorHubEmailSettings).label}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                {getCreatorHubTemplateSenderInfo(template.id, creatorHubEmailSettings).email}
                               </Typography>
                             </Stack>
                           </TableCell>
@@ -1699,29 +1861,29 @@ export default function PriceManagementDashboard({
       <TabPanel value={tabValue} index={3}>
         <Grid container spacing={3}>
           <Grid size={{ xs: 12, md: 3 }}>
-            <MetricCard icon={<TrendingUpIcon sx={{ fontSize: 40, color: 'success.main', mb: 1 }} />} label="Total Revenue (30d)">
+            <MetricCard tone="emerald" icon={<TrendingUpIcon sx={{ fontSize: 30 }} />} label="Total Revenue (30d)">
               {analytics.metrics.totalRevenue.toLocaleString('nb-NO')} kr
             </MetricCard>
           </Grid>
           <Grid size={{ xs: 12, md: 3 }}>
-            <MetricCard icon={<PeopleIcon sx={{ fontSize: 40, color: 'primary.main', mb: 1 }} />} label="New Subscriptions">
+            <MetricCard tone="blue" icon={<PeopleIcon sx={{ fontSize: 30 }} />} label="New Subscriptions">
               {analytics.metrics.newSubscriptions}
             </MetricCard>
           </Grid>
           <Grid size={{ xs: 12, md: 3 }}>
-            <MetricCard icon={<ToggleIcon sx={{ fontSize: 40, color: 'info.main', mb: 1 }} />} label="Feature Usage">
+            <MetricCard tone="violet" icon={<ToggleIcon sx={{ fontSize: 30 }} />} label="Feature Usage">
               {analytics.metrics.featureUsage}
             </MetricCard>
           </Grid>
           <Grid size={{ xs: 12, md: 3 }}>
-            <MetricCard icon={<TrendingUpIcon sx={{ fontSize: 40, color: 'warning.main', mb: 1 }} />} label="Plan Upgrades">
+            <MetricCard tone="amber" icon={<TrendingUpIcon sx={{ fontSize: 30 }} />} label="Plan Upgrades">
               {analytics.metrics.upgrades}
             </MetricCard>
           </Grid>
 
           <Grid size={{ xs: 12 }}>
-            <Card sx={theming.getThemedCardSx()}>
-              <CardContent sx={theming.getThemedCardSx()}>
+            <Card sx={priceManagementSurfaceSx}>
+              <CardContent sx={{ p: { xs: 2.25, md: 3 } }}>
                 <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
                   Top Features by Usage
                 </Typography>
@@ -1758,14 +1920,14 @@ export default function PriceManagementDashboard({
       </TabPanel>
 
       <TabPanel value={tabValue} index={4}>
-        <Alert severity="info" sx={{ mb: 3 }}>
+        <Alert severity="info" sx={{ mb: 3, borderRadius: '16px' }}>
           <strong>Norsk MVA (25%):</strong> Alle priser under er oppgitt <strong>eks. MVA</strong>.
         </Alert>
 
         <Grid container spacing={3}>
           <Grid size={{ xs: 12, md: 6 }}>
-            <Card sx={theming.getThemedCardSx()}>
-              <CardContent>
+            <Card sx={priceManagementSurfaceSx}>
+              <CardContent sx={{ p: { xs: 2.25, md: 3 } }}>
                 <Typography variant="h6" sx={{ mb: 3, display: 'flex', alignItems: 'center', color: theming.colors.primary }}>
                   <EnterpriseIcon sx={{ mr: 1 }} />
                   Enterprise Basispriser (eks. MVA)
@@ -1804,8 +1966,8 @@ export default function PriceManagementDashboard({
           </Grid>
 
           <Grid size={{ xs: 12, md: 6 }}>
-            <Card sx={theming.getThemedCardSx()}>
-              <CardContent>
+            <Card sx={priceManagementSurfaceSx}>
+              <CardContent sx={{ p: { xs: 2.25, md: 3 } }}>
                 <Typography variant="h6" sx={{ mb: 3, display: 'flex', alignItems: 'center', color: theming.colors.primary }}>
                   <PeopleIcon sx={{ mr: 1 }} />
                   Pris per ekstra bruker (eks. MVA)
@@ -1834,8 +1996,8 @@ export default function PriceManagementDashboard({
           </Grid>
 
           <Grid size={{ xs: 12 }}>
-            <Card sx={theming.getThemedCardSx()}>
-              <CardContent>
+            <Card sx={priceManagementSurfaceSx}>
+              <CardContent sx={{ p: { xs: 2.25, md: 3 } }}>
                 <Typography variant="h6" sx={{ mb: 3, color: theming.colors.primary }}>
                   Volumrabatter
                 </Typography>
@@ -2319,10 +2481,6 @@ export default function PriceManagementDashboard({
         </DialogActions>
       </Dialog>
 
-      <Alert severity="info" sx={{ mt: 3 }}>
-        Komplett feature management med profesjon-kategorisering, subscription management og analytics.
-      </Alert>
-
       <Snackbar
         open={snackbar.open}
         autoHideDuration={6000}
@@ -2349,20 +2507,71 @@ function MetricCard({
   children,
   icon,
   label,
+  tone = 'slate',
 }: {
   children: React.ReactNode;
   icon: React.ReactNode;
   label: string;
+  tone?: 'teal' | 'blue' | 'violet' | 'amber' | 'emerald' | 'slate';
 }) {
-  const theming = useTheming('prototype_tester');
+  const toneMap = {
+    teal: {
+      background: 'linear-gradient(180deg, #f2fbf8 0%, #ffffff 100%)',
+      border: 'rgba(13, 148, 136, 0.20)',
+      icon: '#0f766e',
+      value: '#0f766e',
+    },
+    blue: {
+      background: 'linear-gradient(180deg, #f4f8ff 0%, #ffffff 100%)',
+      border: 'rgba(37, 99, 235, 0.18)',
+      icon: '#1d4ed8',
+      value: '#1d4ed8',
+    },
+    violet: {
+      background: 'linear-gradient(180deg, #f8f5ff 0%, #ffffff 100%)',
+      border: 'rgba(124, 58, 237, 0.18)',
+      icon: '#7c3aed',
+      value: '#6d28d9',
+    },
+    amber: {
+      background: 'linear-gradient(180deg, #fff8ed 0%, #ffffff 100%)',
+      border: 'rgba(217, 119, 6, 0.18)',
+      icon: '#b45309',
+      value: '#c2410c',
+    },
+    emerald: {
+      background: 'linear-gradient(180deg, #effcf5 0%, #ffffff 100%)',
+      border: 'rgba(5, 150, 105, 0.18)',
+      icon: '#059669',
+      value: '#047857',
+    },
+    slate: {
+      background: 'linear-gradient(180deg, #f8fafc 0%, #ffffff 100%)',
+      border: 'rgba(100, 116, 139, 0.16)',
+      icon: '#475569',
+      value: '#111827',
+    },
+  } as const;
+  const palette = toneMap[tone];
   return (
-    <Card sx={theming.getThemedCardSx()}>
-      <CardContent sx={{ textAlign: 'center', ...theming.getThemedCardSx() }}>
-        {icon}
-        <Typography variant="h4" sx={{ fontWeight: 'bold', color: theming.colors.primary }}>
+    <Card
+      sx={{
+        borderRadius: '22px',
+        border: `1px solid ${palette.border}`,
+        boxShadow: '0 14px 34px rgba(15, 23, 42, 0.05)',
+        background: palette.background,
+      }}
+    >
+      <CardContent sx={{ textAlign: 'center', px: 2, py: 2.25 }}>
+        <Box sx={{ color: palette.icon, mb: 1, display: 'flex', justifyContent: 'center' }}>
+          {icon}
+        </Box>
+        <Typography variant="h4" sx={{ fontWeight: 'bold', color: palette.value }}>
           {children}
         </Typography>
-        <Typography color="text.secondary">{label}</Typography>
+        <Typography color="text.secondary" sx={{ mt: 0.5 }}>
+          {label}
+        </Typography>
       </CardContent>
     </Card>
   );
