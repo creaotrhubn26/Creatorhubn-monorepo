@@ -1,3 +1,4 @@
+# Backend Render blueprint reference.
 services:
   - type: web
     name: creatorhub-backend
