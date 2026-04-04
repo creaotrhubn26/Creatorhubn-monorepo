@@ -21417,11 +21417,13 @@ app.post("/api/auth/login", async (req, res) => {
     }
 
     // Determine role
-    let role = "user";
-    const dbRole = String(dbUser.role || "").toLowerCase();
-    if (dbRole === "admin" || dbRole === "super_admin") {
-      role = "admin";
-    }
+    const dbRole = String(dbUser.role || "").trim().toLowerCase();
+    let role =
+      dbRole === "super_admin"
+        ? "admin"
+        : adminRoleCatalogById.has(dbRole)
+          ? dbRole
+          : "user";
     if (loginType === "prototype") {
       if (
         dbRole === "prototype_tester" ||
