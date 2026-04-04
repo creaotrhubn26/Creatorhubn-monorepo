@@ -53,7 +53,11 @@ interface SubscriptionPlan {
   storageLimit: number;
   popular?: boolean;
   trialDays?: number;
-  description?: string; 
+  description?: string;
+  isPublic?: boolean;
+  contactSalesOnly?: boolean;
+  publicPriceLabel?: string;
+  ctaLabel?: string;
 }
 
 interface PaymentMethod {
@@ -148,6 +152,10 @@ export default function SubscriptionSelectionFlow({
           popular?: boolean;
           trialDays?: number;
           description?: string;
+          isPublic?: boolean;
+          contactSalesOnly?: boolean;
+          publicPriceLabel?: string | null;
+          ctaLabel?: string | null;
           limits?: {
             maxUsers?: number;
             maxProjects?: number;
@@ -171,6 +179,11 @@ export default function SubscriptionSelectionFlow({
             popular: Boolean(plan.isPopular ?? plan.popular),
             trialDays: typeof plan.trialDays === 'number' ? plan.trialDays : 0,
             description: typeof plan.description === 'string' ? plan.description : undefined,
+            isPublic: plan.isPublic !== false,
+            contactSalesOnly: Boolean(plan.contactSalesOnly),
+            publicPriceLabel:
+              typeof plan.publicPriceLabel === 'string' ? plan.publicPriceLabel : undefined,
+            ctaLabel: typeof plan.ctaLabel === 'string' ? plan.ctaLabel : undefined,
           }))
         : [];
 
@@ -181,6 +194,12 @@ export default function SubscriptionSelectionFlow({
   });
 
   const plans: SubscriptionPlan[] = plansData?.plans || [];
+  const publicPlans = plans.filter((plan) => plan.isPublic !== false);
+  const selfServePlans = publicPlans.filter(
+    (plan) => !plan.contactSalesOnly && plan.price > 0,
+  );
+  const enterprisePlan =
+    publicPlans.find((plan) => plan.contactSalesOnly) || null;
 
   useEffect(() => {
     if (!initialPlanId || plans.length === 0 || selectedPlan) {
@@ -188,7 +207,7 @@ export default function SubscriptionSelectionFlow({
     }
 
     const matchedPlan = plans.find((plan) => plan.id === initialPlanId);
-    if (matchedPlan) {
+    if (matchedPlan && !matchedPlan.contactSalesOnly && matchedPlan.price > 0) {
       setSelectedPlan(matchedPlan);
     }
   }, [initialPlanId, plans, selectedPlan]);
@@ -315,7 +334,19 @@ export default function SubscriptionSelectionFlow({
         variant: 'destructive',
       });
       return;
-  }
+    }
+
+    if (selectedPlan.contactSalesOnly) {
+      toast({
+        title: 'Enterprise settes opp med CreatorHub',
+        description: 'Kontakt kontakt@creatorhubn.com for demo, onboarding og tilbud.',
+        variant: 'default',
+      });
+      window.location.href =
+        'mailto:kontakt@creatorhubn.com?subject=' +
+        encodeURIComponent('CreatorHub Enterprise – forespørsel om demo og tilbud');
+      return;
+    }
 
     if (availablePaymentMethods.length === 0) {
       toast({
@@ -326,16 +357,16 @@ export default function SubscriptionSelectionFlow({
       return;
     }
     setShowPaymentDialog(true);
-};
+  };
 
   const handleProcessPayment = () => {
     if (selectedPlan && selectedPaymentMethod) {
       paymentMutation.mutate({
         plan: selectedPlan,
         paymentMethod: selectedPaymentMethod,
-    });
-  }
-};
+      });
+    }
+  };
 
   const handleBack = () => {
     onBack?.();
@@ -412,7 +443,7 @@ export default function SubscriptionSelectionFlow({
     );
   }
 
-  if (plans.length === 0) {
+  if (publicPlans.length === 0) {
     return (
       <Box sx={{ py: 4 }}>
         <Alert 
@@ -511,7 +542,8 @@ export default function SubscriptionSelectionFlow({
           >
             {[
               'Sikker betaling via Stripe Checkout',
-              'Månedlig abonnement med klar pris per plan',
+              'Tre selvbetjente planer med tydelig pris per nivå',
+              'Enterprise settes opp separat med demo og onboarding',
               'Returnerer automatisk til CreatorHub etter betaling',
             ].map((line) => (
               <Stack key={line} direction="row" spacing={1.2} alignItems="flex-start">
@@ -527,7 +559,7 @@ export default function SubscriptionSelectionFlow({
 
       {/* Plans Grid */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
-        {plans.map((plan) => (
+        {selfServePlans.map((plan) => (
           <Grid size={{ xs: 12, md: 4 }} key={plan.id}>
             <Card
               sx={{
@@ -705,9 +737,10 @@ export default function SubscriptionSelectionFlow({
                   fullWidth
                   onClick={() => handlePlanSelect(plan)}
                   sx={{
-                    bgcolor: selectedPlan?.id === plan.id 
-                      ? `linear-gradient(135deg, ${professionColor} 0%, ${professionColor}dd 100%)`
-                      : 'transparent',
+                    background:
+                      selectedPlan?.id === plan.id
+                        ? `linear-gradient(135deg, ${professionColor} 0%, ${professionColor}dd 100%)`
+                        : 'transparent',
                     borderColor: professionColor,
                     borderWidth: '2px',
                     color: selectedPlan?.id === plan.id ? 'white' : professionColor,
@@ -732,13 +765,95 @@ export default function SubscriptionSelectionFlow({
                     }
                   }}
                 >
-                  {selectedPlan?.id === plan.id ? '✓ Valgt' : 'Velg plan'}
+                  {selectedPlan?.id === plan.id ? '✓ Valgt' : plan.ctaLabel || 'Velg plan'}
                 </Button>
               </CardContent>
             </Card>
           </Grid>
         ))}
       </Grid>
+
+      {enterprisePlan && (
+        <Box
+          sx={{
+            mb: 4,
+            borderRadius: '22px',
+            border: '1px solid rgba(255,255,255,0.1)',
+            background:
+              'linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,140,0,0.1) 100%)',
+            p: { xs: 2.5, md: 3 },
+          }}
+        >
+          <Stack
+            direction={{ xs: 'column', lg: 'row' }}
+            spacing={{ xs: 2.5, lg: 3.5 }}
+            justifyContent="space-between"
+            alignItems={{ xs: 'flex-start', lg: 'center' }}
+          >
+            <Box sx={{ maxWidth: 820 }}>
+              <Typography
+                sx={{
+                  fontSize: '0.8rem',
+                  letterSpacing: '0.18em',
+                  textTransform: 'uppercase',
+                  color: 'rgba(255,186,108,0.84)',
+                  fontWeight: 700,
+                  mb: 1,
+                }}
+              >
+                Enterprise
+              </Typography>
+              <Typography
+                variant="h6"
+                sx={{ color: '#fff', fontWeight: 700, fontSize: { xs: '1.3rem', md: '1.55rem' } }}
+              >
+                {enterprisePlan.publicPriceLabel || 'Kontakt salg'}
+              </Typography>
+              <Typography sx={{ color: 'rgba(255,255,255,0.72)', lineHeight: 1.75, mt: 1 }}>
+                {enterprisePlan.description}
+              </Typography>
+              <Stack
+                direction={{ xs: 'column', sm: 'row' }}
+                spacing={{ xs: 0.9, sm: 1.6 }}
+                sx={{ mt: 1.6, flexWrap: 'wrap' }}
+              >
+                {enterprisePlan.features.slice(0, 4).map((feature) => (
+                  <Stack key={feature} direction="row" spacing={1} alignItems="center">
+                    <CheckIcon sx={{ color: '#ffba6c', fontSize: 18 }} />
+                    <Typography sx={{ color: 'rgba(255,255,255,0.86)' }}>{feature}</Typography>
+                  </Stack>
+                ))}
+              </Stack>
+            </Box>
+
+            <Button
+              variant="outlined"
+              onClick={() => {
+                window.location.href =
+                  'mailto:kontakt@creatorhubn.com?subject=' +
+                  encodeURIComponent('CreatorHub Enterprise – forespørsel om demo og tilbud');
+              }}
+              endIcon={<ArrowForwardIcon />}
+              sx={{
+                flexShrink: 0,
+                borderColor: 'rgba(255,186,108,0.45)',
+                color: '#ffba6c',
+                borderRadius: '999px',
+                px: 3,
+                py: 1.2,
+                fontWeight: 700,
+                textTransform: 'none',
+                '&:hover': {
+                  borderColor: '#ffba6c',
+                  bgcolor: 'rgba(255,186,108,0.08)',
+                },
+              }}
+            >
+              {enterprisePlan.ctaLabel || 'Kontakt salg'}
+            </Button>
+          </Stack>
+        </Box>
+      )}
 
       {/* Continue Button */}
       <Box sx={{ textAlign: 'center', mt: 4 }}>

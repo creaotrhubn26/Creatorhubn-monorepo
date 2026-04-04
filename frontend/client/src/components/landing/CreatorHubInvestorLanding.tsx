@@ -151,47 +151,45 @@ const landingCopy = {
       label: 'Abonnement',
       title: 'Velg inngangen inn i CreatorHub',
       body:
-        'Abonnementene er bygget for ulike faser av kreativ drift, fra solooperatører til studioer og større team. Checkout går videre til Stripe på en egen sikker side.',
-      trustLine: 'Månedlig abonnement / Stripe Checkout / Retur til CreatorHub etter betaling',
+        'De selvbetjente abonnementene er bygget for ulike faser av kreativ drift, fra solooperatører til studioer. Enterprise settes opp sammen med CreatorHub, ikke som vanlig checkout.',
+      trustLine: 'Månedlig abonnement / Stripe Checkout for selvbetjente planer / Enterprise via salg',
       cards: [
         {
           id: 'basic',
           name: 'Basic Creator',
-          price: '199 kr',
+          price: '249 kr',
           cadence: 'per måned',
-          summary: 'For solo kreatører som trenger struktur rundt prosjekter, kunder og leveranser.',
+          summary: 'For solo kreatører som vil profesjonalisere prosjekter, kunder og leveranser uten å betale for teamlag.',
           points: ['Opptil 25 prosjekter', 'Avansert CRM', 'Kontraktstyring'],
           cta: 'Velg Basic',
         },
         {
           id: 'professional',
           name: 'Professional Creator',
-          price: '399 kr',
+          price: '449 kr',
           cadence: 'per måned',
-          summary: 'For profesjonelle kreatører som trenger full arbeidsflyt, rapportering og høyere kapasitet.',
-          points: ['Ubegrensede prosjekter', 'Ubegrensede klienter', '25 GB lagring'],
+          summary: 'For profesjonelle kreatører som trenger full arbeidsflyt, rapportering og tydeligere forretningskontroll.',
+          points: ['Ubegrensede prosjekter', 'Ubegrensede klienter', '50 GB lagring'],
           cta: 'Velg Professional',
           highlight: true,
         },
         {
           id: 'premium',
           name: 'Premium Studio',
-          price: '699 kr',
+          price: '1199 kr',
           cadence: 'per måned',
-          summary: 'For team og studioer som trenger mer kapasitet, automatisering og prioritet.',
-          points: ['Teamtilgang', 'Prioritert støtte', '100 GB lagring'],
+          summary: 'For studioer og team som trenger delt arbeidsflyt, automasjon og prioritet i drift.',
+          points: ['Teamtilgang', 'Automatiseringer', '250 GB lagring'],
           cta: 'Velg Premium',
         },
-        {
-          id: 'enterprise',
-          name: 'Enterprise',
-          price: '1499 kr',
-          cadence: 'per måned',
-          summary: 'For større miljøer som trenger dedikert onboarding, white label og egne integrasjoner.',
-          points: ['White label', 'Dedikert onboarding', 'Tilpassede integrasjoner'],
-          cta: 'Velg Enterprise',
-        },
       ],
+      enterprise: {
+        name: 'Enterprise',
+        price: 'Kontakt salg',
+        summary: 'For større miljøer som trenger white label, governance, onboarding og egne integrasjoner.',
+        points: ['White label', 'Dedikert onboarding', 'Tilpassede integrasjoner', 'SSO og tilgangsstyring'],
+        cta: 'Kontakt salg',
+      },
     },
     why: {
       label: 'Hvorfor dette er kraftfullt',
@@ -317,47 +315,45 @@ const landingCopy = {
       label: 'Subscriptions',
       title: 'Choose your CreatorHub entry point',
       body:
-        'The plans are designed for different stages of creative operations, from solo creators to studios and larger teams. Checkout continues in Stripe on a dedicated secure page.',
-      trustLine: 'Monthly subscription / Stripe Checkout / Return to CreatorHub after payment',
+        'The self-serve plans are built for different stages of creative operations, from solo creators to studios. Enterprise is set up with CreatorHub, not through standard checkout.',
+      trustLine: 'Monthly subscription / Stripe Checkout for self-serve plans / Enterprise via sales',
       cards: [
         {
           id: 'basic',
           name: 'Basic Creator',
-          price: 'NOK 199',
+          price: 'NOK 249',
           cadence: 'per month',
-          summary: 'For solo creatives who need structure around projects, clients and delivery.',
+          summary: 'For solo creatives who want a more professional operating layer around projects, clients and delivery.',
           points: ['Up to 25 projects', 'Advanced CRM', 'Contract management'],
           cta: 'Choose Basic',
         },
         {
           id: 'professional',
           name: 'Professional Creator',
-          price: 'NOK 399',
+          price: 'NOK 449',
           cadence: 'per month',
-          summary: 'For professionals who need a fuller workflow, reporting and higher operating capacity.',
-          points: ['Unlimited projects', 'Unlimited clients', '25 GB storage'],
+          summary: 'For professionals who need a fuller workflow, reporting and stronger business control.',
+          points: ['Unlimited projects', 'Unlimited clients', '50 GB storage'],
           cta: 'Choose Professional',
           highlight: true,
         },
         {
           id: 'premium',
           name: 'Premium Studio',
-          price: 'NOK 699',
+          price: 'NOK 1199',
           cadence: 'per month',
-          summary: 'For teams and studios that need more capacity, automation and priority support.',
-          points: ['Team access', 'Priority support', '100 GB storage'],
+          summary: 'For teams and studios that need shared workflows, automation and priority support.',
+          points: ['Team access', 'Automations', '250 GB storage'],
           cta: 'Choose Premium',
         },
-        {
-          id: 'enterprise',
-          name: 'Enterprise',
-          price: 'NOK 1499',
-          cadence: 'per month',
-          summary: 'For larger environments that need dedicated onboarding, white label and custom integrations.',
-          points: ['White label', 'Dedicated onboarding', 'Custom integrations'],
-          cta: 'Choose Enterprise',
-        },
       ],
+      enterprise: {
+        name: 'Enterprise',
+        price: 'Contact sales',
+        summary: 'For larger environments that need white label, governance, onboarding and custom integrations.',
+        points: ['White label', 'Dedicated onboarding', 'Custom integrations', 'SSO and access control'],
+        cta: 'Contact sales',
+      },
     },
     why: {
       label: 'Why This Is Powerful',
@@ -514,6 +510,20 @@ export default function CreatorHubInvestorLanding({
       params.set('plan', planId);
     }
     openRoute(`/subscription-selection?${params.toString()}`);
+  };
+
+  const openCreatorHubSalesContact = (planName = 'CreatorHub Enterprise') => {
+    const subject =
+      locale === 'no'
+        ? `${planName} – forespørsel om demo og tilbud`
+        : `${planName} - request for demo and pricing`;
+    const body =
+      locale === 'no'
+        ? 'Hei CreatorHub,\n\nVi ønsker en demo og et tilbud for Enterprise.\n\nSelskap:\nTeamstørrelse:\nBehov / integrasjoner:\n'
+        : 'Hi CreatorHub,\n\nWe would like a demo and pricing for Enterprise.\n\nCompany:\nTeam size:\nNeeds / integrations:\n';
+    openExternalUrl(
+      `mailto:kontakt@creatorhubn.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`,
+    );
   };
 
   const openExternalUrl = (url: string) => {
@@ -1441,7 +1451,7 @@ export default function CreatorHubInvestorLanding({
               <Box
                 sx={{
                   display: 'grid',
-                  gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))', xl: 'repeat(4, minmax(0, 1fr))' },
+                  gridTemplateColumns: { xs: '1fr', md: 'repeat(3, minmax(0, 1fr))' },
                   gap: 2,
                 }}
               >
@@ -1561,6 +1571,114 @@ export default function CreatorHubInvestorLanding({
                     </Stack>
                   </Box>
                 ))}
+              </Box>
+
+              <Box
+                sx={{
+                  mt: 2.5,
+                  borderRadius: '28px',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  background:
+                    'linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,186,108,0.08) 100%)',
+                  p: { xs: 2.6, md: 3.2 },
+                }}
+              >
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1.5fr) minmax(280px, 0.9fr)' },
+                    gap: 3,
+                    alignItems: 'start',
+                  }}
+                >
+                  <Stack spacing={1.4}>
+                    <Typography
+                      sx={{
+                        fontFamily: '"Space Grotesk", "Manrope", sans-serif',
+                        fontSize: '0.78rem',
+                        letterSpacing: '0.18em',
+                        textTransform: 'uppercase',
+                        color: 'rgba(255,186,108,0.82)',
+                      }}
+                    >
+                      {locale === 'no' ? 'Enterprise-spor' : 'Enterprise lane'}
+                    </Typography>
+                    <Stack
+                      direction={{ xs: 'column', sm: 'row' }}
+                      spacing={1.25}
+                      justifyContent="space-between"
+                      alignItems={{ xs: 'flex-start', sm: 'flex-end' }}
+                    >
+                      <Box>
+                        <Typography
+                          sx={{
+                            fontFamily: '"Space Grotesk", "Manrope", sans-serif',
+                            fontSize: { xs: '1.5rem', md: '1.8rem' },
+                            fontWeight: 700,
+                            color: '#fbf5ee',
+                          }}
+                        >
+                          {copy.pricing.enterprise.name}
+                        </Typography>
+                        <Typography sx={{ color: 'rgba(246,242,234,0.72)', lineHeight: 1.75, mt: 0.8, maxWidth: 760 }}>
+                          {copy.pricing.enterprise.summary}
+                        </Typography>
+                      </Box>
+                      <Typography
+                        sx={{
+                          fontFamily: '"Space Grotesk", "Manrope", sans-serif',
+                          fontSize: { xs: '1.4rem', md: '1.7rem' },
+                          color: '#ffba6c',
+                          fontWeight: 700,
+                          flexShrink: 0,
+                        }}
+                      >
+                        {copy.pricing.enterprise.price}
+                      </Typography>
+                    </Stack>
+                  </Stack>
+
+                  <Stack spacing={1.05}>
+                    {copy.pricing.enterprise.points.map((point) => (
+                      <Stack key={point} direction="row" spacing={1.1} alignItems="flex-start">
+                        <Box
+                          sx={{
+                            width: 7,
+                            height: 7,
+                            borderRadius: '999px',
+                            flexShrink: 0,
+                            mt: 0.9,
+                            bgcolor: '#ffba6c',
+                          }}
+                        />
+                        <Typography sx={{ color: 'rgba(246,242,234,0.84)', lineHeight: 1.65 }}>{point}</Typography>
+                      </Stack>
+                    ))}
+
+                    <Button
+                      onClick={() => openCreatorHubSalesContact(copy.pricing.enterprise.name)}
+                      variant="outlined"
+                      endIcon={<ArrowForward />}
+                      sx={{
+                        mt: 1,
+                        alignSelf: 'flex-start',
+                        borderRadius: '999px',
+                        py: 1.15,
+                        px: 2.5,
+                        fontWeight: 700,
+                        textTransform: 'none',
+                        color: '#fff5e8',
+                        borderColor: 'rgba(255,255,255,0.18)',
+                        '&:hover': {
+                          bgcolor: 'rgba(255,255,255,0.05)',
+                          borderColor: '#fff5e8',
+                        },
+                      }}
+                    >
+                      {copy.pricing.enterprise.cta}
+                    </Button>
+                  </Stack>
+                </Box>
               </Box>
             </Box>
           </MotionDiv>
