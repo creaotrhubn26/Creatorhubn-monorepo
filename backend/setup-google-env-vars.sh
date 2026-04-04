@@ -1,10 +1,14 @@
 #!/bin/bash
 
 # Setup Google SEO API Environment Variables in Render
-# This script adds the required Google API environment variables to Render
+# This script adds the required Google API environment variables to Render.
+# Usage:
+#   RENDER_API_KEY=... RENDER_SERVICE_ID=... ./backend/setup-google-env-vars.sh
 
-RENDER_API_KEY="rnd_rH0675zL2giMgpYDbsrxEAMXSWxe"
-SERVICE_ID="srv-d47s5lur433s739mr9j0"
+: "${RENDER_API_KEY:?Missing RENDER_API_KEY. Export a Render API token before running this script.}"
+: "${RENDER_SERVICE_ID:?Missing RENDER_SERVICE_ID. Export the target Render service id before running this script.}"
+
+SERVICE_ID="$RENDER_SERVICE_ID"
 BASE_URL="https://api.render.com/v1"
 
 echo "🔧 Setting up Google SEO API Environment Variables in Render"
@@ -93,4 +97,3 @@ echo ""
 echo "4. Update these values in Render Dashboard:"
 echo "   https://dashboard.render.com/web/$SERVICE_ID/env"
 echo ""
-

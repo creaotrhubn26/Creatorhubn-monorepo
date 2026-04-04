@@ -3,15 +3,38 @@
  * API endpoints for syncing with Render environment
  */
 
-import { Router } from 'express';
+import { Router, type Response } from 'express';
 import { RenderIntegrationService } from '../services/render-integration-service';
 import { getAPIVersionManager } from '../services/api-version-manager';
 import { pool } from '../db';
 
 const router = Router();
 
-const RENDER_API_KEY = process.env.RENDER_API_KEY || 'rnd_rH0675zL2giMgpYDbsrxEAMXSWxe';
-const RENDER_SERVICE_ID = process.env.RENDER_SERVICE_ID || 'srv-d47s5lur433s739mr9j0';
+function getRenderIntegrationConfig() {
+  const apiKey = process.env.RENDER_API_KEY?.trim();
+  const serviceId = process.env.RENDER_SERVICE_ID?.trim();
+
+  if (!apiKey || !serviceId) {
+    return null;
+  }
+
+  return { apiKey, serviceId };
+}
+
+function getRenderServiceOrRespond(res: Response) {
+  const config = getRenderIntegrationConfig();
+
+  if (!config) {
+    res.status(503).json({
+      success: false,
+      error: 'Render-integrasjonen er ikke konfigurert i dette miljøet.',
+      details: 'Sett både RENDER_API_KEY og RENDER_SERVICE_ID for å bruke Render-sync i admin.',
+    });
+    return null;
+  }
+
+  return new RenderIntegrationService(config.apiKey, config.serviceId, pool);
+}
 
 /**
  * GET /api/admin/render/env-vars
@@ -19,7 +42,8 @@ const RENDER_SERVICE_ID = process.env.RENDER_SERVICE_ID || 'srv-d47s5lur433s739m
  */
 router.get('/api/admin/render/env-vars', async (req, res) => {
   try {
-    const renderService = new RenderIntegrationService(RENDER_API_KEY, RENDER_SERVICE_ID, pool);
+    const renderService = getRenderServiceOrRespond(res);
+    if (!renderService) return;
     const envVars = await renderService.getEnvironmentVariables();
 
     res.json({
@@ -45,7 +69,8 @@ router.get('/api/admin/render/env-vars', async (req, res) => {
  */
 router.get('/api/admin/render/api-services', async (req, res) => {
   try {
-    const renderService = new RenderIntegrationService(RENDER_API_KEY, RENDER_SERVICE_ID, pool);
+    const renderService = getRenderServiceOrRespond(res);
+    if (!renderService) return;
     const apiServices = await renderService.getConfiguredAPIServices();
 
     res.json({
@@ -67,7 +92,8 @@ router.get('/api/admin/render/api-services', async (req, res) => {
  */
 router.post('/api/admin/render/pull-from-render', async (req, res) => {
   try {
-    const renderService = new RenderIntegrationService(RENDER_API_KEY, RENDER_SERVICE_ID, pool);
+    const renderService = getRenderServiceOrRespond(res);
+    if (!renderService) return;
 
     console.log('🔽 Pulling API configurations from Render (Source of Truth)...');
     const result = await renderService.syncVersionsWithRender('pull');
@@ -101,7 +127,8 @@ router.post('/api/admin/render/pull-from-render', async (req, res) => {
 router.post('/api/admin/render/push-to-render', async (req, res) => {
   try {
     const { forceUpdate } = req.body;
-    const renderService = new RenderIntegrationService(RENDER_API_KEY, RENDER_SERVICE_ID, pool);
+    const renderService = getRenderServiceOrRespond(res);
+    if (!renderService) return;
 
     console.log('🔼 Pushing API versions to Render (SAFE MODE - No overwrites unless forced)...');
     const result = await renderService.syncVersionsWithRender('push', { forceUpdate });
@@ -142,7 +169,8 @@ router.post('/api/admin/render/sync-versions', async (req, res) => {
   try {
     const direction = (req.query.direction as 'pull' | 'push' | 'both') || 'pull'; // Default to pull only
     const { forceUpdate } = req.body;
-    const renderService = new RenderIntegrationService(RENDER_API_KEY, RENDER_SERVICE_ID, pool);
+    const renderService = getRenderServiceOrRespond(res);
+    if (!renderService) return;
 
     console.log(`🔄 Starting ${direction} sync with Render...`);
     const result = await renderService.syncVersionsWithRender(direction, { forceUpdate });
@@ -188,7 +216,8 @@ router.put('/api/admin/render/env-vars/:key', async (req, res) => {
       });
     }
 
-    const renderService = new RenderIntegrationService(RENDER_API_KEY, RENDER_SERVICE_ID, pool);
+    const renderService = getRenderServiceOrRespond(res);
+    if (!renderService) return;
     await renderService.updateEnvironmentVariable(key, value);
 
     res.json({
@@ -205,4 +234,3 @@ router.put('/api/admin/render/env-vars/:key', async (req, res) => {
 });
 
 export default router;
-

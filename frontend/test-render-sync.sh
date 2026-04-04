@@ -11,8 +11,8 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Configuration
-RENDER_API_KEY="rnd_rH0675zL2giMgpYDbsrxEAMXSWxe"
-RENDER_SERVICE_ID="srv-d47s5lur433s739mr9j0"
+: "${RENDER_API_KEY:?Missing RENDER_API_KEY. Export a Render API token before running this script.}"
+: "${RENDER_SERVICE_ID:?Missing RENDER_SERVICE_ID. Export the target Render service id before running this script.}"
 BASE_URL="http://localhost:5000"
 
 echo -e "${BLUE}1. Testing Render API Connection${NC}"
@@ -63,4 +63,3 @@ echo "  2. Test Pull from Render: curl -X POST http://localhost:5000/api/admin/r
 echo "  3. Test Push to Render: curl -X POST http://localhost:5000/api/admin/render/push-to-render -H 'Content-Type: application/json' -d '{\"forceUpdate\": false}'"
 echo "  4. Open the frontend and click 'Pull from Render' button"
 echo ""
-
