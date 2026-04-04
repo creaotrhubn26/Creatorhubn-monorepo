@@ -300,23 +300,23 @@ const defaultCreatorHubEmailSettings: CreatorHubEmailSettings = {
     domain: 'creatorhubn.com',
     supportEmail: 'kontakt@creatorhubn.com',
     docsUrl: 'https://creatorhubn.com',
-    emailLogoUrl: '',
+    emailLogoUrl: '/creatorhub-logo-amber.svg',
   },
   email: {
     replyToEmail: 'kontakt@creatorhubn.com',
     footerText: 'CreatorHub Norge • creatorhubn.com',
     theme: {
-      canvasBackground: '#f3f7fb',
-      cardBackground: '#ffffff',
-      cardBorder: '#d7e3ef',
-      headerBackground: '#0f3460',
-      headerText: '#f8fafc',
-      brandLabelColor: '#4fd1c5',
-      bodyText: '#223047',
-      mutedText: '#64748b',
-      buttonBackground: '#e94560',
-      buttonText: '#ffffff',
-      footerText: '#64748b',
+      canvasBackground: '#06070b',
+      cardBackground: '#11141b',
+      cardBorder: '#2a2f39',
+      headerBackground: '#0c0f15',
+      headerText: '#f6efe4',
+      brandLabelColor: '#ffba6c',
+      bodyText: '#e7dece',
+      mutedText: '#b8aa93',
+      buttonBackground: '#ffba6c',
+      buttonText: '#16120d',
+      footerText: '#918573',
     },
     templates: [
       {
@@ -2020,42 +2020,124 @@ export default function PriceManagementDashboard({
 
             <Box
               sx={{
-                borderRadius: '20px',
-                border: '1px solid rgba(15, 52, 96, 0.08)',
+                borderRadius: '28px',
+                border: '1px solid rgba(255,255,255,0.08)',
                 background: creatorHubEmailSettings.email.theme.canvasBackground,
-                p: 2,
+                p: { xs: 1.5, sm: 2.5 },
               }}
             >
               <Box
                 sx={{
                   maxWidth: 720,
                   margin: '0 auto',
-                  borderRadius: '18px',
+                  borderRadius: '28px',
                   overflow: 'hidden',
                   border: `1px solid ${creatorHubEmailSettings.email.theme.cardBorder}`,
                   background: creatorHubEmailSettings.email.theme.cardBackground,
+                  boxShadow: '0 28px 70px rgba(0,0,0,0.34)',
                 }}
               >
                 <Box
                   sx={{
-                    px: 3,
-                    py: 2.5,
+                    px: { xs: 2.25, sm: 3.5 },
+                    py: { xs: 2.5, sm: 3.5 },
                     background: creatorHubEmailSettings.email.theme.headerBackground,
                     color: creatorHubEmailSettings.email.theme.headerText,
+                    borderBottom: `1px solid ${creatorHubEmailSettings.email.theme.cardBorder}`,
                   }}
                 >
-                  <Typography variant="overline" sx={{ color: creatorHubEmailSettings.email.theme.brandLabelColor, fontWeight: 700, letterSpacing: '0.12em' }}>
-                    {creatorHubEmailSettings.identity.appName}
-                  </Typography>
-                  <Typography variant="h5" sx={{ mt: 0.75, fontWeight: 700 }}>
+                  <Stack direction="row" spacing={1.5} alignItems="center">
+                    {creatorHubEmailSettings.identity.emailLogoUrl ? (
+                      <Box
+                        component="img"
+                        src={creatorHubEmailSettings.identity.emailLogoUrl}
+                        alt={creatorHubEmailSettings.identity.appName}
+                        sx={{ width: 40, height: 40, flexShrink: 0 }}
+                      />
+                    ) : null}
+                    <Box>
+                      <Typography
+                        variant="overline"
+                        sx={{
+                          display: 'block',
+                          color: creatorHubEmailSettings.email.theme.brandLabelColor,
+                          fontWeight: 800,
+                          letterSpacing: '0.18em',
+                        }}
+                      >
+                        {creatorHubEmailSettings.identity.appName}
+                      </Typography>
+                      <Typography sx={{ fontSize: '0.88rem', color: creatorHubEmailSettings.email.theme.mutedText }}>
+                        {creatorHubEmailSettings.identity.tagline}
+                      </Typography>
+                    </Box>
+                  </Stack>
+                  <Box
+                    sx={{
+                      mt: 2.5,
+                      display: 'inline-flex',
+                      px: 1.5,
+                      py: 0.8,
+                      borderRadius: '999px',
+                      bgcolor: '#171d26',
+                      color: creatorHubEmailSettings.email.theme.brandLabelColor,
+                      fontSize: '0.72rem',
+                      fontWeight: 800,
+                      letterSpacing: '0.12em',
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    CreatorHub Commerce
+                  </Box>
+                  <Typography
+                    variant="h4"
+                    sx={{
+                      mt: 2,
+                      fontWeight: 700,
+                      letterSpacing: '-0.03em',
+                      fontFamily: '"Space Grotesk", "Inter", sans-serif',
+                    }}
+                  >
                     {editingEmailTemplateTitle || 'Tittel'}
                   </Typography>
+                  <Typography sx={{ mt: 1.25, color: creatorHubEmailSettings.email.theme.mutedText, maxWidth: 520 }}>
+                    {creatorHubEmailSettings.identity.tagline} • {creatorHubEmailSettings.identity.domain}
+                  </Typography>
                 </Box>
-                <Box sx={{ px: 3, py: 3 }}>
+                <Box sx={{ px: { xs: 2.25, sm: 3.5 }, py: { xs: 2.5, sm: 3.5 } }}>
                   <Box
-                    sx={{ color: creatorHubEmailSettings.email.theme.bodyText, lineHeight: 1.7 }}
+                    sx={{ color: creatorHubEmailSettings.email.theme.bodyText, lineHeight: 1.9, fontSize: '0.98rem' }}
                     dangerouslySetInnerHTML={{ __html: editingEmailTemplateBody || '<p>Forhåndsvisning av e-postinnhold.</p>' }}
                   />
+                  <Box
+                    sx={{
+                      mt: 2.5,
+                      mb: 2.5,
+                      p: 2.25,
+                      borderRadius: '20px',
+                      border: `1px solid ${creatorHubEmailSettings.email.theme.cardBorder}`,
+                      bgcolor: '#141922',
+                    }}
+                  >
+                    <Grid container spacing={2}>
+                      <Grid size={{ xs: 12, sm: 6 }}>
+                        <Typography sx={{ fontSize: '0.7rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: creatorHubEmailSettings.email.theme.brandLabelColor, fontWeight: 800 }}>
+                          Plan
+                        </Typography>
+                        <Typography sx={{ mt: 0.75, color: creatorHubEmailSettings.email.theme.headerText, fontWeight: 600 }}>
+                          Professional Creator
+                        </Typography>
+                      </Grid>
+                      <Grid size={{ xs: 12, sm: 6 }}>
+                        <Typography sx={{ fontSize: '0.7rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: creatorHubEmailSettings.email.theme.brandLabelColor, fontWeight: 800 }}>
+                          Status
+                        </Typography>
+                        <Typography sx={{ mt: 0.75, color: creatorHubEmailSettings.email.theme.headerText, fontWeight: 600 }}>
+                          Konto aktivert
+                        </Typography>
+                      </Grid>
+                    </Grid>
+                  </Box>
                   {editingEmailTemplateCtaLabel ? (
                     <Button
                       variant="contained"
@@ -2065,6 +2147,9 @@ export default function PriceManagementDashboard({
                         bgcolor: creatorHubEmailSettings.email.theme.buttonBackground,
                         color: creatorHubEmailSettings.email.theme.buttonText,
                         boxShadow: 'none',
+                        px: 2.5,
+                        py: 1.15,
+                        fontWeight: 800,
                         '&:hover': {
                           bgcolor: creatorHubEmailSettings.email.theme.buttonBackground,
                           boxShadow: 'none',
@@ -2076,13 +2161,15 @@ export default function PriceManagementDashboard({
                     </Button>
                   ) : null}
                   {editingEmailTemplateFooterNote ? (
-                    <Typography variant="caption" sx={{ display: 'block', mt: 2.5, color: creatorHubEmailSettings.email.theme.mutedText }}>
+                    <Typography variant="caption" sx={{ display: 'block', mt: 2.5, color: creatorHubEmailSettings.email.theme.mutedText, lineHeight: 1.8 }}>
                       {editingEmailTemplateFooterNote}
                     </Typography>
                   ) : null}
-                  <Typography variant="caption" sx={{ display: 'block', mt: 1.5, color: creatorHubEmailSettings.email.theme.footerText }}>
-                    {creatorHubEmailSettings.email.footerText}
-                  </Typography>
+                  <Box sx={{ mt: 2.25, pt: 2, borderTop: `1px solid ${creatorHubEmailSettings.email.theme.cardBorder}` }}>
+                    <Typography variant="caption" sx={{ display: 'block', color: creatorHubEmailSettings.email.theme.footerText, lineHeight: 1.8 }}>
+                      {creatorHubEmailSettings.email.footerText}
+                    </Typography>
+                  </Box>
                 </Box>
               </Box>
             </Box>

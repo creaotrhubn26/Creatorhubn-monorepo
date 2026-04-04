@@ -15907,10 +15907,24 @@ const CREATORHUB_PLATFORM_BRANDING_DEFAULT_IDENTITY: CreatorHubPlatformBrandingI
     domain: "creatorhubn.com",
     supportEmail: "kontakt@creatorhubn.com",
     docsUrl: "https://creatorhubn.com",
-    emailLogoUrl: "",
+    emailLogoUrl: "https://creatorhubn.com/creatorhub-logo-amber.svg",
   };
 
 const CREATORHUB_PLATFORM_DEFAULT_EMAIL_THEME: CreatorHubPlatformEmailTheme = {
+  canvasBackground: "#06070b",
+  cardBackground: "#11141b",
+  cardBorder: "#2a2f39",
+  headerBackground: "#0c0f15",
+  headerText: "#f6efe4",
+  brandLabelColor: "#ffba6c",
+  bodyText: "#e7dece",
+  mutedText: "#b8aa93",
+  buttonBackground: "#ffba6c",
+  buttonText: "#16120d",
+  footerText: "#918573",
+};
+
+const CREATORHUB_PLATFORM_LEGACY_EMAIL_THEME: CreatorHubPlatformEmailTheme = {
   canvasBackground: "#f3f7fb",
   cardBackground: "#ffffff",
   cardBorder: "#d7e3ef",
@@ -16034,6 +16048,13 @@ function normalizeCreatorHubPlatformBrandingSettings(
       ),
   );
 
+  const hasLegacyCreatorHubTheme = (
+    themeRecord: Record<string, unknown>,
+  ): boolean =>
+    Object.entries(CREATORHUB_PLATFORM_LEGACY_EMAIL_THEME).every(
+      ([key, value]) => readString(themeRecord[key]) === value,
+    );
+
   const identity = {
     ...CREATORHUB_PLATFORM_BRANDING_DEFAULT_IDENTITY,
     appName:
@@ -16072,10 +16093,12 @@ function normalizeCreatorHubPlatformBrandingSettings(
       footerText:
         readString(emailRecord.footerText) ||
         `${identity.appName} • ${identity.domain}`,
-      theme: {
-        ...CREATORHUB_PLATFORM_DEFAULT_EMAIL_THEME,
-        ...emailThemeRecord,
-      },
+      theme: hasLegacyCreatorHubTheme(emailThemeRecord)
+        ? { ...CREATORHUB_PLATFORM_DEFAULT_EMAIL_THEME }
+        : {
+            ...CREATORHUB_PLATFORM_DEFAULT_EMAIL_THEME,
+            ...emailThemeRecord,
+          },
       templates,
     },
     appName: identity.appName,
@@ -30627,6 +30650,88 @@ function buildRoleRoomEmailNoticeSection(options: {
   return { html, text };
 }
 
+function buildCreatorHubEmailDetailSection(
+  theme: CreatorHubPlatformEmailTheme,
+  rows: Array<{ label: string; value: string }>,
+) {
+  const filteredRows = rows.filter((row) => row.label.trim() && row.value.trim());
+  if (!filteredRows.length) {
+    return { html: "", text: "" };
+  }
+
+  const html = `
+    <div style="margin:0 0 20px;padding:18px 18px 8px;border-radius:20px;background:#141922;border:1px solid ${theme.cardBorder}">
+      <table style="width:100%;border-collapse:collapse;font-size:14px">
+        ${filteredRows
+          .map(
+            (row) => `
+              <tr>
+                <td style="padding:0 0 14px;vertical-align:top;width:40%">
+                  <div style="font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:${theme.brandLabelColor};font-weight:700">${escapeRoleRoomEmailHtml(
+                    row.label,
+                  )}</div>
+                </td>
+                <td style="padding:0 0 14px;vertical-align:top;color:${theme.headerText};font-weight:600">${escapeRoleRoomEmailHtml(
+                  row.value,
+                )}</td>
+              </tr>
+            `,
+          )
+          .join("")}
+      </table>
+    </div>
+  `;
+  const text = filteredRows.map((row) => `${row.label}: ${row.value}`).join("\n");
+  return { html, text };
+}
+
+function buildCreatorHubEmailNoticeSection(
+  theme: CreatorHubPlatformEmailTheme,
+  options: {
+    label?: string;
+    body: string;
+    tone?: "neutral" | "danger";
+  },
+) {
+  if (!options.body.trim()) {
+    return { html: "", text: "" };
+  }
+
+  const tone =
+    options.tone === "danger"
+      ? {
+          background: "#241316",
+          border: "#7f1d1d",
+          text: "#f9c8c8",
+          label: "#f58f8f",
+        }
+      : {
+          background: "#15130f",
+          border: "#5e4320",
+          text: "#eadfcf",
+          label: theme.brandLabelColor,
+        };
+
+  const html = `
+    <div style="margin:0 0 20px;padding:18px;border-radius:20px;background:${tone.background};border:1px solid ${tone.border};color:${tone.text};font-size:14px;line-height:1.8">
+      ${
+        options.label
+          ? `<div style="font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:${tone.label};font-weight:700;margin-bottom:8px">${escapeRoleRoomEmailHtml(
+              options.label,
+            )}</div>`
+          : ""
+      }
+      <div style="white-space:pre-wrap">${escapeRoleRoomEmailHtml(options.body)}</div>
+    </div>
+  `;
+
+  const text = [options.label ? `${options.label}:` : null, options.body]
+    .filter(Boolean)
+    .join("\n");
+
+  return { html, text };
+}
+
 async function renderRoleRoomPlatformEmail(input: {
   templateId: RoleRoomPlatformEmailTemplateId;
   variables: Record<string, string | number | null | undefined>;
@@ -30790,9 +30895,12 @@ async function renderCreatorHubPlatformEmail(input: {
     "html",
   );
   const bodyText = stripRoleRoomEmailHtml(bodyHtml);
-  const detailSection = buildRoleRoomEmailDetailSection(input.detailRows || []);
+  const detailSection = buildCreatorHubEmailDetailSection(
+    theme,
+    input.detailRows || [],
+  );
   const noticeSection = input.noticeSection
-    ? buildRoleRoomEmailNoticeSection(input.noticeSection)
+    ? buildCreatorHubEmailNoticeSection(theme, input.noticeSection)
     : { html: "", text: "" };
   const footerNote = template.footerNote
     ? replaceRoleRoomEmailVariables(
@@ -30814,37 +30922,60 @@ async function renderCreatorHubPlatformEmail(input: {
     ctaLabel && normalizeMailConfigValue(input.ctaUrl)
       ? `<a href="${escapeRoleRoomEmailHtml(
           normalizeMailConfigValue(input.ctaUrl),
-        )}" style="display:inline-block;padding:14px 20px;border-radius:999px;background:${theme.buttonBackground};color:${theme.buttonText};text-decoration:none;font-weight:700">${escapeRoleRoomEmailHtml(
+        )}" style="display:inline-block;padding:15px 22px;border-radius:999px;background:${theme.buttonBackground};color:${theme.buttonText};text-decoration:none;font-weight:800;letter-spacing:0.01em">${escapeRoleRoomEmailHtml(
           ctaLabel,
         )}</a>`
       : "";
+  const logoHtml = normalizeMailConfigValue(settings.identity.emailLogoUrl)
+    ? `<img src="${escapeRoleRoomEmailHtml(
+        normalizeMailConfigValue(settings.identity.emailLogoUrl),
+      )}" alt="${escapeRoleRoomEmailHtml(
+        settings.identity.appName,
+      )}" width="42" height="42" style="display:block;width:42px;height:42px;border:0" />`
+    : "";
 
   const html = `
-    <div style="font-family:Arial,sans-serif;background:${theme.canvasBackground};padding:24px;color:#181512">
-      <div style="max-width:720px;margin:0 auto;background:${theme.cardBackground};border-radius:18px;border:1px solid ${theme.cardBorder};overflow:hidden">
-        <div style="padding:20px 24px;background:${theme.headerBackground};color:${theme.headerText}">
-          <div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:${theme.brandLabelColor};font-weight:700">${escapeRoleRoomEmailHtml(
-            settings.identity.appName,
-          )}</div>
-          <h1 style="margin:8px 0 0;font-size:24px;line-height:1.2">${escapeRoleRoomEmailHtml(
-            title,
-          )}</h1>
-        </div>
-        <div style="padding:24px">
-          <div style="margin:0 0 16px;font-size:14px;line-height:1.7;color:${theme.bodyText}">${bodyHtml}</div>
-          ${detailSection.html}
-          ${noticeSection.html}
-          ${ctaHtml ? `<div style="margin:0 0 18px">${ctaHtml}</div>` : ""}
-          ${
-            footerNote
-              ? `<p style="margin:0 0 18px;font-size:12px;line-height:1.7;color:${theme.mutedText}">${escapeRoleRoomEmailHtml(
-                  footerNote,
-                )}</p>`
-              : ""
-          }
-          <p style="margin:0;font-size:12px;line-height:1.7;color:${theme.footerText}">${escapeRoleRoomEmailHtml(
-            footerText,
-          )}</p>
+    <div style="font-family:Inter,Arial,sans-serif;background:${theme.canvasBackground};padding:32px 16px;color:${theme.bodyText}">
+      <div style="max-width:720px;margin:0 auto">
+        <div style="background:${theme.cardBackground};border:1px solid ${theme.cardBorder};border-radius:28px;overflow:hidden;box-shadow:0 32px 80px rgba(0,0,0,0.38)">
+          <div style="padding:28px 28px 24px;background:${theme.headerBackground};color:${theme.headerText};border-bottom:1px solid ${theme.cardBorder}">
+            <div style="display:flex;align-items:center;gap:14px">
+              ${logoHtml}
+              <div>
+                <div style="font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:${theme.brandLabelColor};font-weight:800">${escapeRoleRoomEmailHtml(
+                  settings.identity.appName,
+                )}</div>
+                <div style="margin-top:6px;font-size:13px;line-height:1.5;color:${theme.mutedText}">${escapeRoleRoomEmailHtml(
+                  settings.identity.tagline,
+                )}</div>
+              </div>
+            </div>
+            <div style="margin-top:24px;display:inline-block;padding:7px 12px;border-radius:999px;background:#171d26;color:${theme.brandLabelColor};font-size:11px;letter-spacing:0.12em;text-transform:uppercase;font-weight:800">CreatorHub Commerce</div>
+            <h1 style="margin:18px 0 0;font-size:29px;line-height:1.1;color:${theme.headerText};font-family:'Space Grotesk',Inter,Arial,sans-serif;font-weight:700">${escapeRoleRoomEmailHtml(
+              title,
+            )}</h1>
+            <p style="margin:14px 0 0;font-size:14px;line-height:1.7;color:${theme.mutedText}">${escapeRoleRoomEmailHtml(
+              `${settings.identity.tagline} • ${settings.identity.domain}`,
+            )}</p>
+          </div>
+          <div style="padding:28px">
+            <div style="margin:0 0 22px;font-size:15px;line-height:1.85;color:${theme.bodyText}">${bodyHtml}</div>
+            ${detailSection.html}
+            ${noticeSection.html}
+            ${ctaHtml ? `<div style="margin:0 0 22px">${ctaHtml}</div>` : ""}
+            ${
+              footerNote
+                ? `<p style="margin:0 0 16px;font-size:12px;line-height:1.8;color:${theme.mutedText}">${escapeRoleRoomEmailHtml(
+                    footerNote,
+                  )}</p>`
+                : ""
+            }
+            <div style="padding-top:18px;border-top:1px solid ${theme.cardBorder}">
+              <p style="margin:0;font-size:12px;line-height:1.8;color:${theme.footerText}">${escapeRoleRoomEmailHtml(
+                footerText,
+              )}</p>
+            </div>
+          </div>
         </div>
       </div>
     </div>
