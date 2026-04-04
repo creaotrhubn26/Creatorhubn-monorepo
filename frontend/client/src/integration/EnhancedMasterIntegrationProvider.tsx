@@ -26,16 +26,8 @@ async function getImpersonatedAccessToken(_scopes: string[] = ["https://www.goog
   return "";
 }
 
-function getLocalDevelopmentAuthHeader(): Record<string, string> | null {
+function getStoredSessionAuthHeader(): Record<string, string> | null {
   if (typeof window === 'undefined') {
-    return null;
-  }
-
-  const hostname = window.location.hostname?.trim().toLowerCase();
-  const isLocalDev =
-    Boolean(import.meta.env.DEV) || hostname === 'localhost' || hostname === '127.0.0.1';
-
-  if (!isLocalDev) {
     return null;
   }
 
@@ -45,10 +37,33 @@ function getLocalDevelopmentAuthHeader(): Record<string, string> | null {
       return null;
     }
 
-    return {
+    const storedUserRaw = window.localStorage.getItem('creatorhub_auth_user');
+    const storedUser = storedUserRaw ? JSON.parse(storedUserRaw) : null;
+    const userIdCandidate =
+      storedUser?.id ||
+      storedUser?.userId ||
+      window.localStorage.getItem('userId') ||
+      '';
+    const userEmailCandidate =
+      storedUser?.email ||
+      storedUser?.userEmail ||
+      window.localStorage.getItem('userEmail') ||
+      '';
+
+    const headers: Record<string, string> = {
       Authorization: `Bearer ${token}`,
       'x-session-token': token,
     };
+
+    if (typeof userIdCandidate === 'string' && userIdCandidate.trim().length > 0) {
+      headers['x-user-id'] = userIdCandidate.trim();
+    }
+
+    if (typeof userEmailCandidate === 'string' && userEmailCandidate.trim().length > 0) {
+      headers['x-user-email'] = userEmailCandidate.trim().toLowerCase();
+    }
+
+    return headers;
   } catch {
     return null;
   }
@@ -58,9 +73,9 @@ function getLocalDevelopmentAuthHeader(): Record<string, string> | null {
  * Get authorization header for API requests
  */
 async function getAuthHeaderFromToken(scopes?: string[]) {
-  const localDevelopmentHeader = getLocalDevelopmentAuthHeader();
-  if (localDevelopmentHeader) {
-    return localDevelopmentHeader;
+  const storedSessionHeader = getStoredSessionAuthHeader();
+  if (storedSessionHeader) {
+    return storedSessionHeader;
   }
 
   const token = await getImpersonatedAccessToken(scopes);

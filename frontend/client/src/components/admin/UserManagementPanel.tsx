@@ -388,30 +388,6 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
     return pills;
   };
 
-  const accessOverview = useMemo(() => {
-    return users.reduce(
-      (summary, currentUser) => {
-        const normalizedScope = String(currentUser.accessScope || '').trim().toLowerCase();
-        if (normalizedScope === 'platform_admin' || currentUser.isPlatformAdmin) {
-          summary.platformAdmins += 1;
-        } else if (normalizedScope === 'academy_admin' || currentUser.isAcademyAdmin) {
-          summary.academyAdmins += 1;
-        } else if (normalizedScope === 'academy_editor') {
-          summary.academyEditors += 1;
-        } else {
-          summary.standardUsers += 1;
-        }
-        return summary;
-      },
-      {
-        platformAdmins: 0,
-        academyAdmins: 0,
-        academyEditors: 0,
-        standardUsers: 0,
-      },
-    );
-  }, [users]);
-
   const getRoleRoomActivationChip = (currentUser: User) => {
     const normalized = String(currentUser.onboardingStatus || '').trim().toLowerCase();
     if (normalized === 'role_room_activation_required') {
@@ -476,6 +452,30 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
     () => new Map(roles.map((role) => [role.id, role])),
     [roles],
   );
+
+  const accessOverview = useMemo(() => {
+    return users.reduce(
+      (summary, currentUser) => {
+        const normalizedScope = String(currentUser.accessScope || '').trim().toLowerCase();
+        if (normalizedScope === 'platform_admin' || currentUser.isPlatformAdmin) {
+          summary.platformAdmins += 1;
+        } else if (normalizedScope === 'academy_admin' || currentUser.isAcademyAdmin) {
+          summary.academyAdmins += 1;
+        } else if (normalizedScope === 'academy_editor') {
+          summary.academyEditors += 1;
+        } else {
+          summary.standardUsers += 1;
+        }
+        return summary;
+      },
+      {
+        platformAdmins: 0,
+        academyAdmins: 0,
+        academyEditors: 0,
+        standardUsers: 0,
+      },
+    );
+  }, [users]);
 
   // Create user mutation
   const createUserMutation = useMutation({
@@ -1215,7 +1215,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
             color: '#181512',
           }}
         >
-          User management
+          Brukere & Roller
         </Typography>
         <Typography
           variant="body2"
@@ -1226,7 +1226,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
             lineHeight: 1.6,
           }}
         >
-          Manage team members, approval flows and access control from one operational surface.
+          Administrer medlemmer, godkjenninger og tilgangsnivåer i én ryddig arbeidsflate.
         </Typography>
 
         <Box
@@ -1239,7 +1239,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
           }}
         >
           <Typography variant="caption" sx={{ fontWeight: 600, letterSpacing: '0.08em' }}>
-            FEATURES
+            AKTIVE INTEGRASJONER
           </Typography>
           <Chip
             label={`${totalActiveIntegrations}/12 aktive`}
@@ -1357,21 +1357,21 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                 }}
               >
                 <Box>
-                  <Typography
-                    variant="h6"
+                    <Typography
+                      variant="h6"
                     sx={{
                       fontWeight: 700,
                       color: '#1a1713',
                       letterSpacing: '-0.02em',
                     }}
-                  >
-                    All users{' '}
+                    >
+                    Alle brukere{' '}
                     <Box component="span" sx={{ color: '#8a8176', fontWeight: 600 }}>
                       {filteredUsers.length}
                     </Box>
                   </Typography>
                   <Typography variant="body2" sx={{ mt: 0.75, color: '#7a7268' }}>
-                    Search members, adjust access and continue approvals without leaving the table.
+                    Søk opp medlemmer, juster tilgang og fortsett godkjenninger uten å forlate tabellen.
                   </Typography>
                 </Box>
 
@@ -1390,7 +1390,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                       setSearchTerm(event.target.value);
                       setUsersPage(1);
                     }}
-                    placeholder="Search"
+                    placeholder="Søk i navn, e-post eller selskap"
                     size="small"
                     sx={{
                       width: { xs: '100%', sm: 240 },
@@ -1432,7 +1432,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                         renderValue={(value) =>
                           value
                             ? roleById.get(String(value))?.name || String(value)
-                            : 'Filters'
+                            : 'Filtrer rolle'
                         }
                         sx={{
                           borderRadius: '12px',
@@ -1467,7 +1467,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                       },
                     }}
                   >
-                    Add user
+                    Legg til bruker
                   </Button>
                 </Box>
               </Box>
@@ -1598,14 +1598,14 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                     <TableCell padding="checkbox" sx={{ width: 52 }}>
                       <Checkbox size="small" />
                     </TableCell>
-                    <TableCell>User name</TableCell>
+                    <TableCell>Navn</TableCell>
                     <TableCell>Bedrift</TableCell>
-                    <TableCell>Access</TableCell>
+                    <TableCell>Tilgang</TableCell>
                     <TableCell>Abonnement</TableCell>
-                    <TableCell align="left">Last active</TableCell>
-                    <TableCell align="left">Date added</TableCell>
+                    <TableCell align="left">Sist aktiv</TableCell>
+                    <TableCell align="left">Opprettet</TableCell>
                     <TableCell align="center" sx={{ width: 72 }}>
-                      Actions
+                      Handlinger
                     </TableCell>
                   </TableRow>
                 </TableHead>
@@ -1818,12 +1818,12 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                           </Typography>
                           {user.approvedAt ? (
                             <Typography variant="caption" sx={{ display: 'block', mt: 0.3, color: '#7c7469' }}>
-                              {`Approved ${formatUserDate(user.approvedAt)}`}
+                              {`Godkjent ${formatUserDate(user.approvedAt)}`}
                             </Typography>
                           ) : null}
                           {user.approvedBy ? (
                             <Typography variant="caption" sx={{ display: 'block', mt: 0.2, color: '#7c7469' }}>
-                              {`Approved by ${user.approvedBy}`}
+                              {`Godkjent av ${user.approvedBy}`}
                             </Typography>
                           ) : null}
                         </TableCell>

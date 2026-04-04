@@ -412,6 +412,36 @@ export default function PriceManagementDashboard({
     return creatorHubFeatures.filter((feature) => feature.professions.includes(selectedProfession));
   }, [selectedProfession]);
 
+  const selfServePlans = useMemo(
+    () => plans.filter((plan) => !plan.contactSalesOnly),
+    [plans],
+  );
+
+  const activePlanCount = useMemo(
+    () => plans.filter((plan) => plan.isActive).length,
+    [plans],
+  );
+
+  const annualPlanCount = useMemo(
+    () => plans.filter((plan) => typeof plan.yearlyPrice === 'number' && plan.yearlyPrice > 0).length,
+    [plans],
+  );
+
+  const monthlyEntryPrice = useMemo(() => {
+    const monthlyPrices = selfServePlans
+      .map((plan) => plan.monthlyPrice)
+      .filter((price): price is number => Number.isFinite(price));
+    if (monthlyPrices.length === 0) {
+      return null;
+    }
+    return Math.min(...monthlyPrices);
+  }, [selfServePlans]);
+
+  const highlightedPlan = useMemo(
+    () => selfServePlans.find((plan) => plan.id === 'professional') ?? selfServePlans[0] ?? null,
+    [selfServePlans],
+  );
+
   const getProfessionDisplayName = (profession: string) => {
     if (profession === 'all') return 'Alle Profesjoner';
     return getDynamicProfessionName(profession);
@@ -668,19 +698,126 @@ export default function PriceManagementDashboard({
 
   return (
     <Box sx={{ width: '100%' }}>
-      <Typography variant="h4" sx={{ mb: 3, fontWeight: 'bold', color: theming.colors.primary }}>
-        CreatorHub Norge Price Management
-      </Typography>
+      <Box
+        sx={{
+          mb: 3,
+          borderRadius: '24px',
+          border: '1px solid rgba(15, 52, 96, 0.08)',
+          background: 'linear-gradient(135deg, rgba(15, 52, 96, 0.08), rgba(233, 69, 96, 0.05))',
+          px: { xs: 2, sm: 3 },
+          py: { xs: 2.25, sm: 2.75 },
+        }}
+      >
+        <Stack
+          direction={{ xs: 'column', lg: 'row' }}
+          spacing={2}
+          justifyContent="space-between"
+          alignItems={{ xs: 'flex-start', lg: 'center' }}
+        >
+          <Box sx={{ maxWidth: 720 }}>
+            <Typography variant="overline" sx={{ color: '#0f3460', fontWeight: 700, letterSpacing: '0.08em' }}>
+              CreatorHub Commerce
+            </Typography>
+            <Typography variant="h4" sx={{ mt: 0.5, fontWeight: 700, letterSpacing: '-0.03em', color: '#111827' }}>
+              Prisstyring
+            </Typography>
+            <Typography variant="body2" sx={{ mt: 1, color: '#5b6472', lineHeight: 1.7 }}>
+              Hold selvbetjente planer, årsprising og enterprise-sporet samlet i én arbeidsflate.
+              Endringene her skal være lesbare både for teamet og for det som faktisk publiseres på CreatorHub.
+            </Typography>
+          </Box>
 
-      <Tabs value={tabValue} onChange={(_, value: number) => setTabValue(value)} sx={{ mb: 3 }}>
-        <Tab icon={<ToggleIcon />} label="Feature Toggle" sx={{ fontWeight: 'bold' }} />
-        <Tab icon={<PeopleIcon />} label="Subscriptions" sx={{ fontWeight: 'bold' }} />
-        <Tab icon={<AnalyticsIcon />} label="Analytics" sx={{ fontWeight: 'bold' }} />
-        <Tab icon={<EnterpriseIcon />} label="Enterprise Prising" sx={{ fontWeight: 'bold' }} />
-      </Tabs>
+          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+            <Chip label={`${activePlanCount} aktive planer`} sx={{ bgcolor: '#ffffff', border: '1px solid rgba(15, 52, 96, 0.08)' }} />
+            <Chip label={`${annualPlanCount} med årsbetaling`} sx={{ bgcolor: '#ffffff', border: '1px solid rgba(15, 52, 96, 0.08)' }} />
+            {highlightedPlan ? (
+              <Chip
+                label={`Hovedplan: ${highlightedPlan.name}`}
+                sx={{ bgcolor: '#ffffff', border: '1px solid rgba(15, 52, 96, 0.08)' }}
+              />
+            ) : null}
+          </Stack>
+        </Stack>
+      </Box>
+
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid size={{ xs: 12, sm: 6, xl: 3 }}>
+          <MetricCard icon={<MoneyIcon sx={{ fontSize: 34, color: '#0f766e', mb: 1 }} />} label="Laveste månedlige inngang">
+            {monthlyEntryPrice != null
+              ? formatPrice(monthlyEntryPrice, 'NOK')
+              : 'Ikke satt'}
+          </MetricCard>
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, xl: 3 }}>
+          <MetricCard icon={<PeopleIcon sx={{ fontSize: 34, color: '#1d4ed8', mb: 1 }} />} label="Selvbetjente planer">
+            {selfServePlans.length}
+          </MetricCard>
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, xl: 3 }}>
+          <MetricCard icon={<ToggleIcon sx={{ fontSize: 34, color: '#7c3aed', mb: 1 }} />} label="Årspris tilgjengelig">
+            {annualPlanCount}
+          </MetricCard>
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, xl: 3 }}>
+          <MetricCard icon={<EnterpriseIcon sx={{ fontSize: 34, color: '#b45309', mb: 1 }} />} label="Kontakt salg-spor">
+            {plans.some((plan) => plan.contactSalesOnly) ? 'Aktivt' : 'Av'}
+          </MetricCard>
+        </Grid>
+      </Grid>
+
+      <Box
+        sx={{
+          mb: 3,
+          p: 0.75,
+          borderRadius: '18px',
+          border: '1px solid rgba(17, 24, 39, 0.08)',
+          bgcolor: '#fbfbfc',
+        }}
+      >
+        <Tabs
+          value={tabValue}
+          onChange={(_, value: number) => setTabValue(value)}
+          variant="scrollable"
+          scrollButtons="auto"
+          sx={{
+            minHeight: 0,
+            '& .MuiTabs-indicator': {
+              display: 'none',
+            },
+            '& .MuiTab-root': {
+              minHeight: 42,
+              textTransform: 'none',
+              color: '#667085',
+              borderRadius: '12px',
+              px: 1.75,
+              mr: 0.75,
+              fontWeight: 700,
+            },
+            '& .Mui-selected': {
+              bgcolor: '#ffffff',
+              color: '#111827',
+              boxShadow: '0 6px 18px rgba(15, 23, 42, 0.08)',
+            },
+          }}
+        >
+          <Tab icon={<ToggleIcon />} label="Feature-tilganger" />
+          <Tab icon={<PeopleIcon />} label="Abonnementer" />
+          <Tab icon={<AnalyticsIcon />} label="Analyse" />
+          <Tab icon={<EnterpriseIcon />} label="Enterprise" />
+        </Tabs>
+      </Box>
 
       <TabPanel value={tabValue} index={0}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
+        <Box
+          sx={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: { xs: 'stretch', md: 'center' },
+            flexDirection: { xs: 'column', md: 'row' },
+            gap: 2,
+            mb: 3,
+          }}
+        >
           <FormControl sx={{ minWidth: 240 }}>
             <InputLabel>Filtrer etter profesjon</InputLabel>
             <Select
@@ -699,7 +836,16 @@ export default function PriceManagementDashboard({
             variant="contained"
             startIcon={<AddIcon />}
             onClick={openCreateFeatureDialog}
-            sx={{ bgcolor: professionColors[selectedProfession] }}
+            sx={{
+              bgcolor: professionColors[selectedProfession],
+              borderRadius: '12px',
+              boxShadow: 'none',
+              '&:hover': {
+                bgcolor: professionColors[selectedProfession],
+                boxShadow: 'none',
+                opacity: 0.92,
+              },
+            }}
           >
             Legg til feature
           </Button>
@@ -773,12 +919,29 @@ export default function PriceManagementDashboard({
       <TabPanel value={tabValue} index={1}>
         <Grid container spacing={3}>
           <Grid size={{ xs: 12, md: 8 }}>
-            <Card sx={theming.getThemedCardSx()}>
+            <Card sx={{ ...theming.getThemedCardSx(), borderRadius: '20px' }}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center' }}>
-                  <MoneyIcon sx={{ mr: 1 }} />
-                  Subscription Plans
-                </Typography>
+                <Stack
+                  direction={{ xs: 'column', md: 'row' }}
+                  spacing={1.5}
+                  justifyContent="space-between"
+                  alignItems={{ xs: 'flex-start', md: 'center' }}
+                  sx={{ mb: 2.5 }}
+                >
+                  <Box>
+                    <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', fontWeight: 700 }}>
+                      <MoneyIcon sx={{ mr: 1 }} />
+                      Selvbetjente abonnementer
+                    </Typography>
+                    <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
+                      Dette er planene som vises offentlig og kan gå direkte til Stripe.
+                    </Typography>
+                  </Box>
+                  <Chip
+                    label={`${selfServePlans.length} planer i salg`}
+                    sx={{ bgcolor: '#f8fafc', border: '1px solid rgba(15, 23, 42, 0.08)', fontWeight: 700 }}
+                  />
+                </Stack>
                 <TableContainer>
                   <Table size="small">
                     <TableHead>
@@ -841,7 +1004,7 @@ export default function PriceManagementDashboard({
                             />
                             <Button
                               size="small"
-                              sx={{ ml: 1 }}
+                              sx={{ ml: 1, textTransform: 'none', fontWeight: 700 }}
                               onClick={() => {
                                 setEditingPlanId(plan.id);
                                 setEditingPlanMonthlyPrice(String(plan.monthlyPrice));
@@ -866,17 +1029,37 @@ export default function PriceManagementDashboard({
           </Grid>
 
           <Grid size={{ xs: 12, md: 4 }}>
-            <Card sx={theming.getThemedCardSx()}>
+            <Card sx={{ ...theming.getThemedCardSx(), borderRadius: '20px' }}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" sx={{ mb: 2 }}>
-                  Subscription Statistics
+                <Typography variant="h6" sx={{ mb: 1.5, fontWeight: 700 }}>
+                  Prisstatus
                 </Typography>
-                <Box sx={{ textAlign: 'center', py: 4 }}>
-                  <Typography variant="h3" color="primary.main" sx={{ fontWeight: 'bold' }}>
-                    {plans.filter((plan) => plan.isActive).length}
-                  </Typography>
-                  <Typography color="text.secondary">Aktive planer</Typography>
-                </Box>
+                <Stack spacing={1.25}>
+                  <Box sx={{ p: 1.5, borderRadius: '14px', bgcolor: '#f8fafc' }}>
+                    <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
+                      Hovedplan for konvertering
+                    </Typography>
+                    <Typography variant="body1" sx={{ mt: 0.5, fontWeight: 700 }}>
+                      {highlightedPlan?.name || 'Ikke satt'}
+                    </Typography>
+                  </Box>
+                  <Box sx={{ p: 1.5, borderRadius: '14px', bgcolor: '#f8fafc' }}>
+                    <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
+                      Aktiv månedsinngang
+                    </Typography>
+                    <Typography variant="body1" sx={{ mt: 0.5, fontWeight: 700 }}>
+                      {monthlyEntryPrice != null ? formatPrice(monthlyEntryPrice, 'NOK') : 'Ikke satt'}
+                    </Typography>
+                  </Box>
+                  <Box sx={{ p: 1.5, borderRadius: '14px', bgcolor: '#f8fafc' }}>
+                    <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
+                      Enterprise-spor
+                    </Typography>
+                    <Typography variant="body1" sx={{ mt: 0.5, fontWeight: 700 }}>
+                      {plans.some((plan) => plan.contactSalesOnly) ? 'Kontakt salg aktivert' : 'Ikke konfigurert'}
+                    </Typography>
+                  </Box>
+                </Stack>
               </CardContent>
             </Card>
           </Grid>
