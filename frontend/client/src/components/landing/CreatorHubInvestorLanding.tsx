@@ -153,12 +153,18 @@ const landingCopy = {
       body:
         'De selvbetjente abonnementene er bygget for ulike faser av kreativ drift, fra solooperatører til studioer. Enterprise settes opp sammen med CreatorHub, ikke som vanlig checkout.',
       trustLine: 'Månedlig abonnement / Stripe Checkout for selvbetjente planer / Enterprise via salg',
+      monthlyLabel: 'Månedlig',
+      yearlyLabel: 'Årlig',
+      yearlyBadge: '2 måneder gratis',
+      yearlySupport: 'Årlig fakturering låser inn en tydeligere pris og øker kontraktsverdien uten å gjøre kjøpsløpet mer komplisert.',
       cards: [
         {
           id: 'basic',
           name: 'Basic Creator',
-          price: '249 kr',
-          cadence: 'per måned',
+          monthlyPrice: '249 kr',
+          yearlyPrice: '2 490 kr',
+          monthlyCadence: 'per måned',
+          yearlyCadence: 'per år',
           summary: 'For solo kreatører som vil profesjonalisere prosjekter, kunder og leveranser uten å betale for teamlag.',
           points: ['Opptil 25 prosjekter', 'Avansert CRM', 'Kontraktstyring'],
           cta: 'Velg Basic',
@@ -166,8 +172,10 @@ const landingCopy = {
         {
           id: 'professional',
           name: 'Professional Creator',
-          price: '449 kr',
-          cadence: 'per måned',
+          monthlyPrice: '449 kr',
+          yearlyPrice: '4 490 kr',
+          monthlyCadence: 'per måned',
+          yearlyCadence: 'per år',
           summary: 'For profesjonelle kreatører som trenger full arbeidsflyt, rapportering og tydeligere forretningskontroll.',
           points: ['Ubegrensede prosjekter', 'Ubegrensede klienter', '50 GB lagring'],
           cta: 'Velg Professional',
@@ -176,8 +184,10 @@ const landingCopy = {
         {
           id: 'premium',
           name: 'Premium Studio',
-          price: '1199 kr',
-          cadence: 'per måned',
+          monthlyPrice: '1 199 kr',
+          yearlyPrice: '11 990 kr',
+          monthlyCadence: 'per måned',
+          yearlyCadence: 'per år',
           summary: 'For studioer og team som trenger delt arbeidsflyt, automasjon og prioritet i drift.',
           points: ['Teamtilgang', 'Automatiseringer', '250 GB lagring'],
           cta: 'Velg Premium',
@@ -317,12 +327,18 @@ const landingCopy = {
       body:
         'The self-serve plans are built for different stages of creative operations, from solo creators to studios. Enterprise is set up with CreatorHub, not through standard checkout.',
       trustLine: 'Monthly subscription / Stripe Checkout for self-serve plans / Enterprise via sales',
+      monthlyLabel: 'Monthly',
+      yearlyLabel: 'Yearly',
+      yearlyBadge: '2 months free',
+      yearlySupport: 'Annual billing increases contract value while keeping the purchase path clean and predictable.',
       cards: [
         {
           id: 'basic',
           name: 'Basic Creator',
-          price: 'NOK 249',
-          cadence: 'per month',
+          monthlyPrice: 'NOK 249',
+          yearlyPrice: 'NOK 2,490',
+          monthlyCadence: 'per month',
+          yearlyCadence: 'per year',
           summary: 'For solo creatives who want a more professional operating layer around projects, clients and delivery.',
           points: ['Up to 25 projects', 'Advanced CRM', 'Contract management'],
           cta: 'Choose Basic',
@@ -330,8 +346,10 @@ const landingCopy = {
         {
           id: 'professional',
           name: 'Professional Creator',
-          price: 'NOK 449',
-          cadence: 'per month',
+          monthlyPrice: 'NOK 449',
+          yearlyPrice: 'NOK 4,490',
+          monthlyCadence: 'per month',
+          yearlyCadence: 'per year',
           summary: 'For professionals who need a fuller workflow, reporting and stronger business control.',
           points: ['Unlimited projects', 'Unlimited clients', '50 GB storage'],
           cta: 'Choose Professional',
@@ -340,8 +358,10 @@ const landingCopy = {
         {
           id: 'premium',
           name: 'Premium Studio',
-          price: 'NOK 1199',
-          cadence: 'per month',
+          monthlyPrice: 'NOK 1,199',
+          yearlyPrice: 'NOK 11,990',
+          monthlyCadence: 'per month',
+          yearlyCadence: 'per year',
           summary: 'For teams and studios that need shared workflows, automation and priority support.',
           points: ['Team access', 'Automations', '250 GB storage'],
           cta: 'Choose Premium',
@@ -473,6 +493,7 @@ export default function CreatorHubInvestorLanding({
   mode,
 }: CreatorHubInvestorLandingProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [pricingBillingCycle, setPricingBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
   const [, setLocation] = useLocation();
   const { language, setLanguage } = useLanguage();
   const isMobile = mode === 'mobile';
@@ -503,9 +524,13 @@ export default function CreatorHubInvestorLanding({
     setLocation(path);
   };
 
-  const openSubscriptionSelection = (planId?: string) => {
+  const openSubscriptionSelection = (
+    planId?: string,
+    billingCycle: 'monthly' | 'yearly' = 'monthly',
+  ) => {
     const params = new URLSearchParams();
     params.set('profession', 'creatorhub');
+    params.set('billing', billingCycle);
     if (planId) {
       params.set('plan', planId);
     }
@@ -1418,34 +1443,86 @@ export default function CreatorHubInvestorLanding({
                 spacing={2}
                 sx={{ mt: 3.5, mb: 5 }}
               >
-                <Typography
-                  sx={{
-                    fontFamily: '"Space Grotesk", "Manrope", sans-serif',
-                    fontSize: '0.8rem',
-                    letterSpacing: '0.18em',
-                    textTransform: 'uppercase',
-                    color: 'rgba(255,186,108,0.82)',
-                  }}
-                >
-                  {copy.pricing.trustLine}
-                </Typography>
-                <Button
-                  onClick={() => openSubscriptionSelection('professional')}
-                  variant="outlined"
-                  endIcon={<ArrowForward />}
-                  sx={{
-                    alignSelf: { xs: 'flex-start', md: 'center' },
-                    borderRadius: '999px',
-                    borderColor: 'rgba(255,186,108,0.36)',
-                    color: '#ffba6c',
-                    '&:hover': {
-                      borderColor: '#ffba6c',
-                      bgcolor: 'rgba(255,186,108,0.08)',
-                    },
-                  }}
-                >
-                  {copy.hero.primaryCta}
-                </Button>
+                <Box>
+                  <Typography
+                    sx={{
+                      fontFamily: '"Space Grotesk", "Manrope", sans-serif',
+                      fontSize: '0.8rem',
+                      letterSpacing: '0.18em',
+                      textTransform: 'uppercase',
+                      color: 'rgba(255,186,108,0.82)',
+                    }}
+                  >
+                    {copy.pricing.trustLine}
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(246,242,234,0.68)', lineHeight: 1.75, mt: 1.2 }}>
+                    {copy.pricing.yearlySupport}
+                  </Typography>
+                </Box>
+                <Stack spacing={1.2} alignItems={{ xs: 'flex-start', md: 'flex-end' }}>
+                  <Stack
+                    direction="row"
+                    spacing={0.6}
+                    sx={{
+                      p: 0.6,
+                      borderRadius: '999px',
+                      border: '1px solid rgba(255,255,255,0.12)',
+                      bgcolor: 'rgba(255,255,255,0.03)',
+                    }}
+                  >
+                    {([
+                      ['monthly', copy.pricing.monthlyLabel],
+                      ['yearly', copy.pricing.yearlyLabel],
+                    ] as const).map(([value, label]) => (
+                      <Button
+                        key={value}
+                        onClick={() => setPricingBillingCycle(value)}
+                        sx={{
+                          minWidth: 0,
+                          px: 1.8,
+                          py: 0.8,
+                          borderRadius: '999px',
+                          textTransform: 'none',
+                          fontWeight: 700,
+                          color: pricingBillingCycle === value ? '#150d05' : 'rgba(246,242,234,0.76)',
+                          bgcolor: pricingBillingCycle === value ? '#ffba6c' : 'transparent',
+                          '&:hover': {
+                            bgcolor:
+                              pricingBillingCycle === value
+                                ? '#ffba6c'
+                                : 'rgba(255,255,255,0.06)',
+                          },
+                        }}
+                      >
+                        {label}
+                      </Button>
+                    ))}
+                  </Stack>
+
+                  {pricingBillingCycle === 'yearly' ? (
+                    <Typography sx={{ color: '#ffba6c', fontWeight: 700 }}>
+                      {copy.pricing.yearlyBadge}
+                    </Typography>
+                  ) : null}
+
+                  <Button
+                    onClick={() => openSubscriptionSelection('professional', pricingBillingCycle)}
+                    variant="outlined"
+                    endIcon={<ArrowForward />}
+                    sx={{
+                      alignSelf: { xs: 'flex-start', md: 'center' },
+                      borderRadius: '999px',
+                      borderColor: 'rgba(255,186,108,0.36)',
+                      color: '#ffba6c',
+                      '&:hover': {
+                        borderColor: '#ffba6c',
+                        bgcolor: 'rgba(255,186,108,0.08)',
+                      },
+                    }}
+                  >
+                    {copy.hero.primaryCta}
+                  </Button>
+                </Stack>
               </Stack>
 
               <Box
@@ -1517,10 +1594,25 @@ export default function CreatorHubInvestorLanding({
                               fontWeight: 700,
                             }}
                           >
-                            {plan.price}
+                            {pricingBillingCycle === 'yearly' ? plan.yearlyPrice : plan.monthlyPrice}
                           </Typography>
-                          <Typography sx={{ color: 'rgba(246,242,234,0.58)' }}>{plan.cadence}</Typography>
+                          <Typography sx={{ color: 'rgba(246,242,234,0.58)' }}>
+                            {pricingBillingCycle === 'yearly' ? plan.yearlyCadence : plan.monthlyCadence}
+                          </Typography>
                         </Stack>
+                        {pricingBillingCycle === 'yearly' ? (
+                          <Typography
+                            sx={{
+                              color: '#ffba6c',
+                              fontSize: '0.8rem',
+                              fontWeight: 700,
+                              letterSpacing: '0.08em',
+                              textTransform: 'uppercase',
+                            }}
+                          >
+                            {copy.pricing.yearlyBadge}
+                          </Typography>
+                        ) : null}
                       </Stack>
 
                       <Typography sx={{ color: 'rgba(246,242,234,0.72)', lineHeight: 1.75 }}>
@@ -1547,7 +1639,7 @@ export default function CreatorHubInvestorLanding({
 
                       <Box sx={{ mt: 'auto', pt: 1 }}>
                         <Button
-                          onClick={() => openSubscriptionSelection(plan.id)}
+                          onClick={() => openSubscriptionSelection(plan.id, pricingBillingCycle)}
                           fullWidth
                           variant={plan.highlight ? 'contained' : 'outlined'}
                           endIcon={<ArrowForward />}

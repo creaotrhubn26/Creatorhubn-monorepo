@@ -18292,6 +18292,9 @@ type CompatPlatformSubscriptionPlan = {
   description: string;
   tier: "free" | "basic" | "professional" | "premium" | "enterprise";
   price: number;
+  monthlyPrice?: number | null;
+  yearlyPrice?: number | null;
+  yearlySavingsLabel?: string | null;
   currency: "NOK" | "SEK" | "DKK" | "USD";
   billingCycle: "monthly" | "yearly";
   interval: string;
@@ -18446,6 +18449,33 @@ function addDaysIso(dateIso: string, days: number): string {
   return baseDate.toISOString();
 }
 
+function addMonthsIso(dateIso: string, months: number): string {
+  const baseDate = new Date(dateIso);
+  if (Number.isNaN(baseDate.getTime())) {
+    const fallback = new Date();
+    fallback.setUTCMonth(fallback.getUTCMonth() + months);
+    return fallback.toISOString();
+  }
+  baseDate.setUTCMonth(baseDate.getUTCMonth() + months);
+  return baseDate.toISOString();
+}
+
+function addBillingCycleIso(
+  dateIso: string,
+  billingCycle: "monthly" | "yearly",
+): string {
+  return addMonthsIso(dateIso, billingCycle === "yearly" ? 12 : 1);
+}
+
+function normalizeCreatorHubBillingCycle(
+  value: unknown,
+): "monthly" | "yearly" {
+  const normalized = normalizeMailConfigValue(value).toLowerCase();
+  return normalized === "yearly" || normalized === "annual" || normalized === "year"
+    ? "yearly"
+    : "monthly";
+}
+
 function buildCompatPlatformSubscriptionPlans(): CompatPlatformSubscriptionPlan[] {
   const nowIso = new Date().toISOString();
   return [
@@ -18457,6 +18487,8 @@ function buildCompatPlatformSubscriptionPlans(): CompatPlatformSubscriptionPlan[
         "Perfekt for å komme i gang med grunnleggende prosjektstyring.",
       tier: "free",
       price: 0,
+      monthlyPrice: 0,
+      yearlyPrice: 0,
       currency: "NOK",
       billingCycle: "monthly",
       interval: "måned",
@@ -18486,6 +18518,9 @@ function buildCompatPlatformSubscriptionPlans(): CompatPlatformSubscriptionPlan[
       description: "Essensielle verktøy for solo-kreatører som vil drive mer profesjonelt.",
       tier: "basic",
       price: 249,
+      monthlyPrice: 249,
+      yearlyPrice: 2490,
+      yearlySavingsLabel: "2 måneder gratis",
       currency: "NOK",
       billingCycle: "monthly",
       interval: "måned",
@@ -18518,6 +18553,9 @@ function buildCompatPlatformSubscriptionPlans(): CompatPlatformSubscriptionPlan[
       description: "Hovedplanen for profesjonelle kreatører med full arbeidsflyt og tydeligere forretningskontroll.",
       tier: "professional",
       price: 449,
+      monthlyPrice: 449,
+      yearlyPrice: 4490,
+      yearlySavingsLabel: "2 måneder gratis",
       currency: "NOK",
       billingCycle: "monthly",
       interval: "måned",
@@ -18553,6 +18591,9 @@ function buildCompatPlatformSubscriptionPlans(): CompatPlatformSubscriptionPlan[
         "Studio-planen for team som trenger kapasitet, automasjon og delt kontroll i én løsning.",
       tier: "premium",
       price: 1199,
+      monthlyPrice: 1199,
+      yearlyPrice: 11990,
+      yearlySavingsLabel: "2 måneder gratis",
       currency: "NOK",
       billingCycle: "monthly",
       interval: "måned",
@@ -18585,6 +18626,8 @@ function buildCompatPlatformSubscriptionPlans(): CompatPlatformSubscriptionPlan[
         "Skreddersydd oppsett for større studioer og organisasjoner som trenger onboarding, governance og egne integrasjoner.",
       tier: "enterprise",
       price: 3990,
+      monthlyPrice: 3990,
+      yearlyPrice: 39900,
       currency: "NOK",
       billingCycle: "monthly",
       interval: "måned",
@@ -18626,6 +18669,34 @@ function getCompatPlatformSubscriptionPlan(
   );
 }
 
+function getCreatorHubPlanAmountMajor(
+  plan: CompatPlatformSubscriptionPlan | null | undefined,
+  billingCycle: "monthly" | "yearly",
+) {
+  if (!plan) {
+    return 0;
+  }
+
+  if (
+    billingCycle === "yearly" &&
+    typeof plan.yearlyPrice === "number" &&
+    Number.isFinite(plan.yearlyPrice) &&
+    plan.yearlyPrice >= 0
+  ) {
+    return plan.yearlyPrice;
+  }
+
+  if (
+    typeof plan.monthlyPrice === "number" &&
+    Number.isFinite(plan.monthlyPrice) &&
+    plan.monthlyPrice >= 0
+  ) {
+    return plan.monthlyPrice;
+  }
+
+  return plan.price;
+}
+
 function buildCompatSubscriptionStatus(
   userId: string,
   plan: CompatPlatformSubscriptionPlan | null,
@@ -18649,7 +18720,7 @@ function buildCompatSubscriptionStatus(
   const nextBillingDate = hasNextBillingOverride
     ? (overrides?.nextBillingDate ?? null)
     : plan
-      ? addDaysIso(memberSince || nowIso, 30)
+      ? addBillingCycleIso(memberSince || nowIso, plan.billingCycle)
       : null;
   const accessUntil = hasAccessUntilOverride
     ? (overrides?.accessUntil ?? null)
@@ -19278,6 +19349,13 @@ async function recordCompatPaymentCompletion(
 
   const normalizedPlanId = normalizeBillingPlanId(record.planId || record.planName);
   const plan = getCompatPlatformSubscriptionPlan(normalizedPlanId);
+  const billingCycle = normalizeCreatorHubBillingCycle(
+    normalizeJsonObjectField(record.metadata)?.billingCycle,
+  );
+  const currentPeriodEnd = addBillingCycleIso(
+    record.completedAt || record.createdAt,
+    billingCycle,
+  );
   const history = await readCompatPaymentHistory(record.userId);
   const nextHistory = [
     {
@@ -19290,7 +19368,7 @@ async function recordCompatPaymentCompletion(
       status: record.status === "completed" ? "active" : record.status,
       createdAt: record.completedAt || record.createdAt,
       currentPeriodStart: record.completedAt || record.createdAt,
-      currentPeriodEnd: addDaysIso(record.completedAt || record.createdAt, 30),
+      currentPeriodEnd,
       transactionId: record.transactionId,
       isInFiken: false,
       refunded: false,
@@ -19319,8 +19397,8 @@ async function recordCompatPaymentCompletion(
       subscriptionSelected: record.status === "completed",
       paymentCompleted: record.status === "completed",
       memberSince: record.completedAt || record.createdAt,
-      nextBillingDate: addDaysIso(record.completedAt || record.createdAt, 30),
-      accessUntil: addDaysIso(record.completedAt || record.createdAt, 30),
+      nextBillingDate: currentPeriodEnd,
+      accessUntil: currentPeriodEnd,
       transactionId: record.transactionId,
       email: record.email,
       autoRenew: true,
@@ -19464,6 +19542,8 @@ function buildCompatPriceAdministrationSubscriptionPlans() {
       id: "basic",
       name: "Basic Creator",
       price: 249,
+      yearlyPrice: 2490,
+      yearlySavingsLabel: "2 måneder gratis",
       currency: "NOK",
       interval: "monthly",
       features: [
@@ -19484,6 +19564,8 @@ function buildCompatPriceAdministrationSubscriptionPlans() {
       id: "professional",
       name: "Professional Creator",
       price: 449,
+      yearlyPrice: 4490,
+      yearlySavingsLabel: "2 måneder gratis",
       currency: "NOK",
       interval: "monthly",
       features: [
@@ -19504,6 +19586,8 @@ function buildCompatPriceAdministrationSubscriptionPlans() {
       id: "premium",
       name: "Premium Studio",
       price: 1199,
+      yearlyPrice: 11990,
+      yearlySavingsLabel: "2 måneder gratis",
       currency: "NOK",
       interval: "monthly",
       features: [
@@ -19523,6 +19607,7 @@ function buildCompatPriceAdministrationSubscriptionPlans() {
       id: "enterprise",
       name: "Enterprise",
       price: 3990,
+      yearlyPrice: 39900,
       currency: "NOK",
       interval: "monthly",
       features: [
@@ -23823,6 +23908,9 @@ app.post("/api/platform/billing/checkout-session", async (req, res) => {
     );
     const planId = normalizeBillingPlanId(body.planId ?? body.plan_id);
     const plan = getCompatPlatformSubscriptionPlan(planId);
+    const billingCycle = normalizeCreatorHubBillingCycle(
+      body.billingCycle ?? body.billing_cycle,
+    );
 
     if (!plan || !plan.isActive) {
       return res.status(400).json({
@@ -23913,8 +24001,9 @@ app.post("/api/platform/billing/checkout-session", async (req, res) => {
       includeSessionId: false,
     });
 
-    const configuredPriceId = getCreatorHubStripePriceId(plan.id);
-    const amountMinor = Math.round(plan.price * 100);
+    const configuredPriceId = getCreatorHubStripePriceId(plan.id, billingCycle);
+    const amountMajor = getCreatorHubPlanAmountMajor(plan, billingCycle);
+    const amountMinor = Math.round(amountMajor * 100);
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       success_url: successUrl,
@@ -23923,7 +24012,12 @@ app.post("/api/platform/billing/checkout-session", async (req, res) => {
       billing_address_collection: "auto",
       allow_promotion_codes: true,
       locale: "nb",
-      client_reference_id: [plan.id, userId, requestId || email || "creatorhub"]
+      client_reference_id: [
+        plan.id,
+        billingCycle,
+        userId,
+        requestId || email || "creatorhub",
+      ]
         .filter(Boolean)
         .join(":"),
       line_items: [
@@ -23938,7 +24032,7 @@ app.post("/api/platform/billing/checkout-session", async (req, res) => {
                 currency: plan.currency.toLowerCase(),
                 unit_amount: amountMinor,
                 recurring: {
-                  interval: plan.billingCycle === "yearly" ? "year" : "month",
+                  interval: billingCycle === "yearly" ? "year" : "month",
                 },
                 product_data: {
                   name: `CreatorHub — ${plan.displayName}`,
@@ -23954,6 +24048,7 @@ app.post("/api/platform/billing/checkout-session", async (req, res) => {
         ch_profession: profession || "",
         ch_plan_id: plan.id,
         ch_plan_name: plan.displayName,
+        ch_billing_cycle: billingCycle,
         ch_amount_minor: String(amountMinor),
         ch_currency: plan.currency,
       },
@@ -23965,6 +24060,7 @@ app.post("/api/platform/billing/checkout-session", async (req, res) => {
           ch_profession: profession || "",
           ch_plan_id: plan.id,
           ch_plan_name: plan.displayName,
+          ch_billing_cycle: billingCycle,
           ch_amount_minor: String(amountMinor),
           ch_currency: plan.currency,
         },
@@ -23984,8 +24080,9 @@ app.post("/api/platform/billing/checkout-session", async (req, res) => {
       profession,
       planId: plan.id,
       planName: plan.displayName,
+      billingCycle,
       amountMinor,
-      amountMajor: Number(plan.price.toFixed(2)),
+      amountMajor: Number(amountMajor.toFixed(2)),
       currency: plan.currency,
       paymentCompleted: false,
       checkoutStatus: "created",
@@ -24005,6 +24102,7 @@ app.post("/api/platform/billing/checkout-session", async (req, res) => {
       planName: plan.displayName,
       amount: amountMinor,
       currency: plan.currency,
+      billingCycle,
       paymentMethod: "stripe",
     });
   } catch (error) {
@@ -24060,6 +24158,7 @@ app.get("/api/platform/billing/session-status", async (req, res) => {
         syncedRecord?.transactionId || getStripeCheckoutSessionTransactionId(session),
       planId: syncedRecord?.planId || null,
       planName: syncedRecord?.planName || null,
+      billingCycle: syncedRecord?.billingCycle || "monthly",
       createdAt,
       completedAt: syncedRecord?.paymentTimestamp || null,
       paymentCompleted: Boolean(syncedRecord?.paymentCompleted),
@@ -27062,6 +27161,7 @@ type CreatorHubStripeCheckoutSessionRecord = {
   profession: string | null;
   planId: string;
   planName: string;
+  billingCycle: "monthly" | "yearly";
   amountMinor: number;
   amountMajor: number;
   currency: string;
@@ -27212,21 +27312,34 @@ function getCreatorHubStripeWebhookSecret() {
   );
 }
 
-function getCreatorHubStripePriceId(planId: string | null | undefined) {
+function getCreatorHubStripePriceId(
+  planId: string | null | undefined,
+  billingCycle: "monthly" | "yearly" = "monthly",
+) {
   switch (normalizeBillingPlanId(planId)) {
     case "basic":
-      return normalizeMailConfigValue(process.env.CREATORHUB_STRIPE_PRICE_ID_BASIC);
+      return normalizeMailConfigValue(
+        billingCycle === "yearly"
+          ? process.env.CREATORHUB_STRIPE_PRICE_ID_BASIC_YEARLY
+          : process.env.CREATORHUB_STRIPE_PRICE_ID_BASIC,
+      );
     case "professional":
       return normalizeMailConfigValue(
-        process.env.CREATORHUB_STRIPE_PRICE_ID_PROFESSIONAL,
+        billingCycle === "yearly"
+          ? process.env.CREATORHUB_STRIPE_PRICE_ID_PROFESSIONAL_YEARLY
+          : process.env.CREATORHUB_STRIPE_PRICE_ID_PROFESSIONAL,
       );
     case "premium":
       return normalizeMailConfigValue(
-        process.env.CREATORHUB_STRIPE_PRICE_ID_PREMIUM,
+        billingCycle === "yearly"
+          ? process.env.CREATORHUB_STRIPE_PRICE_ID_PREMIUM_YEARLY
+          : process.env.CREATORHUB_STRIPE_PRICE_ID_PREMIUM,
       );
     case "enterprise":
       return normalizeMailConfigValue(
-        process.env.CREATORHUB_STRIPE_PRICE_ID_ENTERPRISE,
+        billingCycle === "yearly"
+          ? process.env.CREATORHUB_STRIPE_PRICE_ID_ENTERPRISE_YEARLY
+          : process.env.CREATORHUB_STRIPE_PRICE_ID_ENTERPRISE,
       );
     default:
       return "";
@@ -27866,13 +27979,17 @@ function deriveCreatorHubStripeCheckoutRecordFromSession(
     normalizeBillingPlanId(metadata.ch_plan_id) ||
     normalizeBillingPlanId(metadata.planId);
   const plan = getCompatPlatformSubscriptionPlan(planId);
+  const billingCycle = normalizeCreatorHubBillingCycle(
+    metadata.ch_billing_cycle || metadata.billingCycle || plan?.billingCycle,
+  );
   const planName =
     normalizeMailConfigValue(metadata.ch_plan_name) ||
     plan?.displayName ||
     "CreatorHub Plan";
   const userId = normalizeMailConfigValue(metadata.ch_user_id) || "guest";
   const amountMinor = Number(
-    metadata.ch_amount_minor || (plan ? Math.round(plan.price * 100) : 0),
+    metadata.ch_amount_minor ||
+      (plan ? Math.round(getCreatorHubPlanAmountMajor(plan, billingCycle) * 100) : 0),
   );
   const amountMajor = Number((amountMinor / 100).toFixed(2));
   const currency =
@@ -27893,6 +28010,7 @@ function deriveCreatorHubStripeCheckoutRecordFromSession(
     profession: normalizeMailConfigValue(metadata.ch_profession),
     planId,
     planName,
+    billingCycle,
     amountMinor,
     amountMajor,
     currency,
@@ -27995,6 +28113,7 @@ async function syncCreatorHubStripeCheckoutSession(
       ...(existingPaymentRecord?.metadata || {}),
       profession: record.profession,
       requestId: record.requestId,
+      billingCycle: record.billingCycle,
       stripeSessionId: session.id,
       stripeSubscriptionId: record.stripeSubscriptionId,
       stripeCustomerId: record.stripeCustomerId,

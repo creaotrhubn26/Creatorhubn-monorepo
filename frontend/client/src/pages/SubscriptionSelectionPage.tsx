@@ -30,6 +30,7 @@ export default function SubscriptionSelectionPage() {
   const requestedProfession = urlParams.get('profession') || 'creatorhub';
   const profession = requestedProfession || 'creatorhub';
   const initialPlanId = urlParams.get('plan');
+  const initialBillingCycle = urlParams.get('billing') === 'yearly' ? 'yearly' : 'monthly';
   const requestId = urlParams.get('requestId');
   const fromInvite = urlParams.get('fromInvite') === 'true';
   const stripeSessionId = urlParams.get('session_id');
@@ -269,13 +270,14 @@ export default function SubscriptionSelectionPage() {
         </Alert>
       )}
 
-      <SubscriptionSelectionFlow
-        profession={profession}
-        requestId={requestId}
-        initialPlanId={initialPlanId}
-        fromInvite={fromInvite}
-        onComplete={handlePaymentComplete}
-        onBack={handleBack}
+        <SubscriptionSelectionFlow
+          profession={profession}
+          requestId={requestId}
+          initialPlanId={initialPlanId}
+          initialBillingCycle={initialBillingCycle}
+          fromInvite={fromInvite}
+          onComplete={handlePaymentComplete}
+          onBack={handleBack}
       />
     </Container>
   );

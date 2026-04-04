@@ -29,6 +29,8 @@ import {
   ListItem,
   ListItemIcon,
   ListItemText,
+  ToggleButton,
+  ToggleButtonGroup,
 } from '@mui/material';
 import {
   CheckCircle as CheckIcon,
@@ -45,6 +47,9 @@ interface SubscriptionPlan {
   name: string;
   profession: string;
   price: number;
+  monthlyPrice?: number;
+  yearlyPrice?: number;
+  yearlySavingsLabel?: string;
   currency: string;
   interval: string;
   features: string[];
@@ -59,6 +64,8 @@ interface SubscriptionPlan {
   publicPriceLabel?: string;
   ctaLabel?: string;
 }
+
+type BillingCycle = 'monthly' | 'yearly';
 
 interface PaymentMethod {
   id: string;
@@ -91,6 +98,7 @@ interface SubscriptionSelectionFlowProps {
   profession: string;
   requestId?: string | null;
   initialPlanId?: string | null;
+  initialBillingCycle?: BillingCycle | null;
   fromInvite?: boolean;
   onComplete?: (
     plan: SubscriptionPlan,
@@ -104,6 +112,7 @@ export default function SubscriptionSelectionFlow({
   profession: propProfession,
   requestId,
   initialPlanId,
+  initialBillingCycle,
   fromInvite = false,
   onComplete,
   onBack,
@@ -117,6 +126,9 @@ export default function SubscriptionSelectionFlow({
     propProfession || adapterProfession || (user as any)?.profession || 'creatorhub';
 
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
+  const [selectedBillingCycle, setSelectedBillingCycle] = useState<BillingCycle>(
+    initialBillingCycle === 'yearly' ? 'yearly' : 'monthly',
+  );
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(
     PAYMENT_METHODS.find((method) => method.available)?.id || '',
   );
@@ -132,6 +144,12 @@ export default function SubscriptionSelectionFlow({
       setSelectedPaymentMethod(availablePaymentMethods[0].id);
     }
   }, [availablePaymentMethods, selectedPaymentMethod]);
+
+  useEffect(() => {
+    if (initialBillingCycle === 'yearly' || initialBillingCycle === 'monthly') {
+      setSelectedBillingCycle(initialBillingCycle);
+    }
+  }, [initialBillingCycle]);
 
   // Fetch subscription plans for the profession
   const { data: plansData, isLoading: plansLoading, error: plansError } = useQuery({
@@ -165,26 +183,45 @@ export default function SubscriptionSelectionFlow({
       } : {};
 
       const plans = Array.isArray(payload.plans)
-        ? payload.plans.map((plan) => ({
-            id: typeof plan.id === 'string' ? plan.id : 'unknown',
-            name: typeof plan.displayName === 'string' ? plan.displayName : (plan.name || 'Ukjent plan'),
-            profession: activeProfession,
-            price: typeof plan.price === 'number' ? Math.round(plan.price * 100) : 0,
-            currency: typeof plan.currency === 'string' ? plan.currency : 'NOK',
-            interval: plan.billingCycle === 'yearly' ? 'year' : 'month',
-            features: Array.isArray(plan.features) ? plan.features : [],
-            maxUsers: typeof plan.limits?.maxUsers === 'number' ? plan.limits.maxUsers : 1,
-            maxProjects: typeof plan.limits?.maxProjects === 'number' ? plan.limits.maxProjects : 0,
-            storageLimit: typeof plan.limits?.maxStorageGB === 'number' ? plan.limits.maxStorageGB : 0,
-            popular: Boolean(plan.isPopular ?? plan.popular),
-            trialDays: typeof plan.trialDays === 'number' ? plan.trialDays : 0,
-            description: typeof plan.description === 'string' ? plan.description : undefined,
-            isPublic: plan.isPublic !== false,
-            contactSalesOnly: Boolean(plan.contactSalesOnly),
-            publicPriceLabel:
-              typeof plan.publicPriceLabel === 'string' ? plan.publicPriceLabel : undefined,
-            ctaLabel: typeof plan.ctaLabel === 'string' ? plan.ctaLabel : undefined,
-          }))
+        ? payload.plans.map((plan) => {
+            const monthlyPrice =
+              typeof (plan as any).monthlyPrice === 'number'
+                ? Math.round((plan as any).monthlyPrice * 100)
+                : typeof plan.price === 'number'
+                  ? Math.round(plan.price * 100)
+                  : 0;
+            const yearlyPrice =
+              typeof (plan as any).yearlyPrice === 'number'
+                ? Math.round((plan as any).yearlyPrice * 100)
+                : undefined;
+
+            return {
+              id: typeof plan.id === 'string' ? plan.id : 'unknown',
+              name: typeof plan.displayName === 'string' ? plan.displayName : (plan.name || 'Ukjent plan'),
+              profession: activeProfession,
+              price: monthlyPrice,
+              monthlyPrice,
+              yearlyPrice,
+              yearlySavingsLabel:
+                typeof (plan as any).yearlySavingsLabel === 'string'
+                  ? (plan as any).yearlySavingsLabel
+                  : undefined,
+              currency: typeof plan.currency === 'string' ? plan.currency : 'NOK',
+              interval: 'month',
+              features: Array.isArray(plan.features) ? plan.features : [],
+              maxUsers: typeof plan.limits?.maxUsers === 'number' ? plan.limits.maxUsers : 1,
+              maxProjects: typeof plan.limits?.maxProjects === 'number' ? plan.limits.maxProjects : 0,
+              storageLimit: typeof plan.limits?.maxStorageGB === 'number' ? plan.limits.maxStorageGB : 0,
+              popular: Boolean(plan.isPopular ?? plan.popular),
+              trialDays: typeof plan.trialDays === 'number' ? plan.trialDays : 0,
+              description: typeof plan.description === 'string' ? plan.description : undefined,
+              isPublic: plan.isPublic !== false,
+              contactSalesOnly: Boolean(plan.contactSalesOnly),
+              publicPriceLabel:
+                typeof plan.publicPriceLabel === 'string' ? plan.publicPriceLabel : undefined,
+              ctaLabel: typeof plan.ctaLabel === 'string' ? plan.ctaLabel : undefined,
+            };
+          })
         : [];
 
       return { plans };
@@ -200,6 +237,19 @@ export default function SubscriptionSelectionFlow({
   );
   const enterprisePlan =
     publicPlans.find((plan) => plan.contactSalesOnly) || null;
+  const showBillingCycleToggle = selfServePlans.some(
+    (plan) => typeof plan.yearlyPrice === 'number' && plan.yearlyPrice > 0,
+  );
+
+  const resolvePlanPrice = (plan: SubscriptionPlan, billingCycle = selectedBillingCycle) => {
+    if (billingCycle === 'yearly' && typeof plan.yearlyPrice === 'number' && plan.yearlyPrice > 0) {
+      return plan.yearlyPrice;
+    }
+    return plan.monthlyPrice ?? plan.price;
+  };
+
+  const resolveCadenceLabel = (billingCycle = selectedBillingCycle) =>
+    billingCycle === 'yearly' ? 'år' : 'måned';
 
   useEffect(() => {
     if (!initialPlanId || plans.length === 0 || selectedPlan) {
@@ -220,6 +270,7 @@ export default function SubscriptionSelectionFlow({
       const returnParams = new URLSearchParams();
       returnParams.set('profession', activeProfession);
       returnParams.set('plan', plan.id);
+      returnParams.set('billing', selectedBillingCycle);
       if (requestId) {
         returnParams.set('requestId', requestId);
       }
@@ -231,8 +282,9 @@ export default function SubscriptionSelectionFlow({
         method: 'POST',
         body: {
           planId: plan.id,
+          billingCycle: selectedBillingCycle,
           paymentMethod,
-          amount: plan.price,
+          amount: resolvePlanPrice(plan),
           currency: plan.currency,
           userId: user?.id,
           userEmail: user?.email,
@@ -279,6 +331,7 @@ export default function SubscriptionSelectionFlow({
       const nextParams = new URLSearchParams();
       nextParams.set('profession', activeProfession);
       nextParams.set('plan', selectedPlan!.id);
+      nextParams.set('billing', selectedBillingCycle);
       nextParams.set('payment', 'success');
       if (requestId) {
         nextParams.set('requestId', requestId);
@@ -320,6 +373,16 @@ export default function SubscriptionSelectionFlow({
 
   const handlePlanSelect = (plan: SubscriptionPlan) => {
     setSelectedPlan(plan);
+  };
+
+  const handleBillingCycleChange = (
+    _event: React.MouseEvent<HTMLElement>,
+    nextBillingCycle: BillingCycle | null,
+  ) => {
+    if (!nextBillingCycle) {
+      return;
+    }
+    setSelectedBillingCycle(nextBillingCycle);
   };
 
   const handlePaymentSelect = (method: string) => {
@@ -542,7 +605,7 @@ export default function SubscriptionSelectionFlow({
           >
             {[
               'Sikker betaling via Stripe Checkout',
-              'Tre selvbetjente planer med tydelig pris per nivå',
+              'Bytt mellom månedlig og årlig fakturering uten å skifte flyt',
               'Enterprise settes opp separat med demo og onboarding',
               'Returnerer automatisk til CreatorHub etter betaling',
             ].map((line) => (
@@ -556,6 +619,77 @@ export default function SubscriptionSelectionFlow({
           </Stack>
         </Stack>
       </Box>
+
+      {showBillingCycleToggle && (
+        <Box
+          sx={{
+            mb: 3.5,
+            borderRadius: '20px',
+            border: '1px solid rgba(255,255,255,0.08)',
+            background: 'rgba(255,255,255,0.03)',
+            p: { xs: 2, md: 2.4 },
+          }}
+        >
+          <Stack
+            direction={{ xs: 'column', md: 'row' }}
+            spacing={{ xs: 2, md: 3 }}
+            justifyContent="space-between"
+            alignItems={{ xs: 'flex-start', md: 'center' }}
+          >
+            <Box>
+              <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.6 }}>
+                Velg fakturering
+              </Typography>
+              <Typography sx={{ color: 'rgba(255,255,255,0.68)', lineHeight: 1.7 }}>
+                Årlig fakturering gir høyere kontraktsverdi og holder prisen tydelig med 2 måneder gratis.
+              </Typography>
+            </Box>
+
+            <Stack spacing={1} sx={{ width: { xs: '100%', md: 'auto' } }}>
+              <ToggleButtonGroup
+                exclusive
+                value={selectedBillingCycle}
+                onChange={handleBillingCycleChange}
+                sx={{
+                  p: 0.5,
+                  borderRadius: '999px',
+                  bgcolor: 'rgba(255,255,255,0.04)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  alignSelf: { xs: 'stretch', md: 'flex-end' },
+                  '& .MuiToggleButtonGroup-grouped': {
+                    border: 0,
+                    borderRadius: '999px !important',
+                    px: 2,
+                    py: 1,
+                    color: 'rgba(255,255,255,0.72)',
+                    textTransform: 'none',
+                    fontWeight: 700,
+                    '&.Mui-selected': {
+                      color: '#150d05',
+                      backgroundColor: '#ffba6c',
+                    },
+                  },
+                }}
+              >
+                <ToggleButton value="monthly">Månedlig</ToggleButton>
+                <ToggleButton value="yearly">Årlig</ToggleButton>
+              </ToggleButtonGroup>
+              {selectedBillingCycle === 'yearly' ? (
+                <Typography
+                  sx={{
+                    color: 'rgba(255,186,108,0.9)',
+                    fontSize: '0.88rem',
+                    fontWeight: 700,
+                    alignSelf: { xs: 'flex-start', md: 'flex-end' },
+                  }}
+                >
+                  2 måneder gratis på alle selvbetjente årsplaner
+                </Typography>
+              ) : null}
+            </Stack>
+          </Stack>
+        </Box>
+      )}
 
       {/* Plans Grid */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
@@ -615,14 +749,27 @@ export default function SubscriptionSelectionFlow({
                       fontSize: '2.5rem',
                       lineHeight: 1,
                     }}>
-                      {formatPrice(plan.price, plan.currency)}
+                      {formatPrice(resolvePlanPrice(plan), plan.currency)}
                     </Typography>
                     <Typography variant="body2" sx={{ 
                       color: 'rgba(255, 255, 255, 0.6)',
                       mt: 0.5,
                     }}>
-                      per {plan.interval === 'month' ? 'måned' : 'år'}
+                      per {resolveCadenceLabel()}
                     </Typography>
+                    {selectedBillingCycle === 'yearly' && plan.yearlySavingsLabel ? (
+                      <Chip
+                        label={plan.yearlySavingsLabel}
+                        size="small"
+                        sx={{
+                          mt: 1.2,
+                          bgcolor: 'rgba(255,186,108,0.12)',
+                          color: '#ffba6c',
+                          border: '1px solid rgba(255,186,108,0.3)',
+                          fontWeight: 700,
+                        }}
+                      />
+                    ) : null}
                   </Box>
                 </Box>
 
@@ -877,8 +1024,11 @@ export default function SubscriptionSelectionFlow({
               Valgt plan: {selectedPlan.name}
             </Typography>
             <Typography sx={{ color: 'rgba(255,255,255,0.72)', lineHeight: 1.7 }}>
-              {formatPrice(selectedPlan.price, selectedPlan.currency)} per{' '}
-              {selectedPlan.interval === 'month' ? 'måned' : 'år'}.
+              {formatPrice(resolvePlanPrice(selectedPlan), selectedPlan.currency)} per{' '}
+              {resolveCadenceLabel()}.
+              {selectedBillingCycle === 'yearly' && selectedPlan.yearlySavingsLabel
+                ? ` ${selectedPlan.yearlySavingsLabel}.`
+                : ''}
               Stripe viser full betalingsdetalj og eventuell avgiftsberegning i checkout før du bekrefter.
             </Typography>
           </Alert>
@@ -1047,8 +1197,11 @@ export default function SubscriptionSelectionFlow({
             >
               <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.9)', lineHeight: 1.7 }}>
                 Du vil starte et abonnement på <strong>{selectedPlan.name}</strong> til{' '}
-                <strong>{formatPrice(selectedPlan.price, selectedPlan.currency)}</strong> per{' '}
-                {selectedPlan.interval === 'month' ? 'måned' : 'år'}.
+                <strong>{formatPrice(resolvePlanPrice(selectedPlan), selectedPlan.currency)}</strong> per{' '}
+                {resolveCadenceLabel()}.
+                {selectedBillingCycle === 'yearly' && selectedPlan.yearlySavingsLabel
+                  ? ` ${selectedPlan.yearlySavingsLabel}.`
+                  : ''}
               </Typography>
             </Alert>
           )}
