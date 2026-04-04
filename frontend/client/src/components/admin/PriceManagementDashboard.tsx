@@ -121,6 +121,7 @@ interface CreatorHubEmailSettings {
     emailLogoUrl: string;
   };
   email: {
+    fromEmail: string;
     replyToEmail: string;
     footerText: string;
     theme: {
@@ -303,6 +304,7 @@ const defaultCreatorHubEmailSettings: CreatorHubEmailSettings = {
     emailLogoUrl: '/creatorhub-logo-amber.svg',
   },
   email: {
+    fromEmail: 'billing@creatorhubn.com',
     replyToEmail: 'kontakt@creatorhubn.com',
     footerText: 'CreatorHub Norge • creatorhubn.com',
     theme: {
@@ -1421,6 +1423,18 @@ export default function PriceManagementDashboard({
                   />
                   <TextField
                     fullWidth
+                    label="Fra-adresse"
+                    helperText="Bruk en Google Workspace-alias som finnes på avsenderbrukeren, for eksempel billing@creatorhubn.com."
+                    value={creatorHubEmailSettings.email.fromEmail}
+                    onChange={(event) =>
+                      setCreatorHubEmailSettings((previous) => ({
+                        ...previous,
+                        email: { ...previous.email, fromEmail: event.target.value },
+                      }))
+                    }
+                  />
+                  <TextField
+                    fullWidth
                     label="Reply-to"
                     value={creatorHubEmailSettings.email.replyToEmail}
                     onChange={(event) =>
@@ -2102,6 +2116,16 @@ export default function PriceManagementDashboard({
                   </Typography>
                   <Typography sx={{ mt: 1.25, color: creatorHubEmailSettings.email.theme.mutedText, maxWidth: 520 }}>
                     {creatorHubEmailSettings.identity.tagline} • {creatorHubEmailSettings.identity.domain}
+                  </Typography>
+                  <Typography
+                    sx={{
+                      mt: 1.25,
+                      color: creatorHubEmailSettings.email.theme.mutedText,
+                      fontSize: '0.82rem',
+                      lineHeight: 1.7,
+                    }}
+                  >
+                    Fra: {creatorHubEmailSettings.email.fromEmail} {' • '} Svar til: {creatorHubEmailSettings.email.replyToEmail}
                   </Typography>
                 </Box>
                 <Box sx={{ px: { xs: 2.25, sm: 3.5 }, py: { xs: 2.5, sm: 3.5 } }}>

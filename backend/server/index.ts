@@ -15880,6 +15880,7 @@ type CreatorHubPlatformEmailTemplate = {
 type CreatorHubPlatformEmailTheme = RoleRoomPlatformEmailTheme;
 
 type CreatorHubPlatformEmailSettings = {
+  fromEmail: string;
   replyToEmail: string;
   footerText: string;
   theme: CreatorHubPlatformEmailTheme;
@@ -15923,6 +15924,8 @@ const CREATORHUB_PLATFORM_DEFAULT_EMAIL_THEME: CreatorHubPlatformEmailTheme = {
   buttonText: "#16120d",
   footerText: "#918573",
 };
+
+const CREATORHUB_PLATFORM_DEFAULT_FROM_EMAIL = "billing@creatorhubn.com";
 
 const CREATORHUB_PLATFORM_LEGACY_EMAIL_THEME: CreatorHubPlatformEmailTheme = {
   canvasBackground: "#f3f7fb",
@@ -16088,6 +16091,9 @@ function normalizeCreatorHubPlatformBrandingSettings(
     identity,
     email: {
       ...emailRecord,
+      fromEmail:
+        readString(emailRecord.fromEmail) ||
+        CREATORHUB_PLATFORM_DEFAULT_FROM_EMAIL,
       replyToEmail:
         readString(emailRecord.replyToEmail) || identity.supportEmail,
       footerText:
@@ -30534,6 +30540,7 @@ async function resolveCreatorHubPlatformBrandingSettings() {
     stored || {
       identity: CREATORHUB_PLATFORM_BRANDING_DEFAULT_IDENTITY,
       email: {
+        fromEmail: CREATORHUB_PLATFORM_DEFAULT_FROM_EMAIL,
         replyToEmail:
           CREATORHUB_PLATFORM_BRANDING_DEFAULT_IDENTITY.supportEmail,
         footerText: `${CREATORHUB_PLATFORM_BRANDING_DEFAULT_IDENTITY.appName} • ${CREATORHUB_PLATFORM_BRANDING_DEFAULT_IDENTITY.domain}`,
@@ -31389,13 +31396,18 @@ async function sendCreatorHubBillingEmail(options: {
   const adminEmail =
     normalizeMailConfigValue(process.env.GOOGLE_ADMIN_EMAIL) ||
     "daniel@creatorhubn.com";
-  const fromEmail =
-    normalizeMailConfigValue(process.env.GMAIL_USER) ||
-    normalizeMailConfigValue(process.env.GOOGLE_WORKSPACE_EMAIL) ||
-    adminEmail;
   const brandingSettings = await resolveCreatorHubPlatformBrandingSettings().catch(
     () => null,
   );
+  const fromName =
+    normalizeMailConfigValue(brandingSettings?.identity?.appName) ||
+    "CreatorHub Norge";
+  const fromEmail =
+    normalizeMailConfigValue(process.env.CREATORHUB_BILLING_FROM_EMAIL) ||
+    normalizeMailConfigValue(brandingSettings?.email?.fromEmail) ||
+    normalizeMailConfigValue(process.env.GMAIL_USER) ||
+    normalizeMailConfigValue(process.env.GOOGLE_WORKSPACE_EMAIL) ||
+    adminEmail;
   const replyTo =
     normalizeMailConfigValue(options.replyTo) ||
     normalizeMailConfigValue(brandingSettings?.email?.replyToEmail) ||
@@ -31420,7 +31432,7 @@ async function sendCreatorHubBillingEmail(options: {
       requestBody: {
         raw: await buildGmailRawMessage({
           to: options.recipientEmail,
-          from: `CreatorHub Norge <${gmailSender.senderEmail}>`,
+          from: `${fromName} <${fromEmail}>`,
           replyTo,
           subject: options.subject,
           text: options.text,
@@ -31439,7 +31451,7 @@ async function sendCreatorHubBillingEmail(options: {
   }
 
   const info = await transporter.sendMail({
-    from: `CreatorHub Norge <${fromEmail}>`,
+    from: `${fromName} <${fromEmail}>`,
     to: options.recipientEmail,
     replyTo,
     subject: options.subject,
@@ -31467,9 +31479,6 @@ async function sendCreatorHubPaymentConfirmedEmail(options: {
   billingCycle: "monthly" | "yearly";
   creatorHubUrl: string;
 }) {
-  const adminEmail =
-    normalizeMailConfigValue(process.env.GOOGLE_ADMIN_EMAIL) ||
-    "daniel@creatorhubn.com";
   const rendered = await renderCreatorHubPlatformEmail({
     templateId: "creatorhub_payment_confirmed",
     variables: {
@@ -31480,7 +31489,6 @@ async function sendCreatorHubPaymentConfirmedEmail(options: {
       creatorHubUrl: options.creatorHubUrl,
       recipientEmail: options.recipientEmail,
     },
-    replyToEmail: adminEmail,
     ctaUrl: options.creatorHubUrl,
     detailRows: [
       { label: "Plan", value: options.planName },
@@ -31515,9 +31523,6 @@ async function sendCreatorHubPaymentFailedEmail(options: {
   creatorHubUrl: string;
   failureMessage?: string | null;
 }) {
-  const adminEmail =
-    normalizeMailConfigValue(process.env.GOOGLE_ADMIN_EMAIL) ||
-    "daniel@creatorhubn.com";
   const rendered = await renderCreatorHubPlatformEmail({
     templateId: "creatorhub_payment_failed",
     variables: {
@@ -31530,7 +31535,6 @@ async function sendCreatorHubPaymentFailedEmail(options: {
         options.failureMessage ||
         "Oppdater betalingsinformasjonen i CreatorHub. Når Stripe får gjennomført betalingen, sender vi en ny status på e-post.",
     },
-    replyToEmail: adminEmail,
     ctaUrl: options.creatorHubUrl,
     detailRows: [
       { label: "Plan", value: options.planName },
@@ -31570,9 +31574,6 @@ async function sendCreatorHubAccountActivatedEmail(options: {
   billingCycle: "monthly" | "yearly";
   creatorHubUrl: string;
 }) {
-  const adminEmail =
-    normalizeMailConfigValue(process.env.GOOGLE_ADMIN_EMAIL) ||
-    "daniel@creatorhubn.com";
   const rendered = await renderCreatorHubPlatformEmail({
     templateId: "creatorhub_account_activated",
     variables: {
@@ -31583,7 +31584,6 @@ async function sendCreatorHubAccountActivatedEmail(options: {
       amountLabel: formatCreatorHubBillingAmountLabel(options),
       creatorHubUrl: options.creatorHubUrl,
     },
-    replyToEmail: adminEmail,
     ctaUrl: options.creatorHubUrl,
     detailRows: [
       { label: "Plan", value: options.planName },
@@ -31617,9 +31617,6 @@ async function sendCreatorHubPaymentRecoveredEmail(options: {
   billingCycle: "monthly" | "yearly";
   creatorHubUrl: string;
 }) {
-  const adminEmail =
-    normalizeMailConfigValue(process.env.GOOGLE_ADMIN_EMAIL) ||
-    "daniel@creatorhubn.com";
   const rendered = await renderCreatorHubPlatformEmail({
     templateId: "creatorhub_payment_recovered",
     variables: {
@@ -31629,7 +31626,6 @@ async function sendCreatorHubPaymentRecoveredEmail(options: {
       amountLabel: formatCreatorHubBillingAmountLabel(options),
       creatorHubUrl: options.creatorHubUrl,
     },
-    replyToEmail: adminEmail,
     ctaUrl: options.creatorHubUrl,
     detailRows: [
       { label: "Plan", value: options.planName },
