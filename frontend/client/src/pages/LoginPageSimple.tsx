@@ -1,6 +1,10 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useLocation } from 'wouter';
+import {
+  consumeCreatorHubGoogleLoginError,
+  startCreatorHubGoogleLogin,
+} from '@/lib/creatorhubGoogleAuth';
 import {
   Box,
   Typography,
@@ -13,6 +17,7 @@ import {
   InputAdornment,
   IconButton,
   Container,
+  Divider,
 } from '@mui/material';
 import {
   Visibility,
@@ -21,6 +26,7 @@ import {
   Person,
   Lock,
   CameraAlt,
+  Google as GoogleIcon,
 } from '@mui/icons-material';
 
 const ADMIN_DEMO_EMAIL = 'academy-guest@creatorhubn.com';
@@ -53,6 +59,13 @@ export default function LoginPageSimple() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    const nextGoogleError = consumeCreatorHubGoogleLoginError();
+    if (nextGoogleError) {
+      setError(nextGoogleError);
+    }
+  }, []);
 
   // If already authenticated, redirect to dashboard
   if (isAuthenticated && hasStoredToken && currentUserCanAccessRedirect) {
@@ -92,6 +105,18 @@ export default function LoginPageSimple() {
       setIsLoading(false);
     }
   }, [email, password, login, redirectTarget, setLocation]);
+
+  const handleGoogleLogin = useCallback(async () => {
+    setIsLoading(true);
+    setError('');
+
+    try {
+      await startCreatorHubGoogleLogin();
+    } catch (err: any) {
+      setError(err?.message || 'Kunne ikke starte Google-innlogging.');
+      setIsLoading(false);
+    }
+  }, []);
 
   return (
     <Box sx={{
@@ -133,6 +158,34 @@ export default function LoginPageSimple() {
                     Du er allerede logget inn med en konto uten admin-tilgang. Logg inn på nytt med admin-kontoen for å fortsette til admin.
                   </Alert>
                 )}
+
+                <Button
+                  type="button"
+                  variant="outlined"
+                  fullWidth
+                  size="large"
+                  disabled={isLoading}
+                  startIcon={<GoogleIcon />}
+                  onClick={() => {
+                    void handleGoogleLogin();
+                  }}
+                  sx={{
+                    py: 1.5,
+                    borderColor: 'rgba(15, 52, 96, 0.16)',
+                    color: '#16213e',
+                    backgroundColor: '#fff',
+                    '&:hover': {
+                      borderColor: '#0f3460',
+                      backgroundColor: '#f7f9fc',
+                    },
+                  }}
+                >
+                  Fortsett med Google
+                </Button>
+
+                <Divider sx={{ color: 'text.secondary', fontSize: 12 }}>
+                  eller logg inn med e-post
+                </Divider>
 
                 <TextField
                   fullWidth
