@@ -60,6 +60,7 @@ import {
 
 interface AdminStatsProps {
   userEmail?: string;
+  isAdmin?: boolean;
 }
 
 interface PlatformStats {
@@ -83,12 +84,12 @@ interface PlatformStats {
 const formatValue = (value: number, format: string): string => {
   switch (format) {
     case 'currency':
-      return `${value.toLocaleString('no-NO, ')} kr`;
+      return `${value.toLocaleString('nb-NO')} kr`;
     case 'percentage':
       return `${value}%`;
     case 'time':
       return `${value}ms`;
-    default: return value.toLocaleString('no-NO');
+    default: return value.toLocaleString('nb-NO');
 }
 };
 
@@ -98,7 +99,7 @@ const calculateTrend = (current: number, previous: number): { percentage: number
   return { percentage: Math.abs(percentage), isPositive: percentage >= 0 };
 };
 
-export default function AdminStats({ userEmail }: AdminStatsProps) {
+export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsProps) {
   const [selectedMetric, setSelectedMetric] = useState<string | null>(null);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
 
@@ -107,18 +108,10 @@ export default function AdminStats({ userEmail }: AdminStatsProps) {
 
   // Get auth from master integration
   const { auth } = useEnhancedMasterIntegration();
-
-  // Only show admin stats for user?.email
-  if (userEmail !== 'user?.email') {
-    return (
-      <Box sx={{ p: 3, textAlign: 'center' }}>
-        <Typography variant="h6" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
-          {theming.getThemedIcon('assessment')}
-          Admin statistikk er kun tilgjengelig for systemadministrator
-        </Typography>
-      </Box>
-    );
-}
+  const authUser = auth.state.user as { role?: string; isAdmin?: boolean } | null | undefined;
+  const canAccessAdminStats = Boolean(
+    isAdmin || authUser?.isAdmin || authUser?.role === 'admin' || authUser?.role === 'super_admin',
+  );
 
   const handleCardClick = (metric: string) => {
     setSelectedMetric(metric);
@@ -137,7 +130,7 @@ export default function AdminStats({ userEmail }: AdminStatsProps) {
       const headers = await auth.getAuthHeader();
       return apiRequest('/api/admin/platform-stats', { headers });
     },
-    enabled: userEmail === 'user?.email',
+    enabled: canAccessAdminStats,
     refetchInterval: 5000, // ✅ SANNTID: Oppdater hver 5. sekund
     staleTime: 0 // ✅ Alltid hent ferske data
 });
@@ -149,9 +142,10 @@ export default function AdminStats({ userEmail }: AdminStatsProps) {
     queryFn: async () => {
       const headers = await auth.getAuthHeader();
       return apiRequest('/api/admin/dashboard', { headers });
-  },
+    },
+    enabled: canAccessAdminStats,
     staleTime: 0
-});
+  });
 
   // Fetch profession-specific stats for admin overview - SANNTID
   const { data: professionStats } = useQuery({
@@ -160,7 +154,7 @@ export default function AdminStats({ userEmail }: AdminStatsProps) {
       const headers = await auth.getAuthHeader();
       return apiRequest('/api/admin/profession-stats', { headers });
     },
-    enabled: userEmail === 'user?.email',
+    enabled: canAccessAdminStats,
     refetchInterval: 8000, // ✅ SANNTID: Oppdater hver 8. sekund
     staleTime: 0
   });
@@ -172,7 +166,7 @@ export default function AdminStats({ userEmail }: AdminStatsProps) {
       const headers = await auth.getAuthHeader();
       return apiRequest('/api/academy/admin/revenue/overview', { headers });
     },
-    enabled: userEmail === 'user?.email',
+    enabled: canAccessAdminStats,
     refetchInterval: 10000, // ✅ SANNTID: Oppdater hver 10. sekund
     staleTime: 0
   });
@@ -185,7 +179,7 @@ export default function AdminStats({ userEmail }: AdminStatsProps) {
       if (!response.ok) throw new Error('Failed to fetch academy stats');
       return response.json();
     },
-    enabled: userEmail === 'user?.email',
+    enabled: canAccessAdminStats,
     refetchInterval: 10000, // ✅ SANNTID: Oppdater hver 10. sekund
     staleTime: 0
   });
@@ -197,18 +191,17 @@ export default function AdminStats({ userEmail }: AdminStatsProps) {
       const headers = await auth.getAuthHeader();
       return apiRequest('/api/admin/email-conversion-stats', { headers });
     },
-    enabled: userEmail === 'user?.email',
+    enabled: canAccessAdminStats,
     refetchInterval: 5000, // ✅ REAL-TIME: Update every 5 seconds
     staleTime: 0
   });
 
-  // Fetch Role Room live stats (public endpoint, no auth required)
+  // Fetch Role Room live stats for the admin dashboard
   const { data: roleRoomStats } = useQuery({
     queryKey: ['/api/role-room/admin/stats'],
     queryFn: async () => {
-      const r = await fetch('/api/role-room/admin/stats');
-      if (!r.ok) throw new Error('role-room stats failed');
-      return r.json() as Promise<{
+      const headers = await auth.getAuthHeader();
+      return apiRequest('/api/role-room/admin/stats', { headers }) as Promise<{
         kreative: number;
         produksjoner: number;
         rollerBesatt: number;
@@ -219,10 +212,26 @@ export default function AdminStats({ userEmail }: AdminStatsProps) {
         professionBreakdown: { role: string; n: number }[];
       }>;
     },
-    enabled: userEmail === 'user?.email',
+    enabled: canAccessAdminStats,
     refetchInterval: 15000,
     staleTime: 0,
   });
+
+  if (!canAccessAdminStats) {
+    return (
+      <Box sx={{ p: 3, textAlign: 'center' }}>
+        <Typography variant="h6" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+          {theming.getThemedIcon('assessment')}
+          Admin statistikk er kun tilgjengelig for systemadministrator
+        </Typography>
+        {userEmail ? (
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            Pålogget som: {userEmail}
+          </Typography>
+        ) : null}
+      </Box>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -250,15 +259,82 @@ export default function AdminStats({ userEmail }: AdminStatsProps) {
   const totalUsersTrend = stats ? calculateTrend(stats.totalUsers?.current || 0, stats.totalUsers?.previous || 0) : { percentage: 0, isPositive: true };
   const activeProjectsTrend = stats ? calculateTrend(stats.activeProjects?.current || 0, stats.activeProjects?.previous || 0) : { percentage: 0, isPositive: true };
   const revenueTrend = stats ? calculateTrend(stats.totalRevenue?.current || 0, stats.totalRevenue?.previous || 0) : { percentage: 0, isPositive: true };
+  const activeInsightSources = [
+    stats,
+    dashboardData?.dashboard?.quickStats,
+    roleRoomStats,
+    emailConversionStats,
+    academyRevenue,
+    academyStats,
+    professionStats,
+  ].filter(Boolean).length;
+  const hasAnyInsightData = activeInsightSources > 0;
 
   return (
     <Box sx={{ p: 3 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 4 }}>
-        <Assessment sx={{ mr: 2, color: '#ff8c00', fontSize: 32 }} />
-        <Typography variant="h4" sx={{ fontWeight: 600, color: theming.colors.primary }}>
-          CreatorHub Norge - Admin Statistikk
+      <Box
+        sx={{
+          mb: 4,
+          px: { xs: 2, md: 2.5 },
+          py: { xs: 2.25, md: 2.75 },
+          borderRadius: '24px',
+          border: '1px solid rgba(15, 23, 42, 0.08)',
+          background:
+            'linear-gradient(135deg, rgba(255, 248, 237, 0.96), rgba(255, 255, 255, 0.98))',
+          boxShadow: '0 18px 42px rgba(27, 21, 12, 0.05)',
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.5 }}>
+          <Assessment sx={{ color: '#ff8c00', fontSize: 30 }} />
+          <Box>
+            <Typography
+              sx={{
+                fontSize: '0.72rem',
+                textTransform: 'uppercase',
+                letterSpacing: '0.12em',
+                color: '#8b5e34',
+                fontWeight: 700,
+              }}
+            >
+              Admin Intelligence
+            </Typography>
+            <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary }}>
+              Plattformstatistikk
+            </Typography>
+          </Box>
+        </Box>
+        <Typography sx={{ color: '#6b6257', maxWidth: 880 }}>
+          Live-tall for CreatorHub, The Role Room og Academy samles her når datakildene er
+          tilgjengelige. Bruk denne flaten for å sjekke drift, inntekter og aktivitet før du går
+          videre til detaljpanelene.
         </Typography>
+        <Box sx={{ mt: 1.75, display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+          <Chip
+            label="Full admin-tilgang"
+            size="small"
+            sx={{ bgcolor: '#fff4e5', color: '#8c4d00', fontWeight: 700 }}
+          />
+          <Chip
+            label={`${activeInsightSources} datakilder aktive`}
+            size="small"
+            sx={{ bgcolor: '#ecfdf5', color: '#0f766e', fontWeight: 700 }}
+          />
+          {userEmail ? (
+            <Chip
+              label={userEmail}
+              size="small"
+              sx={{ bgcolor: '#eff6ff', color: '#1d4ed8', fontWeight: 700 }}
+            />
+          ) : null}
+        </Box>
       </Box>
+
+      {!hasAnyInsightData ? (
+        <Alert severity="info" sx={{ mb: 4, borderRadius: '18px' }}>
+          Ingen admindata er tilgjengelig akkurat nå. Dette betyr vanligvis at en eller flere
+          datakilder ikke har svart ennå, ikke at Daniel mangler admin-tilgang.
+        </Alert>
+      ) : null}
 
       {/* Enterprise KPIs */}
       {dashboardData?.dashboard?.quickStats && (

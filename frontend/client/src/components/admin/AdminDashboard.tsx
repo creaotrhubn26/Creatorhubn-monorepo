@@ -36,7 +36,9 @@ import {
   Button,
   Avatar,
   Divider,
+  InputAdornment,
   Snackbar,
+  TextField,
 } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -145,6 +147,13 @@ interface AdminDashboardProps {
   onEquipmentUpdate?: (equipment: any) => void;
 }
 
+type PriceManagementSection =
+  | 'platform-flags'
+  | 'subscriptions'
+  | 'email-templates'
+  | 'analytics'
+  | 'enterprise';
+
 // Error Boundary to prevent child component crashes from killing the whole dashboard
 class AdminErrorBoundary extends React.Component<
   { children: React.ReactNode; fallback?: React.ReactNode },
@@ -200,6 +209,15 @@ export default function AdminDashboard({
   // All hooks at the top
   const [tabValue, setTabValue] = useState(0);
   const [marketingSubTab, setMarketingSubTab] = useState(0);
+  const [adminNavQuery, setAdminNavQuery] = useState('');
+  const [adminGroupExpansion, setAdminGroupExpansion] = useState<Record<string, boolean>>({
+    Oversikt: true,
+    Forretning: true,
+    Plattform: true,
+    Lab: false,
+  });
+  const [priceManagementSection, setPriceManagementSection] =
+    useState<PriceManagementSection>('subscriptions');
   
   // Push notifications setup moved after currentUser query below
   const [seoAuditLoading, setSeoAuditLoading] = useState(false);
@@ -840,58 +858,58 @@ export default function AdminDashboard({
     { id: 'price-management', label: 'Prisstyring', icon: AttachMoney },
     { id: 'reports', label: 'Rapporter', icon: Assessment },
     { id: 'academy', label: 'Academy', icon: School },
-    { id: 'vendor-types', label: 'Vendor Types', icon: Business },
+    { id: 'vendor-types', label: 'Leverandørtyper', icon: Business },
     { id: 'profession-types', label: 'Profesjonstyper', icon: People },
     { id: 'integrasjoner', label: 'Integrasjoner', icon: Link },
-    { id: 'feature-management', label: 'Feature Management', icon: ToggleOn },
+    { id: 'feature-management', label: 'Funksjonsflagg', icon: ToggleOn },
     { id: 'centralized-monitoring', label: 'Sentralisert Overvåkning', icon: Assessment },
     { id: 'protokollstyring', label: 'Protokollstyring', icon: Security },
     { id: 'drift-helse', label: 'Drift', icon: Settings },
     { id: 'system-backup', label: 'Backup', icon: Storage },
     { id: 'gdpr-compliance', label: 'GDPR', icon: Security },
     { id: 'development-tools', label: 'Utvikling', icon: AutoAwesome },
-    { id: 'automations', label: 'Automations', icon: AutoAwesome },
+    { id: 'automations', label: 'Automatisering', icon: AutoAwesome },
     { id: 'creatorhub-notes', label: 'MagicCreator', icon: NotesIcon },
     { id: 'advanced-notes', label: 'Stor Notatsløsning', icon: NotesIcon },
-    { id: 'integration-test', label: 'Integration Test', icon: AutoAwesome },
-    { id: 'payment-integration-test', label: 'Payment Integration Test', icon: Payment },
-    { id: 'google-wallet-membership', label: 'Google Wallet Membership', icon: CardMembership },
+    { id: 'integration-test', label: 'Integrasjonstest', icon: AutoAwesome },
+    { id: 'payment-integration-test', label: 'Betalingstest', icon: Payment },
+    { id: 'google-wallet-membership', label: 'Google Wallet', icon: CardMembership },
     {
       id: 'google-wallet-integration-test',
-      label: 'Google Wallet Integration Test',
+      label: 'Wallet-test',
       icon: AutoAwesome,
     },
-    { id: 'google-payments-config', label: 'Google Payments Config', icon: Payment },
-    { id: 'email-analytics', label: 'Email Analytics', icon: Email },
-    { id: 'tester-skills', label: 'Tester Skills', icon: Star },
-    { id: 'testing-leaderboard', label: 'Testing Leaderboard', icon: TrendingUp },
-    { id: 'test-case-generator', label: 'Test Generator', icon: AutoAwesome },
+    { id: 'google-payments-config', label: 'Google Payments', icon: Payment },
+    { id: 'email-analytics', label: 'E-postanalyse', icon: Email },
+    { id: 'tester-skills', label: 'Testerferdigheter', icon: Star },
+    { id: 'testing-leaderboard', label: 'Test-ledertavle', icon: TrendingUp },
+    { id: 'test-case-generator', label: 'Testgenerator', icon: AutoAwesome },
     { id: 'marketing', label: 'Marketing', icon: Campaign },
-    { id: 'feature-customization', label: 'Feature Customization', icon: Settings },
-    { id: 'fine-tuning-monitor', label: 'Fine-Tuning Monitor', icon: Psychology },
+    { id: 'feature-customization', label: 'Tilpasning', icon: Settings },
+    { id: 'fine-tuning-monitor', label: 'Fine-tuning', icon: Psychology },
   ];
   const currentTab = adminTabs[tabValue] || adminTabs[0];
   const adminShellGroups = [
     {
-      label: 'General',
+      label: 'Oversikt',
       items: adminTabs.filter((tab) =>
         ['overblikk', 'brukere-roller', 'community', 'innhold-assets', 'kunder-prosjekter', 'kommunikasjon'].includes(tab.id),
       ),
     },
     {
-      label: 'Operations',
+      label: 'Forretning',
       items: adminTabs.filter((tab) =>
         ['okonomi', 'price-management', 'reports', 'academy', 'vendor-types', 'profession-types'].includes(tab.id),
       ),
     },
     {
-      label: 'Platform',
+      label: 'Plattform',
       items: adminTabs.filter((tab) =>
         ['integrasjoner', 'feature-management', 'centralized-monitoring', 'protokollstyring', 'drift-helse', 'system-backup', 'gdpr-compliance'].includes(tab.id),
       ),
     },
     {
-      label: 'Labs',
+      label: 'Lab',
       items: adminTabs.filter((tab) =>
         ['prototype-feedback', 'development-tools', 'automations', 'creatorhub-notes', 'advanced-notes', 'integration-test', 'payment-integration-test', 'google-wallet-membership', 'google-wallet-integration-test', 'google-payments-config', 'email-analytics', 'tester-skills', 'testing-leaderboard', 'test-case-generator', 'marketing', 'feature-customization', 'fine-tuning-monitor'].includes(tab.id),
       ),
@@ -940,6 +958,91 @@ export default function AdminDashboard({
   const currentTabDescription =
     adminTabDescriptions[currentTab.id] ??
     `Aktiv arbeidsflate for ${currentTab.label.toLowerCase()} i CreatorHub Admin.`;
+  const normalizedAdminNavQuery = adminNavQuery.trim().toLowerCase();
+  const filteredAdminShellGroups = adminShellGroups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((tab) => {
+        if (!normalizedAdminNavQuery) {
+          return true;
+        }
+
+        const tabDescription = adminTabDescriptions[tab.id] ?? '';
+        return [group.label, tab.label, tabDescription]
+          .some((value) => value.toLowerCase().includes(normalizedAdminNavQuery));
+      }),
+    }))
+    .filter((group) => group.items.length > 0);
+  const visibleAdminTabCount = filteredAdminShellGroups.reduce(
+    (total, group) => total + group.items.length,
+    0,
+  );
+  const availableAdminDataFeeds = [
+    dashboardData,
+    crmData,
+    billingData,
+    analyticsData,
+    Array.isArray(auditData) && auditData.length > 0 ? auditData : null,
+    healthData,
+    integrationData,
+    securityData,
+    automationData,
+  ].filter(Boolean).length;
+
+  const toggleAdminShellGroup = (groupLabel: string) => {
+    setAdminGroupExpansion((previous) => ({
+      ...previous,
+      [groupLabel]: !(previous[groupLabel] ?? true),
+    }));
+  };
+
+  const openPriceManagementSection = (section: PriceManagementSection) => {
+    setPriceManagementSection(section);
+    activateTab(tabIndexFor('price-management'));
+  };
+
+  const overviewQuickActions = [
+    {
+      label: 'Brukere & roller',
+      description: 'Tilganger, roller og adminoversikt',
+      action: () => activateTab(tabIndexFor('brukere-roller')),
+    },
+    {
+      label: 'Abonnementer',
+      description: 'Planer, priser og offentlig visning',
+      action: () => openPriceManagementSection('subscriptions'),
+    },
+    {
+      label: 'E-postmaler',
+      description: 'Billing, velkomst og systemvarsler',
+      action: () => openPriceManagementSection('email-templates'),
+    },
+    {
+      label: 'Drift',
+      description: 'Helse, backup og operativ status',
+      action: () => activateTab(tabIndexFor('drift-helse')),
+    },
+  ];
+  const overviewStatusCards = [
+    {
+      label: 'Rollenivå',
+      value: currentUser?.isAdmin ? 'Full admin' : 'Begrenset',
+      tone: '#92400e',
+      background: '#fff4e5',
+    },
+    {
+      label: 'Live datakilder',
+      value: `${availableAdminDataFeeds}/9`,
+      tone: '#0f766e',
+      background: '#ecfdf5',
+    },
+    {
+      label: 'Sesjon',
+      value: hasSessionToken ? 'Aktiv' : 'Mangler token',
+      tone: hasSessionToken ? '#1d4ed8' : '#b91c1c',
+      background: hasSessionToken ? '#eff6ff' : '#fef2f2',
+    },
+  ];
 
   useEffect(() => {
     if (isMobile) {
@@ -978,7 +1081,7 @@ export default function AdminDashboard({
   }
 
   // Show login prompt if not authenticated
-  if (userError || !currentUser || !currentUser.isAdmin) {
+  if (userError || !currentUser) {
     return (
       <Container maxWidth="lg" sx={{ py: 4 }}>
         <Card sx={{ p: 4, textAlign: 'center' }}>
@@ -1043,13 +1146,168 @@ export default function AdminDashboard({
   };
 
   const renderOverviewPanel = () => (
-    <Grid container spacing={{ xs: 2, sm: 3 }}>
-      <Grid item xs={12}>
-        <AdminErrorBoundary>
-          <AdminStats userEmail={currentUser.email} />
-        </AdminErrorBoundary>
+    <Box sx={{ display: 'grid', gap: 3 }}>
+      <Grid container spacing={{ xs: 2, sm: 3 }}>
+        <Grid item xs={12} xl={7}>
+          <Card
+            sx={{
+              borderRadius: '24px',
+              border: '1px solid #eadfce',
+              background:
+                'linear-gradient(135deg, rgba(255, 248, 237, 0.96), rgba(255, 255, 255, 0.98))',
+              boxShadow: '0 22px 44px rgba(27, 21, 12, 0.06)',
+            }}
+          >
+            <CardContent sx={{ p: { xs: 2.25, md: 3 } }}>
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: { xs: 'flex-start', md: 'center' },
+                  justifyContent: 'space-between',
+                  gap: 2,
+                  flexDirection: { xs: 'column', md: 'row' },
+                  mb: 2.5,
+                }}
+              >
+                <Box>
+                  <Typography
+                    sx={{
+                      fontSize: '0.72rem',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.12em',
+                      color: '#8b5e34',
+                      fontWeight: 700,
+                    }}
+                  >
+                    Workspace Control
+                  </Typography>
+                  <Typography variant="h5" sx={{ mt: 0.75, fontWeight: 700, color: '#181512' }}>
+                    Rask tilgang til adminoppgavene som brukes mest
+                  </Typography>
+                  <Typography sx={{ mt: 0.75, color: '#6b6257', maxWidth: 620 }}>
+                    Hopp direkte til brukere, prisstyring og drift uten å lete i sidebar. Dette
+                    er den operative startflaten for Daniel som full admin.
+                  </Typography>
+                </Box>
+                <Chip
+                  label={`${adminTabs.length} adminflater`}
+                  sx={{
+                    bgcolor: '#ffffff',
+                    border: '1px solid #eadfce',
+                    fontWeight: 700,
+                    color: '#5d5347',
+                  }}
+                />
+              </Box>
+
+              <Grid container spacing={1.5}>
+                {overviewQuickActions.map((action) => (
+                  <Grid item xs={12} sm={6} key={action.label}>
+                    <Button
+                      fullWidth
+                      onClick={action.action}
+                      sx={{
+                        p: 1.5,
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'flex-start',
+                        borderRadius: '18px',
+                        border: '1px solid #e6dccd',
+                        bgcolor: '#fffdf9',
+                        color: '#1f1b16',
+                        textTransform: 'none',
+                        boxShadow: 'none',
+                        '&:hover': {
+                          bgcolor: '#ffffff',
+                          borderColor: '#d7c5ad',
+                          boxShadow: '0 10px 24px rgba(27, 21, 12, 0.08)',
+                        },
+                      }}
+                    >
+                      <Box sx={{ textAlign: 'left' }}>
+                        <Typography sx={{ fontWeight: 700 }}>{action.label}</Typography>
+                        <Typography sx={{ mt: 0.4, fontSize: '0.8rem', color: '#7a7063' }}>
+                          {action.description}
+                        </Typography>
+                      </Box>
+                      <ExpandMore
+                        sx={{
+                          color: '#8b8378',
+                          transform: 'rotate(-90deg)',
+                        }}
+                      />
+                    </Button>
+                  </Grid>
+                ))}
+              </Grid>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} xl={5}>
+          <Card
+            sx={{
+              borderRadius: '24px',
+              border: '1px solid #eadfce',
+              bgcolor: '#ffffff',
+              boxShadow: '0 22px 44px rgba(27, 21, 12, 0.06)',
+              height: '100%',
+            }}
+          >
+            <CardContent sx={{ p: { xs: 2.25, md: 3 } }}>
+              <Typography
+                sx={{
+                  fontSize: '0.72rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.12em',
+                  color: '#8b5e34',
+                  fontWeight: 700,
+                }}
+              >
+                Admin Status
+              </Typography>
+              <Typography variant="h5" sx={{ mt: 0.75, fontWeight: 700, color: '#181512' }}>
+                Operativt snapshot
+              </Typography>
+              <Typography sx={{ mt: 0.75, color: '#6b6257' }}>
+                Et raskt bilde av tilgang, datakilder og session før du går videre inn i
+                detaljene.
+              </Typography>
+
+              <Grid container spacing={1.5} sx={{ mt: 1 }}>
+                {overviewStatusCards.map((card) => (
+                  <Grid item xs={12} sm={4} xl={12} key={card.label}>
+                    <Box
+                      sx={{
+                        borderRadius: '18px',
+                        px: 1.75,
+                        py: 1.5,
+                        bgcolor: card.background,
+                        border: '1px solid rgba(15, 23, 42, 0.04)',
+                      }}
+                    >
+                      <Typography sx={{ fontSize: '0.72rem', color: '#766d61', fontWeight: 700 }}>
+                        {card.label}
+                      </Typography>
+                      <Typography sx={{ mt: 0.5, fontWeight: 700, color: card.tone }}>
+                        {card.value}
+                      </Typography>
+                    </Box>
+                  </Grid>
+                ))}
+              </Grid>
+            </CardContent>
+          </Card>
+        </Grid>
       </Grid>
-      <Grid item xs={12}>
+
+      <Box>
+        <AdminErrorBoundary>
+          <AdminStats userEmail={currentUser.email} isAdmin={currentUser.isAdmin} />
+        </AdminErrorBoundary>
+      </Box>
+
+      <Box>
         <AdminErrorBoundary>
           <EnhancedActivityFeed
             maxItems={20}
@@ -1061,8 +1319,8 @@ export default function AdminDashboard({
             enableNotifications={true}
           />
         </AdminErrorBoundary>
-      </Grid>
-    </Grid>
+      </Box>
+    </Box>
   );
 
   const renderAcademyPanel = () => (
@@ -1467,7 +1725,12 @@ export default function AdminDashboard({
       case 'okonomi':
         return <BillingManagementPanel {...sharedPanelProps} />;
       case 'price-management':
-        return <PriceManagementDashboard {...sharedPanelProps} />;
+        return (
+          <PriceManagementDashboard
+            {...sharedPanelProps}
+            initialSection={priceManagementSection}
+          />
+        );
       case 'reports':
         return (
           <Box sx={{ display: 'grid', gap: 3 }}>
@@ -1634,55 +1897,155 @@ export default function AdminDashboard({
               </Typography>
             </Box>
 
-            <Box sx={{ mt: 4, flex: 1, overflowY: 'auto', pr: 0.5 }}>
-              {adminShellGroups.map((group) => (
+            <Box sx={{ mt: 3, mb: 2 }}>
+              <TextField
+                fullWidth
+                size="small"
+                placeholder="Finn adminområde"
+                value={adminNavQuery}
+                onChange={(event) => setAdminNavQuery(event.target.value)}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Search sx={{ fontSize: 18, color: '#9a9185' }} />
+                    </InputAdornment>
+                  ),
+                }}
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    borderRadius: '14px',
+                    bgcolor: '#ffffff',
+                    '& fieldset': {
+                      borderColor: '#e6dccd',
+                    },
+                  },
+                  '& .MuiInputBase-input': {
+                    fontSize: '0.88rem',
+                  },
+                }}
+              />
+              <Typography sx={{ mt: 0.75, px: 0.5, fontSize: '0.72rem', color: '#9a9185' }}>
+                {normalizedAdminNavQuery
+                  ? `${visibleAdminTabCount} treff i adminen`
+                  : `${adminTabs.length} adminflater tilgjengelig`}
+              </Typography>
+            </Box>
+
+            <Box sx={{ mt: 1.5, flex: 1, overflowY: 'auto', pr: 0.5 }}>
+              {filteredAdminShellGroups.map((group) => (
                 <Box key={group.label} sx={{ mb: 3 }}>
-                  <Typography
+                  <Box
+                    onClick={() => toggleAdminShellGroup(group.label)}
                     sx={{
-                      mb: 1,
+                      mb: 1.1,
                       px: 1.25,
-                      fontSize: '0.72rem',
-                      letterSpacing: '0.1em',
-                      textTransform: 'uppercase',
-                      color: '#9a9185',
-                      fontWeight: 700,
+                      py: 0.6,
+                      borderRadius: '12px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 1,
+                      cursor: 'pointer',
+                      '&:hover': {
+                        bgcolor: '#f5f2ed',
+                      },
                     }}
                   >
-                    {group.label}
-                  </Typography>
-                  <Box sx={{ display: 'grid', gap: 0.5 }}>
-                    {group.items.map((tab) => {
-                      const tabIndex = tabIndexFor(tab.id);
-                      const IconComponent = tab.icon;
-                      const isSelected = tabValue === tabIndex;
-                      return (
-                        <Button
-                          key={tab.id}
-                          fullWidth
-                          onClick={() => activateTab(tabIndex)}
-                          startIcon={<IconComponent sx={{ fontSize: 18 }} />}
-                          sx={{
-                            justifyContent: 'flex-start',
-                            minHeight: 40,
-                            px: 1.25,
-                            borderRadius: '12px',
-                            textTransform: 'none',
-                            fontWeight: isSelected ? 700 : 600,
-                            color: isSelected ? '#181512' : '#6c655b',
-                            bgcolor: isSelected ? '#f1eee8' : 'transparent',
-                            '&:hover': {
-                              bgcolor: isSelected ? '#f1eee8' : '#f5f2ed',
-                            },
-                            '& .MuiButton-startIcon': {
-                              color: isSelected ? '#181512' : '#8b8378',
-                            },
-                          }}
-                        >
-                          {tab.label}
-                        </Button>
-                      );
-                    })}
+                    <Typography
+                      sx={{
+                        fontSize: '0.72rem',
+                        letterSpacing: '0.1em',
+                        textTransform: 'uppercase',
+                        color: '#9a9185',
+                        fontWeight: 700,
+                      }}
+                    >
+                      {group.label}
+                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                      <Chip
+                        label={group.items.length}
+                        size="small"
+                        sx={{
+                          height: 22,
+                          bgcolor: '#ffffff',
+                          color: '#7f766b',
+                          fontWeight: 700,
+                          borderRadius: '999px',
+                        }}
+                      />
+                      <ExpandMore
+                        sx={{
+                          fontSize: 18,
+                          color: '#8c8478',
+                          transform:
+                            normalizedAdminNavQuery || (adminGroupExpansion[group.label] ?? true)
+                              ? 'rotate(180deg)'
+                              : 'rotate(0deg)',
+                          transition: 'transform 180ms ease',
+                        }}
+                      />
+                    </Box>
                   </Box>
+                  <Collapse
+                    in={Boolean(normalizedAdminNavQuery) || (adminGroupExpansion[group.label] ?? true)}
+                  >
+                    <Box sx={{ display: 'grid', gap: 0.5 }}>
+                      {group.items.map((tab) => {
+                        const tabIndex = tabIndexFor(tab.id);
+                        const IconComponent = tab.icon;
+                        const isSelected = tabValue === tabIndex;
+                        return (
+                          <Button
+                            key={tab.id}
+                            fullWidth
+                            onClick={() => activateTab(tabIndex)}
+                            startIcon={<IconComponent sx={{ fontSize: 18 }} />}
+                            sx={{
+                              justifyContent: 'flex-start',
+                              minHeight: 44,
+                              px: 1.25,
+                              borderRadius: '14px',
+                              textTransform: 'none',
+                              fontWeight: isSelected ? 700 : 600,
+                              color: isSelected ? '#181512' : '#6c655b',
+                              bgcolor: isSelected ? '#f1eee8' : 'transparent',
+                              border: isSelected
+                                ? '1px solid rgba(140, 94, 52, 0.12)'
+                                : '1px solid transparent',
+                              '&:hover': {
+                                bgcolor: isSelected ? '#f1eee8' : '#f5f2ed',
+                              },
+                              '& .MuiButton-startIcon': {
+                                color: isSelected ? '#181512' : '#8b8378',
+                              },
+                            }}
+                          >
+                            <Box sx={{ textAlign: 'left' }}>
+                              <Typography sx={{ fontSize: '0.88rem', fontWeight: 'inherit' }}>
+                                {tab.label}
+                              </Typography>
+                              {normalizedAdminNavQuery ? (
+                                <Typography
+                                  sx={{
+                                    mt: 0.15,
+                                    fontSize: '0.72rem',
+                                    color: '#8c8478',
+                                    maxWidth: 190,
+                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                  }}
+                                >
+                                  {adminTabDescriptions[tab.id]}
+                                </Typography>
+                              ) : null}
+                            </Box>
+                          </Button>
+                        );
+                      })}
+                    </Box>
+                  </Collapse>
                 </Box>
               ))}
             </Box>
@@ -1749,11 +2112,43 @@ export default function AdminDashboard({
                 <Typography sx={{ mt: 0.5, fontSize: '0.84rem', color: '#7d7468', maxWidth: 720 }}>
                   {currentTabDescription}
                 </Typography>
+                <Box sx={{ mt: 1.5, display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                  <Chip
+                    label={currentUser.isAdmin ? 'Full admin' : 'Begrenset tilgang'}
+                    size="small"
+                    sx={{
+                      bgcolor: '#fff4e5',
+                      color: '#8c4d00',
+                      fontWeight: 700,
+                      borderRadius: '999px',
+                    }}
+                  />
+                  <Chip
+                    label={`${availableAdminDataFeeds}/9 datakilder live`}
+                    size="small"
+                    sx={{
+                      bgcolor: '#ecfdf5',
+                      color: '#0f766e',
+                      fontWeight: 700,
+                      borderRadius: '999px',
+                    }}
+                  />
+                  <Chip
+                    label={hasSessionToken ? 'Sesjon aktiv' : 'Sesjon mangler'}
+                    size="small"
+                    sx={{
+                      bgcolor: hasSessionToken ? '#eff6ff' : '#fef2f2',
+                      color: hasSessionToken ? '#1d4ed8' : '#b91c1c',
+                      fontWeight: 700,
+                      borderRadius: '999px',
+                    }}
+                  />
+                </Box>
               </Box>
 
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
                 <Chip
-                  label="Administrator"
+                  label={currentUser.isAdmin ? 'Administrator' : 'Tilgang'}
                   size="small"
                   sx={{
                     bgcolor: '#f6ede0',

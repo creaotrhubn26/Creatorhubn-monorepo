@@ -192,6 +192,12 @@ interface CreatorHubFeature {
 }
 
 type WorkflowPayload = Record<string, unknown>;
+type PriceManagementSection =
+  | 'platform-flags'
+  | 'subscriptions'
+  | 'email-templates'
+  | 'analytics'
+  | 'enterprise';
 
 interface PriceManagementDashboardProps {
   onMeetingCreate?: (meeting: WorkflowPayload) => void;
@@ -207,6 +213,7 @@ interface PriceManagementDashboardProps {
   selectedClient?: WorkflowPayload;
   onSettingsUpdate?: (settings: WorkflowPayload) => void;
   onNotificationCreate?: (notification: WorkflowPayload) => void;
+  initialSection?: PriceManagementSection;
 }
 
 const professionColors: Record<ProfessionKey, string> = {
@@ -473,6 +480,7 @@ export default function PriceManagementDashboard({
   onSettingsUpdate,
   onNotificationCreate,
   selectedProject,
+  initialSection = 'subscriptions',
 }: PriceManagementDashboardProps) {
   const [tabValue, setTabValue] = useState(0);
   const [features, setFeatures] = useState<FeatureToggle[]>([]);
@@ -529,6 +537,17 @@ export default function PriceManagementDashboard({
     editingEmailTemplateId,
     creatorHubEmailSettings,
   );
+  const sectionToIndex: Record<PriceManagementSection, number> = {
+    'platform-flags': 0,
+    subscriptions: 1,
+    'email-templates': 2,
+    analytics: 3,
+    enterprise: 4,
+  };
+
+  useEffect(() => {
+    setTabValue(sectionToIndex[initialSection] ?? 1);
+  }, [initialSection]);
 
   useEffect(() => {
     let mounted = true;
@@ -1065,6 +1084,12 @@ export default function PriceManagementDashboard({
             {highlightedPlan ? (
               <Chip
                 label={`Hovedplan: ${highlightedPlan.name}`}
+                sx={{ bgcolor: '#ffffff', border: '1px solid rgba(15, 52, 96, 0.08)' }}
+              />
+            ) : null}
+            {!plans.some((plan) => plan.monthlyPrice === 0 && plan.isActive) ? (
+              <Chip
+                label="Ingen free-plan offentlig"
                 sx={{ bgcolor: '#ffffff', border: '1px solid rgba(15, 52, 96, 0.08)' }}
               />
             ) : null}
