@@ -18,9 +18,63 @@ import { ArrowBack as ArrowBackIcon, Home as HomeIcon } from '@mui/icons-materia
 import SubscriptionSelectionFlow from '../components/subscription/SubscriptionSelectionFlow';
 import PaymentStatusVerification from '../components/subscription/PaymentStatusVerification';
 import { apiRequest } from '../lib/queryClient';
+import { useLanguage, type AppLanguage } from '../components/language-provider';
+
+const normalizeAppLanguage = (value: string | null | undefined): AppLanguage =>
+  value === 'en' ? 'en' : 'no';
+
+const subscriptionPageCopy: Record<
+  AppLanguage,
+  {
+    commerceLabel: string;
+    title: string;
+    subtitle: string;
+    back: string;
+    cancelled: string;
+    successLabel: string;
+    successTitle: string;
+    successSubtitle: string;
+    backHome: string;
+    successInfo: string;
+  }
+> = {
+  no: {
+    commerceLabel: 'CreatorHub Commerce',
+    title: 'Velg CreatorHub-abonnement',
+    subtitle:
+      'Velg plan, sammenlign månedlig og årlig fakturering, og gå videre til Stripe Checkout i en flyt som matcher CreatorHub-landingen.',
+    back: 'Tilbake',
+    cancelled:
+      'Stripe Checkout ble avbrutt. Den valgte planen din er fortsatt valgt, så du kan fortsette når du er klar.',
+    successLabel: 'CreatorHub Checkout',
+    successTitle: 'Betaling fullført',
+    successSubtitle:
+      'CreatorHub-abonnementet ditt er aktivert. Herfra kan du gå tilbake til hjemsiden eller fortsette med medlemskapsverifiseringen.',
+    backHome: 'Tilbake til hjem',
+    successInfo:
+      'Stripe-betalingen er registrert. CreatorHub oppdaterer medlemskap og tilgang etter bekreftet betaling.',
+  },
+  en: {
+    commerceLabel: 'CreatorHub Commerce',
+    title: 'Choose your CreatorHub subscription',
+    subtitle:
+      'Pick a plan, compare monthly and annual billing, and continue to Stripe Checkout in a flow that matches the CreatorHub landing page.',
+    back: 'Back',
+    cancelled:
+      'Stripe Checkout was cancelled. Your selected plan is still saved, so you can continue whenever you are ready.',
+    successLabel: 'CreatorHub Checkout',
+    successTitle: 'Payment completed',
+    successSubtitle:
+      'Your CreatorHub subscription is now active. From here you can go back home or continue with membership verification.',
+    backHome: 'Back to home',
+    successInfo:
+      'The Stripe payment has been recorded. CreatorHub updates membership and access after the payment is confirmed.',
+  },
+};
 
 export default function SubscriptionSelectionPage() {
   const [, navigate] = useLocation();
+  const { language, setLanguage } = useLanguage();
   const [showPaymentStatus, setShowPaymentStatus] = useState(false);
   const [paymentData, setPaymentData] = useState<any>(null);
 
@@ -33,8 +87,18 @@ export default function SubscriptionSelectionPage() {
   const requestId = urlParams.get('requestId');
   const fromInvite = urlParams.get('fromInvite') === 'true';
   const stripeSessionId = urlParams.get('session_id');
+  const hasLanguageParam = urlParams.has('lang');
+  const requestedLanguage = normalizeAppLanguage(urlParams.get('lang'));
+  const resolvedLanguage = hasLanguageParam ? requestedLanguage : language;
+  const copy = subscriptionPageCopy[resolvedLanguage];
   const isCreatorHubCheckout = profession === 'creatorhub';
   const theming = useTheming(isCreatorHubCheckout ? 'vendor' : profession);
+
+  useEffect(() => {
+    if (hasLanguageParam && language !== requestedLanguage) {
+      setLanguage(requestedLanguage);
+    }
+  }, [hasLanguageParam, language, requestedLanguage, setLanguage]);
 
   // Check if user came from payment completion
   const paymentCompleted = urlParams.get('payment') === 'success';
@@ -221,14 +285,13 @@ export default function SubscriptionSelectionPage() {
                 mb: 1,
               }}
             >
-              CreatorHub Checkout
+              {copy.successLabel}
             </Typography>
             <Typography variant="h3" sx={{ fontWeight: 800, color: '#fff', mb: 1 }}>
-              Betaling fullført
+              {copy.successTitle}
             </Typography>
             <Typography variant="h6" sx={{ color: 'rgba(255,255,255,0.72)', maxWidth: 720 }}>
-              CreatorHub-abonnementet ditt er aktivert. Herfra kan du gå tilbake til hjemsiden eller fortsette
-              med medlemskapsverifiseringen.
+              {copy.successSubtitle}
             </Typography>
           </Box>
 
@@ -256,7 +319,7 @@ export default function SubscriptionSelectionPage() {
                 },
               }}
             >
-              Tilbake til hjem
+              {copy.backHome}
             </Button>
             <Alert
               severity="info"
@@ -271,7 +334,7 @@ export default function SubscriptionSelectionPage() {
               }}
             >
               <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.74)' }}>
-                Stripe-betalingen er registrert. CreatorHub oppdaterer medlemskap og tilgang etter bekreftet betaling.
+                {copy.successInfo}
               </Typography>
             </Alert>
           </Box>
@@ -328,16 +391,15 @@ export default function SubscriptionSelectionPage() {
                   color: 'rgba(255,186,108,0.84)',
                   fontWeight: 700,
                   mb: 1,
-                }}
-              >
-                CreatorHub Commerce
+              }}
+            >
+                {copy.commerceLabel}
               </Typography>
               <Typography variant="h3" sx={{ fontWeight: 800, color: '#fff', mb: 1.2 }}>
-                Velg CreatorHub-abonnement
+                {copy.title}
               </Typography>
               <Typography variant="h6" sx={{ color: 'rgba(255,255,255,0.72)', lineHeight: 1.6 }}>
-                Velg plan, sammenlign månedlig og årlig fakturering, og gå videre til Stripe Checkout i en flyt som
-                matcher CreatorHub-landingen.
+                {copy.subtitle}
               </Typography>
             </Box>
             <Button
@@ -357,7 +419,7 @@ export default function SubscriptionSelectionPage() {
                 },
               }}
             >
-              Tilbake
+              {copy.back}
             </Button>
           </Stack>
         </Box>
@@ -372,12 +434,13 @@ export default function SubscriptionSelectionPage() {
               color: '#fff',
             }}
           >
-            Stripe Checkout ble avbrutt. Den valgte planen din er fortsatt valgt, så du kan fortsette når du er klar.
+            {copy.cancelled}
           </Alert>
         )}
 
         <SubscriptionSelectionFlow
           profession={profession}
+          language={resolvedLanguage}
           requestId={requestId}
           initialPlanId={initialPlanId}
           initialBillingCycle={initialBillingCycle}

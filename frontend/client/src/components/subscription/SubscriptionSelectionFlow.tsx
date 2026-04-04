@@ -42,6 +42,7 @@ import {
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
+import type { AppLanguage } from '@/components/language-provider';
 
 interface SubscriptionPlan {
   id: string;
@@ -97,6 +98,7 @@ const PROFESSION_COLORS = {
 
 interface SubscriptionSelectionFlowProps {
   profession: string;
+  language?: AppLanguage;
   requestId?: string | null;
   initialPlanId?: string | null;
   initialBillingCycle?: BillingCycle | null;
@@ -109,8 +111,217 @@ interface SubscriptionSelectionFlowProps {
   onBack?: () => void;
 }
 
+const subscriptionFlowCopy: Record<
+  AppLanguage,
+  {
+    planLabel: string;
+    planSummaryLabel: string;
+    priceLabel: string;
+    billingLabel: string;
+    billingMonthly: string;
+    billingYearly: string;
+    cadenceMonth: string;
+    cadenceYear: string;
+    choosePlanTitle: string;
+    choosePlanDescription: string;
+    paymentFailedTitle: string;
+    paymentFailedDescription: string;
+    paymentCompletedTitle: string;
+    paymentCompletedDescription: string;
+    redirectingTitle: string;
+    redirectingDescription: string;
+    enterpriseTitle: string;
+    enterpriseDescription: string;
+    enterpriseEmailSubject: string;
+    paymentUnavailableTitle: string;
+    paymentUnavailableDescription: string;
+    loadingTitle: string;
+    loadingDescription: string;
+    errorTitle: string;
+    unknownError: string;
+    professionLabel: string;
+    noPlansTitle: string;
+    noPlansDescription: (profession: string) => string;
+    back: string;
+    heroTitle: string;
+    heroDescription: string;
+    checklist: string[];
+    billingToggleTitle: string;
+    billingToggleDescription: string;
+    yearlyBadge: string;
+    selectedButton: string;
+    choosePlanButton: string;
+    contactSales: string;
+    stripeCheckoutHint: string;
+    continueToPayment: string;
+    paymentComingSoon: string;
+    paymentComingSoonInline: string;
+    dialogTitle: string;
+    dialogReady: string;
+    dialogDescription: string;
+    stripeCardBody: string;
+    summaryTitle: string;
+    redirectNotice: string;
+    afterPaymentTitle: string;
+    afterPaymentCreated: (planName: string) => string;
+    afterPaymentReturn: string;
+    afterPaymentManage: string;
+    cancel: string;
+    goToStripe: string;
+    sendingToStripe: string;
+  }
+> = {
+  no: {
+    planLabel: 'CreatorHub-abonnement',
+    planSummaryLabel: 'Plan',
+    priceLabel: 'Pris',
+    billingLabel: 'Fakturering',
+    billingMonthly: 'Månedlig',
+    billingYearly: 'Årlig',
+    cadenceMonth: 'måned',
+    cadenceYear: 'år',
+    choosePlanTitle: 'Velg en plan',
+    choosePlanDescription: 'Du må velge en abonnementsplan før du kan fortsette',
+    paymentFailedTitle: 'Betaling feilet',
+    paymentFailedDescription: 'Kunne ikke fullføre betalingen',
+    paymentCompletedTitle: 'Betaling fullført',
+    paymentCompletedDescription:
+      'Abonnementet ditt er aktivert. Du får e-post med bekreftelse og videre tilgang.',
+    redirectingTitle: 'Sender deg til Stripe',
+    redirectingDescription: 'Du blir sendt til sikker betaling i Stripe Checkout.',
+    enterpriseTitle: 'Enterprise settes opp med CreatorHub',
+    enterpriseDescription: 'Kontakt kontakt@creatorhubn.com for demo, onboarding og tilbud.',
+    enterpriseEmailSubject: 'CreatorHub Enterprise – forespørsel om demo og tilbud',
+    paymentUnavailableTitle: 'Betaling midlertidig utilgjengelig',
+    paymentUnavailableDescription:
+      'Abonnementsplanene er tilgjengelige, men betalingsgatewayene er ikke aktivert på serveren ennå.',
+    loadingTitle: 'Laster abonnementssiden',
+    loadingDescription:
+      'Vi henter planer, priser og faktureringsvalg fra CreatorHub slik at landingssiden og checkout-flyten viser samme informasjon.',
+    errorTitle: 'Kunne ikke laste abonnementsplaner',
+    unknownError: 'En ukjent feil oppstod',
+    professionLabel: 'Profesjon',
+    noPlansTitle: 'Ingen abonnementsplaner tilgjengelig',
+    noPlansDescription: (profession) =>
+      `Det er for øyeblikket ingen abonnementsplaner tilgjengelig for ${profession}. Vennligst kontakt support for mer informasjon.`,
+    back: 'Tilbake',
+    heroTitle: 'Velg nivået som matcher arbeidsflyten din, og fullfør betalingen i Stripe.',
+    heroDescription:
+      'Du velger plan her, går til sikker betaling i Stripe Checkout, og returnerer deretter til CreatorHub med bekreftet abonnement.',
+    checklist: [
+      'Sikker betaling via Stripe Checkout',
+      'Bytt mellom månedlig og årlig fakturering uten å skifte flyt',
+      'Enterprise settes opp separat med demo og onboarding',
+      'Returnerer automatisk til CreatorHub etter betaling',
+    ],
+    billingToggleTitle: 'Velg fakturering',
+    billingToggleDescription:
+      'Årlig fakturering gir høyere kontraktsverdi og holder prisen tydelig med 2 måneder gratis.',
+    yearlyBadge: '2 måneder gratis på alle selvbetjente årsplaner',
+    selectedButton: '✓ Valgt',
+    choosePlanButton: 'Velg plan',
+    contactSales: 'Kontakt salg',
+    stripeCheckoutHint:
+      'Stripe viser full betalingsdetalj og eventuell avgiftsberegning i checkout før du bekrefter.',
+    continueToPayment: 'Fortsett til betaling',
+    paymentComingSoon: 'Betaling kommer snart',
+    paymentComingSoonInline:
+      'Online betaling er midlertidig utilgjengelig. Planene kan fortsatt vises, men checkout aktiveres først når betalingsrutene er koblet til backenden.',
+    dialogTitle: 'Bekreft planen før du går til Stripe',
+    dialogReady: 'Klar til sikker betaling i Stripe Checkout.',
+    dialogDescription:
+      'Her ser du akkurat hva som aktiveres. Når du fortsetter, åpnes Stripe Checkout i samme flyt og du returnerer til CreatorHub med oppdatert abonnementsstatus.',
+    stripeCardBody:
+      'Kortdetaljer, kvittering og eventuell avgiftsberegning håndteres på Stripes sikre betalingsside.',
+    summaryTitle: 'Oppsummering',
+    redirectNotice:
+      'Du blir sendt til Stripe Checkout for å fullføre abonnementet på en sikker side før du returnerer til CreatorHub.',
+    afterPaymentTitle: 'Hva skjer etter betaling',
+    afterPaymentCreated: (planName) => `Abonnementet på ${planName} opprettes i Stripe.`,
+    afterPaymentReturn: 'Du sendes tilbake til CreatorHub med oppdatert status.',
+    afterPaymentManage: 'Du kan administrere abonnementet videre fra CreatorHub.',
+    cancel: 'Avbryt',
+    goToStripe: 'Gå til Stripe Checkout',
+    sendingToStripe: 'Sender til Stripe...',
+  },
+  en: {
+    planLabel: 'CreatorHub subscription',
+    planSummaryLabel: 'Plan',
+    priceLabel: 'Price',
+    billingLabel: 'Billing',
+    billingMonthly: 'Monthly',
+    billingYearly: 'Annual',
+    cadenceMonth: 'month',
+    cadenceYear: 'year',
+    choosePlanTitle: 'Choose a plan',
+    choosePlanDescription: 'You need to choose a subscription plan before continuing.',
+    paymentFailedTitle: 'Payment failed',
+    paymentFailedDescription: 'Could not complete the payment.',
+    paymentCompletedTitle: 'Payment completed',
+    paymentCompletedDescription:
+      'Your subscription is active. You will receive a confirmation email with next steps and access details.',
+    redirectingTitle: 'Sending you to Stripe',
+    redirectingDescription: 'You are being sent to secure payment in Stripe Checkout.',
+    enterpriseTitle: 'Enterprise is handled with CreatorHub',
+    enterpriseDescription: 'Contact kontakt@creatorhubn.com for a demo, onboarding, and pricing.',
+    enterpriseEmailSubject: 'CreatorHub Enterprise - request demo and pricing',
+    paymentUnavailableTitle: 'Payments are temporarily unavailable',
+    paymentUnavailableDescription:
+      'The subscription plans are available, but the payment gateways are not activated on the server yet.',
+    loadingTitle: 'Loading subscription page',
+    loadingDescription:
+      'We are loading plans, pricing, and billing options from CreatorHub so the landing page and checkout flow show the same information.',
+    errorTitle: 'Could not load subscription plans',
+    unknownError: 'An unknown error occurred',
+    professionLabel: 'Profession',
+    noPlansTitle: 'No subscription plans available',
+    noPlansDescription: (profession) =>
+      `There are currently no subscription plans available for ${profession}. Please contact support for more information.`,
+    back: 'Back',
+    heroTitle: 'Choose the level that matches your workflow and complete payment with Stripe.',
+    heroDescription:
+      'Select your plan here, move to secure payment in Stripe Checkout, and return to CreatorHub with a confirmed subscription.',
+    checklist: [
+      'Secure payment through Stripe Checkout',
+      'Switch between monthly and annual billing without leaving the flow',
+      'Enterprise is handled separately with demo and onboarding',
+      'Automatically returns to CreatorHub after payment',
+    ],
+    billingToggleTitle: 'Choose billing',
+    billingToggleDescription:
+      'Annual billing increases contract value and keeps pricing clear with 2 months free.',
+    yearlyBadge: '2 months free on all annual self-serve plans',
+    selectedButton: '✓ Selected',
+    choosePlanButton: 'Choose plan',
+    contactSales: 'Contact sales',
+    stripeCheckoutHint:
+      'Stripe shows the full payment breakdown and any tax calculation in checkout before you confirm.',
+    continueToPayment: 'Continue to payment',
+    paymentComingSoon: 'Payment coming soon',
+    paymentComingSoonInline:
+      'Online payments are temporarily unavailable. Plans can still be viewed, but checkout will be activated once the payment routes are connected to the backend.',
+    dialogTitle: 'Confirm your plan before going to Stripe',
+    dialogReady: 'Ready for secure payment in Stripe Checkout.',
+    dialogDescription:
+      'This shows exactly what will be activated. When you continue, Stripe Checkout opens in the same flow and returns you to CreatorHub with an updated subscription status.',
+    stripeCardBody:
+      'Card details, receipts, and any tax calculation are handled on Stripe’s secure payment page.',
+    summaryTitle: 'Summary',
+    redirectNotice:
+      'You will be sent to Stripe Checkout to complete the subscription on a secure page before returning to CreatorHub.',
+    afterPaymentTitle: 'What happens after payment',
+    afterPaymentCreated: (planName) => `The subscription for ${planName} is created in Stripe.`,
+    afterPaymentReturn: 'You are sent back to CreatorHub with an updated status.',
+    afterPaymentManage: 'You can continue managing the subscription from CreatorHub.',
+    cancel: 'Cancel',
+    goToStripe: 'Go to Stripe Checkout',
+    sendingToStripe: 'Sending to Stripe...',
+  },
+};
+
 export default function SubscriptionSelectionFlow({
   profession: propProfession,
+  language = 'no',
   requestId,
   initialPlanId,
   initialBillingCycle,
@@ -125,6 +336,8 @@ export default function SubscriptionSelectionFlow({
 
   const activeProfession =
     propProfession || adapterProfession || (user as any)?.profession || 'creatorhub';
+  const locale = language === 'en' ? 'en' : 'no';
+  const copy = subscriptionFlowCopy[locale];
 
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
   const [selectedBillingCycle, setSelectedBillingCycle] = useState<BillingCycle>(
@@ -250,7 +463,7 @@ export default function SubscriptionSelectionFlow({
   };
 
   const resolveCadenceLabel = (billingCycle = selectedBillingCycle) =>
-    billingCycle === 'yearly' ? 'år' : 'måned';
+    billingCycle === 'yearly' ? copy.cadenceYear : copy.cadenceMonth;
 
   useEffect(() => {
     if (!initialPlanId || plans.length === 0 || selectedPlan) {
@@ -299,8 +512,8 @@ export default function SubscriptionSelectionFlow({
     onSuccess: (result) => {
       if (typeof (result as any)?.checkoutUrl === 'string' && (result as any).checkoutUrl.length > 0) {
         toast({
-          title: 'Sender deg til Stripe',
-          description: 'Du blir sendt til sikker betaling i Stripe Checkout.',
+          title: copy.redirectingTitle,
+          description: copy.redirectingDescription,
           variant: 'default',
         });
         window.location.assign((result as any).checkoutUrl);
@@ -324,8 +537,8 @@ export default function SubscriptionSelectionFlow({
       localStorage.setItem('paymentCompleted', JSON.stringify(payload));
 
       toast({
-        title: 'Betaling fullført, !',
-        description: 'Din abonnementsplan er aktivert. Admin vil sende deg en e-post med tilgang.',
+        title: copy.paymentCompletedTitle,
+        description: copy.paymentCompletedDescription,
         variant: 'default',
       });
 
@@ -340,14 +553,15 @@ export default function SubscriptionSelectionFlow({
       if (fromInvite) {
         nextParams.set('fromInvite', 'true');
       }
+      nextParams.set('lang', locale);
 
       navigate(`/subscription-selection?${nextParams.toString()}`);
       onComplete?.(selectedPlan!, selectedPaymentMethod, transactionId);
     },
     onError: (error) => {
       toast({
-        title: 'Betaling feilet',
-        description: error.message || 'Kunne ikke fullføre betalingen',
+        title: copy.paymentFailedTitle,
+        description: error.message || copy.paymentFailedDescription,
         variant: 'destructive',
       });
     },
@@ -358,7 +572,7 @@ export default function SubscriptionSelectionFlow({
   });
 
   const formatPrice = (price: number, currency: string) => {
-    return new Intl.NumberFormat('nb-NO', {
+    return new Intl.NumberFormat(locale === 'en' ? 'en-US' : 'nb-NO', {
       style: 'currency',
       currency,
       minimumFractionDigits: 0,
@@ -378,9 +592,12 @@ export default function SubscriptionSelectionFlow({
 
   const selectedPlanSummaryRows = selectedPlan
     ? [
-        { label: 'Plan', value: selectedPlan.name },
-        { label: 'Pris', value: `${selectedPlanPriceLabel} / ${resolveCadenceLabel()}` },
-        { label: 'Fakturering', value: selectedBillingCycle === 'yearly' ? 'Årlig' : 'Månedlig' },
+        { label: copy.planSummaryLabel, value: selectedPlan.name },
+        { label: copy.priceLabel, value: `${selectedPlanPriceLabel} / ${resolveCadenceLabel()}` },
+        {
+          label: copy.billingLabel,
+          value: selectedBillingCycle === 'yearly' ? copy.billingYearly : copy.billingMonthly,
+        },
       ]
     : [];
 
@@ -405,8 +622,8 @@ export default function SubscriptionSelectionFlow({
   const handleContinueToPayment = () => {
     if (!selectedPlan) {
       toast({
-        title: 'Velg en plan',
-        description: 'Du må velge en abonnementsplan før du kan fortsette',
+        title: copy.choosePlanTitle,
+        description: copy.choosePlanDescription,
         variant: 'destructive',
       });
       return;
@@ -414,20 +631,20 @@ export default function SubscriptionSelectionFlow({
 
     if (selectedPlan.contactSalesOnly) {
       toast({
-        title: 'Enterprise settes opp med CreatorHub',
-        description: 'Kontakt kontakt@creatorhubn.com for demo, onboarding og tilbud.',
+        title: copy.enterpriseTitle,
+        description: copy.enterpriseDescription,
         variant: 'default',
       });
       window.location.href =
         'mailto:kontakt@creatorhubn.com?subject=' +
-        encodeURIComponent('CreatorHub Enterprise – forespørsel om demo og tilbud');
+        encodeURIComponent(copy.enterpriseEmailSubject);
       return;
     }
 
     if (availablePaymentMethods.length === 0) {
       toast({
-        title: 'Betaling midlertidig utilgjengelig',
-        description: 'Abonnementsplanene er tilgjengelige, men betalingsgatewayene er ikke aktivert på serveren ennå.',
+        title: copy.paymentUnavailableTitle,
+        description: copy.paymentUnavailableDescription,
         variant: 'destructive',
       });
       return;
@@ -479,14 +696,13 @@ export default function SubscriptionSelectionFlow({
               mb: 1,
             }}
           >
-            CreatorHub-abonnement
+            {copy.planLabel}
           </Typography>
           <Typography variant="h5" sx={{ color: '#fff', fontWeight: 700, mb: 1 }}>
-            Laster abonnementssiden
+            {copy.loadingTitle}
           </Typography>
           <Typography sx={{ color: 'rgba(255,255,255,0.68)', maxWidth: 720, lineHeight: 1.7 }}>
-            Vi henter planer, priser og faktureringsvalg fra CreatorHub slik at landingssiden og checkout-flyten viser
-            samme informasjon.
+            {copy.loadingDescription}
           </Typography>
         </Box>
 
@@ -542,13 +758,13 @@ export default function SubscriptionSelectionFlow({
           }}
         >
           <Typography variant="h6" sx={{ color: '#fff', mb: 1 }}>
-            Kunne ikke laste abonnementsplaner
+            {copy.errorTitle}
           </Typography>
           <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
-            {plansError instanceof Error ? plansError.message : 'En ukjent feil oppstod'}
+            {plansError instanceof Error ? plansError.message : copy.unknownError}
           </Typography>
           <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.5)', display: 'block', mt: 1 }}>
-            Profession: {activeProfession}
+            {copy.professionLabel}: {activeProfession}
           </Typography>
         </Alert>
         {onBack && (
@@ -565,7 +781,7 @@ export default function SubscriptionSelectionFlow({
               }
             }}
           >
-            Tilbake
+            {copy.back}
           </Button>
         )}
       </Box>
@@ -585,14 +801,13 @@ export default function SubscriptionSelectionFlow({
           }}
         >
           <Typography variant="h6" sx={{ color: '#fff', mb: 1 }}>
-            Ingen abonnementsplaner tilgjengelig
+            {copy.noPlansTitle}
           </Typography>
           <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
-            Det er for øyeblikket ingen abonnementsplaner tilgjengelig for {activeProfession}.
-            Vennligst kontakt support for mer informasjon.
+            {copy.noPlansDescription(activeProfession)}
           </Typography>
           <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.5)', display: 'block', mt: 1 }}>
-            Profession: {activeProfession}
+            {copy.professionLabel}: {activeProfession}
           </Typography>
         </Alert>
         {onBack && (
@@ -609,7 +824,7 @@ export default function SubscriptionSelectionFlow({
               }
             }}
           >
-            Tilbake
+            {copy.back}
           </Button>
         )}
       </Box>
@@ -644,7 +859,7 @@ export default function SubscriptionSelectionFlow({
                 fontWeight: 700,
               }}
             >
-              CreatorHub-abonnement
+              {copy.planLabel}
             </Typography>
             <Typography
               variant="h5"
@@ -654,11 +869,10 @@ export default function SubscriptionSelectionFlow({
                 fontSize: { xs: '1.4rem', md: '1.8rem' },
               }}
             >
-              Velg nivået som matcher arbeidsflyten din, og fullfør betalingen i Stripe.
+              {copy.heroTitle}
             </Typography>
             <Typography sx={{ color: 'rgba(255,255,255,0.68)', lineHeight: 1.75 }}>
-              Du velger plan her, går til sikker betaling i Stripe Checkout, og returnerer deretter til CreatorHub
-              med bekreftet abonnement.
+              {copy.heroDescription}
             </Typography>
           </Stack>
 
@@ -669,12 +883,7 @@ export default function SubscriptionSelectionFlow({
               width: { xs: '100%', md: 'auto' },
             }}
           >
-            {[
-              'Sikker betaling via Stripe Checkout',
-              'Bytt mellom månedlig og årlig fakturering uten å skifte flyt',
-              'Enterprise settes opp separat med demo og onboarding',
-              'Returnerer automatisk til CreatorHub etter betaling',
-            ].map((line) => (
+            {copy.checklist.map((line) => (
               <Stack key={line} direction="row" spacing={1.2} alignItems="flex-start">
                 <CheckIcon sx={{ color: '#ffba6c', fontSize: 20, mt: 0.2 }} />
                 <Typography sx={{ color: 'rgba(255,255,255,0.78)', lineHeight: 1.6 }}>
@@ -704,10 +913,10 @@ export default function SubscriptionSelectionFlow({
           >
             <Box>
               <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.6 }}>
-                Velg fakturering
+                {copy.billingToggleTitle}
               </Typography>
               <Typography sx={{ color: 'rgba(255,255,255,0.68)', lineHeight: 1.7 }}>
-                Årlig fakturering gir høyere kontraktsverdi og holder prisen tydelig med 2 måneder gratis.
+                {copy.billingToggleDescription}
               </Typography>
             </Box>
 
@@ -737,8 +946,8 @@ export default function SubscriptionSelectionFlow({
                   },
                 }}
               >
-                <ToggleButton value="monthly">Månedlig</ToggleButton>
-                <ToggleButton value="yearly">Årlig</ToggleButton>
+                <ToggleButton value="monthly">{copy.billingMonthly}</ToggleButton>
+                <ToggleButton value="yearly">{copy.billingYearly}</ToggleButton>
               </ToggleButtonGroup>
               {selectedBillingCycle === 'yearly' ? (
                 <Typography
@@ -749,7 +958,7 @@ export default function SubscriptionSelectionFlow({
                     alignSelf: { xs: 'flex-start', md: 'flex-end' },
                   }}
                 >
-                  2 måneder gratis på alle selvbetjente årsplaner
+                  {copy.yearlyBadge}
                 </Typography>
               ) : null}
             </Stack>
@@ -978,7 +1187,7 @@ export default function SubscriptionSelectionFlow({
                     }
                   }}
                 >
-                  {selectedPlan?.id === plan.id ? '✓ Valgt' : plan.ctaLabel || 'Velg plan'}
+                  {selectedPlan?.id === plan.id ? copy.selectedButton : plan.ctaLabel || copy.choosePlanButton}
                 </Button>
               </CardContent>
             </Card>
@@ -1020,7 +1229,7 @@ export default function SubscriptionSelectionFlow({
                 variant="h6"
                 sx={{ color: '#fff', fontWeight: 700, fontSize: { xs: '1.3rem', md: '1.55rem' } }}
               >
-                {enterprisePlan.publicPriceLabel || 'Kontakt salg'}
+                {enterprisePlan.publicPriceLabel || copy.contactSales}
               </Typography>
               <Typography sx={{ color: 'rgba(255,255,255,0.72)', lineHeight: 1.75, mt: 1 }}>
                 {enterprisePlan.description}
@@ -1044,7 +1253,7 @@ export default function SubscriptionSelectionFlow({
               onClick={() => {
                 window.location.href =
                   'mailto:kontakt@creatorhubn.com?subject=' +
-                  encodeURIComponent('CreatorHub Enterprise – forespørsel om demo og tilbud');
+                  encodeURIComponent(copy.enterpriseEmailSubject);
               }}
               endIcon={<ArrowForwardIcon />}
               sx={{
@@ -1062,7 +1271,7 @@ export default function SubscriptionSelectionFlow({
                 },
               }}
             >
-              {enterprisePlan.ctaLabel || 'Kontakt salg'}
+              {enterprisePlan.ctaLabel || copy.contactSales}
             </Button>
           </Stack>
         </Box>
@@ -1086,18 +1295,18 @@ export default function SubscriptionSelectionFlow({
               },
             }}
           >
-            <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.6 }}>
-              Valgt plan: {selectedPlan.name}
-            </Typography>
-            <Typography sx={{ color: 'rgba(255,255,255,0.72)', lineHeight: 1.7 }}>
-              {formatPrice(resolvePlanPrice(selectedPlan), selectedPlan.currency)} per{' '}
-              {resolveCadenceLabel()}.
+              <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.6 }}>
+              {copy.planSummaryLabel}: {selectedPlan.name}
+              </Typography>
+              <Typography sx={{ color: 'rgba(255,255,255,0.72)', lineHeight: 1.7 }}>
+                {formatPrice(resolvePlanPrice(selectedPlan), selectedPlan.currency)} per{' '}
+                {resolveCadenceLabel()}.
               {selectedBillingCycle === 'yearly' && selectedPlan.yearlySavingsLabel
                 ? ` ${selectedPlan.yearlySavingsLabel}.`
                 : ''}
-              Stripe viser full betalingsdetalj og eventuell avgiftsberegning i checkout før du bekrefter.
-            </Typography>
-          </Alert>
+              {` ${copy.stripeCheckoutHint}`}
+              </Typography>
+            </Alert>
         )}
 
         <Button
@@ -1128,7 +1337,7 @@ export default function SubscriptionSelectionFlow({
             }
           }}
         >
-          {availablePaymentMethods.length === 0 ? 'Betaling kommer snart' : 'Fortsett til betaling'}
+          {availablePaymentMethods.length === 0 ? copy.paymentComingSoon : copy.continueToPayment}
         </Button>
 
         {selectedPlan && availablePaymentMethods.length === 0 && (
@@ -1147,7 +1356,7 @@ export default function SubscriptionSelectionFlow({
               },
             }}
           >
-            Online betaling er midlertidig utilgjengelig. Planene kan fortsatt vises, men checkout aktiveres først når betalingsrutene er koblet til backenden.
+            {copy.paymentComingSoonInline}
           </Alert>
         )}
       </Box>
@@ -1204,7 +1413,7 @@ export default function SubscriptionSelectionFlow({
                   CreatorHub Checkout
                 </Typography>
                 <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700 }}>
-                  Bekreft planen før du går til Stripe
+                  {copy.dialogTitle}
                 </Typography>
               </Box>
             </Stack>
@@ -1230,7 +1439,7 @@ export default function SubscriptionSelectionFlow({
                       {selectedPlan.name}
                     </Typography>
                     <Typography sx={{ color: 'rgba(255,255,255,0.68)', mt: 0.4 }}>
-                      Klar til sikker betaling i Stripe Checkout.
+                      {copy.dialogReady}
                     </Typography>
                   </Box>
                   <Box sx={{ textAlign: { xs: 'left', sm: 'right' } }}>
@@ -1248,8 +1457,7 @@ export default function SubscriptionSelectionFlow({
         </DialogTitle>
         <DialogContent sx={{ pt: 3 }}>
           <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.72)', mb: 3, lineHeight: 1.7 }}>
-            Her ser du akkurat hva som aktiveres. Når du fortsetter, åpnes Stripe Checkout i samme flyt og du
-            returnerer til CreatorHub med oppdatert abonnementsstatus.
+            {copy.dialogDescription}
           </Typography>
 
           <Grid container spacing={1.5}>
@@ -1282,7 +1490,7 @@ export default function SubscriptionSelectionFlow({
                   <Stack spacing={0.75}>
                     <Typography sx={{ color: '#fff', fontWeight: 700 }}>Stripe Checkout</Typography>
                     <Typography sx={{ color: 'rgba(255,255,255,0.68)', lineHeight: 1.65 }}>
-                      Kortdetaljer, kvittering og eventuell avgiftsberegning håndteres på Stripes sikre betalingsside.
+                      {copy.stripeCardBody}
                     </Typography>
                   </Stack>
                 </Stack>
@@ -1298,7 +1506,7 @@ export default function SubscriptionSelectionFlow({
                   background: 'rgba(255,255,255,0.035)',
                 }}
               >
-                <Typography sx={{ color: '#fff', fontWeight: 700, mb: 1.2 }}>Oppsummering</Typography>
+                <Typography sx={{ color: '#fff', fontWeight: 700, mb: 1.2 }}>{copy.summaryTitle}</Typography>
                 <Stack spacing={1}>
                   {selectedPlanSummaryRows.map((row) => (
                     <Stack
@@ -1328,7 +1536,7 @@ export default function SubscriptionSelectionFlow({
               lineHeight: 1.7,
             }}
           >
-            Du blir sendt til Stripe Checkout for å fullføre abonnementet på en sikker side før du returnerer til CreatorHub.
+            {copy.redirectNotice}
           </Typography>
 
           {selectedPlan && (
@@ -1342,15 +1550,15 @@ export default function SubscriptionSelectionFlow({
               }}
             >
               <Typography sx={{ color: '#fff', fontWeight: 700, mb: 1 }}>
-                Hva skjer etter betaling
+                {copy.afterPaymentTitle}
               </Typography>
               <Stack spacing={1}>
                 {[
-                  `Abonnementet på ${selectedPlan.name} opprettes i Stripe.`,
-                  'Du sendes tilbake til CreatorHub med oppdatert status.',
+                  copy.afterPaymentCreated(selectedPlan.name),
+                  copy.afterPaymentReturn,
                   selectedBillingCycle === 'yearly' && selectedPlan.yearlySavingsLabel
                     ? selectedPlan.yearlySavingsLabel
-                    : 'Du kan administrere abonnementet videre fra CreatorHub.',
+                    : copy.afterPaymentManage,
                 ].map((line) => (
                   <Stack key={line} direction="row" spacing={1.2} alignItems="flex-start">
                     <CheckIcon sx={{ color: '#ffba6c', fontSize: 18, mt: 0.25 }} />
@@ -1379,7 +1587,7 @@ export default function SubscriptionSelectionFlow({
               }
             }}
           >
-            Avbryt
+            {copy.cancel}
           </Button>
           <Button 
             variant="contained"
@@ -1403,7 +1611,7 @@ export default function SubscriptionSelectionFlow({
               }
             }}
           >
-            {paymentProcessing ? 'Sender til Stripe...' : 'Gå til Stripe Checkout'}
+            {paymentProcessing ? copy.sendingToStripe : copy.goToStripe}
           </Button>
         </DialogActions>
       </Dialog>

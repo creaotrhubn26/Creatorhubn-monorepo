@@ -160,32 +160,6 @@ class PlatformPricingService {
   public getFallbackPlatformPlans(): PlatformSubscriptionPlan[] {
     return [
       {
-        id: 'free',
-        name: 'free',
-        displayName: 'Free Creator',
-        description: 'Perfect for getting started with basic project management',
-        tier: 'free',
-        price: 0,
-        monthlyPrice: 0,
-        yearlyPrice: 0,
-        currency: 'NOK',
-        billingCycle: 'monthly',
-        features: [
-          'Basic project management', 'Up to 3 projects','Up to 10 clients','Basic CRM','Google Drive integration','Email support',
-        ],
-        limits: {
-          maxUsers: 1,
-          maxProjects: 3,
-          maxClients: 10,
-          maxStorageGB: 1,
-          maxApiCalls: 1000,
-        },
-        isActive: true,
-        trialDays: 0,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
-      {
         id: 'basic',
         name: 'basic',
         displayName: 'Basic Creator',
@@ -198,7 +172,7 @@ class PlatformPricingService {
         currency: 'NOK',
         billingCycle: 'monthly',
         features: [
-          'Everything in Free','Up to 25 projects','Up to 100 clients','Advanced CRM','Contract management','Basic invoicing','Priority email support','10GB storage',
+          'Up to 25 projects','Up to 100 clients','Advanced CRM','Contract management','Basic invoicing','Priority email support','10GB storage',
         ],
         limits: {
           maxUsers: 2,
@@ -655,7 +629,6 @@ export const usePlatformPricing = (options?: { enabled?: boolean }) => {
 };
 
 export default PlatformPricingService;
-
 
 
 

@@ -598,6 +598,7 @@ export default function CreatorHubInvestorLanding({
     const params = new URLSearchParams();
     params.set('profession', 'creatorhub');
     params.set('billing', billingCycle);
+    params.set('lang', locale);
     if (planId) {
       params.set('plan', planId);
     }

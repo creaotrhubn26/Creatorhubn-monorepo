@@ -18988,38 +18988,6 @@ function buildCompatPlatformSubscriptionPlans(): CompatPlatformSubscriptionPlan[
   const nowIso = new Date().toISOString();
   return [
     {
-      id: "free",
-      name: "free",
-      displayName: "Free Creator",
-      description:
-        "Perfekt for å komme i gang med grunnleggende prosjektstyring.",
-      tier: "free",
-      price: 0,
-      monthlyPrice: 0,
-      yearlyPrice: 0,
-      currency: "NOK",
-      billingCycle: "monthly",
-      interval: "måned",
-      features: [
-        "Grunnleggende prosjektstyring",
-        "Opptil 3 prosjekter",
-        "Opptil 10 klienter",
-        "Google Drive-integrasjon",
-      ],
-      limits: {
-        maxUsers: 1,
-        maxProjects: 3,
-        maxClients: 10,
-        maxStorageGB: 1,
-        maxApiCalls: 1000,
-      },
-      isActive: true,
-      isPublic: false,
-      trialDays: 0,
-      createdAt: nowIso,
-      updatedAt: nowIso,
-    },
-    {
       id: "basic",
       name: "basic",
       displayName: "Basic Creator",
@@ -19239,13 +19207,11 @@ function buildCompatSubscriptionStatus(
     planName: overrides?.planName ?? plan?.displayName ?? null,
     amount: overrides?.amount ?? plan?.price ?? 0,
     currency: overrides?.currency ?? plan?.currency ?? "NOK",
-    subscriptionSelected:
-      overrides?.subscriptionSelected ?? Boolean(plan && plan.id !== "free"),
+    subscriptionSelected: overrides?.subscriptionSelected ?? Boolean(plan),
     memberSince,
     nextBillingDate,
     accessUntil,
-    paymentCompleted:
-      overrides?.paymentCompleted ?? Boolean(plan && plan.id !== "free"),
+    paymentCompleted: overrides?.paymentCompleted ?? Boolean(plan),
     transactionId: overrides?.transactionId ?? null,
     organizationNumber: overrides?.organizationNumber ?? null,
     companyName: overrides?.companyName ?? null,
@@ -19420,7 +19386,6 @@ async function resolveCompatSubscriptionStatus(
   userId: string,
   email: string | null,
 ): Promise<CompatSubscriptionStatus> {
-  const fallbackFreePlan = getCompatPlatformSubscriptionPlan("free");
   const storedStatus = await readCompatSubscriptionStatus(userId);
   if (storedStatus) {
     return {
@@ -19440,8 +19405,7 @@ async function resolveCompatSubscriptionStatus(
     );
     const row = result.rows[0];
     if (row) {
-      const plan =
-        getCompatPlatformSubscriptionPlan(row.plan_id) || fallbackFreePlan;
+      const plan = getCompatPlatformSubscriptionPlan(row.plan_id);
       const normalizedStatus = readString(row.status) || "inactive";
       return buildCompatSubscriptionStatus(userId, plan, {
         selectedPlan: plan?.id ?? null,
@@ -19466,9 +19430,9 @@ async function resolveCompatSubscriptionStatus(
     }
   }
 
-  return buildCompatSubscriptionStatus(userId, fallbackFreePlan, {
-    selectedPlan: fallbackFreePlan?.id ?? null,
-    planName: fallbackFreePlan?.displayName ?? null,
+  return buildCompatSubscriptionStatus(userId, null, {
+    selectedPlan: null,
+    planName: null,
     subscriptionSelected: false,
     paymentCompleted: false,
     memberSince: null,
