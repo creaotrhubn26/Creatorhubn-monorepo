@@ -25,6 +25,7 @@ import {
   DialogActions,
   LinearProgress,
   Alert,
+  Skeleton,
   List,
   ListItem,
   ListItemIcon,
@@ -451,25 +452,78 @@ export default function SubscriptionSelectionFlow({
 
   if (plansLoading) {
     return (
-      <Box sx={{ py: 4 }}>
-        <Box sx={{ textAlign: 'center', py: 8 }}>
-          <LinearProgress 
-            sx={{ 
-              mb: 2,
-              height: 4,
-              borderRadius: 2,
-              backgroundColor: 'rgba(255, 255, 255, 0.1)',
+      <Box
+        sx={{
+          borderRadius: '30px',
+          border: '1px solid rgba(255,255,255,0.08)',
+          background:
+            'linear-gradient(135deg, rgba(27,21,16,0.96) 0%, rgba(18,15,23,0.92) 56%, rgba(11,11,17,0.96) 100%)',
+          boxShadow: '0 28px 70px rgba(0,0,0,0.34)',
+          overflow: 'hidden',
+        }}
+      >
+        <Box
+          sx={{
+            p: { xs: 2.5, md: 3.25 },
+            borderBottom: '1px solid rgba(255,255,255,0.08)',
+            background: 'linear-gradient(135deg, rgba(255,140,0,0.12) 0%, rgba(255,255,255,0.02) 100%)',
+          }}
+        >
+          <Typography
+            sx={{
+              fontSize: '0.8rem',
+              letterSpacing: '0.18em',
+              textTransform: 'uppercase',
+              color: 'rgba(255,186,108,0.84)',
+              fontWeight: 700,
+              mb: 1,
+            }}
+          >
+            CreatorHub-abonnement
+          </Typography>
+          <Typography variant="h5" sx={{ color: '#fff', fontWeight: 700, mb: 1 }}>
+            Laster abonnementssiden
+          </Typography>
+          <Typography sx={{ color: 'rgba(255,255,255,0.68)', maxWidth: 720, lineHeight: 1.7 }}>
+            Vi henter planer, priser og faktureringsvalg fra CreatorHub slik at landingssiden og checkout-flyten viser
+            samme informasjon.
+          </Typography>
+        </Box>
+
+        <Box sx={{ p: { xs: 2.5, md: 3.25 } }}>
+          <LinearProgress
+            sx={{
+              mb: 3,
+              height: 6,
+              borderRadius: 999,
+              backgroundColor: 'rgba(255,255,255,0.08)',
               '& .MuiLinearProgress-bar': {
                 backgroundColor: professionColor,
-              }
-            }} 
+              },
+            }}
           />
-          <Typography variant="h6" sx={{ 
-            color: 'rgba(255, 255, 255, 0.7)',
-            fontWeight: 500,
-          }}>
-            Laster abonnementsplaner...
-          </Typography>
+
+          <Grid container spacing={2.5}>
+            {[0, 1, 2].map((index) => (
+              <Grid size={{ xs: 12, md: 4 }} key={index}>
+                <Box
+                  sx={{
+                    borderRadius: '24px',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    background: 'rgba(255,255,255,0.035)',
+                    p: 2.25,
+                  }}
+                >
+                  <Skeleton variant="text" width="60%" height={34} sx={{ bgcolor: 'rgba(255,255,255,0.12)' }} />
+                  <Skeleton variant="text" width="42%" height={56} sx={{ bgcolor: 'rgba(255,255,255,0.12)' }} />
+                  <Skeleton variant="text" width="100%" height={26} sx={{ bgcolor: 'rgba(255,255,255,0.09)' }} />
+                  <Skeleton variant="text" width="88%" height={26} sx={{ bgcolor: 'rgba(255,255,255,0.09)' }} />
+                  <Skeleton variant="text" width="76%" height={26} sx={{ bgcolor: 'rgba(255,255,255,0.09)' }} />
+                  <Skeleton variant="rounded" width="100%" height={52} sx={{ mt: 2, bgcolor: 'rgba(255,255,255,0.1)' }} />
+                </Box>
+              </Grid>
+            ))}
+          </Grid>
         </Box>
       </Box>
     );

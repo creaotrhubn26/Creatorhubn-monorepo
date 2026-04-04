@@ -10,7 +10,6 @@ import {
   Box,
   Container,
   Typography,
-  Paper,
   Stack,
   Button,
   Alert,
@@ -180,95 +179,202 @@ export default function SubscriptionSelectionPage() {
 
   if (showPaymentStatus && paymentData) {
     return (
-      <Container maxWidth="lg" sx={{ py:  4 }}>
-        {/* Header */}
-        <Paper
-          elevation={0}
+      <Box
+        sx={{
+          position: 'relative',
+          minHeight: '100vh',
+          overflow: 'hidden',
+          background:
+            'radial-gradient(circle at top, rgba(255,173,80,0.18) 0%, rgba(15,10,7,0.96) 36%, #090807 100%)',
+          py: { xs: 4, md: 6 },
+        }}
+      >
+        <Box
           sx={{
-            background: 'linear-gradient(135deg, #4caf5015 0%, #4caf5005 100%)',
-            border: '1px solid #4caf50',
-            borderRadius: 3,
-            p: 4,
-            mb: 4,
-            ...theming.getThemedCardSx()
+            position: 'absolute',
+            inset: 0,
+            pointerEvents: 'none',
+            background:
+              'linear-gradient(120deg, rgba(255,186,108,0.08) 0%, transparent 35%, rgba(110,86,255,0.08) 100%)',
           }}
-        >
-          <Stack direction="row" alignItems="center" spacing={3}>
-            <Box sx={{ flex:  1 }}>
-              <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary, mb: 1 }}>
-                Betaling fullført! 🎉
-              </Typography>
-              <Typography variant="h6" color="text.secondary" sx={{ color: theming.colors.primary }}>
-                CreatorHub-abonnementet ditt er aktivert
-              </Typography>
-            </Box>
-          </Stack>
-        </Paper>
-
-        <PaymentStatusVerification
-          sessionId={paymentData.sessionId}
-          transactionId={paymentData.transactionId}
-          onMembershipCreated={handleMembershipCreated}
         />
-
-        <Box sx={{ textAlign: 'center', mt:  4 }}>
-          <Button
-            variant="outlined"
-            startIcon={<HomeIcon />}
-            onClick={handleBack}
-            sx={{ mr:  2 }}
+        <Container maxWidth="xl" sx={{ position: 'relative', zIndex: 1 }}>
+          <Box
+            sx={{
+              borderRadius: '32px',
+              border: '1px solid rgba(255,255,255,0.08)',
+              background:
+                'linear-gradient(135deg, rgba(25,19,15,0.96) 0%, rgba(18,15,23,0.92) 56%, rgba(13,12,17,0.94) 100%)',
+              boxShadow: '0 32px 80px rgba(0,0,0,0.4)',
+              p: { xs: 2.75, md: 4.25 },
+              mb: 4,
+              ...theming.getThemedCardSx(),
+            }}
           >
-            Tilbake til hjem
-          </Button>
-          <Alert severity="info" sx={{ mt: 2, maxWidth: 600, mx: 'auto' }}>
-            <Typography variant="body2">
-              Stripe-betalingen er registrert. CreatorHub oppdaterer medlemskap og tilgang etter bekreftet betaling.
+            <Typography
+              sx={{
+                fontSize: '0.8rem',
+                letterSpacing: '0.18em',
+                textTransform: 'uppercase',
+                color: 'rgba(255,186,108,0.84)',
+                fontWeight: 700,
+                mb: 1,
+              }}
+            >
+              CreatorHub Checkout
             </Typography>
-          </Alert>
-        </Box>
-      </Container>
+            <Typography variant="h3" sx={{ fontWeight: 800, color: '#fff', mb: 1 }}>
+              Betaling fullført
+            </Typography>
+            <Typography variant="h6" sx={{ color: 'rgba(255,255,255,0.72)', maxWidth: 720 }}>
+              CreatorHub-abonnementet ditt er aktivert. Herfra kan du gå tilbake til hjemsiden eller fortsette
+              med medlemskapsverifiseringen.
+            </Typography>
+          </Box>
+
+          <PaymentStatusVerification
+            sessionId={paymentData.sessionId}
+            transactionId={paymentData.transactionId}
+            onMembershipCreated={handleMembershipCreated}
+          />
+
+          <Box sx={{ textAlign: 'center', mt: 4 }}>
+            <Button
+              variant="outlined"
+              startIcon={<HomeIcon />}
+              onClick={handleBack}
+              sx={{
+                mr: 2,
+                borderColor: 'rgba(255,186,108,0.42)',
+                color: '#ffba6c',
+                borderRadius: '999px',
+                px: 3,
+                py: 1.1,
+                '&:hover': {
+                  borderColor: '#ffba6c',
+                  bgcolor: 'rgba(255,186,108,0.08)',
+                },
+              }}
+            >
+              Tilbake til hjem
+            </Button>
+            <Alert
+              severity="info"
+              sx={{
+                mt: 2,
+                maxWidth: 700,
+                mx: 'auto',
+                textAlign: 'left',
+                backgroundColor: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                color: '#fff',
+              }}
+            >
+              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.74)' }}>
+                Stripe-betalingen er registrert. CreatorHub oppdaterer medlemskap og tilgang etter bekreftet betaling.
+              </Typography>
+            </Alert>
+          </Box>
+        </Container>
+      </Box>
     );
 }
 
   return (
-    <Container maxWidth="lg" sx={{ py:  4 }}>
-      {/* Header */}
-      <Paper
-        elevation={0}
+    <Box
+      sx={{
+        position: 'relative',
+        minHeight: '100vh',
+        overflow: 'hidden',
+        background:
+          'radial-gradient(circle at top, rgba(255,173,80,0.18) 0%, rgba(15,10,7,0.97) 35%, #090807 100%)',
+        py: { xs: 4, md: 6 },
+      }}
+    >
+      <Box
         sx={{
-          background: 'linear-gradient(135deg, #ff8c0015 0%, #ff8c0005 100%)',
-          border: '1px solid #ff8c00',
-          borderRadius: 3,
-          p: 4,
-          mb: 4,
-          ...theming.getThemedCardSx()
+          position: 'absolute',
+          inset: 0,
+          pointerEvents: 'none',
+          background:
+            'linear-gradient(120deg, rgba(255,186,108,0.08) 0%, transparent 35%, rgba(110,86,255,0.08) 100%)',
         }}
-      >
-        <Stack direction="row" alignItems="center" spacing={3}>
-          <Box sx={{ flex:  1 }}>
-            <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary, mb: 1 }}>
-              Velg CreatorHub-abonnement
-            </Typography>
-            <Typography variant="h6" color="text.secondary" sx={{ ...{}, color: theming.colors.primary }}>
-              Velg plan og fullfør betalingen i Stripe Checkout
-            </Typography>
-          </Box>
-          <Button
-            startIcon={<ArrowBackIcon />}
-            onClick={handleBack}
-            variant="outlined"
-            sx={{ borderColor: '#ff8c0', color: '#ff8c00',}}
+      />
+      <Container maxWidth="xl" sx={{ position: 'relative', zIndex: 1 }}>
+        <Box
+          sx={{
+            borderRadius: '32px',
+            border: '1px solid rgba(255,255,255,0.08)',
+            background:
+              'linear-gradient(135deg, rgba(31,23,17,0.96) 0%, rgba(18,15,23,0.92) 56%, rgba(11,11,17,0.95) 100%)',
+            boxShadow: '0 36px 80px rgba(0,0,0,0.42)',
+            p: { xs: 2.5, md: 4.5 },
+            mb: 4,
+            ...theming.getThemedCardSx(),
+          }}
+        >
+          <Stack
+            direction={{ xs: 'column', md: 'row' }}
+            alignItems={{ xs: 'flex-start', md: 'center' }}
+            justifyContent="space-between"
+            spacing={{ xs: 2.5, md: 4 }}
           >
-            Tilbake
-          </Button>
-        </Stack>
-      </Paper>
+            <Box sx={{ flex: 1, maxWidth: 820 }}>
+              <Typography
+                sx={{
+                  fontSize: '0.8rem',
+                  letterSpacing: '0.18em',
+                  textTransform: 'uppercase',
+                  color: 'rgba(255,186,108,0.84)',
+                  fontWeight: 700,
+                  mb: 1,
+                }}
+              >
+                CreatorHub Commerce
+              </Typography>
+              <Typography variant="h3" sx={{ fontWeight: 800, color: '#fff', mb: 1.2 }}>
+                Velg CreatorHub-abonnement
+              </Typography>
+              <Typography variant="h6" sx={{ color: 'rgba(255,255,255,0.72)', lineHeight: 1.6 }}>
+                Velg plan, sammenlign månedlig og årlig fakturering, og gå videre til Stripe Checkout i en flyt som
+                matcher CreatorHub-landingen.
+              </Typography>
+            </Box>
+            <Button
+              startIcon={<ArrowBackIcon />}
+              onClick={handleBack}
+              variant="outlined"
+              sx={{
+                borderColor: 'rgba(255,186,108,0.42)',
+                color: '#ffba6c',
+                borderRadius: '999px',
+                px: 3,
+                py: 1.1,
+                flexShrink: 0,
+                '&:hover': {
+                  borderColor: '#ffba6c',
+                  bgcolor: 'rgba(255,186,108,0.08)',
+                },
+              }}
+            >
+              Tilbake
+            </Button>
+          </Stack>
+        </Box>
 
-      {paymentCancelled && (
-        <Alert severity="info" sx={{ mb: 3 }}>
-          Stripe Checkout ble avbrutt. Den valgte planen din er fortsatt valgt, så du kan fortsette når du er klar.
-        </Alert>
-      )}
+        {paymentCancelled && (
+          <Alert
+            severity="info"
+            sx={{
+              mb: 3,
+              backgroundColor: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              color: '#fff',
+            }}
+          >
+            Stripe Checkout ble avbrutt. Den valgte planen din er fortsatt valgt, så du kan fortsette når du er klar.
+          </Alert>
+        )}
 
         <SubscriptionSelectionFlow
           profession={profession}
@@ -278,7 +384,8 @@ export default function SubscriptionSelectionPage() {
           fromInvite={fromInvite}
           onComplete={handlePaymentComplete}
           onBack={handleBack}
-      />
-    </Container>
+        />
+      </Container>
+    </Box>
   );
 }

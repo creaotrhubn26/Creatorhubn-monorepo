@@ -81,6 +81,7 @@ interface FeatureToggle {
 interface SubscriptionPlanRow {
   id: string;
   name: string;
+  description: string;
   price: number;
   monthlyPrice: number;
   yearlyPrice: number | null;
@@ -257,6 +258,7 @@ function mapSubscriptionPlans(plans: PlatformSubscriptionPlan[]): SubscriptionPl
   return plans.map((plan) => ({
     id: plan.id,
     name: plan.displayName || plan.name,
+    description: plan.description,
     price: typeof plan.monthlyPrice === 'number' ? plan.monthlyPrice : plan.price,
     monthlyPrice: typeof plan.monthlyPrice === 'number' ? plan.monthlyPrice : plan.price,
     yearlyPrice: typeof plan.yearlyPrice === 'number' ? plan.yearlyPrice : null,
@@ -298,10 +300,14 @@ export default function PriceManagementDashboard({
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editPlanDialogOpen, setEditPlanDialogOpen] = useState(false);
   const [editingPlanId, setEditingPlanId] = useState('');
+  const [editingPlanName, setEditingPlanName] = useState('');
+  const [editingPlanDescription, setEditingPlanDescription] = useState('');
+  const [editingPlanFeatures, setEditingPlanFeatures] = useState('');
   const [editingPlanMonthlyPrice, setEditingPlanMonthlyPrice] = useState('');
   const [editingPlanYearlyPrice, setEditingPlanYearlyPrice] = useState('');
   const [editingPlanYearlySavingsLabel, setEditingPlanYearlySavingsLabel] = useState('');
   const [editingPlanPublicPriceLabel, setEditingPlanPublicPriceLabel] = useState('');
+  const [editingPlanCtaLabel, setEditingPlanCtaLabel] = useState('');
   const [editingPlanActive, setEditingPlanActive] = useState(true);
   const [editingPlanContactSalesOnly, setEditingPlanContactSalesOnly] = useState(false);
   const [editingFeature, setEditingFeature] = useState<FeatureToggle | null>(null);
@@ -569,11 +575,18 @@ export default function PriceManagementDashboard({
     }
 
     const patchPayload = {
+      displayName: editingPlanName.trim(),
+      description: editingPlanDescription.trim(),
+      features: editingPlanFeatures
+        .split('\n')
+        .map((entry) => entry.trim())
+        .filter(Boolean),
       price: monthlyPrice,
       monthlyPrice,
       yearlyPrice,
       yearlySavingsLabel: editingPlanYearlySavingsLabel.trim() || null,
       publicPriceLabel: editingPlanPublicPriceLabel.trim() || null,
+      ctaLabel: editingPlanCtaLabel.trim() || null,
       isActive: editingPlanActive,
     };
     let updatedServer = false;
@@ -599,11 +612,18 @@ export default function PriceManagementDashboard({
       plan.id === editingPlanId
         ? {
             ...plan,
+            displayName: editingPlanName.trim(),
+            description: editingPlanDescription.trim(),
+            features: editingPlanFeatures
+              .split('\n')
+              .map((entry) => entry.trim())
+              .filter(Boolean),
             price: monthlyPrice,
             monthlyPrice,
             yearlyPrice,
             yearlySavingsLabel: editingPlanYearlySavingsLabel.trim() || null,
             publicPriceLabel: editingPlanPublicPriceLabel.trim() || null,
+            ctaLabel: editingPlanCtaLabel.trim() || null,
             isActive: editingPlanActive,
             updatedAt: new Date(),
           }
@@ -615,11 +635,18 @@ export default function PriceManagementDashboard({
       plan.id === editingPlanId
         ? {
             ...plan,
+            name: editingPlanName.trim() || plan.name,
+            description: editingPlanDescription.trim(),
+            features: editingPlanFeatures
+              .split('\n')
+              .map((entry) => entry.trim())
+              .filter(Boolean),
             price: monthlyPrice,
             monthlyPrice,
             yearlyPrice,
             yearlySavingsLabel: editingPlanYearlySavingsLabel.trim() || null,
             publicPriceLabel: editingPlanPublicPriceLabel.trim() || null,
+            ctaLabel: editingPlanCtaLabel.trim() || null,
             isActive: editingPlanActive,
           }
         : plan,
@@ -637,10 +664,17 @@ export default function PriceManagementDashboard({
       source: 'price_management',
       action: 'plan_updated',
       planId: editingPlanId,
+      displayName: editingPlanName.trim(),
+      description: editingPlanDescription.trim(),
+      features: editingPlanFeatures
+        .split('\n')
+        .map((entry) => entry.trim())
+        .filter(Boolean),
       monthlyPrice,
       yearlyPrice,
       yearlySavingsLabel: editingPlanYearlySavingsLabel.trim() || null,
       publicPriceLabel: editingPlanPublicPriceLabel.trim() || null,
+      ctaLabel: editingPlanCtaLabel.trim() || null,
       isActive: editingPlanActive,
       serverUpdated: updatedServer,
     });
@@ -800,7 +834,7 @@ export default function PriceManagementDashboard({
             },
           }}
         >
-          <Tab icon={<ToggleIcon />} label="Feature-tilganger" />
+          <Tab icon={<ToggleIcon />} label="Plattform-flagg" />
           <Tab icon={<PeopleIcon />} label="Abonnementer" />
           <Tab icon={<AnalyticsIcon />} label="Analyse" />
           <Tab icon={<EnterpriseIcon />} label="Enterprise" />
@@ -808,6 +842,10 @@ export default function PriceManagementDashboard({
       </Box>
 
       <TabPanel value={tabValue} index={0}>
+        <Alert severity="info" sx={{ mb: 3 }}>
+          Denne fanen styrer tekniske plattform-flagg. Hva som faktisk vises i abonnementene redigeres under
+          <strong> Abonnementer</strong>, slik at landingssiden, subscription-flyten og checkout bruker samme innhold.
+        </Alert>
         <Box
           sx={{
             display: 'flex',
@@ -971,6 +1009,12 @@ export default function PriceManagementDashboard({
                               <Typography variant="body2" sx={{ fontWeight: 700 }}>
                                 {plan.name}
                               </Typography>
+                              <Typography variant="caption" color="text.secondary" sx={{ maxWidth: 280, display: 'block' }}>
+                                {plan.description}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                {plan.features.length} features i visning
+                              </Typography>
                               {plan.contactSalesOnly ? (
                                 <Chip size="small" label="Kontakt salg" color="warning" sx={{ width: 'fit-content' }} />
                               ) : null}
@@ -1007,10 +1051,14 @@ export default function PriceManagementDashboard({
                               sx={{ ml: 1, textTransform: 'none', fontWeight: 700 }}
                               onClick={() => {
                                 setEditingPlanId(plan.id);
+                                setEditingPlanName(plan.name);
+                                setEditingPlanDescription(plan.description);
+                                setEditingPlanFeatures(plan.features.join('\n'));
                                 setEditingPlanMonthlyPrice(String(plan.monthlyPrice));
                                 setEditingPlanYearlyPrice(String(plan.yearlyPrice ?? plan.monthlyPrice * 10));
                                 setEditingPlanYearlySavingsLabel(plan.yearlySavingsLabel ?? '');
                                 setEditingPlanPublicPriceLabel(plan.publicPriceLabel ?? '');
+                                setEditingPlanCtaLabel(plan.ctaLabel ?? '');
                                 setEditingPlanActive(plan.isActive);
                                 setEditingPlanContactSalesOnly(Boolean(plan.contactSalesOnly));
                                 setEditPlanDialogOpen(true);
@@ -1365,6 +1413,22 @@ export default function PriceManagementDashboard({
           ) : null}
           <TextField
             fullWidth
+            label="Navn i UI"
+            value={editingPlanName}
+            onChange={(event) => setEditingPlanName(event.target.value)}
+            sx={{ mt: 1 }}
+          />
+          <TextField
+            fullWidth
+            multiline
+            rows={3}
+            label="Beskrivelse"
+            value={editingPlanDescription}
+            onChange={(event) => setEditingPlanDescription(event.target.value)}
+            sx={{ mt: 2 }}
+          />
+          <TextField
+            fullWidth
             label="Månedspris (NOK)"
             type="number"
             inputProps={{ min: 0 }}
@@ -1400,7 +1464,26 @@ export default function PriceManagementDashboard({
                 ? 'Dette brukes i public UI i stedet for numerisk pris.'
                 : 'La feltet stå tomt for vanlig numerisk visning.'
             }
-            sx={{ mt: 1 }}
+            sx={{ mt: 2 }}
+          />
+          <TextField
+            fullWidth
+            label="CTA-knapp"
+            placeholder={editingPlanContactSalesOnly ? 'Kontakt salg' : 'Velg plan'}
+            value={editingPlanCtaLabel}
+            onChange={(event) => setEditingPlanCtaLabel(event.target.value)}
+            sx={{ mt: 2 }}
+          />
+          <TextField
+            fullWidth
+            multiline
+            minRows={5}
+            label="Features som vises"
+            placeholder={'Én feature per linje'}
+            value={editingPlanFeatures}
+            onChange={(event) => setEditingPlanFeatures(event.target.value)}
+            helperText="Disse punktene brukes i landingssiden og i subscription-flyten automatisk."
+            sx={{ mt: 2 }}
           />
           <FormControlLabel
             control={

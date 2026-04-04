@@ -18325,6 +18325,9 @@ type CompatPlatformSubscriptionPlanOverride = {
   monthlyPrice?: number | null;
   yearlyPrice?: number | null;
   yearlySavingsLabel?: string | null;
+  displayName?: string | null;
+  description?: string | null;
+  features?: string[] | null;
   isActive?: boolean | null;
   publicPriceLabel?: string | null;
   ctaLabel?: string | null;
@@ -18541,6 +18544,18 @@ async function ensureCompatPlatformSubscriptionPlanOverridesLoaded() {
             Object.prototype.hasOwnProperty.call(rawOverride, "yearlySavingsLabel")
               ? readString(rawOverride.yearlySavingsLabel)
               : undefined,
+          displayName:
+            Object.prototype.hasOwnProperty.call(rawOverride, "displayName")
+              ? readString(rawOverride.displayName)
+              : undefined,
+          description:
+            Object.prototype.hasOwnProperty.call(rawOverride, "description")
+              ? readString(rawOverride.description)
+              : undefined,
+          features:
+            Object.prototype.hasOwnProperty.call(rawOverride, "features")
+              ? readStringArray(rawOverride.features)
+              : undefined,
           isActive:
             Object.prototype.hasOwnProperty.call(rawOverride, "isActive")
               ? readBoolean(rawOverride.isActive)
@@ -18592,6 +18607,12 @@ function applyCompatPlatformSubscriptionPlanOverride(
 
   return {
     ...plan,
+    displayName:
+      override.displayName !== undefined ? override.displayName || plan.displayName : plan.displayName,
+    description:
+      override.description !== undefined ? override.description || plan.description : plan.description,
+    features:
+      override.features !== undefined ? override.features : plan.features,
     price: nextMonthlyPrice,
     monthlyPrice: nextMonthlyPrice,
     yearlyPrice: nextYearlyPrice,
@@ -24344,6 +24365,9 @@ app.patch("/api/platform/admin/subscription-plans/:planId", async (req, res) => 
     const hasYearlyPriceInput = Object.prototype.hasOwnProperty.call(body, "yearlyPrice");
     const hasActiveInput = Object.prototype.hasOwnProperty.call(body, "isActive");
     const hasSavingsLabelInput = Object.prototype.hasOwnProperty.call(body, "yearlySavingsLabel");
+    const hasDisplayNameInput = Object.prototype.hasOwnProperty.call(body, "displayName");
+    const hasDescriptionInput = Object.prototype.hasOwnProperty.call(body, "description");
+    const hasFeaturesInput = Object.prototype.hasOwnProperty.call(body, "features");
     const hasPublicPriceLabelInput = Object.prototype.hasOwnProperty.call(body, "publicPriceLabel");
     const hasCtaLabelInput = Object.prototype.hasOwnProperty.call(body, "ctaLabel");
 
@@ -24352,6 +24376,9 @@ app.patch("/api/platform/admin/subscription-plans/:planId", async (req, res) => 
       : null;
     const nextYearlyPrice = hasYearlyPriceInput ? readNumber(body.yearlyPrice) : null;
     const nextIsActive = hasActiveInput ? readBoolean(body.isActive) : null;
+    const nextDisplayName = hasDisplayNameInput ? readString(body.displayName) : null;
+    const nextDescription = hasDescriptionInput ? readString(body.description) : null;
+    const nextFeatures = hasFeaturesInput ? readStringArray(body.features) : null;
 
     if (hasMonthlyPriceInput && (nextMonthlyPrice === null || nextMonthlyPrice < 0)) {
       return res.status(400).json({ error: "Ugyldig månedspris." });
@@ -24388,6 +24415,18 @@ app.patch("/api/platform/admin/subscription-plans/:planId", async (req, res) => 
 
     if (hasSavingsLabelInput) {
       nextOverride.yearlySavingsLabel = readString(body.yearlySavingsLabel);
+    }
+
+    if (hasDisplayNameInput) {
+      nextOverride.displayName = nextDisplayName;
+    }
+
+    if (hasDescriptionInput) {
+      nextOverride.description = nextDescription;
+    }
+
+    if (hasFeaturesInput) {
+      nextOverride.features = nextFeatures;
     }
 
     if (hasPublicPriceLabelInput) {

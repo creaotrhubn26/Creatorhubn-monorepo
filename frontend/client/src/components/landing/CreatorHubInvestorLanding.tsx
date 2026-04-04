@@ -34,6 +34,21 @@ interface CreatorHubInvestorLandingProps {
   mode: LandingMode;
 }
 
+interface CreatorHubPublicPricingPlan {
+  id: string;
+  name: string;
+  displayName: string;
+  description: string;
+  currency: string;
+  monthlyPrice: number;
+  yearlyPrice: number | null;
+  yearlySavingsLabel?: string | null;
+  features: string[];
+  contactSalesOnly?: boolean;
+  publicPriceLabel?: string | null;
+  ctaLabel?: string | null;
+}
+
 const CREATORHUB_ICON_URL = '/creatorhub-logo-amber.svg';
 const ROLE_ROOM_LOGO_URL = '/role-room-assets/TheRoleRoom_Logo_Tagline.webp';
 const ACADEMY_LOGO_URL = '/creatorhub-academy-logo.svg';
@@ -494,6 +509,7 @@ export default function CreatorHubInvestorLanding({
 }: CreatorHubInvestorLandingProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [pricingBillingCycle, setPricingBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
+  const [publicPricingPlans, setPublicPricingPlans] = useState<CreatorHubPublicPricingPlan[] | null>(null);
   const [, setLocation] = useLocation();
   const { language, setLanguage } = useLanguage();
   const isMobile = mode === 'mobile';
@@ -506,6 +522,57 @@ export default function CreatorHubInvestorLanding({
     upsertHeadLink('icon', CREATORHUB_ICON_URL);
     upsertHeadLink('apple-touch-icon', CREATORHUB_ICON_URL);
   }, [copy.title]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadPublicPricing = async () => {
+      try {
+        const response = await fetch('/api/platform/subscription-plans');
+        if (!response.ok) return;
+        const payload = (await response.json()) as { plans?: Array<Record<string, unknown>> };
+        if (!mounted || !Array.isArray(payload.plans)) return;
+
+        const normalized = payload.plans
+          .filter((plan) => plan && typeof plan === 'object')
+          .map((plan) => ({
+            id: String(plan.id || ''),
+            name: String(plan.name || ''),
+            displayName: String(plan.displayName || plan.name || ''),
+            description: String(plan.description || ''),
+            currency: String(plan.currency || 'NOK'),
+            monthlyPrice:
+              typeof plan.monthlyPrice === 'number'
+                ? plan.monthlyPrice
+                : typeof plan.price === 'number'
+                  ? plan.price
+                  : 0,
+            yearlyPrice:
+              typeof plan.yearlyPrice === 'number' ? plan.yearlyPrice : null,
+            yearlySavingsLabel:
+              typeof plan.yearlySavingsLabel === 'string' ? plan.yearlySavingsLabel : null,
+            features: Array.isArray(plan.features)
+              ? plan.features.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+              : [],
+            contactSalesOnly: Boolean(plan.contactSalesOnly),
+            publicPriceLabel:
+              typeof plan.publicPriceLabel === 'string' ? plan.publicPriceLabel : null,
+            ctaLabel: typeof plan.ctaLabel === 'string' ? plan.ctaLabel : null,
+          }))
+          .filter((plan) => plan.id && plan.displayName);
+
+        setPublicPricingPlans(normalized);
+      } catch {
+        // Keep static landing copy as fallback.
+      }
+    };
+
+    void loadPublicPricing();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const navigateToSection = (id: string) => {
     if (typeof document === 'undefined') {
@@ -564,6 +631,71 @@ export default function CreatorHubInvestorLanding({
     { id: 'community', label: copy.nav.community },
     { id: 'pricing', label: locale === 'no' ? 'Priser' : 'Pricing' },
   ];
+
+  const pricingNumberFormatter = new Intl.NumberFormat(locale === 'no' ? 'nb-NO' : 'en-US', {
+    style: 'currency',
+    currency: 'NOK',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  });
+
+  const formatPublicPricingValue = (amount: number, currency: string) => {
+    try {
+      return new Intl.NumberFormat(locale === 'no' ? 'nb-NO' : 'en-US', {
+        style: 'currency',
+        currency,
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      }).format(amount);
+    } catch {
+      return pricingNumberFormatter.format(amount);
+    }
+  };
+
+  const resolvedPricingCards = (() => {
+    if (!publicPricingPlans || publicPricingPlans.length === 0) {
+      return copy.pricing.cards.map((plan) => ({
+        ...plan,
+        yearlySavingsLabel: copy.pricing.yearlyBadge,
+      }));
+    }
+
+    const order = ['basic', 'professional', 'premium'];
+    return publicPricingPlans
+      .filter((plan) => !plan.contactSalesOnly && order.includes(plan.id))
+      .sort((left, right) => order.indexOf(left.id) - order.indexOf(right.id))
+      .map((plan) => ({
+        id: plan.id,
+        name: plan.displayName || plan.name,
+        monthlyPrice: formatPublicPricingValue(plan.monthlyPrice, plan.currency),
+        yearlyPrice:
+          typeof plan.yearlyPrice === 'number'
+            ? formatPublicPricingValue(plan.yearlyPrice, plan.currency)
+            : formatPublicPricingValue(plan.monthlyPrice * 10, plan.currency),
+        monthlyCadence: locale === 'no' ? 'per måned' : 'per month',
+        yearlyCadence: locale === 'no' ? 'per år' : 'per year',
+        summary: plan.description,
+        points: plan.features.slice(0, 4),
+        cta: plan.ctaLabel || (locale === 'no' ? 'Velg plan' : 'Choose plan'),
+        highlight: plan.id === 'professional',
+        yearlySavingsLabel: plan.yearlySavingsLabel || copy.pricing.yearlyBadge,
+      }));
+  })();
+
+  const resolvedEnterprisePlan = (() => {
+    const enterprisePlan = publicPricingPlans?.find((plan) => plan.contactSalesOnly);
+    if (!enterprisePlan) {
+      return copy.pricing.enterprise;
+    }
+
+    return {
+      name: enterprisePlan.displayName || enterprisePlan.name || copy.pricing.enterprise.name,
+      price: enterprisePlan.publicPriceLabel || copy.pricing.enterprise.price,
+      summary: enterprisePlan.description || copy.pricing.enterprise.summary,
+      points: enterprisePlan.features.slice(0, 4).length > 0 ? enterprisePlan.features.slice(0, 4) : copy.pricing.enterprise.points,
+      cta: enterprisePlan.ctaLabel || copy.pricing.enterprise.cta,
+    };
+  })();
 
   return (
     <Box sx={{ bgcolor: '#05060a', color: '#f6f2ea' }}>
@@ -1532,7 +1664,7 @@ export default function CreatorHubInvestorLanding({
                   gap: 2,
                 }}
               >
-                {copy.pricing.cards.map((plan) => (
+                {resolvedPricingCards.map((plan) => (
                   <Box
                     key={plan.id}
                     sx={{
@@ -1610,7 +1742,7 @@ export default function CreatorHubInvestorLanding({
                               textTransform: 'uppercase',
                             }}
                           >
-                            {copy.pricing.yearlyBadge}
+                            {plan.yearlySavingsLabel || copy.pricing.yearlyBadge}
                           </Typography>
                         ) : null}
                       </Stack>
@@ -1693,7 +1825,7 @@ export default function CreatorHubInvestorLanding({
                         color: 'rgba(255,186,108,0.82)',
                       }}
                     >
-                      {locale === 'no' ? 'Enterprise-spor' : 'Enterprise lane'}
+                          {locale === 'no' ? 'Enterprise-spor' : 'Enterprise lane'}
                     </Typography>
                     <Stack
                       direction={{ xs: 'column', sm: 'row' }}
@@ -1710,10 +1842,10 @@ export default function CreatorHubInvestorLanding({
                             color: '#fbf5ee',
                           }}
                         >
-                          {copy.pricing.enterprise.name}
+                          {resolvedEnterprisePlan.name}
                         </Typography>
                         <Typography sx={{ color: 'rgba(246,242,234,0.72)', lineHeight: 1.75, mt: 0.8, maxWidth: 760 }}>
-                          {copy.pricing.enterprise.summary}
+                          {resolvedEnterprisePlan.summary}
                         </Typography>
                       </Box>
                       <Typography
@@ -1725,13 +1857,13 @@ export default function CreatorHubInvestorLanding({
                           flexShrink: 0,
                         }}
                       >
-                        {copy.pricing.enterprise.price}
+                        {resolvedEnterprisePlan.price}
                       </Typography>
                     </Stack>
                   </Stack>
 
                   <Stack spacing={1.05}>
-                    {copy.pricing.enterprise.points.map((point) => (
+                    {resolvedEnterprisePlan.points.map((point) => (
                       <Stack key={point} direction="row" spacing={1.1} alignItems="flex-start">
                         <Box
                           sx={{
@@ -1748,7 +1880,7 @@ export default function CreatorHubInvestorLanding({
                     ))}
 
                     <Button
-                      onClick={() => openCreatorHubSalesContact(copy.pricing.enterprise.name)}
+                      onClick={() => openCreatorHubSalesContact(resolvedEnterprisePlan.name)}
                       variant="outlined"
                       endIcon={<ArrowForward />}
                       sx={{
@@ -1767,7 +1899,7 @@ export default function CreatorHubInvestorLanding({
                         },
                       }}
                     >
-                      {copy.pricing.enterprise.cta}
+                      {resolvedEnterprisePlan.cta}
                     </Button>
                   </Stack>
                 </Box>
