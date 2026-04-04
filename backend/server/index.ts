@@ -493,6 +493,17 @@ app.post(
             event.data.object as Stripe.Checkout.Session,
           );
           break;
+        case "invoice.paid":
+          await syncCreatorHubStripeInvoice(
+            event.data.object as Stripe.Invoice,
+          );
+          break;
+        case "invoice.payment_failed":
+        case "customer.subscription.deleted":
+          await clearCreatorHubStripeSubscription(
+            event.data.object as Stripe.Invoice | Stripe.Subscription,
+          );
+          break;
         default:
           break;
       }
@@ -15845,6 +15856,250 @@ async function persistRoleRoomPlatformBrandingSettings(
   return normalized;
 }
 
+const CREATORHUB_PLATFORM_EMAIL_SETTINGS_NAMESPACE =
+  "creatorhub_platform_email_settings";
+const CREATORHUB_PLATFORM_EMAIL_SETTINGS_USER_ID = "creatorhub-admin";
+
+type CreatorHubPlatformEmailTemplateId =
+  | "creatorhub_payment_confirmed"
+  | "creatorhub_payment_failed"
+  | "creatorhub_payment_recovered";
+
+type CreatorHubPlatformEmailTemplate = {
+  id: CreatorHubPlatformEmailTemplateId;
+  name: string;
+  description: string;
+  subject: string;
+  title: string;
+  body: string;
+  ctaLabel?: string;
+  footerNote?: string;
+};
+
+type CreatorHubPlatformEmailTheme = RoleRoomPlatformEmailTheme;
+
+type CreatorHubPlatformEmailSettings = {
+  replyToEmail: string;
+  footerText: string;
+  theme: CreatorHubPlatformEmailTheme;
+  templates: CreatorHubPlatformEmailTemplate[];
+};
+
+type CreatorHubPlatformBrandingIdentity = {
+  appName: string;
+  tagline: string;
+  domain: string;
+  supportEmail: string;
+  docsUrl: string;
+  emailLogoUrl: string;
+};
+
+type CreatorHubPlatformBrandingSettings = {
+  identity: CreatorHubPlatformBrandingIdentity;
+  email: CreatorHubPlatformEmailSettings;
+};
+
+const CREATORHUB_PLATFORM_BRANDING_DEFAULT_IDENTITY: CreatorHubPlatformBrandingIdentity =
+  {
+    appName: "CreatorHub Norge",
+    tagline: "Business OS for creators",
+    domain: "creatorhubn.com",
+    supportEmail: "kontakt@creatorhubn.com",
+    docsUrl: "https://creatorhubn.com",
+    emailLogoUrl: "",
+  };
+
+const CREATORHUB_PLATFORM_DEFAULT_EMAIL_THEME: CreatorHubPlatformEmailTheme = {
+  canvasBackground: "#f3f7fb",
+  cardBackground: "#ffffff",
+  cardBorder: "#d7e3ef",
+  headerBackground: "#0f3460",
+  headerText: "#f8fafc",
+  brandLabelColor: "#4fd1c5",
+  bodyText: "#223047",
+  mutedText: "#64748b",
+  buttonBackground: "#e94560",
+  buttonText: "#ffffff",
+  footerText: "#64748b",
+};
+
+const CREATORHUB_PLATFORM_DEFAULT_EMAIL_TEMPLATES: CreatorHubPlatformEmailTemplate[] =
+  [
+    {
+      id: "creatorhub_payment_confirmed",
+      name: "Betaling registrert",
+      description:
+        "Sendes når første betaling er registrert og CreatorHub-abonnementet er aktivt.",
+      subject: "Betalingen for CreatorHub er registrert",
+      title: "Abonnementet ditt er aktivt",
+      body:
+        "<p>Hei {{recipientName}},</p><p>Betalingen for <strong>{{planName}}</strong> er registrert. CreatorHub-abonnementet ditt er nå aktivt.</p><p>Du kan gå tilbake til CreatorHub og fortsette arbeidet med en gang.</p>",
+      ctaLabel: "Åpne CreatorHub",
+      footerNote:
+        "Hvis du trenger hjelp med onboarding eller fakturering, kan du svare direkte på denne e-posten.",
+    },
+    {
+      id: "creatorhub_payment_failed",
+      name: "Betaling feilet",
+      description:
+        "Sendes når Stripe ikke klarer å gjennomføre en fornyelse for CreatorHub-abonnementet.",
+      subject: "Betalingen for CreatorHub må oppdateres",
+      title: "Betalingen må oppdateres",
+      body:
+        "<p>Hei {{recipientName}},</p><p>Stripe klarte ikke å gjennomføre betalingen for <strong>{{planName}}</strong> i CreatorHub.</p><p>Oppdater betalingsinformasjonen så snart som mulig for å unngå avbrudd i abonnementet.</p>",
+      ctaLabel: "Åpne CreatorHub",
+      footerNote:
+        "Hvis betalingen allerede er oppdatert, kan du se bort fra denne e-posten.",
+    },
+    {
+      id: "creatorhub_payment_recovered",
+      name: "Betaling gjenopprettet",
+      description:
+        "Sendes når en tidligere mislykket betaling er registrert på nytt og CreatorHub-abonnementet er aktivt igjen.",
+      subject: "Betalingen for CreatorHub er godkjent",
+      title: "Betalingen er registrert igjen",
+      body:
+        "<p>Hei {{recipientName}},</p><p>Betalingen for <strong>{{planName}}</strong> er nå registrert igjen, og CreatorHub-abonnementet ditt er aktivt.</p><p>Du kan fortsette som normalt i CreatorHub.</p>",
+      ctaLabel: "Gå tilbake til CreatorHub",
+    },
+  ];
+
+function creatorHubEmailSettingsStoreKey(userId?: string) {
+  return dbLegacySettingKey(
+    userId || CREATORHUB_PLATFORM_EMAIL_SETTINGS_USER_ID,
+    CREATORHUB_PLATFORM_EMAIL_SETTINGS_NAMESPACE,
+  );
+}
+
+function normalizeCreatorHubPlatformEmailTemplate(
+  value: unknown,
+  fallback: CreatorHubPlatformEmailTemplate,
+): CreatorHubPlatformEmailTemplate {
+  const record = normalizeJsonObjectField(value) || {};
+  return {
+    ...fallback,
+    ...(record as Partial<CreatorHubPlatformEmailTemplate>),
+    id: fallback.id,
+    name: readString(record.name) || fallback.name,
+    description: readString(record.description) || fallback.description,
+    subject: readString(record.subject) || fallback.subject,
+    title: readString(record.title) || fallback.title,
+    body: readString(record.body) || fallback.body,
+    ...(Object.prototype.hasOwnProperty.call(record, "ctaLabel")
+      ? { ctaLabel: readString(record.ctaLabel) || undefined }
+      : fallback.ctaLabel !== undefined
+        ? { ctaLabel: fallback.ctaLabel }
+        : {}),
+    ...(Object.prototype.hasOwnProperty.call(record, "footerNote")
+      ? { footerNote: readString(record.footerNote) || undefined }
+      : fallback.footerNote !== undefined
+        ? { footerNote: fallback.footerNote }
+        : {}),
+  };
+}
+
+function normalizeCreatorHubPlatformBrandingSettings(
+  payload: unknown,
+): Record<string, unknown> {
+  const record = normalizeJsonObjectField(payload) || {};
+  const identityRecord = normalizeJsonObjectField(record.identity) || {};
+  const emailRecord = normalizeJsonObjectField(record.email) || {};
+  const emailThemeRecord = normalizeJsonObjectField(emailRecord.theme) || {};
+  const configuredTemplates = Array.isArray(emailRecord.templates)
+    ? emailRecord.templates
+    : [];
+
+  const templates = CREATORHUB_PLATFORM_DEFAULT_EMAIL_TEMPLATES.map(
+    (template) =>
+      normalizeCreatorHubPlatformEmailTemplate(
+        configuredTemplates.find(
+          (entry) =>
+            normalizeJsonObjectField(entry)?.id === template.id,
+        ),
+        template,
+      ),
+  );
+
+  const identity = {
+    ...CREATORHUB_PLATFORM_BRANDING_DEFAULT_IDENTITY,
+    appName:
+      readString(identityRecord.appName) ||
+      readString(record.appName) ||
+      CREATORHUB_PLATFORM_BRANDING_DEFAULT_IDENTITY.appName,
+    tagline:
+      readString(identityRecord.tagline) ||
+      readString(record.tagline) ||
+      CREATORHUB_PLATFORM_BRANDING_DEFAULT_IDENTITY.tagline,
+    domain:
+      readString(identityRecord.domain) ||
+      readString(record.domain) ||
+      CREATORHUB_PLATFORM_BRANDING_DEFAULT_IDENTITY.domain,
+    supportEmail:
+      readString(identityRecord.supportEmail) ||
+      readString(record.supportEmail) ||
+      CREATORHUB_PLATFORM_BRANDING_DEFAULT_IDENTITY.supportEmail,
+    docsUrl:
+      readString(identityRecord.docsUrl) ||
+      readString(record.docsUrl) ||
+      CREATORHUB_PLATFORM_BRANDING_DEFAULT_IDENTITY.docsUrl,
+    emailLogoUrl:
+      readString(identityRecord.emailLogoUrl) ||
+      readString(record.emailLogoUrl) ||
+      CREATORHUB_PLATFORM_BRANDING_DEFAULT_IDENTITY.emailLogoUrl,
+  };
+
+  return {
+    ...record,
+    identity,
+    email: {
+      ...emailRecord,
+      replyToEmail:
+        readString(emailRecord.replyToEmail) || identity.supportEmail,
+      footerText:
+        readString(emailRecord.footerText) ||
+        `${identity.appName} • ${identity.domain}`,
+      theme: {
+        ...CREATORHUB_PLATFORM_DEFAULT_EMAIL_THEME,
+        ...emailThemeRecord,
+      },
+      templates,
+    },
+    appName: identity.appName,
+    tagline: identity.tagline,
+    domain: identity.domain,
+    supportEmail: identity.supportEmail,
+    docsUrl: identity.docsUrl,
+    emailLogoUrl: identity.emailLogoUrl,
+  };
+}
+
+async function getStoredCreatorHubPlatformBrandingSettings(
+  userId?: string,
+): Promise<Record<string, unknown> | null> {
+  const entry = await compatStoreGet<LegacySettingEntry>(
+    creatorHubEmailSettingsStoreKey(userId),
+  );
+  if (!entry?.data) {
+    return null;
+  }
+  return normalizeCreatorHubPlatformBrandingSettings(entry.data);
+}
+
+async function persistCreatorHubPlatformBrandingSettings(
+  payload: unknown,
+  userId?: string,
+) {
+  const normalized = normalizeCreatorHubPlatformBrandingSettings(payload);
+  const entry: LegacySettingEntry = {
+    userId: userId || CREATORHUB_PLATFORM_EMAIL_SETTINGS_USER_ID,
+    namespace: CREATORHUB_PLATFORM_EMAIL_SETTINGS_NAMESPACE,
+    data: normalized,
+  };
+
+  await compatStoreSet(creatorHubEmailSettingsStoreKey(userId), entry);
+  return normalized;
+}
+
 app.get("/api/branding/settings", async (req, res) => {
   try {
     const userId =
@@ -24342,6 +24597,45 @@ app.get("/api/platform/admin/subscription-plans", async (req, res) => {
   }
 });
 
+app.get("/api/platform/admin/email-settings", async (req, res) => {
+  try {
+    if (!requireAdminSession(req, res)) {
+      return;
+    }
+
+    const settings = await resolveCreatorHubPlatformBrandingSettings();
+    res.json({
+      success: true,
+      settings,
+    });
+  } catch (error) {
+    console.error("Error reading CreatorHub email settings:", error);
+    res.status(500).json({ error: "Could not read CreatorHub email settings" });
+  }
+});
+
+app.put("/api/platform/admin/email-settings", async (req, res) => {
+  try {
+    const adminSession = requireAdminSession(req, res);
+    if (!adminSession) {
+      return;
+    }
+
+    const normalized = await persistCreatorHubPlatformBrandingSettings(
+      req.body?.settings,
+      CREATORHUB_PLATFORM_EMAIL_SETTINGS_USER_ID,
+    );
+    res.json({
+      success: true,
+      settings: normalized,
+      updatedBy: adminSession.userId,
+    });
+  } catch (error) {
+    console.error("Error updating CreatorHub email settings:", error);
+    res.status(500).json({ error: "Could not update CreatorHub email settings" });
+  }
+});
+
 app.patch("/api/platform/admin/subscription-plans/:planId", async (req, res) => {
   try {
     const adminSession = requireAdminSession(req, res);
@@ -28313,6 +28607,313 @@ async function readCreatorHubStripeCheckoutSessionRecord(
   );
 }
 
+async function readCreatorHubStripeCheckoutRecordBySubscriptionId(
+  subscriptionId: string,
+): Promise<CreatorHubStripeCheckoutSessionRecord | null> {
+  const cached = await compatStoreGet<CreatorHubStripeCheckoutSessionRecord>(
+    creatorHubStripeSubscriptionKey(subscriptionId),
+  );
+  if (cached) {
+    return cached;
+  }
+
+  const allRecords = await compatStoreListByPrefix<CreatorHubStripeCheckoutSessionRecord>(
+    CREATORHUB_STRIPE_CHECKOUT_RECORD_PREFIX,
+  );
+  const matched =
+    allRecords
+      .map((entry) => entry.value)
+      .find((entry) => entry.stripeSubscriptionId === subscriptionId) || null;
+
+  if (matched?.stripeSubscriptionId) {
+    await compatStoreSet(
+      creatorHubStripeSubscriptionKey(matched.stripeSubscriptionId),
+      matched,
+    );
+  }
+
+  return matched;
+}
+
+function toCreatorHubRecipientName(
+  record: Record<string, unknown> | null | undefined,
+  email: string | null,
+) {
+  const fullName =
+    readString(record?.full_name) ||
+    readString(record?.display_name) ||
+    readString(record?.name) ||
+    [readString(record?.first_name), readString(record?.last_name)]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+  if (fullName) {
+    return fullName;
+  }
+
+  const emailLocalPart = normalizeMailConfigValue(email).split("@")[0] || "";
+  if (!emailLocalPart) {
+    return "CreatorHub-medlem";
+  }
+
+  return emailLocalPart
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+async function resolveCreatorHubBillingRecipientContext(
+  record: CreatorHubStripeCheckoutSessionRecord,
+) {
+  const normalizedEmail = normalizeMailConfigValue(record.email).toLowerCase() || null;
+  let matchedRecord: Record<string, unknown> | null = null;
+
+  if (normalizedEmail) {
+    matchedRecord = await getCreatorhubUserByEmail(normalizedEmail).catch(
+      () => null,
+    );
+  }
+
+  if (
+    !matchedRecord &&
+    isPersistableCompatUserId(record.userId) &&
+    (await hasTable("users"))
+  ) {
+    const result = await pool
+      .query(
+        `SELECT *
+         FROM users
+         WHERE id::text = $1
+         LIMIT 1`,
+        [record.userId],
+      )
+      .catch(() => ({ rows: [] as Array<Record<string, unknown>> }));
+    matchedRecord = (result.rows[0] as Record<string, unknown> | undefined) || null;
+  }
+
+  if (!matchedRecord && normalizedEmail && (await hasTable("users"))) {
+    const result = await pool
+      .query(
+        `SELECT *
+         FROM users
+         WHERE LOWER(COALESCE(email, '')) = LOWER($1)
+         LIMIT 1`,
+        [normalizedEmail],
+      )
+      .catch(() => ({ rows: [] as Array<Record<string, unknown>> }));
+    matchedRecord = (result.rows[0] as Record<string, unknown> | undefined) || null;
+  }
+
+  return {
+    email: normalizedEmail,
+    recipientName: toCreatorHubRecipientName(matchedRecord, normalizedEmail),
+  };
+}
+
+async function markCreatorHubStripeCheckoutRecordPaid(
+  record: CreatorHubStripeCheckoutSessionRecord,
+  input: {
+    transactionId: string;
+    completedAt: string;
+    amountMinor: number;
+    amountMajor: number;
+    stripeSubscriptionId?: string | null;
+    stripeCustomerId?: string | null;
+  },
+) {
+  const nowIso = new Date().toISOString();
+  const wasPaymentFailed = record.checkoutStatus === "payment_failed";
+  const wasPendingPayment = !record.paymentCompleted;
+  const nextRecord: CreatorHubStripeCheckoutSessionRecord = {
+    ...record,
+    amountMinor: input.amountMinor,
+    amountMajor: input.amountMajor,
+    paymentCompleted: true,
+    checkoutStatus: "completed",
+    paymentTimestamp: record.paymentTimestamp || input.completedAt,
+    transactionId: input.transactionId,
+    stripeSubscriptionId:
+      input.stripeSubscriptionId || record.stripeSubscriptionId,
+    stripeCustomerId: input.stripeCustomerId || record.stripeCustomerId,
+    updatedAt: nowIso,
+  };
+
+  await writeCreatorHubStripeCheckoutSessionRecord(nextRecord);
+
+  const existingPaymentRecord =
+    (await findCompatPaymentStatusRecord(input.transactionId)) ||
+    (record.transactionId
+      ? await findCompatPaymentStatusRecord(record.transactionId)
+      : null) ||
+    (await readCompatPaymentStatusRecord(`pay_${record.sessionId}`));
+
+  const compatRecord: CompatPaymentStatusRecord = {
+    id: existingPaymentRecord?.id || `pay_${record.sessionId}`,
+    transactionId: input.transactionId,
+    userId: nextRecord.userId,
+    email: nextRecord.email,
+    requestId: nextRecord.requestId,
+    planId: nextRecord.planId,
+    planName: nextRecord.planName,
+    amountMinor: input.amountMinor,
+    amountMajor: input.amountMajor,
+    currency: nextRecord.currency,
+    paymentMethod: "stripe",
+    status: "completed",
+    createdAt: existingPaymentRecord?.createdAt || nextRecord.createdAt,
+    completedAt: nextRecord.paymentTimestamp,
+    provider: "stripe",
+    metadata: {
+      ...(existingPaymentRecord?.metadata || {}),
+      profession: nextRecord.profession,
+      requestId: nextRecord.requestId,
+      billingCycle: nextRecord.billingCycle,
+      stripeSessionId: nextRecord.sessionId,
+      stripeSubscriptionId: nextRecord.stripeSubscriptionId,
+      stripeCustomerId: nextRecord.stripeCustomerId,
+    },
+    receiptSentAt: existingPaymentRecord?.receiptSentAt || null,
+    membershipCard: existingPaymentRecord?.membershipCard || null,
+  };
+
+  await recordCompatPaymentCompletion(compatRecord);
+
+  if (nextRecord.email && (wasPaymentFailed || wasPendingPayment)) {
+    const recipient = await resolveCreatorHubBillingRecipientContext(nextRecord);
+    if (recipient.email) {
+      const mailOptions = {
+        recipientEmail: recipient.email,
+        recipientName: recipient.recipientName,
+        planName: nextRecord.planName,
+        amountMajor: nextRecord.amountMajor,
+        currency: nextRecord.currency,
+        billingCycle: nextRecord.billingCycle,
+        creatorHubUrl: getDefaultCreatorHubPublicOrigin(),
+      } as const;
+
+      if (wasPaymentFailed) {
+        await sendCreatorHubPaymentRecoveredEmail(mailOptions).catch((error) => {
+          console.error("CreatorHub payment recovery email failed:", error);
+        });
+      } else {
+        await sendCreatorHubPaymentConfirmedEmail(mailOptions).catch((error) => {
+          console.error("CreatorHub payment confirmation email failed:", error);
+        });
+      }
+    }
+  }
+
+  return nextRecord;
+}
+
+async function markCreatorHubStripeCheckoutRecordPaymentFailed(
+  record: CreatorHubStripeCheckoutSessionRecord,
+  input: {
+    transactionId: string;
+    stripeSubscriptionId?: string | null;
+    stripeCustomerId?: string | null;
+    failureMessage?: string | null;
+  },
+) {
+  const nowIso = new Date().toISOString();
+  const alreadyFailed = record.checkoutStatus === "payment_failed";
+  const nextRecord: CreatorHubStripeCheckoutSessionRecord = {
+    ...record,
+    paymentCompleted: false,
+    checkoutStatus: "payment_failed",
+    transactionId: input.transactionId || record.transactionId,
+    stripeSubscriptionId:
+      input.stripeSubscriptionId || record.stripeSubscriptionId,
+    stripeCustomerId: input.stripeCustomerId || record.stripeCustomerId,
+    updatedAt: nowIso,
+  };
+
+  await writeCreatorHubStripeCheckoutSessionRecord(nextRecord);
+
+  const existingPaymentRecord =
+    (await findCompatPaymentStatusRecord(input.transactionId)) ||
+    (record.transactionId
+      ? await findCompatPaymentStatusRecord(record.transactionId)
+      : null) ||
+    (await readCompatPaymentStatusRecord(`pay_${record.sessionId}`));
+
+  await writeCompatPaymentStatusRecord({
+    id: existingPaymentRecord?.id || `pay_${record.sessionId}`,
+    transactionId: input.transactionId || record.transactionId || record.sessionId,
+    userId: nextRecord.userId,
+    email: nextRecord.email,
+    requestId: nextRecord.requestId,
+    planId: nextRecord.planId,
+    planName: nextRecord.planName,
+    amountMinor: nextRecord.amountMinor,
+    amountMajor: nextRecord.amountMajor,
+    currency: nextRecord.currency,
+    paymentMethod: "stripe",
+    status: "failed",
+    createdAt: existingPaymentRecord?.createdAt || nextRecord.createdAt,
+    completedAt: null,
+    provider: "stripe",
+    metadata: {
+      ...(existingPaymentRecord?.metadata || {}),
+      profession: nextRecord.profession,
+      requestId: nextRecord.requestId,
+      billingCycle: nextRecord.billingCycle,
+      stripeSessionId: nextRecord.sessionId,
+      stripeSubscriptionId: nextRecord.stripeSubscriptionId,
+      stripeCustomerId: nextRecord.stripeCustomerId,
+      failureMessage: input.failureMessage || null,
+    },
+    receiptSentAt: existingPaymentRecord?.receiptSentAt || null,
+    membershipCard: existingPaymentRecord?.membershipCard || null,
+  });
+
+  const plan = getCompatPlatformSubscriptionPlan(nextRecord.planId);
+  const existingSubscriptionStatus =
+    nextRecord.userId && nextRecord.userId !== "guest"
+      ? await readCompatSubscriptionStatus(nextRecord.userId)
+      : null;
+  if (plan && nextRecord.userId) {
+    await writeCompatSubscriptionStatus(
+      nextRecord.userId,
+      buildCompatSubscriptionStatus(nextRecord.userId, plan, {
+        ...(existingSubscriptionStatus || {}),
+        selectedPlan: plan.id,
+        planName: plan.displayName,
+        amount: nextRecord.amountMajor,
+        currency: nextRecord.currency,
+        subscriptionSelected: true,
+        paymentCompleted: false,
+        transactionId:
+          input.transactionId || nextRecord.transactionId || existingSubscriptionStatus?.transactionId || null,
+        email: nextRecord.email,
+        autoRenew: true,
+        source: "compat",
+      }),
+    );
+  }
+
+  if (!alreadyFailed && nextRecord.email) {
+    const recipient = await resolveCreatorHubBillingRecipientContext(nextRecord);
+    if (recipient.email) {
+      await sendCreatorHubPaymentFailedEmail({
+        recipientEmail: recipient.email,
+        recipientName: recipient.recipientName,
+        planName: nextRecord.planName,
+        amountMajor: nextRecord.amountMajor,
+        currency: nextRecord.currency,
+        billingCycle: nextRecord.billingCycle,
+        creatorHubUrl: getDefaultCreatorHubPublicOrigin(),
+        failureMessage: input.failureMessage,
+      }).catch((error) => {
+        console.error("CreatorHub payment failed email failed:", error);
+      });
+    }
+  }
+
+  return nextRecord;
+}
+
 async function syncCreatorHubStripeCheckoutSession(
   session: Stripe.Checkout.Session,
 ) {
@@ -28357,41 +28958,117 @@ async function syncCreatorHubStripeCheckoutSession(
     return record;
   }
 
-  const existingPaymentRecord =
-    (await findCompatPaymentStatusRecord(transactionId)) ||
-    (await readCompatPaymentStatusRecord(`pay_${session.id}`));
-
-  const compatRecord: CompatPaymentStatusRecord = {
-    id: existingPaymentRecord?.id || `pay_${session.id}`,
+  return markCreatorHubStripeCheckoutRecordPaid(record, {
     transactionId,
-    userId: record.userId,
-    email: record.email,
-    requestId: record.requestId,
-    planId: record.planId,
-    planName: record.planName,
+    completedAt: paymentTimestamp || nowIso,
     amountMinor: record.amountMinor,
     amountMajor: record.amountMajor,
-    currency: record.currency,
-    paymentMethod: "stripe",
-    status: "completed",
-    createdAt: existingPaymentRecord?.createdAt || record.createdAt,
-    completedAt: paymentTimestamp,
-    provider: "stripe",
-    metadata: {
-      ...(existingPaymentRecord?.metadata || {}),
-      profession: record.profession,
-      requestId: record.requestId,
-      billingCycle: record.billingCycle,
-      stripeSessionId: session.id,
-      stripeSubscriptionId: record.stripeSubscriptionId,
-      stripeCustomerId: record.stripeCustomerId,
-    },
-    receiptSentAt: existingPaymentRecord?.receiptSentAt || null,
-    membershipCard: existingPaymentRecord?.membershipCard || null,
-  };
+    stripeSubscriptionId: record.stripeSubscriptionId,
+    stripeCustomerId: record.stripeCustomerId,
+  });
+}
 
-  await recordCompatPaymentCompletion(compatRecord);
-  return record;
+function getCreatorHubStripeInvoiceTransactionId(invoice: Stripe.Invoice) {
+  const subscriptionId = getStripeInvoiceSubscriptionId(invoice);
+  if (subscriptionId) {
+    return subscriptionId;
+  }
+
+  const paymentIntent = invoice.payment_intent;
+  if (typeof paymentIntent === "string") {
+    return paymentIntent;
+  }
+  if (paymentIntent && typeof paymentIntent === "object" && "id" in paymentIntent) {
+    return String(paymentIntent.id || "");
+  }
+  return invoice.id;
+}
+
+function getCreatorHubStripeInvoiceFailureMessage(invoice: Stripe.Invoice) {
+  const paymentError = normalizeMailConfigValue(
+    (invoice as { last_payment_error?: { message?: string | null } | null })
+      .last_payment_error?.message,
+  );
+  if (paymentError) {
+    return paymentError;
+  }
+
+  return "Stripe klarte ikke å gjennomføre betalingen. Oppdater betalingsinformasjonen i CreatorHub for å fortsette abonnementet.";
+}
+
+async function syncCreatorHubStripeInvoice(invoice: Stripe.Invoice) {
+  const subscriptionId = getStripeInvoiceSubscriptionId(invoice);
+  if (!subscriptionId) {
+    return null;
+  }
+
+  const storedRecord =
+    await readCreatorHubStripeCheckoutRecordBySubscriptionId(subscriptionId);
+  if (!storedRecord) {
+    return null;
+  }
+
+  const amountMinor =
+    typeof invoice.amount_paid === "number" && Number.isFinite(invoice.amount_paid)
+      ? invoice.amount_paid
+      : storedRecord.amountMinor;
+  const amountMajor =
+    typeof invoice.amount_paid === "number" && Number.isFinite(invoice.amount_paid)
+      ? invoice.amount_paid / 100
+      : storedRecord.amountMajor;
+  const customerId =
+    (typeof invoice.customer === "string"
+      ? invoice.customer
+      : invoice.customer && typeof invoice.customer === "object"
+        ? String(invoice.customer.id || "")
+        : "") || storedRecord.stripeCustomerId;
+
+  return markCreatorHubStripeCheckoutRecordPaid(storedRecord, {
+    transactionId: getCreatorHubStripeInvoiceTransactionId(invoice),
+    completedAt: new Date().toISOString(),
+    amountMinor,
+    amountMajor,
+    stripeSubscriptionId: subscriptionId,
+    stripeCustomerId: customerId,
+  });
+}
+
+async function clearCreatorHubStripeSubscription(
+  source: Stripe.Invoice | Stripe.Subscription,
+) {
+  const subscriptionId =
+    "subscription" in source
+      ? getStripeInvoiceSubscriptionId(source)
+      : source.id;
+  if (!subscriptionId) {
+    return null;
+  }
+
+  const storedRecord =
+    await readCreatorHubStripeCheckoutRecordBySubscriptionId(subscriptionId);
+  if (!storedRecord) {
+    return null;
+  }
+
+  const customerId =
+    "customer" in source
+      ? typeof source.customer === "string"
+        ? source.customer
+        : source.customer && typeof source.customer === "object"
+          ? String(source.customer.id || "")
+          : ""
+      : "";
+  const failureMessage =
+    "subscription" in source
+      ? getCreatorHubStripeInvoiceFailureMessage(source)
+      : "Abonnementet ble avsluttet i Stripe. Oppdater betalingsinformasjonen i CreatorHub for å gjenoppta tilgangen.";
+
+  return markCreatorHubStripeCheckoutRecordPaymentFailed(storedRecord, {
+    transactionId: subscriptionId,
+    stripeSubscriptionId: subscriptionId,
+    stripeCustomerId: customerId || storedRecord.stripeCustomerId,
+    failureMessage,
+  });
 }
 
 function isRoleRoomStripeSessionPaid(session: Stripe.Checkout.Session) {
@@ -29811,6 +30488,22 @@ async function resolveRoleRoomPlatformBrandingSettings() {
   ) as unknown as RoleRoomPlatformBrandingSettings;
 }
 
+async function resolveCreatorHubPlatformBrandingSettings() {
+  const stored = await getStoredCreatorHubPlatformBrandingSettings();
+  return normalizeCreatorHubPlatformBrandingSettings(
+    stored || {
+      identity: CREATORHUB_PLATFORM_BRANDING_DEFAULT_IDENTITY,
+      email: {
+        replyToEmail:
+          CREATORHUB_PLATFORM_BRANDING_DEFAULT_IDENTITY.supportEmail,
+        footerText: `${CREATORHUB_PLATFORM_BRANDING_DEFAULT_IDENTITY.appName} • ${CREATORHUB_PLATFORM_BRANDING_DEFAULT_IDENTITY.domain}`,
+        theme: CREATORHUB_PLATFORM_DEFAULT_EMAIL_THEME,
+        templates: CREATORHUB_PLATFORM_DEFAULT_EMAIL_TEMPLATES,
+      },
+    },
+  ) as unknown as CreatorHubPlatformBrandingSettings;
+}
+
 function escapeRoleRoomEmailHtml(value: unknown) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -29941,6 +30634,129 @@ async function renderRoleRoomPlatformEmail(input: {
   }
 
   const theme = settings.email.theme || ROLE_ROOM_PLATFORM_DEFAULT_EMAIL_THEME;
+  const subject = replaceRoleRoomEmailVariables(
+    template.subject,
+    input.variables,
+    "text",
+  );
+  const title = replaceRoleRoomEmailVariables(
+    template.title,
+    input.variables,
+    "text",
+  );
+  const bodyHtml = replaceRoleRoomEmailVariables(
+    template.body,
+    input.variables,
+    "html",
+  );
+  const bodyText = stripRoleRoomEmailHtml(bodyHtml);
+  const detailSection = buildRoleRoomEmailDetailSection(input.detailRows || []);
+  const noticeSection = input.noticeSection
+    ? buildRoleRoomEmailNoticeSection(input.noticeSection)
+    : { html: "", text: "" };
+  const footerNote = template.footerNote
+    ? replaceRoleRoomEmailVariables(
+        template.footerNote,
+        input.variables,
+        "text",
+      )
+    : "";
+  const footerText = replaceRoleRoomEmailVariables(
+    settings.email.footerText ||
+      `${settings.identity.appName} • ${settings.identity.domain}`,
+    input.variables,
+    "text",
+  );
+  const ctaLabel = template.ctaLabel
+    ? replaceRoleRoomEmailVariables(template.ctaLabel, input.variables, "text")
+    : "";
+  const ctaHtml =
+    ctaLabel && normalizeMailConfigValue(input.ctaUrl)
+      ? `<a href="${escapeRoleRoomEmailHtml(
+          normalizeMailConfigValue(input.ctaUrl),
+        )}" style="display:inline-block;padding:14px 20px;border-radius:999px;background:${theme.buttonBackground};color:${theme.buttonText};text-decoration:none;font-weight:700">${escapeRoleRoomEmailHtml(
+          ctaLabel,
+        )}</a>`
+      : "";
+
+  const html = `
+    <div style="font-family:Arial,sans-serif;background:${theme.canvasBackground};padding:24px;color:#181512">
+      <div style="max-width:720px;margin:0 auto;background:${theme.cardBackground};border-radius:18px;border:1px solid ${theme.cardBorder};overflow:hidden">
+        <div style="padding:20px 24px;background:${theme.headerBackground};color:${theme.headerText}">
+          <div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:${theme.brandLabelColor};font-weight:700">${escapeRoleRoomEmailHtml(
+            settings.identity.appName,
+          )}</div>
+          <h1 style="margin:8px 0 0;font-size:24px;line-height:1.2">${escapeRoleRoomEmailHtml(
+            title,
+          )}</h1>
+        </div>
+        <div style="padding:24px">
+          <div style="margin:0 0 16px;font-size:14px;line-height:1.7;color:${theme.bodyText}">${bodyHtml}</div>
+          ${detailSection.html}
+          ${noticeSection.html}
+          ${ctaHtml ? `<div style="margin:0 0 18px">${ctaHtml}</div>` : ""}
+          ${
+            footerNote
+              ? `<p style="margin:0 0 18px;font-size:12px;line-height:1.7;color:${theme.mutedText}">${escapeRoleRoomEmailHtml(
+                  footerNote,
+                )}</p>`
+              : ""
+          }
+          <p style="margin:0;font-size:12px;line-height:1.7;color:${theme.footerText}">${escapeRoleRoomEmailHtml(
+            footerText,
+          )}</p>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const textParts = [
+    bodyText,
+    detailSection.text,
+    noticeSection.text,
+    ctaLabel && normalizeMailConfigValue(input.ctaUrl)
+      ? `${ctaLabel}\n${normalizeMailConfigValue(input.ctaUrl)}`
+      : "",
+    footerNote,
+    footerText,
+  ].filter((value) => normalizeMailConfigValue(value));
+
+  return {
+    subject,
+    html,
+    text: textParts.join("\n\n"),
+    replyToEmail:
+      normalizeMailConfigValue(input.replyToEmail) ||
+      normalizeMailConfigValue(settings.email.replyToEmail) ||
+      normalizeMailConfigValue(settings.identity.supportEmail),
+  };
+}
+
+async function renderCreatorHubPlatformEmail(input: {
+  templateId: CreatorHubPlatformEmailTemplateId;
+  variables: Record<string, string | number | null | undefined>;
+  ctaUrl?: string | null;
+  replyToEmail?: string | null;
+  detailRows?: Array<{ label: string; value: string }>;
+  noticeSection?: {
+    label?: string;
+    body: string;
+    tone?: "neutral" | "danger";
+  } | null;
+}) {
+  const settings = await resolveCreatorHubPlatformBrandingSettings();
+  const template =
+    settings.email.templates.find((entry) => entry.id === input.templateId) ||
+    CREATORHUB_PLATFORM_DEFAULT_EMAIL_TEMPLATES.find(
+      (entry) => entry.id === input.templateId,
+    );
+
+  if (!template) {
+    throw new Error(`Unknown CreatorHub email template: ${input.templateId}`);
+  }
+
+  const theme =
+    settings.email.theme || CREATORHUB_PLATFORM_DEFAULT_EMAIL_THEME;
   const subject = replaceRoleRoomEmailVariables(
     template.subject,
     input.variables,
@@ -30382,6 +31198,264 @@ async function sendRoleRoomCommercialEmail(options: {
     provider: "smtp",
     messageId: normalizeMailConfigValue(info.messageId),
   };
+}
+
+function formatCreatorHubBillingAmountLabel(record: {
+  amountMajor: number;
+  currency?: string | null;
+}) {
+  const amount = Number(record.amountMajor || 0);
+  const normalizedCurrency =
+    normalizeMailConfigValue(record.currency) || "NOK";
+  const formatted = amount.toFixed(2).replace(".", ",");
+  if (normalizedCurrency.toUpperCase() === "NOK") {
+    return `${formatted} kr`;
+  }
+  return `${formatted} ${normalizedCurrency.toUpperCase()}`;
+}
+
+function formatCreatorHubBillingCycleLabel(
+  billingCycle: "monthly" | "yearly",
+) {
+  return billingCycle === "yearly" ? "Årlig" : "Månedlig";
+}
+
+async function sendCreatorHubBillingEmail(options: {
+  recipientEmail: string;
+  replyTo?: string | null;
+  subject: string;
+  text: string;
+  html: string;
+}) {
+  const transporter = getRoleRoomEducationInquiryMailer();
+  if (!transporter) {
+    return {
+      sent: false,
+      reason: "missing_email_config",
+      accepted: [] as string[],
+      provider: null as string | null,
+      messageId: null as string | null,
+    };
+  }
+
+  const adminEmail =
+    normalizeMailConfigValue(process.env.GOOGLE_ADMIN_EMAIL) ||
+    "daniel@creatorhubn.com";
+  const fromEmail =
+    normalizeMailConfigValue(process.env.GMAIL_USER) ||
+    normalizeMailConfigValue(process.env.GOOGLE_WORKSPACE_EMAIL) ||
+    adminEmail;
+  const brandingSettings = await resolveCreatorHubPlatformBrandingSettings().catch(
+    () => null,
+  );
+  const replyTo =
+    normalizeMailConfigValue(options.replyTo) ||
+    normalizeMailConfigValue(brandingSettings?.email?.replyToEmail) ||
+    normalizeMailConfigValue(brandingSettings?.identity?.supportEmail) ||
+    adminEmail;
+
+  const gmailSender = await resolveRoleRoomEducationInquiryGmailSender().catch(
+    (error) => {
+      console.error("CreatorHub billing Gmail API sender lookup failed:", error);
+      return null;
+    },
+  );
+
+  if (gmailSender) {
+    const gmail = google.gmail({
+      version: "v1",
+      auth: gmailSender.authorized.oauthClient,
+    });
+
+    const response = await gmail.users.messages.send({
+      userId: "me",
+      requestBody: {
+        raw: await buildGmailRawMessage({
+          to: options.recipientEmail,
+          from: `CreatorHub Norge <${gmailSender.senderEmail}>`,
+          replyTo,
+          subject: options.subject,
+          text: options.text,
+          html: options.html,
+        }),
+      },
+    });
+
+    return {
+      sent: true,
+      reason: null,
+      accepted: [options.recipientEmail],
+      provider: "gmail_api",
+      messageId: normalizeMailConfigValue(response.data.id),
+    };
+  }
+
+  const info = await transporter.sendMail({
+    from: `CreatorHub Norge <${fromEmail}>`,
+    to: options.recipientEmail,
+    replyTo,
+    subject: options.subject,
+    text: options.text,
+    html: options.html,
+  });
+
+  return {
+    sent: true,
+    reason: null,
+    accepted: Array.isArray(info.accepted)
+      ? info.accepted.map((value) => String(value))
+      : [],
+    provider: "smtp",
+    messageId: normalizeMailConfigValue(info.messageId),
+  };
+}
+
+async function sendCreatorHubPaymentConfirmedEmail(options: {
+  recipientEmail: string;
+  recipientName: string;
+  planName: string;
+  amountMajor: number;
+  currency: string;
+  billingCycle: "monthly" | "yearly";
+  creatorHubUrl: string;
+}) {
+  const adminEmail =
+    normalizeMailConfigValue(process.env.GOOGLE_ADMIN_EMAIL) ||
+    "daniel@creatorhubn.com";
+  const rendered = await renderCreatorHubPlatformEmail({
+    templateId: "creatorhub_payment_confirmed",
+    variables: {
+      recipientName: options.recipientName,
+      planName: options.planName,
+      billingCycleLabel: formatCreatorHubBillingCycleLabel(options.billingCycle),
+      amountLabel: formatCreatorHubBillingAmountLabel(options),
+      creatorHubUrl: options.creatorHubUrl,
+      recipientEmail: options.recipientEmail,
+    },
+    replyToEmail: adminEmail,
+    ctaUrl: options.creatorHubUrl,
+    detailRows: [
+      { label: "Plan", value: options.planName },
+      {
+        label: "Fakturering",
+        value: formatCreatorHubBillingCycleLabel(options.billingCycle),
+      },
+      {
+        label: "Beløp",
+        value: formatCreatorHubBillingAmountLabel(options),
+      },
+      { label: "E-post", value: options.recipientEmail },
+    ],
+  });
+
+  return sendCreatorHubBillingEmail({
+    recipientEmail: options.recipientEmail,
+    replyTo: rendered.replyToEmail,
+    subject: rendered.subject,
+    text: rendered.text,
+    html: rendered.html,
+  });
+}
+
+async function sendCreatorHubPaymentFailedEmail(options: {
+  recipientEmail: string;
+  recipientName: string;
+  planName: string;
+  amountMajor: number;
+  currency: string;
+  billingCycle: "monthly" | "yearly";
+  creatorHubUrl: string;
+  failureMessage?: string | null;
+}) {
+  const adminEmail =
+    normalizeMailConfigValue(process.env.GOOGLE_ADMIN_EMAIL) ||
+    "daniel@creatorhubn.com";
+  const rendered = await renderCreatorHubPlatformEmail({
+    templateId: "creatorhub_payment_failed",
+    variables: {
+      recipientName: options.recipientName,
+      planName: options.planName,
+      billingCycleLabel: formatCreatorHubBillingCycleLabel(options.billingCycle),
+      amountLabel: formatCreatorHubBillingAmountLabel(options),
+      creatorHubUrl: options.creatorHubUrl,
+      failureMessage:
+        options.failureMessage ||
+        "Oppdater betalingsinformasjonen i CreatorHub. Når Stripe får gjennomført betalingen, sender vi en ny status på e-post.",
+    },
+    replyToEmail: adminEmail,
+    ctaUrl: options.creatorHubUrl,
+    detailRows: [
+      { label: "Plan", value: options.planName },
+      {
+        label: "Fakturering",
+        value: formatCreatorHubBillingCycleLabel(options.billingCycle),
+      },
+      {
+        label: "Beløp",
+        value: formatCreatorHubBillingAmountLabel(options),
+      },
+    ],
+    noticeSection: options.failureMessage
+      ? {
+          label: "Stripe-melding",
+          body: options.failureMessage,
+          tone: "danger",
+        }
+      : null,
+  });
+
+  return sendCreatorHubBillingEmail({
+    recipientEmail: options.recipientEmail,
+    replyTo: rendered.replyToEmail,
+    subject: rendered.subject,
+    text: rendered.text,
+    html: rendered.html,
+  });
+}
+
+async function sendCreatorHubPaymentRecoveredEmail(options: {
+  recipientEmail: string;
+  recipientName: string;
+  planName: string;
+  amountMajor: number;
+  currency: string;
+  billingCycle: "monthly" | "yearly";
+  creatorHubUrl: string;
+}) {
+  const adminEmail =
+    normalizeMailConfigValue(process.env.GOOGLE_ADMIN_EMAIL) ||
+    "daniel@creatorhubn.com";
+  const rendered = await renderCreatorHubPlatformEmail({
+    templateId: "creatorhub_payment_recovered",
+    variables: {
+      recipientName: options.recipientName,
+      planName: options.planName,
+      billingCycleLabel: formatCreatorHubBillingCycleLabel(options.billingCycle),
+      amountLabel: formatCreatorHubBillingAmountLabel(options),
+      creatorHubUrl: options.creatorHubUrl,
+    },
+    replyToEmail: adminEmail,
+    ctaUrl: options.creatorHubUrl,
+    detailRows: [
+      { label: "Plan", value: options.planName },
+      {
+        label: "Fakturering",
+        value: formatCreatorHubBillingCycleLabel(options.billingCycle),
+      },
+      {
+        label: "Beløp",
+        value: formatCreatorHubBillingAmountLabel(options),
+      },
+    ],
+  });
+
+  return sendCreatorHubBillingEmail({
+    recipientEmail: options.recipientEmail,
+    replyTo: rendered.replyToEmail,
+    subject: rendered.subject,
+    text: rendered.text,
+    html: rendered.html,
+  });
 }
 
 async function sendRoleRoomCommercialActivationEmail(options: {

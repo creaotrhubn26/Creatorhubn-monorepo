@@ -40,6 +40,7 @@ import {
   Analytics as AnalyticsIcon,
   AttachMoney as MoneyIcon,
   Business as EnterpriseIcon,
+  EmailOutlined as EmailIcon,
   People as PeopleIcon,
   Save as SaveIcon,
   ToggleOn as ToggleIcon,
@@ -93,6 +94,46 @@ interface SubscriptionPlanRow {
   isActive: boolean;
   contactSalesOnly?: boolean;
   ctaLabel?: string | null;
+}
+
+interface CreatorHubEmailTemplateRow {
+  id: 'creatorhub_payment_confirmed' | 'creatorhub_payment_failed' | 'creatorhub_payment_recovered';
+  name: string;
+  description: string;
+  subject: string;
+  title: string;
+  body: string;
+  ctaLabel?: string | null;
+  footerNote?: string | null;
+}
+
+interface CreatorHubEmailSettings {
+  identity: {
+    appName: string;
+    tagline: string;
+    domain: string;
+    supportEmail: string;
+    docsUrl: string;
+    emailLogoUrl: string;
+  };
+  email: {
+    replyToEmail: string;
+    footerText: string;
+    theme: {
+      canvasBackground: string;
+      cardBackground: string;
+      cardBorder: string;
+      headerBackground: string;
+      headerText: string;
+      brandLabelColor: string;
+      bodyText: string;
+      mutedText: string;
+      buttonBackground: string;
+      buttonText: string;
+      footerText: string;
+    };
+    templates: CreatorHubEmailTemplateRow[];
+  };
 }
 
 interface AnalyticsData {
@@ -248,6 +289,71 @@ const defaultEnterprisePricing: EnterprisePricingConfig = {
   ],
 };
 
+const defaultCreatorHubEmailSettings: CreatorHubEmailSettings = {
+  identity: {
+    appName: 'CreatorHub Norge',
+    tagline: 'Business OS for creators',
+    domain: 'creatorhubn.com',
+    supportEmail: 'kontakt@creatorhubn.com',
+    docsUrl: 'https://creatorhubn.com',
+    emailLogoUrl: '',
+  },
+  email: {
+    replyToEmail: 'kontakt@creatorhubn.com',
+    footerText: 'CreatorHub Norge • creatorhubn.com',
+    theme: {
+      canvasBackground: '#f3f7fb',
+      cardBackground: '#ffffff',
+      cardBorder: '#d7e3ef',
+      headerBackground: '#0f3460',
+      headerText: '#f8fafc',
+      brandLabelColor: '#4fd1c5',
+      bodyText: '#223047',
+      mutedText: '#64748b',
+      buttonBackground: '#e94560',
+      buttonText: '#ffffff',
+      footerText: '#64748b',
+    },
+    templates: [
+      {
+        id: 'creatorhub_payment_confirmed',
+        name: 'Betaling registrert',
+        description: 'Sendes etter første vellykkede betaling for CreatorHub.',
+        subject: 'Betalingen for CreatorHub er registrert',
+        title: 'Abonnementet ditt er aktivt',
+        body:
+          '<p>Hei {{recipientName}},</p><p>Betalingen for <strong>{{planName}}</strong> er registrert. CreatorHub-abonnementet ditt er nå aktivt.</p><p>Du kan gå tilbake til CreatorHub og fortsette arbeidet med en gang.</p>',
+        ctaLabel: 'Åpne CreatorHub',
+        footerNote:
+          'Hvis du trenger hjelp med onboarding eller fakturering, kan du svare direkte på denne e-posten.',
+      },
+      {
+        id: 'creatorhub_payment_failed',
+        name: 'Betaling feilet',
+        description: 'Sendes når Stripe ikke klarer å fornye CreatorHub-abonnementet.',
+        subject: 'Betalingen for CreatorHub må oppdateres',
+        title: 'Betalingen må oppdateres',
+        body:
+          '<p>Hei {{recipientName}},</p><p>Stripe klarte ikke å gjennomføre betalingen for <strong>{{planName}}</strong> i CreatorHub.</p><p>Oppdater betalingsinformasjonen så snart som mulig for å unngå avbrudd i abonnementet.</p>',
+        ctaLabel: 'Åpne CreatorHub',
+        footerNote:
+          'Hvis betalingen allerede er oppdatert, kan du se bort fra denne e-posten.',
+      },
+      {
+        id: 'creatorhub_payment_recovered',
+        name: 'Betaling gjenopprettet',
+        description: 'Sendes når en tidligere mislykket betaling er registrert igjen.',
+        subject: 'Betalingen for CreatorHub er godkjent',
+        title: 'Betalingen er registrert igjen',
+        body:
+          '<p>Hei {{recipientName}},</p><p>Betalingen for <strong>{{planName}}</strong> er nå registrert igjen, og CreatorHub-abonnementet ditt er aktivt.</p><p>Du kan fortsette som normalt i CreatorHub.</p>',
+        ctaLabel: 'Gå tilbake til CreatorHub',
+        footerNote: '',
+      },
+    ],
+  },
+};
+
 function getPlanRequirement(feature: PlatformFeature): PlanRequirement {
   if (feature.category === 'enterprise') return 'enterprise';
   if (feature.category === 'professional' || feature.category === 'premium') return 'pro';
@@ -310,6 +416,20 @@ export default function PriceManagementDashboard({
   const [editingPlanCtaLabel, setEditingPlanCtaLabel] = useState('');
   const [editingPlanActive, setEditingPlanActive] = useState(true);
   const [editingPlanContactSalesOnly, setEditingPlanContactSalesOnly] = useState(false);
+  const [creatorHubEmailSettings, setCreatorHubEmailSettings] = useState<CreatorHubEmailSettings>(
+    defaultCreatorHubEmailSettings,
+  );
+  const [creatorHubEmailSettingsSaving, setCreatorHubEmailSettingsSaving] = useState(false);
+  const [editEmailTemplateDialogOpen, setEditEmailTemplateDialogOpen] = useState(false);
+  const [editingEmailTemplateId, setEditingEmailTemplateId] =
+    useState<CreatorHubEmailTemplateRow['id']>('creatorhub_payment_confirmed');
+  const [editingEmailTemplateName, setEditingEmailTemplateName] = useState('');
+  const [editingEmailTemplateDescription, setEditingEmailTemplateDescription] = useState('');
+  const [editingEmailTemplateSubject, setEditingEmailTemplateSubject] = useState('');
+  const [editingEmailTemplateTitle, setEditingEmailTemplateTitle] = useState('');
+  const [editingEmailTemplateBody, setEditingEmailTemplateBody] = useState('');
+  const [editingEmailTemplateCtaLabel, setEditingEmailTemplateCtaLabel] = useState('');
+  const [editingEmailTemplateFooterNote, setEditingEmailTemplateFooterNote] = useState('');
   const [editingFeature, setEditingFeature] = useState<FeatureToggle | null>(null);
   const [featureName, setFeatureName] = useState('');
   const [featureDescription, setFeatureDescription] = useState('');
@@ -365,6 +485,27 @@ export default function PriceManagementDashboard({
           }
         } catch {
           // Fall back to public pricing hook data.
+        }
+
+        try {
+          const headers = await auth.getAuthHeader();
+          const emailResponse = await fetch('/api/platform/admin/email-settings', {
+            headers,
+            credentials: 'include',
+          });
+          if (emailResponse.ok) {
+            const emailData = (await emailResponse.json()) as {
+              success?: boolean;
+              settings?: CreatorHubEmailSettings;
+            };
+            if (emailData.settings && mounted) {
+              setCreatorHubEmailSettings(emailData.settings);
+            }
+          }
+        } catch {
+          if (mounted) {
+            setCreatorHubEmailSettings(defaultCreatorHubEmailSettings);
+          }
         }
 
         setPlans(nextPlans);
@@ -686,6 +827,82 @@ export default function PriceManagementDashboard({
     });
   };
 
+  const saveCreatorHubEmailSettings = async (
+    nextSettings: CreatorHubEmailSettings,
+    successMessage: string,
+  ) => {
+    setCreatorHubEmailSettingsSaving(true);
+    try {
+      const headers = await auth.getAuthHeader();
+      const response = await fetch('/api/platform/admin/email-settings', {
+        method: 'PUT',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ settings: nextSettings }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Save CreatorHub email settings failed');
+      }
+
+      const data = (await response.json()) as {
+        settings?: CreatorHubEmailSettings;
+      };
+      setCreatorHubEmailSettings(data.settings ?? nextSettings);
+      setSnackbar({ open: true, message: successMessage, severity: 'success' });
+      return true;
+    } catch {
+      setSnackbar({
+        open: true,
+        message: 'Kunne ikke lagre CreatorHub e-postoppsett på server.',
+        severity: 'error',
+      });
+      return false;
+    } finally {
+      setCreatorHubEmailSettingsSaving(false);
+    }
+  };
+
+  const openEmailTemplateEditor = (template: CreatorHubEmailTemplateRow) => {
+    setEditingEmailTemplateId(template.id);
+    setEditingEmailTemplateName(template.name);
+    setEditingEmailTemplateDescription(template.description);
+    setEditingEmailTemplateSubject(template.subject);
+    setEditingEmailTemplateTitle(template.title);
+    setEditingEmailTemplateBody(template.body);
+    setEditingEmailTemplateCtaLabel(template.ctaLabel ?? '');
+    setEditingEmailTemplateFooterNote(template.footerNote ?? '');
+    setEditEmailTemplateDialogOpen(true);
+  };
+
+  const saveEmailTemplate = async () => {
+    const nextSettings: CreatorHubEmailSettings = {
+      ...creatorHubEmailSettings,
+      email: {
+        ...creatorHubEmailSettings.email,
+        templates: creatorHubEmailSettings.email.templates.map((template) =>
+          template.id === editingEmailTemplateId
+            ? {
+                ...template,
+                name: editingEmailTemplateName.trim() || template.name,
+                description: editingEmailTemplateDescription.trim() || template.description,
+                subject: editingEmailTemplateSubject.trim(),
+                title: editingEmailTemplateTitle.trim(),
+                body: editingEmailTemplateBody.trim(),
+                ctaLabel: editingEmailTemplateCtaLabel.trim() || null,
+                footerNote: editingEmailTemplateFooterNote.trim() || null,
+              }
+            : template,
+        ),
+      },
+    };
+
+    const saved = await saveCreatorHubEmailSettings(nextSettings, 'CreatorHub e-postmal lagret.');
+    if (saved) {
+      setEditEmailTemplateDialogOpen(false);
+    }
+  };
+
   const saveEnterprisePricing = async () => {
     setEnterprisePricingSaving(true);
     try {
@@ -836,6 +1053,7 @@ export default function PriceManagementDashboard({
         >
           <Tab icon={<ToggleIcon />} label="Plattform-flagg" />
           <Tab icon={<PeopleIcon />} label="Abonnementer" />
+          <Tab icon={<EmailIcon />} label="Betalingsmailer" />
           <Tab icon={<AnalyticsIcon />} label="Analyse" />
           <Tab icon={<EnterpriseIcon />} label="Enterprise" />
         </Tabs>
@@ -1116,6 +1334,220 @@ export default function PriceManagementDashboard({
 
       <TabPanel value={tabValue} index={2}>
         <Grid container spacing={3}>
+          <Grid size={{ xs: 12, lg: 5 }}>
+            <Card sx={{ ...theming.getThemedCardSx(), borderRadius: '20px' }}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Stack
+                  direction={{ xs: 'column', md: 'row' }}
+                  spacing={1.5}
+                  justifyContent="space-between"
+                  alignItems={{ xs: 'flex-start', md: 'center' }}
+                  sx={{ mb: 2.5 }}
+                >
+                  <Box>
+                    <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', fontWeight: 700 }}>
+                      <EmailIcon sx={{ mr: 1 }} />
+                      CreatorHub betalingsmailer
+                    </Typography>
+                    <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
+                      Samme settings brukes i checkout, webhook og i all automatisk billing-kommunikasjon.
+                    </Typography>
+                  </Box>
+                  <Button
+                    variant="contained"
+                    startIcon={<SaveIcon />}
+                    disabled={creatorHubEmailSettingsSaving}
+                    onClick={() =>
+                      void saveCreatorHubEmailSettings(
+                        creatorHubEmailSettings,
+                        'CreatorHub e-postinnstillinger lagret.',
+                      )
+                    }
+                    sx={theming.getThemedButtonSx()}
+                  >
+                    {creatorHubEmailSettingsSaving ? 'Lagrer...' : 'Lagre oppsett'}
+                  </Button>
+                </Stack>
+
+                <Stack spacing={2}>
+                  <TextField
+                    fullWidth
+                    label="Appnavn i e-post"
+                    value={creatorHubEmailSettings.identity.appName}
+                    onChange={(event) =>
+                      setCreatorHubEmailSettings((previous) => ({
+                        ...previous,
+                        identity: { ...previous.identity, appName: event.target.value },
+                      }))
+                    }
+                  />
+                  <TextField
+                    fullWidth
+                    label="Tagline"
+                    value={creatorHubEmailSettings.identity.tagline}
+                    onChange={(event) =>
+                      setCreatorHubEmailSettings((previous) => ({
+                        ...previous,
+                        identity: { ...previous.identity, tagline: event.target.value },
+                      }))
+                    }
+                  />
+                  <TextField
+                    fullWidth
+                    label="Support e-post"
+                    value={creatorHubEmailSettings.identity.supportEmail}
+                    onChange={(event) =>
+                      setCreatorHubEmailSettings((previous) => ({
+                        ...previous,
+                        identity: { ...previous.identity, supportEmail: event.target.value },
+                      }))
+                    }
+                  />
+                  <TextField
+                    fullWidth
+                    label="Reply-to"
+                    value={creatorHubEmailSettings.email.replyToEmail}
+                    onChange={(event) =>
+                      setCreatorHubEmailSettings((previous) => ({
+                        ...previous,
+                        email: { ...previous.email, replyToEmail: event.target.value },
+                      }))
+                    }
+                  />
+                  <TextField
+                    fullWidth
+                    label="Footer"
+                    value={creatorHubEmailSettings.email.footerText}
+                    onChange={(event) =>
+                      setCreatorHubEmailSettings((previous) => ({
+                        ...previous,
+                        email: { ...previous.email, footerText: event.target.value },
+                      }))
+                    }
+                  />
+                  <TextField
+                    fullWidth
+                    label="Domene"
+                    value={creatorHubEmailSettings.identity.domain}
+                    onChange={(event) =>
+                      setCreatorHubEmailSettings((previous) => ({
+                        ...previous,
+                        identity: { ...previous.identity, domain: event.target.value },
+                      }))
+                    }
+                  />
+                </Stack>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          <Grid size={{ xs: 12, lg: 7 }}>
+            <Card sx={{ ...theming.getThemedCardSx(), borderRadius: '20px', height: '100%' }}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>
+                  Når disse mailene går ut
+                </Typography>
+                <Stack spacing={1.5}>
+                  <Box sx={{ p: 1.5, borderRadius: '16px', bgcolor: '#f8fafc', border: '1px solid rgba(15, 23, 42, 0.06)' }}>
+                    <Typography variant="overline" sx={{ color: '#0f3460', fontWeight: 700 }}>
+                      Første vellykkede betaling
+                    </Typography>
+                    <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
+                      Sendes etter første vellykkede Stripe-checkout, slik at brukeren får en tydelig bekreftelse på at CreatorHub-abonnementet er aktivt.
+                    </Typography>
+                  </Box>
+                  <Box sx={{ p: 1.5, borderRadius: '16px', bgcolor: '#fff7ed', border: '1px solid rgba(194, 65, 12, 0.08)' }}>
+                    <Typography variant="overline" sx={{ color: '#c2410c', fontWeight: 700 }}>
+                      Betaling feilet
+                    </Typography>
+                    <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
+                      Sendes når Stripe melder `invoice.payment_failed` eller abonnementet blir stoppet før betalingen er tilbake på plass.
+                    </Typography>
+                  </Box>
+                  <Box sx={{ p: 1.5, borderRadius: '16px', bgcolor: '#ecfdf5', border: '1px solid rgba(5, 150, 105, 0.08)' }}>
+                    <Typography variant="overline" sx={{ color: '#047857', fontWeight: 700 }}>
+                      Betaling gjenopprettet
+                    </Typography>
+                    <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
+                      Sendes når en konto som tidligere sto som feilet får en ny vellykket `invoice.paid` og abonnementet blir aktivt igjen.
+                    </Typography>
+                  </Box>
+                </Stack>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          <Grid size={{ xs: 12 }}>
+            <Card sx={{ ...theming.getThemedCardSx(), borderRadius: '20px' }}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Stack
+                  direction={{ xs: 'column', md: 'row' }}
+                  spacing={1.5}
+                  justifyContent="space-between"
+                  alignItems={{ xs: 'flex-start', md: 'center' }}
+                  sx={{ mb: 2.5 }}
+                >
+                  <Box>
+                    <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                      Maler som går ut automatisk
+                    </Typography>
+                    <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
+                      Daniel kan styre subject, tittel, innhold, CTA og fotnote per mal. Public CreatorHub bruker samme språk og prisnivå som her.
+                    </Typography>
+                  </Box>
+                  <Chip
+                    label={`${creatorHubEmailSettings.email.templates.length} aktive billing-maler`}
+                    sx={{ bgcolor: '#f8fafc', border: '1px solid rgba(15, 23, 42, 0.08)', fontWeight: 700 }}
+                  />
+                </Stack>
+
+                <TableContainer>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell><strong>Mal</strong></TableCell>
+                        <TableCell><strong>Subject</strong></TableCell>
+                        <TableCell><strong>CTA</strong></TableCell>
+                        <TableCell><strong>Handling</strong></TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {creatorHubEmailSettings.email.templates.map((template) => (
+                        <TableRow key={template.id}>
+                          <TableCell>
+                            <Stack spacing={0.5}>
+                              <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                                {template.name}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary" sx={{ maxWidth: 360, display: 'block' }}>
+                                {template.description}
+                              </Typography>
+                            </Stack>
+                          </TableCell>
+                          <TableCell>{template.subject}</TableCell>
+                          <TableCell>{template.ctaLabel || 'Ingen CTA'}</TableCell>
+                          <TableCell>
+                            <Button
+                              size="small"
+                              sx={{ textTransform: 'none', fontWeight: 700 }}
+                              onClick={() => openEmailTemplateEditor(template)}
+                            >
+                              Rediger
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+      </TabPanel>
+
+      <TabPanel value={tabValue} index={3}>
+        <Grid container spacing={3}>
           <Grid size={{ xs: 12, md: 3 }}>
             <MetricCard icon={<TrendingUpIcon sx={{ fontSize: 40, color: 'success.main', mb: 1 }} />} label="Total Revenue (30d)">
               {analytics.metrics.totalRevenue.toLocaleString('nb-NO')} kr
@@ -1175,7 +1607,7 @@ export default function PriceManagementDashboard({
         </Grid>
       </TabPanel>
 
-      <TabPanel value={tabValue} index={3}>
+      <TabPanel value={tabValue} index={4}>
         <Alert severity="info" sx={{ mb: 3 }}>
           <strong>Norsk MVA (25%):</strong> Alle priser under er oppgitt <strong>eks. MVA</strong>.
         </Alert>
@@ -1497,6 +1929,145 @@ export default function PriceManagementDashboard({
           <Button onClick={() => setEditPlanDialogOpen(false)}>Avbryt</Button>
           <Button variant="contained" onClick={() => void savePlanEdit()}>
             Lagre
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={editEmailTemplateDialogOpen}
+        onClose={() => setEditEmailTemplateDialogOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Rediger CreatorHub e-postmal</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField
+              fullWidth
+              label="Navn"
+              value={editingEmailTemplateName}
+              onChange={(event) => setEditingEmailTemplateName(event.target.value)}
+            />
+            <TextField
+              fullWidth
+              label="Beskrivelse"
+              value={editingEmailTemplateDescription}
+              onChange={(event) => setEditingEmailTemplateDescription(event.target.value)}
+            />
+            <TextField
+              fullWidth
+              label="Subject"
+              value={editingEmailTemplateSubject}
+              onChange={(event) => setEditingEmailTemplateSubject(event.target.value)}
+            />
+            <TextField
+              fullWidth
+              label="Overskrift i e-posten"
+              value={editingEmailTemplateTitle}
+              onChange={(event) => setEditingEmailTemplateTitle(event.target.value)}
+            />
+            <TextField
+              fullWidth
+              multiline
+              minRows={8}
+              label="Body (HTML tillatt)"
+              value={editingEmailTemplateBody}
+              onChange={(event) => setEditingEmailTemplateBody(event.target.value)}
+              helperText="Bruk variabler som {{recipientName}}, {{planName}}, {{amountLabel}} og {{billingCycleLabel}}."
+            />
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <TextField
+                  fullWidth
+                  label="CTA-label"
+                  value={editingEmailTemplateCtaLabel}
+                  onChange={(event) => setEditingEmailTemplateCtaLabel(event.target.value)}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <TextField
+                  fullWidth
+                  label="Fotnote"
+                  value={editingEmailTemplateFooterNote}
+                  onChange={(event) => setEditingEmailTemplateFooterNote(event.target.value)}
+                />
+              </Grid>
+            </Grid>
+
+            <Box
+              sx={{
+                borderRadius: '20px',
+                border: '1px solid rgba(15, 52, 96, 0.08)',
+                background: creatorHubEmailSettings.email.theme.canvasBackground,
+                p: 2,
+              }}
+            >
+              <Box
+                sx={{
+                  maxWidth: 720,
+                  margin: '0 auto',
+                  borderRadius: '18px',
+                  overflow: 'hidden',
+                  border: `1px solid ${creatorHubEmailSettings.email.theme.cardBorder}`,
+                  background: creatorHubEmailSettings.email.theme.cardBackground,
+                }}
+              >
+                <Box
+                  sx={{
+                    px: 3,
+                    py: 2.5,
+                    background: creatorHubEmailSettings.email.theme.headerBackground,
+                    color: creatorHubEmailSettings.email.theme.headerText,
+                  }}
+                >
+                  <Typography variant="overline" sx={{ color: creatorHubEmailSettings.email.theme.brandLabelColor, fontWeight: 700, letterSpacing: '0.12em' }}>
+                    {creatorHubEmailSettings.identity.appName}
+                  </Typography>
+                  <Typography variant="h5" sx={{ mt: 0.75, fontWeight: 700 }}>
+                    {editingEmailTemplateTitle || 'Tittel'}
+                  </Typography>
+                </Box>
+                <Box sx={{ px: 3, py: 3 }}>
+                  <Box
+                    sx={{ color: creatorHubEmailSettings.email.theme.bodyText, lineHeight: 1.7 }}
+                    dangerouslySetInnerHTML={{ __html: editingEmailTemplateBody || '<p>Forhåndsvisning av e-postinnhold.</p>' }}
+                  />
+                  {editingEmailTemplateCtaLabel ? (
+                    <Button
+                      variant="contained"
+                      sx={{
+                        mt: 2.5,
+                        borderRadius: '999px',
+                        bgcolor: creatorHubEmailSettings.email.theme.buttonBackground,
+                        color: creatorHubEmailSettings.email.theme.buttonText,
+                        boxShadow: 'none',
+                        '&:hover': {
+                          bgcolor: creatorHubEmailSettings.email.theme.buttonBackground,
+                          boxShadow: 'none',
+                          opacity: 0.92,
+                        },
+                      }}
+                    >
+                      {editingEmailTemplateCtaLabel}
+                    </Button>
+                  ) : null}
+                  {editingEmailTemplateFooterNote ? (
+                    <Typography variant="caption" sx={{ display: 'block', mt: 2.5, color: creatorHubEmailSettings.email.theme.mutedText }}>
+                      {editingEmailTemplateFooterNote}
+                    </Typography>
+                  ) : null}
+                  <Typography variant="caption" sx={{ display: 'block', mt: 1.5, color: creatorHubEmailSettings.email.theme.footerText }}>
+                    {creatorHubEmailSettings.email.footerText}
+                  </Typography>
+                </Box>
+              </Box>
+            </Box>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditEmailTemplateDialogOpen(false)}>Avbryt</Button>
+          <Button variant="contained" onClick={() => void saveEmailTemplate()}>
+            Lagre mal
           </Button>
         </DialogActions>
       </Dialog>
