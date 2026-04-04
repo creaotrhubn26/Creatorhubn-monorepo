@@ -101,7 +101,8 @@ interface CreatorHubEmailTemplateRow {
     | 'creatorhub_payment_confirmed'
     | 'creatorhub_account_activated'
     | 'creatorhub_payment_failed'
-    | 'creatorhub_payment_recovered';
+    | 'creatorhub_payment_recovered'
+    | 'creatorhub_subscription_cancelled';
   name: string;
   description: string;
   subject: string;
@@ -374,6 +375,18 @@ const defaultCreatorHubEmailSettings: CreatorHubEmailSettings = {
         ctaLabel: 'Gå tilbake til CreatorHub',
         footerNote: '',
       },
+      {
+        id: 'creatorhub_subscription_cancelled',
+        name: 'Abonnement avsluttet',
+        description: 'Sendes når Stripe melder at CreatorHub-abonnementet er avsluttet.',
+        subject: 'CreatorHub-abonnementet ditt er avsluttet',
+        title: 'Abonnementet er avsluttet',
+        body:
+          '<p>Hei {{recipientName}},</p><p>Stripe har registrert at abonnementet for <strong>{{planName}}</strong> er avsluttet.</p><p>Tilgangen din i CreatorHub er derfor stoppet. Hvis du vil fortsette, må abonnementet aktiveres på nytt fra CreatorHub.</p>',
+        ctaLabel: 'Åpne CreatorHub',
+        footerNote:
+          'Dette er en systemmelding. Hvis du trenger hjelp, kan du kontakte oss via supportsiden i CreatorHub.',
+      },
     ],
   },
 };
@@ -384,6 +397,8 @@ function getCreatorHubTemplateSenderKind(
   switch (templateId) {
     case 'creatorhub_account_activated':
       return 'welcome';
+    case 'creatorhub_subscription_cancelled':
+      return 'system';
     case 'creatorhub_payment_confirmed':
     case 'creatorhub_payment_failed':
     case 'creatorhub_payment_recovered':
@@ -1119,7 +1134,7 @@ export default function PriceManagementDashboard({
         >
           <Tab icon={<ToggleIcon />} label="Plattform-flagg" />
           <Tab icon={<PeopleIcon />} label="Abonnementer" />
-          <Tab icon={<EmailIcon />} label="Betalingsmailer" />
+          <Tab icon={<EmailIcon />} label="E-postmaler" />
           <Tab icon={<AnalyticsIcon />} label="Analyse" />
           <Tab icon={<EnterpriseIcon />} label="Enterprise" />
         </Tabs>
@@ -1413,7 +1428,7 @@ export default function PriceManagementDashboard({
                   <Box>
                     <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', fontWeight: 700 }}>
                       <EmailIcon sx={{ mr: 1 }} />
-                      CreatorHub betalingsmailer
+                      CreatorHub e-postmaler
                     </Typography>
                     <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
                       Samme settings brukes i checkout, webhook og i all automatisk billing-kommunikasjon.
@@ -1496,7 +1511,7 @@ export default function PriceManagementDashboard({
                   <TextField
                     fullWidth
                     label="System-avsender"
-                    helperText="Reservert for enveis systemvarsler, for eksempel noreply@creatorhubn.com. Ingen aktive CreatorHub-maler bruker denne akkurat nå."
+                    helperText="Brukes for enveis systemvarsler, for eksempel abonnement avsluttet og andre driftsmeldinger."
                     value={creatorHubEmailSettings.email.systemFromEmail}
                     onChange={(event) =>
                       setCreatorHubEmailSettings((previous) => ({

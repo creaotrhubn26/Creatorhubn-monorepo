@@ -15864,7 +15864,8 @@ type CreatorHubPlatformEmailTemplateId =
   | "creatorhub_payment_confirmed"
   | "creatorhub_account_activated"
   | "creatorhub_payment_failed"
-  | "creatorhub_payment_recovered";
+  | "creatorhub_payment_recovered"
+  | "creatorhub_subscription_cancelled";
 
 type CreatorHubPlatformEmailSenderKind =
   | "billing"
@@ -16001,6 +16002,19 @@ const CREATORHUB_PLATFORM_DEFAULT_EMAIL_TEMPLATES: CreatorHubPlatformEmailTempla
       body:
         "<p>Hei {{recipientName}},</p><p>Betalingen for <strong>{{planName}}</strong> er nå registrert igjen, og CreatorHub-abonnementet ditt er aktivt.</p><p>Du kan fortsette som normalt i CreatorHub.</p>",
       ctaLabel: "Gå tilbake til CreatorHub",
+    },
+    {
+      id: "creatorhub_subscription_cancelled",
+      name: "Abonnement avsluttet",
+      description:
+        "Sendes når Stripe melder at CreatorHub-abonnementet er avsluttet.",
+      subject: "CreatorHub-abonnementet ditt er avsluttet",
+      title: "Abonnementet er avsluttet",
+      body:
+        "<p>Hei {{recipientName}},</p><p>Stripe har registrert at abonnementet for <strong>{{planName}}</strong> er avsluttet.</p><p>Tilgangen din i CreatorHub er derfor stoppet. Hvis du vil fortsette, må abonnementet aktiveres på nytt fra CreatorHub.</p>",
+      ctaLabel: "Åpne CreatorHub",
+      footerNote:
+        "Dette er en systemmelding. Hvis du trenger hjelp, kan du kontakte oss via supportsiden i CreatorHub.",
     },
   ];
 
@@ -28876,6 +28890,9 @@ async function markCreatorHubStripeCheckoutRecordPaymentFailed(
     stripeCustomerId?: string | null;
     failureMessage?: string | null;
   },
+  options?: {
+    suppressFailureEmail?: boolean;
+  },
 ) {
   const nowIso = new Date().toISOString();
   const alreadyFailed = record.checkoutStatus === "payment_failed";
@@ -28954,7 +28971,7 @@ async function markCreatorHubStripeCheckoutRecordPaymentFailed(
     );
   }
 
-  if (!alreadyFailed && nextRecord.email) {
+  if (!options?.suppressFailureEmail && !alreadyFailed && nextRecord.email) {
     const recipient = await resolveCreatorHubBillingRecipientContext(nextRecord);
     if (recipient.email) {
       await sendCreatorHubPaymentFailedEmail({
@@ -29124,12 +29141,35 @@ async function clearCreatorHubStripeSubscription(
       ? getCreatorHubStripeInvoiceFailureMessage(source)
       : "Abonnementet ble avsluttet i Stripe. Oppdater betalingsinformasjonen i CreatorHub for å gjenoppta tilgangen.";
 
-  return markCreatorHubStripeCheckoutRecordPaymentFailed(storedRecord, {
-    transactionId: subscriptionId,
-    stripeSubscriptionId: subscriptionId,
-    stripeCustomerId: customerId || storedRecord.stripeCustomerId,
-    failureMessage,
-  });
+  const isSubscriptionDeletedEvent = !("subscription" in source);
+  const clearedRecord = await markCreatorHubStripeCheckoutRecordPaymentFailed(
+    storedRecord,
+    {
+      transactionId: subscriptionId,
+      stripeSubscriptionId: subscriptionId,
+      stripeCustomerId: customerId || storedRecord.stripeCustomerId,
+      failureMessage,
+    },
+    {
+      suppressFailureEmail: isSubscriptionDeletedEvent,
+    },
+  );
+
+  if (isSubscriptionDeletedEvent && storedRecord.email) {
+    const recipient = await resolveCreatorHubBillingRecipientContext(storedRecord);
+    if (recipient.email) {
+      await sendCreatorHubSubscriptionCancelledEmail({
+        recipientEmail: recipient.email,
+        recipientName: recipient.recipientName,
+        planName: storedRecord.planName,
+        creatorHubUrl: getDefaultCreatorHubPublicOrigin(),
+      }).catch((error) => {
+        console.error("CreatorHub subscription cancelled email failed:", error);
+      });
+    }
+  }
+
+  return clearedRecord;
 }
 
 function isRoleRoomStripeSessionPaid(session: Stripe.Checkout.Session) {
@@ -31398,6 +31438,8 @@ function resolveCreatorHubTemplateSenderKind(
   switch (templateId) {
     case "creatorhub_account_activated":
       return "welcome";
+    case "creatorhub_subscription_cancelled":
+      return "system";
     case "creatorhub_payment_confirmed":
     case "creatorhub_payment_failed":
     case "creatorhub_payment_recovered":
@@ -31730,6 +31772,49 @@ async function sendCreatorHubPaymentRecoveredEmail(options: {
     recipientEmail: options.recipientEmail,
     fromEmail: resolveCreatorHubTemplateFromEmail(
       "creatorhub_payment_recovered",
+      brandingSettings,
+    ),
+    replyTo: rendered.replyToEmail,
+    subject: rendered.subject,
+    text: rendered.text,
+    html: rendered.html,
+  });
+}
+
+async function sendCreatorHubSubscriptionCancelledEmail(options: {
+  recipientEmail: string;
+  recipientName: string;
+  planName: string;
+  creatorHubUrl: string;
+}) {
+  const brandingSettings = await resolveCreatorHubPlatformBrandingSettings().catch(
+    () => null,
+  );
+  const rendered = await renderCreatorHubPlatformEmail({
+    templateId: "creatorhub_subscription_cancelled",
+    variables: {
+      recipientName: options.recipientName,
+      recipientEmail: options.recipientEmail,
+      planName: options.planName,
+      creatorHubUrl: options.creatorHubUrl,
+    },
+    ctaUrl: options.creatorHubUrl,
+    detailRows: [
+      { label: "Plan", value: options.planName },
+      { label: "Innlogging", value: options.recipientEmail },
+      { label: "Status", value: "Abonnement avsluttet i Stripe" },
+    ],
+    noticeSection: {
+      label: "Neste steg",
+      body: "Hvis du vil fortsette i CreatorHub, må abonnementet aktiveres på nytt fra kontoen din.",
+      tone: "neutral",
+    },
+  });
+
+  return sendCreatorHubBillingEmail({
+    recipientEmail: options.recipientEmail,
+    fromEmail: resolveCreatorHubTemplateFromEmail(
+      "creatorhub_subscription_cancelled",
       brandingSettings,
     ),
     replyTo: rendered.replyToEmail,
