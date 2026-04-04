@@ -26,12 +26,45 @@ async function getImpersonatedAccessToken(_scopes: string[] = ["https://www.goog
   return "";
 }
 
+function getLocalDevelopmentAuthHeader(): Record<string, string> | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const hostname = window.location.hostname?.trim().toLowerCase();
+  const isLocalDev =
+    Boolean(import.meta.env.DEV) || hostname === 'localhost' || hostname === '127.0.0.1';
+
+  if (!isLocalDev) {
+    return null;
+  }
+
+  try {
+    const token = window.localStorage.getItem('creatorhub_auth_token')?.trim();
+    if (!token) {
+      return null;
+    }
+
+    return {
+      Authorization: `Bearer ${token}`,
+      'x-session-token': token,
+    };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Get authorization header for API requests
  */
 async function getAuthHeaderFromToken(scopes?: string[]) {
+  const localDevelopmentHeader = getLocalDevelopmentAuthHeader();
+  if (localDevelopmentHeader) {
+    return localDevelopmentHeader;
+  }
+
   const token = await getImpersonatedAccessToken(scopes);
-  return { Authorization: `Bearer ${token}` };
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 /**

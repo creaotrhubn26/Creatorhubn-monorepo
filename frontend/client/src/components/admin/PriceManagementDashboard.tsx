@@ -21,6 +21,7 @@ import {
   MenuItem,
   Select,
   Snackbar,
+  Stack,
   Switch,
   Tab,
   Table,
@@ -81,10 +82,16 @@ interface SubscriptionPlanRow {
   id: string;
   name: string;
   price: number;
+  monthlyPrice: number;
+  yearlyPrice: number | null;
+  yearlySavingsLabel?: string | null;
+  publicPriceLabel?: string | null;
   currency: string;
   billingCycle: BillingCycle;
   features: string[];
   isActive: boolean;
+  contactSalesOnly?: boolean;
+  ctaLabel?: string | null;
 }
 
 interface AnalyticsData {
@@ -250,11 +257,17 @@ function mapSubscriptionPlans(plans: PlatformSubscriptionPlan[]): SubscriptionPl
   return plans.map((plan) => ({
     id: plan.id,
     name: plan.displayName || plan.name,
-    price: plan.price,
+    price: typeof plan.monthlyPrice === 'number' ? plan.monthlyPrice : plan.price,
+    monthlyPrice: typeof plan.monthlyPrice === 'number' ? plan.monthlyPrice : plan.price,
+    yearlyPrice: typeof plan.yearlyPrice === 'number' ? plan.yearlyPrice : null,
+    yearlySavingsLabel: plan.yearlySavingsLabel ?? null,
+    publicPriceLabel: plan.publicPriceLabel ?? null,
     currency: plan.currency,
     billingCycle: plan.billingCycle,
     features: plan.features,
     isActive: plan.isActive,
+    contactSalesOnly: Boolean(plan.contactSalesOnly),
+    ctaLabel: plan.ctaLabel ?? null,
   }));
 }
 
@@ -285,8 +298,12 @@ export default function PriceManagementDashboard({
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editPlanDialogOpen, setEditPlanDialogOpen] = useState(false);
   const [editingPlanId, setEditingPlanId] = useState('');
-  const [editingPlanPrice, setEditingPlanPrice] = useState('');
+  const [editingPlanMonthlyPrice, setEditingPlanMonthlyPrice] = useState('');
+  const [editingPlanYearlyPrice, setEditingPlanYearlyPrice] = useState('');
+  const [editingPlanYearlySavingsLabel, setEditingPlanYearlySavingsLabel] = useState('');
+  const [editingPlanPublicPriceLabel, setEditingPlanPublicPriceLabel] = useState('');
   const [editingPlanActive, setEditingPlanActive] = useState(true);
+  const [editingPlanContactSalesOnly, setEditingPlanContactSalesOnly] = useState(false);
   const [editingFeature, setEditingFeature] = useState<FeatureToggle | null>(null);
   const [featureName, setFeatureName] = useState('');
   const [featureDescription, setFeatureDescription] = useState('');
@@ -322,7 +339,29 @@ export default function PriceManagementDashboard({
 
         if (!mounted) return;
         setFeatures(mappedFeatures);
-        setPlans(mapSubscriptionPlans(subscriptionPlans));
+
+        let nextPlans = mapSubscriptionPlans(subscriptionPlans);
+
+        try {
+          const headers = await auth.getAuthHeader();
+          const plansResponse = await fetch('/api/platform/admin/subscription-plans', {
+            headers,
+            credentials: 'include',
+          });
+          if (plansResponse.ok) {
+            const plansData = (await plansResponse.json()) as {
+              success?: boolean;
+              plans?: PlatformSubscriptionPlan[];
+            };
+            if (Array.isArray(plansData.plans)) {
+              nextPlans = mapSubscriptionPlans(plansData.plans);
+            }
+          }
+        } catch {
+          // Fall back to public pricing hook data.
+        }
+
+        setPlans(nextPlans);
 
         try {
           const analyticsResponse = await fetch('/api/admin/analytics/dashboard?period=30d');
@@ -486,14 +525,29 @@ export default function PriceManagementDashboard({
   };
 
   const savePlanEdit = async () => {
-    const price = Number(editingPlanPrice);
-    if (!Number.isFinite(price) || price < 0) {
-      setSnackbar({ open: true, message: 'Ugyldig prisverdi.', severity: 'error' });
+    const monthlyPrice = Number(editingPlanMonthlyPrice);
+    const yearlyPrice = Number(editingPlanYearlyPrice);
+
+    if (!Number.isFinite(monthlyPrice) || monthlyPrice < 0) {
+      setSnackbar({ open: true, message: 'Ugyldig månedspris.', severity: 'error' });
       return;
     }
 
-    const patchPayload = { price, isActive: editingPlanActive };
+    if (!Number.isFinite(yearlyPrice) || yearlyPrice < 0) {
+      setSnackbar({ open: true, message: 'Ugyldig årspris.', severity: 'error' });
+      return;
+    }
+
+    const patchPayload = {
+      price: monthlyPrice,
+      monthlyPrice,
+      yearlyPrice,
+      yearlySavingsLabel: editingPlanYearlySavingsLabel.trim() || null,
+      publicPriceLabel: editingPlanPublicPriceLabel.trim() || null,
+      isActive: editingPlanActive,
+    };
     let updatedServer = false;
+    let updatedPlanFromServer: PlatformSubscriptionPlan | null = null;
 
     try {
       const headers = await auth.getAuthHeader();
@@ -503,25 +557,60 @@ export default function PriceManagementDashboard({
         body: JSON.stringify(patchPayload),
       });
       updatedServer = response.ok;
+      if (response.ok) {
+        const data = (await response.json()) as { plan?: PlatformSubscriptionPlan };
+        updatedPlanFromServer = data.plan ?? null;
+      }
     } catch {
       updatedServer = false;
     }
 
     const updatedPlans = subscriptionPlans.map((plan) =>
       plan.id === editingPlanId
-        ? { ...plan, price, isActive: editingPlanActive, updatedAt: new Date() }
+        ? {
+            ...plan,
+            price: monthlyPrice,
+            monthlyPrice,
+            yearlyPrice,
+            yearlySavingsLabel: editingPlanYearlySavingsLabel.trim() || null,
+            publicPriceLabel: editingPlanPublicPriceLabel.trim() || null,
+            isActive: editingPlanActive,
+            updatedAt: new Date(),
+          }
         : plan,
     );
 
     platformPricingService.setOverridePlans(updatedPlans);
-    setPlans(mapSubscriptionPlans(updatedPlans));
+    const locallyUpdatedRows = plans.map((plan) =>
+      plan.id === editingPlanId
+        ? {
+            ...plan,
+            price: monthlyPrice,
+            monthlyPrice,
+            yearlyPrice,
+            yearlySavingsLabel: editingPlanYearlySavingsLabel.trim() || null,
+            publicPriceLabel: editingPlanPublicPriceLabel.trim() || null,
+            isActive: editingPlanActive,
+          }
+        : plan,
+    );
+    setPlans(
+      updatedPlanFromServer
+        ? locallyUpdatedRows.map((plan) =>
+            plan.id === editingPlanId ? mapSubscriptionPlans([updatedPlanFromServer])[0] : plan,
+          )
+        : locallyUpdatedRows,
+    );
     setEditPlanDialogOpen(false);
 
     onSettingsUpdate?.({
       source: 'price_management',
       action: 'plan_updated',
       planId: editingPlanId,
-      price,
+      monthlyPrice,
+      yearlyPrice,
+      yearlySavingsLabel: editingPlanYearlySavingsLabel.trim() || null,
+      publicPriceLabel: editingPlanPublicPriceLabel.trim() || null,
       isActive: editingPlanActive,
       serverUpdated: updatedServer,
     });
@@ -698,10 +787,13 @@ export default function PriceManagementDashboard({
                           <strong>Plan</strong>
                         </TableCell>
                         <TableCell>
-                          <strong>Pris</strong>
+                          <strong>Månedlig</strong>
                         </TableCell>
                         <TableCell>
-                          <strong>Syklus</strong>
+                          <strong>Årlig</strong>
+                        </TableCell>
+                        <TableCell>
+                          <strong>Offentlig visning</strong>
                         </TableCell>
                         <TableCell>
                           <strong>Status</strong>
@@ -711,9 +803,36 @@ export default function PriceManagementDashboard({
                     <TableBody>
                       {plans.map((plan) => (
                         <TableRow key={plan.id}>
-                          <TableCell>{plan.name}</TableCell>
-                          <TableCell>{formatPrice(plan.price, plan.currency as PlatformSubscriptionPlan['currency'])}</TableCell>
-                          <TableCell>{plan.billingCycle}</TableCell>
+                          <TableCell>
+                            <Stack spacing={0.5}>
+                              <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                                {plan.name}
+                              </Typography>
+                              {plan.contactSalesOnly ? (
+                                <Chip size="small" label="Kontakt salg" color="warning" sx={{ width: 'fit-content' }} />
+                              ) : null}
+                            </Stack>
+                          </TableCell>
+                          <TableCell>
+                            {formatPrice(plan.monthlyPrice, plan.currency as PlatformSubscriptionPlan['currency'])}
+                          </TableCell>
+                          <TableCell>
+                            <Stack spacing={0.25}>
+                              <Typography variant="body2">
+                                {plan.yearlyPrice != null
+                                  ? formatPrice(plan.yearlyPrice, plan.currency as PlatformSubscriptionPlan['currency'])
+                                  : '—'}
+                              </Typography>
+                              {plan.yearlySavingsLabel ? (
+                                <Typography variant="caption" color="text.secondary">
+                                  {plan.yearlySavingsLabel}
+                                </Typography>
+                              ) : null}
+                            </Stack>
+                          </TableCell>
+                          <TableCell>
+                            {plan.publicPriceLabel || (plan.contactSalesOnly ? 'Kontakt salg' : 'Pris vises automatisk')}
+                          </TableCell>
                           <TableCell>
                             <Chip
                               label={plan.isActive ? 'Aktiv' : 'Inaktiv'}
@@ -725,8 +844,12 @@ export default function PriceManagementDashboard({
                               sx={{ ml: 1 }}
                               onClick={() => {
                                 setEditingPlanId(plan.id);
-                                setEditingPlanPrice(String(plan.price));
+                                setEditingPlanMonthlyPrice(String(plan.monthlyPrice));
+                                setEditingPlanYearlyPrice(String(plan.yearlyPrice ?? plan.monthlyPrice * 10));
+                                setEditingPlanYearlySavingsLabel(plan.yearlySavingsLabel ?? '');
+                                setEditingPlanPublicPriceLabel(plan.publicPriceLabel ?? '');
                                 setEditingPlanActive(plan.isActive);
+                                setEditingPlanContactSalesOnly(Boolean(plan.contactSalesOnly));
                                 setEditPlanDialogOpen(true);
                               }}
                             >
@@ -1049,16 +1172,51 @@ export default function PriceManagementDashboard({
         </DialogActions>
       </Dialog>
 
-      <Dialog open={editPlanDialogOpen} onClose={() => setEditPlanDialogOpen(false)} maxWidth="xs" fullWidth>
+      <Dialog open={editPlanDialogOpen} onClose={() => setEditPlanDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Rediger plan</DialogTitle>
         <DialogContent>
+          {editingPlanContactSalesOnly ? (
+            <Alert severity="info" sx={{ mt: 1 }}>
+              Enterprise er fortsatt kontakt-salg utad, men intern måneds- og årspris brukes i admin og rapportering.
+            </Alert>
+          ) : null}
           <TextField
             fullWidth
-            label="Pris (NOK)"
+            label="Månedspris (NOK)"
             type="number"
             inputProps={{ min: 0 }}
-            value={editingPlanPrice}
-            onChange={(event) => setEditingPlanPrice(event.target.value)}
+            value={editingPlanMonthlyPrice}
+            onChange={(event) => setEditingPlanMonthlyPrice(event.target.value)}
+            sx={{ mt: 1 }}
+          />
+          <TextField
+            fullWidth
+            label="Årspris (NOK)"
+            type="number"
+            inputProps={{ min: 0 }}
+            value={editingPlanYearlyPrice}
+            onChange={(event) => setEditingPlanYearlyPrice(event.target.value)}
+            sx={{ mt: 2 }}
+          />
+          <TextField
+            fullWidth
+            label="Årlig savings-label"
+            placeholder="For eksempel: 2 måneder gratis"
+            value={editingPlanYearlySavingsLabel}
+            onChange={(event) => setEditingPlanYearlySavingsLabel(event.target.value)}
+            sx={{ mt: 2 }}
+          />
+          <TextField
+            fullWidth
+            label="Offentlig prislabel"
+            placeholder={editingPlanContactSalesOnly ? 'Kontakt salg' : 'Valgfritt'}
+            value={editingPlanPublicPriceLabel}
+            onChange={(event) => setEditingPlanPublicPriceLabel(event.target.value)}
+            helperText={
+              editingPlanContactSalesOnly
+                ? 'Dette brukes i public UI i stedet for numerisk pris.'
+                : 'La feltet stå tomt for vanlig numerisk visning.'
+            }
             sx={{ mt: 1 }}
           />
           <FormControlLabel

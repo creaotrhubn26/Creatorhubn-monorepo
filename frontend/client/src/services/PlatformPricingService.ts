@@ -18,6 +18,9 @@ export interface PlatformSubscriptionPlan {
   description: string;
   tier: PlatformTier;
   price: number;
+  monthlyPrice?: number | null;
+  yearlyPrice?: number | null;
+  yearlySavingsLabel?: string | null;
   currency: Currency;
   billingCycle: BillingCycle;
   features: string[];
@@ -30,6 +33,11 @@ export interface PlatformSubscriptionPlan {
   };
   isActive: boolean;
   isPopular?: boolean;
+  popular?: boolean;
+  isPublic?: boolean;
+  contactSalesOnly?: boolean;
+  publicPriceLabel?: string | null;
+  ctaLabel?: string | null;
   trialDays: number;
   stripePriceId?: string;
   createdAt: Date;
@@ -96,7 +104,9 @@ class PlatformPricingService {
       const response = await fetch('/api/platform/subscription-plans');
       if (response.ok) {
         const data = await response.json();
-        const plans = data.plans || this.getFallbackPlatformPlans();
+        const plans = Array.isArray(data?.plans)
+          ? data.plans.map((plan: unknown) => this.normalizePlatformSubscriptionPlan(plan))
+          : this.getFallbackPlatformPlans();
         this.setCache(cacheKey, plans);
         return plans;
       }
@@ -120,11 +130,7 @@ class PlatformPricingService {
       const parsed = JSON.parse(raw);
       if (!Array.isArray(parsed)) return null;
       // Coerce date fields
-      return parsed.map((p) => ({
-        ...p,
-        createdAt: new Date(p.createdAt || Date.now()),
-        updatedAt: new Date(p.updatedAt || Date.now()),
-      }));
+      return parsed.map((p) => this.normalizePlatformSubscriptionPlan(p));
     } catch {
       return null;
     }
@@ -160,6 +166,8 @@ class PlatformPricingService {
         description: 'Perfect for getting started with basic project management',
         tier: 'free',
         price: 0,
+        monthlyPrice: 0,
+        yearlyPrice: 0,
         currency: 'NOK',
         billingCycle: 'monthly',
         features: [
@@ -183,17 +191,20 @@ class PlatformPricingService {
         displayName: 'Basic Creator',
         description: 'Essential tools for small creative businesses',
         tier: 'basic',
-        price: 199,
+        price: 249,
+        monthlyPrice: 249,
+        yearlyPrice: 2490,
+        yearlySavingsLabel: '2 måneder gratis',
         currency: 'NOK',
         billingCycle: 'monthly',
         features: [
-          'Everything in Free','Up to 25 projects','Up to 100 clients','Advanced CRM','Contract management','Basic invoicing','Priority email support','5GB storage',
+          'Everything in Free','Up to 25 projects','Up to 100 clients','Advanced CRM','Contract management','Basic invoicing','Priority email support','10GB storage',
         ],
         limits: {
           maxUsers: 2,
           maxProjects: 25,
           maxClients: 100,
-          maxStorageGB: 5,
+          maxStorageGB: 10,
           maxApiCalls: 5000,
         },
         isActive: true,
@@ -207,17 +218,20 @@ class PlatformPricingService {
         displayName: 'Professional Creator',
         description: 'Complete business management for professional creatives',
         tier: 'professional',
-        price: 399,
+        price: 449,
+        monthlyPrice: 449,
+        yearlyPrice: 4490,
+        yearlySavingsLabel: '2 måneder gratis',
         currency: 'NOK',
         billingCycle: 'monthly',
         features: [
-          'Everything in Basic','Unlimited projects','Unlimited clients','Advanced invoicing & payments','Client galleries & portfolios','Advanced reporting & analytics','API access','Priority phone support','25GB storage',
+          'Everything in Basic','Unlimited projects','Unlimited clients','Advanced invoicing & payments','Client galleries & portfolios','Advanced reporting & analytics','API access','Priority phone support','50GB storage',
         ],
         limits: {
           maxUsers: 5,
           maxProjects: -1,
           maxClients: -1,
-          maxStorageGB: 25,
+          maxStorageGB: 50,
           maxApiCalls: 25000,
         },
         isActive: true,
@@ -229,20 +243,23 @@ class PlatformPricingService {
       {
         id: 'premium',
         name: 'premium',
-        displayName: 'Premium Creator',
-        description: 'Advanced features for growing creative businesses',
+        displayName: 'Premium Studio',
+        description: 'Advanced features for growing creative teams and studios',
         tier: 'premium',
-        price: 699,
+        price: 1199,
+        monthlyPrice: 1199,
+        yearlyPrice: 11990,
+        yearlySavingsLabel: '2 måneder gratis',
         currency: 'NOK',
         billingCycle: 'monthly',
         features: [
-          'Everything in Professional','Visual Editor','AI-powered suggestions','Advanced automation','Custom branding','White-label options','Advanced integrations','Dedicated account manager','100GB storage',
+          'Everything in Professional','Shared team workspace','Advanced automation','Team features','Priority support','250GB storage',
         ],
         limits: {
-          maxUsers: 10,
+          maxUsers: 15,
           maxProjects: -1,
           maxClients: -1,
-          maxStorageGB: 100,
+          maxStorageGB: 250,
           maxApiCalls: 100000,
         },
         isActive: true,
@@ -253,14 +270,19 @@ class PlatformPricingService {
       {
         id: 'enterprise',
         name: 'enterprise',
-        displayName: 'Enterprise Creator',
+        displayName: 'Enterprise',
         description: 'Full-scale solution for large creative organizations',
         tier: 'enterprise',
-        price: 1299,
+        price: 3990,
+        monthlyPrice: 3990,
+        yearlyPrice: 39900,
         currency: 'NOK',
         billingCycle: 'monthly',
+        contactSalesOnly: true,
+        publicPriceLabel: 'Kontakt salg',
+        ctaLabel: 'Kontakt salg',
         features: [
-          'Everything in Premium','Unlimited users','Custom integrations','Advanced security features','SLA guarantee','24/7 phone support', 'Custom training', 'Unlimited storage',
+          'Everything in Premium','White label','Custom integrations','Advanced security features','SLA guarantee','24/7 phone support', 'Custom training', 'Unlimited storage',
         ],
         limits: {
           maxUsers: -1,
@@ -275,6 +297,51 @@ class PlatformPricingService {
         updatedAt: new Date(),
       },
     ];
+  }
+
+  private normalizePlatformSubscriptionPlan(plan: any): PlatformSubscriptionPlan {
+    const monthlyPrice =
+      typeof plan?.monthlyPrice === 'number'
+        ? plan.monthlyPrice
+        : typeof plan?.price === 'number'
+          ? plan.price
+          : 0;
+
+    return {
+      id: String(plan?.id || 'unknown'),
+      name: String(plan?.name || plan?.displayName || 'unknown'),
+      displayName: String(plan?.displayName || plan?.name || 'Unknown'),
+      description: String(plan?.description || ''),
+      tier: (plan?.tier || 'free') as PlatformTier,
+      price: monthlyPrice,
+      monthlyPrice,
+      yearlyPrice: typeof plan?.yearlyPrice === 'number' ? plan.yearlyPrice : null,
+      yearlySavingsLabel:
+        typeof plan?.yearlySavingsLabel === 'string' ? plan.yearlySavingsLabel : null,
+      currency: (plan?.currency || 'NOK') as Currency,
+      billingCycle: plan?.billingCycle === 'yearly' ? 'yearly' : 'monthly',
+      features: Array.isArray(plan?.features) ? plan.features : [],
+      limits: {
+        maxUsers: typeof plan?.limits?.maxUsers === 'number' ? plan.limits.maxUsers : -1,
+        maxProjects: typeof plan?.limits?.maxProjects === 'number' ? plan.limits.maxProjects : -1,
+        maxClients: typeof plan?.limits?.maxClients === 'number' ? plan.limits.maxClients : -1,
+        maxStorageGB: typeof plan?.limits?.maxStorageGB === 'number' ? plan.limits.maxStorageGB : -1,
+        maxApiCalls: typeof plan?.limits?.maxApiCalls === 'number' ? plan.limits.maxApiCalls : -1,
+      },
+      isActive: plan?.isActive !== false,
+      isPopular: Boolean(plan?.isPopular),
+      popular: Boolean(plan?.popular),
+      isPublic: plan?.isPublic !== false,
+      contactSalesOnly: Boolean(plan?.contactSalesOnly),
+      publicPriceLabel:
+        typeof plan?.publicPriceLabel === 'string' ? plan.publicPriceLabel : null,
+      ctaLabel: typeof plan?.ctaLabel === 'string' ? plan.ctaLabel : null,
+      trialDays: typeof plan?.trialDays === 'number' ? plan.trialDays : 0,
+      stripePriceId:
+        typeof plan?.stripePriceId === 'string' ? plan.stripePriceId : undefined,
+      createdAt: new Date(plan?.createdAt || Date.now()),
+      updatedAt: new Date(plan?.updatedAt || Date.now()),
+    };
   }
 
   // =============================================================================
@@ -429,8 +496,9 @@ class PlatformPricingService {
 
     return {
       tier: plan.tier,
-      monthlyPrice: plan.price,
-      yearlyPrice: Math.round(plan.price * 10), // 2 months free
+      monthlyPrice: typeof plan.monthlyPrice === 'number' ? plan.monthlyPrice : plan.price,
+      yearlyPrice:
+        typeof plan.yearlyPrice === 'number' ? plan.yearlyPrice : Math.round(plan.price * 10),
       currency: plan.currency,
       features: plan.features,
       limits: plan.limits,
@@ -587,7 +655,6 @@ export const usePlatformPricing = (options?: { enabled?: boolean }) => {
 };
 
 export default PlatformPricingService;
-
 
 
 

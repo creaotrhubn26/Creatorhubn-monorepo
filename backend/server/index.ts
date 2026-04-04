@@ -18318,6 +18318,18 @@ type CompatPlatformSubscriptionPlan = {
   updatedAt: string;
 };
 
+type CompatPlatformSubscriptionPlanOverride = {
+  price?: number | null;
+  monthlyPrice?: number | null;
+  yearlyPrice?: number | null;
+  yearlySavingsLabel?: string | null;
+  isActive?: boolean | null;
+  publicPriceLabel?: string | null;
+  ctaLabel?: string | null;
+  updatedAt: string;
+  updatedBy?: string | null;
+};
+
 type CompatSubscriptionStatus = {
   selectedPlan: string | null;
   planName: string | null;
@@ -18475,6 +18487,152 @@ function normalizeCreatorHubBillingCycle(
     ? "yearly"
     : "monthly";
 }
+
+const COMPAT_PLATFORM_SUBSCRIPTION_PLAN_OVERRIDES_STORE_KEY =
+  "compat::platform-subscription-plan-overrides";
+const compatPlatformSubscriptionPlanOverridesStore = new Map<
+  string,
+  CompatPlatformSubscriptionPlanOverride
+>();
+let compatPlatformSubscriptionPlanOverridesLoaded = false;
+let compatPlatformSubscriptionPlanOverridesLoadPromise: Promise<void> | null =
+  null;
+
+function serializeCompatPlatformSubscriptionPlanOverrides() {
+  return Object.fromEntries(compatPlatformSubscriptionPlanOverridesStore.entries());
+}
+
+function getCompatPlatformSubscriptionPlanOverride(planId: string | null | undefined) {
+  if (!planId) return null;
+  return compatPlatformSubscriptionPlanOverridesStore.get(planId) ?? null;
+}
+
+async function ensureCompatPlatformSubscriptionPlanOverridesLoaded() {
+  if (compatPlatformSubscriptionPlanOverridesLoaded) {
+    return;
+  }
+
+  if (compatPlatformSubscriptionPlanOverridesLoadPromise) {
+    await compatPlatformSubscriptionPlanOverridesLoadPromise;
+    return;
+  }
+
+  compatPlatformSubscriptionPlanOverridesLoadPromise = (async () => {
+    const stored = await compatStoreGet<Record<string, CompatPlatformSubscriptionPlanOverride>>(
+      COMPAT_PLATFORM_SUBSCRIPTION_PLAN_OVERRIDES_STORE_KEY,
+    );
+
+    compatPlatformSubscriptionPlanOverridesStore.clear();
+
+    if (stored && isRecord(stored)) {
+      for (const [planId, rawOverride] of Object.entries(stored)) {
+        if (!isRecord(rawOverride)) {
+          continue;
+        }
+
+        const updatedAt = readString(rawOverride.updatedAt) || new Date().toISOString();
+        compatPlatformSubscriptionPlanOverridesStore.set(planId, {
+          price: readNumber(rawOverride.price),
+          monthlyPrice: readNumber(rawOverride.monthlyPrice),
+          yearlyPrice: readNumber(rawOverride.yearlyPrice),
+          yearlySavingsLabel:
+            Object.prototype.hasOwnProperty.call(rawOverride, "yearlySavingsLabel")
+              ? readString(rawOverride.yearlySavingsLabel)
+              : undefined,
+          isActive:
+            Object.prototype.hasOwnProperty.call(rawOverride, "isActive")
+              ? readBoolean(rawOverride.isActive)
+              : undefined,
+          publicPriceLabel:
+            Object.prototype.hasOwnProperty.call(rawOverride, "publicPriceLabel")
+              ? readString(rawOverride.publicPriceLabel)
+              : undefined,
+          ctaLabel:
+            Object.prototype.hasOwnProperty.call(rawOverride, "ctaLabel")
+              ? readString(rawOverride.ctaLabel)
+              : undefined,
+          updatedAt,
+          updatedBy: readString(rawOverride.updatedBy),
+        });
+      }
+    }
+
+    compatPlatformSubscriptionPlanOverridesLoaded = true;
+    compatPlatformSubscriptionPlanOverridesLoadPromise = null;
+  })();
+
+  await compatPlatformSubscriptionPlanOverridesLoadPromise;
+}
+
+function applyCompatPlatformSubscriptionPlanOverride(
+  plan: CompatPlatformSubscriptionPlan,
+): CompatPlatformSubscriptionPlan {
+  const override = getCompatPlatformSubscriptionPlanOverride(plan.id);
+  if (!override) {
+    return plan;
+  }
+
+  const nextMonthlyPrice =
+    typeof override.monthlyPrice === "number" && Number.isFinite(override.monthlyPrice)
+      ? override.monthlyPrice
+      : typeof override.price === "number" && Number.isFinite(override.price)
+        ? override.price
+        : typeof plan.monthlyPrice === "number" && Number.isFinite(plan.monthlyPrice)
+          ? plan.monthlyPrice
+          : plan.price;
+
+  const nextYearlyPrice =
+    typeof override.yearlyPrice === "number" && Number.isFinite(override.yearlyPrice)
+      ? override.yearlyPrice
+      : typeof plan.yearlyPrice === "number" && Number.isFinite(plan.yearlyPrice)
+        ? plan.yearlyPrice
+        : null;
+
+  return {
+    ...plan,
+    price: nextMonthlyPrice,
+    monthlyPrice: nextMonthlyPrice,
+    yearlyPrice: nextYearlyPrice,
+    yearlySavingsLabel:
+      override.yearlySavingsLabel !== undefined
+        ? override.yearlySavingsLabel
+        : plan.yearlySavingsLabel,
+    isActive:
+      typeof override.isActive === "boolean" ? override.isActive : plan.isActive,
+    publicPriceLabel:
+      override.publicPriceLabel !== undefined
+        ? override.publicPriceLabel
+        : plan.publicPriceLabel,
+    ctaLabel: override.ctaLabel !== undefined ? override.ctaLabel : plan.ctaLabel,
+    updatedAt: override.updatedAt || plan.updatedAt,
+  };
+}
+
+function hasCompatPlatformSubscriptionPlanPriceOverride(
+  planId: string | null | undefined,
+  billingCycle: "monthly" | "yearly",
+) {
+  const override = getCompatPlatformSubscriptionPlanOverride(planId);
+  if (!override) {
+    return false;
+  }
+
+  if (
+    billingCycle === "yearly" &&
+    typeof override.yearlyPrice === "number" &&
+    Number.isFinite(override.yearlyPrice)
+  ) {
+    return true;
+  }
+
+  return (
+    (typeof override.monthlyPrice === "number" &&
+      Number.isFinite(override.monthlyPrice)) ||
+    (typeof override.price === "number" && Number.isFinite(override.price))
+  );
+}
+
+void ensureCompatPlatformSubscriptionPlanOverridesLoaded();
 
 function buildCompatPlatformSubscriptionPlans(): CompatPlatformSubscriptionPlan[] {
   const nowIso = new Date().toISOString();
@@ -18654,7 +18812,7 @@ function buildCompatPlatformSubscriptionPlans(): CompatPlatformSubscriptionPlan[
       createdAt: nowIso,
       updatedAt: nowIso,
     },
-  ];
+  ].map((plan) => applyCompatPlatformSubscriptionPlanOverride(plan));
 }
 
 function getCompatPlatformSubscriptionPlan(
@@ -19537,94 +19695,29 @@ function buildCompatPriceAdministrationCurrencyRates() {
 }
 
 function buildCompatPriceAdministrationSubscriptionPlans() {
-  return [
-    {
-      id: "basic",
-      name: "Basic Creator",
-      price: 249,
-      yearlyPrice: 2490,
-      yearlySavingsLabel: "2 måneder gratis",
-      currency: "NOK",
+  return buildCompatPlatformSubscriptionPlans()
+    .filter((plan) => plan.id !== "free")
+    .map((plan) => ({
+      id: plan.id,
+      name: plan.displayName,
+      price: plan.monthlyPrice ?? plan.price,
+      monthlyPrice: plan.monthlyPrice ?? plan.price,
+      yearlyPrice: plan.yearlyPrice ?? null,
+      yearlySavingsLabel: plan.yearlySavingsLabel ?? null,
+      currency: plan.currency,
       interval: "monthly",
-      features: [
-        "Avansert CRM",
-        "Kontraktstyring",
-        "Tilbuds- og fakturagrunnlag",
-        "Opptil 25 prosjekter",
-        "Opptil 100 kunder",
-        "Google Workspace integrasjon",
-      ],
-      isActive: true,
-      maxUsers: 2,
-      maxProjects: 25,
-      maxClients: 100,
-      trialDays: 14,
-    },
-    {
-      id: "professional",
-      name: "Professional Creator",
-      price: 449,
-      yearlyPrice: 4490,
-      yearlySavingsLabel: "2 måneder gratis",
-      currency: "NOK",
-      interval: "monthly",
-      features: [
-        "Alt i Basic",
-        "Avansert prisadministrasjon",
-        "Worklog og rapportering",
-        "Ubegrensede prosjekter",
-        "Ubegrensede kunder",
-        "Avanserte arbeidsflyter",
-      ],
-      isActive: true,
-      maxUsers: 5,
-      maxProjects: -1,
-      maxClients: -1,
-      trialDays: 14,
-    },
-    {
-      id: "premium",
-      name: "Premium Studio",
-      price: 1199,
-      yearlyPrice: 11990,
-      yearlySavingsLabel: "2 måneder gratis",
-      currency: "NOK",
-      interval: "monthly",
-      features: [
-        "Alt i Professional",
-        "Delt teamarbeidsflate",
-        "Avansert automasjon",
-        "Teamfunksjoner",
-        "250 GB lagring",
-      ],
-      isActive: true,
-      maxUsers: 15,
-      maxProjects: -1,
-      maxClients: -1,
-      trialDays: 14,
-    },
-    {
-      id: "enterprise",
-      name: "Enterprise",
-      price: 3990,
-      yearlyPrice: 39900,
-      currency: "NOK",
-      interval: "monthly",
-      features: [
-        "Alt i Premium",
-        "White label",
-        "SSO og governance",
-        "Custom integrations",
-        "Dedikert onboarding",
-        "Migrering og prioritert support",
-      ],
-      isActive: true,
-      maxUsers: -1,
-      maxProjects: -1,
-      maxClients: -1,
-      trialDays: 30,
-    },
-  ];
+      billingCycle: plan.billingCycle,
+      features: plan.features,
+      isActive: plan.isActive,
+      maxUsers: plan.limits.maxUsers,
+      maxProjects: plan.limits.maxProjects,
+      maxClients: plan.limits.maxClients,
+      trialDays: plan.trialDays,
+      contactSalesOnly: Boolean(plan.contactSalesOnly),
+      publicPriceLabel: plan.publicPriceLabel ?? null,
+      ctaLabel: plan.ctaLabel ?? null,
+      updatedAt: plan.updatedAt,
+    }));
 }
 
 function buildCompatPriceAdministrationFeaturePricing() {
@@ -23884,6 +23977,7 @@ app.get("/api/backup/download/latest", async (req, res) => {
 });
 
 app.get("/api/platform/subscription-plans", async (_req, res) => {
+  await ensureCompatPlatformSubscriptionPlanOverridesLoaded();
   res.json({
     plans: buildCompatPlatformSubscriptionPlans(),
   });
@@ -23891,6 +23985,7 @@ app.get("/api/platform/subscription-plans", async (_req, res) => {
 
 app.post("/api/platform/billing/checkout-session", async (req, res) => {
   try {
+    await ensureCompatPlatformSubscriptionPlanOverridesLoaded();
     const body = isRecord(req.body) ? req.body : {};
     const email =
       compatHeaderString(body.email ?? body.userEmail ?? body.user_email) ||
@@ -24001,7 +24096,12 @@ app.post("/api/platform/billing/checkout-session", async (req, res) => {
       includeSessionId: false,
     });
 
-    const configuredPriceId = getCreatorHubStripePriceId(plan.id, billingCycle);
+    const configuredPriceId = hasCompatPlatformSubscriptionPlanPriceOverride(
+      plan.id,
+      billingCycle,
+    )
+      ? null
+      : getCreatorHubStripePriceId(plan.id, billingCycle);
     const amountMajor = getCreatorHubPlanAmountMajor(plan, billingCycle);
     const amountMinor = Math.round(amountMajor * 100);
     const session = await stripe.checkout.sessions.create({
@@ -24180,9 +24280,120 @@ app.get("/api/price-administration/currency-rates", async (_req, res) => {
 });
 
 app.get("/api/price-administration/subscription-plans", async (_req, res) => {
+  await ensureCompatPlatformSubscriptionPlanOverridesLoaded();
   res.json({
     plans: buildCompatPriceAdministrationSubscriptionPlans(),
   });
+});
+
+app.get("/api/platform/admin/subscription-plans", async (req, res) => {
+  try {
+    if (!requireAdminSession(req, res)) {
+      return;
+    }
+
+    await ensureCompatPlatformSubscriptionPlanOverridesLoaded();
+    res.json({
+      success: true,
+      plans: buildCompatPlatformSubscriptionPlans(),
+    });
+  } catch (error) {
+    console.error("Error reading admin platform subscription plans:", error);
+    res.status(500).json({ error: "Could not read platform subscription plans" });
+  }
+});
+
+app.patch("/api/platform/admin/subscription-plans/:planId", async (req, res) => {
+  try {
+    const adminSession = requireAdminSession(req, res);
+    if (!adminSession) {
+      return;
+    }
+
+    await ensureCompatPlatformSubscriptionPlanOverridesLoaded();
+
+    const planId = normalizeBillingPlanId(req.params.planId);
+    const currentPlan = getCompatPlatformSubscriptionPlan(planId);
+    if (!planId || !currentPlan) {
+      return res.status(404).json({ error: "Plan ikke funnet" });
+    }
+
+    const body = isRecord(req.body) ? req.body : {};
+
+    const hasMonthlyPriceInput =
+      Object.prototype.hasOwnProperty.call(body, "monthlyPrice") ||
+      Object.prototype.hasOwnProperty.call(body, "price");
+    const hasYearlyPriceInput = Object.prototype.hasOwnProperty.call(body, "yearlyPrice");
+    const hasActiveInput = Object.prototype.hasOwnProperty.call(body, "isActive");
+    const hasSavingsLabelInput = Object.prototype.hasOwnProperty.call(body, "yearlySavingsLabel");
+    const hasPublicPriceLabelInput = Object.prototype.hasOwnProperty.call(body, "publicPriceLabel");
+    const hasCtaLabelInput = Object.prototype.hasOwnProperty.call(body, "ctaLabel");
+
+    const nextMonthlyPrice = hasMonthlyPriceInput
+      ? readNumber(body.monthlyPrice ?? body.price)
+      : null;
+    const nextYearlyPrice = hasYearlyPriceInput ? readNumber(body.yearlyPrice) : null;
+    const nextIsActive = hasActiveInput ? readBoolean(body.isActive) : null;
+
+    if (hasMonthlyPriceInput && (nextMonthlyPrice === null || nextMonthlyPrice < 0)) {
+      return res.status(400).json({ error: "Ugyldig månedspris." });
+    }
+
+    if (hasYearlyPriceInput && (nextYearlyPrice === null || nextYearlyPrice < 0)) {
+      return res.status(400).json({ error: "Ugyldig årspris." });
+    }
+
+    if (hasActiveInput && nextIsActive === null) {
+      return res.status(400).json({ error: "Ugyldig aktiv-status." });
+    }
+
+    const existingOverride = getCompatPlatformSubscriptionPlanOverride(planId) || null;
+    const nowIso = new Date().toISOString();
+    const nextOverride: CompatPlatformSubscriptionPlanOverride = {
+      ...(existingOverride || {}),
+      updatedAt: nowIso,
+      updatedBy: adminSession.userId,
+    };
+
+    if (hasMonthlyPriceInput && nextMonthlyPrice !== null) {
+      nextOverride.price = nextMonthlyPrice;
+      nextOverride.monthlyPrice = nextMonthlyPrice;
+    }
+
+    if (hasYearlyPriceInput) {
+      nextOverride.yearlyPrice = nextYearlyPrice;
+    }
+
+    if (hasActiveInput && nextIsActive !== null) {
+      nextOverride.isActive = nextIsActive;
+    }
+
+    if (hasSavingsLabelInput) {
+      nextOverride.yearlySavingsLabel = readString(body.yearlySavingsLabel);
+    }
+
+    if (hasPublicPriceLabelInput) {
+      nextOverride.publicPriceLabel = readString(body.publicPriceLabel);
+    }
+
+    if (hasCtaLabelInput) {
+      nextOverride.ctaLabel = readString(body.ctaLabel);
+    }
+
+    compatPlatformSubscriptionPlanOverridesStore.set(planId, nextOverride);
+    await compatStoreSet(
+      COMPAT_PLATFORM_SUBSCRIPTION_PLAN_OVERRIDES_STORE_KEY,
+      serializeCompatPlatformSubscriptionPlanOverrides(),
+    );
+
+    return res.json({
+      success: true,
+      plan: getCompatPlatformSubscriptionPlan(planId),
+    });
+  } catch (error) {
+    console.error("Error updating admin platform subscription plan:", error);
+    return res.status(500).json({ error: "Could not update platform subscription plan" });
+  }
 });
 
 app.get("/api/price-administration/feature-pricing", async (_req, res) => {
