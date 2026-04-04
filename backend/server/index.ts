@@ -15862,7 +15862,7 @@ const CREATORHUB_PLATFORM_EMAIL_SETTINGS_USER_ID = "creatorhub-admin";
 
 type CreatorHubPlatformEmailTemplateId =
   | "creatorhub_payment_confirmed"
-  | "creatorhub_account_ready"
+  | "creatorhub_account_activated"
   | "creatorhub_payment_failed"
   | "creatorhub_payment_recovered";
 
@@ -15940,14 +15940,14 @@ const CREATORHUB_PLATFORM_DEFAULT_EMAIL_TEMPLATES: CreatorHubPlatformEmailTempla
         "Hvis du trenger hjelp med onboarding eller fakturering, kan du svare direkte på denne e-posten.",
     },
     {
-      id: "creatorhub_account_ready",
-      name: "Konto levert",
+      id: "creatorhub_account_activated",
+      name: "Konto aktivert",
       description:
-        "Sendes når CreatorHub-kontoen er klargjort og brukeren kan logge inn.",
-      subject: "CreatorHub-kontoen din er klar",
-      title: "Kontoen din er levert",
+        "Sendes når CreatorHub-kontoen er aktivert og brukeren kan logge inn.",
+      subject: "CreatorHub-kontoen din er aktivert",
+      title: "Kontoen din er aktivert",
       body:
-        "<p>Hei {{recipientName}},</p><p>Kontoen din for <strong>{{planName}}</strong> er nå klargjort i CreatorHub.</p><p>Du kan logge inn med <strong>{{recipientEmail}}</strong> og starte arbeidet med en gang.</p>",
+        "<p>Hei {{recipientName}},</p><p>Kontoen din for <strong>{{planName}}</strong> er nå aktivert i CreatorHub.</p><p>Du kan logge inn med <strong>{{recipientEmail}}</strong> og starte arbeidet med en gang.</p>",
       ctaLabel: "Logg inn i CreatorHub",
       footerNote:
         "Svar på denne e-posten hvis du vil ha hjelp med oppsett, tilgang eller onboarding.",
@@ -28814,8 +28814,8 @@ async function markCreatorHubStripeCheckoutRecordPaid(
         await sendCreatorHubPaymentConfirmedEmail(mailOptions).catch((error) => {
           console.error("CreatorHub payment confirmation email failed:", error);
         });
-        await sendCreatorHubAccountReadyEmail(mailOptions).catch((error) => {
-          console.error("CreatorHub account ready email failed:", error);
+        await sendCreatorHubAccountActivatedEmail(mailOptions).catch((error) => {
+          console.error("CreatorHub account activated email failed:", error);
         });
       }
     }
@@ -31430,7 +31430,7 @@ async function sendCreatorHubPaymentFailedEmail(options: {
   });
 }
 
-async function sendCreatorHubAccountReadyEmail(options: {
+async function sendCreatorHubAccountActivatedEmail(options: {
   recipientEmail: string;
   recipientName: string;
   planName: string;
@@ -31443,7 +31443,7 @@ async function sendCreatorHubAccountReadyEmail(options: {
     normalizeMailConfigValue(process.env.GOOGLE_ADMIN_EMAIL) ||
     "daniel@creatorhubn.com";
   const rendered = await renderCreatorHubPlatformEmail({
-    templateId: "creatorhub_account_ready",
+    templateId: "creatorhub_account_activated",
     variables: {
       recipientName: options.recipientName,
       recipientEmail: options.recipientEmail,
@@ -31463,7 +31463,7 @@ async function sendCreatorHubAccountReadyEmail(options: {
       },
       {
         label: "Status",
-        value: "Konto levert og klar for innlogging",
+        value: "Konto aktivert og klar for innlogging",
       },
     ],
   });
