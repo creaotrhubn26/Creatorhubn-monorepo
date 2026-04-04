@@ -15862,6 +15862,7 @@ const CREATORHUB_PLATFORM_EMAIL_SETTINGS_USER_ID = "creatorhub-admin";
 
 type CreatorHubPlatformEmailTemplateId =
   | "creatorhub_payment_confirmed"
+  | "creatorhub_account_ready"
   | "creatorhub_payment_failed"
   | "creatorhub_payment_recovered";
 
@@ -15937,6 +15938,19 @@ const CREATORHUB_PLATFORM_DEFAULT_EMAIL_TEMPLATES: CreatorHubPlatformEmailTempla
       ctaLabel: "Åpne CreatorHub",
       footerNote:
         "Hvis du trenger hjelp med onboarding eller fakturering, kan du svare direkte på denne e-posten.",
+    },
+    {
+      id: "creatorhub_account_ready",
+      name: "Konto levert",
+      description:
+        "Sendes når CreatorHub-kontoen er klargjort og brukeren kan logge inn.",
+      subject: "CreatorHub-kontoen din er klar",
+      title: "Kontoen din er levert",
+      body:
+        "<p>Hei {{recipientName}},</p><p>Kontoen din for <strong>{{planName}}</strong> er nå klargjort i CreatorHub.</p><p>Du kan logge inn med <strong>{{recipientEmail}}</strong> og starte arbeidet med en gang.</p>",
+      ctaLabel: "Logg inn i CreatorHub",
+      footerNote:
+        "Svar på denne e-posten hvis du vil ha hjelp med oppsett, tilgang eller onboarding.",
     },
     {
       id: "creatorhub_payment_failed",
@@ -28800,6 +28814,9 @@ async function markCreatorHubStripeCheckoutRecordPaid(
         await sendCreatorHubPaymentConfirmedEmail(mailOptions).catch((error) => {
           console.error("CreatorHub payment confirmation email failed:", error);
         });
+        await sendCreatorHubAccountReadyEmail(mailOptions).catch((error) => {
+          console.error("CreatorHub account ready email failed:", error);
+        });
       }
     }
   }
@@ -31402,6 +31419,53 @@ async function sendCreatorHubPaymentFailedEmail(options: {
           tone: "danger",
         }
       : null,
+  });
+
+  return sendCreatorHubBillingEmail({
+    recipientEmail: options.recipientEmail,
+    replyTo: rendered.replyToEmail,
+    subject: rendered.subject,
+    text: rendered.text,
+    html: rendered.html,
+  });
+}
+
+async function sendCreatorHubAccountReadyEmail(options: {
+  recipientEmail: string;
+  recipientName: string;
+  planName: string;
+  amountMajor: number;
+  currency: string;
+  billingCycle: "monthly" | "yearly";
+  creatorHubUrl: string;
+}) {
+  const adminEmail =
+    normalizeMailConfigValue(process.env.GOOGLE_ADMIN_EMAIL) ||
+    "daniel@creatorhubn.com";
+  const rendered = await renderCreatorHubPlatformEmail({
+    templateId: "creatorhub_account_ready",
+    variables: {
+      recipientName: options.recipientName,
+      recipientEmail: options.recipientEmail,
+      planName: options.planName,
+      billingCycleLabel: formatCreatorHubBillingCycleLabel(options.billingCycle),
+      amountLabel: formatCreatorHubBillingAmountLabel(options),
+      creatorHubUrl: options.creatorHubUrl,
+    },
+    replyToEmail: adminEmail,
+    ctaUrl: options.creatorHubUrl,
+    detailRows: [
+      { label: "Plan", value: options.planName },
+      { label: "Innlogging", value: options.recipientEmail },
+      {
+        label: "Fakturering",
+        value: formatCreatorHubBillingCycleLabel(options.billingCycle),
+      },
+      {
+        label: "Status",
+        value: "Konto levert og klar for innlogging",
+      },
+    ],
   });
 
   return sendCreatorHubBillingEmail({

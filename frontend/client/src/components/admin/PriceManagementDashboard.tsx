@@ -97,7 +97,11 @@ interface SubscriptionPlanRow {
 }
 
 interface CreatorHubEmailTemplateRow {
-  id: 'creatorhub_payment_confirmed' | 'creatorhub_payment_failed' | 'creatorhub_payment_recovered';
+  id:
+    | 'creatorhub_payment_confirmed'
+    | 'creatorhub_account_ready'
+    | 'creatorhub_payment_failed'
+    | 'creatorhub_payment_recovered';
   name: string;
   description: string;
   subject: string;
@@ -326,6 +330,18 @@ const defaultCreatorHubEmailSettings: CreatorHubEmailSettings = {
         ctaLabel: 'Åpne CreatorHub',
         footerNote:
           'Hvis du trenger hjelp med onboarding eller fakturering, kan du svare direkte på denne e-posten.',
+      },
+      {
+        id: 'creatorhub_account_ready',
+        name: 'Konto levert',
+        description: 'Sendes når CreatorHub-kontoen er klargjort og klar for innlogging.',
+        subject: 'CreatorHub-kontoen din er klar',
+        title: 'Kontoen din er levert',
+        body:
+          '<p>Hei {{recipientName}},</p><p>Kontoen din for <strong>{{planName}}</strong> er nå klargjort i CreatorHub.</p><p>Du kan logge inn med <strong>{{recipientEmail}}</strong> og starte arbeidet med en gang.</p>',
+        ctaLabel: 'Logg inn i CreatorHub',
+        footerNote:
+          'Svar på denne e-posten hvis du vil ha hjelp med oppsett, tilgang eller onboarding.',
       },
       {
         id: 'creatorhub_payment_failed',
@@ -1454,6 +1470,14 @@ export default function PriceManagementDashboard({
                     </Typography>
                     <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
                       Sendes etter første vellykkede Stripe-checkout, slik at brukeren får en tydelig bekreftelse på at CreatorHub-abonnementet er aktivt.
+                    </Typography>
+                  </Box>
+                  <Box sx={{ p: 1.5, borderRadius: '16px', bgcolor: '#eff6ff', border: '1px solid rgba(37, 99, 235, 0.10)' }}>
+                    <Typography variant="overline" sx={{ color: '#1d4ed8', fontWeight: 700 }}>
+                      Konto levert
+                    </Typography>
+                    <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
+                      Sendes sammen med første aktivering når kontoen faktisk er klargjort og brukeren kan logge inn i CreatorHub med den registrerte e-posten.
                     </Typography>
                   </Box>
                   <Box sx={{ p: 1.5, borderRadius: '16px', bgcolor: '#fff7ed', border: '1px solid rgba(194, 65, 12, 0.08)' }}>
