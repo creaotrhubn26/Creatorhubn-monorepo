@@ -5,6 +5,10 @@
 
 set -e  # Exit on error
 
+IS_RENDER_RUNTIME=$(printf '%s' "${RENDER:-}" | tr '[:upper:]' '[:lower:]')
+RUN_RENDER_BOOT_SEEDING_NORMALIZED=$(printf '%s' "${RUN_RENDER_BOOT_SEEDING:-}" | tr '[:upper:]' '[:lower:]')
+RUN_RENDER_BOOT_INTEGRITY_NORMALIZED=$(printf '%s' "${RUN_RENDER_BOOT_INTEGRITY:-}" | tr '[:upper:]' '[:lower:]')
+
 echo "🔄 Starting database migrations..."
 
 # Load DATABASE_URL from .env file if not already set
@@ -111,7 +115,9 @@ else
 fi
 
 # Run database seeding (if seed scripts exist)
-if command -v node &> /dev/null; then
+if [ "$IS_RENDER_RUNTIME" = "true" ] && [ "$RUN_RENDER_BOOT_SEEDING_NORMALIZED" != "1" ] && [ "$RUN_RENDER_BOOT_SEEDING_NORMALIZED" != "true" ]; then
+  echo "⏭️  Skipping heavy database seeding on Render startup"
+elif command -v node &> /dev/null; then
   echo "🌱 Running comprehensive database seeding..."
   
   # Run INTROSPECTIVE auto-seeder first (discovers and seeds all live tables)
@@ -176,7 +182,9 @@ if command -v node &> /dev/null; then
 fi
 
 # Optional: Run database integrity check (non-interactive in CI/Render)
-if command -v node &> /dev/null; then
+if [ "$IS_RENDER_RUNTIME" = "true" ] && [ "$RUN_RENDER_BOOT_INTEGRITY_NORMALIZED" != "1" ] && [ "$RUN_RENDER_BOOT_INTEGRITY_NORMALIZED" != "true" ]; then
+  echo "⏭️  Skipping database integrity check on Render startup"
+elif command -v node &> /dev/null; then
   if [ -f "scripts/database-integrity-checker.cjs" ]; then
     echo "🔍 Running database integrity check..."
     FAST_SUMMARY=${FAST_SUMMARY:-1} RUN_VACUUM=${RUN_VACUUM:-0} MIGRATION_INTERACTIVE=0 node scripts/database-integrity-checker.cjs || echo "⚠️  Integrity check skipped"

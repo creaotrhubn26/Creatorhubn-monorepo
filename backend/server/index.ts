@@ -21247,9 +21247,23 @@ function calculateContractHash(contract: any): string {
   return crypto.createHash("sha256").update(hashData).digest("hex");
 }
 
+const serverStartedAt = new Date().toISOString();
+
 // Health check
 app.get("/api/health", (req, res) => {
-  res.json({ status: "ok", timestamp: new Date().toISOString() });
+  const isRenderRuntime =
+    String(process.env.RENDER || "").toLowerCase() === "true";
+  res.json({
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    startedAt: serverStartedAt,
+    commit: process.env.RENDER_GIT_COMMIT || null,
+    branch: process.env.RENDER_GIT_BRANCH || null,
+    serviceId: process.env.RENDER_SERVICE_ID || null,
+    serviceName: process.env.RENDER_SERVICE_NAME || null,
+    instanceId: process.env.RENDER_INSTANCE_ID || null,
+    runtime: isRenderRuntime ? "render" : process.env.NODE_ENV || "unknown",
+  });
 });
 
 // Auth endpoints - session-based login

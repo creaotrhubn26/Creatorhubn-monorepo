@@ -19,6 +19,13 @@ async function run() {
   const minimalTsEntry = path.join(__dirname, 'server', 'index-minimal.ts');
   const minimalDistEntry = path.join(__dirname, 'dist', 'minimal.js');
   const migrateScript = path.join(__dirname, 'migrate.sh');
+  const isRenderRuntime = String(process.env.RENDER || '').toLowerCase() === 'true';
+  const shouldRunRenderBootSeed =
+    process.env.RUN_RENDER_BOOT_SEEDING === '1' ||
+    process.env.RUN_RENDER_BOOT_SEEDING === 'true';
+  const shouldRunRenderBootIntegrity =
+    process.env.RUN_RENDER_BOOT_INTEGRITY === '1' ||
+    process.env.RUN_RENDER_BOOT_INTEGRITY === 'true';
 
   async function tryBuild(entry, outFileFriendly) {
     const { build } = await import('esbuild');
@@ -87,52 +94,60 @@ async function run() {
       }
     }
 
-    // Ensure ULTIMATE auto-seeder runs (idempotent)
-    try {
-      const ultimateSeeder = path.join(__dirname, 'scripts', 'auto-seed-ULTIMATE-476.cjs');
-      if (existsSync(ultimateSeeder) && process.env.SKIP_BOOT_SEED !== '1') {
-        console.log('🌱 Running ULTIMATE auto-seeder (boot)...');
-        const seedRes = spawnSync('node', [ultimateSeeder], { stdio: 'inherit', env: process.env });
-        if (seedRes.status !== 0) {
-          console.warn('⚠️  ULTIMATE seeder exited with non-zero status; continuing');
-          try {
-            const { updateSeed } = await import('./server/health-state.ts');
-            await updateSeed(new Date(), 'warning');
-          } catch {}
-        } else {
-          console.log('✅ ULTIMATE auto-seeder completed');
-          try {
-            const { updateSeed } = await import('./server/health-state.ts');
-            await updateSeed(new Date(), 'success');
-          } catch {}
+    if (isRenderRuntime && !shouldRunRenderBootSeed) {
+      console.log('⏭️  Skipping boot seeding on Render to keep zero-downtime deploys promotable');
+    } else {
+      // Ensure ULTIMATE auto-seeder runs (idempotent)
+      try {
+        const ultimateSeeder = path.join(__dirname, 'scripts', 'auto-seed-ULTIMATE-476.cjs');
+        if (existsSync(ultimateSeeder) && process.env.SKIP_BOOT_SEED !== '1') {
+          console.log('🌱 Running ULTIMATE auto-seeder (boot)...');
+          const seedRes = spawnSync('node', [ultimateSeeder], { stdio: 'inherit', env: process.env });
+          if (seedRes.status !== 0) {
+            console.warn('⚠️  ULTIMATE seeder exited with non-zero status; continuing');
+            try {
+              const { updateSeed } = await import('./server/health-state.ts');
+              await updateSeed(new Date(), 'warning');
+            } catch {}
+          } else {
+            console.log('✅ ULTIMATE auto-seeder completed');
+            try {
+              const { updateSeed } = await import('./server/health-state.ts');
+              await updateSeed(new Date(), 'success');
+            } catch {}
+          }
         }
+      } catch (seedErr) {
+        console.warn('⚠️  ULTIMATE seeder step skipped:', seedErr?.message || seedErr);
       }
-    } catch (seedErr) {
-      console.warn('⚠️  ULTIMATE seeder step skipped:', seedErr?.message || seedErr);
     }
 
-    // Run integrity checker (non-fatal)
-    try {
-      const integrityScript = path.join(__dirname, 'scripts', 'database-integrity-checker.cjs');
-      if (existsSync(integrityScript) && process.env.SKIP_BOOT_INTEGRITY !== '1') {
-        console.log('🔍 Running database integrity checker (boot)...');
-        const intRes = spawnSync('node', [integrityScript], { stdio: 'inherit', env: { ...process.env, FAST_SUMMARY: process.env.FAST_SUMMARY || '1', RUN_VACUUM: process.env.RUN_VACUUM || '0', MIGRATION_INTERACTIVE: '0' } });
-        if (intRes.status !== 0) {
-          console.warn('⚠️  Integrity checker exited with non-zero status; continuing');
-          try {
-            const { updateIntegrity } = await import('./server/health-state.ts');
-            await updateIntegrity(new Date(), 'warning');
-          } catch {}
-        } else {
-          console.log('✅ Integrity check completed');
-          try {
-            const { updateIntegrity } = await import('./server/health-state.ts');
-            await updateIntegrity(new Date(), 'healthy');
-          } catch {}
+    if (isRenderRuntime && !shouldRunRenderBootIntegrity) {
+      console.log('⏭️  Skipping boot integrity check on Render to shorten startup time');
+    } else {
+      // Run integrity checker (non-fatal)
+      try {
+        const integrityScript = path.join(__dirname, 'scripts', 'database-integrity-checker.cjs');
+        if (existsSync(integrityScript) && process.env.SKIP_BOOT_INTEGRITY !== '1') {
+          console.log('🔍 Running database integrity checker (boot)...');
+          const intRes = spawnSync('node', [integrityScript], { stdio: 'inherit', env: { ...process.env, FAST_SUMMARY: process.env.FAST_SUMMARY || '1', RUN_VACUUM: process.env.RUN_VACUUM || '0', MIGRATION_INTERACTIVE: '0' } });
+          if (intRes.status !== 0) {
+            console.warn('⚠️  Integrity checker exited with non-zero status; continuing');
+            try {
+              const { updateIntegrity } = await import('./server/health-state.ts');
+              await updateIntegrity(new Date(), 'warning');
+            } catch {}
+          } else {
+            console.log('✅ Integrity check completed');
+            try {
+              const { updateIntegrity } = await import('./server/health-state.ts');
+              await updateIntegrity(new Date(), 'healthy');
+            } catch {}
+          }
         }
+      } catch (intErr) {
+        console.warn('⚠️  Integrity checker step skipped:', intErr?.message || intErr);
       }
-    } catch (intErr) {
-      console.warn('⚠️  Integrity checker step skipped:', intErr?.message || intErr);
     }
   } catch (err) {
     console.warn('⚠️  Migration step skipped:', err?.message || err);
