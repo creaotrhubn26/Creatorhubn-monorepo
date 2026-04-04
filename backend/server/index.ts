@@ -15866,6 +15866,11 @@ type CreatorHubPlatformEmailTemplateId =
   | "creatorhub_payment_failed"
   | "creatorhub_payment_recovered";
 
+type CreatorHubPlatformEmailSenderKind =
+  | "billing"
+  | "welcome"
+  | "system";
+
 type CreatorHubPlatformEmailTemplate = {
   id: CreatorHubPlatformEmailTemplateId;
   name: string;
@@ -31387,6 +31392,49 @@ function formatCreatorHubBillingCycleLabel(
   return billingCycle === "yearly" ? "Årlig" : "Månedlig";
 }
 
+function resolveCreatorHubTemplateSenderKind(
+  templateId: CreatorHubPlatformEmailTemplateId,
+): CreatorHubPlatformEmailSenderKind {
+  switch (templateId) {
+    case "creatorhub_account_activated":
+      return "welcome";
+    case "creatorhub_payment_confirmed":
+    case "creatorhub_payment_failed":
+    case "creatorhub_payment_recovered":
+    default:
+      return "billing";
+  }
+}
+
+function resolveCreatorHubTemplateFromEmail(
+  templateId: CreatorHubPlatformEmailTemplateId,
+  brandingSettings?: CreatorHubPlatformBrandingSettings | null,
+) {
+  switch (resolveCreatorHubTemplateSenderKind(templateId)) {
+    case "welcome":
+      return (
+        normalizeMailConfigValue(process.env.CREATORHUB_WELCOME_FROM_EMAIL) ||
+        normalizeMailConfigValue(brandingSettings?.email?.welcomeFromEmail) ||
+        normalizeMailConfigValue(brandingSettings?.email?.fromEmail) ||
+        CREATORHUB_PLATFORM_DEFAULT_WELCOME_FROM_EMAIL
+      );
+    case "system":
+      return (
+        normalizeMailConfigValue(process.env.CREATORHUB_SYSTEM_FROM_EMAIL) ||
+        normalizeMailConfigValue(brandingSettings?.email?.systemFromEmail) ||
+        normalizeMailConfigValue(brandingSettings?.email?.fromEmail) ||
+        CREATORHUB_PLATFORM_DEFAULT_SYSTEM_FROM_EMAIL
+      );
+    case "billing":
+    default:
+      return (
+        normalizeMailConfigValue(process.env.CREATORHUB_BILLING_FROM_EMAIL) ||
+        normalizeMailConfigValue(brandingSettings?.email?.fromEmail) ||
+        CREATORHUB_PLATFORM_DEFAULT_FROM_EMAIL
+      );
+  }
+}
+
 async function sendCreatorHubBillingEmail(options: {
   recipientEmail: string;
   fromEmail?: string | null;
@@ -31493,6 +31541,9 @@ async function sendCreatorHubPaymentConfirmedEmail(options: {
   billingCycle: "monthly" | "yearly";
   creatorHubUrl: string;
 }) {
+  const brandingSettings = await resolveCreatorHubPlatformBrandingSettings().catch(
+    () => null,
+  );
   const rendered = await renderCreatorHubPlatformEmail({
     templateId: "creatorhub_payment_confirmed",
     variables: {
@@ -31520,6 +31571,10 @@ async function sendCreatorHubPaymentConfirmedEmail(options: {
 
   return sendCreatorHubBillingEmail({
     recipientEmail: options.recipientEmail,
+    fromEmail: resolveCreatorHubTemplateFromEmail(
+      "creatorhub_payment_confirmed",
+      brandingSettings,
+    ),
     replyTo: rendered.replyToEmail,
     subject: rendered.subject,
     text: rendered.text,
@@ -31537,6 +31592,9 @@ async function sendCreatorHubPaymentFailedEmail(options: {
   creatorHubUrl: string;
   failureMessage?: string | null;
 }) {
+  const brandingSettings = await resolveCreatorHubPlatformBrandingSettings().catch(
+    () => null,
+  );
   const rendered = await renderCreatorHubPlatformEmail({
     templateId: "creatorhub_payment_failed",
     variables: {
@@ -31572,6 +31630,10 @@ async function sendCreatorHubPaymentFailedEmail(options: {
 
   return sendCreatorHubBillingEmail({
     recipientEmail: options.recipientEmail,
+    fromEmail: resolveCreatorHubTemplateFromEmail(
+      "creatorhub_payment_failed",
+      brandingSettings,
+    ),
     replyTo: rendered.replyToEmail,
     subject: rendered.subject,
     text: rendered.text,
@@ -31618,11 +31680,10 @@ async function sendCreatorHubAccountActivatedEmail(options: {
 
   return sendCreatorHubBillingEmail({
     recipientEmail: options.recipientEmail,
-    fromEmail:
-      normalizeMailConfigValue(process.env.CREATORHUB_WELCOME_FROM_EMAIL) ||
-      normalizeMailConfigValue(brandingSettings?.email?.welcomeFromEmail) ||
-      normalizeMailConfigValue(brandingSettings?.email?.fromEmail) ||
-      CREATORHUB_PLATFORM_DEFAULT_WELCOME_FROM_EMAIL,
+    fromEmail: resolveCreatorHubTemplateFromEmail(
+      "creatorhub_account_activated",
+      brandingSettings,
+    ),
     replyTo: rendered.replyToEmail,
     subject: rendered.subject,
     text: rendered.text,
@@ -31639,6 +31700,9 @@ async function sendCreatorHubPaymentRecoveredEmail(options: {
   billingCycle: "monthly" | "yearly";
   creatorHubUrl: string;
 }) {
+  const brandingSettings = await resolveCreatorHubPlatformBrandingSettings().catch(
+    () => null,
+  );
   const rendered = await renderCreatorHubPlatformEmail({
     templateId: "creatorhub_payment_recovered",
     variables: {
@@ -31664,6 +31728,10 @@ async function sendCreatorHubPaymentRecoveredEmail(options: {
 
   return sendCreatorHubBillingEmail({
     recipientEmail: options.recipientEmail,
+    fromEmail: resolveCreatorHubTemplateFromEmail(
+      "creatorhub_payment_recovered",
+      brandingSettings,
+    ),
     replyTo: rendered.replyToEmail,
     subject: rendered.subject,
     text: rendered.text,

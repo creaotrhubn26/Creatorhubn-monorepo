@@ -111,6 +111,8 @@ interface CreatorHubEmailTemplateRow {
   footerNote?: string | null;
 }
 
+type CreatorHubEmailSenderKind = 'billing' | 'welcome' | 'system';
+
 interface CreatorHubEmailSettings {
   identity: {
     appName: string;
@@ -376,6 +378,44 @@ const defaultCreatorHubEmailSettings: CreatorHubEmailSettings = {
   },
 };
 
+function getCreatorHubTemplateSenderKind(
+  templateId: CreatorHubEmailTemplateRow['id'],
+): CreatorHubEmailSenderKind {
+  switch (templateId) {
+    case 'creatorhub_account_activated':
+      return 'welcome';
+    case 'creatorhub_payment_confirmed':
+    case 'creatorhub_payment_failed':
+    case 'creatorhub_payment_recovered':
+    default:
+      return 'billing';
+  }
+}
+
+function getCreatorHubTemplateSenderInfo(
+  templateId: CreatorHubEmailTemplateRow['id'],
+  settings: CreatorHubEmailSettings,
+) {
+  switch (getCreatorHubTemplateSenderKind(templateId)) {
+    case 'welcome':
+      return {
+        label: 'Velkomst-avsender',
+        email: settings.email.welcomeFromEmail,
+      };
+    case 'system':
+      return {
+        label: 'System-avsender',
+        email: settings.email.systemFromEmail,
+      };
+    case 'billing':
+    default:
+      return {
+        label: 'Betalings-avsender',
+        email: settings.email.fromEmail,
+      };
+  }
+}
+
 function getPlanRequirement(feature: PlatformFeature): PlanRequirement {
   if (feature.category === 'enterprise') return 'enterprise';
   if (feature.category === 'professional' || feature.category === 'premium') return 'pro';
@@ -470,10 +510,10 @@ export default function PriceManagementDashboard({
   const { getProfessionDisplayName: getDynamicProfessionName } = useDynamicProfessions();
   const { auth } = useEnhancedMasterIntegration();
   const { subscriptionPlans, features: platformFeatures, isLoading: pricingLoading, formatPrice } = usePlatformPricing();
-  const previewFromEmail =
-    editingEmailTemplateId === 'creatorhub_account_activated'
-      ? creatorHubEmailSettings.email.welcomeFromEmail
-      : creatorHubEmailSettings.email.fromEmail;
+  const previewSender = getCreatorHubTemplateSenderInfo(
+    editingEmailTemplateId,
+    creatorHubEmailSettings,
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -1456,7 +1496,7 @@ export default function PriceManagementDashboard({
                   <TextField
                     fullWidth
                     label="System-avsender"
-                    helperText="Reservert for enveis systemvarsler, for eksempel noreply@creatorhubn.com."
+                    helperText="Reservert for enveis systemvarsler, for eksempel noreply@creatorhubn.com. Ingen aktive CreatorHub-maler bruker denne akkurat nå."
                     value={creatorHubEmailSettings.email.systemFromEmail}
                     onChange={(event) =>
                       setCreatorHubEmailSettings((previous) => ({
@@ -2157,7 +2197,7 @@ export default function PriceManagementDashboard({
                       lineHeight: 1.7,
                     }}
                   >
-                    Fra: {previewFromEmail} {' • '} Svar til: {creatorHubEmailSettings.email.replyToEmail}
+                    Sender: {previewSender.label} {' • '} Fra: {previewSender.email} {' • '} Svar til: {creatorHubEmailSettings.email.replyToEmail}
                   </Typography>
                 </Box>
                 <Box sx={{ px: { xs: 2.25, sm: 3.5 }, py: { xs: 2.5, sm: 3.5 } }}>
