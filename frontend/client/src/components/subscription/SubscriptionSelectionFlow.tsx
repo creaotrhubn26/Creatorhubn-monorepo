@@ -371,6 +371,18 @@ export default function SubscriptionSelectionFlow({
     return String(value);
   };
 
+  const selectedPlanPriceLabel = selectedPlan
+    ? formatPrice(resolvePlanPrice(selectedPlan), selectedPlan.currency)
+    : null;
+
+  const selectedPlanSummaryRows = selectedPlan
+    ? [
+        { label: 'Plan', value: selectedPlan.name },
+        { label: 'Pris', value: `${selectedPlanPriceLabel} / ${resolveCadenceLabel()}` },
+        { label: 'Fakturering', value: selectedBillingCycle === 'yearly' ? 'Årlig' : 'Månedlig' },
+      ]
+    : [];
+
   const handlePlanSelect = (plan: SubscriptionPlan) => {
     setSelectedPlan(plan);
   };
@@ -1106,75 +1118,158 @@ export default function SubscriptionSelectionFlow({
         }}
       >
         <DialogTitle sx={{ 
-          pb: 2,
-          borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+          pb: 2.5,
+          borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
         }}>
-          <Stack direction="row" alignItems="center" spacing={2}>
-            <Box sx={{
-              width: 48,
-              height: 48,
-              borderRadius: '12px',
-              background: `linear-gradient(135deg, ${professionColor} 0%, ${professionColor}dd 100%)`,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: 'white',
-              boxShadow: `0 4px 12px ${professionColor}60`,
-            }}>
-              <MoneyIcon sx={{ fontSize: 24 }} />
-            </Box>
-            <Box>
-              <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700 }}>Sikker betaling</Typography>
-              <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.6)' }}>
-                CreatorHub bruker Stripe Checkout for abonnement og kortbetaling.
-              </Typography>
-            </Box>
+          <Stack spacing={1.8}>
+            <Stack direction="row" alignItems="center" spacing={2}>
+              <Box sx={{
+                width: 52,
+                height: 52,
+                borderRadius: '14px',
+                background: `linear-gradient(135deg, ${professionColor} 0%, ${professionColor}dd 100%)`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'white',
+                boxShadow: `0 4px 12px ${professionColor}60`,
+              }}>
+                <MoneyIcon sx={{ fontSize: 24 }} />
+              </Box>
+              <Box>
+                <Typography
+                  sx={{
+                    fontSize: '0.76rem',
+                    letterSpacing: '0.16em',
+                    textTransform: 'uppercase',
+                    color: 'rgba(255,186,108,0.88)',
+                    fontWeight: 700,
+                    mb: 0.4,
+                  }}
+                >
+                  CreatorHub Checkout
+                </Typography>
+                <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700 }}>
+                  Bekreft planen før du går til Stripe
+                </Typography>
+              </Box>
+            </Stack>
+
+            {selectedPlan ? (
+              <Box
+                sx={{
+                  borderRadius: '18px',
+                  border: '1px solid rgba(255,186,108,0.18)',
+                  background:
+                    'linear-gradient(135deg, rgba(255,186,108,0.12) 0%, rgba(255,255,255,0.03) 100%)',
+                  p: 2,
+                }}
+              >
+                <Stack
+                  direction={{ xs: 'column', sm: 'row' }}
+                  spacing={1.5}
+                  justifyContent="space-between"
+                  alignItems={{ xs: 'flex-start', sm: 'center' }}
+                >
+                  <Box>
+                    <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '1.05rem' }}>
+                      {selectedPlan.name}
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(255,255,255,0.68)', mt: 0.4 }}>
+                      Klar til sikker betaling i Stripe Checkout.
+                    </Typography>
+                  </Box>
+                  <Box sx={{ textAlign: { xs: 'left', sm: 'right' } }}>
+                    <Typography sx={{ color: '#ffba6c', fontWeight: 800, fontSize: '1.55rem', lineHeight: 1 }}>
+                      {selectedPlanPriceLabel}
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(255,255,255,0.62)', mt: 0.45 }}>
+                      per {resolveCadenceLabel()}
+                    </Typography>
+                  </Box>
+                </Stack>
+              </Box>
+            ) : null}
           </Stack>
         </DialogTitle>
         <DialogContent sx={{ pt: 3 }}>
-          <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)', mb: 3, lineHeight: 1.7 }}>
-            Du er i ferd med å aktivere <strong>{selectedPlan?.name}</strong>. Betalingen fullføres i Stripe Checkout
-            før du sendes tilbake til CreatorHub.
+          <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.72)', mb: 3, lineHeight: 1.7 }}>
+            Her ser du akkurat hva som aktiveres. Når du fortsetter, åpnes Stripe Checkout i samme flyt og du
+            returnerer til CreatorHub med oppdatert abonnementsstatus.
           </Typography>
 
-          <Box
-            sx={{
-              p: 2.25,
-              borderRadius: '18px',
-              border: '1px solid rgba(99, 91, 240, 0.35)',
-              background: 'linear-gradient(135deg, rgba(99,91,240,0.18) 0%, rgba(255,255,255,0.04) 100%)',
-            }}
-          >
-            <Stack direction="row" spacing={2} alignItems="flex-start">
+          <Grid container spacing={1.5}>
+            <Grid size={{ xs: 12, md: 6 }}>
               <Box
                 sx={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: '14px',
-                  backgroundColor: 'rgba(99,91,240,0.18)',
-                  color: '#8e89ff',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0,
+                  height: '100%',
+                  p: 2.25,
+                  borderRadius: '18px',
+                  border: '1px solid rgba(99, 91, 240, 0.35)',
+                  background: 'linear-gradient(135deg, rgba(99,91,240,0.18) 0%, rgba(255,255,255,0.04) 100%)',
                 }}
               >
-                <CreditCardIcon />
+                <Stack direction="row" spacing={2} alignItems="flex-start">
+                  <Box
+                    sx={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: '14px',
+                      backgroundColor: 'rgba(99,91,240,0.18)',
+                      color: '#8e89ff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <CreditCardIcon />
+                  </Box>
+                  <Stack spacing={0.75}>
+                    <Typography sx={{ color: '#fff', fontWeight: 700 }}>Stripe Checkout</Typography>
+                    <Typography sx={{ color: 'rgba(255,255,255,0.68)', lineHeight: 1.65 }}>
+                      Kortdetaljer, kvittering og eventuell avgiftsberegning håndteres på Stripes sikre betalingsside.
+                    </Typography>
+                  </Stack>
+                </Stack>
               </Box>
-              <Stack spacing={0.75}>
-                <Typography sx={{ color: '#fff', fontWeight: 700 }}>Stripe Checkout</Typography>
-                <Typography sx={{ color: 'rgba(255,255,255,0.68)', lineHeight: 1.65 }}>
-                  Kortdetaljer og eventuell avgiftsberegning håndteres på Stripes sikre betalingsside.
-                </Typography>
-              </Stack>
-            </Stack>
-          </Box>
+            </Grid>
+            <Grid size={{ xs: 12, md: 6 }}>
+              <Box
+                sx={{
+                  height: '100%',
+                  p: 2.25,
+                  borderRadius: '18px',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  background: 'rgba(255,255,255,0.035)',
+                }}
+              >
+                <Typography sx={{ color: '#fff', fontWeight: 700, mb: 1.2 }}>Oppsummering</Typography>
+                <Stack spacing={1}>
+                  {selectedPlanSummaryRows.map((row) => (
+                    <Stack
+                      key={row.label}
+                      direction="row"
+                      justifyContent="space-between"
+                      spacing={2}
+                      sx={{ color: 'rgba(255,255,255,0.76)' }}
+                    >
+                      <Typography sx={{ color: 'rgba(255,255,255,0.56)' }}>{row.label}</Typography>
+                      <Typography sx={{ color: '#fff', fontWeight: 700, textAlign: 'right' }}>
+                        {row.value}
+                      </Typography>
+                    </Stack>
+                  ))}
+                </Stack>
+              </Box>
+            </Grid>
+          </Grid>
 
           <Typography
             variant="caption"
             sx={{
               display: 'block',
-              mt: 1,
+              mt: 1.25,
               color: 'rgba(255, 255, 255, 0.5)',
               lineHeight: 1.7,
             }}
@@ -1183,27 +1278,35 @@ export default function SubscriptionSelectionFlow({
           </Typography>
 
           {selectedPlan && (
-            <Alert
-              severity="info"
+            <Box
               sx={{
                 mt: 3,
-                backgroundColor: `${professionColor}20`,
-                border: `1px solid ${professionColor}40`,
-                borderRadius: '12px',
-                '& .MuiAlert-icon': {
-                  color: professionColor,
-                }
+                p: 2,
+                borderRadius: '16px',
+                background: 'rgba(255,255,255,0.035)',
+                border: '1px solid rgba(255,255,255,0.08)',
               }}
             >
-              <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.9)', lineHeight: 1.7 }}>
-                Du vil starte et abonnement på <strong>{selectedPlan.name}</strong> til{' '}
-                <strong>{formatPrice(resolvePlanPrice(selectedPlan), selectedPlan.currency)}</strong> per{' '}
-                {resolveCadenceLabel()}.
-                {selectedBillingCycle === 'yearly' && selectedPlan.yearlySavingsLabel
-                  ? ` ${selectedPlan.yearlySavingsLabel}.`
-                  : ''}
+              <Typography sx={{ color: '#fff', fontWeight: 700, mb: 1 }}>
+                Hva skjer etter betaling
               </Typography>
-            </Alert>
+              <Stack spacing={1}>
+                {[
+                  `Abonnementet på ${selectedPlan.name} opprettes i Stripe.`,
+                  'Du sendes tilbake til CreatorHub med oppdatert status.',
+                  selectedBillingCycle === 'yearly' && selectedPlan.yearlySavingsLabel
+                    ? selectedPlan.yearlySavingsLabel
+                    : 'Du kan administrere abonnementet videre fra CreatorHub.',
+                ].map((line) => (
+                  <Stack key={line} direction="row" spacing={1.2} alignItems="flex-start">
+                    <CheckIcon sx={{ color: '#ffba6c', fontSize: 18, mt: 0.25 }} />
+                    <Typography sx={{ color: 'rgba(255,255,255,0.72)', lineHeight: 1.65 }}>
+                      {line}
+                    </Typography>
+                  </Stack>
+                ))}
+              </Stack>
+            </Box>
           )}
         </DialogContent>
         <DialogActions sx={{ 
