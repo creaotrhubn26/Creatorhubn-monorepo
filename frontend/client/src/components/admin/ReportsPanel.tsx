@@ -1,92 +1,47 @@
-import { useTheming } from '../../utils/theming-helper';
-import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Grid from '@mui/material/Grid2';
 import { apiRequest } from '@/lib/queryClient';
 import {
   Alert,
   Box,
-  Typography,
-  Card as MuiCard,
-  CardContent,
   Button,
-  Select,
-  MenuItem,
+  Chip,
+  Divider,
   FormControl,
   InputLabel,
-  Tabs,
-  Tab,
+  LinearProgress,
+  Menu,
+  MenuItem,
+  Paper,
+  Select,
+  Stack,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  Paper,
-  LinearProgress,
-  Chip,
-  IconButton,
-  Menu,
-  MenuList,
-  ListItemIcon,
-  ListItemText,
+  Typography,
 } from '@mui/material';
 import {
   Assessment,
-  TrendingUp,
-  TrendingDown,
-  PieChart,
-  BarChart,
-  Timeline,
+  CalendarMonth,
   Download,
-  Refresh,
-  DateRange,
-  Business,
-  Person,
-  CameraAlt,
-  Videocam,
-  MusicNote,
-  Store,
-  FileDownload,
-  PictureAsPdf,
-  TableChart,
+  Groups,
+  Paid,
+  Timeline,
+  TrendingDown,
+  TrendingUp,
+  Workspaces,
 } from '@mui/icons-material';
 
-interface TabPanelProps {
-  children?: React.ReactNode;
-  index: number;
-  value: number
-}
-
-function TabPanel({ children, value, index, ...other }: TabPanelProps) {
-  return (
-    <div
-      role="tabpanel"
-      hidden={value !== index}
-      id={`reports-tabpanel-${index}`}
-      aria-labelledby={`reports-tab-${index}`}
-      {...other}
-    >
-      {value === index && <Box sx={{ py:  3 }}>{children}</Box>}
-    </div>
-  );
-}
-
 interface ReportsPanelProps {
-  onMeetingCreate?: (meeting: any) => void;
-  onProjectUpdate?: (project: any) => void;
-  onWorklogCreate?: (worklog: any) => void;
-  onClientSelect?: (client: any) => void;
-  onClientUpdate?: (client: any) => void;
-  onShowcaseCreate?: (showcase: any) => void;
-  onFileUpload?: (file: any) => void;
-  onFileDownload?: (file: any) => void;
-  selectedProject?: any;
-  onProjectSelect?: (project: any) => void;
-  selectedClient?: any;
-  onSettingsUpdate?: (settings: any) => void;
-  onNotificationCreate?: (notification: any) => void
+  onFileDownload?: (file: {
+    source: 'reports_panel';
+    format: 'csv' | 'xlsx' | 'pdf';
+    range: string;
+  }) => void;
 }
 
 interface OverviewData {
@@ -122,253 +77,341 @@ interface BiResponse {
   professionStats?: ProfessionStat[];
 }
 
-export default function ReportsPanel({
-  onMeetingCreate,
-  onProjectUpdate,
-  onWorklogCreate,
-  onClientSelect,
-  onClientUpdate,
-  onShowcaseCreate,
-  onFileUpload,
-  onFileDownload,
-  selectedProject,
-  onProjectSelect,
-  selectedClient,
-  onSettingsUpdate,
-  onNotificationCreate
-}: ReportsPanelProps) {
-  const [tabValue, setTabValue] = useState(0);
-  
-  // Theming system
-  const theming = useTheming('prototype_tester');
-  
-  // Dynamic profession system
-  const { getProfessionDisplayName } = useDynamicProfessions();
+const surfaceSx = {
+  borderRadius: '24px',
+  border: '1px solid rgba(17, 24, 39, 0.08)',
+  bgcolor: '#ffffff',
+  boxShadow: '0 18px 44px rgba(15, 23, 42, 0.06)',
+} as const;
+
+const insetSx = {
+  borderRadius: '18px',
+  border: '1px solid rgba(17, 24, 39, 0.08)',
+  bgcolor: '#fcfaf7',
+} as const;
+
+function formatCurrency(value: number) {
+  return `${value.toLocaleString('nb-NO')} kr`;
+}
+
+function formatProfession(profession: string) {
+  switch (profession) {
+    case 'photographer':
+      return 'Fotograf';
+    case 'videographer':
+      return 'Videograf';
+    case 'musicproducer':
+      return 'Musikkprodusent';
+    case 'vendor':
+      return 'Leverandør';
+    case 'admin':
+      return 'Administrator';
+    default:
+      return profession || 'Ukjent';
+  }
+}
+
+function getGrowthTone(value: number) {
+  return value >= 0
+    ? {
+        icon: <TrendingUp sx={{ fontSize: 18, color: '#1b7b4a' }} />,
+        color: '#1b7b4a',
+        bg: '#e9f7ef',
+      }
+    : {
+        icon: <TrendingDown sx={{ fontSize: 18, color: '#b54747' }} />,
+        color: '#b54747',
+        bg: '#fff1f1',
+      };
+}
+
+function MetricCard({
+  icon,
+  label,
+  value,
+  helper,
+  tone,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  helper: string;
+  tone: {
+    bg: string;
+    border: string;
+    iconBg: string;
+    iconColor: string;
+  };
+}) {
+  return (
+    <Paper
+      sx={{
+        ...surfaceSx,
+        p: 2.25,
+        background: tone.bg,
+        borderColor: tone.border,
+      }}
+    >
+      <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2 }}>
+        <Box>
+          <Typography variant="caption" sx={{ color: '#6b7280', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+            {label}
+          </Typography>
+          <Typography sx={{ mt: 0.9, fontSize: '1.7rem', fontWeight: 700, color: '#111827', letterSpacing: '-0.03em' }}>
+            {value}
+          </Typography>
+          <Typography variant="body2" sx={{ mt: 0.6, color: '#6b7280', lineHeight: 1.5 }}>
+            {helper}
+          </Typography>
+        </Box>
+        <Box
+          sx={{
+            width: 44,
+            height: 44,
+            borderRadius: '14px',
+            display: 'grid',
+            placeItems: 'center',
+            bgcolor: tone.iconBg,
+            color: tone.iconColor,
+            flexShrink: 0,
+          }}
+        >
+          {icon}
+        </Box>
+      </Box>
+    </Paper>
+  );
+}
+
+export default function ReportsPanel({ onFileDownload }: ReportsPanelProps) {
   const [timeRange, setTimeRange] = useState('30d');
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
 
-  // Fetch real reports data
   const { data: reportsData, isLoading } = useQuery<ReportsResponse>({
     queryKey: ['/api/admin/reports', timeRange],
     queryFn: () => apiRequest(`/api/admin/reports?range=${timeRange}`) as Promise<ReportsResponse>,
-    retry:  1,
-});
+    retry: 1,
+  });
 
-  // Fetch business intelligence data
   const { data: biData } = useQuery<BiResponse>({
     queryKey: ['/api/admin/business-intelligence', timeRange],
-    queryFn: () => apiRequest(`/api/admin/business-intelligence?range=${timeRange}`) as Promise<BiResponse>,
-    retry:  1,
-});
+    queryFn: () =>
+      apiRequest(`/api/admin/business-intelligence?range=${timeRange}`) as Promise<BiResponse>,
+    retry: 1,
+  });
 
-  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
-    setTabValue(newValue);
+  const overview = reportsData?.overview || {
+    totalRevenue: 0,
+    totalProjects: 0,
+    totalUsers: 0,
+    averageProjectValue: 0,
+    growthRate: 0,
+    topProfession: 'professional',
   };
 
-  const handleExportClick = (event: React.MouseEvent<HTMLElement>) => {
-    setAnchorEl(event.currentTarget);
-};
+  const professionStats = biData?.professionStats || [];
+  const monthlyData = reportsData?.monthlyData || [];
+  const totalUsers = Math.max(overview.totalUsers, 1);
 
-  const handleExportClose = () => {
+  const activeProfessionCount = useMemo(
+    () =>
+      professionStats.filter(
+        (stat) => stat.users > 0 || stat.projects > 0 || stat.revenue > 0,
+      ).length,
+    [professionStats],
+  );
+
+  const topProfession = useMemo(
+    () =>
+      professionStats.reduce<ProfessionStat | null>((top, current) => {
+        if (!top || current.revenue > top.revenue) {
+          return current;
+        }
+        return top;
+      }, null),
+    [professionStats],
+  );
+
+  const handleExport = (format: 'csv' | 'xlsx' | 'pdf') => {
+    onFileDownload?.({ source: 'reports_panel', format, range: timeRange });
     setAnchorEl(null);
-};
+  };
 
   if (isLoading) {
     return (
-      <Box sx={{ p:  3 }}>
-        <Typography variant="h6" sx={{ color: theming.colors.primary }}>Laster rapporter...</Typography>
+      <Box sx={{ display: 'grid', gap: 2 }}>
+        <Paper sx={{ ...surfaceSx, p: 3 }}>
+          <Typography sx={{ fontSize: '1.5rem', fontWeight: 700, color: '#181512' }}>
+            Rapporter
+          </Typography>
+          <Typography sx={{ mt: 0.75, color: '#6b7280' }}>
+            Laster innsikt, trender og kommersielle signaler.
+          </Typography>
+          <LinearProgress sx={{ mt: 2.5, borderRadius: '999px' }} />
+        </Paper>
       </Box>
     );
-}
-
-  // Use real data or fallback to basic structure
-  const overview = reportsData?.overview || {
-    totalRevenue:  0,
-    totalProjects:  0,
-    totalUsers:  1,
-    averageProjectValue:  0,
-    growthRate:  0,
-    topProfession: 'admin'
-};
-
-  const professionStats: ProfessionStat[] = biData?.professionStats || [
-    { profession: 'photographer', users: 0, projects: 0, revenue: 0, growthRate: 0 },
-    { profession: 'videographer', users: 0, projects: 0, revenue: 0, growthRate: 0 },
-    { profession: 'musicproducer', users: 0, projects: 0, revenue: 0, growthRate: 0 },
-    { profession: 'vendor', users: 0, projects: 0, revenue: 0, growthRate: 0 },
-    { profession: 'admin', users: 1, projects: 0, revenue: 0, growthRate: 0 }
-  ];
-
-  const monthlyData: MonthlyStat[] = reportsData?.monthlyData || [
-    { month: 'Jan 2025', revenue: 0, projects: 0, users:  1 },
-    { month: 'Des 2024', revenue: 0, projects: 0, users:  0 },
-    { month: 'Nov 2024', revenue: 0, projects: 0, users:  0 }
-  ];
-
-  const getProfessionIcon = (profession: string) => {
-    switch (profession) {
-      case 'photographer': return <CameraAlt />;
-      case 'videographer': return <Videocam />;
-      case 'musicproducer': return <MusicNote />;
-      case 'vendor': return <Store />;
-      default: return <Business />;
   }
-};
-
-  const getProfessionLabel = (profession: string) => {
-    if (profession === 'admin') return 'Administrator';
-    return getProfessionDisplayName(profession);
-  };
 
   return (
-    <Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb:  3 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
-          <Assessment color="primary" sx={{ fontSize: 32}} />
-          <Typography variant="h5" sx={{  fontWeight: 600}}>
-            Rapporter & Analytics
-          </Typography>
-        </Box>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
-          <FormControl size="small" sx={{ minWidth: 120}}>
-            <InputLabel>Periode</InputLabel>
-            <Select
-              value={timeRange}
-              label="Periode"
-              onChange={(e) => setTimeRange(e.target.value)}
+    <Box sx={{ display: 'grid', gap: 3 }}>
+      <Paper
+        sx={{
+          ...surfaceSx,
+          px: { xs: 2.25, sm: 3 },
+          py: { xs: 2.25, sm: 2.75 },
+          background:
+            'linear-gradient(135deg, rgba(15, 52, 96, 0.08), rgba(255, 255, 255, 0.92) 52%, rgba(233, 69, 96, 0.06))',
+        }}
+      >
+        <Stack
+          direction={{ xs: 'column', xl: 'row' }}
+          spacing={2.5}
+          justifyContent="space-between"
+          alignItems={{ xs: 'flex-start', xl: 'stretch' }}
+        >
+          <Box sx={{ maxWidth: 760, flex: 1 }}>
+            <Typography variant="overline" sx={{ color: '#0f3460', fontWeight: 700, letterSpacing: '0.08em' }}>
+              CreatorHub Insights
+            </Typography>
+            <Typography sx={{ mt: 0.5, fontSize: { xs: '1.9rem', sm: '2.3rem' }, fontWeight: 700, color: '#111827', letterSpacing: '-0.04em' }}>
+              Rapporter
+            </Typography>
+            <Typography variant="body2" sx={{ mt: 1, color: '#5b6472', lineHeight: 1.7 }}>
+              Les omsetning, brukervekst og profesjonsmønstre uten å hoppe mellom gamle dashboards.
+              Denne flaten skal gi Daniel et tydelig beslutningsgrunnlag, ikke bare rå tabeller.
+            </Typography>
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 2 }}>
+              <Chip label={`${activeProfessionCount} aktive profesjoner`} sx={{ bgcolor: '#ffffff', border: '1px solid rgba(15, 52, 96, 0.08)' }} />
+              <Chip label={`${monthlyData.length} trendpunkter`} sx={{ bgcolor: '#ffffff', border: '1px solid rgba(15, 52, 96, 0.08)' }} />
+              <Chip label={`Toppspor: ${formatProfession(topProfession?.profession || overview.topProfession)}`} sx={{ bgcolor: '#ffffff', border: '1px solid rgba(15, 52, 96, 0.08)' }} />
+            </Stack>
+          </Box>
+
+          <Box sx={{ width: { xs: '100%', xl: 320 }, display: 'grid', gap: 1.25 }}>
+            <FormControl size="small" fullWidth>
+              <InputLabel>Periode</InputLabel>
+              <Select
+                value={timeRange}
+                label="Periode"
+                onChange={(event) => setTimeRange(String(event.target.value))}
+                sx={{ bgcolor: '#ffffff', borderRadius: '14px' }}
+              >
+                <MenuItem value="7d">7 dager</MenuItem>
+                <MenuItem value="30d">30 dager</MenuItem>
+                <MenuItem value="90d">3 måneder</MenuItem>
+                <MenuItem value="1y">1 år</MenuItem>
+              </Select>
+            </FormControl>
+
+            <Button
+              variant="contained"
+              startIcon={<Download />}
+              onClick={(event) => setAnchorEl(event.currentTarget)}
+              sx={{
+                borderRadius: '14px',
+                bgcolor: '#111827',
+                '&:hover': { bgcolor: '#0f172a' },
+                boxShadow: 'none',
+              }}
             >
-              <MenuItem value="7d">7 dager</MenuItem>
-              <MenuItem value="30d">30 dager</MenuItem>
-              <MenuItem value="90d">3 måneder</MenuItem>
-              <MenuItem value="1y">1 år</MenuItem>
-            </Select>
-          </FormControl>
-          <Button
-            variant="outlined"
-            startIcon={theming.getThemedIcon('download')}
-            onClick={handleExportClick}
-          >
-            Eksporter
-          </Button>
-        </Box>
-      </Box>
+              Eksporter rapport
+            </Button>
 
-      {/* Key Metrics */}
-      <Grid container spacing={3} sx={{ mb:  4 }}>
-        <Grid size={12}>
-          <MuiCard>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
-                <TrendingUp color="success" />
-                <Box>
-                  <Typography variant="h4" sx={{  fontWeight: 600}}>
-                    {overview.totalRevenue.toLocaleString('no-NO')} kr
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Total Omsetning
-                  </Typography>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
-                    {overview.growthRate >= 0 ? (
-                      <TrendingUp color="success" fontSize="small" />
-                    ) : (
-                      <TrendingDown color="error" fontSize="small" />
-                    )}
-                    <Typography variant="caption" color={overview.growthRate >= 0 ? 'success.main' : 'error.main'}>
-                      {overview.growthRate}% fra forrige periode
-                    </Typography>
-                  </Box>
-                </Box>
-              </Box>
-            </CardContent>
-          </MuiCard>
+            <Paper sx={{ ...insetSx, p: 1.5 }}>
+              <Typography variant="caption" sx={{ color: '#6b7280', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                Operativ lesing
+              </Typography>
+              <Typography sx={{ mt: 0.6, color: '#111827', fontWeight: 700 }}>
+                {overview.growthRate >= 0 ? 'Veksten peker oppover' : 'Veksten må følges opp'}
+              </Typography>
+              <Typography variant="body2" sx={{ mt: 0.4, color: '#6b7280', lineHeight: 1.6 }}>
+                {overview.growthRate >= 0
+                  ? 'Du kan bruke denne flaten til å se hvilke profesjoner som faktisk driver betalt vekst.'
+                  : 'Bruk profesjons- og trendtabellene til å se hvor konvertering eller ordreverdi faller.'}
+              </Typography>
+            </Paper>
+          </Box>
+        </Stack>
+      </Paper>
+
+      {professionStats.length === 0 && monthlyData.length === 0 ? (
+        <Alert severity="info" sx={{ borderRadius: '18px' }}>
+          Rapportsignalene er tilgjengelige, men dette miljøet har foreløpig lite historikk. Flaten forblir lesbar og viser publisert grunnlag i stedet for å knekke.
+        </Alert>
+      ) : null}
+
+      <Grid container spacing={2}>
+        <Grid size={{ xs: 12, md: 6, xl: 3 }}>
+          <MetricCard
+            icon={<Paid />}
+            label="Omsetning"
+            value={formatCurrency(overview.totalRevenue)}
+            helper={`${overview.growthRate >= 0 ? '+' : ''}${overview.growthRate}% mot forrige periode`}
+            tone={{
+              bg: 'linear-gradient(180deg, rgba(236,255,252,0.98), rgba(255,255,255,0.98))',
+              border: 'rgba(45, 122, 101, 0.18)',
+              iconBg: '#dff7ef',
+              iconColor: '#1b7b4a',
+            }}
+          />
         </Grid>
-
-        <Grid size={12}>
-          <MuiCard>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
-                <Business color="primary" />
-                <Box>
-                  <Typography variant="h4" sx={{  fontWeight: 600}}>
-                    {overview.totalProjects}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Totale Prosjekter
-                  </Typography>
-                </Box>
-              </Box>
-            </CardContent>
-          </MuiCard>
+        <Grid size={{ xs: 12, md: 6, xl: 3 }}>
+          <MetricCard
+            icon={<Workspaces />}
+            label="Prosjekter"
+            value={String(overview.totalProjects)}
+            helper="Totale prosjekter i valgt periode"
+            tone={{
+              bg: 'linear-gradient(180deg, rgba(240,247,255,0.98), rgba(255,255,255,0.98))',
+              border: 'rgba(37, 95, 164, 0.18)',
+              iconBg: '#e9f2ff',
+              iconColor: '#235fa4',
+            }}
+          />
         </Grid>
-
-        <Grid size={12}>
-          <MuiCard>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
-                <Person color="info" />
-                <Box>
-                  <Typography variant="h4" sx={{  fontWeight: 600}}>
-                    {overview.totalUsers}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Registrerte Brukere
-                  </Typography>
-                </Box>
-              </Box>
-            </CardContent>
-          </MuiCard>
+        <Grid size={{ xs: 12, md: 6, xl: 3 }}>
+          <MetricCard
+            icon={<Groups />}
+            label="Brukere"
+            value={String(overview.totalUsers)}
+            helper="Registrerte brukere i analysegrunnlaget"
+            tone={{
+              bg: 'linear-gradient(180deg, rgba(250,244,255,0.98), rgba(255,255,255,0.98))',
+              border: 'rgba(110, 69, 184, 0.18)',
+              iconBg: '#efe7ff',
+              iconColor: '#6e45b8',
+            }}
+          />
         </Grid>
-
-        <Grid size={12}>
-          <MuiCard>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
-                <BarChart color="warning" />
-                <Box>
-                  <Typography variant="h4" sx={{  fontWeight: 600}}>
-                    {overview.averageProjectValue.toLocaleString('no-NO')} kr
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Gj.snitt Prosjektverdi
-                  </Typography>
-                </Box>
-              </Box>
-            </CardContent>
-          </MuiCard>
+        <Grid size={{ xs: 12, md: 6, xl: 3 }}>
+          <MetricCard
+            icon={<CalendarMonth />}
+            label="Gj.snittverdi"
+            value={formatCurrency(overview.averageProjectValue)}
+            helper="Gjennomsnittlig prosjektverdi"
+            tone={{
+              bg: 'linear-gradient(180deg, rgba(255,247,236,0.98), rgba(255,255,255,0.98))',
+              border: 'rgba(160, 90, 0, 0.18)',
+              iconBg: '#fff0d8',
+              iconColor: '#a05a00',
+            }}
+          />
         </Grid>
       </Grid>
 
-      {/* Tabs */}
-      <MuiCard>
-        <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-          <Tabs 
-            value={tabValue}
-            onChange={handleTabChange}
-            sx={{
-              '& .MuiTab-root': {
-                color: 'text.secondary',
-                '&.Mui-selected': {
-                  color: '#ff8c00',
-                  fontWeight: 600
-                }
-              },
-              '& .MuiTabs-indicator': {
-                backgroundColor: '#ff8c00'
-              }
-            }}
-          >
-            <Tab icon={<PieChart />} label="Profesjoner" />
-            <Tab icon={<Timeline />} label="Trender" />
-            <Tab icon={<BarChart />} label="Ytelse" />
-          </Tabs>
-        </Box>
-
-        <CardContent sx={theming.getThemedCardSx()}>
-          <TabPanel value={tabValue} index={0}>
-            <Typography variant="h6" sx={{  mb:  3  }}>
-              Profesjonsfordeling og ytelse
+      <Grid container spacing={2}>
+        <Grid size={{ xs: 12, xl: 7 }}>
+          <Paper sx={{ ...surfaceSx, p: 2.5 }}>
+            <Typography sx={{ fontSize: '1.1rem', fontWeight: 700, color: '#181512' }}>
+              Profesjonsbidrag
             </Typography>
-            <TableContainer component={Paper}>
+            <Typography sx={{ mt: 0.5, color: '#6b7280' }}>
+              Sammenlign volum, prosjekter og omsetning uten å måtte hoppe mellom flere undersider.
+            </Typography>
+            <Divider sx={{ my: 2 }} />
+
+            <TableContainer>
               <Table>
                 <TableHead>
                   <TableRow>
@@ -377,279 +420,195 @@ export default function ReportsPanel({
                     <TableCell><strong>Prosjekter</strong></TableCell>
                     <TableCell><strong>Omsetning</strong></TableCell>
                     <TableCell><strong>Vekst</strong></TableCell>
-                    <TableCell><strong>Markedsandel</strong></TableCell>
+                    <TableCell><strong>Andel</strong></TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {professionStats.map((stat, index) => (
-                    <TableRow key={index}>
-                      <TableCell>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
-                          {getProfessionIcon(stat.profession)}
-                          {getProfessionLabel(stat.profession)}
-                        </Box>
-                      </TableCell>
-                      <TableCell>{stat.users}</TableCell>
-                      <TableCell>{stat.projects}</TableCell>
-                      <TableCell>{stat.revenue.toLocaleString('no-NO')} kr</TableCell>
-                      <TableCell>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
-                          {stat.growthRate >= 0 ? (
-                            <TrendingUp color="success" fontSize="small" />
-                          ) : (
-                            <TrendingDown color="error" fontSize="small" />
-                          )}
-                          <Typography variant="body2" color={stat.growthRate >= 0 ? 'success.main' : 'error.main'}>
-                            {stat.growthRate}%
-                          </Typography>
-                        </Box>
-                      </TableCell>
-                      <TableCell>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 100 }}>
-                          <LinearProgress 
-                            variant="determinate" 
-                            value={(stat.users / overview.totalUsers) * 100}
-                            sx={{ flexGrow:  1 }}
-                          />
-                          <Typography variant="caption">
-                            {Math.round((stat.users / overview.totalUsers) * 100)}%
-                          </Typography>
-                        </Box>
+                  {professionStats.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6}>
+                        <Alert severity="info" sx={{ borderRadius: '14px' }}>
+                          Ingen profesjonsdata tilgjengelig ennå.
+                        </Alert>
                       </TableCell>
                     </TableRow>
-                  ))}
+                  ) : (
+                    professionStats.map((stat) => {
+                      const growthTone = getGrowthTone(stat.growthRate);
+                      const share = Math.round((stat.users / totalUsers) * 100);
+                      return (
+                        <TableRow key={stat.profession}>
+                          <TableCell sx={{ fontWeight: 600, color: '#111827' }}>
+                            {formatProfession(stat.profession)}
+                          </TableCell>
+                          <TableCell>{stat.users}</TableCell>
+                          <TableCell>{stat.projects}</TableCell>
+                          <TableCell>{formatCurrency(stat.revenue)}</TableCell>
+                          <TableCell>
+                            <Stack direction="row" spacing={0.75} alignItems="center">
+                              {growthTone.icon}
+                              <Typography sx={{ color: growthTone.color, fontWeight: 700 }}>
+                                {stat.growthRate}%
+                              </Typography>
+                            </Stack>
+                          </TableCell>
+                          <TableCell sx={{ minWidth: 160 }}>
+                            <Stack direction="row" spacing={1} alignItems="center">
+                              <LinearProgress
+                                variant="determinate"
+                                value={share}
+                                sx={{
+                                  flex: 1,
+                                  height: 8,
+                                  borderRadius: '999px',
+                                  bgcolor: '#ede7dc',
+                                }}
+                              />
+                              <Typography variant="caption" sx={{ minWidth: 30, color: '#6b7280', fontWeight: 700 }}>
+                                {share}%
+                              </Typography>
+                            </Stack>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  )}
                 </TableBody>
               </Table>
             </TableContainer>
-          </TabPanel>
+          </Paper>
+        </Grid>
 
-          <TabPanel value={tabValue} index={1}>
-            <Typography variant="h6" sx={{  mb:  3  }}>
-              Månedlige trender
+        <Grid size={{ xs: 12, xl: 5 }}>
+          <Paper sx={{ ...surfaceSx, p: 2.5 }}>
+            <Typography sx={{ fontSize: '1.1rem', fontWeight: 700, color: '#181512' }}>
+              Trendlinje
             </Typography>
-            <TableContainer component={Paper}>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell><strong>Måned</strong></TableCell>
-                    <TableCell><strong>Omsetning</strong></TableCell>
-                    <TableCell><strong>Nye Prosjekter</strong></TableCell>
-                    <TableCell><strong>Nye Brukere</strong></TableCell>
-                    <TableCell><strong>Trend</strong></TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {monthlyData.map((data, index) => (
-                    <TableRow key={index}>
-                      <TableCell>{data.month}</TableCell>
-                      <TableCell>{data.revenue.toLocaleString('no-NO')} kr</TableCell>
-                      <TableCell>{data.projects}</TableCell>
-                      <TableCell>{data.users}</TableCell>
-                      <TableCell>
-                        <Chip 
-                          label={index === 0 ? 'Nåværende' : 'Historisk'}
-                          color={index === 0 ? 'primary' : 'default'}
-                          size="small"
-                        />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          </TabPanel>
+            <Typography sx={{ mt: 0.5, color: '#6b7280' }}>
+              Bruk dette som månedlig puls på omsetning, prosjekter og nye brukere.
+            </Typography>
+            <Divider sx={{ my: 2 }} />
 
-          <TabPanel value={tabValue} index={2}>
-            <Grid container spacing={3}>
-              {/* KPI Cards */}
-              <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'success.50' }}>
-                  <Typography variant="overline" color="text.secondary">Konverteringsrate</Typography>
-                  <Typography variant="h4" color="success.main">24.8%</Typography>
-                  <Typography variant="caption" color="success.main">+3.2% fra forrige måned</Typography>
-                </Paper>
-              </Grid>
-              <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'info.50' }}>
-                  <Typography variant="overline" color="text.secondary">Gjennomsnittlig ordrestørrelse</Typography>
-                  <Typography variant="h4" color="info.main">12,450 kr</Typography>
-                  <Typography variant="caption" color="info.main">+8% fra forrige måned</Typography>
-                </Paper>
-              </Grid>
-              <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'warning.50' }}>
-                  <Typography variant="overline" color="text.secondary">Kundetilfredshet</Typography>
-                  <Typography variant="h4" color="warning.main">4.7/5</Typography>
-                  <Typography variant="caption" color="warning.main">Basert på 156 vurderinger</Typography>
-                </Paper>
-              </Grid>
-              <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'primary.50' }}>
-                  <Typography variant="overline" color="text.secondary">Gjentakende kunder</Typography>
-                  <Typography variant="h4" color="primary.main">67%</Typography>
-                  <Typography variant="caption" color="primary.main">+5% fra forrige kvartal</Typography>
-                </Paper>
-              </Grid>
+            <Stack spacing={1.25}>
+              {monthlyData.length === 0 ? (
+                <Alert severity="info" sx={{ borderRadius: '14px' }}>
+                  Ingen trenddata tilgjengelig ennå.
+                </Alert>
+              ) : (
+                monthlyData.map((row, index) => (
+                  <Box key={`${row.month}-${index}`} sx={{ ...insetSx, p: 1.6 }}>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1.5}>
+                      <Box>
+                        <Typography sx={{ fontWeight: 700, color: '#111827' }}>
+                          {row.month}
+                        </Typography>
+                        <Typography variant="body2" sx={{ mt: 0.35, color: '#6b7280' }}>
+                          {row.projects} prosjekter · {row.users} nye brukere
+                        </Typography>
+                      </Box>
+                      <Chip
+                        size="small"
+                        label={index === 0 ? 'Nåværende' : 'Historisk'}
+                        color={index === 0 ? 'primary' : 'default'}
+                      />
+                    </Stack>
+                    <Typography sx={{ mt: 1, fontSize: '1.15rem', fontWeight: 700, color: '#181512' }}>
+                      {formatCurrency(row.revenue)}
+                    </Typography>
+                  </Box>
+                ))
+              )}
+            </Stack>
+          </Paper>
+        </Grid>
+      </Grid>
 
-              {/* Benchmarking */}
-              <Grid size={{ xs: 12, md: 6 }}>
-                <Paper sx={{ p: 2 }}>
-                  <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
-                    Ytelse vs. bransjegjennomsnitt
-                  </Typography>
-                  {[
-                    { label: 'Responstid', your: 85, avg: 70 },
-                    { label: 'Prosjektfullføring', your: 92, avg: 78 },
-                    { label: 'Kundelojalitet', your: 78, avg: 65 },
-                    { label: 'Priskonkurranseevne', your: 72, avg: 60 },
-                  ].map((metric) => (
-                    <Box key={metric.label} sx={{ mb: 2 }}>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                        <Typography variant="body2">{metric.label}</Typography>
-                        <Typography variant="body2" fontWeight="bold">{metric.your}%</Typography>
-                      </Box>
-                      <Box sx={{ position: 'relative', height: 8, bgcolor: 'grey.200', borderRadius: 1 }}>
-                        <Box sx={{ 
-                          position: 'absolute', 
-                          height: '100%', 
-                          width: `${metric.your}%`, 
-                          bgcolor: 'primary.main',
-                          borderRadius: 1,
-                        }} />
-                        <Box sx={{ 
-                          position: 'absolute', 
-                          height: '100%', 
-                          width: 2, 
-                          left: `${metric.avg}%`, 
-                          bgcolor: 'error.main',
-                        }} />
-                      </Box>
-                      <Typography variant="caption" color="text.secondary">
-                        Bransjegjennomsnitt: {metric.avg}%
+      <Grid container spacing={2}>
+        <Grid size={{ xs: 12, md: 6 }}>
+          <Paper sx={{ ...surfaceSx, p: 2.5 }}>
+            <Typography sx={{ fontSize: '1.05rem', fontWeight: 700, color: '#181512' }}>
+              Fokus denne perioden
+            </Typography>
+            <Typography sx={{ mt: 0.5, color: '#6b7280' }}>
+              Kort lesing av hvor du bør bruke oppmerksomhet.
+            </Typography>
+            <Divider sx={{ my: 2 }} />
+            <Stack spacing={1.5}>
+              <Box sx={{ ...insetSx, p: 1.6 }}>
+                <Typography variant="caption" sx={{ color: '#6b7280', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  Toppspor
+                </Typography>
+                <Typography sx={{ mt: 0.6, fontWeight: 700, color: '#111827' }}>
+                  {topProfession ? formatProfession(topProfession.profession) : formatProfession(overview.topProfession)}
+                </Typography>
+                <Typography variant="body2" sx={{ mt: 0.35, color: '#6b7280' }}>
+                  {topProfession
+                    ? `${formatCurrency(topProfession.revenue)} i omsetning og ${topProfession.projects} prosjekter.`
+                    : 'Ingen ledende profesjon er tydelig ennå.'}
+                </Typography>
+              </Box>
+              <Box sx={{ ...insetSx, p: 1.6 }}>
+                <Typography variant="caption" sx={{ color: '#6b7280', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  Vekstsignal
+                </Typography>
+                <Typography sx={{ mt: 0.6, fontWeight: 700, color: '#111827' }}>
+                  {overview.growthRate >= 0 ? 'Stabil positiv retning' : 'Behov for kommersiell oppfølging'}
+                </Typography>
+                <Typography variant="body2" sx={{ mt: 0.35, color: '#6b7280' }}>
+                  {overview.growthRate >= 0
+                    ? 'Omsetningen peker opp. Neste steg er å se om prosjektveksten følger samme spor.'
+                    : 'Omsetningen peker ned. Start med profesjonstabellen og se hvilke segmenter som faller.'}
+                </Typography>
+              </Box>
+            </Stack>
+          </Paper>
+        </Grid>
+
+        <Grid size={{ xs: 12, md: 6 }}>
+          <Paper sx={{ ...surfaceSx, p: 2.5 }}>
+            <Typography sx={{ fontSize: '1.05rem', fontWeight: 700, color: '#181512' }}>
+              Eksport og videre arbeid
+            </Typography>
+            <Typography sx={{ mt: 0.5, color: '#6b7280' }}>
+              Eksport brukes når teamet trenger delbar rapport utover denne arbeidsflaten.
+            </Typography>
+            <Divider sx={{ my: 2 }} />
+            <Stack spacing={1.25}>
+              {[
+                { label: 'CSV', helper: 'Rå tabell for regneark og videre filtrering.' },
+                { label: 'Excel', helper: 'Delbar rapport for operativ oppfølging.' },
+                { label: 'PDF', helper: 'Fast snapshot for deling med ledelse eller partner.' },
+              ].map((item) => (
+                <Box key={item.label} sx={{ ...insetSx, p: 1.6 }}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1.5}>
+                    <Box>
+                      <Typography sx={{ fontWeight: 700, color: '#111827' }}>
+                        {item.label}
+                      </Typography>
+                      <Typography variant="body2" sx={{ mt: 0.35, color: '#6b7280' }}>
+                        {item.helper}
                       </Typography>
                     </Box>
-                  ))}
-                </Paper>
-              </Grid>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => handleExport(item.label === 'Excel' ? 'xlsx' : item.label.toLowerCase() as 'csv' | 'pdf')}
+                      sx={{ borderRadius: '999px' }}
+                    >
+                      Eksporter
+                    </Button>
+                  </Stack>
+                </Box>
+              ))}
+            </Stack>
+          </Paper>
+        </Grid>
+      </Grid>
 
-              {/* Performance Trends */}
-              <Grid size={{ xs: 12, md: 6 }}>
-                <Paper sx={{ p: 2 }}>
-                  <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
-                    Ytelsestrender (siste 6 måneder)
-                  </Typography>
-                  <TableContainer>
-                    <Table size="small">
-                      <TableHead>
-                        <TableRow>
-                          <TableCell>Metrikk</TableCell>
-                          <TableCell align="right">Jan</TableCell>
-                          <TableCell align="right">Feb</TableCell>
-                          <TableCell align="right">Mar</TableCell>
-                          <TableCell align="right">Apr</TableCell>
-                          <TableCell align="right">Mai</TableCell>
-                          <TableCell align="right">Jun</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        <TableRow>
-                          <TableCell>Omsetning (k)</TableCell>
-                          <TableCell align="right">45</TableCell>
-                          <TableCell align="right">52</TableCell>
-                          <TableCell align="right">48</TableCell>
-                          <TableCell align="right">61</TableCell>
-                          <TableCell align="right">58</TableCell>
-                          <TableCell align="right">72</TableCell>
-                        </TableRow>
-                        <TableRow>
-                          <TableCell>Prosjekter</TableCell>
-                          <TableCell align="right">12</TableCell>
-                          <TableCell align="right">15</TableCell>
-                          <TableCell align="right">14</TableCell>
-                          <TableCell align="right">18</TableCell>
-                          <TableCell align="right">16</TableCell>
-                          <TableCell align="right">21</TableCell>
-                        </TableRow>
-                        <TableRow>
-                          <TableCell>Nye kunder</TableCell>
-                          <TableCell align="right">8</TableCell>
-                          <TableCell align="right">11</TableCell>
-                          <TableCell align="right">9</TableCell>
-                          <TableCell align="right">14</TableCell>
-                          <TableCell align="right">12</TableCell>
-                          <TableCell align="right">17</TableCell>
-                        </TableRow>
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-                </Paper>
-              </Grid>
-
-              {/* Action Recommendations */}
-              <Grid size={{ xs: 12 }}>
-                <Paper sx={{ p: 2 }}>
-                  <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
-                    Anbefalte tiltak basert på analyse
-                  </Typography>
-                  <Grid container spacing={2}>
-                    <Grid size={{ xs: 12, md: 4 }}>
-                      <Alert severity="success" sx={{ height: '100%' }}>
-                        <Typography variant="body2" fontWeight="bold">Øk priser med 5-10%</Typography>
-                        <Typography variant="caption">
-                          Din kundetilfredshet er høy nok til å tåle en prisøkning uten kundetap.
-                        </Typography>
-                      </Alert>
-                    </Grid>
-                    <Grid size={{ xs: 12, md: 4 }}>
-                      <Alert severity="info" sx={{ height: '100%' }}>
-                        <Typography variant="body2" fontWeight="bold">Fokuser på gjentakende kunder</Typography>
-                        <Typography variant="caption">
-                          67% gjentakelsesrate er bra - tilby lojalitetsprogram for å nå 75%+.
-                        </Typography>
-                      </Alert>
-                    </Grid>
-                    <Grid size={{ xs: 12, md: 4 }}>
-                      <Alert severity="warning" sx={{ height: '100%' }}>
-                        <Typography variant="body2" fontWeight="bold">Forbedre responstid</Typography>
-                        <Typography variant="caption">
-                          Raskere respons på henvendelser kan øke konverteringsraten med 10%+.
-                        </Typography>
-                      </Alert>
-                    </Grid>
-                  </Grid>
-                </Paper>
-              </Grid>
-            </Grid>
-          </TabPanel>
-        </CardContent>
-      </MuiCard>
-
-      {/* Export Menu */}
-      <Menu
-        anchorEl={anchorEl}
-        open={Boolean(anchorEl)}
-        onClose={handleExportClose}
-      >
-        <MenuList>
-          <MenuItem onClick={handleExportClose}>
-            <ListItemIcon>
-              <PictureAsPdf fontSize="small" />
-            </ListItemIcon>
-            <ListItemText>PDF Rapport</ListItemText>
-          </MenuItem>
-          <MenuItem onClick={handleExportClose}>
-            <ListItemIcon>
-              <TableChart fontSize="small" />
-            </ListItemIcon>
-            <ListItemText>Excel Fil</ListItemText>
-          </MenuItem>
-          <MenuItem onClick={handleExportClose}>
-            <ListItemIcon>
-              <FileDownload fontSize="small" />
-            </ListItemIcon>
-            <ListItemText>CSV Data</ListItemText>
-          </MenuItem>
-        </MenuList>
+      <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={() => setAnchorEl(null)}>
+        <MenuItem onClick={() => handleExport('csv')}>Eksporter CSV</MenuItem>
+        <MenuItem onClick={() => handleExport('xlsx')}>Eksporter Excel</MenuItem>
+        <MenuItem onClick={() => handleExport('pdf')}>Eksporter PDF</MenuItem>
       </Menu>
     </Box>
   );

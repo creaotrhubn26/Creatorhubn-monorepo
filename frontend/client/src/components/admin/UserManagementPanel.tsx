@@ -846,6 +846,28 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
     const startIndex = (usersPage - 1) * 8;
     return filteredUsers.slice(startIndex, startIndex + 8);
   }, [filteredUsers, usersPage]);
+  const paidUserCount = useMemo(
+    () => users.filter((currentUser) => currentUser.paymentCompleted).length,
+    [users],
+  );
+  const pendingPaymentCount = useMemo(
+    () =>
+      users.filter(
+        (currentUser) =>
+          !currentUser.paymentCompleted &&
+          Boolean(
+            currentUser.planName ||
+              currentUser.selectedPlan ||
+              currentUser.roleRoomAccess?.subscriptionLabel,
+          ),
+      ).length,
+    [users],
+  );
+  const academyScopedCount = accessOverview.academyAdmins + accessOverview.academyEditors;
+  const teamLeadCount = useMemo(
+    () => users.filter((currentUser) => currentUser.roleRoomAccess?.isTeamLeader).length,
+    [users],
+  );
 
   React.useEffect(() => {
     setUsersPage((currentPage) => Math.min(currentPage, totalUserPages));
@@ -1205,53 +1227,177 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
       <EditProfessionDialog />
 
       {/* Header */}
-      <Box sx={{ mb: 3.5 }}>
-        <Typography
-          variant="h4"
-          sx={{
-            fontSize: { xs: '1.7rem', sm: '2rem' },
-            fontWeight: 700,
-            letterSpacing: '-0.03em',
-            color: '#181512',
-          }}
-        >
-          Brukere & Roller
-        </Typography>
-        <Typography
-          variant="body2"
-          sx={{
-            mt: 1,
-            maxWidth: 620,
-            color: '#6c665d',
-            lineHeight: 1.6,
-          }}
-        >
-          Administrer medlemmer, godkjenninger og tilgangsnivåer i én ryddig arbeidsflate.
-        </Typography>
-
+      <Box
+        sx={{
+          mb: 3.5,
+          borderRadius: '24px',
+          border: '1px solid rgba(17, 24, 39, 0.08)',
+          background:
+            'linear-gradient(135deg, rgba(29, 78, 216, 0.07), rgba(255,255,255,0.94) 46%, rgba(180, 83, 9, 0.06))',
+          px: { xs: 2, sm: 3 },
+          py: { xs: 2.25, sm: 2.75 },
+        }}
+      >
         <Box
           sx={{
             display: 'flex',
-            alignItems: 'center',
-            gap: 1,
-            mt: 1.75,
-            color: '#7d756a',
+            flexDirection: { xs: 'column', xl: 'row' },
+            alignItems: { xs: 'flex-start', xl: 'stretch' },
+            justifyContent: 'space-between',
+            gap: 2.5,
           }}
         >
-          <Typography variant="caption" sx={{ fontWeight: 600, letterSpacing: '0.08em' }}>
-            AKTIVE INTEGRASJONER
-          </Typography>
-          <Chip
-            label={`${totalActiveIntegrations}/12 aktive`}
-            size="small"
+          <Box sx={{ maxWidth: 760, flex: 1 }}>
+            <Typography variant="overline" sx={{ color: '#1d4ed8', fontWeight: 700, letterSpacing: '0.08em' }}>
+              CreatorHub Access Control
+            </Typography>
+            <Typography
+              variant="h4"
+              sx={{
+                mt: 0.5,
+                fontSize: { xs: '1.7rem', sm: '2rem' },
+                fontWeight: 700,
+                letterSpacing: '-0.03em',
+                color: '#181512',
+              }}
+            >
+              Brukere & Roller
+            </Typography>
+            <Typography
+              variant="body2"
+              sx={{
+                mt: 1,
+                maxWidth: 640,
+                color: '#6c665d',
+                lineHeight: 1.7,
+              }}
+            >
+              Administrer medlemmer, godkjenninger og tilgangsnivåer i én ryddig arbeidsflate.
+              Daniel skal kunne lese hvem som har kontroll, hvem som venter, og hvilke kontoer som trenger oppfølging uten å lete i tabellen først.
+            </Typography>
+
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                mt: 1.75,
+                color: '#7d756a',
+                flexWrap: 'wrap',
+              }}
+            >
+              <Typography variant="caption" sx={{ fontWeight: 600, letterSpacing: '0.08em' }}>
+                AKTIVE INTEGRASJONER
+              </Typography>
+              <Chip
+                label={`${totalActiveIntegrations}/12 aktive`}
+                size="small"
+                sx={{
+                  bgcolor: '#f5f2ed',
+                  color: '#4e473f',
+                  borderRadius: '999px',
+                  border: '1px solid #ebe4da',
+                  fontWeight: 600,
+                }}
+              />
+              <Chip
+                label={`${filteredUsers.length} i nåværende søk`}
+                size="small"
+                sx={{
+                  bgcolor: '#ffffff',
+                  color: '#4e473f',
+                  borderRadius: '999px',
+                  border: '1px solid #ebe4da',
+                  fontWeight: 600,
+                }}
+              />
+            </Box>
+          </Box>
+
+          <Box
             sx={{
-              bgcolor: '#f5f2ed',
-              color: '#4e473f',
-              borderRadius: '999px',
-              border: '1px solid #ebe4da',
-              fontWeight: 600,
+              width: { xs: '100%', xl: 320 },
+              display: 'grid',
+              gap: 1.25,
             }}
-          />
+          >
+            <Box
+              sx={{
+                borderRadius: '18px',
+                border: '1px solid rgba(17, 24, 39, 0.08)',
+                bgcolor: 'rgba(255,255,255,0.78)',
+                px: 1.75,
+                py: 1.5,
+              }}
+            >
+              <Typography sx={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#6b7280', fontWeight: 700 }}>
+                Drift akkurat nå
+              </Typography>
+              <Typography sx={{ mt: 0.6, fontWeight: 700, color: '#111827' }}>
+                {accessOverview.platformAdmins} plattform-admin og {academyScopedCount} Academy-kontoer med utvidet tilgang.
+              </Typography>
+            </Box>
+
+            <Box
+              sx={{
+                borderRadius: '18px',
+                border: '1px solid rgba(17, 24, 39, 0.08)',
+                bgcolor: 'rgba(255,255,255,0.78)',
+                px: 1.75,
+                py: 1.5,
+              }}
+            >
+              <Typography sx={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#6b7280', fontWeight: 700 }}>
+                Oppfølging
+              </Typography>
+              <Typography sx={{ mt: 0.6, color: '#5b6472', lineHeight: 1.6 }}>
+                {pendingPaymentCount > 0
+                  ? `${pendingPaymentCount} kontoer venter fortsatt på betalt aktivering.`
+                  : 'Ingen kontoer venter på betalt aktivering akkurat nå.'}
+              </Typography>
+            </Box>
+          </Box>
+        </Box>
+
+        <Box
+          sx={{
+            mt: 2.25,
+            display: 'grid',
+            gridTemplateColumns: {
+              xs: '1fr',
+              sm: 'repeat(2, minmax(0, 1fr))',
+              xl: 'repeat(4, minmax(0, 1fr))',
+            },
+            gap: 1.25,
+          }}
+        >
+          {[
+            { key: 'users', label: 'Totale brukere', value: users.length, helper: 'Hele adminbasen' },
+            { key: 'admins', label: 'Full admin', value: accessOverview.platformAdmins, helper: 'Plattform-kontroll' },
+            { key: 'academy', label: 'Academy-tilgang', value: academyScopedCount, helper: 'Admin + redaktør' },
+            { key: 'teamleads', label: 'Teamledere', value: teamLeadCount, helper: `${paidUserCount} betalte kontoer` },
+          ].map((item) => (
+            <Box
+              key={item.key}
+              sx={{
+                borderRadius: '18px',
+                border: '1px solid rgba(17, 24, 39, 0.08)',
+                bgcolor: 'rgba(255,255,255,0.88)',
+                px: 1.75,
+                py: 1.5,
+              }}
+            >
+              <Typography variant="caption" sx={{ display: 'block', color: '#7a7268', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                {item.label}
+              </Typography>
+              <Typography variant="h5" sx={{ mt: 0.4, color: '#181512', fontWeight: 700 }}>
+                {item.value}
+              </Typography>
+              <Typography variant="caption" sx={{ display: 'block', mt: 0.8, color: '#7c7469' }}>
+                {item.helper}
+              </Typography>
+            </Box>
+          ))}
         </Box>
       </Box>
 

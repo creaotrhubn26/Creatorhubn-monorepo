@@ -1737,12 +1737,7 @@ export default function AdminDashboard({
           />
         );
       case 'reports':
-        return (
-          <Box sx={{ display: 'grid', gap: 3 }}>
-            <ReportsPanel {...sharedPanelProps} />
-            <AutomatedBusinessReports />
-          </Box>
-        );
+        return <ReportsPanel onFileDownload={onFileDownload} />;
       case 'academy':
         return renderAcademyPanel();
       case 'vendor-types':
@@ -1782,7 +1777,12 @@ export default function AdminDashboard({
       case 'protokollstyring':
         return renderProtocolPanel();
       case 'drift-helse':
-        return <SystemHealthPanel {...sharedPanelProps} />;
+        return (
+          <SystemHealthPanel
+            onOpenBackup={() => activateTab(tabIndexFor('system-backup'))}
+            onOpenGdpr={() => activateTab(tabIndexFor('gdpr-compliance'))}
+          />
+        );
       case 'system-backup':
         return <SystemBackupDashboard {...sharedPanelProps} />;
       case 'gdpr-compliance':
