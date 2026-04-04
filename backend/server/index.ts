@@ -15881,6 +15881,8 @@ type CreatorHubPlatformEmailTheme = RoleRoomPlatformEmailTheme;
 
 type CreatorHubPlatformEmailSettings = {
   fromEmail: string;
+  welcomeFromEmail: string;
+  systemFromEmail: string;
   replyToEmail: string;
   footerText: string;
   theme: CreatorHubPlatformEmailTheme;
@@ -15926,6 +15928,8 @@ const CREATORHUB_PLATFORM_DEFAULT_EMAIL_THEME: CreatorHubPlatformEmailTheme = {
 };
 
 const CREATORHUB_PLATFORM_DEFAULT_FROM_EMAIL = "billing@creatorhubn.com";
+const CREATORHUB_PLATFORM_DEFAULT_WELCOME_FROM_EMAIL = "hello@creatorhubn.com";
+const CREATORHUB_PLATFORM_DEFAULT_SYSTEM_FROM_EMAIL = "noreply@creatorhubn.com";
 
 const CREATORHUB_PLATFORM_LEGACY_EMAIL_THEME: CreatorHubPlatformEmailTheme = {
   canvasBackground: "#f3f7fb",
@@ -16094,6 +16098,12 @@ function normalizeCreatorHubPlatformBrandingSettings(
       fromEmail:
         readString(emailRecord.fromEmail) ||
         CREATORHUB_PLATFORM_DEFAULT_FROM_EMAIL,
+      welcomeFromEmail:
+        readString(emailRecord.welcomeFromEmail) ||
+        CREATORHUB_PLATFORM_DEFAULT_WELCOME_FROM_EMAIL,
+      systemFromEmail:
+        readString(emailRecord.systemFromEmail) ||
+        CREATORHUB_PLATFORM_DEFAULT_SYSTEM_FROM_EMAIL,
       replyToEmail:
         readString(emailRecord.replyToEmail) || identity.supportEmail,
       footerText:
@@ -30541,6 +30551,8 @@ async function resolveCreatorHubPlatformBrandingSettings() {
       identity: CREATORHUB_PLATFORM_BRANDING_DEFAULT_IDENTITY,
       email: {
         fromEmail: CREATORHUB_PLATFORM_DEFAULT_FROM_EMAIL,
+        welcomeFromEmail: CREATORHUB_PLATFORM_DEFAULT_WELCOME_FROM_EMAIL,
+        systemFromEmail: CREATORHUB_PLATFORM_DEFAULT_SYSTEM_FROM_EMAIL,
         replyToEmail:
           CREATORHUB_PLATFORM_BRANDING_DEFAULT_IDENTITY.supportEmail,
         footerText: `${CREATORHUB_PLATFORM_BRANDING_DEFAULT_IDENTITY.appName} • ${CREATORHUB_PLATFORM_BRANDING_DEFAULT_IDENTITY.domain}`,
@@ -31377,6 +31389,7 @@ function formatCreatorHubBillingCycleLabel(
 
 async function sendCreatorHubBillingEmail(options: {
   recipientEmail: string;
+  fromEmail?: string | null;
   replyTo?: string | null;
   subject: string;
   text: string;
@@ -31403,6 +31416,7 @@ async function sendCreatorHubBillingEmail(options: {
     normalizeMailConfigValue(brandingSettings?.identity?.appName) ||
     "CreatorHub Norge";
   const fromEmail =
+    normalizeMailConfigValue(options.fromEmail) ||
     normalizeMailConfigValue(process.env.CREATORHUB_BILLING_FROM_EMAIL) ||
     normalizeMailConfigValue(brandingSettings?.email?.fromEmail) ||
     normalizeMailConfigValue(process.env.GMAIL_USER) ||
@@ -31574,6 +31588,9 @@ async function sendCreatorHubAccountActivatedEmail(options: {
   billingCycle: "monthly" | "yearly";
   creatorHubUrl: string;
 }) {
+  const brandingSettings = await resolveCreatorHubPlatformBrandingSettings().catch(
+    () => null,
+  );
   const rendered = await renderCreatorHubPlatformEmail({
     templateId: "creatorhub_account_activated",
     variables: {
@@ -31601,6 +31618,11 @@ async function sendCreatorHubAccountActivatedEmail(options: {
 
   return sendCreatorHubBillingEmail({
     recipientEmail: options.recipientEmail,
+    fromEmail:
+      normalizeMailConfigValue(process.env.CREATORHUB_WELCOME_FROM_EMAIL) ||
+      normalizeMailConfigValue(brandingSettings?.email?.welcomeFromEmail) ||
+      normalizeMailConfigValue(brandingSettings?.email?.fromEmail) ||
+      CREATORHUB_PLATFORM_DEFAULT_WELCOME_FROM_EMAIL,
     replyTo: rendered.replyToEmail,
     subject: rendered.subject,
     text: rendered.text,

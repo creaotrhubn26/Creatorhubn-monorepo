@@ -122,6 +122,8 @@ interface CreatorHubEmailSettings {
   };
   email: {
     fromEmail: string;
+    welcomeFromEmail: string;
+    systemFromEmail: string;
     replyToEmail: string;
     footerText: string;
     theme: {
@@ -305,6 +307,8 @@ const defaultCreatorHubEmailSettings: CreatorHubEmailSettings = {
   },
   email: {
     fromEmail: 'billing@creatorhubn.com',
+    welcomeFromEmail: 'hello@creatorhubn.com',
+    systemFromEmail: 'noreply@creatorhubn.com',
     replyToEmail: 'kontakt@creatorhubn.com',
     footerText: 'CreatorHub Norge • creatorhubn.com',
     theme: {
@@ -466,6 +470,10 @@ export default function PriceManagementDashboard({
   const { getProfessionDisplayName: getDynamicProfessionName } = useDynamicProfessions();
   const { auth } = useEnhancedMasterIntegration();
   const { subscriptionPlans, features: platformFeatures, isLoading: pricingLoading, formatPrice } = usePlatformPricing();
+  const previewFromEmail =
+    editingEmailTemplateId === 'creatorhub_account_activated'
+      ? creatorHubEmailSettings.email.welcomeFromEmail
+      : creatorHubEmailSettings.email.fromEmail;
 
   useEffect(() => {
     let mounted = true;
@@ -1435,6 +1443,30 @@ export default function PriceManagementDashboard({
                   />
                   <TextField
                     fullWidth
+                    label="Velkomst-avsender"
+                    helperText="Brukes for konto aktivert / velkomst, for eksempel hello@creatorhubn.com."
+                    value={creatorHubEmailSettings.email.welcomeFromEmail}
+                    onChange={(event) =>
+                      setCreatorHubEmailSettings((previous) => ({
+                        ...previous,
+                        email: { ...previous.email, welcomeFromEmail: event.target.value },
+                      }))
+                    }
+                  />
+                  <TextField
+                    fullWidth
+                    label="System-avsender"
+                    helperText="Reservert for enveis systemvarsler, for eksempel noreply@creatorhubn.com."
+                    value={creatorHubEmailSettings.email.systemFromEmail}
+                    onChange={(event) =>
+                      setCreatorHubEmailSettings((previous) => ({
+                        ...previous,
+                        email: { ...previous.email, systemFromEmail: event.target.value },
+                      }))
+                    }
+                  />
+                  <TextField
+                    fullWidth
                     label="Reply-to"
                     value={creatorHubEmailSettings.email.replyToEmail}
                     onChange={(event) =>
@@ -2125,7 +2157,7 @@ export default function PriceManagementDashboard({
                       lineHeight: 1.7,
                     }}
                   >
-                    Fra: {creatorHubEmailSettings.email.fromEmail} {' • '} Svar til: {creatorHubEmailSettings.email.replyToEmail}
+                    Fra: {previewFromEmail} {' • '} Svar til: {creatorHubEmailSettings.email.replyToEmail}
                   </Typography>
                 </Box>
                 <Box sx={{ px: { xs: 2.25, sm: 3.5 }, py: { xs: 2.5, sm: 3.5 } }}>
