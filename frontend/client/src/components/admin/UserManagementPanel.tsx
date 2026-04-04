@@ -86,6 +86,11 @@ interface User {
   isActive: boolean;
   role?: string;
   roleLabel?: string;
+  accessScope?: string | null;
+  accessScopeLabel?: string | null;
+  accessDescription?: string | null;
+  isPlatformAdmin?: boolean;
+  isAcademyAdmin?: boolean;
   status?: string;
   accountUserId?: string | null;
   inviteRequestId?: string | null;
@@ -182,6 +187,8 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
         ? ['vendor']
         : normalizedRole === 'enterprise_admin'
           ? ['enterprise']
+          : normalizedRole === 'academy_admin'
+            ? ['instructor']
           : normalizedRole === 'instructor'
             ? ['instructor']
             : normalizedRole === 'admin' || normalizedRole === 'super_admin'
@@ -272,38 +279,105 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
     return null;
   };
 
+  const getAccessScopePresentation = (currentUser: User) => {
+    const normalizedScope = String(currentUser.accessScope || '').trim().toLowerCase();
+
+    if (normalizedScope === 'platform_admin' || currentUser.isPlatformAdmin) {
+      return {
+        label: currentUser.accessScopeLabel || 'Plattform-admin',
+        description:
+          currentUser.accessDescription ||
+          'Full kontroll over CreatorHub, brukere, roller, billing og Academy.',
+        sx: {
+          bgcolor: '#e9f7ef',
+          color: '#1b7b4a',
+        },
+      };
+    }
+
+    if (normalizedScope === 'academy_admin' || currentUser.isAcademyAdmin) {
+      return {
+        label: currentUser.accessScopeLabel || 'Academy-admin',
+        description:
+          currentUser.accessDescription ||
+          'Kan administrere Academy-innhold og Academy-tilganger, men ikke plattformadmin.',
+        sx: {
+          bgcolor: '#eef6ff',
+          color: '#235fa4',
+        },
+      };
+    }
+
+    if (normalizedScope === 'academy_editor') {
+      return {
+        label: currentUser.accessScopeLabel || 'Academy-redaktør',
+        description:
+          currentUser.accessDescription ||
+          'Kan vedlikeholde Academy-innhold, uten admin-tilgang.',
+        sx: {
+          bgcolor: '#f6f0ff',
+          color: '#6e45b8',
+        },
+      };
+    }
+
+    return {
+      label: currentUser.accessScopeLabel || 'Standardtilgang',
+      description:
+        currentUser.accessDescription ||
+        'Rolle- og produktstyrt tilgang uten admin-rettigheter.',
+      sx: {
+        bgcolor: '#f4efe7',
+        color: '#5f564d',
+      },
+    };
+  };
+
   const getAccessPills = (currentUser: User) => {
     const pills: Array<{ key: string; label: string; sx: Record<string, unknown> }> = [];
+    const accessScope = getAccessScopePresentation(currentUser);
     const roleLabel =
       currentUser.roleLabel ||
       roleById.get(currentUser.role || '')?.name ||
       currentUser.role ||
       'Bruker';
+
     pills.push({
-      key: 'role',
-      label: roleLabel,
-      sx: {
-        bgcolor: currentUser.role === 'admin' ? '#e9f7ef' : '#eef4ff',
-        color: currentUser.role === 'admin' ? '#1b7b4a' : '#2d63d7',
-      },
+      key: 'access-scope',
+      label: accessScope.label,
+      sx: accessScope.sx,
     });
 
-    if (currentUser.profession) {
-      const professionLabel = getProfessionChip(currentUser.profession)?.label || currentUser.profession;
+    const normalizedScopeLabel = accessScope.label.trim().toLowerCase();
+    const normalizedRoleLabel = roleLabel.trim().toLowerCase();
+    if (
+      normalizedRoleLabel &&
+      normalizedRoleLabel !== normalizedScopeLabel &&
+      normalizedRoleLabel !== 'bruker'
+    ) {
       pills.push({
-        key: 'profession',
-        label: professionLabel,
+        key: 'role',
+        label: roleLabel,
         sx: {
-          bgcolor: '#f3ecff',
-          color: '#7b4fd6',
+          bgcolor: '#eef4ff',
+          color: '#2d63d7',
         },
       });
     }
 
-    if (String(currentUser.status || '').toLowerCase() === 'pending') {
+    if (!currentUser.isActive) {
+      pills.push({
+        key: 'inactive',
+        label: 'Inaktiv',
+        sx: {
+          bgcolor: '#f5ecec',
+          color: '#9a3e3e',
+        },
+      });
+    } else if (String(currentUser.status || '').toLowerCase() === 'pending') {
       pills.push({
         key: 'status',
-        label: 'Pending',
+        label: 'Avventer',
         sx: {
           bgcolor: '#fff4de',
           color: '#a05a00',
@@ -313,6 +387,30 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
 
     return pills;
   };
+
+  const accessOverview = useMemo(() => {
+    return users.reduce(
+      (summary, currentUser) => {
+        const normalizedScope = String(currentUser.accessScope || '').trim().toLowerCase();
+        if (normalizedScope === 'platform_admin' || currentUser.isPlatformAdmin) {
+          summary.platformAdmins += 1;
+        } else if (normalizedScope === 'academy_admin' || currentUser.isAcademyAdmin) {
+          summary.academyAdmins += 1;
+        } else if (normalizedScope === 'academy_editor') {
+          summary.academyEditors += 1;
+        } else {
+          summary.standardUsers += 1;
+        }
+        return summary;
+      },
+      {
+        platformAdmins: 0,
+        academyAdmins: 0,
+        academyEditors: 0,
+        standardUsers: 0,
+      },
+    );
+  }, [users]);
 
   const getRoleRoomActivationChip = (currentUser: User) => {
     const normalized = String(currentUser.onboardingStatus || '').trim().toLowerCase();
@@ -722,6 +820,8 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
       const organizationNumber = String(currentUser.organizationNumber || '').toLowerCase();
       const planName = String(currentUser.planName || currentUser.selectedPlan || '').toLowerCase();
       const source = String(getEffectiveSource(currentUser) || '').toLowerCase();
+      const accessScopeLabel = String(currentUser.accessScopeLabel || '').toLowerCase();
+      const accessDescription = String(currentUser.accessDescription || '').toLowerCase();
 
       const matchesSearch = !normalizedSearch || [
         currentUser.email.toLowerCase(),
@@ -732,6 +832,8 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
         organizationNumber,
         planName,
         source,
+        accessScopeLabel,
+        accessDescription,
       ].some((value) => value.includes(normalizedSearch));
 
       const matchesRole = !normalizedRole || role === normalizedRole;
@@ -1371,6 +1473,111 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
               </Box>
             </Box>
 
+            <Box
+              sx={{
+                px: { xs: 2, sm: 3 },
+                py: { xs: 2, sm: 2.5 },
+                borderBottom: '1px solid #f0ebe3',
+                bgcolor: '#ffffff',
+              }}
+            >
+              <Alert
+                severity="info"
+                sx={{
+                  mb: 2,
+                  borderRadius: '14px',
+                  border: '1px solid #dce7f5',
+                  bgcolor: '#f8fbff',
+                }}
+              >
+                Plattform-adminer styrer roller og tilgang på tvers av CreatorHub. Academy-adminer er begrenset til Academy og vises separat her.
+              </Alert>
+
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: {
+                    xs: '1fr',
+                    sm: 'repeat(2, minmax(0, 1fr))',
+                    xl: 'repeat(4, minmax(0, 1fr))',
+                  },
+                  gap: 1.25,
+                }}
+              >
+                {[
+                  {
+                    key: 'platform',
+                    label: 'Plattform-admin',
+                    value: accessOverview.platformAdmins,
+                    helper: 'Full kontroll',
+                    icon: <SecurityIcon sx={{ fontSize: 18, color: '#1b7b4a' }} />,
+                    sx: { bgcolor: '#e9f7ef', color: '#1b7b4a' },
+                  },
+                  {
+                    key: 'academy-admin',
+                    label: 'Academy-admin',
+                    value: accessOverview.academyAdmins,
+                    helper: 'Academy-styring',
+                    icon: <SchoolIcon sx={{ fontSize: 18, color: '#235fa4' }} />,
+                    sx: { bgcolor: '#eef6ff', color: '#235fa4' },
+                  },
+                  {
+                    key: 'academy-editor',
+                    label: 'Academy-redaktør',
+                    value: accessOverview.academyEditors,
+                    helper: 'Innhold og kurs',
+                    icon: <HowToRegIcon sx={{ fontSize: 18, color: '#6e45b8' }} />,
+                    sx: { bgcolor: '#f6f0ff', color: '#6e45b8' },
+                  },
+                  {
+                    key: 'standard',
+                    label: 'Standardbrukere',
+                    value: accessOverview.standardUsers,
+                    helper: 'Ingen admin-tilgang',
+                    icon: <PeopleIcon sx={{ fontSize: 18, color: '#5f564d' }} />,
+                    sx: { bgcolor: '#f4efe7', color: '#5f564d' },
+                  },
+                ].map((item) => (
+                  <Box
+                    key={item.key}
+                    sx={{
+                      border: '1px solid #f0ebe3',
+                      borderRadius: '16px',
+                      px: 1.75,
+                      py: 1.5,
+                      bgcolor: '#fcfbf8',
+                    }}
+                  >
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+                      <Box>
+                        <Typography variant="caption" sx={{ display: 'block', color: '#7a7268', fontWeight: 700 }}>
+                          {item.label}
+                        </Typography>
+                        <Typography variant="h5" sx={{ mt: 0.4, color: '#181512', fontWeight: 700 }}>
+                          {item.value}
+                        </Typography>
+                      </Box>
+                      <Box
+                        sx={{
+                          width: 36,
+                          height: 36,
+                          borderRadius: '12px',
+                          display: 'grid',
+                          placeItems: 'center',
+                          ...item.sx,
+                        }}
+                      >
+                        {item.icon}
+                      </Box>
+                    </Box>
+                    <Typography variant="caption" sx={{ display: 'block', mt: 1, color: '#7c7469' }}>
+                      {item.helper}
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+            </Box>
+
             <TableContainer component={Box}>
               <Table>
                 <TableHead>
@@ -1500,21 +1707,26 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                           </Box>
                         </TableCell>
                         <TableCell>
-                          <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
-                            {getAccessPills(user).map((pill) => (
-                              <Chip
-                                key={`${user.id}-${pill.key}`}
-                                label={pill.label}
-                                size="small"
-                                sx={{
-                                  height: 24,
-                                  borderRadius: '999px',
-                                  fontWeight: 700,
-                                  fontSize: '0.72rem',
-                                  ...pill.sx,
-                                }}
-                              />
-                            ))}
+                          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.7 }}>
+                            <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
+                              {getAccessPills(user).map((pill) => (
+                                <Chip
+                                  key={`${user.id}-${pill.key}`}
+                                  label={pill.label}
+                                  size="small"
+                                  sx={{
+                                    height: 24,
+                                    borderRadius: '999px',
+                                    fontWeight: 700,
+                                    fontSize: '0.72rem',
+                                    ...pill.sx,
+                                  }}
+                                />
+                              ))}
+                            </Box>
+                            <Typography variant="caption" sx={{ color: '#6e665c', lineHeight: 1.5 }}>
+                              {getAccessScopePresentation(user).description}
+                            </Typography>
                           </Box>
                         </TableCell>
                         <TableCell>
@@ -1574,9 +1786,11 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                                 />
                               ) : null}
                             </Box>
-                            <Typography variant="caption" sx={{ color: '#5c544c' }}>
-                              {user.roleRoomAccess?.memberRoleLabel || user.roleLabel || 'Rolle ikke satt'}
-                            </Typography>
+                            {user.roleRoomAccess?.memberRoleLabel ? (
+                              <Typography variant="caption" sx={{ color: '#5c544c' }}>
+                                {user.roleRoomAccess.memberRoleLabel}
+                              </Typography>
+                            ) : null}
                             {user.roleRoomAccess?.teamSize ? (
                               <Typography variant="caption" sx={{ color: '#7c7469' }}>
                                 {`${user.roleRoomAccess.teamSize} personer · ${formatCurrencyNok(user.roleRoomAccess.monthlyTotalExVat) || 'Pris ikke satt'} / mnd eks. mva.`}

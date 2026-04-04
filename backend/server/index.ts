@@ -676,9 +676,11 @@ const DEV_LOCAL_ADMIN_PERMISSIONS = [
 ];
 
 const ADMIN_SESSION_ROLES = new Set(["admin", "super_admin"]);
+const ACADEMY_ADMIN_ROLES = new Set(["academy_admin"]);
 const INVITE_REQUEST_APPROVER_ROLES = new Set([
   "admin",
   "super_admin",
+  "academy_admin",
   "instructor",
 ]);
 
@@ -45378,6 +45380,18 @@ const ADMIN_ROLE_CATALOG: AdminRoleCatalogEntry[] = [
     ],
   },
   {
+    id: "academy_admin",
+    name: "Academy-admin",
+    description:
+      "Begrenset adminrolle for Academy. Kan styre Academy-innhold og Academy-tilganger, men ikke plattformadmin.",
+    permissions: [
+      "dashboard:read",
+      "academy:read",
+      "academy:write",
+      "academy:admin",
+    ],
+  },
+  {
     id: "user",
     name: "Bruker",
     description: "Standard CreatorHub-bruker med tilgang til egen arbeidsflate.",
@@ -45473,6 +45487,7 @@ const normalizeAdminRoleId = (value: unknown): string => {
 const inferAdminRoleFromProfession = (profession: unknown): string => {
   const normalized = toAdminString(profession)?.toLowerCase() || "";
   if (normalized === "admin") return "admin";
+  if (normalized === "academy_admin") return "academy_admin";
   if (normalized === "prototype_tester") return "prototype_tester";
   if (normalized === "content_producer") return "content_producer";
   if (normalized === "client_reviewer") return "client_reviewer";
@@ -45491,6 +45506,7 @@ const normalizeAdminProfession = (
   if (directProfession) return directProfession;
   if (roleId === "vendor") return "vendor";
   if (roleId === "enterprise_admin") return "enterprise";
+  if (roleId === "academy_admin") return "instructor";
   if (roleId === "instructor") return "instructor";
   if (roleId === "admin" || roleId === "super_admin") return "admin";
   return null;
@@ -45518,6 +45534,7 @@ const resolveAdminProfessionForPersistence = ({
 
   if (normalizedRole === "vendor") return "vendor";
   if (normalizedRole === "enterprise_admin") return "enterprise";
+  if (normalizedRole === "academy_admin") return "instructor";
   if (normalizedRole === "instructor") return "instructor";
   if (normalizedRole === "admin" || normalizedRole === "super_admin") {
     return "admin";
@@ -45540,6 +45557,71 @@ const buildAdminRoleEntry = (roleId: string): AdminRoleCatalogEntry => {
     name: formatted || "Bruker",
     description: "Dynamisk rolle registrert i brukerdatabasen.",
     permissions: [],
+  };
+};
+
+type AdminAccessProfile = {
+  scopeId: string;
+  scopeLabel: string;
+  description: string;
+  sortOrder: number;
+  isPlatformAdmin: boolean;
+  isAcademyAdmin: boolean;
+};
+
+const buildAdminAccessProfile = (
+  roleId: string,
+  permissions: unknown,
+): AdminAccessProfile => {
+  const permissionSet = new Set(normalizeSessionPermissions(permissions));
+  const isPlatformAdmin = ADMIN_SESSION_ROLES.has(roleId);
+  const isAcademyAdmin =
+    isPlatformAdmin ||
+    ACADEMY_ADMIN_ROLES.has(roleId) ||
+    permissionSet.has("academy:admin");
+
+  if (isPlatformAdmin) {
+    return {
+      scopeId: "platform_admin",
+      scopeLabel: "Plattform-admin",
+      description:
+        "Full kontroll over CreatorHub, brukere, roller, billing og Academy.",
+      sortOrder: 0,
+      isPlatformAdmin: true,
+      isAcademyAdmin: true,
+    };
+  }
+
+  if (isAcademyAdmin) {
+    return {
+      scopeId: "academy_admin",
+      scopeLabel: "Academy-admin",
+      description:
+        "Kan administrere Academy-innhold og Academy-tilganger, men ikke plattformadmin.",
+      sortOrder: 1,
+      isPlatformAdmin: false,
+      isAcademyAdmin: true,
+    };
+  }
+
+  if (roleId === "instructor" || permissionSet.has("academy:write")) {
+    return {
+      scopeId: "academy_editor",
+      scopeLabel: "Academy-redaktør",
+      description: "Kan vedlikeholde Academy-innhold, uten admin-tilgang.",
+      sortOrder: 2,
+      isPlatformAdmin: false,
+      isAcademyAdmin: false,
+    };
+  }
+
+  return {
+    scopeId: "workspace_user",
+    scopeLabel: "Standardtilgang",
+    description: "Rolle- og produktstyrt tilgang uten admin-rettigheter.",
+    sortOrder: 3,
+    isPlatformAdmin: false,
+    isAcademyAdmin: false,
   };
 };
 
@@ -45570,6 +45652,17 @@ const sortAdminUsersByRecency = (
   a: Record<string, unknown>,
   b: Record<string, unknown>,
 ): number => {
+  const aAccessSortOrder =
+    typeof a.accessSortOrder === "number"
+      ? a.accessSortOrder
+      : Number(a.accessSortOrder) || 99;
+  const bAccessSortOrder =
+    typeof b.accessSortOrder === "number"
+      ? b.accessSortOrder
+      : Number(b.accessSortOrder) || 99;
+  if (aAccessSortOrder !== bAccessSortOrder) {
+    return aAccessSortOrder - bAccessSortOrder;
+  }
   const aTime = Date.parse(String(a.createdAt || a.updatedAt || "")) || 0;
   const bTime = Date.parse(String(b.createdAt || b.updatedAt || "")) || 0;
   if (bTime !== aTime) return bTime - aTime;
@@ -46079,6 +46172,7 @@ async function listAdminUsersSnapshot(): Promise<Record<string, unknown>[]> {
       matchedAccount?.role || inferAdminRoleFromProfession(inviteRow.profession),
     );
     const roleEntry = buildAdminRoleEntry(roleId);
+    const accessProfile = buildAdminAccessProfile(roleId, roleEntry.permissions);
     const approvedByUserId = toAdminString(inviteRow.processed_by);
     const approvedByAccount = approvedByUserId
       ? accountById.get(approvedByUserId)
@@ -46120,6 +46214,12 @@ async function listAdminUsersSnapshot(): Promise<Record<string, unknown>[]> {
       role: roleId,
       roleLabel: roleEntry.name,
       permissions: roleEntry.permissions,
+      accessScope: accessProfile.scopeId,
+      accessScopeLabel: accessProfile.scopeLabel,
+      accessDescription: accessProfile.description,
+      accessSortOrder: accessProfile.sortOrder,
+      isPlatformAdmin: accessProfile.isPlatformAdmin,
+      isAcademyAdmin: accessProfile.isAcademyAdmin,
       isActive:
         typeof matchedAccount?.is_active === "boolean"
           ? Boolean(matchedAccount.is_active)
@@ -46167,6 +46267,7 @@ async function listAdminUsersSnapshot(): Promise<Record<string, unknown>[]> {
       accountRow.role || inferAdminRoleFromProfession(accountRow.profession),
     );
     const roleEntry = buildAdminRoleEntry(roleId);
+    const accessProfile = buildAdminAccessProfile(roleId, roleEntry.permissions);
 
     merged.push({
       id: accountId,
@@ -46188,6 +46289,12 @@ async function listAdminUsersSnapshot(): Promise<Record<string, unknown>[]> {
       role: roleId,
       roleLabel: roleEntry.name,
       permissions: roleEntry.permissions,
+      accessScope: accessProfile.scopeId,
+      accessScopeLabel: accessProfile.scopeLabel,
+      accessDescription: accessProfile.description,
+      accessSortOrder: accessProfile.sortOrder,
+      isPlatformAdmin: accessProfile.isPlatformAdmin,
+      isAcademyAdmin: accessProfile.isAcademyAdmin,
       isActive:
         typeof accountRow.is_active === "boolean"
           ? Boolean(accountRow.is_active)
@@ -46285,6 +46392,7 @@ async function buildSessionUserFromActiveSession(session: ActiveSessionData) {
     formatAdminUserIdentity(accountUser) ||
     session.name ||
     session.email;
+  const accessProfile = buildAdminAccessProfile(roleId, permissions);
 
   return {
     id: session.userId,
@@ -46298,8 +46406,12 @@ async function buildSessionUserFromActiveSession(session: ActiveSessionData) {
     permissions,
     requestedRole: toAdminString(session.requestedRole) || null,
     loginAs: toAdminString(session.loginAs) || undefined,
-    isAdmin:
-      session.isAdmin === true || ADMIN_SESSION_ROLES.has(roleId),
+    isAdmin: session.isAdmin === true || ADMIN_SESSION_ROLES.has(roleId),
+    isPlatformAdmin: accessProfile.isPlatformAdmin,
+    isAcademyAdmin: accessProfile.isAcademyAdmin,
+    accessScope: accessProfile.scopeId,
+    accessScopeLabel: accessProfile.scopeLabel,
+    accessDescription: accessProfile.description,
     vendorId: toAdminString(session.vendorId) || undefined,
     businessName:
       toAdminString(session.businessName) ||
@@ -46347,6 +46459,7 @@ async function requireAcademySession(
   const permissionSet = new Set(normalizeSessionPermissions(user.permissions));
   const isInstructor =
     ADMIN_SESSION_ROLES.has(roleId) ||
+    ACADEMY_ADMIN_ROLES.has(roleId) ||
     roleId === "instructor" ||
     permissionSet.has("academy:admin") ||
     permissionSet.has("academy:write");
