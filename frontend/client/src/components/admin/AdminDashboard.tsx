@@ -1723,7 +1723,12 @@ export default function AdminDashboard({
       case 'prototype-feedback':
         return <PrototypeFeedbackPanel {...sharedPanelProps} />;
       case 'okonomi':
-        return <BillingManagementPanel {...sharedPanelProps} />;
+        return (
+          <BillingManagementPanel
+            {...sharedPanelProps}
+            onOpenPriceManagement={() => activateTab(tabIndexFor('price-management'))}
+          />
+        );
       case 'price-management':
         return (
           <PriceManagementDashboard

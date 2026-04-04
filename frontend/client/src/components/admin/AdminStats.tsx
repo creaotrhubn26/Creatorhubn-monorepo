@@ -108,10 +108,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
 
   // Get auth from master integration
   const { auth } = useEnhancedMasterIntegration();
-  const authUser = auth.state.user as { role?: string; isAdmin?: boolean } | null | undefined;
-  const canAccessAdminStats = Boolean(
-    isAdmin || authUser?.isAdmin || authUser?.role === 'admin' || authUser?.role === 'super_admin',
-  );
+  const canAccessAdminStats = Boolean(isAdmin);
 
   const handleCardClick = (metric: string) => {
     setSelectedMetric(metric);
@@ -219,13 +216,12 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
 
   if (!canAccessAdminStats) {
     return (
-      <Box sx={{ p: 3, textAlign: 'center' }}>
-        <Typography variant="h6" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
-          {theming.getThemedIcon('assessment')}
-          Admin statistikk er kun tilgjengelig for systemadministrator
-        </Typography>
+      <Box sx={{ p: 3 }}>
+        <Alert severity="info" sx={{ borderRadius: '18px' }}>
+          Adminstatistikk blir tilgjengelig når admin-sesjonen er ferdig synkronisert.
+        </Alert>
         {userEmail ? (
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>
             Pålogget som: {userEmail}
           </Typography>
         ) : null}

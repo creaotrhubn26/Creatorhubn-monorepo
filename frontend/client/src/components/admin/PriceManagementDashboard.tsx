@@ -463,6 +463,39 @@ function mapSubscriptionPlans(plans: PlatformSubscriptionPlan[]): SubscriptionPl
   }));
 }
 
+function sanitizeSubscriptionPlans(plans: SubscriptionPlanRow[]): SubscriptionPlanRow[] {
+  const commercialPlans = plans.filter((plan) => {
+    if (plan.id === 'free') {
+      return false;
+    }
+
+    if (plan.contactSalesOnly) {
+      return true;
+    }
+
+    if (plan.monthlyPrice > 0) {
+      return true;
+    }
+
+    return typeof plan.yearlyPrice === 'number' && plan.yearlyPrice > 0;
+  });
+
+  const planOrder = ['basic', 'professional', 'premium', 'enterprise'];
+
+  return commercialPlans.sort((left, right) => {
+    const leftIndex = planOrder.indexOf(left.id);
+    const rightIndex = planOrder.indexOf(right.id);
+    const normalizedLeft = leftIndex === -1 ? Number.MAX_SAFE_INTEGER : leftIndex;
+    const normalizedRight = rightIndex === -1 ? Number.MAX_SAFE_INTEGER : rightIndex;
+
+    if (normalizedLeft !== normalizedRight) {
+      return normalizedLeft - normalizedRight;
+    }
+
+    return left.name.localeCompare(right.name, 'nb-NO');
+  });
+}
+
 function getProfessionColor(profession: string): string {
   if (Object.prototype.hasOwnProperty.call(professionColors, profession)) {
     return professionColors[profession as ProfessionKey];
@@ -566,7 +599,7 @@ export default function PriceManagementDashboard({
         if (!mounted) return;
         setFeatures(mappedFeatures);
 
-        let nextPlans = mapSubscriptionPlans(subscriptionPlans);
+        let nextPlans = sanitizeSubscriptionPlans(mapSubscriptionPlans(subscriptionPlans));
 
         try {
           const headers = await auth.getAuthHeader();
@@ -580,7 +613,7 @@ export default function PriceManagementDashboard({
               plans?: PlatformSubscriptionPlan[];
             };
             if (Array.isArray(plansData.plans)) {
-              nextPlans = mapSubscriptionPlans(plansData.plans);
+              nextPlans = sanitizeSubscriptionPlans(mapSubscriptionPlans(plansData.plans));
             }
           }
         } catch {
@@ -662,6 +695,10 @@ export default function PriceManagementDashboard({
   const selfServePlans = useMemo(
     () => plans.filter((plan) => !plan.contactSalesOnly),
     [plans],
+  );
+  const hasLegacyFreePlan = useMemo(
+    () => subscriptionPlans.some((plan) => plan.id === 'free' || (plan.price ?? 0) === 0),
+    [subscriptionPlans],
   );
 
   const activePlanCount = useMemo(
@@ -911,10 +948,10 @@ export default function PriceManagementDashboard({
     );
     setPlans(
       updatedPlanFromServer
-        ? locallyUpdatedRows.map((plan) =>
+        ? sanitizeSubscriptionPlans(locallyUpdatedRows.map((plan) =>
             plan.id === editingPlanId ? mapSubscriptionPlans([updatedPlanFromServer])[0] : plan,
-          )
-        : locallyUpdatedRows,
+          ))
+        : sanitizeSubscriptionPlans(locallyUpdatedRows),
     );
     setEditPlanDialogOpen(false);
 
@@ -1103,12 +1140,17 @@ export default function PriceManagementDashboard({
                   sx={{ bgcolor: '#ffffff', border: '1px solid rgba(15, 52, 96, 0.08)' }}
                 />
               ) : null}
-              {!plans.some((plan) => plan.monthlyPrice === 0 && plan.isActive) ? (
+              {hasLegacyFreePlan ? (
                 <Chip
-                  label="Ingen free-plan offentlig"
+                  label="Gratisplan skjules internt"
                   sx={{ bgcolor: '#ffffff', border: '1px solid rgba(15, 52, 96, 0.08)' }}
                 />
-              ) : null}
+              ) : (
+                <Chip
+                  label="Kun betalte planer publiseres"
+                  sx={{ bgcolor: '#ffffff', border: '1px solid rgba(15, 52, 96, 0.08)' }}
+                />
+              )}
             </Stack>
           </Box>
 
