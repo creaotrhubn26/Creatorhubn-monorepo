@@ -1786,6 +1786,9 @@ export function CastingPlannerPanel({
     return null;
   }, [adminUser]);
   const isRoleRoomCommercialSession = currentCommercialPersona !== null;
+  const activeTutorialCategory: Tutorial['category'] = isProducerWorkspaceSession
+    ? 'content-producer'
+    : 'casting-planner';
   const headerProfessionLabel = isContentProducerSession
     ? 'Innholdsprodusent'
     : isClientReviewerSession
@@ -12093,6 +12096,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
             }}
             onNavigateToTab={navigateToTab}
             customTutorial={previewTutorial || undefined}
+            category={previewTutorial?.category || activeTutorialCategory}
           />
         </Suspense>
       )}

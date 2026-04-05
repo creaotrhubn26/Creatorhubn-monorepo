@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, createElement, type ComponentType, type FC, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useState, useEffect, useCallback, useRef, createElement, type ComponentType, type FC } from 'react';
 import {
   Box,
   Typography,
@@ -27,6 +27,11 @@ import {
   TouchApp as ActionIcon,
   Speed as SpeedIcon,
   Celebration as CelebrationIcon,
+  PermMedia as MediaIcon,
+  AttachMoney as EconomyIcon,
+  Timeline as TimelineWorkflowIcon,
+  FactCheck as ReviewsIcon,
+  ImportExport as ExportIcon,
 } from '@mui/icons-material';
 import {
   DashboardCustomIcon as DashboardIcon,
@@ -41,11 +46,17 @@ type IconComponentType = ComponentType<{ sx?: Record<string, unknown> }>;
 import {
   tutorialService,
   getDefaultCastingPlannerTutorialSteps,
+  getDefaultContentProducerTutorialSteps,
   type Tutorial,
   type TutorialStep,
 } from '../services/tutorialService';
 
-const defaultTutorialSteps: TutorialStep[] = getDefaultCastingPlannerTutorialSteps();
+const getDefaultTutorialStepsForCategory = (category: Tutorial['category']): TutorialStep[] => {
+  if (category === 'content-producer') {
+    return getDefaultContentProducerTutorialSteps();
+  }
+  return getDefaultCastingPlannerTutorialSteps();
+};
 
 const panelInfo = [
   { name: 'Oversikt', icon: DashboardIcon, color: '#8b5cf6' },
@@ -59,6 +70,11 @@ const panelInfo = [
   { name: 'Team', icon: TeamIcon, color: '#00d4ff' },
   { name: 'Utstyr', icon: PropIcon, color: '#9333ea' },
   { name: 'Live Set', icon: ActionIcon, color: '#ef4444' },
+  { name: 'Media', icon: MediaIcon, color: '#60a5fa' },
+  { name: 'Økonomi', icon: EconomyIcon, color: '#34d399' },
+  { name: 'Tidslinje', icon: TimelineWorkflowIcon, color: '#38bdf8' },
+  { name: 'Klientsamarbeid', icon: ReviewsIcon, color: '#c084fc' },
+  { name: 'Eksport', icon: ExportIcon, color: '#fbbf24' },
 ];
 
 const stepIndicatorMeta: Record<string, { label: string; icon: IconComponentType; color?: string }> = {
@@ -75,6 +91,16 @@ const stepIndicatorMeta: Record<string, { label: string; icon: IconComponentType
   'equipment': { label: 'Utstyr', icon: PropIcon, color: '#9333ea' },
   'live-set': { label: 'Live Set', icon: ActionIcon, color: '#ef4444' },
   'complete': { label: 'Slutt', icon: CelebrationIcon, color: '#4caf50' },
+  'producer-welcome': { label: 'Start', icon: TutorialIcon, color: '#e91e63' },
+  'producer-studio': { label: 'Storyboard', icon: ShotListIcon, color: '#ec4899' },
+  'producer-contributors': { label: 'Medvirkende', icon: CandidatesIcon, color: '#10b981' },
+  'producer-locations': { label: 'Lokasjoner', icon: LocationIcon, color: '#4caf50' },
+  'producer-equipment': { label: 'Rekvisitter', icon: PropIcon, color: '#9333ea' },
+  'producer-media': { label: 'Media', icon: MediaIcon, color: '#60a5fa' },
+  'producer-timeline': { label: 'Tidslinje', icon: TimelineWorkflowIcon, color: '#38bdf8' },
+  'producer-reviews': { label: 'Godkjenning', icon: ReviewsIcon, color: '#c084fc' },
+  'producer-export': { label: 'Eksport', icon: ExportIcon, color: '#fbbf24' },
+  'producer-complete': { label: 'Slutt', icon: CelebrationIcon, color: '#4caf50' },
 };
 
 interface CastingPlannerTutorialProps {
@@ -92,7 +118,6 @@ export const CastingPlannerTutorial: FC<CastingPlannerTutorialProps> = ({
   customTutorial,
   category = 'casting-planner',
 }) => {
-  const borderColor = 'rgba(255,255,255,0.15)';
   const isMobile = useMediaQuery('(max-width:599px)');
   const isTablet = useMediaQuery('(min-width:600px) and (max-width:959px)');
   const is720p = useMediaQuery('(min-width:960px) and (max-width:1279px)');
@@ -121,11 +146,11 @@ export const CastingPlannerTutorial: FC<CastingPlannerTutorialProps> = ({
 
   const modalMaxWidth = getResponsiveValue<string | number>(
     '100%',
-    '90%',
-    650,
-    750,
-    900,
-    1100
+    'min(92vw, 760px)',
+    980,
+    1180,
+    1380,
+    1540
   );
 
   const modalPadding = getResponsiveValue(1.5, 2, 2.5, 3, 4, 5);
@@ -136,9 +161,6 @@ export const CastingPlannerTutorial: FC<CastingPlannerTutorialProps> = ({
   const avatarSize = getResponsiveValue(40, 44, 48, 52, 56, 64);
   const iconSize = getResponsiveValue(20, 22, 24, 26, 28, 32);
   const buttonMinHeight = getResponsiveValue(TOUCH_TARGET_MIN, TOUCH_TARGET_MIN, 48, 52, 56, 64);
-  const buttonMinWidth = getResponsiveValue(100, 110, 120, 130, 140, 160);
-  const stepBoxMinWidth = getResponsiveValue(52, 58, 64, 72, 80, 92);
-  const stepBoxPadding = getResponsiveValue(0.75, 1, 1.25, 1.5, 1.75, 2);
   const stepIconSize = getResponsiveValue(18, 20, 22, 24, 28, 32);
   const stepTextSize = getResponsiveValue('0.6rem', '0.65rem', '0.7rem', '0.75rem', '0.813rem', '0.875rem');
   const gapSize = getResponsiveValue(1, 1.25, 1.5, 1.75, 2, 2.5);
@@ -149,11 +171,20 @@ export const CastingPlannerTutorial: FC<CastingPlannerTutorialProps> = ({
       setActiveTutorial(customTutorial);
     } else {
       const tutorial = tutorialService.getActiveTutorialByCategory(category);
-      setActiveTutorial(tutorial || { id: 'default', name: 'Default', description: '', category, steps: defaultTutorialSteps, isActive: true, createdAt: '', updatedAt: '' });
+      setActiveTutorial(tutorial || {
+        id: 'default',
+        name: 'Default',
+        description: '',
+        category,
+        steps: getDefaultTutorialStepsForCategory(category),
+        isActive: true,
+        createdAt: '',
+        updatedAt: '',
+      });
     }
   }, [customTutorial, category, open]);
 
-  const steps = activeTutorial?.steps || defaultTutorialSteps;
+  const steps = activeTutorial?.steps || getDefaultTutorialStepsForCategory(category);
   const step = steps[currentStep] || steps[0];
   const progress = steps.length > 0 ? ((currentStep + 1) / steps.length) * 100 : 0;
 
@@ -250,6 +281,35 @@ export const CastingPlannerTutorial: FC<CastingPlannerTutorialProps> = ({
   if (!open) return null;
 
   const highlightPadding = getResponsiveValue(6, 8, 10, 12, 14, 16);
+  const accentColor = '#e91e63';
+  const surfaceColor = 'rgba(10, 13, 28, 0.96)';
+  const surfaceSecondaryColor = 'rgba(255,255,255,0.045)';
+  const borderSoft = 'rgba(255,255,255,0.08)';
+  const currentMeta = stepIndicatorMeta[step.id];
+  const currentPanel = step.panel >= 0 ? panelInfo[step.panel] : null;
+  const currentPanelColor = currentMeta?.color || currentPanel?.color || accentColor;
+  const currentPanelLabel = currentMeta?.label || currentPanel?.name || 'Introduksjon';
+  const progressLabel = `${currentStep + 1} / ${steps.length}`;
+  const overviewColumns = isMobile ? '1fr' : isTablet ? '1fr' : 'minmax(0, 1.45fr) minmax(280px, 0.95fr)';
+  const stepRailColumns = isMobile ? '1fr' : isTablet ? 'repeat(2, minmax(0, 1fr))' : '1fr';
+  const contentSectionGap = getResponsiveValue(2, 2.5, 3, 3.5, 4, 4.5);
+  const dialogViewportMargin = getResponsiveValue(0, 12, 20, 24, 32, 40);
+  const logoLockupWidth = getResponsiveValue(132, 156, 184, 216, 248, 284);
+  const logoLockupHeight = getResponsiveValue(58, 64, 72, 82, 92, 102);
+  const modeMeta = category === 'casting-planner'
+    ? {
+        label: 'Produksjonsteam-modus',
+        description: 'Denne veiledningen dekker casting, team, lokasjoner, planlegging og live set.',
+      }
+    : category === 'content-producer'
+      ? {
+          label: 'Innholdsprodusent-modus',
+          description: 'Denne veiledningen dekker kreativ produksjon, opptaksflyt og innholdsleveranse.',
+        }
+      : {
+          label: 'The Role Room',
+          description: 'Denne veiledningen er tilpasset den aktive arbeidsflaten du står i.',
+        };
 
   return (
     <Box
@@ -372,18 +432,28 @@ export const CastingPlannerTutorial: FC<CastingPlannerTutorialProps> = ({
           data-testid="role-room-tutorial-dialog"
           elevation={24}
           sx={{
-            width: isMobile ? '100%' : modalMaxWidth,
+            width: isMobile ? '100%' : `min(calc(100vw - ${dialogViewportMargin * 2}px), ${typeof modalMaxWidth === 'number' ? `${modalMaxWidth}px` : modalMaxWidth})`,
             maxWidth: modalMaxWidth,
-            maxHeight: isMobile ? '75vh' : isTablet ? '80vh' : '85vh',
-            overflow: 'auto',
-            bgcolor: '#1a1a2e',
-            border: '1px solid rgba(255,255,255,0.1)',
+            maxHeight: isMobile ? '100dvh' : '88dvh',
+            overflow: 'hidden',
+            bgcolor: surfaceColor,
+            backgroundImage: `
+              radial-gradient(circle at top left, rgba(233,30,99,0.18), transparent 26%),
+              radial-gradient(circle at top right, rgba(139,92,246,0.14), transparent 22%),
+              linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0))
+            `,
+            border: `1px solid ${borderSoft}`,
             borderRadius: isMobile ? 0 : borderRadius,
             position: 'relative',
             zIndex: 10001,
             m: isMobile ? 0 : gapSize,
             mt: isMobile ? 'auto' : gapSize,
             mb: isMobile ? 0 : gapSize,
+            boxShadow: '0 36px 120px rgba(0,0,0,0.52)',
+            backdropFilter: 'blur(18px)',
+            WebkitBackdropFilter: 'blur(18px)',
+            display: 'flex',
+            flexDirection: 'column',
           }}
         >
           <LinearProgress
@@ -391,428 +461,734 @@ export const CastingPlannerTutorial: FC<CastingPlannerTutorialProps> = ({
             value={progress}
             sx={{
               height: getResponsiveValue(4, 5, 5, 6, 7, 8),
-              bgcolor: 'rgba(255,255,255,0.1)',
+              bgcolor: 'rgba(255,255,255,0.06)',
               '& .MuiLinearProgress-bar': {
-                bgcolor: '#e91e63',
+                bgcolor: accentColor,
                 transition: 'transform 0.5s ease',
               },
             }}
           />
 
-          <Box sx={{ p: modalPadding }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: getResponsiveValue(2, 2.5, 3, 3, 3.5, 4) }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: getResponsiveValue(1.5, 1.5, 2, 2, 2.5, 3) }}>
-                <Box
-                  sx={{
-                    width: avatarSize,
-                    height: avatarSize,
-                    borderRadius: 2,
-                    overflow: 'hidden',
-                    flexShrink: 0,
-                    boxShadow: '0 4px 12px rgba(233,30,99,0.3)',
-                    border: '2px solid rgba(233,30,99,0.5)',
-                  }}
-                >
-                  <img
-                    src="/role-room-assets/TheRoleRoom_Logo_Tagline.webp"
-                    alt="The Role Room"
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      objectFit: 'cover',
-                    }}
-                  />
-                </Box>
-                <Box>
-                  <Typography variant="overline" sx={{ color: '#e91e63', fontSize: captionFontSize }}>
-                    Steg {currentStep + 1} av {steps.length}
-                  </Typography>
-                  <Typography id="tutorial-title" variant="h5" sx={{ color: '#fff', fontWeight: 700, fontSize: titleFontSize, lineHeight: 1.3 }}>
-                    {step.title}
-                  </Typography>
-                </Box>
-              </Box>
-              <IconButton 
-                onClick={onClose} 
-                sx={{ 
-                  color: 'rgba(255,255,255,0.87)',
-                  minWidth: buttonMinHeight,
-                  minHeight: buttonMinHeight,
-                }}
-                aria-label="Lukk veiledning"
-              >
-                <CloseIcon sx={{ fontSize: getResponsiveValue(20, 22, 24, 26, 28, 30) }} />
-              </IconButton>
-            </Box>
-
-            {step.panel >= 0 && (
-              <Chip
-                icon={createElement(panelInfo[step.panel]?.icon || DashboardIcon)}
-                label={panelInfo[step.panel]?.name || 'Panel'}
-                sx={{
-                  mb: 2,
-                  fontSize: captionFontSize,
-                  height: getResponsiveValue(26, 28, 30, 32, 34, 36),
-                  bgcolor: `${panelInfo[step.panel]?.color || '#e91e63'}22`,
-                  color: panelInfo[step.panel]?.color || '#e91e63',
-                  border: `1px solid ${panelInfo[step.panel]?.color || '#e91e63'}44`,
-                  '& .MuiChip-icon': { color: panelInfo[step.panel]?.color || '#e91e63' },
-                }}
-              />
-            )}
-
-            <Typography
-              variant="body1"
-              sx={{
-                color: 'rgba(255,255,255,0.9)',
-                fontSize: bodyFontSize,
-                lineHeight: 1.7,
-                mb: getResponsiveValue(2, 2.5, 3, 3, 3.5, 4),
-              }}
-            >
-              {step.description}
-            </Typography>
-
-            {step.actionDescription && (
-              <Paper
-                sx={{
-                  p: getResponsiveValue(1.5, 1.75, 2, 2, 2.5, 3),
-                  mb: getResponsiveValue(2, 2.5, 3, 3, 3.5, 4),
-                  bgcolor: 'rgba(233,30,99,0.1)',
-                  border: '1px solid rgba(233,30,99,0.3)',
-                  borderRadius: 2,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: getResponsiveValue(1.5, 1.5, 2, 2, 2.5, 3),
-                }}
-              >
-                <ActionIcon sx={{ color: '#e91e63', fontSize: getResponsiveValue(22, 24, 26, 28, 30, 32) }} />
-                <Box>
-                  <Typography variant="caption" sx={{ color: '#e91e63', fontWeight: 600, fontSize: captionFontSize }}>
-                    HANDLING
-                  </Typography>
-                  <Typography variant="body2" sx={{ color: '#fff', fontSize: bodyFontSize }}>
-                    {step.actionDescription}
-                  </Typography>
-                </Box>
-              </Paper>
-            )}
-
-            {step.tips && step.tips.length > 0 && (
-              <Box sx={{ mb: getResponsiveValue(2, 2.5, 3, 3, 3.5, 4) }}>
-                <Typography variant="subtitle2" sx={{ color: '#4caf50', mb: 1, fontWeight: 600, fontSize: bodyFontSize }}>
-                  Tips:
-                </Typography>
-                <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
-                  {step.tips.map((tip, index) => (
-                    <Typography
-                      key={index}
-                      component="li"
-                      variant="body2"
-                      sx={{ color: 'rgba(255,255,255,0.87)', mb: 0.5, fontSize: captionFontSize }}
-                    >
-                      {tip}
-                    </Typography>
-                  ))}
-                </Box>
-              </Box>
-            )}
-
+          <Box
+            sx={{
+              p: modalPadding,
+              overflowY: 'auto',
+              WebkitOverflowScrolling: 'touch',
+              overscrollBehaviorY: 'contain',
+              pb: `max(${modalPadding * 8}px, env(safe-area-inset-bottom))`,
+            }}
+          >
             <Box
               sx={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                gap: gapSize,
-                mb: gapSize * 1.5,
-                justifyContent: 'center',
-                maxHeight: getResponsiveValue(140, 160, 180, 200, 240, 280),
-                overflowY: 'auto',
-                py: 1.5,
-                px: 1,
+                display: 'grid',
+                gridTemplateColumns: overviewColumns,
+                gap: contentSectionGap,
+                alignItems: 'start',
               }}
-              role="navigation"
-              aria-label="Veiledningssteg"
             >
-              {steps.map((s, index) => {
-                const meta = stepIndicatorMeta[s.id];
-                const panelIndex = s.panel >= 0 ? s.panel : -1;
-                const panel = panelIndex >= 0 ? panelInfo[panelIndex] : null;
-                const IconComponent = meta?.icon || panel?.icon || TutorialIcon;
-                const stepLabel = meta?.label || panel?.name || (index === 0 ? 'Start' : index === steps.length - 1 ? 'Slutt' : `${index + 1}`);
-                const stepColor = meta?.color || panel?.color || '#e91e63';
-                const isActive = index === currentStep;
-                const isCompleted = index < currentStep;
-                
-                return (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: contentSectionGap }}>
+                <Box
+                  sx={{
+                    position: 'relative',
+                    overflow: 'hidden',
+                    borderRadius: borderRadius,
+                    border: `1px solid ${borderSoft}`,
+                    background: `
+                      radial-gradient(circle at top right, ${currentPanelColor}22, transparent 28%),
+                      linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02))
+                    `,
+                    px: getResponsiveValue(2, 2.5, 3, 3.5, 4, 4.5),
+                    py: getResponsiveValue(2, 2.5, 3, 3.25, 3.75, 4.25),
+                  }}
+                >
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 2 }}>
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        gap: getResponsiveValue(1.5, 1.75, 2, 2.25, 2.5, 3),
+                        minWidth: 0,
+                        flexDirection: isMobile ? 'column' : 'row',
+                        alignItems: isMobile ? 'flex-start' : 'center',
+                      }}
+                    >
+                      <Box
+                        sx={{
+                          width: logoLockupWidth,
+                          minWidth: logoLockupWidth,
+                          height: logoLockupHeight,
+                          borderRadius: getResponsiveValue(3, 3.5, 4, 4.5, 5, 5.5),
+                          overflow: 'hidden',
+                          flexShrink: 0,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          px: getResponsiveValue(1, 1.2, 1.4, 1.5, 1.75, 2),
+                          py: getResponsiveValue(0.75, 0.85, 0.95, 1, 1.1, 1.2),
+                          background: `
+                            radial-gradient(circle at top left, ${accentColor}26, transparent 44%),
+                            linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03))
+                          `,
+                          boxShadow: `0 24px 56px ${currentPanelColor}2b`,
+                          border: `1px solid ${currentPanelColor}44`,
+                        }}
+                      >
+                        <img
+                          src="/role-room-assets/TheRoleRoom_and_Tagline.webp"
+                          alt="The Role Room"
+                          style={{
+                            width: '100%',
+                            height: '100%',
+                            objectFit: 'contain',
+                            objectPosition: 'center',
+                            filter: 'drop-shadow(0 10px 20px rgba(0,0,0,0.22))',
+                          }}
+                        />
+                      </Box>
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography
+                          variant="overline"
+                          sx={{
+                            color: accentColor,
+                            fontSize: captionFontSize,
+                            letterSpacing: '0.18em',
+                            fontWeight: 700,
+                          }}
+                        >
+                          Veiledning • Steg {currentStep + 1} av {steps.length}
+                        </Typography>
+                        <Typography
+                          id="tutorial-title"
+                          variant="h4"
+                          sx={{
+                            color: '#fff',
+                            fontWeight: 800,
+                            fontSize: getResponsiveValue('1.5rem', '1.75rem', '2rem', '2.2rem', '2.45rem', '2.7rem'),
+                            lineHeight: 1.08,
+                            mt: 0.75,
+                            maxWidth: isMobile ? '100%' : '16ch',
+                          }}
+                        >
+                          {step.title}
+                        </Typography>
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            color: 'rgba(255,255,255,0.7)',
+                            fontSize: captionFontSize,
+                            mt: 1.25,
+                            maxWidth: '52ch',
+                          }}
+                        >
+                          {modeMeta.description} Du kan pause, hoppe mellom steg og gå tilbake når som helst.
+                        </Typography>
+                      </Box>
+                    </Box>
+                    <IconButton
+                      onClick={onClose}
+                      sx={{
+                        color: 'rgba(255,255,255,0.87)',
+                        minWidth: buttonMinHeight,
+                        minHeight: buttonMinHeight,
+                        border: `1px solid ${borderSoft}`,
+                        bgcolor: 'rgba(255,255,255,0.04)',
+                        flexShrink: 0,
+                        '&:hover': {
+                          bgcolor: 'rgba(255,255,255,0.1)',
+                        },
+                      }}
+                      aria-label="Lukk veiledning"
+                    >
+                      <CloseIcon sx={{ fontSize: getResponsiveValue(20, 22, 24, 26, 28, 30) }} />
+                    </IconButton>
+                  </Box>
+
                   <Box
-                    key={s.id}
-                    data-testid={`role-room-tutorial-step-${s.id}`}
-                    onClick={() => navigateToStep(index)}
-                    role="button"
-                    tabIndex={0}
-                    aria-label={`Gå til steg ${index + 1}: ${s.title}`}
-                    aria-current={isActive ? 'step' : undefined}
-                    onKeyDown={(e: ReactKeyboardEvent<HTMLDivElement>) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        navigateToStep(index);
-                      }
-                    }}
                     sx={{
                       display: 'flex',
-                      flexDirection: 'column',
+                      flexWrap: 'wrap',
+                      gap: 1,
+                      mt: getResponsiveValue(2, 2.5, 2.75, 3, 3.25, 3.5),
+                    }}
+                  >
+                    <Chip
+                      label={modeMeta.label}
+                      sx={{
+                        height: getResponsiveValue(30, 32, 34, 36, 38, 40),
+                        bgcolor: 'rgba(255,255,255,0.08)',
+                        color: '#fff',
+                        border: `1px solid ${borderSoft}`,
+                        fontSize: captionFontSize,
+                        fontWeight: 700,
+                      }}
+                    />
+                    <Chip
+                      label={`Fokus: ${currentPanelLabel}`}
+                      icon={createElement(currentPanel?.icon || currentMeta?.icon || TutorialIcon)}
+                      sx={{
+                        height: getResponsiveValue(30, 32, 34, 36, 38, 40),
+                        bgcolor: `${currentPanelColor}22`,
+                        color: currentPanelColor,
+                        border: `1px solid ${currentPanelColor}44`,
+                        fontSize: captionFontSize,
+                        '& .MuiChip-icon': { color: currentPanelColor },
+                      }}
+                    />
+                    <Chip
+                      label={`Fremdrift ${progressLabel}`}
+                      sx={{
+                        height: getResponsiveValue(30, 32, 34, 36, 38, 40),
+                        bgcolor: 'rgba(255,255,255,0.06)',
+                        color: 'rgba(255,255,255,0.82)',
+                        border: `1px solid ${borderSoft}`,
+                        fontSize: captionFontSize,
+                      }}
+                    />
+                  </Box>
+                </Box>
+
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1fr) minmax(220px, 280px)',
+                    gap: contentSectionGap,
+                    alignItems: 'start',
+                  }}
+                >
+                  <Box>
+                    <Typography
+                      variant="body1"
+                      sx={{
+                        color: 'rgba(255,255,255,0.92)',
+                        fontSize: bodyFontSize,
+                        lineHeight: 1.75,
+                      }}
+                    >
+                      {step.description}
+                    </Typography>
+                  </Box>
+
+                  <Box
+                    sx={{
+                      borderTop: isMobile ? `1px solid ${borderSoft}` : 'none',
+                      pl: isMobile ? 0 : 1,
+                      pt: isMobile ? 2 : 0,
+                    }}
+                  >
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        color: 'rgba(255,255,255,0.56)',
+                        fontSize: captionFontSize,
+                        letterSpacing: '0.16em',
+                        textTransform: 'uppercase',
+                      }}
+                    >
+                      Nå fokuserer vi på
+                    </Typography>
+                    <Typography
+                      variant="h6"
+                      sx={{
+                        color: '#fff',
+                        fontWeight: 700,
+                        mt: 0.75,
+                        fontSize: getResponsiveValue('1rem', '1.05rem', '1.12rem', '1.18rem', '1.25rem', '1.35rem'),
+                      }}
+                    >
+                      {currentPanelLabel}
+                    </Typography>
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        color: 'rgba(255,255,255,0.65)',
+                        mt: 1,
+                        fontSize: captionFontSize,
+                        lineHeight: 1.6,
+                      }}
+                    >
+                      {modeMeta.label === 'Produksjonsteam-modus'
+                        ? 'Denne løypen er laget for produksjonsteam. Bruk høyrelisten for å hoppe mellom casting, planlegging og live gjennomføring.'
+                        : modeMeta.label === 'Innholdsprodusent-modus'
+                          ? 'Denne løypen er laget for innholdsprodusenter. Bruk høyrelisten for å hoppe mellom kreativt arbeid og leveranse.'
+                          : 'Bruk høyrelisten for å hoppe direkte til et annet område uten å miste fremdriften.'}
+                    </Typography>
+                  </Box>
+                </Box>
+
+                {step.actionDescription && (
+                  <Box
+                    sx={{
+                      display: 'grid',
+                      gridTemplateColumns: isMobile ? '1fr' : 'auto 1fr',
+                      gap: getResponsiveValue(1.5, 1.75, 2, 2.25, 2.5, 3),
                       alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 0.5,
-                      p: stepBoxPadding,
-                      borderRadius: 2,
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease',
-                      bgcolor: isActive
-                        ? `${stepColor}33`
-                        : isCompleted
-                          ? 'rgba(76,175,80,0.15)'
-                          : 'rgba(255,255,255,0.03)',
-                      border: isActive
-                        ? `2px solid ${stepColor}`
-                        : isCompleted
-                          ? '2px solid rgba(76,175,80,0.5)'
-                          : '1px solid rgba(255,255,255,0.15)',
-                      minWidth: stepBoxMinWidth,
-                      minHeight: TOUCH_TARGET_MIN,
-                      '&:hover, &:focus': {
-                        bgcolor: isActive ? `${stepColor}44` : 'rgba(255,255,255,0.12)',
-                        outline: 'none',
-                        transform: 'scale(1.05)',
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                      },
-                      '&:focus-visible': {
-                        boxShadow: `0 0 0 3px ${stepColor}`,
-                      },
-                      '&:active': {
-                        transform: 'scale(0.98)',
-                      },
+                      p: getResponsiveValue(1.75, 2, 2.25, 2.5, 2.75, 3),
+                      borderRadius: borderRadius,
+                      bgcolor: `${accentColor}14`,
+                      border: `1px solid ${accentColor}35`,
                     }}
                   >
                     <Avatar
                       sx={{
-                        width: stepIconSize * 1.6,
-                        height: stepIconSize * 1.6,
-                        bgcolor: isActive
-                          ? `${stepColor}33`
-                          : isCompleted
-                            ? 'rgba(76,175,80,0.15)'
-                            : 'transparent',
-                        border: `1px solid ${isActive ? stepColor : isCompleted ? '#4caf50' : borderColor}`,
+                        width: getResponsiveValue(42, 46, 50, 54, 58, 62),
+                        height: getResponsiveValue(42, 46, 50, 54, 58, 62),
+                        bgcolor: `${accentColor}22`,
+                        border: `1px solid ${accentColor}44`,
                       }}
                     >
-                      <IconComponent
-                        sx={{
-                          fontSize: stepIconSize,
-                          color: isActive
-                            ? stepColor
-                            : isCompleted
-                              ? '#4caf50'
-                              : 'rgba(255,255,255,0.6)',
-                        }}
-                      />
+                      <ActionIcon sx={{ color: accentColor, fontSize: getResponsiveValue(20, 22, 24, 26, 28, 30) }} />
                     </Avatar>
-                    <Typography
-                      variant="caption"
+                    <Box>
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          color: accentColor,
+                          fontWeight: 700,
+                          fontSize: captionFontSize,
+                          letterSpacing: '0.14em',
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        Neste handling
+                      </Typography>
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          color: '#fff',
+                          fontSize: bodyFontSize,
+                          lineHeight: 1.6,
+                          mt: 0.5,
+                        }}
+                      >
+                        {step.actionDescription}
+                      </Typography>
+                    </Box>
+                  </Box>
+                )}
+
+                {step.tips && step.tips.length > 0 && (
+                  <Box
+                    sx={{
+                      display: 'grid',
+                      gridTemplateColumns: isMobile ? '1fr' : '160px 1fr',
+                      gap: getResponsiveValue(1.5, 1.75, 2, 2.25, 2.5, 3),
+                      alignItems: 'start',
+                      borderTop: `1px solid ${borderSoft}`,
+                      pt: getResponsiveValue(2, 2.25, 2.5, 2.75, 3, 3.25),
+                    }}
+                  >
+                    <Box>
+                      <Typography
+                        variant="h6"
+                        sx={{
+                          color: '#7ef0a7',
+                          fontWeight: 700,
+                          fontSize: getResponsiveValue('1rem', '1.05rem', '1.1rem', '1.15rem', '1.2rem', '1.3rem'),
+                        }}
+                      >
+                        Tips
+                      </Typography>
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          color: 'rgba(255,255,255,0.56)',
+                          fontSize: captionFontSize,
+                          mt: 0.75,
+                          lineHeight: 1.5,
+                        }}
+                      >
+                        Små grep som gjør arbeidsflaten raskere å bruke i praksis.
+                      </Typography>
+                    </Box>
+                    <Box
+                      component="ul"
                       sx={{
-                        fontSize: stepTextSize,
-                        fontWeight: isActive ? 600 : 400,
-                        color: isActive
-                          ? stepColor
-                          : isCompleted
-                            ? '#4caf50'
-                            : 'rgba(255,255,255,0.6)',
-                        textAlign: 'center',
-                        lineHeight: 1.2,
-                        maxWidth: stepBoxMinWidth - 8,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
+                        m: 0,
+                        p: 0,
+                        listStyle: 'none',
+                        display: 'grid',
+                        gap: 1,
                       }}
                     >
-                      {stepLabel}
-                    </Typography>
+                      {step.tips.map((tip, index) => (
+                        <Box
+                          key={index}
+                          component="li"
+                          sx={{
+                            display: 'grid',
+                            gridTemplateColumns: 'auto 1fr',
+                            gap: 1.25,
+                            alignItems: 'start',
+                            color: 'rgba(255,255,255,0.86)',
+                            fontSize: captionFontSize,
+                            lineHeight: 1.55,
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              width: 8,
+                              height: 8,
+                              borderRadius: '50%',
+                              bgcolor: '#7ef0a7',
+                              mt: '0.5em',
+                              flexShrink: 0,
+                            }}
+                          />
+                          <Typography component="span" sx={{ fontSize: captionFontSize, color: 'inherit' }}>
+                            {tip}
+                          </Typography>
+                        </Box>
+                      ))}
+                    </Box>
                   </Box>
-                );
-              })}
-            </Box>
+                )}
 
-            <Box sx={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: gapSize, 
-              mb: gapSize, 
-              px: 1,
-              flexDirection: isMobile ? 'column' : 'row',
-              bgcolor: 'rgba(255,255,255,0.03)',
-              borderRadius: 2,
-              py: 1.5,
-            }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <SpeedIcon sx={{ color: 'rgba(255,255,255,0.87)', fontSize: iconSize }} />
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: smallTextSize, whiteSpace: 'nowrap', fontWeight: 500 }}>
-                  Hastighet:
-                </Typography>
-              </Box>
-              <Slider
-                value={speedMultiplier}
-                onChange={(_: Event, value: number | number[]) => setSpeedMultiplier(value as number)}
-                min={0.5}
-                max={2}
-                step={0.25}
-                marks={[
-                  { value: 0.5, label: '0.5x' },
-                  { value: 1, label: '1x' },
-                  { value: 2, label: '2x' },
-                ]}
-                sx={{
-                  flex: 1,
-                  minWidth: isMobile ? '100%' : getResponsiveValue(120, 140, 160, 180, 200, 240),
-                  color: '#e91e63',
-                  height: getResponsiveValue(6, 7, 8, 9, 10, 12),
-                  '& .MuiSlider-markLabel': {
-                    color: 'rgba(255,255,255,0.87)',
-                    fontSize: smallTextSize,
-                  },
-                  '& .MuiSlider-thumb': {
-                    width: getResponsiveValue(18, 20, 22, 24, 28, 32),
-                    height: getResponsiveValue(18, 20, 22, 24, 28, 32),
-                    '&:hover, &:focus': {
-                      boxShadow: '0 0 0 8px rgba(233,30,99,0.2)',
-                    },
-                  },
-                  '& .MuiSlider-rail': {
-                    opacity: 0.3,
-                  },
-                }}
-              />
-            </Box>
-
-            <Box sx={{ 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              alignItems: 'center',
-              flexWrap: 'wrap',
-              gap: gapSize,
-            }}>
-              <Button
-                data-testid="role-room-tutorial-prev"
-                onClick={prevStep}
-                disabled={currentStep === 0}
-                startIcon={<PrevIcon sx={{ fontSize: iconSize }} />}
-                sx={{
-                  color: 'rgba(255,255,255,0.8)',
-                  minHeight: buttonMinHeight,
-                  minWidth: buttonMinWidth,
-                  fontSize: captionFontSize,
-                  fontWeight: 500,
-                  order: isMobile ? 1 : 0,
-                  flex: isMobile ? '1 1 45%' : 'none',
-                  borderRadius: 2,
-                  border: '1px solid rgba(255,255,255,0.2)',
-                  '&:hover': {
-                    bgcolor: 'rgba(255,255,255,0.1)',
-                    borderColor: 'rgba(255,255,255,0.4)',
-                  },
-                  '&:disabled': { 
-                    color: 'rgba(255,255,255,0.6)',
-                    borderColor: 'rgba(255,255,255,0.1)',
-                  },
-                }}
-              >
-                Forrige
-              </Button>
-
-              <Box sx={{ 
-                display: 'flex', 
-                gap: gapSize,
-                order: isMobile ? 3 : 1,
-                flex: isMobile ? '1 1 100%' : 'none',
-                justifyContent: 'center',
-              }}>
-                <IconButton
-                  data-testid="role-room-tutorial-play-toggle"
-                  onClick={() => setIsPlaying(!isPlaying)}
-                  aria-label={isPlaying ? 'Pause veiledning' : 'Fortsett veiledning'}
+                <Box
                   sx={{
-                    color: isPlaying ? '#fff' : 'rgba(255,255,255,0.8)',
-                    bgcolor: isPlaying ? '#e91e63' : 'rgba(255,255,255,0.08)',
-                    minWidth: buttonMinHeight,
-                    minHeight: buttonMinHeight,
-                    borderRadius: 2,
-                    border: isPlaying ? 'none' : '1px solid rgba(255,255,255,0.2)',
-                    '&:hover': {
-                      bgcolor: isPlaying ? '#c2185b' : 'rgba(255,255,255,0.15)',
-                    },
+                    borderTop: `1px solid ${borderSoft}`,
+                    pt: getResponsiveValue(2, 2.25, 2.5, 2.75, 3, 3.25),
+                    display: 'grid',
+                    gap: getResponsiveValue(1.5, 1.75, 2, 2.25, 2.5, 3),
                   }}
                 >
-                  {isPlaying ? <PauseIcon sx={{ fontSize: iconSize }} /> : <PlayIcon sx={{ fontSize: iconSize }} />}
-                </IconButton>
-                <IconButton
-                  data-testid="role-room-tutorial-restart"
-                  onClick={() => navigateToStep(0)}
-                  aria-label="Start veiledningen på nytt"
-                  sx={{ 
-                    color: 'rgba(255,255,255,0.8)', 
-                    bgcolor: 'rgba(255,255,255,0.08)',
-                    minWidth: buttonMinHeight,
-                    minHeight: buttonMinHeight,
-                    borderRadius: 2,
-                    border: '1px solid rgba(255,255,255,0.2)',
-                    '&:hover': {
-                      bgcolor: 'rgba(255,255,255,0.15)',
-                    },
-                  }}
-                >
-                  <ReplayIcon sx={{ fontSize: iconSize }} />
-                </IconButton>
+                  <Box
+                    sx={{
+                      display: 'grid',
+                      gridTemplateColumns: isMobile ? '1fr' : 'auto minmax(0, 1fr)',
+                      gap: gapSize,
+                      alignItems: 'center',
+                      p: getResponsiveValue(1.5, 1.75, 2, 2.25, 2.5, 2.75),
+                      borderRadius: borderRadius,
+                      bgcolor: surfaceSecondaryColor,
+                      border: `1px solid ${borderSoft}`,
+                    }}
+                  >
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <SpeedIcon sx={{ color: 'rgba(255,255,255,0.9)', fontSize: iconSize }} />
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          color: 'rgba(255,255,255,0.9)',
+                          fontSize: smallTextSize,
+                          whiteSpace: 'nowrap',
+                          fontWeight: 600,
+                        }}
+                      >
+                        Tempo i veiledningen
+                      </Typography>
+                    </Box>
+                    <Slider
+                      value={speedMultiplier}
+                      onChange={(_: Event, value: number | number[]) => setSpeedMultiplier(value as number)}
+                      min={0.5}
+                      max={2}
+                      step={0.25}
+                      marks={[
+                        { value: 0.5, label: '0.5x' },
+                        { value: 1, label: '1x' },
+                        { value: 2, label: '2x' },
+                      ]}
+                      sx={{
+                        color: accentColor,
+                        height: getResponsiveValue(6, 7, 8, 9, 10, 12),
+                        '& .MuiSlider-markLabel': {
+                          color: 'rgba(255,255,255,0.75)',
+                          fontSize: smallTextSize,
+                        },
+                        '& .MuiSlider-thumb': {
+                          width: getResponsiveValue(18, 20, 22, 24, 28, 32),
+                          height: getResponsiveValue(18, 20, 22, 24, 28, 32),
+                          boxShadow: '0 0 0 6px rgba(233,30,99,0.12)',
+                          '&:hover, &:focus': {
+                            boxShadow: '0 0 0 10px rgba(233,30,99,0.18)',
+                          },
+                        },
+                        '& .MuiSlider-rail': {
+                          opacity: 0.28,
+                        },
+                      }}
+                    />
+                  </Box>
+
+                  <Box
+                    sx={{
+                      display: 'grid',
+                      gridTemplateColumns: isMobile ? '1fr 1fr' : 'minmax(0, 1fr) auto minmax(0, 1fr)',
+                      gap: gapSize,
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Button
+                      data-testid="role-room-tutorial-prev"
+                      onClick={prevStep}
+                      disabled={currentStep === 0}
+                      startIcon={<PrevIcon sx={{ fontSize: iconSize }} />}
+                      sx={{
+                        color: 'rgba(255,255,255,0.82)',
+                        minHeight: buttonMinHeight,
+                        width: '100%',
+                        fontSize: captionFontSize,
+                        fontWeight: 600,
+                        borderRadius: getResponsiveValue(2.5, 3, 3.25, 3.5, 3.75, 4),
+                        border: `1px solid ${borderSoft}`,
+                        bgcolor: 'rgba(255,255,255,0.03)',
+                        '&:hover': {
+                          bgcolor: 'rgba(255,255,255,0.08)',
+                          borderColor: 'rgba(255,255,255,0.18)',
+                        },
+                        '&:disabled': {
+                          color: 'rgba(255,255,255,0.42)',
+                          borderColor: 'rgba(255,255,255,0.06)',
+                        },
+                      }}
+                    >
+                      Forrige
+                    </Button>
+
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        gap: gapSize,
+                        justifyContent: 'center',
+                        gridColumn: isMobile ? '1 / -1' : 'auto',
+                        order: isMobile ? 3 : 2,
+                      }}
+                    >
+                      <IconButton
+                        data-testid="role-room-tutorial-play-toggle"
+                        onClick={() => setIsPlaying(!isPlaying)}
+                        aria-label={isPlaying ? 'Pause veiledning' : 'Fortsett veiledning'}
+                        sx={{
+                          color: isPlaying ? '#fff' : 'rgba(255,255,255,0.82)',
+                          bgcolor: isPlaying ? accentColor : 'rgba(255,255,255,0.06)',
+                          minWidth: buttonMinHeight,
+                          minHeight: buttonMinHeight,
+                          borderRadius: getResponsiveValue(2.5, 3, 3.25, 3.5, 3.75, 4),
+                          border: isPlaying ? 'none' : `1px solid ${borderSoft}`,
+                          boxShadow: isPlaying ? '0 14px 30px rgba(233,30,99,0.35)' : 'none',
+                          '&:hover': {
+                            bgcolor: isPlaying ? '#c2185b' : 'rgba(255,255,255,0.12)',
+                          },
+                        }}
+                      >
+                        {isPlaying ? <PauseIcon sx={{ fontSize: iconSize }} /> : <PlayIcon sx={{ fontSize: iconSize }} />}
+                      </IconButton>
+                      <IconButton
+                        data-testid="role-room-tutorial-restart"
+                        onClick={() => navigateToStep(0)}
+                        aria-label="Start veiledningen på nytt"
+                        sx={{
+                          color: 'rgba(255,255,255,0.82)',
+                          bgcolor: 'rgba(255,255,255,0.06)',
+                          minWidth: buttonMinHeight,
+                          minHeight: buttonMinHeight,
+                          borderRadius: getResponsiveValue(2.5, 3, 3.25, 3.5, 3.75, 4),
+                          border: `1px solid ${borderSoft}`,
+                          '&:hover': {
+                            bgcolor: 'rgba(255,255,255,0.12)',
+                          },
+                        }}
+                      >
+                        <ReplayIcon sx={{ fontSize: iconSize }} />
+                      </IconButton>
+                    </Box>
+
+                    <Button
+                      data-testid="role-room-tutorial-next"
+                      onClick={nextStep}
+                      variant="contained"
+                      endIcon={currentStep === steps.length - 1 ? <CompleteIcon sx={{ fontSize: iconSize }} /> : <NextIcon sx={{ fontSize: iconSize }} />}
+                      sx={{
+                        bgcolor: accentColor,
+                        minHeight: buttonMinHeight,
+                        width: '100%',
+                        fontSize: captionFontSize,
+                        fontWeight: 700,
+                        borderRadius: getResponsiveValue(2.5, 3, 3.25, 3.5, 3.75, 4),
+                        boxShadow: '0 18px 36px rgba(233,30,99,0.28)',
+                        '&:hover': {
+                          bgcolor: '#c2185b',
+                          boxShadow: '0 22px 42px rgba(233,30,99,0.34)',
+                        },
+                        '&:active': {
+                          transform: 'scale(0.985)',
+                        },
+                      }}
+                    >
+                      {currentStep === steps.length - 1 ? 'Fullfør' : 'Neste'}
+                    </Button>
+                  </Box>
+
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      display: isMobile ? 'none' : 'block',
+                      color: 'rgba(255,255,255,0.62)',
+                      fontSize: smallTextSize,
+                    }}
+                  >
+                    Tastatursnarveier: ← Forrige, → Neste, mellomrom for pause og Esc for å lukke.
+                  </Typography>
+                </Box>
               </Box>
 
-              <Button
-                data-testid="role-room-tutorial-next"
-                onClick={nextStep}
-                variant="contained"
-                endIcon={currentStep === steps.length - 1 ? <CompleteIcon sx={{ fontSize: iconSize }} /> : <NextIcon sx={{ fontSize: iconSize }} />}
+              <Box
                 sx={{
-                  bgcolor: '#e91e63',
-                  minHeight: buttonMinHeight,
-                  minWidth: buttonMinWidth,
-                  fontSize: captionFontSize,
-                  fontWeight: 600,
-                  order: isMobile ? 2 : 2,
-                  flex: isMobile ? '1 1 45%' : 'none',
-                  borderRadius: 2,
-                  boxShadow: '0 4px 12px rgba(233,30,99,0.4)',
-                  '&:hover': { 
-                    bgcolor: '#c2185b',
-                    boxShadow: '0 6px 16px rgba(233,30,99,0.5)',
-                  },
-                  '&:active': {
-                    transform: 'scale(0.98)',
-                  },
+                  display: 'grid',
+                  gap: getResponsiveValue(1.25, 1.5, 1.75, 2, 2.25, 2.5),
+                  border: `1px solid ${borderSoft}`,
+                  borderRadius: borderRadius,
+                  bgcolor: surfaceSecondaryColor,
+                  p: getResponsiveValue(1.5, 1.75, 2, 2.25, 2.5, 2.75),
+                  maxHeight: isMobile ? 'none' : '100%',
                 }}
               >
-                {currentStep === steps.length - 1 ? 'Fullfør' : 'Neste'}
-              </Button>
-            </Box>
+                <Box>
+                  <Typography
+                    variant="overline"
+                    sx={{
+                      color: 'rgba(255,255,255,0.56)',
+                      fontSize: captionFontSize,
+                      letterSpacing: '0.16em',
+                      fontWeight: 700,
+                    }}
+                  >
+                    Hele løypen
+                  </Typography>
+                  <Typography
+                    variant="h6"
+                    sx={{
+                      color: '#fff',
+                      fontWeight: 700,
+                      mt: 0.75,
+                      fontSize: getResponsiveValue('1rem', '1.05rem', '1.12rem', '1.18rem', '1.24rem', '1.35rem'),
+                    }}
+                  >
+                    Hopp direkte til riktig arbeidsflate
+                  </Typography>
+                </Box>
 
-            <Typography
-              variant="caption"
-              sx={{
-                display: isMobile ? 'none' : 'block',
-                textAlign: 'center',
-                mt: gapSize,
-                color: 'rgba(255,255,255,0.7)',
-                fontSize: smallTextSize,
-              }}
-            >
-              Tastatursnarveier: ← Forrige | → Neste | Space Pause | Esc Lukk
-            </Typography>
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: stepRailColumns,
+                    gap: getResponsiveValue(1, 1.1, 1.15, 1.2, 1.3, 1.4),
+                    maxHeight: isMobile ? 'none' : '56dvh',
+                    overflowY: 'auto',
+                    pr: isMobile ? 0 : 0.5,
+                    WebkitOverflowScrolling: 'touch',
+                  }}
+                  role="navigation"
+                  aria-label="Veiledningssteg"
+                >
+                  {steps.map((s, index) => {
+                    const meta = stepIndicatorMeta[s.id];
+                    const panelIndex = s.panel >= 0 ? s.panel : -1;
+                    const panel = panelIndex >= 0 ? panelInfo[panelIndex] : null;
+                    const IconComponent = meta?.icon || panel?.icon || TutorialIcon;
+                    const stepLabel = meta?.label || panel?.name || (index === 0 ? 'Start' : index === steps.length - 1 ? 'Slutt' : `${index + 1}`);
+                    const stepColor = meta?.color || panel?.color || accentColor;
+                    const isActive = index === currentStep;
+                    const isCompleted = index < currentStep;
+
+                    return (
+                      <Box
+                        key={s.id}
+                        component="button"
+                        type="button"
+                        data-testid={`role-room-tutorial-step-${s.id}`}
+                        onClick={() => navigateToStep(index)}
+                        aria-label={`Gå til steg ${index + 1}: ${s.title}`}
+                        aria-current={isActive ? 'step' : undefined}
+                        sx={{
+                          all: 'unset',
+                          display: 'grid',
+                          gridTemplateColumns: 'auto minmax(0, 1fr) auto',
+                          gap: 1.25,
+                          alignItems: 'center',
+                          p: getResponsiveValue(1.1, 1.15, 1.2, 1.3, 1.4, 1.5),
+                          borderRadius: getResponsiveValue(2, 2.25, 2.5, 2.75, 3, 3.25),
+                          cursor: 'pointer',
+                          background: isActive
+                            ? `${stepColor}22`
+                            : isCompleted
+                              ? 'rgba(76,175,80,0.1)'
+                              : 'rgba(255,255,255,0.02)',
+                          border: isActive
+                            ? `1px solid ${stepColor}66`
+                            : isCompleted
+                              ? '1px solid rgba(76,175,80,0.26)'
+                              : `1px solid ${borderSoft}`,
+                          transition: 'transform 0.2s ease, background 0.2s ease, border-color 0.2s ease',
+                          '&:hover, &:focus-visible': {
+                            transform: 'translateY(-1px)',
+                            background: isActive ? `${stepColor}28` : 'rgba(255,255,255,0.07)',
+                            outline: 'none',
+                          },
+                        }}
+                      >
+                        <Avatar
+                          sx={{
+                            width: getResponsiveValue(34, 36, 38, 40, 44, 48),
+                            height: getResponsiveValue(34, 36, 38, 40, 44, 48),
+                            bgcolor: isActive
+                              ? `${stepColor}2a`
+                              : isCompleted
+                                ? 'rgba(76,175,80,0.14)'
+                                : 'rgba(255,255,255,0.03)',
+                            border: `1px solid ${isActive ? `${stepColor}55` : isCompleted ? 'rgba(76,175,80,0.3)' : borderSoft}`,
+                          }}
+                        >
+                          <IconComponent
+                            sx={{
+                              fontSize: stepIconSize,
+                              color: isActive ? stepColor : isCompleted ? '#7ef0a7' : 'rgba(255,255,255,0.6)',
+                            }}
+                          />
+                        </Avatar>
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              color: isActive ? '#fff' : 'rgba(255,255,255,0.86)',
+                              fontWeight: isActive ? 700 : 600,
+                              fontSize: captionFontSize,
+                              lineHeight: 1.2,
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                            }}
+                          >
+                            {stepLabel}
+                          </Typography>
+                          <Typography
+                            variant="caption"
+                            sx={{
+                              color: 'rgba(255,255,255,0.5)',
+                              fontSize: stepTextSize,
+                              display: 'block',
+                              mt: 0.35,
+                            }}
+                          >
+                            Steg {index + 1}
+                          </Typography>
+                        </Box>
+                        <Box
+                          sx={{
+                            minWidth: 28,
+                            textAlign: 'right',
+                            color: isActive ? stepColor : isCompleted ? '#7ef0a7' : 'rgba(255,255,255,0.32)',
+                            fontSize: stepTextSize,
+                            fontWeight: 700,
+                          }}
+                        >
+                          {isCompleted ? '✓' : `${index + 1}`}
+                        </Box>
+                      </Box>
+                    );
+                  })}
+                </Box>
+              </Box>
+            </Box>
           </Box>
         </Paper>
       </Fade>

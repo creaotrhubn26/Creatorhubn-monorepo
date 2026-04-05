@@ -15,7 +15,7 @@ export interface Tutorial {
   id: string;
   name: string;
   description: string;
-  category: 'casting-planner' | 'studio' | 'academy' | 'general';
+  category: 'casting-planner' | 'content-producer' | 'studio' | 'academy' | 'general';
   steps: TutorialStep[];
   isActive: boolean;
   createdAt: string;
@@ -229,10 +229,163 @@ const DEFAULT_CASTING_PLANNER_TUTORIAL_STEPS: TutorialStep[] = [
 export const getDefaultCastingPlannerTutorialSteps = (): TutorialStep[] =>
   DEFAULT_CASTING_PLANNER_TUTORIAL_STEPS.map(cloneTutorialStep);
 
+const DEFAULT_CONTENT_PRODUCER_TUTORIAL_STEPS: TutorialStep[] = [
+  {
+    id: 'producer-welcome',
+    title: 'Velkommen til innholdsprodusent-flyten',
+    description: 'Denne veiledningen viser arbeidsflyten for innholdsprodusent i The Role Room, fra storyboard og medvirkende til media, tidslinje, godkjenning og eksport.',
+    panel: -1,
+    duration: 8000,
+    tips: [
+      'Denne løypen er laget for innholdsprodusent, ikke produksjonsteam',
+      'Du kan hoppe mellom steg uten å miste fremdriften',
+      'Trykk ESC for å lukke veiledningen',
+    ],
+  },
+  {
+    id: 'producer-studio',
+    title: '1. Storyboard - bygg den kreative planen',
+    description: 'Storyboard samler idéarbeid, disposisjon og kreativ retning, slik at du har et tydelig grunnlag før innholdet produseres.',
+    panel: 1,
+    targetSelector: '#tab-story-arc-studio',
+    action: 'click',
+    actionDescription: 'Åpne "Storyboard" for å forme konsept og struktur',
+    tips: [
+      'Start her når du skal planlegge fortelling, format og retning',
+      'Bruk denne flaten før du går over i gjennomføring og leveranse',
+      'Storyboard skal gjøre resten av arbeidsflyten enklere å styre',
+    ],
+    duration: 9000,
+  },
+  {
+    id: 'producer-contributors',
+    title: '2. Medvirkende - hold oversikt over folk i innholdet',
+    description: 'Her samler du medvirkende, statister og profiler som inngår i produksjonen, med tydelig status og tilknytning til prosjektet.',
+    panel: 3,
+    targetSelector: '#tab-kandidater',
+    action: 'click',
+    actionDescription: 'Åpne "Statister/medvirkende" for å se hvem som deltar',
+    tips: [
+      'Hold status og kontaktpunkter oppdatert når flere deltar i samme innhold',
+      'Bruk denne flaten for å få oversikt over hvem som faktisk er klare',
+      'Dette erstatter ikke casting-flyten, men støtter innholdsproduksjon',
+    ],
+    duration: 9000,
+  },
+  {
+    id: 'producer-locations',
+    title: '3. Lokasjoner - samle stedene du skal produsere på',
+    description: 'Lokasjoner brukes til å holde styr på steder, praktisk info og rammer som påvirker opptaksdagen.',
+    panel: 6,
+    targetSelector: '#tab-lokasjoner',
+    action: 'click',
+    actionDescription: 'Åpne "Lokasjoner" for å planlegge hvor innholdet skal produseres',
+    tips: [
+      'Legg inn logistikk, kontaktpersoner og begrensninger per sted',
+      'God lokasjonskontroll gjør tidslinjen enklere å holde',
+      'Bruk lokasjoner aktivt før opptak og leveranse',
+    ],
+    duration: 9000,
+  },
+  {
+    id: 'producer-equipment',
+    title: '4. Utstyr og rekvisitter - sikre at produksjonen har det den trenger',
+    description: 'Denne flaten samler utstyr og rekvisitter som må være på plass for å gjennomføre innholdet uten stopp eller mangler.',
+    panel: 9,
+    targetSelector: '#tab-rekvisitter',
+    action: 'click',
+    actionDescription: 'Åpne "Utstyr/rekvisitter" for å kontrollere produksjonsbehovene',
+    tips: [
+      'Registrer hva som er klart, mangler eller må skaffes',
+      'Knytt utstyr til produksjonsdager og leveranser',
+      'Bruk denne flaten for å unngå praktiske stopp under opptak',
+    ],
+    duration: 9000,
+  },
+  {
+    id: 'producer-media',
+    title: '5. Media - samle filer, opptak og arbeidsmateriell',
+    description: 'Media-flaten er navet for opptak, filer og materiale som produseres, behandles og skal leveres videre.',
+    panel: 11,
+    targetSelector: '#tab-producer-media',
+    action: 'click',
+    actionDescription: 'Åpne "Media" for å jobbe med prosjektets innholdsfiler',
+    tips: [
+      'Bruk Media som hovedflate for å holde orden på produksjonsmaterialet',
+      'Herfra følger du innholdet gjennom resten av flyten',
+      'Dette er en kjerneflate for innholdsprodusent',
+    ],
+    duration: 9500,
+  },
+  {
+    id: 'producer-timeline',
+    title: '6. Tidslinje - se fremdriften i riktig rekkefølge',
+    description: 'Tidslinjen binder sammen produksjon, milepæler og neste leveranser, slik at du ser hva som skjer når.',
+    panel: 13,
+    targetSelector: '#tab-producer-tidslinje',
+    action: 'click',
+    actionDescription: 'Åpne "Tidslinje" for å følge rekkefølge og fremdrift',
+    tips: [
+      'Bruk tidslinjen for å forstå hva som haster og hva som kommer etterpå',
+      'Dette er riktig flate når du skal planlegge gjennomføring og leveranser',
+      'God tidslinje gir færre overraskelser i prosjektet',
+    ],
+    duration: 9000,
+  },
+  {
+    id: 'producer-reviews',
+    title: '7. Klientsamarbeid - få godkjenninger og tilbakemeldinger',
+    description: 'Klientsamarbeid brukes til gjennomgang, tilbakemeldinger og godkjenninger før innhold eksporteres eller leveres.',
+    panel: 14,
+    targetSelector: '#tab-producer-reviews',
+    action: 'click',
+    actionDescription: 'Åpne "Klientsamarbeid" for å håndtere gjennomgang og feedback',
+    tips: [
+      'Samle tilbakemeldinger her i stedet for i spredte meldinger',
+      'Bruk denne flaten før du markerer noe som klart for levering',
+      'Dette er sentralt for en ryddig godkjenningsflyt',
+    ],
+    duration: 9000,
+  },
+  {
+    id: 'producer-export',
+    title: '8. Eksport - klargjør det som skal leveres',
+    description: 'Eksport samler leveranseflaten for filer og materiale som er klart til å sendes videre etter produksjon og godkjenning.',
+    panel: 15,
+    targetSelector: '#tab-producer-eksport',
+    action: 'click',
+    actionDescription: 'Åpne "Eksport" for å gjøre innholdet klart for levering',
+    tips: [
+      'Eksporter først når media, tidslinje og godkjenninger er på plass',
+      'Hold leveranser samlet her for bedre kontroll',
+      'Dette er siste steg i innholdsprodusentens arbeidsflyt',
+    ],
+    duration: 9000,
+  },
+  {
+    id: 'producer-complete',
+    title: 'Du er klar til å jobbe videre som innholdsprodusent',
+    description: 'Nå har du sett hovedflyten for innholdsprodusent. Neste steg er å fortsette på prosjektet ditt gjennom media, tidslinje og leveranser.',
+    panel: -1,
+    targetSelector: '[data-tutorial-target="create-project-button"]',
+    action: 'click',
+    actionDescription: 'Fortsett i prosjektet ditt eller opprett et nytt når du er klar',
+    duration: 8000,
+    tips: [
+      'Innholdsprodusent-flyten er egen arbeidsflate og skal ikke blandes med produksjonsteam',
+      'Bruk prosjektet videre der du slapp i media, tidslinje eller eksport',
+      'Hvis du trenger annen arbeidsflyt, byttes det via riktig modusvalg',
+    ],
+  },
+];
+
+export const getDefaultContentProducerTutorialSteps = (): TutorialStep[] =>
+  DEFAULT_CONTENT_PRODUCER_TUTORIAL_STEPS.map(cloneTutorialStep);
+
 const defaultCastingPlannerTutorial: Tutorial = {
   id: 'default-casting-planner',
-  name: 'The Role Room Veiledning',
-  description: 'Lær hovedflyten i The Role Room',
+  name: 'Produksjonsteam Veiledning',
+  description: 'Lær hovedflyten for produksjonsteam i The Role Room',
   category: 'casting-planner',
   isActive: true,
   createdAt: new Date().toISOString(),
@@ -240,11 +393,22 @@ const defaultCastingPlannerTutorial: Tutorial = {
   steps: getDefaultCastingPlannerTutorialSteps(),
 };
 
+const defaultContentProducerTutorial: Tutorial = {
+  id: 'default-content-producer',
+  name: 'Innholdsprodusent Veiledning',
+  description: 'Lær hovedflyten for innholdsprodusent i The Role Room',
+  category: 'content-producer',
+  isActive: true,
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+  steps: getDefaultContentProducerTutorialSteps(),
+};
+
 class TutorialService {
   private tutorials: Tutorial[] = [];
 
   constructor() {
-    this.tutorials = [defaultCastingPlannerTutorial];
+    this.tutorials = [defaultCastingPlannerTutorial, defaultContentProducerTutorial];
     void this.loadFromStorage();
   }
 
@@ -258,6 +422,16 @@ class TutorialService {
       existingCastingTutorial.updatedAt = new Date().toISOString();
     } else {
       updated.push(defaultCastingPlannerTutorial);
+    }
+
+    const existingContentProducerTutorial = updated.find(
+      (t: Tutorial) => t.id === 'default-content-producer'
+    );
+    if (existingContentProducerTutorial) {
+      existingContentProducerTutorial.steps = getDefaultContentProducerTutorialSteps();
+      existingContentProducerTutorial.updatedAt = new Date().toISOString();
+    } else {
+      updated.push(defaultContentProducerTutorial);
     }
     return updated;
   }
@@ -279,11 +453,11 @@ class TutorialService {
         return;
       }
 
-      this.tutorials = [defaultCastingPlannerTutorial];
+      this.tutorials = [defaultCastingPlannerTutorial, defaultContentProducerTutorial];
       await settingsService.setSetting(STORAGE_KEY, this.tutorials, { userId });
     } catch (error) {
       console.error('Failed to load tutorials from storage:', error);
-      this.tutorials = [defaultCastingPlannerTutorial];
+      this.tutorials = [defaultCastingPlannerTutorial, defaultContentProducerTutorial];
     }
   }
 

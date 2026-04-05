@@ -33,7 +33,8 @@ const actionOptions = [
 ];
 
 const categoryOptions = [
-  { value: 'casting-planner', label: 'The Role Room' },
+  { value: 'casting-planner', label: 'Produksjonsteam' },
+  { value: 'content-producer', label: 'Innholdsprodusent' },
   { value: 'studio', label: 'Studio' },
   { value: 'academy', label: 'Academy' },
   { value: 'general', label: 'Generell' },
