@@ -1947,34 +1947,80 @@ export default function ProducerMediaPanel({
     setLoading(true);
     setError(null);
     try {
-      const [nextIntake, nextMaterials, nextReviews, nextTimelineItems] = await Promise.all([
+      const [nextIntake, nextMaterials, nextReviews, nextTimelineItems] = await Promise.allSettled([
         producerWorkflowService.getClientIntake(projectId),
         producerWorkflowService.getClientMaterials(projectId),
         producerWorkflowService.getReviews(projectId),
         producerWorkflowService.getTimeline(projectId),
       ]);
-      setIntakeDraft({
-        ...EMPTY_INTAKE,
-        ...nextIntake,
-      });
-      setMaterials(nextMaterials);
-      setReviews(nextReviews);
-      setTimelineItems(nextTimelineItems);
-      await producerWorkflowService.ensureClientGroundingTimeline(projectId);
-      await producerWorkflowService.ensureClientGroundingReviews(projectId);
-      const meetingWorkflow = await producerWorkflowService.ensureMeetingWorkspaceWorkflow(
-        projectId,
-        normalizeProducerProjectPlanning(project),
-      );
-      setReviews(meetingWorkflow.reviews);
-      setTimelineItems(meetingWorkflow.timelineItems);
+
+      const clientInputFailures: Array<'intake' | 'materials'> = [];
+
+      if (nextIntake.status === 'fulfilled') {
+        setIntakeDraft({
+          ...EMPTY_INTAKE,
+          ...nextIntake.value,
+        });
+      } else {
+        console.error('[ProducerMediaPanel] Failed to load client intake', nextIntake.reason);
+        clientInputFailures.push('intake');
+      }
+
+      if (nextMaterials.status === 'fulfilled') {
+        setMaterials(nextMaterials.value);
+      } else {
+        console.error('[ProducerMediaPanel] Failed to load client materials', nextMaterials.reason);
+        clientInputFailures.push('materials');
+      }
+
+      if (nextReviews.status === 'fulfilled') {
+        setReviews(nextReviews.value);
+      } else {
+        console.warn('[ProducerMediaPanel] Failed to load reviews', nextReviews.reason);
+        setReviews([]);
+      }
+
+      if (nextTimelineItems.status === 'fulfilled') {
+        setTimelineItems(nextTimelineItems.value);
+      } else {
+        console.warn('[ProducerMediaPanel] Failed to load timeline items', nextTimelineItems.reason);
+        setTimelineItems([]);
+      }
+
+      if (clientInputFailures.length === 2) {
+        setError('Kunne ikke hente klientbrief og materiale.');
+      } else if (clientInputFailures[0] === 'intake') {
+        setError('Kunne ikke hente klientbrief.');
+      } else if (clientInputFailures[0] === 'materials') {
+        setError('Kunne ikke hente klientmateriale.');
+      }
+
+      await Promise.allSettled([
+        producerWorkflowService.ensureClientGroundingTimeline(projectId),
+        producerWorkflowService.ensureClientGroundingReviews(projectId),
+      ]);
+
+      const meetingWorkflowResult = await Promise.allSettled([
+        producerWorkflowService.ensureMeetingWorkspaceWorkflow(
+          projectId,
+          normalizeProducerProjectPlanning(project),
+        ),
+      ]);
+
+      const meetingWorkflow = meetingWorkflowResult[0];
+      if (meetingWorkflow.status === 'fulfilled') {
+        setReviews(meetingWorkflow.value.reviews);
+        setTimelineItems(meetingWorkflow.value.timelineItems);
+      } else {
+        console.warn('[ProducerMediaPanel] Failed to ensure meeting workflow', meetingWorkflow.reason);
+      }
     } catch (loadError) {
       console.error('[ProducerMediaPanel] Failed to load client workspace', loadError);
       setError('Kunne ikke hente klientbrief og materiale.');
     } finally {
       setLoading(false);
     }
-  }, [projectId]);
+  }, [project, projectId]);
 
   useEffect(() => {
     void loadClientWorkspace();

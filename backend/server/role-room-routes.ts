@@ -1087,10 +1087,21 @@ function buildCorsOptions(): cors.CorsOptions {
     .split(',')
     .map(s => s.trim())
     .filter(Boolean);
+  const defaultDevOrigins = process.env.NODE_ENV === 'production'
+    ? []
+    : [
+        'http://localhost:3000',
+        'http://127.0.0.1:3000',
+        'http://localhost:5001',
+        'http://127.0.0.1:5001',
+        'http://localhost:5173',
+        'http://127.0.0.1:5173',
+      ];
   const allowList = Array.from(
     new Set(
       [
         ...configuredOrigins,
+        ...defaultDevOrigins,
         DEFAULT_ROLE_ROOM_TALENT_PUBLIC_ORIGIN,
         'https://www.theroleroom.com',
       ].filter((entry): entry is string => Boolean(readStringValue(entry))),
