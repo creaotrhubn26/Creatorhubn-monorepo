@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import {
   Alert,
   Avatar,
@@ -8,16 +8,8 @@ import {
   CardContent,
   Chip,
   CircularProgress,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   Divider,
   Grid,
-  List,
-  ListItem,
-  ListItemIcon,
-  ListItemText,
   Paper,
   Stack,
   Typography,
@@ -28,20 +20,10 @@ import {
   Error as ErrorIcon,
   HourglassEmpty as PendingIcon,
   Refresh as RefreshIcon,
-  Wallet as WalletIcon,
 } from '@mui/icons-material';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
-import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
-
-interface MembershipCard {
-  id: string;
-  passId: string;
-  status: 'active' | 'pending' | 'expired';
-  walletUrl?: string;
-  qrCode?: string;
-}
 
 interface PaymentStatus {
   id: string;
@@ -53,14 +35,12 @@ interface PaymentStatus {
   planName: string;
   createdAt: string;
   completedAt?: string;
-  membershipCard?: MembershipCard;
 }
 
 interface PaymentStatusVerificationProps {
   userId?: string;
   transactionId?: string;
   sessionId?: string;
-  onMembershipCreated?: (membershipCard: MembershipCard) => void;
 }
 
 function formatMoney(amountMinor: number, currency: string): string {
@@ -107,7 +87,6 @@ function normalizeStatus(payload: unknown): PaymentStatus | null {
     planName: typeof raw.planName === 'string' ? raw.planName : 'CreatorHub Plan',
     createdAt: typeof raw.createdAt === 'string' ? raw.createdAt : new Date().toISOString(),
     completedAt: typeof raw.completedAt === 'string' ? raw.completedAt : undefined,
-    membershipCard: raw.membershipCard,
   };
 }
 
@@ -115,13 +94,8 @@ export default function PaymentStatusVerification({
   userId,
   transactionId,
   sessionId,
-  onMembershipCreated,
 }: PaymentStatusVerificationProps) {
-  const { toast } = useToast();
   const { user } = useAuth();
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [localCard, setLocalCard] = useState<MembershipCard | null>(null);
-
   const effectiveUserId = userId ?? user?.id ?? undefined;
 
   const paymentQuery = useQuery({
@@ -164,68 +138,10 @@ export default function PaymentStatusVerification({
     },
   });
 
-  const membershipMutation = useMutation({
-    mutationFn: async () => {
-      const payment = paymentQuery.data;
-      if (!payment) {
-        throw new Error('Ingen betalingsdata funnet.');
-      }
-
-      try {
-        const response = await apiRequest('/api/google-wallet/create-membership-card', {
-          method: 'POST',
-          body: {
-            userId: effectiveUserId,
-            paymentId: payment.id,
-            planName: payment.planName,
-            transactionId: payment.transactionId,
-          },
-        });
-
-        const rawCard = response as Partial<MembershipCard>;
-        if (typeof rawCard.id === 'string' && typeof rawCard.passId === 'string') {
-          return {
-            id: rawCard.id,
-            passId: rawCard.passId,
-            status: rawCard.status ?? 'pending',
-            walletUrl: rawCard.walletUrl,
-            qrCode: rawCard.qrCode,
-          } satisfies MembershipCard;
-        }
-      } catch {
-        // fall through to local card creation
-      }
-
-      return {
-        id: `card-${Date.now()}`,
-        passId: `creatorhub-pass-${Date.now()}`,
-        status: 'active',
-        walletUrl: undefined,
-      } satisfies MembershipCard;
-    },
-    onSuccess: (card) => {
-      setLocalCard(card);
-      setDialogOpen(true);
-      onMembershipCreated?.(card);
-      toast({
-        title: 'Medlemskort opprettet',
-        description: 'Kortet er klart for bruk i wallet.',
-        variant: 'success',
-      });
-    },
-    onError: (error: unknown) => {
-      toast({
-        title: 'Kunne ikke opprette medlemskort',
-        description: error instanceof Error ? error.message : 'Ukjent feil',
-        variant: 'destructive',
-      });
-    },
-  });
-
   const statusChip = useMemo(() => {
     const status = paymentQuery.data?.status;
     if (status === 'completed') {
-      return <Chip icon={<CheckCircleIcon />} color="success" label="Betaling fullfort" />;
+      return <Chip icon={<CheckCircleIcon />} color="success" label="Betaling fullført" />;
     }
     if (status === 'failed') {
       return <Chip icon={<ErrorIcon />} color="error" label="Betaling feilet" />;
@@ -250,13 +166,12 @@ export default function PaymentStatusVerification({
   if (!paymentQuery.data) {
     return (
       <Alert severity="warning">
-        Ingen betalingsinformasjon funnet. Kontroller transaksjons-ID eller logg inn pa nytt.
+        Ingen betalingsinformasjon funnet. Kontroller transaksjons-ID eller logg inn på nytt.
       </Alert>
     );
   }
 
   const payment = paymentQuery.data;
-  const membershipCard = localCard ?? payment.membershipCard ?? null;
 
   return (
     <Box>
@@ -264,7 +179,7 @@ export default function PaymentStatusVerification({
         <CardContent>
           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
             <Box>
-              <Typography variant="h6">Betalingsstatus</Typography>
+              <Typography variant="h6">Abonnementsoversikt</Typography>
               <Typography variant="body2" color="text.secondary">
                 Transaksjon: {payment.transactionId}
               </Typography>
@@ -296,6 +211,19 @@ export default function PaymentStatusVerification({
                 </Stack>
               </Paper>
             </Grid>
+            <Grid item xs={12} md={6}>
+              <Paper variant="outlined" sx={{ p: 1.5 }}>
+                <Typography variant="subtitle2">Registrert</Typography>
+                <Typography variant="body1" fontWeight={700}>
+                  {new Date(payment.createdAt).toLocaleString('nb-NO')}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {payment.completedAt
+                    ? `Bekreftet ${new Date(payment.completedAt).toLocaleString('nb-NO')}`
+                    : 'Venter på bekreftet betaling'}
+                </Typography>
+              </Paper>
+            </Grid>
           </Grid>
 
           <Divider sx={{ my: 2 }} />
@@ -309,15 +237,6 @@ export default function PaymentStatusVerification({
             >
               {paymentQuery.isRefetching ? 'Oppdaterer...' : 'Oppdater status'}
             </Button>
-
-            <Button
-              variant="contained"
-              startIcon={<WalletIcon />}
-              onClick={() => membershipMutation.mutate()}
-              disabled={payment.status !== 'completed' || membershipMutation.isPending}
-            >
-              {membershipMutation.isPending ? 'Oppretter...' : 'Opprett medlemskort'}
-            </Button>
           </Stack>
 
           {payment.status === 'pending' && (
@@ -326,43 +245,13 @@ export default function PaymentStatusVerification({
             </Alert>
           )}
 
-          {membershipCard && (
+          {payment.status === 'completed' && (
             <Alert severity="success" sx={{ mt: 2 }}>
-              Medlemskort klart: {membershipCard.passId}
+              Abonnementet ditt er aktivt. Her ser du betalingsstatus og detaljer for kjøpet.
             </Alert>
           )}
         </CardContent>
       </Card>
-
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)}>
-        <DialogTitle>Medlemskort opprettet</DialogTitle>
-        <DialogContent>
-          <List>
-            <ListItem>
-              <ListItemIcon>
-                <CheckCircleIcon color="success" />
-              </ListItemIcon>
-              <ListItemText primary="Kort er aktivert" secondary={membershipCard?.passId ?? 'Ukjent pass-ID'} />
-            </ListItem>
-            {membershipCard?.walletUrl && (
-              <ListItem>
-                <ListItemIcon>
-                  <WalletIcon color="primary" />
-                </ListItemIcon>
-                <ListItemText primary="Wallet-lenke" secondary={membershipCard.walletUrl} />
-              </ListItem>
-            )}
-          </List>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDialogOpen(false)}>Lukk</Button>
-          {membershipCard?.walletUrl && (
-            <Button variant="contained" onClick={() => window.open(membershipCard.walletUrl, '_blank', 'noopener,noreferrer')}>
-              Aapne wallet
-            </Button>
-          )}
-        </DialogActions>
-      </Dialog>
     </Box>
   );
 }

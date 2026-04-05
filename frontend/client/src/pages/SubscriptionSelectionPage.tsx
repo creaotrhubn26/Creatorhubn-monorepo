@@ -39,17 +39,17 @@ const subscriptionPageCopy: Record<
   }
 > = {
   no: {
-    commerceLabel: 'CreatorHub Commerce',
+    commerceLabel: 'CreatorHub betaling',
     title: 'Velg CreatorHub-abonnement',
     subtitle:
-      'Velg plan, sammenlign månedlig og årlig fakturering, og gå videre til Stripe Checkout i en flyt som matcher CreatorHub-landingen.',
+      'Velg plan, sammenlign månedlig og årlig fakturering, og gå videre til sikker betaling i Stripe i en flyt som matcher CreatorHub-landingen.',
     back: 'Tilbake',
     cancelled:
-      'Stripe Checkout ble avbrutt. Den valgte planen din er fortsatt valgt, så du kan fortsette når du er klar.',
-    successLabel: 'CreatorHub Checkout',
+      'Betalingen i Stripe ble avbrutt. Den valgte planen din er fortsatt valgt, så du kan fortsette når du er klar.',
+    successLabel: 'CreatorHub betaling',
     successTitle: 'Betaling fullført',
     successSubtitle:
-      'CreatorHub-abonnementet ditt er aktivert. Herfra kan du gå tilbake til hjemsiden eller fortsette med medlemskapsverifiseringen.',
+      'CreatorHub-abonnementet ditt er aktivert. Herfra kan du gå tilbake til hjemsiden og se betalings- og abonnementsoversikten din.',
     backHome: 'Tilbake til hjem',
     successInfo:
       'Stripe-betalingen er registrert. CreatorHub oppdaterer medlemskap og tilgang etter bekreftet betaling.',
@@ -89,9 +89,13 @@ export default function SubscriptionSelectionPage() {
   const stripeSessionId = urlParams.get('session_id');
   const hasLanguageParam = urlParams.has('lang');
   const requestedLanguage = normalizeAppLanguage(urlParams.get('lang'));
-  const resolvedLanguage = hasLanguageParam ? requestedLanguage : language;
-  const copy = subscriptionPageCopy[resolvedLanguage];
   const isCreatorHubCheckout = profession === 'creatorhub';
+  const resolvedLanguage: AppLanguage = isCreatorHubCheckout
+    ? 'no'
+    : hasLanguageParam
+      ? requestedLanguage
+      : language;
+  const copy = subscriptionPageCopy[resolvedLanguage];
   const theming = useTheming(isCreatorHubCheckout ? 'vendor' : profession);
 
   useEffect(() => {
@@ -236,11 +240,6 @@ export default function SubscriptionSelectionPage() {
     }
 };
 
-  const handleMembershipCreated = (membershipCard: any) => {
-    console.log('Membership card created, :', membershipCard);
-    // Could trigger additional actions here
-};
-
   if (showPaymentStatus && paymentData) {
     return (
       <Box
@@ -298,7 +297,6 @@ export default function SubscriptionSelectionPage() {
           <PaymentStatusVerification
             sessionId={paymentData.sessionId}
             transactionId={paymentData.transactionId}
-            onMembershipCreated={handleMembershipCreated}
           />
 
           <Box sx={{ textAlign: 'center', mt: 4 }}>

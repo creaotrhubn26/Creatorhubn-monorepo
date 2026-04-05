@@ -111,6 +111,82 @@ const readNonEmptyString = (value: unknown): string | null => {
   return trimmed.length > 0 ? trimmed : null;
 };
 
+type PaymentHistoryEntry = {
+  id: string;
+  type?: string | null;
+  amount?: number | null;
+  planId?: string | null;
+  planName?: string | null;
+  status?: string | null;
+  currency?: string | null;
+  createdAt?: string | null;
+  currentPeriodStart?: string | null;
+  currentPeriodEnd?: string | null;
+  transactionId?: string | null;
+  isInFiken?: boolean;
+  refunded?: boolean;
+  refundedAt?: string | null;
+  refundReason?: string | null;
+  refundRequestId?: number | null;
+  refundRequestStatus?: 'pending' | 'approved' | 'rejected' | null;
+  refundRequestedAt?: string | null;
+};
+
+const formatPaymentDate = (value?: string | null) => {
+  if (!value) return 'Ikke tilgjengelig';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Ikke tilgjengelig';
+  return date.toLocaleDateString('nb-NO', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+};
+
+const formatPaymentAmount = (amount?: number | null, currency?: string | null) => {
+  const numericAmount = typeof amount === 'number' && Number.isFinite(amount) ? amount : 0;
+  const normalizedCurrency = readNonEmptyString(currency) || 'NOK';
+
+  try {
+    return new Intl.NumberFormat('nb-NO', {
+      style: 'currency',
+      currency: normalizedCurrency,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    }).format(numericAmount);
+  } catch {
+    return `${numericAmount} ${normalizedCurrency}`;
+  }
+};
+
+const getPaymentStatusPresentation = (payment: PaymentHistoryEntry) => {
+  if (payment.refunded || payment.status === 'refunded' || payment.refundRequestStatus === 'approved') {
+    return { label: 'Refundert', color: 'success' as const };
+  }
+  if (payment.refundRequestStatus === 'pending') {
+    return { label: 'Refundering behandles', color: 'warning' as const };
+  }
+  if (payment.refundRequestStatus === 'rejected') {
+    return { label: 'Refundering avslått', color: 'error' as const };
+  }
+
+  switch ((payment.status || '').toLowerCase()) {
+    case 'active':
+    case 'completed':
+      return { label: 'Betalt', color: 'success' as const };
+    case 'pending':
+      return { label: 'Venter betaling', color: 'warning' as const };
+    case 'failed':
+    case 'payment_failed':
+      return { label: 'Betaling feilet', color: 'error' as const };
+    case 'cancelled':
+    case 'canceled':
+      return { label: 'Kansellert', color: 'default' as const };
+    default:
+      return { label: payment.status || 'Ukjent status', color: 'default' as const };
+  }
+};
+
 interface UniversalSettingsPanelProps {
   profession: string;
   userId: string;
@@ -321,10 +397,45 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
     staleTime: 30000,
     enabled: isBusinessTabActive,
   });
+  const paymentHistoryItems = React.useMemo(() => {
+    const items = Array.isArray(paymentHistory?.history)
+      ? (paymentHistory.history as PaymentHistoryEntry[])
+      : [];
+
+    return [...items].sort((left, right) => {
+      const leftDate = new Date(left.createdAt || left.currentPeriodStart || 0).getTime();
+      const rightDate = new Date(right.createdAt || right.currentPeriodStart || 0).getTime();
+      return rightDate - leftDate;
+    });
+  }, [paymentHistory]);
+  const latestPayment = paymentHistoryItems[0] || null;
+  const paymentHistorySummary = React.useMemo(() => {
+    const approvedRefunds = paymentHistoryItems.filter(
+      (payment) =>
+        payment.refunded ||
+        payment.status === 'refunded' ||
+        payment.refundRequestStatus === 'approved',
+    );
+    const pendingRefunds = paymentHistoryItems.filter(
+      (payment) => payment.refundRequestStatus === 'pending',
+    );
+    const totalVolume = paymentHistoryItems.reduce((sum, payment) => {
+      const amount = typeof payment.amount === 'number' && Number.isFinite(payment.amount)
+        ? payment.amount
+        : 0;
+      return sum + amount;
+    }, 0);
+
+    return {
+      totalPayments: paymentHistoryItems.length,
+      approvedRefunds: approvedRefunds.length,
+      pendingRefunds: pendingRefunds.length,
+      totalVolume,
+    };
+  }, [paymentHistoryItems]);
   const lastFikenSyncDays = React.useMemo(() => {
-    const items = paymentHistory?.history as any[] | undefined;
-    if (!items || items.length === 0) return null;
-    const fikenItems = items
+    if (paymentHistoryItems.length === 0) return null;
+    const fikenItems = paymentHistoryItems
       .filter((h) => h.isInFiken)
       .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
     const last = fikenItems[0];
@@ -332,7 +443,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
     const lastDate = new Date(last.createdAt || Date.now()).getTime();
     const diffMs = Date.now() - lastDate;
     return Math.floor(diffMs / (1000 * 60 * 60 * 24));
-  }, [paymentHistory]);
+  }, [paymentHistoryItems]);
   const queryClient = useQueryClient();
 
   // Comprehensive Feature System for profession suites
@@ -770,8 +881,11 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
 
               {/* Payment History */}
               <Box sx={{ mt: 3 }}>
-                <Typography variant="subtitle1" sx={{ mb: 1, color: theming.colors.primary }}>
+                <Typography variant="subtitle1" sx={{ mb: 1, color: theming.colors.primary, fontWeight: 700 }}>
                   Betalingshistorikk
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Brukeren skal kunne se hva som er betalt, hva som er refundert, og hva som eventuelt fortsatt behandles.
                 </Typography>
                 {/* MVA Status */}
                 <Alert severity={mvaStatus?.registered ? 'success' : 'warning'} sx={{ mb: 2 }}>
@@ -820,54 +934,224 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                     Åpne kvitteringer
                   </Button>
                 </Alert>
-                {!paymentHistory?.history?.length ? (
+                {!paymentHistoryItems.length ? (
                   <Alert severity="info">Ingen betalinger funnet.</Alert>
                 ) : (
-                  <Box sx={{ border: '1px solid #eee', borderRadius: 1 }}>
-                    <Box sx={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1fr 1fr', p: 1, bgcolor: '#fafafa', borderBottom: '1px solid #eee' }}>
-                      <Typography variant="caption" sx={{ fontWeight: 600}}>Dato</Typography>
-                      <Typography variant="caption" sx={{ fontWeight: 600}}>Plan</Typography>
-                      <Typography variant="caption" sx={{ fontWeight: 600}}>Beløp</Typography>
-                      <Typography variant="caption" sx={{ fontWeight: 600}}>Status</Typography>
-                      <Typography variant="caption" sx={{ fontWeight: 600}}>Fiken</Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <Box
+                      sx={{
+                        display: 'grid',
+                        gridTemplateColumns: { xs: '1fr', md: 'repeat(4, minmax(0, 1fr))' },
+                        gap: 2,
+                      }}
+                    >
+                      <Box sx={{ p: 2, border: '1px solid #e8edf3', borderRadius: 2, bgcolor: '#fff' }}>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+                          Registrerte betalinger
+                        </Typography>
+                        <Typography variant="h5" sx={{ fontWeight: 700, color: theming.colors.primary, mt: 0.5 }}>
+                          {paymentHistorySummary.totalPayments}
+                        </Typography>
+                      </Box>
+                      <Box sx={{ p: 2, border: '1px solid #e8edf3', borderRadius: 2, bgcolor: '#fff' }}>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+                          Totalt fakturert
+                        </Typography>
+                        <Typography variant="h5" sx={{ fontWeight: 700, color: theming.colors.primary, mt: 0.5 }}>
+                          {formatPaymentAmount(paymentHistorySummary.totalVolume, latestPayment?.currency || currentSubscription?.currency || 'NOK')}
+                        </Typography>
+                      </Box>
+                      <Box sx={{ p: 2, border: '1px solid #e8edf3', borderRadius: 2, bgcolor: '#fff' }}>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+                          Refunderte betalinger
+                        </Typography>
+                        <Typography variant="h5" sx={{ fontWeight: 700, color: paymentHistorySummary.approvedRefunds > 0 ? '#2e7d32' : 'text.primary', mt: 0.5 }}>
+                          {paymentHistorySummary.approvedRefunds}
+                        </Typography>
+                      </Box>
+                      <Box sx={{ p: 2, border: '1px solid #e8edf3', borderRadius: 2, bgcolor: '#fff' }}>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+                          Åpne forespørsler
+                        </Typography>
+                        <Typography variant="h5" sx={{ fontWeight: 700, color: paymentHistorySummary.pendingRefunds > 0 ? '#ed6c02' : 'text.primary', mt: 0.5 }}>
+                          {paymentHistorySummary.pendingRefunds}
+                        </Typography>
+                      </Box>
                     </Box>
-                    {paymentHistory.history.slice(0, 10).map((h: any, idx: number) => (
-                      <Box key={idx} sx={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1fr 1fr', p: 1, borderBottom: '1px solid #f3f3f3' }}>
-                        <Typography variant="caption">{new Date(h.createdAt || h.currentPeriodStart || Date.now()).toLocaleString('nb-NO')}</Typography>
-                        <Typography variant="caption">{h.planName || h.planId || '-'}</Typography>
-                        <Typography variant="caption">{h.amount ? `${Math.round(h.amount)} ${h.currency || 'NOK'}` : '-'}</Typography>
-                        <Typography variant="caption">{h.status}</Typography>
-                        <Box>
-                          {h.isInFiken ? (
-                            <Chip label="Registrert" size="small" color="success" />
-                          ) : (
-                            <Button
+
+                    {latestPayment && (
+                      <Box
+                        sx={{
+                          p: 2.5,
+                          border: '1px solid #e8edf3',
+                          borderRadius: 2,
+                          bgcolor: alpha(customBranding.color, 0.04),
+                        }}
+                      >
+                        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+                          Siste registrerte betaling
+                        </Typography>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap', mt: 1 }}>
+                          <Box>
+                            <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                              {latestPayment.planName || latestPayment.planId || 'Betaling'}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              {formatPaymentDate(latestPayment.createdAt || latestPayment.currentPeriodStart)}
+                            </Typography>
+                          </Box>
+                          <Box sx={{ textAlign: { xs: 'left', sm: 'right' } }}>
+                            <Typography variant="h6" sx={{ fontWeight: 700, color: theming.colors.primary }}>
+                              {formatPaymentAmount(latestPayment.amount, latestPayment.currency)}
+                            </Typography>
+                            <Chip
                               size="small"
-                              variant="outlined"
-                              onClick={async () => {
-                                try {
-                                  await apiRequest('/api/payments/fiken-register', {
-                                    method: 'POST',
-                                    body: JSON.stringify({
-                                      referenceId: h.id,
-                                      referenceType: h.type === 'subscription' ? 'subscription' : 'event',
-                                      planId: h.planId,
-                                      amount: h.amount,
-                                      currency: h.currency,
-                                    }),
-                                  });
-                                  await queryClient.invalidateQueries({ queryKey: ['/api/payments/history'] });
-                                } catch (e) {
-                                  // noop
-                                }
-                              }}
-                            >
-                              Send til Fiken
-                            </Button>
-                          )}
+                              color={getPaymentStatusPresentation(latestPayment).color}
+                              label={getPaymentStatusPresentation(latestPayment).label}
+                              sx={{ mt: 0.5 }}
+                            />
+                          </Box>
                         </Box>
                       </Box>
-                    ))}
+                    )}
+
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                      {paymentHistoryItems.slice(0, 10).map((payment, idx) => {
+                        const statusPresentation = getPaymentStatusPresentation(payment);
+
+                        return (
+                          <Box
+                            key={payment.id || `${payment.transactionId || 'payment'}-${idx}`}
+                            sx={{
+                              p: 2,
+                              border: '1px solid #e8edf3',
+                              borderRadius: 2,
+                              bgcolor: '#fff',
+                            }}
+                          >
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}>
+                              <Box sx={{ minWidth: 0 }}>
+                                <Typography variant="body1" sx={{ fontWeight: 700 }}>
+                                  {payment.planName || payment.planId || 'Betaling'}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  Registrert {formatPaymentDate(payment.createdAt || payment.currentPeriodStart)}
+                                </Typography>
+                              </Box>
+                              <Box sx={{ textAlign: { xs: 'left', sm: 'right' } }}>
+                                <Typography variant="body1" sx={{ fontWeight: 700 }}>
+                                  {formatPaymentAmount(payment.amount, payment.currency)}
+                                </Typography>
+                                <Chip
+                                  size="small"
+                                  color={statusPresentation.color}
+                                  label={statusPresentation.label}
+                                  sx={{ mt: 0.5 }}
+                                />
+                              </Box>
+                            </Box>
+
+                            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 1.5 }}>
+                              {payment.isInFiken ? (
+                                <Chip size="small" color="success" variant="outlined" label="Registrert i Fiken" />
+                              ) : (
+                                <Chip size="small" variant="outlined" label="Ikke sendt til Fiken" />
+                              )}
+                              {payment.refundRequestStatus === 'rejected' && (
+                                <Chip size="small" color="error" variant="outlined" label="Refundering avslått" />
+                              )}
+                              {payment.currentPeriodEnd && (
+                                <Chip
+                                  size="small"
+                                  variant="outlined"
+                                  label={`Tilgang til ${formatPaymentDate(payment.currentPeriodEnd)}`}
+                                />
+                              )}
+                            </Box>
+
+                            <Box
+                              sx={{
+                                mt: 1.5,
+                                display: 'grid',
+                                gridTemplateColumns: { xs: '1fr', md: '1.2fr 1fr auto' },
+                                gap: 1.5,
+                                alignItems: 'start',
+                              }}
+                            >
+                              <Box>
+                                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, display: 'block' }}>
+                                  Transaksjons-ID
+                                </Typography>
+                                <Typography
+                                  variant="body2"
+                                  sx={{
+                                    fontFamily: 'monospace',
+                                    wordBreak: 'break-all',
+                                    color: 'text.secondary',
+                                  }}
+                                >
+                                  {payment.transactionId || payment.id}
+                                </Typography>
+                              </Box>
+
+                              <Box>
+                                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, display: 'block' }}>
+                                  Refundering
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                  {payment.refundedAt
+                                    ? `Behandlet ${formatPaymentDate(payment.refundedAt)}`
+                                    : payment.refundRequestedAt
+                                      ? `Forespurt ${formatPaymentDate(payment.refundRequestedAt)}`
+                                      : 'Ingen refundering registrert'}
+                                </Typography>
+                                {payment.refundReason && (
+                                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                                    Årsak: {payment.refundReason}
+                                  </Typography>
+                                )}
+                              </Box>
+
+                              <Box sx={{ display: 'flex', justifyContent: { xs: 'flex-start', md: 'flex-end' } }}>
+                                {payment.isInFiken ? (
+                                  <Chip label="Registrert" size="small" color="success" />
+                                ) : (
+                                  <Button
+                                    size="small"
+                                    variant="outlined"
+                                    onClick={async () => {
+                                      try {
+                                        await apiRequest('/api/payments/fiken-register', {
+                                          method: 'POST',
+                                          body: JSON.stringify({
+                                            referenceId: payment.id,
+                                            referenceType: payment.type === 'subscription' ? 'subscription' : 'event',
+                                            planId: payment.planId,
+                                            amount: payment.amount,
+                                            currency: payment.currency,
+                                          }),
+                                        });
+                                        await queryClient.invalidateQueries({ queryKey: ['/api/payments/history'] });
+                                      } catch (e) {
+                                        // noop
+                                      }
+                                    }}
+                                  >
+                                    Send til Fiken
+                                  </Button>
+                                )}
+                              </Box>
+                            </Box>
+                          </Box>
+                        );
+                      })}
+                    </Box>
+
+                    {paymentHistoryItems.length > 10 && (
+                      <Typography variant="caption" color="text.secondary">
+                        Viser de 10 siste betalingene av totalt {paymentHistoryItems.length}.
+                      </Typography>
+                    )}
                   </Box>
                 )}
                 {lastFikenSyncDays !== null && lastFikenSyncDays > 28 && (
@@ -1217,7 +1501,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                       </Box>
                     ) : (
                       <Alert severity="info" sx={{ mb: 2 }}>
-                        Ingen betalingsmetoder lagret ennå. Legg til en betalingsmetode for raskere checkout.
+                        Ingen betalingsmetoder lagret ennå. Legg til en betalingsmetode for raskere betaling.
                       </Alert>
                     )}
 
@@ -2447,7 +2731,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
         </DialogTitle>
         <DialogContent>
           <Alert severity="info" sx={{ mb: 3 }}>
-            Legg til en betalingsmetode for raskere checkout ved fremtidige kjøp.
+            Legg til en betalingsmetode for raskere betaling ved fremtidige kjøp.
           </Alert>
 
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>

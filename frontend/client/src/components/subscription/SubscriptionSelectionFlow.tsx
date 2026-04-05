@@ -80,7 +80,7 @@ interface PaymentMethod {
 const PAYMENT_METHODS: PaymentMethod[] = [
   {
     id: 'stripe',
-    name: 'Stripe Checkout',
+    name: 'Stripe',
     icon: <CreditCardIcon />,
     color: '#635BF0',
     available: true,
@@ -188,7 +188,7 @@ const subscriptionFlowCopy: Record<
     paymentCompletedDescription:
       'Abonnementet ditt er aktivert. Du får e-post med bekreftelse og videre tilgang.',
     redirectingTitle: 'Sender deg til Stripe',
-    redirectingDescription: 'Du blir sendt til sikker betaling i Stripe Checkout.',
+    redirectingDescription: 'Du blir sendt til sikker betaling i Stripe.',
     enterpriseTitle: 'Enterprise settes opp med CreatorHub',
     enterpriseDescription: 'Kontakt hello@creatorhubn.com for demo, onboarding og tilbud.',
     enterpriseEmailSubject: 'CreatorHub Enterprise – forespørsel om demo og tilbud',
@@ -197,7 +197,7 @@ const subscriptionFlowCopy: Record<
       'Abonnementsplanene er tilgjengelige, men betalingsgatewayene er ikke aktivert på serveren ennå.',
     loadingTitle: 'Laster abonnementssiden',
     loadingDescription:
-      'Vi henter planer, priser og faktureringsvalg fra CreatorHub slik at landingssiden og checkout-flyten viser samme informasjon.',
+      'Vi henter planer, priser og faktureringsvalg fra CreatorHub slik at landingssiden og betalingsflyten viser samme informasjon.',
     errorTitle: 'Kunne ikke laste abonnementsplaner',
     unknownError: 'En ukjent feil oppstod',
     professionLabel: 'Profesjon',
@@ -207,9 +207,9 @@ const subscriptionFlowCopy: Record<
     back: 'Tilbake',
     heroTitle: 'Velg nivået som matcher arbeidsflyten din, og fullfør betalingen i Stripe.',
     heroDescription:
-      'Du velger plan her, går til sikker betaling i Stripe Checkout, og returnerer deretter til CreatorHub med bekreftet abonnement.',
+      'Du velger plan her, går til sikker betaling i Stripe, og returnerer deretter til CreatorHub med bekreftet abonnement.',
     checklist: [
-      'Sikker betaling via Stripe Checkout',
+      'Sikker betaling via Stripe',
       'Bytt mellom månedlig og årlig fakturering uten å skifte flyt',
       'Enterprise settes opp separat med demo og onboarding',
       'Returnerer automatisk til CreatorHub etter betaling',
@@ -222,26 +222,26 @@ const subscriptionFlowCopy: Record<
     choosePlanButton: 'Velg plan',
     contactSales: 'Kontakt salg',
     stripeCheckoutHint:
-      'Stripe viser full betalingsdetalj og eventuell avgiftsberegning i checkout før du bekrefter.',
-    continueToPayment: 'Fortsett til betaling',
+      'Stripe viser full betalingsdetalj og eventuell avgiftsberegning før du bekrefter.',
+    continueToPayment: 'Fortsett til sikker betaling',
     paymentComingSoon: 'Betaling kommer snart',
     paymentComingSoonInline:
-      'Online betaling er midlertidig utilgjengelig. Planene kan fortsatt vises, men checkout aktiveres først når betalingsrutene er koblet til backenden.',
-    dialogTitle: 'Bekreft planen før du går til Stripe',
-    dialogReady: 'Klar til sikker betaling i Stripe Checkout.',
+      'Online betaling er midlertidig utilgjengelig. Planene kan fortsatt vises, men betaling aktiveres først når betalingsrutene er koblet til backenden.',
+    dialogTitle: 'Bekreft planen før du går til betaling',
+    dialogReady: 'Klar til sikker betaling i Stripe.',
     dialogDescription:
-      'Her ser du akkurat hva som aktiveres. Når du fortsetter, åpnes Stripe Checkout i samme flyt og du returnerer til CreatorHub med oppdatert abonnementsstatus.',
+      'Her ser du akkurat hva som aktiveres. Når du fortsetter, åpnes Stripe i samme flyt og du returnerer til CreatorHub med oppdatert abonnementsstatus.',
     stripeCardBody:
       'Kortdetaljer, kvittering og eventuell avgiftsberegning håndteres på Stripes sikre betalingsside.',
     summaryTitle: 'Oppsummering',
     redirectNotice:
-      'Du blir sendt til Stripe Checkout for å fullføre abonnementet på en sikker side før du returnerer til CreatorHub.',
+      'Du blir sendt til Stripe for å fullføre abonnementet på en sikker side før du returnerer til CreatorHub.',
     afterPaymentTitle: 'Hva skjer etter betaling',
     afterPaymentCreated: (planName) => `Abonnementet på ${planName} opprettes i Stripe.`,
     afterPaymentReturn: 'Du sendes tilbake til CreatorHub med oppdatert status.',
     afterPaymentManage: 'Du kan administrere abonnementet videre fra CreatorHub.',
     cancel: 'Avbryt',
-    goToStripe: 'Gå til Stripe Checkout',
+    goToStripe: 'Gå til Stripe',
     sendingToStripe: 'Sender til Stripe...',
   },
   en: {
@@ -336,7 +336,11 @@ export default function SubscriptionSelectionFlow({
 
   const activeProfession =
     propProfession || adapterProfession || (user as any)?.profession || 'creatorhub';
-  const locale = language === 'en' ? 'en' : 'no';
+  const locale: AppLanguage = activeProfession === 'creatorhub'
+    ? 'no'
+    : language === 'en'
+      ? 'en'
+      : 'no';
   const copy = subscriptionFlowCopy[locale];
 
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
@@ -1410,7 +1414,7 @@ export default function SubscriptionSelectionFlow({
                     mb: 0.4,
                   }}
                 >
-                  CreatorHub Checkout
+                  CreatorHub betaling
                 </Typography>
                 <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700 }}>
                   {copy.dialogTitle}
@@ -1488,7 +1492,7 @@ export default function SubscriptionSelectionFlow({
                     <CreditCardIcon />
                   </Box>
                   <Stack spacing={0.75}>
-                    <Typography sx={{ color: '#fff', fontWeight: 700 }}>Stripe Checkout</Typography>
+                    <Typography sx={{ color: '#fff', fontWeight: 700 }}>Stripe</Typography>
                     <Typography sx={{ color: 'rgba(255,255,255,0.68)', lineHeight: 1.65 }}>
                       {copy.stripeCardBody}
                     </Typography>
