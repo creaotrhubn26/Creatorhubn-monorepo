@@ -4,7 +4,9 @@ import {
   ArrowForward,
   AutoAwesome,
   Close,
+  FacebookRounded,
   Groups,
+  Instagram,
   Insights,
   Menu,
   NorthEast,
@@ -54,6 +56,8 @@ const ROLE_ROOM_LOGO_URL = '/role-room-assets/TheRoleRoom_Logo_Tagline.webp';
 const ACADEMY_LOGO_URL = '/creatorhub-academy-logo.svg';
 const COMMUNITY_ICON_URL = '/creatorhub-community-icon.svg';
 const ROLE_ROOM_EXTERNAL_URL = 'https://theroleroom.com';
+const CREATORHUB_FACEBOOK_URL = 'https://www.facebook.com/creatorhubn/';
+const CREATORHUB_INSTAGRAM_URL = 'https://www.instagram.com/creatorhubn/';
 
 const localeOptions: Array<{ value: Locale; flag: string; no: string; en: string }> = [
   { value: 'no', flag: '🇳🇴', no: 'Norsk', en: 'Norwegian' },
@@ -233,6 +237,12 @@ const landingCopy = {
       primary: 'Velg abonnement',
       secondary: 'Åpne Community',
     },
+    social: {
+      label: 'Sosiale medier',
+      body: 'Følg CreatorHub for lanseringer, community og produktoppdateringer.',
+      instagram: 'Instagram',
+      facebook: 'Facebook',
+    },
     footer: 'Creatorhub AS - laget av kreative, for kreative.',
   },
   en: {
@@ -406,6 +416,12 @@ const landingCopy = {
         'Creatorhub is built for creative professionals who need structure, products and a connected ecosystem around their work.',
       primary: 'Choose a plan',
       secondary: 'Open Community',
+    },
+    social: {
+      label: 'Social media',
+      body: 'Follow CreatorHub for launches, community updates and product releases.',
+      instagram: 'Instagram',
+      facebook: 'Facebook',
     },
     footer: 'Creatorhub AS - built by creatives, for creatives.',
   },
@@ -1995,17 +2011,98 @@ export default function CreatorHubInvestorLanding({
 
         <Container maxWidth="xl" sx={{ pb: 5 }}>
           <Stack
-            direction={{ xs: 'column', md: 'row' }}
+            direction={{ xs: 'column', xl: 'row' }}
             justifyContent="space-between"
-            spacing={1.5}
+            spacing={2.5}
             sx={{
               pt: 2,
               borderTop: '1px solid rgba(255,255,255,0.08)',
               color: 'rgba(246,242,234,0.52)',
             }}
           >
-            <Typography sx={{ fontSize: '0.88rem' }}>{copy.footer}</Typography>
-            <Typography sx={{ fontSize: '0.88rem' }}>
+            <Stack spacing={0.6}>
+              <Typography sx={{ fontSize: '0.88rem' }}>{copy.footer}</Typography>
+              <Typography sx={{ fontSize: '0.78rem', color: 'rgba(246,242,234,0.38)' }}>
+                hello@creatorhubn.com
+              </Typography>
+            </Stack>
+
+            <Stack spacing={1.1} sx={{ maxWidth: 380 }}>
+              <Typography
+                sx={{
+                  fontFamily: '"Space Grotesk", "Manrope", sans-serif',
+                  fontSize: '0.74rem',
+                  letterSpacing: '0.18em',
+                  textTransform: 'uppercase',
+                  color: 'rgba(255,186,108,0.74)',
+                }}
+              >
+                {copy.social.label}
+              </Typography>
+              <Typography sx={{ fontSize: '0.82rem', lineHeight: 1.7, color: 'rgba(246,242,234,0.48)' }}>
+                {copy.social.body}
+              </Typography>
+              <Stack direction="row" spacing={1.1} sx={{ flexWrap: 'wrap' }}>
+                <Button
+                  component="a"
+                  href={CREATORHUB_INSTAGRAM_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  startIcon={<Instagram sx={{ fontSize: 18 }} />}
+                  endIcon={<NorthEast sx={{ fontSize: 18 }} />}
+                  sx={{
+                    alignSelf: 'flex-start',
+                    borderRadius: '999px',
+                    px: 2.1,
+                    py: 0.95,
+                    textTransform: 'none',
+                    fontWeight: 700,
+                    color: '#fff5e8',
+                    border: '1px solid rgba(255,186,108,0.24)',
+                    bgcolor: 'rgba(255,186,108,0.08)',
+                    '&:hover': {
+                      bgcolor: 'rgba(255,186,108,0.14)',
+                      borderColor: 'rgba(255,186,108,0.42)',
+                    },
+                  }}
+                >
+                  {copy.social.instagram}
+                </Button>
+                <Button
+                  component="a"
+                  href={CREATORHUB_FACEBOOK_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  startIcon={<FacebookRounded sx={{ fontSize: 18 }} />}
+                  endIcon={<NorthEast sx={{ fontSize: 18 }} />}
+                  sx={{
+                    alignSelf: 'flex-start',
+                    borderRadius: '999px',
+                    px: 2.1,
+                    py: 0.95,
+                    textTransform: 'none',
+                    fontWeight: 700,
+                    color: '#fff5e8',
+                    border: '1px solid rgba(255,186,108,0.24)',
+                    bgcolor: 'rgba(255,186,108,0.08)',
+                    '&:hover': {
+                      bgcolor: 'rgba(255,186,108,0.14)',
+                      borderColor: 'rgba(255,186,108,0.42)',
+                    },
+                  }}
+                >
+                  {copy.social.facebook}
+                </Button>
+              </Stack>
+            </Stack>
+
+            <Typography
+              sx={{
+                fontSize: '0.88rem',
+                textAlign: { xs: 'left', xl: 'right' },
+                maxWidth: { xl: 360 },
+              }}
+            >
               {sectionOrder.map((item) => navigationItems.find((nav) => nav.id === item)?.label).join('  /  ')}
             </Typography>
           </Stack>

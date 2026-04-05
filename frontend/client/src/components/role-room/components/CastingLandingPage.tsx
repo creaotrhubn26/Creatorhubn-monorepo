@@ -7,6 +7,8 @@ import {
 } from '@mui/material';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
+  FacebookRounded as FacebookRoundedIcon,
+  Instagram,
   PlayArrow as PlayArrowIcon,
   PersonSearch as PersonSearchIcon,
   Event as EventIcon,
@@ -21,6 +23,9 @@ import {
 import LoginDialog from './LoginDialog';
 import { ROLE_ROOM_LANDING_CONFIG } from '../config/landing';
 import { getRoleRoomVideoPosterUrl, getRoleRoomVideoStillUrl } from '../utils/roleRoomMedia';
+
+const ROLE_ROOM_FACEBOOK_URL = 'https://www.facebook.com/profile.php?id=61573320716662';
+const ROLE_ROOM_INSTAGRAM_URL = 'https://www.instagram.com/theroleroom/';
 
 interface CastingLandingPageProps {
   onEnter: () => void;
@@ -565,6 +570,75 @@ export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPage
               color: 'rgba(255,255,255,0.35)', fontSize: '0.85rem',
               display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
             }}>
+              <Typography
+                sx={{
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  letterSpacing: '0.2em',
+                  textTransform: 'uppercase',
+                  color: 'rgba(200,185,255,0.62)',
+                }}
+              >
+                Sosiale medier
+              </Typography>
+              <Typography sx={{ maxWidth: 420, color: 'rgba(255,255,255,0.5)', lineHeight: 1.75 }}>
+                Følg The Role Room for nye verktøy, case og produktoppdateringer fra produksjonsmiljøet.
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 1 }}>
+                <Button
+                  component="a"
+                  href={ROLE_ROOM_INSTAGRAM_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  startIcon={<Instagram sx={{ fontSize: 18 }} />}
+                  sx={{
+                    borderRadius: '999px',
+                    px: 2.2,
+                    py: 0.9,
+                    textTransform: 'none',
+                    fontWeight: 700,
+                    color: '#f7f4ff',
+                    bgcolor: 'rgba(139,92,246,0.12)',
+                    border: '1px solid rgba(139,92,246,0.3)',
+                    '&:hover': {
+                      bgcolor: 'rgba(139,92,246,0.18)',
+                      borderColor: 'rgba(139,92,246,0.44)',
+                    },
+                  }}
+                >
+                  Instagram
+                </Button>
+                <Button
+                  component="a"
+                  href={ROLE_ROOM_FACEBOOK_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  startIcon={<FacebookRoundedIcon sx={{ fontSize: 18 }} />}
+                  sx={{
+                    borderRadius: '999px',
+                    px: 2.2,
+                    py: 0.9,
+                    textTransform: 'none',
+                    fontWeight: 700,
+                    color: '#f7f4ff',
+                    bgcolor: 'rgba(139,92,246,0.12)',
+                    border: '1px solid rgba(139,92,246,0.3)',
+                    '&:hover': {
+                      bgcolor: 'rgba(139,92,246,0.18)',
+                      borderColor: 'rgba(139,92,246,0.44)',
+                    },
+                  }}
+                >
+                  Facebook
+                </Button>
+              </Box>
+              <Box
+                sx={{
+                  width: 72,
+                  height: 1,
+                  bgcolor: 'rgba(255,255,255,0.12)',
+                }}
+              />
               <Typography>Et produkt av</Typography>
               <Box
                 component="img"

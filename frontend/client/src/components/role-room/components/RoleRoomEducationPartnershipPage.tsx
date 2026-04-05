@@ -5,7 +5,9 @@ import {
   AutoStoriesRounded,
   BusinessCenterRounded,
   ChecklistRounded,
+  FacebookRounded,
   Groups2Rounded,
+  Instagram,
   SchoolRounded,
   VideocamRounded,
 } from '@mui/icons-material';
@@ -19,6 +21,9 @@ import {
 import LoginDialog from './LoginDialog';
 import { ROLE_ROOM_BRAND_ASSETS } from '../config/branding';
 import { getRoleRoomVideoStillUrl } from '../utils/roleRoomMedia';
+
+const ROLE_ROOM_FACEBOOK_URL = 'https://www.facebook.com/profile.php?id=61573320716662';
+const ROLE_ROOM_INSTAGRAM_URL = 'https://www.instagram.com/theroleroom/';
 
 export default function RoleRoomEducationPartnershipPage() {
   const [loginDialogOpen, setLoginDialogOpen] = useState(false);
@@ -490,6 +495,85 @@ export default function RoleRoomEducationPartnershipPage() {
                 Se samarbeidsflyt
               </Button>
             </Stack>
+            <Box
+              sx={{
+                mt: 2.4,
+                pt: 2.2,
+                borderTop: '1px solid rgba(255,255,255,0.08)',
+              }}
+            >
+              <Stack
+                direction={{ xs: 'column', md: 'row' }}
+                spacing={1.6}
+                justifyContent="space-between"
+                alignItems={{ xs: 'flex-start', md: 'center' }}
+              >
+                <Stack spacing={0.6} sx={{ textAlign: { xs: 'left', md: 'left' }, maxWidth: 560 }}>
+                  <Typography
+                    sx={{
+                      fontSize: '0.72rem',
+                      letterSpacing: '0.18em',
+                      textTransform: 'uppercase',
+                      fontWeight: 700,
+                      color: 'rgba(246,195,88,0.88)',
+                    }}
+                  >
+                    Sosiale medier
+                  </Typography>
+                  <Typography sx={{ fontSize: '0.92rem', lineHeight: 1.7, color: 'rgba(244,240,232,0.62)' }}>
+                    Følg The Role Room for case, verktøydrops og oppdateringer fra produksjonsmiljøet.
+                  </Typography>
+                </Stack>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                  <Button
+                    component="a"
+                    href={ROLE_ROOM_INSTAGRAM_URL}
+                    target="_blank"
+                    rel="noreferrer"
+                    startIcon={<Instagram sx={{ fontSize: 18 }} />}
+                    sx={{
+                      minHeight: 46,
+                      textTransform: 'none',
+                      borderRadius: '999px',
+                      fontWeight: 700,
+                      px: 2.4,
+                      color: '#f8f5ef',
+                      bgcolor: 'rgba(246,195,88,0.08)',
+                      border: '1px solid rgba(246,195,88,0.26)',
+                      '&:hover': {
+                        bgcolor: 'rgba(246,195,88,0.14)',
+                        borderColor: 'rgba(246,195,88,0.42)',
+                      },
+                    }}
+                  >
+                    Instagram
+                  </Button>
+                  <Button
+                    component="a"
+                    href={ROLE_ROOM_FACEBOOK_URL}
+                    target="_blank"
+                    rel="noreferrer"
+                    startIcon={<FacebookRounded sx={{ fontSize: 18 }} />}
+                    sx={{
+                      minHeight: 46,
+                      textTransform: 'none',
+                      borderRadius: '999px',
+                      fontWeight: 700,
+                      px: 2.4,
+                      color: '#f8f5ef',
+                      bgcolor: 'rgba(246,195,88,0.08)',
+                      border: '1px solid rgba(246,195,88,0.26)',
+                      '&:hover': {
+                        bgcolor: 'rgba(246,195,88,0.14)',
+                        borderColor: 'rgba(246,195,88,0.42)',
+                      },
+                    }}
+                  >
+                    Facebook
+                  </Button>
+                </Box>
+              </Stack>
+            </Box>
           </Box>
         </Stack>
       </Container>
