@@ -56,6 +56,13 @@ JWT_SECRET=your-jwt-secret
 GOOGLE_CLIENT_ID=your-client-id
 GOOGLE_CLIENT_SECRET=your-client-secret
 GOOGLE_REDIRECT_URI=http://localhost:5050/auth/google/callback
+
+# Tripletex testmiljø (valgfritt, men nødvendig for regnskapsflyt)
+TRIPLETEX_TEST_BASE_URL=https://api-test.tripletex.tech/v2
+TRIPLETEX_TEST_CONSUMER_TOKEN=your-consumer-token
+TRIPLETEX_TEST_EMPLOYEE_TOKEN=your-employee-token
+# Optional expiration date in YYYY-MM-DD
+TRIPLETEX_TEST_SESSION_EXPIRATION_DATE=2030-01-01
 ```
 
 ## Deployment

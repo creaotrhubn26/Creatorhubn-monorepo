@@ -13,7 +13,6 @@ import QuoteReminderSettings from './QuoteReminderSettings';
 import type { QuoteSyncJob } from '@/services/quote-drive-sync';
 import { quoteDriveSync } from '@/services/quote-drive-sync';
 import { quoteArchiveConfig } from '@/services/document-archive-config';
-import { mapQuoteToFikenInvoice, ensureFikenCustomer } from '@/lib/fiken/invoice-mapper';
 import ContractAmendmentHistory from '../contracts/ContractAmendmentHistory';
 import {
   Alert,
@@ -114,12 +113,21 @@ interface Quote {
   isFinal?: boolean;
   quoteType?: string;
   contractAmendmentFor?: string;
+  accountingProvider?: string;
+  accountingStatus?: string;
   fikenInvoiceId?: string;
   fikenInvoiceNumber?: string;
   fikenCustomerId?: string;
   fikenInvoiceStatus?: string;
   fikenSyncStatus?: string;
   fikenInvoiceUrl?: string;
+  tripletexCustomerId?: string;
+  tripletexInvoiceId?: string;
+  tripletexInvoiceNumber?: string;
+  tripletexInvoiceStatus?: string;
+  tripletexInvoiceUrl?: string;
+  tripletexVoucherId?: string;
+  tripletexVoucherUrl?: string;
 }
 
 interface QuoteStats {
@@ -130,6 +138,12 @@ interface QuoteStats {
   totalValue: number;
   acceptedValue: number;
   conversionRate: number;
+}
+
+interface AccountingIntegrationStatus {
+  provider?: string | null;
+  status?: 'connected' | 'disconnected' | 'error' | null;
+  configured?: boolean;
 }
 
 interface QuoteManagementProps {
@@ -220,12 +234,21 @@ function normalizeQuote(value: unknown): Quote | null {
     isFinal: typeof value.isFinal === 'boolean' ? value.isFinal : undefined,
     quoteType: toStringValue(value.quoteType) || undefined,
     contractAmendmentFor: toStringValue(value.contractAmendmentFor) || undefined,
+    accountingProvider: toStringValue(value.accountingProvider) || undefined,
+    accountingStatus: toStringValue(value.accountingStatus) || undefined,
     fikenInvoiceId: toStringValue(value.fikenInvoiceId) || undefined,
     fikenInvoiceNumber: toStringValue(value.fikenInvoiceNumber) || undefined,
     fikenCustomerId: toStringValue(value.fikenCustomerId) || undefined,
     fikenInvoiceStatus: toStringValue(value.fikenInvoiceStatus) || undefined,
     fikenSyncStatus: toStringValue(value.fikenSyncStatus) || undefined,
     fikenInvoiceUrl: toStringValue(value.fikenInvoiceUrl) || undefined,
+    tripletexCustomerId: toStringValue(value.tripletexCustomerId) || undefined,
+    tripletexInvoiceId: toStringValue(value.tripletexInvoiceId) || undefined,
+    tripletexInvoiceNumber: toStringValue(value.tripletexInvoiceNumber) || undefined,
+    tripletexInvoiceStatus: toStringValue(value.tripletexInvoiceStatus) || undefined,
+    tripletexInvoiceUrl: toStringValue(value.tripletexInvoiceUrl) || undefined,
+    tripletexVoucherId: toStringValue(value.tripletexVoucherId) || undefined,
+    tripletexVoucherUrl: toStringValue(value.tripletexVoucherUrl) || undefined,
   };
 
   if (!quote.id || !quote.quoteNumber || !quote.title) {
@@ -420,7 +443,6 @@ export default function QuoteManagement({ onCreateProject }: QuoteManagementProp
   const [fikenInvoiceDialogOpen, setFikenInvoiceDialogOpen] = useState(false);
   const [fikenInvoiceCreating, setFikenInvoiceCreating] = useState(false);
   const [fikenError, setFikenError] = useState<string | null>(null);
-  const [selectedAccountCode, setSelectedAccountCode] = useState('3000');
 
   const [amendmentHistoryOpen, setAmendmentHistoryOpen] = useState(false);
   const [selectedProjectForHistory, setSelectedProjectForHistory] = useState<{
@@ -484,27 +506,21 @@ export default function QuoteManagement({ onCreateProject }: QuoteManagementProp
     enabled: Boolean(user?.id),
   });
 
-  const accountCodeQuery = useQuery({
-    queryKey: ['/api/fiken/invoices/account-code', user?.id],
-    queryFn: () => apiRequest('/api/fiken/invoices/account-code'),
-    enabled: Boolean(user?.id) && fikenInvoiceDialogOpen,
+  const accountingIntegrationQuery = useQuery({
+    queryKey: ['/api/accounting/integration/status', user?.id],
+    queryFn: () => apiRequest(`/api/accounting/integration/status?userId=${user?.id ?? ''}`),
+    enabled: Boolean(user?.id),
+    retry: false,
   });
-
-  useEffect(() => {
-    const payload = accountCodeQuery.data;
-    if (!isRecord(payload)) return;
-    const accountCode = toStringValue(payload.accountCode);
-    if (accountCode) {
-      setSelectedAccountCode(accountCode);
-    }
-  }, [accountCodeQuery.data]);
 
   const quotes = useMemo(() => extractQuotes(quotesQuery.data), [quotesQuery.data]);
   const stats = useMemo(() => extractStats(statsQuery.data, quotes), [quotes, statsQuery.data]);
+  const accountingIntegration = (accountingIntegrationQuery.data || null) as AccountingIntegrationStatus | null;
 
   const invalidateQuoteQueries = () => {
     queryClient.invalidateQueries({ queryKey: ['/api/quotes/all'] });
     queryClient.invalidateQueries({ queryKey: ['/api/quotes/stats/overview'] });
+    queryClient.invalidateQueries({ queryKey: ['/api/accounting/integration/status'] });
   };
 
   const updateStatusMutation = useMutation({
@@ -520,7 +536,12 @@ export default function QuoteManagement({ onCreateProject }: QuoteManagementProp
         const finalQuote = { ...selectedQuote, status: 'accepted' as const, isFinal: true };
         setSelectedQuote(finalQuote);
         syncQuoteToDrive(finalQuote);
-        setFikenInvoiceDialogOpen(true);
+        if (
+          accountingIntegration?.provider === 'tripletex' &&
+          accountingIntegration?.status === 'connected'
+        ) {
+          setFikenInvoiceDialogOpen(true);
+        }
       }
     },
   });
@@ -690,40 +711,41 @@ export default function QuoteManagement({ onCreateProject }: QuoteManagementProp
       setFikenInvoiceCreating(true);
       setFikenError(null);
 
-      const customerId = await ensureFikenCustomer(
-        selectedQuote.clientName,
-        selectedQuote.clientEmail,
-        selectedQuote.clientInfo.phoneNumber,
-      );
-
-      const invoiceData = mapQuoteToFikenInvoice(selectedQuote, customerId);
-
-      const response = await apiRequest('/api/fiken/invoices/create', {
+      const response = await apiRequest('/api/tripletex/invoices/create', {
         method: 'POST',
         body: {
           quoteId: selectedQuote.id,
-          invoiceData,
-          fikenCustomerId: customerId,
-          accountCode: selectedAccountCode,
         },
       });
 
-      const draftId =
-        isRecord(response) && (typeof response.draftId === 'number' || typeof response.draftId === 'string')
-          ? String(response.draftId)
-          : undefined;
+      const invoicePayload =
+        isRecord(response) && isRecord(response.invoice) ? response.invoice : null;
+      const syncedQuote =
+        isRecord(response) && isRecord(response.quote) ? response.quote : null;
+      const invoiceId = invoicePayload ? toStringValue(invoicePayload.invoiceId) : '';
+      const invoiceNumber = invoicePayload ? toStringValue(invoicePayload.invoiceNumber) : '';
+      const voucherId = invoicePayload ? toStringValue(invoicePayload.voucherId) : '';
+      const invoicePdfPath = invoicePayload ? toStringValue(invoicePayload.invoicePdfPath) : '';
+      const voucherPdfPath = invoicePayload ? toStringValue(invoicePayload.voucherPdfPath) : '';
 
       await updateQuoteMutation.mutateAsync({
         quoteId: selectedQuote.id,
         updateData: {
-          fikenInvoiceId: draftId,
-          fikenCustomerId: String(customerId),
-          fikenInvoiceStatus: 'draft',
-          fikenSyncStatus: 'synced',
-          fikenSyncedAt: new Date().toISOString(),
+          accountingProvider: 'tripletex',
+          accountingStatus: 'synced',
+          tripletexInvoiceId: invoiceId || undefined,
+          tripletexInvoiceNumber: invoiceNumber || undefined,
+          tripletexInvoiceStatus: 'draft',
+          tripletexInvoiceUrl: invoicePdfPath || undefined,
+          tripletexVoucherId: voucherId || undefined,
+          tripletexVoucherUrl: voucherPdfPath || undefined,
+          tripletexSyncedAt: new Date().toISOString(),
         },
       });
 
+      if (syncedQuote) {
+        setSelectedQuote(normalizeQuote(syncedQuote));
+      }
       setFikenInvoiceDialogOpen(false);
     } catch (error) {
       setFikenError(parseErrorMessage(error));
@@ -1125,19 +1147,19 @@ export default function QuoteManagement({ onCreateProject }: QuoteManagementProp
                       />
                     </Box>
 
-                    {quote.fikenInvoiceId ? (
+                    {quote.tripletexInvoiceId ? (
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <Typography variant="body2" color="text.secondary">
-                          Fiken:
+                          Tripletex:
                         </Typography>
                         <Chip
                           size="small"
                           color="success"
-                          label={quote.fikenInvoiceStatus || 'Synket'}
+                          label={quote.tripletexInvoiceStatus || 'Synket'}
                           onClick={
-                            quote.fikenInvoiceUrl
+                            quote.tripletexInvoiceUrl
                               ? () => {
-                                  openInNewTab(quote.fikenInvoiceUrl || '');
+                                  openInNewTab(quote.tripletexInvoiceUrl || '');
                                 }
                               : undefined
                           }
@@ -1259,6 +1281,25 @@ export default function QuoteManagement({ onCreateProject }: QuoteManagementProp
                   sx={{ bgcolor: getStatusColor(selectedQuote.status), color: 'white', fontWeight: 700 }}
                 />
               </Typography>
+              {selectedQuote.tripletexInvoiceId ? (
+                <Stack direction="row" spacing={1} flexWrap="wrap">
+                  <Chip
+                    size="small"
+                    color="success"
+                    label={`Tripletex ${selectedQuote.tripletexInvoiceNumber || selectedQuote.tripletexInvoiceId}`}
+                  />
+                  {selectedQuote.tripletexInvoiceUrl ? (
+                    <Button size="small" variant="outlined" onClick={() => openInNewTab(selectedQuote.tripletexInvoiceUrl || '')}>
+                      Faktura-PDF
+                    </Button>
+                  ) : null}
+                  {selectedQuote.tripletexVoucherUrl ? (
+                    <Button size="small" variant="outlined" onClick={() => openInNewTab(selectedQuote.tripletexVoucherUrl || '')}>
+                      Bilag
+                    </Button>
+                  ) : null}
+                </Stack>
+              ) : null}
 
               <Stack direction="row" spacing={1} flexWrap="wrap">
                 <Button
@@ -1413,20 +1454,17 @@ export default function QuoteManagement({ onCreateProject }: QuoteManagementProp
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>Opprett Fiken-faktura</DialogTitle>
+        <DialogTitle>Opprett Tripletex-faktura</DialogTitle>
         <DialogContent>
           {selectedQuote ? (
             <Stack spacing={2} sx={{ mt: 1 }}>
               <Typography variant="body2">
-                Opprett fakturautkast i Fiken for tilbud <strong>{selectedQuote.quoteNumber}</strong>.
+                Opprett fakturautkast i Tripletex testmiljø for tilbud <strong>{selectedQuote.quoteNumber}</strong>.
               </Typography>
-              <TextField
-                label="Inntektskonto"
-                value={selectedAccountCode}
-                onChange={(event) => setSelectedAccountCode(event.target.value)}
-                fullWidth
-              />
-              {accountCodeQuery.isFetching ? <LinearProgress /> : null}
+              <Alert severity="info">
+                Fakturaen opprettes som utkast og sendes ikke automatisk til kunden. Når den er opprettet, får du
+                tilgang til faktura-PDF og bilag direkte fra tilbudet.
+              </Alert>
               {fikenError ? <Alert severity="error">{fikenError}</Alert> : null}
             </Stack>
           ) : null}

@@ -66,6 +66,11 @@ import {
   syncAcademyNotebookLmWorkspace,
 } from "./academy-notebooklm-workspace.js";
 import {
+  TripletexApiClient,
+  TripletexApiError,
+  isTripletexConfigured,
+} from "./tripletex.js";
+import {
   getNotebookLmWorkspaceStatus,
   syncNotebookLmWorkspaceForMeetingNote,
   syncNotebookLmWorkspaceForScope,
@@ -19073,6 +19078,9 @@ type CompatPaymentHistoryItem = {
   refundRequestId?: number | null;
   refundRequestStatus?: "pending" | "approved" | "rejected" | null;
   refundRequestedAt?: string | null;
+  receiptSentAt?: string | null;
+  receiptUrl?: string | null;
+  invoiceUrl?: string | null;
 };
 
 type CompatPaymentStatusCardSummary = {
@@ -19172,6 +19180,36 @@ type CompatFikenMvaStatus = {
   registered: boolean | null;
   lastCheckedAt: string | null;
   lastRegisteredPaymentId: string | null;
+};
+
+type CompatAccountingProvider = "fiken" | "tripletex";
+
+type CompatAccountingIntegrationStatus = {
+  configured: boolean;
+  provider: CompatAccountingProvider;
+  environment: "test" | "production";
+  status: "connected" | "disconnected" | "error";
+  connectedAt: string | null;
+  lastVerifiedAt: string | null;
+  lastError: string | null;
+  organizationNumber: string | null;
+  businessName: string | null;
+  contactName: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  addressLine1: string | null;
+  postalCode: string | null;
+  city: string | null;
+  customerId: string | null;
+  companyId: string | null;
+  companyName: string | null;
+  employeeId: string | null;
+  employeeName: string | null;
+  employeeEmail: string | null;
+  invoiceCount: number;
+  lastInvoiceId: string | null;
+  lastInvoiceNumber: string | null;
+  lastInvoiceAt: string | null;
 };
 
 type CompatSkattemeldingStatus = {
@@ -19641,6 +19679,10 @@ function dbCompatFikenMvaStatusKey(userId: string): string {
   return `compat:payments:fiken-mva:${userId}`;
 }
 
+function dbCompatAccountingIntegrationKey(userId: string): string {
+  return `compat:accounting:integration:${userId}`;
+}
+
 function dbCompatSkattemeldingStatusKey(userId: string): string {
   return `compat:accounting:skattemelding:${userId}`;
 }
@@ -19714,6 +19756,92 @@ async function writeCompatFikenMvaStatus(
   status: CompatFikenMvaStatus,
 ): Promise<void> {
   await compatStoreSet(dbCompatFikenMvaStatusKey(userId), status);
+}
+
+async function readCompatAccountingIntegrationStatus(
+  userId: string,
+): Promise<CompatAccountingIntegrationStatus | null> {
+  return (
+    (await compatStoreGet<CompatAccountingIntegrationStatus>(
+      dbCompatAccountingIntegrationKey(userId),
+    )) ?? null
+  );
+}
+
+async function writeCompatAccountingIntegrationStatus(
+  userId: string,
+  status: CompatAccountingIntegrationStatus,
+): Promise<void> {
+  await compatStoreSet(dbCompatAccountingIntegrationKey(userId), status);
+}
+
+function buildDefaultCompatAccountingIntegrationStatus(): CompatAccountingIntegrationStatus {
+  return {
+    configured: isTripletexConfigured(),
+    provider: "tripletex",
+    environment: "test",
+    status: "disconnected",
+    connectedAt: null,
+    lastVerifiedAt: null,
+    lastError: null,
+    organizationNumber: null,
+    businessName: null,
+    contactName: null,
+    contactEmail: null,
+    contactPhone: null,
+    addressLine1: null,
+    postalCode: null,
+    city: null,
+    customerId: null,
+    companyId: null,
+    companyName: null,
+    employeeId: null,
+    employeeName: null,
+    employeeEmail: null,
+    invoiceCount: 0,
+    lastInvoiceId: null,
+    lastInvoiceNumber: null,
+    lastInvoiceAt: null,
+  };
+}
+
+async function buildCompatAccountingIntegrationStatusResponse(userId: string) {
+  await ensureQuotesCompatibilitySchema();
+
+  const stored =
+    (await readCompatAccountingIntegrationStatus(userId)) ||
+    buildDefaultCompatAccountingIntegrationStatus();
+
+  const invoiceSummary = await pool.query(
+    `SELECT COUNT(*)::int AS invoice_count,
+            MAX(COALESCE(tripletex_synced_at, updated_at, created_at)) AS last_invoice_at,
+            (
+              ARRAY_AGG(tripletex_invoice_id ORDER BY COALESCE(tripletex_synced_at, updated_at, created_at) DESC)
+              FILTER (WHERE tripletex_invoice_id IS NOT NULL)
+            )[1] AS last_invoice_id,
+            (
+              ARRAY_AGG(tripletex_invoice_number ORDER BY COALESCE(tripletex_synced_at, updated_at, created_at) DESC)
+              FILTER (WHERE tripletex_invoice_number IS NOT NULL)
+            )[1] AS last_invoice_number
+       FROM quotes
+       WHERE created_by = $1
+         AND accounting_provider = 'tripletex'
+         AND tripletex_invoice_id IS NOT NULL`,
+    [userId],
+  );
+
+  const row = invoiceSummary.rows[0] || {};
+
+  return {
+    ...stored,
+    configured: isTripletexConfigured(),
+    invoiceCount: Number(row.invoice_count || 0),
+    lastInvoiceId: readString(row.last_invoice_id),
+    lastInvoiceNumber: readString(row.last_invoice_number),
+    lastInvoiceAt: row.last_invoice_at
+      ? new Date(row.last_invoice_at).toISOString()
+      : null,
+  };
 }
 
 async function readCompatSkattemeldingStatus(
@@ -19916,6 +20044,9 @@ async function buildCompatPaymentHistory(
         refundRequestId: null,
         refundRequestStatus: null,
         refundRequestedAt: null,
+        receiptSentAt: null,
+        receiptUrl: null,
+        invoiceUrl: null,
       });
     }
   }
@@ -20210,10 +20341,29 @@ async function decorateCompatPaymentHistoryWithRefundRequests(
 
     const isApprovedRefund =
       paymentRecord?.status === "refunded" || latestRequest?.status === "approved";
+    const documentIdentifier =
+      readString(paymentRecord?.id) ||
+      readString(entry.id) ||
+      readString(entry.transactionId) ||
+      null;
+    const receiptSentAt =
+      paymentRecord?.receiptSentAt || entry.receiptSentAt || null;
+    const receiptUrl = documentIdentifier
+      ? `/api/payments/receipt/${encodeURIComponent(documentIdentifier)}`
+      : null;
+    const invoiceUrl =
+      documentIdentifier && entry.isInFiken
+        ? `/api/payments/invoice/${encodeURIComponent(documentIdentifier)}`
+        : null;
 
     if (!latestRequest) {
       if (!paymentRecord || paymentRecord.status !== "refunded") {
-        return entry;
+        return {
+          ...entry,
+          receiptSentAt,
+          receiptUrl,
+          invoiceUrl,
+        };
       }
 
       return {
@@ -20225,6 +20375,9 @@ async function decorateCompatPaymentHistoryWithRefundRequests(
           entry.refundRequestStatus ||
           (paymentRecord.status === "refunded" ? "approved" : null),
         status: "refunded",
+        receiptSentAt,
+        receiptUrl,
+        invoiceUrl,
       };
     }
 
@@ -20242,6 +20395,9 @@ async function decorateCompatPaymentHistoryWithRefundRequests(
         paymentRecord?.status === "refunded" ? "approved" : latestRequest.status,
       refundRequestedAt: latestRequest.requestedAt,
       status: isApprovedRefund ? "refunded" : entry.status,
+      receiptSentAt,
+      receiptUrl,
+      invoiceUrl,
     };
   }));
 }
@@ -20558,6 +20714,9 @@ async function recordCompatPaymentCompletion(
       refundRequestId: null,
       refundRequestStatus: null,
       refundRequestedAt: null,
+      receiptSentAt: record.receiptSentAt || null,
+      receiptUrl: null,
+      invoiceUrl: null,
     },
     ...history.filter(
       (entry) =>
@@ -25640,6 +25799,145 @@ app.delete("/api/user/payment-methods/:id", async (req, res) => {
   }
 });
 
+function canAccessCompatPaymentDocument(
+  req: express.Request,
+  record: CompatPaymentStatusRecord,
+) {
+  const session = getActiveSessionFromRequest(req);
+  if (session) {
+    const normalizedRole = String(session.role || "").trim().toLowerCase();
+    if (ADMIN_SESSION_ROLES.has(normalizedRole)) {
+      return true;
+    }
+  }
+
+  const requestUserId = compatResolveUserId(req);
+  const requestEmail =
+    normalizeMailConfigValue(compatResolveUserEmail(req)).toLowerCase() || null;
+  const recordEmail =
+    normalizeMailConfigValue(record.email).toLowerCase() || null;
+
+  return Boolean(
+    (requestUserId && record.userId && requestUserId === record.userId) ||
+      (requestEmail && recordEmail && requestEmail === recordEmail),
+  );
+}
+
+function formatCompatPaymentDocumentAmount(amountMajor: number, currency: string) {
+  try {
+    return new Intl.NumberFormat("nb-NO", {
+      style: "currency",
+      currency: currency || "NOK",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amountMajor);
+  } catch {
+    return `${amountMajor.toFixed(2)} ${currency || "NOK"}`;
+  }
+}
+
+function formatCompatPaymentDocumentDate(value: string | null | undefined) {
+  if (!value) {
+    return "Ikke tilgjengelig";
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "Ikke tilgjengelig";
+  }
+  return parsed.toLocaleString("nb-NO");
+}
+
+function buildCompatPaymentDocumentHtml(input: {
+  title: string;
+  subtitle: string;
+  record: CompatPaymentStatusRecord;
+  historyEntry: CompatPaymentHistoryItem | null;
+  accountingReady?: boolean;
+}) {
+  const { title, subtitle, record, historyEntry, accountingReady = false } = input;
+  const amountLabel = formatCompatPaymentDocumentAmount(
+    record.amountMajor,
+    record.currency,
+  );
+  const statusLabel =
+    record.status === "completed"
+      ? "Betalt"
+      : record.status === "refunded"
+        ? "Refundert"
+        : record.status === "failed"
+          ? "Betaling feilet"
+          : "Venter betaling";
+
+  return `<!doctype html>
+<html lang="nb">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${escapeHtml(title)}</title>
+    <style>
+      body{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f6f2ea;color:#111827;margin:0;padding:32px}
+      .sheet{max-width:820px;margin:0 auto;background:#fff;border:1px solid #e5e7eb;border-radius:24px;overflow:hidden;box-shadow:0 24px 60px rgba(15,23,42,.08)}
+      .hero{padding:32px;background:linear-gradient(135deg,#18130f 0%,#2b1d16 55%,#1f1722 100%);color:#fff}
+      .label{font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:#ffba6c;font-weight:700;margin:0 0 10px}
+      h1{margin:0;font-size:32px;line-height:1.1}
+      .sub{margin:12px 0 0;color:rgba(255,255,255,.76);font-size:16px;line-height:1.6}
+      .body{padding:28px}
+      .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}
+      .card{border:1px solid #e5e7eb;border-radius:18px;padding:18px;background:#fff}
+      .k{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#64748b;font-weight:700;margin:0 0 8px}
+      .v{font-size:18px;font-weight:700;color:#0f172a;margin:0}
+      .muted{margin:8px 0 0;color:#475569;font-size:14px;line-height:1.6}
+      .footer{padding:0 28px 28px;color:#64748b;font-size:13px}
+    </style>
+  </head>
+  <body>
+    <div class="sheet">
+      <div class="hero">
+        <p class="label">CreatorHub betaling</p>
+        <h1>${escapeHtml(title)}</h1>
+        <p class="sub">${escapeHtml(subtitle)}</p>
+      </div>
+      <div class="body">
+        <div class="grid">
+          <div class="card">
+            <p class="k">Plan</p>
+            <p class="v">${escapeHtml(record.planName || "CreatorHub-abonnement")}</p>
+            <p class="muted">Transaksjon ${escapeHtml(record.transactionId || record.id)}</p>
+          </div>
+          <div class="card">
+            <p class="k">Beløp</p>
+            <p class="v">${escapeHtml(amountLabel)}</p>
+            <p class="muted">Betalingsmetode: ${escapeHtml(record.paymentMethod)}</p>
+          </div>
+          <div class="card">
+            <p class="k">Status</p>
+            <p class="v">${escapeHtml(statusLabel)}</p>
+            <p class="muted">Registrert ${escapeHtml(formatCompatPaymentDocumentDate(record.completedAt || record.createdAt))}</p>
+          </div>
+          <div class="card">
+            <p class="k">Tilgang / periode</p>
+            <p class="v">${escapeHtml(formatCompatPaymentDocumentDate(historyEntry?.currentPeriodEnd || null))}</p>
+            <p class="muted">Startet ${escapeHtml(formatCompatPaymentDocumentDate(historyEntry?.currentPeriodStart || record.createdAt))}</p>
+          </div>
+        </div>
+        <div class="card" style="margin-top:16px">
+          <p class="k">Regnskapsstatus</p>
+          <p class="v">${accountingReady ? "Klar for regnskap" : "Kun kjøpskvittering"}</p>
+          <p class="muted">${
+            accountingReady
+              ? "Kjøpet er registrert videre og kan brukes som grunnlag for Fiken eller Tripletex."
+              : "Kjøpet har kvittering i historikken. Faktura eller bokføringsbilag kommer når regnskapsintegrasjonen er aktiv."
+          }</p>
+        </div>
+      </div>
+      <div class="footer">
+        Dette dokumentet er generert fra betalingshistorikken i CreatorHub.
+      </div>
+    </div>
+  </body>
+</html>`;
+}
+
 app.get("/api/payments/history", async (req, res) => {
   try {
     const userId = readString(req.query.userId) || compatResolveUserId(req);
@@ -25657,6 +25955,92 @@ app.get("/api/payments/history", async (req, res) => {
   } catch (error) {
     console.error("Error fetching payment history:", error);
     res.status(500).json({ error: "Could not fetch payment history" });
+  }
+});
+
+app.get("/api/payments/receipt/:paymentId", async (req, res) => {
+  try {
+    const paymentId = compatHeaderString(req.params.paymentId);
+    if (!paymentId) {
+      return res.status(400).json({ error: "paymentId is required" });
+    }
+
+    const record = await findCompatPaymentStatusRecord(paymentId);
+    if (!record) {
+      return res.status(404).json({ error: "Receipt not found" });
+    }
+    if (!canAccessCompatPaymentDocument(req, record)) {
+      return res.status(403).json({ error: "Du har ikke tilgang til denne kvitteringen" });
+    }
+
+    const history = await decorateCompatPaymentHistoryWithRefundRequests(
+      await buildCompatPaymentHistory(record.userId, record.email),
+      record.userId,
+      record.email,
+    );
+    const historyEntry =
+      history.find(
+        (entry) => entry.id === record.id || entry.transactionId === record.transactionId,
+      ) || null;
+
+    res.type("html").send(
+      buildCompatPaymentDocumentHtml({
+        title: "Kvittering",
+        subtitle: "Dokumentasjon for gjennomført kjøp og aktivt abonnement.",
+        record,
+        historyEntry,
+        accountingReady: Boolean(historyEntry?.isInFiken),
+      }),
+    );
+  } catch (error) {
+    console.error("Error generating payment receipt document:", error);
+    res.status(500).json({ error: "Could not generate receipt" });
+  }
+});
+
+app.get("/api/payments/invoice/:paymentId", async (req, res) => {
+  try {
+    const paymentId = compatHeaderString(req.params.paymentId);
+    if (!paymentId) {
+      return res.status(400).json({ error: "paymentId is required" });
+    }
+
+    const record = await findCompatPaymentStatusRecord(paymentId);
+    if (!record) {
+      return res.status(404).json({ error: "Invoice not found" });
+    }
+    if (!canAccessCompatPaymentDocument(req, record)) {
+      return res.status(403).json({ error: "Du har ikke tilgang til dette dokumentet" });
+    }
+
+    const history = await decorateCompatPaymentHistoryWithRefundRequests(
+      await buildCompatPaymentHistory(record.userId, record.email),
+      record.userId,
+      record.email,
+    );
+    const historyEntry =
+      history.find(
+        (entry) => entry.id === record.id || entry.transactionId === record.transactionId,
+      ) || null;
+
+    if (!historyEntry?.isInFiken) {
+      return res
+        .status(404)
+        .json({ error: "Regnskapsgrunnlag blir tilgjengelig når kjøpet er bokført i Fiken eller Tripletex" });
+    }
+
+    res.type("html").send(
+      buildCompatPaymentDocumentHtml({
+        title: "Regnskapsgrunnlag",
+        subtitle: "Dokumentasjon for kjøp som er klargjort for regnskapsintegrasjon.",
+        record,
+        historyEntry,
+        accountingReady: true,
+      }),
+    );
+  } catch (error) {
+    console.error("Error generating payment accounting document:", error);
+    res.status(500).json({ error: "Could not generate accounting document" });
   }
 });
 
@@ -25951,6 +26335,357 @@ app.get("/api/payments/fiken-mva-status", async (req, res) => {
   } catch (error) {
     console.error("Error fetching Fiken MVA status:", error);
     res.status(500).json({ error: "Could not fetch Fiken MVA status" });
+  }
+});
+
+app.get("/api/accounting/integration/status", async (req, res) => {
+  try {
+    const userId = readString(req.query.userId) || compatResolveUserId(req);
+    if (!userId || userId === "guest") {
+      return res.status(401).json({ error: "Innlogging kreves for å hente regnskapsstatus" });
+    }
+
+    res.json(await buildCompatAccountingIntegrationStatusResponse(userId));
+  } catch (error) {
+    console.error("Error fetching accounting integration status:", error);
+    res.status(500).json({ error: "Kunne ikke hente status for regnskapsintegrasjon" });
+  }
+});
+
+app.post("/api/accounting/integration/tripletex/test/connect", async (req, res) => {
+  const userId = compatResolveUserId(req);
+  if (!userId || userId === "guest") {
+    return res.status(401).json({ error: "Innlogging kreves for å koble til Tripletex" });
+  }
+
+  const body = isRecord(req.body) ? req.body : {};
+  const existing =
+    (await readCompatAccountingIntegrationStatus(userId)) ||
+    buildDefaultCompatAccountingIntegrationStatus();
+  const client = new TripletexApiClient();
+
+  try {
+    const connection = await client.getConnectionSummary();
+    const now = new Date().toISOString();
+    const nextStatus: CompatAccountingIntegrationStatus = {
+      ...existing,
+      configured: true,
+      provider: "tripletex",
+      environment: "test",
+      status: "connected",
+      connectedAt: existing.connectedAt || now,
+      lastVerifiedAt: now,
+      lastError: null,
+      organizationNumber:
+        readString(body.organizationNumber) ||
+        connection.organizationNumber ||
+        existing.organizationNumber,
+      businessName:
+        readString(body.businessName) ||
+        connection.companyName ||
+        existing.businessName,
+      contactName:
+        readString(body.contactName) ||
+        connection.employeeName ||
+        existing.contactName,
+      contactEmail:
+        readString(body.contactEmail) ||
+        connection.employeeEmail ||
+        existing.contactEmail,
+      contactPhone: readString(body.contactPhone) || existing.contactPhone,
+      addressLine1: readString(body.addressLine1) || existing.addressLine1,
+      postalCode: readString(body.postalCode) || existing.postalCode,
+      city: readString(body.city) || existing.city,
+      companyId: connection.companyId,
+      companyName: connection.companyName,
+      employeeId: connection.employeeId,
+      employeeName: connection.employeeName,
+      employeeEmail: connection.employeeEmail,
+    };
+
+    await writeCompatAccountingIntegrationStatus(userId, nextStatus);
+    res.json(await buildCompatAccountingIntegrationStatusResponse(userId));
+  } catch (error) {
+    const nextStatus: CompatAccountingIntegrationStatus = {
+      ...existing,
+      configured: isTripletexConfigured(),
+      provider: "tripletex",
+      environment: "test",
+      status: "error",
+      lastVerifiedAt: new Date().toISOString(),
+      lastError:
+        error instanceof Error ? error.message : "Tripletex-tilkoblingen feilet",
+    };
+    await writeCompatAccountingIntegrationStatus(userId, nextStatus);
+
+    if (error instanceof TripletexApiError) {
+      return res.status(error.status).json({ error: error.message, details: error.details });
+    }
+
+    console.error("Tripletex connect error:", error);
+    return res.status(500).json({ error: "Kunne ikke koble til Tripletex testmiljø" });
+  }
+});
+
+app.post("/api/accounting/integration/tripletex/test/disconnect", async (req, res) => {
+  try {
+    const userId = compatResolveUserId(req);
+    if (!userId || userId === "guest") {
+      return res.status(401).json({ error: "Innlogging kreves for å koble fra Tripletex" });
+    }
+
+    const existing =
+      (await readCompatAccountingIntegrationStatus(userId)) ||
+      buildDefaultCompatAccountingIntegrationStatus();
+    const nextStatus: CompatAccountingIntegrationStatus = {
+      ...existing,
+      configured: isTripletexConfigured(),
+      provider: "tripletex",
+      environment: "test",
+      status: "disconnected",
+      lastVerifiedAt: new Date().toISOString(),
+      lastError: null,
+    };
+    await writeCompatAccountingIntegrationStatus(userId, nextStatus);
+    res.json(await buildCompatAccountingIntegrationStatusResponse(userId));
+  } catch (error) {
+    console.error("Tripletex disconnect error:", error);
+    res.status(500).json({ error: "Kunne ikke koble fra Tripletex" });
+  }
+});
+
+app.post("/api/tripletex/customers/ensure", async (req, res) => {
+  try {
+    const userId = compatResolveUserId(req);
+    if (!userId || userId === "guest") {
+      return res.status(401).json({ error: "Innlogging kreves for å opprette Tripletex-kunde" });
+    }
+
+    const body = isRecord(req.body) ? req.body : {};
+    const client = new TripletexApiClient();
+    const customer = await client.ensureCustomer({
+      customerName: readString(body.customerName) || "CreatorHub-kunde",
+      organizationNumber: readString(body.organizationNumber),
+      email: readString(body.email),
+      invoiceEmail: readString(body.invoiceEmail),
+      phoneNumber: readString(body.phoneNumber),
+      addressLine1: readString(body.addressLine1),
+      postalCode: readString(body.postalCode),
+      city: readString(body.city),
+      website: readString(body.website),
+    });
+
+    res.json({ success: true, customer });
+  } catch (error) {
+    if (error instanceof TripletexApiError) {
+      return res.status(error.status).json({ error: error.message, details: error.details });
+    }
+    console.error("Tripletex ensure customer error:", error);
+    res.status(500).json({ error: "Kunne ikke opprette kunde i Tripletex" });
+  }
+});
+
+app.post("/api/tripletex/invoices/create", async (req, res) => {
+  try {
+    await ensureQuotesCompatibilitySchema();
+
+    const userId = compatResolveUserId(req);
+    if (!userId || userId === "guest") {
+      return res.status(401).json({ error: "Innlogging kreves for å opprette faktura" });
+    }
+
+    const body = isRecord(req.body) ? req.body : {};
+    const quoteId = readString(body.quoteId);
+    if (!quoteId) {
+      return res.status(400).json({ error: "quoteId er påkrevd" });
+    }
+
+    const accountingStatus =
+      (await readCompatAccountingIntegrationStatus(userId)) ||
+      buildDefaultCompatAccountingIntegrationStatus();
+    if (accountingStatus.status !== "connected") {
+      return res.status(400).json({
+        error:
+          "Tripletex er ikke koblet til ennå. Koble opp testmiljøet i innstillinger før du oppretter faktura.",
+      });
+    }
+
+    const quoteResult = await pool.query(
+      `SELECT * FROM quotes WHERE id = $1 AND created_by = $2 LIMIT 1`,
+      [quoteId, userId],
+    );
+    const quoteRow = quoteResult.rows[0];
+    if (!quoteRow) {
+      return res.status(404).json({ error: "Fant ikke tilbudet som skulle faktureres" });
+    }
+
+    const clientInfo = normalizeJsonObjectField(quoteRow.client_info) || {};
+    const quote = mapPriceAdministrationQuote(quoteRow);
+    const client = new TripletexApiClient();
+    const customerInput = {
+      customerName:
+        readString(quote.clientName) ||
+        readString(clientInfo.name) ||
+        "CreatorHub-kunde",
+      organizationNumber:
+        readString(clientInfo.organizationNumber) ||
+        readString(clientInfo.orgNumber),
+      email:
+        readString(quote.clientEmail) ||
+        readString(clientInfo.email),
+      invoiceEmail:
+        readString(clientInfo.invoiceEmail) ||
+        readString(quote.clientEmail) ||
+        readString(clientInfo.email),
+      phoneNumber: readString(clientInfo.phoneNumber) || readString(clientInfo.phone),
+      addressLine1: readString(clientInfo.address) || readString(clientInfo.addressLine1),
+      postalCode: readString(clientInfo.postalCode),
+      city: readString(clientInfo.city),
+      website: readString(clientInfo.website),
+    };
+    const ensuredCustomer = await client.ensureCustomer(customerInput);
+    const invoice = await client.createInvoiceFromQuote({
+      customer: customerInput,
+      title: readString(quote.title) || readString(quote.quoteNumber) || "CreatorHub-faktura",
+      description:
+        [
+          readString(quote.description),
+          readString(quote.quoteNumber) ? `Tilbudsnummer: ${readString(quote.quoteNumber)}` : null,
+        ]
+          .filter(Boolean)
+          .join("\n\n") || null,
+      quoteNumber: readString(quote.quoteNumber),
+      totalAmountNok: toNumericValue(quote.totalAmount, 0),
+      currency: readString(quote.currency) || "NOK",
+      dueDate: addDaysIso(new Date().toISOString(), 14),
+      sendToCustomer: false,
+    });
+
+    const now = new Date().toISOString();
+    const updated = await pool.query(
+      `UPDATE quotes
+          SET accounting_provider = 'tripletex',
+              accounting_status = 'synced',
+              tripletex_customer_id = COALESCE(tripletex_customer_id, $2),
+              tripletex_invoice_id = $3,
+              tripletex_invoice_number = $4,
+              tripletex_invoice_status = 'draft',
+              tripletex_invoice_url = $5,
+              tripletex_voucher_id = $6,
+              tripletex_voucher_url = $7,
+              tripletex_synced_at = $8,
+              updated_at = NOW()
+        WHERE id = $1
+        RETURNING *`,
+      [
+        quoteId,
+        ensuredCustomer.id,
+        invoice.invoiceId,
+        invoice.invoiceNumber,
+        invoice.invoicePdfPath,
+        invoice.voucherId,
+        invoice.voucherPdfPath,
+        now,
+      ],
+    );
+
+    const nextIntegrationStatus: CompatAccountingIntegrationStatus = {
+      ...accountingStatus,
+      configured: isTripletexConfigured(),
+      status: "connected",
+      lastVerifiedAt: now,
+      lastError: null,
+      customerId: ensuredCustomer.id,
+      lastInvoiceId: invoice.invoiceId,
+      lastInvoiceNumber: invoice.invoiceNumber,
+      lastInvoiceAt: now,
+      invoiceCount: accountingStatus.invoiceCount + 1,
+    };
+    await writeCompatAccountingIntegrationStatus(userId, nextIntegrationStatus);
+
+    res.status(201).json({
+      success: true,
+      invoice,
+      quote: mapPriceAdministrationQuote(updated.rows[0]),
+      integration: await buildCompatAccountingIntegrationStatusResponse(userId),
+    });
+  } catch (error) {
+    if (error instanceof TripletexApiError) {
+      return res.status(error.status).json({ error: error.message, details: error.details });
+    }
+
+    console.error("Tripletex invoice create error:", error);
+    res.status(500).json({ error: "Kunne ikke opprette fakturautkast i Tripletex" });
+  }
+});
+
+app.get("/api/tripletex/invoices/:invoiceId/pdf", async (req, res) => {
+  try {
+    const userId = compatResolveUserId(req);
+    const invoiceId = compatHeaderString(req.params.invoiceId);
+    if (!userId || userId === "guest") {
+      return res.status(401).json({ error: "Innlogging kreves for å hente faktura-PDF" });
+    }
+    if (!invoiceId) {
+      return res.status(400).json({ error: "invoiceId er påkrevd" });
+    }
+
+    const quoteResult = await pool.query(
+      `SELECT id FROM quotes
+       WHERE created_by = $1 AND tripletex_invoice_id = $2
+       LIMIT 1`,
+      [userId, invoiceId],
+    );
+    if (!quoteResult.rows[0]) {
+      return res.status(404).json({ error: "Fant ikke fakturaen for denne brukeren" });
+    }
+
+    const client = new TripletexApiClient();
+    const pdf = await client.getInvoicePdf(invoiceId);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename="tripletex-faktura-${invoiceId}.pdf"`);
+    res.send(Buffer.from(pdf));
+  } catch (error) {
+    if (error instanceof TripletexApiError) {
+      return res.status(error.status).json({ error: error.message, details: error.details });
+    }
+    console.error("Tripletex invoice pdf error:", error);
+    res.status(500).json({ error: "Kunne ikke hente faktura fra Tripletex" });
+  }
+});
+
+app.get("/api/tripletex/vouchers/:voucherId/pdf", async (req, res) => {
+  try {
+    const userId = compatResolveUserId(req);
+    const voucherId = compatHeaderString(req.params.voucherId);
+    if (!userId || userId === "guest") {
+      return res.status(401).json({ error: "Innlogging kreves for å hente bilag" });
+    }
+    if (!voucherId) {
+      return res.status(400).json({ error: "voucherId er påkrevd" });
+    }
+
+    const quoteResult = await pool.query(
+      `SELECT id FROM quotes
+       WHERE created_by = $1 AND tripletex_voucher_id = $2
+       LIMIT 1`,
+      [userId, voucherId],
+    );
+    if (!quoteResult.rows[0]) {
+      return res.status(404).json({ error: "Fant ikke bilaget for denne brukeren" });
+    }
+
+    const client = new TripletexApiClient();
+    const pdf = await client.getVoucherPdf(voucherId);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename="tripletex-bilag-${voucherId}.pdf"`);
+    res.send(Buffer.from(pdf));
+  } catch (error) {
+    if (error instanceof TripletexApiError) {
+      return res.status(error.status).json({ error: error.message, details: error.details });
+    }
+    console.error("Tripletex voucher pdf error:", error);
+    res.status(500).json({ error: "Kunne ikke hente bilag fra Tripletex" });
   }
 });
 
@@ -86605,13 +87340,23 @@ async function ensureQuotesCompatibilitySchema() {
         viewed_at TIMESTAMPTZ,
         responded_at TIMESTAMPTZ,
         accepted_at TIMESTAMPTZ,
+        accounting_provider VARCHAR,
+        accounting_status VARCHAR,
         fiken_invoice_id VARCHAR,
         fiken_invoice_number VARCHAR,
         fiken_customer_id VARCHAR,
         fiken_invoice_status VARCHAR,
         fiken_sync_status VARCHAR,
         fiken_invoice_url TEXT,
-        fiken_synced_at TIMESTAMPTZ
+        fiken_synced_at TIMESTAMPTZ,
+        tripletex_customer_id VARCHAR,
+        tripletex_invoice_id VARCHAR,
+        tripletex_invoice_number VARCHAR,
+        tripletex_invoice_status VARCHAR,
+        tripletex_invoice_url TEXT,
+        tripletex_voucher_id VARCHAR,
+        tripletex_voucher_url TEXT,
+        tripletex_synced_at TIMESTAMPTZ
       );
 
       ALTER TABLE quotes ADD COLUMN IF NOT EXISTS client_name VARCHAR;
@@ -86634,6 +87379,8 @@ async function ensureQuotesCompatibilitySchema() {
       ALTER TABLE quotes ADD COLUMN IF NOT EXISTS google_doc_url TEXT;
       ALTER TABLE quotes ADD COLUMN IF NOT EXISTS signature_status VARCHAR(50) DEFAULT 'pending';
       ALTER TABLE quotes ADD COLUMN IF NOT EXISTS accepted_at TIMESTAMP;
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS accounting_provider VARCHAR;
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS accounting_status VARCHAR;
       ALTER TABLE quotes ADD COLUMN IF NOT EXISTS viewed_at TIMESTAMP;
       ALTER TABLE quotes ADD COLUMN IF NOT EXISTS responded_at TIMESTAMP;
       ALTER TABLE quotes ADD COLUMN IF NOT EXISTS fiken_invoice_id VARCHAR;
@@ -86643,6 +87390,14 @@ async function ensureQuotesCompatibilitySchema() {
       ALTER TABLE quotes ADD COLUMN IF NOT EXISTS fiken_sync_status VARCHAR;
       ALTER TABLE quotes ADD COLUMN IF NOT EXISTS fiken_invoice_url TEXT;
       ALTER TABLE quotes ADD COLUMN IF NOT EXISTS fiken_synced_at TIMESTAMP;
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS tripletex_customer_id VARCHAR;
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS tripletex_invoice_id VARCHAR;
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS tripletex_invoice_number VARCHAR;
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS tripletex_invoice_status VARCHAR;
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS tripletex_invoice_url TEXT;
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS tripletex_voucher_id VARCHAR;
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS tripletex_voucher_url TEXT;
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS tripletex_synced_at TIMESTAMP;
       CREATE INDEX IF NOT EXISTS idx_quotes_contract_id ON quotes(contract_id);
     `,
       )
@@ -86705,6 +87460,8 @@ const mapPriceAdministrationQuote = (r: any) => {
     viewedAt: r.viewed_at,
     respondedAt: r.responded_at,
     acceptedAt: r.accepted_at,
+    accountingProvider: r.accounting_provider,
+    accountingStatus: r.accounting_status,
     fikenInvoiceId: r.fiken_invoice_id,
     fikenInvoiceNumber: r.fiken_invoice_number,
     fikenCustomerId: r.fiken_customer_id,
@@ -86712,6 +87469,14 @@ const mapPriceAdministrationQuote = (r: any) => {
     fikenSyncStatus: r.fiken_sync_status,
     fikenInvoiceUrl: r.fiken_invoice_url,
     fikenSyncedAt: r.fiken_synced_at,
+    tripletexCustomerId: r.tripletex_customer_id,
+    tripletexInvoiceId: r.tripletex_invoice_id,
+    tripletexInvoiceNumber: r.tripletex_invoice_number,
+    tripletexInvoiceStatus: r.tripletex_invoice_status,
+    tripletexInvoiceUrl: r.tripletex_invoice_url,
+    tripletexVoucherId: r.tripletex_voucher_id,
+    tripletexVoucherUrl: r.tripletex_voucher_url,
+    tripletexSyncedAt: r.tripletex_synced_at,
     isFinal: r.status === "accepted",
   };
 };
@@ -87242,6 +88007,12 @@ const normalizeQuoteCreationPayload = (payload: any) => {
     viewedAt: payload?.viewedAt ? new Date(payload.viewedAt) : null,
     respondedAt: payload?.respondedAt ? new Date(payload.respondedAt) : null,
     acceptedAt: payload?.acceptedAt ? new Date(payload.acceptedAt) : null,
+    accountingProvider: payload?.accountingProvider
+      ? String(payload.accountingProvider)
+      : null,
+    accountingStatus: payload?.accountingStatus
+      ? String(payload.accountingStatus)
+      : null,
     fikenInvoiceId: payload?.fikenInvoiceId
       ? String(payload.fikenInvoiceId)
       : null,
@@ -87263,6 +88034,30 @@ const normalizeQuoteCreationPayload = (payload: any) => {
     fikenSyncedAt: payload?.fikenSyncedAt
       ? new Date(payload.fikenSyncedAt)
       : null,
+    tripletexCustomerId: payload?.tripletexCustomerId
+      ? String(payload.tripletexCustomerId)
+      : null,
+    tripletexInvoiceId: payload?.tripletexInvoiceId
+      ? String(payload.tripletexInvoiceId)
+      : null,
+    tripletexInvoiceNumber: payload?.tripletexInvoiceNumber
+      ? String(payload.tripletexInvoiceNumber)
+      : null,
+    tripletexInvoiceStatus: payload?.tripletexInvoiceStatus
+      ? String(payload.tripletexInvoiceStatus)
+      : null,
+    tripletexInvoiceUrl: payload?.tripletexInvoiceUrl
+      ? String(payload.tripletexInvoiceUrl)
+      : null,
+    tripletexVoucherId: payload?.tripletexVoucherId
+      ? String(payload.tripletexVoucherId)
+      : null,
+    tripletexVoucherUrl: payload?.tripletexVoucherUrl
+      ? String(payload.tripletexVoucherUrl)
+      : null,
+    tripletexSyncedAt: payload?.tripletexSyncedAt
+      ? new Date(payload.tripletexSyncedAt)
+      : null,
   };
 };
 
@@ -87278,13 +88073,17 @@ async function insertSharedQuote(rawPayload: any, userId: string) {
       currency, status, valid_until, notes, internal_notes, client_info, approvers,
       project_creation_data, business_info, project_id, profession, project_type, quote_type,
       contract_amendment_for, google_doc_id, google_doc_url, signature_status, created_by,
-      created_at, updated_at, sent_at, viewed_at, responded_at, accepted_at, fiken_invoice_id,
-      fiken_invoice_number, fiken_customer_id, fiken_invoice_status, fiken_sync_status,
-      fiken_invoice_url, fiken_synced_at
+      created_at, updated_at, sent_at, viewed_at, responded_at, accepted_at, accounting_provider,
+      accounting_status, fiken_invoice_id, fiken_invoice_number, fiken_customer_id,
+      fiken_invoice_status, fiken_sync_status, fiken_invoice_url, fiken_synced_at,
+      tripletex_customer_id, tripletex_invoice_id, tripletex_invoice_number,
+      tripletex_invoice_status, tripletex_invoice_url, tripletex_voucher_id,
+      tripletex_voucher_url, tripletex_synced_at
     ) VALUES (
       $1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,$11::jsonb,$12::jsonb,$13,$14,$15,$16,
       $17,$18,$19,$20,$21::jsonb,$22::jsonb,$23::jsonb,$24::jsonb,$25,$26,$27,$28,$29,$30,
-      $31,$32,$33,NOW(),NOW(),$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44
+      $31,$32,$33,NOW(),NOW(),$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44,$45,$46,$47,
+      $48,$49,$50,$51,$52
     ) RETURNING *`,
     [
       id,
@@ -87324,6 +88123,8 @@ async function insertSharedQuote(rawPayload: any, userId: string) {
       payload.viewedAt,
       payload.respondedAt,
       payload.acceptedAt,
+      payload.accountingProvider,
+      payload.accountingStatus,
       payload.fikenInvoiceId,
       payload.fikenInvoiceNumber,
       payload.fikenCustomerId,
@@ -87331,6 +88132,14 @@ async function insertSharedQuote(rawPayload: any, userId: string) {
       payload.fikenSyncStatus,
       payload.fikenInvoiceUrl,
       payload.fikenSyncedAt,
+      payload.tripletexCustomerId,
+      payload.tripletexInvoiceId,
+      payload.tripletexInvoiceNumber,
+      payload.tripletexInvoiceStatus,
+      payload.tripletexInvoiceUrl,
+      payload.tripletexVoucherId,
+      payload.tripletexVoucherUrl,
+      payload.tripletexSyncedAt,
     ],
   );
 
@@ -104130,12 +104939,21 @@ app.put("/api/quotes/:id", async (req, res) => {
       ["googleDocUrl", "google_doc_url"],
       ["googleDocId", "google_doc_id"],
       ["signatureStatus", "signature_status"],
+      ["accountingProvider", "accounting_provider"],
+      ["accountingStatus", "accounting_status"],
       ["fikenInvoiceId", "fiken_invoice_id"],
       ["fikenInvoiceNumber", "fiken_invoice_number"],
       ["fikenCustomerId", "fiken_customer_id"],
       ["fikenInvoiceStatus", "fiken_invoice_status"],
       ["fikenSyncStatus", "fiken_sync_status"],
       ["fikenInvoiceUrl", "fiken_invoice_url"],
+      ["tripletexCustomerId", "tripletex_customer_id"],
+      ["tripletexInvoiceId", "tripletex_invoice_id"],
+      ["tripletexInvoiceNumber", "tripletex_invoice_number"],
+      ["tripletexInvoiceStatus", "tripletex_invoice_status"],
+      ["tripletexInvoiceUrl", "tripletex_invoice_url"],
+      ["tripletexVoucherId", "tripletex_voucher_id"],
+      ["tripletexVoucherUrl", "tripletex_voucher_url"],
     ];
 
     const setClauses = ["updated_at = NOW()"];
@@ -104152,6 +104970,16 @@ app.put("/api/quotes/:id", async (req, res) => {
     if (req.body?.validUntil !== undefined) {
       setClauses.push(`valid_until = $${idx++}`);
       params.push(req.body.validUntil ? new Date(req.body.validUntil) : null);
+    }
+
+    if (req.body?.fikenSyncedAt !== undefined) {
+      setClauses.push(`fiken_synced_at = $${idx++}`);
+      params.push(req.body.fikenSyncedAt ? new Date(req.body.fikenSyncedAt) : null);
+    }
+
+    if (req.body?.tripletexSyncedAt !== undefined) {
+      setClauses.push(`tripletex_synced_at = $${idx++}`);
+      params.push(req.body.tripletexSyncedAt ? new Date(req.body.tripletexSyncedAt) : null);
     }
 
     if (req.body?.totalAmount !== undefined) {

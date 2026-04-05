@@ -68,6 +68,7 @@ import {
 // Import existing components
 import BusinessBrandingSettings from '../BusinessBrandingSettings';
 import PriceAdministration from '../PriceAdministration';
+import AccountingBillingOverview from '../accounting/AccountingBillingOverview';
 import { TutorialFAQIntegration } from '../tutorial/TutorialFAQIntegration';
 import { LightroomInteractiveDemo } from './misc/LightroomInteractiveDemo';
 import { usePlatformPricing, platformPricingService } from '../../services/PlatformPricingService';
@@ -130,6 +131,9 @@ type PaymentHistoryEntry = {
   refundRequestId?: number | null;
   refundRequestStatus?: 'pending' | 'approved' | 'rejected' | null;
   refundRequestedAt?: string | null;
+  receiptSentAt?: string | null;
+  receiptUrl?: string | null;
+  invoiceUrl?: string | null;
 };
 
 const formatPaymentDate = (value?: string | null) => {
@@ -648,6 +652,10 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
               Bedriftsprofil & Logo
             </Typography>
             <BusinessBrandingSettings userId={userId} />
+            <AccountingBillingOverview
+              userId={userId}
+              accentColor={customBranding.color}
+            />
           </MuiCardContent>
         </MuiCard>
       </TabPanel>
@@ -1112,33 +1120,69 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                                 )}
                               </Box>
 
-                              <Box sx={{ display: 'flex', justifyContent: { xs: 'flex-start', md: 'flex-end' } }}>
-                                {payment.isInFiken ? (
-                                  <Chip label="Registrert" size="small" color="success" />
-                                ) : (
-                                  <Button
-                                    size="small"
-                                    variant="outlined"
-                                    onClick={async () => {
-                                      try {
-                                        await apiRequest('/api/payments/fiken-register', {
-                                          method: 'POST',
-                                          body: JSON.stringify({
-                                            referenceId: payment.id,
-                                            referenceType: payment.type === 'subscription' ? 'subscription' : 'event',
-                                            planId: payment.planId,
-                                            amount: payment.amount,
-                                            currency: payment.currency,
-                                          }),
-                                        });
-                                        await queryClient.invalidateQueries({ queryKey: ['/api/payments/history'] });
-                                      } catch (e) {
-                                        // noop
-                                      }
-                                    }}
-                                  >
-                                    Send til Fiken
-                                  </Button>
+                              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: { xs: 'flex-start', md: 'flex-end' }, gap: 1 }}>
+                                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: { xs: 'flex-start', md: 'flex-end' } }}>
+                                  {payment.receiptUrl ? (
+                                    <Button
+                                      size="small"
+                                      variant="outlined"
+                                      component="a"
+                                      href={payment.receiptUrl}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                    >
+                                      Åpne kvittering
+                                    </Button>
+                                  ) : null}
+                                  {payment.invoiceUrl ? (
+                                    <Button
+                                      size="small"
+                                      variant="outlined"
+                                      component="a"
+                                      href={payment.invoiceUrl}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                    >
+                                      Regnskapsgrunnlag
+                                    </Button>
+                                  ) : null}
+                                  {payment.isInFiken ? (
+                                    <Chip label="Registrert" size="small" color="success" />
+                                  ) : (
+                                    <Button
+                                      size="small"
+                                      variant="outlined"
+                                      onClick={async () => {
+                                        try {
+                                          await apiRequest('/api/payments/fiken-register', {
+                                            method: 'POST',
+                                            body: JSON.stringify({
+                                              referenceId: payment.id,
+                                              referenceType: payment.type === 'subscription' ? 'subscription' : 'event',
+                                              planId: payment.planId,
+                                              amount: payment.amount,
+                                              currency: payment.currency,
+                                            }),
+                                          });
+                                          await queryClient.invalidateQueries({ queryKey: ['/api/payments/history'] });
+                                        } catch (e) {
+                                          // noop
+                                        }
+                                      }}
+                                    >
+                                      Send til Fiken
+                                    </Button>
+                                  )}
+                                </Box>
+                                <Typography variant="caption" color="text.secondary" sx={{ textAlign: { xs: 'left', md: 'right' } }}>
+                                  {payment.receiptSentAt
+                                    ? `Kvittering registrert ${formatPaymentDate(payment.receiptSentAt)}`
+                                    : 'Kvittering er tilgjengelig i historikken.'}
+                                </Typography>
+                                {!payment.isInFiken && (
+                                  <Typography variant="caption" color="text.secondary" sx={{ textAlign: { xs: 'left', md: 'right' } }}>
+                                    Faktura- og regnskapsgrunnlag kommer når Fiken eller Tripletex er aktivert.
+                                  </Typography>
                                 )}
                               </Box>
                             </Box>
