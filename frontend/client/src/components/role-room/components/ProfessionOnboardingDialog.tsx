@@ -417,15 +417,15 @@ const professionContent: Record<ProfessionType, ProfessionOnboardingContent> = {
     ],
   },
   producer: {
-    welcomeTitle: 'Velkommen, Produsent!',
-    welcomeSubtitle: 'Hold kontrollen over produksjonen',
+    welcomeTitle: 'Velkommen, Innholdsprodusent!',
+    welcomeSubtitle: 'Planlegg, produser og lever innhold med flyt',
     professionIcon: <TaskIcon sx={{ fontSize: 48 }} />,
     professionColor: '#8b5cf6',
     slides: [
       {
         title: 'Hva er The Role Room?',
-        subtitle: 'Produksjonsstyring på ett sted',
-        content: 'The Role Room gir deg full oversikt over alle aspekter av produksjonen, fra casting til ferdig opptaksplan.',
+        subtitle: 'Innholdsproduksjon samlet på ett sted',
+        content: 'The Role Room gir deg oversikt over idé, storyboard, media, klientsamarbeid og levering, slik at du kan drive hele innholdsproduksjonen fra én arbeidsflate.',
         illustration: (
           <Box sx={{ 
             display: 'flex', 
@@ -434,7 +434,7 @@ const professionContent: Record<ProfessionType, ProfessionOnboardingContent> = {
             flexWrap: 'wrap',
             py: 2 
           }}>
-            {['Budsjett', 'Tidsplan', 'Team', 'Status'].map((item, i) => (
+            {['Storyboard', 'Media', 'Tidslinje', 'Levering'].map((item, i) => (
               <Paper
                 key={item}
                 elevation={3}
@@ -461,68 +461,68 @@ const professionContent: Record<ProfessionType, ProfessionOnboardingContent> = {
         ),
       },
       {
-        title: 'Som produsent får du...',
-        subtitle: 'Oversikt og kontroll',
-        content: 'Hold styr på fremdrift, budsjett og teamets arbeid i sanntid.',
+        title: 'Som innholdsprodusent får du...',
+        subtitle: 'Arbeidsflyt for innhold og leveranser',
+        content: 'Hold styr på fremdrift, versjoner, leveranser og samarbeid uten å hoppe mellom flere verktøy.',
         features: [
           {
             icon: <TimelineIcon sx={{ color: '#8b5cf6' }} />,
-            title: 'Fremdriftsoversikt',
-            description: 'Se status på alle shots og scener med ett blikk',
+            title: 'Tidslinje og status',
+            description: 'Se hvor produksjonen står, hva som gjenstår og hva som er klart for levering',
           },
           {
             icon: <GroupsIcon sx={{ color: '#8b5cf6' }} />,
-            title: 'Teamadministrasjon',
-            description: 'Administrer brukere, roller og tilganger i prosjektet',
+            title: 'Klientsamarbeid',
+            description: 'Samle tilbakemeldinger, del materiale og hold kunden oppdatert i samme flyt',
           },
           {
             icon: <TaskIcon sx={{ color: '#8b5cf6' }} />,
-            title: 'Oppgavedeling',
-            description: 'Fordel arbeid og følg opp leveranser effektivt',
+            title: 'Eksport og levering',
+            description: 'Klargjør filer, overleveringer og produksjonsgrunnlag uten ekstra mellomledd',
           },
         ],
       },
       {
         title: 'Hvordan finne ting',
-        subtitle: 'Rask tilgang til informasjon',
-        content: 'Finn det du trenger for å ta beslutninger og holde produksjonen på sporet.',
+        subtitle: 'Rask tilgang til riktig workspace',
+        content: 'Fanene i toppen er bygget for innholdsprodusentflyten, slik at du raskt kommer til storyboard, media, økonomi og levering.',
         features: [
           {
             icon: <SearchIcon sx={{ color: '#8b5cf6' }} />,
-            title: 'Dashboard',
-            description: 'Se nøkkeltall og status på forsiden',
+            title: 'Storyboard og plan',
+            description: 'Start i storyboardet og bygg opp innhold, shot-behov og struktur før opptak',
           },
           {
             icon: <TaskIcon sx={{ color: '#8b5cf6' }} />,
-            title: 'Rapporter',
-            description: 'Eksporter statusrapporter og shot lists',
+            title: 'Media og økonomi',
+            description: 'Bytt raskt mellom mediebibliotek, leveranser og økonomi uten å miste kontekst',
           },
           {
             icon: <GroupsIcon sx={{ color: '#8b5cf6' }} />,
-            title: 'Teamoversikt',
-            description: 'Se hvem som er tildelt hvilke oppgaver',
+            title: 'Klient og eksport',
+            description: 'Finn alt som handler om godkjenning, deling og sluttlevering i egne dedikerte faner',
           },
         ],
       },
       {
-        title: 'Koordiner teamet',
-        subtitle: 'Effektiv kommunikasjon',
-        content: 'Hold alle informert og koordiner arbeidet smidig.',
+        title: 'Koordiner leveransen',
+        subtitle: 'Effektiv flyt fra idé til ferdig levering',
+        content: 'Bruk The Role Room til å holde team, kunde og leveranser samlet rundt én tydelig produksjonsflyt.',
         features: [
           {
             icon: <ShareIcon sx={{ color: '#10b981' }} />,
-            title: 'Del prosjektet',
-            description: 'Inviter nye teammedlemmer med riktig rolletilgang',
+            title: 'Del riktig materiale',
+            description: 'Gi tilgang til storyboard, filer og leveranser uten å eksponere unødvendige arbeidsflater',
           },
           {
             icon: <TaskIcon sx={{ color: '#10b981' }} />,
-            title: 'Kanban-tavle',
-            description: 'Bruk Team Dashboard for visuell oppgavestyring',
+            title: 'Hold produksjonen i bevegelse',
+            description: 'Bruk tidslinje og statusvisning for å sikre at innholdet går fremover uten flaskehalser',
           },
           {
             icon: <CheckIcon sx={{ color: '#10b981' }} />,
-            title: 'Godkjenninger',
-            description: 'Sett opp godkjenningsflyter for viktige leveranser',
+            title: 'Samle godkjenninger',
+            description: 'Bruk klientsamarbeid og eksportflyten til å få innspill og levere ferdig materiale raskere',
           },
         ],
       },

@@ -192,7 +192,6 @@ const ProducerClientReviewPanel = lazy(() => import('./producer/ProducerClientRe
 const ProducerMediaPanel = lazy(() => import('./producer/ProducerMediaPanel'));
 const ProducerExtrasPanel = lazy(() => import('./producer/ProducerExtrasPanel'));
 const ProducerExportHandoffPanel = lazy(() => import('./producer/ProducerExportHandoffPanel'));
-import RoleRoomGoogleContextBar from './producer/RoleRoomGoogleContextBar';
 import RoleRoomDiagnosticsProbe from './shared/RoleRoomDiagnosticsProbe';
 import {
   clearRoleRoomDiagnostics,
@@ -1817,151 +1816,6 @@ export function CastingPlannerPanel({
     () => (currentProject ? buildProducerWorkflowOwnerOptions(currentProject) : []),
     [currentProject],
   );
-  const producerGoogleContext = useMemo(() => {
-    if (!currentProject || (!isContentProducerMode && !isClientReviewerMode)) {
-      return null;
-    }
-
-    const mediaWorkspace = producerMediaFocus?.workspace
-      ?? (
-        isClientReviewerSession
-        && clientPortalIntent
-        && clientPortalIntent.projectId === currentProject.id
-          ? clientPortalIntent.workspace
-          : undefined
-      )
-      ?? 'brief';
-
-    if (activeTab === PRODUCER_MEDIA_TAB_INDEX) {
-      return {
-        contextLabel: isClientReviewerMode ? 'Klientflate' : 'Workspace',
-        primaryAction: 'drive-sync' as const,
-        secondaryAction: 'calendar-sync' as const,
-        focus: {
-          workspace: mediaWorkspace,
-          sectionId: producerMediaFocus?.sectionId,
-          pageId: producerMediaFocus?.pageId,
-          artifactId: producerMediaFocus?.artifactId,
-        } satisfies ClientPortalWorkspaceFocus,
-      };
-    }
-
-    if (activeTab === PRODUCER_ECONOMY_TAB_INDEX) {
-      return {
-        contextLabel: 'Økonomi',
-        primaryAction: 'drive-sync' as const,
-        secondaryAction: 'calendar-sync' as const,
-        focus: { workspace: 'delivery' } satisfies ClientPortalWorkspaceFocus,
-      };
-    }
-
-    if (activeTab === PRODUCER_TIMELINE_TAB_INDEX) {
-      return {
-        contextLabel: 'Tidslinje',
-        primaryAction: 'calendar-sync' as const,
-        secondaryAction: 'meet-session' as const,
-        focus: { workspace: 'brief' } satisfies ClientPortalWorkspaceFocus,
-      };
-    }
-
-    if (activeTab === PRODUCER_REVIEWS_TAB_INDEX) {
-      return {
-        contextLabel: 'Klientsamarbeid',
-        primaryAction: 'meet-session' as const,
-        secondaryAction: 'calendar-sync' as const,
-        focus: { workspace: 'delivery' } satisfies ClientPortalWorkspaceFocus,
-      };
-    }
-
-    if (activeTab === PRODUCER_EXPORT_TAB_INDEX) {
-      return {
-        contextLabel: 'Levering',
-        primaryAction: 'drive-sync' as const,
-        secondaryAction: 'calendar-sync' as const,
-        focus: { workspace: 'delivery' } satisfies ClientPortalWorkspaceFocus,
-      };
-    }
-
-    if (activeTab === STORY_ARC_TAB_INDEX) {
-      if (storyArcView === 'story-writer') {
-        return {
-          contextLabel: 'Manus',
-          primaryAction: 'drive-sync' as const,
-          secondaryAction: 'calendar-sync' as const,
-          focus: { workspace: 'manuscript' } satisfies ClientPortalWorkspaceFocus,
-        };
-      }
-      if (storyArcView === 'shot-list') {
-        return {
-          contextLabel: 'Shotlist',
-          primaryAction: 'calendar-sync' as const,
-          secondaryAction: 'drive-sync' as const,
-          focus: { workspace: 'shotlist' } satisfies ClientPortalWorkspaceFocus,
-        };
-      }
-      if (storyArcView === 'story-logic') {
-        return {
-          contextLabel: 'Scene-notater',
-          primaryAction: 'drive-sync' as const,
-          secondaryAction: 'calendar-sync' as const,
-          focus: { workspace: 'brief' } satisfies ClientPortalWorkspaceFocus,
-        };
-      }
-      return {
-        contextLabel: 'Storyboard',
-        primaryAction: 'drive-sync' as const,
-        secondaryAction: 'calendar-sync' as const,
-        focus: { workspace: 'storyboard' } satisfies ClientPortalWorkspaceFocus,
-      };
-    }
-
-    if (activeTab === LOCATIONS_TAB_INDEX) {
-      return {
-        contextLabel: 'Lokasjoner',
-        primaryAction: 'calendar-sync' as const,
-        secondaryAction: 'drive-sync' as const,
-        focus: { workspace: 'materials' } satisfies ClientPortalWorkspaceFocus,
-      };
-    }
-
-    if (activeTab === EQUIPMENT_TAB_INDEX) {
-      return {
-        contextLabel: 'Utstyr og rekvisitter',
-        primaryAction: 'calendar-sync' as const,
-        secondaryAction: 'drive-sync' as const,
-        focus: { workspace: 'materials' } satisfies ClientPortalWorkspaceFocus,
-      };
-    }
-
-    if (activeTab === CALENDAR_TAB_INDEX) {
-      return {
-        contextLabel: 'Plan og kalender',
-        primaryAction: 'calendar-sync' as const,
-        secondaryAction: 'meet-session' as const,
-        focus: { workspace: 'brief' } satisfies ClientPortalWorkspaceFocus,
-      };
-    }
-
-    if (activeTab === CANDIDATES_TAB_INDEX || activeTab === TEAM_TAB_INDEX) {
-      return {
-        contextLabel: 'Medvirkende og team',
-        primaryAction: 'calendar-sync' as const,
-        secondaryAction: 'meet-session' as const,
-        focus: { workspace: 'materials' } satisfies ClientPortalWorkspaceFocus,
-      };
-    }
-
-    return null;
-  }, [
-    activeTab,
-    clientPortalIntent,
-    currentProject,
-    isClientReviewerMode,
-    isClientReviewerSession,
-    isContentProducerMode,
-    producerMediaFocus,
-    storyArcView,
-  ]);
   const producerProjectSwitchPending = Boolean(currentProject && isProducerWorkspaceSession && permissionsLoading);
 
   const isTrollProject = useCallback((project: CastingProject): boolean => {
@@ -6295,27 +6149,6 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
       {/* Content */}
       <Box sx={{ flex: 1, overflow: 'hidden', bgcolor: '#0d1117', display: 'flex', flexDirection: 'column', minHeight: 0, width: '100%' }}>
         <ProjectProvider>
-          {!isLiveSetImmersive && currentProject && producerGoogleContext && activeTab !== PRODUCER_MEDIA_TAB_INDEX && !producerProjectSwitchPending ? (
-            <RoleRoomDiagnosticsProbe
-              name="RoleRoomGoogleContextBar"
-              projectId={currentProject.id}
-              detail={{ activeTab, contextLabel: producerGoogleContext.contextLabel }}
-            >
-              <RoleRoomGoogleContextBar
-                project={currentProject}
-                projectId={currentProject.id}
-                projectName={currentProject.name}
-                contextLabel={producerGoogleContext.contextLabel}
-                workspaceFocus={producerGoogleContext.focus}
-                primaryAction={producerGoogleContext.primaryAction}
-                secondaryAction={producerGoogleContext.secondaryAction}
-                canManage={!isClientReviewerMode}
-                onOpenWorkspace={(focus) => {
-                  navigateToProducerMediaWorkspace(focus);
-                }}
-              />
-            </RoleRoomDiagnosticsProbe>
-          ) : null}
           {producerProjectSwitchPending ? (
             <Box
               sx={{
