@@ -47,11 +47,20 @@ let dbCheckPromise: Promise<boolean> | null = null;
 
 // Local storage fallback for projects
 const PROJECTS_STORAGE_KEY = 'casting-projects';
+const SHARED_TEMPLATE_PROJECTS_USER_ID = 'role-room-shared';
 let cachedProjects: CastingProject[] = [];
+let cachedSharedTemplateProjects: CastingProject[] = [];
 const TROLL_DEMO_PROJECT_ID = 'troll-project-2026';
 const PROJECT_FETCH_CACHE_TTL_MS = 2000;
 const inFlightProjectRequests = new Map<string, Promise<CastingProject | null>>();
 const projectFetchCache = new Map<string, { project: CastingProject | null; cachedAt: number }>();
+const PROTECTED_DEMO_WRITE_BLOCKED_EVENT = 'role-room-protected-demo-write-blocked';
+
+type ProjectTemplateAudience = 'content_producer' | 'production_team';
+type ProjectTemplateStatus = 'draft' | 'published' | 'archived';
+type ProjectMutationOptions = {
+  allowProtectedDemoWrite?: boolean;
+};
 
 const invalidateProjectFetchCache = (projectId?: string): void => {
   if (projectId) {
@@ -70,10 +79,20 @@ const hydrateProjects = async (): Promise<void> => {
     const remote = await settingsService.getSetting<CastingProject[]>(PROJECTS_STORAGE_KEY, { userId });
     if (remote) {
       cachedProjects = remote;
-      return;
     }
   } catch (error) {
     console.warn('Failed to hydrate projects:', error);
+  }
+
+  try {
+    const sharedTemplates = await settingsService.getSetting<CastingProject[]>(PROJECTS_STORAGE_KEY, {
+      userId: SHARED_TEMPLATE_PROJECTS_USER_ID,
+    });
+    if (sharedTemplates) {
+      cachedSharedTemplateProjects = sharedTemplates.filter((project) => isTemplateProject(project));
+    }
+  } catch (error) {
+    console.warn('Failed to hydrate shared project templates:', error);
   }
 };
 
@@ -91,7 +110,13 @@ function ensureHydrated(): void {
  */
 function getProjectsFromStorage(): CastingProject[] {
   ensureHydrated();
-  return cachedProjects;
+  const mergedProjects = [...cachedProjects];
+  for (const template of cachedSharedTemplateProjects) {
+    if (!mergedProjects.some((project) => project.id === template.id)) {
+      mergedProjects.push(template);
+    }
+  }
+  return mergedProjects;
 }
 
 type AvailableSceneOption = { id: string; name: string; thumbnail?: string };
@@ -100,8 +125,14 @@ type AvailableSceneOption = { id: string; name: string; thumbnail?: string };
  * Save projects to local storage fallback
  */
 function saveProjectsToStorage(projects: CastingProject[]): void {
-  cachedProjects = projects;
-  void settingsService.setSetting(PROJECTS_STORAGE_KEY, projects, { userId: getCurrentUserId() });
+  const userScopedProjects = projects.filter((project) => !isTemplateProject(project));
+  const sharedTemplateProjects = projects.filter((project) => isTemplateProject(project));
+  cachedProjects = userScopedProjects;
+  cachedSharedTemplateProjects = sharedTemplateProjects;
+  void settingsService.setSetting(PROJECTS_STORAGE_KEY, userScopedProjects, { userId: getCurrentUserId() });
+  void settingsService.setSetting(PROJECTS_STORAGE_KEY, sharedTemplateProjects, {
+    userId: SHARED_TEMPLATE_PROJECTS_USER_ID,
+  });
 }
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
@@ -114,6 +145,280 @@ const readFirstNonEmptyString = (...values: unknown[]): string | undefined => {
     }
   }
   return undefined;
+};
+
+const normalizeProjectKind = (project: CastingProject | null | undefined): string =>
+  String(project?.projectKind ?? (project as Record<string, unknown> | null)?.project_kind ?? '').trim().toLowerCase();
+
+const normalizeTemplateAudience = (project: CastingProject | null | undefined): ProjectTemplateAudience | null => {
+  const raw = String(project?.templateAudience ?? (project as Record<string, unknown> | null)?.template_audience ?? '').trim().toLowerCase();
+  if (raw === 'content_producer' || raw === 'production_team') {
+    return raw;
+  }
+  return null;
+};
+
+const normalizeTemplateStatus = (project: CastingProject | null | undefined): ProjectTemplateStatus | null => {
+  const raw = String(project?.templateStatus ?? (project as Record<string, unknown> | null)?.template_status ?? '').trim().toLowerCase();
+  if (raw === 'draft' || raw === 'published' || raw === 'archived') {
+    return raw;
+  }
+  return null;
+};
+
+const isTemplateProject = (project: CastingProject | null | undefined): boolean => {
+  if (!project) {
+    return false;
+  }
+  if (normalizeProjectKind(project) === 'template') {
+    return true;
+  }
+  return Boolean((project as Record<string, unknown>).is_template);
+};
+
+const isProtectedDemoProjectId = (projectId: string | null | undefined): boolean => {
+  const normalizedProjectId = String(projectId || '').trim().toLowerCase();
+  return normalizedProjectId === TROLL_DEMO_PROJECT_ID || normalizedProjectId === CONTENT_PRODUCER_DEMO_PROJECT_ID;
+};
+
+const isProtectedDemoProject = (project: CastingProject | string | null | undefined): boolean => {
+  if (typeof project === 'string') {
+    return isProtectedDemoProjectId(project);
+  }
+  return isProtectedDemoProjectId(project?.id) || normalizeProjectKind(project) === 'demo';
+};
+
+const canCurrentSessionMutateProtectedDemo = (): boolean => {
+  const session = authSessionService.getSessionSync();
+  const normalizedRole = String(session.adminUser?.role || '').trim().toLowerCase();
+  return normalizedRole === 'admin' || normalizedRole === 'owner';
+};
+
+const emitProtectedDemoWriteBlocked = (projectId: string, mutation: 'save' | 'delete'): void => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  window.dispatchEvent(new CustomEvent(PROTECTED_DEMO_WRITE_BLOCKED_EVENT, {
+    detail: {
+      projectId,
+      mutation,
+      message: 'Dette er en låst demo-mal. Lag en kopi for å jobbe videre.',
+    },
+  }));
+};
+
+const deepCloneProject = <T>(value: T): T => {
+  if (typeof structuredClone === 'function') {
+    return structuredClone(value);
+  }
+  return JSON.parse(JSON.stringify(value)) as T;
+};
+
+const buildDerivedProjectId = (sourceProjectId: string, prefix: 'project' | 'template'): string => {
+  const normalizedSource = String(sourceProjectId || prefix)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 24) || prefix;
+  return `${prefix}-${normalizedSource}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+};
+
+const buildProjectCopyName = (source: CastingProject, suffix: string): string => {
+  const baseName = String(source.name || 'Prosjekt').trim() || 'Prosjekt';
+  return `${baseName} · ${suffix}`;
+};
+
+const getTemplateIdentityKey = (project: CastingProject | null | undefined): string | null => {
+  if (!project || !isTemplateProject(project)) {
+    return null;
+  }
+
+  const audience = normalizeTemplateAudience(project) || 'production_team';
+  const sourceProjectId = String(project.templateSourceProjectId || project.id || '').trim().toLowerCase();
+  if (!sourceProjectId) {
+    return null;
+  }
+
+  return `${audience}:${sourceProjectId}`;
+};
+
+const pickPreferredTemplateProject = (
+  current: CastingProject | undefined,
+  candidate: CastingProject,
+): CastingProject => {
+  if (!current) {
+    return candidate;
+  }
+
+  const currentVersion = current.templateVersion ?? 0;
+  const candidateVersion = candidate.templateVersion ?? 0;
+  if (candidateVersion !== currentVersion) {
+    return candidateVersion > currentVersion ? candidate : current;
+  }
+
+  return getProjectFreshnessTimestamp(candidate) >= getProjectFreshnessTimestamp(current)
+    ? candidate
+    : current;
+};
+
+const dedupeTemplateProjects = (projects: CastingProject[]): CastingProject[] => {
+  const templateMap = new Map<string, CastingProject>();
+
+  projects.forEach((project) => {
+    const key = getTemplateIdentityKey(project);
+    if (!key) {
+      return;
+    }
+
+    const current = templateMap.get(key);
+    templateMap.set(key, pickPreferredTemplateProject(current, project));
+  });
+
+  return Array.from(templateMap.values());
+};
+
+const remapEntityIds = <T extends Record<string, unknown>>(
+  items: T[] | undefined,
+  projectId: string,
+  prefix: string,
+  options?: {
+    rewriteReferences?: (next: T, source: T, idMap: Map<string, string>) => void;
+    clearAssignments?: boolean;
+  },
+): T[] => {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  const idMap = new Map<string, string>();
+  const nextItems = items.map((item, index) => {
+    const next = deepCloneProject(item);
+    const currentId = typeof next.id === 'string' && next.id.trim().length > 0
+      ? next.id.trim()
+      : `${prefix}-${index + 1}`;
+    const nextId = `${projectId}-${prefix}-${index + 1}`;
+    idMap.set(currentId, nextId);
+    next.id = nextId;
+    if ('projectId' in next || 'projectId' in item) {
+      next.projectId = projectId;
+    }
+    if ('project_id' in next || 'project_id' in item) {
+      next.project_id = projectId;
+    }
+    if (options?.clearAssignments) {
+      if ('userId' in next) next.userId = undefined;
+      if ('user_id' in next) next.user_id = undefined;
+      if ('addedBy' in next) next.addedBy = undefined;
+    }
+    return next;
+  });
+
+  if (options?.rewriteReferences) {
+    nextItems.forEach((item, index) => {
+      options.rewriteReferences?.(item, items[index], idMap);
+    });
+  }
+
+  return nextItems;
+};
+
+const createProjectSnapshot = (
+  sourceProject: CastingProject,
+  options: {
+    projectId: string;
+    name: string;
+    projectKind: 'workspace' | 'template';
+    templateAudience?: ProjectTemplateAudience | null;
+    templateStatus?: ProjectTemplateStatus | null;
+    templateVersion?: number | null;
+    templateCreatedBy?: string | null;
+    templateSourceProjectId?: string | null;
+    templateSourceProjectName?: string | null;
+    sourceTemplateId?: string | null;
+    sourceTemplateVersion?: number | null;
+    createdAt?: string | null;
+  },
+): CastingProject => {
+  const now = new Date().toISOString();
+  const snapshot = deepCloneProject(sourceProject);
+  const nextProjectId = options.projectId;
+  const sourceSceneIdMap = new Map<string, string>();
+  const nextProject: CastingProject = {
+    ...snapshot,
+    id: nextProjectId,
+    name: options.name,
+    projectKind: options.projectKind,
+    templateAudience: options.projectKind === 'template' ? (options.templateAudience ?? undefined) : undefined,
+    templateStatus: options.projectKind === 'template' ? (options.templateStatus ?? 'draft') : undefined,
+    templateVersion: options.projectKind === 'template' ? (options.templateVersion ?? 1) : undefined,
+    templatePublishedAt:
+      options.projectKind === 'template' && options.templateStatus === 'published'
+        ? now
+        : undefined,
+    templateCreatedBy: options.projectKind === 'template' ? (options.templateCreatedBy ?? undefined) : undefined,
+    templateSourceProjectId:
+      options.projectKind === 'template'
+        ? (options.templateSourceProjectId ?? sourceProject.id)
+        : undefined,
+    templateSourceProjectName:
+      options.projectKind === 'template'
+        ? (options.templateSourceProjectName ?? sourceProject.name)
+        : undefined,
+    sourceTemplateId:
+      options.projectKind === 'workspace'
+        ? (options.sourceTemplateId ?? (isTemplateProject(sourceProject) || isProtectedDemoProject(sourceProject) ? sourceProject.id : undefined))
+        : undefined,
+    sourceTemplateVersion:
+      options.projectKind === 'workspace'
+        ? (options.sourceTemplateVersion ?? (sourceProject.templateVersion ?? undefined))
+        : undefined,
+    lockedTemplate: options.projectKind === 'template',
+    createdAt: options.createdAt ?? now,
+    updatedAt: now,
+    userRoles: [],
+  };
+
+  nextProject.roles = remapEntityIds(nextProject.roles as Array<Record<string, unknown>>, nextProjectId, 'role');
+  nextProject.candidates = remapEntityIds(nextProject.candidates as Array<Record<string, unknown>>, nextProjectId, 'candidate');
+  nextProject.crew = remapEntityIds(nextProject.crew as Array<Record<string, unknown>>, nextProjectId, 'crew');
+  nextProject.schedules = remapEntityIds(nextProject.schedules as Array<Record<string, unknown>>, nextProjectId, 'schedule');
+  nextProject.locations = remapEntityIds(nextProject.locations as Array<Record<string, unknown>>, nextProjectId, 'location');
+  nextProject.props = remapEntityIds(nextProject.props as Array<Record<string, unknown>>, nextProjectId, 'prop');
+  nextProject.productionDays = remapEntityIds(nextProject.productionDays as Array<Record<string, unknown>>, nextProjectId, 'day');
+  nextProject.sceneBreakdowns = Array.isArray(nextProject.sceneBreakdowns)
+    ? nextProject.sceneBreakdowns.map((scene, index) => {
+        const nextScene = deepCloneProject(scene);
+        const currentId = typeof scene.id === 'string' && scene.id.trim().length > 0
+          ? scene.id.trim()
+          : `scene-${index + 1}`;
+        const nextId = `${nextProjectId}-scene-${index + 1}`;
+        sourceSceneIdMap.set(currentId, nextId);
+        nextScene.id = nextId;
+        nextScene.projectId = nextProjectId;
+        return nextScene;
+      })
+    : [];
+  nextProject.shotLists = remapEntityIds(
+    nextProject.shotLists as Array<Record<string, unknown>>,
+    nextProjectId,
+    'shotlist',
+    {
+      rewriteReferences: (next, source) => {
+        const sourceSceneId = typeof source.sceneId === 'string' ? source.sceneId : typeof source.scene_id === 'string' ? source.scene_id : '';
+        if (!sourceSceneId) {
+          return;
+        }
+        const remappedSceneId = sourceSceneIdMap.get(sourceSceneId);
+        if (remappedSceneId) {
+          next.sceneId = remappedSceneId;
+          next.scene_id = remappedSceneId;
+        }
+      },
+    },
+  ) as ShotList[];
+
+  return nextProject;
 };
 
 const SCENE_FALLBACK_PREFIX = 'Scene';
@@ -450,6 +755,54 @@ function mergeStoryboardShotFields(
   };
 }
 
+function mergeProjectTemplateMetadata(
+  project: CastingProject,
+  localProject?: CastingProject,
+): CastingProject {
+  if (!localProject) {
+    return project;
+  }
+
+  return {
+    ...project,
+    projectKind: project.projectKind ?? localProject.projectKind,
+    templateAudience: project.templateAudience ?? localProject.templateAudience,
+    templateStatus: project.templateStatus ?? localProject.templateStatus,
+    templateVersion: project.templateVersion ?? localProject.templateVersion,
+    templatePublishedAt: project.templatePublishedAt ?? localProject.templatePublishedAt,
+    templateCreatedBy: project.templateCreatedBy ?? localProject.templateCreatedBy,
+    templateSourceProjectId: project.templateSourceProjectId ?? localProject.templateSourceProjectId,
+    templateSourceProjectName: project.templateSourceProjectName ?? localProject.templateSourceProjectName,
+    sourceTemplateId: project.sourceTemplateId ?? localProject.sourceTemplateId,
+    sourceTemplateVersion: project.sourceTemplateVersion ?? localProject.sourceTemplateVersion,
+    lockedTemplate: project.lockedTemplate ?? localProject.lockedTemplate,
+  };
+}
+
+function shouldRetainLocalOnlyProject(localProject: CastingProject, dbProjects: CastingProject[]): boolean {
+  const existsInDb = dbProjects.some((dbProject) => dbProject.id === localProject.id);
+  if (existsInDb) {
+    return false;
+  }
+
+  if (isTemplateProject(localProject)) {
+    return true;
+  }
+
+  const projectAgeMs = Date.now() - getProjectFreshnessTimestamp(localProject);
+  return projectAgeMs <= LOCAL_ONLY_PROJECT_RETENTION_MS;
+}
+
+function mergeWithLocalOnlyProjects(
+  dbProjects: CastingProject[],
+  localProjects: CastingProject[],
+): CastingProject[] {
+  return [
+    ...dbProjects,
+    ...localProjects.filter((localProject) => shouldRetainLocalOnlyProject(localProject, dbProjects)),
+  ];
+}
+
 function enrichShotListsWithProjectData(
   sourceShotLists: ShotList[],
   projectShotLists: ShotList[],
@@ -572,7 +925,8 @@ async function getProjectsFromDb(): Promise<CastingProject[]> {
     const normalizedDb = normalizeProjects(dbProjectsRaw);
     const dbProjects = normalizedDb.projects.map((project) => {
       const localProject = localProjects.find((entry) => entry.id === project.id);
-      return mergeProjectUserRoles(project, localProject).project;
+      const mergedProject = mergeProjectUserRoles(project, localProject).project;
+      return mergeProjectTemplateMetadata(mergedProject, localProject);
     });
     
     // Only use DB projects if they have richer data than local
@@ -584,24 +938,15 @@ async function getProjectsFromDb(): Promise<CastingProject[]> {
       
       // Only overwrite local if DB actually has richer data, or if local is empty and DB has data
       if (dbHasData) {
-        saveProjectsToStorage(dbProjects); // Cache to storage
-        return dbProjects;
+        const mergedProjects = mergeWithLocalOnlyProjects(dbProjects, localProjects);
+        saveProjectsToStorage(mergedProjects); // Cache to storage
+        return mergedProjects;
       }
       
       // If local has richer data, keep the DB list canonical and only retain
       // recent local-only projects that may not have synced yet.
       if (localHasData) {
-        const mergedProjects = [
-          ...dbProjects,
-          ...localProjects.filter((localProject) => {
-            const existsInDb = dbProjects.some((dbProject) => dbProject.id === localProject.id);
-            if (existsInDb) {
-              return false;
-            }
-            const projectAgeMs = Date.now() - getProjectFreshnessTimestamp(localProject);
-            return projectAgeMs <= LOCAL_ONLY_PROJECT_RETENTION_MS;
-          }),
-        ];
+        const mergedProjects = mergeWithLocalOnlyProjects(dbProjects, localProjects);
         saveProjectsToStorage(mergedProjects);
         return mergedProjects;
       }
@@ -625,10 +970,15 @@ async function getProjectsFromDb(): Promise<CastingProject[]> {
 /**
  * Save project to database with fallback to storage
  */
-async function saveProjectToDb(project: CastingProject): Promise<void> {
+async function saveProjectToDb(project: CastingProject, options?: ProjectMutationOptions): Promise<void> {
   const normalizedProject = normalizeProject(project);
   if (normalizedProject.changed) {
     project = normalizedProject.project;
+  }
+
+  if (isProtectedDemoProject(project) && !options?.allowProtectedDemoWrite && !canCurrentSessionMutateProtectedDemo()) {
+    emitProtectedDemoWriteBlocked(project.id, 'save');
+    return;
   }
 
   invalidateProjectFetchCache(project.id);
@@ -670,7 +1020,12 @@ async function saveProjectToDb(project: CastingProject): Promise<void> {
 /**
  * Delete project from database with fallback to storage
  */
-async function deleteProjectFromDb(id: string): Promise<void> {
+async function deleteProjectFromDb(id: string, options?: ProjectMutationOptions): Promise<void> {
+  if (isProtectedDemoProject(id) && !options?.allowProtectedDemoWrite && !canCurrentSessionMutateProtectedDemo()) {
+    emitProtectedDemoWriteBlocked(id, 'delete');
+    return;
+  }
+
   invalidateProjectFetchCache(id);
 
   // Remove from storage first
@@ -708,6 +1063,26 @@ export const castingService = {
 
   isTrollDemoProject(project: CastingProject): boolean {
     return isTrollDemoProject(project);
+  },
+
+  isProtectedDemoProject(project: CastingProject | string | null | undefined): boolean {
+    return isProtectedDemoProject(project);
+  },
+
+  isTemplateProject(project: CastingProject | null | undefined): boolean {
+    return isTemplateProject(project);
+  },
+
+  getProjectTemplateAudience(project: CastingProject | null | undefined): ProjectTemplateAudience | null {
+    return normalizeTemplateAudience(project);
+  },
+
+  getProjectTemplateStatus(project: CastingProject | null | undefined): ProjectTemplateStatus | null {
+    return normalizeTemplateStatus(project);
+  },
+
+  canCurrentSessionMutateProtectedDemo(): boolean {
+    return canCurrentSessionMutateProtectedDemo();
   },
 
   /**
@@ -814,12 +1189,12 @@ export const castingService = {
   /**
    * Save project (create or update) to database or storage
    */
-  async saveProject(project: CastingProject): Promise<void> {
+  async saveProject(project: CastingProject, options?: ProjectMutationOptions): Promise<void> {
     // Update timestamp
     project = { ...project, updatedAt: new Date().toISOString() };
     
     try {
-      await saveProjectToDb(project);
+      await saveProjectToDb(project, options);
     } catch (error) {
       console.warn('Database save failed, using local storage:', error);
       // Still save to storage as fallback
@@ -837,9 +1212,9 @@ export const castingService = {
   /**
    * Delete project from database or storage
    */
-  async deleteProject(id: string): Promise<void> {
+  async deleteProject(id: string, options?: ProjectMutationOptions): Promise<void> {
     try {
-      await deleteProjectFromDb(id);
+      await deleteProjectFromDb(id, options);
     } catch (error) {
       console.warn('Database delete failed, using local storage:', error);
       // Still delete from storage as fallback
@@ -2543,7 +2918,7 @@ export const castingService = {
     };
 
     try {
-      await this.saveProject(demoProject);
+      await this.saveProject(demoProject, { allowProtectedDemoWrite: true });
       await Promise.all(producerShotLists.map((shotList) => this.saveShotList(demoProject.id, shotList)));
       const saved = await this.getProject(demoProject.id);
       if (!saved) {
@@ -3717,7 +4092,7 @@ export const castingService = {
 
     // Save to database
     try {
-      await this.saveProject(mockProject);
+      await this.saveProject(mockProject, { allowProtectedDemoWrite: true });
 
       
       // Verify it was saved
@@ -3730,5 +4105,98 @@ export const castingService = {
     } catch (error) {
       console.error('Failed to initialize TROLL project:', error);
     }
+  },
+
+  async getPublishedTemplates(audience?: ProjectTemplateAudience): Promise<CastingProject[]> {
+    const projects = await this.getProjects();
+    const publishedTemplates = projects.filter((project) => {
+      if (!isTemplateProject(project)) {
+        return false;
+      }
+      const status = normalizeTemplateStatus(project) ?? 'published';
+      if (status !== 'published') {
+        return false;
+      }
+      if (!audience) {
+        return true;
+      }
+      return normalizeTemplateAudience(project) === audience;
+    });
+
+    return dedupeTemplateProjects(publishedTemplates);
+  },
+
+  async createProjectCopy(
+    sourceProjectId: string,
+    options?: {
+      name?: string;
+      sourceTemplateId?: string | null;
+      sourceTemplateVersion?: number | null;
+    },
+  ): Promise<CastingProject> {
+    const sourceProject = await this.getProject(sourceProjectId);
+    if (!sourceProject) {
+      throw new Error(`Project ${sourceProjectId} not found`);
+    }
+
+    const nextProject = createProjectSnapshot(sourceProject, {
+      projectId: buildDerivedProjectId(sourceProject.id, 'project'),
+      name: options?.name?.trim() || buildProjectCopyName(sourceProject, 'kopi'),
+      projectKind: 'workspace',
+      sourceTemplateId: options?.sourceTemplateId ?? (isTemplateProject(sourceProject) || isProtectedDemoProject(sourceProject) ? sourceProject.id : null),
+      sourceTemplateVersion: options?.sourceTemplateVersion ?? sourceProject.templateVersion ?? null,
+    });
+
+    await this.saveProject(nextProject);
+    return nextProject;
+  },
+
+  async publishProjectAsTemplate(
+    sourceProjectId: string,
+    options: {
+      audience: ProjectTemplateAudience;
+      name?: string;
+      status?: ProjectTemplateStatus;
+    },
+  ): Promise<CastingProject> {
+    const sourceProject = await this.getProject(sourceProjectId);
+    if (!sourceProject) {
+      throw new Error(`Project ${sourceProjectId} not found`);
+    }
+
+    const session = authSessionService.getSessionSync();
+    const sourceTemplateProjectId = String(sourceProject.templateSourceProjectId || sourceProject.id || '').trim() || sourceProject.id;
+    const sourceTemplateProjectName = String(sourceProject.templateSourceProjectName || sourceProject.name || '').trim() || sourceProject.name;
+    const projects = await this.getProjects();
+    const matchingTemplates = dedupeTemplateProjects(
+      projects.filter((project) => (
+        isTemplateProject(project) &&
+        normalizeTemplateAudience(project) === options.audience &&
+        String(project.templateSourceProjectId || project.id || '').trim() === sourceTemplateProjectId
+      )),
+    );
+    const existingTemplate = matchingTemplates[0];
+    const nextTemplateVersion = existingTemplate
+      ? Math.max(existingTemplate.templateVersion ?? 1, sourceProject.templateVersion ?? 1) + 1
+      : 1;
+    const template = createProjectSnapshot(sourceProject, {
+      projectId: existingTemplate?.id ?? buildDerivedProjectId(sourceTemplateProjectId, 'template'),
+      name: options.name?.trim() || `Template · ${sourceTemplateProjectName}`,
+      projectKind: 'template',
+      templateAudience: options.audience,
+      templateStatus: options.status ?? 'published',
+      templateVersion: nextTemplateVersion,
+      templateCreatedBy:
+        existingTemplate?.templateCreatedBy ||
+        session.adminUser?.email ||
+        session.currentUserId ||
+        getCurrentUserId(),
+      templateSourceProjectId: sourceTemplateProjectId,
+      templateSourceProjectName: sourceTemplateProjectName,
+      createdAt: existingTemplate?.createdAt,
+    });
+
+    await this.saveProject(template, { allowProtectedDemoWrite: true });
+    return template;
   },
 };

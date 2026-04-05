@@ -102,6 +102,8 @@ import {
   PushPin as PushPinIcon,
   DragIndicator as DragIndicatorIcon,
   FolderOpen as FolderOpenIcon,
+  ContentCopy as ContentCopyIcon,
+  Publish as PublishIcon,
 } from '@mui/icons-material';
 import { alpha } from '@mui/material/styles';
 
@@ -142,7 +144,6 @@ import {
   roleRoomBillingApi,
   type RoleRoomCommercialBillingAccount,
 } from '../services/castingApiService';
-import { resetMockCastingData } from '../data/mockCastingData';
 import { consentService } from '../services/consentService';
 import { castingAuthService } from '../services/castingAuthService';
 import { useProducerAccess } from '../hooks/useProducerAccess';
@@ -1021,6 +1022,8 @@ export function CastingPlannerPanel({
   const [projectQuickActionsProject, setProjectQuickActionsProject] = useState<CastingProject | null>(null);
   const [pinnedProjectIds, setPinnedProjectIds] = useState<string[]>([]);
   const [draggingPinnedProjectId, setDraggingPinnedProjectId] = useState<string | null>(null);
+  const [publishedTemplates, setPublishedTemplates] = useState<CastingProject[]>([]);
+  const protectedDemoBlockedToastRef = useRef<{ key: string; shownAt: number } | null>(null);
 
   // Keep the UI fallback aligned with settingsService/castingService demo seeds.
   const getUserId = useCallback((): string => {
@@ -1031,6 +1034,37 @@ export function CastingPlannerPanel({
     }
     return 'default-user';
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const handleProtectedDemoWriteBlocked = (event: Event) => {
+      const detail = event instanceof CustomEvent
+        ? event.detail as { projectId?: string; mutation?: string; message?: string } | undefined
+        : undefined;
+      const dedupeKey = `${detail?.projectId || 'unknown'}:${detail?.mutation || 'unknown'}`;
+      const now = Date.now();
+      if (
+        protectedDemoBlockedToastRef.current
+        && protectedDemoBlockedToastRef.current.key === dedupeKey
+        && now - protectedDemoBlockedToastRef.current.shownAt < 2500
+      ) {
+        return;
+      }
+      protectedDemoBlockedToastRef.current = { key: dedupeKey, shownAt: now };
+      toast.showWarning(
+        detail?.message || 'Dette er en låst demo-mal. Lag en kopi for å jobbe videre.',
+        3200,
+      );
+    };
+
+    window.addEventListener('role-room-protected-demo-write-blocked', handleProtectedDemoWriteBlocked);
+    return () => {
+      window.removeEventListener('role-room-protected-demo-write-blocked', handleProtectedDemoWriteBlocked);
+    };
+  }, [toast]);
 
   useEffect(() => {
     currentProjectRef.current = currentProject;
@@ -1456,6 +1490,80 @@ export function CastingPlannerPanel({
     return [...pinned, ...rest];
   }, [pinnedProjectIds, sortedProjects]);
 
+  const isProtectedDemoProject = useCallback((project: CastingProject): boolean => {
+    return castingService.isProtectedDemoProject(project);
+  }, []);
+
+  const isTemplateProject = useCallback((project: CastingProject): boolean => {
+    return castingService.isTemplateProject(project);
+  }, []);
+
+  const canMutateProtectedDemoData = useMemo(
+    () => castingService.canCurrentSessionMutateProtectedDemo(),
+    [adminUser?.role],
+  );
+
+  const templateAudienceForSession = useMemo<'content_producer' | 'production_team'>(
+    () => {
+      const loginAs = String(adminUser?.loginAs || '').trim().toLowerCase();
+      const requestedRole = String(adminUser?.requestedRole || '').trim().toLowerCase();
+      const role = String(adminUser?.role || '').trim().toLowerCase();
+      if (
+        loginAs === 'content_producer'
+        || requestedRole === 'content_producer'
+        || requestedRole === 'client_reviewer'
+        || role === 'content_producer'
+        || role === 'client_reviewer'
+      ) {
+        return 'content_producer';
+      }
+      return 'production_team';
+    },
+    [adminUser?.loginAs, adminUser?.requestedRole, adminUser?.role],
+  );
+
+  const filteredPublishedTemplates = useMemo(() => {
+    const matchingTemplates = publishedTemplates
+      .filter((project) => {
+        const audience = castingService.getProjectTemplateAudience(project);
+        const status = castingService.getProjectTemplateStatus(project);
+        return audience === templateAudienceForSession && status === 'published';
+      })
+      .reduce<CastingProject[]>((acc, project) => {
+        const templateKey = `${templateAudienceForSession}:${String(project.templateSourceProjectId || project.id || '').trim().toLowerCase()}`;
+        const existingIndex = acc.findIndex((entry) => (
+          `${templateAudienceForSession}:${String(entry.templateSourceProjectId || entry.id || '').trim().toLowerCase()}`
+        ) === templateKey);
+        if (existingIndex === -1) {
+          acc.push(project);
+          return acc;
+        }
+
+        const existingProject = acc[existingIndex];
+        const existingVersion = existingProject.templateVersion ?? 0;
+        const nextVersion = project.templateVersion ?? 0;
+        const existingUpdatedAt = new Date(existingProject.updatedAt || existingProject.createdAt || 0).getTime();
+        const nextUpdatedAt = new Date(project.updatedAt || project.createdAt || 0).getTime();
+        const shouldReplace = nextVersion > existingVersion || (
+          nextVersion === existingVersion && nextUpdatedAt >= existingUpdatedAt
+        );
+        if (shouldReplace) {
+          acc[existingIndex] = project;
+        }
+        return acc;
+      }, []);
+    const query = projectSelectorQuery.trim().toLowerCase();
+    if (!query) {
+      return matchingTemplates;
+    }
+    return matchingTemplates.filter((project) => {
+      const name = (project.name || '').toLowerCase();
+      const description = (project.description || '').toLowerCase();
+      const sourceName = String(project.templateSourceProjectName || '').toLowerCase();
+      return name.includes(query) || description.includes(query) || sourceName.includes(query);
+    });
+  }, [projectSelectorQuery, publishedTemplates, templateAudienceForSession]);
+
   const filteredProjectSelectorItems = useMemo(() => {
     const query = projectSelectorQuery.trim().toLowerCase();
     if (!query) return orderedProjects;
@@ -1805,12 +1913,15 @@ export function CastingPlannerPanel({
         : '';
   const isContentProducerMode = isContentProducerSession || producerAccess.isContentProducerMode;
   const isClientReviewerMode = isClientReviewerSession || producerAccess.isClientReviewerMode;
-  const canEditProducerWorkflow = isContentProducerMode || producerAccess.canEditProductionData;
-  const canCommentInProducerWorkflow = isContentProducerMode || isClientReviewerMode || producerAccess.canComment;
+  const isReadOnlyProtectedDemoView = Boolean(
+    currentProject && isProtectedDemoProject(currentProject) && !canMutateProtectedDemoData,
+  );
+  const canEditProducerWorkflow = !isReadOnlyProtectedDemoView && (isContentProducerMode || producerAccess.canEditProductionData);
+  const canCommentInProducerWorkflow = !isReadOnlyProtectedDemoView && (isContentProducerMode || isClientReviewerMode || producerAccess.canComment);
   const canViewProducerEconomy = isContentProducerMode || producerAccess.canViewEconomy || permissions.canViewEconomy;
-  const canApproveProducerReview = isClientReviewerSession || producerAccess.canApproveReview;
-  const canRequestProducerReviewChanges = isClientReviewerSession || producerAccess.canRequestReviewChanges;
-  const canMakeProducerReviewDecision = isClientReviewerSession || producerAccess.canMakeReviewDecision;
+  const canApproveProducerReview = !isReadOnlyProtectedDemoView && (isClientReviewerSession || producerAccess.canApproveReview);
+  const canRequestProducerReviewChanges = !isReadOnlyProtectedDemoView && (isClientReviewerSession || producerAccess.canRequestReviewChanges);
+  const canMakeProducerReviewDecision = !isReadOnlyProtectedDemoView && (isClientReviewerSession || producerAccess.canMakeReviewDecision);
   const canSendBudgetReview = canEditProducerWorkflow && canViewProducerEconomy && !isClientReviewerMode;
   const producerWorkspaceBadgeLabel = isClientReviewerMode ? 'Klient' : 'Innholdsprodusent';
   const producerCoreTabMetaLabel = isContentProducerMode || isClientReviewerMode
@@ -1904,12 +2015,13 @@ export function CastingPlannerPanel({
   }, []);
 
   const filterProjectsForSession = useCallback((projectList: CastingProject[]): CastingProject[] => {
+    const workspaceProjects = projectList.filter((project) => !isTemplateProject(project));
     if (isProducerWorkspaceSession) {
-      return projectList.filter((project) => !isTrollProject(project));
+      return workspaceProjects.filter((project) => !isTrollProject(project));
     }
 
-    return projectList.filter((project) => !isContentProducerDemoProject(project));
-  }, [isContentProducerDemoProject, isProducerWorkspaceSession, isTrollProject]);
+    return workspaceProjects.filter((project) => !isContentProducerDemoProject(project));
+  }, [isContentProducerDemoProject, isProducerWorkspaceSession, isTemplateProject, isTrollProject]);
 
   useEffect(() => onProducerWorkflowEvent((payload) => {
     if (payload.domain !== 'project') {
@@ -2005,6 +2117,59 @@ export function CastingPlannerPanel({
       }
     }
   }, [activeTab, ensureScopedSessionProjectRole, isProducerWorkspaceSession, isTrollProject, toast]);
+
+  const handleCreateProjectCopy = useCallback(async (
+    project: CastingProject,
+    options?: { closeSelector?: boolean },
+  ) => {
+    try {
+      const copyName = isTemplateProject(project)
+        ? `${String(project.templateSourceProjectName || project.name || 'Mal').replace(/^Template\s*·\s*/i, '')} · prosjekt`
+        : undefined;
+      const copiedProject = await castingService.createProjectCopy(project.id, { name: copyName });
+      const rawProjects = await castingService.getProjects();
+      setPublishedTemplates(rawProjects.filter((entry) => castingService.isTemplateProject(entry)));
+      setProjects(filterProjectsForSession(rawProjects));
+      setCurrentProject(copiedProject);
+      setCurrentProjectId(copiedProject.id);
+      if (options?.closeSelector) {
+        setProjectSelectorOpen(false);
+        setProjectSelectorQuery('');
+      }
+      setProjectQuickActionsAnchorEl(null);
+      setProjectQuickActionsProject(null);
+      toast.showSuccess(
+        isTemplateProject(project)
+          ? 'Ny prosjektkopi ble opprettet fra malen.'
+          : 'Ny prosjektkopi ble opprettet fra demoen.',
+      );
+    } catch (error) {
+      console.error('Failed to create project copy:', error);
+      toast.showError('Kunne ikke lage en kopi av prosjektet.');
+    }
+  }, [filterProjectsForSession, isTemplateProject, toast]);
+
+  const handlePublishProjectTemplate = useCallback(async (project: CastingProject) => {
+    try {
+      await castingService.publishProjectAsTemplate(project.id, {
+        audience: templateAudienceForSession,
+        status: 'published',
+      });
+      const rawProjects = await castingService.getProjects();
+      setPublishedTemplates(rawProjects.filter((entry) => castingService.isTemplateProject(entry)));
+      setProjects(filterProjectsForSession(rawProjects));
+      setProjectQuickActionsAnchorEl(null);
+      setProjectQuickActionsProject(null);
+      toast.showSuccess(
+        templateAudienceForSession === 'content_producer'
+          ? 'Template for innholdsprodusent er publisert.'
+          : 'Template for produksjonsteam er publisert.',
+      );
+    } catch (error) {
+      console.error('Failed to publish project as template:', error);
+      toast.showError('Kunne ikke publisere prosjektet som template.');
+    }
+  }, [filterProjectsForSession, templateAudienceForSession, toast]);
 
   useEffect(() => {
     if (lastPermissionsLoadingRef.current === permissionsLoading) {
@@ -2806,6 +2971,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
       setProjectsLoading(true);
       try {
         const loadedProjectsRaw = await castingService.getProjects();
+        setPublishedTemplates(loadedProjectsRaw.filter((project) => castingService.isTemplateProject(project)));
         const projects = filterProjectsForSession(loadedProjectsRaw);
         
         let shouldInitializeMock = false;
@@ -2968,6 +3134,24 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
           canApprove: true,
           canComment: true,
           canRequestChanges: true,
+          canViewEconomy: true,
+        });
+        setPermissionsLoading(false);
+        return;
+      }
+
+      if (isProtectedDemoProject(activeProject) && !canMutateProtectedDemoData) {
+        setCurrentUserRole(null);
+        setPermissions({
+          canViewAll: true,
+          canEditCasting: false,
+          canEditProduction: false,
+          canEditShotLists: false,
+          canManageCrew: false,
+          canManageLocations: false,
+          canApprove: false,
+          canComment: false,
+          canRequestChanges: false,
           canViewEconomy: true,
         });
         setPermissionsLoading(false);
@@ -3153,7 +3337,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
         canViewEconomy: false,
       });
     }
-  }, [adminUser, buildPermissionStateFromRole, getUserId, isGuestMode, isContentProducerDemoProject]);
+  }, [adminUser, buildPermissionStateFromRole, canMutateProtectedDemoData, getUserId, isGuestMode, isContentProducerDemoProject, isProtectedDemoProject]);
 
   const loadAvailableScenes = useCallback(() => {
     const sceneMap = new Map<string, { id: string; name: string; thumbnail?: string }>();
@@ -3300,7 +3484,9 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
 
   const loadProjects = useCallback(async () => {
     try {
-      const loadedProjects = filterProjectsForSession(await castingService.getProjects());
+      const rawProjects = await castingService.getProjects();
+      setPublishedTemplates(rawProjects.filter((project) => castingService.isTemplateProject(project)));
+      const loadedProjects = filterProjectsForSession(rawProjects);
       setProjects(loadedProjects);
       
       // If we have a current project already selected, refresh its data
@@ -3371,7 +3557,9 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
       console.error('Error loading projects:', error);
       // Fallback to sync version — wrap in try/catch to prevent double-throw
       try {
-        const loadedProjects = filterProjectsForSession(await castingService.getProjects());
+        const rawProjects = await castingService.getProjects();
+        setPublishedTemplates(rawProjects.filter((project) => castingService.isTemplateProject(project)));
+        const loadedProjects = filterProjectsForSession(rawProjects);
         setProjects(loadedProjects);
         if (loadedProjects.length > 0) {
           // Maintain current project if possible, otherwise choose a role-aware fallback.
@@ -5326,6 +5514,20 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                           }}
                         />
                       ) : null}
+                      {currentProject && isProtectedDemoProject(currentProject) ? (
+                        <Chip
+                          size="small"
+                          label="Låst demo-mal"
+                          sx={{
+                            height: 22,
+                            bgcolor: 'rgba(244,114,182,0.12)',
+                            color: '#f9a8d4',
+                            border: '1px solid rgba(244,114,182,0.22)',
+                            fontSize: '0.66rem',
+                            fontWeight: 700,
+                          }}
+                        />
+                      ) : null}
                     </Box>
                     <Typography
                       sx={{
@@ -5342,7 +5544,11 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                       {[
                         currentProject?.clientName,
                         producerWorkspaceBadgeLabel,
-                        currentProject ? 'Klikk for å bytte eller åpne eksisterende prosjekt' : 'Åpne arbeidsbiblioteket',
+                        currentProject && isProtectedDemoProject(currentProject) && !canMutateProtectedDemoData
+                          ? 'Demoen er låst. Lag kopi for å jobbe videre.'
+                          : currentProject
+                            ? 'Klikk for å bytte eller åpne eksisterende prosjekt'
+                            : 'Åpne arbeidsbiblioteket',
                       ].filter(Boolean).join(' • ')}
                     </Typography>
                   </Box>
@@ -5394,6 +5600,32 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                 >
                   Åpne prosjekter
                 </Button>
+
+                {currentProject && isProtectedDemoProject(currentProject) && !canMutateProtectedDemoData ? (
+                  <Button
+                    size="small"
+                    onClick={() => { void handleCreateProjectCopy(currentProject); }}
+                    startIcon={<ContentCopyIcon sx={{ fontSize: 18 }} />}
+                    sx={{
+                      minWidth: { md: 124, lg: 138 },
+                      px: { md: 1.2, lg: 1.45 },
+                      borderRadius: { md: 2.25, lg: 2.5 },
+                      border: '1px solid rgba(244,114,182,0.24)',
+                      bgcolor: 'rgba(244,114,182,0.08)',
+                      color: '#fbcfe8',
+                      fontSize: { md: '0.72rem', lg: '0.76rem' },
+                      fontWeight: 700,
+                      whiteSpace: 'nowrap',
+                      flexShrink: 0,
+                      '&:hover': {
+                        bgcolor: 'rgba(244,114,182,0.14)',
+                        borderColor: 'rgba(244,114,182,0.38)',
+                      },
+                    }}
+                  >
+                    Lag kopi
+                  </Button>
+                ) : null}
 
                 {currentProject ? (
                   <IconButton
@@ -5696,6 +5928,18 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
               },
             }}
           >
+            {projectQuickActionsProject && (isProtectedDemoProject(projectQuickActionsProject) || isTemplateProject(projectQuickActionsProject)) ? (
+              <MenuItem
+                onClick={() => {
+                  if (!projectQuickActionsProject) return;
+                  void handleCreateProjectCopy(projectQuickActionsProject, { closeSelector: true });
+                }}
+                sx={{ minHeight: 40, fontSize: '0.86rem', gap: 1 }}
+              >
+                <ContentCopyIcon sx={{ fontSize: 18, color: '#f9a8d4' }} />
+                {isTemplateProject(projectQuickActionsProject) ? 'Lag prosjekt fra mal' : 'Lag kopi av demo'}
+              </MenuItem>
+            ) : null}
             <MenuItem
               onClick={() => {
                 if (!projectQuickActionsProject) return;
@@ -5715,33 +5959,49 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
               />
               {pinnedProjectIdSet.has(projectQuickActionsProject?.id ?? '') ? 'Løsne fra toppen' : 'Fest til toppen'}
             </MenuItem>
-            <MenuItem
-              onClick={() => {
-                if (!projectQuickActionsProject) return;
-                openProjectEditModal(projectQuickActionsProject);
-                handleCloseProjectQuickActions();
-              }}
-              sx={{ minHeight: 40, fontSize: '0.86rem', gap: 1 }}
-            >
-              <EditIcon sx={{ fontSize: 18, color: '#7dd3fc' }} />
-              Rediger prosjekt
-            </MenuItem>
-            <MenuItem
-              onClick={() => {
-                if (!projectQuickActionsProject) return;
-                setConfirmDeleteContext({
-                  type: 'project',
-                  id: projectQuickActionsProject.id,
-                  name: projectQuickActionsProject.name,
-                });
-                setConfirmDeleteOpen(true);
-                handleCloseProjectQuickActions();
-              }}
-              sx={{ minHeight: 40, fontSize: '0.86rem', gap: 1, color: '#fda4af' }}
-            >
-              <DeleteIcon sx={{ fontSize: 18 }} />
-              Slett prosjekt
-            </MenuItem>
+            {projectQuickActionsProject && canSwitchRoleRoomRole && !isTemplateProject(projectQuickActionsProject) ? (
+              <MenuItem
+                onClick={() => {
+                  if (!projectQuickActionsProject) return;
+                  void handlePublishProjectTemplate(projectQuickActionsProject);
+                }}
+                sx={{ minHeight: 40, fontSize: '0.86rem', gap: 1 }}
+              >
+                <PublishIcon sx={{ fontSize: 18, color: '#c084fc' }} />
+                Publiser som template
+              </MenuItem>
+            ) : null}
+            {(!projectQuickActionsProject || !isProtectedDemoProject(projectQuickActionsProject) || canMutateProtectedDemoData) ? (
+              <>
+                <MenuItem
+                  onClick={() => {
+                    if (!projectQuickActionsProject) return;
+                    openProjectEditModal(projectQuickActionsProject);
+                    handleCloseProjectQuickActions();
+                  }}
+                  sx={{ minHeight: 40, fontSize: '0.86rem', gap: 1 }}
+                >
+                  <EditIcon sx={{ fontSize: 18, color: '#7dd3fc' }} />
+                  Rediger prosjekt
+                </MenuItem>
+                <MenuItem
+                  onClick={() => {
+                    if (!projectQuickActionsProject) return;
+                    setConfirmDeleteContext({
+                      type: 'project',
+                      id: projectQuickActionsProject.id,
+                      name: projectQuickActionsProject.name,
+                    });
+                    setConfirmDeleteOpen(true);
+                    handleCloseProjectQuickActions();
+                  }}
+                  sx={{ minHeight: 40, fontSize: '0.86rem', gap: 1, color: '#fda4af' }}
+                >
+                  <DeleteIcon sx={{ fontSize: 18 }} />
+                  Slett prosjekt
+                </MenuItem>
+              </>
+            ) : null}
           </Menu>
 
           {!useCompactHeaderLayout ? <Box sx={{ flex: 1 }} /> : null}
@@ -5857,22 +6117,6 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                     }}
                   >
                     <AdminPanelSettingsIcon sx={{ fontSize: navIconSizePx }} />
-                  </IconButton>
-                  <IconButton
-                    onClick={async () => {
-                      setConfirmDeleteContext({ type: 'project', id: '__reset_demo__', name: 'Demo Data' });
-                      setConfirmDeleteOpen(true);
-                    }}
-                    aria-label={branding.tokens.labels.resetDemoDataLabel}
-                    title={branding.tokens.labels.resetDemoDataLabel}
-                    sx={{
-                      color: '#9333ea',
-                      width: navActionButtonSizePx,
-                      height: navActionButtonSizePx,
-                      '&:hover': { bgcolor: 'rgba(147,51,234,0.1)' },
-                    }}
-                  >
-                    <RefreshIcon sx={{ fontSize: navIconSizePx }} />
                   </IconButton>
                 </>
               )}
@@ -11074,6 +11318,74 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
             </Box>
           ) : null}
           <Box sx={{ maxHeight: '60vh', overflow: 'auto' }}>
+            {filteredPublishedTemplates.length > 0 ? (
+              <Box sx={{ px: 2, pt: 1.25, pb: 0.6, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.56)' }}>
+                  Templates
+                </Typography>
+                <Typography sx={{ mt: 0.35, fontSize: '0.76rem', color: 'rgba(255,255,255,0.52)' }}>
+                  Publiserte maler for {templateAudienceForSession === 'content_producer' ? 'innholdsprodusent' : 'produksjonsteam'}.
+                </Typography>
+                <Stack spacing={1} sx={{ mt: 1.1 }}>
+                  {filteredPublishedTemplates.map((template) => (
+                    <Box
+                      key={`template-${template.id}`}
+                      sx={{
+                        px: 1.4,
+                        py: 1.2,
+                        borderRadius: 2.25,
+                        border: '1px solid rgba(192,132,252,0.18)',
+                        background: 'linear-gradient(135deg, rgba(168,85,247,0.12) 0%, rgba(30,41,59,0.72) 100%)',
+                        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
+                        display: 'grid',
+                        gridTemplateColumns: 'minmax(0, 1fr) auto',
+                        gap: 1,
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Box sx={{ minWidth: 0 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, minWidth: 0, flexWrap: 'wrap' }}>
+                          <Chip
+                            size="small"
+                            label="Publisert mal"
+                            sx={{
+                              height: 21,
+                              bgcolor: 'rgba(216,180,254,0.12)',
+                              color: '#e9d5ff',
+                              border: '1px solid rgba(216,180,254,0.22)',
+                              fontSize: '0.64rem',
+                              fontWeight: 700,
+                            }}
+                          />
+                          <Typography sx={{ color: '#fff', fontWeight: 700, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {String(template.templateSourceProjectName || template.name).replace(/^Template\s*·\s*/i, '')}
+                          </Typography>
+                        </Box>
+                        <Typography sx={{ mt: 0.55, fontSize: '0.76rem', color: 'rgba(255,255,255,0.66)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {template.description || 'Klargjort av admin som gjenbrukbar prosjektmal.'}
+                        </Typography>
+                      </Box>
+                      <Button
+                        size="small"
+                        onClick={() => { void handleCreateProjectCopy(template, { closeSelector: true }); }}
+                        startIcon={<ContentCopyIcon sx={{ fontSize: 16 }} />}
+                        sx={{
+                          textTransform: 'none',
+                          minHeight: 30,
+                          px: 1.05,
+                          color: '#f5d0fe',
+                          border: '1px solid rgba(216,180,254,0.32)',
+                          bgcolor: 'rgba(168,85,247,0.14)',
+                          '&:hover': { bgcolor: 'rgba(168,85,247,0.22)', borderColor: 'rgba(216,180,254,0.48)' },
+                        }}
+                      >
+                        Bruk mal
+                      </Button>
+                    </Box>
+                  ))}
+                </Stack>
+              </Box>
+            ) : null}
             {filteredPinnedProjectSelectorItems.length > 0 ? (
               <Box sx={{ px: 2, pt: 1.25, pb: 0.5, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                 <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.56)' }}>
@@ -11215,10 +11527,10 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                 </Box>
               </Box>
             ) : null}
-            {filteredProjectSelectorItems.length === 0 ? (
+            {filteredProjectSelectorItems.length === 0 && filteredPublishedTemplates.length === 0 ? (
               <Box sx={{ px: 3, py: 3.5 }}>
                 <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontWeight: 600 }}>
-                  Ingen prosjekter matcher søket
+                  Ingen prosjekter eller templates matcher søket
                 </Typography>
                 <Typography sx={{ mt: 0.5, fontSize: '0.82rem', color: 'rgba(255,255,255,0.64)' }}>
                   Prøv et annet søkeord, eller opprett et nytt prosjekt.
@@ -11256,6 +11568,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                       const isActive = currentProject?.id === project.id;
                       const isLatestCreated = latestCreatedProjectId === project.id;
                       const isPinned = pinnedProjectIdSet.has(project.id);
+                      const isProtectedDemo = isProtectedDemoProject(project);
                       const pinnedAccentColor = pinnedProjectAccentColorById.get(project.id) ?? '#fbbf24';
                       const candidateCount = project.candidatesCount ?? project.candidates?.length ?? 0;
                       const workflowStatus = project.producerWorkflowStatus;
@@ -11278,6 +11591,14 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                             minute: '2-digit',
                           })
                         : branding.tokens.labels.unknownLabel;
+                      const primaryActionLabel = isProtectedDemo && !canMutateProtectedDemoData ? 'Lag kopi' : 'Åpne';
+                      const handlePrimaryAction = () => {
+                        if (isProtectedDemo && !canMutateProtectedDemoData) {
+                          void handleCreateProjectCopy(project, { closeSelector: true });
+                          return;
+                        }
+                        void handleSelectProjectFromSelector(project);
+                      };
 
                       return (
                         <Box
@@ -11351,6 +11672,21 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                               {isPinned ? (
                                 <PushPinIcon sx={{ fontSize: 15, color: pinnedAccentColor, flexShrink: 0 }} />
                               ) : null}
+                              {isProtectedDemo ? (
+                                <Chip
+                                  size="small"
+                                  label="Demo-mal"
+                                  sx={{
+                                    height: 20,
+                                    bgcolor: 'rgba(244,114,182,0.12)',
+                                    color: '#f9a8d4',
+                                    border: '1px solid rgba(244,114,182,0.22)',
+                                    fontSize: '0.62rem',
+                                    fontWeight: 800,
+                                    flexShrink: 0,
+                                  }}
+                                />
+                              ) : null}
                             </Box>
 
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.7, minWidth: 0, flexWrap: 'wrap' }}>
@@ -11395,19 +11731,30 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                               size="small"
                               onClick={(e: MouseEvent) => {
                                 e.stopPropagation();
-                                void handleSelectProjectFromSelector(project);
+                                handlePrimaryAction();
                               }}
                               sx={{
                                 textTransform: 'none',
                                 minHeight: 28,
                                 px: 1,
-                                color: '#7dd3fc',
-                                border: '1px solid rgba(125,211,252,0.32)',
-                                bgcolor: 'rgba(56,189,248,0.08)',
-                                '&:hover': { bgcolor: 'rgba(56,189,248,0.18)', borderColor: 'rgba(56,189,248,0.65)' },
+                                color: isProtectedDemo && !canMutateProtectedDemoData ? '#fbcfe8' : '#7dd3fc',
+                                border: isProtectedDemo && !canMutateProtectedDemoData
+                                  ? '1px solid rgba(244,114,182,0.32)'
+                                  : '1px solid rgba(125,211,252,0.32)',
+                                bgcolor: isProtectedDemo && !canMutateProtectedDemoData
+                                  ? 'rgba(244,114,182,0.08)'
+                                  : 'rgba(56,189,248,0.08)',
+                                '&:hover': {
+                                  bgcolor: isProtectedDemo && !canMutateProtectedDemoData
+                                    ? 'rgba(244,114,182,0.18)'
+                                    : 'rgba(56,189,248,0.18)',
+                                  borderColor: isProtectedDemo && !canMutateProtectedDemoData
+                                    ? 'rgba(244,114,182,0.52)'
+                                    : 'rgba(56,189,248,0.65)',
+                                },
                               }}
                             >
-                              Åpne
+                              {primaryActionLabel}
                             </Button>
                             <IconButton
                               size="small"
@@ -11952,37 +12299,29 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
               width: 48,
               height: 48,
               borderRadius: '50%',
-              bgcolor: confirmDeleteContext?.id === '__reset_demo__' ? 'rgba(147, 51, 234, 0.15)' : 'rgba(255, 68, 68, 0.15)',
+              bgcolor: 'rgba(255, 68, 68, 0.15)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
             }}
           >
-            {confirmDeleteContext?.id === '__reset_demo__' ? (
-              <RefreshIcon sx={{ fontSize: 28, color: '#9333ea' }} />
-            ) : (
-              <DeleteIcon sx={{ fontSize: 28, color: '#ff4444' }} />
-            )}
+            <DeleteIcon sx={{ fontSize: 28, color: '#ff4444' }} />
           </Box>
           <Typography variant="h6" sx={{ fontWeight: 600, fontSize: '1.25rem' }}>
-            {confirmDeleteContext?.id === '__reset_demo__' 
-              ? branding.tokens.labels.resetDemoDataLabel
-              : confirmDeleteContext?.type === 'project' 
-                ? branding.tokens.labels.deleteProjectLabel
-                : confirmDeleteContext?.type === 'role'
-                  ? (branding.tokens.labels.roleDialogEditTitle || 'Delete Role')
-                  : confirmDeleteContext?.type === 'candidate'
-                    ? (branding.tokens.labels.candidateLabel || 'Delete Candidate')
-                    : (branding.tokens.labels.scheduleLabel || 'Delete Schedule')}
+            {confirmDeleteContext?.type === 'project' 
+              ? branding.tokens.labels.deleteProjectLabel
+              : confirmDeleteContext?.type === 'role'
+                ? (branding.tokens.labels.roleDialogEditTitle || 'Delete Role')
+                : confirmDeleteContext?.type === 'candidate'
+                  ? (branding.tokens.labels.candidateLabel || 'Delete Candidate')
+                  : (branding.tokens.labels.scheduleLabel || 'Delete Schedule')}
           </Typography>
         </DialogTitle>
         <DialogContent sx={{ pt: 3, px: 3, pb: 2 }}>
           <Typography variant="body1" sx={{ mb: 2, color: 'rgba(255,255,255,0.9)', fontSize: '1rem' }}>
-            {confirmDeleteContext?.id === '__reset_demo__'
-              ? branding.tokens.labels.confirmResetDemoProjects
-              : confirmDeleteContext?.name 
-                ? `${branding.tokens.labels.confirmDeleteProjectDialogBody?.replace('{project}', confirmDeleteContext.name) || `Are you sure you want to delete "${confirmDeleteContext.name}"?`}`
-                : (branding.tokens.labels.confirmDeleteRole || 'Are you sure you want to delete this item?')}
+            {confirmDeleteContext?.name 
+              ? `${branding.tokens.labels.confirmDeleteProjectDialogBody?.replace('{project}', confirmDeleteContext.name) || `Are you sure you want to delete "${confirmDeleteContext.name}"?`}`
+              : (branding.tokens.labels.confirmDeleteRole || 'Are you sure you want to delete this item?')}
           </Typography>
           <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.875rem' }}>
             {branding.tokens.labels.deleteProjectWarning || 'This action cannot be undone.'}
@@ -12018,33 +12357,23 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
           </Button>
           <Button
             onClick={async () => {
-              if (confirmDeleteContext?.id === '__reset_demo__') {
-                resetMockCastingData();
-                await loadProjects();
-                toast.showSuccess(branding.tokens.labels.demoDataResetSuccess);
-                setConfirmDeleteOpen(false);
-                setConfirmDeleteContext(null);
-              } else {
-                executeConfirmedDelete();
-              }
+              executeConfirmedDelete();
             }}
             variant="contained"
-            startIcon={confirmDeleteContext?.id === '__reset_demo__' ? <RefreshIcon /> : <DeleteIcon />}
+            startIcon={<DeleteIcon />}
             sx={{
-              bgcolor: confirmDeleteContext?.id === '__reset_demo__' ? '#9333ea' : '#ff4444',
+              bgcolor: '#ff4444',
               color: '#fff',
               textTransform: 'none',
               px: 3,
               py: 1,
               fontWeight: 600,
               '&:hover': {
-                bgcolor: confirmDeleteContext?.id === '__reset_demo__' ? '#6d28d9' : '#ff3333',
+                bgcolor: '#ff3333',
               },
             }}
           >
-            {confirmDeleteContext?.id === '__reset_demo__' 
-              ? branding.tokens.labels.resetDemoDataLabel
-              : branding.tokens.labels.deleteProjectLabel}
+            {branding.tokens.labels.deleteProjectLabel}
           </Button>
         </DialogActions>
       </Dialog>

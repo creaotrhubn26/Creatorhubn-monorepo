@@ -1341,6 +1341,17 @@ export interface CastingProject {
   id: string;
   name: string;
   description?: string;
+  projectKind?: 'workspace' | 'demo' | 'template';
+  templateAudience?: 'content_producer' | 'production_team';
+  templateStatus?: 'draft' | 'published' | 'archived';
+  templateVersion?: number;
+  templatePublishedAt?: string;
+  templateCreatedBy?: string;
+  templateSourceProjectId?: string;
+  templateSourceProjectName?: string;
+  sourceTemplateId?: string;
+  sourceTemplateVersion?: number;
+  lockedTemplate?: boolean;
   status?: string;
   genre?: string;
   projectType?: string;
