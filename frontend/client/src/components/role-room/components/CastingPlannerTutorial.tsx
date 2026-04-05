@@ -72,6 +72,17 @@ const hexToRgba = (hex: string, alpha: number): string => {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 };
 
+const rectsOverlap = (
+  first: Pick<DOMRect, 'left' | 'right' | 'top' | 'bottom'>,
+  second: Pick<DOMRect, 'left' | 'right' | 'top' | 'bottom'>,
+  padding = 0,
+): boolean => (
+  first.left - padding < second.right
+  && first.right + padding > second.left
+  && first.top - padding < second.bottom
+  && first.bottom + padding > second.top
+);
+
 const panelInfo = [
   { name: 'Oversikt', icon: DashboardIcon, color: '#8b5cf6' },
   { name: 'Role Room Studio', icon: ShotListIcon, color: '#ec4899' },
@@ -145,6 +156,7 @@ export const CastingPlannerTutorial: FC<CastingPlannerTutorialProps> = ({
   const [activeTutorial, setActiveTutorial] = useState<Tutorial | null>(null);
   const [speedMultiplier, setSpeedMultiplier] = useState(1);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
 
   const getResponsiveValue = <T,>(mobile: T, tablet: T, hd720: T, hd1080: T, uhd2k: T, uhd4k: T): T => {
     if (isMobile) return mobile;
@@ -219,6 +231,11 @@ export const CastingPlannerTutorial: FC<CastingPlannerTutorialProps> = ({
     const element = document.querySelector(step.targetSelector);
     if (element) {
       const rect = element.getBoundingClientRect();
+      const dialogRect = dialogRef.current?.getBoundingClientRect();
+      if (dialogRect && rectsOverlap(rect, dialogRect, 18)) {
+        setHighlightRect(null);
+        return;
+      }
       setHighlightRect(rect);
     } else {
       setHighlightRect(null);
@@ -467,6 +484,7 @@ export const CastingPlannerTutorial: FC<CastingPlannerTutorialProps> = ({
 
       <Fade in={open}>
         <Paper
+          ref={dialogRef}
           data-testid="role-room-tutorial-dialog"
           elevation={24}
           sx={{
