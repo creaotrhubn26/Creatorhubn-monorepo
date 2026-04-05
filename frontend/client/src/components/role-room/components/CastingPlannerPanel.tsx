@@ -545,6 +545,7 @@ export function CastingPlannerPanel({
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const isTablet = useMediaQuery(theme.breakpoints.down('md'));
   const isDesktop = useMediaQuery(theme.breakpoints.up('lg'));
+  const useCompactHeaderLayout = isTablet;
   // Responsive quick-contact tiers (7-level layout scaling)
   const quickTier2 = useMediaQuery('(min-width:480px)');
   const quickTier3 = useMediaQuery('(min-width:768px)');
@@ -1500,6 +1501,23 @@ export function CastingPlannerPanel({
 
     return visibleProjects;
   }, [currentProject, orderedProjects]);
+
+  const compactHeaderProjects = useMemo(() => {
+    if (!useCompactHeaderLayout) {
+      return headerProjects;
+    }
+
+    if (headerProjects.length <= 1) {
+      return headerProjects;
+    }
+
+    const activeProjectId = currentProject?.id ?? headerProjects[0]?.id ?? null;
+    const activeProject = activeProjectId
+      ? headerProjects.find((project) => project.id === activeProjectId) ?? headerProjects[0]
+      : headerProjects[0];
+
+    return activeProject ? [activeProject] : headerProjects.slice(0, 1);
+  }, [currentProject, headerProjects, useCompactHeaderLayout]);
 
   const hiddenProjectsCount = Math.max(0, orderedProjects.length - headerProjects.length);
   const hasMoreProjects = hiddenProjectsCount > 0;
@@ -5051,12 +5069,13 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
         background: 'linear-gradient(180deg, #1c2128 0%, #161b22 100%)',
         borderBottom: '1px solid rgba(255,255,255,0.08)',
         px: { xs: 1.5, sm: 2, md: 3 },
-        py: { xs: 0.5, sm: 0.75 },
+        py: { xs: 0.65, sm: 0.85 },
         position: 'relative',
       }}>
         {/* Centered Role Room logo (overlay to avoid adding extra header height) */}
         <Box
           sx={{
+            display: useCompactHeaderLayout ? 'none' : 'block',
             position: 'absolute',
             left: '50%',
             top: { xs: -8, sm: -12 },
@@ -5109,7 +5128,8 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
         <Box
           sx={{
             display: 'flex',
-            alignItems: 'center',
+            alignItems: useCompactHeaderLayout ? 'stretch' : 'center',
+            flexWrap: useCompactHeaderLayout ? 'wrap' : 'nowrap',
             gap: { xs: 0.75, sm: 1 },
             minWidth: 0,
             pt: { xs: 0.35, sm: 0.5 },
@@ -5119,10 +5139,141 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
           <Box
             sx={{
               display: 'flex',
+              alignItems: 'center',
+              gap: { xs: 0.75, sm: 1 },
+              flexShrink: 0,
+              order: useCompactHeaderLayout ? 1 : 2,
+            }}
+          >
+            {/* Add new project button */}
+            <IconButton
+              size="small"
+              onClick={() => {
+                setProjectToEdit(null);
+                openProjectCreationModal();
+              }}
+              aria-label={branding.tokens.labels.newProjectTitle}
+              data-tutorial-target="create-project-button"
+              sx={{
+                width: navActionButtonSizePx,
+                height: navActionButtonSizePx,
+                minWidth: navActionButtonSizePx,
+                border: '1px dashed rgba(255,255,255,0.2)',
+                borderRadius: { xs: 1.5, sm: 2 },
+                color: 'rgba(255,255,255,0.87)',
+                flexShrink: 0,
+                '&:hover, &:active': {
+                  borderColor: '#00d4ff',
+                  color: '#00d4ff',
+                  bgcolor: 'rgba(0, 212, 255, 0.1)',
+                },
+              }}
+            >
+              <AddIcon sx={{ fontSize: navIconSizePx }} />
+            </IconButton>
+
+            {/* Tutorial button */}
+            <IconButton
+              size="small"
+              onClick={openTutorial}
+              aria-label={branding.tokens.labels.tutorialLabel}
+              title={branding.tokens.labels.tutorialTitle}
+              sx={{
+                width: navActionButtonSizePx,
+                height: navActionButtonSizePx,
+                minWidth: navActionButtonSizePx,
+                border: '1px solid rgba(233, 30, 99, 0.3)',
+                borderRadius: { xs: 1.5, sm: 2 },
+                color: '#e91e63',
+                flexShrink: 0,
+                bgcolor: 'rgba(233, 30, 99, 0.1)',
+                '&:hover, &:active': {
+                  borderColor: '#e91e63',
+                  bgcolor: 'rgba(233, 30, 99, 0.2)',
+                },
+              }}
+            >
+              <TutorialIcon sx={{ fontSize: navIconSizePx }} />
+            </IconButton>
+          </Box>
+
+          {useCompactHeaderLayout ? (
+            <Box
+              onClick={() => setProjectSelectorOpen(true)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  setProjectSelectorOpen(true);
+                }
+              }}
+              sx={{
+                order: 2,
+                minWidth: 0,
+                flex: '1 1 0',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 0.9,
+                px: 1.05,
+                py: 0.72,
+                borderRadius: 999,
+                border: '1px solid rgba(255,255,255,0.08)',
+                bgcolor: 'rgba(255,255,255,0.06)',
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
+                cursor: 'pointer',
+                '&:hover': {
+                  borderColor: 'rgba(0,212,255,0.3)',
+                  bgcolor: 'rgba(0,212,255,0.08)',
+                },
+              }}
+            >
+              <RoleRoomBrandMark appearance="header" showLabel={false} sx={{ width: { xs: 88, sm: 108 }, flexShrink: 0 }} />
+              <Box sx={{ minWidth: 0, flex: 1 }}>
+                <Typography
+                  sx={{
+                    color: '#f8fafc',
+                    fontSize: { xs: '0.82rem', sm: '0.88rem' },
+                    fontWeight: 700,
+                    lineHeight: 1.15,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  {currentProject?.name || branding.appName}
+                </Typography>
+                <Typography
+                  sx={{
+                    mt: 0.22,
+                    color: 'rgba(226,232,240,0.64)',
+                    fontSize: { xs: '0.64rem', sm: '0.68rem' },
+                    fontWeight: 600,
+                    lineHeight: 1.2,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  {[
+                    adminUser?.display_name || adminUser?.email,
+                    headerProfessionLabel || headerRoleLabel,
+                  ]
+                    .filter(Boolean)
+                    .join(' • ') || 'Åpne prosjekter og arbeidsflater'}
+                </Typography>
+              </Box>
+            </Box>
+          ) : null}
+
+          <Box
+            sx={{
+              display: 'flex',
               alignItems: 'stretch',
               gap: { xs: 0.75, sm: 1 },
-              flex: 1,
+              flex: useCompactHeaderLayout ? '1 1 100%' : 1,
               minWidth: 0,
+              order: useCompactHeaderLayout ? 4 : 1,
               overflowX: 'auto',
               overflowY: 'hidden',
               WebkitOverflowScrolling: 'touch',
@@ -5133,7 +5284,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
               '&::-webkit-scrollbar-thumb': { backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 2 },
             }}
           >
-            {headerProjects.map((project) => {
+            {(useCompactHeaderLayout ? compactHeaderProjects : headerProjects).map((project) => {
               const isActive = currentProject?.id === project.id;
               const isPinned = pinnedProjectIdSet.has(project.id);
               const pinnedAccentColor = pinnedProjectAccentColorById.get(project.id) ?? '#fbbf24';
@@ -5374,59 +5525,6 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
             )}
           </Box>
 
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexShrink: 0 }}>
-            {/* Add new project button */}
-            <IconButton
-              size="small"
-              onClick={() => {
-                setProjectToEdit(null);
-                openProjectCreationModal();
-              }}
-              aria-label={branding.tokens.labels.newProjectTitle}
-              data-tutorial-target="create-project-button"
-              sx={{
-                width: navActionButtonSizePx,
-                height: navActionButtonSizePx,
-                minWidth: navActionButtonSizePx,
-                border: '1px dashed rgba(255,255,255,0.2)',
-                borderRadius: { xs: 1.5, sm: 2 },
-                color: 'rgba(255,255,255,0.87)',
-                flexShrink: 0,
-                '&:hover, &:active': {
-                  borderColor: '#00d4ff',
-                  color: '#00d4ff',
-                  bgcolor: 'rgba(0, 212, 255, 0.1)',
-                },
-              }}
-            >
-              <AddIcon sx={{ fontSize: navIconSizePx }} />
-            </IconButton>
-
-            {/* Tutorial button */}
-            <IconButton
-              size="small"
-              onClick={openTutorial}
-              aria-label={branding.tokens.labels.tutorialLabel}
-              title={branding.tokens.labels.tutorialTitle}
-              sx={{
-                width: navActionButtonSizePx,
-                height: navActionButtonSizePx,
-                minWidth: navActionButtonSizePx,
-                border: '1px solid rgba(233, 30, 99, 0.3)',
-                borderRadius: { xs: 1.5, sm: 2 },
-                color: '#e91e63',
-                flexShrink: 0,
-                bgcolor: 'rgba(233, 30, 99, 0.1)',
-                '&:hover, &:active': {
-                  borderColor: '#e91e63',
-                  bgcolor: 'rgba(233, 30, 99, 0.2)',
-                },
-              }}
-            >
-              <TutorialIcon sx={{ fontSize: navIconSizePx }} />
-            </IconButton>
-          </Box>
-
           <Menu
             anchorEl={projectQuickActionsAnchorEl}
             open={Boolean(projectQuickActionsAnchorEl && projectQuickActionsProject)}
@@ -5497,15 +5595,33 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
             </MenuItem>
           </Menu>
 
-          <Box sx={{ flex: 1 }} />
+          {!useCompactHeaderLayout ? <Box sx={{ flex: 1 }} /> : null}
 
           {adminUser ? (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: useCompactHeaderLayout ? 0.5 : 1,
+                flexShrink: 0,
+                order: useCompactHeaderLayout ? 3 : 5,
+                flex: useCompactHeaderLayout ? '1 1 100%' : '0 0 auto',
+                minWidth: useCompactHeaderLayout ? 0 : 'auto',
+                overflowX: useCompactHeaderLayout ? 'auto' : 'visible',
+                overflowY: 'hidden',
+                scrollbarWidth: useCompactHeaderLayout ? 'thin' : 'auto',
+                pb: useCompactHeaderLayout ? 0.15 : 0,
+                '&::-webkit-scrollbar': useCompactHeaderLayout ? { height: 4 } : undefined,
+                '&::-webkit-scrollbar-thumb': useCompactHeaderLayout
+                  ? { backgroundColor: 'rgba(255,255,255,0.18)', borderRadius: 999 }
+                  : undefined,
+              }}
+            >
               <Typography
                 sx={{
                   color: 'rgba(255,255,255,0.87)',
                   fontSize: { xs: '0.7rem', sm: '0.75rem' },
-                  display: { xs: 'none', md: 'block' },
+                  display: useCompactHeaderLayout ? 'none' : { xs: 'none', md: 'block' },
                 }}
               >
                 {adminUser.display_name || adminUser.email}
@@ -5516,7 +5632,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                 label={`${adminUser.display_name || adminUser.email}${headerRoleLabel ? ` • ${headerRoleLabel}` : ''}${headerProfessionLabel ? ` • ${headerProfessionLabel}` : ''}`}
                 size="small"
                 sx={{
-                  display: { xs: 'inline-flex', md: 'none' },
+                  display: useCompactHeaderLayout ? 'none' : { xs: 'inline-flex', md: 'none' },
                   bgcolor: 'rgba(255,255,255,0.08)',
                   color: 'rgba(255,255,255,0.8)',
                   maxWidth: 200,
