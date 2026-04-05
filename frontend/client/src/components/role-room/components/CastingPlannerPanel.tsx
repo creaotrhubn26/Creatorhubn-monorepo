@@ -36,6 +36,7 @@ import {
   CircularProgress,
   Tooltip,
   Alert,
+  Badge,
 } from '@mui/material';
 import {
   Close as CloseIcon,
@@ -94,13 +95,13 @@ import {
   ViewCarousel as ViewCarouselIcon,
   Search as SearchIcon,
   AttachMoney as AttachMoneyIcon,
-  CreditCard as CreditCardIcon,
   FactCheck as FactCheckIcon,
   ImportExport as ImportExportIcon,
   PermMedia as PermMediaIcon,
   MoreHoriz as MoreHorizIcon,
   PushPin as PushPinIcon,
   DragIndicator as DragIndicatorIcon,
+  FolderOpen as FolderOpenIcon,
 } from '@mui/icons-material';
 import { alpha } from '@mui/material/styles';
 
@@ -1376,6 +1377,13 @@ export function CastingPlannerPanel({
     openProjectCreationModal();
   }, [openProjectCreationModal]);
 
+  const openProjectSelectorDialog = useCallback(() => {
+    blurActiveElement();
+    setProjectQuickActionsAnchorEl(null);
+    setProjectQuickActionsProject(null);
+    startTransition(() => setProjectSelectorOpen(true));
+  }, [blurActiveElement]);
+
   const openProjectEditModal = useCallback((project: CastingProject) => {
     setProjectToEdit(project);
     setCurrentProjectId(project.id);
@@ -1808,6 +1816,72 @@ export function CastingPlannerPanel({
   const producerCoreTabMetaLabel = isContentProducerMode || isClientReviewerMode
     ? producerWorkspaceBadgeLabel
     : 'Prosjektstyring';
+  const useFocusedWorkspaceHeader = !useCompactHeaderLayout && (isContentProducerMode || isClientReviewerMode);
+  const headerBrandSubtitle = isClientReviewerMode
+    ? 'Klientgjennomgang'
+    : isContentProducerMode
+      ? 'Innholdsprodusent-workspace'
+      : 'Produksjonsteam-workspace';
+  const workspaceAccountStatusColor = billingAccount?.paymentStatus === 'payment_failed'
+    ? '#fb7185'
+    : billingAccount?.paymentCompleted
+      ? '#34d399'
+      : '#38bdf8';
+  const workspaceAccountStatusLabel = billingAccount?.paymentStatus === 'payment_failed'
+    ? 'Betaling krever oppfølging'
+    : billingAccount?.paymentCompleted
+      ? 'Abonnement aktivt'
+      : 'Workspace-oversikt';
+  const workspaceAccountInitials = useMemo(() => {
+    const source = adminUser?.display_name || adminUser?.email || branding.appName;
+    return String(source)
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() || '')
+      .join('') || 'RR';
+  }, [adminUser?.display_name, adminUser?.email, branding.appName]);
+  const currentProjectTeamMembers = useMemo(() => {
+    const deduped = new Set<string>();
+    return (currentProject?.crew ?? [])
+      .map((member) => {
+        const raw = member as Record<string, unknown>;
+        const name = typeof raw.name === 'string' ? raw.name.trim() : '';
+        const roleLabelCandidate = [
+          raw.roleLabel,
+          raw.role,
+          raw.crewRole,
+          raw.crew_role,
+          raw.title,
+        ].find((value) => typeof value === 'string' && value.trim().length > 0);
+        if (!name) {
+          return null;
+        }
+        const dedupeKey = `${name.toLowerCase()}::${String(roleLabelCandidate || '').trim().toLowerCase()}`;
+        if (deduped.has(dedupeKey)) {
+          return null;
+        }
+        deduped.add(dedupeKey);
+        return {
+          name,
+          roleLabel: typeof roleLabelCandidate === 'string' ? roleLabelCandidate : null,
+        };
+      })
+      .filter((member): member is { name: string; roleLabel: string | null } => Boolean(member))
+      .slice(0, 12);
+  }, [currentProject?.crew]);
+  const visibleHeaderProjects = useMemo(() => {
+    if (useCompactHeaderLayout) {
+      return compactHeaderProjects;
+    }
+    if (useFocusedWorkspaceHeader) {
+      return headerProjects.slice(0, 1);
+    }
+    return headerProjects;
+  }, [compactHeaderProjects, headerProjects, useCompactHeaderLayout, useFocusedWorkspaceHeader]);
+  const hiddenVisibleHeaderProjectsCount = Math.max(0, orderedProjects.length - visibleHeaderProjects.length);
+  const hasMoreVisibleHeaderProjects = hiddenVisibleHeaderProjectsCount > 0;
   const producerWorkflowEntityOptions = useMemo(
     () => (currentProject ? buildProducerWorkflowEntityOptions(currentProject) : []),
     [currentProject],
@@ -4956,58 +5030,6 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
         py: { xs: 0.65, sm: 0.85 },
         position: 'relative',
       }}>
-        {/* Centered Role Room logo (overlay to avoid adding extra header height) */}
-        <Box
-          sx={{
-            display: useCompactHeaderLayout ? 'none' : 'block',
-            position: 'absolute',
-            left: '50%',
-            top: { xs: -8, sm: -12 },
-            transform: 'translateX(-50%)',
-            zIndex: 2,
-            pointerEvents: 'none',
-          }}
-        >
-          <Box
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-              minWidth: { xs: 258, sm: 454 },
-              position: 'relative',
-              '&::before': {
-                content: '""',
-                position: 'absolute',
-                inset: { xs: '-8px -10px', sm: '-10px -16px' },
-                borderRadius: 2,
-                background:
-                  'radial-gradient(ellipse at center, rgba(168,85,247,0.25) 0%, rgba(168,85,247,0.08) 42%, rgba(168,85,247,0) 72%)',
-                filter: 'blur(9px)',
-                pointerEvents: 'none',
-              },
-            }}
-          >
-            <Box
-              component="img"
-              src={branding.logoUrl || branding.iconUrl}
-              alt={branding.appName}
-              sx={{
-                width: { xs: 228, sm: 388 },
-                height: { xs: 80, sm: 118 },
-                objectFit: 'contain',
-                objectPosition: 'center',
-                display: 'block',
-                maxWidth: '100%',
-                imageRendering: 'auto',
-                transform: 'translateZ(0)',
-                filter:
-                  'contrast(1.24) saturate(1.18) brightness(1.22) drop-shadow(0 3px 12px rgba(0,0,0,0.45)) drop-shadow(0 0 18px rgba(168,85,247,0.42))',
-              }}
-            />
-          </Box>
-        </Box>
-
         {/* Project chips row */}
         <Box
           sx={{
@@ -5020,6 +5042,57 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
             pb: { xs: 0.55, sm: 0.75 },
           }}
         >
+          {!useCompactHeaderLayout ? (
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: { md: 1, lg: 1.25 },
+                minWidth: 0,
+                flexShrink: 0,
+                order: 0,
+                pr: { md: 0.5, lg: 1 },
+              }}
+            >
+              <RoleRoomBrandMark
+                appearance="header"
+                showLabel={false}
+                sx={{
+                  width: { md: 120, lg: 134, xl: 150 },
+                  flexShrink: 0,
+                  opacity: 0.96,
+                }}
+              />
+              <Box sx={{ minWidth: 0, display: { xs: 'none', lg: 'block' } }}>
+                <Typography
+                  sx={{
+                    color: '#f8fafc',
+                    fontSize: { lg: '0.96rem', xl: '1rem' },
+                    fontWeight: 800,
+                    lineHeight: 1.05,
+                    letterSpacing: '-0.01em',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {branding.appName}
+                </Typography>
+                <Typography
+                  sx={{
+                    mt: 0.25,
+                    color: 'rgba(148,163,184,0.88)',
+                    fontSize: { lg: '0.68rem', xl: '0.72rem' },
+                    fontWeight: 700,
+                    letterSpacing: '0.12em',
+                    textTransform: 'uppercase',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {headerBrandSubtitle}
+                </Typography>
+              </Box>
+            </Box>
+          ) : null}
+
           <Box
             sx={{
               display: 'flex',
@@ -5080,13 +5153,13 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
 
           {useCompactHeaderLayout ? (
             <Box
-              onClick={() => setProjectSelectorOpen(true)}
+              onClick={openProjectSelectorDialog}
               role="button"
               tabIndex={0}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
                   event.preventDefault();
-                  setProjectSelectorOpen(true);
+                  openProjectSelectorDialog();
                 }
               }}
               sx={{
@@ -5165,9 +5238,195 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
               '&::-webkit-scrollbar-thumb': { backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 2 },
             }}
           >
-            {(useCompactHeaderLayout ? compactHeaderProjects : headerProjects).map((project) => {
+            {useFocusedWorkspaceHeader ? (
+              <>
+                <Box
+                  onClick={openProjectSelectorDialog}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      openProjectSelectorDialog();
+                    }
+                  }}
+                  data-testid="role-room-active-project"
+                  sx={{
+                    flex: '1 1 auto',
+                    minWidth: 0,
+                    display: 'grid',
+                    gridTemplateColumns: { md: 'minmax(0, 1fr)', xl: 'minmax(0, 1fr) auto' },
+                    gap: 1.1,
+                    alignItems: 'center',
+                    px: { md: 1.3, lg: 1.55 },
+                    py: { md: 0.95, lg: 1.05 },
+                    borderRadius: { md: 2.25, lg: 2.5 },
+                    border: currentProject ? '1px solid rgba(34,211,238,0.28)' : '1px solid rgba(255,255,255,0.08)',
+                    background: currentProject
+                      ? 'linear-gradient(135deg, rgba(8,47,73,0.42) 0%, rgba(17,24,39,0.82) 100%)'
+                      : 'rgba(255,255,255,0.03)',
+                    boxShadow: currentProject
+                      ? '0 10px 26px rgba(0,0,0,0.24), inset 0 1px 0 rgba(255,255,255,0.06)'
+                      : 'inset 0 1px 0 rgba(255,255,255,0.03)',
+                    cursor: 'pointer',
+                    transition: 'border-color 0.2s ease, background-color 0.2s ease, transform 0.2s ease',
+                    '&:hover': {
+                      borderColor: 'rgba(34,211,238,0.52)',
+                      background: currentProject
+                        ? 'linear-gradient(135deg, rgba(8,47,73,0.5) 0%, rgba(17,24,39,0.9) 100%)'
+                        : 'rgba(255,255,255,0.05)',
+                      transform: 'translateY(-1px)',
+                    },
+                  }}
+                >
+                  <Box sx={{ minWidth: 0 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.9, minWidth: 0, flexWrap: 'wrap' }}>
+                      <Box
+                        sx={{
+                          width: 10,
+                          height: 10,
+                          borderRadius: '50%',
+                          bgcolor: currentProject ? '#22d3ee' : 'rgba(255,255,255,0.22)',
+                          border: currentProject ? '2px solid rgba(255,255,255,0.28)' : '1px solid rgba(255,255,255,0.1)',
+                          boxShadow: currentProject ? '0 0 12px rgba(34,211,238,0.45)' : 'none',
+                          flexShrink: 0,
+                        }}
+                      />
+                      <Typography
+                        sx={{
+                          color: '#f8fafc',
+                          fontSize: { md: '0.96rem', lg: '1.04rem', xl: '1.08rem' },
+                          fontWeight: 800,
+                          lineHeight: 1.1,
+                          minWidth: 0,
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}
+                      >
+                        {currentProject?.name || 'Velg aktivt prosjekt'}
+                      </Typography>
+                      {currentProject?.producerWorkflowStatus ? (
+                        <Chip
+                          size="small"
+                          label={PRODUCER_PROJECT_STATUS_LABELS[currentProject.producerWorkflowStatus] || 'Klar for arbeid'}
+                          sx={{
+                            height: 22,
+                            bgcolor: 'rgba(246,195,88,0.12)',
+                            color: '#fcd34d',
+                            border: '1px solid rgba(246,195,88,0.22)',
+                            fontSize: '0.66rem',
+                            fontWeight: 700,
+                            maxWidth: 180,
+                            '& .MuiChip-label': {
+                              px: 0.9,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                            },
+                          }}
+                        />
+                      ) : null}
+                    </Box>
+                    <Typography
+                      sx={{
+                        mt: 0.45,
+                        color: 'rgba(226,232,240,0.68)',
+                        fontSize: { md: '0.72rem', lg: '0.76rem' },
+                        fontWeight: 600,
+                        lineHeight: 1.25,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {[
+                        currentProject?.clientName,
+                        producerWorkspaceBadgeLabel,
+                        currentProject ? 'Klikk for å bytte eller åpne eksisterende prosjekt' : 'Åpne arbeidsbiblioteket',
+                      ].filter(Boolean).join(' • ')}
+                    </Typography>
+                  </Box>
+
+                  <Box
+                    sx={{
+                      display: { md: 'none', xl: 'flex' },
+                      alignItems: 'center',
+                      justifyContent: 'flex-end',
+                      minWidth: 0,
+                    }}
+                  >
+                    <Chip
+                      icon={<Folder sx={{ fontSize: 16, color: '#7dd3fc !important' }} />}
+                      label={currentProject ? 'Åpne eksisterende prosjekter' : 'Åpne prosjekter'}
+                      sx={{
+                        height: 28,
+                        bgcolor: 'rgba(125,211,252,0.08)',
+                        color: '#dbeafe',
+                        border: '1px solid rgba(125,211,252,0.18)',
+                        fontSize: '0.7rem',
+                        fontWeight: 700,
+                      }}
+                    />
+                  </Box>
+                </Box>
+
+                <Button
+                  size="small"
+                  onClick={openProjectSelectorDialog}
+                  startIcon={<FolderOpenIcon sx={{ fontSize: 18 }} />}
+                  data-testid="role-room-open-projects"
+                  sx={{
+                    minWidth: { md: 146, lg: 158 },
+                    px: { md: 1.3, lg: 1.55 },
+                    borderRadius: { md: 2.25, lg: 2.5 },
+                    border: '1px solid rgba(96,165,250,0.24)',
+                    bgcolor: 'rgba(96,165,250,0.08)',
+                    color: '#bfdbfe',
+                    fontSize: { md: '0.72rem', lg: '0.76rem' },
+                    fontWeight: 700,
+                    whiteSpace: 'nowrap',
+                    flexShrink: 0,
+                    '&:hover': {
+                      bgcolor: 'rgba(96,165,250,0.14)',
+                      borderColor: 'rgba(96,165,250,0.4)',
+                    },
+                  }}
+                >
+                  Åpne prosjekter
+                </Button>
+
+                {currentProject ? (
+                  <IconButton
+                    size="small"
+                    onClick={(event: MouseEvent<HTMLElement>) => handleOpenProjectQuickActions(event, currentProject)}
+                    aria-label={`Flere handlinger for ${currentProject.name}`}
+                    title="Flere handlinger"
+                    sx={{
+                      color: 'rgba(255,255,255,0.68)',
+                      width: projectChipActionSizePx,
+                      height: projectChipActionSizePx,
+                      minWidth: projectChipActionSizePx,
+                      borderRadius: 1.5,
+                      border: '1px solid rgba(255,255,255,0.08)',
+                      bgcolor: 'rgba(255,255,255,0.04)',
+                      flexShrink: 0,
+                      '&:hover': {
+                        color: '#7dd3fc',
+                        bgcolor: 'rgba(96,165,250,0.12)',
+                        borderColor: 'rgba(96,165,250,0.24)',
+                      },
+                    }}
+                  >
+                    <MoreHorizIcon sx={{ fontSize: Math.max(18, navIconSizePx) }} />
+                  </IconButton>
+                ) : null}
+              </>
+            ) : (
+              <>
+                {visibleHeaderProjects.map((project) => {
               const isActive = currentProject?.id === project.id;
               const isPinned = pinnedProjectIdSet.has(project.id);
+              const useSlimProjectCard = useFocusedWorkspaceHeader && visibleHeaderProjects.length === 1;
               const pinnedAccentColor = pinnedProjectAccentColorById.get(project.id) ?? '#fbbf24';
               const candidateCount = project.candidates?.length || 0;
               const workflowStatus = project.producerWorkflowStatus;
@@ -5186,16 +5445,22 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                 <Box
                   key={project.id}
                   sx={{
-                    width: { xs: 252, sm: 294, md: 320 },
-                    minWidth: { xs: 252, sm: 294, md: 320 },
-                    maxWidth: { xs: 252, sm: 294, md: 320 },
-                    minHeight: { xs: 62, sm: 68 },
+                    width: useSlimProjectCard
+                      ? { xs: 252, sm: 284, md: 308, lg: 328, xl: 344 }
+                      : { xs: 252, sm: 294, md: 320 },
+                    minWidth: useSlimProjectCard
+                      ? { xs: 252, sm: 284, md: 308, lg: 328, xl: 344 }
+                      : { xs: 252, sm: 294, md: 320 },
+                    maxWidth: useSlimProjectCard
+                      ? { xs: 252, sm: 284, md: 308, lg: 328, xl: 344 }
+                      : { xs: 252, sm: 294, md: 320 },
+                    minHeight: useSlimProjectCard ? { xs: 60, sm: 64 } : { xs: 62, sm: 68 },
                     display: 'grid',
                     gridTemplateColumns: 'minmax(0, 1fr) auto',
                     columnGap: { xs: 1, sm: 1.25 },
                     alignItems: 'center',
-                    px: { xs: 1.25, sm: 1.5 },
-                    py: { xs: 1, sm: 1.1 },
+                    px: useSlimProjectCard ? { xs: 1.15, sm: 1.3 } : { xs: 1.25, sm: 1.5 },
+                    py: useSlimProjectCard ? { xs: 0.82, sm: 0.92 } : { xs: 1, sm: 1.1 },
                     borderRadius: { xs: 2, sm: 2.5 },
                     border: isActive ? '2px solid #00d4ff' : '1px solid rgba(255,255,255,0.06)',
                     background: isActive
@@ -5263,7 +5528,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                       <Typography
                         sx={{
                           color: isActive ? '#fff' : 'rgba(255,255,255,0.74)',
-                          fontSize: { xs: '0.84rem', sm: '0.95rem' },
+                          fontSize: useSlimProjectCard ? { xs: '0.8rem', sm: '0.88rem' } : { xs: '0.84rem', sm: '0.95rem' },
                           fontWeight: isActive ? 700 : 600,
                           whiteSpace: 'nowrap',
                           overflow: 'hidden',
@@ -5280,7 +5545,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                         <Typography
                           sx={{
                             color: 'rgba(255,255,255,0.6)',
-                            fontSize: { xs: '0.64rem', sm: '0.68rem' },
+                            fontSize: useSlimProjectCard ? { xs: '0.6rem', sm: '0.64rem' } : { xs: '0.64rem', sm: '0.68rem' },
                             fontWeight: 500,
                             whiteSpace: 'nowrap',
                             overflow: 'hidden',
@@ -5310,15 +5575,15 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                         size="small"
                         label={workflowStatusLabel}
                         sx={{
-                          height: 24,
-                          maxWidth: { xs: 132, sm: 144, md: 156 },
+                          height: useSlimProjectCard ? 22 : 24,
+                          maxWidth: useSlimProjectCard ? { xs: 118, sm: 128, md: 138 } : { xs: 132, sm: 144, md: 156 },
                           bgcolor: isActive ? workflowStatusStyle.background : 'rgba(255,255,255,0.04)',
                           color: isActive ? workflowStatusStyle.color : 'rgba(255,255,255,0.68)',
                           border: isActive ? workflowStatusStyle.border : '1px solid rgba(255,255,255,0.08)',
-                          fontSize: { xs: '0.66rem', sm: '0.7rem' },
+                          fontSize: useSlimProjectCard ? { xs: '0.62rem', sm: '0.66rem' } : { xs: '0.66rem', sm: '0.7rem' },
                           fontWeight: isActive ? 700 : 600,
                           '& .MuiChip-label': {
-                            px: 0.9,
+                            px: useSlimProjectCard ? 0.7 : 0.9,
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
                           },
@@ -5331,28 +5596,30 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                     sx={{
                       display: 'flex',
                       alignItems: 'center',
-                      gap: 0.35,
+                      gap: useSlimProjectCard ? 0.2 : 0.35,
                       flexShrink: 0,
                     }}
                   >
-                    <Box
-                      sx={{
-                        minWidth: { xs: 28, sm: 32 },
-                        height: { xs: 28, sm: 30 },
-                        px: 0.75,
-                        borderRadius: 999,
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        bgcolor: isActive ? 'rgba(0, 212, 255, 0.22)' : 'rgba(255,255,255,0.04)',
-                        border: isActive ? '1px solid rgba(0, 212, 255, 0.35)' : '1px solid rgba(255,255,255,0.06)',
-                        color: isActive ? '#fff' : 'rgba(255,255,255,0.6)',
-                        fontSize: { xs: '0.72rem', sm: '0.78rem' },
-                        fontWeight: 700,
-                      }}
-                    >
-                      {candidateCount}
-                    </Box>
+                    {!useSlimProjectCard ? (
+                      <Box
+                        sx={{
+                          minWidth: { xs: 28, sm: 32 },
+                          height: { xs: 28, sm: 30 },
+                          px: 0.75,
+                          borderRadius: 999,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          bgcolor: isActive ? 'rgba(0, 212, 255, 0.22)' : 'rgba(255,255,255,0.04)',
+                          border: isActive ? '1px solid rgba(0, 212, 255, 0.35)' : '1px solid rgba(255,255,255,0.06)',
+                          color: isActive ? '#fff' : 'rgba(255,255,255,0.6)',
+                          fontSize: { xs: '0.72rem', sm: '0.78rem' },
+                          fontWeight: 700,
+                        }}
+                      >
+                        {candidateCount}
+                      </Box>
+                    ) : null}
 
                     <IconButton
                       size="small"
@@ -5379,18 +5646,18 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
               );
             })}
 
-            {hasMoreProjects && (
+                {hasMoreVisibleHeaderProjects && (
               <Button
                 size="small"
-                onClick={() => setProjectSelectorOpen(true)}
+                onClick={openProjectSelectorDialog}
                 sx={{
-                  minWidth: { xs: 136, sm: 148 },
+                  minWidth: useFocusedWorkspaceHeader ? { xs: 126, sm: 136 } : { xs: 136, sm: 148 },
                   px: { xs: 1.25, sm: 1.5 },
                   borderRadius: { xs: 2, sm: 2.5 },
                   border: '1px solid rgba(139, 92, 246, 0.28)',
                   bgcolor: 'rgba(139, 92, 246, 0.08)',
                   color: '#c4b5fd',
-                  fontSize: { xs: '0.72rem', sm: '0.76rem' },
+                  fontSize: useFocusedWorkspaceHeader ? { xs: '0.68rem', sm: '0.72rem' } : { xs: '0.72rem', sm: '0.76rem' },
                   fontWeight: 700,
                   whiteSpace: 'nowrap',
                   flexShrink: 0,
@@ -5401,8 +5668,10 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                   },
                 }}
               >
-                {hiddenProjectsCount > 0 ? `Alle prosjekter · ${orderedProjects.length}` : 'Alle prosjekter'}
+                {hiddenVisibleHeaderProjectsCount > 0 ? `Prosjekter · ${orderedProjects.length}` : 'Prosjekter'}
               </Button>
+                )}
+              </>
             )}
           </Box>
 
@@ -5497,98 +5766,54 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                   : undefined,
               }}
             >
-              <Typography
-                sx={{
-                  color: 'rgba(255,255,255,0.87)',
-                  fontSize: { xs: '0.7rem', sm: '0.75rem' },
-                  display: useCompactHeaderLayout ? 'none' : { xs: 'none', md: 'block' },
-                }}
-              >
-                {adminUser.display_name || adminUser.email}
-                {headerRoleLabel ? ` • ${headerRoleLabel}` : ''}
-                {headerProfessionLabel ? ` • ${headerProfessionLabel}` : ''}
-              </Typography>
-              <Chip
-                label={`${adminUser.display_name || adminUser.email}${headerRoleLabel ? ` • ${headerRoleLabel}` : ''}${headerProfessionLabel ? ` • ${headerProfessionLabel}` : ''}`}
-                size="small"
-                sx={{
-                  display: useCompactHeaderLayout ? 'none' : { xs: 'inline-flex', md: 'none' },
-                  bgcolor: 'rgba(255,255,255,0.08)',
-                  color: 'rgba(255,255,255,0.8)',
-                  maxWidth: 200,
-                  '& .MuiChip-label': {
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  },
-                }}
-              />
-              {isRoleRoomCommercialSession && (
-                <>
-                  <Button
-                    onClick={handleOpenBillingAccountDialog}
-                    variant="outlined"
-                    startIcon={<CreditCardIcon sx={{ fontSize: 16 }} />}
+              <Tooltip title={`${workspaceAccountStatusLabel} · ${adminUser.display_name || adminUser.email}`}>
+                <IconButton
+                  onClick={handleOpenBillingAccountDialog}
+                  aria-label="Åpne konto, abonnement og team"
+                  data-testid="role-room-account-button"
+                  sx={{
+                    width: navActionButtonSizePx,
+                    height: navActionButtonSizePx,
+                    borderRadius: 2,
+                    border: '1px solid rgba(125,211,252,0.24)',
+                    bgcolor: 'rgba(15,23,42,0.88)',
+                    color: '#e2e8f0',
+                    '&:hover': {
+                      bgcolor: 'rgba(30,41,59,0.96)',
+                      borderColor: 'rgba(125,211,252,0.44)',
+                    },
+                  }}
+                >
+                  <Badge
+                    overlap="circular"
+                    variant="dot"
+                    anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
                     sx={{
-                      display: { xs: 'none', lg: 'inline-flex' },
-                      minWidth: 0,
-                      px: 1.2,
-                      py: 0.6,
-                      borderColor:
-                        billingAccount?.paymentStatus === 'payment_failed'
-                          ? 'rgba(248,113,113,0.46)'
-                          : 'rgba(246,195,88,0.34)',
-                      color:
-                        billingAccount?.paymentStatus === 'payment_failed'
-                          ? '#fda4af'
-                          : '#f6c358',
-                      bgcolor:
-                        billingAccount?.paymentStatus === 'payment_failed'
-                          ? 'rgba(127,29,29,0.18)'
-                          : 'rgba(246,195,88,0.08)',
-                      fontSize: '0.76rem',
-                      fontWeight: 700,
-                      textTransform: 'none',
-                      '&:hover': {
-                        borderColor:
-                          billingAccount?.paymentStatus === 'payment_failed'
-                            ? 'rgba(248,113,113,0.62)'
-                            : 'rgba(246,195,88,0.54)',
-                        bgcolor:
-                          billingAccount?.paymentStatus === 'payment_failed'
-                            ? 'rgba(127,29,29,0.26)'
-                            : 'rgba(246,195,88,0.14)',
+                      '& .MuiBadge-badge': {
+                        backgroundColor: workspaceAccountStatusColor,
+                        boxShadow: '0 0 0 2px rgba(15,23,42,0.92)',
                       },
                     }}
                   >
-                    {billingAccount?.paymentStatus === 'payment_failed'
-                      ? 'Betaling må oppdateres'
-                      : 'Abonnement'}
-                  </Button>
-                  <IconButton
-                    onClick={handleOpenBillingAccountDialog}
-                    aria-label="Åpne abonnement og team"
-                    title="Åpne abonnement og team"
-                    sx={{
-                      display: { xs: 'inline-flex', lg: 'none' },
-                      color:
-                        billingAccount?.paymentStatus === 'payment_failed'
-                          ? '#fda4af'
-                          : '#f6c358',
-                      width: navActionButtonSizePx,
-                      height: navActionButtonSizePx,
-                      '&:hover': {
-                        bgcolor:
-                          billingAccount?.paymentStatus === 'payment_failed'
-                            ? 'rgba(248,113,113,0.12)'
-                            : 'rgba(246,195,88,0.12)',
-                      },
-                    }}
-                  >
-                    <CreditCardIcon sx={{ fontSize: navIconSizePx }} />
-                  </IconButton>
-                </>
-              )}
+                    <Box
+                      sx={{
+                        width: Math.max(26, navActionButtonSizePx - 10),
+                        height: Math.max(26, navActionButtonSizePx - 10),
+                        borderRadius: '50%',
+                        display: 'grid',
+                        placeItems: 'center',
+                        background: 'linear-gradient(135deg, rgba(56,189,248,0.18) 0%, rgba(30,41,59,0.92) 100%)',
+                        color: '#e0f2fe',
+                        fontSize: { xs: '0.72rem', sm: '0.76rem' },
+                        fontWeight: 800,
+                        letterSpacing: '0.06em',
+                      }}
+                    >
+                      {workspaceAccountInitials}
+                    </Box>
+                  </Badge>
+                </IconButton>
+              </Tooltip>
               {canSwitchRoleRoomRole && (
                 <IconButton
                   onClick={openProfessionDialog}
@@ -5810,7 +6035,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
               },
             },
             '& .MuiTabs-flexContainer': {
-              gap: isMobile ? '2px' : '4px',
+              gap: isMobile ? '2px' : (isContentProducerMode || isClientReviewerMode ? '3px' : '4px'),
             },
           }}
         >
@@ -5846,17 +6071,30 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
             const isLiveSetTab = tabValue === LIVE_SET_TAB_INDEX;
             const isProducerCoreTab =
               tabValue >= PRODUCER_MEDIA_TAB_INDEX && tabValue <= PRODUCER_EXPORT_TAB_INDEX;
+            const useCompactProducerTab = (isContentProducerMode || isClientReviewerMode) && !isMobile;
+            const showTabMeta = !isMobile && (!useCompactProducerTab || quickTier6 || isSelected);
+            const effectiveTabMinWidth = isMobile
+              ? 44
+              : useCompactProducerTab
+                ? Math.max(98, navTabMinWidthPx - (quickTier6 ? 10 : 20))
+                : navTabMinWidthPx;
+            const effectiveTabLabelFontSize = useCompactProducerTab
+              ? Math.max(13, navTabLabelFontSizePx - 1)
+              : navTabLabelFontSizePx;
+            const effectiveTabMetaFontSize = useCompactProducerTab
+              ? Math.max(9, navTabMetaFontSizePx - 1)
+              : navTabMetaFontSizePx;
             const tabLabels = [
               branding.tokens.labels.dashboard,
               isContentProducerMode ? 'Storyboard' : 'Role Room Studio',
               branding.tokens.labels.roles,
-              isContentProducerMode ? 'Statister/medvirkende' : branding.tokens.labels.candidates,
+              isContentProducerMode ? 'Medvirkende' : branding.tokens.labels.candidates,
               branding.tokens.labels.auditions,
               'Utvelgelse',
               branding.tokens.labels.locations,
               branding.tokens.labels.schedule,
               branding.tokens.labels.team,
-              isContentProducerMode ? 'Utstyr/rekvisitter' : branding.tokens.labels.equipment,
+              isContentProducerMode ? 'Utstyr' : branding.tokens.labels.equipment,
               'Live Set',
               isExternalClientPortalMode ? 'Workspace' : isClientReviewerMode ? 'Klientflate' : 'Media',
               'Økonomi',
@@ -5924,10 +6162,10 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                 iconPosition="start"
                 label={isMobile ? undefined : (
                   <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', lineHeight: 1.1 }}>
-                    <Box component="span" sx={{ fontWeight: 700, fontSize: `${navTabLabelFontSizePx}px` }}>
+                    <Box component="span" sx={{ fontWeight: 700, fontSize: `${effectiveTabLabelFontSize}px` }}>
                       {tabLabels[index]}
                     </Box>
-                    {isCastingCoreTab && (
+                    {showTabMeta && isCastingCoreTab && (
                       <Box
                         component="span"
                         sx={{
@@ -5935,7 +6173,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                           alignItems: 'center',
                           gap: 0.5,
                           mt: 0.2,
-                          fontSize: `${navTabMetaFontSizePx}px`,
+                          fontSize: `${effectiveTabMetaFontSize}px`,
                           lineHeight: 1,
                           letterSpacing: 0.35,
                           textTransform: 'uppercase',
@@ -5956,7 +6194,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                         Casting
                       </Box>
                     )}
-                    {isPreProductionTab && (
+                    {showTabMeta && isPreProductionTab && (
                       <Box
                         component="span"
                         sx={{
@@ -5964,7 +6202,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                           alignItems: 'center',
                           gap: 0.5,
                           mt: 0.2,
-                          fontSize: `${navTabMetaFontSizePx}px`,
+                          fontSize: `${effectiveTabMetaFontSize}px`,
                           lineHeight: 1,
                           letterSpacing: 0.35,
                           textTransform: 'uppercase',
@@ -5985,7 +6223,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                         Pre-produksjon
                       </Box>
                     )}
-                    {isProductionPlanCoreTab && (
+                    {showTabMeta && isProductionPlanCoreTab && (
                       <Box
                         component="span"
                         sx={{
@@ -5993,7 +6231,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                           alignItems: 'center',
                           gap: 0.5,
                           mt: 0.2,
-                          fontSize: `${navTabMetaFontSizePx}px`,
+                          fontSize: `${effectiveTabMetaFontSize}px`,
                           lineHeight: 1,
                           letterSpacing: 0.35,
                           textTransform: 'uppercase',
@@ -6014,7 +6252,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                         Produksjonsplan
                       </Box>
                     )}
-                    {isResourcesCoreTab && (
+                    {showTabMeta && isResourcesCoreTab && (
                       <Box
                         component="span"
                         sx={{
@@ -6022,7 +6260,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                           alignItems: 'center',
                           gap: 0.5,
                           mt: 0.2,
-                          fontSize: `${navTabMetaFontSizePx}px`,
+                          fontSize: `${effectiveTabMetaFontSize}px`,
                           lineHeight: 1,
                           letterSpacing: 0.35,
                           textTransform: 'uppercase',
@@ -6043,7 +6281,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                         Ressurser
                       </Box>
                     )}
-                    {isLiveSetTab && (
+                    {showTabMeta && isLiveSetTab && (
                       <Box
                         component="span"
                         sx={{
@@ -6051,7 +6289,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                           alignItems: 'center',
                           gap: 0.5,
                           mt: 0.2,
-                          fontSize: `${navTabMetaFontSizePx}px`,
+                          fontSize: `${effectiveTabMetaFontSize}px`,
                           lineHeight: 1,
                           letterSpacing: 0.35,
                           textTransform: 'uppercase',
@@ -6072,7 +6310,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                         Produksjon
                       </Box>
                     )}
-                    {isProducerCoreTab && (
+                    {showTabMeta && isProducerCoreTab && (
                       <Box
                         component="span"
                         sx={{
@@ -6080,7 +6318,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                           alignItems: 'center',
                           gap: 0.5,
                           mt: 0.2,
-                          fontSize: `${navTabMetaFontSizePx}px`,
+                          fontSize: `${effectiveTabMetaFontSize}px`,
                           lineHeight: 1,
                           letterSpacing: 0.35,
                           textTransform: 'uppercase',
@@ -6122,7 +6360,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                   mb: { xs: 0.5, sm: 1 },
                   mt: { xs: 0.5, sm: 1 },
                   minHeight: navTabMinHeightPx,
-                  minWidth: isMobile ? 44 : navTabMinWidthPx,
+                  minWidth: effectiveTabMinWidth,
                   px: isMobile ? 1.5 : undefined,
                   boxShadow: isCastingCoreTab
                     ? 'inset 0 -2px 0 rgba(255,184,0,0.22)'
@@ -10711,10 +10949,10 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
             <RoleRoomBrandMark appearance="header" showLabel={false} sx={{ width: { xs: 68, sm: 84 } }} />
             <Box sx={{ minWidth: 0 }}>
               <Typography sx={{ fontWeight: 700, fontSize: '1.05rem', lineHeight: 1.15 }}>
-                {branding.tokens.labels.allProjectsLabel.replace('{count}', String(projects.length))}
+                Eksisterende prosjekter
               </Typography>
               <Typography sx={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.7)' }}>
-                Finn riktig prosjekt raskt, eller opprett et nytt.
+                Velg aktivt prosjekt raskt, eller opprett et nytt hvis du starter fra blankt.
               </Typography>
             </Box>
           </Box>
@@ -10740,7 +10978,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                 },
               }}
             >
-              Nytt
+              Nytt prosjekt
             </Button>
             <IconButton
               onClick={() => {
@@ -10759,6 +10997,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
             <TextField
               fullWidth
               size="small"
+              autoFocus
               value={projectSelectorQuery}
               onChange={(e) => setProjectSelectorQuery(e.target.value)}
               placeholder="Søk på prosjektnavn, ID eller klient"
@@ -10784,6 +11023,56 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
               }}
             />
           </Box>
+          {currentProject ? (
+            <Box
+              sx={{
+                px: 2,
+                py: 1.25,
+                borderBottom: '1px solid rgba(255,255,255,0.06)',
+                background: 'linear-gradient(180deg, rgba(34,211,238,0.06) 0%, rgba(255,255,255,0) 100%)',
+              }}
+            >
+              <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.56)' }}>
+                Aktivt nå
+              </Typography>
+              <Box
+                sx={{
+                  mt: 1,
+                  px: 1.4,
+                  py: 1.2,
+                  borderRadius: 2,
+                  border: '1px solid rgba(34,211,238,0.18)',
+                  bgcolor: 'rgba(15,23,42,0.48)',
+                  display: 'grid',
+                  gridTemplateColumns: 'minmax(0, 1fr) auto',
+                  gap: 1,
+                  alignItems: 'center',
+                }}
+              >
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography sx={{ color: '#f8fafc', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {currentProject.name}
+                  </Typography>
+                  <Typography sx={{ mt: 0.35, fontSize: '0.78rem', color: 'rgba(255,255,255,0.64)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {[
+                      currentProject.clientName,
+                      currentProject.producerWorkflowStatus ? PRODUCER_PROJECT_STATUS_LABELS[currentProject.producerWorkflowStatus] : null,
+                    ].filter(Boolean).join(' • ')}
+                  </Typography>
+                </Box>
+                <Chip
+                  size="small"
+                  label="Aktivt prosjekt"
+                  sx={{
+                    bgcolor: 'rgba(34,211,238,0.12)',
+                    color: '#67e8f9',
+                    border: '1px solid rgba(34,211,238,0.24)',
+                    fontWeight: 700,
+                  }}
+                />
+              </Box>
+            </Box>
+          ) : null}
           <Box sx={{ maxHeight: '60vh', overflow: 'auto' }}>
             {filteredPinnedProjectSelectorItems.length > 0 ? (
               <Box sx={{ px: 2, pt: 1.25, pb: 0.5, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
@@ -11904,6 +12193,21 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
         onRefresh={loadBillingAccount}
         onManageBilling={handleOpenBillingPortal}
         onRetryPayment={handleRetryBillingPayment}
+        currentUser={{
+          name: adminUser?.display_name || adminUser?.email || 'Role Room-bruker',
+          email: adminUser?.email || '',
+          roleLabel: headerRoleLabel,
+          professionLabel: headerProfessionLabel,
+          workspaceLabel: headerBrandSubtitle,
+        }}
+        currentProject={currentProject ? {
+          name: currentProject.name,
+          clientName: currentProject.clientName,
+          workflowLabel: currentProject.producerWorkflowStatus
+            ? PRODUCER_PROJECT_STATUS_LABELS[currentProject.producerWorkflowStatus]
+            : null,
+          teamMembers: currentProjectTeamMembers,
+        } : null}
       />
 
       {loginDialogOpen && (
