@@ -3,7 +3,7 @@ import * as React from 'react';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
-import { apiRequest } from '../../lib/queryClient';
+import { apiRequest, isApiEndpointMissing } from '../../lib/queryClient';
 import GoogleAnalyticsDashboard from './GoogleAnalyticsDashboardEnhanced';
 import SEOBotAnalyticsDashboard from './SEOBotAnalyticsDashboard';
 import BillingAnalytics from './BillingAnalytics';
@@ -121,7 +121,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
 };
 
   // Fetch platform-wide stats - SANNTID OPPDATERING
-  const { data: platformStats, isLoading } = useQuery({
+  const { data: platformStats, isLoading: isPlatformStatsLoading, error: platformStatsError } = useQuery({
     queryKey: ['/api/admin/platform-stats'],
     queryFn: async () => {
       const headers = await auth.getAuthHeader();
@@ -229,28 +229,6 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
     );
   }
 
-  if (isLoading) {
-    return (
-      <Box sx={{ p: 3 }}>
-        <Typography variant="h5" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 2, color: theming.colors.primary }}>
-          <Assessment sx={{ color: '#ff8c00' }} />
-          Plattform Statistikk (Admin)
-        </Typography>
-        <Grid container spacing={3}>
-          {[135, 6].map((index) => (
-            <Grid xs={12} md={6} lg={4} key={index}>
-              <MuiCard>
-                <CardContent sx={theming.getThemedCardSx()}>
-                  <LinearProgress />
-                </CardContent>
-              </MuiCard>
-            </Grid>
-          ))}
-        </Grid>
-      </Box>
-    );
-}
-
   const stats = platformStats as PlatformStats;
   const totalUsersTrend = stats ? calculateTrend(stats.totalUsers?.current || 0, stats.totalUsers?.previous || 0) : { percentage: 0, isPositive: true };
   const activeProjectsTrend = stats ? calculateTrend(stats.activeProjects?.current || 0, stats.activeProjects?.previous || 0) : { percentage: 0, isPositive: true };
@@ -265,6 +243,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
     professionStats,
   ].filter(Boolean).length;
   const hasAnyInsightData = activeInsightSources > 0;
+  const platformStatsEndpointMissing = isApiEndpointMissing(platformStatsError);
 
   return (
     <Box sx={{ p: 3 }}>
@@ -322,8 +301,26 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
               sx={{ bgcolor: '#eff6ff', color: '#1d4ed8', fontWeight: 700 }}
             />
           ) : null}
+          {isPlatformStatsLoading ? (
+            <Chip
+              label="Kjernetall laster"
+              size="small"
+              sx={{ bgcolor: '#fff7ed', color: '#c2410c', fontWeight: 700 }}
+            />
+          ) : null}
         </Box>
       </Box>
+
+      {platformStatsEndpointMissing ? (
+        <Alert severity="info" sx={{ mb: 3, borderRadius: '18px' }}>
+          Kjernetall-endepunktet for plattformstatistikk er ikke implementert live ennå. Oversikten
+          viser fortsatt andre aktive datakilder uten å låse hele adminflaten.
+        </Alert>
+      ) : platformStatsError ? (
+        <Alert severity="warning" sx={{ mb: 3, borderRadius: '18px' }}>
+          Klarte ikke å hente kjernetall akkurat nå. Resten av adminstatistikken vises fortsatt.
+        </Alert>
+      ) : null}
 
       {!hasAnyInsightData ? (
         <Alert severity="info" sx={{ mb: 4, borderRadius: '18px' }}>
