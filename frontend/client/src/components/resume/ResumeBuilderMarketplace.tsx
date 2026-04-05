@@ -52,6 +52,8 @@ import {
   Image as ImageIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '../../lib/queryClient';
+import fikenLogo from '../../assets/integrations/fiken-logo.svg';
+import tripletexLogo from '../../assets/integrations/tripletex-logo.svg';
 
 interface AppStoreItem {
   id: string;
@@ -69,11 +71,20 @@ interface AppStoreItem {
     free: boolean;
     price?: number;
     currency?: string;
+    displayPrice?: string;
+    note?: string;
+    enterpriseIncluded?: boolean;
   };
   gradientStart: string;
   gradientEnd: string;
   categoryIcon: React.ReactNode;
   monthlyGrowth?: number;
+  partnerLogos?: {
+    name: string;
+    src: string;
+    background: string;
+  }[];
+  ctaLabel?: string;
 }
 
 interface CreatorHubMarketplaceProps {
@@ -221,6 +232,38 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
       categoryIcon: <GavelIcon />,
     },
     {
+      id: 'accounting-integration',
+      name: 'Regnskapsintegrasjon',
+      category: 'Finance',
+      rating: 0,
+      reviews: 0,
+      description: 'For deg som vil gjøre veien fra betaling til regnskap enklere med Fiken eller Tripletex.',
+      longDescription: 'Vi setter opp regnskapsintegrasjon for CreatorHub og klargjør betalingshistorikk, kvitteringer og regnskapsgrunnlag slik at oppfølgingen blir enklere etter salg og betaling.',
+      featured: true,
+      downloadCount: 0,
+      features: [
+        { icon: <ReceiptIcon />, text: 'Kvitteringer og historikk' },
+        { icon: <DriveIcon />, text: 'Oppsett av regnskapsflyt' },
+        { icon: <AnalyzeIcon />, text: 'Bilagsgrunnlag for videre bokføring' },
+        { icon: <GroupsIcon />, text: 'Enterprise inkludert i avtalen' },
+      ],
+      pricing: {
+        free: false,
+        displayPrice: 'Fra 6 900 kr',
+        currency: 'engangspris',
+        note: 'Løpende drift og overvåking fra 990 kr/mnd. Eventuelle lisenser håndteres direkte med leverandøren.',
+        enterpriseIncluded: true,
+      },
+      gradientStart: '#0f172a',
+      gradientEnd: '#1e293b',
+      categoryIcon: <ReceiptIcon />,
+      partnerLogos: [
+        { name: 'Fiken', src: fikenLogo, background: '#ffffff' },
+        { name: 'Tripletex', src: tripletexLogo, background: '#ffffff' },
+      ],
+      ctaLabel: 'Bestill oppsett',
+    },
+    {
       id: 'invoice-pro',
       name: 'Invoice Pro',
       category: 'Finance',
@@ -337,8 +380,11 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
     return result;
   }, [apps, searchTerm, selectedCategory, sortBy]);
 
-  const featuredApps = apps.filter(app => app.featured);
-  const topRatedApp = apps.reduce((prev, current) =>
+  const accountingIntegrationApp = apps.find((app) => app.id === 'accounting-integration') || null;
+  const featuredApps = apps.filter(app => app.featured && app.id !== 'accounting-integration');
+  const topRatedApp = apps
+    .filter((app) => app.id !== 'accounting-integration')
+    .reduce((prev, current) =>
     prev.rating > current.rating ? prev : current
   );
 
@@ -476,6 +522,8 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
             height: featured ? 160 : 120,
             position: 'relative',
             overflow: 'hidden',
+            px: 2.5,
+            py: 2,
           }}
         >
           <Stack direction="row" spacing={1} sx={{ position: 'absolute', top: 12, right: 12, zIndex: 10 }}>
@@ -506,6 +554,51 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
               />
             )}
           </Stack>
+          <Box sx={{ position: 'relative', zIndex: 2, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <Box
+              sx={{
+                width: 52,
+                height: 52,
+                borderRadius: 2.5,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: 'rgba(255,255,255,0.14)',
+                color: '#fff',
+                backdropFilter: 'blur(14px)',
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.16)',
+              }}
+            >
+              {app.categoryIcon}
+            </Box>
+
+            {app.partnerLogos && app.partnerLogos.length > 0 && (
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                {app.partnerLogos.map((partner) => (
+                  <Box
+                    key={partner.name}
+                    sx={{
+                      height: 36,
+                      px: 1.5,
+                      borderRadius: 999,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      background: partner.background,
+                      boxShadow: '0 10px 24px rgba(15, 23, 42, 0.18)',
+                    }}
+                  >
+                    <Box
+                      component="img"
+                      src={partner.src}
+                      alt={partner.name}
+                      sx={{ display: 'block', height: 16, maxWidth: 92, width: 'auto' }}
+                    />
+                  </Box>
+                ))}
+              </Stack>
+            )}
+          </Box>
         </Box>
 
         <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column', p: featured ? 3 : 2.5 }}>
@@ -549,41 +642,70 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
 
           <Box sx={{ display: 'flex', gap: 2, mb: 2.5, pb: 2.5, borderBottom: '1px solid #f0f0f0' }}>
             <Box sx={{ flex: 1 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.25 }}>
-                <Rating value={displayRating} readOnly size="small" />
-                <Typography variant="caption" sx={{ fontWeight: 600, color: '#1a1a1a' }}>
-                  {Number.isFinite(displayRating) ? displayRating.toFixed(1) : '—'}
-                </Typography>
-              </Box>
-              <Typography variant="caption" sx={{ color: '#999', fontSize: '0.7rem' }}>
-                {Number.isFinite(displayReviews) ? displayReviews.toLocaleString() : '0'} anmeldelser
-              </Typography>
+              {displayReviews > 0 ? (
+                <>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.25 }}>
+                    <Rating value={displayRating} readOnly size="small" />
+                    <Typography variant="caption" sx={{ fontWeight: 600, color: '#1a1a1a' }}>
+                      {Number.isFinite(displayRating) ? displayRating.toFixed(1) : '—'}
+                    </Typography>
+                  </Box>
+                  <Typography variant="caption" sx={{ color: '#999', fontSize: '0.7rem' }}>
+                    {Number.isFinite(displayReviews) ? displayReviews.toLocaleString() : '0'} anmeldelser
+                  </Typography>
+                </>
+              ) : (
+                <>
+                  <Typography variant="caption" sx={{ fontWeight: 700, color: '#1a1a1a', display: 'block', mb: 0.25 }}>
+                    Tjeneste og oppsett
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: '#999', fontSize: '0.7rem' }}>
+                    Leveres som implementasjonsprosjekt
+                  </Typography>
+                </>
+              )}
             </Box>
 
             <Box sx={{ flex: 1 }}>
-              <Typography
-                variant="caption"
-                sx={{ fontWeight: 600, color: '#1a1a1a', display: 'block', mb: 0.25 }}
-              >
-                {(app.downloadCount / 1000).toFixed(0)}K nedlastinger
-              </Typography>
-              <Box
-                sx={{
-                  width: '100%',
-                  height: 4,
-                  background: '#e0e0e0',
-                  borderRadius: 2,
-                  overflow: 'hidden',
-                }}
-              >
-                <Box
-                  sx={{
-                    height: '100%',
-                    width: `${Math.min((app.downloadCount / 160000) * 100, 100)}%`,
-                    background: `linear-gradient(90deg, ${app.gradientStart} 0%, ${app.gradientEnd} 100%)`,
-                  }}
-                />
-              </Box>
+              {app.downloadCount > 0 ? (
+                <>
+                  <Typography
+                    variant="caption"
+                    sx={{ fontWeight: 600, color: '#1a1a1a', display: 'block', mb: 0.25 }}
+                  >
+                    {(app.downloadCount / 1000).toFixed(0)}K nedlastinger
+                  </Typography>
+                  <Box
+                    sx={{
+                      width: '100%',
+                      height: 4,
+                      background: '#e0e0e0',
+                      borderRadius: 2,
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        height: '100%',
+                        width: `${Math.min((app.downloadCount / 160000) * 100, 100)}%`,
+                        background: `linear-gradient(90deg, ${app.gradientStart} 0%, ${app.gradientEnd} 100%)`,
+                      }}
+                    />
+                  </Box>
+                </>
+              ) : (
+                <>
+                  <Typography
+                    variant="caption"
+                    sx={{ fontWeight: 600, color: '#1a1a1a', display: 'block', mb: 0.25 }}
+                  >
+                    Enterprise inkludert
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: '#999', fontSize: '0.7rem' }}>
+                    Inkludert når oppsett er del av avtalen
+                  </Typography>
+                </>
+              )}
             </Box>
           </Box>
 
@@ -603,11 +725,37 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
           </Grid>
 
           {showPricing && (
-            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 2 }}>
-              {app.pricing.free ? (
-                <>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, alignItems: 'flex-start', mb: 2 }}>
+              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+                {app.pricing.free ? (
+                  <>
+                    <Chip
+                      label="Gratis"
+                      size="small"
+                      sx={{
+                        background: '#E8F5E9',
+                        color: '#2E7D32',
+                        fontWeight: 700,
+                      }}
+                    />
+                    <Typography variant="caption" sx={{ color: '#999' }}>
+                      + Pro fra {app.pricing.price} {app.pricing.currency}
+                    </Typography>
+                  </>
+                ) : (
                   <Chip
-                    label="Gratis"
+                    label={app.pricing.displayPrice || `Fra ${app.pricing.price} ${app.pricing.currency}`}
+                    size="small"
+                    sx={{
+                      background: '#F3E5F5',
+                      color: '#6A1B9A',
+                      fontWeight: 700,
+                    }}
+                  />
+                )}
+                {app.pricing.enterpriseIncluded && (
+                  <Chip
+                    label="Inkludert i Enterprise"
                     size="small"
                     sx={{
                       background: '#E8F5E9',
@@ -615,20 +763,12 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                       fontWeight: 700,
                     }}
                   />
-                  <Typography variant="caption" sx={{ color: '#999' }}>
-                    + Pro fra {app.pricing.price} {app.pricing.currency}
-                  </Typography>
-                </>
-              ) : (
-                <Chip
-                  label={`Fra ${app.pricing.price} ${app.pricing.currency}`}
-                  size="small"
-                  sx={{
-                    background: '#F3E5F5',
-                    color: '#6A1B9A',
-                    fontWeight: 700,
-                  }}
-                />
+                )}
+              </Box>
+              {app.pricing.note && (
+                <Typography variant="caption" sx={{ color: '#777', lineHeight: 1.45 }}>
+                  {app.pricing.note}
+                </Typography>
               )}
             </Box>
           )}
@@ -655,26 +795,28 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                 },
               }}
             >
-              Hent {app.name}
+              {app.ctaLabel || `Hent ${app.name}`}
             </Button>
-            <Button
-              fullWidth
-              variant="outlined"
-              size="small"
-              onClick={() => handleOpenReviewDialog(app)}
-              sx={{
-                borderColor: `${app.gradientStart}55`,
-                color: app.gradientStart,
-                fontWeight: 600,
-                textTransform: 'none',
-                '&:hover': {
-                  borderColor: app.gradientStart,
-                  background: `${app.gradientStart}10`,
-                },
-              }}
-            >
-              Anmeldelser
-            </Button>
+            {app.id !== 'accounting-integration' && (
+              <Button
+                fullWidth
+                variant="outlined"
+                size="small"
+                onClick={() => handleOpenReviewDialog(app)}
+                sx={{
+                  borderColor: `${app.gradientStart}55`,
+                  color: app.gradientStart,
+                  fontWeight: 600,
+                  textTransform: 'none',
+                  '&:hover': {
+                    borderColor: app.gradientStart,
+                    background: `${app.gradientStart}10`,
+                  },
+                }}
+              >
+                Anmeldelser
+              </Button>
+            )}
           </Stack>
         </Box>
       </Card>
@@ -816,6 +958,134 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
         </Grid>
       </Box>
 
+      {accountingIntegrationApp && (
+        <Paper
+          sx={{
+            mb: 6,
+            p: { xs: 2.5, md: 4 },
+            borderRadius: 4,
+            overflow: 'hidden',
+            background: 'linear-gradient(135deg, #0f172a 0%, #111827 54%, #1f2937 100%)',
+            color: '#fff',
+            position: 'relative',
+            boxShadow: '0 24px 70px rgba(15, 23, 42, 0.22)',
+          }}
+        >
+          <Grid container spacing={4} alignItems="center">
+            <Grid item xs={12} md={7}>
+              <Stack spacing={2.5}>
+                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                  <Chip label="Regnskap" size="small" sx={{ background: 'rgba(255,255,255,0.1)', color: '#fff', fontWeight: 700 }} />
+                  <Chip label="Fiken og Tripletex" size="small" sx={{ background: 'rgba(255,255,255,0.1)', color: '#fff', fontWeight: 700 }} />
+                  <Chip label="Enterprise inkludert" size="small" sx={{ background: 'rgba(34,197,94,0.18)', color: '#BBF7D0', fontWeight: 700 }} />
+                </Box>
+                <Box>
+                  <Typography variant="overline" sx={{ letterSpacing: 1.6, color: 'rgba(255,255,255,0.7)', fontWeight: 700 }}>
+                    Klar for en enklere regnskapsflyt?
+                  </Typography>
+                  <Typography variant="h4" sx={{ fontWeight: 900, lineHeight: 1.05, mt: 0.5 }}>
+                    Gjør veien fra betaling til regnskap enklere
+                  </Typography>
+                  <Typography variant="body1" sx={{ mt: 1.5, color: 'rgba(255,255,255,0.76)', maxWidth: 640 }}>
+                    Vi setter opp Fiken eller Tripletex for deg, slik at kvitteringer, betalingshistorikk og regnskapsgrunnlag blir enklere å følge opp i hverdagen.
+                  </Typography>
+                </Box>
+
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} useFlexGap flexWrap="wrap">
+                  {accountingIntegrationApp.partnerLogos?.map((partner) => (
+                    <Box
+                      key={partner.name}
+                      sx={{
+                        minWidth: 140,
+                        px: 2,
+                        py: 1.25,
+                        borderRadius: 3,
+                        background: partner.background,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Box
+                        component="img"
+                        src={partner.src}
+                        alt={partner.name}
+                        sx={{ display: 'block', height: 18, maxWidth: '100%', width: 'auto' }}
+                      />
+                    </Box>
+                  ))}
+                </Stack>
+
+                <Grid container spacing={1.5}>
+                  {accountingIntegrationApp.features.map((feature, idx) => (
+                    <Grid item xs={12} sm={6} key={idx}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+                        <Box sx={{ color: '#FBBF24' }}>{feature.icon}</Box>
+                        <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.84)' }}>
+                          {feature.text}
+                        </Typography>
+                      </Box>
+                    </Grid>
+                  ))}
+                </Grid>
+              </Stack>
+            </Grid>
+
+            <Grid item xs={12} md={5}>
+              <Box
+                sx={{
+                  borderRadius: 4,
+                  p: 3,
+                  background: 'linear-gradient(180deg, rgba(255,255,255,0.09) 0%, rgba(255,255,255,0.04) 100%)',
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  backdropFilter: 'blur(14px)',
+                }}
+              >
+                <Typography variant="overline" sx={{ color: '#FCD34D', fontWeight: 800, letterSpacing: 1.2 }}>
+                  Marketplace-pris
+                </Typography>
+                <Typography variant="h3" sx={{ mt: 1, fontWeight: 900 }}>
+                  {accountingIntegrationApp.pricing.displayPrice}
+                </Typography>
+                <Typography variant="body2" sx={{ mt: 0.75, color: 'rgba(255,255,255,0.76)' }}>
+                  {accountingIntegrationApp.pricing.currency}
+                </Typography>
+
+                <Stack spacing={1.25} sx={{ mt: 3 }}>
+                  <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.84)' }}>
+                    Dette er en oppsettstjeneste. Marketplace viser prisen for integrasjonen og arbeidet, ikke leverandørenes API- eller lisenskostnader.
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.84)' }}>
+                    {accountingIntegrationApp.pricing.note}
+                  </Typography>
+                </Stack>
+
+                <Button
+                  fullWidth
+                  variant="contained"
+                  onClick={() => onSelect?.(accountingIntegrationApp.id)}
+                  startIcon={<GetAppIcon />}
+                  sx={{
+                    mt: 3,
+                    py: 1.3,
+                    fontWeight: 800,
+                    textTransform: 'none',
+                    borderRadius: 999,
+                    background: 'linear-gradient(135deg, #f59e0b 0%, #fb7185 100%)',
+                    color: '#111827',
+                    '&:hover': {
+                      opacity: 0.94,
+                    },
+                  }}
+                >
+                  {accountingIntegrationApp.ctaLabel}
+                </Button>
+              </Box>
+            </Grid>
+          </Grid>
+        </Paper>
+      )}
+
       {featuredApps.length > 0 && (
         <Box sx={{ mb: 6 }}>
           <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2, color: '#999', textTransform: 'uppercase', letterSpacing: 1 }}>
@@ -884,7 +1154,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
           Finner du ikke det du leter etter?
         </Typography>
         <Typography variant="body2" sx={{ color: '#999' }}>
-          Foreslå en ny app eller integrasjon på support@creatorhub.no
+          Foreslå en ny app eller integrasjon på hello@creatorhubn.com
         </Typography>
       </Box>
 
@@ -1002,4 +1272,3 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
 };
 
 export default CreatorHubMarketplace;
-
