@@ -50,6 +50,10 @@ export default function GlobalChatProvider({ children }: GlobalChatProviderProps
     [theming, userProfession]
   );
 
+  const shouldHideGlobalChat = useMemo(() => {
+    return /^\/(?:dashboard|photographer-dashboard-material|videographer-dashboard(?:-material)?|music(?:_|-)producer-dashboard(?:-material)?|vendor-dashboard(?:-material)?)(?:\/|$)/.test(location);
+  }, [location]);
+
   // Don't render chat widget if user is not authenticated
   if (!isAuthenticated || !user) {
     return <>{children}</>;
@@ -61,10 +65,6 @@ export default function GlobalChatProvider({ children }: GlobalChatProviderProps
     ['--chat-accent' as string]: theming.colors.primary,
     ['--chat-accent-light' as string]: `${theming.colors.primary}18`,
   };
-
-  const shouldHideGlobalChat = useMemo(() => {
-    return /^\/(?:dashboard|photographer-dashboard-material|videographer-dashboard(?:-material)?|music(?:_|-)producer-dashboard(?:-material)?|vendor-dashboard(?:-material)?)(?:\/|$)/.test(location);
-  }, [location]);
 
   return (
     <>
