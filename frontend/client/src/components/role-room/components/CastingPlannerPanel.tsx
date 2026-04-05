@@ -960,6 +960,7 @@ export function CastingPlannerPanel({
   const [authLoaded, setAuthLoaded] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<CastingProject | null>(null);
   const [projectCreationModalOpen, setProjectCreationModalOpen] = useState(false);
+  const [projectCreationModalKey, setProjectCreationModalKey] = useState(0);
   const [projectToEdit, setProjectToEdit] = useState<CastingProject | null>(null);
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const clientPortalIntent = useMemo(
@@ -1365,8 +1366,21 @@ export function CastingPlannerPanel({
 
   const openProjectCreationModal = useCallback(() => {
     blurActiveElement();
+    setProjectCreationModalKey((prev) => prev + 1);
     startTransition(() => setProjectCreationModalOpen(true));
   }, [blurActiveElement]);
+
+  const openNewProjectCreationModal = useCallback(() => {
+    setProjectToEdit(null);
+    setCurrentProjectId(null);
+    openProjectCreationModal();
+  }, [openProjectCreationModal]);
+
+  const openProjectEditModal = useCallback((project: CastingProject) => {
+    setProjectToEdit(project);
+    setCurrentProjectId(project.id);
+    openProjectCreationModal();
+  }, [openProjectCreationModal]);
 
   const openConsentContractDialog = useCallback(() => {
     blurActiveElement();
@@ -5161,10 +5175,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
             {/* Add new project button */}
             <IconButton
               size="small"
-              onClick={() => {
-                setProjectToEdit(null);
-                openProjectCreationModal();
-              }}
+              onClick={openNewProjectCreationModal}
               aria-label={branding.tokens.labels.newProjectTitle}
               data-tutorial-target="create-project-button"
               sx={{
@@ -5581,8 +5592,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
             <MenuItem
               onClick={() => {
                 if (!projectQuickActionsProject) return;
-                setProjectToEdit(projectQuickActionsProject);
-                openProjectCreationModal();
+                openProjectEditModal(projectQuickActionsProject);
                 handleCloseProjectQuickActions();
               }}
               sx={{ minHeight: 40, fontSize: '0.86rem', gap: 1 }}
@@ -10879,8 +10889,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
               onClick={() => {
                 setProjectSelectorOpen(false);
                 setProjectSelectorQuery('');
-                setProjectToEdit(null);
-                openProjectCreationModal();
+                openNewProjectCreationModal();
               }}
               sx={{
                 textTransform: 'none',
@@ -11514,7 +11523,11 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
       {/* Project Creation Modal */}
       <Dialog
         open={projectCreationModalOpen}
-        onClose={() => setProjectCreationModalOpen(false)}
+        onClose={() => {
+          setProjectCreationModalOpen(false);
+          setProjectToEdit(null);
+          setCurrentProjectId(null);
+        }}
         maxWidth="lg"
         fullWidth
         fullScreen={isMobile}
@@ -11630,6 +11643,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
             onClick={() => {
               setProjectCreationModalOpen(false);
               setProjectToEdit(null);
+              setCurrentProjectId(null);
             }}
             aria-label={branding.tokens.labels.closeLabel}
             sx={{
@@ -11658,6 +11672,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                 <ProjectProvider>
                   <Suspense fallback={<Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'rgba(255,255,255,0.87)' }}>{branding.tokens.labels.loadingLabel}</Box>}>
                     <NewProjectCreationModal
+                      key={`${projectCreationModalKey}-${projectToEdit?.id ?? 'new'}`}
                       profession={profession || 'photographer'}
                       userId={user?.id}
                       isCastingPlanner={true}

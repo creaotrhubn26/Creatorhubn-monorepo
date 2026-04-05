@@ -790,8 +790,19 @@ export default function NewProjectCreationModal({
     const mappedData = mapInitialData();
     setProjectData(mappedData);
     setActiveStep(0);
+    setSelectedDraftKey(null);
+    setSelectedProjectId(null);
     setClientInviteDialogOpen(false);
     setSavedProjectIdForInvite(null);
+    setSuccessMessage(null);
+    setDraftStatus('idle');
+    setLastSavedAt(null);
+    setClientNameError(false);
+    setClientEmailError(false);
+    setClientPhoneError(false);
+    setClientBrregError(null);
+    setBrregError(null);
+    autoLoadedDraftKeyRef.current = null;
     
     // Set timestamp for new projects (to ensure consistent ID generation)
     if (!initialData || !initialData.id) {
