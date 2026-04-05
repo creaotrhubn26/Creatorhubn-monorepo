@@ -233,17 +233,17 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
     },
     {
       id: 'accounting-integration',
-      name: 'Regnskapsintegrasjon',
+      name: 'Fakturaflyt og regnskapsoppsett',
       category: 'Finance',
       rating: 0,
       reviews: 0,
-      description: 'For deg som vil gjøre veien fra betaling til regnskap enklere med Fiken eller Tripletex.',
-      longDescription: 'Vi setter opp regnskapsintegrasjon for CreatorHub og klargjør betalingshistorikk, kvitteringer og regnskapsgrunnlag slik at oppfølgingen blir enklere etter salg og betaling.',
+      description: 'For deg som vil gjøre veien fra avtale til faktura, betaling og regnskap enklere med Fiken eller Tripletex.',
+      longDescription: 'Vi setter opp fakturaflyt for CreatorHub og klargjør betalingshistorikk, kvitteringer og regnskapsgrunnlag slik at oppfølgingen blir enklere fra avtale til betaling og videre til regnskap.',
       featured: true,
       downloadCount: 0,
       features: [
-        { icon: <ReceiptIcon />, text: 'Kvitteringer og historikk' },
-        { icon: <DriveIcon />, text: 'Oppsett av regnskapsflyt' },
+        { icon: <ReceiptIcon />, text: 'Fakturaer, kvitteringer og historikk' },
+        { icon: <DriveIcon />, text: 'Oppsett av fakturaflyt' },
         { icon: <AnalyzeIcon />, text: 'Bilagsgrunnlag for videre bokføring' },
         { icon: <GroupsIcon />, text: 'Enterprise inkludert i avtalen' },
       ],
@@ -981,13 +981,13 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                 </Box>
                 <Box>
                   <Typography variant="overline" sx={{ letterSpacing: 1.6, color: 'rgba(255,255,255,0.7)', fontWeight: 700 }}>
-                    Klar for en enklere regnskapsflyt?
+                    Klar for en enklere fakturaflyt?
                   </Typography>
                   <Typography variant="h4" sx={{ fontWeight: 900, lineHeight: 1.05, mt: 0.5 }}>
-                    Gjør veien fra betaling til regnskap enklere
+                    Gjør veien fra avtale til faktura og regnskap enklere
                   </Typography>
                   <Typography variant="body1" sx={{ mt: 1.5, color: 'rgba(255,255,255,0.76)', maxWidth: 640 }}>
-                    Vi setter opp Fiken eller Tripletex for deg, slik at kvitteringer, betalingshistorikk og regnskapsgrunnlag blir enklere å følge opp i hverdagen.
+                    Vi setter opp Fiken eller Tripletex for deg, slik at fakturaer, betalinger, kvitteringer og regnskapsgrunnlag blir enklere å følge opp i hverdagen.
                   </Typography>
                 </Box>
 
@@ -1053,7 +1053,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
 
                 <Stack spacing={1.25} sx={{ mt: 3 }}>
                   <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.84)' }}>
-                    Dette er en oppsettstjeneste. Marketplace viser prisen for integrasjonen og arbeidet, ikke leverandørenes API- eller lisenskostnader.
+                    Dette er en oppsettstjeneste. Marketplace viser prisen for fakturaflyt, integrasjon og arbeid, ikke leverandørenes API- eller lisenskostnader.
                   </Typography>
                   <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.84)' }}>
                     {accountingIntegrationApp.pricing.note}
