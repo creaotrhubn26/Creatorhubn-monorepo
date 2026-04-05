@@ -25,10 +25,24 @@ const roleRoomSocialLinks = getPublicSocialProfiles('roleRoom');
 
 export default function RoleRoomEducationPartnershipPage() {
   const [loginDialogOpen, setLoginDialogOpen] = useState(false);
+  const [loginDialogVariant, setLoginDialogVariant] = useState<'landing' | 'admin'>('landing');
   const backdropStillUrl = getRoleRoomVideoStillUrl(
     '/role-room-assets/landing_backdrop.mp4',
     '/role-room-assets/landing_backdrop.webp',
   );
+
+  const handleEducationLoginOpen = () => {
+    setLoginDialogVariant('landing');
+    setLoginDialogOpen(true);
+  };
+  const handleAdminLoginOpen = () => {
+    setLoginDialogVariant('admin');
+    setLoginDialogOpen(true);
+  };
+  const handleLoginDialogClose = () => {
+    setLoginDialogOpen(false);
+    setLoginDialogVariant('landing');
+  };
 
   return (
     <Box
@@ -195,7 +209,7 @@ export default function RoleRoomEducationPartnershipPage() {
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25} sx={{ pt: 1 }}>
                   <Button
                     type="button"
-                    onClick={() => setLoginDialogOpen(true)}
+                    onClick={handleEducationLoginOpen}
                     endIcon={<ArrowForwardRounded />}
                     sx={{
                       flex: 1,
@@ -506,17 +520,43 @@ export default function RoleRoomEducationPartnershipPage() {
                 links={roleRoomSocialLinks}
                 tone="roleRoom"
               />
+              <Button
+                type="button"
+                onClick={handleAdminLoginOpen}
+                sx={{
+                  alignSelf: 'center',
+                  mt: 1.5,
+                  minHeight: 36,
+                  px: 1.75,
+                  textTransform: 'none',
+                  borderRadius: '999px',
+                  color: 'rgba(248,245,239,0.76)',
+                  border: '1px solid rgba(255,255,255,0.14)',
+                  bgcolor: 'rgba(255,255,255,0.03)',
+                  '&:hover': {
+                    color: '#fff',
+                    borderColor: 'rgba(246,195,88,0.4)',
+                    bgcolor: 'rgba(246,195,88,0.12)',
+                  },
+                }}
+              >
+                Admin login
+              </Button>
             </Box>
           </Box>
         </Stack>
       </Container>
 
       <LoginDialog
+        key={loginDialogVariant}
         open={loginDialogOpen}
-        onClose={() => setLoginDialogOpen(false)}
-        onLoginSuccess={() => setLoginDialogOpen(false)}
-        isLandingPage={true}
-        initialPersona="education_institution"
+        onClose={handleLoginDialogClose}
+        onLoginSuccess={() => {
+          setLoginDialogOpen(false);
+          setLoginDialogVariant('landing');
+        }}
+        isLandingPage={loginDialogVariant === 'landing'}
+        initialPersona={loginDialogVariant === 'landing' ? 'education_institution' : ''}
       />
     </Box>
   );

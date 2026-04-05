@@ -51,6 +51,7 @@ const roleRoomSocialLinks = getPublicSocialProfiles('roleRoom');
 export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPageProps) {
   const [showIntro, setShowIntro]       = useState(true);
   const [loginDialogOpen, setLoginDialogOpen] = useState(false);
+  const [loginDialogVariant, setLoginDialogVariant] = useState<'landing' | 'admin'>('landing');
   const [typedWhy,  setTypedWhy]  = useState('');
   const [typedHow,  setTypedHow]  = useState('');
   const [typedWhat, setTypedWhat] = useState('');
@@ -130,7 +131,14 @@ export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPage
     return () => clearTimeout(t);
   }, []);
 
-  const handleStartClick   = () => setLoginDialogOpen(true);
+  const handleStartClick = () => {
+    setLoginDialogVariant('landing');
+    setLoginDialogOpen(true);
+  };
+  const handleAdminLoginClick = () => {
+    setLoginDialogVariant('admin');
+    setLoginDialogOpen(true);
+  };
   const handleLoginSuccess = () => {
     try {
       window.sessionStorage.removeItem('role-room-commercial-draft-v1');
@@ -138,7 +146,12 @@ export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPage
       // Ignore storage cleanup failures.
     }
     setLoginDialogOpen(false);
+    setLoginDialogVariant('landing');
     onEnter();
+  };
+  const handleLoginDialogClose = () => {
+    setLoginDialogOpen(false);
+    setLoginDialogVariant('landing');
   };
 
   useEffect(() => {
@@ -147,7 +160,13 @@ export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPage
     }
 
     const params = new URLSearchParams(window.location.search);
+    if (params.get('rrAdminLogin')) {
+      setLoginDialogVariant('admin');
+      setLoginDialogOpen(true);
+      return;
+    }
     if (params.get('rrCheckout') || params.get('rrActivation')) {
+      setLoginDialogVariant('landing');
       setLoginDialogOpen(true);
     }
   }, []);
@@ -594,6 +613,27 @@ export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPage
                   opacity: 0.78,
                 }}
               />
+              <Button
+                type="button"
+                onClick={handleAdminLoginClick}
+                sx={{
+                  mt: 0.75,
+                  minHeight: 36,
+                  px: 1.75,
+                  textTransform: 'none',
+                  borderRadius: '999px',
+                  color: 'rgba(255,255,255,0.72)',
+                  border: '1px solid rgba(255,255,255,0.14)',
+                  bgcolor: 'rgba(255,255,255,0.03)',
+                  '&:hover': {
+                    color: '#fff',
+                    borderColor: 'rgba(139,92,246,0.45)',
+                    bgcolor: 'rgba(139,92,246,0.12)',
+                  },
+                }}
+              >
+                Admin login
+              </Button>
             </Box>
           </motion.div>
 
@@ -601,11 +641,12 @@ export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPage
       </motion.div>
 
       <LoginDialog
+        key={loginDialogVariant}
         open={loginDialogOpen}
-        onClose={() => setLoginDialogOpen(false)}
+        onClose={handleLoginDialogClose}
         onLoginSuccess={handleLoginSuccess}
-        onGuestEnter={onGuestEnter}
-        isLandingPage={true}
+        onGuestEnter={loginDialogVariant === 'landing' ? onGuestEnter : undefined}
+        isLandingPage={loginDialogVariant === 'landing'}
       />
     </Box>
   );
