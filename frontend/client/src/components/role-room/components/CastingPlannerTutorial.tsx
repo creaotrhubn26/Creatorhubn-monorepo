@@ -298,7 +298,7 @@ export const CastingPlannerTutorial: FC<CastingPlannerTutorialProps> = ({
   const modeMeta = category === 'casting-planner'
     ? {
         label: 'Produksjonsteam-modus',
-        description: 'Denne veiledningen dekker casting, team, lokasjoner, planlegging og live set.',
+        description: 'Bygg produksjonen fra casting og crew til plan, ressurser og live set.',
         accent: '#e91e63',
         secondaryAccent: '#8b5cf6',
         railTitle: 'Fanene i produksjonsflyten',
@@ -307,7 +307,7 @@ export const CastingPlannerTutorial: FC<CastingPlannerTutorialProps> = ({
     : category === 'content-producer'
       ? {
           label: 'Innholdsprodusent-modus',
-          description: 'Denne veiledningen dekker kreativ produksjon, opptaksflyt og innholdsleveranse.',
+          description: 'Driv frem storyboard, media, klientsamarbeid og leveranser i én flyt.',
           accent: '#22d3ee',
           secondaryAccent: '#f59e0b',
           railTitle: 'Fanene i innholdsprodusent-flyten',

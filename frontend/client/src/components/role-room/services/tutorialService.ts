@@ -34,14 +34,14 @@ const cloneTutorialStep = (step: TutorialStep): TutorialStep => ({
 const DEFAULT_CASTING_PLANNER_TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: 'welcome',
-    title: 'Velkommen til The Role Room',
-    description: 'Denne veiledningen viser dagens arbeidsflyt for produksjonsteam i The Role Room, fra oversikt og studio til casting, planlegging og live set.',
+    title: 'Velkommen til produksjonsteam-flyten',
+    description: 'Denne veiledningen er laget for produksjonsteam som skal samle casting, planlegging, ressurser og opptaksstyring i én sammenhengende arbeidsflyt.',
     panel: -1,
     duration: 8000,
     tips: [
-      'Du kan pause veiledningen når som helst',
-      'Klikk på stegene i fremdriftslinjen for å hoppe direkte',
-      'Trykk ESC for å lukke veiledningen',
+      'Denne løypen er laget for produksjonsteam, ikke for innholdsprodusent',
+      'Bruk stegene for å se hvordan toppfanene henger sammen fra planlegging til opptaksdag',
+      'Trykk ESC for å lukke veiledningen når du vil tilbake til prosjektet',
     ],
   },
   {
@@ -211,8 +211,8 @@ const DEFAULT_CASTING_PLANNER_TUTORIAL_STEPS: TutorialStep[] = [
   },
   {
     id: 'complete',
-    title: 'Du er klar til å jobbe videre i The Role Room',
-    description: 'Nå har du sett hovedflyten for produksjonsteam. Neste steg er å opprette et nytt prosjekt eller fortsette på et eksisterende prosjekt.',
+    title: 'Du er klar til å jobbe videre som produksjonsteam',
+    description: 'Nå har du sett hovedflyten for produksjonsteam. Neste steg er å fortsette i prosjektet ditt gjennom casting, planlegging, team og live set.',
     panel: -1,
     targetSelector: '[data-tutorial-target="create-project-button"]',
     action: 'click',
@@ -233,13 +233,13 @@ const DEFAULT_CONTENT_PRODUCER_TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: 'producer-welcome',
     title: 'Velkommen til innholdsprodusent-flyten',
-    description: 'Denne veiledningen viser arbeidsflyten for innholdsprodusent i The Role Room, fra storyboard og medvirkende til media, tidslinje, godkjenning og eksport.',
+    description: 'Denne veiledningen er laget for innholdsprodusent som skal drive frem kreativ utvikling, produksjonsmateriale, kundedialog og leveranser uten å gå inn i produksjonsteam-flyten.',
     panel: -1,
     duration: 8000,
     tips: [
       'Denne løypen er laget for innholdsprodusent, ikke produksjonsteam',
-      'Du kan hoppe mellom steg uten å miste fremdriften',
-      'Trykk ESC for å lukke veiledningen',
+      'Bruk stegene for å se hvordan kreativt arbeid, media og levering henger sammen',
+      'Trykk ESC for å lukke veiledningen når du vil tilbake til prosjektet',
     ],
   },
   {
@@ -365,7 +365,7 @@ const DEFAULT_CONTENT_PRODUCER_TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: 'producer-complete',
     title: 'Du er klar til å jobbe videre som innholdsprodusent',
-    description: 'Nå har du sett hovedflyten for innholdsprodusent. Neste steg er å fortsette på prosjektet ditt gjennom media, tidslinje og leveranser.',
+    description: 'Nå har du sett hovedflyten for innholdsprodusent. Neste steg er å fortsette i prosjektet ditt gjennom storyboard, media, tidslinje, klientsamarbeid og eksport.',
     panel: -1,
     targetSelector: '[data-tutorial-target="create-project-button"]',
     action: 'click',
