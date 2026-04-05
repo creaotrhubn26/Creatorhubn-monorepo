@@ -137,6 +137,19 @@ type PaymentHistoryEntry = {
   invoiceUrl?: string | null;
 };
 
+type AccountingIntegrationStatus = {
+  configured?: boolean;
+  provider?: 'fiken' | 'tripletex';
+  environment?: 'test' | 'production';
+  activationEnabled?: boolean;
+  activatedAt?: string | null;
+  activatedByName?: string | null;
+  status?: 'connected' | 'disconnected' | 'error';
+  connectedAt?: string | null;
+  lastVerifiedAt?: string | null;
+  lastError?: string | null;
+};
+
 const formatPaymentDate = (value?: string | null) => {
   if (!value) return 'Ikke tilgjengelig';
   const date = new Date(value);
@@ -376,15 +389,9 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
     staleTime: 30000,
     enabled: isBusinessTabActive,
   });
-  const { data: mvaStatus, refetch: refetchMva } = useQuery({
-    queryKey: ['/api/payments/fiken-mva-status', userId],
-    queryFn: () => apiRequest(`/api/payments/fiken-mva-status?userId=${encodeURIComponent(userId)}`),
-    staleTime: 30000,
-    enabled: isBusinessTabActive,
-  });
-  const { data: skattemeldingStatus, refetch: refetchSkattemelding } = useQuery({
-    queryKey: ['/api/accounting/skattemelding/status', userId],
-    queryFn: () => apiRequest(`/api/accounting/skattemelding/status?userId=${encodeURIComponent(userId)}`),
+  const { data: accountingIntegrationStatus } = useQuery({
+    queryKey: ['/api/accounting/integration/status', userId],
+    queryFn: () => apiRequest(`/api/accounting/integration/status?userId=${encodeURIComponent(userId)}`),
     staleTime: 30000,
     enabled: isBusinessTabActive,
   });
@@ -438,17 +445,6 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
       pendingRefunds: pendingRefunds.length,
       totalVolume,
     };
-  }, [paymentHistoryItems]);
-  const lastFikenSyncDays = React.useMemo(() => {
-    if (paymentHistoryItems.length === 0) return null;
-    const fikenItems = paymentHistoryItems
-      .filter((h) => h.isInFiken)
-      .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-    const last = fikenItems[0];
-    if (!last) return null;
-    const lastDate = new Date(last.createdAt || Date.now()).getTime();
-    const diffMs = Date.now() - lastDate;
-    return Math.floor(diffMs / (1000 * 60 * 60 * 24));
   }, [paymentHistoryItems]);
   const queryClient = useQueryClient();
 
@@ -894,58 +890,33 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
               {/* Payment History */}
               <Box sx={{ mt: 3 }}>
                 <Typography variant="subtitle1" sx={{ mb: 1, color: theming.colors.primary, fontWeight: 700 }}>
-                  Betalingshistorikk
+                  Betaling, faktura og historikk
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  Brukeren skal kunne se hva som er betalt, hva som er refundert, og hva som eventuelt fortsatt behandles.
+                  Her ser du hva som er betalt, hva som er refundert, og hvilke kvitteringer eller fakturaer som er klare.
                 </Typography>
-                {/* MVA Status */}
-                <Alert severity={mvaStatus?.registered ? 'success' : 'warning'} sx={{ mb: 2 }}>
-                  {mvaStatus?.registered === true && 'MVA-registrering er synkronisert med Fiken.'}
-                  {mvaStatus?.registered === false && 'MVA-registrering ikke funnet i Fiken.'}
-                  {mvaStatus?.registered === null && 'MVA-status ukjent. Prøv å synkronisere.'}
-                  <Button size="small" sx={{ ml: 2 }} onClick={() => refetchMva()}>
-                    Synkroniser MVA-status
-                  </Button>
-                </Alert>
-                {/* Skattemelding annual status */}
-                <Alert severity={skattemeldingStatus?.submitted ? 'success' : skattemeldingStatus?.prepared ? 'info' : 'warning'} sx={{ mb: 2 }}>
-                  {`Skattemelding ${skattemeldingStatus?.year || new Date().getUTCFullYear()}: `}
-                  {skattemeldingStatus?.submitted ? 'Innsendt til Fiken.' : skattemeldingStatus?.prepared ? 'Utkast er forberedt.' : 'Ikke forberedt.'}
-                  <Button
-                    size="small"
-                    sx={{ ml: 2 }}
-                    onClick={async () => {
-                      try {
-                        await apiRequest('/api/accounting/skattemelding/prepare', { method: 'POST', body: JSON.stringify({}) });
-                        await refetchSkattemelding();
-                      } catch {}
-                    }}
+                {accountingIntegrationStatus?.activationEnabled ? (
+                  <Alert
+                    severity={
+                      accountingIntegrationStatus?.status === 'connected'
+                        ? 'success'
+                        : accountingIntegrationStatus?.status === 'error'
+                          ? 'warning'
+                          : 'info'
+                    }
+                    sx={{ mb: 2 }}
                   >
-                    Forbered skattemelding
-                  </Button>
-                  <Button
-                    size="small"
-                    sx={{ ml: 1 }}
-                    onClick={async () => {
-                      try {
-                        await apiRequest('/api/accounting/skattemelding/send', { method: 'POST', body: JSON.stringify({}) });
-                        await refetchSkattemelding();
-                      } catch {}
-                    }}
-                  >
-                    Send til Fiken
-                  </Button>
-                  <Button
-                    size="small"
-                    sx={{ ml: 1 }}
-                    onClick={() => {
-                      window.location.href = '/accounting/receipts';
-                    }}
-                  >
-                    Åpne kvitteringer
-                  </Button>
-                </Alert>
+                    {accountingIntegrationStatus?.status === 'connected'
+                      ? 'Regnskapsflyten er aktivert og koblet til. Fakturaer, kvitteringer og regnskapsgrunnlag vises fortløpende her.'
+                      : accountingIntegrationStatus?.status === 'error'
+                        ? 'Regnskapsflyten er aktivert, men koblingen trenger oppfølging fra admin før alle dokumenter blir tilgjengelige.'
+                        : 'Regnskapsflyten er aktivert av admin og klargjøres for brukeren.'}
+                  </Alert>
+                ) : (
+                  <Alert severity="info" sx={{ mb: 2 }}>
+                    Betalinger og kvitteringer vises her. Fiken eller Tripletex kan aktiveres av CreatorHub admin ved behov.
+                  </Alert>
+                )}
                 {!paymentHistoryItems.length ? (
                   <Alert severity="info">Ingen betalinger funnet.</Alert>
                 ) : (
@@ -967,7 +938,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                       </Box>
                       <Box sx={{ p: 2, border: '1px solid #e8edf3', borderRadius: 2, bgcolor: '#fff' }}>
                         <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
-                          Totalt fakturert
+                          Totalt betalt
                         </Typography>
                         <Typography variant="h5" sx={{ fontWeight: 700, color: theming.colors.primary, mt: 0.5 }}>
                           {formatPaymentAmount(paymentHistorySummary.totalVolume, latestPayment?.currency || currentSubscription?.currency || 'NOK')}
@@ -975,18 +946,18 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                       </Box>
                       <Box sx={{ p: 2, border: '1px solid #e8edf3', borderRadius: 2, bgcolor: '#fff' }}>
                         <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
-                          Refunderte betalinger
+                          Dokumenter klare
                         </Typography>
-                        <Typography variant="h5" sx={{ fontWeight: 700, color: paymentHistorySummary.approvedRefunds > 0 ? '#2e7d32' : 'text.primary', mt: 0.5 }}>
-                          {paymentHistorySummary.approvedRefunds}
+                        <Typography variant="h5" sx={{ fontWeight: 700, color: 'text.primary', mt: 0.5 }}>
+                          {paymentHistoryItems.filter((payment) => payment.receiptUrl || payment.invoiceUrl).length}
                         </Typography>
                       </Box>
                       <Box sx={{ p: 2, border: '1px solid #e8edf3', borderRadius: 2, bgcolor: '#fff' }}>
                         <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
-                          Åpne forespørsler
+                          Refunderinger
                         </Typography>
-                        <Typography variant="h5" sx={{ fontWeight: 700, color: paymentHistorySummary.pendingRefunds > 0 ? '#ed6c02' : 'text.primary', mt: 0.5 }}>
-                          {paymentHistorySummary.pendingRefunds}
+                        <Typography variant="h5" sx={{ fontWeight: 700, color: paymentHistorySummary.approvedRefunds > 0 ? '#2e7d32' : 'text.primary', mt: 0.5 }}>
+                          {paymentHistorySummary.approvedRefunds}
                         </Typography>
                       </Box>
                     </Box>
@@ -1064,10 +1035,18 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                             </Box>
 
                             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 1.5 }}>
-                              {payment.isInFiken ? (
-                                <Chip size="small" color="success" variant="outlined" label="Registrert i Fiken" />
+                              {payment.receiptUrl || payment.invoiceUrl ? (
+                                <Chip size="small" color="success" variant="outlined" label="Dokumenter klare" />
                               ) : (
-                                <Chip size="small" variant="outlined" label="Ikke sendt til Fiken" />
+                                <Chip
+                                  size="small"
+                                  variant="outlined"
+                                  label={
+                                    accountingIntegrationStatus?.activationEnabled
+                                      ? 'Flere dokumenter kommer'
+                                      : 'Kun betalingshistorikk tilgjengelig'
+                                  }
+                                />
                               )}
                               {payment.refundRequestStatus === 'rejected' && (
                                 <Chip size="small" color="error" variant="outlined" label="Refundering avslått" />
@@ -1147,45 +1126,20 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                                       target="_blank"
                                       rel="noreferrer"
                                     >
-                                      Regnskapsgrunnlag
+                                      Åpne faktura
                                     </Button>
                                   ) : null}
-                                  {payment.isInFiken ? (
-                                    <Chip label="Registrert" size="small" color="success" />
-                                  ) : (
-                                    <Button
-                                      size="small"
-                                      variant="outlined"
-                                      onClick={async () => {
-                                        try {
-                                          await apiRequest('/api/payments/fiken-register', {
-                                            method: 'POST',
-                                            body: JSON.stringify({
-                                              referenceId: payment.id,
-                                              referenceType: payment.type === 'subscription' ? 'subscription' : 'event',
-                                              planId: payment.planId,
-                                              amount: payment.amount,
-                                              currency: payment.currency,
-                                            }),
-                                          });
-                                          await queryClient.invalidateQueries({ queryKey: ['/api/payments/history'] });
-                                        } catch (e) {
-                                          // noop
-                                        }
-                                      }}
-                                    >
-                                      Send til Fiken
-                                    </Button>
-                                  )}
                                 </Box>
                                 <Typography variant="caption" color="text.secondary" sx={{ textAlign: { xs: 'left', md: 'right' } }}>
                                   {payment.receiptSentAt
                                     ? `Kvittering registrert ${formatPaymentDate(payment.receiptSentAt)}`
                                     : 'Kvittering er tilgjengelig i historikken.'}
                                 </Typography>
-                                {!payment.isInFiken && (
+                                {!payment.invoiceUrl && (
                                   <Typography variant="caption" color="text.secondary" sx={{ textAlign: { xs: 'left', md: 'right' } }}>
-                                    Faktura- og regnskapsgrunnlag kommer når Fiken eller Tripletex er aktivert.
+                                    {accountingIntegrationStatus?.activationEnabled
+                                      ? 'Faktura og regnskapsgrunnlag blir tilgjengelig her når de er klare.'
+                                      : 'Faktura og regnskapsgrunnlag blir synlige her hvis regnskapsflyten aktiveres.'}
                                   </Typography>
                                 )}
                               </Box>
@@ -1201,26 +1155,6 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                       </Typography>
                     )}
                   </Box>
-                )}
-                {lastFikenSyncDays !== null && lastFikenSyncDays > 28 && (
-                  <Alert severity="warning" sx={{ mt: 2 }}>
-                    Du har ikke registrert i Fiken på {lastFikenSyncDays} dager. Husk å registrere før MVA-frist.
-                    <Button
-                      size="small"
-                      sx={{ ml: 2 }}
-                      onClick={() => {
-                        try {
-                          communication.sendBroadcast('activity:notice', {
-                            type: 'finance:fiken-reminder',
-                            message: `Fiken-registrering mangler (${lastFikenSyncDays} dager) — gjør dette før MVA-frist`,
-                            timestamp: Date.now(),
-                          });
-                        } catch {}
-                      }}
-                    >
-                      Varsle i aktivitetsstrøm
-                    </Button>
-                  </Alert>
                 )}
               </Box>
 

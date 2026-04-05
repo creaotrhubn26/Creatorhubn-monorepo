@@ -69,8 +69,11 @@ type TripletexOrder = {
     id: number;
   };
   orderDate?: string;
+  deliveryDate?: string;
+  isPrioritizeAmountsIncludingVat?: boolean;
   currency?: {
     code: string;
+    factor?: number;
   };
   invoiceComment?: string;
   orderLines?: TripletexOrderLine[];
@@ -563,6 +566,7 @@ export class TripletexApiClient {
       comment: normalizeOptionalString(input.description),
       currency: {
         code: normalizeOptionalString(input.currency) || "NOK",
+        factor: 1,
       },
       orders: [
         {
@@ -570,8 +574,11 @@ export class TripletexApiClient {
             id: Number(customer.id),
           },
           orderDate: invoiceDate,
+          deliveryDate: invoiceDate,
+          isPrioritizeAmountsIncludingVat: false,
           currency: {
             code: normalizeOptionalString(input.currency) || "NOK",
+            factor: 1,
           },
           invoiceComment: normalizeOptionalString(input.description),
           orderLines: [
@@ -582,6 +589,7 @@ export class TripletexApiClient {
               unitPriceExcludingVatCurrency: netAmount,
               currency: {
                 code: normalizeOptionalString(input.currency) || "NOK",
+                factor: 1,
               },
               vatType: {
                 id: vatTypeId,
