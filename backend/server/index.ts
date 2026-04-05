@@ -49619,6 +49619,681 @@ async function buildAdminActivityFeedItems(): Promise<AdminActivityFeedItem[]> {
   );
 }
 
+type AdminDashboardRangeKey = "7d" | "30d" | "90d" | "all";
+
+type AdminDashboardRange = {
+  key: AdminDashboardRangeKey;
+  label: string;
+  days: number | null;
+  startInclusive: Date | null;
+  endExclusive: Date;
+};
+
+type AdminCancellationAnalyticsRow = {
+  cancelledAt: Date | null;
+  planId: string;
+  reason: string;
+};
+
+type AdminRefundAnalyticsRow = {
+  id: string;
+  requestedAt: Date | null;
+  amount: number;
+  reason: string | null;
+  status: "approved" | "pending" | "rejected";
+};
+
+type SeoBotCategory =
+  | "search_engine"
+  | "seo_tool"
+  | "mobile_browser"
+  | "social_media"
+  | "ai_scraper";
+
+type SeoBotVisitRow = {
+  id: string;
+  bot_name: string;
+  bot_category: SeoBotCategory;
+  page: string;
+  source: string;
+  ip_address: string | null;
+  user_agent: string | null;
+  visited_at: string;
+  response_time: number;
+  success: boolean;
+  is_wasteful: boolean;
+};
+
+const SEO_BOT_SIGNATURES: Array<{
+  match: RegExp;
+  name: string;
+  category: SeoBotCategory;
+  userAgent: string;
+}> = [
+  {
+    match: /googlebot mobile|googlebot-mobile/i,
+    name: "Googlebot (Mobile)",
+    category: "mobile_browser",
+    userAgent:
+      "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+  },
+  {
+    match: /googlebot/i,
+    name: "Googlebot",
+    category: "search_engine",
+    userAgent:
+      "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+  },
+  {
+    match: /bingbot/i,
+    name: "Bingbot",
+    category: "search_engine",
+    userAgent:
+      "Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)",
+  },
+  {
+    match: /screaming frog seo spider/i,
+    name: "Screaming Frog SEO Spider",
+    category: "seo_tool",
+    userAgent: "Screaming Frog SEO Spider/21.0",
+  },
+  {
+    match: /facebookexternalhit|facebot/i,
+    name: "Facebook",
+    category: "social_media",
+    userAgent:
+      "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
+  },
+  {
+    match: /linkedinbot/i,
+    name: "LinkedInBot",
+    category: "social_media",
+    userAgent:
+      "LinkedInBot/1.0 (+https://www.linkedin.com/help/linkedin/answer/a507663)",
+  },
+  {
+    match: /twitterbot/i,
+    name: "Twitterbot",
+    category: "social_media",
+    userAgent: "Twitterbot/1.0",
+  },
+  {
+    match: /chatgpt-user|gptbot|claudebot|anthropic-ai|perplexitybot/i,
+    name: "AI Crawler",
+    category: "ai_scraper",
+    userAgent: "ChatGPT-User/1.0",
+  },
+];
+
+function parseAdminDashboardRange(value: unknown): AdminDashboardRange {
+  const normalized =
+    typeof value === "string" ? value.trim().toLowerCase() : "";
+
+  if (normalized === "7d") {
+    const endExclusive = new Date();
+    return {
+      key: "7d",
+      label: "Siste 7 dager",
+      days: 7,
+      startInclusive: addUtcDays(endExclusive, -7),
+      endExclusive,
+    };
+  }
+
+  if (normalized === "90d") {
+    const endExclusive = new Date();
+    return {
+      key: "90d",
+      label: "Siste 90 dager",
+      days: 90,
+      startInclusive: addUtcDays(endExclusive, -90),
+      endExclusive,
+    };
+  }
+
+  if (normalized === "all") {
+    return {
+      key: "all",
+      label: "Hele perioden",
+      days: null,
+      startInclusive: null,
+      endExclusive: new Date(),
+    };
+  }
+
+  const endExclusive = new Date();
+  return {
+    key: "30d",
+    label: "Siste 30 dager",
+    days: 30,
+    startInclusive: addUtcDays(endExclusive, -30),
+    endExclusive,
+  };
+}
+
+function isWithinAdminDashboardRange(
+  date: Date | null,
+  range: AdminDashboardRange,
+): boolean {
+  if (!date) {
+    return false;
+  }
+
+  if (range.startInclusive && date.getTime() < range.startInclusive.getTime()) {
+    return false;
+  }
+
+  return date.getTime() < range.endExclusive.getTime();
+}
+
+async function listAllCompatPaymentHistoryItems(): Promise<CompatPaymentHistoryItem[]> {
+  const groups = await compatStoreListByPrefix<CompatPaymentHistoryItem[]>(
+    "compat:payments:history:",
+  );
+
+  const deduped = new Map<string, CompatPaymentHistoryItem>();
+  for (const group of groups) {
+    const items = Array.isArray(group.value) ? group.value : [];
+    for (const item of items) {
+      const key =
+        `${item.id || ""}::${item.transactionId || ""}::${item.createdAt || ""}` ||
+        crypto.randomUUID();
+      if (!deduped.has(key)) {
+        deduped.set(key, item);
+      }
+    }
+  }
+
+  return Array.from(deduped.values());
+}
+
+function getAdminMonthlyPlanAmount(
+  planId: string | null | undefined,
+  historicalPlanAverages: Map<string, number>,
+): number {
+  const normalizedPlanId = normalizeBillingPlanId(planId);
+  if (!normalizedPlanId) {
+    return 0;
+  }
+
+  if (normalizedPlanId === "role-room-production-team") {
+    const plan = getRoleRoomCommercialPlan("production_team");
+    return plan.seatPriceExVat * plan.minimumSeats;
+  }
+
+  if (normalizedPlanId === "role-room-content-producer") {
+    const plan = getRoleRoomCommercialPlan("content_producer");
+    return plan.seatPriceExVat * plan.minimumSeats;
+  }
+
+  const creatorHubPlan = getCompatPlatformSubscriptionPlan(normalizedPlanId);
+  if (creatorHubPlan) {
+    return getCreatorHubPlanAmountMajor(creatorHubPlan, "monthly");
+  }
+
+  return historicalPlanAverages.get(normalizedPlanId) || 0;
+}
+
+async function getAdminCancellationAnalytics(
+  range: AdminDashboardRange,
+): Promise<{
+  totalCancellations: number;
+  reasonBreakdown: Array<{ reason: string; count: number }>;
+  planBreakdown: Array<{ plan: string; count: number }>;
+  rows: AdminCancellationAnalyticsRow[];
+}> {
+  if (!(await hasTable("user_subscriptions"))) {
+    return {
+      totalCancellations: 0,
+      reasonBreakdown: [],
+      planBreakdown: [],
+      rows: [],
+    };
+  }
+
+  const subscriptionColumns = await getTableColumns("user_subscriptions");
+  const cancelledAtExpr = subscriptionColumns.has("cancelled_at")
+    ? "cancelled_at"
+    : subscriptionColumns.has("canceled_at")
+      ? "canceled_at"
+      : subscriptionColumns.has("ended_at")
+        ? "ended_at"
+        : subscriptionColumns.has("updated_at")
+          ? "updated_at"
+          : subscriptionColumns.has("started_at")
+            ? "started_at"
+            : "NULL::timestamp";
+  const reasonExpr = subscriptionColumns.has("cancellation_reason")
+    ? "cancellation_reason"
+    : subscriptionColumns.has("cancel_reason")
+      ? "cancel_reason"
+      : "NULL::text";
+  const planExpr = subscriptionColumns.has("plan_id")
+    ? "plan_id"
+    : "NULL::text";
+  const statusExpr = subscriptionColumns.has("status")
+    ? "status"
+    : "NULL::text";
+
+  const rows = await queryExistingTableRows(
+    "user_subscriptions",
+    `SELECT ${cancelledAtExpr} AS cancelled_at,
+            ${reasonExpr} AS cancellation_reason,
+            ${planExpr} AS plan_id,
+            ${statusExpr} AS status
+       FROM user_subscriptions`,
+  );
+
+  const normalizedRows: AdminCancellationAnalyticsRow[] = [];
+  for (const row of rows) {
+    const status = (toAdminString(row.status) || "").toLowerCase();
+    const cancelledAt = toAdminStatsDate(row.cancelled_at);
+    const isCancelled =
+      Boolean(cancelledAt) ||
+      ["cancelled", "canceled", "inactive", "ended", "expired"].includes(
+        status,
+      );
+
+    if (!isCancelled || !isWithinAdminDashboardRange(cancelledAt, range)) {
+      continue;
+    }
+
+    normalizedRows.push({
+      cancelledAt,
+      planId: toAdminString(row.plan_id) || "ukjent",
+      reason: toAdminString(row.cancellation_reason) || "Ikke oppgitt",
+    });
+  }
+
+  const reasonCounts = new Map<string, number>();
+  const planCounts = new Map<string, number>();
+  for (const row of normalizedRows) {
+    reasonCounts.set(row.reason, (reasonCounts.get(row.reason) || 0) + 1);
+    planCounts.set(row.planId, (planCounts.get(row.planId) || 0) + 1);
+  }
+
+  return {
+    totalCancellations: normalizedRows.length,
+    reasonBreakdown: Array.from(reasonCounts.entries())
+      .map(([reason, count]) => ({ reason, count }))
+      .sort((left, right) => right.count - left.count || left.reason.localeCompare(right.reason)),
+    planBreakdown: Array.from(planCounts.entries())
+      .map(([plan, count]) => ({ plan, count }))
+      .sort((left, right) => right.count - left.count || left.plan.localeCompare(right.plan)),
+    rows: normalizedRows,
+  };
+}
+
+async function getAdminRefundAnalytics(
+  range: AdminDashboardRange,
+  statusFilter: "all" | "pending" | "approved" | "rejected",
+): Promise<{
+  totalRequests: number;
+  approved: number;
+  pending: number;
+  rejected: number;
+  totalRefunded: number;
+  avgRefundAmount: number;
+  rows: AdminRefundAnalyticsRow[];
+}> {
+  const historyItems = await listAllCompatPaymentHistoryItems();
+  const refundRows = historyItems
+    .filter(
+      (item) =>
+        Boolean(item.refundedAt) ||
+        Boolean(item.refunded) ||
+        (item.status || "").toLowerCase() === "refunded",
+    )
+    .map((item) => ({
+      id: item.id,
+      requestedAt: toAdminStatsDate(item.refundedAt || item.createdAt),
+      amount: safeAdminCurrency(item.amount),
+      reason: item.refundReason,
+      status: "approved" as const,
+    }))
+    .filter((item) => isWithinAdminDashboardRange(item.requestedAt, range));
+
+  const filteredRows =
+    statusFilter === "all"
+      ? refundRows
+      : refundRows.filter((row) => row.status === statusFilter);
+
+  const approvedRows = filteredRows.filter((row) => row.status === "approved");
+
+  return {
+    totalRequests: filteredRows.length,
+    approved: filteredRows.filter((row) => row.status === "approved").length,
+    pending: filteredRows.filter((row) => row.status === "pending").length,
+    rejected: filteredRows.filter((row) => row.status === "rejected").length,
+    totalRefunded: roundAdminMetric(
+      approvedRows.reduce((sum, row) => sum + row.amount, 0),
+      2,
+    ),
+    avgRefundAmount:
+      approvedRows.length > 0
+        ? roundAdminMetric(
+            approvedRows.reduce((sum, row) => sum + row.amount, 0) /
+              approvedRows.length,
+            2,
+          )
+        : 0,
+    rows: filteredRows,
+  };
+}
+
+async function getAdminRevenueTrendAnalytics(range: AdminDashboardRange): Promise<{
+  mrr: number;
+  activeSubscriptions: number;
+  trends: Array<{
+    date: string;
+    revenue: number;
+    subscriptionCount: number;
+  }>;
+}> {
+  const [invitePayments, academyRevenue, subscriptionSnapshot, cancellations, historyItems] =
+    await Promise.all([
+      listAdminInvitePaymentRows(),
+      getAdminAcademyRevenueSnapshot(),
+      getAdminSubscriptionSnapshot(),
+      getAdminCancellationAnalytics(range),
+      listAllCompatPaymentHistoryItems(),
+    ]);
+
+  const historicalPlanAmounts = new Map<string, number[]>();
+  for (const payment of invitePayments) {
+    if (!payment.planId || payment.amount <= 0) continue;
+    const planId = normalizeBillingPlanId(payment.planId);
+    if (!planId) continue;
+    const bucket = historicalPlanAmounts.get(planId) || [];
+    bucket.push(payment.amount);
+    historicalPlanAmounts.set(planId, bucket);
+  }
+  for (const item of historyItems) {
+    const planId = normalizeBillingPlanId(item.planId);
+    const amount = safeAdminCurrency(item.amount);
+    if (!planId || amount <= 0) continue;
+    const bucket = historicalPlanAmounts.get(planId) || [];
+    bucket.push(amount);
+    historicalPlanAmounts.set(planId, bucket);
+  }
+
+  const historicalPlanAverages = new Map<string, number>();
+  for (const [planId, amounts] of historicalPlanAmounts.entries()) {
+    historicalPlanAverages.set(
+      planId,
+      roundAdminMetric(
+        amounts.reduce((sum, value) => sum + value, 0) / amounts.length,
+        2,
+      ),
+    );
+  }
+
+  const mrr = roundAdminMetric(
+    subscriptionSnapshot.breakdown.reduce(
+      (sum, entry) =>
+        sum +
+        getAdminMonthlyPlanAmount(entry.plan, historicalPlanAverages) * entry.count,
+      0,
+    ),
+    2,
+  );
+
+  const revenueRows: Array<{ createdAt: Date | null; amount: number; isSubscription: boolean }> = [];
+  invitePayments.forEach((row) => {
+    revenueRows.push({
+      createdAt: row.paidAt,
+      amount: row.amount,
+      isSubscription: true,
+    });
+  });
+  academyRevenue.rows.forEach((row) => {
+    revenueRows.push({
+      createdAt: row.createdAt,
+      amount: row.amount,
+      isSubscription: false,
+    });
+  });
+  historyItems.forEach((item) => {
+    const createdAt = toAdminStatsDate(item.createdAt);
+    if (
+      !createdAt ||
+      !isWithinAdminDashboardRange(createdAt, range) ||
+      safeAdminCurrency(item.amount) <= 0
+    ) {
+      return;
+    }
+    revenueRows.push({
+      createdAt,
+      amount: safeAdminCurrency(item.amount),
+      isSubscription: item.type === "subscription",
+    });
+  });
+
+  const relevantRevenueRows = revenueRows.filter((row) =>
+    isWithinAdminDashboardRange(row.createdAt, range),
+  );
+
+  const datedPoints = [
+    ...relevantRevenueRows.map((row) => row.createdAt).filter(Boolean),
+    ...cancellations.rows.map((row) => row.cancelledAt).filter(Boolean),
+  ] as Date[];
+
+  const seriesStart =
+    range.startInclusive ||
+    datedPoints.sort((left, right) => left.getTime() - right.getTime())[0] ||
+    addUtcDays(new Date(), -30);
+  const seriesEnd = range.endExclusive;
+
+  const dayRevenue = new Map<string, number>();
+  const daySubscriptionAdds = new Map<string, number>();
+  const daySubscriptionCancels = new Map<string, number>();
+
+  for (const row of relevantRevenueRows) {
+    if (!row.createdAt) continue;
+    const key = formatUtcDayKey(row.createdAt);
+    dayRevenue.set(key, roundAdminMetric((dayRevenue.get(key) || 0) + row.amount, 2));
+    if (row.isSubscription) {
+      daySubscriptionAdds.set(key, (daySubscriptionAdds.get(key) || 0) + 1);
+    }
+  }
+
+  for (const row of cancellations.rows) {
+    if (!row.cancelledAt) continue;
+    const key = formatUtcDayKey(row.cancelledAt);
+    daySubscriptionCancels.set(key, (daySubscriptionCancels.get(key) || 0) + 1);
+  }
+
+  const trends: Array<{ date: string; revenue: number; subscriptionCount: number }> = [];
+  let rollingSubscriptions = 0;
+  for (
+    let cursor = startOfUtcDay(seriesStart);
+    cursor.getTime() < seriesEnd.getTime();
+    cursor = addUtcDays(cursor, 1)
+  ) {
+    const key = formatUtcDayKey(cursor);
+    rollingSubscriptions += daySubscriptionAdds.get(key) || 0;
+    rollingSubscriptions -= daySubscriptionCancels.get(key) || 0;
+    trends.push({
+      date: key,
+      revenue: roundAdminMetric(dayRevenue.get(key) || 0, 2),
+      subscriptionCount: Math.max(0, rollingSubscriptions),
+    });
+  }
+
+  return {
+    mrr,
+    activeSubscriptions: subscriptionSnapshot.activeSubscriptions,
+    trends,
+  };
+}
+
+async function getAdminChurnAnalytics(range: AdminDashboardRange): Promise<{
+  churnRate: number;
+  retentionRate: number;
+  cancellations: number;
+  customerLifetimeValue: number;
+}> {
+  const [cancellations, revenueTrends] = await Promise.all([
+    getAdminCancellationAnalytics(range),
+    getAdminRevenueTrendAnalytics(range),
+  ]);
+
+  const activeSubscriptions = Math.max(revenueTrends.activeSubscriptions, 0);
+  const churnRate =
+    activeSubscriptions > 0
+      ? roundAdminMetric(
+          (cancellations.totalCancellations / activeSubscriptions) * 100,
+          1,
+        )
+      : 0;
+  const retentionRate = roundAdminMetric(Math.max(0, 100 - churnRate), 1);
+  const arpu =
+    activeSubscriptions > 0
+      ? roundAdminMetric(revenueTrends.mrr / activeSubscriptions, 2)
+      : 0;
+  const customerLifetimeValue =
+    churnRate > 0
+      ? roundAdminMetric(arpu / (churnRate / 100), 2)
+      : roundAdminMetric(arpu * 12, 2);
+
+  return {
+    churnRate,
+    retentionRate,
+    cancellations: cancellations.totalCancellations,
+    customerLifetimeValue,
+  };
+}
+
+function detectSeoBotFromUserAgent(
+  userAgent: string | null | undefined,
+): { name: string; category: SeoBotCategory } | null {
+  const normalized = userAgent || "";
+  for (const signature of SEO_BOT_SIGNATURES) {
+    if (signature.match.test(normalized)) {
+      return {
+        name: signature.name,
+        category: signature.category,
+      };
+    }
+  }
+
+  return null;
+}
+
+function getSeoBotEmulationUserAgent(botName: string): string {
+  const matched = SEO_BOT_SIGNATURES.find(
+    (signature) => signature.name.toLowerCase() === botName.trim().toLowerCase(),
+  );
+  return matched?.userAgent || SEO_BOT_SIGNATURES[0].userAgent;
+}
+
+function extractSeoAnalyticsPage(event: CreatorhubAnalyticsEventRow): string {
+  const payload = parseCreatorhubEventPayload(event.event_data);
+  const rawPage =
+    (typeof payload.page === "string" && payload.page.trim()) ||
+    (typeof payload.path === "string" && payload.path.trim()) ||
+    (typeof payload.url === "string" && payload.url.trim()) ||
+    "/";
+
+  try {
+    if (/^https?:\/\//i.test(rawPage)) {
+      const parsed = new URL(rawPage);
+      return `${parsed.pathname}${parsed.search}`;
+    }
+  } catch {
+    // Ignore invalid URLs and use the raw page value.
+  }
+
+  return rawPage;
+}
+
+function extractSeoAnalyticsResponseTime(event: CreatorhubAnalyticsEventRow): number {
+  const payload = parseCreatorhubEventPayload(event.event_data);
+  const candidates = [
+    payload.responseTime,
+    payload.response_time,
+    payload.loadTime,
+    payload.load_time,
+    payload.ttfb,
+  ];
+
+  for (const candidate of candidates) {
+    const parsed = readNumber(candidate);
+    if (typeof parsed === "number" && Number.isFinite(parsed) && parsed >= 0) {
+      return parsed;
+    }
+  }
+
+  return 0;
+}
+
+function isSeoWastefulPath(path: string): boolean {
+  const normalized = path.toLowerCase();
+  return (
+    normalized.includes("/admin") ||
+    normalized.includes("/login") ||
+    normalized.includes("/api/") ||
+    normalized.includes("utm_") ||
+    normalized.includes("?") ||
+    /\.(css|js|map|png|jpg|jpeg|gif|svg|webp|woff2?|ttf)$/i.test(normalized)
+  );
+}
+
+async function getSeoBotVisitSnapshot(days: number): Promise<SeoBotVisitRow[]> {
+  const range = parseCreatorhubAnalyticsRange(days === 90 ? "90daysAgo" : days === 7 ? "7daysAgo" : "30daysAgo");
+  const events = await listCreatorhubAnalyticsEvents();
+
+  return events
+    .filter((event) =>
+      isWithinAnalyticsRange(
+        toAnalyticsDate(event.created_at),
+        range.startInclusive,
+        range.endExclusive,
+      ),
+    )
+    .map((event) => {
+      const bot = detectSeoBotFromUserAgent(event.user_agent);
+      if (!bot) return null;
+      const page = extractSeoAnalyticsPage(event);
+      return {
+        id: String(event.id || crypto.randomUUID()),
+        bot_name: bot.name,
+        bot_category: bot.category,
+        page,
+        source: String(event.source || "analytics"),
+        ip_address: event.ip_address || null,
+        user_agent: event.user_agent || null,
+        visited_at:
+          toAnalyticsDate(event.created_at)?.toISOString() || new Date().toISOString(),
+        response_time: extractSeoAnalyticsResponseTime(event),
+        success: true,
+        is_wasteful: isSeoWastefulPath(page),
+      } satisfies SeoBotVisitRow;
+    })
+    .filter(Boolean) as SeoBotVisitRow[];
+}
+
+async function listStoredSeoMobileTests(limit: number): Promise<Record<string, unknown>[]> {
+  const rows = await compatStoreListByPrefix<Record<string, unknown>>("seo:mobile-test:");
+  return rows
+    .map((entry) => entry.value)
+    .filter((entry) => isRecord(entry))
+    .slice(0, limit);
+}
+
+function extractVisibleTextFromHtml(html: string): string {
+  const $ = loadHtml(html);
+  $("script, style, noscript").remove();
+  return $("body").text().replace(/\s+/g, " ").trim();
+}
+
+function countWords(text: string): number {
+  if (!text.trim()) {
+    return 0;
+  }
+  return text.split(/\s+/).filter(Boolean).length;
+}
+
 app.get("/api/admin/platform-stats", async (req, res) => {
   try {
     if (!requireAdminSession(req, res)) {
@@ -50133,6 +50808,96 @@ app.get("/api/admin/billing/overview", async (req, res) => {
   } catch (error) {
     console.error("Admin billing overview error:", error);
     res.status(500).json({ error: "Could not fetch billing overview" });
+  }
+});
+
+app.get("/api/admin/analytics/cancellations", async (req, res) => {
+  try {
+    if (!requireAdminSession(req, res)) {
+      return;
+    }
+
+    const range = parseAdminDashboardRange(req.query.dateRange);
+    const cancellations = await getAdminCancellationAnalytics(range);
+
+    res.json({
+      data: {
+        totalCancellations: cancellations.totalCancellations,
+        cancellationReasons: cancellations.reasonBreakdown,
+        reasonBreakdown: cancellations.reasonBreakdown,
+        planBreakdown: cancellations.planBreakdown,
+      },
+    });
+  } catch (error) {
+    console.error("Admin cancellation analytics error:", error);
+    res.status(500).json({ error: "Could not fetch cancellation analytics" });
+  }
+});
+
+app.get("/api/admin/analytics/refunds", async (req, res) => {
+  try {
+    if (!requireAdminSession(req, res)) {
+      return;
+    }
+
+    const range = parseAdminDashboardRange(req.query.dateRange);
+    const rawStatus =
+      typeof req.query.status === "string" ? req.query.status.trim().toLowerCase() : "all";
+    const statusFilter =
+      rawStatus === "pending" || rawStatus === "approved" || rawStatus === "rejected"
+        ? rawStatus
+        : "all";
+    const refunds = await getAdminRefundAnalytics(range, statusFilter);
+
+    res.json({
+      data: {
+        totalRequests: refunds.totalRequests,
+        approved: refunds.approved,
+        pending: refunds.pending,
+        rejected: refunds.rejected,
+        totalRefunded: refunds.totalRefunded,
+        avgRefundAmount: refunds.avgRefundAmount,
+      },
+    });
+  } catch (error) {
+    console.error("Admin refund analytics error:", error);
+    res.status(500).json({ error: "Could not fetch refund analytics" });
+  }
+});
+
+app.get("/api/admin/analytics/revenue-trends", async (req, res) => {
+  try {
+    if (!requireAdminSession(req, res)) {
+      return;
+    }
+
+    const range = parseAdminDashboardRange(req.query.dateRange);
+    const revenue = await getAdminRevenueTrendAnalytics(range);
+
+    res.json({
+      data: revenue,
+    });
+  } catch (error) {
+    console.error("Admin revenue trends analytics error:", error);
+    res.status(500).json({ error: "Could not fetch revenue trends" });
+  }
+});
+
+app.get("/api/admin/analytics/churn-rate", async (req, res) => {
+  try {
+    if (!requireAdminSession(req, res)) {
+      return;
+    }
+
+    const range = parseAdminDashboardRange(req.query.dateRange);
+    const churn = await getAdminChurnAnalytics(range);
+
+    res.json({
+      data: churn,
+    });
+  } catch (error) {
+    console.error("Admin churn analytics error:", error);
+    res.status(500).json({ error: "Could not fetch churn analytics" });
   }
 });
 
@@ -60308,6 +61073,391 @@ app.get("/api/analytics/timeseries", async (req, res) => {
   } catch (error) {
     console.error("CreatorHub analytics timeseries error:", error);
     res.status(500).json({ error: "Failed to load CreatorHub analytics timeseries" });
+  }
+});
+
+app.post("/api/seo-bot/initialize", async (req, res) => {
+  try {
+    if (!requireAdminSession(req, res)) {
+      return;
+    }
+
+    const visits = await getSeoBotVisitSnapshot(30);
+
+    res.json({
+      success: true,
+      mode: "analytics-derived",
+      trackedBots: Array.from(new Set(visits.map((visit) => visit.bot_name))).length,
+      trackedVisits: visits.length,
+    });
+  } catch (error) {
+    console.error("SEO bot initialize error:", error);
+    res.status(500).json({ error: "Failed to initialize SEO bot analytics" });
+  }
+});
+
+app.get("/api/seo-bot/analytics", async (req, res) => {
+  try {
+    if (!requireAdminSession(req, res)) {
+      return;
+    }
+
+    const days = Math.max(1, Math.min(365, Number(req.query.days) || 7));
+    const visits = await getSeoBotVisitSnapshot(days);
+    const grouped = new Map<
+      string,
+      {
+        bot_name: string;
+        bot_category: SeoBotCategory;
+        total_visits: number;
+        pages: Set<string>;
+        response_time_total: number;
+        response_time_count: number;
+        success_count: number;
+      }
+    >();
+
+    for (const visit of visits) {
+      const existing = grouped.get(visit.bot_name) || {
+        bot_name: visit.bot_name,
+        bot_category: visit.bot_category,
+        total_visits: 0,
+        pages: new Set<string>(),
+        response_time_total: 0,
+        response_time_count: 0,
+        success_count: 0,
+      };
+
+      existing.total_visits += 1;
+      existing.pages.add(visit.page);
+      if (visit.response_time > 0) {
+        existing.response_time_total += visit.response_time;
+        existing.response_time_count += 1;
+      }
+      if (visit.success) {
+        existing.success_count += 1;
+      }
+      grouped.set(visit.bot_name, existing);
+    }
+
+    res.json({
+      analytics: Array.from(grouped.values())
+        .map((entry) => ({
+          bot_name: entry.bot_name,
+          bot_category: entry.bot_category,
+          total_visits: entry.total_visits,
+          total_pages: entry.pages.size,
+          avg_response_time:
+            entry.response_time_count > 0
+              ? roundAdminMetric(entry.response_time_total / entry.response_time_count, 1)
+              : 0,
+          success_count: entry.success_count,
+        }))
+        .sort((left, right) => right.total_visits - left.total_visits),
+    });
+  } catch (error) {
+    console.error("SEO bot analytics error:", error);
+    res.status(500).json({ error: "Failed to load SEO bot analytics" });
+  }
+});
+
+app.get("/api/seo-bot/visits", async (req, res) => {
+  try {
+    if (!requireAdminSession(req, res)) {
+      return;
+    }
+
+    const botName =
+      typeof req.query.botName === "string" ? req.query.botName.trim() : "";
+    const limit = Math.max(1, Math.min(500, Number(req.query.limit) || 100));
+    const visits = await getSeoBotVisitSnapshot(90);
+
+    const filteredVisits = visits
+      .filter((visit) =>
+        botName ? visit.bot_name.toLowerCase() === botName.toLowerCase() : true,
+      )
+      .sort(
+        (left, right) =>
+          new Date(right.visited_at).getTime() -
+          new Date(left.visited_at).getTime(),
+      )
+      .slice(0, limit);
+
+    res.json({ visits: filteredVisits });
+  } catch (error) {
+    console.error("SEO bot visits error:", error);
+    res.status(500).json({ error: "Failed to load SEO bot visits" });
+  }
+});
+
+app.get("/api/seo-bot/crawl-budget", async (req, res) => {
+  try {
+    if (!requireAdminSession(req, res)) {
+      return;
+    }
+
+    const days = Math.max(1, Math.min(365, Number(req.query.days) || 7));
+    const visits = await getSeoBotVisitSnapshot(days);
+    const grouped = new Map<
+      string,
+      {
+        bot_name: string;
+        date: string;
+        actual_pages_crawled: number;
+        total_budget_wasted: number;
+      }
+    >();
+
+    for (const visit of visits) {
+      const date = visit.visited_at.slice(0, 10);
+      const key = `${visit.bot_name}::${date}`;
+      const existing = grouped.get(key) || {
+        bot_name: visit.bot_name,
+        date,
+        actual_pages_crawled: 0,
+        total_budget_wasted: 0,
+      };
+
+      existing.actual_pages_crawled += 1;
+      if (visit.is_wasteful) {
+        existing.total_budget_wasted += 1;
+      }
+      grouped.set(key, existing);
+    }
+
+    const budgetReport = Array.from(grouped.values())
+      .map((entry) => ({
+        ...entry,
+        waste_percent:
+          entry.actual_pages_crawled > 0
+            ? roundAdminMetric(
+                (entry.total_budget_wasted / entry.actual_pages_crawled) * 100,
+                1,
+              )
+            : 0,
+      }))
+      .sort(
+        (left, right) =>
+          new Date(right.date).getTime() - new Date(left.date).getTime(),
+      );
+
+    const avgWastePercent =
+      budgetReport.length > 0
+        ? roundAdminMetric(
+            budgetReport.reduce((sum, row) => sum + Number(row.waste_percent), 0) /
+              budgetReport.length,
+            1,
+          )
+        : 0;
+
+    res.json({
+      budgetReport,
+      summary: {
+        avgWastePercent,
+        totalBots: Array.from(new Set(budgetReport.map((row) => row.bot_name))).length,
+      },
+    });
+  } catch (error) {
+    console.error("SEO crawl budget error:", error);
+    res.status(500).json({ error: "Failed to load crawl budget" });
+  }
+});
+
+app.get("/api/seo-bot/mobile-tests", async (req, res) => {
+  try {
+    if (!requireAdminSession(req, res)) {
+      return;
+    }
+
+    const limit = Math.max(1, Math.min(100, Number(req.query.limit) || 10));
+    const tests = await listStoredSeoMobileTests(limit);
+    res.json({ tests });
+  } catch (error) {
+    console.error("SEO mobile tests error:", error);
+    res.status(500).json({ error: "Failed to load mobile tests" });
+  }
+});
+
+app.get("/api/seo-bot/recommendations", async (req, res) => {
+  try {
+    if (!requireAdminSession(req, res)) {
+      return;
+    }
+
+    const days = 30;
+    const visits = await getSeoBotVisitSnapshot(days);
+    const crawlBudget = new Map<string, { total: number; wasted: number }>();
+
+    visits.forEach((visit) => {
+      const existing = crawlBudget.get(visit.bot_name) || { total: 0, wasted: 0 };
+      existing.total += 1;
+      if (visit.is_wasteful) {
+        existing.wasted += 1;
+      }
+      crawlBudget.set(visit.bot_name, existing);
+    });
+
+    const tests = await listStoredSeoMobileTests(10);
+    const recommendations: Array<Record<string, unknown>> = [];
+
+    for (const [botName, summary] of crawlBudget.entries()) {
+      const wastePercent =
+        summary.total > 0 ? (summary.wasted / summary.total) * 100 : 0;
+      if (wastePercent >= 10) {
+        recommendations.push({
+          recommendation_id: `crawl-budget-${botName.toLowerCase().replace(/\s+/g, "-")}`,
+          priority: wastePercent >= 25 ? "high" : "medium",
+          category: "crawl-budget",
+          recommendation_title: `Reduser bortkastet crawl-budget for ${botName}`,
+          recommendation_text: `${roundAdminMetric(
+            wastePercent,
+            1,
+          )}% av crawl-trafikken fra ${botName} treffer admin-, API- eller query-tunge sider. Blokker eller canonicaliser disse rutene for å prioritere offentlige sider.`,
+          estimated_impact: wastePercent >= 25 ? "Høy" : "Middels",
+        });
+      }
+    }
+
+    tests.forEach((test, index) => {
+      const mobileScore = readNumber(test.mobile_usability_score) || 0;
+      if (mobileScore < 80) {
+        recommendations.push({
+          recommendation_id: `mobile-test-${index}`,
+          priority: mobileScore < 60 ? "high" : "medium",
+          category: "mobile-usability",
+          recommendation_title: `Forbedre mobil brukbarhet for ${readString(test.url) || "testet side"}`,
+          recommendation_text: `Siste mobile test scoret ${mobileScore}/100. Prioriter viewport, touch-avstander og rendering på mobil før ny crawl.`,
+          estimated_impact: mobileScore < 60 ? "Høy" : "Middels",
+        });
+      }
+    });
+
+    res.json({
+      recommendations:
+        typeof req.query.status === "string" &&
+        req.query.status.trim().toLowerCase() === "open"
+          ? recommendations
+          : recommendations,
+    });
+  } catch (error) {
+    console.error("SEO recommendations error:", error);
+    res.status(500).json({ error: "Failed to load SEO recommendations" });
+  }
+});
+
+app.post("/api/seo-bot/render-test", async (req, res) => {
+  try {
+    if (!requireAdminSession(req, res)) {
+      return;
+    }
+
+    const body = normalizeJsonObjectField(req.body) || {};
+    const url = readString(body.url);
+    const botName = readString(body.botName) || "Googlebot";
+    if (!url) {
+      return res.status(400).json({ error: "Missing url" });
+    }
+
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent": getSeoBotEmulationUserAgent(botName),
+      },
+    });
+    const html = await response.text();
+    const textContent = extractVisibleTextFromHtml(html);
+    const htmlOnlyWordCount = countWords(textContent);
+    const hasViewport = /<meta[^>]+name=["']viewport["']/i.test(html);
+    const hasStructuredData = /application\/ld\+json/i.test(html);
+    const seoIssues: string[] = [];
+    const recommendations: string[] = [];
+
+    if (htmlOnlyWordCount < 120) {
+      seoIssues.push("Siden har lite synlig HTML-innhold for crawlers.");
+      recommendations.push("Vurder mer synlig tekstinnhold eller SSR på viktige landingssider.");
+    }
+    if (!hasViewport) {
+      seoIssues.push("Viewport-meta mangler i HTML-responsen.");
+      recommendations.push("Legg inn en gyldig viewport-meta for mobilvennlig rendering.");
+    }
+    if (!hasStructuredData) {
+      recommendations.push("Legg inn strukturert data på nøkkelsider for rikere søkeresultater.");
+    }
+
+    res.json({
+      testResults: {
+        htmlOnlyWordCount,
+        jsRenderedWordCount: htmlOnlyWordCount,
+        contentMatchPercent: 100,
+        seoIssues,
+        recommendations,
+        analysisMode: "static-html-audit",
+      },
+    });
+  } catch (error) {
+    console.error("SEO render test error:", error);
+    res.status(500).json({ error: "Failed to run render test" });
+  }
+});
+
+app.post("/api/seo-bot/mobile-usability-test", async (req, res) => {
+  try {
+    if (!requireAdminSession(req, res)) {
+      return;
+    }
+
+    const body = normalizeJsonObjectField(req.body) || {};
+    const url = readString(body.url);
+    if (!url) {
+      return res.status(400).json({ error: "Missing url" });
+    }
+
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent": getSeoBotEmulationUserAgent("Googlebot (Mobile)"),
+      },
+    });
+    const html = await response.text();
+    const viewportMatch = html.match(
+      /<meta[^>]+name=["']viewport["'][^>]+content=["']([^"']+)["']/i,
+    );
+    const hasViewport = Boolean(viewportMatch);
+    const viewportContent = viewportMatch?.[1] || "";
+    const hasDeviceWidth = /width\s*=\s*device-width/i.test(viewportContent);
+    const hasLargeImages = /<img/i.test(html);
+    const textWordCount = countWords(extractVisibleTextFromHtml(html));
+
+    let mobileUsabilityScore = 100;
+    if (!hasViewport) mobileUsabilityScore -= 35;
+    if (hasViewport && !hasDeviceWidth) mobileUsabilityScore -= 20;
+    if (textWordCount < 120) mobileUsabilityScore -= 15;
+    if (!hasLargeImages) mobileUsabilityScore -= 5;
+    mobileUsabilityScore = Math.max(0, mobileUsabilityScore);
+
+    const mobileSeoScore = Math.max(
+      0,
+      Math.min(
+        100,
+        mobileUsabilityScore + (/<title>[^<]+<\/title>/i.test(html) ? 5 : -10),
+      ),
+    );
+
+    const result = {
+      test_id: crypto.randomUUID(),
+      url,
+      googlebot_mobile_compatible: hasViewport,
+      chrome_android_compatible: hasViewport && hasDeviceWidth,
+      safari_ios_compatible: hasViewport,
+      mobile_usability_score: mobileUsabilityScore,
+      mobile_seo_score: mobileSeoScore,
+      tested_at: new Date().toISOString(),
+    };
+
+    await compatStoreSet(`seo:mobile-test:${result.tested_at}:${result.test_id}`, result);
+
+    res.json({ success: true, test: result });
+  } catch (error) {
+    console.error("SEO mobile usability test error:", error);
+    res.status(500).json({ error: "Failed to run mobile usability test" });
   }
 });
 

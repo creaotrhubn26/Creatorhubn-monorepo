@@ -53,14 +53,14 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
 
   // Fetch cancellation analytics
   const { data: cancellationData, isLoading: loadingCancellations, refetch: refetchCancellations } = useQuery({
-    queryKey: ['/api/admin/analytics/cancellations,', { dateRange }],
+    queryKey: ['/api/admin/analytics/cancellations', { dateRange }],
     queryFn: () => apiRequest(`/api/admin/analytics/cancellations?dateRange=${dateRange}`),
     refetchInterval: 30000, // Refresh every 30 seconds
   });
 
   // Fetch refund analytics
   const { data: refundData, isLoading: loadingRefunds, refetch: refetchRefunds } = useQuery({
-    queryKey: ['/api/admin/analytics/refunds,', { dateRange, statusFilter }],
+    queryKey: ['/api/admin/analytics/refunds', { dateRange, statusFilter }],
     queryFn: () => apiRequest(`/api/admin/analytics/refunds?dateRange=${dateRange}&status=${statusFilter}`),
     refetchInterval: 30000,
   });

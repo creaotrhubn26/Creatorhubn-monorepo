@@ -71,10 +71,6 @@ const API_BASE_URL = import.meta.env.VITE_API_URL?.trim() || '';
 // Guarding them client-side avoids noisy 404 spam and lets the UI render stable placeholders.
 const KNOWN_UNAVAILABLE_API_ENDPOINTS = new Set([
   '/api/integrations/features',
-  '/api/admin/analytics/cancellations',
-  '/api/admin/analytics/refunds',
-  '/api/admin/analytics/revenue-trends',
-  '/api/admin/analytics/churn-rate',
   '/api/analytics/realtime',
   '/api/analytics/traffic-sources',
   '/api/analytics/top-events',
@@ -82,11 +78,6 @@ const KNOWN_UNAVAILABLE_API_ENDPOINTS = new Set([
   '/api/ai/analytics/insights',
   '/api/ai/analytics/predictions',
   '/api/ai/analytics/report',
-  '/api/seo-bot/analytics',
-  '/api/seo-bot/crawl-budget',
-  '/api/seo-bot/mobile-tests',
-  '/api/seo-bot/recommendations',
-  '/api/seo-bot/visits',
 ]);
 
 export function isKnownUnavailableApiEndpoint(url: string): boolean {

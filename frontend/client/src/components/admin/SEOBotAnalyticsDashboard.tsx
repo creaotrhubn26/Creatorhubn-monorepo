@@ -73,6 +73,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import SchemaValidationPanel from './SchemaValidationPanel';
+import { apiRequest } from '../../lib/queryClient';
 
 const COLORS = ['#FF6B6B','#4ECDC4','#45B7D1','#FFA07A','#98D8C8','#F7DC6F'];
 
@@ -113,9 +114,7 @@ export default function SEOBotAnalyticsDashboard() {
   const { data: analytics, isLoading: analyticsLoading } = useQuery({
     queryKey: ['seo-bot-analytics', days],
     queryFn: async () => {
-      const res = await fetch(`/api/seo-bot/analytics?days=${days}`);
-      if (!res.ok) throw new Error('Failed to fetch analytics');
-      return res.json();
+      return apiRequest(`/api/seo-bot/analytics?days=${days}`);
     },
     refetchInterval: 30000, // Refresh every 30 seconds
   });
@@ -124,9 +123,7 @@ export default function SEOBotAnalyticsDashboard() {
   const { data: visits, isLoading: visitsLoading } = useQuery({
     queryKey: ['seo-bot-visits', selectedBot],
     queryFn: async () => {
-      const res = await fetch(`/api/seo-bot/visits?botName=${selectedBot}&limit=100`);
-      if (!res.ok) throw new Error('Failed to fetch visits');
-      return res.json();
+      return apiRequest(`/api/seo-bot/visits?botName=${selectedBot}&limit=100`);
     },
   });
 
@@ -134,9 +131,7 @@ export default function SEOBotAnalyticsDashboard() {
   const { data: crawlBudget, isLoading: budgetLoading } = useQuery({
     queryKey: ['seo-crawl-budget', days],
     queryFn: async () => {
-      const res = await fetch(`/api/seo-bot/crawl-budget?days=${days}`);
-      if (!res.ok) throw new Error('Failed to fetch crawl budget');
-      return res.json();
+      return apiRequest(`/api/seo-bot/crawl-budget?days=${days}`);
     },
   });
 
@@ -144,9 +139,7 @@ export default function SEOBotAnalyticsDashboard() {
   const { data: mobileTests, isLoading: mobileLoading } = useQuery({
     queryKey: ['seo-mobile-tests'],
     queryFn: async () => {
-      const res = await fetch(`/api/seo-bot/mobile-tests?limit=10`);
-      if (!res.ok) throw new Error('Failed to fetch mobile tests');
-      return res.json();
+      return apiRequest('/api/seo-bot/mobile-tests?limit=10');
     },
   });
 
@@ -154,18 +147,14 @@ export default function SEOBotAnalyticsDashboard() {
   const { data: recommendations, isLoading: recsLoading } = useQuery({
     queryKey: ['seo-bot-recommendations'],
     queryFn: async () => {
-      const res = await fetch(`/api/seo-bot/recommendations?status=open`);
-      if (!res.ok) throw new Error('Failed to fetch recommendations');
-      return res.json();
+      return apiRequest('/api/seo-bot/recommendations?status=open');
     },
   });
 
   // Initialize bot types
   const initializeMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch('/api/seo-bot/initialize', { method: 'POST' });
-      if (!res.ok) throw new Error('Failed to initialize');
-      return res.json();
+      return apiRequest('/api/seo-bot/initialize', { method: 'POST' });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['seo-bot-analytics'] });
@@ -175,13 +164,10 @@ export default function SEOBotAnalyticsDashboard() {
   // Run render test
   const renderTestMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch('/api/seo-bot/render-test', {
+      return apiRequest('/api/seo-bot/render-test', {
         method: 'POST',
-        headers: { 'Content-Type' : 'application/json' },
-        body: JSON.stringify({ url: testUrl, botName: selectedBot }),
+        body: { url: testUrl, botName: selectedBot },
       });
-      if (!res.ok) throw new Error('Failed to run render test');
-      return res.json();
     },
     onSuccess: () => {
       setSnackbar({ open: true, message: 'Render test completed successfully!', severity: 'success' });
@@ -191,13 +177,10 @@ export default function SEOBotAnalyticsDashboard() {
   // Run mobile usability test
   const mobileTestMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch('/api/seo-bot/mobile-usability-test', {
+      return apiRequest('/api/seo-bot/mobile-usability-test', {
         method: 'POST',
-        headers: { 'Content-Type' : 'application/json' },
-        body: JSON.stringify({ url: testUrl }),
+        body: { url: testUrl },
       });
-      if (!res.ok) throw new Error('Failed to run mobile test');
-      return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['seo-mobile-tests'] });
