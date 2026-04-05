@@ -5180,14 +5180,20 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       const loginEmail = readStringValue(req.body?.email)?.trim().toLowerCase() ?? null;
 
       if (mode === 'login' && loginEmail) {
-        const loginGate = await getRoleRoomCommercialGoogleLoginGate(loginEmail, {
-          loginAs,
-          requestedRole,
-          projectId,
-        });
-        if (!loginGate.allowed) {
-          res.status(403).json({ error: loginGate.reason });
-          return;
+        const existingLoginUser = await findRoleRoomUserByEmail(loginEmail);
+        const canBypassCommercialGate =
+          existingLoginUser && isRoleRoomPlatformAdminRole(existingLoginUser.role);
+
+        if (!canBypassCommercialGate) {
+          const loginGate = await getRoleRoomCommercialGoogleLoginGate(loginEmail, {
+            loginAs,
+            requestedRole,
+            projectId,
+          });
+          if (!loginGate.allowed) {
+            res.status(403).json({ error: loginGate.reason });
+            return;
+          }
         }
       }
 
