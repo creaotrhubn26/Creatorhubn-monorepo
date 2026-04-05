@@ -20195,7 +20195,12 @@ async function decorateCompatPaymentHistoryWithRefundRequests(
     return sameUser || Boolean(sameEmail);
   });
 
-  return history.map((entry) => {
+  return Promise.all(history.map(async (entry) => {
+    const paymentRecord =
+      (entry.id ? await findCompatPaymentStatusRecord(entry.id) : null) ||
+      (entry.transactionId
+        ? await findCompatPaymentStatusRecord(entry.transactionId)
+        : null);
     const latestRequest =
       requests.find(
         (request) =>
@@ -20203,27 +20208,42 @@ async function decorateCompatPaymentHistoryWithRefundRequests(
           (request.transactionId && request.transactionId === entry.transactionId),
       ) || null;
 
+    const isApprovedRefund =
+      paymentRecord?.status === "refunded" || latestRequest?.status === "approved";
+
     if (!latestRequest) {
-      return entry;
+      if (!paymentRecord || paymentRecord.status !== "refunded") {
+        return entry;
+      }
+
+      return {
+        ...entry,
+        refunded: true,
+        refundReason: paymentRecord.refundReason || entry.refundReason || null,
+        refundedAt: paymentRecord.refundedAt || entry.refundedAt || null,
+        refundRequestStatus:
+          entry.refundRequestStatus ||
+          (paymentRecord.status === "refunded" ? "approved" : null),
+        status: "refunded",
+      };
     }
 
     return {
       ...entry,
-      refunded:
-        entry.refunded || latestRequest.status === "approved",
-      refundReason: entry.refundReason || latestRequest.reason || null,
+      refunded: entry.refunded || isApprovedRefund,
+      refundReason:
+        paymentRecord?.refundReason || entry.refundReason || latestRequest.reason || null,
       refundedAt:
+        paymentRecord?.refundedAt ||
         entry.refundedAt ||
         (latestRequest.status === "approved" ? latestRequest.processedAt : null),
       refundRequestId: latestRequest.id,
-      refundRequestStatus: latestRequest.status,
+      refundRequestStatus:
+        paymentRecord?.status === "refunded" ? "approved" : latestRequest.status,
       refundRequestedAt: latestRequest.requestedAt,
-      status:
-        latestRequest.status === "approved"
-          ? "refunded"
-          : entry.status,
+      status: isApprovedRefund ? "refunded" : entry.status,
     };
-  });
+  }));
 }
 
 async function updateCompatPaymentHistoryRefundState(
