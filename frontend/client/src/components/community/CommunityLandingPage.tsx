@@ -40,11 +40,13 @@ import {
   ArrowForward,
   PlayCircle,
   EmojiEvents,
+  FacebookRounded,
   Forum,
   Lightbulb,
   Close,
   School,
   Home,
+  Instagram,
   Login,
   HelpOutline,
   ExpandMore,
@@ -126,6 +128,9 @@ import { useProgressPersistence } from './hooks/useProgressPersistence';
 import { useKeyboardNavigation } from './hooks/useKeyboardNavigation';
 import { useOnboardingAnalytics } from './hooks/useOnboardingAnalytics';
 import { useStepValidation } from './hooks/useStepValidation';
+
+const CREATORHUB_INSTAGRAM_URL = 'https://www.instagram.com/creatorhubn/';
+const CREATORHUB_FACEBOOK_URL = 'https://www.facebook.com/creatorhubn/';
 
 interface OnboardingStep {
   id: string;
@@ -1096,10 +1101,95 @@ function CommunityLandingPageComponent({
             </Grid>
 
             {/* Sidebar - Community Highlights */}
-            <Grid item xs={12} md={4}>
+          <Grid item xs={12} md={4}>
               <CommunityHighlightsSidebar profession={profession} />
             </Grid>
           </Grid>
+
+          <Box
+            sx={{
+              mt: 3,
+              p: { xs: 2, md: 2.4 },
+              borderRadius: 4,
+              background:
+                'linear-gradient(135deg, rgba(36, 27, 10, 0.92) 0%, rgba(18, 15, 11, 0.94) 100%)',
+              boxShadow: COMMUNITY_PANEL_SHADOW,
+              border: COMMUNITY_PANEL_BORDER,
+            }}
+          >
+            <Stack
+              direction={{ xs: 'column', md: 'row' }}
+              spacing={1.8}
+              justifyContent="space-between"
+              alignItems={{ xs: 'flex-start', md: 'center' }}
+            >
+              <Stack spacing={0.6} sx={{ maxWidth: 560 }}>
+                <Typography
+                  sx={{
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    letterSpacing: '0.18em',
+                    textTransform: 'uppercase',
+                    color: 'rgba(245, 166, 35, 0.9)',
+                  }}
+                >
+                  Sosiale medier
+                </Typography>
+                <Typography sx={{ color: 'rgba(255,255,255,0.7)', lineHeight: 1.75 }}>
+                  Følg CreatorHub for community-nyheter, nye initiativer og oppdateringer fra økosystemet.
+                </Typography>
+              </Stack>
+
+              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                <Button
+                  component="a"
+                  href={CREATORHUB_INSTAGRAM_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  startIcon={<Instagram sx={{ fontSize: 18 }} />}
+                  sx={{
+                    textTransform: 'none',
+                    borderRadius: '999px',
+                    fontWeight: 700,
+                    color: COMMUNITY_TEXT_PRIMARY,
+                    background: 'rgba(245,166,35,0.12)',
+                    border: '1px solid rgba(245,166,35,0.26)',
+                    px: 2,
+                    py: 0.95,
+                    '&:hover': {
+                      background: 'rgba(245,166,35,0.18)',
+                      borderColor: 'rgba(245,166,35,0.4)',
+                    },
+                  }}
+                >
+                  Instagram
+                </Button>
+                <Button
+                  component="a"
+                  href={CREATORHUB_FACEBOOK_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  startIcon={<FacebookRounded sx={{ fontSize: 18 }} />}
+                  sx={{
+                    textTransform: 'none',
+                    borderRadius: '999px',
+                    fontWeight: 700,
+                    color: COMMUNITY_TEXT_PRIMARY,
+                    background: 'rgba(245,166,35,0.12)',
+                    border: '1px solid rgba(245,166,35,0.26)',
+                    px: 2,
+                    py: 0.95,
+                    '&:hover': {
+                      background: 'rgba(245,166,35,0.18)',
+                      borderColor: 'rgba(245,166,35,0.4)',
+                    },
+                  }}
+                >
+                  Facebook
+                </Button>
+              </Stack>
+            </Stack>
+          </Box>
 
           {/* GDPR Cookie Consent Banner */}
           <GdprNotice position="bottom" />
