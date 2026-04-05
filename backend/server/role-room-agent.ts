@@ -31,10 +31,34 @@ type RoleRoomAgentBusinessClassification = {
   customerJourneyFocus: string;
 };
 
+type RoleRoomAgentReviewQuote = {
+  author?: string;
+  rating?: number | null;
+  text: string;
+  relativeTime?: string;
+  googleMapsUri?: string | null;
+};
+
+type RoleRoomAgentBusinessSignals = {
+  source: "google_places";
+  displayName?: string;
+  formattedAddress?: string | null;
+  googleMapsUri?: string | null;
+  websiteUri?: string | null;
+  primaryType?: string | null;
+  primaryTypeDisplayName?: string | null;
+  rating?: number | null;
+  userRatingCount?: number | null;
+  reviewSummary?: string | null;
+  topReviews: RoleRoomAgentReviewQuote[];
+  serviceSignals: string[];
+};
+
 type RoleRoomAgentNormalizedPayload = {
   generatedAt: string;
   provider: "openai" | "fallback";
   model: string;
+  businessSignals?: RoleRoomAgentBusinessSignals | null;
   companyProfile: {
     companyName: string;
     websiteUrl?: string | null;
@@ -77,6 +101,7 @@ export function getRoleRoomAgentRuntimeConfig() {
     provider: "openai" as const,
     providerConfigured: hasText(process.env.OPENAI_API_KEY),
     defaultModel: DEFAULT_ROLE_ROOM_AGENT_MODEL,
+    googlePlacesConfigured: hasText(process.env.GOOGLE_PLACES_API_KEY),
   };
 }
 
@@ -160,6 +185,18 @@ function resolveUrl(baseUrl: string, maybeRelative: string | null | undefined): 
   }
 }
 
+function normalizeHost(value: string | null | undefined): string | null {
+  if (!hasText(value)) {
+    return null;
+  }
+
+  try {
+    return new URL(value).hostname.replace(/^www\./i, "").toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
 function decodeHtmlEntities(value: string): string {
   return value
     .replace(/&amp;/gi, "&")
@@ -190,6 +227,74 @@ function extractMetaContent(html: string, key: string): string | null {
   }
 
   return null;
+}
+
+function asNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function buildSearchQueries(
+  input: RoleRoomAgentProducerBootstrapInput,
+  websiteInsights: RoleRoomAgentWebsiteInsights,
+): string[] {
+  const websiteUrl = normalizeWebsiteUrl(input.websiteUrl) || websiteInsights.finalUrl || null;
+  const websiteHost = normalizeHost(websiteUrl);
+  const hostLabel = websiteHost ? websiteHost.replace(/\.[a-z.]+$/i, "").replace(/[-_]/g, " ") : "";
+  const companyName = hasText(input.companyName)
+    ? normalizeWhitespace(input.companyName)
+    : hasText(websiteInsights.siteName)
+      ? normalizeWhitespace(websiteInsights.siteName)
+      : hasText(websiteInsights.pageTitle)
+        ? normalizeWhitespace(websiteInsights.pageTitle)
+        : "";
+
+  return Array.from(
+    new Set(
+      [
+        companyName,
+        companyName && hostLabel ? `${companyName} ${hostLabel}` : "",
+        hostLabel,
+      ]
+        .map((entry) => normalizeWhitespace(entry))
+        .filter((entry) => entry.length > 0),
+    ),
+  ).slice(0, 3);
+}
+
+function scoreGooglePlaceCandidate(
+  candidate: Record<string, unknown>,
+  companyName: string,
+  websiteHost: string | null,
+): number {
+  const displayNameRecord =
+    candidate.displayName && typeof candidate.displayName === "object" && !Array.isArray(candidate.displayName)
+      ? (candidate.displayName as Record<string, unknown>)
+      : {};
+  const displayName = hasText(displayNameRecord.text) ? normalizeWhitespace(displayNameRecord.text).toLowerCase() : "";
+  const normalizedCompany = normalizeWhitespace(companyName).toLowerCase();
+  const websiteUri = hasText(candidate.websiteUri) ? candidate.websiteUri : null;
+  const candidateHost = normalizeHost(websiteUri);
+  let score = 0;
+
+  if (websiteHost && candidateHost === websiteHost) {
+    score += 120;
+  }
+  if (displayName && normalizedCompany && displayName === normalizedCompany) {
+    score += 60;
+  } else if (displayName && normalizedCompany && (displayName.includes(normalizedCompany) || normalizedCompany.includes(displayName))) {
+    score += 35;
+  }
+
+  const rating = asNumber(candidate.rating);
+  const userRatingCount = asNumber(candidate.userRatingCount);
+  if (rating) {
+    score += Math.round(rating * 2);
+  }
+  if (userRatingCount) {
+    score += Math.min(Math.round(userRatingCount / 25), 20);
+  }
+
+  return score;
 }
 
 function extractTextSnippet(html: string): string {
@@ -228,6 +333,7 @@ function extractProbableLogoUrl(html: string, websiteUrl: string): string | null
 function detectBusinessClassification(
   input: RoleRoomAgentProducerBootstrapInput,
   websiteInsights: RoleRoomAgentWebsiteInsights,
+  businessSignals?: RoleRoomAgentBusinessSignals | null,
 ): RoleRoomAgentBusinessClassification {
   const corpus = normalizeWhitespace(
     [
@@ -237,6 +343,13 @@ function detectBusinessClassification(
       websiteInsights.pageTitle,
       websiteInsights.metaDescription,
       websiteInsights.textSnippet,
+      businessSignals?.displayName,
+      businessSignals?.formattedAddress,
+      businessSignals?.primaryType,
+      businessSignals?.primaryTypeDisplayName,
+      businessSignals?.reviewSummary,
+      ...(businessSignals?.topReviews ?? []).map((entry) => entry.text),
+      ...(businessSignals?.serviceSignals ?? []),
     ]
       .filter(hasText)
       .join(" ")
@@ -363,15 +476,215 @@ async function fetchWebsiteInsights(
   }
 }
 
+async function fetchGooglePlacesBusinessSignals(
+  input: RoleRoomAgentProducerBootstrapInput,
+  websiteInsights: RoleRoomAgentWebsiteInsights,
+): Promise<RoleRoomAgentBusinessSignals | null> {
+  const apiKey = process.env.GOOGLE_PLACES_API_KEY;
+  const companyName = hasText(input.companyName)
+    ? normalizeWhitespace(input.companyName)
+    : hasText(websiteInsights.siteName)
+      ? normalizeWhitespace(websiteInsights.siteName)
+      : "";
+
+  if (!hasText(apiKey) || !companyName) {
+    return null;
+  }
+
+  const websiteUrl = normalizeWebsiteUrl(input.websiteUrl) || websiteInsights.finalUrl || null;
+  const websiteHost = normalizeHost(websiteUrl);
+  const searchQueries = buildSearchQueries(input, websiteInsights);
+  const fieldMask =
+    "places.id,places.displayName,places.formattedAddress,places.websiteUri,places.rating,places.userRatingCount,places.primaryType,places.primaryTypeDisplayName,places.googleMapsUri";
+
+  const candidates: Array<Record<string, unknown>> = [];
+
+  for (const query of searchQueries) {
+    try {
+      const response = await fetch("https://places.googleapis.com/v1/places:searchText", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": apiKey,
+          "X-Goog-FieldMask": fieldMask,
+        },
+        body: JSON.stringify({
+          textQuery: query,
+          pageSize: 5,
+          languageCode: "nb",
+          regionCode: "NO",
+        }),
+        signal: AbortSignal.timeout(12_000),
+      });
+
+      if (!response.ok) {
+        continue;
+      }
+
+      const payload = (await response.json().catch(() => null)) as
+        | { places?: Array<Record<string, unknown>> }
+        | null;
+      const places = Array.isArray(payload?.places) ? payload.places : [];
+      candidates.push(...places);
+      if (places.length > 0) {
+        break;
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  const bestCandidate = [...candidates]
+    .sort((left, right) => {
+      return (
+        scoreGooglePlaceCandidate(right, companyName, websiteHost) -
+        scoreGooglePlaceCandidate(left, companyName, websiteHost)
+      );
+    })[0];
+
+  const placeId = hasText(bestCandidate.id) ? normalizeWhitespace(bestCandidate.id) : null;
+  const detailsFieldMask = [
+    "id",
+    "displayName",
+    "formattedAddress",
+    "googleMapsUri",
+    "websiteUri",
+    "primaryType",
+    "primaryTypeDisplayName",
+    "rating",
+    "userRatingCount",
+    "reviewSummary",
+    "reviews",
+    "delivery",
+    "takeout",
+    "dineIn",
+    "servesLunch",
+    "servesDinner",
+  ].join(",");
+
+  let placeRecord = bestCandidate;
+  if (placeId) {
+    try {
+      const detailsResponse = await fetch(`https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}`, {
+        headers: {
+          "X-Goog-Api-Key": apiKey,
+          "X-Goog-FieldMask": detailsFieldMask,
+          "Accept-Language": "nb-NO,nb;q=0.9,en;q=0.8",
+        },
+        signal: AbortSignal.timeout(12_000),
+      });
+
+      if (detailsResponse.ok) {
+        const detailsPayload = (await detailsResponse.json().catch(() => null)) as Record<string, unknown> | null;
+        if (detailsPayload && typeof detailsPayload === "object" && !Array.isArray(detailsPayload)) {
+          placeRecord = { ...bestCandidate, ...detailsPayload };
+        }
+      }
+    } catch {
+      // Ignore and fall back to search response fields.
+    }
+  }
+
+  const reviewSummaryRecord =
+    placeRecord.reviewSummary &&
+    typeof placeRecord.reviewSummary === "object" &&
+    !Array.isArray(placeRecord.reviewSummary)
+      ? (placeRecord.reviewSummary as Record<string, unknown>)
+      : {};
+  const reviewSummaryTextRecord =
+    reviewSummaryRecord.text &&
+    typeof reviewSummaryRecord.text === "object" &&
+    !Array.isArray(reviewSummaryRecord.text)
+      ? (reviewSummaryRecord.text as Record<string, unknown>)
+      : {};
+  const reviews = Array.isArray(placeRecord.reviews) ? placeRecord.reviews : [];
+
+  const topReviews: RoleRoomAgentReviewQuote[] = reviews
+    .map((review) => {
+      if (!review || typeof review !== "object" || Array.isArray(review)) {
+        return null;
+      }
+      const reviewRecord = review as Record<string, unknown>;
+      const textRecord =
+        reviewRecord.text && typeof reviewRecord.text === "object" && !Array.isArray(reviewRecord.text)
+          ? (reviewRecord.text as Record<string, unknown>)
+          : {};
+      const authorRecord =
+        reviewRecord.authorAttribution &&
+        typeof reviewRecord.authorAttribution === "object" &&
+        !Array.isArray(reviewRecord.authorAttribution)
+          ? (reviewRecord.authorAttribution as Record<string, unknown>)
+          : {};
+      const text = hasText(textRecord.text) ? normalizeWhitespace(textRecord.text) : "";
+      if (!text) {
+        return null;
+      }
+      return {
+        author: hasText(authorRecord.displayName) ? normalizeWhitespace(authorRecord.displayName) : undefined,
+        rating: asNumber(reviewRecord.rating),
+        text,
+        relativeTime: hasText(reviewRecord.relativePublishTimeDescription)
+          ? normalizeWhitespace(reviewRecord.relativePublishTimeDescription)
+          : undefined,
+        googleMapsUri: hasText(reviewRecord.googleMapsUri) ? normalizeWhitespace(reviewRecord.googleMapsUri) : null,
+      };
+    })
+    .filter((entry): entry is RoleRoomAgentReviewQuote => entry !== null)
+    .slice(0, 3);
+
+  const serviceSignals = [
+    placeRecord.delivery === true ? "Tilbyr levering" : null,
+    placeRecord.takeout === true ? "Tilbyr takeaway" : null,
+    placeRecord.dineIn === true ? "Tilbyr servering på stedet" : null,
+    placeRecord.servesLunch === true ? "Serverer lunsj" : null,
+    placeRecord.servesDinner === true ? "Serverer middag" : null,
+  ].filter((entry): entry is string => Boolean(entry));
+
+  const displayNameRecord =
+    placeRecord.displayName &&
+    typeof placeRecord.displayName === "object" &&
+    !Array.isArray(placeRecord.displayName)
+      ? (placeRecord.displayName as Record<string, unknown>)
+      : {};
+  const primaryTypeDisplayRecord =
+    placeRecord.primaryTypeDisplayName &&
+    typeof placeRecord.primaryTypeDisplayName === "object" &&
+    !Array.isArray(placeRecord.primaryTypeDisplayName)
+      ? (placeRecord.primaryTypeDisplayName as Record<string, unknown>)
+      : {};
+
+  return {
+    source: "google_places",
+    displayName: hasText(displayNameRecord.text) ? normalizeWhitespace(displayNameRecord.text) : companyName,
+    formattedAddress: hasText(placeRecord.formattedAddress) ? normalizeWhitespace(placeRecord.formattedAddress) : null,
+    googleMapsUri: hasText(placeRecord.googleMapsUri) ? normalizeWhitespace(placeRecord.googleMapsUri) : null,
+    websiteUri: hasText(placeRecord.websiteUri) ? normalizeWhitespace(placeRecord.websiteUri) : websiteUrl,
+    primaryType: hasText(placeRecord.primaryType) ? normalizeWhitespace(placeRecord.primaryType) : null,
+    primaryTypeDisplayName: hasText(primaryTypeDisplayRecord.text)
+      ? normalizeWhitespace(primaryTypeDisplayRecord.text)
+      : null,
+    rating: asNumber(placeRecord.rating),
+    userRatingCount: asNumber(placeRecord.userRatingCount),
+    reviewSummary: hasText(reviewSummaryTextRecord.text) ? normalizeWhitespace(reviewSummaryTextRecord.text) : null,
+    topReviews,
+    serviceSignals,
+  };
+}
+
 function buildFallbackBootstrap(
   input: RoleRoomAgentProducerBootstrapInput,
   websiteInsights: RoleRoomAgentWebsiteInsights,
+  businessSignals: RoleRoomAgentBusinessSignals | null,
 ): RoleRoomAgentNormalizedPayload {
   const websiteUrl = normalizeWebsiteUrl(input.websiteUrl) || websiteInsights.finalUrl || null;
   const companyName = hasText(input.companyName)
     ? normalizeWhitespace(input.companyName)
     : websiteInsights.siteName || websiteInsights.pageTitle || "Kunden";
-  const classification = detectBusinessClassification(input, websiteInsights);
+  const classification = detectBusinessClassification(input, websiteInsights, businessSignals);
   const summary = toSentenceCase(
     websiteInsights.metaDescription ||
       input.extraContext ||
@@ -380,17 +693,22 @@ function buildFallbackBootstrap(
   const audience = deriveAudienceFromClassification(classification);
   const toneAndBrandSignals = deriveToneFromClassification(classification);
   const proofPoints = normalizeStringArray(
-    summary
-      .split(/[.!?]/)
-      .map((entry) => entry.trim())
-      .filter(Boolean)
-      .slice(0, 3),
+    [
+      ...summary
+        .split(/[.!?]/)
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+        .slice(0, 3),
+      businessSignals?.reviewSummary || "",
+      ...(businessSignals?.serviceSignals ?? []),
+    ],
   );
 
   return {
     generatedAt: new Date().toISOString(),
     provider: "fallback",
     model: "fallback-rule-engine",
+    businessSignals,
     companyProfile: {
       companyName,
       websiteUrl,
@@ -404,7 +722,7 @@ function buildFallbackBootstrap(
       businessModel: classification.businessModel,
       contentCategory: classification.contentCategory,
       productionApproach: classification.productionApproach,
-      probableLocationAddress: null,
+      probableLocationAddress: businessSignals?.formattedAddress || null,
       logoUrl: websiteInsights.probableLogoUrl || null,
     },
     intakeDraft: {
@@ -571,6 +889,9 @@ function buildFallbackBootstrap(
       "Verifiser kundeprofil og målgruppe med klienten",
       "Godkjenn story logikk før manus og storyboard fylles videre ut",
       "Samle brandfiler, logo og eksisterende referansemateriale",
+      ...(businessSignals?.rating && businessSignals?.userRatingCount
+        ? [`Bruk kundesignaler fra ${businessSignals.userRatingCount} Google-anmeldelser som bevispunkter i brief og CTA.`]
+        : []),
     ],
   };
 }
@@ -578,6 +899,7 @@ function buildFallbackBootstrap(
 async function requestOpenAiBootstrap(
   input: RoleRoomAgentProducerBootstrapInput,
   websiteInsights: RoleRoomAgentWebsiteInsights,
+  businessSignals: RoleRoomAgentBusinessSignals | null,
 ): Promise<unknown | null> {
   const runtimeConfig = getRoleRoomAgentRuntimeConfig();
   if (!runtimeConfig.providerConfigured) {
@@ -610,6 +932,7 @@ async function requestOpenAiBootstrap(
               "Unngå generiske B2B-målgrupper dersom nettstedet tydelig viser en B2C-virksomhet som restaurant, retail eller lokal tjeneste.",
               "For restaurant og matkonsepter skal story logic handle om meny, fristelse, bestilling, lokasjon og konvertering, ikke generell bedriftsprofil.",
               "Legg inn en contentStoryLogic-del som er lett for klienten å fylle ut og godkjenne i et innholdsproduksjonsprosjekt.",
+              "Hvis businessSignals finnes, bruk reviews, rating, lokasjon og tjenestesignalene aktivt i brief, bevispunkter, CTA og story logic.",
             ],
           },
           outputSchemaHints: {
@@ -650,6 +973,7 @@ async function requestOpenAiBootstrap(
           },
           input,
           websiteInsights,
+          businessSignals,
         }),
       },
     ],
@@ -689,6 +1013,7 @@ function normalizeBootstrapPayload(
   input: RoleRoomAgentProducerBootstrapInput,
   websiteInsights: RoleRoomAgentWebsiteInsights,
   fallback: RoleRoomAgentNormalizedPayload,
+  businessSignals: RoleRoomAgentBusinessSignals | null,
 ): RoleRoomAgentNormalizedPayload {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     return fallback;
@@ -729,6 +1054,7 @@ function normalizeBootstrapPayload(
     generatedAt: new Date().toISOString(),
     provider: "openai",
     model: getRoleRoomAgentRuntimeConfig().defaultModel,
+    businessSignals,
     companyProfile: {
       companyName: hasText(companyProfile.companyName)
         ? normalizeWhitespace(companyProfile.companyName)
@@ -762,7 +1088,7 @@ function normalizeBootstrapPayload(
         : fallback.companyProfile.productionApproach,
       probableLocationAddress: hasText(companyProfile.probableLocationAddress)
         ? normalizeWhitespace(companyProfile.probableLocationAddress)
-        : null,
+        : (businessSignals?.formattedAddress || null),
       logoUrl: hasText(companyProfile.logoUrl)
         ? resolveUrl(websiteInsights.finalUrl || normalizeWebsiteUrl(input.websiteUrl) || "", companyProfile.logoUrl)
         : fallback.companyProfile.logoUrl,
@@ -868,17 +1194,19 @@ export async function generateRoleRoomAgentProducerBootstrap(
 ): Promise<RoleRoomAgentNormalizedPayload> {
   const websiteUrl = normalizeWebsiteUrl(input.websiteUrl);
   const websiteInsights = await fetchWebsiteInsights(websiteUrl);
+  const businessSignals = await fetchGooglePlacesBusinessSignals(input, websiteInsights);
   const fallback = buildFallbackBootstrap(
     {
       ...input,
       websiteUrl: websiteUrl || input.websiteUrl || null,
     },
     websiteInsights,
+    businessSignals,
   );
-  const openAiPayload = await requestOpenAiBootstrap(input, websiteInsights);
+  const openAiPayload = await requestOpenAiBootstrap(input, websiteInsights, businessSignals);
   if (!openAiPayload) {
     return fallback;
   }
 
-  return normalizeBootstrapPayload(openAiPayload, input, websiteInsights, fallback);
+  return normalizeBootstrapPayload(openAiPayload, input, websiteInsights, fallback, businessSignals);
 }

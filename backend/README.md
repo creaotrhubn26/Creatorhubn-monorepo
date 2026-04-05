@@ -61,6 +61,9 @@ GOOGLE_REDIRECT_URI=http://localhost:5050/auth/google/callback
 OPENAI_API_KEY=your-openai-api-key
 ROLE_ROOM_AGENT_MODEL=gpt-5.4-mini
 
+# The Role Room Agent (Google Places enrichment - optional)
+GOOGLE_PLACES_API_KEY=your-google-places-api-key
+
 # Tripletex testmiljø (valgfritt, men nødvendig for regnskapsflyt)
 TRIPLETEX_TEST_BASE_URL=https://api-test.tripletex.tech/v2
 TRIPLETEX_TEST_CONSUMER_TOKEN=your-consumer-token

@@ -28147,6 +28147,7 @@ app.get("/api/role-room/agent/access", (req, res) => {
     provider: runtimeConfig.provider,
     providerConfigured: runtimeConfig.providerConfigured,
     defaultModel: runtimeConfig.defaultModel,
+    googlePlacesConfigured: runtimeConfig.googlePlacesConfigured,
   });
 });
 

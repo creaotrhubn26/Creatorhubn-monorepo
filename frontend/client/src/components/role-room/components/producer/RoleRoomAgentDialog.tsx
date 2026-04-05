@@ -153,6 +153,12 @@ export default function RoleRoomAgentDialog({
     }
     return value as Record<string, unknown>;
   }, [result]);
+  const googleReviewsLabel = useMemo(() => {
+    if (!result?.businessSignals?.rating || !result.businessSignals.userRatingCount) {
+      return null;
+    }
+    return `${result.businessSignals.rating.toFixed(1)} stjerner · ${result.businessSignals.userRatingCount} anmeldelser`;
+  }, [result]);
 
   return (
     <Dialog
@@ -225,6 +231,16 @@ export default function RoleRoomAgentDialog({
           {access?.providerConfigured ? (
             <Alert severity="info">
               Agenten er satt opp mot <strong>{runtimeLabel}</strong>. Dette er standardmotoren for analyse og forslag i denne admin-testen.
+            </Alert>
+          ) : null}
+          {access && !access.googlePlacesConfigured ? (
+            <Alert severity="info">
+              Google Places/review enrichment er ikke konfigurert ennå. Agenten bruker fortsatt nettside og OpenAI, men henter ikke Google-rating, anmeldelser og stedssignaler før <strong>GOOGLE_PLACES_API_KEY</strong> er satt.
+            </Alert>
+          ) : null}
+          {access?.googlePlacesConfigured ? (
+            <Alert severity="success">
+              Google Places enrichment er aktiv. Agenten kan bruke rating, anmeldelser, adresse og stedssignaler i brief og story logikk.
             </Alert>
           ) : null}
 
@@ -355,6 +371,47 @@ export default function RoleRoomAgentDialog({
                   </Stack>
                 </Box>
               </Stack>
+
+              {result.businessSignals ? (
+                <Box
+                  sx={{
+                    p: 1.2,
+                    borderRadius: 3,
+                    border: '1px solid rgba(250,204,21,0.18)',
+                    bgcolor: 'rgba(71,36,0,0.18)',
+                  }}
+                >
+                  <Stack spacing={0.9}>
+                    <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ md: 'center' }} justifyContent="space-between">
+                      <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>Google-signaler og anmeldelser</Typography>
+                      {googleReviewsLabel ? (
+                        <Chip label={googleReviewsLabel} size="small" sx={{ bgcolor: 'rgba(250,204,21,0.12)', color: '#fde68a' }} />
+                      ) : null}
+                    </Stack>
+                    {renderClassificationChips([
+                      result.businessSignals.primaryTypeDisplayName ? `Kategori: ${result.businessSignals.primaryTypeDisplayName}` : null,
+                      result.businessSignals.formattedAddress ? `Adresse: ${result.businessSignals.formattedAddress}` : null,
+                    ])}
+                    {result.businessSignals.reviewSummary ? (
+                      <Typography sx={{ color: 'rgba(226,232,240,0.88)', lineHeight: 1.6 }}>
+                        {result.businessSignals.reviewSummary}
+                      </Typography>
+                    ) : null}
+                    {result.businessSignals.serviceSignals.length > 0 ? renderClassificationChips(result.businessSignals.serviceSignals) : null}
+                    {result.businessSignals.topReviews.length > 0 ? (
+                      <Box>
+                        <Typography sx={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.84rem', textTransform: 'uppercase', letterSpacing: '0.12em', mb: 0.8 }}>
+                          Det kundene faktisk sier
+                        </Typography>
+                        {renderList(result.businessSignals.topReviews.map((review) => {
+                          const prefix = review.author ? `${review.author}: ` : '';
+                          return `${prefix}${review.text}`;
+                        }))}
+                      </Box>
+                    ) : null}
+                  </Stack>
+                </Box>
+              ) : null}
 
               <Stack direction={{ xs: 'column', xl: 'row' }} spacing={1.2}>
                 <Box

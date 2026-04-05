@@ -14,6 +14,7 @@ export interface RoleRoomAgentAccess {
   provider?: 'openai' | string;
   providerConfigured?: boolean;
   defaultModel?: string;
+  googlePlacesConfigured?: boolean;
 }
 
 export interface RoleRoomAgentBrandColor {
@@ -22,10 +23,34 @@ export interface RoleRoomAgentBrandColor {
   usage?: string;
 }
 
+export interface RoleRoomAgentReviewQuote {
+  author?: string;
+  rating?: number | null;
+  text: string;
+  relativeTime?: string;
+  googleMapsUri?: string | null;
+}
+
+export interface RoleRoomAgentBusinessSignals {
+  source: 'google_places';
+  displayName?: string;
+  formattedAddress?: string | null;
+  googleMapsUri?: string | null;
+  websiteUri?: string | null;
+  primaryType?: string | null;
+  primaryTypeDisplayName?: string | null;
+  rating?: number | null;
+  userRatingCount?: number | null;
+  reviewSummary?: string | null;
+  topReviews: RoleRoomAgentReviewQuote[];
+  serviceSignals: string[];
+}
+
 export interface RoleRoomAgentProducerBootstrapResult {
   generatedAt: string;
   provider: 'openai' | 'fallback';
   model: string;
+  businessSignals?: RoleRoomAgentBusinessSignals | null;
   companyProfile: {
     companyName: string;
     websiteUrl?: string | null;
