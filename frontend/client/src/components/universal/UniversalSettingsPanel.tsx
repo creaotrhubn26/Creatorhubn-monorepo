@@ -137,6 +137,20 @@ type PaymentHistoryEntry = {
   invoiceUrl?: string | null;
 };
 
+type QuoteDocumentEntry = {
+  id: string;
+  quoteNumber?: string | null;
+  clientName?: string | null;
+  title?: string | null;
+  totalAmount?: string | number | null;
+  acceptedAt?: string | null;
+  createdAt?: string | null;
+  accountingProvider?: string | null;
+  tripletexInvoiceStatus?: string | null;
+  tripletexInvoiceUrl?: string | null;
+  tripletexVoucherUrl?: string | null;
+};
+
 type AccountingIntegrationStatus = {
   configured?: boolean;
   provider?: 'fiken' | 'tripletex';
@@ -203,6 +217,12 @@ const getPaymentStatusPresentation = (payment: PaymentHistoryEntry) => {
     default:
       return { label: payment.status || 'Ukjent status', color: 'default' as const };
   }
+};
+
+const formatQuoteAmount = (amount?: string | number | null) => {
+  const numericAmount =
+    typeof amount === 'number' ? amount : typeof amount === 'string' ? Number(amount) : 0;
+  return formatPaymentAmount(Number.isFinite(numericAmount) ? numericAmount : 0, 'NOK');
 };
 
 interface UniversalSettingsPanelProps {
@@ -395,6 +415,12 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
     staleTime: 30000,
     enabled: isBusinessTabActive,
   });
+  const { data: quoteDocumentsData } = useQuery({
+    queryKey: ['/api/quotes/all', 'settings-documents', userId],
+    queryFn: () => apiRequest(`/api/quotes/all?userId=${encodeURIComponent(userId)}&status=accepted`),
+    staleTime: 30000,
+    enabled: isBusinessTabActive,
+  });
   const { data: currentSubscription, refetch: refetchSubscription } = useQuery({
     queryKey: ['/api/user/subscription-status', userId],
     queryFn: () => apiRequest(`/api/user/subscription-status?userId=${encodeURIComponent(userId)}`),
@@ -421,6 +447,17 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
       return rightDate - leftDate;
     });
   }, [paymentHistory]);
+  const quoteDocumentItems = React.useMemo(() => {
+    const items = Array.isArray((quoteDocumentsData as any)?.quotes)
+      ? ((quoteDocumentsData as any).quotes as QuoteDocumentEntry[])
+      : [];
+
+    return [...items].sort((left, right) => {
+      const leftDate = new Date(left.acceptedAt || left.createdAt || 0).getTime();
+      const rightDate = new Date(right.acceptedAt || right.createdAt || 0).getTime();
+      return rightDate - leftDate;
+    });
+  }, [quoteDocumentsData]);
   const latestPayment = paymentHistoryItems[0] || null;
   const paymentHistorySummary = React.useMemo(() => {
     const approvedRefunds = paymentHistoryItems.filter(
@@ -431,6 +468,11 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
     );
     const pendingRefunds = paymentHistoryItems.filter(
       (payment) => payment.refundRequestStatus === 'pending',
+    );
+    const receiptsReady = paymentHistoryItems.filter((payment) => Boolean(payment.receiptUrl));
+    const invoicesReady = paymentHistoryItems.filter((payment) => Boolean(payment.invoiceUrl));
+    const accountingDocumentsReady = quoteDocumentItems.filter(
+      (quote) => Boolean(quote.tripletexVoucherUrl) || Boolean(quote.tripletexInvoiceUrl),
     );
     const totalVolume = paymentHistoryItems.reduce((sum, payment) => {
       const amount = typeof payment.amount === 'number' && Number.isFinite(payment.amount)
@@ -443,9 +485,12 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
       totalPayments: paymentHistoryItems.length,
       approvedRefunds: approvedRefunds.length,
       pendingRefunds: pendingRefunds.length,
+      receiptsReady: receiptsReady.length,
+      invoicesReady: invoicesReady.length,
+      accountingDocumentsReady: accountingDocumentsReady.length,
       totalVolume,
     };
-  }, [paymentHistoryItems]);
+  }, [paymentHistoryItems, quoteDocumentItems]);
   const queryClient = useQueryClient();
 
   // Comprehensive Feature System for profession suites
@@ -938,7 +983,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                       </Box>
                       <Box sx={{ p: 2, border: '1px solid #e8edf3', borderRadius: 2, bgcolor: '#fff' }}>
                         <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
-                          Totalt betalt
+                          Betalt totalt
                         </Typography>
                         <Typography variant="h5" sx={{ fontWeight: 700, color: theming.colors.primary, mt: 0.5 }}>
                           {formatPaymentAmount(paymentHistorySummary.totalVolume, latestPayment?.currency || currentSubscription?.currency || 'NOK')}
@@ -946,18 +991,18 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                       </Box>
                       <Box sx={{ p: 2, border: '1px solid #e8edf3', borderRadius: 2, bgcolor: '#fff' }}>
                         <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
-                          Dokumenter klare
+                          Kvitteringer klare
                         </Typography>
                         <Typography variant="h5" sx={{ fontWeight: 700, color: 'text.primary', mt: 0.5 }}>
-                          {paymentHistoryItems.filter((payment) => payment.receiptUrl || payment.invoiceUrl).length}
+                          {paymentHistorySummary.receiptsReady}
                         </Typography>
                       </Box>
                       <Box sx={{ p: 2, border: '1px solid #e8edf3', borderRadius: 2, bgcolor: '#fff' }}>
                         <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
-                          Refunderinger
+                          Fakturaer og grunnlag
                         </Typography>
-                        <Typography variant="h5" sx={{ fontWeight: 700, color: paymentHistorySummary.approvedRefunds > 0 ? '#2e7d32' : 'text.primary', mt: 0.5 }}>
-                          {paymentHistorySummary.approvedRefunds}
+                        <Typography variant="h5" sx={{ fontWeight: 700, color: 'text.primary', mt: 0.5 }}>
+                          {paymentHistorySummary.invoicesReady + paymentHistorySummary.accountingDocumentsReady}
                         </Typography>
                       </Box>
                     </Box>
@@ -1152,6 +1197,121 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                     {paymentHistoryItems.length > 10 && (
                       <Typography variant="caption" color="text.secondary">
                         Viser de 10 siste betalingene av totalt {paymentHistoryItems.length}.
+                      </Typography>
+                    )}
+                  </Box>
+                )}
+              </Box>
+
+              <Box sx={{ mt: 3 }}>
+                <Typography variant="subtitle1" sx={{ mb: 1, color: theming.colors.primary, fontWeight: 700 }}>
+                  Faktura og regnskapsgrunnlag
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Her finner du fakturaer og regnskapsdokumenter som er klare fra godkjente avtaler og leveranser.
+                </Typography>
+
+                {!quoteDocumentItems.length ? (
+                  <Alert severity="info">
+                    Ingen fakturaer eller regnskapsdokumenter er registrert ennå.
+                  </Alert>
+                ) : (
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    {quoteDocumentItems.slice(0, 8).map((quote) => {
+                      const hasInvoice = Boolean(quote.tripletexInvoiceUrl);
+                      const hasVoucher = Boolean(quote.tripletexVoucherUrl);
+                      return (
+                        <Box
+                          key={quote.id}
+                          sx={{
+                            p: 2,
+                            border: '1px solid #e8edf3',
+                            borderRadius: 2,
+                            bgcolor: '#fff',
+                          }}
+                        >
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}>
+                            <Box sx={{ minWidth: 0 }}>
+                              <Typography variant="body1" sx={{ fontWeight: 700 }}>
+                                {quote.title || quote.quoteNumber || 'Avtale'}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                {quote.clientName || 'Kunde'} · Godkjent {formatPaymentDate(quote.acceptedAt || quote.createdAt)}
+                              </Typography>
+                            </Box>
+                            <Box sx={{ textAlign: { xs: 'left', sm: 'right' } }}>
+                              <Typography variant="body1" sx={{ fontWeight: 700 }}>
+                                {formatQuoteAmount(quote.totalAmount)}
+                              </Typography>
+                              <Chip
+                                size="small"
+                                color={hasInvoice || hasVoucher ? 'success' : 'default'}
+                                label={
+                                  hasInvoice || hasVoucher
+                                    ? quote.tripletexInvoiceStatus || 'Dokumenter klare'
+                                    : 'Dokumenter kommer'
+                                }
+                                sx={{ mt: 0.5 }}
+                              />
+                            </Box>
+                          </Box>
+
+                          <Box
+                            sx={{
+                              mt: 1.5,
+                              display: 'grid',
+                              gridTemplateColumns: { xs: '1fr', md: '1fr auto' },
+                              gap: 1.5,
+                              alignItems: 'start',
+                            }}
+                          >
+                            <Box>
+                              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, display: 'block' }}>
+                                Historikk
+                              </Typography>
+                              <Typography variant="body2" color="text.secondary">
+                                {hasInvoice || hasVoucher
+                                  ? 'Dokumenter er opprettet og kan åpnes herfra.'
+                                  : accountingIntegrationStatus?.activationEnabled
+                                    ? 'Avtalen er klar for videre regnskapsflyt når dokumentene er ferdigstilt.'
+                                    : 'Dokumentene blir synlige her hvis regnskapsflyten aktiveres.'}
+                              </Typography>
+                            </Box>
+
+                            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: { xs: 'flex-start', md: 'flex-end' } }}>
+                              {hasInvoice ? (
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  component="a"
+                                  href={quote.tripletexInvoiceUrl || ''}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  Åpne faktura
+                                </Button>
+                              ) : null}
+                              {hasVoucher ? (
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  component="a"
+                                  href={quote.tripletexVoucherUrl || ''}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  Åpne regnskapsgrunnlag
+                                </Button>
+                              ) : null}
+                            </Box>
+                          </Box>
+                        </Box>
+                      );
+                    })}
+
+                    {quoteDocumentItems.length > 8 && (
+                      <Typography variant="caption" color="text.secondary">
+                        Viser de 8 siste dokumentpostene av totalt {quoteDocumentItems.length}.
                       </Typography>
                     )}
                   </Box>
