@@ -3,12 +3,50 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="The Role Room - Profesjonell casting og produksjonsplanlegging">
-  <meta name="theme-color" content="#1a1a2e">
-  <title>The Role Room - CreatorHub</title>
+  <meta name="description" content="The Role Room er produksjonsflaten i CreatorHub for casting, team, talentportal og koordinering av opptaksdager.">
+  <meta name="robots" content="index,follow">
+  <meta name="googlebot" content="index,follow">
+  <meta name="theme-color" content="#121218">
+  <title>The Role Room | Casting, crew og produksjonsplanlegging</title>
+  <link rel="canonical" href="https://theroleroom.com/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="The Role Room">
+  <meta property="og:title" content="The Role Room | Casting, crew og produksjonsplanlegging">
+  <meta property="og:description" content="The Role Room er produksjonsflaten i CreatorHub for casting, team, talentportal og koordinering av opptaksdager.">
+  <meta property="og:url" content="https://theroleroom.com/">
+  <meta property="og:image" content="https://theroleroom.com/role-room-assets/landing_backdrop_with_logo.webp">
+  <meta property="og:locale" content="no_NO">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="The Role Room | Casting, crew og produksjonsplanlegging">
+  <meta name="twitter:description" content="The Role Room er produksjonsflaten i CreatorHub for casting, team, talentportal og koordinering av opptaksdager.">
+  <meta name="twitter:image" content="https://theroleroom.com/role-room-assets/landing_backdrop_with_logo.webp">
   <link rel="icon" type="image/png" href="/TheRoleRoom_App_Logo.png">
   <link rel="shortcut icon" type="image/png" href="/TheRoleRoom_App_Logo.png">
   <link rel="apple-touch-icon" href="/TheRoleRoom_App_Logo.png">
+  <script type="application/ld+json" data-seo-ld="organization">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "@id": "https://theroleroom.com/#organization",
+      "name": "The Role Room",
+      "url": "https://theroleroom.com",
+      "logo": "https://theroleroom.com/TheRoleRoom_App_Logo.png",
+      "email": "support@theroleroom.com"
+    }
+  </script>
+  <script type="application/ld+json" data-seo-ld="website">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "@id": "https://theroleroom.com/#website",
+      "name": "The Role Room",
+      "url": "https://theroleroom.com",
+      "inLanguage": "no-NO",
+      "publisher": {
+        "@id": "https://theroleroom.com/#organization"
+      }
+    }
+  </script>
   <style>
     html, body {
       margin: 0;
@@ -33,11 +71,33 @@
     window.gtag = window.gtag || function () {
       window.dataLayer.push(arguments);
     };
-    var ROLE_ROOM_GA_MEASUREMENT_ID = 'G-9T7K5TJVFX';
+
+    function resolveStaticAnalyticsValue(rawValue, fallback) {
+      if (typeof rawValue !== 'string') {
+        return fallback;
+      }
+
+      var trimmedValue = rawValue.trim();
+      var looksLikeUnresolvedVitePlaceholder =
+        trimmedValue.length > 7 &&
+        trimmedValue.charAt(0) === '%' &&
+        trimmedValue.charAt(trimmedValue.length - 1) === '%' &&
+        trimmedValue.indexOf('VITE_') === 1;
+
+      if (!trimmedValue || looksLikeUnresolvedVitePlaceholder) {
+        return fallback;
+      }
+
+      return trimmedValue;
+    }
+
+    var GOOGLE_TAG_MANAGER_ID = resolveStaticAnalyticsValue('%VITE_GOOGLE_TAG_MANAGER_ID%', 'GTM-MFWW7X83');
+    var ROLE_ROOM_GA_MEASUREMENT_ID = resolveStaticAnalyticsValue('%VITE_ROLE_ROOM_GA_MEASUREMENT_ID%', 'G-9T7K5TJVFX');
 
     window.__creatorhubAnalyticsConfig = {
       site: 'role-room',
       measurementId: ROLE_ROOM_GA_MEASUREMENT_ID,
+      tagManagerId: GOOGLE_TAG_MANAGER_ID,
     };
 
     function readStoredConsent() {

@@ -685,7 +685,7 @@ const StripboardPanel: FC<StripboardPanelProps> = ({
           .no-print, button, .MuiIconButton-root, .MuiTooltip-popper, .MuiDialog-root { display: none !important; }
           .shooting-day-group { page-break-inside: avoid; break-inside: avoid; }
           .MuiCard-root { box-shadow: none !important; border: 1px solid #ccc !important; margin-bottom: 8px !important; page-break-inside: avoid; }
-          .stripboard-print::after { content: 'Generert med The Role Room • theroleroom.no'; position: fixed; bottom: 5mm; left: 0; right: 0; text-align: center; font-size: 9px; color: #7C3AED; }
+          .stripboard-print::after { content: 'Generert med The Role Room • theroleroom.com'; position: fixed; bottom: 5mm; left: 0; right: 0; text-align: center; font-size: 9px; color: #7C3AED; }
         }
       `}</style>
     </Box>

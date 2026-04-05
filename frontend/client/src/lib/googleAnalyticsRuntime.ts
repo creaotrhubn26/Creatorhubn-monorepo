@@ -2,6 +2,7 @@ declare global {
   interface Window {
     __creatorhubAnalyticsConfig?: {
       measurementId?: string;
+      tagManagerId?: string;
       site?: "creatorhub" | "role-room";
     };
     __creatorhubApplyConsent?: (
@@ -22,6 +23,7 @@ export interface AnalyticsConsentSettings {
 
 const DEFAULT_CREATORHUB_GA_MEASUREMENT_ID = "G-6E5MJT8REW";
 const DEFAULT_ROLE_ROOM_GA_MEASUREMENT_ID = "G-9T7K5TJVFX";
+const DEFAULT_GOOGLE_TAG_MANAGER_ID = "GTM-MFWW7X83";
 
 function resolveConfiguredMeasurementId(
   value: string | undefined,
@@ -39,6 +41,11 @@ export const CREATORHUB_GA_MEASUREMENT_ID = resolveConfiguredMeasurementId(
 export const ROLE_ROOM_GA_MEASUREMENT_ID = resolveConfiguredMeasurementId(
   import.meta.env.VITE_ROLE_ROOM_GA_MEASUREMENT_ID,
   DEFAULT_ROLE_ROOM_GA_MEASUREMENT_ID,
+);
+
+export const GOOGLE_TAG_MANAGER_ID = resolveConfiguredMeasurementId(
+  import.meta.env.VITE_GOOGLE_TAG_MANAGER_ID,
+  DEFAULT_GOOGLE_TAG_MANAGER_ID,
 );
 
 const ROLE_ROOM_HOSTS = new Set([
@@ -73,6 +80,17 @@ export function getGoogleAnalyticsMeasurementId(): string {
     }
   }
   return resolveGoogleAnalyticsMeasurementId();
+}
+
+export function getGoogleTagManagerId(): string {
+  if (typeof window !== "undefined") {
+    const configuredId = window.__creatorhubAnalyticsConfig?.tagManagerId;
+    if (typeof configuredId === "string" && configuredId.trim()) {
+      return configuredId.trim();
+    }
+  }
+
+  return GOOGLE_TAG_MANAGER_ID;
 }
 
 export function getAnalyticsPlatformName(): string {

@@ -14,6 +14,7 @@ import { EnhancedMasterIntegrationProvider } from '@/integration/EnhancedMasterI
 import { AuthProvider } from '@/contexts/AuthContext';
 import { parseTalentPortalIntentFromWindow } from './utils/talentPortal';
 import { isRoleRoomEducationPathname } from './utils/runtime';
+import { syncSiteSeo } from '@/lib/siteSeo';
 
 const castingQueryClient = new QueryClient({
   defaultOptions: {
@@ -59,6 +60,17 @@ function CastingStandaloneAppContent() {
     }
     return isRoleRoomEducationPathname(window.location.pathname, window.location);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    syncSiteSeo({
+      hostname: window.location.hostname,
+      pathname: window.location.pathname,
+    });
+  }, [isEducationPath]);
 
   if (isEducationPath) {
     return <RoleRoomEducationPartnershipPage />;

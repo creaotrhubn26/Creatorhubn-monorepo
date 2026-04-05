@@ -224,7 +224,7 @@ export function useStripboardData(projectId: string, projectTitle: string) {
       </head><body>
         ${printOptions.header ? `<div class="header"><h1>${projectTitle}</h1><h2>Stripboard / Opptaksplan</h2><div class="branding">Generert med <strong>The Role Room</strong> • ${new Date().toLocaleDateString('nb-NO', { day: 'numeric', month: 'long', year: 'numeric' })}</div></div>` : ''}
         ${statsHTML}${legendHTML}${daysHTML}
-        <div class="footer">Generert med The Role Room • theroleroom.no</div>
+        <div class="footer">Generert med The Role Room • theroleroom.com</div>
       </body></html>`);
       pw.document.close();
       setTimeout(() => pw.print(), 250);

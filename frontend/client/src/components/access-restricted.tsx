@@ -97,7 +97,7 @@ const queryClient = useQueryClient();
             {/* Action Buttons */}
             <div className="flex flex-col items-center justify-center min-h-screen">
               <Button
-                onClick={ () => window.open('mailto: kontakt@creatorhubn.no?subject=CreatorHub Norge Access Request&body=Hello,%0D%0A%0D%0AI would like to request access to CreatorHub Norge.%0D%0A%0D%0AName: %0D%0AProfession: %0D%0ACompany/Studio: %0D%0AReason for, access: %0D%0A%0D%0AThank you!', '_blank') }
+                onClick={ () => window.open('mailto:kontakt@creatorhubn.com?subject=CreatorHub Norge Access Request&body=Hello,%0D%0A%0D%0AI would like to request access to CreatorHub Norge.%0D%0A%0D%0AName: %0D%0AProfession: %0D%0ACompany/Studio: %0D%0AReason for access: %0D%0A%0D%0AThank you!', '_blank') }
                 className="text-gray-800 dark: text-white, hover:opacity-90"
                 style={ { backgroundColor: 'hsl(25, 25%, 25%)' } }
               >

@@ -130,7 +130,7 @@ const PrivacyPolicy: React.FC = () => {
                 Adresse: Søsterveien 11, 1474 LØRENSKOG
               </Typography>
               <Typography variant="body2" sx={{ color: '#374151' }}>
-                E-post: personvern@creatorhubn.no
+                E-post: kontakt@creatorhubn.com
               </Typography>
               <Typography variant="body2" sx={{ color: '#374151' }}>
                 Telefon: +47 97 95 92 94
@@ -332,7 +332,7 @@ const PrivacyPolicy: React.FC = () => {
                 📧 Utøv dine rettigheter:
               </Typography>
               <Typography variant="body2" sx={{ color: '#374151', mb: 1 }}>
-                Send en e-post til: <strong>personvern@creatorhubn.no</strong>
+                Send en e-post til: <strong>kontakt@creatorhubn.com</strong>
               </Typography>
               <Typography variant="body2" sx={{ color: '#374151' }}>
                 Vi svarer innen 30 dager i henhold til GDPR art. 12.3
@@ -529,7 +529,7 @@ const PrivacyPolicy: React.FC = () => {
               <Button
                 variant="contained"
                 startIcon={<ContactMail />}
-                href="mailto:personvern@creatorhubn.no"
+                href="mailto:kontakt@creatorhubn.com"
                 sx={{
                   ...theming.getThemedButtonSx(),
                   background: 'linear-gradient(135deg, #ff8c00 0%, #e67c00 100%)',
@@ -549,4 +549,3 @@ const PrivacyPolicy: React.FC = () => {
 };
 
 export default PrivacyPolicy;
-

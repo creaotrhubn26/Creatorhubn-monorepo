@@ -9,7 +9,56 @@
     <link rel="shortcut icon" type="image/svg+xml" href="/creatorhub-logo-amber.svg" />
     <link rel="apple-touch-icon" href="/creatorhub-logo-amber.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CreatorHub Norge - Professional Creative Platform</title>
+    <title>CreatorHub Norge | Plattform for skapere, team og Academy</title>
+    <meta
+      name="description"
+      content="CreatorHub samler prosjektstyring, abonnementsflyt, kundeopplevelse, Academy og community i én plattform for skapere og kreative team."
+    />
+    <meta name="robots" content="index,follow" />
+    <meta name="googlebot" content="index,follow" />
+    <meta name="theme-color" content="#17120f" />
+    <link rel="canonical" href="https://creatorhubn.com/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="CreatorHub Norge" />
+    <meta property="og:title" content="CreatorHub Norge | Plattform for skapere, team og Academy" />
+    <meta
+      property="og:description"
+      content="CreatorHub samler prosjektstyring, abonnementsflyt, kundeopplevelse, Academy og community i én plattform for skapere og kreative team."
+    />
+    <meta property="og:url" content="https://creatorhubn.com/" />
+    <meta property="og:image" content="https://creatorhubn.com/landing_backdrop_with_logo.png" />
+    <meta property="og:locale" content="nb_NO" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="CreatorHub Norge | Plattform for skapere, team og Academy" />
+    <meta
+      name="twitter:description"
+      content="CreatorHub samler prosjektstyring, abonnementsflyt, kundeopplevelse, Academy og community i én plattform for skapere og kreative team."
+    />
+    <meta name="twitter:image" content="https://creatorhubn.com/landing_backdrop_with_logo.png" />
+    <script type="application/ld+json" data-seo-ld="organization">
+      {
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        "@id": "https://creatorhubn.com/#organization",
+        "name": "CreatorHub Norge",
+        "url": "https://creatorhubn.com",
+        "logo": "https://creatorhubn.com/creatorhub-logo-amber.svg",
+        "email": "kontakt@creatorhubn.com"
+      }
+    </script>
+    <script type="application/ld+json" data-seo-ld="website">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "@id": "https://creatorhubn.com/#website",
+        "name": "CreatorHub Norge",
+        "url": "https://creatorhubn.com",
+        "inLanguage": "nb-NO",
+        "publisher": {
+          "@id": "https://creatorhubn.com/#organization"
+        }
+      }
+    </script>
 
     <script>
       (function setInitialBrandFavicon() {
@@ -43,8 +92,28 @@
       };
 
       var ROLE_ROOM_ANALYTICS_HOSTS = ['theroleroom.com', 'www.theroleroom.com'];
-      var CREATORHUB_GA_MEASUREMENT_ID = 'G-6E5MJT8REW';
-      var ROLE_ROOM_GA_MEASUREMENT_ID = 'G-9T7K5TJVFX';
+      function resolveStaticAnalyticsValue(rawValue, fallback) {
+        if (typeof rawValue !== 'string') {
+          return fallback;
+        }
+
+        var trimmedValue = rawValue.trim();
+        var looksLikeUnresolvedVitePlaceholder =
+          trimmedValue.length > 7 &&
+          trimmedValue.charAt(0) === '%' &&
+          trimmedValue.charAt(trimmedValue.length - 1) === '%' &&
+          trimmedValue.indexOf('VITE_') === 1;
+
+        if (!trimmedValue || looksLikeUnresolvedVitePlaceholder) {
+          return fallback;
+        }
+
+        return trimmedValue;
+      }
+
+      var GOOGLE_TAG_MANAGER_ID = resolveStaticAnalyticsValue('%VITE_GOOGLE_TAG_MANAGER_ID%', 'GTM-MFWW7X83');
+      var CREATORHUB_GA_MEASUREMENT_ID = resolveStaticAnalyticsValue('%VITE_CREATORHUB_GA_MEASUREMENT_ID%', 'G-6E5MJT8REW');
+      var ROLE_ROOM_GA_MEASUREMENT_ID = resolveStaticAnalyticsValue('%VITE_ROLE_ROOM_GA_MEASUREMENT_ID%', 'G-9T7K5TJVFX');
       var analyticsConfig = resolveAnalyticsConfig();
       var analyticsBootstrapState = {
         scriptLoaded: false,
@@ -58,6 +127,7 @@
         return {
           site: isRoleRoomHost ? 'role-room' : 'creatorhub',
           measurementId: isRoleRoomHost ? ROLE_ROOM_GA_MEASUREMENT_ID : CREATORHUB_GA_MEASUREMENT_ID,
+          tagManagerId: GOOGLE_TAG_MANAGER_ID,
         };
       }
 

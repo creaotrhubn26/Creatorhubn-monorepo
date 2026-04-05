@@ -51,6 +51,17 @@
       "permanent": true
     },
     {
+      "source": "/utdanningsinstitusjon/",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/utdanningsinstitusjon",
+      "permanent": true
+    },
+    {
       "source": "/casting.html",
       "destination": "/theroleroom",
       "permanent": true
@@ -63,6 +74,26 @@
   ],
   "rewrites": [
     {
+      "source": "/robots.txt",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom-robots.txt"
+    },
+    {
+      "source": "/sitemap.xml",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom-sitemap.xml"
+    },
+    {
       "source": "/",
       "has": [
         {
@@ -74,6 +105,16 @@
     },
     {
       "source": "/talentportal",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom.html"
+    },
+    {
+      "source": "/utdanningsinstitusjon",
       "has": [
         {
           "type": "host",

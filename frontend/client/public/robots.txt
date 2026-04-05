@@ -1,51 +1,37 @@
-# Robots.txt for CreatorHub Norge (creatorhubn.no)
-# Updated: December 24, 2024
-
 User-agent: *
 Allow: /
 
-# Important pages for SEO
-Allow: /
+# Public CreatorHub pages
+Allow: /about
+Allow: /about-us
+Allow: /pricing
 Allow: /academy
-Allow: /courses
-Allow: /instructors
-Allow: /portfolio
-Allow: /blog
-Allow: /faq
-Allow: /sitemap
-Allow: /features
+Allow: /community
+Allow: /news
+Allow: /request-access
+Allow: /privacy-policy
+Allow: /terms-and-conditions
+Allow: /data-deletion
 
-# Allow access to static assets
-Allow: /assets/
-Allow: /images/
-Allow: /videos/
-Allow: /*.css
-Allow: /*.js
-Allow: /*.png
-Allow: /*.jpg
-Allow: /*.jpeg
-Allow: /*.gif
-Allow: /*.svg
-Allow: /*.webp
-
-# Block admin and private areas
-Disallow: /admin/
+# Technical and private areas
+Disallow: /admin
+Disallow: /visual-cms-admin
+Disallow: /equipment-admin
+Disallow: /showcase-admin
 Disallow: /api/
-Disallow: /*.json
-Disallow: /private/
-Disallow: /temp/
-Disallow: /*?*utm_*
-Disallow: /*?*sessionid*
-Disallow: /*?*sid*
-
-# Block search and form endpoints
-Disallow: /search?
+Disallow: /auth/
 Disallow: /login
-Disallow: /logout
-Disallow: /register
+Disallow: /dashboard
+Disallow: /settings
+Disallow: /subscription-selection
+Disallow: /subscription
+Disallow: /contracts/
+Disallow: /client/
+Disallow: /vendor-dashboard
+Disallow: /academy-dashboard
+Disallow: /academy/
+Disallow: /wiremock
+Disallow: /visual-editor
+Disallow: /oauth
 
-# XML Sitemap location
-Sitemap: https://creatorhubn.no/sitemap.xml
-
-# Crawl delay for respectful crawling
-Crawl-delay: 1
+Sitemap: https://creatorhubn.com/sitemap.xml

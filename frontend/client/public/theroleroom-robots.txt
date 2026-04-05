@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+Allow: /talentportal
+Allow: /utdanningsinstitusjon
+
+Disallow: /api/
+Disallow: /admin
+Disallow: /activate
+Disallow: /login
+
+Sitemap: https://theroleroom.com/sitemap.xml

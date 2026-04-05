@@ -331,7 +331,7 @@ const TermsAndConditions: React.FC = () => {
                 <Cancel sx={{ color: '#f44336', mr: 2 }} />
                 <ListItemText
                   primary="5.3 Refusjonspolicy"
-                  secondary="I henhold til norsk angrerett har du 14 dagers angrerett fra kjøpsdato. Refusjon gis ikke for allerede brukte perioder. Kontakt support@creatorhubn.no for refusjon."
+                  secondary="I henhold til norsk angrerett har du 14 dagers angrerett fra kjøpsdato. Refusjon gis ikke for allerede brukte perioder. Kontakt kontakt@creatorhubn.com for refusjon."
                 />
               </ListItem>
               <ListItem>
@@ -524,7 +524,7 @@ const TermsAndConditions: React.FC = () => {
             <Paper sx={{ p: 3, backgroundColor: '#e8f5e9', border: '1px solid #4caf50' }}>
               <Typography variant="body2" sx={{ color: '#374151' }}>
                 Vi tar personvern på alvor og overholder alle krav i GDPR. Du har rett til innsyn, retting, sletting
-                og portabilitet av dine data. Kontakt personvern@creatorhubn.no for å utøve dine rettigheter.
+                og portabilitet av dine data. Kontakt kontakt@creatorhubn.com for å utøve dine rettigheter.
               </Typography>
             </Paper>
           </Box>
@@ -714,4 +714,3 @@ const TermsAndConditions: React.FC = () => {
 };
 
 export default TermsAndConditions;
-

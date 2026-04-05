@@ -191,8 +191,8 @@ const DataDeletion: React.FC = () => {
             <Paper sx={{ p: 3, backgroundColor: '#fff', border: '1px solid #d97706' }}>
               <Typography variant="body2" sx={{ mb: 1 }}>
                 <strong>E-postadresse:</strong>{' '}
-                <Link href="mailto:personvern@creatorhubn.no" sx={{ color: '#ff8c00' }}>
-                  personvern@creatorhubn.no
+                <Link href="mailto:kontakt@creatorhubn.com" sx={{ color: '#ff8c00' }}>
+                  kontakt@creatorhubn.com
                 </Link>
               </Typography>
               <Typography variant="body2" sx={{ mb: 1 }}>
@@ -364,8 +364,8 @@ const DataDeletion: React.FC = () => {
               </Typography>
               <Typography variant="body2" sx={{ color: '#374151', mb: 1 }}>
                 <strong>E-post:</strong>{', '}
-                <Link href="mailto:personvern@creatorhubn.no" sx={{ color: '#ff8c00' }}>
-                  personvern@creatorhubn.no
+                <Link href="mailto:kontakt@creatorhubn.com" sx={{ color: '#ff8c00' }}>
+                  kontakt@creatorhubn.com
                 </Link>
               </Typography>
               <Typography variant="body2" sx={{ color: '#374151', mb: 1 }}>
