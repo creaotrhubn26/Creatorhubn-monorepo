@@ -159,6 +159,13 @@ export default function RoleRoomAgentDialog({
     }
     return `${result.businessSignals.rating.toFixed(1)} stjerner · ${result.businessSignals.userRatingCount} anmeldelser`;
   }, [result]);
+  const retrievalLabel = useMemo(() => {
+    if (!result?.retrievalMeta) {
+      return null;
+    }
+    const meta = result.retrievalMeta;
+    return `${meta.websitePagesSelected}/${meta.websitePagesReviewed} sider · ${meta.reviewsSelected}/${meta.reviewsReviewed} reviews`;
+  }, [result]);
 
   return (
     <Dialog
@@ -243,6 +250,16 @@ export default function RoleRoomAgentDialog({
               Google Places enrichment er aktiv. Agenten kan bruke rating, anmeldelser, adresse og stedssignaler i brief og story logikk.
             </Alert>
           ) : null}
+          {access && !access.cohereConfigured ? (
+            <Alert severity="info">
+              Cohere retrieval/rerank er ikke konfigurert ennå. Agenten fungerer fortsatt, men velger ikke automatisk de mest relevante nettsidene og reviews før <strong>COHERE_API_KEY</strong> er satt.
+            </Alert>
+          ) : null}
+          {access?.cohereConfigured ? (
+            <Alert severity="success">
+              Cohere retrieval/rerank er aktiv med <strong>{access.cohereRerankModel || 'rerank-v3.5'}</strong>. Agenten bruker dette til å velge de mest relevante nettsidene og anmeldelsene før OpenAI genererer forslag.
+            </Alert>
+          ) : null}
 
           <Box
             sx={{
@@ -310,9 +327,14 @@ export default function RoleRoomAgentDialog({
                   <Stack spacing={0.9}>
                     <Stack direction="row" spacing={0.9} alignItems="center" justifyContent="space-between">
                       <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>Kundeprofil</Typography>
-                      {providerLabel ? (
-                        <Chip label={providerLabel} size="small" sx={{ bgcolor: 'rgba(34,211,238,0.12)', color: '#a5f3fc' }} />
-                      ) : null}
+                      <Stack direction="row" spacing={0.8} flexWrap="wrap" useFlexGap justifyContent="flex-end">
+                        {providerLabel ? (
+                          <Chip label={providerLabel} size="small" sx={{ bgcolor: 'rgba(34,211,238,0.12)', color: '#a5f3fc' }} />
+                        ) : null}
+                        {retrievalLabel ? (
+                          <Chip label={retrievalLabel} size="small" sx={{ bgcolor: 'rgba(16,185,129,0.12)', color: '#a7f3d0' }} />
+                        ) : null}
+                      </Stack>
                     </Stack>
                     <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '1.02rem' }}>
                       {result.companyProfile.companyName}

@@ -1,3 +1,6 @@
+import { load } from "cheerio";
+import { CohereClientV2 } from "cohere-ai";
+
 type RoleRoomAgentProducerBootstrapInput = {
   projectId: string;
   projectName?: string;
@@ -14,6 +17,15 @@ type RoleRoomAgentWebsiteInsights = {
   metaDescription?: string | null;
   textSnippet?: string | null;
   probableLogoUrl?: string | null;
+  selectedPageSnippets: RoleRoomAgentWebsitePageSnippet[];
+};
+
+type RoleRoomAgentWebsitePageSnippet = {
+  url: string;
+  title?: string | null;
+  snippet: string;
+  sourceLabel?: string | null;
+  relevanceScore?: number | null;
 };
 
 type RoleRoomAgentBrandColor = {
@@ -54,11 +66,27 @@ type RoleRoomAgentBusinessSignals = {
   serviceSignals: string[];
 };
 
+type RoleRoomAgentRetrievalMeta = {
+  cohereRerankUsed: boolean;
+  rerankerModel?: string;
+  websitePagesReviewed: number;
+  websitePagesSelected: number;
+  reviewsReviewed: number;
+  reviewsSelected: number;
+};
+
+type RoleRoomAgentRerankResult<T> = {
+  items: Array<T & { relevanceScore?: number | null }>;
+  used: boolean;
+  model?: string;
+};
+
 type RoleRoomAgentNormalizedPayload = {
   generatedAt: string;
   provider: "openai" | "fallback";
   model: string;
   businessSignals?: RoleRoomAgentBusinessSignals | null;
+  retrievalMeta?: RoleRoomAgentRetrievalMeta;
   companyProfile: {
     companyName: string;
     websiteUrl?: string | null;
@@ -95,6 +123,10 @@ type RoleRoomAgentNormalizedPayload = {
 
 export const DEFAULT_ROLE_ROOM_AGENT_MODEL =
   process.env.ROLE_ROOM_AGENT_MODEL || "gpt-5.4-mini";
+export const DEFAULT_ROLE_ROOM_AGENT_COHERE_RERANK_MODEL =
+  process.env.ROLE_ROOM_AGENT_COHERE_RERANK_MODEL || "rerank-v3.5";
+
+let cachedCohereClient: CohereClientV2 | null | undefined;
 
 export function getRoleRoomAgentRuntimeConfig() {
   return {
@@ -102,6 +134,8 @@ export function getRoleRoomAgentRuntimeConfig() {
     providerConfigured: hasText(process.env.OPENAI_API_KEY),
     defaultModel: DEFAULT_ROLE_ROOM_AGENT_MODEL,
     googlePlacesConfigured: hasText(process.env.GOOGLE_PLACES_API_KEY),
+    cohereConfigured: hasText(process.env.COHERE_API_KEY),
+    cohereRerankModel: DEFAULT_ROLE_ROOM_AGENT_COHERE_RERANK_MODEL,
   };
 }
 
@@ -110,6 +144,22 @@ const hasText = (value: unknown): value is string =>
 
 const normalizeWhitespace = (value: string): string =>
   value.replace(/\s+/g, " ").trim();
+
+function getCohereClient(): CohereClientV2 | null {
+  const token = process.env.COHERE_API_KEY;
+  if (!hasText(token)) {
+    return null;
+  }
+
+  if (cachedCohereClient === undefined) {
+    cachedCohereClient = new CohereClientV2({
+      token,
+      clientName: "creatorhub-role-room-agent",
+    });
+  }
+
+  return cachedCohereClient;
+}
 
 const toSentenceCase = (value: string): string => {
   const normalized = normalizeWhitespace(value);
@@ -306,6 +356,115 @@ function extractTextSnippet(html: string): string {
   return normalizeWhitespace(decodeHtmlEntities(stripped)).slice(0, 1800);
 }
 
+function isLikelyHtmlPath(pathname: string): boolean {
+  return !/\.(pdf|jpg|jpeg|png|gif|svg|webp|mp4|mov|zip|xml|json)$/i.test(pathname);
+}
+
+function scoreWebsiteLink(url: URL, label: string): number {
+  const normalizedLabel = normalizeWhitespace(label).toLowerCase();
+  const haystack = `${url.pathname} ${normalizedLabel}`.toLowerCase();
+  let score = 0;
+
+  if (url.pathname === "/" || url.pathname.length === 0) {
+    score += 100;
+  }
+  if (/(om-oss|about|kontakt|contact)/.test(haystack)) {
+    score += 40;
+  }
+  if (/(meny|menu|bestill|order|levering|takeaway)/.test(haystack)) {
+    score += 55;
+  }
+  if (/(tjenester|services|produkt|products|shop)/.test(haystack)) {
+    score += 35;
+  }
+  if (/(lokasjon|location|find-us|address)/.test(haystack)) {
+    score += 25;
+  }
+  if (/(blogg|blog|nyhet|news|artikkel)/.test(haystack)) {
+    score -= 12;
+  }
+
+  return score + Math.min(Math.round(normalizedLabel.length / 12), 8);
+}
+
+function buildWebsiteRerankQuery(input: RoleRoomAgentProducerBootstrapInput): string {
+  const companyName = hasText(input.companyName) ? normalizeWhitespace(input.companyName) : "kunden";
+  return normalizeWhitespace(
+    [
+      `Finn nettsider som best beskriver ${companyName}.`,
+      "Prioriter informasjon som hjelper en innholdsprodusent med brief, story logikk, målgruppe, tilbud, meny/tjenester, lokasjon, brand, CTA og leveranser.",
+      hasText(input.extraContext) ? `Ekstra kontekst: ${normalizeWhitespace(input.extraContext)}` : "",
+    ]
+      .filter(Boolean)
+      .join(" "),
+  );
+}
+
+function buildReviewRerankQuery(input: RoleRoomAgentProducerBootstrapInput): string {
+  const companyName = hasText(input.companyName) ? normalizeWhitespace(input.companyName) : "kunden";
+  return normalizeWhitespace(
+    `Velg anmeldelsene som er mest nyttige som bevispunkter, produktstyrker, servicefordeler, stemning og CTA-grunnlag for brief og story logikk for ${companyName}.`,
+  );
+}
+
+async function rerankWithCohere<T extends { snippet: string }>(
+  query: string,
+  entries: T[],
+  topN: number,
+  renderDocument: (entry: T) => string,
+): Promise<RoleRoomAgentRerankResult<T>> {
+  const client = getCohereClient();
+  if (!client || entries.length === 0) {
+    return {
+      items: entries.slice(0, topN).map((entry) => ({ ...entry, relevanceScore: null })),
+      used: false,
+      model: DEFAULT_ROLE_ROOM_AGENT_COHERE_RERANK_MODEL,
+    };
+  }
+
+  try {
+    const response = await client.rerank({
+      model: DEFAULT_ROLE_ROOM_AGENT_COHERE_RERANK_MODEL,
+      query,
+      topN: Math.min(topN, entries.length),
+      documents: entries.map((entry) => renderDocument(entry).slice(0, 3500)),
+    });
+
+    const results = Array.isArray(response.results) ? response.results : [];
+    const ranked = results
+      .map((result) => {
+        const entry = entries[result.index];
+        if (!entry) {
+          return null;
+        }
+        return {
+          ...entry,
+          relevanceScore:
+            typeof result.relevanceScore === "number" && Number.isFinite(result.relevanceScore)
+              ? Number(result.relevanceScore.toFixed(4))
+              : null,
+        };
+      })
+      .filter((entry): entry is T & { relevanceScore?: number | null } => entry !== null);
+
+    if (ranked.length > 0) {
+      return {
+        items: ranked,
+        used: true,
+        model: DEFAULT_ROLE_ROOM_AGENT_COHERE_RERANK_MODEL,
+      };
+    }
+  } catch {
+    // Fall through to heuristic order.
+  }
+
+  return {
+    items: entries.slice(0, topN).map((entry) => ({ ...entry, relevanceScore: null })),
+    used: false,
+    model: DEFAULT_ROLE_ROOM_AGENT_COHERE_RERANK_MODEL,
+  };
+}
+
 function extractProbableLogoUrl(html: string, websiteUrl: string): string | null {
   const linkMatch = html.match(
     /<link[^>]+rel=["'][^"']*(?:apple-touch-icon|icon|shortcut icon)[^"']*["'][^>]+href=["']([^"']+)["']/i,
@@ -444,9 +603,10 @@ function deriveToneFromClassification(
 
 async function fetchWebsiteInsights(
   websiteUrl: string | null,
+  input: RoleRoomAgentProducerBootstrapInput,
 ): Promise<RoleRoomAgentWebsiteInsights> {
   if (!websiteUrl) {
-    return {};
+    return { selectedPageSnippets: [] };
   }
 
   try {
@@ -459,20 +619,129 @@ async function fetchWebsiteInsights(
     });
 
     if (!response.ok) {
-      return { finalUrl: websiteUrl };
+      return { finalUrl: websiteUrl, selectedPageSnippets: [] };
     }
 
     const html = await response.text();
+    const finalUrl = response.url || websiteUrl;
+    const parsedBase = new URL(finalUrl);
+    const $ = load(html);
+    const discoveredLinks = Array.from(
+      new Map(
+        $("a[href]")
+          .toArray()
+          .map((element) => {
+            const href = $(element).attr("href");
+            const label = normalizeWhitespace($(element).text() || "");
+            if (!hasText(href)) {
+              return null;
+            }
+            const resolved = resolveUrl(finalUrl, href);
+            if (!resolved) {
+              return null;
+            }
+            try {
+              const url = new URL(resolved);
+              if (url.hostname !== parsedBase.hostname) {
+                return null;
+              }
+              if (!isLikelyHtmlPath(url.pathname)) {
+                return null;
+              }
+              url.hash = "";
+              const normalized = url.toString();
+              return [
+                normalized,
+                {
+                  url: normalized,
+                  sourceLabel: label || null,
+                  priority: scoreWebsiteLink(url, label),
+                },
+              ] as const;
+            } catch {
+              return null;
+            }
+          })
+          .filter((entry): entry is readonly [string, { url: string; sourceLabel: string | null; priority: number }] => entry !== null),
+      ).values(),
+    )
+      .sort((left, right) => right.priority - left.priority)
+      .slice(0, 6);
+
+    const pageCandidates: RoleRoomAgentWebsitePageSnippet[] = [
+      {
+        url: finalUrl,
+        title: extractTitle(html),
+        snippet: extractTextSnippet(html),
+        sourceLabel: "Forside",
+        relevanceScore: null,
+      },
+    ];
+
+    for (const link of discoveredLinks) {
+      if (link.url === finalUrl) {
+        continue;
+      }
+      try {
+        const pageResponse = await fetch(link.url, {
+          headers: {
+            "User-Agent": "CreatorHub Role Room Agent/1.0 (+https://theroleroom.com)",
+            Accept: "text/html,application/xhtml+xml",
+          },
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (!pageResponse.ok) {
+          continue;
+        }
+        const pageHtml = await pageResponse.text();
+        const snippet = extractTextSnippet(pageHtml);
+        if (!snippet) {
+          continue;
+        }
+        pageCandidates.push({
+          url: pageResponse.url || link.url,
+          title: extractTitle(pageHtml),
+          snippet,
+          sourceLabel: link.sourceLabel,
+          relevanceScore: null,
+        });
+      } catch {
+        continue;
+      }
+    }
+
+    const rerankedPages = await rerankWithCohere(
+      buildWebsiteRerankQuery(input),
+      pageCandidates,
+      4,
+      (entry) =>
+        normalizeWhitespace(
+          [
+            entry.title || "",
+            entry.sourceLabel || "",
+            entry.url,
+            entry.snippet,
+          ]
+            .filter(Boolean)
+            .join(" \n "),
+        ),
+    );
+    const selectedPageSnippets = rerankedPages.items;
+    const mergedSnippet = normalizeWhitespace(
+      selectedPageSnippets.map((entry) => entry.snippet).join(" "),
+    ).slice(0, 3600);
+
     return {
-      finalUrl: response.url || websiteUrl,
+      finalUrl,
       pageTitle: extractTitle(html),
       siteName: extractMetaContent(html, "og:site_name"),
       metaDescription: extractMetaContent(html, "description") || extractMetaContent(html, "og:description"),
-      textSnippet: extractTextSnippet(html),
-      probableLogoUrl: extractProbableLogoUrl(html, response.url || websiteUrl),
+      textSnippet: mergedSnippet || extractTextSnippet(html),
+      probableLogoUrl: extractProbableLogoUrl(html, finalUrl),
+      selectedPageSnippets,
     };
   } catch {
-    return { finalUrl: websiteUrl };
+    return { finalUrl: websiteUrl, selectedPageSnippets: [] };
   }
 }
 
@@ -603,7 +872,7 @@ async function fetchGooglePlacesBusinessSignals(
       : {};
   const reviews = Array.isArray(placeRecord.reviews) ? placeRecord.reviews : [];
 
-  const topReviews: RoleRoomAgentReviewQuote[] = reviews
+  const reviewCandidates: RoleRoomAgentReviewQuote[] = reviews
     .map((review) => {
       if (!review || typeof review !== "object" || Array.isArray(review)) {
         return null;
@@ -633,8 +902,18 @@ async function fetchGooglePlacesBusinessSignals(
         googleMapsUri: hasText(reviewRecord.googleMapsUri) ? normalizeWhitespace(reviewRecord.googleMapsUri) : null,
       };
     })
-    .filter((entry): entry is RoleRoomAgentReviewQuote => entry !== null)
-    .slice(0, 3);
+    .filter((entry): entry is RoleRoomAgentReviewQuote => entry !== null);
+
+  const rerankedReviews = await rerankWithCohere(
+    buildReviewRerankQuery(input),
+    reviewCandidates.map((entry) => ({
+      ...entry,
+      snippet: entry.text,
+    })),
+    3,
+    (entry) => normalizeWhitespace([entry.author || "", entry.text, entry.relativeTime || ""].join(" ")),
+  );
+  const topReviews: RoleRoomAgentReviewQuote[] = rerankedReviews.items.map(({ snippet: _snippet, ...entry }) => entry);
 
   const serviceSignals = [
     placeRecord.delivery === true ? "Tilbyr levering" : null,
@@ -709,6 +988,19 @@ function buildFallbackBootstrap(
     provider: "fallback",
     model: "fallback-rule-engine",
     businessSignals,
+    retrievalMeta: {
+      cohereRerankUsed:
+        hasText(process.env.COHERE_API_KEY) &&
+        (websiteInsights.selectedPageSnippets.some((entry) => typeof entry.relevanceScore === "number") ||
+          businessSignals?.topReviews.some((entry) => entry.rating !== null) === true),
+      rerankerModel: hasText(process.env.COHERE_API_KEY)
+        ? DEFAULT_ROLE_ROOM_AGENT_COHERE_RERANK_MODEL
+        : undefined,
+      websitePagesReviewed: websiteInsights.selectedPageSnippets.length,
+      websitePagesSelected: websiteInsights.selectedPageSnippets.length,
+      reviewsReviewed: businessSignals?.topReviews.length || 0,
+      reviewsSelected: businessSignals?.topReviews.length || 0,
+    },
     companyProfile: {
       companyName,
       websiteUrl,
@@ -900,6 +1192,7 @@ async function requestOpenAiBootstrap(
   input: RoleRoomAgentProducerBootstrapInput,
   websiteInsights: RoleRoomAgentWebsiteInsights,
   businessSignals: RoleRoomAgentBusinessSignals | null,
+  retrievalMeta: RoleRoomAgentRetrievalMeta | null,
 ): Promise<unknown | null> {
   const runtimeConfig = getRoleRoomAgentRuntimeConfig();
   if (!runtimeConfig.providerConfigured) {
@@ -974,6 +1267,7 @@ async function requestOpenAiBootstrap(
           input,
           websiteInsights,
           businessSignals,
+          retrievalMeta,
         }),
       },
     ],
@@ -1055,6 +1349,7 @@ function normalizeBootstrapPayload(
     provider: "openai",
     model: getRoleRoomAgentRuntimeConfig().defaultModel,
     businessSignals,
+    retrievalMeta: fallback.retrievalMeta,
     companyProfile: {
       companyName: hasText(companyProfile.companyName)
         ? normalizeWhitespace(companyProfile.companyName)
@@ -1193,7 +1488,7 @@ export async function generateRoleRoomAgentProducerBootstrap(
   input: RoleRoomAgentProducerBootstrapInput,
 ): Promise<RoleRoomAgentNormalizedPayload> {
   const websiteUrl = normalizeWebsiteUrl(input.websiteUrl);
-  const websiteInsights = await fetchWebsiteInsights(websiteUrl);
+  const websiteInsights = await fetchWebsiteInsights(websiteUrl, input);
   const businessSignals = await fetchGooglePlacesBusinessSignals(input, websiteInsights);
   const fallback = buildFallbackBootstrap(
     {
@@ -1203,7 +1498,12 @@ export async function generateRoleRoomAgentProducerBootstrap(
     websiteInsights,
     businessSignals,
   );
-  const openAiPayload = await requestOpenAiBootstrap(input, websiteInsights, businessSignals);
+  const openAiPayload = await requestOpenAiBootstrap(
+    input,
+    websiteInsights,
+    businessSignals,
+    fallback.retrievalMeta ?? null,
+  );
   if (!openAiPayload) {
     return fallback;
   }

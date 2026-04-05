@@ -28148,6 +28148,8 @@ app.get("/api/role-room/agent/access", (req, res) => {
     providerConfigured: runtimeConfig.providerConfigured,
     defaultModel: runtimeConfig.defaultModel,
     googlePlacesConfigured: runtimeConfig.googlePlacesConfigured,
+    cohereConfigured: runtimeConfig.cohereConfigured,
+    cohereRerankModel: runtimeConfig.cohereRerankModel,
   });
 });
 

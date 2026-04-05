@@ -15,6 +15,8 @@ export interface RoleRoomAgentAccess {
   providerConfigured?: boolean;
   defaultModel?: string;
   googlePlacesConfigured?: boolean;
+  cohereConfigured?: boolean;
+  cohereRerankModel?: string;
 }
 
 export interface RoleRoomAgentBrandColor {
@@ -51,6 +53,14 @@ export interface RoleRoomAgentProducerBootstrapResult {
   provider: 'openai' | 'fallback';
   model: string;
   businessSignals?: RoleRoomAgentBusinessSignals | null;
+  retrievalMeta?: {
+    cohereRerankUsed: boolean;
+    rerankerModel?: string;
+    websitePagesReviewed: number;
+    websitePagesSelected: number;
+    reviewsReviewed: number;
+    reviewsSelected: number;
+  };
   companyProfile: {
     companyName: string;
     websiteUrl?: string | null;
