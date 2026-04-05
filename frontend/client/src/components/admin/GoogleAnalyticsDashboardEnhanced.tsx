@@ -24,6 +24,7 @@ import {
   BookOnlineRounded,
   CheckCircleOutlineRounded,
   MailOutlineRounded,
+  OpenInNewRounded,
   PersonAddAlt1Rounded,
   PublicRounded,
   RefreshRounded,
@@ -144,14 +145,22 @@ const metricOptions: Array<{ key: AnalyticsMetricKey; label: string }> = [
   { key: 'activeCreators', label: 'Aktive brukere' },
 ];
 
-const surfaceBorder = '1px solid rgba(18, 18, 18, 0.08)';
-const surfaceShadow = '0 20px 48px rgba(22, 18, 16, 0.06)';
-const accent = '#ff6b30';
-const accentSoft = 'rgba(255, 107, 48, 0.12)';
-const ink = '#181512';
-const mutedInk = '#6c625b';
-const success = '#2f8f4f';
-const danger = '#c2572d';
+const shellBackground =
+  'radial-gradient(circle at top right, rgba(255, 138, 61, 0.18) 0%, rgba(255, 138, 61, 0) 34%), linear-gradient(180deg, #171311 0%, #120f0d 100%)';
+const surfaceBorder = '1px solid rgba(255, 166, 94, 0.16)';
+const surfaceShadow = '0 24px 60px rgba(0, 0, 0, 0.28)';
+const surfaceInset = 'inset 0 1px 0 rgba(255,255,255,0.04)';
+const accent = '#ff8a3d';
+const accentStrong = '#ff6b30';
+const accentSoft = 'rgba(255, 138, 61, 0.14)';
+const ink = '#fff6ed';
+const mutedInk = 'rgba(255, 239, 224, 0.72)';
+const success = '#61c976';
+const danger = '#ff735c';
+const chartGrid = 'rgba(255, 226, 198, 0.08)';
+const surface = 'rgba(255,255,255,0.05)';
+const surfaceElevated = 'rgba(255,255,255,0.07)';
+const tableRow = 'rgba(255,255,255,0.035)';
 
 function formatNumber(value: number): string {
   return value.toLocaleString('nb-NO');
@@ -239,8 +248,9 @@ function PlaceholderTable({
       sx={{
         borderRadius: '24px',
         border: surfaceBorder,
-        background: 'rgba(255,255,255,0.82)',
+        background: surface,
         boxShadow: surfaceShadow,
+        backdropFilter: 'blur(16px)',
         p: 3,
         minHeight: 260,
       }}
@@ -335,14 +345,6 @@ export default function GoogleAnalyticsDashboardEnhanced({
               helper: 'Innlogging eller aktivitet i perioden',
             },
             {
-              key: 'totalEvents',
-              label: 'Hendelser',
-              icon: <AnalyticsOutlined sx={{ color: accent }} />,
-              metric: overviewData.summary.totalEvents,
-              kind: 'number' as const,
-              helper: 'Alle registrerte CreatorHub-events',
-            },
-            {
               key: 'pageViews',
               label: 'Sidevisninger',
               icon: <VisibilityRounded sx={{ color: accent }} />,
@@ -357,6 +359,14 @@ export default function GoogleAnalyticsDashboardEnhanced({
               metric: overviewData.summary.bookings,
               kind: 'number' as const,
               helper: 'booking_created',
+            },
+            {
+              key: 'totalEvents',
+              label: 'Hendelser',
+              icon: <AnalyticsOutlined sx={{ color: accent }} />,
+              metric: overviewData.summary.totalEvents,
+              kind: 'number' as const,
+              helper: 'Alle registrerte CreatorHub-events',
             },
             {
               key: 'invitationsSent',
@@ -394,9 +404,16 @@ export default function GoogleAnalyticsDashboardEnhanced({
     () => overviewData?.topPages.slice(0, 5) ?? [],
     [overviewData],
   );
+  const primaryMetricCards = useMemo(() => metricCards.slice(0, 4), [metricCards]);
+  const secondaryMetricCards = useMemo(() => metricCards.slice(4), [metricCards]);
 
   const handleRefresh = () => {
     void Promise.all([refetchOverview(), refetchTimeseries()]);
+  };
+
+  const openGa4 = () => {
+    if (typeof window === 'undefined') return;
+    window.open('https://analytics.google.com/analytics/web/', '_blank', 'noopener,noreferrer');
   };
 
   return (
@@ -405,9 +422,8 @@ export default function GoogleAnalyticsDashboardEnhanced({
         position: 'relative',
         borderRadius: '32px',
         border: `1px solid ${alpha(accent, 0.16)}`,
-        background:
-          'linear-gradient(180deg, rgba(255,252,247,0.98) 0%, rgba(255,246,236,0.98) 100%)',
-        boxShadow: '0 28px 68px rgba(18, 18, 18, 0.08)',
+        background: shellBackground,
+        boxShadow: '0 32px 80px rgba(0, 0, 0, 0.34)',
         p: { xs: 2.5, md: 4 },
         overflow: 'hidden',
       }}
@@ -438,26 +454,39 @@ export default function GoogleAnalyticsDashboardEnhanced({
             <Typography
               variant="h4"
               sx={{
-                fontWeight: 800,
+                fontSize: { xs: '2.75rem', md: '4.75rem' },
+                lineHeight: 0.94,
+                fontWeight: 900,
                 color: ink,
                 letterSpacing: '-0.03em',
-                mb: 1,
+                mb: 1.25,
+                whiteSpace: 'pre-line',
               }}
             >
-              CreatorHub Analytics
+              {'Analytics\nDashboard'}
             </Typography>
+            <Chip
+              label="CreatorHub live-data"
+              sx={{
+                borderRadius: '999px',
+                bgcolor: accentSoft,
+                color: accent,
+                fontWeight: 800,
+                mb: 1.5,
+                border: `1px solid ${alpha(accent, 0.25)}`,
+              }}
+            />
             <Typography
               variant="body1"
               sx={{
                 color: mutedInk,
-                maxWidth: 620,
-                lineHeight: 1.6,
+                maxWidth: 560,
+                lineHeight: 1.7,
               }}
             >
-              Operativ oversikt basert p&aring; ekte CreatorHub-aktivitet fra
-              bruker- og eventtabellene. Flaten viser hva som faktisk har
-              skjedd, og sier tydelig fra n&aring;r datagrunnlaget er eldre enn
-              det valgte tidsrommet.
+              Operativ flate bygget p&aring; ekte CreatorHub-aktivitet fra bruker-
+              og eventtabellene. Tallene er ikke hardkodet, og flaten markerer
+              tydelig n&aring;r datagrunnlaget er ferskt eller trenger oppf&oslash;lging.
             </Typography>
           </Box>
 
@@ -474,8 +503,8 @@ export default function GoogleAnalyticsDashboardEnhanced({
                 p: 0.75,
                 borderRadius: '18px',
                 border: surfaceBorder,
-                backgroundColor: 'rgba(255,255,255,0.8)',
-                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.7)',
+                backgroundColor: surface,
+                boxShadow: surfaceInset,
               }}
             >
               {rangeOptions.map((option) => {
@@ -490,13 +519,18 @@ export default function GoogleAnalyticsDashboardEnhanced({
                       px: 2,
                       py: 1,
                       borderRadius: '14px',
-                      color: active ? '#fff' : ink,
-                      backgroundColor: active ? accent : 'transparent',
+                      color: active ? '#14110f' : ink,
+                      background: active
+                        ? `linear-gradient(135deg, ${accentStrong} 0%, ${accent} 100%)`
+                        : 'transparent',
                       fontWeight: 700,
                       textTransform: 'none',
+                      boxShadow: active
+                        ? '0 14px 30px rgba(255, 107, 48, 0.24)'
+                        : 'none',
                       '&:hover': {
                         backgroundColor: active
-                          ? '#f05c22'
+                          ? accentStrong
                           : alpha(accent, 0.08),
                       },
                     }}
@@ -519,7 +553,7 @@ export default function GoogleAnalyticsDashboardEnhanced({
                 px: 2.25,
                 textTransform: 'none',
                 fontWeight: 700,
-                backgroundColor: 'rgba(255,255,255,0.7)',
+                backgroundColor: surface,
                 '&:hover': {
                   borderColor: accent,
                   backgroundColor: alpha(accent, 0.06),
@@ -527,6 +561,26 @@ export default function GoogleAnalyticsDashboardEnhanced({
               }}
             >
               Oppdater
+            </Button>
+            <Button
+              variant="contained"
+              onClick={openGa4}
+              endIcon={<OpenInNewRounded />}
+              sx={{
+                alignSelf: 'stretch',
+                borderRadius: '18px',
+                px: 2.25,
+                textTransform: 'none',
+                fontWeight: 800,
+                color: '#171311',
+                background: `linear-gradient(135deg, ${accentStrong} 0%, ${accent} 100%)`,
+                boxShadow: '0 16px 36px rgba(255, 107, 48, 0.28)',
+                '&:hover': {
+                  background: `linear-gradient(135deg, ${accentStrong} 0%, ${accentStrong} 100%)`,
+                },
+              }}
+            >
+              Open in GA4
             </Button>
           </Stack>
         </Stack>
@@ -544,8 +598,9 @@ export default function GoogleAnalyticsDashboardEnhanced({
           sx={{
             borderRadius: '999px',
             bgcolor: accentSoft,
-            color: ink,
+            color: accent,
             fontWeight: 700,
+            border: `1px solid ${alpha(accent, 0.24)}`,
           }}
         />
         <Chip
@@ -557,7 +612,7 @@ export default function GoogleAnalyticsDashboardEnhanced({
           }
           sx={{
             borderRadius: '999px',
-            bgcolor: 'rgba(255,255,255,0.76)',
+            bgcolor: surface,
             color: ink,
             border: surfaceBorder,
             fontWeight: 600,
@@ -576,6 +631,7 @@ export default function GoogleAnalyticsDashboardEnhanced({
               bgcolor: alpha(danger, 0.1),
               color: danger,
               fontWeight: 700,
+              border: `1px solid ${alpha(danger, 0.28)}`,
             }}
           />
         ) : null}
@@ -617,23 +673,262 @@ export default function GoogleAnalyticsDashboardEnhanced({
       {overviewData ? (
         <>
           <Grid container spacing={2} sx={{ mb: 2 }}>
-            {metricCards.map((item) => {
+            <Grid size={{ xs: 12, lg: 5 }}>
+              <Grid container spacing={2}>
+                {primaryMetricCards.map((item) => {
+                  const trend = getTrendTone(item.metric.change);
+                  return (
+                    <Grid key={item.key} size={{ xs: 12, sm: 6 }}>
+                      <Box
+                        sx={{
+                          height: '100%',
+                          minHeight: 210,
+                          borderRadius: '28px',
+                          border: surfaceBorder,
+                          background:
+                            'linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.04) 100%)',
+                          boxShadow: surfaceShadow,
+                          backdropFilter: 'blur(18px)',
+                          p: 2.5,
+                          transition:
+                            'transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease',
+                          '&:hover': {
+                            transform: 'translateY(-2px)',
+                            boxShadow: '0 26px 56px rgba(0,0,0,0.34)',
+                            borderColor: alpha(accent, 0.28),
+                          },
+                        }}
+                      >
+                        <Stack direction="row" justifyContent="space-between" spacing={2}>
+                          <Box
+                            sx={{
+                              width: 46,
+                              height: 46,
+                              borderRadius: '16px',
+                              bgcolor: accentSoft,
+                              display: 'grid',
+                              placeItems: 'center',
+                              flexShrink: 0,
+                              border: `1px solid ${alpha(accent, 0.18)}`,
+                            }}
+                          >
+                            {item.icon}
+                          </Box>
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              color: accent,
+                              fontWeight: 700,
+                              textAlign: 'right',
+                              maxWidth: 150,
+                            }}
+                          >
+                            {item.label}
+                          </Typography>
+                        </Stack>
+
+                        <Typography
+                          variant="h2"
+                          sx={{
+                            color: ink,
+                            fontWeight: 900,
+                            letterSpacing: '-0.05em',
+                            lineHeight: 0.94,
+                            mt: 3,
+                            mb: 2,
+                          }}
+                        >
+                          {formatMetric(item.metric.current, item.kind)}
+                        </Typography>
+
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            color: trend.color,
+                            fontWeight: 800,
+                            mb: 0.75,
+                          }}
+                        >
+                          {trend.prefix}
+                          {formatPercent(item.metric.change)}
+                        </Typography>
+
+                        <Typography
+                          variant="body2"
+                          sx={{ color: mutedInk, maxWidth: 200, lineHeight: 1.75 }}
+                        >
+                          vs forrige periode ({formatMetric(item.metric.previous, item.kind)})
+                        </Typography>
+                      </Box>
+                    </Grid>
+                  );
+                })}
+              </Grid>
+            </Grid>
+
+            <Grid size={{ xs: 12, lg: 7 }}>
+              <Box
+                sx={{
+                  borderRadius: '32px',
+                  border: surfaceBorder,
+                  background:
+                    'linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.04) 100%)',
+                  boxShadow: surfaceShadow,
+                  backdropFilter: 'blur(18px)',
+                  p: 3,
+                  minHeight: 452,
+                  height: '100%',
+                }}
+              >
+                <Stack
+                  direction={{ xs: 'column', md: 'row' }}
+                  spacing={2}
+                  justifyContent="space-between"
+                  alignItems={{ xs: 'flex-start', md: 'center' }}
+                  sx={{ mb: 3 }}
+                >
+                  <Box>
+                    <Typography variant="h4" sx={{ fontWeight: 900, color: ink }}>
+                      {timeseriesData?.label ?? 'Aktivitet'}
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: mutedInk, mt: 0.75 }}>
+                      Trend for {timeseriesData?.label?.toLowerCase() ?? 'valgt metric'} gjennom{' '}
+                      {overviewData.range.label.toLowerCase()}.
+                    </Typography>
+                  </Box>
+
+                  <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                    {metricOptions.map((option) => {
+                      const active = option.key === selectedMetric;
+                      return (
+                        <Button
+                          key={option.key}
+                          onClick={() => setSelectedMetric(option.key)}
+                          variant="text"
+                          sx={{
+                            minWidth: 0,
+                            px: 1.5,
+                            py: 0.9,
+                            borderRadius: '999px',
+                            textTransform: 'none',
+                            fontWeight: 700,
+                            color: active ? '#14110f' : ink,
+                            background: active
+                              ? `linear-gradient(135deg, ${accentStrong} 0%, ${accent} 100%)`
+                              : surface,
+                            border: active ? 'none' : surfaceBorder,
+                            '&:hover': {
+                              backgroundColor: active
+                                ? accentStrong
+                                : alpha(accent, 0.08),
+                            },
+                          }}
+                        >
+                          {option.label}
+                        </Button>
+                      );
+                    })}
+                  </Stack>
+                </Stack>
+
+                {seriesPoints.some((point) => point.value > 0) ? (
+                  <Box sx={{ height: 320 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={seriesPoints}>
+                        <defs>
+                          <linearGradient id="creatorhubAnalyticsArea" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor={accentStrong} stopOpacity={0.45} />
+                            <stop offset="95%" stopColor={accentStrong} stopOpacity={0.04} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid stroke={chartGrid} vertical={false} />
+                        <XAxis
+                          dataKey="date"
+                          tickLine={false}
+                          axisLine={false}
+                          tick={{ fill: '#f4b27d', fontSize: 12 }}
+                          tickFormatter={formatShortDay}
+                        />
+                        <YAxis
+                          tickLine={false}
+                          axisLine={false}
+                          tick={{ fill: '#f4b27d', fontSize: 12 }}
+                          allowDecimals={false}
+                        />
+                        <Tooltip
+                          formatter={(value: number) => [
+                            formatNumber(value),
+                            timeseriesData?.label ?? 'Verdi',
+                          ]}
+                          labelFormatter={(value: string) => formatDate(value)}
+                          contentStyle={{
+                            borderRadius: 18,
+                            border: surfaceBorder,
+                            boxShadow: surfaceShadow,
+                            color: ink,
+                            background: '#181311',
+                          }}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="value"
+                          stroke={accentStrong}
+                          fill="url(#creatorhubAnalyticsArea)"
+                          strokeWidth={3}
+                          activeDot={{ r: 5 }}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </Box>
+                ) : (
+                  <Box
+                    sx={{
+                      height: 320,
+                      borderRadius: '24px',
+                      bgcolor: alpha(accent, 0.05),
+                      display: 'grid',
+                      placeItems: 'center',
+                      textAlign: 'center',
+                      p: 3,
+                    }}
+                  >
+                    <Box>
+                      <Typography variant="h6" sx={{ fontWeight: 700, color: ink, mb: 1 }}>
+                        Ingen aktivitet i valgt periode
+                      </Typography>
+                      <Typography variant="body2" sx={{ color: mutedInk, maxWidth: 420 }}>
+                        Det finnes ingen registrerte verdier for{' '}
+                        {timeseriesData?.label?.toLowerCase() ?? 'dette metricet'} i
+                        {` ${overviewData.range.label.toLowerCase()}`}. Bytt til 90 dager
+                        for lengre historikk eller vent p&aring; nye CreatorHub-events.
+                      </Typography>
+                    </Box>
+                  </Box>
+                )}
+              </Box>
+            </Grid>
+          </Grid>
+
+          <Grid container spacing={2} sx={{ mb: 2 }}>
+            {secondaryMetricCards.map((item) => {
               const trend = getTrendTone(item.metric.change);
               return (
-                <Grid key={item.key} size={{ xs: 12, sm: 6, lg: 3 }}>
+                <Grid key={item.key} size={{ xs: 12, md: 4 }}>
                   <Box
                     sx={{
                       height: '100%',
-                      borderRadius: '24px',
+                      borderRadius: '28px',
                       border: surfaceBorder,
-                      background: 'rgba(255,255,255,0.84)',
+                      background:
+                        'linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.04) 100%)',
                       boxShadow: surfaceShadow,
+                      backdropFilter: 'blur(18px)',
                       p: 2.5,
                       transition:
                         'transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease',
                       '&:hover': {
                         transform: 'translateY(-2px)',
-                        boxShadow: '0 24px 52px rgba(18,18,18,0.08)',
+                        boxShadow: '0 24px 52px rgba(0,0,0,0.34)',
                         borderColor: alpha(accent, 0.26),
                       },
                     }}
@@ -672,6 +967,7 @@ export default function GoogleAnalyticsDashboardEnhanced({
                           display: 'grid',
                           placeItems: 'center',
                           flexShrink: 0,
+                          border: `1px solid ${alpha(accent, 0.18)}`,
                         }}
                       >
                         {item.icon}
@@ -702,148 +998,16 @@ export default function GoogleAnalyticsDashboardEnhanced({
           </Grid>
 
           <Grid container spacing={2} sx={{ mb: 2 }}>
-            <Grid size={{ xs: 12, lg: 8 }}>
-              <Box
-                sx={{
-                  borderRadius: '28px',
-                  border: surfaceBorder,
-                  background: 'rgba(255,255,255,0.86)',
-                  boxShadow: surfaceShadow,
-                  p: 3,
-                  minHeight: 420,
-                }}
-              >
-                <Stack
-                  direction={{ xs: 'column', md: 'row' }}
-                  spacing={2}
-                  justifyContent="space-between"
-                  alignItems={{ xs: 'flex-start', md: 'center' }}
-                  sx={{ mb: 3 }}
-                >
-                  <Box>
-                    <Typography variant="h6" sx={{ fontWeight: 800, color: ink }}>
-                      Aktivitetskurve
-                    </Typography>
-                    <Typography variant="body2" sx={{ color: mutedInk, mt: 0.5 }}>
-                      Velg metric for &aring; se trend gjennom {overviewData.range.label.toLowerCase()}.
-                    </Typography>
-                  </Box>
-
-                  <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-                    {metricOptions.map((option) => {
-                      const active = option.key === selectedMetric;
-                      return (
-                        <Button
-                          key={option.key}
-                          onClick={() => setSelectedMetric(option.key)}
-                          variant="text"
-                          sx={{
-                            minWidth: 0,
-                            px: 1.5,
-                            py: 0.9,
-                            borderRadius: '999px',
-                            textTransform: 'none',
-                            fontWeight: 700,
-                            color: active ? '#fff' : ink,
-                            backgroundColor: active ? ink : alpha('#121212', 0.04),
-                            '&:hover': {
-                              backgroundColor: active
-                                ? '#25211e'
-                                : alpha(accent, 0.08),
-                            },
-                          }}
-                        >
-                          {option.label}
-                        </Button>
-                      );
-                    })}
-                  </Stack>
-                </Stack>
-
-                {seriesPoints.some((point) => point.value > 0) ? (
-                  <Box sx={{ height: 300 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={seriesPoints}>
-                        <defs>
-                          <linearGradient id="creatorhubAnalyticsArea" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor={accent} stopOpacity={0.28} />
-                            <stop offset="95%" stopColor={accent} stopOpacity={0.02} />
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid stroke={alpha('#121212', 0.08)} vertical={false} />
-                        <XAxis
-                          dataKey="date"
-                          tickLine={false}
-                          axisLine={false}
-                          tick={{ fill: mutedInk, fontSize: 12 }}
-                          tickFormatter={formatShortDay}
-                        />
-                        <YAxis
-                          tickLine={false}
-                          axisLine={false}
-                          tick={{ fill: mutedInk, fontSize: 12 }}
-                          allowDecimals={false}
-                        />
-                        <Tooltip
-                          formatter={(value: number) => [
-                            formatNumber(value),
-                            timeseriesData?.label ?? 'Verdi',
-                          ]}
-                          labelFormatter={(value: string) => formatDate(value)}
-                          contentStyle={{
-                            borderRadius: 18,
-                            border: surfaceBorder,
-                            boxShadow: surfaceShadow,
-                            background: 'rgba(255,255,255,0.96)',
-                          }}
-                        />
-                        <Area
-                          type="monotone"
-                          dataKey="value"
-                          stroke={accent}
-                          fill="url(#creatorhubAnalyticsArea)"
-                          strokeWidth={3}
-                          activeDot={{ r: 5 }}
-                        />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </Box>
-                ) : (
-                  <Box
-                    sx={{
-                      height: 300,
-                      borderRadius: '24px',
-                      bgcolor: alpha(accent, 0.05),
-                      display: 'grid',
-                      placeItems: 'center',
-                      textAlign: 'center',
-                      p: 3,
-                    }}
-                  >
-                    <Box>
-                      <Typography variant="h6" sx={{ fontWeight: 700, color: ink, mb: 1 }}>
-                        Ingen aktivitet i valgt periode
-                      </Typography>
-                      <Typography variant="body2" sx={{ color: mutedInk, maxWidth: 420 }}>
-                        Det finnes ingen registrerte verdier for{' '}
-                        {timeseriesData?.label?.toLowerCase() ?? 'dette metricet'} i
-                        {` ${overviewData.range.label.toLowerCase()}`}. Bytt til 90 dager
-                        for lengre historikk eller vent p&aring; nye CreatorHub-events.
-                      </Typography>
-                    </Box>
-                  </Box>
-                )}
-              </Box>
-            </Grid>
-
             <Grid size={{ xs: 12, lg: 4 }}>
               <Box
                 sx={{
                   height: '100%',
                   borderRadius: '28px',
                   border: surfaceBorder,
-                  background: 'rgba(255,255,255,0.86)',
+                  background:
+                    'linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.04) 100%)',
                   boxShadow: surfaceShadow,
+                  backdropFilter: 'blur(18px)',
                   p: 3,
                   display: 'flex',
                   flexDirection: 'column',
@@ -904,7 +1068,7 @@ export default function GoogleAnalyticsDashboardEnhanced({
                             px: 1.5,
                             py: 1.1,
                             borderRadius: '16px',
-                            bgcolor: alpha('#121212', 0.035),
+                            bgcolor: tableRow,
                           }}
                         >
                           <Typography variant="body2" sx={{ color: ink, fontWeight: 600 }}>
@@ -970,8 +1134,9 @@ export default function GoogleAnalyticsDashboardEnhanced({
                   sx={{
                     borderRadius: '24px',
                     border: surfaceBorder,
-                    background: 'rgba(255,255,255,0.82)',
+                    background: surface,
                     boxShadow: surfaceShadow,
+                    backdropFilter: 'blur(16px)',
                     p: 3,
                   }}
                 >
@@ -996,13 +1161,13 @@ export default function GoogleAnalyticsDashboardEnhanced({
                       <TableBody>
                         {eventTypes.map((row) => (
                           <TableRow key={row.eventType}>
-                            <TableCell sx={{ borderColor: alpha('#121212', 0.06), color: ink }}>
+                            <TableCell sx={{ borderColor: chartGrid, color: ink }}>
                               {formatLabel(row.eventType)}
                             </TableCell>
-                            <TableCell sx={{ borderColor: alpha('#121212', 0.06), color: ink, fontWeight: 700 }}>
+                            <TableCell sx={{ borderColor: chartGrid, color: ink, fontWeight: 700 }}>
                               {formatNumber(row.count)}
                             </TableCell>
-                            <TableCell sx={{ borderColor: alpha('#121212', 0.06), color: mutedInk }}>
+                            <TableCell sx={{ borderColor: chartGrid, color: mutedInk }}>
                               {formatPercent(row.share)}
                             </TableCell>
                           </TableRow>
@@ -1025,8 +1190,9 @@ export default function GoogleAnalyticsDashboardEnhanced({
                   sx={{
                     borderRadius: '24px',
                     border: surfaceBorder,
-                    background: 'rgba(255,255,255,0.82)',
+                    background: surface,
                     boxShadow: surfaceShadow,
+                    backdropFilter: 'blur(16px)',
                     p: 3,
                   }}
                 >
@@ -1048,10 +1214,10 @@ export default function GoogleAnalyticsDashboardEnhanced({
                       <TableBody>
                         {topPages.map((row) => (
                           <TableRow key={row.page}>
-                            <TableCell sx={{ borderColor: alpha('#121212', 0.06), color: ink }}>
+                            <TableCell sx={{ borderColor: chartGrid, color: ink }}>
                               {row.page}
                             </TableCell>
-                            <TableCell sx={{ borderColor: alpha('#121212', 0.06), color: ink, fontWeight: 700 }}>
+                            <TableCell sx={{ borderColor: chartGrid, color: ink, fontWeight: 700 }}>
                               {formatNumber(row.count)}
                             </TableCell>
                           </TableRow>
