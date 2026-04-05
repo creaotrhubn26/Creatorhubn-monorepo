@@ -373,6 +373,12 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
   // Manual refresh (use refreshAll which includes all endpoints)
   const handleRefresh = refreshAll;
 
+  // Keep hook order stable across loading and loaded renders.
+  const revenueTrendsData = useMemo(() => {
+    if (!revenueData?.data?.trends) return [];
+    return revenueData.data.trends.slice().reverse(); // Reverse to show oldest first
+  }, [revenueData]);
+
   if (loadingCancellations || loadingRefunds || loadingRevenue || loadingChurn) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
@@ -380,12 +386,6 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
       </Box>
     );
   }
-
-  // Prepare revenue trends data from real backend data
-  const revenueTrendsData = useMemo(() => {
-    if (!revenueData?.data?.trends) return [];
-    return revenueData.data.trends.slice().reverse(); // Reverse to show oldest first
-  }, [revenueData]);
 
   // Revenue trends line chart with REAL DATA
   const timeSeriesOption = {
@@ -939,4 +939,3 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
     </Box>
   );
 }
-
