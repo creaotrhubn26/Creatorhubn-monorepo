@@ -4,7 +4,9 @@ import {
   ArrowForward,
   AutoAwesome,
   Close,
+  FacebookRounded,
   Groups,
+  Instagram,
   Menu,
   NorthEast,
   School,
@@ -31,6 +33,8 @@ const ACADEMY_LOGO_URL = '/creatorhub-academy-logo.svg';
 const COMMUNITY_ICON_URL = '/creatorhub-community-icon.svg';
 const ABOUT_BACKDROP_URL = '/role-room-assets/landing_backdrop.webp';
 const ROLE_ROOM_EXTERNAL_URL = 'https://theroleroom.com';
+const CREATORHUB_FACEBOOK_URL = 'https://www.facebook.com/creatorhubn/';
+const CREATORHUB_INSTAGRAM_URL = 'https://www.instagram.com/creatorhubn/';
 
 const localeOptions = [
   { value: 'no' as const, flag: '🇳🇴', no: 'Norsk', en: 'Norwegian' },
@@ -138,6 +142,10 @@ const aboutCopy = {
       primary: 'Gå til forsiden',
       secondary: 'Åpne Community',
     },
+    social: {
+      label: 'Sosiale medier',
+      body: 'Følg CreatorHub for oppdateringer om plattform, produkter og community.',
+    },
   },
   en: {
     title: 'Creatorhub | About Creatorhub AS',
@@ -238,6 +246,10 @@ const aboutCopy = {
         'The goal is to build a lasting system for creative professions where operations, execution, learning and network are no longer fragmented.',
       primary: 'Go to homepage',
       secondary: 'Open Community',
+    },
+    social: {
+      label: 'Social media',
+      body: 'Follow CreatorHub for platform, product, and community updates.',
     },
   },
 } as const;
@@ -779,6 +791,74 @@ function AboutComponent() {
               <Typography sx={{ color: 'rgba(246,242,234,0.72)', maxWidth: 740, lineHeight: 1.8 }}>
                 {copy.final.body}
               </Typography>
+              <Stack spacing={0.9}>
+                <Typography
+                  sx={{
+                    fontFamily: '"Space Grotesk", "Manrope", sans-serif',
+                    fontSize: '0.76rem',
+                    letterSpacing: '0.18em',
+                    textTransform: 'uppercase',
+                    color: 'rgba(255,186,108,0.78)',
+                  }}
+                >
+                  {copy.social.label}
+                </Typography>
+                <Typography sx={{ color: 'rgba(246,242,234,0.52)', maxWidth: 520, lineHeight: 1.75 }}>
+                  {copy.social.body}
+                </Typography>
+                <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
+                  <Button
+                    component="a"
+                    href={CREATORHUB_INSTAGRAM_URL}
+                    target="_blank"
+                    rel="noreferrer"
+                    startIcon={<Instagram sx={{ fontSize: 18 }} />}
+                    endIcon={<NorthEast sx={{ fontSize: 18 }} />}
+                    sx={{
+                      alignSelf: 'flex-start',
+                      borderRadius: '999px',
+                      px: 2.1,
+                      py: 0.95,
+                      textTransform: 'none',
+                      fontWeight: 700,
+                      color: '#fff5e8',
+                      border: '1px solid rgba(255,186,108,0.24)',
+                      bgcolor: 'rgba(255,186,108,0.08)',
+                      '&:hover': {
+                        bgcolor: 'rgba(255,186,108,0.14)',
+                        borderColor: 'rgba(255,186,108,0.42)',
+                      },
+                    }}
+                  >
+                    Instagram
+                  </Button>
+                  <Button
+                    component="a"
+                    href={CREATORHUB_FACEBOOK_URL}
+                    target="_blank"
+                    rel="noreferrer"
+                    startIcon={<FacebookRounded sx={{ fontSize: 18 }} />}
+                    endIcon={<NorthEast sx={{ fontSize: 18 }} />}
+                    sx={{
+                      alignSelf: 'flex-start',
+                      borderRadius: '999px',
+                      px: 2.1,
+                      py: 0.95,
+                      textTransform: 'none',
+                      fontWeight: 700,
+                      color: '#fff5e8',
+                      border: '1px solid rgba(255,186,108,0.24)',
+                      bgcolor: 'rgba(255,186,108,0.08)',
+                      '&:hover': {
+                        bgcolor: 'rgba(255,186,108,0.14)',
+                        borderColor: 'rgba(255,186,108,0.42)',
+                      },
+                    }}
+                  >
+                    Facebook
+                  </Button>
+                </Stack>
+              </Stack>
             </Stack>
 
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.4}>

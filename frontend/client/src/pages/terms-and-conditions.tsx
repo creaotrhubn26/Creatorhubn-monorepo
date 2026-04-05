@@ -18,12 +18,17 @@ import {
   Security,
   ContactMail,
   CheckCircle,
+  FacebookRounded,
   Info,
+  Instagram,
   Warning,
   CreditCard,
   Cancel,
 } from '@mui/icons-material';
 import { useLocation } from 'wouter';
+
+const CREATORHUB_INSTAGRAM_URL = 'https://www.instagram.com/creatorhubn/';
+const CREATORHUB_FACEBOOK_URL = 'https://www.facebook.com/creatorhubn/';
 
 const TermsAndConditions: React.FC = () => {
   const [, setLocation] = useLocation();
@@ -671,7 +676,7 @@ const TermsAndConditions: React.FC = () => {
                 Organisasjonsnummer: 833038222
               </Typography>
               <Typography variant="body2" sx={{ color: '#374151' }}>
-                E-post: daniel@creatorhubn.com
+                E-post: hello@creatorhubn.com
               </Typography>
               <Typography variant="body2" sx={{ color: '#374151' }}>
                 Telefon: +47 97 95 92 94
@@ -680,11 +685,43 @@ const TermsAndConditions: React.FC = () => {
                 Adresse: Søsterveien 11, 1474 LØRENSKOG
               </Typography>
             </Paper>
+            <Box sx={{ my: 2.2, pt: 2, borderTop: '1px solid rgba(255,140,0,0.16)' }}>
+              <Typography variant="body2" sx={{ color: '#374151', fontWeight: 'bold', mb: 1 }}>
+                Følg CreatorHub
+              </Typography>
+              <Typography variant="body2" sx={{ color: '#6b7280', mb: 1.6 }}>
+                Offentlige kanaler for oppdateringer om plattform, produkter og community.
+              </Typography>
+              <Stack direction="row" spacing={1} flexWrap="wrap">
+                <Button
+                  component="a"
+                  href={CREATORHUB_INSTAGRAM_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  startIcon={<Instagram sx={{ fontSize: 18 }} />}
+                  variant="outlined"
+                  sx={{ textTransform: 'none', borderRadius: '999px' }}
+                >
+                  Instagram
+                </Button>
+                <Button
+                  component="a"
+                  href={CREATORHUB_FACEBOOK_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  startIcon={<FacebookRounded sx={{ fontSize: 18 }} />}
+                  variant="outlined"
+                  sx={{ textTransform: 'none', borderRadius: '999px' }}
+                >
+                  Facebook
+                </Button>
+              </Stack>
+            </Box>
             <Stack direction="row" spacing={2}>
               <Button
                 variant="contained"
                 startIcon={<ContactMail />}
-                href="mailto:daniel@creatorhubn.com"
+                href="mailto:hello@creatorhubn.com"
                 sx={{
                   ...theming.getThemedButtonSx(),
                   background: 'linear-gradient(135deg, #ff8c00 0%, #e67c00 100%)',

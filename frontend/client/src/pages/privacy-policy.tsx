@@ -18,10 +18,15 @@ import {
   Security,
   ContactMail,
   CheckCircle,
+  FacebookRounded,
   Info,
+  Instagram,
   Gavel,
 } from '@mui/icons-material';
 import { useLocation } from 'wouter';
+
+const CREATORHUB_INSTAGRAM_URL = 'https://www.instagram.com/creatorhubn/';
+const CREATORHUB_FACEBOOK_URL = 'https://www.facebook.com/creatorhubn/';
 
 const PrivacyPolicy: React.FC = () => {
   const [, setLocation] = useLocation();
@@ -525,6 +530,38 @@ const PrivacyPolicy: React.FC = () => {
             <Typography variant="body2" sx={{ color: '#374151', mb: 2 }}>
               Vi er her for å hjelpe deg med alle spørsmål om hvordan vi håndterer dine personopplysninger.
             </Typography>
+            <Box sx={{ mb: 2.2, pt: 2, borderTop: '1px solid rgba(255,140,0,0.16)' }}>
+              <Typography variant="body2" sx={{ color: '#374151', fontWeight: 'bold', mb: 1 }}>
+                Følg CreatorHub
+              </Typography>
+              <Typography variant="body2" sx={{ color: '#6b7280', mb: 1.6 }}>
+                Sosiale kanaler for produktoppdateringer og informasjon fra CreatorHub.
+              </Typography>
+              <Stack direction="row" spacing={1} flexWrap="wrap">
+                <Button
+                  component="a"
+                  href={CREATORHUB_INSTAGRAM_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  startIcon={<Instagram sx={{ fontSize: 18 }} />}
+                  variant="outlined"
+                  sx={{ textTransform: 'none', borderRadius: '999px' }}
+                >
+                  Instagram
+                </Button>
+                <Button
+                  component="a"
+                  href={CREATORHUB_FACEBOOK_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  startIcon={<FacebookRounded sx={{ fontSize: 18 }} />}
+                  variant="outlined"
+                  sx={{ textTransform: 'none', borderRadius: '999px' }}
+                >
+                  Facebook
+                </Button>
+              </Stack>
+            </Box>
             <Stack direction="row" spacing={2}>
               <Button
                 variant="contained"
