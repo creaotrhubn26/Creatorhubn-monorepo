@@ -1144,6 +1144,11 @@ export interface ProducerContentLogic {
   audience?: string;
   hook?: string;
   coreMessage?: string;
+  industry?: string;
+  subIndustry?: string;
+  businessModel?: string;
+  contentCategory?: string;
+  productionApproach?: string;
   proofPoints?: string[];
   callToAction?: string;
   distributionPlan?: string;

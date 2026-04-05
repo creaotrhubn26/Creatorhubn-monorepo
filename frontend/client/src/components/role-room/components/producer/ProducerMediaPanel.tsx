@@ -76,11 +76,18 @@ import type {
 import { castingService } from '../../services/castingService';
 import { manuscriptService } from '../../services/manuscriptService';
 import settingsService from '../../services/settingsService';
+import { authSessionService } from '../../services/authSessionService';
+import { storyLogicService } from '../../services/storyLogicService';
 import {
   producerWorkflowService,
   type ProducerClientReview,
   type ProducerTimelineItem,
 } from '../../services/producerWorkflowService';
+import roleRoomAgentService, {
+  type RoleRoomAgentAccess,
+  type RoleRoomAgentBrandColor,
+  type RoleRoomAgentProducerBootstrapResult,
+} from '../../services/roleRoomAgentService';
 import { onProducerWorkflowEvent } from '../../services/producerWorkflowEvents';
 import { onProjectAgreementEvent } from '../../services/projectAgreementEvents';
 import { useProject } from '@/contexts/ProjectContext';
@@ -139,6 +146,7 @@ import { buildClientPortalUrl } from '../../utils/clientPortal';
 import { shouldUseRoleRoomLocalFallback } from '../../utils/runtime';
 import ProducerGoogleWorkspacePanel from './ProducerGoogleWorkspacePanel';
 import ProducerMeetingWorkspace from './ProducerMeetingWorkspace';
+import RoleRoomAgentDialog from './RoleRoomAgentDialog';
 
 interface ProducerMediaPanelProps {
   project: CastingProject;
@@ -278,6 +286,30 @@ const EMPTY_INTAKE: ProducerClientIntake = {
   contactEmail: '',
   contactPhone: '',
   additionalNotes: '',
+};
+
+const mergePreferredStringArray = (current: string[] | undefined, incoming: string[] | undefined): string[] => (
+  Array.isArray(incoming) && incoming.length > 0
+    ? incoming
+    : Array.isArray(current)
+      ? current
+      : []
+);
+
+const mapRoleRoomAgentBrandColors = (
+  current: ProducerBrandGuideColor[] | undefined,
+  incoming: RoleRoomAgentBrandColor[] | undefined,
+): ProducerBrandGuideColor[] => {
+  if (!Array.isArray(incoming) || incoming.length === 0) {
+    return Array.isArray(current) ? current : [];
+  }
+
+  return incoming.map((color, index) => ({
+    id: current?.[index]?.id || `brand-color-agent-${index + 1}`,
+    label: color.label,
+    hex: color.hex,
+    usage: color.usage,
+  }));
 };
 
 const EMPTY_MATERIAL_DRAFT: ClientMaterialDraft = {
@@ -1695,6 +1727,15 @@ export default function ProducerMediaPanel({
   const [loadingLinkedInAccessStatus, setLoadingLinkedInAccessStatus] = useState(false);
   const [linkedInAccessActionKey, setLinkedInAccessActionKey] = useState<string | null>(null);
   const [accountAccessActionKey, setAccountAccessActionKey] = useState<string | null>(null);
+  const [roleRoomSession, setRoleRoomSession] = useState(() => authSessionService.getSessionSync());
+  const [roleRoomAgentAccess, setRoleRoomAgentAccess] = useState<RoleRoomAgentAccess | null>(null);
+  const [loadingRoleRoomAgentAccess, setLoadingRoleRoomAgentAccess] = useState(false);
+  const [roleRoomAgentDialogOpen, setRoleRoomAgentDialogOpen] = useState(false);
+  const [roleRoomAgentGenerating, setRoleRoomAgentGenerating] = useState(false);
+  const [roleRoomAgentApplying, setRoleRoomAgentApplying] = useState(false);
+  const [roleRoomAgentResult, setRoleRoomAgentResult] = useState<RoleRoomAgentProducerBootstrapResult | null>(null);
+  const [roleRoomAgentError, setRoleRoomAgentError] = useState<string | null>(null);
+  const [roleRoomAgentNotice, setRoleRoomAgentNotice] = useState<string | null>(null);
   const [projectFiles, setProjectFiles] = useState<ProjectFileRecord[]>([]);
   const [focusedArtifactId, setFocusedArtifactId] = useState<string | null>(initialArtifactId ?? null);
   const brandLogoFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -1748,6 +1789,21 @@ export default function ProducerMediaPanel({
     distributionPlan: planningDraft.contentLogic?.distributionPlan ?? planningDraft.activationPlan.activation ?? '',
     successSignals: planningDraft.contentLogic?.successSignals ?? planningDraft.activationPlan.successSignals ?? [],
   }), [planningDraft]);
+  const normalizedSessionRole = String(roleRoomSession.adminUser?.role || '').trim().toLowerCase();
+  const normalizedSessionLoginAs = String(roleRoomSession.adminUser?.loginAs || '').trim().toLowerCase();
+  const normalizedSessionRequestedRole = String(roleRoomSession.adminUser?.requestedRole || '').trim().toLowerCase();
+  const normalizedSelectedProfession = String(roleRoomSession.selectedProfession || '').trim().toLowerCase();
+  const isRoleRoomAdmin = normalizedSessionRole === 'admin'
+    || normalizedSessionRole === 'owner'
+    || normalizedSessionRole === 'super_admin';
+  const isContentProducerAgentSession = normalizedSessionLoginAs === 'content_producer'
+    || normalizedSessionRequestedRole === 'content_producer'
+    || normalizedSelectedProfession === 'content_producer'
+    || (!normalizedSessionLoginAs && !normalizedSessionRequestedRole && normalizedSessionRole === 'content_producer');
+  const canUseRoleRoomAgent = isRoleRoomAdmin
+    && isContentProducerAgentSession
+    && !isClientReviewerMode
+    && !readOnly;
 
   const shotListOptions = useMemo(
     () => shotLists.map((shotList) => ({
@@ -2203,6 +2259,83 @@ export default function ProducerMediaPanel({
   }, [getProjectFiles, projectId, readLocalAgreements, useLocalAgreementFallback]);
 
   useEffect(() => {
+    let active = true;
+
+    const syncSession = async () => {
+      const nextSession = await authSessionService.loadSession();
+      if (active) {
+        setRoleRoomSession(nextSession);
+      }
+    };
+
+    void syncSession();
+
+    if (typeof window === 'undefined') {
+      return () => {
+        active = false;
+      };
+    }
+
+    const handleSessionUpdate = () => {
+      setRoleRoomSession(authSessionService.getSessionSync());
+    };
+
+    window.addEventListener('auth-session-updated', handleSessionUpdate);
+    return () => {
+      active = false;
+      window.removeEventListener('auth-session-updated', handleSessionUpdate);
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    setRoleRoomAgentResult(null);
+    roleRoomAgentService.getSnapshot(projectId)
+      .then((snapshot) => {
+        if (active && snapshot) {
+          setRoleRoomAgentResult(snapshot);
+        }
+      })
+      .catch(() => undefined);
+
+    return () => {
+      active = false;
+    };
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!canUseRoleRoomAgent) {
+      setRoleRoomAgentAccess(null);
+      return;
+    }
+
+    let active = true;
+    setLoadingRoleRoomAgentAccess(true);
+    roleRoomAgentService.getAccess()
+      .then((access) => {
+        if (active) {
+          setRoleRoomAgentAccess(access);
+        }
+      })
+      .catch((accessError) => {
+        console.error('[ProducerMediaPanel] Failed to load Role Room Agent access', accessError);
+        if (active) {
+          setRoleRoomAgentAccess(null);
+          setRoleRoomAgentError('Kunne ikke hente tilgang til The Role Room Agent.');
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setLoadingRoleRoomAgentAccess(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [canUseRoleRoomAgent]);
+
+  useEffect(() => {
     void loadDeliveryWorkspaceAssets();
   }, [loadDeliveryWorkspaceAssets]);
 
@@ -2223,14 +2356,17 @@ export default function ProducerMediaPanel({
     void loadDeliveryWorkspaceAssets();
   }), [loadDeliveryWorkspaceAssets, projectId]);
 
-  const persistPlanningDraft = useCallback(async (nextPlanning: ProducerProjectPlanning) => {
+  const persistPlanningDraft = useCallback(async (
+    nextPlanning: ProducerProjectPlanning,
+    projectOverride?: CastingProject,
+  ) => {
     const stampedPlanning: ProducerProjectPlanning = {
       ...nextPlanning,
       workspaceNavigation: normalizeProducerWorkspaceNavigation(nextPlanning.workspaceNavigation),
       updatedAt: new Date().toISOString(),
     };
     const nextProject: CastingProject = {
-      ...project,
+      ...(projectOverride ?? project),
       producerPlanning: stampedPlanning,
       updatedAt: new Date().toISOString(),
     };
@@ -2297,6 +2433,164 @@ export default function ProducerMediaPanel({
       setSavingIntake(false);
     }
   }, [intakeDraft, persistPlanningDraft, planningDraft, projectId]);
+
+  const handleGenerateRoleRoomAgent = useCallback(async (input: {
+    projectId: string;
+    projectName: string;
+    websiteUrl: string;
+    organizationNumber: string;
+    companyName: string;
+    extraContext: string;
+  }) => {
+    setRoleRoomAgentGenerating(true);
+    setRoleRoomAgentError(null);
+    setRoleRoomAgentNotice(null);
+
+    try {
+      const generated = await roleRoomAgentService.generateProducerBootstrap(input);
+      setRoleRoomAgentResult(generated);
+      setRoleRoomAgentNotice('The Role Room Agent har laget et nytt utkast for kundeprofil, brief og story logikk.');
+    } catch (agentError) {
+      console.error('[ProducerMediaPanel] Failed to generate Role Room Agent result', agentError);
+      setRoleRoomAgentError(agentError instanceof Error ? agentError.message : 'Kunne ikke generere forslag fra The Role Room Agent.');
+    } finally {
+      setRoleRoomAgentGenerating(false);
+    }
+  }, []);
+
+  const handleApplyRoleRoomAgent = useCallback(async (result: RoleRoomAgentProducerBootstrapResult) => {
+    setRoleRoomAgentApplying(true);
+    setRoleRoomAgentError(null);
+    setRoleRoomAgentNotice(null);
+    setError(null);
+
+    try {
+      const now = new Date().toISOString();
+      const nextIntake: ProducerClientIntake = {
+        ...intakeDraft,
+        ...result.intakeDraft,
+        updatedAt: now,
+        updatedByRole: 'content_producer',
+      };
+
+      const nextPlanning: ProducerProjectPlanning = {
+        ...planningDraft,
+        activationPlan: {
+          ...planningDraft.activationPlan,
+          ...result.planningDraft.activationPlan,
+          successSignals: mergePreferredStringArray(
+            planningDraft.activationPlan.successSignals,
+            result.planningDraft.activationPlan.successSignals,
+          ),
+        },
+        contentLogic: {
+          ...(planningDraft.contentLogic ?? {}),
+          ...result.planningDraft.contentLogic,
+          industry: result.planningDraft.contentLogic.industry || planningDraft.contentLogic?.industry,
+          subIndustry: result.planningDraft.contentLogic.subIndustry || planningDraft.contentLogic?.subIndustry,
+          businessModel: result.planningDraft.contentLogic.businessModel || planningDraft.contentLogic?.businessModel,
+          contentCategory: result.planningDraft.contentLogic.contentCategory || planningDraft.contentLogic?.contentCategory,
+          productionApproach: result.planningDraft.contentLogic.productionApproach || planningDraft.contentLogic?.productionApproach,
+          proofPoints: mergePreferredStringArray(
+            planningDraft.contentLogic?.proofPoints,
+            result.planningDraft.contentLogic.proofPoints,
+          ),
+          successSignals: mergePreferredStringArray(
+            planningDraft.contentLogic?.successSignals,
+            result.planningDraft.contentLogic.successSignals,
+          ),
+        },
+        brandGuide: {
+          ...planningDraft.brandGuide,
+          logoUrl: result.planningDraft.brandGuide.logoUrl || planningDraft.brandGuide.logoUrl,
+          toneOfVoice: result.planningDraft.brandGuide.toneOfVoice || planningDraft.brandGuide.toneOfVoice,
+          visualStyle: result.planningDraft.brandGuide.visualStyle || planningDraft.brandGuide.visualStyle,
+          fonts: mergePreferredStringArray(
+            planningDraft.brandGuide.fonts,
+            result.planningDraft.brandGuide.fonts,
+          ),
+          dos: mergePreferredStringArray(
+            planningDraft.brandGuide.dos,
+            result.planningDraft.brandGuide.dos,
+          ),
+          donts: mergePreferredStringArray(
+            planningDraft.brandGuide.donts,
+            result.planningDraft.brandGuide.donts,
+          ),
+          colors: mapRoleRoomAgentBrandColors(
+            planningDraft.brandGuide.colors,
+            result.planningDraft.brandGuide.colors,
+          ),
+        },
+        updatedAt: now,
+      };
+
+      const nextProject: CastingProject = {
+        ...project,
+        clientCompanyName: result.companyProfile.companyName || project.clientCompanyName,
+        clientOrganizationNumber: result.companyProfile.organizationNumber || project.clientOrganizationNumber,
+        clientCompanyAddress: result.companyProfile.probableLocationAddress || project.clientCompanyAddress,
+        updatedAt: now,
+      };
+
+      const savedIntake = await producerWorkflowService.updateClientIntake(projectId, nextIntake);
+      await persistPlanningDraft(nextPlanning, nextProject);
+
+      const existingStoryLogic = await storyLogicService.getStoryLogic(projectId);
+      const nextStoryLogic = {
+        ...(existingStoryLogic ?? {}),
+        ...(result.storyLogicDraft ?? {}),
+        concept: {
+          ...((existingStoryLogic as Record<string, unknown> | null)?.concept as Record<string, unknown> | undefined),
+          ...((result.storyLogicDraft.concept as Record<string, unknown> | undefined) ?? {}),
+        },
+        logline: {
+          ...((existingStoryLogic as Record<string, unknown> | null)?.logline as Record<string, unknown> | undefined),
+          ...((result.storyLogicDraft.logline as Record<string, unknown> | undefined) ?? {}),
+        },
+        theme: {
+          ...((existingStoryLogic as Record<string, unknown> | null)?.theme as Record<string, unknown> | undefined),
+          ...((result.storyLogicDraft.theme as Record<string, unknown> | undefined) ?? {}),
+        },
+        phaseStatus: {
+          ...((existingStoryLogic as Record<string, unknown> | null)?.phaseStatus as Record<string, unknown> | undefined),
+          ...((result.storyLogicDraft.phaseStatus as Record<string, unknown> | undefined) ?? {}),
+        },
+        locks:
+          result.storyLogicDraft.locks && typeof result.storyLogicDraft.locks === 'object'
+            ? result.storyLogicDraft.locks
+            : ((existingStoryLogic as Record<string, unknown> | null)?.locks as Record<string, unknown> | undefined) ?? { concept: false, logline: false, theme: false },
+        versions: Array.isArray(result.storyLogicDraft.versions)
+          ? result.storyLogicDraft.versions
+          : Array.isArray((existingStoryLogic as Record<string, unknown> | null)?.versions)
+            ? (existingStoryLogic as Record<string, unknown>).versions
+            : [],
+        lastSaved: now,
+        isLocked: false,
+      };
+      await storyLogicService.saveStoryLogic(
+        projectId,
+        nextStoryLogic as Parameters<typeof storyLogicService.saveStoryLogic>[1],
+      );
+
+      setIntakeDraft({
+        ...EMPTY_INTAKE,
+        ...savedIntake,
+      });
+      setRoleRoomAgentResult(result);
+      setRoleRoomAgentDialogOpen(false);
+      setRoleRoomAgentNotice('The Role Room Agent fylte nå brief, branding-utkast og story logikk i prosjektet.');
+    } catch (agentError) {
+      console.error('[ProducerMediaPanel] Failed to apply Role Room Agent result', agentError);
+      const message = agentError instanceof Error
+        ? agentError.message
+        : 'Kunne ikke bruke forslagene fra The Role Room Agent.';
+      setRoleRoomAgentError(message);
+      setError(message);
+    } finally {
+      setRoleRoomAgentApplying(false);
+    }
+  }, [intakeDraft, persistPlanningDraft, planningDraft, project, projectId]);
 
   const handleImportGoogleContact = useCallback(async (contact: {
     name?: string | null;
@@ -5971,6 +6265,34 @@ export default function ProducerMediaPanel({
         </Box>
         <Stack spacing={0.45} alignItems={{ lg: 'flex-end' }}>
           <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap justifyContent={{ lg: 'flex-end' }}>
+            {canUseRoleRoomAgent && roleRoomAgentAccess?.allowed ? (
+              <Button
+                size="small"
+                variant="contained"
+                startIcon={<AutoFixHighIcon />}
+                onClick={() => {
+                  setRoleRoomAgentError(null);
+                  setRoleRoomAgentNotice(null);
+                  setRoleRoomAgentDialogOpen(true);
+                }}
+                disabled={loadingRoleRoomAgentAccess}
+                sx={{
+                  textTransform: 'none',
+                  fontWeight: 800,
+                  minHeight: 44,
+                  borderRadius: 999,
+                  px: 1.15,
+                  color: '#082f49',
+                  background: 'linear-gradient(135deg, rgba(34,211,238,0.96) 0%, rgba(59,130,246,0.96) 100%)',
+                  boxShadow: '0 10px 28px rgba(34,211,238,0.16)',
+                  '&:hover': {
+                    background: 'linear-gradient(135deg, rgba(103,232,249,1) 0%, rgba(96,165,250,1) 100%)',
+                  },
+                }}
+              >
+                The Role Room Agent
+              </Button>
+            ) : null}
             <Button
               size="small"
               variant="outlined"
@@ -6015,6 +6337,7 @@ export default function ProducerMediaPanel({
       </Stack>
 
       {error ? <Alert severity="error">{error}</Alert> : null}
+      {roleRoomAgentNotice ? <Alert severity="success">{roleRoomAgentNotice}</Alert> : null}
       {loading ? <Alert severity="info">Laster klientbrief og materiale.</Alert> : null}
 
       <Box
@@ -12951,6 +13274,24 @@ export default function ProducerMediaPanel({
           </Box>
         ) : null}
       </Menu>
+      <RoleRoomAgentDialog
+        open={roleRoomAgentDialogOpen}
+        onClose={() => setRoleRoomAgentDialogOpen(false)}
+        projectId={projectId}
+        projectName={projectName}
+        access={roleRoomAgentAccess}
+        initialWebsiteUrl={intakeDraft.referenceLinks || undefined}
+        initialOrganizationNumber={project.clientOrganizationNumber || undefined}
+        initialCompanyName={project.clientCompanyName || undefined}
+        initialExtraContext={intakeDraft.additionalNotes || undefined}
+        initialResult={roleRoomAgentResult}
+        generating={roleRoomAgentGenerating}
+        applying={roleRoomAgentApplying}
+        error={roleRoomAgentError}
+        notice={roleRoomAgentNotice}
+        onGenerate={handleGenerateRoleRoomAgent}
+        onApply={handleApplyRoleRoomAgent}
+      />
     </Box>
   );
 }

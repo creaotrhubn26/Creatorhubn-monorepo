@@ -57,6 +57,10 @@ GOOGLE_CLIENT_ID=your-client-id
 GOOGLE_CLIENT_SECRET=your-client-secret
 GOOGLE_REDIRECT_URI=http://localhost:5050/auth/google/callback
 
+# The Role Room Agent (OpenAI)
+OPENAI_API_KEY=your-openai-api-key
+ROLE_ROOM_AGENT_MODEL=gpt-5.4-mini
+
 # Tripletex testmiljø (valgfritt, men nødvendig for regnskapsflyt)
 TRIPLETEX_TEST_BASE_URL=https://api-test.tripletex.tech/v2
 TRIPLETEX_TEST_CONSUMER_TOKEN=your-consumer-token

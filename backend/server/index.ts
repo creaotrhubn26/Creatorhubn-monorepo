@@ -71,6 +71,10 @@ import {
   isTripletexConfigured,
 } from "./tripletex.js";
 import {
+  generateRoleRoomAgentProducerBootstrap,
+  getRoleRoomAgentRuntimeConfig,
+} from "./role-room-agent.js";
+import {
   getNotebookLmWorkspaceStatus,
   syncNotebookLmWorkspaceForMeetingNote,
   syncNotebookLmWorkspaceForScope,
@@ -14062,6 +14066,29 @@ function ensureCompatAdminFeatures(): CompatAdminFeature[] {
       metadata: {},
     },
     {
+      id: "role-room-agent-producer",
+      name: "The Role Room Agent",
+      description:
+        "Admin-test av AI-assistent for kundeprofil, brief og story logikk i innholdsproduksjon",
+      category: "platform",
+      isEnabled: true,
+      enabled: true,
+      configurable: true,
+      usageCount: 0,
+      lastModified: now,
+      modifiedBy: "system",
+      impact: "high",
+      rolloutPercentage: 100,
+      environment: "production",
+      publishedAt: now,
+      publishedBy: "system",
+      version: 1,
+      metadata: {
+        stage: "admin_test",
+        audience: "content_producer",
+      },
+    },
+    {
       id: "academy",
       name: "Academy",
       description: "Learning and training modules",
@@ -14088,6 +14115,16 @@ function ensureCompatAdminFeatures(): CompatAdminFeature[] {
   });
 
   return defaults;
+}
+
+function getCompatAdminFeature(featureId: string): CompatAdminFeature | null {
+  ensureCompatAdminFeatures();
+  return compatAdminFeaturesStore.get(featureId) ?? null;
+}
+
+function isCompatAdminFeatureEnabled(featureId: string): boolean {
+  const feature = getCompatAdminFeature(featureId);
+  return Boolean(feature?.isEnabled ?? feature?.enabled);
 }
 
 function getCompatResolveStatus(userId: string): CompatResolveStatus {
@@ -28086,6 +28123,89 @@ app.post("/api/story-arc/auto-monitor/check", (req, res) => {
 });
 
 // Admin feature flags compatibility endpoints
+app.get("/api/role-room/agent/access", (req, res) => {
+  const featureId = "role-room-agent-producer";
+  const feature = getCompatAdminFeature(featureId);
+  const session = getActiveSessionFromRequest(req);
+  const runtimeConfig = getRoleRoomAgentRuntimeConfig();
+  const normalizedRole = String(session?.role || "").trim().toLowerCase();
+  const isAdmin =
+    normalizedRole === "admin" ||
+    normalizedRole === "owner" ||
+    normalizedRole === "super_admin";
+  const enabled = isCompatAdminFeatureEnabled(featureId);
+
+  res.json({
+    success: true,
+    featureId,
+    enabled,
+    isAdmin,
+    allowed: enabled && isAdmin,
+    stage: "admin_test",
+    audience: "content_producer",
+    feature: feature ?? null,
+    provider: runtimeConfig.provider,
+    providerConfigured: runtimeConfig.providerConfigured,
+    defaultModel: runtimeConfig.defaultModel,
+  });
+});
+
+app.post("/api/role-room/agent/producer-bootstrap", async (req, res) => {
+  const featureId = "role-room-agent-producer";
+  if (!isCompatAdminFeatureEnabled(featureId)) {
+    return res.status(403).json({
+      success: false,
+      error: "The Role Room Agent er ikke aktivert.",
+    });
+  }
+
+  const session = requireAdminSession(req, res);
+  if (!session) {
+    return;
+  }
+
+  const body =
+    req.body && typeof req.body === "object"
+      ? (req.body as Record<string, unknown>)
+      : {};
+  const projectId = readString(body.projectId);
+  if (!projectId) {
+    return res.status(400).json({
+      success: false,
+      error: "projectId er påkrevd.",
+    });
+  }
+
+  try {
+    const result = await generateRoleRoomAgentProducerBootstrap({
+      projectId,
+      projectName: readString(body.projectName),
+      websiteUrl: readString(body.websiteUrl),
+      organizationNumber: readString(body.organizationNumber),
+      companyName: readString(body.companyName),
+      extraContext: readString(body.extraContext),
+    });
+
+    return res.json({
+      success: true,
+      stage: "admin_test",
+      featureId,
+      generatedBy: {
+        userId: session.userId,
+        email: session.email,
+        role: session.role,
+      },
+      result,
+    });
+  } catch (error) {
+    console.error("[role-room-agent] Failed to generate producer bootstrap", error);
+    return res.status(500).json({
+      success: false,
+      error: "Kunne ikke generere utkast fra The Role Room Agent.",
+    });
+  }
+});
+
 app.get("/api/admin/features", (req, res) => {
   const features = ensureCompatAdminFeatures();
   res.json(features);
