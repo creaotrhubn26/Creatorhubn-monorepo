@@ -1,6 +1,6 @@
 import { normalizeRequestUrl } from './normalizeRequestUrl';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://evendi.onrender.com';
+const API_BASE_URL = import.meta.env.VITE_API_URL?.trim() || '';
 const IS_DEVELOPMENT =
   typeof window !== 'undefined' &&
   (import.meta.env.DEV || window.location.hostname === 'localhost');
@@ -97,12 +97,14 @@ function buildApiUrlCandidates(url: string): string[] {
   }
 
   const sameOriginCandidate = normalizedUrl.startsWith('/') ? normalizedUrl : null;
-  const remoteCandidate = `${API_BASE_URL}${normalizedUrl}`;
+  const remoteCandidate = API_BASE_URL
+    ? `${API_BASE_URL}${normalizedUrl}`
+    : sameOriginCandidate || normalizedUrl;
 
   if (!IS_DEVELOPMENT) {
     return sameOriginCandidate && sameOriginCandidate !== remoteCandidate
       ? [sameOriginCandidate, remoteCandidate]
-      : [remoteCandidate];
+      : [sameOriginCandidate || remoteCandidate];
   }
 
   const localCandidate = normalizedUrl;

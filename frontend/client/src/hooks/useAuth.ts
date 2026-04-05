@@ -2,13 +2,13 @@ import { useState, useEffect, useCallback } from 'react';
 import { useGoogleSSO } from './useGoogleSSO';
 import type { GoogleUser } from '../services/GoogleSSOService';
 
-// Backend API URL — points to Render backend in production
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://evendi.onrender.com';
+// Prefer same-origin /api on CreatorHub unless an explicit backend URL is configured.
+const API_BASE_URL = import.meta.env.VITE_API_URL?.trim() || '';
 const isDev = typeof window !== 'undefined' && (import.meta.env.DEV || window.location.hostname === 'localhost');
 
 /** Build absolute URL for auth endpoints */
 function authUrl(path: string): string {
-  return isDev ? path : `${API_BASE_URL}${path}`;
+  return isDev || !API_BASE_URL ? path : `${API_BASE_URL}${path}`;
 }
 
 interface User extends Omit<GoogleUser, 'role'> {
@@ -162,7 +162,7 @@ export function useAuth() {
     // Check localStorage for existing session
     const storedUser = getStoredUser();
     const storedToken = getStoredToken();
-    if (storedUser && (storedToken || isDev)) {
+    if (storedUser && isDev) {
       if (isDev) {
         storeUserIdentity(storedUser);
       }
@@ -170,6 +170,14 @@ export function useAuth() {
         user: storedUser,
         isAuthenticated: true,
         isLoading: false,
+        error: null,
+      };
+    }
+    if (storedUser && storedToken) {
+      return {
+        user: storedUser,
+        isAuthenticated: false,
+        isLoading: true,
         error: null,
       };
     }
@@ -205,10 +213,8 @@ export function useAuth() {
     const storedToken = getStoredToken();
     const storedUser = getStoredUser();
 
-    if (storedUser && (storedToken || isDev) && !force) {
-      if (isDev) {
-        storeUserIdentity(storedUser);
-      }
+    if (isDev && storedUser && !force) {
+      storeUserIdentity(storedUser);
       const state: AuthState = {
         user: storedUser,
         isAuthenticated: true,
@@ -461,6 +467,49 @@ export function useAuth() {
     void checkAuthStatus();
     return () => { authListeners.delete(listener); };
   }, []);
+
+  useEffect(() => {
+    const syncFromStorage = () => {
+      const storedToken = getStoredToken();
+      const storedUser = getStoredUser();
+
+      if (storedUser && (storedToken || isDev)) {
+        broadcastState({
+          user: storedUser,
+          isAuthenticated: true,
+          isLoading: false,
+          error: null,
+        });
+        return;
+      }
+
+      const devUser = buildDevFallbackUser(storedUser);
+      if (devUser) {
+        broadcastState({
+          user: devUser,
+          isAuthenticated: true,
+          isLoading: false,
+          error: null,
+        });
+        return;
+      }
+
+      broadcastState({
+        user: null,
+        isAuthenticated: false,
+        isLoading: false,
+        error: null,
+      });
+    };
+
+    window.addEventListener('auth-changed', syncFromStorage);
+    window.addEventListener('storage', syncFromStorage);
+
+    return () => {
+      window.removeEventListener('auth-changed', syncFromStorage);
+      window.removeEventListener('storage', syncFromStorage);
+    };
+  }, [broadcastState]);
 
   const isPrototypeTester = authState.user?.role === 'prototype_tester';
   const isAdmin = authState.user?.role === 'admin' || authState.user?.role === 'super_admin';

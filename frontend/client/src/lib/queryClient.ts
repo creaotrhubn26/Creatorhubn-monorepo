@@ -1,6 +1,29 @@
 import { QueryClient } from '@tanstack/react-query';
 import { normalizeRequestUrl } from './normalizeRequestUrl';
 
+const AUTH_STORAGE_KEYS = [
+  'creatorhub_auth_token',
+  'creatorhub_auth_user',
+  'userId',
+  'userEmail',
+  'token',
+] as const;
+
+function clearClientAuthState() {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    for (const key of AUTH_STORAGE_KEYS) {
+      window.localStorage.removeItem(key);
+    }
+    window.dispatchEvent(new Event('auth-changed'));
+  } catch {
+    // Ignore storage cleanup errors.
+  }
+}
+
 /**
  * Get authorization header for API requests
  */
@@ -41,8 +64,8 @@ export async function getAuthHeader(): Promise<Record<string, string>> {
   return headers;
 }
 
-// Backend API URL from environment — points to Render backend in production
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://evendi.onrender.com';
+// Prefer same-origin /api on CreatorHub unless an explicit backend URL is configured.
+const API_BASE_URL = import.meta.env.VITE_API_URL?.trim() || '';
 
 // Default fetcher for React Query with OAuth support
 type ApiRequestOptions = Omit<RequestInit, 'body'> & {
@@ -87,7 +110,7 @@ export async function apiRequest(url: string, options?: ApiRequestOptions) {
   const isDevelopment = import.meta.env.DEV || window.location.hostname === 'localhost';
   const fullUrl = normalizedUrl.startsWith('http')
     ? normalizedUrl
-    : isDevelopment 
+    : isDevelopment || !API_BASE_URL
       ? normalizedUrl
       : `${API_BASE_URL}${normalizedUrl}`;
 
@@ -111,6 +134,10 @@ export async function apiRequest(url: string, options?: ApiRequestOptions) {
   const response = await fetch(fullUrl, requestOptions);
 
   if (!response.ok) {
+    if (response.status === 401) {
+      clearClientAuthState();
+    }
+
     const errorText = await response.text();
     let parsedError: Record<string, unknown> | null = null;
 
