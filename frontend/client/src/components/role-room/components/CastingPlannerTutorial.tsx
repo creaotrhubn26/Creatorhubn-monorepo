@@ -58,6 +58,20 @@ const getDefaultTutorialStepsForCategory = (category: Tutorial['category']): Tut
   return getDefaultCastingPlannerTutorialSteps();
 };
 
+const hexToRgba = (hex: string, alpha: number): string => {
+  const normalized = hex.replace('#', '');
+  const full = normalized.length === 3
+    ? normalized.split('').map((char) => `${char}${char}`).join('')
+    : normalized;
+
+  const value = Number.parseInt(full, 16);
+  const r = (value >> 16) & 255;
+  const g = (value >> 8) & 255;
+  const b = value & 255;
+
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
+
 const panelInfo = [
   { name: 'Oversikt', icon: DashboardIcon, color: '#8b5cf6' },
   { name: 'Role Room Studio', icon: ShotListIcon, color: '#ec4899' },
@@ -77,30 +91,30 @@ const panelInfo = [
   { name: 'Eksport', icon: ExportIcon, color: '#fbbf24' },
 ];
 
-const stepIndicatorMeta: Record<string, { label: string; icon: IconComponentType; color?: string }> = {
-  'welcome': { label: 'Start', icon: TutorialIcon, color: '#e91e63' },
-  'overview': { label: 'Oversikt', icon: DashboardIcon, color: '#8b5cf6' },
-  'studio': { label: 'Studio', icon: ShotListIcon, color: '#ec4899' },
-  'roles': { label: 'Roller', icon: RolesIcon, color: '#f48fb1' },
-  'candidates': { label: 'Kandidater', icon: CandidatesIcon, color: '#10b981' },
-  'auditions': { label: 'Auditions', icon: AuditionIcon, color: '#ffb800' },
-  'selection': { label: 'Utvelgelse', icon: CompleteIcon, color: '#14b8a6' },
-  'locations': { label: 'Lokasjoner', icon: LocationIcon, color: '#4caf50' },
-  'production-plan': { label: 'Plan', icon: CalendarIcon, color: '#9c27b0' },
-  'team': { label: 'Team', icon: TeamIcon, color: '#00d4ff' },
-  'equipment': { label: 'Utstyr', icon: PropIcon, color: '#9333ea' },
-  'live-set': { label: 'Live Set', icon: ActionIcon, color: '#ef4444' },
-  'complete': { label: 'Slutt', icon: CelebrationIcon, color: '#4caf50' },
-  'producer-welcome': { label: 'Start', icon: TutorialIcon, color: '#e91e63' },
-  'producer-studio': { label: 'Storyboard', icon: ShotListIcon, color: '#ec4899' },
-  'producer-contributors': { label: 'Medvirkende', icon: CandidatesIcon, color: '#10b981' },
-  'producer-locations': { label: 'Lokasjoner', icon: LocationIcon, color: '#4caf50' },
-  'producer-equipment': { label: 'Rekvisitter', icon: PropIcon, color: '#9333ea' },
-  'producer-media': { label: 'Media', icon: MediaIcon, color: '#60a5fa' },
-  'producer-timeline': { label: 'Tidslinje', icon: TimelineWorkflowIcon, color: '#38bdf8' },
-  'producer-reviews': { label: 'Godkjenning', icon: ReviewsIcon, color: '#c084fc' },
-  'producer-export': { label: 'Eksport', icon: ExportIcon, color: '#fbbf24' },
-  'producer-complete': { label: 'Slutt', icon: CelebrationIcon, color: '#4caf50' },
+const stepIndicatorMeta: Record<string, { label: string; subtitle: string; icon: IconComponentType; color?: string }> = {
+  'welcome': { label: 'Start', subtitle: 'Introduksjon', icon: TutorialIcon, color: '#e91e63' },
+  'overview': { label: 'Oversikt', subtitle: 'Status', icon: DashboardIcon, color: '#8b5cf6' },
+  'studio': { label: 'Role Room Studio', subtitle: 'Pre-produksjon', icon: ShotListIcon, color: '#ec4899' },
+  'roles': { label: 'Roller', subtitle: 'Casting', icon: RolesIcon, color: '#f48fb1' },
+  'candidates': { label: 'Kandidater', subtitle: 'Casting', icon: CandidatesIcon, color: '#10b981' },
+  'auditions': { label: 'Auditions', subtitle: 'Casting', icon: AuditionIcon, color: '#ffb800' },
+  'selection': { label: 'Utvelgelse', subtitle: 'Casting', icon: CompleteIcon, color: '#14b8a6' },
+  'locations': { label: 'Lokasjoner', subtitle: 'Produksjonsplan', icon: LocationIcon, color: '#4caf50' },
+  'production-plan': { label: 'Kalender', subtitle: 'Produksjonsplan', icon: CalendarIcon, color: '#9c27b0' },
+  'team': { label: 'Team', subtitle: 'Ressurser', icon: TeamIcon, color: '#00d4ff' },
+  'equipment': { label: 'Utstyr', subtitle: 'Ressurser', icon: PropIcon, color: '#9333ea' },
+  'live-set': { label: 'Live Set', subtitle: 'Produksjon', icon: ActionIcon, color: '#ef4444' },
+  'complete': { label: 'Slutt', subtitle: 'Oppsummering', icon: CelebrationIcon, color: '#4caf50' },
+  'producer-welcome': { label: 'Start', subtitle: 'Introduksjon', icon: TutorialIcon, color: '#22d3ee' },
+  'producer-studio': { label: 'Storyboard', subtitle: 'Kreativt arbeid', icon: ShotListIcon, color: '#ec4899' },
+  'producer-contributors': { label: 'Statister/medvirkende', subtitle: 'Bidragsytere', icon: CandidatesIcon, color: '#10b981' },
+  'producer-locations': { label: 'Lokasjoner', subtitle: 'Produksjon', icon: LocationIcon, color: '#4caf50' },
+  'producer-equipment': { label: 'Utstyr/rekvisitter', subtitle: 'Produksjon', icon: PropIcon, color: '#9333ea' },
+  'producer-media': { label: 'Media', subtitle: 'Leveranser', icon: MediaIcon, color: '#60a5fa' },
+  'producer-timeline': { label: 'Tidslinje', subtitle: 'Produksjon', icon: TimelineWorkflowIcon, color: '#38bdf8' },
+  'producer-reviews': { label: 'Klientsamarbeid', subtitle: 'Godkjenning', icon: ReviewsIcon, color: '#c084fc' },
+  'producer-export': { label: 'Eksport', subtitle: 'Levering', icon: ExportIcon, color: '#fbbf24' },
+  'producer-complete': { label: 'Slutt', subtitle: 'Oppsummering', icon: CelebrationIcon, color: '#4caf50' },
 };
 
 interface CastingPlannerTutorialProps {
@@ -150,7 +164,7 @@ export const CastingPlannerTutorial: FC<CastingPlannerTutorialProps> = ({
     980,
     1180,
     1380,
-    1540
+    1720
   );
 
   const modalPadding = getResponsiveValue(1.5, 2, 2.5, 3, 4, 5);
@@ -281,7 +295,34 @@ export const CastingPlannerTutorial: FC<CastingPlannerTutorialProps> = ({
   if (!open) return null;
 
   const highlightPadding = getResponsiveValue(6, 8, 10, 12, 14, 16);
-  const accentColor = '#e91e63';
+  const modeMeta = category === 'casting-planner'
+    ? {
+        label: 'Produksjonsteam-modus',
+        description: 'Denne veiledningen dekker casting, team, lokasjoner, planlegging og live set.',
+        accent: '#e91e63',
+        secondaryAccent: '#8b5cf6',
+        railTitle: 'Fanene i produksjonsflyten',
+        railDescription: 'Dette er arbeidsflatene som faktisk ligger i toppnavigasjonen for produksjonsteam.',
+      }
+    : category === 'content-producer'
+      ? {
+          label: 'Innholdsprodusent-modus',
+          description: 'Denne veiledningen dekker kreativ produksjon, opptaksflyt og innholdsleveranse.',
+          accent: '#22d3ee',
+          secondaryAccent: '#f59e0b',
+          railTitle: 'Fanene i innholdsprodusent-flyten',
+          railDescription: 'Dette er arbeidsflatene som faktisk ligger i toppnavigasjonen for innholdsprodusent.',
+        }
+      : {
+          label: 'The Role Room',
+          description: 'Denne veiledningen er tilpasset den aktive arbeidsflaten du står i.',
+          accent: '#e91e63',
+          secondaryAccent: '#8b5cf6',
+          railTitle: 'Fanene i arbeidsflaten',
+          railDescription: 'Bruk disse for å hoppe direkte til riktig område i The Role Room.',
+        };
+
+  const accentColor = modeMeta.accent;
   const surfaceColor = 'rgba(10, 13, 28, 0.96)';
   const surfaceSecondaryColor = 'rgba(255,255,255,0.045)';
   const borderSoft = 'rgba(255,255,255,0.08)';
@@ -290,26 +331,23 @@ export const CastingPlannerTutorial: FC<CastingPlannerTutorialProps> = ({
   const currentPanelColor = currentMeta?.color || currentPanel?.color || accentColor;
   const currentPanelLabel = currentMeta?.label || currentPanel?.name || 'Introduksjon';
   const progressLabel = `${currentStep + 1} / ${steps.length}`;
-  const overviewColumns = isMobile ? '1fr' : isTablet ? '1fr' : 'minmax(0, 1.45fr) minmax(280px, 0.95fr)';
-  const stepRailColumns = isMobile ? '1fr' : isTablet ? 'repeat(2, minmax(0, 1fr))' : '1fr';
+  const overviewColumns = isMobile || isTablet
+    ? '1fr'
+    : is2K
+      ? 'minmax(0, 1.4fr) minmax(320px, 0.96fr)'
+      : is4K
+        ? 'minmax(0, 1.34fr) minmax(420px, 0.92fr)'
+        : 'minmax(0, 1.45fr) minmax(320px, 0.95fr)';
+  const stepRailColumns = isMobile
+    ? 'repeat(2, minmax(0, 1fr))'
+    : isTablet
+      ? 'repeat(3, minmax(0, 1fr))'
+      : '1fr';
   const contentSectionGap = getResponsiveValue(2, 2.5, 3, 3.5, 4, 4.5);
   const dialogViewportMargin = getResponsiveValue(0, 12, 20, 24, 32, 40);
-  const logoLockupWidth = getResponsiveValue(132, 156, 184, 216, 248, 284);
-  const logoLockupHeight = getResponsiveValue(58, 64, 72, 82, 92, 102);
-  const modeMeta = category === 'casting-planner'
-    ? {
-        label: 'Produksjonsteam-modus',
-        description: 'Denne veiledningen dekker casting, team, lokasjoner, planlegging og live set.',
-      }
-    : category === 'content-producer'
-      ? {
-          label: 'Innholdsprodusent-modus',
-          description: 'Denne veiledningen dekker kreativ produksjon, opptaksflyt og innholdsleveranse.',
-        }
-      : {
-          label: 'The Role Room',
-          description: 'Denne veiledningen er tilpasset den aktive arbeidsflaten du står i.',
-        };
+  const logoLockupWidth = getResponsiveValue(144, 172, 208, 244, 288, 332);
+  const logoLockupHeight = getResponsiveValue(68, 78, 88, 98, 112, 124);
+  const shouldPrioritizeRail = isMobile || isTablet;
 
   return (
     <Box
@@ -411,16 +449,16 @@ export const CastingPlannerTutorial: FC<CastingPlannerTutorialProps> = ({
               top: highlightRect.top - highlightPadding,
               width: highlightRect.width + highlightPadding * 2,
               height: highlightRect.height + highlightPadding * 2,
-              border: '3px solid #e91e63',
+              border: `3px solid ${accentColor}`,
               borderRadius: 2,
-              boxShadow: '0 0 20px rgba(233,30,99,0.6), 0 0 40px rgba(233,30,99,0.4), inset 0 0 20px rgba(233,30,99,0.2)',
+              boxShadow: `0 0 20px ${hexToRgba(accentColor, 0.6)}, 0 0 40px ${hexToRgba(accentColor, 0.4)}, inset 0 0 20px ${hexToRgba(accentColor, 0.2)}`,
               pointerEvents: 'none',
               zIndex: 10002,
               animation: 'pulse-border 2s infinite ease-in-out',
               '@keyframes pulse-border': {
-                '0%': { boxShadow: '0 0 20px rgba(233,30,99,0.6), 0 0 40px rgba(233,30,99,0.4)' },
-                '50%': { boxShadow: '0 0 35px rgba(233,30,99,0.8), 0 0 70px rgba(233,30,99,0.6)' },
-                '100%': { boxShadow: '0 0 20px rgba(233,30,99,0.6), 0 0 40px rgba(233,30,99,0.4)' },
+                '0%': { boxShadow: `0 0 20px ${hexToRgba(accentColor, 0.6)}, 0 0 40px ${hexToRgba(accentColor, 0.4)}` },
+                '50%': { boxShadow: `0 0 35px ${hexToRgba(accentColor, 0.8)}, 0 0 70px ${hexToRgba(accentColor, 0.6)}` },
+                '100%': { boxShadow: `0 0 20px ${hexToRgba(accentColor, 0.6)}, 0 0 40px ${hexToRgba(accentColor, 0.4)}` },
               },
             }}
           />
@@ -438,8 +476,8 @@ export const CastingPlannerTutorial: FC<CastingPlannerTutorialProps> = ({
             overflow: 'hidden',
             bgcolor: surfaceColor,
             backgroundImage: `
-              radial-gradient(circle at top left, rgba(233,30,99,0.18), transparent 26%),
-              radial-gradient(circle at top right, rgba(139,92,246,0.14), transparent 22%),
+              radial-gradient(circle at top left, ${accentColor}22, transparent 26%),
+              radial-gradient(circle at top right, ${modeMeta.secondaryAccent}22, transparent 22%),
               linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0))
             `,
             border: `1px solid ${borderSoft}`,
@@ -482,11 +520,14 @@ export const CastingPlannerTutorial: FC<CastingPlannerTutorialProps> = ({
               sx={{
                 display: 'grid',
                 gridTemplateColumns: overviewColumns,
+                gridTemplateAreas: shouldPrioritizeRail
+                  ? `"rail" "main"`
+                  : `"main rail"`,
                 gap: contentSectionGap,
                 alignItems: 'start',
               }}
             >
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: contentSectionGap }}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: contentSectionGap, gridArea: 'main' }}>
                 <Box
                   sx={{
                     position: 'relative',
@@ -494,7 +535,8 @@ export const CastingPlannerTutorial: FC<CastingPlannerTutorialProps> = ({
                     borderRadius: borderRadius,
                     border: `1px solid ${borderSoft}`,
                     background: `
-                      radial-gradient(circle at top right, ${currentPanelColor}22, transparent 28%),
+                      radial-gradient(circle at top right, ${modeMeta.secondaryAccent}18, transparent 28%),
+                      radial-gradient(circle at top left, ${accentColor}16, transparent 24%),
                       linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02))
                     `,
                     px: getResponsiveValue(2, 2.5, 3, 3.5, 4, 4.5),
@@ -524,23 +566,20 @@ export const CastingPlannerTutorial: FC<CastingPlannerTutorialProps> = ({
                           justifyContent: 'center',
                           px: getResponsiveValue(1, 1.2, 1.4, 1.5, 1.75, 2),
                           py: getResponsiveValue(0.75, 0.85, 0.95, 1, 1.1, 1.2),
-                          background: `
-                            radial-gradient(circle at top left, ${accentColor}26, transparent 44%),
-                            linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03))
-                          `,
-                          boxShadow: `0 24px 56px ${currentPanelColor}2b`,
-                          border: `1px solid ${currentPanelColor}44`,
+                          background: 'linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02))',
+                          boxShadow: `0 24px 56px ${accentColor}24`,
+                          border: `1px solid ${accentColor}30`,
                         }}
                       >
                         <img
-                          src="/role-room-assets/TheRoleRoom_and_Tagline.webp"
+                          src="/role-room-assets/TheRoleRoom_Logo_Tagline.webp"
                           alt="The Role Room"
                           style={{
                             width: '100%',
                             height: '100%',
                             objectFit: 'contain',
                             objectPosition: 'center',
-                            filter: 'drop-shadow(0 10px 20px rgba(0,0,0,0.22))',
+                            filter: 'drop-shadow(0 10px 20px rgba(0,0,0,0.18))',
                           }}
                         />
                       </Box>
@@ -614,9 +653,9 @@ export const CastingPlannerTutorial: FC<CastingPlannerTutorialProps> = ({
                       label={modeMeta.label}
                       sx={{
                         height: getResponsiveValue(30, 32, 34, 36, 38, 40),
-                        bgcolor: 'rgba(255,255,255,0.08)',
+                        bgcolor: `${accentColor}18`,
                         color: '#fff',
-                        border: `1px solid ${borderSoft}`,
+                        border: `1px solid ${accentColor}3c`,
                         fontSize: captionFontSize,
                         fontWeight: 700,
                       }}
@@ -897,9 +936,9 @@ export const CastingPlannerTutorial: FC<CastingPlannerTutorialProps> = ({
                         '& .MuiSlider-thumb': {
                           width: getResponsiveValue(18, 20, 22, 24, 28, 32),
                           height: getResponsiveValue(18, 20, 22, 24, 28, 32),
-                          boxShadow: '0 0 0 6px rgba(233,30,99,0.12)',
+                          boxShadow: `0 0 0 6px ${hexToRgba(accentColor, 0.12)}`,
                           '&:hover, &:focus': {
-                            boxShadow: '0 0 0 10px rgba(233,30,99,0.18)',
+                            boxShadow: `0 0 0 10px ${hexToRgba(accentColor, 0.18)}`,
                           },
                         },
                         '& .MuiSlider-rail': {
@@ -964,9 +1003,9 @@ export const CastingPlannerTutorial: FC<CastingPlannerTutorialProps> = ({
                           minHeight: buttonMinHeight,
                           borderRadius: getResponsiveValue(2.5, 3, 3.25, 3.5, 3.75, 4),
                           border: isPlaying ? 'none' : `1px solid ${borderSoft}`,
-                          boxShadow: isPlaying ? '0 14px 30px rgba(233,30,99,0.35)' : 'none',
+                          boxShadow: isPlaying ? `0 14px 30px ${hexToRgba(accentColor, 0.35)}` : 'none',
                           '&:hover': {
-                            bgcolor: isPlaying ? '#c2185b' : 'rgba(255,255,255,0.12)',
+                            bgcolor: isPlaying ? hexToRgba(accentColor, 0.9) : 'rgba(255,255,255,0.12)',
                           },
                         }}
                       >
@@ -1004,10 +1043,10 @@ export const CastingPlannerTutorial: FC<CastingPlannerTutorialProps> = ({
                         fontSize: captionFontSize,
                         fontWeight: 700,
                         borderRadius: getResponsiveValue(2.5, 3, 3.25, 3.5, 3.75, 4),
-                        boxShadow: '0 18px 36px rgba(233,30,99,0.28)',
+                        boxShadow: `0 18px 36px ${hexToRgba(accentColor, 0.28)}`,
                         '&:hover': {
-                          bgcolor: '#c2185b',
-                          boxShadow: '0 22px 42px rgba(233,30,99,0.34)',
+                          bgcolor: hexToRgba(accentColor, 0.92),
+                          boxShadow: `0 22px 42px ${hexToRgba(accentColor, 0.34)}`,
                         },
                         '&:active': {
                           transform: 'scale(0.985)',
@@ -1032,6 +1071,9 @@ export const CastingPlannerTutorial: FC<CastingPlannerTutorialProps> = ({
               </Box>
 
               <Box
+                sx={{ gridArea: 'rail' }}
+              >
+                <Box
                 sx={{
                   display: 'grid',
                   gap: getResponsiveValue(1.25, 1.5, 1.75, 2, 2.25, 2.5),
@@ -1046,13 +1088,13 @@ export const CastingPlannerTutorial: FC<CastingPlannerTutorialProps> = ({
                   <Typography
                     variant="overline"
                     sx={{
-                      color: 'rgba(255,255,255,0.56)',
+                      color: accentColor,
                       fontSize: captionFontSize,
                       letterSpacing: '0.16em',
                       fontWeight: 700,
                     }}
                   >
-                    Hele løypen
+                    Navigasjon i appen
                   </Typography>
                   <Typography
                     variant="h6"
@@ -1063,7 +1105,18 @@ export const CastingPlannerTutorial: FC<CastingPlannerTutorialProps> = ({
                       fontSize: getResponsiveValue('1rem', '1.05rem', '1.12rem', '1.18rem', '1.24rem', '1.35rem'),
                     }}
                   >
-                    Hopp direkte til riktig arbeidsflate
+                    {modeMeta.railTitle}
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      color: 'rgba(255,255,255,0.62)',
+                      fontSize: captionFontSize,
+                      lineHeight: 1.55,
+                      mt: 0.85,
+                    }}
+                  >
+                    {modeMeta.railDescription}
                   </Typography>
                 </Box>
 
@@ -1072,9 +1125,9 @@ export const CastingPlannerTutorial: FC<CastingPlannerTutorialProps> = ({
                     display: 'grid',
                     gridTemplateColumns: stepRailColumns,
                     gap: getResponsiveValue(1, 1.1, 1.15, 1.2, 1.3, 1.4),
-                    maxHeight: isMobile ? 'none' : '56dvh',
+                    maxHeight: shouldPrioritizeRail ? 'none' : '56dvh',
                     overflowY: 'auto',
-                    pr: isMobile ? 0 : 0.5,
+                    pr: shouldPrioritizeRail ? 0 : 0.5,
                     WebkitOverflowScrolling: 'touch',
                   }}
                   role="navigation"
@@ -1086,6 +1139,7 @@ export const CastingPlannerTutorial: FC<CastingPlannerTutorialProps> = ({
                     const panel = panelIndex >= 0 ? panelInfo[panelIndex] : null;
                     const IconComponent = meta?.icon || panel?.icon || TutorialIcon;
                     const stepLabel = meta?.label || panel?.name || (index === 0 ? 'Start' : index === steps.length - 1 ? 'Slutt' : `${index + 1}`);
+                    const stepSubtitle = meta?.subtitle || `Steg ${index + 1}`;
                     const stepColor = meta?.color || panel?.color || accentColor;
                     const isActive = index === currentStep;
                     const isCompleted = index < currentStep;
@@ -1102,7 +1156,7 @@ export const CastingPlannerTutorial: FC<CastingPlannerTutorialProps> = ({
                         sx={{
                           all: 'unset',
                           display: 'grid',
-                          gridTemplateColumns: 'auto minmax(0, 1fr) auto',
+                          gridTemplateColumns: shouldPrioritizeRail ? 'auto minmax(0, 1fr)' : 'auto minmax(0, 1fr) auto',
                           gap: 1.25,
                           alignItems: 'center',
                           p: getResponsiveValue(1.1, 1.15, 1.2, 1.3, 1.4, 1.5),
@@ -1151,11 +1205,13 @@ export const CastingPlannerTutorial: FC<CastingPlannerTutorialProps> = ({
                             sx={{
                               color: isActive ? '#fff' : 'rgba(255,255,255,0.86)',
                               fontWeight: isActive ? 700 : 600,
-                              fontSize: captionFontSize,
+                              fontSize: shouldPrioritizeRail ? stepTextSize : captionFontSize,
                               lineHeight: 1.2,
-                              whiteSpace: 'nowrap',
+                              whiteSpace: 'normal',
+                              display: '-webkit-box',
+                              WebkitBoxOrient: 'vertical',
+                              WebkitLineClamp: shouldPrioritizeRail ? 3 : 2,
                               overflow: 'hidden',
-                              textOverflow: 'ellipsis',
                             }}
                           >
                             {stepLabel}
@@ -1163,30 +1219,33 @@ export const CastingPlannerTutorial: FC<CastingPlannerTutorialProps> = ({
                           <Typography
                             variant="caption"
                             sx={{
-                              color: 'rgba(255,255,255,0.5)',
+                              color: isActive ? `${stepColor}` : 'rgba(255,255,255,0.5)',
                               fontSize: stepTextSize,
                               display: 'block',
                               mt: 0.35,
                             }}
                           >
-                            Steg {index + 1}
+                            {stepSubtitle}
                           </Typography>
                         </Box>
-                        <Box
-                          sx={{
-                            minWidth: 28,
-                            textAlign: 'right',
-                            color: isActive ? stepColor : isCompleted ? '#7ef0a7' : 'rgba(255,255,255,0.32)',
-                            fontSize: stepTextSize,
-                            fontWeight: 700,
-                          }}
-                        >
-                          {isCompleted ? '✓' : `${index + 1}`}
-                        </Box>
+                        {!shouldPrioritizeRail && (
+                          <Box
+                            sx={{
+                              minWidth: 28,
+                              textAlign: 'right',
+                              color: isActive ? stepColor : isCompleted ? '#7ef0a7' : 'rgba(255,255,255,0.32)',
+                              fontSize: stepTextSize,
+                              fontWeight: 700,
+                            }}
+                          >
+                            {isCompleted ? '✓' : `${index + 1}`}
+                          </Box>
+                        )}
                       </Box>
                     );
                   })}
                 </Box>
+              </Box>
               </Box>
             </Box>
           </Box>
