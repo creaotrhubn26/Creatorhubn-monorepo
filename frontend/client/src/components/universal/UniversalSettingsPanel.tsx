@@ -1042,7 +1042,13 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                       {paymentHistory.history.slice(0, 3).map((payment: any, idx: number) => {
                         const paymentDate = new Date(payment.createdAt || payment.currentPeriodStart || Date.now());
                         const daysSincePayment = Math.floor((Date.now() - paymentDate.getTime()) / (1000 * 60 * 60 * 24));
-                        const canRefund = daysSincePayment <= 30 && payment.status === 'active' && !payment.refunded;
+                        const refundRequestPending = payment.refundRequestStatus === 'pending';
+                        const refundRequestRejected = payment.refundRequestStatus === 'rejected';
+                        const canRefund =
+                          daysSincePayment <= 30 &&
+                          payment.status === 'active' &&
+                          !payment.refunded &&
+                          !refundRequestPending;
 
                         return (
                           <Box
@@ -1079,9 +1085,25 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                               </Button>
                             ) : (
                               <Chip
-                                label={payment.refunded ? 'Refundert' : 'Ikke refunderbar'}
+                                label={
+                                  payment.refunded
+                                    ? 'Refundert'
+                                    : refundRequestPending
+                                      ? 'Venter behandling'
+                                      : refundRequestRejected
+                                        ? 'Avslått'
+                                        : 'Ikke refunderbar'
+                                }
                                 size="small"
-                                color={payment.refunded ? 'success' : 'default'}
+                                color={
+                                  payment.refunded
+                                    ? 'success'
+                                    : refundRequestPending
+                                      ? 'warning'
+                                      : refundRequestRejected
+                                        ? 'error'
+                                        : 'default'
+                                }
                               />
                             )}
                           </Box>
@@ -2219,7 +2241,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
 
               setProcessingAction(true);
               try {
-                await apiRequest('/api/google-pay/refund', {
+                const response = await apiRequest('/api/google-pay/refund', {
                   method: 'POST',
                   body: JSON.stringify({
                     transactionId: selectedPaymentForRefund.transactionId || selectedPaymentForRefund.id,
@@ -2231,7 +2253,13 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                 setShowRefundDialog(false);
                 setRefundReason('');
                 setSelectedPaymentForRefund(null);
-                setSnackbar({ open: true, message: 'Refunderingsforespørsel sendt! Du vil motta en e-post når den er behandlet.', severity: 'success' });
+                setSnackbar({
+                  open: true,
+                  message: response?.alreadyRequested
+                    ? 'Det finnes allerede en aktiv refunderingsforespørsel for denne betalingen.'
+                    : 'Refunderingsforespørsel sendt! Du vil motta en e-post når den er behandlet.',
+                  severity: response?.alreadyRequested ? 'warning' : 'success',
+                });
               } catch (error) {
                 console.error('Failed to request refund:', error);
                 setSnackbar({ open: true, message: 'Kunne ikke sende refunderingsforespørsel. Prøv igjen senere.', severity: 'error' });

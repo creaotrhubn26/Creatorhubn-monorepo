@@ -19070,6 +19070,9 @@ type CompatPaymentHistoryItem = {
   refunded: boolean;
   refundReason: string | null;
   refundedAt: string | null;
+  refundRequestId?: number | null;
+  refundRequestStatus?: "pending" | "approved" | "rejected" | null;
+  refundRequestedAt?: string | null;
 };
 
 type CompatPaymentStatusCardSummary = {
@@ -19099,6 +19102,44 @@ type CompatPaymentStatusRecord = {
   metadata: Record<string, unknown>;
   receiptSentAt: string | null;
   membershipCard: CompatPaymentStatusCardSummary | null;
+  refundReason?: string | null;
+  refundedAt?: string | null;
+  stripeRefundId?: string | null;
+};
+
+type CompatRefundRequestStatus = "pending" | "approved" | "rejected";
+
+type CompatRefundRequestRecord = {
+  id: number;
+  paymentId: string | null;
+  transactionId: string;
+  userId: string;
+  userEmail: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  planId: string | null;
+  planName: string | null;
+  amountMinor: number;
+  amountMajor: number;
+  currency: string;
+  reason: string | null;
+  status: CompatRefundRequestStatus;
+  paymentProvider: CompatPaymentStatusRecord["provider"];
+  paymentMethod: CompatPaymentStatusRecord["paymentMethod"];
+  requestedAt: string;
+  processedAt: string | null;
+  processedByUserId: string | null;
+  processedByEmail: string | null;
+  processedByName: string | null;
+  rejectionReason: string | null;
+  stripeRefundId: string | null;
+  stripePaymentIntentId: string | null;
+  stripeChargeId: string | null;
+  stripeSubscriptionId: string | null;
+  stripeCustomerId: string | null;
+  stripeSessionId: string | null;
+  sourcePlatform: "creatorhub" | "role_room" | "compat";
+  metadata: Record<string, unknown>;
 };
 
 type CompatMembershipCardTier = "BRONZE" | "SILVER" | "GOLD" | "PLATINUM";
@@ -19608,6 +19649,10 @@ function dbCompatPaymentStatusKey(paymentId: string): string {
   return `compat:payments:status:${paymentId}`;
 }
 
+function dbCompatRefundRequestKey(refundRequestId: number | string): string {
+  return `compat:payments:refund-request:${refundRequestId}`;
+}
+
 function dbCompatLatestPaymentKey(userId: string): string {
   return `compat:payments:latest:${userId}`;
 }
@@ -19710,6 +19755,34 @@ async function writeCompatPaymentStatusRecord(
   if (record.userId && record.userId !== "guest") {
     await compatStoreSet(dbCompatLatestPaymentKey(record.userId), record.id);
   }
+}
+
+async function readCompatRefundRequestRecord(
+  refundRequestId: number | string,
+): Promise<CompatRefundRequestRecord | null> {
+  return compatStoreGet<CompatRefundRequestRecord>(
+    dbCompatRefundRequestKey(refundRequestId),
+  );
+}
+
+async function writeCompatRefundRequestRecord(
+  record: CompatRefundRequestRecord,
+): Promise<void> {
+  await compatStoreSet(dbCompatRefundRequestKey(record.id), record);
+}
+
+async function listCompatRefundRequestRecords(): Promise<CompatRefundRequestRecord[]> {
+  const rows = await compatStoreListByPrefix<CompatRefundRequestRecord>(
+    "compat:payments:refund-request:",
+  );
+
+  return rows
+    .map((entry) => entry.value)
+    .filter((entry): entry is CompatRefundRequestRecord => Boolean(entry))
+    .sort(
+      (left, right) =>
+        new Date(right.requestedAt).getTime() - new Date(left.requestedAt).getTime(),
+    );
 }
 
 async function readCompatMembershipCards(
@@ -19840,6 +19913,9 @@ async function buildCompatPaymentHistory(
         refunded: false,
         refundReason: null,
         refundedAt: null,
+        refundRequestId: null,
+        refundRequestStatus: null,
+        refundRequestedAt: null,
       });
     }
   }
@@ -20003,6 +20079,256 @@ async function readCompatLatestPaymentStatusRecord(
           new Date(left.completedAt || left.createdAt).getTime(),
       )[0] ?? null
   );
+}
+
+function generateCompatRefundRequestId(): number {
+  return Date.now() * 1000 + Math.floor(Math.random() * 1000);
+}
+
+function getCompatPaymentStripeSessionId(
+  record: CompatPaymentStatusRecord | null | undefined,
+): string | null {
+  const metadata = normalizeJsonObjectField(record?.metadata) || {};
+  const explicit = normalizeMailConfigValue(metadata.stripeSessionId);
+  if (explicit) {
+    return explicit;
+  }
+
+  const recordId = readString(record?.id);
+  if (recordId.startsWith("pay_cs_")) {
+    return recordId.slice(4);
+  }
+
+  return null;
+}
+
+function getCompatPaymentStripeSubscriptionId(
+  record: CompatPaymentStatusRecord | null | undefined,
+): string | null {
+  const metadata = normalizeJsonObjectField(record?.metadata) || {};
+  const explicit = normalizeMailConfigValue(metadata.stripeSubscriptionId);
+  if (explicit) {
+    return explicit;
+  }
+
+  const transactionId = normalizeMailConfigValue(record?.transactionId);
+  return transactionId.startsWith("sub_") ? transactionId : null;
+}
+
+function getCompatPaymentStripeCustomerId(
+  record: CompatPaymentStatusRecord | null | undefined,
+): string | null {
+  const metadata = normalizeJsonObjectField(record?.metadata) || {};
+  return normalizeMailConfigValue(metadata.stripeCustomerId) || null;
+}
+
+async function findActiveCompatRefundRequestForPayment(input: {
+  paymentId?: string | null;
+  transactionId?: string | null;
+}): Promise<CompatRefundRequestRecord | null> {
+  const paymentId = readString(input.paymentId);
+  const transactionId = readString(input.transactionId);
+  if (!paymentId && !transactionId) {
+    return null;
+  }
+
+  const requests = await listCompatRefundRequestRecords();
+  return (
+    requests.find((request) => {
+      const samePaymentId = paymentId && request.paymentId === paymentId;
+      const sameTransactionId =
+        transactionId && request.transactionId === transactionId;
+      return (
+        request.status === "pending" ||
+        request.status === "approved"
+      ) && (samePaymentId || sameTransactionId);
+    }) || null
+  );
+}
+
+async function resolveCompatRefundRequesterIdentity(input: {
+  userId: string;
+  email: string | null;
+  requestId: string | null;
+}) {
+  const normalizedEmail = normalizeMailConfigValue(input.email).toLowerCase() || null;
+  const accountUser =
+    (input.userId && input.userId !== "guest"
+      ? await findAdminAccountUser(input.userId, normalizedEmail).catch(() => null)
+      : null) || null;
+  const inviteRequest =
+    (input.requestId
+      ? await findAdminInviteRequest(input.requestId, normalizedEmail).catch(() => null)
+      : null) ||
+    (normalizedEmail
+      ? await findAdminInviteRequest(normalizedEmail, normalizedEmail).catch(() => null)
+      : null);
+
+  return {
+    email:
+      normalizedEmail ||
+      toAdminString(accountUser?.email) ||
+      toAdminString(inviteRequest?.email) ||
+      null,
+    firstName:
+      toAdminString(accountUser?.first_name) ||
+      toAdminString(inviteRequest?.first_name) ||
+      null,
+    lastName:
+      toAdminString(accountUser?.last_name) ||
+      toAdminString(inviteRequest?.last_name) ||
+      null,
+  };
+}
+
+async function decorateCompatPaymentHistoryWithRefundRequests(
+  history: CompatPaymentHistoryItem[],
+  userId: string,
+  email: string | null,
+): Promise<CompatPaymentHistoryItem[]> {
+  const normalizedEmail = normalizeMailConfigValue(email).toLowerCase() || null;
+  const requests = (await listCompatRefundRequestRecords()).filter((request) => {
+    const sameUser = request.userId === userId;
+    const sameEmail =
+      normalizedEmail &&
+      normalizeMailConfigValue(request.userEmail).toLowerCase() === normalizedEmail;
+    return sameUser || Boolean(sameEmail);
+  });
+
+  return history.map((entry) => {
+    const latestRequest =
+      requests.find(
+        (request) =>
+          (request.paymentId && request.paymentId === entry.id) ||
+          (request.transactionId && request.transactionId === entry.transactionId),
+      ) || null;
+
+    if (!latestRequest) {
+      return entry;
+    }
+
+    return {
+      ...entry,
+      refunded:
+        entry.refunded || latestRequest.status === "approved",
+      refundReason: entry.refundReason || latestRequest.reason || null,
+      refundedAt:
+        entry.refundedAt ||
+        (latestRequest.status === "approved" ? latestRequest.processedAt : null),
+      refundRequestId: latestRequest.id,
+      refundRequestStatus: latestRequest.status,
+      refundRequestedAt: latestRequest.requestedAt,
+      status:
+        latestRequest.status === "approved"
+          ? "refunded"
+          : entry.status,
+    };
+  });
+}
+
+async function updateCompatPaymentHistoryRefundState(
+  record: CompatPaymentStatusRecord,
+  input: {
+    refunded: boolean;
+    refundReason: string | null;
+    refundedAt: string | null;
+    refundRequestId?: number | null;
+    refundRequestStatus?: CompatRefundRequestStatus | null;
+    refundRequestedAt?: string | null;
+  },
+) {
+  if (!record.userId) {
+    return;
+  }
+
+  const history = await readCompatPaymentHistory(record.userId);
+  const nextHistory = history.map((entry) => {
+    const matches =
+      entry.id === record.id || entry.transactionId === record.transactionId;
+    if (!matches) {
+      return entry;
+    }
+
+    return {
+      ...entry,
+      refunded: input.refunded,
+      refundReason: input.refundReason,
+      refundedAt: input.refundedAt,
+      refundRequestId:
+        input.refundRequestId === undefined ? entry.refundRequestId : input.refundRequestId,
+      refundRequestStatus:
+        input.refundRequestStatus === undefined
+          ? entry.refundRequestStatus
+          : input.refundRequestStatus,
+      refundRequestedAt:
+        input.refundRequestedAt === undefined
+          ? entry.refundRequestedAt
+          : input.refundRequestedAt,
+      status: input.refunded ? "refunded" : entry.status,
+    };
+  });
+
+  await writeCompatPaymentHistory(record.userId, nextHistory);
+}
+
+async function markCompatPaymentRecordRefunded(
+  record: CompatPaymentStatusRecord,
+  input: {
+    refundReason: string | null;
+    refundedAt: string;
+    stripeRefundId?: string | null;
+    refundRequestId?: number | null;
+  },
+) {
+  const nextRecord: CompatPaymentStatusRecord = {
+    ...record,
+    status: "refunded",
+    refundReason: input.refundReason || null,
+    refundedAt: input.refundedAt,
+    stripeRefundId: input.stripeRefundId || null,
+    metadata: {
+      ...(normalizeJsonObjectField(record.metadata) || {}),
+      refundedAt: input.refundedAt,
+      refundReason: input.refundReason || null,
+      stripeRefundId: input.stripeRefundId || null,
+      refundRequestId: input.refundRequestId || null,
+    },
+  };
+
+  await writeCompatPaymentStatusRecord(nextRecord);
+  await updateCompatPaymentHistoryRefundState(nextRecord, {
+    refunded: true,
+    refundReason: input.refundReason || null,
+    refundedAt: input.refundedAt,
+    refundRequestId: input.refundRequestId || null,
+    refundRequestStatus: "approved",
+    refundRequestedAt: undefined,
+  });
+
+  return nextRecord;
+}
+
+function mapCompatRefundRequestForAdmin(record: CompatRefundRequestRecord) {
+  return {
+    id: record.id,
+    user_id: record.userId,
+    user_email: record.userEmail,
+    first_name: record.firstName,
+    last_name: record.lastName,
+    transaction_id: record.transactionId,
+    amount: record.amountMajor,
+    currency: record.currency,
+    reason: record.reason,
+    status: record.status,
+    requested_at: record.requestedAt,
+    processed_at: record.processedAt,
+    rejection_reason: record.rejectionReason,
+    stripe_refund_id: record.stripeRefundId,
+    payment_provider: record.paymentProvider,
+    payment_method: record.paymentMethod,
+    plan_id: record.planId,
+    plan_name: record.planName,
+  };
 }
 
 async function findCompatMembershipCardById(
@@ -20209,6 +20535,9 @@ async function recordCompatPaymentCompletion(
       refunded: false,
       refundReason: null,
       refundedAt: null,
+      refundRequestId: null,
+      refundRequestStatus: null,
+      refundRequestedAt: null,
     },
     ...history.filter(
       (entry) =>
@@ -25298,7 +25627,13 @@ app.get("/api/payments/history", async (req, res) => {
       readString(req.query.userEmail) || compatResolveUserEmail(req);
     const history = await buildCompatPaymentHistory(userId || "guest", email);
     await writeCompatPaymentHistory(userId || "guest", history);
-    res.json({ history });
+    res.json({
+      history: await decorateCompatPaymentHistoryWithRefundRequests(
+        history,
+        userId || "guest",
+        email,
+      ),
+    });
   } catch (error) {
     console.error("Error fetching payment history:", error);
     res.status(500).json({ error: "Could not fetch payment history" });
@@ -25601,7 +25936,6 @@ app.get("/api/payments/fiken-mva-status", async (req, res) => {
 
 app.post("/api/google-pay/refund", async (req, res) => {
   try {
-    const userId = compatResolveUserId(req);
     const body = isRecord(req.body) ? req.body : {};
     const transactionId = readString(body.transactionId);
     const refundReason = readString(body.reason) || "User requested refund";
@@ -25609,41 +25943,414 @@ app.post("/api/google-pay/refund", async (req, res) => {
       return res.status(400).json({ error: "transactionId is required" });
     }
 
-    const history = await buildCompatPaymentHistory(
-      userId,
-      compatResolveUserEmail(req),
-    );
-    let matched = false;
-    const nextHistory = history.map((entry) => {
-      if (entry.transactionId !== transactionId && entry.id !== transactionId) {
-        return entry;
-      }
-      matched = true;
-      return {
-        ...entry,
-        refunded: true,
-        refundReason,
-        refundedAt: new Date().toISOString(),
-        status: "refunded",
-      };
-    });
-
-    if (!matched) {
+    const paymentRecord = await findCompatPaymentStatusRecord(transactionId);
+    if (!paymentRecord) {
       return res.status(404).json({ error: "Payment not found for refund" });
     }
 
-    await writeCompatPaymentHistory(userId, nextHistory);
-    const paymentRecord = await findCompatPaymentStatusRecord(transactionId);
-    if (paymentRecord) {
-      await writeCompatPaymentStatusRecord({
-        ...paymentRecord,
-        status: "refunded",
+    const requesterUserId = compatResolveUserId(req);
+    const requesterEmail = normalizeMailConfigValue(
+      compatResolveUserEmail(req),
+    ).toLowerCase();
+    const paymentEmail = normalizeMailConfigValue(paymentRecord.email).toLowerCase();
+    const ownsPayment =
+      (requesterUserId && paymentRecord.userId === requesterUserId) ||
+      (requesterEmail && paymentEmail === requesterEmail);
+
+    if (!ownsPayment) {
+      return res.status(403).json({
+        error: "Du kan bare be om refundering for dine egne betalinger.",
       });
     }
-    res.status(201).json({ success: true, transactionId, refundReason });
+
+    if (paymentRecord.status === "refunded" || paymentRecord.refundedAt) {
+      return res.status(409).json({
+        error: "Betalingen er allerede refundert.",
+      });
+    }
+    if (
+      !Number.isFinite(paymentRecord.amountMinor) ||
+      paymentRecord.amountMinor <= 0
+    ) {
+      return res.status(400).json({
+        error: "Betalingen kan ikke refunderes fordi beløpet er 0.",
+      });
+    }
+
+    const paymentTimestamp = new Date(paymentRecord.completedAt || paymentRecord.createdAt);
+    const daysSincePayment = Math.floor(
+      (Date.now() - paymentTimestamp.getTime()) / (1000 * 60 * 60 * 24),
+    );
+    if (!Number.isFinite(daysSincePayment) || daysSincePayment > 30) {
+      return res.status(400).json({
+        error: "Refundering kan bare forespørres innen 30 dager etter betaling.",
+      });
+    }
+
+    const existingRequest = await findActiveCompatRefundRequestForPayment({
+      paymentId: paymentRecord.id,
+      transactionId: paymentRecord.transactionId,
+    });
+    if (existingRequest?.status === "pending") {
+      return res.status(200).json({
+        success: true,
+        alreadyRequested: true,
+        request: mapCompatRefundRequestForAdmin(existingRequest),
+      });
+    }
+    if (existingRequest?.status === "approved") {
+      return res.status(409).json({
+        error: "Refundering er allerede godkjent for denne betalingen.",
+      });
+    }
+
+    const requesterIdentity = await resolveCompatRefundRequesterIdentity({
+      userId: paymentRecord.userId,
+      email: paymentRecord.email || requesterEmail || null,
+      requestId: paymentRecord.requestId,
+    });
+    const creatorHubCheckout =
+      paymentRecord.paymentMethod === "stripe"
+        ? await resolveCreatorHubStripeCheckoutRecordFromCompatPayment(paymentRecord)
+        : null;
+    const requestedAt = new Date().toISOString();
+    const refundRequest: CompatRefundRequestRecord = {
+      id: generateCompatRefundRequestId(),
+      paymentId: paymentRecord.id,
+      transactionId: paymentRecord.transactionId,
+      userId: paymentRecord.userId,
+      userEmail: requesterIdentity.email || paymentRecord.email || requesterEmail || null,
+      firstName: requesterIdentity.firstName,
+      lastName: requesterIdentity.lastName,
+      planId: paymentRecord.planId,
+      planName: paymentRecord.planName,
+      amountMinor: paymentRecord.amountMinor,
+      amountMajor: paymentRecord.amountMajor,
+      currency: paymentRecord.currency,
+      reason: refundReason,
+      status: "pending",
+      paymentProvider: paymentRecord.provider,
+      paymentMethod: paymentRecord.paymentMethod,
+      requestedAt,
+      processedAt: null,
+      processedByUserId: null,
+      processedByEmail: null,
+      processedByName: null,
+      rejectionReason: null,
+      stripeRefundId: null,
+      stripePaymentIntentId: null,
+      stripeChargeId: null,
+      stripeSubscriptionId:
+        creatorHubCheckout?.stripeSubscriptionId ||
+        getCompatPaymentStripeSubscriptionId(paymentRecord),
+      stripeCustomerId:
+        creatorHubCheckout?.stripeCustomerId ||
+        getCompatPaymentStripeCustomerId(paymentRecord),
+      stripeSessionId:
+        creatorHubCheckout?.sessionId || getCompatPaymentStripeSessionId(paymentRecord),
+      sourcePlatform: creatorHubCheckout ? "creatorhub" : "compat",
+      metadata: {
+        requestId: paymentRecord.requestId,
+        paymentMetadata: normalizeJsonObjectField(paymentRecord.metadata) || {},
+      },
+    };
+
+    await writeCompatRefundRequestRecord(refundRequest);
+    await updateCompatPaymentHistoryRefundState(paymentRecord, {
+      refunded: false,
+      refundReason,
+      refundedAt: null,
+      refundRequestId: refundRequest.id,
+      refundRequestStatus: "pending",
+      refundRequestedAt: requestedAt,
+    });
+
+    res.status(201).json({
+      success: true,
+      request: mapCompatRefundRequestForAdmin(refundRequest),
+    });
   } catch (error) {
     console.error("Error creating refund request:", error);
     res.status(500).json({ error: "Could not create refund request" });
+  }
+});
+
+app.get("/api/admin/refund-requests", async (req, res) => {
+  try {
+    if (!requireAdminSession(req, res)) {
+      return;
+    }
+
+    const refundRequests = (await listCompatRefundRequestRecords()).map(
+      mapCompatRefundRequestForAdmin,
+    );
+    res.json({ refundRequests });
+  } catch (error) {
+    console.error("Error fetching admin refund requests:", error);
+    res.status(500).json({ error: "Could not fetch refund requests" });
+  }
+});
+
+app.post("/api/admin/refund-requests/:id/approve", async (req, res) => {
+  try {
+    const adminSession = requireAdminSession(req, res);
+    if (!adminSession) {
+      return;
+    }
+
+    const refundRequest = await readCompatRefundRequestRecord(req.params.id);
+    if (!refundRequest) {
+      return res.status(404).json({ error: "Refund request not found" });
+    }
+    if (refundRequest.status !== "pending") {
+      return res.status(409).json({
+        error: "Refund request is already processed",
+        request: mapCompatRefundRequestForAdmin(refundRequest),
+      });
+    }
+
+    const paymentRecord =
+      (refundRequest.paymentId
+        ? await readCompatPaymentStatusRecord(refundRequest.paymentId)
+        : null) ||
+      (await findCompatPaymentStatusRecord(refundRequest.transactionId));
+    if (!paymentRecord) {
+      return res.status(404).json({ error: "Payment not found for refund request" });
+    }
+
+    let stripeRefundId: string | null = null;
+    let cancellationWarning: string | null = null;
+
+    if (
+      refundRequest.paymentProvider === "stripe" ||
+      paymentRecord.paymentMethod === "stripe"
+    ) {
+      const stripe = getCreatorHubStripeClient();
+      if (!stripe) {
+        return res.status(503).json({
+          error: "Stripe refunds are not configured on the server.",
+        });
+      }
+
+      const creatorHubCheckout =
+        await resolveCreatorHubStripeCheckoutRecordFromCompatPayment(paymentRecord);
+      const refundTarget = await resolveCreatorHubStripeRefundTarget({
+        stripe,
+        paymentRecord,
+        checkoutRecord: creatorHubCheckout,
+      });
+      if (!refundTarget?.paymentIntentId && !refundTarget?.chargeId) {
+        return res.status(409).json({
+          error:
+            "Fant ikke et refunderbart Stripe-betalingsgrunnlag for denne betalingen.",
+        });
+      }
+
+      const refund = await stripe.refunds.create({
+        ...(refundTarget.paymentIntentId
+          ? { payment_intent: refundTarget.paymentIntentId }
+          : { charge: refundTarget.chargeId! }),
+        amount: refundRequest.amountMinor,
+        reason: "requested_by_customer",
+        metadata: {
+          creatorhub_refund_request_id: String(refundRequest.id),
+          creatorhub_payment_id: paymentRecord.id,
+          creatorhub_transaction_id: paymentRecord.transactionId,
+          creatorhub_plan_id: paymentRecord.planId || "",
+          creatorhub_user_id: paymentRecord.userId || "",
+        },
+      });
+      stripeRefundId = refund.id || null;
+
+      const subscriptionId =
+        refundTarget.subscriptionId ||
+        creatorHubCheckout?.stripeSubscriptionId ||
+        refundRequest.stripeSubscriptionId;
+      if (subscriptionId && creatorHubCheckout) {
+        try {
+          const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+          if (
+            subscription.status !== "canceled" &&
+            subscription.status !== "incomplete_expired"
+          ) {
+            const cancelledSubscription = await stripe.subscriptions.cancel(
+              subscriptionId,
+            );
+            await clearCreatorHubStripeSubscription(cancelledSubscription, {
+              suppressFailureEmail: true,
+              suppressCancellationEmail: true,
+              failureMessage:
+                "Abonnementet ble avsluttet etter godkjent refundering.",
+            });
+          }
+        } catch (cancelError) {
+          cancellationWarning =
+            cancelError instanceof Error
+              ? cancelError.message
+              : "Stripe refund ble gjennomført, men abonnementet kunne ikke avsluttes automatisk.";
+          console.error(
+            "CreatorHub refund subscription cancellation failed:",
+            cancelError,
+          );
+        }
+      }
+    }
+
+    const processedAt = new Date().toISOString();
+    await markCompatPaymentRecordRefunded(paymentRecord, {
+      refundReason: refundRequest.reason,
+      refundedAt: processedAt,
+      stripeRefundId,
+      refundRequestId: refundRequest.id,
+    });
+
+    const approvedRequest: CompatRefundRequestRecord = {
+      ...refundRequest,
+      status: "approved",
+      processedAt,
+      processedByUserId: adminSession.userId,
+      processedByEmail: adminSession.email,
+      processedByName: adminSession.name,
+      rejectionReason: null,
+      stripeRefundId,
+      stripePaymentIntentId: refundRequest.stripePaymentIntentId,
+      stripeChargeId: refundRequest.stripeChargeId,
+    };
+    await writeCompatRefundRequestRecord(approvedRequest);
+
+    if (approvedRequest.userEmail) {
+      const creatorHubRecord =
+        await resolveCreatorHubStripeCheckoutRecordFromCompatPayment(paymentRecord);
+      const recipient =
+        creatorHubRecord &&
+        creatorHubRecord.email &&
+        creatorHubRecord.planName
+          ? await resolveCreatorHubBillingRecipientContext(creatorHubRecord)
+          : {
+              email: approvedRequest.userEmail,
+              recipientName:
+                [approvedRequest.firstName, approvedRequest.lastName]
+                  .filter(Boolean)
+                  .join(" ")
+                  .trim() || "CreatorHub-medlem",
+            };
+      if (recipient.email) {
+        await sendCreatorHubRefundApprovedEmail({
+          recipientEmail: recipient.email,
+          recipientName: recipient.recipientName,
+          planName: approvedRequest.planName || paymentRecord.planName,
+          amountMajor: approvedRequest.amountMajor,
+          currency: approvedRequest.currency,
+          creatorHubUrl: getDefaultCreatorHubPublicOrigin(),
+        }).catch((error) => {
+          console.error("CreatorHub refund approval email failed:", error);
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      request: mapCompatRefundRequestForAdmin(approvedRequest),
+      warning: cancellationWarning,
+    });
+  } catch (error) {
+    console.error("Error approving refund request:", error);
+    res.status(500).json({ error: "Could not approve refund request" });
+  }
+});
+
+app.post("/api/admin/refund-requests/:id/reject", async (req, res) => {
+  try {
+    const adminSession = requireAdminSession(req, res);
+    if (!adminSession) {
+      return;
+    }
+
+    const refundRequest = await readCompatRefundRequestRecord(req.params.id);
+    if (!refundRequest) {
+      return res.status(404).json({ error: "Refund request not found" });
+    }
+    if (refundRequest.status !== "pending") {
+      return res.status(409).json({
+        error: "Refund request is already processed",
+        request: mapCompatRefundRequestForAdmin(refundRequest),
+      });
+    }
+
+    const rejectionReason =
+      readString((isRecord(req.body) ? req.body.reason : null)) ||
+      "Refunderingen ble ikke godkjent.";
+    const processedAt = new Date().toISOString();
+    const rejectedRequest: CompatRefundRequestRecord = {
+      ...refundRequest,
+      status: "rejected",
+      processedAt,
+      processedByUserId: adminSession.userId,
+      processedByEmail: adminSession.email,
+      processedByName: adminSession.name,
+      rejectionReason,
+    };
+    await writeCompatRefundRequestRecord(rejectedRequest);
+
+    const paymentRecord =
+      (refundRequest.paymentId
+        ? await readCompatPaymentStatusRecord(refundRequest.paymentId)
+        : null) ||
+      (await findCompatPaymentStatusRecord(refundRequest.transactionId));
+    if (paymentRecord) {
+      await updateCompatPaymentHistoryRefundState(paymentRecord, {
+        refunded: false,
+        refundReason: refundRequest.reason,
+        refundedAt: null,
+        refundRequestId: refundRequest.id,
+        refundRequestStatus: "rejected",
+        refundRequestedAt: refundRequest.requestedAt,
+      });
+    }
+
+    if (rejectedRequest.userEmail) {
+      const recipientName =
+        [rejectedRequest.firstName, rejectedRequest.lastName]
+          .filter(Boolean)
+          .join(" ")
+          .trim() || "CreatorHub-medlem";
+      await sendCreatorHubRefundRejectedEmail({
+        recipientEmail: rejectedRequest.userEmail,
+        recipientName,
+        planName: rejectedRequest.planName || paymentRecord?.planName || "CreatorHub Plan",
+        rejectionReason,
+        creatorHubUrl: getDefaultCreatorHubPublicOrigin(),
+      }).catch((error) => {
+        console.error("CreatorHub refund rejection email failed:", error);
+      });
+    }
+
+    res.json({
+      success: true,
+      request: mapCompatRefundRequestForAdmin(rejectedRequest),
+    });
+  } catch (error) {
+    console.error("Error rejecting refund request:", error);
+    res.status(500).json({ error: "Could not reject refund request" });
+  }
+});
+
+app.post("/api/admin/notifications/refund-action", async (req, res) => {
+  try {
+    if (!requireAdminSession(req, res)) {
+      return;
+    }
+
+    const body = isRecord(req.body) ? req.body : {};
+    res.json({
+      success: true,
+      action: readString(body.action) || null,
+      count: readNumber(body.count) || 0,
+      timestamp: readString(body.timestamp) || new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error("Error logging refund notification action:", error);
+    res.status(500).json({ error: "Could not log refund notification action" });
   }
 });
 
@@ -28863,6 +29570,205 @@ async function readRoleRoomCommercialCheckoutRecordBySubscriptionId(
   return record;
 }
 
+async function resolveCreatorHubStripeCheckoutRecordFromCompatPayment(
+  record: CompatPaymentStatusRecord,
+): Promise<CreatorHubStripeCheckoutSessionRecord | null> {
+  const sessionId = getCompatPaymentStripeSessionId(record);
+  if (sessionId) {
+    const sessionRecord = await readCreatorHubStripeCheckoutSessionRecord(sessionId);
+    if (sessionRecord) {
+      return sessionRecord;
+    }
+  }
+
+  const subscriptionId = getCompatPaymentStripeSubscriptionId(record);
+  if (subscriptionId) {
+    return readCreatorHubStripeCheckoutRecordBySubscriptionId(subscriptionId);
+  }
+
+  return null;
+}
+
+function getStripeInvoiceChargeId(invoice: Stripe.Invoice): string | null {
+  const legacyCharge = (invoice as { charge?: string | { id?: string | null } | null })
+    .charge;
+  if (typeof legacyCharge === "string") {
+    return legacyCharge || null;
+  }
+  if (legacyCharge && typeof legacyCharge === "object" && "id" in legacyCharge) {
+    return String(legacyCharge.id || "") || null;
+  }
+  return null;
+}
+
+async function resolveCreatorHubStripeRefundTarget(input: {
+  stripe: Stripe;
+  paymentRecord: CompatPaymentStatusRecord;
+  checkoutRecord: CreatorHubStripeCheckoutSessionRecord | null;
+}) {
+  const transactionId = normalizeMailConfigValue(input.paymentRecord.transactionId);
+  if (transactionId.startsWith("pi_")) {
+    return {
+      paymentIntentId: transactionId,
+      chargeId: null as string | null,
+      subscriptionId:
+        input.checkoutRecord?.stripeSubscriptionId ||
+        getCompatPaymentStripeSubscriptionId(input.paymentRecord),
+      customerId:
+        input.checkoutRecord?.stripeCustomerId ||
+        getCompatPaymentStripeCustomerId(input.paymentRecord),
+      sessionId:
+        input.checkoutRecord?.sessionId ||
+        getCompatPaymentStripeSessionId(input.paymentRecord),
+    };
+  }
+  if (transactionId.startsWith("ch_")) {
+    return {
+      paymentIntentId: null as string | null,
+      chargeId: transactionId,
+      subscriptionId:
+        input.checkoutRecord?.stripeSubscriptionId ||
+        getCompatPaymentStripeSubscriptionId(input.paymentRecord),
+      customerId:
+        input.checkoutRecord?.stripeCustomerId ||
+        getCompatPaymentStripeCustomerId(input.paymentRecord),
+      sessionId:
+        input.checkoutRecord?.sessionId ||
+        getCompatPaymentStripeSessionId(input.paymentRecord),
+    };
+  }
+
+  const sessionId =
+    input.checkoutRecord?.sessionId || getCompatPaymentStripeSessionId(input.paymentRecord);
+  if (sessionId) {
+    const session = await input.stripe.checkout.sessions.retrieve(sessionId, {
+      expand: ["payment_intent", "subscription"],
+    });
+    const paymentIntent = session.payment_intent;
+    if (typeof paymentIntent === "string" && paymentIntent) {
+      return {
+        paymentIntentId: paymentIntent,
+        chargeId: null as string | null,
+        subscriptionId:
+          input.checkoutRecord?.stripeSubscriptionId ||
+          getStripeCheckoutSessionSubscriptionId(session) ||
+          getCompatPaymentStripeSubscriptionId(input.paymentRecord),
+        customerId:
+          input.checkoutRecord?.stripeCustomerId ||
+          getStripeCheckoutSessionCustomerId(session) ||
+          getCompatPaymentStripeCustomerId(input.paymentRecord),
+        sessionId,
+      };
+    }
+    if (paymentIntent && typeof paymentIntent === "object" && "id" in paymentIntent) {
+      return {
+        paymentIntentId: String(paymentIntent.id || ""),
+        chargeId: null as string | null,
+        subscriptionId:
+          input.checkoutRecord?.stripeSubscriptionId ||
+          getStripeCheckoutSessionSubscriptionId(session) ||
+          getCompatPaymentStripeSubscriptionId(input.paymentRecord),
+        customerId:
+          input.checkoutRecord?.stripeCustomerId ||
+          getStripeCheckoutSessionCustomerId(session) ||
+          getCompatPaymentStripeCustomerId(input.paymentRecord),
+        sessionId,
+      };
+    }
+  }
+
+  const subscriptionId =
+    input.checkoutRecord?.stripeSubscriptionId ||
+    getCompatPaymentStripeSubscriptionId(input.paymentRecord);
+  const customerId =
+    input.checkoutRecord?.stripeCustomerId ||
+    getCompatPaymentStripeCustomerId(input.paymentRecord);
+  if (subscriptionId) {
+    const invoices = await input.stripe.invoices.list({
+      subscription: subscriptionId,
+      limit: 10,
+      expand: ["data.payment_intent"],
+    });
+    const matchingPaidInvoice =
+      invoices.data.find((invoice) => {
+        const amountPaid =
+          typeof invoice.amount_paid === "number" && Number.isFinite(invoice.amount_paid)
+            ? invoice.amount_paid
+            : 0;
+        return invoice.status === "paid" && amountPaid > 0;
+      }) || null;
+
+    if (matchingPaidInvoice) {
+      const paymentIntent = matchingPaidInvoice.payment_intent;
+      if (typeof paymentIntent === "string" && paymentIntent) {
+        return {
+          paymentIntentId: paymentIntent,
+          chargeId: null as string | null,
+          subscriptionId,
+          customerId:
+            customerId ||
+            (typeof matchingPaidInvoice.customer === "string"
+              ? matchingPaidInvoice.customer
+              : null),
+          sessionId,
+        };
+      }
+      if (paymentIntent && typeof paymentIntent === "object" && "id" in paymentIntent) {
+        return {
+          paymentIntentId: String(paymentIntent.id || ""),
+          chargeId: null as string | null,
+          subscriptionId,
+          customerId:
+            customerId ||
+            (typeof matchingPaidInvoice.customer === "string"
+              ? matchingPaidInvoice.customer
+              : null),
+          sessionId,
+        };
+      }
+
+      const chargeId = getStripeInvoiceChargeId(matchingPaidInvoice);
+      if (chargeId) {
+        return {
+          paymentIntentId: null as string | null,
+          chargeId,
+          subscriptionId,
+          customerId:
+            customerId ||
+            (typeof matchingPaidInvoice.customer === "string"
+              ? matchingPaidInvoice.customer
+              : null),
+          sessionId,
+        };
+      }
+    }
+  }
+
+  if (customerId) {
+    const paymentIntents = await input.stripe.paymentIntents.list({
+      customer: customerId,
+      limit: 10,
+    });
+    const successfulIntent =
+      paymentIntents.data.find(
+        (paymentIntent) =>
+          paymentIntent.status === "succeeded" &&
+          paymentIntent.amount_received > 0,
+      ) || null;
+    if (successfulIntent?.id) {
+      return {
+        paymentIntentId: successfulIntent.id,
+        chargeId: null as string | null,
+        subscriptionId,
+        customerId,
+        sessionId,
+      };
+    }
+  }
+
+  return null;
+}
+
 function getStripeCheckoutSessionSubscriptionId(
   session: Stripe.Checkout.Session,
 ) {
@@ -29255,9 +30161,12 @@ async function markCreatorHubStripeCheckoutRecordPaymentFailed(
     amountMajor: nextRecord.amountMajor,
     currency: nextRecord.currency,
     paymentMethod: "stripe",
-    status: "failed",
+    status: existingPaymentRecord?.status === "refunded" ? "refunded" : "failed",
     createdAt: existingPaymentRecord?.createdAt || nextRecord.createdAt,
-    completedAt: null,
+    completedAt:
+      existingPaymentRecord?.status === "refunded"
+        ? existingPaymentRecord?.completedAt || null
+        : null,
     provider: "stripe",
     metadata: {
       ...(existingPaymentRecord?.metadata || {}),
@@ -29271,6 +30180,9 @@ async function markCreatorHubStripeCheckoutRecordPaymentFailed(
     },
     receiptSentAt: existingPaymentRecord?.receiptSentAt || null,
     membershipCard: existingPaymentRecord?.membershipCard || null,
+    refundReason: existingPaymentRecord?.refundReason || null,
+    refundedAt: existingPaymentRecord?.refundedAt || null,
+    stripeRefundId: existingPaymentRecord?.stripeRefundId || null,
   });
 
   const plan = getCompatPlatformSubscriptionPlan(nextRecord.planId);
@@ -29440,6 +30352,11 @@ async function syncCreatorHubStripeInvoice(invoice: Stripe.Invoice) {
 
 async function clearCreatorHubStripeSubscription(
   source: Stripe.Invoice | Stripe.Subscription,
+  options?: {
+    suppressFailureEmail?: boolean;
+    suppressCancellationEmail?: boolean;
+    failureMessage?: string | null;
+  },
 ) {
   const subscriptionId =
     "subscription" in source
@@ -29464,9 +30381,10 @@ async function clearCreatorHubStripeSubscription(
           : ""
       : "";
   const failureMessage =
-    "subscription" in source
+    options?.failureMessage ||
+    ("subscription" in source
       ? getCreatorHubStripeInvoiceFailureMessage(source)
-      : "Abonnementet ble avsluttet i Stripe. Oppdater betalingsinformasjonen i CreatorHub for å gjenoppta tilgangen.";
+      : "Abonnementet ble avsluttet i Stripe. Oppdater betalingsinformasjonen i CreatorHub for å gjenoppta tilgangen.");
 
   const isSubscriptionDeletedEvent = !("subscription" in source);
   const clearedRecord = await markCreatorHubStripeCheckoutRecordPaymentFailed(
@@ -29478,11 +30396,16 @@ async function clearCreatorHubStripeSubscription(
       failureMessage,
     },
     {
-      suppressFailureEmail: isSubscriptionDeletedEvent,
+      suppressFailureEmail:
+        options?.suppressFailureEmail === true || isSubscriptionDeletedEvent,
     },
   );
 
-  if (isSubscriptionDeletedEvent && storedRecord.email) {
+  if (
+    isSubscriptionDeletedEvent &&
+    options?.suppressCancellationEmail !== true &&
+    storedRecord.email
+  ) {
     const recipient = await resolveCreatorHubBillingRecipientContext(storedRecord);
     if (recipient.email) {
       await sendCreatorHubSubscriptionCancelledEmail({
@@ -31804,6 +32727,15 @@ function resolveCreatorHubTemplateFromEmail(
   }
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 async function sendCreatorHubBillingEmail(options: {
   recipientEmail: string;
   fromEmail?: string | null;
@@ -32148,6 +33080,76 @@ async function sendCreatorHubSubscriptionCancelledEmail(options: {
     subject: rendered.subject,
     text: rendered.text,
     html: rendered.html,
+  });
+}
+
+async function sendCreatorHubRefundApprovedEmail(options: {
+  recipientEmail: string;
+  recipientName: string;
+  planName: string;
+  amountMajor: number;
+  currency: string;
+  creatorHubUrl: string;
+}) {
+  const amountLabel = `${options.amountMajor.toFixed(2).replace(".", ",")} ${options.currency}`;
+  const subject = `Refundering godkjent for ${options.planName}`;
+  const text = [
+    `Hei ${options.recipientName},`,
+    "",
+    `Refunderingen for ${options.planName} er godkjent.`,
+    `Beløp: ${amountLabel}.`,
+    "Stripe behandler tilbakebetalingen til den opprinnelige betalingsmetoden.",
+    "",
+    `Logg inn i CreatorHub: ${options.creatorHubUrl}`,
+  ].join("\n");
+  const html = `
+    <div style="font-family:Arial,sans-serif;line-height:1.6;color:#111827;">
+      <p>Hei ${escapeHtml(options.recipientName)},</p>
+      <p>Refunderingen for <strong>${escapeHtml(options.planName)}</strong> er godkjent.</p>
+      <p><strong>Beløp:</strong> ${escapeHtml(amountLabel)}</p>
+      <p>Stripe behandler tilbakebetalingen til den opprinnelige betalingsmetoden.</p>
+      <p><a href="${escapeHtml(options.creatorHubUrl)}">Åpne CreatorHub</a></p>
+    </div>
+  `;
+
+  return sendCreatorHubBillingEmail({
+    recipientEmail: options.recipientEmail,
+    subject,
+    text,
+    html,
+  });
+}
+
+async function sendCreatorHubRefundRejectedEmail(options: {
+  recipientEmail: string;
+  recipientName: string;
+  planName: string;
+  rejectionReason: string;
+  creatorHubUrl: string;
+}) {
+  const subject = `Refundering avslått for ${options.planName}`;
+  const text = [
+    `Hei ${options.recipientName},`,
+    "",
+    `Refunderingen for ${options.planName} ble ikke godkjent.`,
+    `Årsak: ${options.rejectionReason}`,
+    "",
+    `Logg inn i CreatorHub: ${options.creatorHubUrl}`,
+  ].join("\n");
+  const html = `
+    <div style="font-family:Arial,sans-serif;line-height:1.6;color:#111827;">
+      <p>Hei ${escapeHtml(options.recipientName)},</p>
+      <p>Refunderingen for <strong>${escapeHtml(options.planName)}</strong> ble ikke godkjent.</p>
+      <p><strong>Årsak:</strong> ${escapeHtml(options.rejectionReason)}</p>
+      <p><a href="${escapeHtml(options.creatorHubUrl)}">Åpne CreatorHub</a></p>
+    </div>
+  `;
+
+  return sendCreatorHubBillingEmail({
+    recipientEmail: options.recipientEmail,
+    subject,
+    text,
+    html,
   });
 }
 
@@ -49936,13 +50938,39 @@ async function getAdminRefundAnalytics(
   avgRefundAmount: number;
   rows: AdminRefundAnalyticsRow[];
 }> {
-  const historyItems = await listAllCompatPaymentHistoryItems();
-  const refundRows = historyItems
+  const [refundRequests, historyItems] = await Promise.all([
+    listCompatRefundRequestRecords(),
+    listAllCompatPaymentHistoryItems(),
+  ]);
+
+  const requestRows = refundRequests
+    .map((request) => ({
+      id: String(request.id),
+      requestedAt: toAdminStatsDate(
+        request.status === "approved" ? request.processedAt || request.requestedAt : request.requestedAt,
+      ),
+      amount: request.amountMajor,
+      reason: request.reason,
+      status: request.status,
+    }))
+    .filter((row) => isWithinAdminDashboardRange(row.requestedAt, range));
+
+  const trackedRefundKeys = new Set(
+    refundRequests.flatMap((request) =>
+      [request.paymentId, request.transactionId].filter(
+        (value): value is string => Boolean(value),
+      ),
+    ),
+  );
+
+  const legacyApprovedRows = historyItems
     .filter(
       (item) =>
-        Boolean(item.refundedAt) ||
-        Boolean(item.refunded) ||
-        (item.status || "").toLowerCase() === "refunded",
+        (Boolean(item.refundedAt) ||
+          Boolean(item.refunded) ||
+          (item.status || "").toLowerCase() === "refunded") &&
+        !trackedRefundKeys.has(item.id) &&
+        !trackedRefundKeys.has(item.transactionId || ""),
     )
     .map((item) => ({
       id: item.id,
@@ -49953,18 +50981,19 @@ async function getAdminRefundAnalytics(
     }))
     .filter((item) => isWithinAdminDashboardRange(item.requestedAt, range));
 
+  const allRows = [...requestRows, ...legacyApprovedRows];
   const filteredRows =
     statusFilter === "all"
-      ? refundRows
-      : refundRows.filter((row) => row.status === statusFilter);
+      ? allRows
+      : allRows.filter((row) => row.status === statusFilter);
 
-  const approvedRows = filteredRows.filter((row) => row.status === "approved");
+  const approvedRows = allRows.filter((row) => row.status === "approved");
 
   return {
     totalRequests: filteredRows.length,
-    approved: filteredRows.filter((row) => row.status === "approved").length,
-    pending: filteredRows.filter((row) => row.status === "pending").length,
-    rejected: filteredRows.filter((row) => row.status === "rejected").length,
+    approved: allRows.filter((row) => row.status === "approved").length,
+    pending: allRows.filter((row) => row.status === "pending").length,
+    rejected: allRows.filter((row) => row.status === "rejected").length,
     totalRefunded: roundAdminMetric(
       approvedRows.reduce((sum, row) => sum + row.amount, 0),
       2,
