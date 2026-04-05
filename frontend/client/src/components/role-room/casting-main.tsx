@@ -93,16 +93,26 @@ function CastingStandaloneRuntimeContent() {
 
   useEffect(() => {
     let isMounted = true;
-    const clearGoogleIntentFromUrl = () => {
+    const getCleanGoogleIntentUrl = () => {
       if (typeof window === 'undefined') {
-        return;
+        return null;
       }
       const url = new URL(window.location.href);
       url.searchParams.delete('rrGoogleStatus');
       url.searchParams.delete('rrGoogleTransfer');
       url.searchParams.delete('rrGoogleMode');
       url.searchParams.delete('rrGoogleMessage');
-      window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
+      return `${url.pathname}${url.search}${url.hash}`;
+    };
+    const clearGoogleIntentFromUrl = () => {
+      if (typeof window === 'undefined') {
+        return;
+      }
+      const cleanUrl = getCleanGoogleIntentUrl();
+      if (!cleanUrl) {
+        return;
+      }
+      window.history.replaceState({}, document.title, cleanUrl);
     };
 
     const bootstrapAuthState = async () => {
@@ -143,6 +153,11 @@ function CastingStandaloneRuntimeContent() {
                 sessionStorage.removeItem('role-room-commercial-draft-v1');
               } catch {
                 // Ignore storage cleanup failures.
+              }
+              const cleanUrl = getCleanGoogleIntentUrl();
+              if (typeof window !== 'undefined' && cleanUrl) {
+                window.location.replace(cleanUrl);
+                return;
               }
               setIsAuthenticated(true);
               clearGoogleIntentFromUrl();
