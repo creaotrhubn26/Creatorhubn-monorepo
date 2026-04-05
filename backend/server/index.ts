@@ -48749,6 +48749,1582 @@ app.get("/api/academy/access-summary", async (req, res) => {
   }
 });
 
+const ADMIN_STATS_PROFESSION_KEYS = [
+  "photographer",
+  "videographer",
+  "musicproducer",
+  "vendor",
+] as const;
+
+type AdminStatsProfessionKey = (typeof ADMIN_STATS_PROFESSION_KEYS)[number];
+
+type AdminStatsProfessionBreakdown = Record<AdminStatsProfessionKey, number>;
+
+type AdminStatsProfessionMetric = {
+  activeProjects: number;
+  totalRevenue: number;
+  avgRating: number | null;
+};
+
+type AdminStatsSystemHealth = {
+  dbStatus: "healthy" | "degraded";
+  uptimeHours: number;
+  responseTime: number | null;
+  errorRate: number | null;
+  activeSessions: number;
+  measuredAt: string;
+};
+
+type AdminActivityFeedItem = {
+  id: string;
+  type: string;
+  title: string;
+  description: string;
+  user: {
+    name: string;
+    email: string;
+    profession?: string;
+  };
+  metadata?: Record<string, unknown>;
+  timestamp: string;
+  status?: string;
+  actionUrl?: string;
+  priority?: "low" | "medium" | "high" | "critical";
+  category?: string;
+};
+
+function getAdminStatsTimeWindow(days = 30) {
+  const endExclusive = new Date();
+  const currentStart = new Date(endExclusive);
+  currentStart.setUTCDate(currentStart.getUTCDate() - days);
+  const previousStart = new Date(currentStart);
+  previousStart.setUTCDate(previousStart.getUTCDate() - days);
+  return { previousStart, currentStart, endExclusive };
+}
+
+function toAdminStatsDate(value: unknown): Date | null {
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+  if (typeof value === "string" || typeof value === "number") {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  return null;
+}
+
+function isDateWithinWindow(
+  date: Date | null,
+  startInclusive: Date,
+  endExclusive: Date,
+): boolean {
+  return Boolean(
+    date &&
+      date.getTime() >= startInclusive.getTime() &&
+      date.getTime() < endExclusive.getTime(),
+  );
+}
+
+function initializeAdminStatsProfessionBreakdown(): AdminStatsProfessionBreakdown {
+  return {
+    photographer: 0,
+    videographer: 0,
+    musicproducer: 0,
+    vendor: 0,
+  };
+}
+
+function initializeAdminStatsProfessionMetrics(): Record<
+  AdminStatsProfessionKey,
+  AdminStatsProfessionMetric
+> {
+  return {
+    photographer: { activeProjects: 0, totalRevenue: 0, avgRating: null },
+    videographer: { activeProjects: 0, totalRevenue: 0, avgRating: null },
+    musicproducer: { activeProjects: 0, totalRevenue: 0, avgRating: null },
+    vendor: { activeProjects: 0, totalRevenue: 0, avgRating: null },
+  };
+}
+
+function normalizeAdminStatsProfession(
+  value: unknown,
+): AdminStatsProfessionKey | null {
+  const normalized = (toAdminString(value) || "")
+    .toLowerCase()
+    .replace(/[\s_-]+/g, "");
+
+  if (normalized === "photographer" || normalized === "photo") {
+    return "photographer";
+  }
+  if (normalized === "videographer" || normalized === "video") {
+    return "videographer";
+  }
+  if (
+    normalized === "musicproducer" ||
+    normalized === "music" ||
+    normalized === "producer"
+  ) {
+    return "musicproducer";
+  }
+  if (
+    normalized === "vendor" ||
+    normalized === "leverandor" ||
+    normalized === "leverandør"
+  ) {
+    return "vendor";
+  }
+  return null;
+}
+
+function roundAdminMetric(value: number, decimals = 1): number {
+  if (!Number.isFinite(value)) return 0;
+  const factor = Math.pow(10, decimals);
+  return Math.round(value * factor) / factor;
+}
+
+function safeAdminCurrency(value: unknown): number {
+  return readNumber(value) ?? 0;
+}
+
+function escapeAdminCsv(value: unknown): string {
+  const text = String(value ?? "");
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+async function queryExistingTableRows(
+  tableName: string,
+  sqlText: string,
+  params: unknown[] = [],
+): Promise<Record<string, unknown>[]> {
+  if (!(await hasTable(tableName))) {
+    return [];
+  }
+
+  try {
+    const result = await pool.query(sqlText, params);
+    return result.rows as Record<string, unknown>[];
+  } catch (error) {
+    if (isUndefinedTableError(error, tableName)) {
+      return [];
+    }
+    throw error;
+  }
+}
+
+async function listAdminStatsUsers(): Promise<
+  Array<{
+    email: string;
+    createdAt: Date | null;
+    profession: AdminStatsProfessionKey | null;
+  }>
+> {
+  const users = await listAdminUsersSnapshot();
+  const dedupedByEmail = new Map<
+    string,
+    {
+      email: string;
+      createdAt: Date | null;
+      profession: AdminStatsProfessionKey | null;
+    }
+  >();
+
+  const upsertUser = (
+    emailValue: string,
+    createdAt: Date | null,
+    profession: AdminStatsProfessionKey | null,
+  ) => {
+    const email = emailValue.trim().toLowerCase();
+    if (!email) return;
+
+    const existing = dedupedByEmail.get(email);
+    if (!existing) {
+      dedupedByEmail.set(email, { email, createdAt, profession });
+      return;
+    }
+
+    const nextCreatedAt =
+      existing.createdAt && createdAt
+        ? existing.createdAt.getTime() <= createdAt.getTime()
+          ? existing.createdAt
+          : createdAt
+        : existing.createdAt || createdAt;
+
+    dedupedByEmail.set(email, {
+      email,
+      createdAt: nextCreatedAt,
+      profession: existing.profession || profession,
+    });
+  };
+
+  for (const row of users) {
+    const email = toAdminString(row.email);
+    if (!email) continue;
+
+    const status = (toAdminString(row.status) || "").toLowerCase();
+    const hasAccess =
+      Boolean(toAdminString(row.accountUserId)) ||
+      Boolean(row.paymentCompleted) ||
+      status === "approved" ||
+      status === "active";
+
+    if (!hasAccess) {
+      continue;
+    }
+
+    upsertUser(
+      email,
+      toAdminStatsDate(row.createdAt) ||
+        toAdminStatsDate(row.approvedAt) ||
+        toAdminStatsDate(row.updatedAt),
+      normalizeAdminStatsProfession(row.profession),
+    );
+  }
+
+  const creatorhubUsers = await listCreatorhubAnalyticsUsers();
+  for (const row of creatorhubUsers) {
+    const email = readString(row.email);
+    if (!email) continue;
+    upsertUser(
+      email,
+      toAdminStatsDate(row.created_at),
+      normalizeAdminStatsProfession(row.role),
+    );
+  }
+
+  return Array.from(dedupedByEmail.values());
+}
+
+async function listAdminStatsProjectRows(): Promise<
+  Array<{
+    createdAt: Date | null;
+    profession: AdminStatsProfessionKey | null;
+    isActive: boolean;
+  }>
+> {
+  const rows: Array<{
+    createdAt: Date | null;
+    profession: AdminStatsProfessionKey | null;
+    isActive: boolean;
+  }> = [];
+
+  if (await hasTable("projects")) {
+    const projectColumns = await getTableColumns("projects");
+    const projectCreatedColumn = projectColumns.has("created_at")
+      ? "created_at"
+      : projectColumns.has("createdAt")
+        ? '"createdAt"'
+        : "NULL::text";
+    const projectStatusColumn = projectColumns.has("status")
+      ? "status"
+      : "NULL::text";
+    const projectProfessionColumn = projectColumns.has("profession")
+      ? "profession"
+      : "NULL::text";
+
+    const creatorProjects = await queryExistingTableRows(
+      "projects",
+      `SELECT ${projectCreatedColumn} AS created_at,
+              ${projectStatusColumn} AS status,
+              ${projectProfessionColumn} AS profession
+         FROM projects`,
+    );
+
+    for (const row of creatorProjects) {
+      rows.push({
+        createdAt: toAdminStatsDate(row.created_at),
+        profession: normalizeAdminStatsProfession(row.profession),
+        isActive: (toAdminString(row.status) || "").toLowerCase() === "active",
+      });
+    }
+  }
+
+  if (await hasTable("casting_projects")) {
+    const castingColumns = await getTableColumns("casting_projects");
+    const castingCreatedColumn = castingColumns.has("created_at")
+      ? "created_at"
+      : "NULL::timestamp";
+    const castingStatusColumn = castingColumns.has("status")
+      ? "status"
+      : "NULL::text";
+
+    const roleRoomProjects = await queryExistingTableRows(
+      "casting_projects",
+      `SELECT ${castingCreatedColumn} AS created_at,
+              ${castingStatusColumn} AS status
+         FROM casting_projects`,
+    );
+
+    for (const row of roleRoomProjects) {
+      rows.push({
+        createdAt: toAdminStatsDate(row.created_at),
+        profession: null,
+        isActive: (toAdminString(row.status) || "").toLowerCase() === "active",
+      });
+    }
+  }
+
+  return rows;
+}
+
+async function listAdminInvitePaymentRows(): Promise<
+  Array<{
+    amount: number;
+    profession: AdminStatsProfessionKey | null;
+    paidAt: Date | null;
+    planId: string | null;
+  }>
+> {
+  if (!(await hasTable("invite_requests"))) {
+    return [];
+  }
+
+  const inviteColumns = await getTableColumns("invite_requests");
+  const rows = await queryExistingTableRows(
+    "invite_requests",
+    `SELECT ${
+      inviteColumns.has("payment_completed")
+        ? "payment_completed"
+        : "NULL::boolean AS payment_completed"
+    },
+            ${
+              inviteColumns.has("payment_amount")
+                ? "payment_amount"
+                : "NULL::numeric AS payment_amount"
+            },
+            ${
+              inviteColumns.has("plan_price")
+                ? "plan_price"
+                : "NULL::numeric AS plan_price"
+            },
+            ${
+              inviteColumns.has("payment_timestamp")
+                ? "payment_timestamp"
+                : "NULL::timestamp AS payment_timestamp"
+            },
+            ${
+              inviteColumns.has("created_at")
+                ? "created_at"
+                : "NULL::timestamp AS created_at"
+            },
+            ${
+              inviteColumns.has("selected_plan")
+                ? "selected_plan"
+                : "NULL::text AS selected_plan"
+            },
+            ${
+              inviteColumns.has("profession")
+                ? "profession"
+                : "NULL::text AS profession"
+            }
+       FROM invite_requests
+      WHERE ${
+        inviteColumns.has("payment_completed")
+          ? "payment_completed = TRUE"
+          : "FALSE"
+      }`,
+  );
+
+  return rows.map((row) => ({
+    amount:
+      safeAdminCurrency(row.payment_amount) || safeAdminCurrency(row.plan_price),
+    profession: normalizeAdminStatsProfession(row.profession),
+    paidAt:
+      toAdminStatsDate(row.payment_timestamp) ||
+      toAdminStatsDate(row.created_at),
+    planId: toAdminString(row.selected_plan),
+  }));
+}
+
+async function getAdminAcademyRevenueSnapshot(): Promise<{
+  totalStudents: number;
+  totalEnrollments: number;
+  totalInstructors: number;
+  activeCourses: number;
+  totalRevenue: number;
+  totalPlatformRevenue: number;
+  totalInstructorRevenue: number;
+  pendingPayouts: number;
+  pendingPayoutAmount: number;
+  rows: Array<{ createdAt: Date | null; amount: number }>;
+}> {
+  const base = {
+    totalStudents: 0,
+    totalEnrollments: 0,
+    totalInstructors: 0,
+    activeCourses: 0,
+    totalRevenue: 0,
+    totalPlatformRevenue: 0,
+    totalInstructorRevenue: 0,
+    pendingPayouts: 0,
+    pendingPayoutAmount: 0,
+    rows: [] as Array<{ createdAt: Date | null; amount: number }>,
+  };
+
+  if (!(await hasTable("courses")) || !(await hasTable("enrollments"))) {
+    return base;
+  }
+
+  const rows = await queryExistingTableRows(
+    "courses",
+    `SELECT c.id,
+            c.instructor,
+            c.price,
+            c.is_published,
+            e.user_id,
+            e.status,
+            e.created_at
+       FROM courses c
+       LEFT JOIN enrollments e ON e.course_id = c.id`,
+  );
+
+  const distinctCourseIds = new Set<string>();
+  const publishedCourseIds = new Set<string>();
+  const distinctStudentIds = new Set<string>();
+  const distinctInstructorNames = new Set<string>();
+  let totalEnrollments = 0;
+  let totalRevenue = 0;
+  const revenueRows: Array<{ createdAt: Date | null; amount: number }> = [];
+
+  for (const row of rows) {
+    const courseId = toAdminString(row.id);
+    if (courseId) {
+      distinctCourseIds.add(courseId);
+      if (Boolean(row.is_published)) {
+        publishedCourseIds.add(courseId);
+      }
+    }
+
+    const instructorName = toAdminString(row.instructor);
+    if (instructorName) {
+      distinctInstructorNames.add(instructorName);
+    }
+
+    const userId = toAdminString(row.user_id);
+    const enrollmentStatus = (toAdminString(row.status) || "enrolled").toLowerCase();
+    const isBillableEnrollment =
+      Boolean(userId) &&
+      !["cancelled", "refunded"].includes(enrollmentStatus);
+
+    if (isBillableEnrollment) {
+      totalEnrollments += 1;
+      distinctStudentIds.add(String(userId));
+      const amount = safeAdminCurrency(row.price);
+      totalRevenue += amount;
+      revenueRows.push({
+        createdAt: toAdminStatsDate(row.created_at),
+        amount,
+      });
+    }
+  }
+
+  const totalPlatformRevenue = roundAdminMetric(totalRevenue * 0.2, 2);
+  const totalInstructorRevenue = roundAdminMetric(totalRevenue * 0.8, 2);
+
+  return {
+    totalStudents: distinctStudentIds.size,
+    totalEnrollments,
+    totalInstructors: distinctInstructorNames.size,
+    activeCourses: publishedCourseIds.size,
+    totalRevenue: roundAdminMetric(totalRevenue, 2),
+    totalPlatformRevenue,
+    totalInstructorRevenue,
+    pendingPayouts: 0,
+    pendingPayoutAmount: 0,
+    rows: revenueRows,
+  };
+}
+
+async function getAdminSubscriptionSnapshot(): Promise<{
+  activeSubscriptions: number;
+  breakdown: Array<{ plan: string; count: number }>;
+}> {
+  if (await hasTable("user_subscriptions")) {
+    const subscriptionRows = await queryExistingTableRows(
+      "user_subscriptions",
+      `SELECT plan_id, COUNT(*)::int AS count
+         FROM user_subscriptions
+        WHERE LOWER(COALESCE(status, 'active')) = 'active'
+        GROUP BY plan_id
+        ORDER BY count DESC, plan_id ASC`,
+    );
+
+    const breakdown = subscriptionRows.map((row) => ({
+      plan: toAdminString(row.plan_id) || "unknown",
+      count: Math.max(0, Number(row.count) || 0),
+    }));
+
+    return {
+      activeSubscriptions: breakdown.reduce((sum, entry) => sum + entry.count, 0),
+      breakdown,
+    };
+  }
+
+  const invitePayments = await listAdminInvitePaymentRows();
+  const counts = new Map<string, number>();
+  for (const row of invitePayments) {
+    const planId = (row.planId || "paid").trim().toLowerCase();
+    counts.set(planId, (counts.get(planId) || 0) + 1);
+  }
+
+  const breakdown = Array.from(counts.entries())
+    .map(([plan, count]) => ({ plan, count }))
+    .sort((left, right) => right.count - left.count || left.plan.localeCompare(right.plan));
+
+  return {
+    activeSubscriptions: breakdown.reduce((sum, entry) => sum + entry.count, 0),
+    breakdown,
+  };
+}
+
+async function getAdminSystemHealthSnapshot(): Promise<AdminStatsSystemHealth> {
+  const startedAt = Date.now();
+  let dbStatus: "healthy" | "degraded" = "healthy";
+
+  try {
+    await pool.query("SELECT 1");
+  } catch (error) {
+    dbStatus = "degraded";
+    console.error("Admin system health DB probe failed:", error);
+  }
+
+  const responseTime = Date.now() - startedAt;
+  let errorRate: number | null = null;
+
+  if (await hasTable("admin_notifications")) {
+    const rows = await queryExistingTableRows(
+      "admin_notifications",
+      `SELECT COUNT(*) FILTER (
+                WHERE LOWER(COALESCE(severity, 'info')) IN ('error', 'critical')
+              )::int AS error_count,
+              COUNT(*)::int AS total_count
+         FROM admin_notifications
+        WHERE created_at >= NOW() - interval '7 days'`,
+    );
+    const errorCount = Number(rows[0]?.error_count || 0);
+    const totalCount = Number(rows[0]?.total_count || 0);
+    errorRate = totalCount > 0 ? roundAdminMetric((errorCount / totalCount) * 100) : 0;
+  }
+
+  return {
+    dbStatus,
+    uptimeHours: roundAdminMetric(process.uptime() / 3600, 2),
+    responseTime,
+    errorRate,
+    activeSessions: activeSessions.size,
+    measuredAt: new Date().toISOString(),
+  };
+}
+
+async function getAdminCrmOverview() {
+  if (!(await hasTable("crm_customers"))) {
+    return null;
+  }
+
+  const [customerRows, dealRows, taskRows] = await Promise.all([
+    queryExistingTableRows(
+      "crm_customers",
+      `SELECT COUNT(*)::int AS total_customers,
+              COUNT(*) FILTER (
+                WHERE created_at >= NOW() - interval '30 days'
+              )::int AS recent_customers
+         FROM crm_customers`,
+    ),
+    queryExistingTableRows(
+      "crm_deals",
+      `SELECT COUNT(*) FILTER (
+                WHERE LOWER(COALESCE(stage, 'open')) NOT IN ('closed_won', 'closed_lost')
+              )::int AS active_deals,
+              COALESCE(SUM(value) FILTER (WHERE LOWER(COALESCE(stage, 'open')) = 'closed_won'), 0)::float AS won_revenue
+         FROM crm_deals`,
+    ),
+    queryExistingTableRows(
+      "crm_tasks",
+      `SELECT COUNT(*) FILTER (
+                WHERE LOWER(COALESCE(status, 'pending')) = 'pending'
+              )::int AS pending_tasks
+         FROM crm_tasks`,
+    ),
+  ]);
+
+  return {
+    totalCustomers: Number(customerRows[0]?.total_customers || 0),
+    recentCustomers: Number(customerRows[0]?.recent_customers || 0),
+    activeDeals: Number(dealRows[0]?.active_deals || 0),
+    wonRevenue: safeAdminCurrency(dealRows[0]?.won_revenue),
+    pendingTasks: Number(taskRows[0]?.pending_tasks || 0),
+  };
+}
+
+async function buildAdminActivityFeedItems(): Promise<AdminActivityFeedItem[]> {
+  const activities: AdminActivityFeedItem[] = [];
+
+  if (await hasTable("prototype_feedback")) {
+    const feedbackRows = await queryExistingTableRows(
+      "prototype_feedback",
+      `SELECT id,
+              user_name,
+              user_email,
+              profession,
+              feedback_type,
+              title,
+              description,
+              status,
+              priority,
+              created_at
+         FROM prototype_feedback
+        ORDER BY created_at DESC
+        LIMIT 200`,
+    );
+
+    for (const row of feedbackRows) {
+      const feedbackType = (toAdminString(row.feedback_type) || "prototype_feedback").toLowerCase();
+      activities.push({
+        id: `feedback:${toAdminString(row.id) || crypto.randomUUID()}`,
+        type: feedbackType === "bug_report" ? "bug_report" : "prototype_feedback",
+        title: toAdminString(row.title) || "Tilbakemelding registrert",
+        description:
+          toAdminString(row.description) ||
+          "Ny tilbakemelding er registrert i prototypesystemet.",
+        user: {
+          name: toAdminString(row.user_name) || "Ukjent bruker",
+          email: toAdminString(row.user_email) || "ukjent@creatorhubn.com",
+          profession: toAdminString(row.profession) || undefined,
+        },
+        timestamp:
+          toAdminStatsDate(row.created_at)?.toISOString() ||
+          new Date().toISOString(),
+        status: toAdminString(row.status) || "pending",
+        priority:
+          ((toAdminString(row.priority) || "medium").toLowerCase() as
+            | "low"
+            | "medium"
+            | "high"
+            | "critical"),
+        category: feedbackType === "bug_report" ? "system" : "testing",
+        actionUrl: "/admin",
+      });
+    }
+  }
+
+  if (await hasTable("invite_requests")) {
+    const inviteColumns = await getTableColumns("invite_requests");
+    const inviteRows = await queryExistingTableRows(
+      "invite_requests",
+      `SELECT id,
+              email,
+              ${
+                inviteColumns.has("first_name")
+                  ? "first_name"
+                  : "NULL::text AS first_name"
+              },
+              ${
+                inviteColumns.has("last_name")
+                  ? "last_name"
+                  : "NULL::text AS last_name"
+              },
+              ${
+                inviteColumns.has("profession")
+                  ? "profession"
+                  : "NULL::text AS profession"
+              },
+              ${inviteColumns.has("status") ? "status" : "NULL::text AS status"},
+              ${
+                inviteColumns.has("selected_plan")
+                  ? "selected_plan"
+                  : "NULL::text AS selected_plan"
+              },
+              ${
+                inviteColumns.has("payment_completed")
+                  ? "payment_completed"
+                  : "NULL::boolean AS payment_completed"
+              },
+              ${
+                inviteColumns.has("payment_timestamp")
+                  ? "payment_timestamp"
+                  : "NULL::timestamp AS payment_timestamp"
+              },
+              ${
+                inviteColumns.has("invite_sent_at")
+                  ? "invite_sent_at"
+                  : "NULL::timestamp AS invite_sent_at"
+              },
+              ${
+                inviteColumns.has("onboarding_completed_at")
+                  ? "onboarding_completed_at"
+                  : "NULL::timestamp AS onboarding_completed_at"
+              },
+              ${
+                inviteColumns.has("processed_at")
+                  ? "processed_at"
+                  : "NULL::timestamp AS processed_at"
+              },
+              ${
+                inviteColumns.has("updated_at")
+                  ? "updated_at"
+                  : "NULL::timestamp AS updated_at"
+              },
+              ${
+                inviteColumns.has("created_at")
+                  ? "created_at"
+                  : "NULL::timestamp AS created_at"
+              }
+         FROM invite_requests
+        ORDER BY COALESCE(updated_at, processed_at, created_at) DESC NULLS LAST
+        LIMIT 200`,
+    );
+
+    for (const row of inviteRows) {
+      const firstName = toAdminString(row.first_name) || "";
+      const lastName = toAdminString(row.last_name) || "";
+      const fullName = [firstName, lastName].filter(Boolean).join(" ").trim() || "Ukjent bruker";
+      const email = toAdminString(row.email) || "ukjent@creatorhubn.com";
+      const profession = toAdminString(row.profession) || undefined;
+      const planId = toAdminString(row.selected_plan);
+      const status = (toAdminString(row.status) || "pending").toLowerCase();
+      const paymentCompleted = Boolean(row.payment_completed);
+      const onboardingCompletedAt = toAdminStatsDate(row.onboarding_completed_at);
+      const paymentTimestamp = toAdminStatsDate(row.payment_timestamp);
+      const processedAt = toAdminStatsDate(row.processed_at);
+      const inviteSentAt = toAdminStatsDate(row.invite_sent_at);
+      const createdAt = toAdminStatsDate(row.created_at);
+
+      let type = "invite_request";
+      let title = "Ny invitasjonsforespørsel";
+      let description = `${fullName} sendte inn en ny tilgangsforespørsel.`;
+      let timestamp = createdAt || new Date();
+      let category = "user_management";
+      let priority: "low" | "medium" | "high" | "critical" = "medium";
+
+      if (paymentCompleted) {
+        type = "payment_completed";
+        title = "Betaling fullført";
+        description = `${fullName} fullførte betaling${planId ? ` for ${planId}` : ""}.`;
+        timestamp = paymentTimestamp || createdAt || new Date();
+        category = "billing";
+        priority = "high";
+      } else if (onboardingCompletedAt) {
+        type = "account_activated";
+        title = "Konto aktivert";
+        description = `${fullName} fullførte onboarding og fikk tilgang.`;
+        timestamp = onboardingCompletedAt;
+        priority = "medium";
+      } else if (status === "approved") {
+        type = "user_approved";
+        title = "Bruker godkjent";
+        description = `${fullName} ble godkjent for tilgang.`;
+        timestamp = processedAt || createdAt || new Date();
+        priority = "medium";
+      } else if (status === "rejected") {
+        type = "user_rejected";
+        title = "Bruker avvist";
+        description = `${fullName} ble avvist i godkjenningsflyten.`;
+        timestamp = processedAt || createdAt || new Date();
+        priority = "high";
+      } else if (inviteSentAt) {
+        title = "Invitasjon sendt";
+        description = `${fullName} har fått invitasjon til onboarding.`;
+        timestamp = inviteSentAt;
+      }
+
+      activities.push({
+        id: `invite:${toAdminString(row.id) || crypto.randomUUID()}`,
+        type,
+        title,
+        description,
+        user: { name: fullName, email, profession },
+        metadata: {
+          planId,
+        },
+        timestamp: timestamp.toISOString(),
+        status,
+        priority,
+        category,
+        actionUrl: "/admin",
+      });
+    }
+  }
+
+  if (await hasTable("admin_notifications")) {
+    const notificationColumns = await getTableColumns("admin_notifications");
+    const notificationRows = await queryExistingTableRows(
+      "admin_notifications",
+      `SELECT id,
+              ${notificationColumns.has("type") ? "type" : "NULL::text AS type"},
+              ${notificationColumns.has("title") ? "title" : "NULL::text AS title"},
+              ${notificationColumns.has("message") ? "message" : "NULL::text AS message"},
+              ${
+                notificationColumns.has("severity")
+                  ? "severity"
+                  : "NULL::text AS severity"
+              },
+              ${
+                notificationColumns.has("category")
+                  ? "category"
+                  : "NULL::text AS category"
+              },
+              ${
+                notificationColumns.has("status")
+                  ? "status"
+                  : "NULL::text AS status"
+              },
+              ${
+                notificationColumns.has("action_url")
+                  ? "action_url"
+                  : "NULL::text AS action_url"
+              },
+              ${
+                notificationColumns.has("created_at")
+                  ? "created_at"
+                  : "NOW() AS created_at"
+              }
+         FROM admin_notifications
+        WHERE COALESCE(is_active, TRUE) = TRUE
+        ORDER BY created_at DESC
+        LIMIT 100`,
+    );
+
+    for (const row of notificationRows) {
+      const severity = (toAdminString(row.severity) || "info").toLowerCase();
+      activities.push({
+        id: `notification:${toAdminString(row.id) || crypto.randomUUID()}`,
+        type:
+          (toAdminString(row.type) || "").toLowerCase().includes("feature")
+            ? "feature_enabled"
+            : "system_notice",
+        title: toAdminString(row.title) || "Adminvarsel",
+        description: toAdminString(row.message) || "Nytt adminvarsel registrert.",
+        user: {
+          name: "System",
+          email: "system@creatorhubn.com",
+        },
+        timestamp:
+          toAdminStatsDate(row.created_at)?.toISOString() ||
+          new Date().toISOString(),
+        status: toAdminString(row.status) || "active",
+        priority:
+          severity === "critical"
+            ? "critical"
+            : severity === "error" || severity === "warning"
+              ? "high"
+              : "low",
+        category: toAdminString(row.category) || "system",
+        actionUrl: toAdminString(row.action_url) || "/admin",
+      });
+    }
+  }
+
+  return activities.sort(
+    (left, right) =>
+      new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime(),
+  );
+}
+
+app.get("/api/admin/platform-stats", async (req, res) => {
+  try {
+    if (!requireAdminSession(req, res)) {
+      return;
+    }
+
+    const window = getAdminStatsTimeWindow(30);
+    const [
+      statsUsers,
+      projectRows,
+      invitePaymentRows,
+      academyRevenue,
+      systemHealth,
+    ] = await Promise.all([
+      listAdminStatsUsers(),
+      listAdminStatsProjectRows(),
+      listAdminInvitePaymentRows(),
+      getAdminAcademyRevenueSnapshot(),
+      getAdminSystemHealthSnapshot(),
+    ]);
+
+    const professionBreakdown = initializeAdminStatsProfessionBreakdown();
+    for (const user of statsUsers) {
+      if (user.profession) {
+        professionBreakdown[user.profession] += 1;
+      }
+    }
+
+    const totalUsersCurrent = statsUsers.length;
+    const totalUsersPrevious = statsUsers.filter(
+      (user) =>
+        user.createdAt && user.createdAt.getTime() < window.currentStart.getTime(),
+    ).length;
+
+    const newSignupsCurrent = statsUsers.filter((user) =>
+      isDateWithinWindow(user.createdAt, window.currentStart, window.endExclusive),
+    ).length;
+    const newSignupsPrevious = statsUsers.filter((user) =>
+      isDateWithinWindow(user.createdAt, window.previousStart, window.currentStart),
+    ).length;
+
+    const activeProjectsCurrent = projectRows.filter((row) => row.isActive).length;
+    const activeProjectsPrevious = projectRows.filter(
+      (row) =>
+        row.isActive &&
+        row.createdAt &&
+        row.createdAt.getTime() < window.currentStart.getTime(),
+    ).length;
+
+    const creatorRevenueCurrent = invitePaymentRows.reduce(
+      (sum, row) => sum + row.amount,
+      0,
+    );
+    const creatorRevenuePrevious = invitePaymentRows
+      .filter(
+        (row) => row.paidAt && row.paidAt.getTime() < window.currentStart.getTime(),
+      )
+      .reduce((sum, row) => sum + row.amount, 0);
+    const academyRevenueCurrent = academyRevenue.totalRevenue;
+    const academyRevenuePrevious = academyRevenue.rows
+      .filter(
+        (row) =>
+          row.createdAt && row.createdAt.getTime() < window.currentStart.getTime(),
+      )
+      .reduce((sum, row) => sum + row.amount, 0);
+
+    res.json({
+      totalUsers: {
+        current: totalUsersCurrent,
+        previous: totalUsersPrevious,
+      },
+      activeProjects: {
+        current: activeProjectsCurrent,
+        previous: activeProjectsPrevious,
+      },
+      totalRevenue: {
+        current: roundAdminMetric(creatorRevenueCurrent + academyRevenueCurrent, 2),
+        previous: roundAdminMetric(
+          creatorRevenuePrevious + academyRevenuePrevious,
+          2,
+        ),
+      },
+      newSignups: {
+        current: newSignupsCurrent,
+        previous: newSignupsPrevious,
+      },
+      professionBreakdown,
+      systemHealth,
+    });
+  } catch (error) {
+    console.error("Admin platform stats error:", error);
+    res.status(500).json({ error: "Could not fetch platform stats" });
+  }
+});
+
+app.get("/api/admin/profession-stats", async (req, res) => {
+  try {
+    if (!requireAdminSession(req, res)) {
+      return;
+    }
+
+    const [projectRows, invitePaymentRows] = await Promise.all([
+      listAdminStatsProjectRows(),
+      listAdminInvitePaymentRows(),
+    ]);
+
+    const metrics = initializeAdminStatsProfessionMetrics();
+
+    for (const row of projectRows) {
+      if (row.isActive && row.profession) {
+        metrics[row.profession].activeProjects += 1;
+      }
+    }
+
+    for (const row of invitePaymentRows) {
+      if (row.profession) {
+        metrics[row.profession].totalRevenue = roundAdminMetric(
+          metrics[row.profession].totalRevenue + row.amount,
+          2,
+        );
+      }
+    }
+
+    res.json(metrics);
+  } catch (error) {
+    console.error("Admin profession stats error:", error);
+    res.status(500).json({ error: "Could not fetch profession stats" });
+  }
+});
+
+app.get("/api/admin/dashboard", async (req, res) => {
+  try {
+    if (!requireAdminSession(req, res)) {
+      return;
+    }
+
+    const [crmOverview, subscriptionSnapshot] = await Promise.all([
+      getAdminCrmOverview(),
+      getAdminSubscriptionSnapshot(),
+    ]);
+
+    res.json({
+      dashboard: {
+        quickStats: {
+          totalCustomers: crmOverview?.totalCustomers || 0,
+          totalRevenue: crmOverview?.wonRevenue || 0,
+          activeDeals: crmOverview?.activeDeals || 0,
+          activeSubscriptions: subscriptionSnapshot.activeSubscriptions,
+          subscriptionBreakdown: subscriptionSnapshot.breakdown,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Admin dashboard overview error:", error);
+    res.status(500).json({ error: "Could not fetch dashboard overview" });
+  }
+});
+
+app.get("/api/admin/email-conversion-stats", async (req, res) => {
+  try {
+    if (!requireAdminSession(req, res)) {
+      return;
+    }
+
+    if (!(await hasTable("invite_requests"))) {
+      return res.json({
+        totalSent: 0,
+        avgOpenRate: 0,
+        avgClickRate: 0,
+        avgConversionRate: 0,
+      });
+    }
+
+    const inviteColumns = await getTableColumns("invite_requests");
+    const rows = await queryExistingTableRows(
+      "invite_requests",
+      `SELECT COUNT(*) FILTER (
+                WHERE ${
+                  inviteColumns.has("invite_sent_at")
+                    ? "invite_sent_at IS NOT NULL"
+                    : "FALSE"
+                }
+              )::int AS total_sent,
+              COUNT(*) FILTER (
+                WHERE ${
+                  inviteColumns.has("invite_email_opened_at")
+                    ? "invite_email_opened_at IS NOT NULL"
+                    : "FALSE"
+                }
+              )::int AS opened,
+              COUNT(*) FILTER (
+                WHERE ${
+                  inviteColumns.has("invite_link_clicked_at")
+                    ? "invite_link_clicked_at IS NOT NULL"
+                    : "FALSE"
+                }
+              )::int AS clicked,
+              COUNT(*) FILTER (
+                WHERE ${
+                  inviteColumns.has("payment_completed")
+                    ? "payment_completed = TRUE"
+                    : "FALSE"
+                }
+                OR ${
+                  inviteColumns.has("onboarding_completed_at")
+                    ? "onboarding_completed_at IS NOT NULL"
+                    : "FALSE"
+                }
+              )::int AS converted
+         FROM invite_requests`,
+    );
+
+    const totalSent = Number(rows[0]?.total_sent || 0);
+    const opened = Number(rows[0]?.opened || 0);
+    const clicked = Number(rows[0]?.clicked || 0);
+    const converted = Number(rows[0]?.converted || 0);
+
+    res.json({
+      totalSent,
+      avgOpenRate: totalSent > 0 ? roundAdminMetric((opened / totalSent) * 100) : 0,
+      avgClickRate: totalSent > 0 ? roundAdminMetric((clicked / totalSent) * 100) : 0,
+      avgConversionRate:
+        totalSent > 0 ? roundAdminMetric((converted / totalSent) * 100) : 0,
+    });
+  } catch (error) {
+    console.error("Admin email conversion stats error:", error);
+    res.status(500).json({ error: "Could not fetch email conversion stats" });
+  }
+});
+
+app.get("/api/admin/academy/analytics/overview", async (req, res) => {
+  try {
+    if (!requireAdminSession(req, res)) {
+      return;
+    }
+
+    const overview = await getAdminAcademyRevenueSnapshot();
+    const totalCoursesRows = await queryExistingTableRows(
+      "courses",
+      `SELECT COUNT(*)::int AS total_courses,
+              COUNT(*) FILTER (WHERE COALESCE(is_published, FALSE) = TRUE)::int AS published_courses,
+              COUNT(DISTINCT instructor)::int AS total_instructors
+         FROM courses`,
+    );
+
+    res.json({
+      totalCourses: Number(totalCoursesRows[0]?.total_courses || 0),
+      publishedCourses: Number(totalCoursesRows[0]?.published_courses || 0),
+      totalEnrollments: overview.totalEnrollments,
+      totalInstructors: Number(totalCoursesRows[0]?.total_instructors || 0),
+      totalRevenue: overview.totalRevenue,
+    });
+  } catch (error) {
+    console.error("Admin academy analytics overview error:", error);
+    res.status(500).json({ error: "Could not fetch academy analytics overview" });
+  }
+});
+
+app.get("/api/academy/admin/revenue/overview", async (req, res) => {
+  try {
+    if (!requireAdminSession(req, res)) {
+      return;
+    }
+
+    const snapshot = await getAdminAcademyRevenueSnapshot();
+    res.json(snapshot);
+  } catch (error) {
+    console.error("Academy revenue overview error:", error);
+    res.status(500).json({ error: "Could not fetch academy revenue overview" });
+  }
+});
+
+app.get("/api/admin/activity-feed", async (req, res) => {
+  try {
+    if (!requireAdminSession(req, res)) {
+      return;
+    }
+
+    const typeFilter = (readString(req.query.type) || "all").toLowerCase();
+    const limit = Math.min(Math.max(readNumber(req.query.limit) || 20, 1), 200);
+    const search = (readString(req.query.search) || "").toLowerCase();
+    const startDate = toAdminStatsDate(req.query.startDate);
+    const endDate = toAdminStatsDate(req.query.endDate);
+    const category = (readString(req.query.category) || "all").toLowerCase();
+    const priority = (readString(req.query.priority) || "all").toLowerCase();
+
+    let activities = await buildAdminActivityFeedItems();
+
+    activities = activities.filter((activity) => {
+      if (typeFilter !== "all" && activity.type !== typeFilter) {
+        return false;
+      }
+
+      if (category !== "all" && (activity.category || "").toLowerCase() !== category) {
+        return false;
+      }
+
+      if (priority !== "all" && (activity.priority || "").toLowerCase() !== priority) {
+        return false;
+      }
+
+      const timestamp = toAdminStatsDate(activity.timestamp);
+      if (startDate && (!timestamp || timestamp.getTime() < startDate.getTime())) {
+        return false;
+      }
+      if (endDate) {
+        const endExclusive = new Date(endDate);
+        endExclusive.setUTCDate(endExclusive.getUTCDate() + 1);
+        if (!timestamp || timestamp.getTime() >= endExclusive.getTime()) {
+          return false;
+        }
+      }
+
+      if (!search) {
+        return true;
+      }
+
+      const haystack = [
+        activity.title,
+        activity.description,
+        activity.user.name,
+        activity.user.email,
+        activity.user.profession,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return haystack.includes(search);
+    });
+
+    res.json({
+      activities: activities.slice(0, limit),
+      total: activities.length,
+      hasMore: activities.length > limit,
+    });
+  } catch (error) {
+    console.error("Admin activity feed error:", error);
+    res.status(500).json({ error: "Could not fetch activity feed" });
+  }
+});
+
+app.get("/api/admin/activity-feed/export", async (req, res) => {
+  try {
+    if (!requireAdminSession(req, res)) {
+      return;
+    }
+
+    const items = await buildAdminActivityFeedItems();
+    const typeFilter = (readString(req.query.type) || "all").toLowerCase();
+    const category = (readString(req.query.category) || "all").toLowerCase();
+    const priority = (readString(req.query.priority) || "all").toLowerCase();
+    const startDate = toAdminStatsDate(req.query.startDate);
+    const endDate = toAdminStatsDate(req.query.endDate);
+
+    const filtered = items.filter((activity) => {
+      if (typeFilter !== "all" && activity.type !== typeFilter) {
+        return false;
+      }
+      if (category !== "all" && (activity.category || "").toLowerCase() !== category) {
+        return false;
+      }
+      if (priority !== "all" && (activity.priority || "").toLowerCase() !== priority) {
+        return false;
+      }
+      const timestamp = toAdminStatsDate(activity.timestamp);
+      if (startDate && (!timestamp || timestamp.getTime() < startDate.getTime())) {
+        return false;
+      }
+      if (endDate) {
+        const endExclusive = new Date(endDate);
+        endExclusive.setUTCDate(endExclusive.getUTCDate() + 1);
+        if (!timestamp || timestamp.getTime() >= endExclusive.getTime()) {
+          return false;
+        }
+      }
+      return true;
+    });
+
+    const header = [
+      "timestamp",
+      "type",
+      "title",
+      "description",
+      "user_name",
+      "user_email",
+      "profession",
+      "status",
+      "priority",
+      "category",
+    ];
+    const lines = [
+      header.join(","),
+      ...filtered.map((activity) =>
+        [
+          activity.timestamp,
+          activity.type,
+          activity.title,
+          activity.description,
+          activity.user.name,
+          activity.user.email,
+          activity.user.profession || "",
+          activity.status || "",
+          activity.priority || "",
+          activity.category || "",
+        ]
+          .map(escapeAdminCsv)
+          .join(","),
+      ),
+    ];
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="admin-activity-feed-${new Date()
+        .toISOString()
+        .slice(0, 10)}.csv"`,
+    );
+    res.send(lines.join("\n"));
+  } catch (error) {
+    console.error("Admin activity export error:", error);
+    res.status(500).json({ error: "Could not export activity feed" });
+  }
+});
+
+app.get("/api/admin/pending-counts", async (req, res) => {
+  try {
+    if (!requireAdminSession(req, res)) {
+      return;
+    }
+
+    const inviteRows = await queryExistingTableRows(
+      "invite_requests",
+      `SELECT COUNT(*) FILTER (
+                WHERE LOWER(COALESCE(status, 'pending')) = 'pending'
+              )::int AS invite_requests
+         FROM invite_requests`,
+    );
+    const feedbackRows = await queryExistingTableRows(
+      "prototype_feedback",
+      `SELECT COUNT(*) FILTER (
+                WHERE LOWER(COALESCE(status, 'pending')) NOT IN ('resolved', 'closed')
+              )::int AS prototype_feedback,
+              COUNT(*) FILTER (
+                WHERE LOWER(COALESCE(feedback_type, 'general')) = 'bug_report'
+                  AND LOWER(COALESCE(status, 'pending')) NOT IN ('resolved', 'closed')
+              )::int AS bug_reports
+         FROM prototype_feedback`,
+    );
+
+    const inviteRequests = Number(inviteRows[0]?.invite_requests || 0);
+    const prototypeFeedback = Number(feedbackRows[0]?.prototype_feedback || 0);
+    const bugReports = Number(feedbackRows[0]?.bug_reports || 0);
+
+    res.json({
+      total: inviteRequests + prototypeFeedback,
+      inviteRequests,
+      prototypeFeedback,
+      bugReports,
+    });
+  } catch (error) {
+    console.error("Admin pending counts error:", error);
+    res.status(500).json({ error: "Could not fetch pending counts" });
+  }
+});
+
+app.get("/api/admin/crm/overview", async (req, res) => {
+  try {
+    if (!requireAdminSession(req, res)) {
+      return;
+    }
+
+    res.json((await getAdminCrmOverview()) || {
+      totalCustomers: 0,
+      recentCustomers: 0,
+      activeDeals: 0,
+      wonRevenue: 0,
+      pendingTasks: 0,
+    });
+  } catch (error) {
+    console.error("Admin CRM overview error:", error);
+    res.status(500).json({ error: "Could not fetch CRM overview" });
+  }
+});
+
+app.get("/api/admin/billing/overview", async (req, res) => {
+  try {
+    if (!requireAdminSession(req, res)) {
+      return;
+    }
+
+    const [subscriptionSnapshot, invitePayments, academyRevenue] = await Promise.all([
+      getAdminSubscriptionSnapshot(),
+      listAdminInvitePaymentRows(),
+      getAdminAcademyRevenueSnapshot(),
+    ]);
+
+    res.json({
+      activeSubscriptions: subscriptionSnapshot.activeSubscriptions,
+      subscriptionBreakdown: subscriptionSnapshot.breakdown,
+      creatorRevenue: roundAdminMetric(
+        invitePayments.reduce((sum, row) => sum + row.amount, 0),
+        2,
+      ),
+      academyRevenue: academyRevenue.totalRevenue,
+      totalRevenue: roundAdminMetric(
+        invitePayments.reduce((sum, row) => sum + row.amount, 0) +
+          academyRevenue.totalRevenue,
+        2,
+      ),
+    });
+  } catch (error) {
+    console.error("Admin billing overview error:", error);
+    res.status(500).json({ error: "Could not fetch billing overview" });
+  }
+});
+
+app.get("/api/admin/analytics/platform", async (req, res) => {
+  try {
+    if (!requireAdminSession(req, res)) {
+      return;
+    }
+
+    const range = parseCreatorhubAnalyticsRange(
+      req.query.startDate ?? req.query.range,
+    );
+    const [users, events] = await Promise.all([
+      listCreatorhubAnalyticsUsers(),
+      listCreatorhubAnalyticsEvents(),
+    ]);
+
+    const aggregate = buildCreatorhubAnalyticsAggregate(
+      users,
+      events,
+      range.startInclusive,
+      range.endExclusive,
+    );
+
+    res.json({
+      range: {
+        key: range.key,
+        label: range.label,
+        days: range.days,
+      },
+      summary: aggregate.summary,
+      eventTypes: aggregate.eventTypes.slice(0, 5),
+      topPages: aggregate.topPages.slice(0, 5),
+      sources: aggregate.sources.slice(0, 5),
+      generatedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error("Admin analytics platform error:", error);
+    res.status(500).json({ error: "Could not fetch analytics platform overview" });
+  }
+});
+
+app.get("/api/admin/audit/recent", async (req, res) => {
+  try {
+    if (!requireAdminSession(req, res)) {
+      return;
+    }
+
+    const activities = await buildAdminActivityFeedItems();
+    res.json(
+      activities.slice(0, 12).map((activity) => ({
+        id: activity.id,
+        type: activity.type,
+        title: activity.title,
+        status: activity.status || null,
+        category: activity.category || null,
+        priority: activity.priority || null,
+        timestamp: activity.timestamp,
+      })),
+    );
+  } catch (error) {
+    console.error("Admin audit recent error:", error);
+    res.status(500).json({ error: "Could not fetch recent audit events" });
+  }
+});
+
+app.get("/api/admin/system/health", async (req, res) => {
+  try {
+    if (!requireAdminSession(req, res)) {
+      return;
+    }
+
+    res.json(await getAdminSystemHealthSnapshot());
+  } catch (error) {
+    console.error("Admin system health error:", error);
+    res.status(500).json({ error: "Could not fetch system health" });
+  }
+});
+
+app.get("/api/admin/integrations/status", async (req, res) => {
+  try {
+    if (!requireAdminSession(req, res)) {
+      return;
+    }
+
+    const userColumns = await getTableColumns("users");
+    const googleWorkspaceExpr = userColumns.has("google_workspace_connected")
+      ? "COALESCE(google_workspace_connected, FALSE) = TRUE"
+      : "FALSE";
+    const googleDriveExpr = userColumns.has("google_drive_connected")
+      ? "COALESCE(google_drive_connected, FALSE) = TRUE"
+      : "FALSE";
+    const googleCalendarExpr = userColumns.has("google_calendar_connected")
+      ? "COALESCE(google_calendar_connected, FALSE) = TRUE"
+      : "FALSE";
+    const gmailExpr = userColumns.has("gmail_connected")
+      ? "COALESCE(gmail_connected, FALSE) = TRUE"
+      : "FALSE";
+
+    const userRows = await queryExistingTableRows(
+      "users",
+      `SELECT COUNT(*) FILTER (WHERE ${googleWorkspaceExpr})::int AS google_workspace_users,
+              COUNT(*) FILTER (WHERE ${googleDriveExpr})::int AS google_drive_users,
+              COUNT(*) FILTER (WHERE ${googleCalendarExpr})::int AS google_calendar_users,
+              COUNT(*) FILTER (WHERE ${gmailExpr})::int AS gmail_users
+         FROM users`,
+    );
+
+    res.json({
+      connectedUsers: {
+        googleWorkspace: Number(userRows[0]?.google_workspace_users || 0),
+        googleDrive: Number(userRows[0]?.google_drive_users || 0),
+        googleCalendar: Number(userRows[0]?.google_calendar_users || 0),
+        gmail: Number(userRows[0]?.gmail_users || 0),
+      },
+      environment: {
+        stripeConfigured: Boolean(process.env.STRIPE_SECRET_KEY),
+        googleAnalyticsConfigured: Boolean(
+          process.env.GOOGLE_ANALYTICS_ID || process.env.VITE_GOOGLE_ANALYTICS_ID,
+        ),
+        googleTagManagerConfigured: Boolean(
+          process.env.GOOGLE_TAG_MANAGER_ID || process.env.VITE_GOOGLE_TAG_MANAGER_ID,
+        ),
+        openAiConfigured: Boolean(process.env.OPENAI_API_KEY),
+      },
+    });
+  } catch (error) {
+    console.error("Admin integrations status error:", error);
+    res.status(500).json({ error: "Could not fetch integrations status" });
+  }
+});
+
+app.get("/api/admin/security/status", async (req, res) => {
+  try {
+    if (!requireAdminSession(req, res)) {
+      return;
+    }
+
+    const users = await listAdminUsersSnapshot();
+    const unreadCriticalRows = await queryExistingTableRows(
+      "admin_notifications",
+      `SELECT COUNT(*) FILTER (
+                WHERE COALESCE(is_read, FALSE) = FALSE
+                  AND LOWER(COALESCE(severity, 'info')) IN ('critical', 'error')
+              )::int AS unread_critical
+         FROM admin_notifications`,
+    );
+
+    const totalAdmins = users.filter((entry) => {
+      const role = (toAdminString(entry.role) || "").toLowerCase();
+      return role === "admin" || role === "super_admin";
+    }).length;
+
+    res.json({
+      totalAdmins,
+      activeSessions: activeSessions.size,
+      unreadCriticalAlerts: Number(unreadCriticalRows[0]?.unread_critical || 0),
+      localDevelopmentBypassEnabled: process.env.NODE_ENV !== "production",
+    });
+  } catch (error) {
+    console.error("Admin security status error:", error);
+    res.status(500).json({ error: "Could not fetch security status" });
+  }
+});
+
+app.get("/api/admin/automations/status", async (req, res) => {
+  try {
+    if (!requireAdminSession(req, res)) {
+      return;
+    }
+
+    const automationRows = await queryExistingTableRows(
+      "automation_rules",
+      `SELECT COUNT(*)::int AS total_rules,
+              COUNT(*) FILTER (WHERE COALESCE(is_active, FALSE) = TRUE)::int AS active_rules
+         FROM automation_rules`,
+    );
+
+    const totalRules = Number(automationRows[0]?.total_rules || 0);
+    const activeRules = Number(automationRows[0]?.active_rules || 0);
+
+    res.json({
+      totalRules,
+      activeRules,
+      inactiveRules: Math.max(0, totalRules - activeRules),
+    });
+  } catch (error) {
+    console.error("Admin automations status error:", error);
+    res.status(500).json({ error: "Could not fetch automations status" });
+  }
+});
+
 // Admin user management - users and roles
 app.get("/api/admin/users", async (req, res) => {
   try {

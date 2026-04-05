@@ -1007,7 +1007,7 @@ export default function AdminDashboard({
     crmData,
     billingData,
     analyticsData,
-    Array.isArray(auditData) && auditData.length > 0 ? auditData : null,
+    Array.isArray(auditData) ? auditData : null,
     healthData,
     integrationData,
     securityData,

@@ -79,10 +79,13 @@ interface PlatformStats {
     vendor: number;
 };
   systemHealth: {
-    uptime: number;
-    responseTime: number;
-    errorRate: number;
-};
+    dbStatus: 'healthy' | 'degraded';
+    uptimeHours: number;
+    responseTime: number | null;
+    errorRate: number | null;
+    activeSessions: number;
+    measuredAt: string;
+  };
 }
 
 const formatValue = (value: number, format: string): string => {
@@ -95,6 +98,35 @@ const formatValue = (value: number, format: string): string => {
       return `${value}ms`;
     default: return value.toLocaleString('nb-NO');
 }
+};
+
+const formatRuntimeValue = (value?: number | null): string => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return 'Ikke målt';
+  }
+
+  if (value >= 24) {
+    return `${(value / 24).toFixed(1)} d`;
+  }
+
+  return `${value.toFixed(1)} t`;
+};
+
+const formatOptionalMetric = (
+  value: number | null | undefined,
+  format: 'currency' | 'percentage' | 'time',
+): string => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return 'Ikke målt';
+  }
+  return formatValue(value, format);
+};
+
+const formatOptionalRating = (value?: number | null): string => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return 'Ikke målt';
+  }
+  return `${value}/5`;
 };
 
 const calculateTrend = (current: number, previous: number): { percentage: number; isPositive: boolean } => {
@@ -199,9 +231,8 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
   const { data: academyStats } = useQuery({
     queryKey: ['/api/admin/academy/analytics/overview'],
     queryFn: async () => {
-      const response = await fetch('/api/admin/academy/analytics/overview');
-      if (!response.ok) throw new Error('Failed to fetch academy stats');
-      return response.json();
+      const headers = await auth.getAuthHeader();
+      return apiRequest('/api/admin/academy/analytics/overview', { headers });
     },
     enabled: canAccessAdminStats && academyAnalyticsFeedEnabled,
     refetchInterval: academyAnalyticsFeedEnabled ? 10000 : false, // ✅ SANNTID: Oppdater hver 10. sekund
@@ -260,6 +291,9 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
   const totalUsersTrend = stats ? calculateTrend(stats.totalUsers?.current || 0, stats.totalUsers?.previous || 0) : { percentage: 0, isPositive: true };
   const activeProjectsTrend = stats ? calculateTrend(stats.activeProjects?.current || 0, stats.activeProjects?.previous || 0) : { percentage: 0, isPositive: true };
   const revenueTrend = stats ? calculateTrend(stats.totalRevenue?.current || 0, stats.totalRevenue?.previous || 0) : { percentage: 0, isPositive: true };
+  const subscriptionBreakdown = Array.isArray(dashboardData?.dashboard?.quickStats?.subscriptionBreakdown)
+    ? dashboardData.dashboard.quickStats.subscriptionBreakdown.filter((entry: any) => entry && typeof entry.plan === 'string')
+    : [];
   const activeInsightSources = [
     stats,
     dashboardData?.dashboard?.quickStats,
@@ -436,14 +470,6 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
           </Grid>
         </Grid>
       )}
-
-      {/* Subscriber Statistics Panel */}
-      <Box sx={{ mb: 4 }}>
-        <div>
-          {/* SubscriberStatsPanel temporarily disabled - component returns void */}
-          <div>Subscriber Statistics Panel</div>
-        </div>
-      </Box>
 
       {/* Email Conversion Tracking (Real-time) */}
       {emailConversionStats && (
@@ -915,7 +941,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                 </Avatar>
               </Box>
               <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary, mb: 1 }}>
-                {dashboardData?.dashboard?.quickStats?.activeSubscriptions || stats?.newSignups?.current || 0}
+                {dashboardData?.dashboard?.quickStats?.activeSubscriptions ?? 0}
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 Aktive Abonnement
@@ -1221,10 +1247,10 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
           <Grid container spacing={3}>
             <Grid xs={12} md={4}>
               <Typography variant="body2" color="text.secondary" gutterBottom>
-                Oppetid
+                Oppetid siden restart
               </Typography>
               <Typography variant="h6" sx={{ color: theming.colors.primary, fontWeight: 600}}>
-                {formatValue(stats?.systemHealth?.uptime || 99.9, 'percentage')}
+                {formatRuntimeValue(stats?.systemHealth?.uptimeHours)}
               </Typography>
             </Grid>
             <Grid xs={12} md={4}>
@@ -1232,15 +1258,25 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                 Gjennomsnittlig Responstid
               </Typography>
               <Typography variant="h6" sx={{ color: theming.colors.primary, fontWeight: 600}}>
-                {formatValue(stats?.systemHealth?.responseTime || 120, 'time')}
+                {formatOptionalMetric(stats?.systemHealth?.responseTime, 'time')}
               </Typography>
             </Grid>
             <Grid xs={12} md={4}>
               <Typography variant="body2" color="text.secondary" gutterBottom>
                 Feilrate
               </Typography>
-              <Typography variant="h6" sx={{ color: (stats?.systemHealth?.errorRate || 0) > 1 ? '#f44336' : '#4caf50', fontWeight: 600}}>
-                {formatValue(stats?.systemHealth?.errorRate || 0.1, 'percentage')}
+              <Typography
+                variant="h6"
+                sx={{
+                  color:
+                    typeof stats?.systemHealth?.errorRate === 'number' &&
+                    stats.systemHealth.errorRate > 1
+                      ? '#f44336'
+                      : '#4caf50',
+                  fontWeight: 600,
+                }}
+              >
+                {formatOptionalMetric(stats?.systemHealth?.errorRate, 'percentage')}
               </Typography>
             </Grid>
           </Grid>
@@ -1338,7 +1374,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                       </TableCell>
                       <TableCell align="right">{stats?.professionBreakdown?.photographer || 0}</TableCell>
                       <TableCell align="right">{professionStats?.photographer?.activeProjects || 0} prosjekter</TableCell>
-                      <TableCell align="right">{professionStats?.photographer?.avgRating || 0}/5</TableCell>
+                      <TableCell align="right">{formatOptionalRating(professionStats?.photographer?.avgRating)}</TableCell>
                     </TableRow>
                     <TableRow>
                       <TableCell>
@@ -1349,7 +1385,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                       </TableCell>
                       <TableCell align="right">{stats?.professionBreakdown?.videographer || 0}</TableCell>
                       <TableCell align="right">{professionStats?.videographer?.activeProjects || 0} prosjekter</TableCell>
-                      <TableCell align="right">{professionStats?.videographer?.avgRating || 0}/5</TableCell>
+                      <TableCell align="right">{formatOptionalRating(professionStats?.videographer?.avgRating)}</TableCell>
                     </TableRow>
                     <TableRow>
                       <TableCell>
@@ -1360,7 +1396,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                       </TableCell>
                       <TableCell align="right">{stats?.professionBreakdown?.musicproducer || 0}</TableCell>
                       <TableCell align="right">{professionStats?.musicproducer?.activeProjects || 0} prosjekter</TableCell>
-                      <TableCell align="right">{professionStats?.musicproducer?.avgRating || 0}/5</TableCell>
+                      <TableCell align="right">{formatOptionalRating(professionStats?.musicproducer?.avgRating)}</TableCell>
                     </TableRow>
                     <TableRow>
                       <TableCell>
@@ -1371,7 +1407,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                       </TableCell>
                       <TableCell align="right">{stats?.professionBreakdown?.vendor || 0}</TableCell>
                       <TableCell align="right">{professionStats?.vendor?.activeProjects || 0} prosjekter</TableCell>
-                      <TableCell align="right">{professionStats?.vendor?.avgRating || 0}/5</TableCell>
+                      <TableCell align="right">{formatOptionalRating(professionStats?.vendor?.avgRating)}</TableCell>
                     </TableRow>
                   </TableBody>
                 </Table>
@@ -1487,7 +1523,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                 <Grid xs={12} md={6}>
                   <Paper sx={{ p: 3 }}>
                     <Typography variant="h4" sx={{ color: theming.colors.primary, fontWeight: 700}}>
-                      {dashboardData?.dashboard?.quickStats?.activeSubscriptions || stats?.newSignups?.current || 0}
+                      {dashboardData?.dashboard?.quickStats?.activeSubscriptions ?? 0}
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
                       Aktive abonnement
@@ -1500,15 +1536,17 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                       <Star sx={{ color: '#9c27b0' }} />
                       Abonnementstyper
                     </Typography>
-                    <Typography variant="body2">
-                      Premium: {Math.floor((dashboardData?.dashboard?.quickStats?.activeSubscriptions || 0) * 0.3)}
-                    </Typography>
-                    <Typography variant="body2">
-                      Standard: {Math.floor((dashboardData?.dashboard?.quickStats?.activeSubscriptions || 0) * 0.5)}
-                    </Typography>
-                    <Typography variant="body2">
-                      Basic: {Math.floor((dashboardData?.dashboard?.quickStats?.activeSubscriptions || 0) * 0.2)}
-                    </Typography>
+                    {subscriptionBreakdown.length > 0 ? (
+                      subscriptionBreakdown.map((entry: any) => (
+                        <Typography variant="body2" key={entry.plan}>
+                          {entry.plan}: {entry.count}
+                        </Typography>
+                      ))
+                    ) : (
+                      <Typography variant="body2" color="text.secondary">
+                        Ingen aktive abonnementstyper registrert ennå.
+                      </Typography>
+                    )}
                   </Paper>
                 </Grid>
               </Grid>
@@ -1537,7 +1575,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                       Total omsetning: {formatValue(professionStats?.photographer?.totalRevenue || 0, 'currency')}
                     </Typography>
                     <Typography variant="body2">
-                      Gj.snitt rating: {professionStats?.photographer?.avgRating || 0}/5 
+                      Gj.snitt rating: {formatOptionalRating(professionStats?.photographer?.avgRating)} 
                       <Star sx={{ color: '#ffc107', ml: 0.5, fontSize: 16 }} />
                     </Typography>
                   </Paper>
@@ -1581,7 +1619,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                       Total omsetning: {formatValue(professionStats?.videographer?.totalRevenue || 0, 'currency')}
                     </Typography>
                     <Typography variant="body2">
-                      Gj.snitt rating: {professionStats?.videographer?.avgRating || 0}/5 
+                      Gj.snitt rating: {formatOptionalRating(professionStats?.videographer?.avgRating)} 
                       <Star sx={{ color: '#ffc107', ml: 0.5, fontSize: 16 }} />
                     </Typography>
                   </Paper>
@@ -1625,7 +1663,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                       Total omsetning: {formatValue(professionStats?.musicproducer?.totalRevenue || 0, 'currency')}
                     </Typography>
                     <Typography variant="body2">
-                      Gj.snitt rating: {professionStats?.musicproducer?.avgRating || 0}/5 
+                      Gj.snitt rating: {formatOptionalRating(professionStats?.musicproducer?.avgRating)} 
                       <Star sx={{ color: '#ffc107', ml: 0.5, fontSize: 16 }} />
                     </Typography>
                   </Paper>
@@ -1669,7 +1707,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                       Total omsetning: {formatValue(professionStats?.vendor?.totalRevenue || 0, 'currency')}
                     </Typography>
                     <Typography variant="body2">
-                      Gj.snitt rating: {professionStats?.vendor?.avgRating || 0}/5 
+                      Gj.snitt rating: {formatOptionalRating(professionStats?.vendor?.avgRating)} 
                       <Star sx={{ color: '#ffc107', ml: 0.5, fontSize: 16 }} />
                     </Typography>
                   </Paper>
