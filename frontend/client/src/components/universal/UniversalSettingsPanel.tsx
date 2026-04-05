@@ -82,6 +82,7 @@ import EnterpriseTeamManagement from '../enterprise/EnterpriseTeamManagement';
 import { useDynamicProfessions } from './hooks/useDynamicProfessions';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import { useSettings } from '@/contexts/SettingsContext';
+import { useAuth } from '@/hooks/useAuth';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -243,6 +244,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
   });
   const [lightroomAction, setLightroomAction] = useState<null | 'download' | 'test' | 'reconnect'>(null);
   const theme = useTheme();
+  const { isAdmin } = useAuth();
   
   // Push notifications
   const { pushEnabled, isSupported } = usePushNotifications(userId);
@@ -652,10 +654,12 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
               Bedriftsprofil & Logo
             </Typography>
             <BusinessBrandingSettings userId={userId} />
-            <AccountingBillingOverview
-              userId={userId}
-              accentColor={customBranding.color}
-            />
+            {isAdmin ? (
+              <AccountingBillingOverview
+                userId={userId}
+                accentColor={customBranding.color}
+              />
+            ) : null}
           </MuiCardContent>
         </MuiCard>
       </TabPanel>

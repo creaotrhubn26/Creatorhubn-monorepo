@@ -30,6 +30,9 @@ type AccountingIntegrationStatus = {
   configured?: boolean;
   provider?: 'fiken' | 'tripletex';
   environment?: 'test' | 'production';
+  activationEnabled?: boolean;
+  activatedAt?: string | null;
+  activatedByName?: string | null;
   status?: 'connected' | 'disconnected' | 'error';
   connectedAt?: string | null;
   lastVerifiedAt?: string | null;
@@ -339,9 +342,13 @@ export default function AccountingBillingOverview({
               </Card>
               <Card variant="outlined" sx={{ borderRadius: 2 }}>
                 <CardContent sx={{ p: 2 }}>
-                  <Typography variant="caption" color="text.secondary">Neste trekk</Typography>
-                  <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                    {integrationStatus?.status === 'connected' ? 'Fakturering' : 'Koble opp'}
+                    <Typography variant="caption" color="text.secondary">Neste trekk</Typography>
+                    <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                    {!integrationStatus?.activationEnabled
+                      ? 'Aktiver'
+                      : integrationStatus?.status === 'connected'
+                        ? 'Fakturering'
+                        : 'Koble opp'}
                   </Typography>
                 </CardContent>
               </Card>
@@ -364,11 +371,21 @@ export default function AccountingBillingOverview({
               </Box>
               <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                 <Chip
-                  color={integrationStatus?.status === 'connected' ? 'success' : integrationStatus?.configured ? 'warning' : 'default'}
+                  color={
+                    integrationStatus?.status === 'connected'
+                      ? 'success'
+                      : integrationStatus?.activationEnabled
+                        ? integrationStatus?.configured
+                          ? 'warning'
+                          : 'default'
+                        : 'default'
+                  }
                   label={
                     integrationStatus?.status === 'connected'
                       ? 'Tilkoblet'
-                      : integrationStatus?.configured
+                      : !integrationStatus?.activationEnabled
+                        ? 'Ikke aktivert for bruker'
+                        : integrationStatus?.configured
                         ? 'Klar for tilkobling'
                         : 'Mangler backend-nøkler'
                   }
@@ -383,6 +400,13 @@ export default function AccountingBillingOverview({
                 </Button>
               </Box>
             </Box>
+
+            {!integrationStatus?.activationEnabled ? (
+              <Alert severity="info">
+                Denne løsningen aktiveres per bruker i admin. Gå til <strong>Brukere &amp; Roller</strong> og aktiver
+                regnskapsflyt for brukeren før dere kobler til Tripletex.
+              </Alert>
+            ) : null}
 
             {!integrationStatus?.configured ? (
               <Alert severity="warning">
@@ -502,7 +526,11 @@ export default function AccountingBillingOverview({
                     variant="contained"
                     startIcon={connectMutation.isPending ? <CircularProgress size={14} color="inherit" /> : <Sync />}
                     onClick={() => connectMutation.mutate()}
-                    disabled={connectMutation.isPending || !integrationStatus?.configured}
+                    disabled={
+                      connectMutation.isPending ||
+                      !integrationStatus?.configured ||
+                      !integrationStatus?.activationEnabled
+                    }
                     sx={{ bgcolor: accentColor, '&:hover': { bgcolor: accentColor } }}
                   >
                     Koble til Tripletex testmiljø

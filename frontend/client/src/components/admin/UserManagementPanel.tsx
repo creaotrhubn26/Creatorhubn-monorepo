@@ -134,6 +134,28 @@ interface Role {
   description: string;
 }
 
+interface AccountingIntegrationStatus {
+  configured?: boolean;
+  activationEnabled?: boolean;
+  activatedAt?: string | null;
+  activatedByName?: string | null;
+  activationNotes?: string | null;
+  provider?: 'fiken' | 'tripletex';
+  environment?: 'test' | 'production';
+  status?: 'connected' | 'disconnected' | 'error';
+  connectedAt?: string | null;
+  lastVerifiedAt?: string | null;
+  lastError?: string | null;
+  organizationNumber?: string | null;
+  businessName?: string | null;
+  contactName?: string | null;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
+  addressLine1?: string | null;
+  postalCode?: string | null;
+  city?: string | null;
+}
+
 interface UserManagementPanelProps {
   onMeetingCreate?: (meeting: any) => void;
   onProjectUpdate?: (project: any) => void;
@@ -162,6 +184,18 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
   const [editProfessionValue, setEditProfessionValue] = useState<string>('');
   const [editRoleOpen, setEditRoleOpen] = useState(false);
   const [editRoleValue, setEditRoleValue] = useState<string>('user');
+  const [accountingDialogOpen, setAccountingDialogOpen] = useState(false);
+  const [accountingForm, setAccountingForm] = useState({
+    businessName: '',
+    organizationNumber: '',
+    contactName: '',
+    contactEmail: '',
+    contactPhone: '',
+    addressLine1: '',
+    postalCode: '',
+    city: '',
+    activationNotes: '',
+  });
   const [folderViewUserId, setFolderViewUserId] = useState<string | null>(null);
   const [errorSnackbar, setErrorSnackbar] = useState<{ open: boolean; message: string }>({ open: false, message: '' });
 
@@ -224,9 +258,9 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
     if (!value) return 'Ukjent';
     const parsed = new Date(value);
     if (Number.isNaN(parsed.getTime())) return 'Ukjent';
-    return parsed.toLocaleDateString('en-US', {
-      month: 'short',
+    return parsed.toLocaleDateString('nb-NO', {
       day: 'numeric',
+      month: 'long',
       year: 'numeric',
     });
   };
@@ -666,6 +700,108 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
     },
   });
 
+  const accountingStatusQuery = useQuery<AccountingIntegrationStatus>({
+    queryKey: ['/api/admin/users/accounting-integration', selectedUser?.id],
+    queryFn: async () => {
+      if (!selectedUser?.id) {
+        return {};
+      }
+      return apiRequest(`/api/admin/users/${selectedUser.id}/accounting-integration`);
+    },
+    enabled: accountingDialogOpen && Boolean(selectedUser?.id),
+    retry: false,
+  });
+
+  React.useEffect(() => {
+    if (!selectedUser || !accountingDialogOpen) {
+      return;
+    }
+
+    const accountingStatus = accountingStatusQuery.data;
+    setAccountingForm({
+      businessName:
+        accountingStatus?.businessName ||
+        selectedUser.businessName ||
+        selectedUser.companyName ||
+        '',
+      organizationNumber:
+        accountingStatus?.organizationNumber ||
+        selectedUser.organizationNumber ||
+        '',
+      contactName:
+        accountingStatus?.contactName ||
+        formatUserName(selectedUser),
+      contactEmail:
+        accountingStatus?.contactEmail ||
+        selectedUser.email ||
+        '',
+      contactPhone:
+        accountingStatus?.contactPhone || '',
+      addressLine1:
+        accountingStatus?.addressLine1 || '',
+      postalCode:
+        accountingStatus?.postalCode || '',
+      city:
+        accountingStatus?.city || '',
+      activationNotes:
+        accountingStatus?.activationNotes || '',
+    });
+  }, [accountingDialogOpen, accountingStatusQuery.data, selectedUser]);
+
+  const updateAccountingActivationMutation = useMutation({
+    mutationFn: async ({
+      userId,
+      activationEnabled,
+    }: {
+      userId: string;
+      activationEnabled: boolean;
+    }) => {
+      return apiRequest(`/api/admin/users/${userId}/accounting-integration`, {
+        method: 'PUT',
+        body: {
+          activationEnabled,
+          ...accountingForm,
+        },
+      });
+    },
+    onSuccess: async (_, variables) => {
+      await queryClient.invalidateQueries({ queryKey: ['/api/admin/users/accounting-integration'] });
+      toast({
+        title: variables.activationEnabled ? 'Regnskapsflyt aktivert' : 'Regnskapsflyt deaktivert',
+        description: variables.activationEnabled
+          ? 'Brukeren er klargjort for Tripletex-oppsett.'
+          : 'Regnskapsflyten er slått av for brukeren.',
+        variant: 'default',
+      });
+    },
+    onError: (error: Error) => {
+      setErrorSnackbar({ open: true, message: error.message || 'Kunne ikke oppdatere regnskapsflyten' });
+    },
+  });
+
+  const connectAccountingTestMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      return apiRequest('/api/accounting/integration/tripletex/test/connect', {
+        method: 'POST',
+        body: {
+          userId,
+          ...accountingForm,
+        },
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['/api/admin/users/accounting-integration'] });
+      toast({
+        title: 'Tripletex test koblet til',
+        description: 'Testmiljøet er nå koblet til for valgt bruker.',
+        variant: 'default',
+      });
+    },
+    onError: (error: Error) => {
+      setErrorSnackbar({ open: true, message: error.message || 'Kunne ikke koble til Tripletex testmiljø' });
+    },
+  });
+
   // Start impersonation mutation
   const impersonateMutation = useMutation({
     mutationFn: async (userId: string) => {
@@ -800,6 +936,11 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
   const handleMenuClose = () => {
     setAnchorEl(null);
 };
+
+  const handleOpenAccountingDialog = () => {
+    setAccountingDialogOpen(true);
+    handleMenuClose();
+  };
 
   const handleImpersonate = () => {
     if (selectedUser?.accountUserId) {
@@ -1034,6 +1175,10 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
         <PeopleIcon sx={{ mr: 1, fontSize: 18 }} />
         Endre profesjon
       </MenuItem>
+      <MenuItem onClick={handleOpenAccountingDialog}>
+        <BusinessIcon sx={{ mr: 1, fontSize: 18 }} />
+        Regnskapsflyt
+      </MenuItem>
       <MenuItem onClick={handleImpersonate} disabled={!selectedUser?.canImpersonate}>
         <SecurityIcon sx={{ mr: 1, fontSize: 18 }} />
         Impersoner bruker
@@ -1207,6 +1352,179 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
     </Dialog>
   );
 
+  const AccountingActivationDialog = () => {
+    const accountingStatus = accountingStatusQuery.data || null;
+    const activationActive = Boolean(accountingStatus?.activationEnabled);
+    const isConnected = accountingStatus?.status === 'connected';
+    const actionPending =
+      updateAccountingActivationMutation.isPending || connectAccountingTestMutation.isPending;
+
+    return (
+      <Dialog
+        open={accountingDialogOpen}
+        onClose={() => {
+          setAccountingDialogOpen(false);
+          setSelectedUser(null);
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Administrer regnskapsflyt</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+            {selectedUser ? (
+              <Alert severity="info">
+                Du aktiverer denne løsningen for <strong>{formatUserName(selectedUser)}</strong>. Selve oppsettet er skjult
+                for vanlige brukere og styres kun fra admin.
+              </Alert>
+            ) : null}
+
+            {accountingStatusQuery.error instanceof Error ? (
+              <Alert severity="error">{accountingStatusQuery.error.message}</Alert>
+            ) : null}
+
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+              <Chip
+                color={activationActive ? 'success' : 'default'}
+                label={activationActive ? 'Aktivert for bruker' : 'Ikke aktivert'}
+              />
+              <Chip
+                color={isConnected ? 'success' : 'default'}
+                label={isConnected ? 'Tripletex test tilkoblet' : 'Tripletex ikke koblet'}
+              />
+            </Box>
+
+            {!accountingStatus?.configured ? (
+              <Alert severity="warning">
+                Tripletex testmiljø er ikke konfigurert i backend ennå. Du kan fortsatt aktivere løsningen for brukeren,
+                men selve testkoblingen blir først mulig når backend-nøklene er lagt inn.
+              </Alert>
+            ) : null}
+
+            <TextField
+              label="Firmanavn"
+              value={accountingForm.businessName}
+              onChange={(event) => setAccountingForm((prev) => ({ ...prev, businessName: event.target.value }))}
+              fullWidth
+            />
+            <TextField
+              label="Organisasjonsnummer"
+              value={accountingForm.organizationNumber}
+              onChange={(event) => setAccountingForm((prev) => ({ ...prev, organizationNumber: event.target.value }))}
+              fullWidth
+            />
+            <TextField
+              label="Kontaktperson"
+              value={accountingForm.contactName}
+              onChange={(event) => setAccountingForm((prev) => ({ ...prev, contactName: event.target.value }))}
+              fullWidth
+            />
+            <TextField
+              label="Kontakt-e-post"
+              value={accountingForm.contactEmail}
+              onChange={(event) => setAccountingForm((prev) => ({ ...prev, contactEmail: event.target.value }))}
+              fullWidth
+            />
+            <TextField
+              label="Telefon"
+              value={accountingForm.contactPhone}
+              onChange={(event) => setAccountingForm((prev) => ({ ...prev, contactPhone: event.target.value }))}
+              fullWidth
+            />
+            <TextField
+              label="Adresse"
+              value={accountingForm.addressLine1}
+              onChange={(event) => setAccountingForm((prev) => ({ ...prev, addressLine1: event.target.value }))}
+              fullWidth
+            />
+            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+              <TextField
+                label="Postnummer"
+                value={accountingForm.postalCode}
+                onChange={(event) => setAccountingForm((prev) => ({ ...prev, postalCode: event.target.value }))}
+                fullWidth
+              />
+              <TextField
+                label="Poststed"
+                value={accountingForm.city}
+                onChange={(event) => setAccountingForm((prev) => ({ ...prev, city: event.target.value }))}
+                fullWidth
+              />
+            </Box>
+            <TextField
+              label="Admin-notat"
+              value={accountingForm.activationNotes}
+              onChange={(event) => setAccountingForm((prev) => ({ ...prev, activationNotes: event.target.value }))}
+              fullWidth
+              multiline
+              minRows={2}
+            />
+
+            {activationActive && accountingStatus?.activatedAt ? (
+              <Typography variant="caption" color="text.secondary">
+                Aktivert {formatUserDate(accountingStatus.activatedAt)} av {accountingStatus.activatedByName || 'admin'}.
+              </Typography>
+            ) : null}
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5, justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
+          <Button
+            color="inherit"
+            onClick={() => {
+              setAccountingDialogOpen(false);
+              setSelectedUser(null);
+            }}
+          >
+            Lukk
+          </Button>
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            {activationActive ? (
+              <Button
+                color="error"
+                variant="outlined"
+                disabled={!selectedUser || actionPending}
+                onClick={() => {
+                  if (!selectedUser) return;
+                  updateAccountingActivationMutation.mutate({
+                    userId: selectedUser.id,
+                    activationEnabled: false,
+                  });
+                }}
+              >
+                Deaktiver løsning
+              </Button>
+            ) : (
+              <Button
+                variant="outlined"
+                disabled={!selectedUser || actionPending}
+                onClick={() => {
+                  if (!selectedUser) return;
+                  updateAccountingActivationMutation.mutate({
+                    userId: selectedUser.id,
+                    activationEnabled: true,
+                  });
+                }}
+              >
+                Aktiver løsning
+              </Button>
+            )}
+            <Button
+              variant="contained"
+              disabled={!selectedUser || actionPending || !activationActive || !accountingStatus?.configured}
+              onClick={() => {
+                if (!selectedUser) return;
+                connectAccountingTestMutation.mutate(selectedUser.id);
+              }}
+              sx={{ bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00' } }}
+            >
+              Aktiver Tripletex test
+            </Button>
+          </Box>
+        </DialogActions>
+      </Dialog>
+    );
+  };
+
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
   };
@@ -1225,6 +1543,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
       <UserActionsMenu />
       <EditRoleDialog />
       <EditProfessionDialog />
+      <AccountingActivationDialog />
 
       {/* Header */}
       <Box

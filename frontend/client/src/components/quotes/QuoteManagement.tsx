@@ -422,7 +422,7 @@ function openInNewTab(url: string): void {
 }
 
 export default function QuoteManagement({ onCreateProject }: QuoteManagementProps) {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const queryClient = useQueryClient();
   const userProfession = user?.profession || 'photographer';
   const theming = useTheming(userProfession);
@@ -509,7 +509,7 @@ export default function QuoteManagement({ onCreateProject }: QuoteManagementProp
   const accountingIntegrationQuery = useQuery({
     queryKey: ['/api/accounting/integration/status', user?.id],
     queryFn: () => apiRequest(`/api/accounting/integration/status?userId=${user?.id ?? ''}`),
-    enabled: Boolean(user?.id),
+    enabled: Boolean(user?.id) && isAdmin,
     retry: false,
   });
 
@@ -537,6 +537,7 @@ export default function QuoteManagement({ onCreateProject }: QuoteManagementProp
         setSelectedQuote(finalQuote);
         syncQuoteToDrive(finalQuote);
         if (
+          isAdmin &&
           accountingIntegration?.provider === 'tripletex' &&
           accountingIntegration?.status === 'connected'
         ) {
@@ -1147,7 +1148,7 @@ export default function QuoteManagement({ onCreateProject }: QuoteManagementProp
                       />
                     </Box>
 
-                    {quote.tripletexInvoiceId ? (
+                    {isAdmin && quote.tripletexInvoiceId ? (
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <Typography variant="body2" color="text.secondary">
                           Tripletex:
@@ -1281,7 +1282,7 @@ export default function QuoteManagement({ onCreateProject }: QuoteManagementProp
                   sx={{ bgcolor: getStatusColor(selectedQuote.status), color: 'white', fontWeight: 700 }}
                 />
               </Typography>
-              {selectedQuote.tripletexInvoiceId ? (
+              {isAdmin && selectedQuote.tripletexInvoiceId ? (
                 <Stack direction="row" spacing={1} flexWrap="wrap">
                   <Chip
                     size="small"
@@ -1449,7 +1450,7 @@ export default function QuoteManagement({ onCreateProject }: QuoteManagementProp
       </Dialog>
 
       <Dialog
-        open={fikenInvoiceDialogOpen && Boolean(selectedQuote)}
+        open={isAdmin && fikenInvoiceDialogOpen && Boolean(selectedQuote)}
         onClose={() => setFikenInvoiceDialogOpen(false)}
         maxWidth="sm"
         fullWidth

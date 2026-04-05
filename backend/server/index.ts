@@ -19188,6 +19188,11 @@ type CompatAccountingIntegrationStatus = {
   configured: boolean;
   provider: CompatAccountingProvider;
   environment: "test" | "production";
+  activationEnabled: boolean;
+  activatedAt: string | null;
+  activatedByUserId: string | null;
+  activatedByName: string | null;
+  activationNotes: string | null;
   status: "connected" | "disconnected" | "error";
   connectedAt: string | null;
   lastVerifiedAt: string | null;
@@ -19780,6 +19785,11 @@ function buildDefaultCompatAccountingIntegrationStatus(): CompatAccountingIntegr
     configured: isTripletexConfigured(),
     provider: "tripletex",
     environment: "test",
+    activationEnabled: false,
+    activatedAt: null,
+    activatedByUserId: null,
+    activatedByName: null,
+    activationNotes: null,
     status: "disconnected",
     connectedAt: null,
     lastVerifiedAt: null,
@@ -26340,9 +26350,14 @@ app.get("/api/payments/fiken-mva-status", async (req, res) => {
 
 app.get("/api/accounting/integration/status", async (req, res) => {
   try {
-    const userId = readString(req.query.userId) || compatResolveUserId(req);
+    const requestedUserId = readString(req.query.userId);
+    const sessionUserId = compatResolveUserId(req);
+    const userId = requestedUserId || sessionUserId;
     if (!userId || userId === "guest") {
       return res.status(401).json({ error: "Innlogging kreves for å hente regnskapsstatus" });
+    }
+    if (requestedUserId && requestedUserId !== sessionUserId && !requireAdminSession(req, res)) {
+      return;
     }
 
     res.json(await buildCompatAccountingIntegrationStatusResponse(userId));
@@ -26352,16 +26367,112 @@ app.get("/api/accounting/integration/status", async (req, res) => {
   }
 });
 
+app.get("/api/admin/users/:id/accounting-integration", async (req, res) => {
+  try {
+    if (!requireAdminSession(req, res)) {
+      return;
+    }
+
+    const userView = await resolveAdminUserView(req.params.id);
+    if (!userView) {
+      return res.status(404).json({ error: "Fant ikke brukeren" });
+    }
+
+    res.json(await buildCompatAccountingIntegrationStatusResponse(userView.id));
+  } catch (error) {
+    console.error("Error fetching admin accounting integration status:", error);
+    res.status(500).json({ error: "Kunne ikke hente regnskapsstatus for brukeren" });
+  }
+});
+
+app.put("/api/admin/users/:id/accounting-integration", async (req, res) => {
+  try {
+    const adminSession = requireAdminSession(req, res);
+    if (!adminSession) {
+      return;
+    }
+
+    const userView = await resolveAdminUserView(req.params.id);
+    if (!userView) {
+      return res.status(404).json({ error: "Fant ikke brukeren" });
+    }
+
+    const body = isRecord(req.body) ? req.body : {};
+    const existing =
+      (await readCompatAccountingIntegrationStatus(userView.id)) ||
+      buildDefaultCompatAccountingIntegrationStatus();
+    const activationEnabled = readBoolean(body.activationEnabled) ?? false;
+    const now = new Date().toISOString();
+
+    const nextStatus: CompatAccountingIntegrationStatus = {
+      ...existing,
+      configured: isTripletexConfigured(),
+      provider: "tripletex",
+      environment: "test",
+      activationEnabled,
+      activatedAt: activationEnabled ? existing.activatedAt || now : null,
+      activatedByUserId: activationEnabled ? adminSession.userId : null,
+      activatedByName: activationEnabled ? adminSession.name : null,
+      activationNotes: readString(body.activationNotes) || existing.activationNotes,
+      status: activationEnabled ? existing.status : "disconnected",
+      lastError: activationEnabled ? existing.lastError : null,
+      organizationNumber:
+        readString(body.organizationNumber) ||
+        userView.organizationNumber ||
+        existing.organizationNumber,
+      businessName:
+        readString(body.businessName) ||
+        userView.businessName ||
+        userView.companyName ||
+        existing.businessName,
+      contactName:
+        readString(body.contactName) ||
+        [readString(userView.firstName), readString(userView.lastName)].filter(Boolean).join(" ") ||
+        existing.contactName,
+      contactEmail:
+        readString(body.contactEmail) ||
+        userView.email ||
+        existing.contactEmail,
+      contactPhone:
+        readString(body.contactPhone) || existing.contactPhone,
+      addressLine1:
+        readString(body.addressLine1) || existing.addressLine1,
+      postalCode:
+        readString(body.postalCode) || existing.postalCode,
+      city: readString(body.city) || existing.city,
+    };
+
+    await writeCompatAccountingIntegrationStatus(userView.id, nextStatus);
+    res.json(await buildCompatAccountingIntegrationStatusResponse(userView.id));
+  } catch (error) {
+    console.error("Error updating admin accounting integration status:", error);
+    res.status(500).json({ error: "Kunne ikke oppdatere regnskapsløsningen for brukeren" });
+  }
+});
+
 app.post("/api/accounting/integration/tripletex/test/connect", async (req, res) => {
-  const userId = compatResolveUserId(req);
+  if (!requireAdminSession(req, res)) {
+    return;
+  }
+  const body = isRecord(req.body) ? req.body : {};
+  const requestedUserId = readString(body.userId) || readString(body.targetUserId);
+  const sessionUserId = compatResolveUserId(req);
+  const userId = requestedUserId || sessionUserId;
   if (!userId || userId === "guest") {
     return res.status(401).json({ error: "Innlogging kreves for å koble til Tripletex" });
   }
+  if (requestedUserId && requestedUserId !== sessionUserId && !requireAdminSession(req, res)) {
+    return;
+  }
 
-  const body = isRecord(req.body) ? req.body : {};
   const existing =
     (await readCompatAccountingIntegrationStatus(userId)) ||
     buildDefaultCompatAccountingIntegrationStatus();
+  if (!existing.activationEnabled) {
+    return res.status(403).json({
+      error: "Regnskapsløsningen er ikke aktivert for denne brukeren ennå",
+    });
+  }
   const client = new TripletexApiClient();
 
   try {
@@ -26429,9 +26540,18 @@ app.post("/api/accounting/integration/tripletex/test/connect", async (req, res) 
 
 app.post("/api/accounting/integration/tripletex/test/disconnect", async (req, res) => {
   try {
-    const userId = compatResolveUserId(req);
+    if (!requireAdminSession(req, res)) {
+      return;
+    }
+    const body = isRecord(req.body) ? req.body : {};
+    const requestedUserId = readString(body.userId) || readString(body.targetUserId);
+    const sessionUserId = compatResolveUserId(req);
+    const userId = requestedUserId || sessionUserId;
     if (!userId || userId === "guest") {
       return res.status(401).json({ error: "Innlogging kreves for å koble fra Tripletex" });
+    }
+    if (requestedUserId && requestedUserId !== sessionUserId && !requireAdminSession(req, res)) {
+      return;
     }
 
     const existing =
@@ -26456,12 +26576,27 @@ app.post("/api/accounting/integration/tripletex/test/disconnect", async (req, re
 
 app.post("/api/tripletex/customers/ensure", async (req, res) => {
   try {
-    const userId = compatResolveUserId(req);
+    if (!requireAdminSession(req, res)) {
+      return;
+    }
+    const body = isRecord(req.body) ? req.body : {};
+    const requestedUserId = readString(body.userId) || readString(body.targetUserId);
+    const sessionUserId = compatResolveUserId(req);
+    const userId = requestedUserId || sessionUserId;
     if (!userId || userId === "guest") {
       return res.status(401).json({ error: "Innlogging kreves for å opprette Tripletex-kunde" });
     }
+    if (requestedUserId && requestedUserId !== sessionUserId && !requireAdminSession(req, res)) {
+      return;
+    }
 
-    const body = isRecord(req.body) ? req.body : {};
+    const integrationStatus =
+      (await readCompatAccountingIntegrationStatus(userId)) ||
+      buildDefaultCompatAccountingIntegrationStatus();
+    if (!integrationStatus.activationEnabled) {
+      return res.status(403).json({ error: "Regnskapsløsningen er ikke aktivert for denne brukeren" });
+    }
+
     const client = new TripletexApiClient();
     const customer = await client.ensureCustomer({
       customerName: readString(body.customerName) || "CreatorHub-kunde",
@@ -26488,13 +26623,21 @@ app.post("/api/tripletex/customers/ensure", async (req, res) => {
 app.post("/api/tripletex/invoices/create", async (req, res) => {
   try {
     await ensureQuotesCompatibilitySchema();
-
-    const userId = compatResolveUserId(req);
-    if (!userId || userId === "guest") {
-      return res.status(401).json({ error: "Innlogging kreves for å opprette faktura" });
+    if (!requireAdminSession(req, res)) {
+      return;
     }
 
     const body = isRecord(req.body) ? req.body : {};
+    const requestedUserId = readString(body.userId) || readString(body.targetUserId);
+    const sessionUserId = compatResolveUserId(req);
+    const userId = requestedUserId || sessionUserId;
+    if (!userId || userId === "guest") {
+      return res.status(401).json({ error: "Innlogging kreves for å opprette faktura" });
+    }
+    if (requestedUserId && requestedUserId !== sessionUserId && !requireAdminSession(req, res)) {
+      return;
+    }
+
     const quoteId = readString(body.quoteId);
     if (!quoteId) {
       return res.status(400).json({ error: "quoteId er påkrevd" });
@@ -26503,6 +26646,11 @@ app.post("/api/tripletex/invoices/create", async (req, res) => {
     const accountingStatus =
       (await readCompatAccountingIntegrationStatus(userId)) ||
       buildDefaultCompatAccountingIntegrationStatus();
+    if (!accountingStatus.activationEnabled) {
+      return res.status(403).json({
+        error: "Regnskapsløsningen er ikke aktivert for denne brukeren ennå.",
+      });
+    }
     if (accountingStatus.status !== "connected") {
       return res.status(400).json({
         error:
