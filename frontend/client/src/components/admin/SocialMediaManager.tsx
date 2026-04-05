@@ -57,6 +57,7 @@ import {
   CalendarMonth as CalendarIcon,
   Campaign as _CampaignIcon,
 } from '@mui/icons-material';
+import { PUBLIC_BRAND_LINKS } from '@/lib/publicBrandLinks';
 
 interface SocialPost {
   id?: string;
@@ -178,8 +179,8 @@ export default function SocialMediaManager() {
         formData.append('youtubeDescription', postForm.youtubeDescription || postForm.content || ', ');
         formData.append('youtubeTags', JSON.stringify(postForm.youtubeTags || postForm.hashtags || []));
         formData.append('youtubePrivacy', postForm.youtubePrivacy || 'public');
-        formData.append('websiteUrl','https://creatorhubn.com');
-        formData.append('instagramHandle','https://instagram.com/creatorhubn');
+        formData.append('websiteUrl', PUBLIC_BRAND_LINKS.creatorhub.website);
+        formData.append('instagramHandle', PUBLIC_BRAND_LINKS.creatorhub.instagram);
       }
 
       return new Promise((resolve, reject) => {

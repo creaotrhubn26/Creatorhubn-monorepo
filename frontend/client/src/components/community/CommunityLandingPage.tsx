@@ -40,13 +40,11 @@ import {
   ArrowForward,
   PlayCircle,
   EmojiEvents,
-  FacebookRounded,
   Forum,
   Lightbulb,
   Close,
   School,
   Home,
-  Instagram,
   Login,
   HelpOutline,
   ExpandMore,
@@ -128,9 +126,8 @@ import { useProgressPersistence } from './hooks/useProgressPersistence';
 import { useKeyboardNavigation } from './hooks/useKeyboardNavigation';
 import { useOnboardingAnalytics } from './hooks/useOnboardingAnalytics';
 import { useStepValidation } from './hooks/useStepValidation';
-
-const CREATORHUB_INSTAGRAM_URL = 'https://www.instagram.com/creatorhubn/';
-const CREATORHUB_FACEBOOK_URL = 'https://www.facebook.com/creatorhubn/';
+import PublicSocialLinks from '@/components/common/PublicSocialLinks';
+import { getPublicSocialProfiles } from '@/lib/publicBrandLinks';
 
 interface OnboardingStep {
   id: string;
@@ -194,6 +191,7 @@ const ONBOARDING_FIRST_ACTIONS = [
   'Svar på et åpent spørsmål',
   'Diskuter en Academy-leksjon',
 ];
+const creatorhubSocialLinks = getPublicSocialProfiles('creatorhub');
 
 function CommunityLandingPageComponent({
   userId,
@@ -1117,78 +1115,12 @@ function CommunityLandingPageComponent({
               border: COMMUNITY_PANEL_BORDER,
             }}
           >
-            <Stack
-              direction={{ xs: 'column', md: 'row' }}
-              spacing={1.8}
-              justifyContent="space-between"
-              alignItems={{ xs: 'flex-start', md: 'center' }}
-            >
-              <Stack spacing={0.6} sx={{ maxWidth: 560 }}>
-                <Typography
-                  sx={{
-                    fontSize: '0.78rem',
-                    fontWeight: 700,
-                    letterSpacing: '0.18em',
-                    textTransform: 'uppercase',
-                    color: 'rgba(245, 166, 35, 0.9)',
-                  }}
-                >
-                  Sosiale medier
-                </Typography>
-                <Typography sx={{ color: 'rgba(255,255,255,0.7)', lineHeight: 1.75 }}>
-                  Følg CreatorHub for community-nyheter, nye initiativer og oppdateringer fra økosystemet.
-                </Typography>
-              </Stack>
-
-              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-                <Button
-                  component="a"
-                  href={CREATORHUB_INSTAGRAM_URL}
-                  target="_blank"
-                  rel="noreferrer"
-                  startIcon={<Instagram sx={{ fontSize: 18 }} />}
-                  sx={{
-                    textTransform: 'none',
-                    borderRadius: '999px',
-                    fontWeight: 700,
-                    color: COMMUNITY_TEXT_PRIMARY,
-                    background: 'rgba(245,166,35,0.12)',
-                    border: '1px solid rgba(245,166,35,0.26)',
-                    px: 2,
-                    py: 0.95,
-                    '&:hover': {
-                      background: 'rgba(245,166,35,0.18)',
-                      borderColor: 'rgba(245,166,35,0.4)',
-                    },
-                  }}
-                >
-                  Instagram
-                </Button>
-                <Button
-                  component="a"
-                  href={CREATORHUB_FACEBOOK_URL}
-                  target="_blank"
-                  rel="noreferrer"
-                  startIcon={<FacebookRounded sx={{ fontSize: 18 }} />}
-                  sx={{
-                    textTransform: 'none',
-                    borderRadius: '999px',
-                    fontWeight: 700,
-                    color: COMMUNITY_TEXT_PRIMARY,
-                    background: 'rgba(245,166,35,0.12)',
-                    border: '1px solid rgba(245,166,35,0.26)',
-                    px: 2,
-                    py: 0.95,
-                    '&:hover': {
-                      background: 'rgba(245,166,35,0.18)',
-                      borderColor: 'rgba(245,166,35,0.4)',
-                    },
-                  }}
-                >
-                  Facebook
-                </Button>
-              </Stack>
-            </Stack>
+            <PublicSocialLinks
+              label="Sosiale medier"
+              body="Følg CreatorHub for community-nyheter, nye initiativer og oppdateringer fra økosystemet."
+              links={creatorhubSocialLinks}
+              tone="creatorhub"
+            />
           </Box>
 
           {/* GDPR Cookie Consent Banner */}

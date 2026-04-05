@@ -4,9 +4,7 @@ import {
   ArrowForward,
   AutoAwesome,
   Close,
-  FacebookRounded,
   Groups,
-  Instagram,
   Insights,
   Menu,
   NorthEast,
@@ -26,8 +24,10 @@ import {
 } from '@mui/material';
 import { motion } from 'framer-motion';
 import { useLocation } from 'wouter';
+import PublicSocialLinks from '@/components/common/PublicSocialLinks';
 import { GdprNotice } from '@/components/common/GdprNotice';
 import { useLanguage } from '@/components/language-provider';
+import { getPublicSocialProfiles, PUBLIC_BRAND_LINKS } from '@/lib/publicBrandLinks';
 
 type Locale = 'no' | 'en';
 type LandingMode = 'desktop' | 'mobile';
@@ -56,8 +56,6 @@ const ROLE_ROOM_LOGO_URL = '/role-room-assets/TheRoleRoom_Logo_Tagline.webp';
 const ACADEMY_LOGO_URL = '/creatorhub-academy-logo.svg';
 const COMMUNITY_ICON_URL = '/creatorhub-community-icon.svg';
 const ROLE_ROOM_EXTERNAL_URL = 'https://theroleroom.com';
-const CREATORHUB_FACEBOOK_URL = 'https://www.facebook.com/creatorhubn/';
-const CREATORHUB_INSTAGRAM_URL = 'https://www.instagram.com/creatorhubn/';
 
 const localeOptions: Array<{ value: Locale; flag: string; no: string; en: string }> = [
   { value: 'no', flag: '🇳🇴', no: 'Norsk', en: 'Norwegian' },
@@ -713,6 +711,7 @@ export default function CreatorHubInvestorLanding({
       cta: enterprisePlan.ctaLabel || copy.pricing.enterprise.cta,
     };
   })();
+  const creatorhubSocialLinks = getPublicSocialProfiles('creatorhub');
 
   return (
     <Box sx={{ bgcolor: '#05060a', color: '#f6f2ea' }}>
@@ -2023,78 +2022,17 @@ export default function CreatorHubInvestorLanding({
             <Stack spacing={0.6}>
               <Typography sx={{ fontSize: '0.88rem' }}>{copy.footer}</Typography>
               <Typography sx={{ fontSize: '0.78rem', color: 'rgba(246,242,234,0.38)' }}>
-                hello@creatorhubn.com
+                {PUBLIC_BRAND_LINKS.creatorhub.email}
               </Typography>
             </Stack>
 
-            <Stack spacing={1.1} sx={{ maxWidth: 380 }}>
-              <Typography
-                sx={{
-                  fontFamily: '"Space Grotesk", "Manrope", sans-serif',
-                  fontSize: '0.74rem',
-                  letterSpacing: '0.18em',
-                  textTransform: 'uppercase',
-                  color: 'rgba(255,186,108,0.74)',
-                }}
-              >
-                {copy.social.label}
-              </Typography>
-              <Typography sx={{ fontSize: '0.82rem', lineHeight: 1.7, color: 'rgba(246,242,234,0.48)' }}>
-                {copy.social.body}
-              </Typography>
-              <Stack direction="row" spacing={1.1} sx={{ flexWrap: 'wrap' }}>
-                <Button
-                  component="a"
-                  href={CREATORHUB_INSTAGRAM_URL}
-                  target="_blank"
-                  rel="noreferrer"
-                  startIcon={<Instagram sx={{ fontSize: 18 }} />}
-                  endIcon={<NorthEast sx={{ fontSize: 18 }} />}
-                  sx={{
-                    alignSelf: 'flex-start',
-                    borderRadius: '999px',
-                    px: 2.1,
-                    py: 0.95,
-                    textTransform: 'none',
-                    fontWeight: 700,
-                    color: '#fff5e8',
-                    border: '1px solid rgba(255,186,108,0.24)',
-                    bgcolor: 'rgba(255,186,108,0.08)',
-                    '&:hover': {
-                      bgcolor: 'rgba(255,186,108,0.14)',
-                      borderColor: 'rgba(255,186,108,0.42)',
-                    },
-                  }}
-                >
-                  {copy.social.instagram}
-                </Button>
-                <Button
-                  component="a"
-                  href={CREATORHUB_FACEBOOK_URL}
-                  target="_blank"
-                  rel="noreferrer"
-                  startIcon={<FacebookRounded sx={{ fontSize: 18 }} />}
-                  endIcon={<NorthEast sx={{ fontSize: 18 }} />}
-                  sx={{
-                    alignSelf: 'flex-start',
-                    borderRadius: '999px',
-                    px: 2.1,
-                    py: 0.95,
-                    textTransform: 'none',
-                    fontWeight: 700,
-                    color: '#fff5e8',
-                    border: '1px solid rgba(255,186,108,0.24)',
-                    bgcolor: 'rgba(255,186,108,0.08)',
-                    '&:hover': {
-                      bgcolor: 'rgba(255,186,108,0.14)',
-                      borderColor: 'rgba(255,186,108,0.42)',
-                    },
-                  }}
-                >
-                  {copy.social.facebook}
-                </Button>
-              </Stack>
-            </Stack>
+            <PublicSocialLinks
+              label={copy.social.label}
+              body={copy.social.body}
+              links={creatorhubSocialLinks}
+              tone="creatorhub"
+              maxWidth={380}
+            />
 
             <Typography
               sx={{

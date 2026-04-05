@@ -19,9 +19,7 @@ import {
   AutoAwesome,
   Campaign,
   Edit,
-  FacebookRounded,
   Groups,
-  Instagram,
   MailOutline,
   MonetizationOn,
   MovieCreation,
@@ -48,9 +46,8 @@ import { withVisualEditor } from "@/components/admin/visual-editor/withVisualEdi
 import { useAcademyLocale } from "./academyLocale";
 import AcademyLocaleSwitcher from "./AcademyLocaleSwitcher";
 import AcademyBrandMark from "./AcademyBrandMark";
-
-const CREATORHUB_INSTAGRAM_URL = "https://www.instagram.com/creatorhubn/";
-const CREATORHUB_FACEBOOK_URL = "https://www.facebook.com/creatorhubn/";
+import PublicSocialLinks from "@/components/common/PublicSocialLinks";
+import { getPublicSocialProfiles } from "@/lib/publicBrandLinks";
 
 interface LandingCourse {
   id: string;
@@ -91,6 +88,7 @@ const PLACEHOLDER_BACKDROPS = [
   "linear-gradient(145deg, rgba(18,22,31,0.9), rgba(10,14,20,0.96)), radial-gradient(circle at 85% 10%, rgba(105,145,255,0.22), rgba(0,0,0,0))",
   "linear-gradient(145deg, rgba(24,21,17,0.88), rgba(14,13,12,0.96)), radial-gradient(circle at 80% 20%, rgba(245,165,35,0.28), rgba(0,0,0,0))",
 ];
+const creatorhubSocialLinks = getPublicSocialProfiles("creatorhub");
 
 const DEFAULT_COURSES: LandingCourse[] = [
   {
@@ -1268,7 +1266,14 @@ function AcademyLandingPage() {
           </Box>
         </Box>
 
-        <Box
+        <PublicSocialLinks
+          label={tt("Sosiale medier", "Social media")}
+          body={tt(
+            "Følg CreatorHub Academy for nye kurs, lanseringer og oppdateringer fra plattformen.",
+            "Follow CreatorHub Academy for new courses, launches, and updates from the platform.",
+          )}
+          links={creatorhubSocialLinks}
+          tone="creatorhub"
           sx={{
             mt: 2.2,
             p: 1.6,
@@ -1276,83 +1281,7 @@ function AcademyLandingPage() {
             border: `var(--academy-hairline-width, 1px) solid ${alpha("#f5a623", 0.2)}`,
             background: "rgba(7, 10, 16, 0.8)",
           }}
-        >
-          <Stack
-            direction={{ xs: "column", md: "row" }}
-            spacing={1.8}
-            justifyContent="space-between"
-            alignItems={{ xs: "flex-start", md: "center" }}
-          >
-            <Stack spacing={0.55} sx={{ maxWidth: 560 }}>
-              <Typography
-                sx={{
-                  fontFamily: "Barlow Condensed, sans-serif",
-                  letterSpacing: "0.16em",
-                  textTransform: "uppercase",
-                  fontSize: "0.8rem",
-                  color: "#ffd38c",
-                }}
-              >
-                {tt("Sosiale medier", "Social media")}
-              </Typography>
-              <Typography sx={{ fontSize: 13, lineHeight: 1.75, opacity: 0.7 }}>
-                {tt(
-                  "Følg CreatorHub Academy for nye kurs, lanseringer og oppdateringer fra plattformen.",
-                  "Follow CreatorHub Academy for new courses, launches, and updates from the platform.",
-                )}
-              </Typography>
-            </Stack>
-
-            <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-              <Button
-                component="a"
-                href={CREATORHUB_INSTAGRAM_URL}
-                target="_blank"
-                rel="noreferrer"
-                startIcon={<Instagram sx={{ fontSize: 18 }} />}
-                sx={{
-                  textTransform: "none",
-                  fontWeight: 700,
-                  borderRadius: "999px",
-                  color: "#f8f1e7",
-                  background: "rgba(245,166,35,0.12)",
-                  border: "var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.28)",
-                  px: 1.8,
-                  py: 0.9,
-                  "&:hover": {
-                    background: "rgba(245,166,35,0.18)",
-                    borderColor: "rgba(245,166,35,0.44)",
-                  },
-                }}
-              >
-                Instagram
-              </Button>
-              <Button
-                component="a"
-                href={CREATORHUB_FACEBOOK_URL}
-                target="_blank"
-                rel="noreferrer"
-                startIcon={<FacebookRounded sx={{ fontSize: 18 }} />}
-                sx={{
-                  textTransform: "none",
-                  fontWeight: 700,
-                  borderRadius: "999px",
-                  color: "#f8f1e7",
-                  background: "rgba(245,166,35,0.12)",
-                  border: "var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.28)",
-                  px: 1.8,
-                  py: 0.9,
-                  "&:hover": {
-                    background: "rgba(245,166,35,0.18)",
-                    borderColor: "rgba(245,166,35,0.44)",
-                  },
-                }}
-              >
-                Facebook
-              </Button>
-            </Stack>
-          </Stack>
-        </Box>
+        />
       </Box>
 
       <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />

@@ -47,6 +47,7 @@ import {
 import WhatsNewModal from '../WhatsNewModal';
 import MarketingWorkflowIntegration from './MarketingWorkflowIntegration';
 import EmailDesigner from '../EmailDesigner/EmailDesigner';
+import { PUBLIC_BRAND_LINKS } from '@/lib/publicBrandLinks';
 
 interface AnnouncementForm {
   title: string;
@@ -306,8 +307,8 @@ export default function AnnouncementCreator() {
       if (form.callToAction) {
         formData.append('callToAction', form.callToAction);
       }
-      formData.append('websiteUrl','https://creatorhubn.com');
-      formData.append('instagramHandle','https://instagram.com/creatorhubn');
+      formData.append('websiteUrl', PUBLIC_BRAND_LINKS.creatorhub.website);
+      formData.append('instagramHandle', PUBLIC_BRAND_LINKS.creatorhub.instagram);
 
       // Upload with progress tracking
       const xhr = new XMLHttpRequest();

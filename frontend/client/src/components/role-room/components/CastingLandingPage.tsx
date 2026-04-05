@@ -7,8 +7,6 @@ import {
 } from '@mui/material';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  FacebookRounded as FacebookRoundedIcon,
-  Instagram,
   PlayArrow as PlayArrowIcon,
   PersonSearch as PersonSearchIcon,
   Event as EventIcon,
@@ -20,12 +18,11 @@ import {
   Email as EmailIcon,
   Videocam as VideocamIcon,
 } from '@mui/icons-material';
+import PublicSocialLinks from '@/components/common/PublicSocialLinks';
+import { getPublicSocialProfiles } from '@/lib/publicBrandLinks';
 import LoginDialog from './LoginDialog';
 import { ROLE_ROOM_LANDING_CONFIG } from '../config/landing';
 import { getRoleRoomVideoPosterUrl, getRoleRoomVideoStillUrl } from '../utils/roleRoomMedia';
-
-const ROLE_ROOM_FACEBOOK_URL = 'https://www.facebook.com/profile.php?id=61573320716662';
-const ROLE_ROOM_INSTAGRAM_URL = 'https://www.instagram.com/theroleroom/';
 
 interface CastingLandingPageProps {
   onEnter: () => void;
@@ -50,6 +47,7 @@ const WHAT_FEATURES = [
   { icon: <GavelIcon        sx={{ fontSize: 36 }} />, title: 'Kontrakter & Samtykke',   desc: 'Send tilbud og kontrakter til cast/crew. Opprett og spor samtykkeskjemaer per kandidat med signeringsstatus.' },
   { icon: <EmailIcon        sx={{ fontSize: 36 }} />, title: 'Call Sheets & E-post',    desc: 'Generer komplette call sheets klar for utskrift og design rike HTML-e-poster med mal-bibliotek og forhåndsvisning.' },
 ];
+const roleRoomSocialLinks = getPublicSocialProfiles('roleRoom');
 export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPageProps) {
   const [showIntro, setShowIntro]       = useState(true);
   const [loginDialogOpen, setLoginDialogOpen] = useState(false);
@@ -570,68 +568,14 @@ export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPage
               color: 'rgba(255,255,255,0.35)', fontSize: '0.85rem',
               display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
             }}>
-              <Typography
-                sx={{
-                  fontSize: '0.72rem',
-                  fontWeight: 700,
-                  letterSpacing: '0.2em',
-                  textTransform: 'uppercase',
-                  color: 'rgba(200,185,255,0.62)',
-                }}
-              >
-                Sosiale medier
-              </Typography>
-              <Typography sx={{ maxWidth: 420, color: 'rgba(255,255,255,0.5)', lineHeight: 1.75 }}>
-                Følg The Role Room for nye verktøy, case og produktoppdateringer fra produksjonsmiljøet.
-              </Typography>
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 1 }}>
-                <Button
-                  component="a"
-                  href={ROLE_ROOM_INSTAGRAM_URL}
-                  target="_blank"
-                  rel="noreferrer"
-                  startIcon={<Instagram sx={{ fontSize: 18 }} />}
-                  sx={{
-                    borderRadius: '999px',
-                    px: 2.2,
-                    py: 0.9,
-                    textTransform: 'none',
-                    fontWeight: 700,
-                    color: '#f7f4ff',
-                    bgcolor: 'rgba(139,92,246,0.12)',
-                    border: '1px solid rgba(139,92,246,0.3)',
-                    '&:hover': {
-                      bgcolor: 'rgba(139,92,246,0.18)',
-                      borderColor: 'rgba(139,92,246,0.44)',
-                    },
-                  }}
-                >
-                  Instagram
-                </Button>
-                <Button
-                  component="a"
-                  href={ROLE_ROOM_FACEBOOK_URL}
-                  target="_blank"
-                  rel="noreferrer"
-                  startIcon={<FacebookRoundedIcon sx={{ fontSize: 18 }} />}
-                  sx={{
-                    borderRadius: '999px',
-                    px: 2.2,
-                    py: 0.9,
-                    textTransform: 'none',
-                    fontWeight: 700,
-                    color: '#f7f4ff',
-                    bgcolor: 'rgba(139,92,246,0.12)',
-                    border: '1px solid rgba(139,92,246,0.3)',
-                    '&:hover': {
-                      bgcolor: 'rgba(139,92,246,0.18)',
-                      borderColor: 'rgba(139,92,246,0.44)',
-                    },
-                  }}
-                >
-                  Facebook
-                </Button>
-              </Box>
+              <PublicSocialLinks
+                label="Sosiale medier"
+                body="Følg The Role Room for nye verktøy, case og produktoppdateringer fra produksjonsmiljøet."
+                links={roleRoomSocialLinks}
+                tone="roleRoom"
+                align="center"
+                maxWidth={420}
+              />
               <Box
                 sx={{
                   width: 72,

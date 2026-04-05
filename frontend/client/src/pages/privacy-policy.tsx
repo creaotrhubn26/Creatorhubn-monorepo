@@ -18,15 +18,14 @@ import {
   Security,
   ContactMail,
   CheckCircle,
-  FacebookRounded,
   Info,
-  Instagram,
   Gavel,
 } from '@mui/icons-material';
 import { useLocation } from 'wouter';
+import PublicSocialLinks from '@/components/common/PublicSocialLinks';
+import { getPublicSocialProfiles, PUBLIC_BRAND_LINKS } from '@/lib/publicBrandLinks';
 
-const CREATORHUB_INSTAGRAM_URL = 'https://www.instagram.com/creatorhubn/';
-const CREATORHUB_FACEBOOK_URL = 'https://www.facebook.com/creatorhubn/';
+const creatorhubSocialLinks = getPublicSocialProfiles('creatorhub');
 
 const PrivacyPolicy: React.FC = () => {
   const [, setLocation] = useLocation();
@@ -530,43 +529,19 @@ const PrivacyPolicy: React.FC = () => {
             <Typography variant="body2" sx={{ color: '#374151', mb: 2 }}>
               Vi er her for å hjelpe deg med alle spørsmål om hvordan vi håndterer dine personopplysninger.
             </Typography>
-            <Box sx={{ mb: 2.2, pt: 2, borderTop: '1px solid rgba(255,140,0,0.16)' }}>
-              <Typography variant="body2" sx={{ color: '#374151', fontWeight: 'bold', mb: 1 }}>
-                Følg CreatorHub
-              </Typography>
-              <Typography variant="body2" sx={{ color: '#6b7280', mb: 1.6 }}>
-                Sosiale kanaler for produktoppdateringer og informasjon fra CreatorHub.
-              </Typography>
-              <Stack direction="row" spacing={1} flexWrap="wrap">
-                <Button
-                  component="a"
-                  href={CREATORHUB_INSTAGRAM_URL}
-                  target="_blank"
-                  rel="noreferrer"
-                  startIcon={<Instagram sx={{ fontSize: 18 }} />}
-                  variant="outlined"
-                  sx={{ textTransform: 'none', borderRadius: '999px' }}
-                >
-                  Instagram
-                </Button>
-                <Button
-                  component="a"
-                  href={CREATORHUB_FACEBOOK_URL}
-                  target="_blank"
-                  rel="noreferrer"
-                  startIcon={<FacebookRounded sx={{ fontSize: 18 }} />}
-                  variant="outlined"
-                  sx={{ textTransform: 'none', borderRadius: '999px' }}
-                >
-                  Facebook
-                </Button>
-              </Stack>
-            </Box>
+            <PublicSocialLinks
+              label="Følg CreatorHub"
+              body="Sosiale kanaler for produktoppdateringer og informasjon fra CreatorHub."
+              links={creatorhubSocialLinks}
+              tone="legal"
+              sx={{ mb: 2.2 }}
+              showTopDivider
+            />
             <Stack direction="row" spacing={2}>
               <Button
                 variant="contained"
                 startIcon={<ContactMail />}
-                href="mailto:hello@creatorhubn.com"
+                href={`mailto:${PUBLIC_BRAND_LINKS.creatorhub.email}`}
                 sx={{
                   ...theming.getThemedButtonSx(),
                   background: 'linear-gradient(135deg, #ff8c00 0%, #e67c00 100%)',
