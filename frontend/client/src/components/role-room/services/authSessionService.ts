@@ -216,6 +216,8 @@ export const authSessionService = {
 
   async updateRoleContext(update: RoleContextUpdate): Promise<void> {
     if (!sessionCache.adminUser) return;
+    const normalizedAccountRole = String(sessionCache.adminUser.role || '').trim().toLowerCase();
+    if (normalizedAccountRole !== 'admin' && normalizedAccountRole !== 'owner') return;
 
     const nextAdminUser: AdminUser = {
       ...sessionCache.adminUser,

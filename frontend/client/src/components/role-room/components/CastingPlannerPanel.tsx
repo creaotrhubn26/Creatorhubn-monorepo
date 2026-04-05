@@ -1346,9 +1346,12 @@ export function CastingPlannerPanel({
   }, [blurActiveElement]);
 
   const openProfessionDialog = useCallback(() => {
+    if (!canSwitchRoleRoomRole) {
+      return;
+    }
     blurActiveElement();
     startTransition(() => setProfessionDialogOpen(true));
-  }, [blurActiveElement]);
+  }, [blurActiveElement, canSwitchRoleRoomRole]);
 
   const openAdminDashboard = useCallback(() => {
     blurActiveElement();
@@ -1709,6 +1712,7 @@ export function CastingPlannerPanel({
     () => mapAccountRoleToProjectRole(adminUser?.role, adminUser?.loginAs, adminUser?.requestedRole),
     [adminUser?.role, adminUser?.loginAs, adminUser?.requestedRole],
   );
+  const canSwitchRoleRoomRole = adminUser?.role === 'owner' || adminUser?.role === 'admin';
   const ensureScopedSessionProjectRole = useCallback(async (projectId: string) => {
     if (!adminUser) {
       return;
@@ -2411,6 +2415,12 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
 
   // Handle role/persona switching from the header dialog.
   const handleProfessionSelect = useCallback(async ({ categoryId, roleId }: CastingProfessionSelection) => {
+    if (!canSwitchRoleRoomRole) {
+      setProfessionDialogOpen(false);
+      toast.showError('Bare admin kan bytte rolle i The Role Room.');
+      return;
+    }
+
     const normalizedRoleId = roleId.trim().toLowerCase();
     const isPhotoRole = ['film_photographer', 'photographer', 'photo_director', 'photo_assistant'].includes(normalizedRoleId);
     const internalProf =
@@ -2456,7 +2466,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
 
     const updatedSession = await authSessionService.loadSession();
     setAdminUser(normalizeAdminUser(updatedSession.adminUser));
-  }, [saveProfession]);
+  }, [canSwitchRoleRoomRole, saveProfession, toast]);
 
   // Authentication guard - redirect to landing page if not logged in
   useEffect(() => {
@@ -2833,12 +2843,15 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
           setProfessionDialogOpen(false);
           return;
         }
-        // Show dialog if profession not set
-        openProfessionDialog();
+        if (canSwitchRoleRoomRole) {
+          openProfessionDialog();
+        } else {
+          setProfessionDialogOpen(false);
+        }
       }
     };
     initProfession();
-  }, [adminUser, defaultProfessionForSession, loadProfession, openProfessionDialog, saveProfession]);
+  }, [adminUser, canSwitchRoleRoomRole, defaultProfessionForSession, loadProfession, openProfessionDialog, saveProfession]);
 
   useEffect(() => {
     if (!adminUser) return;
@@ -5034,7 +5047,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
 
   return (
     <>
-      {professionDialogOpen && (
+      {canSwitchRoleRoomRole && professionDialogOpen && (
         <Suspense fallback={null}>
           <CastingProfessionDialog
             open={professionDialogOpen}
@@ -5709,20 +5722,21 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                   </IconButton>
                 </>
               )}
-              {/* Bytt profesjon - tilgjengelig for alle innloggede brukere */}
-              <IconButton
-                onClick={openProfessionDialog}
-                aria-label={branding.tokens.labels.switchProfessionLabel}
-                title={branding.tokens.labels.switchProfessionLabel}
-                sx={{
-                  color: '#10b981',
-                  width: navActionButtonSizePx,
-                  height: navActionButtonSizePx,
-                  '&:hover': { bgcolor: 'rgba(16,185,129,0.1)' },
-                }}
-              >
-                <SwapHorizIcon sx={{ fontSize: navIconSizePx }} />
-              </IconButton>
+              {canSwitchRoleRoomRole && (
+                <IconButton
+                  onClick={openProfessionDialog}
+                  aria-label={branding.tokens.labels.switchProfessionLabel}
+                  title={branding.tokens.labels.switchProfessionLabel}
+                  sx={{
+                    color: '#10b981',
+                    width: navActionButtonSizePx,
+                    height: navActionButtonSizePx,
+                    '&:hover': { bgcolor: 'rgba(16,185,129,0.1)' },
+                  }}
+                >
+                  <SwapHorizIcon sx={{ fontSize: navIconSizePx }} />
+                </IconButton>
+              )}
               {/* Admin Dashboard - kun for admin/owner */}
               {(adminUser.role === 'owner' || adminUser.role === 'admin') && (
                 <>
