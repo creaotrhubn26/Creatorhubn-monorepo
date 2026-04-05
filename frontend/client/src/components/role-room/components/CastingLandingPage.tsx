@@ -4,6 +4,7 @@ import {
   Typography,
   Button,
   Container,
+  Alert,
 } from '@mui/material';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -52,6 +53,7 @@ export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPage
   const [showIntro, setShowIntro]       = useState(true);
   const [loginDialogOpen, setLoginDialogOpen] = useState(false);
   const [loginDialogVariant, setLoginDialogVariant] = useState<'landing' | 'admin'>('landing');
+  const [googleAuthMessage, setGoogleAuthMessage] = useState<string | null>(null);
   const [typedWhy,  setTypedWhy]  = useState('');
   const [typedHow,  setTypedHow]  = useState('');
   const [typedWhat, setTypedWhat] = useState('');
@@ -145,11 +147,29 @@ export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPage
     } catch {
       // Ignore storage cleanup failures.
     }
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('rrGoogleStatus');
+      url.searchParams.delete('rrGoogleMessage');
+      url.searchParams.delete('rrGoogleTransfer');
+      url.searchParams.delete('rrGoogleMode');
+      window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
+    }
+    setGoogleAuthMessage(null);
     setLoginDialogOpen(false);
     setLoginDialogVariant('landing');
     onEnter();
   };
   const handleLoginDialogClose = () => {
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('rrGoogleStatus');
+      url.searchParams.delete('rrGoogleMessage');
+      url.searchParams.delete('rrGoogleTransfer');
+      url.searchParams.delete('rrGoogleMode');
+      window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
+    }
+    setGoogleAuthMessage(null);
     setLoginDialogOpen(false);
     setLoginDialogVariant('landing');
   };
@@ -160,6 +180,16 @@ export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPage
     }
 
     const params = new URLSearchParams(window.location.search);
+    const googleStatus = params.get('rrGoogleStatus');
+    const googleMessage = params.get('rrGoogleMessage');
+
+    if (googleStatus === 'error') {
+      setGoogleAuthMessage(googleMessage || 'Google-innloggingen kunne ikke fullføres.');
+      setLoginDialogVariant(params.get('rrAdminLogin') ? 'admin' : 'landing');
+      setLoginDialogOpen(true);
+      return;
+    }
+
     if (params.get('rrAdminLogin')) {
       setLoginDialogVariant('admin');
       setLoginDialogOpen(true);
@@ -197,11 +227,11 @@ export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPage
   }, []);
 
   return (
-    <Box sx={{
-      width: '100%',
-      minHeight: '100vh',
-      bgcolor: '#0a0a0f',
-      overflowX: loginDialogOpen ? 'visible' : 'hidden',
+      <Box sx={{
+        width: '100%',
+        minHeight: '100vh',
+        bgcolor: '#0a0a0f',
+        overflowX: loginDialogOpen ? 'visible' : 'hidden',
       overflowY: loginDialogOpen ? 'visible' : 'auto',
       position: 'relative',
     }}>
@@ -258,6 +288,26 @@ export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPage
         position: 'fixed', inset: 0, zIndex: 1, pointerEvents: 'none',
         background: 'linear-gradient(180deg, rgba(10,10,15,0.55) 0%, rgba(10,10,15,0.4) 40%, rgba(10,10,15,0.75) 100%)',
       }} />
+
+      {googleAuthMessage ? (
+        <Container maxWidth="md" sx={{ position: 'relative', zIndex: 3, pt: { xs: 10, md: 12 } }}>
+          <Alert
+            severity="error"
+            onClose={() => setGoogleAuthMessage(null)}
+            sx={{
+              mb: 3,
+              borderRadius: 3,
+              bgcolor: 'rgba(17, 24, 39, 0.82)',
+              color: '#fff',
+              border: '1px solid rgba(248, 113, 113, 0.35)',
+              backdropFilter: 'blur(18px)',
+              '& .MuiAlert-icon': { color: '#fda4af' },
+            }}
+          >
+            {googleAuthMessage}
+          </Alert>
+        </Container>
+      ) : null}
 
       {/* ── intro video splash ── */}
       <AnimatePresence>

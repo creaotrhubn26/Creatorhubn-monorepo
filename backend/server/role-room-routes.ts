@@ -2946,6 +2946,11 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     role: string;
   };
 
+  function isRoleRoomPlatformAdminRole(role: string | null | undefined): boolean {
+    const normalizedRole = readStringValue(role)?.toLowerCase() ?? '';
+    return normalizedRole === 'admin' || normalizedRole === 'super_admin';
+  }
+
   async function findRoleRoomUserByEmail(email: string): Promise<RoleRoomGoogleResolvedUser | null> {
     const normalizedEmail = email.trim().toLowerCase();
     const result = await pool.query(
@@ -3189,6 +3194,14 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     state: RoleRoomGoogleOauthState,
   ): Promise<(RoleRoomGoogleResolvedUser & { autoAssignProjectRole?: string | null }) | null> {
     const normalizedEmail = googleEmail.trim().toLowerCase();
+    const localUser = await findRoleRoomUserByEmail(normalizedEmail);
+    if (localUser && isRoleRoomPlatformAdminRole(localUser.role)) {
+      return {
+        ...localUser,
+        role: localUser.role,
+      };
+    }
+
     const commercialGate = await getRoleRoomCommercialGoogleLoginGate(
       normalizedEmail,
       state,
@@ -3200,7 +3213,6 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       );
     }
 
-    const localUser = await findRoleRoomUserByEmail(normalizedEmail);
     if (localUser) {
       return {
         ...localUser,
