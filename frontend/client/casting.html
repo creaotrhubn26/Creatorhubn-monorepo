@@ -28,6 +28,135 @@
       flex-direction: column;
     }
   </style>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    window.gtag = window.gtag || function () {
+      window.dataLayer.push(arguments);
+    };
+    var ROLE_ROOM_GA_MEASUREMENT_ID = 'G-9T7K5TJVFX';
+
+    window.__creatorhubAnalyticsConfig = {
+      site: 'role-room',
+      measurementId: ROLE_ROOM_GA_MEASUREMENT_ID,
+    };
+
+    function readStoredConsent() {
+      try {
+        var rawConsent = window.localStorage.getItem('gdpr-consent');
+        if (!rawConsent) {
+          return null;
+        }
+
+        var parsedConsent = JSON.parse(rawConsent);
+        return parsedConsent && typeof parsedConsent === 'object' ? parsedConsent : null;
+      } catch (_error) {
+        return null;
+      }
+    }
+
+    function buildConsentPayload(consentSettings) {
+      var analyticsGranted = !!(consentSettings && consentSettings.analytics);
+      var marketingGranted = !!(consentSettings && consentSettings.marketing);
+      var preferencesGranted = !!(consentSettings && consentSettings.preferences);
+
+      return {
+        analytics_storage: analyticsGranted ? 'granted' : 'denied',
+        ad_storage: marketingGranted ? 'granted' : 'denied',
+        ad_user_data: marketingGranted ? 'granted' : 'denied',
+        ad_personalization: marketingGranted ? 'granted' : 'denied',
+        functionality_storage: preferencesGranted ? 'granted' : 'denied',
+        personalization_storage: preferencesGranted ? 'granted' : 'denied',
+        security_storage: 'granted',
+        wait_for_update: 500,
+      };
+    }
+
+    function applyAnalyticsConsent(consentSettings) {
+      window.gtag('consent', 'update', buildConsentPayload(consentSettings));
+    }
+
+    function hasAnalyticsConsent(consentSettings) {
+      return !!(consentSettings && consentSettings.analytics);
+    }
+
+    (function initRoleRoomGoogleTag() {
+      var isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      var isOnline = navigator.onLine !== false;
+      var hasLoadedAnalyticsScript = false;
+      var hasRequestedAnalyticsScript = false;
+      var hasSentInitialPageView = false;
+      var storedConsent = readStoredConsent();
+
+      window.gtag('consent', 'default', buildConsentPayload(storedConsent));
+
+      function sendInitialPageView() {
+        if (hasSentInitialPageView) {
+          return;
+        }
+
+        hasSentInitialPageView = true;
+        window.gtag('event', 'page_view', {
+          page_path: window.location.pathname,
+          page_title: document.title,
+          page_location: window.location.href,
+        });
+      }
+
+      function ensureAnalyticsLoaded(consentSettings) {
+        if (
+          isLocalhost ||
+          !isOnline ||
+          !hasAnalyticsConsent(consentSettings)
+        ) {
+          return false;
+        }
+
+        if (hasLoadedAnalyticsScript || hasRequestedAnalyticsScript) {
+          applyAnalyticsConsent(consentSettings);
+          return true;
+        }
+
+        hasRequestedAnalyticsScript = true;
+        var script = document.createElement('script');
+        script.async = true;
+        script.src = 'https://www.googletagmanager.com/gtag/js?id=' + ROLE_ROOM_GA_MEASUREMENT_ID;
+        script.setAttribute('data-creatorhub-ga-bootstrap', 'true');
+        script.onload = function () {
+          hasLoadedAnalyticsScript = true;
+          window.gtag('js', new Date());
+          window.gtag('config', ROLE_ROOM_GA_MEASUREMENT_ID, {
+            send_page_view: false,
+          });
+          applyAnalyticsConsent(consentSettings);
+          sendInitialPageView();
+        };
+        script.onerror = function () {
+          hasRequestedAnalyticsScript = false;
+        };
+        document.head.appendChild(script);
+        return true;
+      }
+
+      window.__creatorhubApplyConsent = function (consentSettings) {
+        applyAnalyticsConsent(consentSettings);
+        if (hasAnalyticsConsent(consentSettings)) {
+          ensureAnalyticsLoaded(consentSettings);
+        }
+        return true;
+      };
+      window.__creatorhubLoadAnalytics = function (consentSettings) {
+        return ensureAnalyticsLoaded(consentSettings || readStoredConsent());
+      };
+
+      if (isLocalhost || !isOnline) {
+        return;
+      }
+
+      if (hasAnalyticsConsent(storedConsent)) {
+        ensureAnalyticsLoaded(storedConsent);
+      }
+    })();
+  </script>
 </head>
 <body>
   <div id="casting-root"></div>

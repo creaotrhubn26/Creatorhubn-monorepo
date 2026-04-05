@@ -25,16 +25,72 @@ interface GdprNoticeProps {
   position?: 'bottom' | 'top';
 }
 
+interface CookieConsentSettings {
+  necessary: boolean;
+  analytics: boolean;
+  marketing: boolean;
+  preferences: boolean;
+}
+
+declare global {
+  interface Window {
+    gtag?: (...args: unknown[]) => void;
+    __creatorhubApplyConsent?: (
+      consentSettings?: CookieConsentSettings | null,
+    ) => boolean;
+    __creatorhubLoadAnalytics?: (
+      consentSettings?: CookieConsentSettings | null,
+    ) => boolean;
+  }
+}
+
+const DEFAULT_COOKIE_SETTINGS: CookieConsentSettings = {
+  necessary: true,
+  analytics: false,
+  marketing: false,
+  preferences: false,
+};
+
+function normalizeCookieConsentSettings(
+  value: unknown,
+): CookieConsentSettings | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const candidate = value as Partial<CookieConsentSettings>;
+  return {
+    necessary: candidate.necessary !== false,
+    analytics: candidate.analytics === true,
+    marketing: candidate.marketing === true,
+    preferences: candidate.preferences === true,
+  };
+}
+
+function syncAnalyticsConsent(settings: CookieConsentSettings) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  if (typeof window.__creatorhubApplyConsent === 'function') {
+    window.__creatorhubApplyConsent(settings);
+  }
+
+  if (
+    settings.analytics &&
+    typeof window.__creatorhubLoadAnalytics === 'function'
+  ) {
+    window.__creatorhubLoadAnalytics(settings);
+  }
+}
+
 export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
   const [isVisible, setIsVisible] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const [cookieSettings, setCookieSettings] = useState({
-    necessary: true, // Always required
-    analytics: false,
-    marketing: false,
-    preferences: false,
-  });
+  const [hasSavedConsent, setHasSavedConsent] = useState(false);
+  const [cookieSettings, setCookieSettings] =
+    useState<CookieConsentSettings>(DEFAULT_COOKIE_SETTINGS);
   const [personvernombudEmail, setPersonvernombudEmail] = useState('daniel@creatorhubn.com');
   const [communityPrivacyText, setCommunityPrivacyText] = useState(
     'Når du bruker CreatorHub Community lagres meldinger, vedlegg og profildata. Filer lagres sikkert i Google Drive med kryptering. Du kan når som helst slette dine meldinger eller be om full sletting av dine data.'
@@ -61,39 +117,72 @@ export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
         // Use defaults if fetch fails
       });
 
+    const applyExistingConsent = (
+      settingsCandidate: unknown,
+      consentDateValue: unknown,
+    ): boolean => {
+      const normalizedSettings = normalizeCookieConsentSettings(settingsCandidate);
+      const consentDate =
+        typeof consentDateValue === 'string' ? consentDateValue : null;
+
+      if (!normalizedSettings || !consentDate) {
+        return false;
+      }
+
+      setCookieSettings(normalizedSettings);
+      setHasSavedConsent(true);
+      syncAnalyticsConsent(normalizedSettings);
+
+      localStorage.setItem('gdpr-consent', JSON.stringify(normalizedSettings));
+      localStorage.setItem('gdpr-consent-date', consentDate);
+
+      const consentTime = new Date(consentDate);
+      const oneYearAgo = new Date();
+      oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+      setIsVisible(consentTime < oneYearAgo);
+      return true;
+    };
+
+    const applyLocalConsentFallback = () => {
+      const storedConsentRaw = localStorage.getItem('gdpr-consent');
+      const storedConsentDate = localStorage.getItem('gdpr-consent-date');
+
+      if (!storedConsentRaw || !storedConsentDate) {
+        setIsVisible(true);
+        return;
+      }
+
+      try {
+        const parsedConsent = JSON.parse(storedConsentRaw);
+        if (!applyExistingConsent(parsedConsent, storedConsentDate)) {
+          setIsVisible(true);
+        }
+      } catch {
+        setIsVisible(true);
+      }
+    };
+
     // Load consent from server first
     fetch('/api/user/kv/gdpr_consent', { credentials: 'include' })
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => {
         const consent = j?.data;
-        if (!consent?.date) {
-          // fallback to local
-          const hasConsent = localStorage.getItem('gdpr-consent');
-          const consentDate = localStorage.getItem('gdpr-consent-date');
-          if (!hasConsent || !consentDate) {
-            setIsVisible(true);
-          } else {
-            const consentTime = new Date(consentDate);
-            const oneYearAgo = new Date();
-            oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-            if (consentTime < oneYearAgo) setIsVisible(true);
-          }
+        if (!applyExistingConsent(consent?.settings, consent?.date)) {
+          applyLocalConsentFallback();
         }
       })
       .catch(() => {
-        const hasConsent = localStorage.getItem('gdpr-consent');
-        const consentDate = localStorage.getItem('gdpr-consent-date');
-        if (!hasConsent || !consentDate) setIsVisible(true);
+        applyLocalConsentFallback();
       });
   }, []);
 
   const handleAcceptAll = () => {
-    const allAccepted = {
+    const allAccepted: CookieConsentSettings = {
       necessary: true,
       analytics: true,
       marketing: true,
       preferences: true,
-  };
+    };
 
     localStorage.setItem('gdpr-consent', JSON.stringify(allAccepted));
     localStorage.setItem('gdpr-consent-date', new Date().toISOString());
@@ -106,26 +195,19 @@ export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
       body: JSON.stringify({ key: 'gdpr_consent', value: { settings: allAccepted, date: new Date().toISOString(), method: 'accept_all' } })
     }).catch(() => {});
 
+    setCookieSettings(allAccepted);
+    setHasSavedConsent(true);
     setIsVisible(false);
-
-    // Configure Google Analytics based on consent
-    if (window.gtag) {
-      window.gtag('consent','update', {
-        analytics_storage: 'granted',
-        ad_storage: 'granted',
-        functionality_storage: 'granted',
-        personalization_storage: 'granted',
-    });
-  }
+    syncAnalyticsConsent(allAccepted);
 };
 
   const handleRejectAll = () => {
-    const onlyNecessary = {
+    const onlyNecessary: CookieConsentSettings = {
       necessary: true,
       analytics: false,
       marketing: false,
       preferences: false,
-  };
+    };
 
     localStorage.setItem('gdpr-consent', JSON.stringify(onlyNecessary));
     localStorage.setItem('gdpr-consent-date', new Date().toISOString());
@@ -138,17 +220,10 @@ export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
       body: JSON.stringify({ key: 'gdpr_consent', value: { settings: onlyNecessary, date: new Date().toISOString(), method: 'reject_all' } })
     }).catch(() => {});
 
+    setCookieSettings(onlyNecessary);
+    setHasSavedConsent(true);
     setIsVisible(false);
-
-    // Deny all non-necessary cookies
-    if (window.gtag) {
-      window.gtag('consent','update', {
-        analytics_storage: 'denied',
-        ad_storage: 'denied',
-        functionality_storage: 'denied',
-        personalization_storage: 'denied',
-    });
-  }
+    syncAnalyticsConsent(onlyNecessary);
 };
 
   const handleSaveCustom = () => {
@@ -163,24 +238,16 @@ export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
       body: JSON.stringify({ key: 'gdpr_consent', value: { settings: cookieSettings, date: new Date().toISOString(), method: 'custom' } })
     }).catch(() => {});
 
+    setHasSavedConsent(true);
     setIsVisible(false);
-
-    // Configure Google Analytics based on custom settings
-    if (window.gtag) {
-      window.gtag('consent', 'update', {
-        analytics_storage: cookieSettings.analytics ? 'granted' : 'denied',
-        ad_storage: cookieSettings.marketing ? 'granted' : 'denied',
-        functionality_storage: cookieSettings.preferences ? 'granted' : 'denied',
-        personalization_storage: cookieSettings.preferences ? 'granted' : 'denied',
-    });
-  }
+    syncAnalyticsConsent(cookieSettings);
 };
 
   const handleCustomize = () => {
     setIsExpanded(!isExpanded);
 };
 
-  if (!isVisible || !mounted) return null;
+  if (!mounted) return null;
 
   const bannerContent = (
     <Box
@@ -253,7 +320,11 @@ export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
             </Box>
           </Box>
 
-          <IconButton onClick={() => setIsVisible(false)} size="small" sx={{ color: 'rgba(255, 255, 255, 0.5)', '&:hover': { color: '#f59e0b' } }}>
+          <IconButton
+            onClick={() => setIsVisible(false)}
+            size="small"
+            sx={{ color: 'rgba(255, 255, 255, 0.5)', '&:hover': { color: '#f59e0b' } }}
+          >
             <Close />
           </IconButton>
         </Box>
@@ -835,8 +906,45 @@ export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
     </Box>
   );
 
-  // Render directly to body using portal to avoid overflow issues
-  return createPortal(bannerContent, document.body);
+  const manageConsentButton = !isVisible ? (
+    <Button
+      variant="outlined"
+      onClick={() => {
+        setIsExpanded(true);
+        setIsVisible(true);
+      }}
+      sx={{
+        position: 'fixed',
+        left: { xs: 16, md: 24 },
+        bottom: { xs: 16, md: 24 },
+        zIndex: 9998,
+        borderRadius: '999px',
+        textTransform: 'none',
+        borderColor: 'rgba(245, 158, 11, 0.35)',
+        color: '#f59e0b',
+        backgroundColor: 'rgba(15, 23, 42, 0.9)',
+        backdropFilter: 'blur(12px)',
+        boxShadow: '0 16px 38px rgba(15, 23, 42, 0.28)',
+        px: 2,
+        py: 1,
+        fontWeight: 700,
+        '&:hover': {
+          borderColor: '#f59e0b',
+          backgroundColor: 'rgba(15, 23, 42, 0.96)',
+        },
+      }}
+    >
+      {hasSavedConsent ? 'Administrer cookies' : 'Velg cookies'}
+    </Button>
+  ) : null;
+
+  return createPortal(
+    <>
+      {isVisible ? bannerContent : null}
+      {manageConsentButton}
+    </>,
+    document.body,
+  );
 }
 
 export default GdprNotice;

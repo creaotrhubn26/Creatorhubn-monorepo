@@ -1,7 +1,13 @@
 /**
  * Google Analytics 4 Service
- * Real-time integration with GA4 property G-6E5MJT8REW
+ * Runtime integration with the active GA4 web stream
  */
+
+import {
+  getAnalyticsPlatformName,
+  getGoogleAnalyticsMeasurementId,
+} from '../lib/googleAnalyticsRuntime';
+import { apiRequest, getAuthHeader } from '../lib/queryClient';
 
 declare global {
   interface Window {
@@ -12,7 +18,6 @@ declare global {
 
 export class GoogleAnalyticsService {
   private static instance: GoogleAnalyticsService;
-  private readonly GA4_PROPERTY_ID = 'G-6E5MJT8REW';
   private isInitialized = false;
 
   private constructor() {
@@ -32,7 +37,10 @@ export class GoogleAnalyticsService {
   private initializeGA4(): void {
     if (typeof window !== 'undefined' && typeof window.gtag === 'function') {
       this.isInitialized = true;
-      console.log('✅ Google Analytics 4 initialized with property: ', this.GA4_PROPERTY_ID);
+      console.log(
+        '✅ Google Analytics 4 initialized with property: ',
+        this.getPropertyId(),
+      );
     } else {
       // In local dev, GA script is often intentionally absent.
       if (import.meta.env.PROD) {
@@ -47,7 +55,7 @@ export class GoogleAnalyticsService {
   public trackPageView(pagePath: string, pageTitle?: string): void {
     if (!this.isInitialized || typeof window === 'undefined' || !window.gtag) return;
 
-    window.gtag('config', this.GA4_PROPERTY_ID, {
+    window.gtag('config', this.getPropertyId(), {
       page_path: pagePath,
       page_title: pageTitle || document.title,
     });
@@ -65,6 +73,7 @@ export class GoogleAnalyticsService {
       event_category: 'SEO Specialist Management',
       event_label:
         typeof parameters?.label === 'string' ? parameters.label : eventName,
+      platform: getAnalyticsPlatformName(),
       ...parameters,
     });
 
@@ -150,23 +159,34 @@ export class GoogleAnalyticsService {
     }
 
     try {
-      // This would typically use the GA4 Reporting API
-      // For now, we'll return mock data structure
+      const headers = await getAuthHeader();
+      const overview = await apiRequest('/api/analytics/overview?startDate=30daysAgo', {
+        headers,
+      }) as {
+        generatedAt?: string;
+        summary?: {
+          activeCreators?: { current?: number };
+          totalEvents?: { current?: number };
+          pageViews?: { current?: number };
+          bookings?: { current?: number };
+        };
+      };
+
+      const activeUsers = Number(overview.summary?.activeCreators?.current ?? 0);
+      const eventCount = Number(overview.summary?.totalEvents?.current ?? 0);
+      const pageViews = Number(overview.summary?.pageViews?.current ?? 0);
+      const conversions = Number(overview.summary?.bookings?.current ?? 0);
+
       return {
-        activeUsers: Math.floor(Math.random() * 100) + 50,
-        sessions: Math.floor(Math.random() * 200) + 100,
-        pageViews: Math.floor(Math.random() * 500) + 200,
-        topCountries: [
-          { value: 'Norway', count: Math.floor(Math.random() * 50) + 30 },
-          { value: 'Sweden', count: Math.floor(Math.random() * 20) + 10 },
-          { value: 'Denmark', count: Math.floor(Math.random() * 15) + 5 },
-        ],
-        deviceBreakdown: [
-          { device: 'Desktop', count: Math.floor(Math.random() * 40) + 30 },
-          { device: 'Mobile', count: Math.floor(Math.random() * 30) + 20 },
-          { device: 'Tablet', count: Math.floor(Math.random() * 10) + 5 },
-        ],
-        timestamp: new Date().toISOString(),
+        activeUsers,
+        sessions: eventCount,
+        pageViews,
+        eventCount,
+        screenPageViews: pageViews,
+        conversions,
+        topCountries: [],
+        deviceBreakdown: [],
+        timestamp: overview.generatedAt ?? new Date().toISOString(),
       };
     } catch (error) {
       console.error('Error fetching real-time data:', error);
@@ -185,8 +205,8 @@ export class GoogleAnalyticsService {
    * Get GA4 property ID
    */
   public getPropertyId(): string {
-    return this.GA4_PROPERTY_ID;
-}
+    return getGoogleAnalyticsMeasurementId();
+  }
 }
 
 // Export singleton instance

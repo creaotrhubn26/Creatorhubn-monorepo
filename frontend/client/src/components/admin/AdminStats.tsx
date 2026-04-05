@@ -120,12 +120,8 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
   const academyAnalyticsFeedEnabled = !isKnownUnavailableApiEndpoint('/api/admin/academy/analytics/overview');
   const emailConversionFeedEnabled = !isKnownUnavailableApiEndpoint('/api/admin/email-conversion-stats');
   const googleAnalyticsFeedsEnabled = ![
-    '/api/analytics/realtime',
     '/api/analytics/overview',
     '/api/analytics/timeseries',
-    '/api/analytics/traffic-sources',
-    '/api/analytics/top-events',
-    '/api/analytics/top-pages',
   ].some(isKnownUnavailableApiEndpoint);
   const seoAnalyticsFeedsEnabled = ![
     '/api/seo-bot/analytics',

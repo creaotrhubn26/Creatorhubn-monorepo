@@ -1,662 +1,1075 @@
-/**
- * Enhanced Google Analytics 4 Dashboard Component
- * Inspired by modern analytics dashboard design
- */
-
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { apiRequest } from '../../lib/queryClient';
-import { useTheming } from '../../utils/theming-helper';
-import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
+import Grid from '@mui/material/Grid2';
 import {
+  Alert,
   Box,
-  Card,
-  CardContent,
-  Typography,
-  Grid,
-  Chip,
   Button,
-  ButtonGroup,
+  Chip,
+  Divider,
   LinearProgress,
+  Stack,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  Paper,
-  Divider,
-  Alert,
-  ToggleButton,
-  ToggleButtonGroup,
-  Avatar,
+  Typography,
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import {
-  Analytics,
-  TrendingUp,
-  TrendingDown,
-  People,
-  Visibility,
-  Timeline,
-  AttachMoney,
-  Event,
-  Share,
-  OpenInNew,
-  Refresh,
-  DateRange,
-  Public,
-  Language,
-  AutoAwesome,
-  Psychology,
-  Settings,
+  AnalyticsOutlined,
+  AutoGraphRounded,
+  BookOnlineRounded,
+  CheckCircleOutlineRounded,
+  MailOutlineRounded,
+  PersonAddAlt1Rounded,
+  PublicRounded,
+  RefreshRounded,
+  TimelineRounded,
+  VisibilityRounded,
 } from '@mui/icons-material';
-import AIAnalyticsInsights from './AIAnalyticsInsights';
-import GA4AutomationDashboard from './GA4AutomationDashboard';
 import {
-  LineChart,
-  Line,
-  AreaChart,
   Area,
-  BarChart,
-  Bar,
-  PieChart,
-  Pie,
-  Cell,
+  AreaChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer
 } from 'recharts';
+import {
+  apiRequest,
+  isApiEndpointMissing,
+} from '../../lib/queryClient';
+import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 
 interface GoogleAnalyticsDashboardProps {
   hideHeader?: boolean;
 }
 
-export default function GoogleAnalyticsDashboardEnhanced({ hideHeader = false }: GoogleAnalyticsDashboardProps) {
-  const theming = useTheming('prototype_tester');
-  const { auth } = useEnhancedMasterIntegration();
+type AnalyticsRangeKey = '7daysAgo' | '30daysAgo' | '90daysAgo';
+type AnalyticsMetricKey =
+  | 'totalEvents'
+  | 'newUsers'
+  | 'activeCreators'
+  | 'pageViews'
+  | 'bookings'
+  | 'invitationsSent'
+  | 'acceptedInvitations';
 
-  // Date range control
-  const [dateRange, setDateRange] = useState<'7daysAgo' | '30daysAgo' | '90daysAgo'>('30daysAgo');
+interface MetricDelta {
+  current: number;
+  previous: number;
+  change: number;
+}
 
-  // Selected metric for chart
-  const [selectedMetric, setSelectedMetric] = useState<'activeUsers' | 'sessions' | 'pageViews' | 'conversions'>('activeUsers');
-
-  // AI insights toggle
-  const [showAIInsights, setShowAIInsights] = useState(true);
-
-  // Automation dashboard toggle
-  const [showAutomation, setShowAutomation] = useState(false);
-
-  // Enhanced styling inspired by the design
-  const dashboardTheme = {
-    background: '#1a1a1a',
-    cardBackground: '#2d2d2d',
-    primary: '#ff6b35',
-    secondary: '#ffa726',
-    text: '#ffffff',
-    textSecondary: '#ffa726',
-    success: '#4caf50',
-    error: '#f44336',
-    border: '#404040',
-    gradient: 'linear-gradient(135deg, #ff6b35 0%, #ffa726 100%)'
+interface OverviewResponse {
+  range: {
+    key: AnalyticsRangeKey;
+    label: string;
+    days: number;
+    startDate: string;
+    endDateExclusive: string;
   };
+  freshness: {
+    latestEventAt: string | null;
+    latestUserLoginAt: string | null;
+    daysSinceLatestEvent: number | null;
+    hasDataInRange: boolean;
+    isStale: boolean;
+  };
+  summary: {
+    totalUsers: MetricDelta;
+    newUsers: MetricDelta;
+    activeCreators: MetricDelta;
+    totalEvents: MetricDelta;
+    pageViews: MetricDelta;
+    bookings: MetricDelta;
+    invitationsSent: MetricDelta;
+    acceptedInvitations: MetricDelta;
+    inviteAcceptanceRate: MetricDelta;
+  };
+  eventTypes: Array<{
+    eventType: string;
+    count: number;
+    share: number;
+  }>;
+  topPages: Array<{
+    page: string;
+    count: number;
+  }>;
+  sources: Array<{
+    source: string;
+    count: number;
+    share: number;
+  }>;
+  roles: Array<{
+    role: string;
+    count: number;
+  }>;
+  generatedAt: string;
+}
 
-  // Fetch real-time data
-  const { data: realtimeData, refetch: refetchRealtime } = useQuery({
-    queryKey: ['/api/analytics/realtime'],
-    queryFn: async () => {
-      const headers = await auth.getAuthHeader();
-      return apiRequest('/api/analytics/realtime', { headers });
-    },
-    refetchInterval: 30000,
-    staleTime: 0
+interface TimeseriesResponse {
+  metric: AnalyticsMetricKey;
+  label: string;
+  range: {
+    key: AnalyticsRangeKey;
+    label: string;
+    days: number;
+  };
+  series: Array<{
+    date: string;
+    value: number;
+  }>;
+  totals: MetricDelta;
+  generatedAt: string;
+}
+
+const rangeOptions: Array<{ key: AnalyticsRangeKey; label: string }> = [
+  { key: '7daysAgo', label: '7 dager' },
+  { key: '30daysAgo', label: '30 dager' },
+  { key: '90daysAgo', label: '90 dager' },
+];
+
+const metricOptions: Array<{ key: AnalyticsMetricKey; label: string }> = [
+  { key: 'totalEvents', label: 'Hendelser' },
+  { key: 'pageViews', label: 'Sidevisninger' },
+  { key: 'bookings', label: 'Bookinger' },
+  { key: 'invitationsSent', label: 'Invitasjoner' },
+  { key: 'acceptedInvitations', label: 'Akseptert' },
+  { key: 'newUsers', label: 'Nye brukere' },
+  { key: 'activeCreators', label: 'Aktive brukere' },
+];
+
+const surfaceBorder = '1px solid rgba(18, 18, 18, 0.08)';
+const surfaceShadow = '0 20px 48px rgba(22, 18, 16, 0.06)';
+const accent = '#ff6b30';
+const accentSoft = 'rgba(255, 107, 48, 0.12)';
+const ink = '#181512';
+const mutedInk = '#6c625b';
+const success = '#2f8f4f';
+const danger = '#c2572d';
+
+function formatNumber(value: number): string {
+  return value.toLocaleString('nb-NO');
+}
+
+function formatPercent(value: number): string {
+  return `${value.toLocaleString('nb-NO', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 1,
+  })}%`;
+}
+
+function formatMetric(value: number, kind: 'number' | 'percent') {
+  return kind === 'percent' ? formatPercent(value) : formatNumber(value);
+}
+
+function formatDate(value: string | null): string {
+  if (!value) {
+    return 'Ikke registrert';
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return 'Ikke registrert';
+  }
+
+  return date.toLocaleDateString('nb-NO', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
   });
+}
 
-  // Fetch overview data
-  const { data: overviewData, isLoading: overviewLoading } = useQuery({
+function formatShortDay(dateString: string): string {
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) {
+    return dateString;
+  }
+
+  return date.toLocaleDateString('nb-NO', {
+    day: 'numeric',
+    month: 'short',
+  });
+}
+
+function formatLabel(value: string): string {
+  return value
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function getTrendTone(change: number) {
+  if (change > 0) {
+    return {
+      color: success,
+      prefix: '+',
+      label: 'opp fra forrige periode',
+    };
+  }
+
+  if (change < 0) {
+    return {
+      color: danger,
+      prefix: '',
+      label: 'ned fra forrige periode',
+    };
+  }
+
+  return {
+    color: mutedInk,
+    prefix: '',
+    label: 'uendret fra forrige periode',
+  };
+}
+
+function PlaceholderTable({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <Box
+      sx={{
+        borderRadius: '24px',
+        border: surfaceBorder,
+        background: 'rgba(255,255,255,0.82)',
+        boxShadow: surfaceShadow,
+        p: 3,
+        minHeight: 260,
+      }}
+    >
+      <Typography variant="h6" sx={{ fontWeight: 700, color: ink, mb: 1 }}>
+        {title}
+      </Typography>
+      <Typography variant="body2" sx={{ color: mutedInk, maxWidth: 440 }}>
+        {description}
+      </Typography>
+    </Box>
+  );
+}
+
+export default function GoogleAnalyticsDashboardEnhanced({
+  hideHeader = false,
+}: GoogleAnalyticsDashboardProps) {
+  const { auth } = useEnhancedMasterIntegration();
+  const [dateRange, setDateRange] = useState<AnalyticsRangeKey>('90daysAgo');
+  const [selectedMetric, setSelectedMetric] =
+    useState<AnalyticsMetricKey>('totalEvents');
+
+  const {
+    data: overviewData,
+    isLoading: overviewLoading,
+    isFetching: overviewFetching,
+    error: overviewError,
+    refetch: refetchOverview,
+  } = useQuery<OverviewResponse>({
     queryKey: ['/api/analytics/overview', dateRange],
     queryFn: async () => {
       const headers = await auth.getAuthHeader();
-      return apiRequest(`/api/analytics/overview?startDate=${dateRange}&endDate=today`, { headers });
+      return apiRequest(`/api/analytics/overview?startDate=${dateRange}`, {
+        headers,
+      });
     },
     refetchInterval: 60000,
-    staleTime: 0
+    staleTime: 30000,
   });
 
-  // Fetch time series data for chart
-  const { data: timeSeriesData } = useQuery({
-    queryKey: ['/api/analytics/timeseries', selectedMetric, dateRange],
+  const {
+    data: timeseriesData,
+    isLoading: timeseriesLoading,
+    isFetching: timeseriesFetching,
+    error: timeseriesError,
+    refetch: refetchTimeseries,
+  } = useQuery<TimeseriesResponse>({
+    queryKey: ['/api/analytics/timeseries', dateRange, selectedMetric],
     queryFn: async () => {
       const headers = await auth.getAuthHeader();
-      return apiRequest(`/api/analytics/timeseries?metric=${selectedMetric}&startDate=${dateRange}&endDate=today`, { headers });
+      return apiRequest(
+        `/api/analytics/timeseries?metric=${selectedMetric}&startDate=${dateRange}`,
+        { headers },
+      );
     },
     refetchInterval: 60000,
-    staleTime: 0
+    staleTime: 30000,
   });
 
-  // Fetch traffic sources
-  const { data: trafficSourcesData } = useQuery({
-    queryKey: ['/api/analytics/traffic-sources', dateRange],
-    queryFn: async () => {
-      const headers = await auth.getAuthHeader();
-      return apiRequest(`/api/analytics/traffic-sources?startDate=${dateRange}&endDate=today`, { headers });
-    },
-    refetchInterval: 60000,
-    staleTime: 0
-  });
+  const loading = overviewLoading || timeseriesLoading;
+  const fetching = overviewFetching || timeseriesFetching;
+  const missingFeed =
+    isApiEndpointMissing(overviewError) || isApiEndpointMissing(timeseriesError);
+  const fatalError = overviewError || timeseriesError;
 
-  // Fetch top events
-  const { data: topEventsData } = useQuery({
-    queryKey: ['/api/analytics/top-events', dateRange],
-    queryFn: async () => {
-      const headers = await auth.getAuthHeader();
-      return apiRequest(`/api/analytics/top-events?startDate=${dateRange}&endDate=today`, { headers });
-    },
-    refetchInterval: 60000,
-    staleTime: 0
-  });
+  const metricCards = useMemo(
+    () =>
+      overviewData
+        ? [
+            {
+              key: 'totalUsers',
+              label: 'Brukere totalt',
+              icon: <PublicRounded sx={{ color: accent }} />,
+              metric: overviewData.summary.totalUsers,
+              kind: 'number' as const,
+              helper: 'Alle profiler i CreatorHub',
+            },
+            {
+              key: 'newUsers',
+              label: 'Nye brukere',
+              icon: <PersonAddAlt1Rounded sx={{ color: accent }} />,
+              metric: overviewData.summary.newUsers,
+              kind: 'number' as const,
+              helper: overviewData.range.label,
+            },
+            {
+              key: 'activeCreators',
+              label: 'Aktive brukere',
+              icon: <TimelineRounded sx={{ color: accent }} />,
+              metric: overviewData.summary.activeCreators,
+              kind: 'number' as const,
+              helper: 'Innlogging eller aktivitet i perioden',
+            },
+            {
+              key: 'totalEvents',
+              label: 'Hendelser',
+              icon: <AnalyticsOutlined sx={{ color: accent }} />,
+              metric: overviewData.summary.totalEvents,
+              kind: 'number' as const,
+              helper: 'Alle registrerte CreatorHub-events',
+            },
+            {
+              key: 'pageViews',
+              label: 'Sidevisninger',
+              icon: <VisibilityRounded sx={{ color: accent }} />,
+              metric: overviewData.summary.pageViews,
+              kind: 'number' as const,
+              helper: 'Fra eventloggen',
+            },
+            {
+              key: 'bookings',
+              label: 'Bookinger',
+              icon: <BookOnlineRounded sx={{ color: accent }} />,
+              metric: overviewData.summary.bookings,
+              kind: 'number' as const,
+              helper: 'booking_created',
+            },
+            {
+              key: 'invitationsSent',
+              label: 'Invitasjoner sendt',
+              icon: <MailOutlineRounded sx={{ color: accent }} />,
+              metric: overviewData.summary.invitationsSent,
+              kind: 'number' as const,
+              helper: 'invitation_sent',
+            },
+            {
+              key: 'inviteAcceptanceRate',
+              label: 'Akseptgrad',
+              icon: <CheckCircleOutlineRounded sx={{ color: accent }} />,
+              metric: overviewData.summary.inviteAcceptanceRate,
+              kind: 'percent' as const,
+              helper: 'Aksepterte invitasjoner delt på sendt',
+            },
+          ]
+        : [],
+    [overviewData],
+  );
 
-  // Fetch top pages
-  const { data: topPagesData } = useQuery({
-    queryKey: ['/api/analytics/top-pages', dateRange],
-    queryFn: async () => {
-      const headers = await auth.getAuthHeader();
-      return apiRequest(`/api/analytics/top-pages?startDate=${dateRange}&endDate=today`, { headers });
-    },
-    refetchInterval: 60000,
-    staleTime: 0
-  });
+  const seriesPoints = useMemo(
+    () => timeseriesData?.series ?? [],
+    [timeseriesData],
+  );
+
+  const roles = useMemo(() => overviewData?.roles ?? [], [overviewData]);
+  const sources = useMemo(() => overviewData?.sources ?? [], [overviewData]);
+  const eventTypes = useMemo(
+    () => overviewData?.eventTypes.slice(0, 5) ?? [],
+    [overviewData],
+  );
+  const topPages = useMemo(
+    () => overviewData?.topPages.slice(0, 5) ?? [],
+    [overviewData],
+  );
 
   const handleRefresh = () => {
-    refetchRealtime();
-  };
-
-  // Mock data for development (matches inspiration structure)
-  const mockUserMetrics = [
-    {
-      title: "New Users",
-      value: "322",
-      change: -55,
-      previousValue: "709",
-      icon: <People sx={{ color: dashboardTheme.primary }} />
-    },
-    {
-      title: "1-Day Active Users", 
-      value: "679",
-      change: -15,
-      previousValue: "796",
-      icon: <Timeline sx={{ color: dashboardTheme.primary }} />
-    },
-    {
-      title: "7-Day Active Users",
-      value: "282", 
-      change: -45,
-      previousValue: "510",
-      icon: <Event sx={{ color: dashboardTheme.primary }} />
-    },
-    {
-      title: "28-Day Active Users",
-      value: "709",
-      change: 104,
-      previousValue: "347",
-      icon: <Visibility sx={{ color: dashboardTheme.primary }} />
-    }
-  ];
-
-  const mockRevenueMetrics = [
-    {
-      title: "Total Revenue",
-      value: "$ 849",
-      change: -13,
-      previousValue: "$ 971",
-      icon: <AttachMoney sx={{ color: dashboardTheme.success }} />
-    },
-    {
-      title: "Total Revenue per User",
-      value: "$ 883.00",
-      change: 77,
-      previousValue: "$ 499.00",
-      icon: <People sx={{ color: dashboardTheme.success }} />
-    }
-  ];
-
-  const mockCountriesData = [
-    { country: "Croatia", value: 993, change: 49 },
-    { country: "Finland", value: 976, change: 184 },
-    { country: "Korea", value: 968, change: 463 },
-    { country: "Antigua and Barbuda", value: 964, change: 216 },
-    { country: "Saint Martin", value: 914, change: 218 }
-  ];
-
-  const mockSourcesData = [
-    { source: "yahoo", value: 879, change: 19 },
-    { source: "google", value: 814, change: 58 },
-    { source: "(not set)", value: 791, change: 215 },
-    { source: "bing", value: 521, change: -14 },
-    { source: "(direct)", value: 241, change: -73 }
-  ];
-
-  // Mock chart data
-  const mockChartData = Array.from({ length: 30 }, (_, i) => ({
-    date: new Date(Date.now() - (29 - i) * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    users: Math.floor(Math.random() * 200) + 600,
-    sessions: Math.floor(Math.random() * 300) + 800,
-    pageViews: Math.floor(Math.random() * 500) + 1200,
-    conversions: Math.floor(Math.random() * 20) + 5
-  }));
-
-  const getDateRangeLabel = () => {
-    const endDate = new Date();
-    const startDate = new Date();
-    
-    switch (dateRange) {
-      case '7daysAgo':
-        startDate.setDate(endDate.getDate() - 7);
-        return `Last 7 days (${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})`;
-      case '30daysAgo':
-        startDate.setDate(endDate.getDate() - 30);
-        return `Last 30 days (${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})`;
-      case '90daysAgo':
-        startDate.setDate(endDate.getDate() - 90);
-        return `Last 90 days (${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})`;
-      default:
-        return 'Last 30 days';
-    }
+    void Promise.all([refetchOverview(), refetchTimeseries()]);
   };
 
   return (
-    <Box sx={{ 
-      background: dashboardTheme.background,
-      borderRadius: 3,
-      p: 4,
-      mb: 3,
-      minHeight: '100vh'
-    }}>
-      {/* Header */}
-      {!hideHeader && (
-        <Box sx={{ mb: 4 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography variant="h4" sx={{ fontWeight: 700, color: dashboardTheme.text }}>
-              Analytics Dashboard
-            </Typography>
-            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-              <Button
-                variant={showAutomation ? 'contained' : 'outlined'}
-                startIcon={<Settings />}
-                onClick={() => setShowAutomation(!showAutomation)}
-                sx={{ 
-                  borderColor: dashboardTheme.primary, 
-                  color: dashboardTheme.primary, '&:hover': { borderColor: dashboardTheme.secondary },
-                  ...(showAutomation && {
-                    background: dashboardTheme.gradient,
-                    color: '#ffffff','&:hover': { background: dashboardTheme.primary }
-                  })
-                }}
-              >
-                Automation
-              </Button>
-              <Button
-                variant={showAIInsights ? 'contained' : 'outlined'}
-                startIcon={<AutoAwesome />}
-                onClick={() => setShowAIInsights(!showAIInsights)}
-                sx={{ 
-                  borderColor: dashboardTheme.primary, 
-                  color: dashboardTheme.primary, '&:hover': { borderColor: dashboardTheme.secondary },
-                  ...(showAIInsights && {
-                    background: dashboardTheme.gradient,
-                    color: '#ffffff','&:hover': { background: dashboardTheme.primary }
-                  })
-                }}
-              >
-                AI Insights
-              </Button>
-              <Button
-                variant="outlined"
-                startIcon={<Refresh />}
-                onClick={handleRefresh}
-                sx={{ 
-                  borderColor: dashboardTheme.primary, 
-                  color: dashboardTheme.primary,
-                  '&:hover': { borderColor: dashboardTheme.secondary }
-                }}
-              >
-                Refresh
-              </Button>
-              <Button
-                variant="contained"
-                endIcon={<OpenInNew />}
-                onClick={() => window.open('https://analytics.google.com/', '_blank')}
-                sx={{ 
-                  background: dashboardTheme.gradient,
-                  '&:hover': { background: dashboardTheme.primary }
-                }}
-              >
-                Open in GA4
-              </Button>
-            </Box>
-          </Box>
-          <Typography variant="body1" sx={{ color: dashboardTheme.textSecondary }}>
-            {getDateRangeLabel()}
-          </Typography>
-        </Box>
-      )}
-
-      {/* Date Range Controls */}
-      <Box sx={{ mb: 4 }}>
-        <ToggleButtonGroup
-          value={dateRange}
-          exclusive
-          onChange={(_, newValue) => newValue && setDateRange(newValue)}
+    <Box
+      sx={{
+        position: 'relative',
+        borderRadius: '32px',
+        border: `1px solid ${alpha(accent, 0.16)}`,
+        background:
+          'linear-gradient(180deg, rgba(255,252,247,0.98) 0%, rgba(255,246,236,0.98) 100%)',
+        boxShadow: '0 28px 68px rgba(18, 18, 18, 0.08)',
+        p: { xs: 2.5, md: 4 },
+        overflow: 'hidden',
+      }}
+    >
+      {fetching ? (
+        <LinearProgress
           sx={{
-            '& .MuiToggleButton-root': {
-              borderColor: dashboardTheme.border,
-              color: dashboardTheme.textSecondary,
-              '&.Mui-selected': {
-                backgroundColor: dashboardTheme.primary,
-                color: dashboardTheme.text,
-                '&:hover': {
-                  backgroundColor: dashboardTheme.secondary,
-                },
-              },
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            '& .MuiLinearProgress-bar': {
+              backgroundColor: accent,
             },
           }}
+        />
+      ) : null}
+
+      {!hideHeader ? (
+        <Stack
+          direction={{ xs: 'column', lg: 'row' }}
+          justifyContent="space-between"
+          alignItems={{ xs: 'flex-start', lg: 'flex-start' }}
+          spacing={2.5}
+          sx={{ mb: 3 }}
         >
-          <ToggleButton value="7daysAgo">Last 7 Days</ToggleButton>
-          <ToggleButton value="30daysAgo">Last 30 Days</ToggleButton>
-          <ToggleButton value="90daysAgo">Last 90 Days</ToggleButton>
-        </ToggleButtonGroup>
-      </Box>
+          <Box sx={{ maxWidth: 760 }}>
+            <Typography
+              variant="h4"
+              sx={{
+                fontWeight: 800,
+                color: ink,
+                letterSpacing: '-0.03em',
+                mb: 1,
+              }}
+            >
+              CreatorHub Analytics
+            </Typography>
+            <Typography
+              variant="body1"
+              sx={{
+                color: mutedInk,
+                maxWidth: 620,
+                lineHeight: 1.6,
+              }}
+            >
+              Operativ oversikt basert p&aring; ekte CreatorHub-aktivitet fra
+              bruker- og eventtabellene. Flaten viser hva som faktisk har
+              skjedd, og sier tydelig fra n&aring;r datagrunnlaget er eldre enn
+              det valgte tidsrommet.
+            </Typography>
+          </Box>
 
-      {/* Top Row - User Activity Metrics */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} md={8}>
-          <Grid container spacing={2}>
-            {mockUserMetrics.map((metric, index) => (
-              <Grid item xs={6} md={3} key={index}>
-                <Card sx={{ 
-                  background: dashboardTheme.cardBackground,
-                  border: `1px solid ${dashboardTheme.border}`,
-                  height: '100%'
-                }}>
-                  <CardContent sx={{ p: 3 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                      {metric.icon}
-                      <Typography variant="caption" sx={{ color: dashboardTheme.textSecondary, fontWeight: 500}}>
-                        {metric.title}
-                      </Typography>
-                    </Box>
-                    <Typography variant="h4" sx={{ 
-                      fontWeight: 'bold', 
-                      color: dashboardTheme.text,
-                      mb: 1
-                    }}>
-                      {metric.value}
-                    </Typography>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      {metric.change > 0 ? (
-                        <TrendingUp sx={{ color: dashboardTheme.success, fontSize: 16 }} />
-                      ) : (
-                        <TrendingDown sx={{ color: dashboardTheme.error, fontSize: 16 }} />
-                      )}
-                      <Typography 
-                        variant="caption" 
-                        sx={{ 
-                          color: metric.change > 0 ? dashboardTheme.success : dashboardTheme.error,
-                          fontWeight: 50
-                        }}
-                      >
-                        {metric.change > 0 ? '▲' : '▼'} {Math.abs(metric.change)}% vs previous period ({metric.previousValue})
-                      </Typography>
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-            ))}
-          </Grid>
-        </Grid>
-
-        {/* Chart Section */}
-        <Grid item xs={12} md={4}>
-          <Card sx={{ 
-            background: dashboardTheme.cardBackground,
-            border: `1px solid ${dashboardTheme.border}`,
-            height: '100%'
-          }}>
-            <CardContent sx={{ p: 3 }}>
-              <Typography variant="h6" sx={{ 
-                fontWeight: 600, 
-                color: dashboardTheme.text,
-                mb: 3
-              }}>
-                Users
-              </Typography>
-              <Box sx={{ height: 200 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={mockChartData}>
-                    <defs>
-                      <linearGradient id="colorUsers" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor={dashboardTheme.primary} stopOpacity={0.8}/>
-                        <stop offset="95%" stopColor={dashboardTheme.primary} stopOpacity={0.1}/>
-                      </linearGradient>
-                    </defs>
-                    <XAxis 
-                      dataKey="date" 
-                      tick={{ fontSize: 10, fill: dashboardTheme.textSecondary }}
-                      tickFormatter={(value) => {
-                        const date = new Date(value);
-                        return `${date.getMonth() + 1}/${date.getDate()}`;
-                      }}
-                    />
-                    <YAxis tick={{ fontSize: 10, fill: dashboardTheme.textSecondary }} />
-                    <Tooltip 
-                      contentStyle={{ 
-                        backgroundColor: dashboardTheme.cardBackground,
-                        border: `1px solid ${dashboardTheme.border}`,
-                        borderRadius: 8,
-                        color: dashboardTheme.text
-                      }}
-                    />
-                    <Area 
-                      type="monotone" 
-                      dataKey="users" 
-                      stroke={dashboardTheme.primary}
-                      strokeWidth={2}
-                      fillOpacity={1} 
-                      fill="url(#colorUsers)" 
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
-      {/* Revenue Metrics */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        {mockRevenueMetrics.map((metric, index) => (
-          <Grid item xs={12} md={6} key={index}>
-            <Card sx={{ 
-              background: dashboardTheme.cardBackground,
-              border: `1px solid ${dashboardTheme.border}`,
-              height: '100%'
-            }}>
-              <CardContent sx={{ p: 3 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                  {metric.icon}
-                  <Typography variant="caption" sx={{ color: dashboardTheme.textSecondary, fontWeight: 500}}>
-                    {metric.title}
-                  </Typography>
-                </Box>
-                <Typography variant="h4" sx={{ 
-                  fontWeight: 'bold', 
-                  color: dashboardTheme.text,
-                  mb: 1
-                }}>
-                  {metric.value}
-                </Typography>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                  {metric.change > 0 ? (
-                    <TrendingUp sx={{ color: dashboardTheme.success, fontSize: 16 }} />
-                  ) : (
-                    <TrendingDown sx={{ color: dashboardTheme.error, fontSize: 16 }} />
-                  )}
-                  <Typography 
-                    variant="caption" 
-                    sx={{ 
-                      color: metric.change > 0 ? dashboardTheme.success : dashboardTheme.error,
-                      fontWeight: 50
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={1}
+            sx={{ width: { xs: '100%', lg: 'auto' } }}
+          >
+            <Box
+              sx={{
+                display: 'inline-flex',
+                flexWrap: 'wrap',
+                gap: 1,
+                p: 0.75,
+                borderRadius: '18px',
+                border: surfaceBorder,
+                backgroundColor: 'rgba(255,255,255,0.8)',
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.7)',
+              }}
+            >
+              {rangeOptions.map((option) => {
+                const active = option.key === dateRange;
+                return (
+                  <Button
+                    key={option.key}
+                    onClick={() => setDateRange(option.key)}
+                    variant="text"
+                    sx={{
+                      minWidth: 0,
+                      px: 2,
+                      py: 1,
+                      borderRadius: '14px',
+                      color: active ? '#fff' : ink,
+                      backgroundColor: active ? accent : 'transparent',
+                      fontWeight: 700,
+                      textTransform: 'none',
+                      '&:hover': {
+                        backgroundColor: active
+                          ? '#f05c22'
+                          : alpha(accent, 0.08),
+                      },
                     }}
                   >
-                    {metric.change > 0 ? '▲' : '▼'} {Math.abs(metric.change)}% vs previous period ({metric.previousValue})
-                  </Typography>
-                </Box>
-              </CardContent>
-            </Card>
-          </Grid>
-        ))}
-      </Grid>
+                    {option.label}
+                  </Button>
+                );
+              })}
+            </Box>
 
-      {/* Bottom Row - Tables */}
-      <Grid container spacing={3}>
-        {/* Users by Country */}
-        <Grid item xs={12} md={6}>
-          <Card sx={{ 
-            background: dashboardTheme.cardBackground,
-            border: `1px solid ${dashboardTheme.border}`
-          }}>
-            <CardContent sx={{ p: 3 }}>
-              <Typography variant="h6" sx={{ 
-                fontWeight: 600, 
-                color: dashboardTheme.text,
-                mb: 3,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 1
-              }}>
-                <Public sx={{ color: dashboardTheme.primary }} />
-                Users by Country
-              </Typography>
-              <TableContainer>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell sx={{ color: dashboardTheme.textSecondary, fontWeight: 600}}>Country</TableCell>
-                      <TableCell sx={{ color: dashboardTheme.textSecondary, fontWeight: 600}}>Value</TableCell>
-                      <TableCell sx={{ color: dashboardTheme.textSecondary, fontWeight: 600}}>vs prev</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {mockCountriesData.map((row, index) => (
-                      <TableRow key={index}>
-                        <TableCell sx={{ color: dashboardTheme.text }}>{row.country}</TableCell>
-                        <TableCell sx={{ color: dashboardTheme.text, fontWeight: 600}}>{row.value.toLocaleString()}</TableCell>
-                        <TableCell>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                            {row.change > 0 ? (
-                              <TrendingUp sx={{ color: dashboardTheme.success, fontSize: 14 }} />
-                            ) : (
-                              <TrendingDown sx={{ color: dashboardTheme.error, fontSize: 14 }} />
-                            )}
-                            <Typography 
-                              variant="caption" 
-                              sx={{ 
-                                color: row.change > 0 ? dashboardTheme.success : dashboardTheme.error,
-                                fontWeight: 50
-                              }}
-                            >
-                              {row.change > 0 ? '▲' : '▼'} {Math.abs(row.change)}%
-                            </Typography>
-                          </Box>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </CardContent>
-          </Card>
-        </Grid>
+            <Button
+              variant="outlined"
+              onClick={handleRefresh}
+              startIcon={<RefreshRounded />}
+              sx={{
+                alignSelf: 'stretch',
+                borderRadius: '18px',
+                borderColor: alpha(accent, 0.28),
+                color: ink,
+                px: 2.25,
+                textTransform: 'none',
+                fontWeight: 700,
+                backgroundColor: 'rgba(255,255,255,0.7)',
+                '&:hover': {
+                  borderColor: accent,
+                  backgroundColor: alpha(accent, 0.06),
+                },
+              }}
+            >
+              Oppdater
+            </Button>
+          </Stack>
+        </Stack>
+      ) : null}
 
-        {/* Users by Source */}
-        <Grid item xs={12} md={6}>
-          <Card sx={{ 
-            background: dashboardTheme.cardBackground,
-            border: `1px solid ${dashboardTheme.border}`
-          }}>
-            <CardContent sx={{ p: 3 }}>
-              <Typography variant="h6" sx={{ 
-                fontWeight: 600, 
-                color: dashboardTheme.text,
-                mb: 3,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 1
-              }}>
-                <Share sx={{ color: dashboardTheme.primary }} />
-                Users by Source
-              </Typography>
-              <TableContainer>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell sx={{ color: dashboardTheme.textSecondary, fontWeight: 600}}>Source</TableCell>
-                      <TableCell sx={{ color: dashboardTheme.textSecondary, fontWeight: 600}}>Value</TableCell>
-                      <TableCell sx={{ color: dashboardTheme.textSecondary, fontWeight: 600}}>vs prev</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {mockSourcesData.map((row, index) => (
-                      <TableRow key={index}>
-                        <TableCell sx={{ color: dashboardTheme.text }}>{row.source}</TableCell>
-                        <TableCell sx={{ color: dashboardTheme.text, fontWeight: 600}}>{row.value.toLocaleString()}</TableCell>
-                        <TableCell>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                            {row.change > 0 ? (
-                              <TrendingUp sx={{ color: dashboardTheme.success, fontSize: 14 }} />
-                            ) : (
-                              <TrendingDown sx={{ color: dashboardTheme.error, fontSize: 14 }} />
-                            )}
-                            <Typography 
-                              variant="caption" 
-                              sx={{ 
-                                color: row.change > 0 ? dashboardTheme.success : dashboardTheme.error,
-                                fontWeight: 50
-                              }}
-                            >
-                              {row.change > 0 ? '▲' : '▼'} {Math.abs(row.change)}%
-                            </Typography>
-                          </Box>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
+      <Stack
+        direction={{ xs: 'column', md: 'row' }}
+        spacing={1}
+        useFlexGap
+        flexWrap="wrap"
+        sx={{ mb: 3 }}
+      >
+        <Chip
+          label={overviewData?.range.label ?? 'Laster datointervall'}
+          sx={{
+            borderRadius: '999px',
+            bgcolor: accentSoft,
+            color: ink,
+            fontWeight: 700,
+          }}
+        />
+        <Chip
+          icon={<AutoGraphRounded sx={{ color: accent }} />}
+          label={
+            overviewData?.freshness.latestEventAt
+              ? `Siste aktivitet ${formatDate(overviewData.freshness.latestEventAt)}`
+              : 'Ingen aktivitet registrert ennå'
+          }
+          sx={{
+            borderRadius: '999px',
+            bgcolor: 'rgba(255,255,255,0.76)',
+            color: ink,
+            border: surfaceBorder,
+            fontWeight: 600,
+          }}
+        />
+        {overviewData?.freshness.isStale ? (
+          <Chip
+            icon={<TimelineRounded sx={{ color: danger }} />}
+            label={`Eldre datagrunnlag${
+              overviewData.freshness.daysSinceLatestEvent !== null
+                ? ` (${overviewData.freshness.daysSinceLatestEvent} dager siden)`
+                : ''
+            }`}
+            sx={{
+              borderRadius: '999px',
+              bgcolor: alpha(danger, 0.1),
+              color: danger,
+              fontWeight: 700,
+            }}
+          />
+        ) : null}
+      </Stack>
 
-      {/* GA4 Automation Dashboard */}
-      {showAutomation && (
-        <Box sx={{ mt: 4 }}>
-          <GA4AutomationDashboard />
-        </Box>
-      )}
+      {missingFeed ? (
+        <Alert severity="info" sx={{ mb: 3, borderRadius: '20px' }}>
+          Analytics-feedene ruller ut. Frontenden er klar, men backend-endepunktene
+          er ikke live i denne instansen enn&aring;.
+        </Alert>
+      ) : fatalError ? (
+        <Alert severity="error" sx={{ mb: 3, borderRadius: '20px' }}>
+          Analyticsflaten kunne ikke lastes akkurat n&aring;. Pr&oslash;v p&aring;
+          nytt, eller sjekk backend-loggene hvis feilen vedvarer.
+        </Alert>
+      ) : null}
 
-      {/* AI Analytics Insights */}
-      {showAIInsights && (
-        <Box sx={{ mt: 4 }}>
-          <AIAnalyticsInsights 
-            dateRange={dateRange}
-            autoRefresh={true}
+      {overviewData?.freshness.isStale ? (
+        <Alert
+          severity="warning"
+          sx={{ mb: 3, borderRadius: '20px' }}
+        >
+          Aktiviteten i valgt periode er eldre enn vanlig. Tallene er ekte, men
+          dette miljøet har lite ferske CreatorHub-events akkurat n&aring;.
+        </Alert>
+      ) : null}
+
+      {loading && !overviewData ? (
+        <Box sx={{ py: 6 }}>
+          <LinearProgress
+            sx={{
+              borderRadius: '999px',
+              '& .MuiLinearProgress-bar': { backgroundColor: accent },
+            }}
           />
         </Box>
-      )}
+      ) : null}
+
+      {overviewData ? (
+        <>
+          <Grid container spacing={2} sx={{ mb: 2 }}>
+            {metricCards.map((item) => {
+              const trend = getTrendTone(item.metric.change);
+              return (
+                <Grid key={item.key} size={{ xs: 12, sm: 6, lg: 3 }}>
+                  <Box
+                    sx={{
+                      height: '100%',
+                      borderRadius: '24px',
+                      border: surfaceBorder,
+                      background: 'rgba(255,255,255,0.84)',
+                      boxShadow: surfaceShadow,
+                      p: 2.5,
+                      transition:
+                        'transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease',
+                      '&:hover': {
+                        transform: 'translateY(-2px)',
+                        boxShadow: '0 24px 52px rgba(18,18,18,0.08)',
+                        borderColor: alpha(accent, 0.26),
+                      },
+                    }}
+                  >
+                    <Stack direction="row" justifyContent="space-between" spacing={2}>
+                      <Box>
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            color: mutedInk,
+                            fontWeight: 700,
+                            letterSpacing: '0.01em',
+                            mb: 0.75,
+                          }}
+                        >
+                          {item.label}
+                        </Typography>
+                        <Typography
+                          variant="h4"
+                          sx={{
+                            color: ink,
+                            fontWeight: 800,
+                            letterSpacing: '-0.03em',
+                            mb: 0.75,
+                          }}
+                        >
+                          {formatMetric(item.metric.current, item.kind)}
+                        </Typography>
+                      </Box>
+                      <Box
+                        sx={{
+                          width: 46,
+                          height: 46,
+                          borderRadius: '16px',
+                          bgcolor: accentSoft,
+                          display: 'grid',
+                          placeItems: 'center',
+                          flexShrink: 0,
+                        }}
+                      >
+                        {item.icon}
+                      </Box>
+                    </Stack>
+
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        color: trend.color,
+                        fontWeight: 700,
+                        mb: 0.75,
+                      }}
+                    >
+                      {trend.prefix}
+                      {formatPercent(item.metric.change)} {trend.label}
+                    </Typography>
+
+                    <Typography variant="caption" sx={{ color: mutedInk }}>
+                      Forrige periode: {formatMetric(item.metric.previous, item.kind)}
+                      {' · '}
+                      {item.helper}
+                    </Typography>
+                  </Box>
+                </Grid>
+              );
+            })}
+          </Grid>
+
+          <Grid container spacing={2} sx={{ mb: 2 }}>
+            <Grid size={{ xs: 12, lg: 8 }}>
+              <Box
+                sx={{
+                  borderRadius: '28px',
+                  border: surfaceBorder,
+                  background: 'rgba(255,255,255,0.86)',
+                  boxShadow: surfaceShadow,
+                  p: 3,
+                  minHeight: 420,
+                }}
+              >
+                <Stack
+                  direction={{ xs: 'column', md: 'row' }}
+                  spacing={2}
+                  justifyContent="space-between"
+                  alignItems={{ xs: 'flex-start', md: 'center' }}
+                  sx={{ mb: 3 }}
+                >
+                  <Box>
+                    <Typography variant="h6" sx={{ fontWeight: 800, color: ink }}>
+                      Aktivitetskurve
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: mutedInk, mt: 0.5 }}>
+                      Velg metric for &aring; se trend gjennom {overviewData.range.label.toLowerCase()}.
+                    </Typography>
+                  </Box>
+
+                  <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                    {metricOptions.map((option) => {
+                      const active = option.key === selectedMetric;
+                      return (
+                        <Button
+                          key={option.key}
+                          onClick={() => setSelectedMetric(option.key)}
+                          variant="text"
+                          sx={{
+                            minWidth: 0,
+                            px: 1.5,
+                            py: 0.9,
+                            borderRadius: '999px',
+                            textTransform: 'none',
+                            fontWeight: 700,
+                            color: active ? '#fff' : ink,
+                            backgroundColor: active ? ink : alpha('#121212', 0.04),
+                            '&:hover': {
+                              backgroundColor: active
+                                ? '#25211e'
+                                : alpha(accent, 0.08),
+                            },
+                          }}
+                        >
+                          {option.label}
+                        </Button>
+                      );
+                    })}
+                  </Stack>
+                </Stack>
+
+                {seriesPoints.some((point) => point.value > 0) ? (
+                  <Box sx={{ height: 300 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={seriesPoints}>
+                        <defs>
+                          <linearGradient id="creatorhubAnalyticsArea" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor={accent} stopOpacity={0.28} />
+                            <stop offset="95%" stopColor={accent} stopOpacity={0.02} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid stroke={alpha('#121212', 0.08)} vertical={false} />
+                        <XAxis
+                          dataKey="date"
+                          tickLine={false}
+                          axisLine={false}
+                          tick={{ fill: mutedInk, fontSize: 12 }}
+                          tickFormatter={formatShortDay}
+                        />
+                        <YAxis
+                          tickLine={false}
+                          axisLine={false}
+                          tick={{ fill: mutedInk, fontSize: 12 }}
+                          allowDecimals={false}
+                        />
+                        <Tooltip
+                          formatter={(value: number) => [
+                            formatNumber(value),
+                            timeseriesData?.label ?? 'Verdi',
+                          ]}
+                          labelFormatter={(value: string) => formatDate(value)}
+                          contentStyle={{
+                            borderRadius: 18,
+                            border: surfaceBorder,
+                            boxShadow: surfaceShadow,
+                            background: 'rgba(255,255,255,0.96)',
+                          }}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="value"
+                          stroke={accent}
+                          fill="url(#creatorhubAnalyticsArea)"
+                          strokeWidth={3}
+                          activeDot={{ r: 5 }}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </Box>
+                ) : (
+                  <Box
+                    sx={{
+                      height: 300,
+                      borderRadius: '24px',
+                      bgcolor: alpha(accent, 0.05),
+                      display: 'grid',
+                      placeItems: 'center',
+                      textAlign: 'center',
+                      p: 3,
+                    }}
+                  >
+                    <Box>
+                      <Typography variant="h6" sx={{ fontWeight: 700, color: ink, mb: 1 }}>
+                        Ingen aktivitet i valgt periode
+                      </Typography>
+                      <Typography variant="body2" sx={{ color: mutedInk, maxWidth: 420 }}>
+                        Det finnes ingen registrerte verdier for{' '}
+                        {timeseriesData?.label?.toLowerCase() ?? 'dette metricet'} i
+                        {` ${overviewData.range.label.toLowerCase()}`}. Bytt til 90 dager
+                        for lengre historikk eller vent p&aring; nye CreatorHub-events.
+                      </Typography>
+                    </Box>
+                  </Box>
+                )}
+              </Box>
+            </Grid>
+
+            <Grid size={{ xs: 12, lg: 4 }}>
+              <Box
+                sx={{
+                  height: '100%',
+                  borderRadius: '28px',
+                  border: surfaceBorder,
+                  background: 'rgba(255,255,255,0.86)',
+                  boxShadow: surfaceShadow,
+                  p: 3,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 2,
+                }}
+              >
+                <Box>
+                  <Typography variant="h6" sx={{ fontWeight: 800, color: ink }}>
+                    Datakvalitet
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: mutedInk, mt: 0.5 }}>
+                    Hva som faktisk ligger bak tallene i denne flaten.
+                  </Typography>
+                </Box>
+
+                <Stack spacing={1.5}>
+                  <Box>
+                    <Typography variant="caption" sx={{ color: mutedInk, fontWeight: 700 }}>
+                      Siste event
+                    </Typography>
+                    <Typography variant="body1" sx={{ color: ink, fontWeight: 700 }}>
+                      {formatDate(overviewData.freshness.latestEventAt)}
+                    </Typography>
+                  </Box>
+                  <Box>
+                    <Typography variant="caption" sx={{ color: mutedInk, fontWeight: 700 }}>
+                      Siste innlogging registrert
+                    </Typography>
+                    <Typography variant="body1" sx={{ color: ink, fontWeight: 700 }}>
+                      {formatDate(overviewData.freshness.latestUserLoginAt)}
+                    </Typography>
+                  </Box>
+                  <Box>
+                    <Typography variant="caption" sx={{ color: mutedInk, fontWeight: 700 }}>
+                      Datakilder
+                    </Typography>
+                    <Typography variant="body1" sx={{ color: ink, fontWeight: 700 }}>
+                      `creatorhub_users` og `creatorhub_analytics_events`
+                    </Typography>
+                  </Box>
+                </Stack>
+
+                <Divider />
+
+                <Box>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 800, color: ink, mb: 1.5 }}>
+                    Rollefordeling
+                  </Typography>
+                  <Stack spacing={1}>
+                    {roles.length > 0 ? (
+                      roles.map((role) => (
+                        <Stack
+                          key={role.role}
+                          direction="row"
+                          justifyContent="space-between"
+                          alignItems="center"
+                          sx={{
+                            px: 1.5,
+                            py: 1.1,
+                            borderRadius: '16px',
+                            bgcolor: alpha('#121212', 0.035),
+                          }}
+                        >
+                          <Typography variant="body2" sx={{ color: ink, fontWeight: 600 }}>
+                            {formatLabel(role.role)}
+                          </Typography>
+                          <Chip
+                            size="small"
+                            label={formatNumber(role.count)}
+                            sx={{
+                              bgcolor: accentSoft,
+                              color: ink,
+                              fontWeight: 700,
+                            }}
+                          />
+                        </Stack>
+                      ))
+                    ) : (
+                      <Typography variant="body2" sx={{ color: mutedInk }}>
+                        Ingen rolledata registrert enn&aring;.
+                      </Typography>
+                    )}
+                  </Stack>
+                </Box>
+
+                <Divider />
+
+                <Box>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 800, color: ink, mb: 1.5 }}>
+                    Aktivitetskilder
+                  </Typography>
+                  <Stack spacing={1}>
+                    {sources.length > 0 ? (
+                      sources.slice(0, 4).map((source) => (
+                        <Stack
+                          key={source.source}
+                          direction="row"
+                          justifyContent="space-between"
+                          alignItems="center"
+                        >
+                          <Typography variant="body2" sx={{ color: ink, fontWeight: 600 }}>
+                            {formatLabel(source.source)}
+                          </Typography>
+                          <Typography variant="body2" sx={{ color: mutedInk }}>
+                            {formatNumber(source.count)} · {formatPercent(source.share)}
+                          </Typography>
+                        </Stack>
+                      ))
+                    ) : (
+                      <Typography variant="body2" sx={{ color: mutedInk }}>
+                        Ingen kildefordeling registrert enn&aring;.
+                      </Typography>
+                    )}
+                  </Stack>
+                </Box>
+              </Box>
+            </Grid>
+          </Grid>
+
+          <Grid container spacing={2}>
+            <Grid size={{ xs: 12, lg: 6 }}>
+              {eventTypes.length > 0 ? (
+                <Box
+                  sx={{
+                    borderRadius: '24px',
+                    border: surfaceBorder,
+                    background: 'rgba(255,255,255,0.82)',
+                    boxShadow: surfaceShadow,
+                    p: 3,
+                  }}
+                >
+                  <Typography variant="h6" sx={{ fontWeight: 800, color: ink, mb: 2 }}>
+                    Topp hendelser
+                  </Typography>
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell sx={{ color: mutedInk, fontWeight: 700 }}>
+                            Hendelse
+                          </TableCell>
+                          <TableCell sx={{ color: mutedInk, fontWeight: 700 }}>
+                            Antall
+                          </TableCell>
+                          <TableCell sx={{ color: mutedInk, fontWeight: 700 }}>
+                            Andel
+                          </TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {eventTypes.map((row) => (
+                          <TableRow key={row.eventType}>
+                            <TableCell sx={{ borderColor: alpha('#121212', 0.06), color: ink }}>
+                              {formatLabel(row.eventType)}
+                            </TableCell>
+                            <TableCell sx={{ borderColor: alpha('#121212', 0.06), color: ink, fontWeight: 700 }}>
+                              {formatNumber(row.count)}
+                            </TableCell>
+                            <TableCell sx={{ borderColor: alpha('#121212', 0.06), color: mutedInk }}>
+                              {formatPercent(row.share)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Box>
+              ) : (
+                <PlaceholderTable
+                  title="Topp hendelser"
+                  description="Det finnes ingen eventtyper i valgt periode enn&aring;."
+                />
+              )}
+            </Grid>
+
+            <Grid size={{ xs: 12, lg: 6 }}>
+              {topPages.length > 0 ? (
+                <Box
+                  sx={{
+                    borderRadius: '24px',
+                    border: surfaceBorder,
+                    background: 'rgba(255,255,255,0.82)',
+                    boxShadow: surfaceShadow,
+                    p: 3,
+                  }}
+                >
+                  <Typography variant="h6" sx={{ fontWeight: 800, color: ink, mb: 2 }}>
+                    Mest viste sider
+                  </Typography>
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell sx={{ color: mutedInk, fontWeight: 700 }}>
+                            Side
+                          </TableCell>
+                          <TableCell sx={{ color: mutedInk, fontWeight: 700 }}>
+                            Sidevisninger
+                          </TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {topPages.map((row) => (
+                          <TableRow key={row.page}>
+                            <TableCell sx={{ borderColor: alpha('#121212', 0.06), color: ink }}>
+                              {row.page}
+                            </TableCell>
+                            <TableCell sx={{ borderColor: alpha('#121212', 0.06), color: ink, fontWeight: 700 }}>
+                              {formatNumber(row.count)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Box>
+              ) : (
+                <PlaceholderTable
+                  title="Mest viste sider"
+                  description="Det finnes ingen sidevisninger i valgt periode enn&aring;."
+                />
+              )}
+            </Grid>
+          </Grid>
+        </>
+      ) : null}
     </Box>
   );
 }

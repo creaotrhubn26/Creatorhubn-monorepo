@@ -42,11 +42,72 @@
         window.dataLayer.push(arguments);
       };
 
+      var ROLE_ROOM_ANALYTICS_HOSTS = ['theroleroom.com', 'www.theroleroom.com'];
+      var CREATORHUB_GA_MEASUREMENT_ID = 'G-6E5MJT8REW';
+      var ROLE_ROOM_GA_MEASUREMENT_ID = 'G-9T7K5TJVFX';
+      var analyticsConfig = resolveAnalyticsConfig();
+      var analyticsBootstrapState = {
+        scriptLoaded: false,
+        scriptRequested: false,
+        initialPageViewSent: false,
+      };
+
+      function resolveAnalyticsConfig() {
+        var hostname = (window.location.hostname || '').trim().toLowerCase();
+        var isRoleRoomHost = ROLE_ROOM_ANALYTICS_HOSTS.indexOf(hostname) >= 0;
+        return {
+          site: isRoleRoomHost ? 'role-room' : 'creatorhub',
+          measurementId: isRoleRoomHost ? ROLE_ROOM_GA_MEASUREMENT_ID : CREATORHUB_GA_MEASUREMENT_ID,
+        };
+      }
+
+      function readStoredConsent() {
+        try {
+          var rawConsent = window.localStorage.getItem('gdpr-consent');
+          if (!rawConsent) {
+            return null;
+          }
+
+          var parsedConsent = JSON.parse(rawConsent);
+          return parsedConsent && typeof parsedConsent === 'object' ? parsedConsent : null;
+        } catch (_error) {
+          return null;
+        }
+      }
+
+      function buildConsentPayload(consentSettings) {
+        var analyticsGranted = !!(consentSettings && consentSettings.analytics);
+        var marketingGranted = !!(consentSettings && consentSettings.marketing);
+        var preferencesGranted = !!(consentSettings && consentSettings.preferences);
+
+        return {
+          analytics_storage: analyticsGranted ? 'granted' : 'denied',
+          ad_storage: marketingGranted ? 'granted' : 'denied',
+          ad_user_data: marketingGranted ? 'granted' : 'denied',
+          ad_personalization: marketingGranted ? 'granted' : 'denied',
+          functionality_storage: preferencesGranted ? 'granted' : 'denied',
+          personalization_storage: preferencesGranted ? 'granted' : 'denied',
+          security_storage: 'granted',
+          wait_for_update: 500,
+        };
+      }
+
+      function hasAnalyticsConsent(consentSettings) {
+        return !!(consentSettings && consentSettings.analytics);
+      }
+
+      function applyAnalyticsConsent(consentSettings) {
+        window.gtag('consent', 'update', buildConsentPayload(consentSettings));
+      }
+
       function loadExternalScript(src, options) {
         var script = document.createElement('script');
         script.src = src;
         script.async = options && Object.prototype.hasOwnProperty.call(options, 'async') ? options.async : true;
         script.defer = options && Object.prototype.hasOwnProperty.call(options, 'defer') ? options.defer : false;
+        if (options && typeof options.dataAttribute === 'string' && options.dataAttribute.length > 0) {
+          script.setAttribute(options.dataAttribute, 'true');
+        }
         if (options && typeof options.onload === 'function') script.onload = options.onload;
         if (options && typeof options.onerror === 'function') script.onerror = options.onerror;
         document.head.appendChild(script);
@@ -58,17 +119,77 @@
         }
       }
 
-      (function initThirdPartyServices() {
+      function sendInitialPageView() {
+        if (analyticsBootstrapState.initialPageViewSent) {
+          return;
+        }
+
+        analyticsBootstrapState.initialPageViewSent = true;
+        window.gtag('event', 'page_view', {
+          page_path: window.location.pathname,
+          page_title: document.title,
+          page_location: window.location.href,
+        });
+      }
+
+      function ensureGoogleAnalyticsLoaded(consentSettings) {
         var isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
         var isOnline = navigator.onLine !== false;
 
-        if (!isLocalhost && isOnline) {
-          loadExternalScript('https://www.googletagmanager.com/gtag/js?id=G-6E5MJT8REW', {
-            onload: function () {
-              window.gtag('js', new Date());
-              window.gtag('config', 'G-6E5MJT8REW');
-            },
-          });
+        if (isLocalhost || !isOnline || !hasAnalyticsConsent(consentSettings)) {
+          return false;
+        }
+
+        if (analyticsBootstrapState.scriptLoaded) {
+          applyAnalyticsConsent(consentSettings);
+          return true;
+        }
+
+        if (analyticsBootstrapState.scriptRequested) {
+          return true;
+        }
+
+        analyticsBootstrapState.scriptRequested = true;
+        loadExternalScript('https://www.googletagmanager.com/gtag/js?id=' + analyticsConfig.measurementId, {
+          dataAttribute: 'data-creatorhub-ga-bootstrap',
+          onload: function () {
+            analyticsBootstrapState.scriptLoaded = true;
+            window.gtag('js', new Date());
+            window.gtag('config', analyticsConfig.measurementId, {
+              send_page_view: false,
+            });
+            applyAnalyticsConsent(consentSettings);
+            sendInitialPageView();
+          },
+          onerror: function () {
+            analyticsBootstrapState.scriptRequested = false;
+          },
+        });
+
+        return true;
+      }
+
+      (function initThirdPartyServices() {
+        var isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        var isOnline = navigator.onLine !== false;
+        var storedConsent = readStoredConsent();
+
+        window.__creatorhubAnalyticsConfig = analyticsConfig;
+        window.__creatorhubApplyConsent = function (consentSettings) {
+          applyAnalyticsConsent(consentSettings);
+          if (hasAnalyticsConsent(consentSettings)) {
+            ensureGoogleAnalyticsLoaded(consentSettings);
+          }
+          return true;
+        };
+        window.__creatorhubLoadAnalytics = function (consentSettings) {
+          return ensureGoogleAnalyticsLoaded(consentSettings || readStoredConsent());
+        };
+
+        window.gtag('consent', 'default', buildConsentPayload(storedConsent));
+
+        if (!isLocalhost && isOnline && hasAnalyticsConsent(storedConsent)) {
+          ensureGoogleAnalyticsLoaded(storedConsent);
         }
 
         if (isOnline) {

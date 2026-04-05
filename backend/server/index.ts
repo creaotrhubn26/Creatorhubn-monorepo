@@ -15258,6 +15258,369 @@ async function getCreatorhubUserByEmail(
   }
 }
 
+type CreatorhubAnalyticsRangeKey = "7daysAgo" | "30daysAgo" | "90daysAgo";
+
+type CreatorhubAnalyticsRange = {
+  key: CreatorhubAnalyticsRangeKey;
+  days: number;
+  label: string;
+  startInclusive: Date;
+  endExclusive: Date;
+  previousStartInclusive: Date;
+  previousEndExclusive: Date;
+};
+
+type CreatorhubAnalyticsUserRow = {
+  id?: string | null;
+  email?: string | null;
+  display_name?: string | null;
+  role?: string | null;
+  status?: string | null;
+  last_login_at?: string | Date | null;
+  created_at?: string | Date | null;
+  updated_at?: string | Date | null;
+};
+
+type CreatorhubAnalyticsEventRow = {
+  id?: string | null;
+  project_id?: string | null;
+  creator_user_id?: string | null;
+  booking_id?: string | null;
+  event_type?: string | null;
+  event_data?: string | null;
+  source?: string | null;
+  ip_address?: string | null;
+  user_agent?: string | null;
+  created_at?: string | Date | null;
+};
+
+function startOfUtcDay(date: Date): Date {
+  return new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
+  );
+}
+
+function addUtcDays(date: Date, days: number): Date {
+  const next = new Date(date);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+}
+
+function formatUtcDayKey(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function toAnalyticsDate(value: unknown): Date | null {
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+  if (typeof value === "string" || typeof value === "number") {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  return null;
+}
+
+function parseCreatorhubAnalyticsRange(value: unknown): CreatorhubAnalyticsRange {
+  const raw = typeof value === "string" ? value.trim() : "";
+  const key: CreatorhubAnalyticsRangeKey =
+    raw === "7daysAgo" || raw === "7d"
+      ? "7daysAgo"
+      : raw === "90daysAgo" || raw === "90d"
+        ? "90daysAgo"
+        : "30daysAgo";
+
+  const days = key === "7daysAgo" ? 7 : key === "90daysAgo" ? 90 : 30;
+  const label =
+    key === "7daysAgo"
+      ? "Siste 7 dager"
+      : key === "90daysAgo"
+        ? "Siste 90 dager"
+        : "Siste 30 dager";
+
+  const endExclusive = addUtcDays(startOfUtcDay(new Date()), 1);
+  const startInclusive = addUtcDays(endExclusive, -days);
+  const previousEndExclusive = startInclusive;
+  const previousStartInclusive = addUtcDays(previousEndExclusive, -days);
+
+  return {
+    key,
+    days,
+    label,
+    startInclusive,
+    endExclusive,
+    previousStartInclusive,
+    previousEndExclusive,
+  };
+}
+
+function parseCreatorhubEventPayload(
+  value: unknown,
+): Record<string, unknown> {
+  if (typeof value !== "string" || !value.trim()) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object"
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function isWithinAnalyticsRange(
+  date: Date | null,
+  startInclusive: Date,
+  endExclusive: Date,
+): boolean {
+  return Boolean(
+    date && date.getTime() >= startInclusive.getTime() && date.getTime() < endExclusive.getTime(),
+  );
+}
+
+function calculateAnalyticsChange(current: number, previous: number): number {
+  if (previous === 0) {
+    return current === 0 ? 0 : 100;
+  }
+  return Number((((current - previous) / previous) * 100).toFixed(1));
+}
+
+async function listCreatorhubAnalyticsUsers(): Promise<CreatorhubAnalyticsUserRow[]> {
+  if (!(await hasTable("creatorhub_users"))) {
+    return [];
+  }
+
+  try {
+    const result = await pool.query(
+      `SELECT id, email, display_name, role, status, last_login_at, created_at, updated_at
+       FROM creatorhub_users`,
+    );
+    return result.rows as CreatorhubAnalyticsUserRow[];
+  } catch (error) {
+    if (isUndefinedTableError(error, "creatorhub_users")) {
+      return [];
+    }
+    throw error;
+  }
+}
+
+async function listCreatorhubAnalyticsEvents(): Promise<CreatorhubAnalyticsEventRow[]> {
+  if (!(await hasTable("creatorhub_analytics_events"))) {
+    return [];
+  }
+
+  try {
+    const result = await pool.query(
+      `SELECT id, project_id, creator_user_id, booking_id, event_type, event_data, source, ip_address, user_agent, created_at
+       FROM creatorhub_analytics_events`,
+    );
+    return result.rows as CreatorhubAnalyticsEventRow[];
+  } catch (error) {
+    if (isUndefinedTableError(error, "creatorhub_analytics_events")) {
+      return [];
+    }
+    throw error;
+  }
+}
+
+function buildCreatorhubAnalyticsAggregate(
+  users: CreatorhubAnalyticsUserRow[],
+  events: CreatorhubAnalyticsEventRow[],
+  startInclusive: Date,
+  endExclusive: Date,
+) {
+  const dayBuckets = new Map<
+    string,
+    {
+      date: string;
+      newUsers: number;
+      activeCreators: Set<string>;
+      totalEvents: number;
+      pageViews: number;
+      bookings: number;
+      invitationsSent: number;
+      acceptedInvitations: number;
+    }
+  >();
+
+  for (
+    let cursor = new Date(startInclusive);
+    cursor.getTime() < endExclusive.getTime();
+    cursor = addUtcDays(cursor, 1)
+  ) {
+    const key = formatUtcDayKey(cursor);
+    dayBuckets.set(key, {
+      date: key,
+      newUsers: 0,
+      activeCreators: new Set<string>(),
+      totalEvents: 0,
+      pageViews: 0,
+      bookings: 0,
+      invitationsSent: 0,
+      acceptedInvitations: 0,
+    });
+  }
+
+  const summary = {
+    totalUsers: users.length,
+    newUsers: 0,
+    activeCreators: 0,
+    totalEvents: 0,
+    pageViews: 0,
+    bookings: 0,
+    invitationsSent: 0,
+    acceptedInvitations: 0,
+  };
+
+  const activeCreatorIds = new Set<string>();
+  const roleCounts = new Map<string, number>();
+  const eventTypeCounts = new Map<string, number>();
+  const pageCounts = new Map<string, number>();
+  const sourceCounts = new Map<string, number>();
+
+  users.forEach((user) => {
+    const role = String(user.role || "ukjent").trim() || "ukjent";
+    roleCounts.set(role, (roleCounts.get(role) || 0) + 1);
+
+    const createdAt = toAnalyticsDate(user.created_at);
+    if (isWithinAnalyticsRange(createdAt, startInclusive, endExclusive)) {
+      summary.newUsers += 1;
+      const dayKey = formatUtcDayKey(createdAt as Date);
+      const bucket = dayBuckets.get(dayKey);
+      if (bucket) {
+        bucket.newUsers += 1;
+      }
+    }
+
+    const lastLoginAt = toAnalyticsDate(user.last_login_at);
+    const userId = String(user.id || "").trim();
+    if (
+      userId &&
+      isWithinAnalyticsRange(lastLoginAt, startInclusive, endExclusive)
+    ) {
+      activeCreatorIds.add(userId);
+      const dayKey = formatUtcDayKey(lastLoginAt as Date);
+      const bucket = dayBuckets.get(dayKey);
+      if (bucket) {
+        bucket.activeCreators.add(userId);
+      }
+    }
+  });
+
+  events.forEach((event) => {
+    const createdAt = toAnalyticsDate(event.created_at);
+    if (!isWithinAnalyticsRange(createdAt, startInclusive, endExclusive)) {
+      return;
+    }
+
+    summary.totalEvents += 1;
+    const dayKey = formatUtcDayKey(createdAt as Date);
+    const bucket = dayBuckets.get(dayKey);
+    if (bucket) {
+      bucket.totalEvents += 1;
+    }
+
+    const creatorId = String(event.creator_user_id || "").trim();
+    if (creatorId) {
+      activeCreatorIds.add(creatorId);
+      if (bucket) {
+        bucket.activeCreators.add(creatorId);
+      }
+    }
+
+    const eventType = String(event.event_type || "ukjent").trim() || "ukjent";
+    eventTypeCounts.set(eventType, (eventTypeCounts.get(eventType) || 0) + 1);
+
+    const source = String(event.source || "ukjent").trim() || "ukjent";
+    sourceCounts.set(source, (sourceCounts.get(source) || 0) + 1);
+
+    if (eventType === "page_view") {
+      summary.pageViews += 1;
+      if (bucket) {
+        bucket.pageViews += 1;
+      }
+      const payload = parseCreatorhubEventPayload(event.event_data);
+      const page =
+        (typeof payload.page === "string" && payload.page.trim()) ||
+        (typeof payload.path === "string" && payload.path.trim()) ||
+        "(ukjent side)";
+      pageCounts.set(page, (pageCounts.get(page) || 0) + 1);
+    }
+
+    if (eventType === "booking_created") {
+      summary.bookings += 1;
+      if (bucket) {
+        bucket.bookings += 1;
+      }
+    }
+
+    if (eventType === "invitation_sent") {
+      summary.invitationsSent += 1;
+      if (bucket) {
+        bucket.invitationsSent += 1;
+      }
+    }
+
+    if (eventType === "invitation_accepted") {
+      summary.acceptedInvitations += 1;
+      if (bucket) {
+        bucket.acceptedInvitations += 1;
+      }
+    }
+  });
+
+  summary.activeCreators = activeCreatorIds.size;
+
+  const timeseries = Array.from(dayBuckets.values())
+    .map((bucket) => ({
+      date: bucket.date,
+      newUsers: bucket.newUsers,
+      activeCreators: bucket.activeCreators.size,
+      totalEvents: bucket.totalEvents,
+      pageViews: bucket.pageViews,
+      bookings: bucket.bookings,
+      invitationsSent: bucket.invitationsSent,
+      acceptedInvitations: bucket.acceptedInvitations,
+    }))
+    .sort((left, right) => left.date.localeCompare(right.date));
+
+  const eventTypes = Array.from(eventTypeCounts.entries())
+    .sort((left, right) => right[1] - left[1])
+    .map(([eventType, count]) => ({
+      eventType,
+      count,
+      share: summary.totalEvents > 0 ? Number(((count / summary.totalEvents) * 100).toFixed(1)) : 0,
+    }));
+
+  const topPages = Array.from(pageCounts.entries())
+    .sort((left, right) => right[1] - left[1])
+    .map(([page, count]) => ({ page, count }));
+
+  const sources = Array.from(sourceCounts.entries())
+    .sort((left, right) => right[1] - left[1])
+    .map(([source, count]) => ({
+      source,
+      count,
+      share: summary.totalEvents > 0 ? Number(((count / summary.totalEvents) * 100).toFixed(1)) : 0,
+    }));
+
+  const roles = Array.from(roleCounts.entries())
+    .sort((left, right) => right[1] - left[1])
+    .map(([role, count]) => ({ role, count }));
+
+  return {
+    summary,
+    timeseries,
+    eventTypes,
+    topPages,
+    sources,
+    roles,
+  };
+}
+
 async function getVendorEmailById(userId: string): Promise<string | null> {
   if (!(await hasTable("vendors"))) {
     return null;
@@ -58141,6 +58504,234 @@ app.post("/api/maintenance/auto-schedule", async (req, res) => {
   } catch (error) {
     console.error("Maintenance auto-schedule error:", error);
     res.status(500).json({ error: "Failed to auto-schedule maintenance" });
+  }
+});
+
+app.get("/api/analytics/overview", async (req, res) => {
+  try {
+    if (!requireAdminSession(req, res)) {
+      return;
+    }
+
+    const range = parseCreatorhubAnalyticsRange(
+      req.query.startDate ?? req.query.range,
+    );
+
+    const [users, events] = await Promise.all([
+      listCreatorhubAnalyticsUsers(),
+      listCreatorhubAnalyticsEvents(),
+    ]);
+
+    const currentAggregate = buildCreatorhubAnalyticsAggregate(
+      users,
+      events,
+      range.startInclusive,
+      range.endExclusive,
+    );
+    const previousAggregate = buildCreatorhubAnalyticsAggregate(
+      users,
+      events,
+      range.previousStartInclusive,
+      range.previousEndExclusive,
+    );
+
+    const latestEventAt = events.reduce<Date | null>((latest, row) => {
+      const createdAt = toAnalyticsDate(row.created_at);
+      if (!createdAt) return latest;
+      if (!latest || createdAt.getTime() > latest.getTime()) {
+        return createdAt;
+      }
+      return latest;
+    }, null);
+
+    const latestUserLoginAt = users.reduce<Date | null>((latest, row) => {
+      const lastLoginAt = toAnalyticsDate(row.last_login_at);
+      if (!lastLoginAt) return latest;
+      if (!latest || lastLoginAt.getTime() > latest.getTime()) {
+        return lastLoginAt;
+      }
+      return latest;
+    }, null);
+
+    const inviteAcceptanceRate =
+      currentAggregate.summary.invitationsSent > 0
+        ? Number(
+            (
+              (currentAggregate.summary.acceptedInvitations /
+                currentAggregate.summary.invitationsSent) *
+              100
+            ).toFixed(1),
+          )
+        : 0;
+
+    const previousInviteAcceptanceRate =
+      previousAggregate.summary.invitationsSent > 0
+        ? Number(
+            (
+              (previousAggregate.summary.acceptedInvitations /
+                previousAggregate.summary.invitationsSent) *
+              100
+            ).toFixed(1),
+          )
+        : 0;
+
+    const metric = (current: number, previous: number) => ({
+      current,
+      previous,
+      change: calculateAnalyticsChange(current, previous),
+    });
+
+    const hasDataInRange =
+      currentAggregate.summary.totalEvents > 0 ||
+      currentAggregate.summary.newUsers > 0 ||
+      currentAggregate.summary.activeCreators > 0;
+
+    const daysSinceLatestEvent = latestEventAt
+      ? Math.floor(
+          (Date.now() - latestEventAt.getTime()) / (1000 * 60 * 60 * 24),
+        )
+      : null;
+
+    res.json({
+      range: {
+        key: range.key,
+        label: range.label,
+        days: range.days,
+        startDate: range.startInclusive.toISOString(),
+        endDateExclusive: range.endExclusive.toISOString(),
+      },
+      freshness: {
+        latestEventAt: latestEventAt?.toISOString() ?? null,
+        latestUserLoginAt: latestUserLoginAt?.toISOString() ?? null,
+        daysSinceLatestEvent,
+        hasDataInRange,
+        isStale: daysSinceLatestEvent !== null ? daysSinceLatestEvent > 14 : true,
+      },
+      summary: {
+        totalUsers: metric(
+          currentAggregate.summary.totalUsers,
+          previousAggregate.summary.totalUsers,
+        ),
+        newUsers: metric(
+          currentAggregate.summary.newUsers,
+          previousAggregate.summary.newUsers,
+        ),
+        activeCreators: metric(
+          currentAggregate.summary.activeCreators,
+          previousAggregate.summary.activeCreators,
+        ),
+        totalEvents: metric(
+          currentAggregate.summary.totalEvents,
+          previousAggregate.summary.totalEvents,
+        ),
+        pageViews: metric(
+          currentAggregate.summary.pageViews,
+          previousAggregate.summary.pageViews,
+        ),
+        bookings: metric(
+          currentAggregate.summary.bookings,
+          previousAggregate.summary.bookings,
+        ),
+        invitationsSent: metric(
+          currentAggregate.summary.invitationsSent,
+          previousAggregate.summary.invitationsSent,
+        ),
+        acceptedInvitations: metric(
+          currentAggregate.summary.acceptedInvitations,
+          previousAggregate.summary.acceptedInvitations,
+        ),
+        inviteAcceptanceRate: metric(
+          inviteAcceptanceRate,
+          previousInviteAcceptanceRate,
+        ),
+      },
+      eventTypes: currentAggregate.eventTypes,
+      topPages: currentAggregate.topPages,
+      sources: currentAggregate.sources,
+      roles: currentAggregate.roles,
+      generatedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error("CreatorHub analytics overview error:", error);
+    res.status(500).json({ error: "Failed to load CreatorHub analytics overview" });
+  }
+});
+
+app.get("/api/analytics/timeseries", async (req, res) => {
+  try {
+    if (!requireAdminSession(req, res)) {
+      return;
+    }
+
+    const range = parseCreatorhubAnalyticsRange(
+      req.query.startDate ?? req.query.range,
+    );
+    const metricKeyRaw =
+      typeof req.query.metric === "string" ? req.query.metric.trim() : "";
+
+    const metricKey =
+      metricKeyRaw === "newUsers" ||
+      metricKeyRaw === "activeCreators" ||
+      metricKeyRaw === "pageViews" ||
+      metricKeyRaw === "bookings" ||
+      metricKeyRaw === "invitationsSent" ||
+      metricKeyRaw === "acceptedInvitations"
+        ? metricKeyRaw
+        : "totalEvents";
+
+    const metricLabelMap = {
+      totalEvents: "Hendelser",
+      newUsers: "Nye brukere",
+      activeCreators: "Aktive brukere",
+      pageViews: "Sidevisninger",
+      bookings: "Bookinger",
+      invitationsSent: "Invitasjoner sendt",
+      acceptedInvitations: "Invitasjoner akseptert",
+    } as const;
+
+    const [users, events] = await Promise.all([
+      listCreatorhubAnalyticsUsers(),
+      listCreatorhubAnalyticsEvents(),
+    ]);
+
+    const currentAggregate = buildCreatorhubAnalyticsAggregate(
+      users,
+      events,
+      range.startInclusive,
+      range.endExclusive,
+    );
+    const previousAggregate = buildCreatorhubAnalyticsAggregate(
+      users,
+      events,
+      range.previousStartInclusive,
+      range.previousEndExclusive,
+    );
+
+    const currentTotal = currentAggregate.summary[metricKey];
+    const previousTotal = previousAggregate.summary[metricKey];
+
+    res.json({
+      metric: metricKey,
+      label: metricLabelMap[metricKey],
+      range: {
+        key: range.key,
+        label: range.label,
+        days: range.days,
+      },
+      series: currentAggregate.timeseries.map((row) => ({
+        date: row.date,
+        value: row[metricKey],
+      })),
+      totals: {
+        current: currentTotal,
+        previous: previousTotal,
+        change: calculateAnalyticsChange(currentTotal, previousTotal),
+      },
+      generatedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error("CreatorHub analytics timeseries error:", error);
+    res.status(500).json({ error: "Failed to load CreatorHub analytics timeseries" });
   }
 });
 

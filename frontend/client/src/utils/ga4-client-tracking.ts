@@ -7,14 +7,20 @@
  *   trackEvent('button_click', { button_name: 'create_project' });
  */
 
-// Get GA4 Measurement ID from environment
-const GA4_ID = import.meta.env.VITE_GA_MEASUREMENT_ID || 'G-6E5MJT8REW';
+import {
+  getAnalyticsPlatformName,
+  getGoogleAnalyticsMeasurementId,
+} from '../lib/googleAnalyticsRuntime';
 
 /**
  * Check if GA4 is available
  */
 function isGA4Available(): boolean {
   return typeof window !== 'undefined' && !!window.gtag;
+}
+
+function getGA4MeasurementId(): string {
+  return getGoogleAnalyticsMeasurementId();
 }
 
 // ============================================================================
@@ -32,7 +38,7 @@ export function trackEvent(eventName: string, params?: Record<string, unknown>) 
 
   gtag('event', eventName, {
     ...params,
-    platform: 'creatorhub_norge'
+    platform: getAnalyticsPlatformName(),
   });
   
   console.log(`📊 GA4 Client: ${eventName}`, params);
@@ -66,7 +72,7 @@ export async function getGA4ClientId(): Promise<string | null> {
       resolve(null);
       return;
     }
-    gtag('get', GA4_ID, 'client_id', (clientId: string) => {
+    gtag('get', getGA4MeasurementId(), 'client_id', (clientId: string) => {
       resolve(clientId);
     });
   });
@@ -84,7 +90,7 @@ export async function getGA4SessionId(): Promise<string | null> {
       resolve(null);
       return;
     }
-    gtag('get', GA4_ID, 'session_id', (sessionId: string) => {
+    gtag('get', getGA4MeasurementId(), 'session_id', (sessionId: string) => {
       resolve(sessionId);
     });
   });
@@ -519,7 +525,11 @@ export function initializeGA4Tracking(userId?: string, profession?: string) {
     });
   }
 
-  console.log('✅ GA4 Client Tracking Initialized', { GA4_ID, userId, profession });
+  console.log('✅ GA4 Client Tracking Initialized', {
+    measurementId: getGA4MeasurementId(),
+    userId,
+    profession,
+  });
 }
 
 /**

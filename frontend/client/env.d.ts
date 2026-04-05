@@ -3,6 +3,9 @@
 declare global {
   interface ImportMetaEnv {
     readonly VITE_GA_MEASUREMENT_ID: string;
+    readonly VITE_CREATORHUB_GA_MEASUREMENT_ID?: string;
+    readonly VITE_ROLE_ROOM_GA_MEASUREMENT_ID?: string;
+    readonly VITE_GOOGLE_TAG_MANAGER_ID?: string;
     readonly VITE_RECAPTCHA_SITE_KEY: string;
     readonly VITE_LINKEDIN_CLIENT_ID?: string;
     readonly VITE_LINKEDIN_REDIRECT_URI?: string;

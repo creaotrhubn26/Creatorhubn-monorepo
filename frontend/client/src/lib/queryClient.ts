@@ -92,8 +92,6 @@ const KNOWN_UNAVAILABLE_API_ENDPOINTS = new Set([
   '/api/admin/analytics/revenue-trends',
   '/api/admin/analytics/churn-rate',
   '/api/analytics/realtime',
-  '/api/analytics/overview',
-  '/api/analytics/timeseries',
   '/api/analytics/traffic-sources',
   '/api/analytics/top-events',
   '/api/analytics/top-pages',
