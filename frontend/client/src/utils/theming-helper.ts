@@ -13,6 +13,7 @@ import {
   Business,
   Build,
   Science,
+  School,
 } from '@mui/icons-material';
 
 export interface ThemingConfig {
@@ -143,6 +144,14 @@ export const PROFESSION_BRANDING: Record<string, ProfessionBranding> = {
     labelEn: 'Prototype Tester',
     color: '#e65100', // Deep Orange
     description: 'Beta testers and early adopters'
+  },
+  education_institution: {
+    icon: School,
+    emoji: '🎓',
+    label: 'Utdanningsinstitusjon',
+    labelEn: 'Education Institution',
+    color: '#b8860b',
+    description: 'Institutions, schools and education partnerships'
   },
   other: {
     icon: Build,

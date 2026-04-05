@@ -23,6 +23,7 @@ declare global {
 
 const VISUAL_EDITOR_ROUTE_PATTERN = /^\/(?:visual-editor-enhanced(?:\/.*)?|evendi(?:\/.*)?)$/;
 const ADMIN_ROUTE_PATTERN = /^\/(?:admin|visual-cms-admin|equipment-admin)(?:\/.*)?$/;
+const LOCALHOST_HOSTNAME_SET = new Set(['localhost', '127.0.0.1']);
 
 const shouldUseVisualEditorBootstrap = (pathname: string): boolean =>
   VISUAL_EDITOR_ROUTE_PATTERN.test(pathname);
@@ -31,8 +32,18 @@ const shouldUseAdminBootstrap = (pathname: string): boolean =>
   ADMIN_ROUTE_PATTERN.test(pathname);
 
 const shouldUseRoleRoomDedicatedHostBootstrap = (
-  locationLike: Pick<Location, 'hostname'>,
-): boolean => isRoleRoomDedicatedHost(locationLike.hostname);
+  locationLike: Pick<Location, 'hostname' | 'pathname'>,
+): boolean => {
+  const hostname = locationLike.hostname?.trim().toLowerCase() || '';
+  const pathname = locationLike.pathname || '';
+  if (
+    LOCALHOST_HOSTNAME_SET.has(hostname) &&
+    (shouldUseAdminBootstrap(pathname) || shouldUseVisualEditorBootstrap(pathname))
+  ) {
+    return false;
+  }
+  return isRoleRoomDedicatedHost(hostname);
+};
 
 const resolveRootComponent = async (): Promise<React.ComponentType> => {
   if (shouldUseRoleRoomDedicatedHostBootstrap(window.location)) {
