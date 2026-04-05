@@ -15,6 +15,7 @@ import { AuthProvider } from '@/contexts/AuthContext';
 import { parseTalentPortalIntentFromWindow } from './utils/talentPortal';
 import { isRoleRoomEducationPathname } from './utils/runtime';
 import { syncSiteSeo } from '@/lib/siteSeo';
+import { trackMarketingPageView } from '@/lib/marketingPixelsRuntime';
 
 const castingQueryClient = new QueryClient({
   defaultOptions: {
@@ -70,6 +71,8 @@ function CastingStandaloneAppContent() {
       hostname: window.location.hostname,
       pathname: window.location.pathname,
     });
+
+    trackMarketingPageView(window.location.pathname);
   }, [isEducationPath]);
 
   if (isEducationPath) {

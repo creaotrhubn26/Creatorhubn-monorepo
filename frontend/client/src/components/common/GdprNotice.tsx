@@ -20,6 +20,7 @@ import {
   Info,
   Policy,
 } from '@mui/icons-material';
+import { applyMarketingConsent } from '@/lib/marketingPixelsRuntime';
 
 interface GdprNoticeProps {
   position?: 'bottom' | 'top';
@@ -82,6 +83,8 @@ function syncAnalyticsConsent(settings: CookieConsentSettings) {
   ) {
     window.__creatorhubLoadAnalytics(settings);
   }
+
+  applyMarketingConsent(settings);
 }
 
 export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {

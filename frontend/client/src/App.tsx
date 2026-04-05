@@ -175,6 +175,7 @@ import LinkedInCallback from '@/pages/LinkedInCallback';
 import LoginPageSimple from '@/pages/LoginPageSimple';
 import SmartMeetingNotesPage from '@/pages/SmartMeetingNotesPage';
 import { syncSiteSeo } from '@/lib/siteSeo';
+import { trackMarketingPageView } from '@/lib/marketingPixelsRuntime';
 
 const LandingMobileBackupSep19 = React.lazy(() => import('@/pages/landing-mobile-backup-sep19'));
 // Wrapper components for route compatibility
@@ -515,6 +516,14 @@ function App() {
       hostname: window.location.hostname,
       pathname: location,
     });
+  }, [location]);
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    trackMarketingPageView(location);
   }, [location]);
 
   return (

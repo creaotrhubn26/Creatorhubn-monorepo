@@ -7,6 +7,7 @@ import {
   getAnalyticsPlatformName,
   getGoogleAnalyticsMeasurementId,
 } from '../lib/googleAnalyticsRuntime';
+import { trackMarketingEvent } from '../lib/marketingPixelsRuntime';
 import { apiRequest, getAuthHeader } from '../lib/queryClient';
 
 declare global {
@@ -73,6 +74,11 @@ export class GoogleAnalyticsService {
       event_category: 'SEO Specialist Management',
       event_label:
         typeof parameters?.label === 'string' ? parameters.label : eventName,
+      platform: getAnalyticsPlatformName(),
+      ...parameters,
+    });
+
+    trackMarketingEvent(eventName, {
       platform: getAnalyticsPlatformName(),
       ...parameters,
     });

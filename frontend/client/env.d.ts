@@ -6,6 +6,10 @@ declare global {
     readonly VITE_CREATORHUB_GA_MEASUREMENT_ID?: string;
     readonly VITE_ROLE_ROOM_GA_MEASUREMENT_ID?: string;
     readonly VITE_GOOGLE_TAG_MANAGER_ID?: string;
+    readonly VITE_CREATORHUB_META_PIXEL_ID?: string;
+    readonly VITE_ROLE_ROOM_META_PIXEL_ID?: string;
+    readonly VITE_CREATORHUB_TIKTOK_PIXEL_ID?: string;
+    readonly VITE_ROLE_ROOM_TIKTOK_PIXEL_ID?: string;
     readonly VITE_RECAPTCHA_SITE_KEY: string;
     readonly VITE_LINKEDIN_CLIENT_ID?: string;
     readonly VITE_LINKEDIN_REDIRECT_URI?: string;
