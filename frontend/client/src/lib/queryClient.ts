@@ -67,6 +67,55 @@ export async function getAuthHeader(): Promise<Record<string, string>> {
 // Prefer same-origin /api on CreatorHub unless an explicit backend URL is configured.
 const API_BASE_URL = import.meta.env.VITE_API_URL?.trim() || '';
 
+// These admin/analytics feeds are not deployed on the current production backend yet.
+// Guarding them client-side avoids noisy 404 spam and lets the UI render stable placeholders.
+const KNOWN_UNAVAILABLE_API_ENDPOINTS = new Set([
+  '/api/integrations/features',
+  '/api/admin/dashboard',
+  '/api/admin/crm/overview',
+  '/api/admin/billing/overview',
+  '/api/admin/analytics/platform',
+  '/api/admin/audit/recent',
+  '/api/admin/system/health',
+  '/api/admin/integrations/status',
+  '/api/admin/security/status',
+  '/api/admin/automations/status',
+  '/api/admin/platform-stats',
+  '/api/admin/profession-stats',
+  '/api/admin/academy/analytics/overview',
+  '/api/academy/admin/revenue/overview',
+  '/api/admin/email-conversion-stats',
+  '/api/admin/activity-feed',
+  '/api/admin/pending-counts',
+  '/api/admin/analytics/cancellations',
+  '/api/admin/analytics/refunds',
+  '/api/admin/analytics/revenue-trends',
+  '/api/admin/analytics/churn-rate',
+  '/api/analytics/realtime',
+  '/api/analytics/overview',
+  '/api/analytics/timeseries',
+  '/api/analytics/traffic-sources',
+  '/api/analytics/top-events',
+  '/api/analytics/top-pages',
+  '/api/ai/analytics/insights',
+  '/api/ai/analytics/predictions',
+  '/api/ai/analytics/report',
+  '/api/seo-bot/analytics',
+  '/api/seo-bot/crawl-budget',
+  '/api/seo-bot/mobile-tests',
+  '/api/seo-bot/recommendations',
+  '/api/seo-bot/visits',
+]);
+
+export function isKnownUnavailableApiEndpoint(url: string): boolean {
+  const normalizedUrl = normalizeRequestUrl(url);
+  const pathname = normalizedUrl.startsWith('http')
+    ? new URL(normalizedUrl).pathname
+    : normalizedUrl.split('?')[0];
+
+  return KNOWN_UNAVAILABLE_API_ENDPOINTS.has(pathname);
+}
+
 // Default fetcher for React Query with OAuth support
 type ApiRequestOptions = Omit<RequestInit, 'body'> & {
   body?: BodyInit | Record<string, unknown>;

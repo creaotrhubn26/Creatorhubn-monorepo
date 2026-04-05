@@ -3,7 +3,11 @@ import * as React from 'react';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
-import { apiRequest, isApiEndpointMissing } from '../../lib/queryClient';
+import {
+  apiRequest,
+  isApiEndpointMissing,
+  isKnownUnavailableApiEndpoint,
+} from '../../lib/queryClient';
 import GoogleAnalyticsDashboard from './GoogleAnalyticsDashboardEnhanced';
 import SEOBotAnalyticsDashboard from './SEOBotAnalyticsDashboard';
 import BillingAnalytics from './BillingAnalytics';
@@ -109,6 +113,33 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
   // Get auth from master integration
   const { auth } = useEnhancedMasterIntegration();
   const canAccessAdminStats = Boolean(isAdmin);
+  const platformStatsFeedEnabled = !isKnownUnavailableApiEndpoint('/api/admin/platform-stats');
+  const dashboardFeedEnabled = !isKnownUnavailableApiEndpoint('/api/admin/dashboard');
+  const professionStatsFeedEnabled = !isKnownUnavailableApiEndpoint('/api/admin/profession-stats');
+  const academyRevenueFeedEnabled = !isKnownUnavailableApiEndpoint('/api/academy/admin/revenue/overview');
+  const academyAnalyticsFeedEnabled = !isKnownUnavailableApiEndpoint('/api/admin/academy/analytics/overview');
+  const emailConversionFeedEnabled = !isKnownUnavailableApiEndpoint('/api/admin/email-conversion-stats');
+  const googleAnalyticsFeedsEnabled = ![
+    '/api/analytics/realtime',
+    '/api/analytics/overview',
+    '/api/analytics/timeseries',
+    '/api/analytics/traffic-sources',
+    '/api/analytics/top-events',
+    '/api/analytics/top-pages',
+  ].some(isKnownUnavailableApiEndpoint);
+  const seoAnalyticsFeedsEnabled = ![
+    '/api/seo-bot/analytics',
+    '/api/seo-bot/crawl-budget',
+    '/api/seo-bot/mobile-tests',
+    '/api/seo-bot/recommendations',
+    '/api/seo-bot/visits',
+  ].some(isKnownUnavailableApiEndpoint);
+  const billingAnalyticsFeedsEnabled = ![
+    '/api/admin/analytics/cancellations',
+    '/api/admin/analytics/refunds',
+    '/api/admin/analytics/revenue-trends',
+    '/api/admin/analytics/churn-rate',
+  ].some(isKnownUnavailableApiEndpoint);
 
   const handleCardClick = (metric: string) => {
     setSelectedMetric(metric);
@@ -127,20 +158,20 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
       const headers = await auth.getAuthHeader();
       return apiRequest('/api/admin/platform-stats', { headers });
     },
-    enabled: canAccessAdminStats,
-    refetchInterval: 5000, // ✅ SANNTID: Oppdater hver 5. sekund
+    enabled: canAccessAdminStats && platformStatsFeedEnabled,
+    refetchInterval: platformStatsFeedEnabled ? 5000 : false, // ✅ SANNTID: Oppdater hver 5. sekund
     staleTime: 0 // ✅ Alltid hent ferske data
 });
 
   // Fetch enhanced dashboard with enterprise data - SANNTID
   const { data: dashboardData } = useQuery({
     queryKey: ['/api/admin/dashboard'],
-    refetchInterval: 10000,
     queryFn: async () => {
       const headers = await auth.getAuthHeader();
       return apiRequest('/api/admin/dashboard', { headers });
     },
-    enabled: canAccessAdminStats,
+    enabled: canAccessAdminStats && dashboardFeedEnabled,
+    refetchInterval: dashboardFeedEnabled ? 10000 : false,
     staleTime: 0
   });
 
@@ -151,8 +182,8 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
       const headers = await auth.getAuthHeader();
       return apiRequest('/api/admin/profession-stats', { headers });
     },
-    enabled: canAccessAdminStats,
-    refetchInterval: 8000, // ✅ SANNTID: Oppdater hver 8. sekund
+    enabled: canAccessAdminStats && professionStatsFeedEnabled,
+    refetchInterval: professionStatsFeedEnabled ? 8000 : false, // ✅ SANNTID: Oppdater hver 8. sekund
     staleTime: 0
   });
 
@@ -163,8 +194,8 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
       const headers = await auth.getAuthHeader();
       return apiRequest('/api/academy/admin/revenue/overview', { headers });
     },
-    enabled: canAccessAdminStats,
-    refetchInterval: 10000, // ✅ SANNTID: Oppdater hver 10. sekund
+    enabled: canAccessAdminStats && academyRevenueFeedEnabled,
+    refetchInterval: academyRevenueFeedEnabled ? 10000 : false, // ✅ SANNTID: Oppdater hver 10. sekund
     staleTime: 0
   });
 
@@ -176,8 +207,8 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
       if (!response.ok) throw new Error('Failed to fetch academy stats');
       return response.json();
     },
-    enabled: canAccessAdminStats,
-    refetchInterval: 10000, // ✅ SANNTID: Oppdater hver 10. sekund
+    enabled: canAccessAdminStats && academyAnalyticsFeedEnabled,
+    refetchInterval: academyAnalyticsFeedEnabled ? 10000 : false, // ✅ SANNTID: Oppdater hver 10. sekund
     staleTime: 0
   });
 
@@ -188,8 +219,8 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
       const headers = await auth.getAuthHeader();
       return apiRequest('/api/admin/email-conversion-stats', { headers });
     },
-    enabled: canAccessAdminStats,
-    refetchInterval: 5000, // ✅ REAL-TIME: Update every 5 seconds
+    enabled: canAccessAdminStats && emailConversionFeedEnabled,
+    refetchInterval: emailConversionFeedEnabled ? 5000 : false, // ✅ REAL-TIME: Update every 5 seconds
     staleTime: 0
   });
 
@@ -590,25 +621,46 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
 
       {/* Google Analytics 4 Dashboard - FULL CONTROL */}
       <Box sx={{ mb: 4 }}>
-        <GoogleAnalyticsDashboard />
+        {googleAnalyticsFeedsEnabled ? (
+          <GoogleAnalyticsDashboard />
+        ) : (
+          <Alert severity="info" sx={{ borderRadius: '18px' }}>
+            Google Analytics-feedene er ikke tilgjengelige i production ennå. Oversikten skjuler
+            derfor dette panelet i stedet for å spamme 404-feil i konsollen.
+          </Alert>
+        )}
       </Box>
 
       {/* SEO Bot Detection & Analytics Dashboard */}
       <Box sx={{ mb: 4 }}>
-        <SEOBotAnalyticsDashboard />
+        {seoAnalyticsFeedsEnabled ? (
+          <SEOBotAnalyticsDashboard />
+        ) : (
+          <Alert severity="info" sx={{ borderRadius: '18px' }}>
+            SEO Bot-analysen er ikke live ennå. Panelet vises igjen automatisk når backend-feedene
+            finnes.
+          </Alert>
+        )}
       </Box>
 
       {/* Billing & Subscription Analytics */}
       <Box sx={{ mb: 4 }}>
-        <MuiCard>
-          <CardContent>
-            <Typography variant="h5" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 2, color: theming.colors.primary, mb: 3 }}>
-              <MonetizationOn sx={{ color: '#4caf50' }} />
-              Abonnement & Refundering Analytics
-            </Typography>
-            <BillingAnalytics compact={false} />
-          </CardContent>
-        </MuiCard>
+        {billingAnalyticsFeedsEnabled ? (
+          <MuiCard>
+            <CardContent>
+              <Typography variant="h5" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 2, color: theming.colors.primary, mb: 3 }}>
+                <MonetizationOn sx={{ color: '#4caf50' }} />
+                Abonnement & Refundering Analytics
+              </Typography>
+              <BillingAnalytics compact={false} />
+            </CardContent>
+          </MuiCard>
+        ) : (
+          <Alert severity="info" sx={{ borderRadius: '18px' }}>
+            Abonnements- og refundanalyse er midlertidig skjult fordi de tilhørende admin-feedene
+            ikke er implementert live.
+          </Alert>
+        )}
       </Box>
 
       {/* Academy Analytics Dashboard */}

@@ -79,7 +79,11 @@ import TimelineDot from '@mui/lab/TimelineDot';
 import TimelineOppositeContent from '@mui/lab/TimelineOppositeContent';
 import PaymentMethodLogo from '../common/PaymentMethodLogo';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiRequest, isApiEndpointMissing } from '@/lib/queryClient';
+import {
+  apiRequest,
+  isApiEndpointMissing,
+  isKnownUnavailableApiEndpoint,
+} from '@/lib/queryClient';
 import { useTheming } from '@/utils/theming-helper';
 import { useLocation } from 'wouter';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
@@ -151,6 +155,8 @@ export default function EnhancedActivityFeed({
   const [endDate, setEndDate] = useState<string>('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
+  const activityFeedEnabled = !isKnownUnavailableApiEndpoint('/api/admin/activity-feed');
+  const pendingCountsEnabled = !isKnownUnavailableApiEndpoint('/api/admin/pending-counts');
 
   // Debounce search so we don't refetch on each keystroke
   const [debouncedSearch, setDebouncedSearch] = useState(searchQuery);
@@ -184,8 +190,9 @@ export default function EnhancedActivityFeed({
         throw queryError;
       }
     },
+    enabled: activityFeedEnabled,
     staleTime: autoRefresh ? refreshInterval : 60000,
-    refetchInterval: autoRefresh ? refreshInterval : false,
+    refetchInterval: activityFeedEnabled && autoRefresh ? refreshInterval : false,
     placeholderData: (prev) => prev || emptyActivityFeed,
     retry: false,
   });
@@ -209,8 +216,9 @@ export default function EnhancedActivityFeed({
         throw queryError;
       }
     },
+    enabled: pendingCountsEnabled,
     staleTime: refreshInterval,
-    refetchInterval: autoRefresh ? refreshInterval : false,
+    refetchInterval: pendingCountsEnabled && autoRefresh ? refreshInterval : false,
     retry: false,
     placeholderData: emptyPendingCounts,
   });
@@ -459,6 +467,13 @@ useEffect(() => {
   return (
     <Card>
       <CardContent>
+        {!activityFeedEnabled && !pendingCountsEnabled ? (
+          <Alert severity="info" sx={{ mb: 3, borderRadius: '18px' }}>
+            Aktivitetsstrømmen er ikke live i production ennå. Panelet er derfor satt i passiv
+            modus for å unngå 404-støy i konsollen.
+          </Alert>
+        ) : null}
+
         {/* Header with Controls */}
         <Box sx={{ mb: 3 }}>
           <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>

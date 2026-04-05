@@ -78,7 +78,11 @@ import {
   Psychology,
 } from '@mui/icons-material';
 import AdminStats from './AdminStats';
-import { apiRequest, isApiEndpointMissing } from '@/lib/queryClient';
+import {
+  apiRequest,
+  isApiEndpointMissing,
+  isKnownUnavailableApiEndpoint,
+} from '@/lib/queryClient';
 import PriceManagementDashboard from './PriceManagementDashboard';
 import VendorTypeManager from '../vendor/VendorTypeManager';
 import FullscreenChatWidget from '../chat/FullscreenChatWidget';
@@ -387,9 +391,22 @@ export default function AdminDashboard({
     }
   };
 
+  const overviewFeedAvailability = {
+    dashboard: !isKnownUnavailableApiEndpoint('/api/admin/dashboard'),
+    crm: !isKnownUnavailableApiEndpoint('/api/admin/crm/overview'),
+    billing: !isKnownUnavailableApiEndpoint('/api/admin/billing/overview'),
+    analytics: !isKnownUnavailableApiEndpoint('/api/admin/analytics/platform'),
+    audit: !isKnownUnavailableApiEndpoint('/api/admin/audit/recent'),
+    health: !isKnownUnavailableApiEndpoint('/api/admin/system/health'),
+    integrations: !isKnownUnavailableApiEndpoint('/api/admin/integrations/status'),
+    security: !isKnownUnavailableApiEndpoint('/api/admin/security/status'),
+    automations: !isKnownUnavailableApiEndpoint('/api/admin/automations/status'),
+  };
+
   const { data: dashboardData } = useQuery({
     queryKey: ['/api/admin/dashboard'],
     queryFn: () => fetchOptionalAdminData('/api/admin/dashboard', null),
+    enabled: overviewFeedAvailability.dashboard && Boolean(currentUser?.isAdmin),
     staleTime: 30000,
     retry: false,
   });
@@ -397,6 +414,7 @@ export default function AdminDashboard({
   const { data: crmData } = useQuery({
     queryKey: ['/api/admin/crm/overview'],
     queryFn: () => fetchOptionalAdminData('/api/admin/crm/overview', null),
+    enabled: overviewFeedAvailability.crm && Boolean(currentUser?.isAdmin),
     staleTime: 60000,
     retry: false,
   });
@@ -404,6 +422,7 @@ export default function AdminDashboard({
   const { data: billingData } = useQuery({
     queryKey: ['/api/admin/billing/overview'],
     queryFn: () => fetchOptionalAdminData('/api/admin/billing/overview', null),
+    enabled: overviewFeedAvailability.billing && Boolean(currentUser?.isAdmin),
     staleTime: 60000,
     retry: false,
   });
@@ -411,6 +430,7 @@ export default function AdminDashboard({
   const { data: analyticsData } = useQuery({
     queryKey: ['/api/admin/analytics/platform'],
     queryFn: () => fetchOptionalAdminData('/api/admin/analytics/platform', null),
+    enabled: overviewFeedAvailability.analytics && Boolean(currentUser?.isAdmin),
     staleTime: 60000,
     retry: false,
   });
@@ -418,6 +438,7 @@ export default function AdminDashboard({
   const { data: auditData } = useQuery({
     queryKey: ['/api/admin/audit/recent'],
     queryFn: () => fetchOptionalAdminData('/api/admin/audit/recent', []),
+    enabled: overviewFeedAvailability.audit && Boolean(currentUser?.isAdmin),
     staleTime: 30000,
     retry: false,
   });
@@ -425,6 +446,7 @@ export default function AdminDashboard({
   const { data: healthData } = useQuery({
     queryKey: ['/api/admin/system/health'],
     queryFn: () => fetchOptionalAdminData('/api/admin/system/health', null),
+    enabled: overviewFeedAvailability.health && Boolean(currentUser?.isAdmin),
     staleTime: 10000,
     retry: false,
   });
@@ -432,6 +454,7 @@ export default function AdminDashboard({
   const { data: integrationData } = useQuery({
     queryKey: ['/api/admin/integrations/status'],
     queryFn: () => fetchOptionalAdminData('/api/admin/integrations/status', null),
+    enabled: overviewFeedAvailability.integrations && Boolean(currentUser?.isAdmin),
     staleTime: 30000,
     retry: false,
   });
@@ -439,6 +462,7 @@ export default function AdminDashboard({
   const { data: securityData } = useQuery({
     queryKey: ['/api/admin/security/status'],
     queryFn: () => fetchOptionalAdminData('/api/admin/security/status', null),
+    enabled: overviewFeedAvailability.security && Boolean(currentUser?.isAdmin),
     staleTime: 60000,
     retry: false,
   });
@@ -446,6 +470,7 @@ export default function AdminDashboard({
   const { data: automationData } = useQuery({
     queryKey: ['/api/admin/automations/status'],
     queryFn: () => fetchOptionalAdminData('/api/admin/automations/status', null),
+    enabled: overviewFeedAvailability.automations && Boolean(currentUser?.isAdmin),
     staleTime: 30000,
     retry: false,
   });
@@ -977,7 +1002,7 @@ export default function AdminDashboard({
     (total, group) => total + group.items.length,
     0,
   );
-  const availableAdminDataFeeds = [
+  const liveOverviewFeedCount = [
     dashboardData,
     crmData,
     billingData,
@@ -988,6 +1013,7 @@ export default function AdminDashboard({
     securityData,
     automationData,
   ].filter(Boolean).length;
+  const configuredOverviewFeedCount = Object.values(overviewFeedAvailability).filter(Boolean).length;
 
   const toggleAdminShellGroup = (groupLabel: string) => {
     setAdminGroupExpansion((previous) => ({
@@ -1032,7 +1058,9 @@ export default function AdminDashboard({
     },
     {
       label: 'Live datakilder',
-      value: `${availableAdminDataFeeds}/9`,
+      value: configuredOverviewFeedCount > 0
+        ? `${liveOverviewFeedCount}/${configuredOverviewFeedCount}`
+        : 'Avventer backend',
       tone: '#0f766e',
       background: '#ecfdf5',
     },
@@ -2129,7 +2157,11 @@ export default function AdminDashboard({
                     }}
                   />
                   <Chip
-                    label={`${availableAdminDataFeeds}/9 datakilder live`}
+                    label={
+                      configuredOverviewFeedCount > 0
+                        ? `${liveOverviewFeedCount}/${configuredOverviewFeedCount} datakilder live`
+                        : 'Optionale feeds avventer backend'
+                    }
                     size="small"
                     sx={{
                       bgcolor: '#ecfdf5',

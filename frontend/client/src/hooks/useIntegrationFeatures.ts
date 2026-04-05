@@ -5,6 +5,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
+import { isKnownUnavailableApiEndpoint } from '@/lib/queryClient';
 
 export interface FeatureAvailability {
   available: boolean;
@@ -31,6 +32,7 @@ export interface UseIntegrationFeaturesReturn {
 export const useIntegrationFeatures = (): UseIntegrationFeaturesReturn => {
   const queryClient = useQueryClient();
   const [features, setFeatures] = useState<IntegrationFeatures>({});
+  const featuresEndpointAvailable = !isKnownUnavailableApiEndpoint('/api/integrations/features');
 
   // Fetch feature availability from backend
   const { data, isLoading, error, refetch } = useQuery({
@@ -42,7 +44,8 @@ export const useIntegrationFeatures = (): UseIntegrationFeaturesReturn => {
     }
       return response.json();
   },
-    refetchInterval: 30000, // Auto-refresh every 30 seconds
+    enabled: featuresEndpointAvailable,
+    refetchInterval: featuresEndpointAvailable ? 30000 : false,
     staleTime: 10000, // Consider data stale after 10 seconds
 });
 
@@ -87,7 +90,9 @@ export const useIntegrationFeatures = (): UseIntegrationFeaturesReturn => {
 };
 
   const refreshFeatures = () => {
-    refetch();
+    if (featuresEndpointAvailable) {
+      refetch();
+    }
 };
 
   const totalActiveIntegrations = Object.values(features).filter((f) => f.available).length;
@@ -95,7 +100,7 @@ export const useIntegrationFeatures = (): UseIntegrationFeaturesReturn => {
   return {
     features,
     isLoading,
-    error: error?.message || null,
+    error: featuresEndpointAvailable ? (error?.message || null) : null,
     hasFeature,
     getFeatureList,
     canUseEndpoint,
