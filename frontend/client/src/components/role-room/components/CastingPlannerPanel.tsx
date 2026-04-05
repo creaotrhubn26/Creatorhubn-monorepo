@@ -957,6 +957,7 @@ export function CastingPlannerPanel({
   const [adminUser, setAdminUser] = useState<RoleRoomAdminUser | null>(
     () => normalizeAdminUser(authSessionService.getSessionSync().adminUser)
   );
+  const canSwitchRoleRoomRole = adminUser?.role === 'owner' || adminUser?.role === 'admin';
   const [authLoaded, setAuthLoaded] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<CastingProject | null>(null);
   const [projectCreationModalOpen, setProjectCreationModalOpen] = useState(false);
@@ -1726,7 +1727,6 @@ export function CastingPlannerPanel({
     () => mapAccountRoleToProjectRole(adminUser?.role, adminUser?.loginAs, adminUser?.requestedRole),
     [adminUser?.role, adminUser?.loginAs, adminUser?.requestedRole],
   );
-  const canSwitchRoleRoomRole = adminUser?.role === 'owner' || adminUser?.role === 'admin';
   const ensureScopedSessionProjectRole = useCallback(async (projectId: string) => {
     if (!adminUser) {
       return;
