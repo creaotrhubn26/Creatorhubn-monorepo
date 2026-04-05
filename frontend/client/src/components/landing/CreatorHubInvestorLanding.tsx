@@ -615,7 +615,7 @@ export default function CreatorHubInvestorLanding({
         ? 'Hei CreatorHub,\n\nVi ønsker en demo og et tilbud for Enterprise.\n\nSelskap:\nTeamstørrelse:\nBehov / integrasjoner:\n'
         : 'Hi CreatorHub,\n\nWe would like a demo and pricing for Enterprise.\n\nCompany:\nTeam size:\nNeeds / integrations:\n';
     openExternalUrl(
-      `mailto:kontakt@creatorhubn.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`,
+      `mailto:hello@creatorhubn.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`,
     );
   };
 

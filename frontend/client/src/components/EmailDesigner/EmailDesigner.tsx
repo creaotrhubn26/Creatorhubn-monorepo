@@ -308,7 +308,7 @@ function getDefaultContent(type: EmailComponentType, activeProjectName?: string)
       return { src: BRAND_LOGO_SRC, alt: 'CreatorHub-logo' };
     case 'footer':
       return {
-        text: 'CreatorHub | kontakt@creatorhubn.com | creatorhubn.com',
+        text: 'CreatorHub | hello@creatorhubn.com | creatorhubn.com',
       };
     default:
       return {};
@@ -1079,7 +1079,7 @@ function renderEmailComponent(component: EmailComponent, template: EmailTemplate
             whiteSpace: 'pre-line',
           }}
         >
-          {component.content.text || 'CreatorHub | kontakt@creatorhubn.com'}
+          {component.content.text || 'CreatorHub | hello@creatorhubn.com'}
         </Typography>
       );
 
@@ -1239,7 +1239,7 @@ function buildSectionPresets(activeProjectName?: string): SectionPreset[] {
           id: createComponentId('section-footer'),
           type: 'footer',
           content: {
-            text: 'CreatorHub | kontakt@creatorhubn.com | creatorhubn.com\nHvis dette er markedsføring, legg inn avmeldingslenke her.',
+            text: 'CreatorHub | hello@creatorhubn.com | creatorhubn.com\nHvis dette er markedsføring, legg inn avmeldingslenke her.',
           },
           styles: getDefaultStyles('footer'),
         },
@@ -1654,8 +1654,8 @@ export const EmailDesigner: React.FC<EmailDesignerProps> = ({
               type: 'footer',
               content: {
                 text: activeProjectName
-                  ? `${activeProjectName} | CreatorHub | kontakt@creatorhubn.com`
-                  : 'CreatorHub | kontakt@creatorhubn.com | creatorhubn.com',
+                  ? `${activeProjectName} | CreatorHub | hello@creatorhubn.com`
+                  : 'CreatorHub | hello@creatorhubn.com | creatorhubn.com',
               },
               styles: getDefaultStyles('footer'),
             },
@@ -2042,7 +2042,7 @@ export const EmailDesigner: React.FC<EmailDesignerProps> = ({
         {
           id: createComponentId('footer'),
           type: 'footer',
-          content: { text: 'CreatorHub Testing Team | kontakt@creatorhubn.com' },
+          content: { text: 'CreatorHub Testing Team | hello@creatorhubn.com' },
           styles: getDefaultStyles('footer'),
         },
       ],

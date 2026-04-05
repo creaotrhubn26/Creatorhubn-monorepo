@@ -16277,7 +16277,7 @@ const CREATORHUB_PLATFORM_BRANDING_DEFAULT_IDENTITY: CreatorHubPlatformBrandingI
     appName: "CreatorHub Norge",
     tagline: "Business OS for creators",
     domain: "creatorhubn.com",
-    supportEmail: "kontakt@creatorhubn.com",
+    supportEmail: "hello@creatorhubn.com",
     docsUrl: "https://creatorhubn.com",
     emailLogoUrl: "https://creatorhubn.com/creatorhub-logo-amber.svg",
   };
@@ -24709,9 +24709,9 @@ app.post("/api/platform/billing/checkout-session", async (req, res) => {
     if (plan.contactSalesOnly) {
       return res.status(400).json({
         error:
-          "Enterprise settes opp sammen med CreatorHub. Kontakt kontakt@creatorhubn.com for demo og tilbud.",
+          "Enterprise settes opp sammen med CreatorHub. Kontakt hello@creatorhubn.com for demo og tilbud.",
         contactSales: true,
-        email: "kontakt@creatorhubn.com",
+        email: "hello@creatorhubn.com",
       });
     }
 

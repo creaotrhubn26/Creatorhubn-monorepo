@@ -311,7 +311,7 @@ const defaultCreatorHubEmailSettings: CreatorHubEmailSettings = {
     appName: 'CreatorHub Norge',
     tagline: 'Business OS for creators',
     domain: 'creatorhubn.com',
-    supportEmail: 'kontakt@creatorhubn.com',
+    supportEmail: 'hello@creatorhubn.com',
     docsUrl: 'https://creatorhubn.com',
     emailLogoUrl: '/creatorhub-logo-amber.svg',
   },
@@ -319,7 +319,7 @@ const defaultCreatorHubEmailSettings: CreatorHubEmailSettings = {
     fromEmail: 'billing@creatorhubn.com',
     welcomeFromEmail: 'hello@creatorhubn.com',
     systemFromEmail: 'noreply@creatorhubn.com',
-    replyToEmail: 'kontakt@creatorhubn.com',
+    replyToEmail: 'hello@creatorhubn.com',
     footerText: 'CreatorHub Norge • creatorhubn.com',
     theme: {
       canvasBackground: '#06070b',

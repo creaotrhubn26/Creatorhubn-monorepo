@@ -30,7 +30,7 @@ const CREATORHUB_SITE: SiteDefinition = {
   themeColor: '#17120f',
   defaultImageUrl: 'https://creatorhubn.com/landing_backdrop_with_logo.png',
   logoUrl: 'https://creatorhubn.com/creatorhub-logo-amber.svg',
-  contactEmail: 'kontakt@creatorhubn.com',
+  contactEmail: 'hello@creatorhubn.com',
 };
 
 const ROLE_ROOM_SITE: SiteDefinition = {

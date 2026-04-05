@@ -190,7 +190,7 @@ const subscriptionFlowCopy: Record<
     redirectingTitle: 'Sender deg til Stripe',
     redirectingDescription: 'Du blir sendt til sikker betaling i Stripe Checkout.',
     enterpriseTitle: 'Enterprise settes opp med CreatorHub',
-    enterpriseDescription: 'Kontakt kontakt@creatorhubn.com for demo, onboarding og tilbud.',
+    enterpriseDescription: 'Kontakt hello@creatorhubn.com for demo, onboarding og tilbud.',
     enterpriseEmailSubject: 'CreatorHub Enterprise – forespørsel om demo og tilbud',
     paymentUnavailableTitle: 'Betaling midlertidig utilgjengelig',
     paymentUnavailableDescription:
@@ -263,7 +263,7 @@ const subscriptionFlowCopy: Record<
     redirectingTitle: 'Sending you to Stripe',
     redirectingDescription: 'You are being sent to secure payment in Stripe Checkout.',
     enterpriseTitle: 'Enterprise is handled with CreatorHub',
-    enterpriseDescription: 'Contact kontakt@creatorhubn.com for a demo, onboarding, and pricing.',
+    enterpriseDescription: 'Contact hello@creatorhubn.com for a demo, onboarding, and pricing.',
     enterpriseEmailSubject: 'CreatorHub Enterprise - request demo and pricing',
     paymentUnavailableTitle: 'Payments are temporarily unavailable',
     paymentUnavailableDescription:
@@ -636,7 +636,7 @@ export default function SubscriptionSelectionFlow({
         variant: 'default',
       });
       window.location.href =
-        'mailto:kontakt@creatorhubn.com?subject=' +
+        'mailto:hello@creatorhubn.com?subject=' +
         encodeURIComponent(copy.enterpriseEmailSubject);
       return;
     }
@@ -1252,7 +1252,7 @@ export default function SubscriptionSelectionFlow({
               variant="outlined"
               onClick={() => {
                 window.location.href =
-                  'mailto:kontakt@creatorhubn.com?subject=' +
+                  'mailto:hello@creatorhubn.com?subject=' +
                   encodeURIComponent(copy.enterpriseEmailSubject);
               }}
               endIcon={<ArrowForwardIcon />}

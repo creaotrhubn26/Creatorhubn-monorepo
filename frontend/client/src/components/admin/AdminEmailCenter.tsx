@@ -385,7 +385,7 @@ export default function AdminEmailCenter() {
           </ul>
           
           <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0;">
-            <p style="margin: 0;"><strong>Tips:</strong> Invitasjonen er gyldig i 7 dager. Hvis du ikke oppretter kontoen innen den tid, kontakt oss på kontakt@creatorhubn.com.</p>
+            <p style="margin: 0;"><strong>Tips:</strong> Invitasjonen er gyldig i 7 dager. Hvis du ikke oppretter kontoen innen den tid, kontakt oss på hello@creatorhubn.com.</p>
           </div>
           
           <p>Velkommen til CreatorHub Norge - vi ser frem til din feedback!</p>

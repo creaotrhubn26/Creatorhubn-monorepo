@@ -94,7 +94,7 @@ export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
   const [hasSavedConsent, setHasSavedConsent] = useState(false);
   const [cookieSettings, setCookieSettings] =
     useState<CookieConsentSettings>(DEFAULT_COOKIE_SETTINGS);
-  const [personvernombudEmail, setPersonvernombudEmail] = useState('kontakt@creatorhubn.com');
+  const [personvernombudEmail, setPersonvernombudEmail] = useState('hello@creatorhubn.com');
   const [communityPrivacyText, setCommunityPrivacyText] = useState(
     'Når du bruker CreatorHub Community lagres meldinger, vedlegg og profildata. Filer lagres sikkert i Google Drive med kryptering. Du kan når som helst slette dine meldinger eller be om full sletting av dine data.'
   );
@@ -109,7 +109,7 @@ export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => {
         if (j?.settings) {
-          setPersonvernombudEmail(j.settings.personvernombudEmail || 'kontakt@creatorhubn.com');
+          setPersonvernombudEmail(j.settings.personvernombudEmail || 'hello@creatorhubn.com');
           setCommunityPrivacyText(
             j.settings.communityPrivacyText ||
               'Når du bruker CreatorHub Community lagres meldinger, vedlegg og profildata. Filer lagres sikkert i Google Drive med kryptering. Du kan når som helst slette dine meldinger eller be om full sletting av dine data.'

@@ -125,7 +125,7 @@ function createFooterComponent(id: string): EmailComponent {
     id,
     type: 'footer',
     content: {
-      text: 'CreatorHub | creatorhubn.com | Kontakt: kontakt@creatorhubn.com',
+      text: 'CreatorHub | creatorhubn.com | Kontakt: hello@creatorhubn.com',
     },
     styles: {
       color: '#75685a',
