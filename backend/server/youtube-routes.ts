@@ -15,6 +15,16 @@ const YOUTUBE_REQUIRED_SCOPES = [
   "https://www.googleapis.com/auth/youtube.upload",
 ] as const;
 
+class YouTubeRouteError extends Error {
+  statusCode: number;
+
+  constructor(message: string, statusCode = 500) {
+    super(message);
+    this.name = "YouTubeRouteError";
+    this.statusCode = statusCode;
+  }
+}
+
 const TEMP_UPLOAD_DIR = path.join(os.tmpdir(), "creatorhub-youtube");
 
 type PublishingVideo = {
@@ -235,6 +245,19 @@ async function resolveUploadsPlaylistId(youtube: ReturnType<typeof google.youtub
   const channelId = readStringValue(channel?.id);
 
   return { uploadsPlaylistId, channelTitle, channelId };
+}
+
+async function ensureYouTubeChannelReady(youtube: ReturnType<typeof google.youtube>) {
+  const channelState = await resolveUploadsPlaylistId(youtube);
+
+  if (!channelState.channelId) {
+    throw new YouTubeRouteError(
+      "Ingen YouTube-kanal er aktivert for den tilkoblede Google-kontoen ennå. Opprett eller aktiver en YouTube-kanal først.",
+      409,
+    );
+  }
+
+  return channelState;
 }
 
 async function getRecentPublishingVideos(youtube: ReturnType<typeof google.youtube>) {
@@ -486,7 +509,29 @@ function normalizeYoutubeError(error: unknown) {
   if (normalized.includes("youtube data api has not been used")) {
     return "YouTube Data API er ikke aktivert i Google Cloud-prosjektet.";
   }
+  if (normalized.includes("channel not found") || normalized.includes("youtube channel")) {
+    return "Ingen YouTube-kanal er aktivert for den tilkoblede Google-kontoen ennå. Opprett eller aktiver en YouTube-kanal først.";
+  }
   return rawMessage;
+}
+
+function getYoutubeErrorStatus(error: unknown) {
+  if (error instanceof YouTubeRouteError) {
+    return error.statusCode;
+  }
+
+  const status = (error as { code?: number; statusCode?: number } | undefined)?.statusCode
+    ?? (error as { code?: number; statusCode?: number } | undefined)?.code;
+
+  if (typeof status === "number" && status >= 400 && status < 600) {
+    return status;
+  }
+
+  return 500;
+}
+
+function sendYoutubeError(res: Response, error: unknown) {
+  res.status(getYoutubeErrorStatus(error)).json({ error: normalizeYoutubeError(error) });
 }
 
 export function createYouTubeRouter(pool: Pool) {
@@ -584,6 +629,7 @@ export function createYouTubeRouter(pool: Pool) {
         return;
       }
 
+      await ensureYouTubeChannelReady(youtube);
       const response = await youtube.playlists.list({
         part: ["snippet", "status", "contentDetails"],
         mine: true,
@@ -593,7 +639,7 @@ export function createYouTubeRouter(pool: Pool) {
       const playlists = (response.data.items ?? []).map(mapPublishingPlaylist);
       res.json({ playlists });
     } catch (error) {
-      res.status(500).json({ error: normalizeYoutubeError(error) });
+      sendYoutubeError(res, error);
     }
   });
 
@@ -617,6 +663,7 @@ export function createYouTubeRouter(pool: Pool) {
         return;
       }
 
+      await ensureYouTubeChannelReady(youtube);
       const response = await youtube.playlists.insert({
         part: ["snippet", "status"],
         requestBody: {
@@ -633,7 +680,7 @@ export function createYouTubeRouter(pool: Pool) {
       const playlist = mapPublishingPlaylist(response.data);
       res.json({ playlist });
     } catch (error) {
-      res.status(500).json({ error: normalizeYoutubeError(error) });
+      sendYoutubeError(res, error);
     }
   });
 
@@ -659,6 +706,7 @@ export function createYouTubeRouter(pool: Pool) {
         return;
       }
 
+      await ensureYouTubeChannelReady(youtube);
       await youtube.playlistItems.insert({
         part: ["snippet"],
         requestBody: {
@@ -674,7 +722,7 @@ export function createYouTubeRouter(pool: Pool) {
 
       res.json({ success: true });
     } catch (error) {
-      res.status(500).json({ error: normalizeYoutubeError(error) });
+      sendYoutubeError(res, error);
     }
   });
 
@@ -704,6 +752,7 @@ export function createYouTubeRouter(pool: Pool) {
         return;
       }
 
+      await ensureYouTubeChannelReady(youtube);
       const uploadResponse = await youtube.videos.insert({
         part: ["snippet", "status"],
         requestBody: {
@@ -768,7 +817,7 @@ export function createYouTubeRouter(pool: Pool) {
 
       res.json({ video });
     } catch (error) {
-      res.status(500).json({ error: normalizeYoutubeError(error) });
+      sendYoutubeError(res, error);
     } finally {
       await cleanupTempFile(filePath);
     }
@@ -790,6 +839,7 @@ export function createYouTubeRouter(pool: Pool) {
         return;
       }
 
+      await ensureYouTubeChannelReady(youtube);
       const existingResponse = await youtube.videos.list({
         part: ["snippet", "status"],
         id: [videoId],
@@ -862,7 +912,7 @@ export function createYouTubeRouter(pool: Pool) {
 
       res.json({ video });
     } catch (error) {
-      res.status(500).json({ error: normalizeYoutubeError(error) });
+      sendYoutubeError(res, error);
     }
   });
 
@@ -889,6 +939,7 @@ export function createYouTubeRouter(pool: Pool) {
         return;
       }
 
+      await ensureYouTubeChannelReady(youtube);
       await youtube.thumbnails.set({
         videoId,
         media: {
@@ -912,7 +963,7 @@ export function createYouTubeRouter(pool: Pool) {
       await upsertYoutubeVideoCache(pool, video);
       res.json({ video });
     } catch (error) {
-      res.status(500).json({ error: normalizeYoutubeError(error) });
+      sendYoutubeError(res, error);
     } finally {
       await cleanupTempFile(filePath);
     }
