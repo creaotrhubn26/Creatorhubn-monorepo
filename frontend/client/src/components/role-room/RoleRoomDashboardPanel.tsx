@@ -58,6 +58,7 @@ import {
   Refresh as RefreshIcon,
   LinkOff as LinkOffIcon,
   Link as LinkIcon,
+  YouTube as YouTubeIcon,
 } from '@mui/icons-material';
 
 import {
@@ -77,12 +78,14 @@ import {
   useRoleRoomBootstrap,
 } from '../../hooks/useRoleRoom';
 import RoleRoomBrandMark from './components/shared/RoleRoomBrandMark';
+import { YouTubeIntegration } from '../youtube/YouTubeIntegration';
 
 import type {
   CastingProject,
   CastingRole,
   Candidate,
   CrewMember,
+  UserRole,
 } from '../../../../shared/role-room-types';
 
 // ── Helpers ──────────────────────────────────────────────────
@@ -104,7 +107,7 @@ function formatDate(iso: string | undefined | null): string {
 
 // ── Sub-tabs inside the panel ────────────────────────────────
 
-type SubTab = 'roles' | 'candidates' | 'crew' | 'schedule';
+type SubTab = 'roles' | 'candidates' | 'crew' | 'schedule' | 'publishing';
 
 // ── Props ────────────────────────────────────────────────────
 
@@ -205,6 +208,36 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
       { label: 'Crew', value: crewCount, icon: <GroupIcon />, color: '#ec4899' },
     ];
   }, [projects, castingRoles, candidates, crew]);
+
+  const currentUserProjectRoles = useMemo(
+    () => (userRoles ?? []).filter((entry) => entry.userId === userId),
+    [userRoles, userId],
+  );
+
+  const canUsePublishing = useMemo(() => {
+    const publishingRoles: UserRole['role'][] = [
+      'producer',
+      'content_producer',
+      'director',
+      'production_manager',
+    ];
+
+    if (currentUserProjectRoles.some((entry) => publishingRoles.includes(entry.role))) {
+      return true;
+    }
+
+    return ['admin', 'enterprise', 'photographer', 'videographer', 'music_producer'].includes(profession ?? '');
+  }, [currentUserProjectRoles, profession]);
+
+  const publishingProjectId = selectedProject?.creatorhub_project_id ?? creatorhubProjectId ?? null;
+  const publishingProjects = useMemo(() => (
+    selectedProjectId
+      ? [{
+          id: publishingProjectId ?? selectedProjectId,
+          name: selectedProject?.name ?? 'Prosjekt',
+        }]
+      : []
+  ), [publishingProjectId, selectedProject?.name, selectedProjectId]);
 
   // ── Render ───────────────────────────────────────────────
 
@@ -430,6 +463,15 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                   iconPosition="start"
                   sx={{ minHeight: 48 }}
                 />
+                {canUsePublishing && (
+                  <Tab
+                    value="publishing"
+                    label="Publisering"
+                    icon={<YouTubeIcon fontSize="small" />}
+                    iconPosition="start"
+                    sx={{ minHeight: 48 }}
+                  />
+                )}
               </Tabs>
               <Divider />
 
@@ -463,6 +505,25 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                     schedules={schedules ?? []}
                     loading={schedulesLoading}
                   />
+                )}
+                {subTab === 'publishing' && canUsePublishing && (
+                  <Box sx={{ display: 'grid', gap: 2 }}>
+                    {!publishingProjectId && (
+                      <Alert severity="info" variant="outlined">
+                        YouTube-publisering virker nå i The Role Room, men dette prosjektet er ikke koblet til et CreatorHub-prosjekt ennå.
+                        Du kan fortsatt laste opp og redigere videoer, men showcase-sync aktiveres først når prosjektet er synket.
+                      </Alert>
+                    )}
+                    <YouTubeIntegration
+                      userId={userId}
+                      projectId={publishingProjectId}
+                      projects={publishingProjects}
+                      selectedProjectId={publishingProjectId}
+                      brandVariant="role-room"
+                      compact
+                      createShowcaseOnUpload={Boolean(publishingProjectId)}
+                    />
+                  </Box>
                 )}
               </CardContent>
             </Card>

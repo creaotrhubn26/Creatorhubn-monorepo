@@ -510,7 +510,7 @@ export const ProjectShowcase: React.FC<ProjectShowcaseProps> = ({
       title: video.title,
       description: video.description || `YouTube video fra prosjekt ${projectId}`,
       showcaseType: 'youtube',
-      youtubeVideoId: video.d,
+      youtubeVideoId: video.id,
       youtubeVideoUrl: video.url,
       tags:  [],
       isPublic: video.status === 'public',
@@ -626,8 +626,11 @@ export const ProjectShowcase: React.FC<ProjectShowcaseProps> = ({
               
               <YouTubeIntegration 
                 projectId={projectId}
+                userId={user?.id || userId}
                 onVideoUploaded={handleDualVideoUpload}
                 onPlaylistCreated={handleYouTubePlaylistCreated}
+                compact
+                createShowcaseOnUpload={false}
               />
             </Box>
           </AccordionDetails>

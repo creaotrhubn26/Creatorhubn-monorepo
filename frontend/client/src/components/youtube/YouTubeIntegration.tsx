@@ -1,670 +1,1108 @@
-import React, { useState, useEffect } from 'react';
-import { apiRequest } from '@/lib/queryClient';
-import { useQuery } from '@tanstack/react-query';
+import React, { useMemo, useState } from 'react';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { Alert, alpha, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Divider, FormControl, Grid2, InputLabel, LinearProgress, MenuItem, Paper, Select, Stack, TextField, Typography, useTheme } from '@mui/material';
+import { AddPhotoAlternate, CloudUpload, OpenInNew, PlaylistPlay, Refresh, Save, VideoLibrary, YouTube as YouTubeIcon } from '@mui/icons-material';
+import { apiRequest, getAuthHeader, queryClient } from '@/lib/queryClient';
+import { normalizeRequestUrl } from '@/lib/normalizeRequestUrl';
 import { useAuth } from '@/hooks/useAuth';
-import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
-import { useTheming } from '../../utils/theming-helper';
-import {
-  Box,
-  Card,
-  CardContent,
-  Typography,
-  TextField,
-  Button,
-  Grid,
-  Chip,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Switch,
-  FormControlLabel,
-  Alert,
-  LinearProgress,
-  useTheme,
-  alpha,
-} from '@mui/material';
-import {
-  YouTube as YouTubeIcon,
-  Upload as UploadIcon,
-  Analytics as AnalyticsIcon,
-  Visibility as VisibilityIcon,
-  PlaylistPlay as PlaylistIcon,
-  Settings as SettingsIcon,
-} from '@mui/icons-material';
+import RoleRoomBrandMark from '../role-room/components/shared/RoleRoomBrandMark';
 
-interface YouTubeVideo {
+export interface YouTubeVideo {
   id: string;
   title: string;
   description: string;
-  thumbnailUrl: string;
+  thumbnailUrl: string | null;
   status: 'private' | 'unlisted' | 'public';
   viewCount: number;
   likeCount: number;
-  publishedAt: string;
-  url: string
+  publishedAt: string | null;
+  duration?: string | null;
+  url: string;
 }
 
-interface YouTubePlaylist {
+export interface YouTubePlaylist {
   id: string;
   title: string;
   description: string;
   itemCount: number;
-  status: 'private' | 'unlisted' | 'public'
+  status: 'private' | 'unlisted' | 'public';
+  url: string;
 }
 
+type ProjectOption = {
+  id: string;
+  title?: string;
+  name?: string;
+  clientName?: string;
+};
+
 interface YouTubeIntegrationProps {
-  projectId: string;
+  projectId?: string | null;
+  userId?: string | null;
+  projects?: ProjectOption[];
+  selectedProjectId?: string | null;
+  onProjectChange?: (projectId: string | null) => void;
   onVideoUploaded?: (video: YouTubeVideo) => void;
-  onPlaylistCreated?: (playlist: YouTubePlaylist) => void
+  onPlaylistCreated?: (playlist: YouTubePlaylist) => void;
+  compact?: boolean;
+  createShowcaseOnUpload?: boolean;
+  brandVariant?: 'creatorhub' | 'role-room';
+}
+
+type UploadFormState = {
+  title: string;
+  description: string;
+  tagsText: string;
+  status: 'private' | 'unlisted' | 'public';
+  categoryId: string;
+  playlistId: string;
+  file: File | null;
+};
+
+type EditFormState = {
+  title: string;
+  description: string;
+  tagsText: string;
+  status: 'private' | 'unlisted' | 'public';
+  categoryId: string;
+  playlistId: string;
+};
+
+const YOUTUBE_CATEGORIES = [
+  { value: '1', label: 'Film & Animation' },
+  { value: '2', label: 'Autos & Vehicles' },
+  { value: '10', label: 'Music' },
+  { value: '15', label: 'Pets & Animals' },
+  { value: '17', label: 'Sports' },
+  { value: '19', label: 'Travel & Events' },
+  { value: '20', label: 'Gaming' },
+  { value: '22', label: 'People & Blogs' },
+  { value: '23', label: 'Comedy' },
+  { value: '24', label: 'Entertainment' },
+  { value: '25', label: 'News & Politics' },
+  { value: '26', label: 'Howto & Style' },
+  { value: '27', label: 'Education' },
+  { value: '28', label: 'Science & Technology' },
+] as const;
+
+function buildApiUrl(path: string) {
+  const normalizedUrl = normalizeRequestUrl(path);
+  const apiBaseUrl = import.meta.env.VITE_API_URL?.trim() || '';
+  const isDevelopment = import.meta.env.DEV || window.location.hostname === 'localhost';
+
+  if (normalizedUrl.startsWith('http')) {
+    return normalizedUrl;
+  }
+
+  return isDevelopment || !apiBaseUrl ? normalizedUrl : `${apiBaseUrl}${normalizedUrl}`;
+}
+
+function defaultUploadForm(projectLabel?: string | null): UploadFormState {
+  return {
+    title: projectLabel ? `${projectLabel} | Ny publisering` : '',
+    description: '',
+    tagsText: '',
+    status: 'private',
+    categoryId: '22',
+    playlistId: '',
+    file: null,
+  };
+}
+
+function tagsToArray(tagsText: string) {
+  return tagsText
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function formatCompactNumber(value: number) {
+  return new Intl.NumberFormat('no-NO', {
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  }).format(value || 0);
+}
+
+function formatPublishedAt(value: string | null | undefined) {
+  if (!value) {
+    return 'Ikke publisert enda';
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return 'Ikke publisert enda';
+  }
+
+  return date.toLocaleDateString('no-NO', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
 }
 
 export const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({
   projectId,
+  userId: userIdProp,
+  projects,
+  selectedProjectId,
+  onProjectChange,
   onVideoUploaded,
   onPlaylistCreated,
+  compact = false,
+  createShowcaseOnUpload = true,
+  brandVariant = 'creatorhub',
 }) => {
   const theme = useTheme();
   const { user } = useAuth();
-  const { integration, communication, dataFlow, componentRegistry } = useEnhancedMasterIntegration();
-  
-  // Theming system
-  const theming = useTheming('videographer');
-  const [isConnected, setIsConnected] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
-  const [playlistDialogOpen, setPlaylistDialogOpen] = useState(false);
-  const [videos, setVideos] = useState<YouTubeVideo[]>([]);
-  const [playlists, setPlaylists] = useState<YouTubePlaylist[]>([]);
+  const resolvedUserId = userIdProp || user?.id || null;
+  const effectiveProjectId = selectedProjectId ?? projectId ?? null;
+  const projectOptions = projects ?? [];
 
-  // Upload form state
-  const [uploadForm, setUploadForm] = useState({
-    title: '',
-    description: '',
-    tags: [] as string[],
-    status: 'private' as 'private' | 'unlisted' | 'public',
-    categoryId: '2', // People & Blogs default
-    playlistId: '',
-});
+  const selectedProject = useMemo(
+    () => projectOptions.find((entry) => entry.id === effectiveProjectId) ?? null,
+    [projectOptions, effectiveProjectId],
+  );
 
-  // Playlist form state
-  const [playlistForm, setPlaylistForm] = useState({
-    title: '',
-    description: '',
-    status: 'private' as 'private' | 'unlisted' | 'public',
-});
+  const selectedProjectLabel = selectedProject?.title || selectedProject?.name || null;
+  const isRoleRoomVariant = brandVariant === 'role-room';
+  const workspaceLabel = isRoleRoomVariant ? 'The Role Room' : 'CreatorHub';
 
-  const [tagInput, setTagInput] = useState('');
-
-  // Register component with MasterIntegrationProvider
-  React.useEffect(() => {
-    componentRegistry.registerComponent('YouTubeIntegration', {
-      type: 'google-service',
-      capabilities: ['video-upload', 'playlist-management', 'analytics', 'project-integration'],
-      dataFlow: {
-        sources: ['videos','playlists','upload-status','connection-status'],
-        destinations: ['admin-dashboard','user-interface','project-showcase'],
-        processors: ['video-processing','playlist-processing','upload-processing']
+  const brandStyles = useMemo(() => {
+    if (isRoleRoomVariant) {
+      return {
+        heroBackground: `linear-gradient(135deg, ${alpha('#0f172a', 0.96)} 0%, ${alpha('#111c3a', 0.94)} 48%, ${alpha('#1e1b4b', 0.9)} 100%)`,
+        heroBorder: 'rgba(56,189,248,0.28)',
+        heroInset: 'inset 0 1px 0 rgba(186,230,253,0.08)',
+        sectionBackground: `linear-gradient(180deg, ${alpha('#0b1120', 0.92)} 0%, ${alpha('#111827', 0.9)} 100%)`,
+        sectionBorder: 'rgba(56,189,248,0.22)',
+        iconBackground: 'linear-gradient(135deg, rgba(8,15,31,0.92) 0%, rgba(30,41,59,0.92) 100%)',
+        iconColor: '#ff4d4f',
+        iconBorder: 'rgba(125,211,252,0.45)',
+        primaryText: 'rgba(241,245,249,0.98)',
+        secondaryText: 'rgba(186,230,253,0.78)',
+        tertiaryText: 'rgba(148,163,184,0.9)',
+        chipBorder: 'rgba(125,211,252,0.28)',
+        chipBackground: 'rgba(15,23,42,0.56)',
+        chipText: 'rgba(224,242,254,0.94)',
+      };
     }
-  });
 
-    // Set up data flow nodes
-    dataFlow.registerNode('videos', {
-      type: 'source',
-      data: videos,
-      metadata: { component: 'YouTubeIntegration', type: 'videos', projectId }
-  });
-
-    dataFlow.registerNode('playlists', {
-      type: 'source',
-      data: playlists,
-      metadata: { component: 'YouTubeIntegration', type: 'playlists', projectId }
-  });
-
-    dataFlow.registerNode('upload-status', {
-      type: 'source',
-      data: { uploading, uploadProgress },
-      metadata: { component: 'YouTubeIntegration', type: 'upload-status', projectId }
-  });
-
-    dataFlow.registerNode('connection-status', {
-      type: 'source',
-      data: { isConnected },
-      metadata: { component: 'YouTubeIntegration', type: 'connection-status', projectId }
-  });
-
-    // Listen for YouTube events
-    communication.subscribe('youtube: upload-request', (data) => {
-      if (data.projectId === projectId && data.file) {
-        handleVideoUpload(data.file);
-    }
-  });
-
-    communication.subscribe('youtube: playlist-create', (data) => {
-      if (data.projectId === projectId) {
-        setPlaylistForm(data.playlistData);
-        setPlaylistDialogOpen(true);
-    }
-  });
-
-    communication.subscribe('youtube: connect', () => {
-      connectToYouTube();
-  });
-
-    return () => {
-      componentRegistry.unregisterComponent('YouTubeIntegration');
-      dataFlow.unregisterNode('videos');
-      dataFlow.unregisterNode('playlists');
-      dataFlow.unregisterNode('upload-status');
-      dataFlow.unregisterNode('connection-status');
-  };
-}, [videos, playlists, uploading, uploadProgress, isConnected, projectId, componentRegistry, dataFlow, communication]);
-
-  // Check YouTube connection status
-  useEffect(() => {
-    checkYouTubeConnection();
-    if (isConnected) {
-      fetchProjectVideos();
-      fetchProjectPlaylists();
-  }
-}, [projectId, isConnected]);
-
-  const checkYouTubeConnection = async () => {
-    try {
-      const response = await fetch('/api/youtube/status', {
-        headers: {
-          'x-project-id': projectId
-        }
-      });
-      const data = await response.json();
-      setIsConnected(data.connected);
-  } catch (error) {
-      console.error('Error checking YouTube connection: ', error);
-      setIsConnected(false);
-  }
-};
-
-  const connectToYouTube = async () => {
-    try {
-      const response = await fetch('/api/youtube/connect', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-project-id': projectId
-        }
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        // Redirect to Google OAuth
-        window.location.href = data.authUrl;
-    }
-  } catch (error) {
-      console.error('Error connecting to YouTube:', error);
-  }
-};
-
-  const fetchProjectVideos = async () => {
-    try {
-      const response = await fetch(`/api/youtube/videos?projectId=${projectId}`);
-      if (response.ok) {
-        const data = await response.json();
-        setVideos(data.videos || []);
-    }
-  } catch (error) {
-      console.error('Error fetching YouTube videos:', error);
-  }
-};
-
-  const fetchProjectPlaylists = async () => {
-    try {
-      const response = await fetch(`/api/youtube/playlists?projectId=${projectId}`);
-      if (response.ok) {
-        const data = await response.json();
-        setPlaylists(data.playlists || []);
-    }
-  } catch (error) {
-      console.error('Error fetching YouTube playlists:', error);
-  }
-};
-
-  const handleVideoUpload = async (file: File) => {
-    if (!file) return;
-
-    setUploading(true);
-    setUploadProgress(0);
-
-    try {
-      // Generate project-specific metadata
-      const metadata = {
-        ...uploadForm,
-        title: uploadForm.title || `${projectId} - Video`,
-        description: uploadForm.description || `Video fra prosjekt ${projectId}`,
+    return {
+      heroBackground: `linear-gradient(180deg, ${alpha(theme.palette.error.main, 0.06)} 0%, ${alpha(theme.palette.background.paper, 0.96)} 100%)`,
+      heroBorder: alpha(theme.palette.divider, 0.8),
+      heroInset: 'none',
+      sectionBackground: theme.palette.background.paper,
+      sectionBorder: alpha(theme.palette.divider, 0.8),
+      iconBackground: alpha('#ff0000', 0.1),
+      iconColor: '#ff0000',
+      iconBorder: 'transparent',
+      primaryText: theme.palette.text.primary,
+      secondaryText: theme.palette.text.secondary,
+      tertiaryText: theme.palette.text.secondary,
+      chipBorder: alpha(theme.palette.divider, 0.8),
+      chipBackground: 'transparent',
+      chipText: theme.palette.text.primary,
     };
+  }, [isRoleRoomVariant, theme.palette.background.paper, theme.palette.divider, theme.palette.error.main, theme.palette.text.primary, theme.palette.text.secondary]);
+
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadForm, setUploadForm] = useState<UploadFormState>(() => defaultUploadForm(selectedProjectLabel));
+  const [playlistDialogOpen, setPlaylistDialogOpen] = useState(false);
+  const [playlistForm, setPlaylistForm] = useState({
+    title: selectedProjectLabel ? `${selectedProjectLabel} | YouTube playlist` : '',
+    description: '',
+    status: 'private' as 'private' | 'unlisted' | 'public',
+  });
+  const [editingVideo, setEditingVideo] = useState<YouTubeVideo | null>(null);
+  const [editForm, setEditForm] = useState<EditFormState>({
+    title: '',
+    description: '',
+    tagsText: '',
+    status: 'private',
+    categoryId: '22',
+    playlistId: '',
+  });
+
+  React.useEffect(() => {
+    setUploadForm((current) => {
+      if (current.file || current.title.trim().length > 0) {
+        return current;
+      }
+      return defaultUploadForm(selectedProjectLabel);
+    });
+
+    setPlaylistForm((current) => {
+      if (current.title.trim().length > 0) {
+        return current;
+      }
+      return {
+        ...current,
+        title: selectedProjectLabel ? `${selectedProjectLabel} | YouTube playlist` : '',
+      };
+    });
+  }, [selectedProjectLabel]);
+
+  const statusQuery = useQuery({
+    queryKey: ['/api/youtube/status', { userId: resolvedUserId }],
+    queryFn: () => apiRequest('/api/youtube/status', {
+      method: 'GET',
+      headers: resolvedUserId ? { 'x-user-id': resolvedUserId } : {},
+    }),
+    enabled: Boolean(resolvedUserId),
+  });
+
+  const statusData = statusQuery.data as {
+    connected?: boolean;
+    configured?: boolean;
+    needsReconnect?: boolean;
+    channelTitle?: string | null;
+    missingScopes?: string[];
+  } | undefined;
+  const youtubeConnected = Boolean(statusData?.connected);
+
+  const videosQuery = useQuery({
+    queryKey: ['/api/youtube/videos', { userId: resolvedUserId, projectId: effectiveProjectId }],
+    queryFn: () => apiRequest(`/api/youtube/videos${effectiveProjectId ? `?projectId=${encodeURIComponent(effectiveProjectId)}` : ''}`, {
+      method: 'GET',
+      headers: resolvedUserId ? { 'x-user-id': resolvedUserId } : {},
+    }),
+    enabled: Boolean(resolvedUserId) && youtubeConnected,
+  });
+
+  const playlistsQuery = useQuery({
+    queryKey: ['/api/youtube/playlists', { userId: resolvedUserId }],
+    queryFn: () => apiRequest('/api/youtube/playlists', {
+      method: 'GET',
+      headers: resolvedUserId ? { 'x-user-id': resolvedUserId } : {},
+    }),
+    enabled: Boolean(resolvedUserId) && youtubeConnected,
+  });
+
+  const createPlaylistMutation = useMutation({
+    mutationFn: async () => {
+      if (!resolvedUserId) {
+        throw new Error('Mangler bruker for å opprette spilleliste.');
+      }
+
+      return apiRequest('/api/youtube/playlists', {
+        method: 'POST',
+        headers: { 'x-user-id': resolvedUserId },
+        body: {
+          ...playlistForm,
+          userId: resolvedUserId,
+        },
+      });
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/youtube/playlists'] });
+      setPlaylistDialogOpen(false);
+      setPlaylistForm({
+        title: selectedProjectLabel ? `${selectedProjectLabel} | YouTube playlist` : '',
+        description: '',
+        status: 'private',
+      });
+      if (result?.playlist) {
+        onPlaylistCreated?.(result.playlist as YouTubePlaylist);
+      }
+    },
+  });
+
+  const updateVideoMutation = useMutation({
+    mutationFn: async () => {
+      if (!resolvedUserId || !editingVideo) {
+        throw new Error('Mangler bruker eller video.');
+      }
+
+      return apiRequest(`/api/youtube/videos/${editingVideo.id}`, {
+        method: 'PATCH',
+        headers: { 'x-user-id': resolvedUserId },
+        body: {
+          ...editForm,
+          tags: tagsToArray(editForm.tagsText),
+          userId: resolvedUserId,
+          projectId: effectiveProjectId,
+        },
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/youtube/videos'] });
+      setEditingVideo(null);
+    },
+  });
+
+  const uploadThumbnailMutation = useMutation({
+    mutationFn: async (file: File) => {
+      if (!resolvedUserId || !editingVideo) {
+        throw new Error('Mangler bruker eller video.');
+      }
 
       const formData = new FormData();
-      formData.append('video', file);
-      formData.append('metadata', JSON.stringify(metadata));
-      formData.append('projectId', projectId);
+      formData.append('thumbnail', file);
+      formData.append('userId', resolvedUserId);
 
-      const xhr = new XMLHttpRequest();
-      
-      xhr.upload.addEventListener('progress', (e) => {
-        if (e.lengthComputable) {
-          const progress = (e.loaded / e.total) * 100;
-          setUploadProgress(progress);
-      }
+      return apiRequest(`/api/youtube/videos/${editingVideo.id}/thumbnail`, {
+        method: 'POST',
+        headers: { 'x-user-id': resolvedUserId },
+        body: formData,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/youtube/videos'] });
+    },
+  });
+
+  const connectToGoogleWorkspace = async () => {
+    if (!resolvedUserId) {
+      return;
+    }
+
+    const result = await apiRequest('/api/role-room/google/oauth/start', {
+      method: 'POST',
+      body: {
+        mode: 'link',
+        targetConnectionUserId: resolvedUserId,
+        returnPath: window.location.pathname + window.location.search,
+        browserOrigin: window.location.origin,
+      },
     });
+
+    if (result?.authorizationUrl) {
+      window.location.href = result.authorizationUrl;
+    }
+  };
+
+  const uploadVideo = async () => {
+    if (!resolvedUserId || !uploadForm.file) {
+      setUploadError('Velg en videofil før publisering.');
+      return;
+    }
+
+    setUploadError(null);
+    setUploadProgress(0);
+
+    const authHeaders = await getAuthHeader();
+    const payload = new FormData();
+    payload.append('video', uploadForm.file);
+    payload.append('userId', resolvedUserId);
+    payload.append('createShowcase', String(createShowcaseOnUpload));
+
+    if (effectiveProjectId) {
+      payload.append('projectId', effectiveProjectId);
+    }
+
+    payload.append('metadata', JSON.stringify({
+      title: uploadForm.title,
+      description: uploadForm.description,
+      tags: tagsToArray(uploadForm.tagsText),
+      status: uploadForm.status,
+      categoryId: uploadForm.categoryId,
+      playlistId: uploadForm.playlistId || undefined,
+      projectId: effectiveProjectId || undefined,
+      createShowcase: createShowcaseOnUpload,
+    }));
+
+    await new Promise<void>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', buildApiUrl('/api/youtube/upload'));
+
+      Object.entries(authHeaders).forEach(([key, value]) => {
+        xhr.setRequestHeader(key, value);
+      });
+      xhr.setRequestHeader('x-user-id', resolvedUserId);
+
+      xhr.upload.addEventListener('progress', (event) => {
+        if (!event.lengthComputable) {
+          return;
+        }
+        setUploadProgress(Math.round((event.loaded / event.total) * 100));
+      });
 
       xhr.onload = () => {
-        if (xhr.status === 200) {
-          const result = JSON.parse(xhr.responseText);
-          const newVideo = result.video;
-          setVideos(prev => [newVideo, ...prev]);
-          onVideoUploaded?.(newVideo);
-          
-          // Broadcast video uploaded event
-          communication.broadcast('youtube: video-uploaded', {
-            type: 'video_uploaded',
-            data: { video: newVideo, projectId },
-            component: 'YouTubeIntegration'
-      });
-          
-          setUploadDialogOpen(false);
-          resetUploadForm();
-      }
-        setUploading(false);
-        setUploadProgress(0);
-    };
+        if (xhr.status >= 200 && xhr.status < 300) {
+          const response = JSON.parse(xhr.responseText || '{}');
+          const video = response.video as YouTubeVideo | undefined;
+          if (video) {
+            onVideoUploaded?.(video);
+          }
+          queryClient.invalidateQueries({ queryKey: ['/api/youtube/videos'] });
+          setUploadForm(defaultUploadForm(selectedProjectLabel));
+          setUploadProgress(0);
+          resolve();
+          return;
+        }
 
-      xhr.onerror = () => {
-        console.error('Upload failed');
-        setUploading(false);
-        setUploadProgress(0);
-    };
+        try {
+          const errorPayload = JSON.parse(xhr.responseText || '{}');
+          reject(new Error(errorPayload.error || 'Opplasting feilet.'));
+        } catch {
+          reject(new Error('Opplasting feilet.'));
+        }
+      };
 
-      xhr.open('POST', '/api/youtube/upload');
-      xhr.send(formData);
-
-  } catch (error) {
-      console.error('Error uploading video:', error);
-      setUploading(false);
+      xhr.onerror = () => reject(new Error('Nettverksfeil under opplasting.'));
+      xhr.send(payload);
+    }).catch((error) => {
       setUploadProgress(0);
-  }
-};
-
-  const createPlaylist = async () => {
-    try {
-      const response = await fetch('/api/youtube/playlists', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-project-id': projectId
-        },
-        body: JSON.stringify({
-          ...playlistForm,
-          title: playlistForm.title || `Prosjekt ${projectId}`,
-      }),
+      setUploadError(error instanceof Error ? error.message : 'Opplasting feilet.');
+      throw error;
     });
+  };
 
-      if (response.ok) {
-        const result = await response.json();
-        const newPlaylist = result.playlist;
-        setPlaylists(prev => [newPlaylist, ...prev]);
-        onPlaylistCreated?.(newPlaylist);
-        
-        // Broadcast playlist created event
-        communication.broadcast('youtube: playlist-created', {
-          type: 'playlist_created',
-          data: { playlist: newPlaylist, projectId },
-          component: 'YouTubeIntegration'
+  const openEditDialog = (video: YouTubeVideo) => {
+    setEditingVideo(video);
+    setEditForm({
+      title: video.title,
+      description: video.description,
+      tagsText: '',
+      status: video.status,
+      categoryId: '22',
+      playlistId: '',
     });
-        
-        setPlaylistDialogOpen(false);
-        resetPlaylistForm();
-    }
-  } catch (error) {
-      console.error('Error creating playlist:', error);
-  }
-};
+  };
 
-  const resetUploadForm = () => {
-    setUploadForm({
-      title: ', ',
-      description: ', ',
-      tags:  [],
-      status: 'private',
-      categoryId: '2',
-      playlistId: ', ',
-  });
-    setTagInput(', ');
-};
-
-  const resetPlaylistForm = () => {
-    setPlaylistForm({
-      title: ', ',
-      description: '',
-      status: 'private' });
-};
-
-  const handleAddTag = () => {
-    if (tagInput.trim() && !uploadForm.tags.includes(tagInput.trim())) {
-      setUploadForm({
-        ...uploadForm,
-        tags: [...uploadForm.tags, tagInput.trim()],
-    });
-      setTagInput('');
-  }
-};
-
-  const handleRemoveTag = (tagToRemove: string) => {
-    setUploadForm({
-      ...uploadForm,
-      tags: uploadForm.tags.filter(tag => tag !== tagToRemove),
-  });
-};
-
-  if (!isConnected) {
-    return (
-      <Card sx={{ mb:  3 ,  ...theming.getThemedCardSx() }}>
-        <CardContent sx={theming.getThemedCardSx()}>
-          <Box sx={{ textAlign: 'center', py:  4 }}>
-            <YouTubeIcon sx={{ fontSize:  64, color: '#FF0000', mb:  2 }} />
-            <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-              YouTube Integration
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb:  3 }}>
-              Koble til YouTube for å laste opp videoer direkte fra prosjektet
-            </Typography>
-            <Button variant="contained"
-              onClick={connectToYouTube}
-              sx={{
-                ...theming.getThemedButtonSx(),
-                bgcolor: '#FF0000',
-                '&:hover': {
-                  ...(theming.getThemedButtonSx()['&:hover'] ?? {}),
-                  bgcolor: '#CC0000',
-                },
-              }}>
-              Koble til YouTube
-            </Button>
-          </Box>
-        </CardContent>
-      </Card>
-    );
-}
+  const videos = ((videosQuery.data as { videos?: YouTubeVideo[] } | undefined)?.videos ?? []);
+  const playlists = ((playlistsQuery.data as { playlists?: YouTubePlaylist[] } | undefined)?.playlists ?? []);
 
   return (
-    <Box>
-      {/* YouTube Status Card */}
-      <Card sx={{ mb:  3, border: `2px solid ${theme.palette.success.main}` ,  ...theming.getThemedCardSx() }}>
-        <CardContent sx={theming.getThemedCardSx()}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
-            <YouTubeIcon sx={{ color: '#FF0000', fontSize: 32}} />
-            <Box sx={{ flexGrow:  1 }}>
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>YouTube Tilkoblet</Typography>
-              <Typography variant="body2" color="text.secondary">
-                Klar for video upload og administrasjon
-              </Typography>
-            </Box>
-            <Box sx={{ display: 'flex', gap:  1 }}>
-              <Button
-                variant="outlined"
-                startIcon={<UploadIcon />}
-                onClick={() => setUploadDialogOpen(true)}
-              >
-                Last opp video
-              </Button>
-              <Button
-                variant="outlined"
-                startIcon={<PlaylistIcon />}
-                onClick={() => setPlaylistDialogOpen(true)}
-              >
-                Ny spilleliste
-              </Button>
-            </Box>
-          </Box>
-        </CardContent>
-      </Card>
-
-      {/* Project Videos */}
-      {videos.length > 0 && (
-        <Card sx={{ mb:  3 ,  ...theming.getThemedCardSx() }}>
-          <CardContent sx={theming.getThemedCardSx()}>
-            <Typography variant="h6" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
-              <YouTubeIcon sx={{ color: '#FF0000' }} />
-              Prosjekt Videoer ({videos.length})
-            </Typography>
-            <Grid container spacing={2}>
-              {videos.map((video) => (
-                <Grid size={{ xs: 12 }} sm={6} md={4} key={video.id}>
-                  <Card sx={{ height: '100%' ,  ...theming.getThemedCardSx() }}>
-                    <Box
-                      sx={{
-                        height: 10,
-                        backgroundImage: `url(${video.thumbnailUl})`,
-                        backgroundSize: 'cover',
-                        backgroundPosition: 'center',
-                        position: 'relative' }}
-                    >
-                      <Chip
-                        label={video.status}
-                        size="small"
-                        sx={{
-                          position: 'absolute',
-                          top:  8,
-                          right:  8,
-                          bgcolor: video.status === 'public' ? 'success.main' : 'warning.main',
-                          color: 'white' }}
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: compact ? 2 : 3 }}>
+      <Paper
+        elevation={0}
+        sx={{
+          border: `1px solid ${brandStyles.heroBorder}`,
+          background: brandStyles.heroBackground,
+          borderRadius: 4,
+          overflow: 'hidden',
+          boxShadow: brandStyles.heroInset,
+        }}
+      >
+        <Box sx={{ p: compact ? 2.5 : 3 }}>
+          <Stack spacing={2.5}>
+            <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} justifyContent="space-between">
+              <Box sx={{ maxWidth: 720 }}>
+                <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 1 }}>
+                  <Box
+                    sx={{
+                      width: 42,
+                      height: 42,
+                      borderRadius: 2.5,
+                      display: 'grid',
+                      placeItems: 'center',
+                      bgcolor: brandStyles.iconBackground,
+                      color: brandStyles.iconColor,
+                      border: `1px solid ${brandStyles.iconBorder}`,
+                      boxShadow: isRoleRoomVariant ? '0 18px 42px rgba(8,15,31,0.28)' : 'none',
+                    }}
+                  >
+                    <YouTubeIcon />
+                  </Box>
+                  <Box>
+                    {isRoleRoomVariant && (
+                      <RoleRoomBrandMark
+                        appearance="badge"
+                        size={20}
+                        sx={{ mb: 0.9, width: 'fit-content' }}
                       />
-                    </Box>
-                    <CardContent sx={theming.getThemedCardSx()}>
-                      <Typography variant="subtitle2" gutterBottom>
-                        {video.title}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
-                        {video.viewCount} visninger • {video.likeCount} likes
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              ))}
-            </Grid>
-          </CardContent>
-        </Card>
-      )}
+                    )}
+                    <Typography variant={compact ? 'h6' : 'h5'} sx={{ fontWeight: 700, color: brandStyles.primaryText }}>
+                      Publisering
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: brandStyles.secondaryText }}>
+                      {isRoleRoomVariant
+                        ? 'Planlegg, publiser og finjuster YouTube-innhold uten å forlate The Role Room.'
+                        : 'Last opp, oppdater metadata, sett thumbnail og organiser videoer uten å forlate CreatorHub.'}
+                    </Typography>
+                  </Box>
+                </Stack>
 
-      {/* Project Playlists */}
-      {playlists.length > 0 && (
-        <Card sx={theming.getThemedCardSx()}>
-          <CardContent sx={theming.getThemedCardSx()}>
-            <Typography variant="h6" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
-              <PlaylistIcon />
-              Spillelister ({playlists.length})
-            </Typography>
-            <Grid container spacing={2}>
-              {playlists.map((playlist) => (
-                <Grid size={{ xs: 12 }} sm={6} key={playlist.id}>
-                  <Card variant="outlined" sx={theming.getThemedCardSx()}>
-                    <CardContent sx={theming.getThemedCardSx()}>
-                      <Typography variant="subtitle1" gutterBottom>
-                        {playlist.title}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        {playlist.itemCount} videoer • {playlist.status}
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              ))}
-            </Grid>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Upload Dialog */}
-      <Dialog open={uploadDialogOpen} onClose={() => setUploadDialogOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle>Last opp video til YouTube</DialogTitle>
-        <DialogContent>
-          <Grid container spacing={3} sx={{ mt:  1 }}>
-            <Grid size={{ xs: 12 }}>
-              <TextField
-                fullWidth
-                label="Videotittel"
-                value={uploadForm.title}
-                onChange={(e) => setUploadForm({ ...uploadForm, title: e.target.value })}
-              />
-            </Grid>
-            
-            <Grid size={{ xs: 12 }}>
-              <TextField
-                fullWidth
-                multiline
-                rows={3}
-                label="Beskrivelse"
-                value={uploadForm.description}
-                onChange={(e) => setUploadForm({ ...uploadForm, description: e.target.value })}
-              />
-            </Grid>
-
-            <Grid size={{ xs: 12 }} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel>Synlighet</InputLabel>
-                <Select
-                  value={uploadForm.status}
-                  onChange={(e) => setUploadForm({ ...uploadForm, status: e.target.value as any })}
-                >
-                  <MenuItem value="private">Privat</MenuItem>
-                  <MenuItem value="unlisted">Ikke oppført</MenuItem>
-                  <MenuItem value="public">Offentlig</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-
-            <Grid size={{ xs: 12 }} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel>Spilleliste</InputLabel>
-                <Select
-                  value={uploadForm.playlistId}
-                  onChange={(e) => setUploadForm({ ...uploadForm, playlistId: e.target.value })}
-                >
-                  <MenuItem value="">Ingen spilleliste</MenuItem>
-                  {playlists.map((playlist) => (
-                    <MenuItem key={playlist.id} value={playlist.id}>
-                      {playlist.title}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-
-            <Grid size={{ xs: 12 }}>
-              <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
-                <TextField
-                  size="small"
-                  label="Legg til tag"
-                  value={tagInput}
-                  onChange={(e) => setTagInput(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleAddTag()}
-                />
-                <Button onClick={handleAddTag}>Legg til</Button>
+                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                  {selectedProjectLabel && (
+                    <Chip
+                      size="small"
+                      label={`Prosjekt: ${selectedProjectLabel}`}
+                      sx={{
+                        border: `1px solid ${brandStyles.chipBorder}`,
+                        bgcolor: brandStyles.chipBackground,
+                        color: brandStyles.chipText,
+                      }}
+                    />
+                  )}
+                  {statusData?.channelTitle && (
+                    <Chip
+                      size="small"
+                      color="success"
+                      label={`Kanal: ${statusData.channelTitle}`}
+                      sx={isRoleRoomVariant ? { color: brandStyles.chipText } : undefined}
+                    />
+                  )}
+                  {statusData?.needsReconnect && (
+                    <Chip
+                      size="small"
+                      color="warning"
+                      label="Må kobles til på nytt"
+                      sx={isRoleRoomVariant ? { color: brandStyles.chipText } : undefined}
+                    />
+                  )}
+                </Stack>
               </Box>
-              <Box sx={{ display: 'flex', gap: 0,flexWrap: 'wrap' }}>
-                {uploadForm.tags.map((tag, index) => (
-                  <Chip
-                    key={index}
-                    label={tag}
-                    size="small"
-                    onDelete={() => handleRemoveTag(tag)}
-                  />
-                ))}
-              </Box>
-            </Grid>
 
-            <Grid size={{ xs: 12 }}>
-              <input
-                type="file"
-                accept="video/*"
-                onChange={(e) => e.target.files?.[0] && handleVideoUpload(e.target.files[0])}
-                style={{ display:'none' }}
-                id="video-upload"
-              />
-              <label htmlFor="video-upload">
-                <Button variant="outlined" component="span" fullWidth>
-                  Velg videofil
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25} alignItems={{ xs: 'stretch', sm: 'center' }}>
+                {projectOptions.length > 0 && (
+                  <FormControl size="small" sx={{ minWidth: 220 }}>
+                    <InputLabel id="youtube-project-label">Prosjekt</InputLabel>
+                    <Select
+                      labelId="youtube-project-label"
+                      label="Prosjekt"
+                      value={effectiveProjectId ?? ''}
+                      onChange={(event) => onProjectChange?.(event.target.value ? String(event.target.value) : null)}
+                    >
+                      <MenuItem value="">Alle publiseringer</MenuItem>
+                      {projectOptions.map((project) => (
+                        <MenuItem key={project.id} value={project.id}>
+                          {project.title || project.name || project.id}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                )}
+                <Button
+                  variant="outlined"
+                  startIcon={<Refresh />}
+                  onClick={() => {
+                    statusQuery.refetch();
+                    videosQuery.refetch();
+                    playlistsQuery.refetch();
+                  }}
+                >
+                  Oppdater
                 </Button>
-              </label>
-            </Grid>
+              </Stack>
+            </Stack>
 
-            {uploading && (
-              <Grid size={{ xs: 12 }}>
-                <Box sx={{ mb:  2 }}>
-                  <Typography variant="body2" gutterBottom>
-                    Laster opp... {Math.round(uploadProgress)}%
-                  </Typography>
-                  <LinearProgress variant="determinate" value={uploadProgress} />
-                </Box>
-              </Grid>
+            {!resolvedUserId && (
+              <Alert severity="warning">
+                Innlogging mangler. Publiseringsfanen trenger en aktiv {workspaceLabel}-bruker for å koble mot Google Workspace.
+              </Alert>
             )}
-          </Grid>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setUploadDialogOpen(false)}>Avbryt</Button>
-        </DialogActions>
-      </Dialog>
 
-      {/* Playlist Dialog */}
-      <Dialog open={playlistDialogOpen} onClose={() => setPlaylistDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Opprett ny spilleliste</DialogTitle>
+            {resolvedUserId && !statusData?.connected && (
+              <Alert
+                severity={statusData?.needsReconnect ? 'warning' : 'info'}
+                action={(
+                  <Button color="inherit" size="small" onClick={connectToGoogleWorkspace}>
+                    {statusData?.needsReconnect ? 'Koble på nytt' : 'Koble til'}
+                  </Button>
+                )}
+              >
+                {statusData?.needsReconnect
+                  ? 'Google Workspace er koblet til, men uten YouTube-rettigheter. Koble til på nytt for publisering.'
+                  : `Koble Google Workspace til ${workspaceLabel} for å få YouTube-publisering direkte i dashboardet.`}
+              </Alert>
+            )}
+
+            {statusQuery.isFetching && <LinearProgress />}
+          </Stack>
+        </Box>
+      </Paper>
+
+      {resolvedUserId && statusData?.connected && (
+        <Grid2 container spacing={compact ? 2 : 3}>
+          <Grid2 size={{ xs: 12, lg: 5 }}>
+            <Stack spacing={compact ? 2 : 3}>
+              <Paper
+                elevation={0}
+                sx={{
+                  border: `1px solid ${brandStyles.sectionBorder}`,
+                  borderRadius: 4,
+                  p: compact ? 2.5 : 3,
+                  background: brandStyles.sectionBackground,
+                }}
+              >
+                <Stack spacing={2}>
+                  <Box>
+                    <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5, color: brandStyles.primaryText }}>
+                      Ny publisering
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: brandStyles.secondaryText }}>
+                      Bygg utkastet her. Opplastingen går direkte til YouTube-kanalen din med riktig prosjektkontekst.
+                    </Typography>
+                  </Box>
+
+                  <TextField
+                    label="Tittel"
+                    value={uploadForm.title}
+                    onChange={(event) => setUploadForm((current) => ({ ...current, title: event.target.value }))}
+                    fullWidth
+                  />
+                  <TextField
+                    label="Beskrivelse"
+                    value={uploadForm.description}
+                    onChange={(event) => setUploadForm((current) => ({ ...current, description: event.target.value }))}
+                    fullWidth
+                    multiline
+                    minRows={5}
+                  />
+                  <TextField
+                    label="Tags"
+                    value={uploadForm.tagsText}
+                    onChange={(event) => setUploadForm((current) => ({ ...current, tagsText: event.target.value }))}
+                    helperText="Kommaseparerte tags"
+                    fullWidth
+                  />
+
+                  <Grid2 container spacing={1.5}>
+                    <Grid2 size={{ xs: 12, sm: 6 }}>
+                      <FormControl fullWidth>
+                        <InputLabel id="youtube-status-label">Synlighet</InputLabel>
+                        <Select
+                          labelId="youtube-status-label"
+                          label="Synlighet"
+                          value={uploadForm.status}
+                          onChange={(event) => setUploadForm((current) => ({
+                            ...current,
+                            status: event.target.value as UploadFormState['status'],
+                          }))}
+                        >
+                          <MenuItem value="private">Privat</MenuItem>
+                          <MenuItem value="unlisted">Skjult lenke</MenuItem>
+                          <MenuItem value="public">Offentlig</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Grid2>
+                    <Grid2 size={{ xs: 12, sm: 6 }}>
+                      <FormControl fullWidth>
+                        <InputLabel id="youtube-category-label">Kategori</InputLabel>
+                        <Select
+                          labelId="youtube-category-label"
+                          label="Kategori"
+                          value={uploadForm.categoryId}
+                          onChange={(event) => setUploadForm((current) => ({ ...current, categoryId: String(event.target.value) }))}
+                        >
+                          {YOUTUBE_CATEGORIES.map((category) => (
+                            <MenuItem key={category.value} value={category.value}>
+                              {category.label}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </Grid2>
+                  </Grid2>
+
+                  <FormControl fullWidth>
+                    <InputLabel id="youtube-playlist-select-label">Spilleliste</InputLabel>
+                    <Select
+                      labelId="youtube-playlist-select-label"
+                      label="Spilleliste"
+                      value={uploadForm.playlistId}
+                      onChange={(event) => setUploadForm((current) => ({ ...current, playlistId: String(event.target.value) }))}
+                    >
+                      <MenuItem value="">Ingen spilleliste</MenuItem>
+                      {playlists.map((playlist) => (
+                        <MenuItem key={playlist.id} value={playlist.id}>
+                          {playlist.title}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+                    <Button
+                      component="label"
+                      variant="outlined"
+                      startIcon={<CloudUpload />}
+                      sx={{ justifyContent: 'flex-start' }}
+                    >
+                      {uploadForm.file ? 'Bytt videofil' : 'Velg videofil'}
+                      <input
+                        hidden
+                        accept="video/*"
+                        type="file"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0] ?? null;
+                          setUploadForm((current) => ({ ...current, file }));
+                        }}
+                      />
+                    </Button>
+                    <Button
+                      variant="contained"
+                      onClick={uploadVideo}
+                      disabled={!uploadForm.file || uploadProgress > 0}
+                      startIcon={<YouTubeIcon />}
+                      sx={{
+                        bgcolor: '#ff0000',
+                        '&:hover': { bgcolor: '#d60000' },
+                      }}
+                    >
+                      Publiser til YouTube
+                    </Button>
+                  </Stack>
+
+                  {uploadForm.file && (
+                    <Typography variant="body2" sx={{ color: brandStyles.tertiaryText }}>
+                      Fil valgt: {uploadForm.file.name}
+                    </Typography>
+                  )}
+
+                  {uploadProgress > 0 && (
+                    <Box>
+                      <LinearProgress variant="determinate" value={uploadProgress} />
+                      <Typography variant="caption" color="text.secondary">
+                        {uploadProgress}% lastet opp
+                      </Typography>
+                    </Box>
+                  )}
+
+                  {uploadError && (
+                    <Alert severity="error">
+                      {uploadError}
+                    </Alert>
+                  )}
+                </Stack>
+              </Paper>
+
+              <Paper
+                elevation={0}
+                sx={{
+                  border: `1px solid ${brandStyles.sectionBorder}`,
+                  borderRadius: 4,
+                  p: compact ? 2.5 : 3,
+                  background: brandStyles.sectionBackground,
+                }}
+              >
+                <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+                  <Box>
+                    <Typography variant="h6" sx={{ fontWeight: 700, color: brandStyles.primaryText }}>
+                      Spillelister
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: brandStyles.secondaryText }}>
+                      Organiser publiseringene dine i tydelige serier og prosjektpakker.
+                    </Typography>
+                  </Box>
+                  <Button startIcon={<PlaylistPlay />} onClick={() => setPlaylistDialogOpen(true)}>
+                    Ny spilleliste
+                  </Button>
+                </Stack>
+
+                <Stack divider={<Divider flexItem />} spacing={0}>
+                  {playlists.length === 0 && (
+                    <Typography variant="body2" sx={{ color: brandStyles.secondaryText }}>
+                      Ingen spillelister ennå.
+                    </Typography>
+                  )}
+                  {playlists.map((playlist) => (
+                    <Stack key={playlist.id} direction="row" justifyContent="space-between" alignItems="center" sx={{ py: 1.5 }}>
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 600, color: brandStyles.primaryText }}>
+                          {playlist.title}
+                        </Typography>
+                        <Typography variant="body2" sx={{ color: brandStyles.secondaryText }}>
+                          {playlist.itemCount} videoer · {playlist.status}
+                        </Typography>
+                      </Box>
+                      <Button
+                        size="small"
+                        href={playlist.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        endIcon={<OpenInNew fontSize="small" />}
+                      >
+                        Åpne
+                      </Button>
+                    </Stack>
+                  ))}
+                </Stack>
+              </Paper>
+            </Stack>
+          </Grid2>
+
+          <Grid2 size={{ xs: 12, lg: 7 }}>
+            <Paper
+              elevation={0}
+              sx={{
+                border: `1px solid ${brandStyles.sectionBorder}`,
+                borderRadius: 4,
+                p: compact ? 2.5 : 3,
+                background: brandStyles.sectionBackground,
+              }}
+            >
+              <Stack spacing={2}>
+                <Box>
+                  <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5, color: brandStyles.primaryText }}>
+                    Video-bibliotek
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: brandStyles.secondaryText }}>
+                    {effectiveProjectId
+                      ? 'Viser YouTube-innhold som allerede er koblet til valgt prosjekt.'
+                      : 'Viser siste videoer fra den tilkoblede YouTube-kanalen.'}
+                  </Typography>
+                </Box>
+
+                {videosQuery.isFetching && <LinearProgress />}
+
+                <Stack divider={<Divider flexItem />} spacing={0}>
+                  {videos.length === 0 && !videosQuery.isFetching && (
+                    <Box sx={{ py: 4 }}>
+                      <Typography variant="body2" sx={{ color: brandStyles.secondaryText }}>
+                        Ingen videoer å vise ennå.
+                      </Typography>
+                    </Box>
+                  )}
+
+                  {videos.map((video) => (
+                    <Stack
+                      key={video.id}
+                      direction={{ xs: 'column', md: 'row' }}
+                      spacing={2}
+                      sx={{ py: 2, alignItems: { xs: 'flex-start', md: 'center' } }}
+                    >
+                      <Box
+                        sx={{
+                          width: { xs: '100%', md: 220 },
+                          aspectRatio: '16 / 9',
+                          borderRadius: 2.5,
+                          overflow: 'hidden',
+                          bgcolor: alpha(theme.palette.common.black, 0.06),
+                          flexShrink: 0,
+                          backgroundImage: video.thumbnailUrl ? `url(${video.thumbnailUrl})` : 'none',
+                          backgroundPosition: 'center',
+                          backgroundSize: 'cover',
+                          display: 'grid',
+                          placeItems: 'center',
+                        }}
+                      >
+                        {!video.thumbnailUrl && <VideoLibrary sx={{ fontSize: 36, color: isRoleRoomVariant ? brandStyles.secondaryText : 'text.secondary' }} />}
+                      </Box>
+
+                      <Stack spacing={1.25} sx={{ minWidth: 0, flex: 1 }}>
+                        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                          <Typography variant="subtitle1" sx={{ fontWeight: 700, color: brandStyles.primaryText }}>
+                            {video.title}
+                          </Typography>
+                          <Chip
+                            size="small"
+                            color={video.status === 'public' ? 'success' : video.status === 'unlisted' ? 'warning' : 'default'}
+                            label={video.status}
+                            sx={isRoleRoomVariant ? { color: brandStyles.chipText } : undefined}
+                          />
+                        </Stack>
+                        <Typography variant="body2" sx={{ color: brandStyles.secondaryText }}>
+                          {video.description || 'Ingen beskrivelse lagt inn ennå.'}
+                        </Typography>
+                        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                          <Chip size="small" variant="outlined" label={`${formatCompactNumber(video.viewCount)} visninger`} sx={isRoleRoomVariant ? { color: brandStyles.chipText, borderColor: brandStyles.chipBorder, bgcolor: brandStyles.chipBackground } : undefined} />
+                          <Chip size="small" variant="outlined" label={`${formatCompactNumber(video.likeCount)} likes`} sx={isRoleRoomVariant ? { color: brandStyles.chipText, borderColor: brandStyles.chipBorder, bgcolor: brandStyles.chipBackground } : undefined} />
+                          <Chip size="small" variant="outlined" label={formatPublishedAt(video.publishedAt)} sx={isRoleRoomVariant ? { color: brandStyles.chipText, borderColor: brandStyles.chipBorder, bgcolor: brandStyles.chipBackground } : undefined} />
+                        </Stack>
+                      </Stack>
+
+                      <Stack direction={{ xs: 'row', md: 'column' }} spacing={1} alignItems={{ xs: 'center', md: 'flex-end' }}>
+                        <Button size="small" variant="outlined" onClick={() => openEditDialog(video)}>
+                          Rediger
+                        </Button>
+                        <Button
+                          size="small"
+                          endIcon={<OpenInNew fontSize="small" />}
+                          href={video.url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Åpne
+                        </Button>
+                      </Stack>
+                    </Stack>
+                  ))}
+                </Stack>
+              </Stack>
+            </Paper>
+          </Grid2>
+        </Grid2>
+      )}
+
+      <Dialog
+        open={playlistDialogOpen}
+        onClose={() => setPlaylistDialogOpen(false)}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>Ny YouTube-spilleliste</DialogTitle>
         <DialogContent>
-          <Grid container spacing={2} sx={{ mt:  1 }}>
-            <Grid size={{ xs: 12 }}>
-              <TextField
-                fullWidth
-                label="Spilleliste navn"
-                value={playlistForm.title}
-                onChange={(e) => setPlaylistForm({ ...playlistForm, title: e.target.value })}
-              />
-            </Grid>
-            
-            <Grid size={{ xs: 12 }}>
-              <TextField
-                fullWidth
-                multiline
-                rows={2}
-                label="Beskrivelse"
-                value={playlistForm.description}
-                onChange={(e) => setPlaylistForm({ ...playlistForm, description: e.target.value })}
-              />
-            </Grid>
-
-            <Grid size={{ xs: 12 }}>
-              <FormControl fullWidth>
-                <InputLabel>Synlighet</InputLabel>
-                <Select
-                  value={playlistForm.status}
-                  onChange={(e) => setPlaylistForm({ ...playlistForm, status: e.target.value as any })}
-                >
-                  <MenuItem value="private">Privat</MenuItem>
-                  <MenuItem value="unlisted">Ikke oppført</MenuItem>
-                  <MenuItem value="public">Offentlig</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-          </Grid>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            <TextField
+              label="Tittel"
+              value={playlistForm.title}
+              onChange={(event) => setPlaylistForm((current) => ({ ...current, title: event.target.value }))}
+              fullWidth
+            />
+            <TextField
+              label="Beskrivelse"
+              value={playlistForm.description}
+              onChange={(event) => setPlaylistForm((current) => ({ ...current, description: event.target.value }))}
+              fullWidth
+              multiline
+              minRows={4}
+            />
+            <FormControl fullWidth>
+              <InputLabel id="youtube-playlist-status-label">Synlighet</InputLabel>
+              <Select
+                labelId="youtube-playlist-status-label"
+                label="Synlighet"
+                value={playlistForm.status}
+                onChange={(event) => setPlaylistForm((current) => ({
+                  ...current,
+                  status: event.target.value as typeof current.status,
+                }))}
+              >
+                <MenuItem value="private">Privat</MenuItem>
+                <MenuItem value="unlisted">Skjult lenke</MenuItem>
+                <MenuItem value="public">Offentlig</MenuItem>
+              </Select>
+            </FormControl>
+          </Stack>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setPlaylistDialogOpen(false)}>Avbryt</Button>
-          <Button onClick={createPlaylist}
+          <Button
             variant="contained"
-            disabled={!playlistForm.title}
-           sx={theming.getThemedButtonSx()}>
+            onClick={() => createPlaylistMutation.mutate()}
+            disabled={!playlistForm.title.trim() || createPlaylistMutation.isPending}
+          >
             Opprett
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(editingVideo)}
+        onClose={() => setEditingVideo(null)}
+        fullWidth
+        maxWidth="md"
+      >
+        <DialogTitle>Rediger video</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            <TextField
+              label="Tittel"
+              value={editForm.title}
+              onChange={(event) => setEditForm((current) => ({ ...current, title: event.target.value }))}
+              fullWidth
+            />
+            <TextField
+              label="Beskrivelse"
+              value={editForm.description}
+              onChange={(event) => setEditForm((current) => ({ ...current, description: event.target.value }))}
+              fullWidth
+              multiline
+              minRows={5}
+            />
+            <TextField
+              label="Tags"
+              value={editForm.tagsText}
+              onChange={(event) => setEditForm((current) => ({ ...current, tagsText: event.target.value }))}
+              helperText="Kommaseparerte tags"
+              fullWidth
+            />
+            <Grid2 container spacing={1.5}>
+              <Grid2 size={{ xs: 12, sm: 4 }}>
+                <FormControl fullWidth>
+                  <InputLabel id="youtube-edit-status-label">Synlighet</InputLabel>
+                  <Select
+                    labelId="youtube-edit-status-label"
+                    label="Synlighet"
+                    value={editForm.status}
+                    onChange={(event) => setEditForm((current) => ({
+                      ...current,
+                      status: event.target.value as EditFormState['status'],
+                    }))}
+                  >
+                    <MenuItem value="private">Privat</MenuItem>
+                    <MenuItem value="unlisted">Skjult lenke</MenuItem>
+                    <MenuItem value="public">Offentlig</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid2>
+              <Grid2 size={{ xs: 12, sm: 4 }}>
+                <FormControl fullWidth>
+                  <InputLabel id="youtube-edit-category-label">Kategori</InputLabel>
+                  <Select
+                    labelId="youtube-edit-category-label"
+                    label="Kategori"
+                    value={editForm.categoryId}
+                    onChange={(event) => setEditForm((current) => ({ ...current, categoryId: String(event.target.value) }))}
+                  >
+                    {YOUTUBE_CATEGORIES.map((category) => (
+                      <MenuItem key={category.value} value={category.value}>
+                        {category.label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid2>
+              <Grid2 size={{ xs: 12, sm: 4 }}>
+                <FormControl fullWidth>
+                  <InputLabel id="youtube-edit-playlist-label">Legg i spilleliste</InputLabel>
+                  <Select
+                    labelId="youtube-edit-playlist-label"
+                    label="Legg i spilleliste"
+                    value={editForm.playlistId}
+                    onChange={(event) => setEditForm((current) => ({ ...current, playlistId: String(event.target.value) }))}
+                  >
+                    <MenuItem value="">Ingen endring</MenuItem>
+                    {playlists.map((playlist) => (
+                      <MenuItem key={playlist.id} value={playlist.id}>
+                        {playlist.title}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid2>
+            </Grid2>
+
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+              <Button component="label" variant="outlined" startIcon={<AddPhotoAlternate />}>
+                Bytt thumbnail
+                <input
+                  hidden
+                  accept="image/*"
+                  type="file"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) {
+                      uploadThumbnailMutation.mutate(file);
+                    }
+                    event.currentTarget.value = '';
+                  }}
+                />
+              </Button>
+              {editingVideo?.url && (
+                <Button
+                  variant="text"
+                  href={editingVideo.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  endIcon={<OpenInNew fontSize="small" />}
+                >
+                  Åpne i YouTube
+                </Button>
+              )}
+            </Stack>
+
+            {uploadThumbnailMutation.isPending && <LinearProgress />}
+            {updateVideoMutation.isError && (
+              <Alert severity="error">
+                {(updateVideoMutation.error as Error).message}
+              </Alert>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditingVideo(null)}>Lukk</Button>
+          <Button
+            variant="contained"
+            startIcon={<Save />}
+            onClick={() => updateVideoMutation.mutate()}
+            disabled={updateVideoMutation.isPending}
+          >
+            Lagre endringer
           </Button>
         </DialogActions>
       </Dialog>

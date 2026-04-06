@@ -185,7 +185,7 @@ import { useFileManagementStatus, FileManagementStatusProvider } from '../../con
 import UniversalWorklog from '../worklog/UniversalWorklog';
 import UniversalPrototypeFeedback from '../prototype-testing/UniversalPrototypeFeedback';
 import ShowcaseAdmin from '../showcase/ShowcaseAdmin';
-import ShowcasePublisherPanel from '../showcase/ShowcasePublisherPanel';
+import { YouTubeIntegration } from '../youtube/YouTubeIntegration';
 import WeddingTimelineOverview from '../wedding/WeddingTimelineOverview';
 import WeddingTimelineClientView from '../wedding/WeddingTimelineClientView';
 import WeddingTimelineChangesOverview from '../wedding/WeddingTimelineChangesOverview';
@@ -631,6 +631,15 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
     const displayName = getProfessionDisplayName(profession);
     const professionColor = getUserProfessionColor(profession);
     const professionIcon = getProfessionIcon(profession);
+    const creatorPublishingProfessions = new Set(['admin', 'photographer', 'videographer', 'music_producer', 'enterprise']);
+    const nextTabs = [...(baseConfig.tabs || [])].filter((tab) => tab.id !== 'showcase-publisher');
+
+    if (creatorPublishingProfessions.has(profession) && !nextTabs.some((tab) => tab.id === 'publishing')) {
+      const publishingTab = { id: 'publishing', label: 'Publisering', icon: <VideoLibrary /> };
+      const showcaseTabIndex = nextTabs.findIndex((tab) => tab.id === 'showcase-admin');
+      const insertIndex = showcaseTabIndex >= 0 ? showcaseTabIndex + 1 : Math.min(2, nextTabs.length);
+      nextTabs.splice(insertIndex, 0, publishingTab);
+    }
     
     return {
       ...baseConfig,
@@ -638,6 +647,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
       name: displayName || baseConfig.name,
       color: professionColor || baseConfig.color,
       icon: professionIcon || baseConfig.icon,
+      tabs: nextTabs,
     };
   }, [profession, baseConfig, getProfessionDisplayName, getUserProfessionColor, getProfessionIcon]);
 
@@ -822,6 +832,9 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
       if (tab.id === 'communication') {
         return false;
       }
+      if (tab.id === 'showcase-publisher') {
+        return false;
+      }
       if (tab.id === 'showcase-viewer' && config.tabs.some(configTab => configTab.id === 'showcase-admin')) {
         return false;
       }
@@ -837,6 +850,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         'split-sheets': false, // Split sheets moved to Prisadministrasjon sub-tab for all professions
         'wedding-timeline': true, // Always available
         'showcase-admin': true, // Always available
+        'publishing': true,
         'showcase-viewer': true, // Available for professions without Showcase Admin tab
         'file-upload': true,
         'ai-enhancement': true, // Always available
@@ -5431,9 +5445,24 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
 
               </TabPanel>
 
-              {/* Tab 4b: Showcase Publisher */}
-              <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'showcase-publisher')}>
-                <ShowcasePublisherPanel userId={userId} />
+              {/* Tab 4b: Publishing */}
+              <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'publishing')}>
+                <YouTubeIntegration
+                  userId={userId}
+                  projectId={selectedProject?.id || null}
+                  projects={projects}
+                  selectedProjectId={selectedProject?.id || null}
+                  onProjectChange={(nextProjectId) => {
+                    if (!nextProjectId) {
+                      setSelectedProject(null);
+                      return;
+                    }
+
+                    const nextProject = projects.find((project) => project.id === nextProjectId) || null;
+                    setSelectedProject(nextProject);
+                  }}
+                  createShowcaseOnUpload
+                />
               </TabPanel>
 
               {/* Tab 7: Universal File Upload */}

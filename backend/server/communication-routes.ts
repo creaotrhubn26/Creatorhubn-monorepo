@@ -189,7 +189,9 @@ type ConversationContractRow = {
 export function createCommunicationRouter(db: DB, pool: Pool): Router {
   const router = Router();
   const GMAIL_READ_SCOPES = ['https://www.googleapis.com/auth/gmail.readonly'];
+  const GMAIL_DRAFT_SCOPES = ['https://www.googleapis.com/auth/gmail.compose'];
   const GMAIL_SEND_SCOPES = ['https://www.googleapis.com/auth/gmail.send'];
+  const GMAIL_WRITE_SCOPES = [...GMAIL_DRAFT_SCOPES, ...GMAIL_SEND_SCOPES];
   const PEOPLE_READ_SCOPES = [
     'https://www.googleapis.com/auth/contacts.readonly',
     'https://www.googleapis.com/auth/contacts',
@@ -2870,9 +2872,12 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
       if (!workspaceContext) {
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren.' });
       }
-      if (!roleRoomGoogleConnectionHasScopes({ scopes: workspaceContext.connection.scopes }, [...GMAIL_READ_SCOPES, ...GMAIL_SEND_SCOPES])) {
+      if (
+        !roleRoomGoogleConnectionHasScopes({ scopes: workspaceContext.connection.scopes }, GMAIL_READ_SCOPES)
+        || !roleRoomGoogleConnectionHasAnyScope({ scopes: workspaceContext.connection.scopes }, GMAIL_WRITE_SCOPES)
+      ) {
         return res.status(409).json({
-          error: 'Google Workspace er koblet til, men mangler Gmail sendetilgang. Koble Gmail på nytt for å svare fra CreatorHub.',
+          error: 'Google Workspace er koblet til, men mangler Gmail skrive-/draft-tilgang. Koble Gmail på nytt for å svare fra CreatorHub.',
         });
       }
 
