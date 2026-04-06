@@ -531,6 +531,7 @@ async function runDemoAction(targetPage, actionKey, timeoutMs = 90000) {
   const button = targetPage.getByTestId(`action-${actionKey}`);
   const result = targetPage.getByTestId(`result-${actionKey}`);
 
+  log(`Running demo action: ${actionKey}`);
   await button.scrollIntoViewIfNeeded().catch(() => undefined);
   await button.click();
 
@@ -634,7 +635,6 @@ try {
   }
 
   const actionPlan = [
-    { key: "refresh-overview", timeoutMs: 45000 },
     { key: "load-drive-files", timeoutMs: 45000 },
     { key: "upload-drive-file", timeoutMs: 60000 },
     { key: "create-docs-contract", timeoutMs: 90000 },
