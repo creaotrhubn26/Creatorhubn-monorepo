@@ -830,9 +830,18 @@ export default function GoogleVerificationDemoPage() {
     );
   }, [artifacts.youtubeVideoId, runAction]);
 
-  const sessionEmail = typeof (overview.publicSession as { body?: { email?: unknown } }).body?.email === 'string'
+  const sessionEmail = typeof (overview.publicSession as { body?: { email?: unknown } } | null)?.body?.email === 'string'
     ? (overview.publicSession as { body: { email: string } }).body.email
     : resolvedEmail;
+  const driveConnected = typeof (overview.driveStatus as { body?: { connected?: unknown } } | null)?.body?.connected === 'boolean'
+    ? Boolean((overview.driveStatus as { body: { connected: boolean } }).body.connected)
+    : null;
+  const youtubeConnected = typeof (overview.youtubeStatus as { connected?: unknown } | null)?.connected === 'boolean'
+    ? Boolean((overview.youtubeStatus as { connected: boolean }).connected)
+    : null;
+  const workspaceStorageTotal = typeof (overview.workspaceStorage as { totalStorageGB?: unknown } | null)?.totalStorageGB === 'number'
+    ? (overview.workspaceStorage as { totalStorageGB: number }).totalStorageGB
+    : null;
 
   return (
     <Box
@@ -897,9 +906,9 @@ export default function GoogleVerificationDemoPage() {
               <Divider sx={{ borderColor: alpha('#ffffff', 0.12) }} />
 
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} flexWrap="wrap" useFlexGap>
-                <Chip label={`Drive: ${typeof (overview.driveStatus as { body?: { connected?: unknown } }).body?.connected === 'boolean' ? ((overview.driveStatus as { body: { connected: boolean } }).body.connected ? 'connected' : 'disconnected') : 'ukjent'}`} sx={{ bgcolor: alpha('#ffffff', 0.08), color: '#ffffff' }} />
-                <Chip label={`YouTube: ${typeof (overview.youtubeStatus as { connected?: unknown }).connected === 'boolean' ? ((overview.youtubeStatus as { connected: boolean }).connected ? 'connected' : 'not connected') : 'ukjent'}`} sx={{ bgcolor: alpha('#ffffff', 0.08), color: '#ffffff' }} />
-                <Chip label={`Workspace storage: ${typeof (overview.workspaceStorage as { totalStorageGB?: unknown }).totalStorageGB === 'number' ? `${(overview.workspaceStorage as { totalStorageGB: number }).totalStorageGB} GB` : 'ikke lastet'}`} sx={{ bgcolor: alpha('#ffffff', 0.08), color: '#ffffff' }} />
+                <Chip label={`Drive: ${driveConnected === null ? 'ukjent' : driveConnected ? 'connected' : 'disconnected'}`} sx={{ bgcolor: alpha('#ffffff', 0.08), color: '#ffffff' }} />
+                <Chip label={`YouTube: ${youtubeConnected === null ? 'ukjent' : youtubeConnected ? 'connected' : 'not connected'}`} sx={{ bgcolor: alpha('#ffffff', 0.08), color: '#ffffff' }} />
+                <Chip label={`Workspace storage: ${workspaceStorageTotal === null ? 'ikke lastet' : `${workspaceStorageTotal} GB`}`} sx={{ bgcolor: alpha('#ffffff', 0.08), color: '#ffffff' }} />
               </Stack>
             </Stack>
           </Paper>
