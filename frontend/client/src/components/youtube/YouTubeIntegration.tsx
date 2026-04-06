@@ -140,6 +140,39 @@ function formatPublishedAt(value: string | null | undefined) {
   });
 }
 
+function readStoredCreatorHubUserId(): string | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    const storedUserRaw = window.localStorage.getItem('creatorhub_auth_user');
+    const storedUser = storedUserRaw ? JSON.parse(storedUserRaw) as Record<string, unknown> : null;
+    return (
+      (typeof storedUser?.id === 'string' && storedUser.id.trim() ? storedUser.id.trim() : null)
+      || (typeof storedUser?.userId === 'string' && storedUser.userId.trim() ? storedUser.userId.trim() : null)
+      || (window.localStorage.getItem('userId')?.trim() || null)
+    );
+  } catch {
+    return null;
+  }
+}
+
+function hasStoredCreatorHubToken(): boolean {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  try {
+    return Boolean(
+      window.localStorage.getItem('creatorhub_auth_token')?.trim()
+      || window.localStorage.getItem('token')?.trim(),
+    );
+  } catch {
+    return false;
+  }
+}
+
 export const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({
   projectId,
   userId: userIdProp,
@@ -154,9 +187,26 @@ export const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({
 }) => {
   const theme = useTheme();
   const { user } = useAuth();
-  const resolvedUserId = userIdProp || user?.id || null;
+  const [storedUserId, setStoredUserId] = React.useState<string | null>(() => readStoredCreatorHubUserId());
+  const [hasSessionToken, setHasSessionToken] = React.useState<boolean>(() => hasStoredCreatorHubToken());
+  const resolvedUserId = userIdProp || user?.id || storedUserId || null;
   const effectiveProjectId = selectedProjectId ?? projectId ?? null;
   const projectOptions = projects ?? [];
+
+  React.useEffect(() => {
+    const syncStoredAuth = () => {
+      setStoredUserId(readStoredCreatorHubUserId());
+      setHasSessionToken(hasStoredCreatorHubToken());
+    };
+
+    syncStoredAuth();
+    window.addEventListener('auth-changed', syncStoredAuth);
+    window.addEventListener('storage', syncStoredAuth);
+    return () => {
+      window.removeEventListener('auth-changed', syncStoredAuth);
+      window.removeEventListener('storage', syncStoredAuth);
+    };
+  }, []);
 
   const selectedProject = useMemo(
     () => projectOptions.find((entry) => entry.id === effectiveProjectId) ?? null,
@@ -249,7 +299,7 @@ export const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({
       method: 'GET',
       headers: resolvedUserId ? { 'x-user-id': resolvedUserId } : {},
     }),
-    enabled: Boolean(resolvedUserId),
+    enabled: Boolean(resolvedUserId || hasSessionToken),
   });
 
   const statusData = statusQuery.data as {
@@ -267,7 +317,7 @@ export const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({
       method: 'GET',
       headers: resolvedUserId ? { 'x-user-id': resolvedUserId } : {},
     }),
-    enabled: Boolean(resolvedUserId) && youtubeConnected,
+    enabled: Boolean((resolvedUserId || hasSessionToken) && youtubeConnected),
   });
 
   const playlistsQuery = useQuery({
@@ -276,7 +326,7 @@ export const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({
       method: 'GET',
       headers: resolvedUserId ? { 'x-user-id': resolvedUserId } : {},
     }),
-    enabled: Boolean(resolvedUserId) && youtubeConnected,
+    enabled: Boolean((resolvedUserId || hasSessionToken) && youtubeConnected),
   });
 
   const createPlaylistMutation = useMutation({
@@ -353,7 +403,7 @@ export const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({
   });
 
   const connectToGoogleWorkspace = async () => {
-    if (!resolvedUserId) {
+    if (!resolvedUserId && !hasSessionToken) {
       return;
     }
 
@@ -361,7 +411,7 @@ export const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({
       method: 'POST',
       body: {
         mode: 'link',
-        targetConnectionUserId: resolvedUserId,
+        ...(resolvedUserId ? { targetConnectionUserId: resolvedUserId } : {}),
         returnPath: window.location.pathname + window.location.search,
         browserOrigin: window.location.origin,
       },

@@ -177,6 +177,7 @@ import SmartMeetingNotesPage from '@/pages/SmartMeetingNotesPage';
 import PrivacyPolicy from '@/pages/privacy-policy';
 import TermsAndConditions from '@/pages/terms-and-conditions';
 import CreatorhubInnovationPage from '@/pages/CreatorhubInnovationPage';
+import GoogleVerificationDemoPage from '@/pages/GoogleVerificationDemoPage';
 import { syncSiteSeo } from '@/lib/siteSeo';
 import { trackMarketingPageView } from '@/lib/marketingPixelsRuntime';
 
@@ -686,6 +687,7 @@ function App() {
                   }} />
                   <Route path="/about" component={About as React.ComponentType<any>} />
                   <Route path="/creatorhub-innovasjon" component={CreatorhubInnovationPage as React.ComponentType<any>} />
+                  <Route path="/google-verification-demo" component={GoogleVerificationDemoPage as React.ComponentType<any>} />
                   <Route path="/pricing" component={PricingPage as React.ComponentType<any>} />
                   <Route path="/privacy-policy" component={PrivacyPolicy as React.ComponentType<any>} />
                   <Route path="/terms-and-conditions" component={TermsAndConditions as React.ComponentType<any>} />

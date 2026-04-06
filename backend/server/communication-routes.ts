@@ -2846,6 +2846,75 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
     }
   });
 
+  router.post('/api/communication/email/drafts', async (req, res) => {
+    try {
+      const payload = (req.body || {}) as Record<string, unknown>;
+      const to = toNonEmptyString(payload.to);
+      const subject = toNonEmptyString(payload.subject) || 'Melding fra CreatorHub';
+      const content = toNonEmptyString(payload.message) || toNonEmptyString(payload.content);
+      const threadId = toNonEmptyString(payload.threadId || payload.conversationId || payload.channelId);
+
+      if (!to) {
+        return res.status(400).json({ error: 'to is required' });
+      }
+
+      if (!content) {
+        return res.status(400).json({ error: 'message is required' });
+      }
+
+      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+      const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
+      if (!workspaceContext) {
+        return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren.' });
+      }
+
+      if (!roleRoomGoogleConnectionHasAnyScope({ scopes: workspaceContext.connection.scopes }, GMAIL_DRAFT_SCOPES)) {
+        return res.status(409).json({
+          error: 'Google Workspace er koblet til, men mangler Gmail draft-tilgang. Koble Gmail på nytt for å opprette kladder fra CreatorHub.',
+        });
+      }
+
+      const gmail = google.gmail({ version: 'v1', auth: workspaceContext.oauthClient });
+      const rawMessage = [
+        `To: ${to}`,
+        `Subject: ${subject}`,
+        'Content-Type: text/plain; charset="UTF-8"',
+        'MIME-Version: 1.0',
+        '',
+        content,
+      ].join('\r\n');
+
+      const response = await gmail.users.drafts.create({
+        userId: 'me',
+        requestBody: {
+          message: {
+            raw: Buffer.from(rawMessage, 'utf8').toString('base64url'),
+            ...(threadId ? { threadId } : {}),
+          },
+        },
+      });
+
+      return res.status(201).json({
+        success: true,
+        draftId: toNonEmptyString(response.data.id),
+        messageId: toNonEmptyString(response.data.message?.id),
+        threadId: toNonEmptyString(response.data.message?.threadId) || threadId,
+        source: workspaceContext.source,
+        connection: workspaceContext.connection,
+      });
+    } catch (error) {
+      console.error('Error creating Gmail draft:', error);
+      const reconnectIssue = deriveGoogleWorkspaceReconnectIssue(error);
+      if (reconnectIssue) {
+        return res.status(reconnectIssue.statusCode).json({
+          error: reconnectIssue.message,
+          reconnectRequired: reconnectIssue.status === 'needs_reconnect',
+        });
+      }
+      return res.status(getGoogleWorkspaceApiStatus(error)).json({ error: formatGoogleWorkspaceApiError('Gmail API', error) });
+    }
+  });
+
   router.post('/api/communication/email/reply', async (req, res) => {
     try {
       const payload = (req.body || {}) as Record<string, unknown>;

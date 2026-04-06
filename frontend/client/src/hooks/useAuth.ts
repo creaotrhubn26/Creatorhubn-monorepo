@@ -226,6 +226,7 @@ export function useAuth() {
     }
 
     if (storedToken) {
+      let shouldClearStoredSession = false;
       try {
         const resp = await fetch(authUrl('/api/auth/user'), {
           headers: { 'Authorization': `Bearer ${storedToken}` }
@@ -242,9 +243,33 @@ export function useAuth() {
             });
             return;
           }
+          shouldClearStoredSession = true;
+        } else if (resp.status === 401 || resp.status === 403) {
+          shouldClearStoredSession = true;
         }
-      } catch { /* token invalid */ }
-      clearStoredAuth();
+      } catch {
+        if (storedUser) {
+          broadcastState({
+            user: storedUser,
+            isAuthenticated: true,
+            isLoading: false,
+            error: null,
+          });
+          return;
+        }
+      }
+
+      if (shouldClearStoredSession) {
+        clearStoredAuth();
+      } else if (storedUser) {
+        broadcastState({
+          user: storedUser,
+          isAuthenticated: true,
+          isLoading: false,
+          error: null,
+        });
+        return;
+      }
     }
 
     const devUser = buildDevFallbackUser(storedUser);

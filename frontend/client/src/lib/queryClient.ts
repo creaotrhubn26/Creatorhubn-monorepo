@@ -24,6 +24,69 @@ function clearClientAuthState() {
   }
 }
 
+function buildApiUrl(url: string): string {
+  const normalizedUrl = normalizeRequestUrl(url);
+  const apiBaseUrl = import.meta.env.VITE_API_URL?.trim() || '';
+  const isDevelopment = import.meta.env.DEV || window.location.hostname === 'localhost';
+
+  if (normalizedUrl.startsWith('http')) {
+    return normalizedUrl;
+  }
+
+  return isDevelopment || !apiBaseUrl
+    ? normalizedUrl
+    : `${apiBaseUrl}${normalizedUrl}`;
+}
+
+async function hydrateStoredUserFromToken(token: string): Promise<Record<string, unknown> | null> {
+  if (typeof window === 'undefined' || !token.trim()) {
+    return null;
+  }
+
+  try {
+    const response = await fetch(buildApiUrl('/api/auth/user'), {
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${token.trim()}`,
+      },
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const payload = await response.json().catch(() => null) as
+      | { authenticated?: boolean; user?: Record<string, unknown> | null }
+      | null;
+
+    const user = payload?.authenticated && payload.user && typeof payload.user === 'object'
+      ? payload.user
+      : null;
+    const userId = typeof user?.id === 'string'
+      ? user.id.trim()
+      : typeof user?.userId === 'string'
+        ? user.userId.trim()
+        : '';
+    const userEmail = typeof user?.email === 'string'
+      ? user.email.trim().toLowerCase()
+      : typeof user?.userEmail === 'string'
+        ? user.userEmail.trim().toLowerCase()
+        : '';
+
+    if (!user || !userId || !userEmail) {
+      return null;
+    }
+
+    localStorage.setItem('creatorhub_auth_user', JSON.stringify(user));
+    localStorage.setItem('userId', userId);
+    localStorage.setItem('userEmail', userEmail);
+    window.dispatchEvent(new Event('auth-changed'));
+    return user;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Get authorization header for API requests
  */
@@ -40,20 +103,39 @@ export async function getAuthHeader(): Promise<Record<string, string>> {
     }
 
     const storedUserRaw = localStorage.getItem('creatorhub_auth_user');
-    const storedUser = storedUserRaw ? JSON.parse(storedUserRaw) : null;
-    const userIdCandidate =
+    let storedUser = storedUserRaw ? JSON.parse(storedUserRaw) : null;
+    let userIdCandidate =
       storedUser?.id ||
       storedUser?.userId ||
       localStorage.getItem('userId') ||
       '';
+    let userEmailCandidate =
+      storedUser?.email ||
+      storedUser?.userEmail ||
+      localStorage.getItem('userEmail') ||
+      '';
+
+    if (token && (!userIdCandidate || !userEmailCandidate)) {
+      const hydratedUser = await hydrateStoredUserFromToken(token);
+      if (hydratedUser) {
+        storedUser = hydratedUser;
+        userIdCandidate =
+          storedUser?.id ||
+          storedUser?.userId ||
+          localStorage.getItem('userId') ||
+          '';
+        userEmailCandidate =
+          storedUser?.email ||
+          storedUser?.userEmail ||
+          localStorage.getItem('userEmail') ||
+          '';
+      }
+    }
+
     if (typeof userIdCandidate === 'string' && userIdCandidate.trim().length > 0) {
       headers['x-user-id'] = userIdCandidate.trim();
     }
 
-    const userEmailCandidate =
-      storedUser?.email ||
-      storedUser?.userEmail ||
-      '';
     if (typeof userEmailCandidate === 'string' && userEmailCandidate.trim().length > 0) {
       headers['x-user-email'] = userEmailCandidate.trim().toLowerCase();
     }
