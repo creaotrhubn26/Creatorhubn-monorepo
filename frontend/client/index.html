@@ -113,10 +113,14 @@
       }
 
       var GOOGLE_TAG_MANAGER_ID = resolveStaticAnalyticsValue('%VITE_GOOGLE_TAG_MANAGER_ID%', 'GTM-MFWW7X83');
+      var CREATORHUB_GOOGLE_TAG_MANAGER_ID = resolveStaticAnalyticsValue('%VITE_CREATORHUB_GOOGLE_TAG_MANAGER_ID%', GOOGLE_TAG_MANAGER_ID);
+      var ROLE_ROOM_GOOGLE_TAG_MANAGER_ID = resolveStaticAnalyticsValue('%VITE_ROLE_ROOM_GOOGLE_TAG_MANAGER_ID%', GOOGLE_TAG_MANAGER_ID);
       var CREATORHUB_GA_MEASUREMENT_ID = resolveStaticAnalyticsValue('%VITE_CREATORHUB_GA_MEASUREMENT_ID%', 'G-6E5MJT8REW');
       var ROLE_ROOM_GA_MEASUREMENT_ID = resolveStaticAnalyticsValue('%VITE_ROLE_ROOM_GA_MEASUREMENT_ID%', 'G-9T7K5TJVFX');
       var analyticsConfig = resolveAnalyticsConfig();
       var analyticsBootstrapState = {
+        tagManagerLoaded: false,
+        tagManagerRequested: false,
         scriptLoaded: false,
         scriptRequested: false,
         initialPageViewSent: false,
@@ -128,7 +132,7 @@
         return {
           site: isRoleRoomHost ? 'role-room' : 'creatorhub',
           measurementId: isRoleRoomHost ? ROLE_ROOM_GA_MEASUREMENT_ID : CREATORHUB_GA_MEASUREMENT_ID,
-          tagManagerId: GOOGLE_TAG_MANAGER_ID,
+          tagManagerId: isRoleRoomHost ? ROLE_ROOM_GOOGLE_TAG_MANAGER_ID : CREATORHUB_GOOGLE_TAG_MANAGER_ID,
         };
       }
 
@@ -203,6 +207,43 @@
         });
       }
 
+      function ensureGoogleTagManagerLoaded(consentSettings) {
+        var isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        var isOnline = navigator.onLine !== false;
+
+        if (
+          isLocalhost ||
+          !isOnline ||
+          !hasAnalyticsConsent(consentSettings) ||
+          !analyticsConfig.tagManagerId
+        ) {
+          return false;
+        }
+
+        if (analyticsBootstrapState.tagManagerLoaded || analyticsBootstrapState.tagManagerRequested) {
+          return true;
+        }
+
+        analyticsBootstrapState.tagManagerRequested = true;
+        window.dataLayer = window.dataLayer || [];
+        window.dataLayer.push({
+          'gtm.start': new Date().getTime(),
+          event: 'gtm.js',
+        });
+
+        loadExternalScript('https://www.googletagmanager.com/gtm.js?id=' + analyticsConfig.tagManagerId, {
+          dataAttribute: 'data-creatorhub-gtm-bootstrap',
+          onload: function () {
+            analyticsBootstrapState.tagManagerLoaded = true;
+          },
+          onerror: function () {
+            analyticsBootstrapState.tagManagerRequested = false;
+          },
+        });
+
+        return true;
+      }
+
       function ensureGoogleAnalyticsLoaded(consentSettings) {
         var isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
         var isOnline = navigator.onLine !== false;
@@ -213,6 +254,7 @@
 
         if (analyticsBootstrapState.scriptLoaded) {
           applyAnalyticsConsent(consentSettings);
+          ensureGoogleTagManagerLoaded(consentSettings);
           return true;
         }
 
@@ -230,6 +272,7 @@
               send_page_view: false,
             });
             applyAnalyticsConsent(consentSettings);
+            ensureGoogleTagManagerLoaded(consentSettings);
             sendInitialPageView();
           },
           onerror: function () {
@@ -249,17 +292,21 @@
         window.__creatorhubApplyConsent = function (consentSettings) {
           applyAnalyticsConsent(consentSettings);
           if (hasAnalyticsConsent(consentSettings)) {
+            ensureGoogleTagManagerLoaded(consentSettings);
             ensureGoogleAnalyticsLoaded(consentSettings);
           }
           return true;
         };
         window.__creatorhubLoadAnalytics = function (consentSettings) {
-          return ensureGoogleAnalyticsLoaded(consentSettings || readStoredConsent());
+          var resolvedConsent = consentSettings || readStoredConsent();
+          ensureGoogleTagManagerLoaded(resolvedConsent);
+          return ensureGoogleAnalyticsLoaded(resolvedConsent);
         };
 
         window.gtag('consent', 'default', buildConsentPayload(storedConsent));
 
         if (!isLocalhost && isOnline && hasAnalyticsConsent(storedConsent)) {
+          ensureGoogleTagManagerLoaded(storedConsent);
           ensureGoogleAnalyticsLoaded(storedConsent);
         }
 

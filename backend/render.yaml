@@ -61,6 +61,14 @@ services:
         sync: false
       - key: GOOGLE_TAG_MANAGER_ID
         sync: false
+      - key: VITE_CREATORHUB_GOOGLE_TAG_MANAGER_ID
+        sync: false
+      - key: VITE_ROLE_ROOM_GOOGLE_TAG_MANAGER_ID
+        sync: false
+      - key: TIDUM_SYNC_API_BASE_URL
+        sync: false
+      - key: TIDUM_CREATORHUB_SYNC_SECRET
+        sync: false
       - key: GOOGLE_ANALYTICS_ID
         sync: false
       - key: SESSION_SECRET

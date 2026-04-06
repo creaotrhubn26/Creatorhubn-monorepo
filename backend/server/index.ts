@@ -74,6 +74,7 @@ import {
   generateRoleRoomAgentProducerBootstrap,
   getRoleRoomAgentRuntimeConfig,
 } from "./role-room-agent.js";
+import { registerTidumAdminRoutes } from "./tidum-admin-routes.js";
 import {
   getNotebookLmWorkspaceStatus,
   syncNotebookLmWorkspaceForMeetingNote,
@@ -794,6 +795,8 @@ function requireInviteRequestApproverSession(
 
   return session;
 }
+
+registerTidumAdminRoutes(app, pool, requireAdminSession);
 
 app.use("/api/role-room", createRoleRoomRouter(pool, activeSessions));
 app.use(

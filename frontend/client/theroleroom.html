@@ -93,12 +93,13 @@
     }
 
     var GOOGLE_TAG_MANAGER_ID = resolveStaticAnalyticsValue('%VITE_GOOGLE_TAG_MANAGER_ID%', 'GTM-MFWW7X83');
+    var ROLE_ROOM_GOOGLE_TAG_MANAGER_ID = resolveStaticAnalyticsValue('%VITE_ROLE_ROOM_GOOGLE_TAG_MANAGER_ID%', GOOGLE_TAG_MANAGER_ID);
     var ROLE_ROOM_GA_MEASUREMENT_ID = resolveStaticAnalyticsValue('%VITE_ROLE_ROOM_GA_MEASUREMENT_ID%', 'G-9T7K5TJVFX');
 
     window.__creatorhubAnalyticsConfig = {
       site: 'role-room',
       measurementId: ROLE_ROOM_GA_MEASUREMENT_ID,
-      tagManagerId: GOOGLE_TAG_MANAGER_ID,
+      tagManagerId: ROLE_ROOM_GOOGLE_TAG_MANAGER_ID,
     };
 
     function readStoredConsent() {
@@ -143,6 +144,8 @@
     (function initRoleRoomGoogleTag() {
       var isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
       var isOnline = navigator.onLine !== false;
+      var hasLoadedTagManagerScript = false;
+      var hasRequestedTagManagerScript = false;
       var hasLoadedAnalyticsScript = false;
       var hasRequestedAnalyticsScript = false;
       var hasSentInitialPageView = false;
@@ -163,6 +166,41 @@
         });
       }
 
+      function ensureTagManagerLoaded(consentSettings) {
+        if (
+          isLocalhost ||
+          !isOnline ||
+          !hasAnalyticsConsent(consentSettings) ||
+          !ROLE_ROOM_GOOGLE_TAG_MANAGER_ID
+        ) {
+          return false;
+        }
+
+        if (hasLoadedTagManagerScript || hasRequestedTagManagerScript) {
+          return true;
+        }
+
+        hasRequestedTagManagerScript = true;
+        window.dataLayer = window.dataLayer || [];
+        window.dataLayer.push({
+          'gtm.start': new Date().getTime(),
+          event: 'gtm.js',
+        });
+
+        var tagManagerScript = document.createElement('script');
+        tagManagerScript.async = true;
+        tagManagerScript.src = 'https://www.googletagmanager.com/gtm.js?id=' + ROLE_ROOM_GOOGLE_TAG_MANAGER_ID;
+        tagManagerScript.setAttribute('data-creatorhub-gtm-bootstrap', 'true');
+        tagManagerScript.onload = function () {
+          hasLoadedTagManagerScript = true;
+        };
+        tagManagerScript.onerror = function () {
+          hasRequestedTagManagerScript = false;
+        };
+        document.head.appendChild(tagManagerScript);
+        return true;
+      }
+
       function ensureAnalyticsLoaded(consentSettings) {
         if (
           isLocalhost ||
@@ -174,6 +212,7 @@
 
         if (hasLoadedAnalyticsScript || hasRequestedAnalyticsScript) {
           applyAnalyticsConsent(consentSettings);
+          ensureTagManagerLoaded(consentSettings);
           return true;
         }
 
@@ -189,6 +228,7 @@
             send_page_view: false,
           });
           applyAnalyticsConsent(consentSettings);
+          ensureTagManagerLoaded(consentSettings);
           sendInitialPageView();
         };
         script.onerror = function () {
@@ -201,12 +241,15 @@
       window.__creatorhubApplyConsent = function (consentSettings) {
         applyAnalyticsConsent(consentSettings);
         if (hasAnalyticsConsent(consentSettings)) {
+          ensureTagManagerLoaded(consentSettings);
           ensureAnalyticsLoaded(consentSettings);
         }
         return true;
       };
       window.__creatorhubLoadAnalytics = function (consentSettings) {
-        return ensureAnalyticsLoaded(consentSettings || readStoredConsent());
+        var resolvedConsent = consentSettings || readStoredConsent();
+        ensureTagManagerLoaded(resolvedConsent);
+        return ensureAnalyticsLoaded(resolvedConsent);
       };
 
       if (isLocalhost || !isOnline) {
@@ -214,6 +257,7 @@
       }
 
       if (hasAnalyticsConsent(storedConsent)) {
+        ensureTagManagerLoaded(storedConsent);
         ensureAnalyticsLoaded(storedConsent);
       }
     })();

@@ -129,6 +129,7 @@ import { lighthouseAuditService } from '@/services/LighthouseAuditService';
 import CommunityManagementDashboard from './CommunityManagementDashboard';
 import FineTuningMonitoringPanel from './FineTuningMonitoringPanel';
 import OAuthScopeChecker from './OAuthScopeChecker';
+import TidumAccessRequestsPanel from './TidumAccessRequestsPanel';
 
 // Integration props for unified workflow connectivity
 interface AdminDashboardProps {
@@ -883,6 +884,7 @@ export default function AdminDashboard({
     { id: 'price-management', label: 'Prisstyring', icon: AttachMoney },
     { id: 'reports', label: 'Rapporter', icon: Assessment },
     { id: 'academy', label: 'Academy', icon: School },
+    { id: 'tidum-tilganger', label: 'Tidum', icon: Business },
     { id: 'vendor-types', label: 'Leverandørtyper', icon: Business },
     { id: 'profession-types', label: 'Profesjonstyper', icon: People },
     { id: 'integrasjoner', label: 'Integrasjoner', icon: Link },
@@ -924,7 +926,7 @@ export default function AdminDashboard({
     {
       label: 'Forretning',
       items: adminTabs.filter((tab) =>
-        ['okonomi', 'price-management', 'reports', 'academy', 'vendor-types', 'profession-types'].includes(tab.id),
+        ['okonomi', 'price-management', 'reports', 'academy', 'tidum-tilganger', 'vendor-types', 'profession-types'].includes(tab.id),
       ),
     },
     {
@@ -954,6 +956,7 @@ export default function AdminDashboard({
     'price-management': 'Juster prismodeller og kommersielle satser på tvers av tilbud.',
     reports: 'Analyser utvikling, rapporter og forretningssignaler.',
     academy: 'Styr Academy-økonomi, instruktører og utbetalingsflyt.',
+    'tidum-tilganger': 'Behandle Tidum-forespørsler, knytt dem til virksomheter og hold tilgangssynken samlet i CreatorHub.',
     'vendor-types': 'Vedlikehold leverandørtyper og tilbudsstruktur.',
     'profession-types': 'Administrer profesjoner, roller og kapasitet i CreatorHub.',
     integrasjoner: 'Konfigurer API-er, OAuth og eksterne systemkoblinger.',
@@ -1768,6 +1771,8 @@ export default function AdminDashboard({
         return <ReportsPanel onFileDownload={onFileDownload} />;
       case 'academy':
         return renderAcademyPanel();
+      case 'tidum-tilganger':
+        return <TidumAccessRequestsPanel />;
       case 'vendor-types':
         return (
           <VendorTypeManager

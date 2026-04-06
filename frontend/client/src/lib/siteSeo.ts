@@ -54,6 +54,7 @@ const CREATORHUB_PUBLIC_CANONICAL_PATHS = new Set([
   '/community',
   '/news',
   '/request-access',
+  '/creatorhub-innovasjon',
   '/privacy-policy',
   '/terms-and-conditions',
   '/cookie-policy',
@@ -183,6 +184,13 @@ function buildCreatorHubSeo(pathname: string): SeoMetadata {
         title: 'Be om tilgang | CreatorHub Norge',
         description:
           'Send en forespørsel om tilgang til CreatorHub og beskriv hvordan du vil bruke plattformen.',
+      };
+    case '/creatorhub-innovasjon':
+      return {
+        ...base,
+        title: 'Creatorhub Innovasjon | Produkter utviklet av Creatorhub AS',
+        description:
+          'Utforsk Creatorhub Innovasjon og se hvordan Tidum presenteres som et produkt utviklet av Creatorhub AS.',
       };
     case '/privacy-policy':
       return {

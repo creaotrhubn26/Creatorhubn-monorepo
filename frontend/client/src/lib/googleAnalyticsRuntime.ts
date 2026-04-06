@@ -48,6 +48,18 @@ export const GOOGLE_TAG_MANAGER_ID = resolveConfiguredMeasurementId(
   DEFAULT_GOOGLE_TAG_MANAGER_ID,
 );
 
+export const CREATORHUB_GOOGLE_TAG_MANAGER_ID = resolveConfiguredMeasurementId(
+  import.meta.env.VITE_CREATORHUB_GOOGLE_TAG_MANAGER_ID ??
+    import.meta.env.VITE_GOOGLE_TAG_MANAGER_ID,
+  DEFAULT_GOOGLE_TAG_MANAGER_ID,
+);
+
+export const ROLE_ROOM_GOOGLE_TAG_MANAGER_ID = resolveConfiguredMeasurementId(
+  import.meta.env.VITE_ROLE_ROOM_GOOGLE_TAG_MANAGER_ID ??
+    import.meta.env.VITE_GOOGLE_TAG_MANAGER_ID,
+  DEFAULT_GOOGLE_TAG_MANAGER_ID,
+);
+
 const ROLE_ROOM_HOSTS = new Set([
   "theroleroom.com",
   "www.theroleroom.com",
@@ -90,7 +102,9 @@ export function getGoogleTagManagerId(): string {
     }
   }
 
-  return GOOGLE_TAG_MANAGER_ID;
+  return resolveAnalyticsSite() === "role-room"
+    ? ROLE_ROOM_GOOGLE_TAG_MANAGER_ID
+    : CREATORHUB_GOOGLE_TAG_MANAGER_ID;
 }
 
 export function getAnalyticsPlatformName(): string {

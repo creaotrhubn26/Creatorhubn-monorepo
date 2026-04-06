@@ -2039,6 +2039,19 @@ export default function CreatorHubInvestorLanding({
               >
                 <Box
                   component="a"
+                  href="/creatorhub-innovasjon"
+                  sx={{
+                    color: '#fff5e8',
+                    textDecoration: 'underline',
+                    textUnderlineOffset: '0.18em',
+                    fontSize: '0.82rem',
+                    '&:hover': { color: '#ffcb91' },
+                  }}
+                >
+                  Creatorhub Innovasjon
+                </Box>
+                <Box
+                  component="a"
                   href="/privacy-policy"
                   sx={{
                     color: '#fff5e8',
