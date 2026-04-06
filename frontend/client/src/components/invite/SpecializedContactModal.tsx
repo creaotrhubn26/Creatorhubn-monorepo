@@ -47,7 +47,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useExternalData } from '../../services/ExternalDataService';
 import type { BRREGCompanyData, BRREGSearchResults } from '../../services/ExternalDataService';
 
-const logoCreatorHub = '/creatorhub-logo-amber.svg';
+const logoCreatorHub = '/creatorhub-icon.png';
 
 const inviteSchema = z
   .object({

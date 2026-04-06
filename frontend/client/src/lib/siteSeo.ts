@@ -29,7 +29,7 @@ const CREATORHUB_SITE: SiteDefinition = {
   locale: 'nb_NO',
   themeColor: '#17120f',
   defaultImageUrl: 'https://creatorhubn.com/landing_backdrop_with_logo.png',
-  logoUrl: 'https://creatorhubn.com/creatorhub-logo-amber.svg',
+  logoUrl: 'https://creatorhubn.com/creatorhub-wordmark-light.png',
   contactEmail: 'hello@creatorhubn.com',
 };
 

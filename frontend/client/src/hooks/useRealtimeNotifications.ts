@@ -70,7 +70,7 @@ export function useRealtimeNotifications(userId?: string) {
               if ('Notification' in window && Notification.permission === 'granted') {
                 new Notification(data.title || 'CreatorHub Notification', {
                   body: data.message || ', ',
-                  icon: '/creatorhub-logo-amber.svg',
+                  icon: '/creatorhub-icon.png',
                   tag: data.id || `notification-${Date.now()}`
                 });
               }
@@ -166,5 +166,4 @@ export function useRealtimeNotifications(userId?: string) {
     disconnect
   };
 }
-
 

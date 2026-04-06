@@ -313,7 +313,7 @@ const defaultCreatorHubEmailSettings: CreatorHubEmailSettings = {
     domain: 'creatorhubn.com',
     supportEmail: 'hello@creatorhubn.com',
     docsUrl: 'https://creatorhubn.com',
-    emailLogoUrl: '/creatorhub-logo-amber.svg',
+    emailLogoUrl: '/creatorhub-wordmark-light.png',
   },
   email: {
     fromEmail: 'billing@creatorhubn.com',

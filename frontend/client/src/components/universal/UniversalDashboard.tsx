@@ -2910,7 +2910,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
               mb: 1 }}
           >
             <img 
-              src="/creatorhub-logo-amber.svg"
+              src="/creatorhub-wordmark-light.png"
               alt="CreatorHub Norge Logo"
               style={{
                 height: isSmallScreen ? '100px' : '150px',

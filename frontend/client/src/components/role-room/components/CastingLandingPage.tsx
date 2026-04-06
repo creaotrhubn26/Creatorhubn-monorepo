@@ -656,7 +656,7 @@ export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPage
               <Typography>Et produkt av</Typography>
               <Box
                 component="img"
-                src="/creatorhub-logo-amber.svg"
+                src="/creatorhub-wordmark-light.png"
                 alt="CreatorHub"
                 sx={{
                   height: { xs: 24, sm: 28 },

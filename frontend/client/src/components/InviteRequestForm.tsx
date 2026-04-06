@@ -520,7 +520,7 @@ export function InviteRequestForm({
         >
           <Box
             component="img"
-            src="/creatorhub-logo-amber.svg"
+            src="/creatorhub-wordmark-light.png"
             alt="CreatorHub Norge"
             sx={{
               width: 80,

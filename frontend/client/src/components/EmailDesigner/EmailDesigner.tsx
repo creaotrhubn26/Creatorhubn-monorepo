@@ -200,7 +200,7 @@ interface PreflightCheck {
   description: string;
 }
 
-const BRAND_LOGO_SRC = '/creatorhub-logo-amber.svg';
+const BRAND_LOGO_SRC = '/creatorhub-wordmark-light.png';
 const AUTO_SAVE_DELAY_MS = 1500;
 const HISTORY_LIMIT = 50;
 const LOCAL_TEMPLATE_LIBRARY_KEY = 'creatorhub-email-designer-local-templates';

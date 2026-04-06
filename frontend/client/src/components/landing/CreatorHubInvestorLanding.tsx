@@ -51,7 +51,8 @@ interface CreatorHubPublicPricingPlan {
   ctaLabel?: string | null;
 }
 
-const CREATORHUB_ICON_URL = '/creatorhub-logo-amber.svg';
+const CREATORHUB_ICON_URL = '/creatorhub-icon.png';
+const CREATORHUB_WORDMARK_URL = '/creatorhub-wordmark-light.png';
 const ROLE_ROOM_LOGO_URL = '/role-room-assets/TheRoleRoom_Logo_Tagline.webp';
 const ACADEMY_LOGO_URL = '/creatorhub-academy-logo.svg';
 const COMMUNITY_ICON_URL = '/creatorhub-community-icon.svg';
@@ -786,7 +787,7 @@ export default function CreatorHubInvestorLanding({
               >
                 <Box
                   component="img"
-                  src={CREATORHUB_ICON_URL}
+                  src={CREATORHUB_WORDMARK_URL}
                   alt="Creatorhub"
                   sx={{
                     width: { xs: 148, md: 186 },
@@ -930,7 +931,7 @@ export default function CreatorHubInvestorLanding({
 
                 <Box
                   component="img"
-                  src={CREATORHUB_ICON_URL}
+                  src={CREATORHUB_WORDMARK_URL}
                   alt="Creatorhub"
                   sx={{
                     width: { xs: 210, md: 280 },

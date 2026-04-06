@@ -449,7 +449,7 @@ const SmartFileManagerWidget = ({ profession }: { profession?: ValidProfession }
   return <UnifiedFileManagerWidget profession={targetProfession} />;
 };
 
-const CREATORHUB_FAVICON_URL = '/creatorhub-logo-amber.svg';
+const CREATORHUB_FAVICON_URL = '/creatorhub-icon.png';
 const ACADEMY_FAVICON_URL = '/academy-favicon.svg';
 
 function upsertHeadLink(rel: string, href: string) {

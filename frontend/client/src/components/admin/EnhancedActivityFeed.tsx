@@ -238,7 +238,7 @@ useEffect(() => {
     criticalActivities.slice(0, 3).forEach((activity: ActivityItem) => {
       new Notification('CreatorHub Norge Admin Alert', {
         body: activity.title,
-        icon: '/creatorhub-logo-amber.svg',
+        icon: '/creatorhub-icon.png',
         tag: activity.id,
         requireInteraction: true,
       });

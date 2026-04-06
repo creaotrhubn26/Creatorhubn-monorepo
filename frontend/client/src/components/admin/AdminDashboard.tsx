@@ -1916,7 +1916,7 @@ export default function AdminDashboard({
                   }}
                 >
                   <img
-                    src="/creatorhub-logo-amber.svg"
+                    src="/creatorhub-icon.png"
                     alt="CreatorHub"
                     style={{ width: 22, height: 22, objectFit: 'contain' }}
                   />
@@ -2323,7 +2323,7 @@ export default function AdminDashboard({
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 2 }, flexGrow: 1 }}>
             <img
-              src="/creatorhub-logo-amber.svg"
+              src="/creatorhub-wordmark-light.png"
               alt="CreatorHub Norge"
               style={{
                 height: isSmall ? '24px' : isMobile ? '28px' : '40px',

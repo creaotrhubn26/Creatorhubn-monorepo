@@ -537,7 +537,7 @@ export const CommunityLandingFallback: React.FC<CommunityLandingFallbackProps> =
         >
           <Box
             component="img"
-            src="/creatorhub-logo-amber.svg"
+            src="/creatorhub-icon.png"
             alt="CreatorHub"
             sx={{
               width: 90,
@@ -713,4 +713,3 @@ export const CommunityLandingFallback: React.FC<CommunityLandingFallbackProps> =
 };
 
 export default CommunityLandingFallback;
-

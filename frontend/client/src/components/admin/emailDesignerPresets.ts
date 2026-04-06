@@ -15,7 +15,7 @@ export interface AdminEmailDesignerPreset {
 
 type EmailComponent = EmailTemplate['components'][number];
 
-const LOGO_SRC = '/creatorhub-logo-amber.svg';
+const LOGO_SRC = '/creatorhub-wordmark-light.png';
 
 const baseGlobalStyles: EmailTemplate['globalStyles'] = {
   backgroundColor: '#f6f1ea',

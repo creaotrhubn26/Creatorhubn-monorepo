@@ -109,7 +109,7 @@ export const WhiteLabelBrandingProvider: React.FC<WhiteLabelBrandingProviderProp
   const getLogoUrl = () => {
     if (branding?.customLogo) return branding.customLogo;
     if (branding?.profilePhoto) return branding.profilePhoto;
-    return '/creatorhub-logo-amber.svg'; // Fallback
+    return '/creatorhub-icon.png'; // Fallback
   };
 
   const getBrandColor = () => {

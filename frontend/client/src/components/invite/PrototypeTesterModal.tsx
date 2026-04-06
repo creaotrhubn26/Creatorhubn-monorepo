@@ -102,7 +102,7 @@ interface PrototypeTesterModalProps {
   onClose: () => void;
 }
 
-const logoCreatorHub = '/creatorhub-logo-amber.svg';
+const logoCreatorHub = '/creatorhub-icon.png';
 
 export default function PrototypeTesterModal({ open, onClose }: PrototypeTesterModalProps) {
   const [isSubmitted, setIsSubmitted] = useState(false);

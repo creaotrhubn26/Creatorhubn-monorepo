@@ -327,7 +327,7 @@ class AcademyPdfExportService {
   private async loadLogoDataUrl(): Promise<string | null> {
     if (typeof window === "undefined") return null;
     try {
-      const response = await fetch("/creatorhub-logo-amber.svg");
+      const response = await fetch("/creatorhub-wordmark-light.png");
       if (!response.ok) return null;
       const svg = await response.text();
       const svgDataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;

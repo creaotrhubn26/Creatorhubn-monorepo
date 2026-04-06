@@ -5,9 +5,9 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
-    <link rel="icon" type="image/svg+xml" href="/creatorhub-logo-amber.svg" />
-    <link rel="shortcut icon" type="image/svg+xml" href="/creatorhub-logo-amber.svg" />
-    <link rel="apple-touch-icon" href="/creatorhub-logo-amber.svg" />
+    <link rel="icon" type="image/png" href="/creatorhub-icon.png" />
+    <link rel="shortcut icon" type="image/png" href="/creatorhub-icon.png" />
+    <link rel="apple-touch-icon" href="/creatorhub-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CreatorHub Norge | Plattform for skapere, team og Academy</title>
     <meta
@@ -43,7 +43,7 @@
         "@id": "https://creatorhubn.com/#organization",
         "name": "CreatorHub Norge",
         "url": "https://creatorhubn.com",
-        "logo": "https://creatorhubn.com/creatorhub-logo-amber.svg",
+        "logo": "https://creatorhubn.com/creatorhub-wordmark-light.png",
         "email": "hello@creatorhubn.com"
       }
     </script>
@@ -65,7 +65,7 @@
       (function setInitialBrandFavicon() {
         var pathname = window.location.pathname || '/';
         var isAcademyRoute = /^\/academy(?:$|[/-])/.test(pathname);
-        var faviconHref = isAcademyRoute ? '/academy-favicon.svg' : '/creatorhub-logo-amber.svg';
+        var faviconHref = isAcademyRoute ? '/academy-favicon.svg' : '/creatorhub-icon.png';
         var faviconType = faviconHref.endsWith('.svg') ? 'image/svg+xml' : 'image/png';
         var rels = ['icon', 'shortcut icon', 'apple-touch-icon'];
 

@@ -27,7 +27,7 @@ import { withVisualEditor } from '@/components/admin/visual-editor/withVisualEdi
 import PublicSocialLinks from '@/components/common/PublicSocialLinks';
 import { getPublicSocialProfiles } from '@/lib/publicBrandLinks';
 
-const CREATORHUB_ICON_URL = '/creatorhub-logo-amber.svg';
+const CREATORHUB_ICON_URL = '/creatorhub-icon.png';
 const ROLE_ROOM_LOGO_URL = '/role-room-assets/TheRoleRoom_Logo_Tagline.webp';
 const ACADEMY_LOGO_URL = '/creatorhub-academy-logo.svg';
 const COMMUNITY_ICON_URL = '/creatorhub-community-icon.svg';

@@ -184,7 +184,7 @@ export function LoginModal({
         {/* CreatorHub Logo */}
         <Box
           component="img"
-          src="/creatorhub-logo-amber.svg"
+          src="/creatorhub-wordmark-light.png"
           alt="CreatorHub"
           sx={{
             width: 500,

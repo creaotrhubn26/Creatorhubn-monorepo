@@ -10659,7 +10659,7 @@ export default function UniversalChatWidget({
                     <>
                       <Chip
                         icon={
-                          activeTab === TAB_CREATORHUB ? <img src="/creatorhub-logo-amber.svg" alt="" style={{ width: 16, height: 16 }} /> :
+                          activeTab === TAB_CREATORHUB ? <img src="/creatorhub-icon.png" alt="" style={{ width: 16, height: 16 }} /> :
                           activeTab === TAB_EVENDI ? <img src="/evendi-logo.png" alt="" style={{ width: 16, height: 16, borderRadius: '50%' }} /> :
                           activeTab === TAB_ACADEMY ? <img src="/academy-favicon.svg" alt="" style={{ width: 16, height: 16 }} /> :
                           undefined
@@ -10793,7 +10793,7 @@ export default function UniversalChatWidget({
               >
                 <Tab
                   value={TAB_CREATORHUB}
-                  icon={<img src="/creatorhub-logo-amber.svg" alt="CreatorHub" style={{ width: 24, height: 24 }} />}
+                  icon={<img src="/creatorhub-icon.png" alt="CreatorHub" style={{ width: 24, height: 24 }} />}
                   label={isNarrowWorkspace ? 'Hub' : 'CREATORHUB'}
                   iconPosition="start"
                   sx={{ textTransform: 'none' }}
