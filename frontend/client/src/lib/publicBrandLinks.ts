@@ -16,10 +16,28 @@ export const PUBLIC_BRAND_LINKS = {
   },
   roleRoom: {
     website: 'https://theroleroom.com',
+    email: 'support@theroleroom.com',
     instagram: 'https://www.instagram.com/theroleroom/',
     facebook: 'https://www.facebook.com/profile.php?id=61573320716662',
   },
 } as const;
+
+const ROLE_ROOM_PUBLIC_HOSTS = new Set([
+  'theroleroom.com',
+  'www.theroleroom.com',
+]);
+
+export function resolvePublicBrandFromHostname(hostname?: string | null): PublicBrandKey {
+  const normalized = String(hostname || '').trim().toLowerCase();
+  return ROLE_ROOM_PUBLIC_HOSTS.has(normalized) ? 'roleRoom' : 'creatorhub';
+}
+
+export function resolvePublicBrandFromWindow(): PublicBrandKey {
+  if (typeof window === 'undefined') {
+    return 'creatorhub';
+  }
+  return resolvePublicBrandFromHostname(window.location.hostname);
+}
 
 export function getPublicSocialProfiles(brand: PublicBrandKey): PublicSocialProfile[] {
   const links = PUBLIC_BRAND_LINKS[brand];

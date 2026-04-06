@@ -395,9 +395,9 @@ const DataDeletion: React.FC = () => {
           {/* Footer */}
           <Box sx={{ mt: 4, pt: 4, borderTop: '1px solid #e5e7eb' }}>
             <Typography variant="body2" sx={{ color: '#6b7280', textAlign: 'center' }}>
-              QAZI FOTOREEL - Organisasjonsnummer: 833038222
+              Creatorhub AS
               <br />
-              Sist oppdatert: Januar 2025
+              Sist oppdatert: 6. april 2026
             </Typography>
           </Box>
         </Paper>

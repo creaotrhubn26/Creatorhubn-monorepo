@@ -1,69 +1,152 @@
 import React from 'react';
-import { useTheming } from '../utils/theming-helper';
 import {
   Box,
+  Button,
+  Chip,
   Container,
-  Typography,
-  Paper,
   Divider,
   List,
   ListItem,
   ListItemText,
-  Button,
-  Chip,
+  Paper,
   Stack,
+  Typography,
 } from '@mui/material';
 import {
-  Gavel,
-  Security,
-  ContactMail,
-  CheckCircle,
-  Info,
-  Warning,
-  CreditCard,
   Cancel,
+  ContactMail,
+  CreditCard,
+  Gavel,
+  Info,
+  Security,
+  Warning,
 } from '@mui/icons-material';
 import { useLocation } from 'wouter';
 import PublicSocialLinks from '@/components/common/PublicSocialLinks';
-import { getPublicSocialProfiles, PUBLIC_BRAND_LINKS } from '@/lib/publicBrandLinks';
+import {
+  getPublicSocialProfiles,
+  PUBLIC_BRAND_LINKS,
+  resolvePublicBrandFromWindow,
+} from '@/lib/publicBrandLinks';
+import { useTheming } from '../utils/theming-helper';
 
-const creatorhubSocialLinks = getPublicSocialProfiles('creatorhub');
+type TermsBrand = {
+  appName: string;
+  subtitle: string;
+  accent: string;
+  accentSoft: string;
+  accentBorder: string;
+  pageBg: string;
+  iconGradient: string;
+  website: string;
+  supportEmail: string;
+  socialLabel: string;
+  intro: string;
+  summary: string;
+  allowed: string[];
+  prohibited: string[];
+};
+
+function getTermsBrand(): TermsBrand {
+  const brandKey = resolvePublicBrandFromWindow();
+
+  if (brandKey === 'roleRoom') {
+    return {
+      appName: 'The Role Room',
+      subtitle: 'Vilkår for produksjonsplattformen The Role Room',
+      accent: '#22d3ee',
+      accentSoft: 'rgba(8, 145, 178, 0.12)',
+      accentBorder: 'rgba(34, 211, 238, 0.28)',
+      pageBg:
+        'radial-gradient(circle at top left, rgba(34,211,238,0.18) 0%, transparent 38%), radial-gradient(circle at top right, rgba(124,58,237,0.14) 0%, transparent 34%), linear-gradient(180deg, #07111b 0%, #0b1220 45%, #111827 100%)',
+      iconGradient: 'linear-gradient(135deg, #22d3ee 0%, #7c3aed 100%)',
+      website: PUBLIC_BRAND_LINKS.roleRoom.website,
+      supportEmail: PUBLIC_BRAND_LINKS.roleRoom.email,
+      socialLabel: 'Følg The Role Room',
+      intro:
+        'Ved å bruke The Role Room aksepterer du disse vilkårene for bruk av plattformen, inkludert prosjektdata, produksjonsplanlegging, samarbeid, integrasjoner og administrative verktøy.',
+      summary:
+        'The Role Room leveres av Creatorhub AS og er bygget for casting, teamkoordinering, manus, storyboard, produksjonslogistikk og klientnært samarbeid.',
+      allowed: [
+        'Planlegge, koordinere og gjennomføre produksjoner i tråd med valgt abonnement og rolle.',
+        'Laste opp eget materiale, invitere team og behandle produksjonsdata du har rett til å bruke.',
+        'Koble til integrasjoner du har tilgang til, som Google Workspace og andre godkjente verktøy.',
+      ],
+      prohibited: [
+        'Laste opp eller dele innhold du ikke har rettigheter til, eller innhold som bryter lov, avtaler eller personvernregler.',
+        'Misbruke plattformen til scraping, uautorisert automatisering, hacking eller omgåelse av sikkerhet.',
+        'Bruke andres konto, dele sensitiv tilgang eller forsøke å hente ut data du ikke har tilgang til.',
+      ],
+    };
+  }
+
+  return {
+    appName: 'CreatorHub Norge',
+    subtitle: 'Vilkår for CreatorHub-plattformen',
+    accent: '#ff8c00',
+    accentSoft: 'rgba(255, 140, 0, 0.10)',
+    accentBorder: 'rgba(255, 140, 0, 0.22)',
+    pageBg:
+      'linear-gradient(135deg, #fff5e6 0%, #ffedd5 25%, #fed7aa 50%, #fdba74 75%, #f59e0b 100%), radial-gradient(circle at 20% 80%, rgba(255,140,0,0.3) 0%, transparent 50%)',
+    iconGradient: 'linear-gradient(135deg, #ff8c00 0%, #e67c00 100%)',
+    website: PUBLIC_BRAND_LINKS.creatorhub.website,
+    supportEmail: PUBLIC_BRAND_LINKS.creatorhub.email,
+    socialLabel: 'Følg CreatorHub',
+    intro:
+      'Ved å bruke CreatorHub Norge aksepterer du disse vilkårene for medlemskap, betaling, prosjekter, community, integrasjoner og annen bruk av plattformen.',
+    summary:
+      'CreatorHub leveres av Creatorhub AS og samler prosjektstyring, kundeopplevelse, læring, abonnementsflyt og community i én plattform.',
+    allowed: [
+      'Bruke plattformen til prosjekter, samarbeid, læring, kundearbeid og andre legitime arbeidsflyter.',
+      'Laste opp eget materiale og bruke integrasjoner du selv har rettigheter til å koble til.',
+      'Bruke abonnements- og kjøpsflyten slik den er beskrevet i gjeldende plan, tilbud eller bestillingsside.',
+    ],
+    prohibited: [
+      'Laste opp ulovlig innhold, krenkende materiale eller filer du ikke har rettigheter til.',
+      'Misbruke plattformen til spam, scraping, phishing, reverse engineering eller omgåelse av sikkerhet.',
+      'Dele konto, få uautorisert tilgang til andres data eller manipulere betalings- og abonnementsflyt.',
+    ],
+  };
+}
 
 const TermsAndConditions: React.FC = () => {
   const [, setLocation] = useLocation();
   const theming = useTheming('photographer');
+  const brandKey = resolvePublicBrandFromWindow();
+  const brand = getTermsBrand();
+  const socialLinks = getPublicSocialProfiles(brandKey);
+
+  const isRoleRoom = brandKey === 'roleRoom';
+  const surfaceSx = {
+    p: 4,
+    borderRadius: '18px',
+    background: isRoleRoom ? 'rgba(8, 15, 28, 0.84)' : 'rgba(255,255,255,0.94)',
+    color: isRoleRoom ? '#f8fafc' : '#111827',
+    border: `1px solid ${brand.accentBorder}`,
+    boxShadow: isRoleRoom ? '0 28px 80px rgba(4, 10, 24, 0.44)' : undefined,
+    backdropFilter: 'blur(20px)',
+    ...theming.getThemedCardSx(),
+  } as const;
+  const bodyColor = isRoleRoom ? 'rgba(226,232,240,0.9)' : '#374151';
+  const mutedColor = isRoleRoom ? 'rgba(148,163,184,0.86)' : '#6b7280';
+  const panelSx = {
+    p: 3,
+    backgroundColor: isRoleRoom ? 'rgba(15, 23, 42, 0.72)' : brand.accentSoft,
+    border: `1px solid ${brand.accentBorder}`,
+    borderRadius: '14px',
+  } as const;
 
   return (
-    <Box
-      sx={{
-        minHeight: '100vh',
-        background: `
-          linear-gradient(135deg, #fff5e6 0%, #ffedd5 25%, #fed7aa 50%, #fdba74 75%, #f59e0b 100%),
-          radial-gradient(circle at 20% 80%, rgba(255,140,0,0.3) 0%, transparent 50%)
-        `,
-        py: 6,
-      }}
-    >
+    <Box sx={{ minHeight: '100vh', background: brand.pageBg, py: 6 }}>
       <Container maxWidth="lg">
-        {/* Header */}
-        <Paper
-          elevation={3}
-          sx={{
-            p: 4,
-            mb: 4,
-            borderRadius: '16px',
-            background: 'rgba(255,255,255,0.95)',
-            backdropFilter: 'blur(20px)',
-            ...theming.getThemedCardSx(),
-          }}
-        >
+        <Paper elevation={3} sx={{ ...surfaceSx, mb: 4 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
             <Box
               sx={{
                 width: 64,
                 height: 64,
-                borderRadius: '12px',
-                background: 'linear-gradient(135deg, #ff8c00 0%, #e67c00 100%)',
+                borderRadius: '14px',
+                background: brand.iconGradient,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -73,652 +156,239 @@ const TermsAndConditions: React.FC = () => {
               <Gavel sx={{ fontSize: 32, color: 'white' }} />
             </Box>
             <Box>
-              <Typography variant="h3" sx={{ fontWeight: 'bold', color: '#1f2937', ...theming.colors }}>
-                Vilkår og Betingelser
+              <Typography variant="h3" sx={{ fontWeight: 800, color: isRoleRoom ? '#f8fafc' : '#1f2937', ...theming.colors }}>
+                {brand.appName} · Vilkår og betingelser
               </Typography>
-              <Typography variant="body1" sx={{ color: '#6b7280', mt: 1 }}>
-                CreatorHub Norge - Sist oppdatert: 9. januar 2025
+              <Typography variant="body1" sx={{ color: mutedColor, mt: 1 }}>
+                {brand.subtitle} · Sist oppdatert: 6. april 2026
               </Typography>
             </Box>
           </Box>
 
-          <Divider sx={{ my: 3 }} />
+          <Divider sx={{ my: 3, borderColor: brand.accentBorder }} />
 
           <Stack direction="row" spacing={2} flexWrap="wrap">
-            <Chip
-              icon={<Gavel />}
-              label="Juridisk bindende"
-              color="primary"
-              variant="outlined"
-            />
-            <Chip
-              icon={<Security />}
-              label="Norsk lovgivning"
-              color="success"
-              variant="outlined"
-            />
-            <Chip
-              icon={<Info />}
-              label="Forbrukerrettigheter"
-              color="info"
-              variant="outlined"
-            />
+            <Chip icon={<Gavel />} label="Juridisk bindende" variant="outlined" sx={{ borderColor: brand.accentBorder, color: isRoleRoom ? '#f8fafc' : undefined }} />
+            <Chip icon={<Security />} label="Norsk lovgivning" variant="outlined" sx={{ borderColor: brand.accentBorder, color: isRoleRoom ? '#f8fafc' : undefined }} />
+            <Chip icon={<Info />} label="Oppdatert for abonnement, Google og AI" variant="outlined" sx={{ borderColor: brand.accentBorder, color: isRoleRoom ? '#f8fafc' : undefined }} />
           </Stack>
         </Paper>
 
-        {/* Content */}
-        <Paper
-          elevation={3}
-          sx={{
-            p: 4,
-            borderRadius: '16px',
-            background: 'rgba(255,255,255,0.95)',
-            backdropFilter: 'blur(20px)',
-            ...theming.getThemedCardSx(),
-          }}
-        >
-          {/* Introduction */}
+        <Paper elevation={3} sx={surfaceSx}>
           <Box sx={{ mb: 4 }}>
-            <Typography variant="body1" sx={{ color: '#374151', lineHeight: 1.8, mb: 2 }}>
-              Velkommen til CreatorHub Norge. Ved å bruke vår plattform aksepterer du disse vilkårene og betingelsene
-              i sin helhet. Hvis du ikke er enig i disse vilkårene, må du ikke bruke tjenesten.
+            <Typography variant="body1" sx={{ color: bodyColor, lineHeight: 1.8, mb: 2 }}>
+              {brand.intro}
             </Typography>
-            <Paper sx={{ p: 3, backgroundColor: '#fff3e0', border: '1px solid #ff8c00' }}>
-              <Typography variant="body2" sx={{ color: '#374151' }}>
-                <strong>⚠️ Viktig:</strong> Disse vilkårene utgjør en juridisk bindende avtale mellom deg og QAZI FOTOREEL
-                (org.nr. 833038222). Les nøye gjennom før du bruker tjenesten.
+            <Paper sx={panelSx}>
+              <Typography variant="body2" sx={{ color: bodyColor }}>
+                <strong>Viktig:</strong> Disse vilkårene utgjør en juridisk bindende avtale mellom deg og <strong>Creatorhub AS</strong>. {brand.summary}
               </Typography>
             </Paper>
           </Box>
 
-          <Divider sx={{ my: 4 }} />
+          <Divider sx={{ my: 4, borderColor: brand.accentBorder }} />
 
-          {/* Section 1 */}
           <Box sx={{ mb: 4 }}>
-            <Typography variant="h5" sx={{ fontWeight: 'bold', color: '#ff8c00', mb: 2 }}>
-              1. Definisjoner
+            <Typography variant="h5" sx={{ fontWeight: 800, color: brand.accent, mb: 2 }}>
+              1. Tjenesten og hvem vilkårene gjelder for
             </Typography>
             <List>
-              <ListItem>
-                <ListItemText
-                  primary="Tjenesten"
-                  secondary="CreatorHub Norge plattformen, inkludert alle funksjoner, verktøy og innhold tilgjengelig via creatorhubn.com"
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText
-                  primary="Bruker"
-                  secondary="Enhver person eller juridisk enhet som registrerer seg og bruker Tjenesten"
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText
-                  primary="Innhold"
-                  secondary="Alle data, bilder, videoer, tekst, filer og annet materiale lastet opp av Brukeren"
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText
-                  primary="Abonnement"
-                  secondary="Betalt tilgang til Tjenesten med ulike funksjonsnivåer (Basic, Pro, Enterprise)"
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText
-                  primary="Vi/Oss"
-                  secondary="QAZI FOTOREEL, organisasjonsnummer 833038222"
-                />
-              </ListItem>
+              <ListItem disableGutters><ListItemText primary="Tjenesten" secondary={`${brand.appName}, inkludert nettsted, arbeidsflater, prosjekter, filer, integrasjoner, AI-funksjoner og andre tilhørende funksjoner.`} /></ListItem>
+              <ListItem disableGutters><ListItemText primary="Bruker" secondary="Enhver person eller virksomhet som registrerer, aktiverer eller bruker tjenesten." /></ListItem>
+              <ListItem disableGutters><ListItemText primary="Virksomhet" secondary="Hvis du bruker tjenesten på vegne av et selskap eller en kunde, bekrefter du at du har nødvendig fullmakt." /></ListItem>
             </List>
           </Box>
 
-          <Divider sx={{ my: 4 }} />
+          <Divider sx={{ my: 4, borderColor: brand.accentBorder }} />
 
-          {/* Section 2 */}
           <Box sx={{ mb: 4 }}>
-            <Typography variant="h5" sx={{ fontWeight: 'bold', color: '#ff8c00', mb: 2 }}>
-              2. Aksept av vilkår
+            <Typography variant="h5" sx={{ fontWeight: 800, color: brand.accent, mb: 2 }}>
+              2. Konto, tilgang og ansvar
             </Typography>
-            <Typography variant="body1" sx={{ color: '#374151', lineHeight: 1.8, mb: 2 }}>
-              Ved å opprette en konto, bruke Tjenesten eller klikke "Jeg aksepterer" bekrefter du at:
+            <Typography variant="body1" sx={{ color: bodyColor, lineHeight: 1.8, mb: 2 }}>
+              Du er ansvarlig for at opplysningene du gir er korrekte, at pålogging holdes konfidensiell, og at bare autoriserte personer bruker kontoen.
             </Typography>
             <List>
-              <ListItem>
-                <CheckCircle sx={{ color: '#4caf50', mr: 2 }} />
-                <ListItemText primary="Du er minst 18 år gammel eller har samtykke fra foresatte" />
-              </ListItem>
-              <ListItem>
-                <CheckCircle sx={{ color: '#4caf50', mr: 2 }} />
-                <ListItemText primary="Du har lest og forstått disse vilkårene" />
-              </ListItem>
-              <ListItem>
-                <CheckCircle sx={{ color: '#4caf50', mr: 2 }} />
-                <ListItemText primary="Du har juridisk kapasitet til å inngå bindende avtaler" />
-              </ListItem>
-              <ListItem>
-                <CheckCircle sx={{ color: '#4caf50', mr: 2 }} />
-                <ListItemText primary="Du vil overholde alle gjeldende lover og forskrifter" />
-              </ListItem>
-              <ListItem>
-                <CheckCircle sx={{ color: '#4caf50', mr: 2 }} />
-                <ListItemText primary="Informasjonen du oppgir er korrekt og oppdatert" />
-              </ListItem>
+              <ListItem disableGutters><ListItemText primary="Korrekte opplysninger" secondary="Du må holde navn, kontaktinformasjon, virksomhetsinformasjon og relevante prosjektopplysninger oppdatert." /></ListItem>
+              <ListItem disableGutters><ListItemText primary="Kontosikkerhet" secondary="Du er ansvarlig for passord, MFA, invitasjoner og annen tilgang du administrerer." /></ListItem>
+              <ListItem disableGutters><ListItemText primary="Tilganger og roller" secondary="Vi kan håndheve rollebasert tilgang, administratortilganger og sikkerhetspolicyer for å beskytte tjenesten." /></ListItem>
             </List>
           </Box>
 
-          <Divider sx={{ my: 4 }} />
+          <Divider sx={{ my: 4, borderColor: brand.accentBorder }} />
 
-          {/* Section 3 */}
           <Box sx={{ mb: 4 }}>
-            <Typography variant="h5" sx={{ fontWeight: 'bold', color: '#ff8c00', mb: 2 }}>
-              3. Brukerregistrering og konto
+            <Typography variant="h5" sx={{ fontWeight: 800, color: brand.accent, mb: 2 }}>
+              3. Abonnement, betaling og fornyelse
             </Typography>
-            <Typography variant="body1" sx={{ color: '#374151', lineHeight: 1.8, mb: 2 }}>
-              For å bruke Tjenesten må du opprette en konto:
+            <Typography variant="body1" sx={{ color: bodyColor, lineHeight: 1.8, mb: 2 }}>
+              Betalte planer, teamnivåer, tilvalg og eventuelle piloter fremgår av bestillingsflyt, prisside, tilbud eller skriftlig avtale.
             </Typography>
             <List>
-              <ListItem>
-                <ListItemText
-                  primary="3.1 Kontoinformasjon"
-                  secondary="Du må oppgi korrekt og fullstendig informasjon ved registrering, inkludert navn, e-post, telefonnummer og profesjon."
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText
-                  primary="3.2 Kontosikkerhet"
-                  secondary="Du er ansvarlig for å holde ditt passord hemmelig og for all aktivitet som skjer under din konto. Varsle oss umiddelbart ved mistanke om uautorisert tilgang."
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText
-                  primary="3.3 Én konto per bruker"
-                  secondary="Du kan kun ha én aktiv konto. Opprettelse av flere kontoer for å omgå begrensninger er forbudt."
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText
-                  primary="3.4 Bedriftskontoer"
-                  secondary="Hvis du registrerer deg på vegne av en bedrift, bekrefter du at du har fullmakt til å binde bedriften til disse vilkårene."
-                />
-              </ListItem>
+              <ListItem disableGutters><CreditCard sx={{ color: brand.accent, mr: 2, mt: 0.25 }} /><ListItemText primary="Fakturering og kortbetaling" secondary="Betaling håndteres via godkjente betalingsleverandører. Faktura og kvittering sendes eller gjøres tilgjengelig digitalt." /></ListItem>
+              <ListItem disableGutters><CreditCard sx={{ color: brand.accent, mr: 2, mt: 0.25 }} /><ListItemText primary="Automatisk fornyelse" secondary="Løpende planer fornyes automatisk med mindre de sies opp før neste periode." /></ListItem>
+              <ListItem disableGutters><CreditCard sx={{ color: brand.accent, mr: 2, mt: 0.25 }} /><ListItemText primary="Prisendringer" secondary="Vi kan oppdatere priser med rimelig forhåndsvarsel før ny periode eller fornyelse." /></ListItem>
             </List>
-          </Box>
-
-          <Divider sx={{ my: 4 }} />
-
-          {/* Section 4 */}
-          <Box sx={{ mb: 4 }}>
-            <Typography variant="h5" sx={{ fontWeight: 'bold', color: '#ff8c00', mb: 2 }}>
-              4. Abonnement og betaling
-            </Typography>
-            <Typography variant="body1" sx={{ color: '#374151', lineHeight: 1.8, mb: 2 }}>
-              CreatorHub Norge tilbyr ulike abonnementsnivåer:
-            </Typography>
-            <List>
-              <ListItem>
-                <CreditCard sx={{ color: '#ff8c00', mr: 2 }} />
-                <ListItemText
-                  primary="4.1 Abonnementstyper"
-                  secondary="Basic (299 NOK/mnd), Pro (599 NOK/mnd), Enterprise (999 NOK/mnd). Alle priser er oppgitt inkludert MVA."
-                />
-              </ListItem>
-              <ListItem>
-                <CreditCard sx={{ color: '#ff8c00', mr: 2 }} />
-                <ListItemText
-                  primary="4.2 Gratis prøveperiode"
-                  secondary="Nye brukere får 14 dagers gratis prøveperiode. Ingen kredittkort kreves for prøveperioden. Du kan avbryte når som helst før prøveperioden utløper uten kostnad."
-                />
-              </ListItem>
-              <ListItem>
-                <CreditCard sx={{ color: '#ff8c00', mr: 2 }} />
-                <ListItemText
-                  primary="4.3 Automatisk fornyelse"
-                  secondary="Abonnementet fornyes automatisk hver måned med mindre du avbryter før neste faktureringsdato. Du vil motta varsel 7 dager før fornyelse."
-                />
-              </ListItem>
-              <ListItem>
-                <CreditCard sx={{ color: '#ff8c00', mr: 2 }} />
-                <ListItemText
-                  primary="4.4 Betalingsmetoder"
-                  secondary="Vi aksepterer betalingskort (Visa, Mastercard) via Stripe og Google Pay. All betalingsinformasjon krypteres og håndteres sikkert."
-                />
-              </ListItem>
-              <ListItem>
-                <CreditCard sx={{ color: '#ff8c00', mr: 2 }} />
-                <ListItemText
-                  primary="4.5 Prisendringer"
-                  secondary="Vi forbeholder oss retten til å endre priser med 30 dagers varsel. Eksisterende abonnenter beholder sin pris til neste fornyelse."
-                />
-              </ListItem>
-              <ListItem>
-                <CreditCard sx={{ color: '#ff8c00', mr: 2 }} />
-                <ListItemText
-                  primary="4.6 Faktura og kvittering"
-                  secondary="Du mottar automatisk faktura/kvittering via e-post etter hver betaling. Fakturaer er tilgjengelige i din konto under 'Fakturering'."
-                />
-              </ListItem>
-            </List>
-            <Paper sx={{ p: 2, mt: 2, backgroundColor: '#e3f2fd', border: '1px solid #2196f3' }}>
-              <Typography variant="body2" sx={{ color: '#1565c0', fontWeight: 'bold' }}>
-                💳 Mislykket betaling:
-              </Typography>
-              <Typography variant="body2" sx={{ color: '#374151', mt: 1 }}>
-                Ved mislykket betaling vil vi forsøke å trekke beløpet 3 ganger over 7 dager. Hvis betalingen fortsatt
-                mislykkes, vil kontoen din bli suspendert inntil betalingen er gjennomført.
+            <Paper sx={{ ...panelSx, mt: 2 }}>
+              <Typography variant="body2" sx={{ color: bodyColor }}>
+                Ved mislykket betaling kan tilgangen begrenses inntil betaling er gjennomført. Dette gjelder ikke lovpålagte rettigheter du måtte ha som forbruker.
               </Typography>
             </Paper>
           </Box>
 
-          <Divider sx={{ my: 4 }} />
+          <Divider sx={{ my: 4, borderColor: brand.accentBorder }} />
 
-          {/* Section 5 */}
           <Box sx={{ mb: 4 }}>
-            <Typography variant="h5" sx={{ fontWeight: 'bold', color: '#ff8c00', mb: 2 }}>
-              5. Oppsigelse og refusjon
+            <Typography variant="h5" sx={{ fontWeight: 800, color: brand.accent, mb: 2 }}>
+              4. Integrasjoner, AI og tredjepartstjenester
+            </Typography>
+            <Typography variant="body1" sx={{ color: bodyColor, lineHeight: 1.8, mb: 2 }}>
+              Tjenesten kan kobles til tredjepartstjenester som Google Workspace, betalingsleverandører, bedriftsoppslag og AI-tjenester. Når du eller administrator aktiverer slike integrasjoner, godtar du at relevante data behandles for å levere funksjonen.
             </Typography>
             <List>
-              <ListItem>
-                <Cancel sx={{ color: '#f44336', mr: 2 }} />
-                <ListItemText
-                  primary="5.1 Oppsigelse av abonnement"
-                  secondary="Du kan når som helst si opp abonnementet via 'Innstillinger' > 'Fakturering'. Oppsigelsen trer i kraft ved neste faktureringsdato."
-                />
-              </ListItem>
-              <ListItem>
-                <Cancel sx={{ color: '#f44336', mr: 2 }} />
-                <ListItemText
-                  primary="5.2 Tilgang etter oppsigelse"
-                  secondary="Du beholder tilgang til Tjenesten til slutten av den betalte perioden. Etter dette vil kontoen din bli nedgradert til gratis nivå (hvis tilgjengelig) eller deaktivert."
-                />
-              </ListItem>
-              <ListItem>
-                <Cancel sx={{ color: '#f44336', mr: 2 }} />
-                <ListItemText
-                  primary="5.3 Refusjonspolicy"
-                  secondary="I henhold til norsk angrerett har du 14 dagers angrerett fra kjøpsdato. Refusjon gis ikke for allerede brukte perioder. Kontakt hello@creatorhubn.com for refusjon."
-                />
-              </ListItem>
-              <ListItem>
-                <Cancel sx={{ color: '#f44336', mr: 2 }} />
-                <ListItemText
-                  primary="5.4 Vår rett til oppsigelse"
-                  secondary="Vi kan suspendere eller avslutte din konto ved brudd på disse vilkårene, mistenkelig aktivitet, eller ved misbruk av Tjenesten. Du vil motta varsel via e-post."
-                />
-              </ListItem>
+              <ListItem disableGutters><ListItemText primary="Google-integrasjoner" secondary="Dokumenter, kalender, e-post, Tasks, YouTube, bedriftsprofiler og andre godkjente Google-funksjoner behandles bare innenfor oppsatt tilgang og scopes." /></ListItem>
+              <ListItem disableGutters><ListItemText primary="AI-genererte forslag" secondary="AI-funksjoner kan generere utkast, anbefalinger og oppsummeringer, men du er ansvarlig for å kontrollere resultatene før de brukes i praksis." /></ListItem>
+              <ListItem disableGutters><ListItemText primary="Tilgjengelighet og endringer" secondary="Vi kan endre, forbedre eller fjerne integrasjoner og AI-funksjoner dersom leverandører, sikkerhetskrav eller produktbehov tilsier det." /></ListItem>
             </List>
           </Box>
 
-          <Divider sx={{ my: 4 }} />
+          <Divider sx={{ my: 4, borderColor: brand.accentBorder }} />
 
-          {/* Section 6 */}
           <Box sx={{ mb: 4 }}>
-            <Typography variant="h5" sx={{ fontWeight: 'bold', color: '#ff8c00', mb: 2 }}>
-              6. Bruk av tjenesten
+            <Typography variant="h5" sx={{ fontWeight: 800, color: brand.accent, mb: 2 }}>
+              5. Tillatt og forbudt bruk
             </Typography>
-            <Typography variant="body1" sx={{ color: '#374151', lineHeight: 1.8, mb: 2 }}>
-              Du forplikter deg til å bruke Tjenesten på en ansvarlig og lovlig måte:
-            </Typography>
-            <Typography variant="h6" sx={{ fontWeight: 'bold', color: '#1f2937', mt: 3, mb: 2 }}>
-              ✅ Tillatt bruk:
+            <Typography variant="h6" sx={{ fontWeight: 800, color: isRoleRoom ? '#f8fafc' : '#1f2937', mt: 1, mb: 1.5 }}>
+              Tillatt bruk
             </Typography>
             <List>
-              <ListItem>
-                <CheckCircle sx={{ color: '#4caf50', mr: 2 }} />
-                <ListItemText primary="Administrere dine kreative prosjekter og klienter" />
-              </ListItem>
-              <ListItem>
-                <CheckCircle sx={{ color: '#4caf50', mr: 2 }} />
-                <ListItemText primary="Laste opp og dele ditt eget innhold" />
-              </ListItem>
-              <ListItem>
-                <CheckCircle sx={{ color: '#4caf50', mr: 2 }} />
-                <ListItemText primary="Samarbeide med andre brukere" />
-              </ListItem>
-              <ListItem>
-                <CheckCircle sx={{ color: '#4caf50', mr: 2 }} />
-                <ListItemText primary="Bruke integrasjoner (Google Workspace, etc.)" />
-              </ListItem>
+              {brand.allowed.map((item) => (
+                <ListItem key={item} disableGutters><ListItemText primary={item} /></ListItem>
+              ))}
             </List>
-
-            <Typography variant="h6" sx={{ fontWeight: 'bold', color: '#d32f2f', mt: 3, mb: 2 }}>
-              ❌ Forbudt bruk:
+            <Typography variant="h6" sx={{ fontWeight: 800, color: brand.accent, mt: 2, mb: 1.5 }}>
+              Forbudt bruk
             </Typography>
             <List>
-              <ListItem>
-                <Warning sx={{ color: '#f44336', mr: 2 }} />
-                <ListItemText primary="Laste opp ulovlig, støtende eller opphavsrettsbeskyttet innhold" />
-              </ListItem>
-              <ListItem>
-                <Warning sx={{ color: '#f44336', mr: 2 }} />
-                <ListItemText primary="Hacke, reverse-engineere eller forsøke å omgå sikkerhetstiltak" />
-              </ListItem>
-              <ListItem>
-                <Warning sx={{ color: '#f44336', mr: 2 }} />
-                <ListItemText primary="Bruke automatiserte verktøy (bots, scrapers) uten tillatelse" />
-              </ListItem>
-              <ListItem>
-                <Warning sx={{ color: '#f44336', mr: 2 }} />
-                <ListItemText primary="Dele kontoinformasjon eller la andre bruke din konto" />
-              </ListItem>
-              <ListItem>
-                <Warning sx={{ color: '#f44336', mr: 2 }} />
-                <ListItemText primary="Sende spam, phishing eller skadelig programvare" />
-              </ListItem>
-              <ListItem>
-                <Warning sx={{ color: '#f44336', mr: 2 }} />
-                <ListItemText primary="Trakassere, mobbe eller true andre brukere" />
-              </ListItem>
-              <ListItem>
-                <Warning sx={{ color: '#f44336', mr: 2 }} />
-                <ListItemText primary="Bruke Tjenesten til kommersielle formål utover din profesjonelle virksomhet" />
-              </ListItem>
+              {brand.prohibited.map((item) => (
+                <ListItem key={item} disableGutters>
+                  <Warning sx={{ color: '#ef4444', mr: 2, mt: 0.2 }} />
+                  <ListItemText primary={item} />
+                </ListItem>
+              ))}
             </List>
           </Box>
 
-          <Divider sx={{ my: 4 }} />
+          <Divider sx={{ my: 4, borderColor: brand.accentBorder }} />
 
-          {/* Section 7 */}
           <Box sx={{ mb: 4 }}>
-            <Typography variant="h5" sx={{ fontWeight: 'bold', color: '#ff8c00', mb: 2 }}>
-              7. Innhold og opphavsrett
+            <Typography variant="h5" sx={{ fontWeight: 800, color: brand.accent, mb: 2 }}>
+              6. Innhold, eierskap og lisens
             </Typography>
             <List>
-              <ListItem>
-                <ListItemText
-                  primary="7.1 Ditt innhold"
-                  secondary="Du beholder alle rettigheter til innholdet du laster opp. Ved å laste opp innhold gir du oss en begrenset lisens til å lagre, vise og behandle innholdet for å levere Tjenesten."
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText
-                  primary="7.2 Ansvar for innhold"
-                  secondary="Du er alene ansvarlig for innholdet du laster opp. Du garanterer at du har nødvendige rettigheter og tillatelser for alt innhold."
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText
-                  primary="7.3 Vårt innhold"
-                  secondary="Tjenesten, inkludert design, logo, kode og funksjonalitet, er beskyttet av opphavsrett og tilhører QAZI FOTOREEL. Du får kun en begrenset, ikke-eksklusiv lisens til å bruke Tjenesten."
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText
-                  primary="7.4 Fjerning av innhold"
-                  secondary="Vi forbeholder oss retten til å fjerne innhold som bryter med disse vilkårene, norsk lov, eller som vi anser som upassende."
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText
-                  primary="7.5 Backup og tap av data"
-                  secondary="Vi tar regelmessige backups, men du er ansvarlig for å ta egne sikkerhetskopier av viktig innhold. Vi er ikke ansvarlige for tap av data."
-                />
-              </ListItem>
+              <ListItem disableGutters><ListItemText primary="Ditt innhold" secondary="Du beholder rettighetene til materiale du laster opp eller oppretter, med mindre annet er uttrykkelig avtalt." /></ListItem>
+              <ListItem disableGutters><ListItemText primary="Nødvendig lisens til oss" secondary="Du gir oss en begrenset rett til å lagre, behandle, vise og overføre innholdet når dette er nødvendig for å levere tjenesten." /></ListItem>
+              <ListItem disableGutters><ListItemText primary="Plattform og merkevarer" secondary={`${brand.appName}, design, kode, databaser, logoer og funksjonalitet tilhører Creatorhub AS eller våre lisensgivere.`} /></ListItem>
             </List>
           </Box>
 
-          <Divider sx={{ my: 4 }} />
+          <Divider sx={{ my: 4, borderColor: brand.accentBorder }} />
 
-          {/* Section 8 */}
           <Box sx={{ mb: 4 }}>
-            <Typography variant="h5" sx={{ fontWeight: 'bold', color: '#ff8c00', mb: 2 }}>
+            <Typography variant="h5" sx={{ fontWeight: 800, color: brand.accent, mb: 2 }}>
+              7. Oppsigelse, nedstenging og refusjon
+            </Typography>
+            <List>
+              <ListItem disableGutters><Cancel sx={{ color: '#ef4444', mr: 2, mt: 0.2 }} /><ListItemText primary="Din oppsigelse" secondary="Du kan si opp løpende planer før neste faktureringsperiode. Tilgang varer normalt ut betalt periode med mindre annet er avtalt." /></ListItem>
+              <ListItem disableGutters><Cancel sx={{ color: '#ef4444', mr: 2, mt: 0.2 }} /><ListItemText primary="Vår rett til å suspendere" secondary="Vi kan midlertidig eller permanent stenge tilgang ved sikkerhetsbrudd, misbruk, ulovlig aktivitet eller vesentlig brudd på vilkårene." /></ListItem>
+              <ListItem disableGutters><Cancel sx={{ color: '#ef4444', mr: 2, mt: 0.2 }} /><ListItemText primary="Refusjon" secondary="Refusjon vurderes etter gjeldende avtale, angrerett og norsk forbrukerlovgivning. Særskilte B2B-avtaler kan ha egne vilkår." /></ListItem>
+            </List>
+          </Box>
+
+          <Divider sx={{ my: 4, borderColor: brand.accentBorder }} />
+
+          <Box sx={{ mb: 4 }}>
+            <Typography variant="h5" sx={{ fontWeight: 800, color: brand.accent, mb: 2 }}>
               8. Ansvarsbegrensning
             </Typography>
-            <Typography variant="body1" sx={{ color: '#374151', lineHeight: 1.8, mb: 2 }}>
-              I den grad det er tillatt under norsk lov:
+            <Typography variant="body1" sx={{ color: bodyColor, lineHeight: 1.8, mb: 2 }}>
+              Tjenesten leveres i den form den til enhver tid foreligger. Vi arbeider for stabil drift, men kan ikke garantere at tjenesten alltid er feilfri, kontinuerlig tilgjengelig eller passer ethvert spesifikt formål.
             </Typography>
-            <List>
-              <ListItem>
-                <ListItemText
-                  primary="8.1 Tjenesten leveres 'som den er'"
-                  secondary="Vi garanterer ikke at Tjenesten vil være feilfri, uavbrutt eller sikker til enhver tid."
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText
-                  primary="8.2 Ingen garanti for resultater"
-                  secondary="Vi garanterer ikke spesifikke resultater fra bruk av Tjenesten (f.eks. økt inntekt, flere klienter)."
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText
-                  primary="8.3 Begrensning av erstatningsansvar"
-                  secondary="Vårt totale ansvar overfor deg er begrenset til beløpet du har betalt for Tjenesten de siste 12 månedene."
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText
-                  primary="8.4 Indirekte tap"
-                  secondary="Vi er ikke ansvarlige for indirekte tap, tapt fortjeneste, tap av data eller andre konsekvenstap."
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText
-                  primary="8.5 Tredjepartstjenester"
-                  secondary="Vi er ikke ansvarlige for tjenester levert av tredjeparter (Google Workspace, Stripe, etc.)."
-                />
-              </ListItem>
-            </List>
-            <Paper sx={{ p: 2, mt: 2, backgroundColor: '#fff3e0', border: '1px solid #ff8c00' }}>
-              <Typography variant="body2" sx={{ color: '#374151' }}>
-                <strong>⚖️ Forbrukerrettigheter:</strong> Denne ansvarsbegrensningen påvirker ikke dine lovfestede
-                rettigheter som forbruker under norsk lov, inkludert reklamasjonsrett ved mangler.
+            <Paper sx={panelSx}>
+              <Typography variant="body2" sx={{ color: bodyColor }}>
+                Der loven tillater det, er vårt totale ansvar begrenset til beløpet du har betalt for tjenesten de siste 12 månedene. Dette begrenser ikke ufravikelige rettigheter etter norsk lov.
               </Typography>
             </Paper>
           </Box>
 
-          <Divider sx={{ my: 4 }} />
+          <Divider sx={{ my: 4, borderColor: brand.accentBorder }} />
 
-          {/* Section 9 */}
           <Box sx={{ mb: 4 }}>
-            <Typography variant="h5" sx={{ fontWeight: 'bold', color: '#ff8c00', mb: 2 }}>
-              9. Personvern og GDPR
+            <Typography variant="h5" sx={{ fontWeight: 800, color: brand.accent, mb: 2 }}>
+              9. Personvern og lovvalg
             </Typography>
-            <Typography variant="body1" sx={{ color: '#374151', lineHeight: 1.8, mb: 2 }}>
-              Din bruk av Tjenesten er også underlagt vår{', '}
-              <Button
-                variant="text"
-                sx={{ textTransform: 'none', color: '#ff8c00', p: 0, minWidth: 'auto', fontWeight: 'bold' }}
-                onClick={() => setLocation('/privacy-policy')}
-              >
-                Personvernerklæring
-              </Button>
-              , som beskriver hvordan vi samler inn, bruker og beskytter dine personopplysninger i henhold til GDPR
-              og norsk personvernlovgivning.
+            <Typography variant="body1" sx={{ color: bodyColor, lineHeight: 1.8, mb: 2 }}>
+              Din bruk av tjenesten er også underlagt vår personvernerklæring. Disse vilkårene reguleres av norsk rett. Eventuelle tvister skal søkes løst i minnelighet først, og kan deretter bringes inn for ordinære domstoler i Norge med mindre ufravikelig forbrukerlovgivning sier noe annet.
             </Typography>
-            <Paper sx={{ p: 3, backgroundColor: '#e8f5e9', border: '1px solid #4caf50' }}>
-              <Typography variant="body2" sx={{ color: '#374151' }}>
-                Vi tar personvern på alvor og overholder alle krav i GDPR. Du har rett til innsyn, retting, sletting
-                og portabilitet av dine data. Kontakt hello@creatorhubn.com for å utøve dine rettigheter.
-              </Typography>
-            </Paper>
+            <Button href="/privacy-policy" sx={{ color: brand.accent, px: 0 }}>
+              Les personvernerklæringen
+            </Button>
           </Box>
 
-          <Divider sx={{ my: 4 }} />
+          <Divider sx={{ my: 4, borderColor: brand.accentBorder }} />
 
-          {/* Section 10 */}
-          <Box sx={{ mb: 4 }}>
-            <Typography variant="h5" sx={{ fontWeight: 'bold', color: '#ff8c00', mb: 2 }}>
-              10. Endringer i vilkårene
-            </Typography>
-            <Typography variant="body1" sx={{ color: '#374151', lineHeight: 1.8, mb: 2 }}>
-              Vi kan oppdatere disse vilkårene fra tid til annen:
-            </Typography>
-            <List>
-              <ListItem>
-                <ListItemText
-                  primary="10.1 Varsling om endringer"
-                  secondary="Ved vesentlige endringer vil vi varsle deg via e-post minst 30 dager før endringene trer i kraft."
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText
-                  primary="10.2 Mindre endringer"
-                  secondary="Mindre endringer (f.eks. grammatikk, formatering) kan gjøres uten varsel. Sist oppdatert-dato vil alltid vises øverst."
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText
-                  primary="10.3 Fortsatt bruk"
-                  secondary="Ved å fortsette å bruke Tjenesten etter at endringene trer i kraft, aksepterer du de nye vilkårene."
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText
-                  primary="10.4 Rett til å avvise"
-                  secondary="Hvis du ikke aksepterer de nye vilkårene, kan du si opp abonnementet før endringene trer i kraft."
-                />
-              </ListItem>
-            </List>
-          </Box>
-
-          <Divider sx={{ my: 4 }} />
-
-          {/* Section 11 */}
-          <Box sx={{ mb: 4 }}>
-            <Typography variant="h5" sx={{ fontWeight: 'bold', color: '#ff8c00', mb: 2 }}>
-              11. Tvisteløsning og lovvalg
-            </Typography>
-            <List>
-              <ListItem>
-                <ListItemText
-                  primary="11.1 Lovvalg"
-                  secondary="Disse vilkårene er underlagt norsk lov og skal tolkes i samsvar med denne."
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText
-                  primary="11.2 Verneting"
-                  secondary="Eventuelle tvister skal løses ved Oslo tingrett, med mindre du som forbruker velger ditt lokale tingrett."
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText
-                  primary="11.3 Forbrukertvistutvalget"
-                  secondary="Som forbruker kan du bringe tvisten inn for Forbrukertvistutvalget (www.forbrukertvistutvalget.no) for mekling."
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText
-                  primary="11.4 Kontakt oss først"
-                  secondary="Vi oppfordrer deg til å kontakte oss først ved eventuelle problemer eller tvister. Vi vil gjøre vårt beste for å løse saken på en god måte."
-                />
-              </ListItem>
-            </List>
-          </Box>
-
-          <Divider sx={{ my: 4 }} />
-
-          {/* Section 12 */}
-          <Box sx={{ mb: 4 }}>
-            <Typography variant="h5" sx={{ fontWeight: 'bold', color: '#ff8c00', mb: 2 }}>
-              12. Diverse bestemmelser
-            </Typography>
-            <List>
-              <ListItem>
-                <ListItemText
-                  primary="12.1 Hele avtalen"
-                  secondary="Disse vilkårene, sammen med Personvernerklæringen, utgjør hele avtalen mellom deg og oss."
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText
-                  primary="12.2 Overdragelse"
-                  secondary="Du kan ikke overføre dine rettigheter eller plikter under disse vilkårene uten vårt skriftlige samtykke. Vi kan overføre våre rettigheter til en tredjepart."
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText
-                  primary="12.3 Delbarhet"
-                  secondary="Hvis noen bestemmelse i disse vilkårene anses ugyldig, skal de øvrige bestemmelsene fortsatt gjelde."
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText
-                  primary="12.4 Ingen fraskrivelse"
-                  secondary="Vår manglende håndhevelse av noen bestemmelse skal ikke anses som en fraskrivelse av den bestemmelsen."
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText
-                  primary="12.5 Force majeure"
-                  secondary="Vi er ikke ansvarlige for forsinkelser eller manglende oppfyllelse forårsaket av omstendigheter utenfor vår kontroll (naturkatastrofer, krig, strømbrudd, etc.)."
-                />
-              </ListItem>
-            </List>
-          </Box>
-
-          <Divider sx={{ my: 4 }} />
-
-          {/* Contact Section */}
           <Paper
             sx={{
               p: 3,
-              backgroundColor: '#fff8e6',
-              border: '2px solid #ff8c00',
-              borderRadius: '12px',
+              backgroundColor: isRoleRoom ? 'rgba(8, 15, 28, 0.9)' : brand.accentSoft,
+              border: `2px solid ${brand.accent}`,
+              borderRadius: '14px',
             }}
           >
             <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-              <ContactMail sx={{ fontSize: 32, color: '#ff8c00', mr: 2 }} />
-              <Typography variant="h6" sx={{ fontWeight: 'bold', color: '#1f2937' }}>
-                Har du spørsmål om vilkårene?
+              <ContactMail sx={{ fontSize: 32, color: brand.accent, mr: 2 }} />
+              <Typography variant="h6" sx={{ fontWeight: 800, color: isRoleRoom ? '#f8fafc' : '#1f2937' }}>
+                Kontakt og oppdateringer
               </Typography>
             </Box>
-            <Typography variant="body2" sx={{ color: '#374151', mb: 2 }}>
-              Vi er her for å hjelpe deg med alle spørsmål om våre vilkår og betingelser.
+            <Typography variant="body2" sx={{ color: bodyColor, mb: 2 }}>
+              Har du spørsmål om vilkårene, abonnement, integrasjoner eller bruk av plattformen, kontakt oss direkte.
             </Typography>
-            <Paper sx={{ p: 2, mb: 2, backgroundColor: 'white' }}>
-              <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 1 }}>
-                QAZI FOTOREEL
-              </Typography>
-              <Typography variant="body2" sx={{ color: '#374151' }}>
-                Organisasjonsnummer: 833038222
-              </Typography>
-              <Typography variant="body2" sx={{ color: '#374151' }}>
-                E-post: hello@creatorhubn.com
-              </Typography>
-              <Typography variant="body2" sx={{ color: '#374151' }}>
-                Telefon: +47 97 95 92 94
-              </Typography>
-              <Typography variant="body2" sx={{ color: '#374151' }}>
-                Adresse: Søsterveien 11, 1474 LØRENSKOG
-              </Typography>
+            <Paper sx={panelSx}>
+              <Typography variant="body2" sx={{ color: bodyColor }}>Creatorhub AS</Typography>
+              <Typography variant="body2" sx={{ color: bodyColor }}>Tjeneste: {brand.appName}</Typography>
+              <Typography variant="body2" sx={{ color: bodyColor }}>Nettside: {brand.website}</Typography>
+              <Typography variant="body2" sx={{ color: bodyColor }}>E-post: {brand.supportEmail}</Typography>
             </Paper>
             <PublicSocialLinks
-              label="Følg CreatorHub"
-              body="Offentlige kanaler for oppdateringer om plattform, produkter og community."
-              links={creatorhubSocialLinks}
+              label={brand.socialLabel}
+              body={
+                isRoleRoom
+                  ? 'Følg The Role Room for oppdateringer om produksjonsflyt, nye verktøy og policy-endringer.'
+                  : 'Følg CreatorHub for produktnyheter, abonnement og plattformoppdateringer.'
+              }
+              links={socialLinks}
               tone="legal"
               sx={{ my: 2.2 }}
               showTopDivider
             />
-            <Stack direction="row" spacing={2}>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
               <Button
                 variant="contained"
                 startIcon={<ContactMail />}
-                href={`mailto:${PUBLIC_BRAND_LINKS.creatorhub.email}`}
-                sx={{
-                  ...theming.getThemedButtonSx(),
-                  background: 'linear-gradient(135deg, #ff8c00 0%, #e67c00 100%)',
-                }}
+                href={`mailto:${brand.supportEmail}`}
+                sx={{ ...theming.getThemedButtonSx(), background: brand.iconGradient }}
               >
                 Kontakt support
               </Button>
               <Button variant="outlined" onClick={() => setLocation('/')}>
                 Tilbake til forsiden
               </Button>
+              <Button variant="text" href="/privacy-policy" sx={{ color: brand.accent }}>
+                Personvernerklæring
+              </Button>
             </Stack>
           </Paper>
-
-          {/* Version Info */}
-          <Box sx={{ mt: 4, textAlign: 'center' }}>
-            <Typography variant="body2" sx={{ color: '#6b7280', fontStyle: 'italic' }}>
-              Versjon 1.0 - Sist oppdatert: 09. oktober 2025
-            </Typography>
-            <Typography variant="caption" sx={{ color: '#9ca3af', display: 'block', mt: 1 }}>
-              Disse vilkårene er utarbeidet i samsvar med norsk lov, GDPR og forbrukerkjøpsloven.
-            </Typography>
-          </Box>
         </Paper>
       </Container>
     </Box>

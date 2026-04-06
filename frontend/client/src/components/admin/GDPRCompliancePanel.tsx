@@ -1245,7 +1245,7 @@ export function GDPRCompliancePanel() {
                       </Typography>
                       <Divider sx={{ my: 2 }} />
                       <Typography variant="caption" sx={{ color: '#9ca3af' }}>
-                        Behandlingsansvarlig: QAZI FOTOREEL • Org.nr: 833038222 • Personvernombud:{', '}
+                        Behandlingsansvarlig: Creatorhub AS • Personvernombud:{', '}
                         <Link href={`mailto:${personvernombudEmail}`} sx={{ color: '#ff8c00' }}>
                           {personvernombudEmail}
                         </Link>
@@ -1515,4 +1515,3 @@ export function GDPRCompliancePanel() {
 }
 
 export default GDPRCompliancePanel;
-

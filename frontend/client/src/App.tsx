@@ -174,6 +174,8 @@ import ResumeBuilder from '@/components/resume/ResumeBuilder';
 import LinkedInCallback from '@/pages/LinkedInCallback';
 import LoginPageSimple from '@/pages/LoginPageSimple';
 import SmartMeetingNotesPage from '@/pages/SmartMeetingNotesPage';
+import PrivacyPolicy from '@/pages/privacy-policy';
+import TermsAndConditions from '@/pages/terms-and-conditions';
 import { syncSiteSeo } from '@/lib/siteSeo';
 import { trackMarketingPageView } from '@/lib/marketingPixelsRuntime';
 
@@ -683,6 +685,8 @@ function App() {
                   }} />
                   <Route path="/about" component={About as React.ComponentType<any>} />
                   <Route path="/pricing" component={PricingPage as React.ComponentType<any>} />
+                  <Route path="/privacy-policy" component={PrivacyPolicy as React.ComponentType<any>} />
+                  <Route path="/terms-and-conditions" component={TermsAndConditions as React.ComponentType<any>} />
                   <Route path="/subscription" component={SubscriptionSelectionPage as React.ComponentType<any>} />
                   <Route path="/subscription-selection" component={SubscriptionSelectionPage as React.ComponentType<any>} />
                   <Route path="/about-us" component={About as React.ComponentType<any>} />

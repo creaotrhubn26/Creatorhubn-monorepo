@@ -5,6 +5,7 @@ import {
   Button,
   Container,
   Alert,
+  Stack,
 } from '@mui/material';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -684,6 +685,43 @@ export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPage
               >
                 Admin login
               </Button>
+              <Stack
+                direction="row"
+                spacing={1.25}
+                flexWrap="wrap"
+                justifyContent="center"
+                sx={{ color: 'rgba(255,255,255,0.58)' }}
+              >
+                <Button
+                  variant="text"
+                  href="/privacy-policy"
+                  sx={{
+                    minWidth: 'auto',
+                    px: 0.25,
+                    color: 'inherit',
+                    textTransform: 'none',
+                    '&:hover': { color: '#fff', backgroundColor: 'transparent' },
+                  }}
+                >
+                  Personvernerklæring
+                </Button>
+                <Typography component="span" sx={{ opacity: 0.35, alignSelf: 'center' }}>
+                  •
+                </Typography>
+                <Button
+                  variant="text"
+                  href="/terms-and-conditions"
+                  sx={{
+                    minWidth: 'auto',
+                    px: 0.25,
+                    color: 'inherit',
+                    textTransform: 'none',
+                    '&:hover': { color: '#fff', backgroundColor: 'transparent' },
+                  }}
+                >
+                  Vilkår og betingelser
+                </Button>
+              </Stack>
             </Box>
           </motion.div>
 

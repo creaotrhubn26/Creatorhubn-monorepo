@@ -899,7 +899,7 @@ export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
                 fontSize: { xs: '10px', sm: '11px', md: '12px', lg: '15px' }
               }}
             >
-              Behandlingsansvarlig: QAZI FOTOREEL • Org.nr: 833038222 • Personvernombud:{' '}
+              Behandlingsansvarlig: Creatorhub AS • Personvernombud:{' '}
               {personvernombudEmail}
             </Typography>
           </Stack>

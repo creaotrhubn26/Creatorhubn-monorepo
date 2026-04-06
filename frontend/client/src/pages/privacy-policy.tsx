@@ -1,67 +1,214 @@
 import React from 'react';
-import { useTheming } from '../utils/theming-helper';
 import {
   Box,
+  Button,
+  Chip,
   Container,
-  Typography,
-  Paper,
   Divider,
   List,
   ListItem,
   ListItemText,
-  Button,
-  Chip,
+  Paper,
   Stack,
+  Typography,
 } from '@mui/material';
 import {
+  CheckCircle,
+  ContactMail,
+  Gavel,
+  Info,
   Policy,
   Security,
-  ContactMail,
-  CheckCircle,
-  Info,
-  Gavel,
 } from '@mui/icons-material';
 import { useLocation } from 'wouter';
 import PublicSocialLinks from '@/components/common/PublicSocialLinks';
-import { getPublicSocialProfiles, PUBLIC_BRAND_LINKS } from '@/lib/publicBrandLinks';
+import {
+  getPublicSocialProfiles,
+  PUBLIC_BRAND_LINKS,
+  resolvePublicBrandFromWindow,
+} from '@/lib/publicBrandLinks';
+import { useTheming } from '../utils/theming-helper';
 
-const creatorhubSocialLinks = getPublicSocialProfiles('creatorhub');
+type LegalBrand = {
+  appName: string;
+  subtitle: string;
+  accent: string;
+  accentSoft: string;
+  accentBorder: string;
+  pageBg: string;
+  iconGradient: string;
+  website: string;
+  supportEmail: string;
+  socialLabel: string;
+  summary: string;
+  categories: Array<{ title: string; detail: string }>;
+  purposes: Array<{ title: string; detail: string }>;
+};
+
+function getPrivacyBrand(): LegalBrand {
+  const brandKey = resolvePublicBrandFromWindow();
+
+  if (brandKey === 'roleRoom') {
+    return {
+      appName: 'The Role Room',
+      subtitle: 'Personvernerklæring for produksjonsplattformen The Role Room',
+      accent: '#22d3ee',
+      accentSoft: 'rgba(8, 145, 178, 0.12)',
+      accentBorder: 'rgba(34, 211, 238, 0.28)',
+      pageBg:
+        'radial-gradient(circle at top left, rgba(34,211,238,0.18) 0%, transparent 38%), radial-gradient(circle at top right, rgba(124,58,237,0.14) 0%, transparent 34%), linear-gradient(180deg, #07111b 0%, #0b1220 45%, #111827 100%)',
+      iconGradient: 'linear-gradient(135deg, #22d3ee 0%, #7c3aed 100%)',
+      website: PUBLIC_BRAND_LINKS.roleRoom.website,
+      supportEmail: PUBLIC_BRAND_LINKS.roleRoom.email,
+      socialLabel: 'Følg The Role Room',
+      summary:
+        'The Role Room er produksjonsflaten for casting, team, manus, planlegging og gjennomføring. Creatorhub AS er behandlingsansvarlig for personopplysninger som behandles i løsningen.',
+      categories: [
+        {
+          title: 'Konto- og kontaktinformasjon',
+          detail: 'Navn, e-postadresse, telefonnummer, rolle, virksomhet og annen kontoinformasjon du registrerer.',
+        },
+        {
+          title: 'Prosjekt- og produksjonsdata',
+          detail: 'Prosjektnavn, castingdata, team, manus, storyboards, lokasjoner, utstyr, call sheets, avtaler og annet produksjonsgrunnlag.',
+        },
+        {
+          title: 'Integrasjonsdata',
+          detail: 'Data fra Google Workspace, Google Places og andre tjenester du selv kobler til for dokumenter, kalender, reviews eller bedriftsinformasjon.',
+        },
+        {
+          title: 'AI- og arbeidsflytdata',
+          detail: 'Brief, manus, story logikk, kundeprofil og annet innhold som brukes for å generere forslag og anbefalinger i The Role Room Agent.',
+        },
+        {
+          title: 'Teknisk og sikkerhetsrelatert informasjon',
+          detail: 'IP-adresse, nettleser, enhet, påloggingslogger, samtykker og sikkerhetshendelser.',
+        },
+      ],
+      purposes: [
+        {
+          title: 'Levere og drifte tjenesten',
+          detail: 'For å opprette kontoer, lagre prosjekter, koordinere team og levere funksjonalitet i plattformen. Rettslig grunnlag: GDPR art. 6.1.b.',
+        },
+        {
+          title: 'Samarbeid og integrasjoner',
+          detail: 'For å koble til Google Workspace, hente bedriftsdata, synkronisere kalender og behandle innhold du eksplisitt ber oss bruke. Rettslig grunnlag: GDPR art. 6.1.b / 6.1.a.',
+        },
+        {
+          title: 'AI-forslag og automatisering',
+          detail: 'For å generere forslag til brief, story logikk, manus, tidslinje og andre arbeidsutkast. Rettslig grunnlag: GDPR art. 6.1.b og eventuelt samtykke når dette kreves.',
+        },
+        {
+          title: 'Sikkerhet og misbruksforebygging',
+          detail: 'For å beskytte kontoer, oppdage misbruk og dokumentere hendelser. Rettslig grunnlag: GDPR art. 6.1.f.',
+        },
+        {
+          title: 'Lovpålagte plikter',
+          detail: 'For å oppfylle bokføringskrav, sikkerhetskrav og andre rettslige forpliktelser. Rettslig grunnlag: GDPR art. 6.1.c.',
+        },
+      ],
+    };
+  }
+
+  return {
+    appName: 'CreatorHub Norge',
+    subtitle: 'Personvernerklæring for CreatorHub-plattformen',
+    accent: '#ff8c00',
+    accentSoft: 'rgba(255, 140, 0, 0.10)',
+    accentBorder: 'rgba(255, 140, 0, 0.22)',
+    pageBg:
+      'linear-gradient(135deg, #fff5e6 0%, #ffedd5 25%, #fed7aa 50%, #fdba74 75%, #f59e0b 100%), radial-gradient(circle at 20% 80%, rgba(255,140,0,0.3) 0%, transparent 50%)',
+    iconGradient: 'linear-gradient(135deg, #ff8c00 0%, #e67c00 100%)',
+    website: PUBLIC_BRAND_LINKS.creatorhub.website,
+    supportEmail: PUBLIC_BRAND_LINKS.creatorhub.email,
+    socialLabel: 'Følg CreatorHub',
+    summary:
+      'CreatorHub samler prosjektstyring, kundeopplevelse, abonnementsflyt, Academy og community i én plattform. Creatorhub AS er behandlingsansvarlig for personopplysninger som behandles i løsningen.',
+    categories: [
+      {
+        title: 'Konto- og kontaktinformasjon',
+        detail: 'Navn, e-postadresse, telefonnummer, profesjon, virksomhet og annen informasjon du registrerer i plattformen.',
+      },
+      {
+        title: 'Abonnements- og bedriftsinformasjon',
+        detail: 'Firmanavn, organisasjonsnummer, fakturadetaljer, kjøpshistorikk og informasjon om planene du bruker.',
+      },
+      {
+        title: 'Prosjekt- og samarbeidsdata',
+        detail: 'Prosjekter, filer, oppgaver, klientinformasjon, meldinger, læringsdata og community-aktivitet du velger å lagre i plattformen.',
+      },
+      {
+        title: 'Integrasjons- og AI-data',
+        detail: 'Data fra Google Workspace, betalingssystemer, bedriftsoppslag og AI-drevne forslag når du bruker slike funksjoner.',
+      },
+      {
+        title: 'Teknisk og sikkerhetsrelatert informasjon',
+        detail: 'IP-adresse, nettleser, enhet, påloggingslogger, samtykker og sikkerhetshendelser.',
+      },
+    ],
+    purposes: [
+      {
+        title: 'Levere og drifte tjenesten',
+        detail: 'For å opprette kontoer, administrere abonnement, lagre prosjekter og levere plattformfunksjonalitet. Rettslig grunnlag: GDPR art. 6.1.b.',
+      },
+      {
+        title: 'Betaling, kundedialog og support',
+        detail: 'For å gjennomføre kjøp, sende kvitteringer, gi support og håndtere kundeforhold. Rettslig grunnlag: GDPR art. 6.1.b.',
+      },
+      {
+        title: 'Integrasjoner og AI-forslag',
+        detail: 'For å koble til tjenester du selv aktiverer og generere utkast eller anbefalinger. Rettslig grunnlag: GDPR art. 6.1.b / 6.1.a.',
+      },
+      {
+        title: 'Sikkerhet og misbruksforebygging',
+        detail: 'For å beskytte kontoer, oppdage misbruk og dokumentere hendelser. Rettslig grunnlag: GDPR art. 6.1.f.',
+      },
+      {
+        title: 'Lovpålagte plikter',
+        detail: 'For å oppfylle bokføringskrav, sikkerhetskrav og andre rettslige forpliktelser. Rettslig grunnlag: GDPR art. 6.1.c.',
+      },
+    ],
+  };
+}
 
 const PrivacyPolicy: React.FC = () => {
   const [, setLocation] = useLocation();
   const theming = useTheming('photographer');
+  const brandKey = resolvePublicBrandFromWindow();
+  const brand = getPrivacyBrand();
+  const socialLinks = getPublicSocialProfiles(brandKey);
+
+  const isRoleRoom = brandKey === 'roleRoom';
+  const surfaceSx = {
+    p: 4,
+    borderRadius: '18px',
+    background: isRoleRoom ? 'rgba(8, 15, 28, 0.84)' : 'rgba(255,255,255,0.94)',
+    color: isRoleRoom ? '#f8fafc' : '#111827',
+    border: `1px solid ${brand.accentBorder}`,
+    boxShadow: isRoleRoom ? '0 28px 80px rgba(4, 10, 24, 0.44)' : undefined,
+    backdropFilter: 'blur(20px)',
+    ...theming.getThemedCardSx(),
+  } as const;
+  const bodyColor = isRoleRoom ? 'rgba(226,232,240,0.9)' : '#374151';
+  const mutedColor = isRoleRoom ? 'rgba(148,163,184,0.86)' : '#6b7280';
+  const panelSx = {
+    p: 3,
+    backgroundColor: isRoleRoom ? 'rgba(15, 23, 42, 0.72)' : brand.accentSoft,
+    border: `1px solid ${brand.accentBorder}`,
+    borderRadius: '14px',
+  } as const;
 
   return (
-    <Box
-      sx={{
-        minHeight: '100vh',
-        background: `
-          linear-gradient(135deg, #fff5e6 0%, #ffedd5 25%, #fed7aa 50%, #fdba74 75%, #f59e0b 100%),
-          radial-gradient(circle at 20% 80%, rgba(255,140,0,0.3) 0%, transparent 50%)
-        `,
-        py: 6,
-      }}
-    >
+    <Box sx={{ minHeight: '100vh', background: brand.pageBg, py: 6 }}>
       <Container maxWidth="lg">
-        {/* Header */}
-        <Paper
-          elevation={3}
-          sx={{
-            p: 4,
-            mb: 4,
-            borderRadius: '16px',
-            background: 'rgba(255,255,255,0.95)',
-            backdropFilter: 'blur(20px)',
-            ...theming.getThemedCardSx(),
-          }}
-        >
+        <Paper elevation={3} sx={{ ...surfaceSx, mb: 4 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
             <Box
               sx={{
                 width: 64,
                 height: 64,
-                borderRadius: '12px',
-                background: 'linear-gradient(135deg, #ff8c00 0%, #e67c00 100%)',
+                borderRadius: '14px',
+                background: brand.iconGradient,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -71,486 +218,215 @@ const PrivacyPolicy: React.FC = () => {
               <Policy sx={{ fontSize: 32, color: 'white' }} />
             </Box>
             <Box>
-              <Typography variant="h3" sx={{ fontWeight: 'bold', color: '#1f2937', ...theming.colors }}>
-                Personvernerklæring
+              <Typography variant="h3" sx={{ fontWeight: 800, color: isRoleRoom ? '#f8fafc' : '#1f2937', ...theming.colors }}>
+                {brand.appName} · Personvernerklæring
               </Typography>
-              <Typography variant="body1" sx={{ color: '#6b7280', mt: 1 }}>
-                CreatorHub Norge - Sist oppdatert: 9. januar 2025
+              <Typography variant="body1" sx={{ color: mutedColor, mt: 1 }}>
+                {brand.subtitle} · Sist oppdatert: 6. april 2026
               </Typography>
             </Box>
           </Box>
 
-          <Divider sx={{ my: 3 }} />
+          <Divider sx={{ my: 3, borderColor: brand.accentBorder }} />
 
           <Stack direction="row" spacing={2} flexWrap="wrap">
-            <Chip
-              icon={<Security />}
-              label="GDPR Compliant"
-              color="success"
-              variant="outlined"
-            />
-            <Chip
-              icon={<Gavel />}
-              label="Datatilsynet"
-              color="primary"
-              variant="outlined"
-            />
-            <Chip
-              icon={<Info />}
-              label="Norsk lovgivning"
-              color="info"
-              variant="outlined"
-            />
+            <Chip icon={<Security />} label="GDPR" variant="outlined" sx={{ borderColor: brand.accentBorder, color: isRoleRoom ? '#f8fafc' : undefined }} />
+            <Chip icon={<Gavel />} label="Norsk lovgivning" variant="outlined" sx={{ borderColor: brand.accentBorder, color: isRoleRoom ? '#f8fafc' : undefined }} />
+            <Chip icon={<Info />} label="Oppdatert for Google og AI-integrasjoner" variant="outlined" sx={{ borderColor: brand.accentBorder, color: isRoleRoom ? '#f8fafc' : undefined }} />
           </Stack>
         </Paper>
 
-        {/* Content */}
-        <Paper
-          elevation={3}
-          sx={{
-            p: 4,
-            borderRadius: '16px',
-            background: 'rgba(255,255,255,0.95)',
-            backdropFilter: 'blur(20px)',
-            ...theming.getThemedCardSx(),
-          }}
-        >
-          {/* Section 1 */}
+        <Paper elevation={3} sx={surfaceSx}>
           <Box sx={{ mb: 4 }}>
-            <Typography variant="h5" sx={{ fontWeight: 'bold', color: '#ff8c00', mb: 2 }}>
+            <Typography variant="h5" sx={{ fontWeight: 800, color: brand.accent, mb: 2 }}>
               1. Behandlingsansvarlig
             </Typography>
-            <Typography variant="body1" sx={{ color: '#374151', lineHeight: 1.8, mb: 2 }}>
-              Behandlingsansvarlig for dine personopplysninger er:
+            <Typography variant="body1" sx={{ color: bodyColor, lineHeight: 1.8, mb: 2 }}>
+              Behandlingsansvarlig for personopplysninger som behandles i {brand.appName} er Creatorhub AS.
             </Typography>
-            <Paper sx={{ p: 3, backgroundColor: '#fff8e6', border: '1px solid #ff8c00' }}>
-              <Typography variant="body1" sx={{ fontWeight: 'bold', mb: 1 }}>
-                QAZI FOTOREEL
+            <Paper sx={panelSx}>
+              <Typography variant="body1" sx={{ fontWeight: 700, mb: 1 }}>
+                Creatorhub AS
               </Typography>
-              <Typography variant="body2" sx={{ color: '#374151' }}>
-                Organisasjonsnummer: 833038222
-              </Typography>
-              <Typography variant="body2" sx={{ color: '#374151' }}>
-                Adresse: Søsterveien 11, 1474 LØRENSKOG
-              </Typography>
-              <Typography variant="body2" sx={{ color: '#374151' }}>
-                E-post: hello@creatorhubn.com
-              </Typography>
-              <Typography variant="body2" sx={{ color: '#374151' }}>
-                Telefon: +47 97 95 92 94
+              <Typography variant="body2" sx={{ color: bodyColor }}>Tjeneste: {brand.appName}</Typography>
+              <Typography variant="body2" sx={{ color: bodyColor }}>Nettside: {brand.website}</Typography>
+              <Typography variant="body2" sx={{ color: bodyColor }}>E-post: {brand.supportEmail}</Typography>
+              <Typography variant="body2" sx={{ color: bodyColor, mt: 1.5 }}>
+                {brand.summary}
               </Typography>
             </Paper>
           </Box>
 
-          <Divider sx={{ my: 4 }} />
+          <Divider sx={{ my: 4, borderColor: brand.accentBorder }} />
 
-          {/* Section 2 */}
           <Box sx={{ mb: 4 }}>
-            <Typography variant="h5" sx={{ fontWeight: 'bold', color: '#ff8c00', mb: 2 }}>
-              2. Hvilke personopplysninger samler vi inn?
-            </Typography>
-            <Typography variant="body1" sx={{ color: '#374151', lineHeight: 1.8, mb: 2 }}>
-              CreatorHub Norge samler inn følgende personopplysninger:
+            <Typography variant="h5" sx={{ fontWeight: 800, color: brand.accent, mb: 2 }}>
+              2. Hvilke opplysninger vi behandler
             </Typography>
             <List>
-              <ListItem>
-                <CheckCircle sx={{ color: '#4caf50', mr: 2 }} />
-                <ListItemText
-                  primary="Kontaktinformasjon"
-                  secondary="Navn, e-postadresse, telefonnummer"
-                />
-              </ListItem>
-              <ListItem>
-                <CheckCircle sx={{ color: '#4caf50', mr: 2 }} />
-                <ListItemText
-                  primary="Profilinformasjon"
-                  secondary="Profilbilde, yrkestitel, profesjon (fotograf, videograf, musikk produsent)"
-                />
-              </ListItem>
-              <ListItem>
-                <CheckCircle sx={{ color: '#4caf50', mr: 2 }} />
-                <ListItemText
-                  primary="Bedriftsinformasjon"
-                  secondary="Organisasjonsnummer, firmanavn, bedriftstype (hvis applicable)"
-                />
-              </ListItem>
-              <ListItem>
-                <CheckCircle sx={{ color: '#4caf50', mr: 2 }} />
-                <ListItemText
-                  primary="Teknisk informasjon"
-                  secondary="IP-adresse, nettleserinformasjon, enhetsinformasjon (kun for sikkerhet)"
-                />
-              </ListItem>
-              <ListItem>
-                <CheckCircle sx={{ color: '#4caf50', mr: 2 }} />
-                <ListItemText
-                  primary="Bruksdata"
-                  secondary="Hvordan du bruker plattformen (kun med ditt samtykke)"
-                />
-              </ListItem>
+              {brand.categories.map((item) => (
+                <ListItem key={item.title} disableGutters sx={{ alignItems: 'flex-start', py: 1.1 }}>
+                  <CheckCircle sx={{ color: brand.accent, mr: 2, mt: 0.3 }} />
+                  <ListItemText primary={item.title} secondary={item.detail} />
+                </ListItem>
+              ))}
             </List>
           </Box>
 
-          <Divider sx={{ my: 4 }} />
+          <Divider sx={{ my: 4, borderColor: brand.accentBorder }} />
 
-          {/* Section 3 */}
           <Box sx={{ mb: 4 }}>
-            <Typography variant="h5" sx={{ fontWeight: 'bold', color: '#ff8c00', mb: 2 }}>
-              3. Hvorfor behandler vi dine personopplysninger?
-            </Typography>
-            <Typography variant="body1" sx={{ color: '#374151', lineHeight: 1.8, mb: 2 }}>
-              Vi bruker dine personopplysninger til følgende formål:
+            <Typography variant="h5" sx={{ fontWeight: 800, color: brand.accent, mb: 2 }}>
+              3. Hvorfor vi behandler opplysningene
             </Typography>
             <List>
-              <ListItem>
-                <ListItemText
-                  primary="✅ Levering av tjenester"
-                  secondary="For å gi deg tilgang til CreatorHub Norge plattformen og dens funksjoner. Rettslig grunnlag: Kontraktsoppfyllelse (GDPR art. 6.1.b)"
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText
-                  primary="✅ Autentisering og sikkerhet"
-                  secondary="For å beskytte din konto og forhindre svindel. Rettslig grunnlag: Berettiget interesse (GDPR art. 6.1.f)"
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText
-                  primary="✅ Kundesupport"
-                  secondary="For å kunne hjelpe deg med spørsmål og problemer. Rettslig grunnlag: Kontraktsoppfyllelse (GDPR art. 6.1.b)"
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText
-                  primary="✅ Plattformforbedring"
-                  secondary="For å forstå hvordan tjenesten brukes og forbedre den. Rettslig grunnlag: Samtykke (GDPR art. 6.1.a)"
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText
-                  primary="✅ Lovpålagte forpliktelser"
-                  secondary="For å overholde norske lover og forskrifter. Rettslig grunnlag: Lovpålagt forpliktelse (GDPR art. 6.1.c)"
-                />
-              </ListItem>
+              {brand.purposes.map((item) => (
+                <ListItem key={item.title} disableGutters sx={{ alignItems: 'flex-start', py: 1.1 }}>
+                  <ListItemText primary={item.title} secondary={item.detail} />
+                </ListItem>
+              ))}
             </List>
           </Box>
 
-          <Divider sx={{ my: 4 }} />
+          <Divider sx={{ my: 4, borderColor: brand.accentBorder }} />
 
-          {/* Section 4 */}
           <Box sx={{ mb: 4 }}>
-            <Typography variant="h5" sx={{ fontWeight: 'bold', color: '#ff8c00', mb: 2 }}>
-              4. Deling av personopplysninger
+            <Typography variant="h5" sx={{ fontWeight: 800, color: brand.accent, mb: 2 }}>
+              4. Deling med tredjepart og databehandlere
             </Typography>
-            <Typography variant="body1" sx={{ color: '#374151', lineHeight: 1.8, mb: 2 }}>
-              Vi deler ikke dine personopplysninger med tredjeparter for markedsføringsformål. Vi deler kun
-              data med følgende kategorier av mottakere:
+            <Typography variant="body1" sx={{ color: bodyColor, lineHeight: 1.8, mb: 2 }}>
+              Vi deler ikke personopplysninger med tredjeparter for deres egne markedsføringsformål. Vi bruker databehandlere og underleverandører der dette er nødvendig for å levere tjenesten.
             </Typography>
             <List>
-              <ListItem>
-                <ListItemText
-                  primary="🔒 Tekniske tjenesteleverandører"
-                  secondary="Database hosting, cloud storage, sikkerhetstjenester (med databehandleravtaler)"
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText
-                  primary="💳 Betalingstjenester"
-                  secondary="Stripe, Google Pay (kun nødvendig betalingsinformasjon)"
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText
-                  primary="⚖️ Lovpålagt utlevering"
-                  secondary="Norske myndigheter ved lovpålagt krav (politiet, skattemyndighetene, etc.)"
-                />
-              </ListItem>
+              <ListItem disableGutters><ListItemText primary="Teknisk drift og lagring" secondary="Hosting, database, logging, sikkerhet, backup og overvåking." /></ListItem>
+              <ListItem disableGutters><ListItemText primary="Betalings- og fakturaleverandører" secondary="Stripe og tilknyttede betalingstjenester når du gjennomfører kjøp eller mottar faktura/kvittering." /></ListItem>
+              <ListItem disableGutters><ListItemText primary="Google-tjenester" secondary="Google Workspace og Google Places når du eller en administrator kobler til slike tjenester for dokumenter, kalender, bedriftsdata eller reviews." /></ListItem>
+              <ListItem disableGutters><ListItemText primary="AI- og søketjenester" secondary="OpenAI, Cohere og tilsvarende leverandører når du bruker funksjoner som genererer forslag, oppsummeringer eller bedriftsanalyse." /></ListItem>
+              <ListItem disableGutters><ListItemText primary="Offentlige myndigheter" secondary="Når dette er lovpålagt eller nødvendig for å forsvare rettskrav." /></ListItem>
             </List>
-            <Paper sx={{ p: 2, mt: 2, backgroundColor: '#e3f2fd', border: '1px solid #2196f3' }}>
-              <Typography variant="body2" sx={{ color: '#1565c0', fontWeight: 'bold' }}>
-                ℹ️ Internasjonale dataoverføringer:
-              </Typography>
-              <Typography variant="body2" sx={{ color: '#374151', mt: 1 }}>
-                Alle databehandlere er basert i EU/EØS. Hvis data overføres til USA, skjer dette kun til
-                selskaper med EU-US Data Privacy Framework sertifisering eller Standard Contractual Clauses (SCC).
+            <Paper sx={{ ...panelSx, mt: 2 }}>
+              <Typography variant="body2" sx={{ color: bodyColor }}>
+                Dersom personopplysninger behandles utenfor EU/EØS, skjer dette bare med gyldig overføringsgrunnlag, som EU Standard Contractual Clauses eller tilsvarende mekanismer.
               </Typography>
             </Paper>
           </Box>
 
-          <Divider sx={{ my: 4 }} />
+          <Divider sx={{ my: 4, borderColor: brand.accentBorder }} />
 
-          {/* Section 5 */}
           <Box sx={{ mb: 4 }}>
-            <Typography variant="h5" sx={{ fontWeight: 'bold', color: '#ff8c00', mb: 2 }}>
-              5. Dine rettigheter under GDPR
+            <Typography variant="h5" sx={{ fontWeight: 800, color: brand.accent, mb: 2 }}>
+              5. Informasjonssikkerhet og lagringstid
             </Typography>
-            <Typography variant="body1" sx={{ color: '#374151', lineHeight: 1.8, mb: 2 }}>
-              Du har følgende rettigheter i henhold til GDPR og norsk personvernlovgivning:
+            <Typography variant="body1" sx={{ color: bodyColor, lineHeight: 1.8, mb: 2 }}>
+              Vi bruker tilgangsstyring, kryptert kommunikasjon, logging, sikkerhetsoppdateringer og andre organisatoriske og tekniske tiltak for å beskytte dataene dine.
             </Typography>
             <List>
-              <ListItem>
-                <ListItemText
-                  primary="📥 Rett til innsyn (art. 15)"
-                  secondary="Du kan be om en kopi av alle personopplysninger vi har om deg"
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText
-                  primary="✏️ Rett til retting (art. 16)"
-                  secondary="Du kan be om at feil eller ufullstendige opplysninger rettes"
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText
-                  primary="🗑️ Rett til sletting (art. 17)"
-                  secondary='Også kjent som "retten til å bli glemt" - du kan be om at dine data slettes'
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText
-                  primary="⏸️ Rett til begrensning (art. 18)"
-                  secondary="Du kan be om at behandlingen av dine opplysninger begrenses"
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText
-                  primary="📤 Rett til dataportabilitet (art. 20)"
-                  secondary="Du kan få dine opplysninger i et maskinlesbart format"
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText
-                  primary="❌ Rett til å protestere (art. 21)"
-                  secondary="Du kan protestere mot behandling basert på berettiget interesse"
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText
-                  primary="🔙 Rett til å trekke tilbake samtykke"
-                  secondary="Du kan når som helst trekke tilbake samtykke uten at det påvirker lovligheten av behandlingen før tilbaketrekningen"
-                />
-              </ListItem>
+              <ListItem disableGutters><ListItemText primary="Aktive kontoer" secondary="Data lagres så lenge kontoen eller prosjektet er aktivt og det er nødvendig for å levere tjenesten." /></ListItem>
+              <ListItem disableGutters><ListItemText primary="Kjøps- og regnskapsdata" secondary="Lagringsplikt følger bokføringsloven og tilhørende regelverk." /></ListItem>
+              <ListItem disableGutters><ListItemText primary="Sikkerhetslogger" secondary="Oppbevares så lenge det er nødvendig for sikkerhet, feilsøking og dokumentasjon." /></ListItem>
+              <ListItem disableGutters><ListItemText primary="AI-utkast og integrasjonsdata" secondary="Lagres som del av arbeidsflyten eller fjernes når de ikke lenger trengs, avhengig av prosjektets innstillinger og tjenestens funksjon." /></ListItem>
             </List>
-            <Paper sx={{ p: 3, mt: 2, backgroundColor: '#fff3e0', border: '1px solid #ff8c00' }}>
-              <Typography variant="body1" sx={{ fontWeight: 'bold', color: '#ff8c00', mb: 1 }}>
-                📧 Utøv dine rettigheter:
+          </Box>
+
+          <Divider sx={{ my: 4, borderColor: brand.accentBorder }} />
+
+          <Box sx={{ mb: 4 }}>
+            <Typography variant="h5" sx={{ fontWeight: 800, color: brand.accent, mb: 2 }}>
+              6. Dine rettigheter
+            </Typography>
+            <Typography variant="body1" sx={{ color: bodyColor, lineHeight: 1.8, mb: 2 }}>
+              Du har rett til innsyn, retting, sletting, begrensning, dataportabilitet, å protestere mot behandling og å trekke tilbake samtykke der samtykke er brukt som grunnlag.
+            </Typography>
+            <Paper sx={panelSx}>
+              <Typography variant="body1" sx={{ fontWeight: 700, color: brand.accent, mb: 1 }}>
+                Utøv dine rettigheter
               </Typography>
-              <Typography variant="body2" sx={{ color: '#374151', mb: 1 }}>
-                Send en e-post til: <strong>hello@creatorhubn.com</strong>
-              </Typography>
-              <Typography variant="body2" sx={{ color: '#374151' }}>
-                Vi svarer innen 30 dager i henhold til GDPR art. 12.3
+              <Typography variant="body2" sx={{ color: bodyColor }}>
+                Send forespørsel til <strong>{brand.supportEmail}</strong>. Vi svarer uten ugrunnet opphold og normalt senest innen 30 dager.
               </Typography>
             </Paper>
           </Box>
 
-          <Divider sx={{ my: 4 }} />
+          <Divider sx={{ my: 4, borderColor: brand.accentBorder }} />
 
-          {/* Section 6 */}
           <Box sx={{ mb: 4 }}>
-            <Typography variant="h5" sx={{ fontWeight: 'bold', color: '#ff8c00', mb: 2 }}>
-              6. Lagring og sikkerhet
+            <Typography variant="h5" sx={{ fontWeight: 800, color: brand.accent, mb: 2 }}>
+              7. Cookies og lignende teknologier
             </Typography>
-            <Typography variant="body1" sx={{ color: '#374151', lineHeight: 1.8, mb: 2 }}>
-              Vi tar sikkerhet alvorlig og har implementert følgende tiltak:
+            <Typography variant="body1" sx={{ color: bodyColor, lineHeight: 1.8, mb: 2 }}>
+              Vi bruker nødvendige cookies for innlogging, sikkerhet og grunnleggende funksjonalitet. Analyse- og markedsføringscookies brukes bare når du har gitt samtykke der dette kreves.
             </Typography>
-            <List>
-              <ListItem>
-                <Security sx={{ color: '#4caf50', mr: 2 }} />
-                <ListItemText
-                  primary="Krypterte databaser"
-                  secondary="AES-256 kryptering for data i hvile"
-                />
-              </ListItem>
-              <ListItem>
-                <Security sx={{ color: '#4caf50', mr: 2 }} />
-                <ListItemText
-                  primary="HTTPS/TLS"
-                  secondary="All kommunikasjon krypteres med TLS 1.3"
-                />
-              </ListItem>
-              <ListItem>
-                <Security sx={{ color: '#4caf50', mr: 2 }} />
-                <ListItemText
-                  primary="Tilgangskontroll"
-                  secondary="Kun autoriserte ansatte har tilgang til persondata"
-                />
-              </ListItem>
-              <ListItem>
-                <Security sx={{ color: '#4caf50', mr: 2 }} />
-                <ListItemText
-                  primary="Regelmessige sikkerhetsoppdateringer"
-                  secondary="Automatiske sikkerhetspatcher og sårbarhetsscanning"
-                />
-              </ListItem>
-              <ListItem>
-                <Security sx={{ color: '#4caf50', mr: 2 }} />
-                <ListItemText
-                  primary="Logging og overvåking"
-                  secondary="Alle dataaksesser logges for å oppdage uautorisert aktivitet"
-                />
-              </ListItem>
-            </List>
-            <Typography variant="h6" sx={{ fontWeight: 'bold', color: '#1f2937', mt: 3, mb: 2 }}>
-              Lagringstid:
-            </Typography>
-            <List>
-              <ListItem>
-                <ListItemText
-                  primary="Aktive brukere"
-                  secondary="Data lagres så lenge kontoen er aktiv"
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText
-                  primary="Inaktive brukere"
-                  secondary="Data slettes etter 3 år uten aktivitet (med varsel 90 dager før)"
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText
-                  primary="Sikkerhetslover"
-                  secondary="IP-logger slettes etter 90 dager (kun for sikkerhet)"
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText
-                  primary="Regnskapsinformasjon"
-                  secondary="5 år i henhold til bokføringsloven"
-                />
-              </ListItem>
-            </List>
-          </Box>
-
-          <Divider sx={{ my: 4 }} />
-
-          {/* Section 7 */}
-          <Box sx={{ mb: 4 }}>
-            <Typography variant="h5" sx={{ fontWeight: 'bold', color: '#ff8c00', mb: 2 }}>
-              7. Informasjonskapsler (Cookies)
-            </Typography>
-            <Typography variant="body1" sx={{ color: '#374151', lineHeight: 1.8, mb: 2 }}>
-              CreatorHub Norge bruker informasjonskapsler for å forbedre din opplevelse. Se vår{' '}
-              <Button
-                variant="text"
-                sx={{ textTransform: 'none', color: '#ff8c00', p: 0, minWidth: 'auto' }}
-                onClick={() => setLocation('/cookie-policy')}
-              >
-                Cookie Policy
-              </Button>{' '}
-              for detaljert informasjon.
-            </Typography>
-            <Paper sx={{ p: 2, backgroundColor: '#f3f4f6' }}>
-              <Typography variant="body2" sx={{ color: '#374151' }}>
-                <strong>Nødvendige cookies:</strong> Kan ikke deaktiveres - nødvendig for pålogging og
-                grunnleggende funksjonalitet
-              </Typography>
-              <Typography variant="body2" sx={{ color: '#374151', mt: 1 }}>
-                <strong>Analyse cookies:</strong> Krever ditt samtykke - Google Analytics for bruksstatistikk
-              </Typography>
-              <Typography variant="body2" sx={{ color: '#374151', mt: 1 }}>
-                <strong>Markedsføring cookies:</strong> Krever ditt samtykke - For relevante annonser
+            <Paper sx={panelSx}>
+              <Typography variant="body2" sx={{ color: bodyColor }}>
+                Nødvendige cookies kan ikke slås av hvis tjenesten skal fungere. Andre kategorier styres gjennom samtykkebanner og gjeldende innstillinger.
               </Typography>
             </Paper>
           </Box>
 
-          <Divider sx={{ my: 4 }} />
+          <Divider sx={{ my: 4, borderColor: brand.accentBorder }} />
 
-          {/* Section 8 */}
           <Box sx={{ mb: 4 }}>
-            <Typography variant="h5" sx={{ fontWeight: 'bold', color: '#ff8c00', mb: 2 }}>
+            <Typography variant="h5" sx={{ fontWeight: 800, color: brand.accent, mb: 2 }}>
               8. Klage til Datatilsynet
             </Typography>
-            <Typography variant="body1" sx={{ color: '#374151', lineHeight: 1.8, mb: 2 }}>
-              Hvis du mener at vår behandling av personopplysninger bryter med personvernlovgivningen, har du
-              rett til å klage til Datatilsynet:
+            <Typography variant="body1" sx={{ color: bodyColor, lineHeight: 1.8, mb: 2 }}>
+              Hvis du mener behandlingen vår bryter personvernlovgivningen, kan du kontakte oss først eller sende klage til Datatilsynet.
             </Typography>
-            <Paper sx={{ p: 3, backgroundColor: '#e8f5e9', border: '1px solid #4caf50' }}>
-              <Typography variant="body1" sx={{ fontWeight: 'bold', mb: 1 }}>
-                Datatilsynet
-              </Typography>
-              <Typography variant="body2" sx={{ color: '#374151' }}>
-                Postboks 458 Sentrum, 0105 Oslo
-              </Typography>
-              <Typography variant="body2" sx={{ color: '#374151' }}>
-                E-post: postkasse@datatilsynet.no
-              </Typography>
-              <Typography variant="body2" sx={{ color: '#374151' }}>
-                Telefon: 22 39 69 00
-              </Typography>
-              <Typography variant="body2" sx={{ color: '#374151', mt: 1 }}>
-                Nettside:{', '}
-                <a
-                  href="https://www.datatilsynet.no"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ color: '#ff8c00' }}
-                >
+            <Paper sx={panelSx}>
+              <Typography variant="body2" sx={{ color: bodyColor }}>
+                Datatilsynet, Postboks 458 Sentrum, 0105 Oslo ·{' '}
+                <a href="https://www.datatilsynet.no" target="_blank" rel="noopener noreferrer" style={{ color: brand.accent }}>
                   www.datatilsynet.no
                 </a>
               </Typography>
             </Paper>
           </Box>
 
-          <Divider sx={{ my: 4 }} />
+          <Divider sx={{ my: 4, borderColor: brand.accentBorder }} />
 
-          {/* Section 9 */}
-          <Box sx={{ mb: 4 }}>
-            <Typography variant="h5" sx={{ fontWeight: 'bold', color: '#ff8c00', mb: 2 }}>
-              9. Endringer i personvernerklæringen
-            </Typography>
-            <Typography variant="body1" sx={{ color: '#374151', lineHeight: 1.8, mb: 2 }}>
-              Vi forbeholder oss retten til å oppdatere denne personvernerklæringen. Ved vesentlige endringer
-              vil vi varsle deg via e-post eller ved pålogging. Du oppfordres til å regelmessig gjennomgå
-              denne siden.
-            </Typography>
-            <Typography variant="body2" sx={{ color: '#6b7280', fontStyle: 'italic' }}>
-              Versjon 1.0 - Sist oppdatert: 9. januar 2025
-            </Typography>
-          </Box>
-
-          <Divider sx={{ my: 4 }} />
-
-          {/* Contact Section */}
           <Paper
             sx={{
               p: 3,
-              backgroundColor: '#fff8e6',
-              border: '2px solid #ff8c00',
-              borderRadius: '12px',
+              backgroundColor: isRoleRoom ? 'rgba(8, 15, 28, 0.9)' : brand.accentSoft,
+              border: `2px solid ${brand.accent}`,
+              borderRadius: '14px',
             }}
           >
             <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-              <ContactMail sx={{ fontSize: 32, color: '#ff8c00', mr: 2 }} />
-              <Typography variant="h6" sx={{ fontWeight: 'bold', color: '#1f2937' }}>
-                Har du spørsmål om personvern?
+              <ContactMail sx={{ fontSize: 32, color: brand.accent, mr: 2 }} />
+              <Typography variant="h6" sx={{ fontWeight: 800, color: isRoleRoom ? '#f8fafc' : '#1f2937' }}>
+                Kontakt og oppdateringer
               </Typography>
             </Box>
-            <Typography variant="body2" sx={{ color: '#374151', mb: 2 }}>
-              Vi er her for å hjelpe deg med alle spørsmål om hvordan vi håndterer dine personopplysninger.
+            <Typography variant="body2" sx={{ color: bodyColor, mb: 2 }}>
+              Har du spørsmål om personvern, integrasjoner eller hvordan vi bruker data i plattformen, kontakt oss direkte.
             </Typography>
             <PublicSocialLinks
-              label="Følg CreatorHub"
-              body="Sosiale kanaler for produktoppdateringer og informasjon fra CreatorHub."
-              links={creatorhubSocialLinks}
+              label={brand.socialLabel}
+              body={
+                isRoleRoom
+                  ? 'Følg The Role Room for oppdateringer om produksjonsverktøy, funksjoner og policy-endringer.'
+                  : 'Følg CreatorHub for produktoppdateringer, abonnement og plattforminformasjon.'
+              }
+              links={socialLinks}
               tone="legal"
               sx={{ mb: 2.2 }}
               showTopDivider
             />
-            <Stack direction="row" spacing={2}>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
               <Button
                 variant="contained"
                 startIcon={<ContactMail />}
-                href={`mailto:${PUBLIC_BRAND_LINKS.creatorhub.email}`}
-                sx={{
-                  ...theming.getThemedButtonSx(),
-                  background: 'linear-gradient(135deg, #ff8c00 0%, #e67c00 100%)',
-                }}
+                href={`mailto:${brand.supportEmail}`}
+                sx={{ ...theming.getThemedButtonSx(), background: brand.iconGradient }}
               >
                 Send e-post
               </Button>
               <Button variant="outlined" onClick={() => setLocation('/')}>
                 Tilbake til forsiden
+              </Button>
+              <Button variant="text" href="/terms-and-conditions" sx={{ color: brand.accent }}>
+                Les vilkår og betingelser
               </Button>
             </Stack>
           </Paper>

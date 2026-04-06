@@ -31,9 +31,19 @@ services:
         sync: false
       - key: GOOGLE_REDIRECT_URI
         sync: false
+      - key: ROLE_ROOM_GOOGLE_CLIENT_ID
+        sync: false
+      - key: ROLE_ROOM_GOOGLE_CLIENT_SECRET
+        sync: false
       - key: ROLE_ROOM_GOOGLE_REDIRECT_URI
         sync: false
+      - key: ROLE_ROOM_GOOGLE_TOKEN_ENCRYPTION_KEY
+        sync: false
       - key: GOOGLE_API_KEY
+        sync: false
+      - key: GOOGLE_PROJECT_ID
+        sync: false
+      - key: GOOGLE_CLOUD_QUOTA_PROJECT
         sync: false
       - key: GOOGLE_ADMIN_EMAIL
         sync: false
@@ -46,6 +56,8 @@ services:
       - key: GOOGLE_IMPERSONATE_USER
         sync: false
       - key: GOOGLE_USE_IMPERSONATION
+        sync: false
+      - key: COHERE_API_KEY
         sync: false
       - key: GOOGLE_TAG_MANAGER_ID
         sync: false
@@ -66,6 +78,8 @@ services:
       - key: ROLE_ROOM_LINKEDIN_CLIENT_SECRET
         sync: false
       - key: ROLE_ROOM_LINKEDIN_REDIRECT_URI
+        sync: false
+      - key: ROLE_ROOM_LINKEDIN_TOKEN_ENCRYPTION_KEY
         sync: false
       - key: APP_URL
         sync: false

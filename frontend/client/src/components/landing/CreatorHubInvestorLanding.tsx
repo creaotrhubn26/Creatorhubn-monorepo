@@ -242,6 +242,10 @@ const landingCopy = {
       facebook: 'Facebook',
     },
     footer: 'Creatorhub AS - laget av kreative, for kreative.',
+    legal: {
+      privacy: 'Personvernerklæring',
+      terms: 'Vilkår',
+    },
   },
   en: {
     title: 'Creatorhub | The platform for creative work',
@@ -422,6 +426,10 @@ const landingCopy = {
       facebook: 'Facebook',
     },
     footer: 'Creatorhub AS - built by creatives, for creatives.',
+    legal: {
+      privacy: 'Privacy Policy',
+      terms: 'Terms',
+    },
   },
 } as const;
 
@@ -2024,6 +2032,38 @@ export default function CreatorHubInvestorLanding({
               <Typography sx={{ fontSize: '0.78rem', color: 'rgba(246,242,234,0.38)' }}>
                 {PUBLIC_BRAND_LINKS.creatorhub.email}
               </Typography>
+              <Stack
+                direction={{ xs: 'column', sm: 'row' }}
+                spacing={{ xs: 0.6, sm: 1.4 }}
+                sx={{ pt: 0.6 }}
+              >
+                <Box
+                  component="a"
+                  href="/privacy-policy"
+                  sx={{
+                    color: '#fff5e8',
+                    textDecoration: 'underline',
+                    textUnderlineOffset: '0.18em',
+                    fontSize: '0.82rem',
+                    '&:hover': { color: '#ffcb91' },
+                  }}
+                >
+                  {copy.legal.privacy}
+                </Box>
+                <Box
+                  component="a"
+                  href="/terms-and-conditions"
+                  sx={{
+                    color: '#fff5e8',
+                    textDecoration: 'underline',
+                    textUnderlineOffset: '0.18em',
+                    fontSize: '0.82rem',
+                    '&:hover': { color: '#ffcb91' },
+                  }}
+                >
+                  {copy.legal.terms}
+                </Box>
+              </Stack>
             </Stack>
 
             <PublicSocialLinks
