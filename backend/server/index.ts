@@ -82,6 +82,13 @@ import {
 } from "./notebooklm-workspace.js";
 import { createWebSocketServer } from "./websocket-chat.js";
 import { createReferenceProxyRouter } from "./reference-proxy-routes.js";
+import { createYouTubeRouter } from "./youtube-routes.js";
+import {
+  deletePersistedAuthSession,
+  hydratePersistedAuthSessions,
+  loadPersistedAuthSession,
+  persistAuthSession,
+} from "./auth-session-store.js";
 import { createServer } from "http";
 import {
   MEMORY_CARD_DATABASE as MEMORY_CARD_PRODUCTS_DB,
@@ -686,6 +693,15 @@ type ActiveSessionData = {
 };
 
 const activeSessions: Map<string, ActiveSessionData> = new Map();
+void hydratePersistedAuthSessions<ActiveSessionData>(pool, activeSessions)
+  .then((count) => {
+    if (count > 0) {
+      console.log(`[Auth] Hydrated ${count} persisted session(s)`);
+    }
+  })
+  .catch((error) => {
+    console.warn("[Auth] Failed to hydrate persisted sessions:", error);
+  });
 const DEV_LOCAL_ADMIN_SESSION_TOKEN = "dev-admin-local-session";
 const DEV_LOCAL_ADMIN_PERMISSIONS = [
   "users:read",
@@ -756,6 +772,36 @@ function getActiveSessionFromRequest(req: express.Request) {
   return activeSessions.get(sessionToken) || getLocalDevelopmentSession(sessionToken);
 }
 
+async function resolveActiveSessionFromRequest(
+  req: express.Request,
+): Promise<ActiveSessionData | null> {
+  const sessionToken = readActiveSessionToken(req);
+  if (!sessionToken) {
+    return null;
+  }
+
+  const inMemorySession = activeSessions.get(sessionToken);
+  if (inMemorySession) {
+    return inMemorySession;
+  }
+
+  const localDevelopmentSession = getLocalDevelopmentSession(sessionToken);
+  if (localDevelopmentSession) {
+    return localDevelopmentSession;
+  }
+
+  const persistedSession = await loadPersistedAuthSession<ActiveSessionData>(
+    pool,
+    sessionToken,
+  );
+  if (persistedSession) {
+    activeSessions.set(sessionToken, persistedSession);
+    return persistedSession;
+  }
+
+  return null;
+}
+
 function requireAdminSession(
   req: express.Request,
   res: express.Response,
@@ -799,6 +845,7 @@ function requireInviteRequestApproverSession(
 registerTidumAdminRoutes(app, pool, requireAdminSession);
 
 app.use("/api/role-room", createRoleRoomRouter(pool, activeSessions));
+app.use("/api/youtube", createYouTubeRouter(pool));
 app.use(
   "/api/integrations/v1/role-room",
   createRoleRoomIntegrationsV1Router(pool),
@@ -22752,6 +22799,7 @@ app.post("/api/auth/login", async (req, res) => {
         coupleCheck.rows[0].display_name || sessionData.displayName;
     }
     activeSessions.set(sessionToken, sessionData);
+    await persistAuthSession(pool, sessionToken, sessionData);
 
     console.log(
       `[Auth] Login: ${dbUser.email} as ${roleRoomSessionRole} (session: ${sessionToken.substring(0, 8)}...)`,
@@ -22864,6 +22912,7 @@ app.post("/api/couples/login", async (req, res) => {
       loginAt: new Date().toISOString(),
     };
     activeSessions.set(sessionToken, sessionData);
+    await persistAuthSession(pool, sessionToken, sessionData);
 
     console.log(
       `[CoupleLogin] Success: ${couple.email} (session: ${sessionToken.substring(0, 8)}...)`,
@@ -23168,15 +23217,18 @@ app.get("/api/couples/vendors", async (req, res) => {
 });
 
 // POST /api/auth/logout — Logout
-app.post("/api/auth/logout", (req, res) => {
+app.post("/api/auth/logout", async (req, res) => {
   const token = req.headers.authorization?.replace("Bearer ", "");
-  if (token) activeSessions.delete(token);
+  if (token) {
+    activeSessions.delete(token);
+    await deletePersistedAuthSession(pool, token);
+  }
   res.json({ success: true });
 });
 
 // GET /api/auth/user — Get current user from session
 app.get("/api/auth/user", async (req, res) => {
-  const session = getActiveSessionFromRequest(req);
+  const session = await resolveActiveSessionFromRequest(req);
   if (!session) {
     return res.json({ user: null, authenticated: false });
   }
@@ -23197,16 +23249,16 @@ app.get("/api/auth/user", async (req, res) => {
   }
 });
 
-app.get("/api/auth/status", (req, res) => {
-  const session = getActiveSessionFromRequest(req);
+app.get("/api/auth/status", async (req, res) => {
+  const session = await resolveActiveSessionFromRequest(req);
   if (session) {
     return res.json({ authenticated: true, user: session });
   }
   res.json({ authenticated: false, user: null });
 });
 
-app.get("/api/auth/session-status", (req, res) => {
-  if (getActiveSessionFromRequest(req)) {
+app.get("/api/auth/session-status", async (req, res) => {
+  if (await resolveActiveSessionFromRequest(req)) {
     return res.json({ active: true, authenticated: true });
   }
   res.json({ active: false, authenticated: false });
@@ -23217,8 +23269,8 @@ app.post("/api/auth/google/token", (req, res) => {
 });
 
 // GET /api/auth/public-session — minimal public session details for dashboard bootstrap
-app.get("/api/auth/public-session", (req, res) => {
-  const session = getActiveSessionFromRequest(req);
+app.get("/api/auth/public-session", async (req, res) => {
+  const session = await resolveActiveSessionFromRequest(req);
 
   if (session) {
     return res.json({
@@ -23628,9 +23680,11 @@ app.get("/api/file-management/google-drive/status", async (req, res) => {
         value === "dev-local-user" ||
         value.startsWith("dev-"));
 
+    const resolvedSession = await resolveActiveSessionFromRequest(req);
     const normalizedUserId =
       readString(req.query.userId) ||
       readString(req.headers["x-user-id"]) ||
+      resolvedSession?.userId ||
       compatResolveUserId(req);
     if (!normalizedUserId || normalizedUserId === "guest") {
       return res.status(200).json({
@@ -32841,7 +32895,10 @@ async function resolveRoleRoomEducationInquiryGmailSender() {
     ? authorized.connection.storedScopes
     : [];
 
-  if (!grantedScopes.includes("https://www.googleapis.com/auth/gmail.send")) {
+  if (
+    !grantedScopes.includes("https://www.googleapis.com/auth/gmail.send")
+    && !grantedScopes.includes("https://www.googleapis.com/auth/gmail.compose")
+  ) {
     return null;
   }
 
@@ -53605,6 +53662,7 @@ app.post("/api/admin/impersonate/start", async (req, res) => {
     };
 
     activeSessions.set(targetSessionToken, targetSession);
+    await persistAuthSession(pool, targetSessionToken, targetSession);
 
     res.json({
       success: true,

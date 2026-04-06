@@ -26,6 +26,10 @@ import { google } from 'googleapis';
 import { z } from 'zod';
 import { fileURLToPath } from 'url';
 import * as roleRoomSchema from '../migrations/role-room-schema.js';
+import {
+  loadPersistedAuthSession,
+  persistAuthSession,
+} from './auth-session-store.js';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -496,14 +500,21 @@ const ROLE_ROOM_GOOGLE_SCOPES = [
   'openid',
   'email',
   'profile',
+  // Full Drive access is required for Showcase and other workspace flows
+  // that list, create, move, and share arbitrary Drive files/folders.
+  'https://www.googleapis.com/auth/drive',
   'https://www.googleapis.com/auth/drive.file',
   'https://www.googleapis.com/auth/drive.readonly',
   'https://www.googleapis.com/auth/documents',
+  // Full Calendar access is required when Role Room creates dedicated
+  // secondary project calendars in addition to event sync / Meet sessions.
+  'https://www.googleapis.com/auth/calendar',
   'https://www.googleapis.com/auth/calendar.events',
   'https://www.googleapis.com/auth/contacts',
   'https://www.googleapis.com/auth/contacts.readonly',
   'https://www.googleapis.com/auth/gmail.readonly',
-  'https://www.googleapis.com/auth/gmail.send',
+  // Compose covers both draft handling and message sending for Gmail flows.
+  'https://www.googleapis.com/auth/gmail.compose',
   'https://www.googleapis.com/auth/tasks',
   'https://www.googleapis.com/auth/tasks.readonly',
   'https://www.googleapis.com/auth/chat.spaces.readonly',
@@ -512,6 +523,9 @@ const ROLE_ROOM_GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/chat.spaces.create',
   'https://www.googleapis.com/auth/chat.memberships.readonly',
   'https://www.googleapis.com/auth/chat.messages.reactions.create',
+  // Publishing requires both direct uploads and full video management.
+  'https://www.googleapis.com/auth/youtube',
+  'https://www.googleapis.com/auth/youtube.upload',
 ] as const;
 const ROLE_ROOM_LINKEDIN_SCOPES = [
   'openid',
@@ -1218,6 +1232,69 @@ function isRoleRoomLocalDevelopmentUserId(userId: string | null | undefined): bo
   return userId === 'local-admin' || isEphemeralRoleRoomDevUserId(userId);
 }
 
+async function resolveRoleRoomSessionFromBearer(
+  pool: Pool,
+  activeSessions: Map<string, SessionData> | undefined,
+  bearer: string | null | undefined,
+): Promise<SessionData | null> {
+  const sessionToken = typeof bearer === 'string' ? bearer.trim() : '';
+  if (!sessionToken) {
+    return null;
+  }
+
+  const inMemorySession = activeSessions?.get(sessionToken) ?? null;
+  if (inMemorySession) {
+    return inMemorySession;
+  }
+
+  const persistedSession = await loadPersistedAuthSession<SessionData>(
+    pool,
+    sessionToken,
+  );
+  if (persistedSession) {
+    activeSessions?.set(sessionToken, persistedSession);
+    return persistedSession;
+  }
+
+  return null;
+}
+
+async function resolveOptionalRequestUser(
+  req: Request,
+  pool: Pool,
+  activeSessions?: Map<string, SessionData>,
+): Promise<ApiKeyUserContext | null> {
+  const apiKeyReq = req as Request & { apiKeyUser?: ApiKeyUserContext };
+  if (apiKeyReq.apiKeyUser?.userId) {
+    return apiKeyReq.apiKeyUser;
+  }
+
+  const bearer = req.headers.authorization?.replace(/^Bearer\s+/i, '').trim();
+  const session = await resolveRoleRoomSessionFromBearer(pool, activeSessions, bearer);
+  if (session) {
+    return {
+      userId: session.userId,
+      email: session.email,
+      role: session.role,
+      scopes: buildSessionScopes(session.role),
+    };
+  }
+
+  if (isRoleRoomDevBypassEnabled()) {
+    const headerEmail = readRoleRoomDevUserEmail(req);
+    const headerRole = readRoleRoomDevUserRole(req)?.toLowerCase();
+    const userId = readRoleRoomDevUserId(req, bearer);
+    return {
+      userId,
+      email: headerEmail,
+      role: headerRole,
+      scopes: headerRole ? buildSessionScopes(headerRole) : ['read', 'write', 'admin'],
+    };
+  }
+
+  return null;
+}
+
 // ── API Key Middleware ───────────────────────────────────────
 
 /**
@@ -1231,18 +1308,16 @@ function apiKeyAuth(pool: Pool, activeSessions?: Map<string, SessionData>) {
 
     // ── 1. Try Bearer token (in-app session) ──────────────
     const bearer = req.headers.authorization?.replace(/^Bearer\s+/i, '').trim();
-    if (bearer && activeSessions) {
-      const session = activeSessions.get(bearer);
-      if (session) {
-        (req as Request & { apiKeyUser: ApiKeyUserContext }).apiKeyUser = {
-          userId: session.userId,
-          email: session.email,
-          role: session.role,
-          scopes: buildSessionScopes(session.role),
-        };
-        next();
-        return;
-      }
+    const session = await resolveRoleRoomSessionFromBearer(pool, activeSessions, bearer);
+    if (session) {
+      (req as Request & { apiKeyUser: ApiKeyUserContext }).apiKeyUser = {
+        userId: session.userId,
+        email: session.email,
+        role: session.role,
+        scopes: buildSessionScopes(session.role),
+      };
+      next();
+      return;
     }
 
     // ── 1b. Dev-mode bypass for local UI integration ───────
@@ -1834,7 +1909,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       return null;
     }
 
-    const requestUser = getOptionalRequestUser(req);
+    const requestUser = await resolveOptionalRequestUser(req, pool, activeSessions);
     if (!canBootstrapRoleRoomGoogleConnection(requestUser?.role)) {
       return null;
     }
@@ -5125,7 +5200,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     try {
       pruneExpiredRoleRoomGoogleState();
       const config = getRoleRoomGoogleConfig(req);
-      const requestUser = getOptionalRequestUser(req);
+      const requestUser = await resolveOptionalRequestUser(req, pool, activeSessions);
       const projectId = readStringValue(req.query.projectId);
 
       const connection = requestUser?.userId
@@ -5169,7 +5244,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       }
 
       const mode = readStringValue(req.body?.mode)?.toLowerCase() === 'link' ? 'link' : 'login';
-      const requestUser = getOptionalRequestUser(req);
+      const requestUser = await resolveOptionalRequestUser(req, pool, activeSessions);
       if (mode === 'link' && !requestUser?.userId) {
         res.status(401).json({ error: 'Må være innlogget for å koble Google Workspace' });
         return;
@@ -5404,6 +5479,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           loginAt: new Date().toISOString(),
         };
         activeSessions?.set(sessionToken, sessionData);
+        await persistAuthSession(pool, sessionToken, sessionData);
 
         const transferId = crypto.randomUUID();
         roleRoomGoogleTransferStore.set(transferId, {
