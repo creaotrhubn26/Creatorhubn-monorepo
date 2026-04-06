@@ -74,6 +74,22 @@ type OverviewState = {
   workspaceStorage: unknown;
 };
 
+type StageDefinition = {
+  id: string;
+  eyebrow: string;
+  title: string;
+  description: string;
+  accent: string;
+  actions: Array<{
+    key: ActionKey;
+    title: string;
+    description: string;
+    buttonLabel: string;
+    icon: React.ReactNode;
+    onRun: () => void;
+  }>;
+};
+
 const ACTION_KEYS: ActionKey[] = [
   'refresh-overview',
   'load-drive-files',
@@ -163,6 +179,32 @@ function stringifyPayload(payload: unknown) {
   }
 }
 
+function formatActionStatusLabel(status: ActionStatus) {
+  switch (status) {
+    case 'running':
+      return 'Kjører';
+    case 'success':
+      return 'Ferdig';
+    case 'error':
+      return 'Feil';
+    default:
+      return 'Klar';
+  }
+}
+
+function getStageProgress(actions: Record<ActionKey, ActionState>, keys: ActionKey[]) {
+  const actionableKeys = keys.filter((key) => key !== 'refresh-overview');
+  const completed = actionableKeys.filter((key) => actions[key].status === 'success').length;
+  const failed = actionableKeys.filter((key) => actions[key].status === 'error').length;
+  const running = actionableKeys.filter((key) => actions[key].status === 'running').length;
+  return {
+    completed,
+    failed,
+    running,
+    total: actionableKeys.length,
+  };
+}
+
 function PreviewJson({ value }: { value: unknown }) {
   if (value == null) {
     return null;
@@ -190,6 +232,149 @@ function PreviewJson({ value }: { value: unknown }) {
   );
 }
 
+function OverviewMetric({
+  label,
+  value,
+  tone = 'default',
+}: {
+  label: string;
+  value: string;
+  tone?: 'default' | 'success' | 'warning';
+}) {
+  const tones = {
+    default: {
+      border: alpha('#ffffff', 0.12),
+      background: alpha('#ffffff', 0.06),
+      label: alpha('#f8fafc', 0.64),
+      value: '#ffffff',
+    },
+    success: {
+      border: alpha('#34d399', 0.26),
+      background: alpha('#34d399', 0.12),
+      label: alpha('#d1fae5', 0.82),
+      value: '#ecfdf5',
+    },
+    warning: {
+      border: alpha('#fbbf24', 0.26),
+      background: alpha('#fbbf24', 0.12),
+      label: alpha('#fde68a', 0.88),
+      value: '#fffbeb',
+    },
+  } as const;
+
+  const colors = tones[tone];
+
+  return (
+    <Box
+      sx={{
+        minWidth: 0,
+        px: 1.6,
+        py: 1.4,
+        borderRadius: 3,
+        border: `1px solid ${colors.border}`,
+        bgcolor: colors.background,
+      }}
+    >
+      <Typography variant="caption" sx={{ display: 'block', color: colors.label, letterSpacing: 0.3 }}>
+        {label}
+      </Typography>
+      <Typography variant="subtitle2" sx={{ color: colors.value, fontWeight: 700, mt: 0.35 }}>
+        {value}
+      </Typography>
+    </Box>
+  );
+}
+
+function StageSection({
+  eyebrow,
+  title,
+  description,
+  accent,
+  completed,
+  total,
+  failed,
+  children,
+}: React.PropsWithChildren<{
+  eyebrow: string;
+  title: string;
+  description: string;
+  accent: string;
+  completed: number;
+  total: number;
+  failed: number;
+}>) {
+  return (
+    <Paper
+      elevation={0}
+      sx={{
+        p: { xs: 2.25, md: 2.75 },
+        borderRadius: 4,
+        border: `1px solid ${alpha('#0f172a', 0.08)}`,
+        bgcolor: '#ffffff',
+      }}
+    >
+      <Stack spacing={2.25}>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} justifyContent="space-between">
+          <Box sx={{ maxWidth: 680 }}>
+            <Typography variant="overline" sx={{ color: alpha(accent, 0.84), letterSpacing: 1.2 }}>
+              {eyebrow}
+            </Typography>
+            <Typography variant="h5" sx={{ fontWeight: 800, lineHeight: 1.08, color: '#0f172a' }}>
+              {title}
+            </Typography>
+            <Typography variant="body2" sx={{ mt: 0.8, color: alpha('#0f172a', 0.68) }}>
+              {description}
+            </Typography>
+          </Box>
+
+          <Stack direction="row" spacing={1} alignItems="flex-start" flexWrap="wrap" useFlexGap>
+            <Chip
+              size="small"
+              label={`${completed}/${total} fullført`}
+              sx={{
+                bgcolor: alpha(accent, 0.1),
+                color: accent,
+                fontWeight: 700,
+              }}
+            />
+            {failed > 0 && (
+              <Chip
+                size="small"
+                color="error"
+                label={`${failed} trenger oppfølging`}
+                sx={{ fontWeight: 700 }}
+              />
+            )}
+          </Stack>
+        </Stack>
+
+        <Box
+          sx={{
+            height: 3,
+            borderRadius: 999,
+            bgcolor: alpha(accent, 0.08),
+            overflow: 'hidden',
+          }}
+        >
+          <Box
+            sx={{
+              width: `${total === 0 ? 0 : (completed / total) * 100}%`,
+              height: '100%',
+              borderRadius: 999,
+              bgcolor: accent,
+              transition: 'width 220ms ease',
+            }}
+          />
+        </Box>
+
+        <Stack spacing={1.5}>
+          {children}
+        </Stack>
+      </Stack>
+    </Paper>
+  );
+}
+
 function ActionCard({
   icon,
   title,
@@ -214,32 +399,40 @@ function ActionCard({
       ? 'error'
       : 'info';
 
+  const statusLabel = formatActionStatusLabel(state.status);
+
   return (
-    <Paper
-      elevation={0}
+    <Box
       sx={{
-        p: 2.5,
-        borderRadius: 3,
+        p: 2,
+        borderRadius: 3.5,
         border: `1px solid ${alpha('#0f172a', 0.08)}`,
-        bgcolor: '#ffffff',
+        bgcolor: state.status === 'success'
+          ? alpha('#10b981', 0.03)
+          : state.status === 'error'
+            ? alpha('#ef4444', 0.035)
+            : alpha('#f8fafc', 0.82),
       }}
     >
       <Stack spacing={1.5}>
-        <Stack direction="row" spacing={1.5} alignItems="center">
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} justifyContent="space-between">
+          <Stack direction="row" spacing={1.5} alignItems="center">
+            <Box
+              sx={{
+                width: 42,
+                height: 42,
+                borderRadius: 2.5,
+                display: 'grid',
+                placeItems: 'center',
+                bgcolor: alpha(creatorHubTheme.palette.primary.main, 0.08),
+                color: creatorHubTheme.palette.primary.main,
+              }}
+            >
+              {icon}
+            </Box>
           <Box
-            sx={{
-              width: 40,
-              height: 40,
-              borderRadius: 2.5,
-              display: 'grid',
-              placeItems: 'center',
-              bgcolor: alpha(creatorHubTheme.palette.primary.main, 0.08),
-              color: creatorHubTheme.palette.primary.main,
-            }}
+            sx={{ minWidth: 0 }}
           >
-            {icon}
-          </Box>
-          <Box>
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
               {title}
             </Typography>
@@ -247,6 +440,22 @@ function ActionCard({
               {description}
             </Typography>
           </Box>
+          </Stack>
+
+          <Chip
+            size="small"
+            label={statusLabel}
+            color={
+              state.status === 'success'
+                ? 'success'
+                : state.status === 'error'
+                  ? 'error'
+                  : state.status === 'running'
+                    ? 'warning'
+                    : 'default'
+            }
+            sx={{ fontWeight: 700, alignSelf: { xs: 'flex-start', sm: 'center' } }}
+          />
         </Stack>
 
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25} alignItems={{ xs: 'stretch', sm: 'center' }}>
@@ -259,19 +468,11 @@ function ActionCard({
           >
             {isRunning ? 'Kjører…' : buttonLabel}
           </Button>
-          <Chip
-            size="small"
-            label={state.status.toUpperCase()}
-            color={
-              state.status === 'success'
-                ? 'success'
-                : state.status === 'error'
-                  ? 'error'
-                  : state.status === 'running'
-                    ? 'warning'
-                    : 'default'
-            }
-          />
+          {state.status === 'idle' && (
+            <Typography variant="caption" sx={{ color: alpha('#0f172a', 0.58) }}>
+              Kjør handlingen direkte fra CreatorHub under opptaket.
+            </Typography>
+          )}
         </Stack>
 
         <Alert
@@ -284,9 +485,34 @@ function ActionCard({
           {state.message}
         </Alert>
 
-        <PreviewJson value={state.payload} />
+        {state.payload != null && (
+          <Box
+            component="details"
+            sx={{
+              mt: 0.25,
+              borderRadius: 2.5,
+              border: `1px solid ${alpha('#0f172a', 0.08)}`,
+              bgcolor: alpha('#f8fafc', 0.74),
+              px: 1.5,
+              py: 1.25,
+              '& > summary': {
+                cursor: 'pointer',
+                listStyle: 'none',
+                fontSize: '0.8rem',
+                fontWeight: 700,
+                color: '#0f172a',
+              },
+              '& > summary::-webkit-details-marker': {
+                display: 'none',
+              },
+            }}
+          >
+            <Box component="summary">Vis raw response</Box>
+            <PreviewJson value={state.payload} />
+          </Box>
+        )}
       </Stack>
-    </Paper>
+    </Box>
   );
 }
 
@@ -839,9 +1065,191 @@ export default function GoogleVerificationDemoPage() {
   const youtubeConnected = typeof (overview.youtubeStatus as { connected?: unknown } | null)?.connected === 'boolean'
     ? Boolean((overview.youtubeStatus as { connected: boolean }).connected)
     : null;
+  const youtubeNeedsReconnect = typeof (overview.youtubeStatus as { needsReconnect?: unknown } | null)?.needsReconnect === 'boolean'
+    ? Boolean((overview.youtubeStatus as { needsReconnect: boolean }).needsReconnect)
+    : false;
+  const youtubeChannelTitle = typeof (overview.youtubeStatus as { channelTitle?: unknown } | null)?.channelTitle === 'string'
+    ? (overview.youtubeStatus as { channelTitle: string }).channelTitle
+    : null;
   const workspaceStorageTotal = typeof (overview.workspaceStorage as { totalStorageGB?: unknown } | null)?.totalStorageGB === 'number'
     ? (overview.workspaceStorage as { totalStorageGB: number }).totalStorageGB
     : null;
+  const verificationSections: StageDefinition[] = [
+    {
+      id: 'workspace',
+      eyebrow: 'Stage 1',
+      title: 'Workspace foundations',
+      description: 'Start with the scopes that establish storage, documents and scheduling. These are the cleanest proof points in the video.',
+      accent: '#f59e0b',
+      actions: [
+        {
+          key: 'load-drive-files',
+          title: 'Google Drive',
+          description: 'Les filoversikt og bekreft at CreatorHub kan hente innhold direkte fra Drive.',
+          buttonLabel: 'Load Drive Files',
+          icon: <DriveFolderUpload />,
+          onRun: () => { void handleLoadDriveFiles(); },
+        },
+        {
+          key: 'upload-drive-file',
+          title: 'Drive Write',
+          description: 'Skriv en ren demo-fil til Drive uten å åpne desktop-filvelger.',
+          buttonLabel: 'Upload Drive Demo File',
+          icon: <DriveFolderUpload />,
+          onRun: () => { void handleUploadDriveDemoFile(); },
+        },
+        {
+          key: 'create-docs-contract',
+          title: 'Google Docs',
+          description: 'Opprett kontrakt i CreatorHub og klargjør dokumentet for signatur i Docs/Drive.',
+          buttonLabel: 'Create Docs Demo Contract',
+          icon: <Description />,
+          onRun: () => { void handleCreateDocsContract(); },
+        },
+        {
+          key: 'create-meet',
+          title: 'Calendar / Meet',
+          description: 'Opprett en kort kalenderhendelse med Meet-lenke direkte fra CreatorHub.',
+          buttonLabel: 'Create Google Meet Demo',
+          icon: <CalendarMonth />,
+          onRun: () => { void handleCreateMeet(); },
+        },
+      ],
+    },
+    {
+      id: 'communication',
+      eyebrow: 'Stage 2',
+      title: 'Communication and coordination',
+      description: 'Demonstrer at CreatorHub ikke bare leser data, men også lager utkast, kontakter, tasks og chat handlinger i Google Workspace.',
+      accent: '#0ea5e9',
+      actions: [
+        {
+          key: 'load-gmail-threads',
+          title: 'Gmail Inbox',
+          description: 'Les Gmail-tråder fra CreatorHub som en del av den virkelige kommunikasjonsoverflaten.',
+          buttonLabel: 'Load Gmail Threads',
+          icon: <Email />,
+          onRun: () => { void handleLoadGmailThreads(); },
+        },
+        {
+          key: 'create-gmail-draft',
+          title: 'Gmail Drafts',
+          description: 'Opprett et Gmail-utkast for å vise compose-scope og faktisk draft-støtte.',
+          buttonLabel: 'Create Gmail Draft',
+          icon: <Email />,
+          onRun: () => { void handleCreateGmailDraft(); },
+        },
+        {
+          key: 'search-contacts',
+          title: 'Google Contacts',
+          description: 'Søk i den tilkoblede kontaktlisten fra CreatorHub.',
+          buttonLabel: 'Search Contacts',
+          icon: <Contacts />,
+          onRun: () => { void handleSearchContacts(); },
+        },
+        {
+          key: 'create-contact',
+          title: 'Contacts Write',
+          description: 'Opprett en ny kontakt med CreatorHub-data som bevis på write-tilgang.',
+          buttonLabel: 'Create Contact',
+          icon: <Contacts />,
+          onRun: () => { void handleCreateContact(); },
+        },
+        {
+          key: 'load-task-lists',
+          title: 'Google Tasks',
+          description: 'Les oppgavelister og gjør klar task-flyten.',
+          buttonLabel: 'Load Task Lists',
+          icon: <TaskAlt />,
+          onRun: () => { void handleLoadTaskLists(); },
+        },
+        {
+          key: 'create-task',
+          title: 'Tasks Write',
+          description: 'Opprett en ny oppgave direkte fra CreatorHub.',
+          buttonLabel: 'Create Task',
+          icon: <TaskAlt />,
+          onRun: () => { void handleCreateTask(); },
+        },
+        {
+          key: 'load-chat-spaces',
+          title: 'Google Chat Spaces',
+          description: 'Les eksisterende rom og hent konteksten for videre chat-handlinger.',
+          buttonLabel: 'Load Chat Spaces',
+          icon: <Chat />,
+          onRun: () => { void handleLoadChatSpaces(); },
+        },
+        {
+          key: 'create-chat-space',
+          title: 'Chat Write',
+          description: 'Opprett et nytt Google Chat-space fra CreatorHub.',
+          buttonLabel: 'Create Chat Space',
+          icon: <Chat />,
+          onRun: () => { void handleCreateChatSpace(); },
+        },
+        {
+          key: 'send-chat-message',
+          title: 'Chat Send Message',
+          description: 'Send en melding til det opprettede rommet.',
+          buttonLabel: 'Send Chat Message',
+          icon: <Chat />,
+          onRun: () => { void handleSendChatMessage(); },
+        },
+        {
+          key: 'load-chat-messages',
+          title: 'Chat Read Messages',
+          description: 'Les meldingene tilbake fra samme rom for å vise round-trip.',
+          buttonLabel: 'Load Chat Messages',
+          icon: <Chat />,
+          onRun: () => { void handleLoadChatMessages(); },
+        },
+      ],
+    },
+    {
+      id: 'publishing',
+      eyebrow: 'Stage 3',
+      title: 'YouTube publishing',
+      description: 'Vis publiseringsløpet i samme grensesnitt: spilleliste, opplasting, metadata og thumbnail. Denne delen krever aktiv YouTube-kanal.',
+      accent: '#ef4444',
+      actions: [
+        {
+          key: 'create-youtube-playlist',
+          title: 'YouTube Playlist',
+          description: 'Opprett privat spilleliste for verifikasjonsopptakene.',
+          buttonLabel: 'Create YouTube Playlist',
+          icon: <PlayCircleOutline />,
+          onRun: () => { void handleCreateYouTubePlaylist(); },
+        },
+        {
+          key: 'upload-youtube-video',
+          title: 'YouTube Upload',
+          description: 'Last opp privat demo-video uten desktop-filvelger.',
+          buttonLabel: 'Upload YouTube Demo Video',
+          icon: <VideoLibrary />,
+          onRun: () => { void handleUploadYouTubeVideo(); },
+        },
+        {
+          key: 'update-youtube-video',
+          title: 'YouTube Metadata',
+          description: 'Oppdater tittel, beskrivelse og tags på den nylig opplastede videoen.',
+          buttonLabel: 'Update YouTube Metadata',
+          icon: <VideoLibrary />,
+          onRun: () => { void handleUpdateYouTubeVideo(); },
+        },
+        {
+          key: 'upload-youtube-thumbnail',
+          title: 'YouTube Thumbnail',
+          description: 'Last opp ny thumbnail på den samme videoen fra CreatorHub.',
+          buttonLabel: 'Upload YouTube Thumbnail',
+          icon: <VideoLibrary />,
+          onRun: () => { void handleUploadYouTubeThumbnail(); },
+        },
+      ],
+    },
+  ];
+  const overallActionKeys = verificationSections.flatMap((section) => section.actions.map((action) => action.key));
+  const overallProgress = getStageProgress(actions, overallActionKeys);
+  const sessionConnected = typeof resolvedUserId === 'string' && resolvedUserId.length > 0;
 
   return (
     <Box
@@ -878,15 +1286,25 @@ export default function GoogleVerificationDemoPage() {
                   </Typography>
                 </Box>
 
-                <Stack spacing={1.25} alignItems={{ xs: 'flex-start', md: 'flex-end' }}>
-                  <Chip
-                    label={`Session: ${sessionEmail}`}
-                    sx={{ bgcolor: alpha('#ffffff', 0.08), color: '#ffffff' }}
-                  />
-                  <Chip
-                    label={resolvedUserId ? `User ID: ${resolvedUserId}` : 'Ingen bruker funnet'}
-                    sx={{ bgcolor: alpha('#ffffff', 0.08), color: '#ffffff' }}
-                  />
+                <Stack spacing={1.2} sx={{ width: { xs: '100%', md: 360 } }}>
+                  <Box
+                    sx={{
+                      p: 1.5,
+                      borderRadius: 3,
+                      border: `1px solid ${alpha('#ffffff', 0.12)}`,
+                      bgcolor: alpha('#ffffff', 0.05),
+                    }}
+                  >
+                    <Typography variant="caption" sx={{ color: alpha('#f8fafc', 0.64), letterSpacing: 0.3 }}>
+                      Ready for review
+                    </Typography>
+                    <Typography variant="subtitle1" sx={{ mt: 0.35, fontWeight: 700, color: '#ffffff' }}>
+                      {overallProgress.completed}/{overallProgress.total} actions passed in this browser profile
+                    </Typography>
+                    <Typography variant="body2" sx={{ mt: 0.6, color: alpha('#f8fafc', 0.72) }}>
+                      Hold the recording inside this page and run the stages top to bottom for the cleanest verification video.
+                    </Typography>
+                  </Box>
                   <Button
                     variant="contained"
                     startIcon={<Refresh />}
@@ -905,218 +1323,173 @@ export default function GoogleVerificationDemoPage() {
 
               <Divider sx={{ borderColor: alpha('#ffffff', 0.12) }} />
 
-              <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} flexWrap="wrap" useFlexGap>
-                <Chip label={`Drive: ${driveConnected === null ? 'ukjent' : driveConnected ? 'connected' : 'disconnected'}`} sx={{ bgcolor: alpha('#ffffff', 0.08), color: '#ffffff' }} />
-                <Chip label={`YouTube: ${youtubeConnected === null ? 'ukjent' : youtubeConnected ? 'connected' : 'not connected'}`} sx={{ bgcolor: alpha('#ffffff', 0.08), color: '#ffffff' }} />
-                <Chip label={`Workspace storage: ${workspaceStorageTotal === null ? 'ikke lastet' : `${workspaceStorageTotal} GB`}`} sx={{ bgcolor: alpha('#ffffff', 0.08), color: '#ffffff' }} />
-              </Stack>
+              <Box
+                sx={{
+                  display: 'grid',
+                  gap: 1.25,
+                  gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(4, minmax(0, 1fr))' },
+                }}
+              >
+                <OverviewMetric
+                  label="Session"
+                  value={sessionConnected ? sessionEmail : 'Ingen aktiv bruker'}
+                  tone={sessionConnected ? 'success' : 'warning'}
+                />
+                <OverviewMetric
+                  label="Drive"
+                  value={driveConnected === null ? 'Ikke lastet' : driveConnected ? 'Connected' : 'Disconnected'}
+                  tone={driveConnected ? 'success' : 'warning'}
+                />
+                <OverviewMetric
+                  label="YouTube"
+                  value={youtubeConnected === null ? 'Ikke lastet' : youtubeConnected ? (youtubeChannelTitle || 'Connected') : youtubeNeedsReconnect ? 'Reconnect required' : 'Channel setup required'}
+                  tone={youtubeConnected ? 'success' : 'warning'}
+                />
+                <OverviewMetric
+                  label="Workspace storage"
+                  value={workspaceStorageTotal === null ? 'Ikke lastet' : `${workspaceStorageTotal} GB`}
+                />
+              </Box>
             </Stack>
           </Paper>
 
-          <Paper
-            elevation={0}
+          <Box
             sx={{
-              p: 2.5,
-              borderRadius: 4,
-              border: `1px solid ${alpha('#0f172a', 0.08)}`,
-              bgcolor: '#ffffff',
+              display: 'grid',
+              gap: 3,
+              gridTemplateColumns: { xs: '1fr', xl: 'minmax(0, 1.55fr) minmax(320px, 0.75fr)' },
+              alignItems: 'start',
             }}
           >
-            <Typography variant="h6" sx={{ fontWeight: 700 }}>
-              Live Overview
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
-              Denne blokken viser hva den aktuelle browser-sesjonen faktisk ser etter login og Google Workspace-link.
-            </Typography>
-            <PreviewJson value={overview} />
-          </Paper>
+            <Stack spacing={3}>
+              {verificationSections.map((section) => {
+                const progress = getStageProgress(actions, section.actions.map((action) => action.key));
+                return (
+                  <StageSection
+                    key={section.id}
+                    eyebrow={section.eyebrow}
+                    title={section.title}
+                    description={section.description}
+                    accent={section.accent}
+                    completed={progress.completed}
+                    total={progress.total}
+                    failed={progress.failed}
+                  >
+                    {section.actions.map((action) => (
+                      <ActionCard
+                        key={action.key}
+                        icon={action.icon}
+                        title={action.title}
+                        description={action.description}
+                        buttonLabel={action.buttonLabel}
+                        actionKey={action.key}
+                        state={actions[action.key]}
+                        onRun={action.onRun}
+                      />
+                    ))}
+                    {section.id === 'workspace' && artifacts.googleDocUrl && (
+                      <Alert severity="success" variant="outlined" sx={{ borderRadius: 3 }}>
+                        Dokumentet er klart i Google Docs:{' '}
+                        <Link href={artifacts.googleDocUrl} target="_blank" rel="noreferrer" underline="hover">
+                          Åpne dokument
+                        </Link>
+                      </Alert>
+                    )}
+                    {section.id === 'publishing' && artifacts.youtubeVideoUrl && (
+                      <Alert severity="success" variant="outlined" sx={{ borderRadius: 3 }}>
+                        Demo-video er tilgjengelig her:{' '}
+                        <Link href={artifacts.youtubeVideoUrl} target="_blank" rel="noreferrer" underline="hover">
+                          {artifacts.youtubeVideoUrl}
+                        </Link>
+                      </Alert>
+                    )}
+                  </StageSection>
+                );
+              })}
+            </Stack>
 
-          <Stack direction={{ xs: 'column', lg: 'row' }} spacing={3} alignItems="flex-start">
-            <Box sx={{ flex: 1, display: 'grid', gap: 3 }}>
-              <ActionCard
-                icon={<DriveFolderUpload />}
-                title="Google Drive"
-                description="Les filoversikt og skriv en demo-fil til Google Drive fra CreatorHub."
-                buttonLabel="Load Drive Files"
-                actionKey="load-drive-files"
-                state={actions['load-drive-files']}
-                onRun={() => { void handleLoadDriveFiles(); }}
-              />
-              <ActionCard
-                icon={<DriveFolderUpload />}
-                title="Drive Write"
-                description="Opprett en ny demo-fil via CreatorHub sin Drive-opplasting."
-                buttonLabel="Upload Drive Demo File"
-                actionKey="upload-drive-file"
-                state={actions['upload-drive-file']}
-                onRun={() => { void handleUploadDriveDemoFile(); }}
-              />
-              <ActionCard
-                icon={<Description />}
-                title="Google Docs"
-                description="Opprett en CreatorHub-kontrakt og klargjør den som Google-signaturdokument i Docs/Drive."
-                buttonLabel="Create Docs Demo Contract"
-                actionKey="create-docs-contract"
-                state={actions['create-docs-contract']}
-                onRun={() => { void handleCreateDocsContract(); }}
-              />
-              {artifacts.googleDocUrl && (
-                <Link href={artifacts.googleDocUrl} target="_blank" rel="noreferrer" underline="hover">
-                  Åpne opprettet Google Docs-dokument
-                </Link>
-              )}
-              <ActionCard
-                icon={<CalendarMonth />}
-                title="Google Calendar / Meet"
-                description="Opprett en kort demo-hendelse med Meet-lenke fra CreatorHub."
-                buttonLabel="Create Google Meet Demo"
-                actionKey="create-meet"
-                state={actions['create-meet']}
-                onRun={() => { void handleCreateMeet(); }}
-              />
-              <ActionCard
-                icon={<Email />}
-                title="Gmail Inbox"
-                description="Les Gmail-tråder fra CreatorHub og opprett en kladd i den tilkoblede kontoen."
-                buttonLabel="Load Gmail Threads"
-                actionKey="load-gmail-threads"
-                state={actions['load-gmail-threads']}
-                onRun={() => { void handleLoadGmailThreads(); }}
-              />
-              <ActionCard
-                icon={<Email />}
-                title="Gmail Drafts"
-                description="Opprett et Gmail-utkast fra CreatorHub for å demonstrere compose scope."
-                buttonLabel="Create Gmail Draft"
-                actionKey="create-gmail-draft"
-                state={actions['create-gmail-draft']}
-                onRun={() => { void handleCreateGmailDraft(); }}
-              />
-            </Box>
+            <Stack spacing={3}>
+              <Paper
+                elevation={0}
+                sx={{
+                  p: 2.5,
+                  borderRadius: 4,
+                  border: `1px solid ${alpha('#0f172a', 0.08)}`,
+                  bgcolor: '#ffffff',
+                }}
+              >
+                <Stack spacing={1.5}>
+                  <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                    Recording checklist
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: alpha('#0f172a', 0.68) }}>
+                    Hold the recording inside the browser, keep the URL visible during OAuth, and run the stages in order.
+                  </Typography>
+                  <Stack spacing={1}>
+                    <Alert severity={sessionConnected ? 'success' : 'warning'} variant="outlined" sx={{ borderRadius: 2.5 }}>
+                      {sessionConnected
+                        ? 'CreatorHub-session er aktiv og peker til riktig bruker.'
+                        : 'Ingen aktiv CreatorHub-session er funnet i denne browser-profilen.'}
+                    </Alert>
+                    <Alert severity={driveConnected ? 'success' : 'warning'} variant="outlined" sx={{ borderRadius: 2.5 }}>
+                      {driveConnected
+                        ? 'Drive-tilkoblingen er klar for lesing og skriving.'
+                        : 'Drive er ikke koblet opp i denne sesjonen ennå.'}
+                    </Alert>
+                    <Alert severity={youtubeConnected ? 'success' : 'warning'} variant="outlined" sx={{ borderRadius: 2.5 }}>
+                      {youtubeConnected
+                        ? `YouTube er klar${youtubeChannelTitle ? ` på kanalen ${youtubeChannelTitle}` : ''}.`
+                        : youtubeNeedsReconnect
+                          ? 'YouTube-scope finnes, men Google Workspace må kobles til på nytt.'
+                          : 'YouTube-publisering krever at den tilkoblede Google-kontoen har en aktiv YouTube-kanal.'}
+                    </Alert>
+                  </Stack>
+                </Stack>
+              </Paper>
 
-            <Box sx={{ flex: 1, display: 'grid', gap: 3 }}>
-              <ActionCard
-                icon={<Contacts />}
-                title="Google Contacts"
-                description="Søk i eksisterende kontakter og opprett en ny kontakt fra CreatorHub."
-                buttonLabel="Search Contacts"
-                actionKey="search-contacts"
-                state={actions['search-contacts']}
-                onRun={() => { void handleSearchContacts(); }}
-              />
-              <ActionCard
-                icon={<Contacts />}
-                title="Contacts Write"
-                description="Opprett en ny Google Contact med CreatorHub-data."
-                buttonLabel="Create Contact"
-                actionKey="create-contact"
-                state={actions['create-contact']}
-                onRun={() => { void handleCreateContact(); }}
-              />
-              <ActionCard
-                icon={<TaskAlt />}
-                title="Google Tasks"
-                description="Les oppgavelister og opprett en ny oppgave direkte i Google Tasks."
-                buttonLabel="Load Task Lists"
-                actionKey="load-task-lists"
-                state={actions['load-task-lists']}
-                onRun={() => { void handleLoadTaskLists(); }}
-              />
-              <ActionCard
-                icon={<TaskAlt />}
-                title="Tasks Write"
-                description="Opprett en ny Google Task fra CreatorHub."
-                buttonLabel="Create Task"
-                actionKey="create-task"
-                state={actions['create-task']}
-                onRun={() => { void handleCreateTask(); }}
-              />
-              <ActionCard
-                icon={<Chat />}
-                title="Google Chat Spaces"
-                description="Les spaces, opprett et nytt rom og vis meldinger fra CreatorHub."
-                buttonLabel="Load Chat Spaces"
-                actionKey="load-chat-spaces"
-                state={actions['load-chat-spaces']}
-                onRun={() => { void handleLoadChatSpaces(); }}
-              />
-              <ActionCard
-                icon={<Chat />}
-                title="Chat Write"
-                description="Opprett nytt Google Chat-space og send melding i samme space."
-                buttonLabel="Create Chat Space"
-                actionKey="create-chat-space"
-                state={actions['create-chat-space']}
-                onRun={() => { void handleCreateChatSpace(); }}
-              />
-              <ActionCard
-                icon={<Chat />}
-                title="Chat Read Messages"
-                description="Les meldinger fra det valgte Google Chat-rommet."
-                buttonLabel="Load Chat Messages"
-                actionKey="load-chat-messages"
-                state={actions['load-chat-messages']}
-                onRun={() => { void handleLoadChatMessages(); }}
-              />
-              <ActionCard
-                icon={<Chat />}
-                title="Chat Send Message"
-                description="Send en Google Chat-melding fra CreatorHub i det opprettede rommet."
-                buttonLabel="Send Chat Message"
-                actionKey="send-chat-message"
-                state={actions['send-chat-message']}
-                onRun={() => { void handleSendChatMessage(); }}
-              />
-            </Box>
-
-            <Box sx={{ flex: 1, display: 'grid', gap: 3 }}>
-              <ActionCard
-                icon={<PlayCircleOutline />}
-                title="YouTube Playlist"
-                description="Opprett en privat spilleliste for verifikasjonsopptakene."
-                buttonLabel="Create YouTube Playlist"
-                actionKey="create-youtube-playlist"
-                state={actions['create-youtube-playlist']}
-                onRun={() => { void handleCreateYouTubePlaylist(); }}
-              />
-              <ActionCard
-                icon={<VideoLibrary />}
-                title="YouTube Upload"
-                description="Last opp en privat demo-video fra CreatorHub uten desktop-filvelger."
-                buttonLabel="Upload YouTube Demo Video"
-                actionKey="upload-youtube-video"
-                state={actions['upload-youtube-video']}
-                onRun={() => { void handleUploadYouTubeVideo(); }}
-              />
-              <ActionCard
-                icon={<VideoLibrary />}
-                title="YouTube Metadata"
-                description="Oppdater tittel, beskrivelse og tags på den nylig opplastede videoen."
-                buttonLabel="Update YouTube Metadata"
-                actionKey="update-youtube-video"
-                state={actions['update-youtube-video']}
-                onRun={() => { void handleUpdateYouTubeVideo(); }}
-              />
-              <ActionCard
-                icon={<VideoLibrary />}
-                title="YouTube Thumbnail"
-                description="Last opp ny thumbnail på den samme videoen fra CreatorHub."
-                buttonLabel="Upload YouTube Thumbnail"
-                actionKey="upload-youtube-thumbnail"
-                state={actions['upload-youtube-thumbnail']}
-                onRun={() => { void handleUploadYouTubeThumbnail(); }}
-              />
-
-              {artifacts.youtubeVideoUrl && (
-                <Alert severity="success" variant="outlined" sx={{ borderRadius: 2 }}>
-                  Demo-video er tilgjengelig her:{' '}
-                  <Link href={artifacts.youtubeVideoUrl} target="_blank" rel="noreferrer" underline="hover">
-                    {artifacts.youtubeVideoUrl}
-                  </Link>
-                </Alert>
-              )}
-            </Box>
-          </Stack>
+              <Paper
+                elevation={0}
+                sx={{
+                  p: 2.5,
+                  borderRadius: 4,
+                  border: `1px solid ${alpha('#0f172a', 0.08)}`,
+                  bgcolor: '#ffffff',
+                }}
+              >
+                <Stack spacing={1.5}>
+                  <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                    Raw diagnostics
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: alpha('#0f172a', 0.68) }}>
+                    This stays available for debugging, but it is visually secondary so the recording stays clean.
+                  </Typography>
+                  <Box
+                    component="details"
+                    sx={{
+                      borderRadius: 3,
+                      border: `1px solid ${alpha('#0f172a', 0.08)}`,
+                      bgcolor: alpha('#f8fafc', 0.82),
+                      px: 1.5,
+                      py: 1.25,
+                      '& > summary': {
+                        cursor: 'pointer',
+                        listStyle: 'none',
+                        fontSize: '0.84rem',
+                        fontWeight: 700,
+                        color: '#0f172a',
+                      },
+                      '& > summary::-webkit-details-marker': {
+                        display: 'none',
+                      },
+                    }}
+                  >
+                    <Box component="summary">Vis live overview payload</Box>
+                    <PreviewJson value={overview} />
+                  </Box>
+                </Stack>
+              </Paper>
+            </Stack>
+          </Box>
         </Stack>
       </Container>
     </Box>

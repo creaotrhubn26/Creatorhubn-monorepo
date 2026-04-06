@@ -310,6 +310,22 @@ export const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({
     missingScopes?: string[];
   } | undefined;
   const youtubeConnected = Boolean(statusData?.connected);
+  const missingScopes = statusData?.missingScopes ?? [];
+  const youtubeNeedsReconnect = Boolean(statusData?.needsReconnect);
+  const needsYouTubeChannelSetup = Boolean(
+    resolvedUserId
+    && statusData?.configured
+    && !youtubeConnected
+    && !youtubeNeedsReconnect
+    && missingScopes.length === 0,
+  );
+  const connectionSummaryLabel = youtubeConnected
+    ? statusData?.channelTitle || 'Connected'
+    : youtubeNeedsReconnect
+      ? 'Reconnect required'
+      : needsYouTubeChannelSetup
+        ? 'Channel setup required'
+        : 'Not connected';
 
   const videosQuery = useQuery({
     queryKey: ['/api/youtube/videos', { userId: resolvedUserId, projectId: effectiveProjectId }],
@@ -528,8 +544,8 @@ export const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({
       >
         <Box sx={{ p: compact ? 2.5 : 3 }}>
           <Stack spacing={2.5}>
-            <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} justifyContent="space-between">
-              <Box sx={{ maxWidth: 720 }}>
+              <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} justifyContent="space-between">
+                <Box sx={{ maxWidth: 720 }}>
                 <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 1 }}>
                   <Box
                     sx={{
@@ -594,40 +610,63 @@ export const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({
                     />
                   )}
                 </Stack>
-              </Box>
+                </Box>
 
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25} alignItems={{ xs: 'stretch', sm: 'center' }}>
-                {projectOptions.length > 0 && (
-                  <FormControl size="small" sx={{ minWidth: 220 }}>
-                    <InputLabel id="youtube-project-label">Prosjekt</InputLabel>
-                    <Select
-                      labelId="youtube-project-label"
-                      label="Prosjekt"
-                      value={effectiveProjectId ?? ''}
-                      onChange={(event) => onProjectChange?.(event.target.value ? String(event.target.value) : null)}
+                <Stack spacing={1.25} sx={{ width: { xs: '100%', lg: 320 } }}>
+                  <Box
+                    sx={{
+                      p: 1.5,
+                      borderRadius: 3,
+                      border: `1px solid ${brandStyles.chipBorder}`,
+                      bgcolor: brandStyles.chipBackground,
+                    }}
+                  >
+                    <Typography variant="caption" sx={{ display: 'block', color: brandStyles.secondaryText, letterSpacing: 0.3 }}>
+                      Connection state
+                    </Typography>
+                    <Typography variant="subtitle1" sx={{ mt: 0.35, fontWeight: 700, color: brandStyles.primaryText }}>
+                      {connectionSummaryLabel}
+                    </Typography>
+                    <Typography variant="body2" sx={{ mt: 0.6, color: brandStyles.secondaryText }}>
+                      {effectiveProjectId
+                        ? `Koblet mot prosjektkontekst for ${selectedProjectLabel || 'valgt prosjekt'}.`
+                        : 'Viser siste publiseringer på tvers av hele kanalen.'}
+                    </Typography>
+                  </Box>
+
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25} alignItems={{ xs: 'stretch', sm: 'center' }}>
+                    {projectOptions.length > 0 && (
+                      <FormControl size="small" sx={{ minWidth: 220 }}>
+                        <InputLabel id="youtube-project-label">Prosjekt</InputLabel>
+                        <Select
+                          labelId="youtube-project-label"
+                          label="Prosjekt"
+                          value={effectiveProjectId ?? ''}
+                          onChange={(event) => onProjectChange?.(event.target.value ? String(event.target.value) : null)}
+                        >
+                          <MenuItem value="">Alle publiseringer</MenuItem>
+                          {projectOptions.map((project) => (
+                            <MenuItem key={project.id} value={project.id}>
+                              {project.title || project.name || project.id}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    )}
+                    <Button
+                      variant="outlined"
+                      startIcon={<Refresh />}
+                      onClick={() => {
+                        statusQuery.refetch();
+                        videosQuery.refetch();
+                        playlistsQuery.refetch();
+                      }}
                     >
-                      <MenuItem value="">Alle publiseringer</MenuItem>
-                      {projectOptions.map((project) => (
-                        <MenuItem key={project.id} value={project.id}>
-                          {project.title || project.name || project.id}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                )}
-                <Button
-                  variant="outlined"
-                  startIcon={<Refresh />}
-                  onClick={() => {
-                    statusQuery.refetch();
-                    videosQuery.refetch();
-                    playlistsQuery.refetch();
-                  }}
-                >
-                  Oppdater
-                </Button>
+                      Oppdater
+                    </Button>
+                  </Stack>
+                </Stack>
               </Stack>
-            </Stack>
 
             {!resolvedUserId && (
               <Alert severity="warning">
@@ -637,16 +676,32 @@ export const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({
 
             {resolvedUserId && !statusData?.connected && (
               <Alert
-                severity={statusData?.needsReconnect ? 'warning' : 'info'}
+                severity={youtubeNeedsReconnect || needsYouTubeChannelSetup ? 'warning' : 'info'}
                 action={(
-                  <Button color="inherit" size="small" onClick={connectToGoogleWorkspace}>
-                    {statusData?.needsReconnect ? 'Koble på nytt' : 'Koble til'}
-                  </Button>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                    {needsYouTubeChannelSetup ? (
+                      <>
+                        <Button color="inherit" size="small" href="https://www.youtube.com/create_channel" target="_blank" rel="noreferrer">
+                          Opprett kanal
+                        </Button>
+                        <Button color="inherit" size="small" href="https://studio.youtube.com/" target="_blank" rel="noreferrer">
+                          Åpne Studio
+                        </Button>
+                      </>
+                    ) : (
+                      <Button color="inherit" size="small" onClick={connectToGoogleWorkspace}>
+                        {youtubeNeedsReconnect ? 'Koble på nytt' : 'Koble til'}
+                      </Button>
+                    )}
+                  </Stack>
                 )}
+                sx={{ borderRadius: 3 }}
               >
-                {statusData?.needsReconnect
-                  ? 'Google Workspace er koblet til, men uten YouTube-rettigheter. Koble til på nytt for publisering.'
-                  : `Koble Google Workspace til ${workspaceLabel} for å få YouTube-publisering direkte i dashboardet.`}
+                {youtubeNeedsReconnect
+                  ? 'Google Workspace er koblet til, men uten nødvendige YouTube-rettigheter. Koble til på nytt for publisering.'
+                  : needsYouTubeChannelSetup
+                    ? 'Google-kontoen er koblet til riktig, men YouTube-kanalen er ikke aktivert ennå. Opprett kanalen én gang, så blir publiseringsflyten komplett.'
+                    : `Koble Google Workspace til ${workspaceLabel} for å få YouTube-publisering direkte i dashboardet.`}
               </Alert>
             )}
 
