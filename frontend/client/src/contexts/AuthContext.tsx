@@ -1,10 +1,15 @@
 import type { ReactNode } from 'react';
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import type { GoogleUser } from '../services/GoogleSSOService';
-import { googleSSOService } from'../services/GoogleSSOService';
+import {
+  clearCreatorHubAuthSession,
+  readCreatorHubSessionSnapshot,
+  startCreatorHubGoogleLogin,
+} from '@/lib/creatorhubGoogleAuth';
+
+type AuthUser = ReturnType<typeof readCreatorHubSessionSnapshot>['user'];
 
 interface AuthContextType {
-  user: GoogleUser | null;
+  user: AuthUser;
   isAuthenticated: boolean;
   isLoading: boolean;
   signInWithGoogle: () => Promise<void>;
@@ -19,38 +24,39 @@ interface AuthProviderProps {
 }
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
-  const [user, setUser] = useState<GoogleUser | null>(null);
+  const [user, setUser] = useState<AuthUser>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Check if user is already authenticated on mount
   useEffect(() => {
-    try {
-      const storedUser = localStorage.getItem('creatorhub_auth_user');
-      const storedToken = localStorage.getItem('creatorhub_auth_token');
-      if (storedUser && storedToken) {
-        setUser(JSON.parse(storedUser) as GoogleUser);
-      }
-    } catch { /* ignore */ }
-    setIsLoading(false);
+    const syncFromCreatorHubSession = () => {
+      const snapshot = readCreatorHubSessionSnapshot();
+      setUser(snapshot.user);
+      setIsLoading(false);
+    };
+
+    syncFromCreatorHubSession();
+    window.addEventListener('auth-changed', syncFromCreatorHubSession);
+
+    return () => {
+      window.removeEventListener('auth-changed', syncFromCreatorHubSession);
+    };
   }, []);
 
   const signInWithGoogle = async () => {
     try {
       setIsLoading(true);
-      const { user: googleUser } = await googleSSOService.signIn();
-      setUser(googleUser);
+      await startCreatorHubGoogleLogin();
     } catch (error) {
+      setIsLoading(false);
       console.error('Sign in failed:', error);
       throw error;
-    } finally {
-      setIsLoading(false);
     }
   };
 
   const signOut = async () => {
     try {
       setIsLoading(true);
-      await googleSSOService.signOut();
+      clearCreatorHubAuthSession();
       setUser(null);
     } catch (error) {
       console.error('Sign out failed:', error);
@@ -62,8 +68,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const refreshUser = async () => {
     try {
-      const currentUser = await googleSSOService.getCurrentUser();
-      setUser(currentUser);
+      const snapshot = readCreatorHubSessionSnapshot();
+      setUser(snapshot.user);
     } catch (error) {
       console.error('Failed to refresh user:', error);
       setUser(null);

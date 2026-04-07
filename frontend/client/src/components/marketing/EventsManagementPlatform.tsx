@@ -654,9 +654,19 @@ const EventsManagementPlatform: React.FC = () => {
   // Add selected event to Google Calendar
   const handleAddToGoogleCalendar = async (ev: EventPlan) => {
     try {
-      const userEmail = googleSSO.user?.email;
+      let userEmail = googleSSO.user?.email;
       if (!userEmail) {
-        await googleSSO.signIn?.();
+        const signInResult = await googleSSO.signIn?.();
+        userEmail = signInResult?.user?.email || googleSSO.user?.email;
+      }
+
+      if (!userEmail) {
+        addToast({
+          message: 'Fortsett med Google-innloggingen for å koble kalenderen.',
+          type: 'info',
+          duration: 3500,
+        });
+        return;
       }
       const attendees = (eventCustomerLinks[ev.id] || [])
         .filter((c: any) => !!c.email)
@@ -674,7 +684,7 @@ const EventsManagementPlatform: React.FC = () => {
 
       const locationParts = [ev.venue?.name, ev.venue?.address, ev.venue?.city].filter(Boolean);
       const body = {
-        userEmail: googleSSO.user?.email,
+        userEmail,
         summary: ev.name,
         description: ev.description,
         start: { dateTime: startISO, timeZone: 'Europe/Oslo' },

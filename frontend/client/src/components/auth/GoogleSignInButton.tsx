@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
-import type { GoogleUser } from '../../services/GoogleSSOService';
-import { googleSSOService } from '../../services/GoogleSSOService';
+import { startCreatorHubGoogleLogin } from '@/lib/creatorhubGoogleAuth';
 
 interface GoogleSignInButtonProps {
-  onSuccess?: (user: GoogleUser) => void;
+  onSuccess?: () => void;
   onError?: (error: Error) => void;
   text?: string;
   className?: string;
@@ -25,11 +24,8 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({
     setIsLoading(true);
 
     try {
-      const { user } = await googleSSOService.signIn();
-
-      if (onSuccess) {
-        onSuccess(user);
-      }
+      onSuccess?.();
+      await startCreatorHubGoogleLogin();
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Sign in failed');
       console.error('Google Sign-In failed: ', err);

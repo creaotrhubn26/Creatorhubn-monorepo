@@ -2,6 +2,10 @@ import { useState, useEffect, useCallback } from 'react';
 import type { GoogleUser } from '../services/GoogleSSOService';
 import { googleSSOService } from '../services/GoogleSSOService';
 import { useEnhancedMasterIntegration } from '../integration/EnhancedMasterIntegrationProvider';
+import {
+  buildCreatorHubGoogleReturnPath,
+  startCreatorHubGoogleSso,
+} from '@/lib/creatorhubGoogleAuth';
 
 /**
  * Hook for Google SSO with service account impersonation support
@@ -38,18 +42,21 @@ export const useGoogleSSO = () => {
 
           return result;
         } catch (impersonationError) {
-          console.log('Impersonation not available, using OAuth...');
+          console.log('Impersonation not available, using CreatorHub Google redirect...');
 
-          // Fallback to OAuth popup
-          const result = await googleSSOService.signIn();
-
-          analytics.trackEvent('google_sso_sign_in', {
-            method: 'oauth',
+          analytics.trackEvent('google_sso_sign_in_redirect', {
             loginType,
-            userRole: result.user.role,
+            reason:
+              impersonationError instanceof Error
+                ? impersonationError.message
+                : 'impersonation_unavailable',
           });
 
-          return result;
+          await startCreatorHubGoogleSso({
+            returnPath: buildCreatorHubGoogleReturnPath(),
+          });
+
+          return null;
         }
       } catch (error) {
         analytics.trackEvent('google_sso_sign_in_failed', {

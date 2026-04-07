@@ -1,35 +1,8 @@
 import React, { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
 import GoogleSignInButton from '../components/auth/GoogleSignInButton';
 
 export const LoginPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
-  const { signInWithGoogle } = useAuth();
-  const navigate = useNavigate();
-  const location = useLocation();
-
-  // Get the redirect location from state, or default to home
-  const from = (() => {
-    const state = location.state as unknown;
-    if (typeof state === 'object' && state !== null && 'from' in state) {
-      const fromState = (state as { from?: { pathname?: string } }).from;
-      if (fromState?.pathname) {
-        return fromState.pathname;
-      }
-    }
-    return '/';
-  })();
-
-  const handleGoogleSignIn = async () => {
-    try {
-      setError(null);
-      await signInWithGoogle();
-      navigate(from, { replace: true });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to sign in');
-    }
-  };
 
   return (
     <div
@@ -101,7 +74,7 @@ export const LoginPage: React.FC = () => {
             gap: '16px',
           }}>
           <GoogleSignInButton
-            onSuccess={handleGoogleSignIn}
+            onSuccess={() => setError(null)}
             onError={(err) => setError(err.message)}
             text="Sign in with Google"
           />

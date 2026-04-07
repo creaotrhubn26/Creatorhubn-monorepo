@@ -612,31 +612,54 @@ function CommunityLandingPageComponent({
                   lineHeight: 1.7,
                   maxWidth: '600px',
                 }}
+                >
+                  {onboardingConfig.welcome_message}
+                </Typography>
+              </Box>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+              {!userId && (
+                <Button
+                  variant="contained"
+                  onClick={handleOpenLogin}
+                  startIcon={<Login />}
+                  sx={{
+                    bgcolor: COMMUNITY_ACCENT,
+                    color: '#05070b',
+                    textTransform: 'none',
+                    px: 3,
+                    py: 1,
+                    borderRadius: 999,
+                    fontWeight: 700,
+                    '&:hover': {
+                      bgcolor: '#ffcd73',
+                    },
+                  }}
+                >
+                  Logg inn
+                </Button>
+              )}
+              <Button
+                variant="outlined"
+                onClick={handleSkipWithAnalytics}
+                startIcon={<Close />}
+                sx={{
+                  borderColor: 'rgba(245, 166, 35, 0.28)',
+                  color: COMMUNITY_TEXT_PRIMARY,
+                  textTransform: 'none',
+                  px: 3,
+                  py: 1,
+                  borderRadius: 999,
+                  fontWeight: 600,
+                  background: 'rgba(255,255,255,0.03)',
+                  '&:hover': {
+                    borderColor: 'rgba(245, 166, 35, 0.42)',
+                    bgcolor: 'rgba(245, 166, 35, 0.12)',
+                  },
+                }}
               >
-                {onboardingConfig.welcome_message}
-              </Typography>
-            </Box>
-            <Button
-              variant="outlined"
-              onClick={onSkip}
-              startIcon={<Close />}
-              sx={{
-                borderColor: 'rgba(245, 166, 35, 0.28)',
-                color: COMMUNITY_TEXT_PRIMARY,
-                textTransform: 'none',
-                px: 3,
-                py: 1,
-                borderRadius: 999,
-                fontWeight: 600,
-                background: 'rgba(255,255,255,0.03)',
-                '&:hover': {
-                  borderColor: 'rgba(245, 166, 35, 0.42)',
-                  bgcolor: 'rgba(245, 166, 35, 0.12)',
-                },
-              }}
-            >
-              Hopp over
-            </Button>
+                Hopp over
+              </Button>
+            </Stack>
           </Box>
 
           {/* Enhanced Progress Bar */}
@@ -1126,6 +1149,22 @@ function CommunityLandingPageComponent({
           {/* GDPR Cookie Consent Banner */}
           <GdprNotice position="bottom" />
         </Container>
+
+        {showLoginModal && (
+          <Suspense
+            fallback={
+              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', p: 4 }}>
+                <CircularProgress sx={{ color: COMMUNITY_ACCENT }} />
+              </Box>
+            }
+          >
+            <LoginModal
+              open={showLoginModal}
+              onClose={handleCloseLogin}
+              context="community"
+            />
+          </Suspense>
+        )}
       </Box>
     </OnboardingErrorBoundary>
   );
