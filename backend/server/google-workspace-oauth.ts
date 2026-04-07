@@ -20,38 +20,6 @@ function readStringValue(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function resolveRequestOrigin(req?: Request): string | null {
-  if (!req) {
-    return null;
-  }
-
-  const originHeader = readStringValue(req.headers.origin);
-  const refererHeader = readStringValue(req.headers.referer);
-  for (const candidate of [originHeader, refererHeader]) {
-    if (!candidate) {
-      continue;
-    }
-
-    try {
-      const parsed = new URL(candidate);
-      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
-        return parsed.origin;
-      }
-    } catch {
-      // Ignore malformed values and continue with host fallback.
-    }
-  }
-
-  const host = readStringValue(req.get('host'));
-  if (!host) {
-    return null;
-  }
-
-  const forwardedProto = readStringValue(req.headers['x-forwarded-proto']);
-  const protocol = forwardedProto ?? req.protocol ?? 'http';
-  return `${protocol}://${host}`;
-}
-
 function defaultCallbackPath(app: GoogleWorkspaceOauthApp): string {
   return app === 'creatorhub'
     ? '/api/creatorhub/google/oauth/callback'
@@ -62,8 +30,93 @@ function isLocalhostHostname(hostname: string): boolean {
   return hostname === 'localhost' || hostname === '127.0.0.1';
 }
 
+function isRenderHostname(hostname: string): boolean {
+  const normalized = hostname.trim().toLowerCase();
+  return normalized === 'onrender.com' || normalized.endsWith('.onrender.com');
+}
+
+function getDefaultPublicOrigin(app: GoogleWorkspaceOauthApp): string {
+  if (app === 'creatorhub') {
+    return (
+      readStringValue(process.env.CREATORHUB_PUBLIC_URL)
+      ?? readStringValue(process.env.APP_URL)
+      ?? readStringValue(process.env.PUBLIC_APP_URL)
+      ?? 'https://creatorhubn.com'
+    );
+  }
+
+  return (
+    readStringValue(process.env.ROLE_ROOM_PUBLIC_URL)
+    ?? readStringValue(process.env.ROLE_ROOM_PUBLIC_ORIGIN)
+    ?? 'https://theroleroom.com'
+  );
+}
+
+function parseOriginCandidate(value: string | null): URL | null {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      return parsed;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+function resolveRequestOrigin(
+  app: GoogleWorkspaceOauthApp,
+  req?: Request,
+): string | null {
+  if (!req) {
+    return getDefaultPublicOrigin(app);
+  }
+
+  const originHeader = parseOriginCandidate(readStringValue(req.headers.origin));
+  if (originHeader) {
+    return isRenderHostname(originHeader.hostname)
+      ? getDefaultPublicOrigin(app)
+      : originHeader.origin;
+  }
+
+  const refererHeader = parseOriginCandidate(readStringValue(req.headers.referer));
+  if (refererHeader) {
+    return isRenderHostname(refererHeader.hostname)
+      ? getDefaultPublicOrigin(app)
+      : refererHeader.origin;
+  }
+
+  const host = readStringValue(req.get('host'));
+  if (!host) {
+    return getDefaultPublicOrigin(app);
+  }
+
+  const forwardedProto = readStringValue(req.headers['x-forwarded-proto']);
+  const protocol = forwardedProto ?? req.protocol ?? 'http';
+  const hostOrigin = `${protocol}://${host}`;
+  const parsedHostOrigin = parseOriginCandidate(hostOrigin);
+  if (!parsedHostOrigin) {
+    return getDefaultPublicOrigin(app);
+  }
+
+  if (isLocalhostHostname(parsedHostOrigin.hostname)) {
+    return parsedHostOrigin.origin;
+  }
+
+  if (isRenderHostname(parsedHostOrigin.hostname)) {
+    return getDefaultPublicOrigin(app);
+  }
+
+  return parsedHostOrigin.origin;
+}
+
 function defaultRedirectUri(app: GoogleWorkspaceOauthApp, req?: Request): string | null {
-  const requestOrigin = resolveRequestOrigin(req);
+  const requestOrigin = resolveRequestOrigin(app, req);
   if (requestOrigin) {
     return `${requestOrigin}${defaultCallbackPath(app)}`;
   }

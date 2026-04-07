@@ -31,6 +31,8 @@ services:
         sync: false
       - key: CREATORHUB_GOOGLE_REDIRECT_URI
         sync: false
+      - key: CREATORHUB_PUBLIC_URL
+        sync: false
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_SECRET
@@ -42,6 +44,8 @@ services:
       - key: ROLE_ROOM_GOOGLE_CLIENT_SECRET
         sync: false
       - key: ROLE_ROOM_GOOGLE_REDIRECT_URI
+        sync: false
+      - key: ROLE_ROOM_PUBLIC_URL
         sync: false
       - key: ROLE_ROOM_GOOGLE_TOKEN_ENCRYPTION_KEY
         sync: false
