@@ -7,6 +7,7 @@ import {
   normalizeGoogleWorkspaceOauthApp,
   type GoogleWorkspaceOauthApp,
 } from './google-workspace-oauth.js';
+import { ensureGoogleWorkspaceConnectionsSchema } from './google-workspace-connections-schema.js';
 import {
   ensureCustomerWorkflowFolder,
   resolveDocumentBranding,
@@ -437,6 +438,7 @@ export async function resolveRoleRoomGoogleConnection(
   },
 ): Promise<AuthorizedContractGoogleClient> {
   await ensureContractGoogleSigningSchema(pool);
+  await ensureGoogleWorkspaceConnectionsSchema(pool);
 
   const allowFallbackToAnyUser = options?.allowFallbackToAnyUser !== false;
   const preferredOauthApps = options?.preferredOauthApps?.length

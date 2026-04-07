@@ -38,6 +38,7 @@ import { createRoleRoomIntegrationsV1Router } from "./role-room-integrations-v1-
 import { createCommunicationRouter } from "./communication-routes.js";
 import { createDashboardCompatRouter } from "./dashboard-compat-routes.js";
 import { createLightroomRouter } from "./lightroom-routes.js";
+import { ensureGoogleWorkspaceConnectionsSchema } from "./google-workspace-connections-schema.js";
 import {
   ensureContractsCompatibilitySchema,
   getContractGoogleESignature,
@@ -23694,6 +23695,8 @@ app.get("/api/file-management/stats", async (req, res) => {
 // GET /api/file-management/google-drive/status — verify Google Drive integration health
 app.get("/api/file-management/google-drive/status", async (req, res) => {
   try {
+    await ensureGoogleWorkspaceConnectionsSchema(pool);
+
     const isLocalDevelopmentWorkspaceUserId = (
       value: string | null | undefined,
     ): boolean =>
@@ -24681,6 +24684,8 @@ async function buildGoogleContactsStatusSnapshot(
   userId: string,
   preferredOauthApps: GoogleWorkspaceOauthApp[] = ["creatorhub", "role_room"],
 ): Promise<GoogleContactsStatusSnapshot> {
+  await ensureGoogleWorkspaceConnectionsSchema(pool);
+
   const normalizedUserId = readString(userId) || "guest";
   if (normalizedUserId === "guest") {
     return {
@@ -24882,6 +24887,8 @@ async function buildGoogleWorkspaceStorageSnapshot(
   userId: string,
   preferredOauthApps: GoogleWorkspaceOauthApp[] = ["creatorhub", "role_room"],
 ): Promise<GoogleWorkspaceStorageSnapshot> {
+  await ensureGoogleWorkspaceConnectionsSchema(pool);
+
   const normalizedUserId = readString(userId) || "guest";
 
   const [
