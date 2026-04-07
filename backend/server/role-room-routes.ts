@@ -783,7 +783,7 @@ function getRoleRoomGoogleRedirectUri(req?: Request): string | null {
   }
   const forwardedProto = readStringValue(req.headers['x-forwarded-proto']);
   const protocol = forwardedProto ?? req.protocol ?? 'http';
-  return `${protocol}://${host}/api/auth/google/callback`;
+  return `${protocol}://${host}/api/role-room/google/oauth/callback`;
 }
 
 function getRoleRoomLinkedInRedirectUri(req?: Request): string | null {

@@ -36,8 +36,37 @@ const MINIMAL_GOOGLE_CHAT_SCOPES = [
 const shouldOpenBrowser = !process.argv.includes('--no-open');
 const useMinimalScopes = process.argv.includes('--minimal');
 
+function normalizeOauthApp(value) {
+  if (typeof value !== 'string') {
+    return 'role_room';
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'creatorhub') {
+    return 'creatorhub';
+  }
+
+  return 'role_room';
+}
+
+function getOauthApp() {
+  const cliValue = process.argv.find((arg) => arg.startsWith('--app='))?.split('=')[1];
+  return normalizeOauthApp(cliValue ?? process.env.GOOGLE_WORKSPACE_OAUTH_APP ?? 'role_room');
+}
+
 function readString(value) {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function readFirstNonEmpty(...values) {
+  for (const value of values) {
+    const normalized = readString(value);
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  return null;
 }
 
 function loadCredentialsFromFile(credentialsPath) {
@@ -75,14 +104,25 @@ function loadCredentialsFromFile(credentialsPath) {
 }
 
 async function main() {
+  const oauthApp = getOauthApp();
+  const envPrefix = oauthApp === 'creatorhub' ? 'CREATORHUB_GOOGLE' : 'ROLE_ROOM_GOOGLE';
   const credentialsPath = readString(process.env.GOOGLE_OAUTH_CREDENTIALS_PATH)
     ?? path.join(process.cwd(), 'credentials.json');
   const fileCredentials = loadCredentialsFromFile(credentialsPath);
-  const envRedirectUri = readString(process.env.ROLE_ROOM_GOOGLE_REDIRECT_URI ?? process.env.GOOGLE_REDIRECT_URI);
+  const envRedirectUri = readFirstNonEmpty(
+    process.env[`${envPrefix}_REDIRECT_URI`],
+    process.env.GOOGLE_REDIRECT_URI,
+  );
   const clientId = fileCredentials?.clientId
-    ?? readString(process.env.ROLE_ROOM_GOOGLE_CLIENT_ID ?? process.env.GOOGLE_CLIENT_ID);
+    ?? readFirstNonEmpty(
+      process.env[`${envPrefix}_CLIENT_ID`],
+      process.env.GOOGLE_CLIENT_ID,
+    );
   const clientSecret = fileCredentials?.clientSecret
-    ?? readString(process.env.ROLE_ROOM_GOOGLE_CLIENT_SECRET ?? process.env.GOOGLE_CLIENT_SECRET);
+    ?? readFirstNonEmpty(
+      process.env[`${envPrefix}_CLIENT_SECRET`],
+      process.env.GOOGLE_CLIENT_SECRET,
+    );
   const redirectUri =
     envRedirectUri
     ?? (fileCredentials?.clientType === 'installed' ? 'http://127.0.0.1:5050/oauth2callback' : null)
@@ -90,7 +130,7 @@ async function main() {
     ?? 'http://localhost:5050/oauth2callback';
 
   if (!clientId || !clientSecret) {
-    console.error('Missing GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET or ROLE_ROOM_GOOGLE_CLIENT_ID/ROLE_ROOM_GOOGLE_CLIENT_SECRET.');
+    console.error(`Missing ${envPrefix}_CLIENT_ID/${envPrefix}_CLIENT_SECRET (or legacy GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET).`);
     process.exit(1);
   }
 
@@ -121,6 +161,7 @@ async function main() {
   } else {
     console.log('Credentials source: environment variables');
   }
+  console.log(`OAuth app: ${oauthApp}`);
   console.log(`Scope mode: ${useMinimalScopes ? 'minimal' : 'full'}`);
   console.log(`Redirect URI: ${redirectUri}`);
   console.log(`Scopes (${requestedScopes.length}):`);

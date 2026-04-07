@@ -53,17 +53,21 @@ SESSION_SECRET=your-session-secret
 JWT_SECRET=your-jwt-secret
 
 # Google OAuth / Workspace
-GOOGLE_CLIENT_ID=your-shared-google-client-id
-GOOGLE_CLIENT_SECRET=your-shared-google-client-secret
-GOOGLE_REDIRECT_URI=http://localhost:5050/api/auth/google/callback
+CREATORHUB_GOOGLE_CLIENT_ID=your-creatorhub-google-client-id
+CREATORHUB_GOOGLE_CLIENT_SECRET=your-creatorhub-google-client-secret
+CREATORHUB_GOOGLE_REDIRECT_URI=http://localhost:5050/api/creatorhub/google/oauth/callback
+ROLE_ROOM_GOOGLE_CLIENT_ID=your-role-room-google-client-id
+ROLE_ROOM_GOOGLE_CLIENT_SECRET=your-role-room-google-client-secret
+ROLE_ROOM_GOOGLE_REDIRECT_URI=http://localhost:5050/api/role-room/google/oauth/callback
+ROLE_ROOM_GOOGLE_TOKEN_ENCRYPTION_KEY=your-role-room-google-token-secret
 GOOGLE_PROJECT_ID=creatorhubn-com
 GOOGLE_CLOUD_QUOTA_PROJECT=creatorhubn-com
 
-# The Role Room can use its own OAuth client in production
-ROLE_ROOM_GOOGLE_CLIENT_ID=your-role-room-google-client-id
-ROLE_ROOM_GOOGLE_CLIENT_SECRET=your-role-room-google-client-secret
-ROLE_ROOM_GOOGLE_REDIRECT_URI=https://api.creatorhubn.com/api/auth/google/callback
-ROLE_ROOM_GOOGLE_TOKEN_ENCRYPTION_KEY=your-role-room-google-token-secret
+# Legacy shared Google OAuth envs are deprecated and should not be used in production.
+# Keep them only if an older local helper script still requires them during transition.
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_REDIRECT_URI=
 
 # The Role Room Agent (OpenAI)
 OPENAI_API_KEY=your-openai-api-key
@@ -88,8 +92,16 @@ Deployed to Render. Configure environment variables in Render dashboard.
 For Google in production:
 
 - use an `External` OAuth app in the `creatorhubn-com` Google Cloud project
+- use a dedicated CreatorHub web client with:
+  - `https://creatorhubn.com`
+  - `https://creatorhubn.com/api/creatorhub/google/oauth/callback`
+- use a dedicated The Role Room web client with:
+  - `https://theroleroom.com`
+  - `https://creatorhubn.com`
+  - `https://theroleroom.com/api/role-room/google/oauth/callback`
+  - `https://creatorhubn.com/api/role-room/google/oauth/callback`
 - verify `creatorhubn.com` and `theroleroom.com` in Search Console
-- keep production OAuth origins and redirects limited to real domains only
+- keep production OAuth origins and redirects limited to live domains only
 - use a server-side Google Places key for backend enrichment; browser/referrer keys will be rejected by backend requests
 
 ## Project Structure

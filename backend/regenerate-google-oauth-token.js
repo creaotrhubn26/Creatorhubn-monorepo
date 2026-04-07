@@ -24,6 +24,16 @@ const SCOPES = [
 
 const REDIRECT_URI = 'http://localhost:3000/oauth2callback';
 
+function readFirstNonEmpty(...values) {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+
+  return null;
+}
+
 async function main() {
   console.log('🔐 Google OAuth Token Regeneration');
   console.log('==================================\n');
@@ -44,13 +54,19 @@ async function main() {
 
   // Fallback to environment variables
   if (!clientId || !clientSecret) {
-    clientId = process.env.GOOGLE_CLIENT_ID;
-    clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    clientId = readFirstNonEmpty(
+      process.env.CREATORHUB_GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_ID,
+    );
+    clientSecret = readFirstNonEmpty(
+      process.env.CREATORHUB_GOOGLE_CLIENT_SECRET,
+      process.env.GOOGLE_CLIENT_SECRET,
+    );
     console.log('✅ Using client credentials from environment variables');
   }
 
   if (!clientId || !clientSecret) {
-    console.error('❌ Error: Missing GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET');
+    console.error('❌ Error: Missing CREATORHUB_GOOGLE_CLIENT_ID and CREATORHUB_GOOGLE_CLIENT_SECRET');
     console.error('   Please set these in your .env file or ADC_JSON');
     process.exit(1);
   }
@@ -135,4 +151,3 @@ async function main() {
 }
 
 main().catch(console.error);
-
