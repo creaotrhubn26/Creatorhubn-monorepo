@@ -359,6 +359,27 @@ export function readCreatorHubStoredUser(): CreatorHubAuthUser | null {
   return stored ? normalizeCreatorHubAuthUser(stored) : null;
 }
 
+function buildCreatorHubStoredAuthHeaders(): Record<string, string> {
+  const token = readCreatorHubStoredToken();
+  const user = readCreatorHubStoredUser();
+  const headers: Record<string, string> = {};
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+    headers['x-session-token'] = token;
+  }
+
+  if (user?.id) {
+    headers['x-user-id'] = user.id;
+  }
+
+  if (user?.email) {
+    headers['x-user-email'] = user.email;
+  }
+
+  return headers;
+}
+
 export function readCreatorHubSessionSnapshot(): CreatorHubSessionSnapshot {
   const token = readCreatorHubStoredToken();
   const user = readCreatorHubStoredUser();
@@ -681,6 +702,62 @@ export async function startCreatorHubGoogleLogin(): Promise<void> {
   }
 
   window.location.assign(response.authorizationUrl);
+}
+
+export async function startCreatorHubGoogleWorkspaceLink(options?: {
+  returnPath?: string;
+  browserOrigin?: string;
+  targetConnectionUserId?: string | null;
+  targetConnectionEmail?: string | null;
+}): Promise<void> {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const snapshot = readCreatorHubSessionSnapshot();
+  if (!snapshot.authenticated || !snapshot.user) {
+    await startCreatorHubGoogleLogin();
+    return;
+  }
+
+  const response = await fetchCreatorHubJson<{ authorizationUrl?: string }>(
+    '/api/role-room/google/oauth/start',
+    {
+      method: 'POST',
+      headers: buildCreatorHubStoredAuthHeaders(),
+      body: {
+        mode: 'link',
+        browserOrigin: options?.browserOrigin ?? window.location.origin,
+        returnPath: options?.returnPath ?? buildCreatorHubGoogleReturnPath(),
+        targetConnectionUserId:
+          options?.targetConnectionUserId ?? snapshot.user.id,
+        targetConnectionEmail:
+          options?.targetConnectionEmail ?? snapshot.user.email,
+      },
+    },
+  );
+
+  if (!response.authorizationUrl) {
+    throw new Error('Kunne ikke starte Google-SSO.');
+  }
+
+  window.location.assign(response.authorizationUrl);
+}
+
+export async function startCreatorHubGoogleSso(options?: {
+  returnPath?: string;
+  browserOrigin?: string;
+  targetConnectionUserId?: string | null;
+  targetConnectionEmail?: string | null;
+  forceLogin?: boolean;
+}): Promise<void> {
+  const snapshot = readCreatorHubSessionSnapshot();
+  if (!options?.forceLogin && snapshot.authenticated && snapshot.user) {
+    await startCreatorHubGoogleWorkspaceLink(options);
+    return;
+  }
+
+  await startCreatorHubGoogleLogin();
 }
 
 export async function completeCreatorHubGoogleLoginTransfer(

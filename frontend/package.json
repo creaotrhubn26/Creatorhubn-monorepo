@@ -29,7 +29,9 @@
     "test:e2e:storyboard-drawing-editor": "playwright test e2e/storyboard-drawing-editor.spec.ts --project=chromium",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
-    "test:e2e:report": "playwright show-report"
+    "test:e2e:report": "playwright show-report",
+    "test:google-workspace-sso": "node scripts/google-workspace-sso-smoke.mjs",
+    "test:google-workspace-live": "node scripts/google-workspace-live-matrix.mjs"
   },
   "dependencies": {
     "@babylonjs/core": "^8.52.0",

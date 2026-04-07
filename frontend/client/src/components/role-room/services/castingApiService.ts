@@ -228,6 +228,39 @@ export interface RoleRoomGoogleBindingResponse {
   artifacts: RoleRoomGoogleArtifactRef[];
 }
 
+export interface RoleRoomGoogleCalendarSummary {
+  id: string;
+  summary: string;
+  description?: string | null;
+  primary?: boolean;
+  accessRole?: string | null;
+  backgroundColor?: string | null;
+  foregroundColor?: string | null;
+  timeZone?: string | null;
+  selected?: boolean;
+  hidden?: boolean;
+}
+
+export interface RoleRoomGoogleCalendarShareRule {
+  id: string;
+  role: string;
+  scopeType: string;
+  scopeValue?: string | null;
+  label: string;
+}
+
+export interface RoleRoomGoogleCalendarEventSummary {
+  id: string;
+  title: string;
+  description?: string | null;
+  status?: string | null;
+  location?: string | null;
+  start?: string | null;
+  end?: string | null;
+  htmlLink?: string | null;
+  meetUrl?: string | null;
+}
+
 export interface RoleRoomTalentPortalMediaItem {
   id: string;
   kind?: 'video' | 'photo';
@@ -2224,6 +2257,60 @@ export const googleWorkspaceApi = {
   }> => {
     const params = new URLSearchParams({ q: query });
     return apiRequest(`/projects/${projectId}/google/people/search?${params.toString()}`);
+  },
+
+  listCalendars: async (
+    projectId: string,
+  ): Promise<{ calendars: RoleRoomGoogleCalendarSummary[] }> => (
+    apiRequest<{ calendars: RoleRoomGoogleCalendarSummary[] }>(`/projects/${projectId}/google/calendars`)
+  ),
+
+  getProjectCalendar: async (
+    projectId: string,
+    calendarId?: string,
+  ): Promise<{
+    calendar: RoleRoomGoogleCalendarSummary | null;
+    shares: RoleRoomGoogleCalendarShareRule[];
+    events: RoleRoomGoogleCalendarEventSummary[];
+  }> => {
+    const params = new URLSearchParams();
+    if (calendarId) {
+      params.set('calendarId', calendarId);
+    }
+    return apiRequest(`/projects/${projectId}/google/calendar${params.toString() ? `?${params.toString()}` : ''}`);
+  },
+
+  shareProjectCalendar: async (
+    projectId: string,
+    payload: {
+      email?: string;
+      domain?: string;
+      role?: string;
+      scopeType?: 'user' | 'domain';
+      calendarId?: string;
+    },
+  ): Promise<RoleRoomGoogleBindingResponse & { shares: RoleRoomGoogleCalendarShareRule[] }> => (
+    apiRequest<RoleRoomGoogleBindingResponse & { shares: RoleRoomGoogleCalendarShareRule[] }>(
+      `/projects/${projectId}/google/calendar/share`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+    )
+  ),
+
+  removeProjectCalendarShare: async (
+    projectId: string,
+    ruleId: string,
+    calendarId?: string,
+  ): Promise<{ success: boolean; shares: RoleRoomGoogleCalendarShareRule[] }> => {
+    const params = new URLSearchParams();
+    if (calendarId) {
+      params.set('calendarId', calendarId);
+    }
+    return apiRequest(`/projects/${projectId}/google/calendar/share/${encodeURIComponent(ruleId)}${params.toString() ? `?${params.toString()}` : ''}`, {
+      method: 'DELETE',
+    });
   },
 };
 

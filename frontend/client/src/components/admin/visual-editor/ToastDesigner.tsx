@@ -1003,10 +1003,10 @@ export default function ToastDesigner() {
     {
       id: 'worklog-sync-success',
       name: 'Worklog Sync Success',
-      description: 'Worklog synchronized with Google Keep',
+      description: 'Worklog ready in the shared Google Workspace flow',
       config: {
         ...toastConfig,
-        message: 'Arbeidslogg synkronisert med Google Keep!',
+        message: 'Arbeidslogg er klar i den delte Workspace-flyten!',
         type: 'info',
         style: {
           ...toastConfig.style,
@@ -1018,7 +1018,7 @@ export default function ToastDesigner() {
           buttons: [
             {
               id: 'open-keep',
-              label: 'Åpne Google Keep',
+              label: 'Åpne workspace',
               action: 'open-keep',
               style: 'secondary',
               color: '#ffffff'

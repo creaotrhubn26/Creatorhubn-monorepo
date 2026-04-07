@@ -1787,7 +1787,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
           </Alert>
           {!useLocalFallback && googleStatus?.state !== 'connected' ? (
             <Alert severity="warning" sx={{ bgcolor: 'rgba(245,158,11,0.12)', color: '#fde68a' }}>
-              Koble Google Workspace i Role Room før klientavtaler kan sendes til juridisk signering.
+              Klientavtaler bruker samme Google-SSO som resten av Role Room. Sørg for at Google-statusen i brukerfeltet er aktiv før juridisk signering.
             </Alert>
           ) : null}
           <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
@@ -1886,7 +1886,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
           </Alert>
           {!useLocalFallback && googleStatus?.state !== 'connected' ? (
             <Alert severity="warning" sx={{ bgcolor: 'rgba(245,158,11,0.12)', color: '#fde68a' }}>
-              Koble Google Workspace i Role Room før medvirkendeavtaler kan sendes til juridisk signering.
+              Medvirkendeavtaler bruker samme Google-SSO som resten av Role Room. Sørg for at Google-statusen i brukerfeltet er aktiv før juridisk signering.
             </Alert>
           ) : null}
           {loading ? (

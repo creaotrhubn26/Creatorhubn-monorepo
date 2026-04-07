@@ -1,6 +1,6 @@
 /**
  * useWorklogCollaboration Hook
- * Enables Google Keep collaboration on worklog entries
+ * Invites project collaborators from worklog surfaces
  */
 
 import { useState, useCallback } from 'react';
@@ -19,9 +19,10 @@ export function useWorklogCollaboration() {
   const queryClient = useQueryClient();
 
   /**
-   * Add collaborators to a worklog entry via Google Keep
+   * Invite collaborators to the project from a worklog context
    */
   const addCollaborators = useCallback(async (
+    projectId: string,
     worklogId: string,
     emails: string[]
   ) => {
@@ -29,13 +30,28 @@ export function useWorklogCollaboration() {
     setError(null);
 
     try {
-      const result = await apiRequest(`/api/worklog/${worklogId}/add-collaborators`, {
-        method: 'POST',
-        body: JSON.stringify({ emails })
-      });
+      const normalizedProjectId = String(projectId || '').trim();
+      if (!normalizedProjectId) {
+        throw new Error('Project id is required to invite collaborators');
+      }
+
+      const result = await Promise.all(
+        emails.map((email) =>
+          apiRequest(`/api/projects/${encodeURIComponent(normalizedProjectId)}/collaborators/invite`, {
+            method: 'POST',
+            body: JSON.stringify({
+              email,
+              role: 'viewer',
+              source: 'worklog',
+              worklogId,
+            }),
+          }),
+        ),
+      );
 
       // Refresh worklog queries
       await queryClient.invalidateQueries({ queryKey: ['/api/projects'] });
+      await queryClient.invalidateQueries({ queryKey: ['/api/projects', normalizedProjectId, 'collaborators'] });
 
       setAdding(false);
       return result;
@@ -47,22 +63,30 @@ export function useWorklogCollaboration() {
   }, [queryClient]);
 
   /**
-   * Remove collaborator from worklog entry
+   * Remove collaborator from the linked project collaboration list
    */
   const removeCollaborator = useCallback(async (
-    worklogId: string,
-    email: string
+    projectId: string,
+    collaboratorId: string
   ) => {
     setAdding(true);
     setError(null);
 
     try {
-      const result = await apiRequest(`/api/worklog/${worklogId}/remove-collaborator`, {
-        method: 'POST',
-        body: JSON.stringify({ email })
-      });
+      const normalizedProjectId = String(projectId || '').trim();
+      if (!normalizedProjectId) {
+        throw new Error('Project id is required to remove collaborators');
+      }
+
+      const result = await apiRequest(
+        `/api/projects/${encodeURIComponent(normalizedProjectId)}/collaborators/${encodeURIComponent(collaboratorId)}`,
+        {
+          method: 'DELETE',
+        },
+      );
 
       await queryClient.invalidateQueries({ queryKey: ['/api/projects'] });
+      await queryClient.invalidateQueries({ queryKey: ['/api/projects', normalizedProjectId, 'collaborators'] });
 
       setAdding(false);
       return result;
@@ -74,14 +98,15 @@ export function useWorklogCollaboration() {
   }, [queryClient]);
 
   /**
-   * Share worklog entry via email (Google Keep sharing)
+   * Share worklog context by inviting collaborators to the project
    */
   const shareViaEmail = useCallback(async (
+    projectId: string,
     worklogId: string,
     emails: string[],
     message?: string
   ) => {
-    return addCollaborators(worklogId, emails);
+    return addCollaborators(projectId, worklogId, emails);
   }, [addCollaborators]);
 
   return {
@@ -92,5 +117,4 @@ export function useWorklogCollaboration() {
     error
   };
 }
-
 

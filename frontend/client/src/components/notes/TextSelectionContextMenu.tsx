@@ -405,7 +405,6 @@ export default function TextSelectionContextMenu({
         body: JSON.stringify({
           ...data,
           userId,
-          syncToGoogleKeep: true,
         }),
       });
     },

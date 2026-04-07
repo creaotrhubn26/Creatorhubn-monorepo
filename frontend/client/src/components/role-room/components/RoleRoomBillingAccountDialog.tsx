@@ -4,11 +4,15 @@ import {
   Box,
   Button,
   Chip,
+  FormControl,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   Divider,
+  InputLabel,
+  MenuItem,
+  Select,
   Stack,
   Typography,
   CircularProgress,
@@ -30,6 +34,8 @@ type WorkspaceAccountTeamMember = {
   roleLabel?: string | null;
 };
 
+type RoleRoomAdminPreviewMode = 'admin' | 'production_team' | 'content_producer' | 'client';
+
 type RoleRoomBillingAccountDialogProps = {
   open: boolean;
   onClose: () => void;
@@ -48,10 +54,18 @@ type RoleRoomBillingAccountDialogProps = {
     workspaceLabel?: string | null;
   };
   currentProject?: {
+    id: string;
     name: string;
     clientName?: string | null;
     workflowLabel?: string | null;
     teamMembers: WorkspaceAccountTeamMember[];
+  } | null;
+  adminPreview?: {
+    enabled: boolean;
+    selectedMode: RoleRoomAdminPreviewMode;
+    clientPortalAvailable: boolean;
+    onSelectMode: (mode: RoleRoomAdminPreviewMode) => void | Promise<void>;
+    onOpenClientPortal: () => void | Promise<void>;
   } | null;
 };
 
@@ -114,6 +128,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
   onRetryPayment,
   currentUser,
   currentProject,
+  adminPreview = null,
 }) => {
   const paymentTimestamp = formatDateTime(account?.paymentTimestamp);
   const paymentFailedAt = formatDateTime(account?.paymentFailedAt);
@@ -223,6 +238,79 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                   />
                 ) : null}
               </Stack>
+              {adminPreview?.enabled ? (
+                <Stack spacing={0.9} sx={{ pt: 1 }}>
+                  <Typography sx={{ color: 'rgba(255,255,255,0.62)', fontSize: '0.76rem' }}>
+                    Test klientflaten uten å miste adminrettighetene. Dette bytter bare visningsmodus.
+                  </Typography>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} useFlexGap flexWrap="wrap">
+                    <FormControl
+                      size="small"
+                      sx={{
+                        minWidth: { xs: '100%', sm: 240 },
+                        '& .MuiOutlinedInput-root': {
+                          color: '#f8fafc',
+                          borderRadius: 999,
+                          bgcolor: 'rgba(255,255,255,0.04)',
+                        },
+                        '& .MuiOutlinedInput-notchedOutline': {
+                          borderColor: 'rgba(255,255,255,0.14)',
+                        },
+                        '& .MuiInputLabel-root': {
+                          color: 'rgba(255,255,255,0.58)',
+                        },
+                        '& .MuiSvgIcon-root': {
+                          color: 'rgba(255,255,255,0.72)',
+                        },
+                      }}
+                    >
+                      <InputLabel id="role-room-preview-mode-label">Vis som</InputLabel>
+                      <Select
+                        labelId="role-room-preview-mode-label"
+                        label="Vis som"
+                        value={adminPreview.selectedMode}
+                        disabled={actionPending}
+                        onChange={(event) => {
+                          const nextMode = event.target.value as RoleRoomAdminPreviewMode;
+                          void adminPreview.onSelectMode(nextMode);
+                        }}
+                      >
+                        <MenuItem value="admin">Admin view</MenuItem>
+                        <MenuItem value="production_team">Produksjonsteam view</MenuItem>
+                        <MenuItem value="content_producer">Innholdsprodusent view</MenuItem>
+                        <MenuItem value="client">Klient view</MenuItem>
+                      </Select>
+                    </FormControl>
+                    {currentProject && adminPreview.clientPortalAvailable ? (
+                      <Button
+                        size="small"
+                        variant={adminPreview.selectedMode === 'client' ? 'contained' : 'outlined'}
+                        startIcon={adminPreview.selectedMode === 'client' ? <PersonIcon /> : <SupervisorAccountIcon />}
+                        disabled={actionPending}
+                        onClick={() => {
+                          void adminPreview.onOpenClientPortal();
+                        }}
+                        sx={{
+                          alignSelf: 'flex-start',
+                          fontWeight: 700,
+                          ...(adminPreview.selectedMode === 'client'
+                            ? {
+                                bgcolor: '#38bdf8',
+                                color: '#082f49',
+                                '&:hover': { bgcolor: '#7dd3fc' },
+                              }
+                            : {
+                                borderColor: 'rgba(168,85,247,0.36)',
+                                color: '#e9d5ff',
+                              }),
+                        }}
+                      >
+                        Åpne klientportal
+                      </Button>
+                    ) : null}
+                  </Stack>
+                </Stack>
+              ) : null}
             </Stack>
           </Stack>
 

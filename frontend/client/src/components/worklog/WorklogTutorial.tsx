@@ -7,7 +7,7 @@
  * - Time tracking and productivity logging
  * - Mood and reflection entries
  * - Category management per profession
- * - Google Keep synchronization
+ * - Shared Google Workspace session for mobile notes and collaboration
  * - Keyboard shortcuts for quick access
  * - Collaboration features
  */
@@ -290,11 +290,11 @@ export const WorklogTutorial: React.FC<WorklogTutorialProps> = ({
       tip: 'Press Ctrl+Shift+N to open the full worklog from anywhere in the app.'
     },
     {
-      label: 'Sync with Google Keep',
+      label: 'Use Workspace Session',
       icon: <SyncAlt />,
-      content: 'Your entries sync automatically to Google Keep for mobile access.',
-      example: 'Click "Google Keep" button to view sync status and manage connection.',
-      tip: 'Access your worklog notes on your phone during client meetings.'
+      content: 'Your worklog uses the same Google Workspace session as the rest of the app for mobile notes and follow-up.',
+      example: 'Open "Workspace og Keep" to confirm that the shared Google session is active.',
+      tip: 'Keep one Google login active so worklog, chat, files, and meetings stay in the same flow.'
     }
   ];
 
@@ -353,7 +353,7 @@ export const WorklogTutorial: React.FC<WorklogTutorialProps> = ({
     'Log time spent (even if estimated)',
     'Try the daily reflection prompt',
     'Use Ctrl+Shift+W for a quick note',
-    'Connect Google Keep for mobile access'
+    'Activate Google Workspace once for mobile notes and follow-up'
   ];
 
   // Keyboard shortcuts reference
@@ -445,7 +445,7 @@ export const WorklogTutorial: React.FC<WorklogTutorialProps> = ({
           </Typography>
           <Typography variant="body2">
             This worklog adapts to your profession with custom categories, tailored prompts, 
-            and integrations with your existing tools (Google Keep, profession-specific features).
+            and integrations with your existing tools (Google Workspace, profession-specific features).
           </Typography>
         </Alert>
 

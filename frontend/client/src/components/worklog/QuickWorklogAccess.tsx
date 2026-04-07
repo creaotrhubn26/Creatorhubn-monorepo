@@ -6,6 +6,7 @@ import { useProfessionConfig } from '@/hooks/useProfessionConfig';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import { useSnackbar } from 'notistack';
 import {
+  Alert,
   Box,
   Button,
   Dialog,
@@ -76,6 +77,8 @@ export const QuickWorklogAccess: React.FC<QuickWorklogAccessProps> = ({
   const { config: professionConfig } = useProfessionConfig({ profession });
   const { trackProfessionActivity } = useProfessionAdapter();
   const { enqueueSnackbar } = useSnackbar();
+  const resolvedProjectId = React.useMemo(() => String(contextData.projectId || '').trim(), [contextData.projectId]);
+  const hasProjectContext = resolvedProjectId.length > 0;
   
   // Theming system
   const theming = useTheming();
@@ -167,17 +170,21 @@ export const QuickWorklogAccess: React.FC<QuickWorklogAccessProps> = ({
 
   // Fetch recent worklog entries
   const { data: recentEntries = [] } = useQuery({
-    queryKey: ['/api/worklog/recent', context],
-    queryFn: () => apiRequest('/api/worklog/recent', {
-      headers: {
-  }
-  }),
-    enabled: open
-});
+    queryKey: ['/api/projects', resolvedProjectId, 'worklog', 'quick-access', context],
+    queryFn: async () => {
+      const response = await apiRequest(`/api/projects/${encodeURIComponent(resolvedProjectId)}/worklog`);
+      return Array.isArray(response?.data) ? response.data : [];
+    },
+    enabled: open && hasProjectContext,
+  });
 
-  // Quick note mutation with Google Keep sync
+  // Quick note mutation using the same project worklog flow as the main workspace
   const quickNoteMutation = useMutation({
     mutationFn: async (note: string) => {
+      if (!hasProjectContext) {
+        throw new Error('Velg et prosjekt før du lagrer lynnotatet.');
+      }
+
       const contextTitle = getContextTitle();
       const worklogEntry = {
         title: `${contextTitle} - Lynnotat`,
@@ -185,39 +192,19 @@ export const QuickWorklogAccess: React.FC<QuickWorklogAccessProps> = ({
         timeSpent:  5, // 5 minutes default
         category: context,
         day: Math.floor(Date.now() / (1000 * 60 * 60 * 24)),
-        projectId: contextData.projectId,
+        userId: user?.id,
         tags: [context, 'lynnotat'],
-        metadata: {
-          context,
-          contextData,
-          createdFrom: 'quick-access',
-          syncToKeep: true // Enable Google Keep sync
-    }
-    };
+        nextSteps: `Opprettet fra ${context}-kontekst i workspace.`,
+      };
 
-      // Create worklog entry
-      const response = await apiRequest('/api/worklog/entries', {
+      return apiRequest(`/api/projects/${encodeURIComponent(resolvedProjectId)}/worklog`, {
         method: 'POST',
-        body: JSON.stringify(worklogEntry)
+        body: JSON.stringify(worklogEntry),
       });
-
-      // Sync to Google Keep
-      try {
-        await apiRequest('/api/google-keep/sync-worklog', {
-          method: 'POST',
-          body: JSON.stringify({
-            entries: [worklogEntry]
-          })
-        });
-        console.log('✅ Worklog synced to Google Keep');
-    } catch (keepError) {
-        console.warn('⚠️ Google Keep sync failed: ', keepError);
-    }
-
-      return response;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/worklog'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/projects', resolvedProjectId, 'worklog'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/projects', resolvedProjectId, 'worklog', 'quick-access', context] });
       enqueueSnackbar('Lynnotat lagret! 📝', { variant: 'success' });
       setQuickNote('');
       setQuickNoteOpen(false);
@@ -392,8 +379,13 @@ export const QuickWorklogAccess: React.FC<QuickWorklogAccessProps> = ({
               {getContextTitle()}
             </Typography>
             <Typography variant="caption" sx={{ color: '#4285f0', display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
-              📝 Synkroniseres automatisk til Google Keep
+              📝 Bruker samme prosjekt-worklog og Google Workspace-økt som resten av appen
             </Typography>
+            {!hasProjectContext && (
+              <Alert severity="info" sx={{ mt: 1.5, borderRadius: 2 }}>
+                Velg eller koble et prosjekt først. Lynnotatet lagres i prosjektets worklog, ikke i en separat Keep-flyt.
+              </Alert>
+            )}
           </Box>
           <TextField
             fullWidth
@@ -418,7 +410,7 @@ export const QuickWorklogAccess: React.FC<QuickWorklogAccessProps> = ({
           </Button>
           <Button variant="contained"
             onClick={() => quickNoteMutation.mutate(quickNote)}
-            disabled={!quickNote.trim() || quickNoteMutation.isPending}
+            disabled={!quickNote.trim() || quickNoteMutation.isPending || !hasProjectContext}
             sx={{
               background: 'linear-gradient(135deg, #ff6b35, #f7931e)','&:hover': {
                 background: 'linear-gradient(135deg, #e55a2b, #e8841a)'
@@ -456,10 +448,16 @@ export const QuickWorklogAccess: React.FC<QuickWorklogAccessProps> = ({
             <Typography variant="body2" color="textSecondary" sx={{ mb:  2 }}>
               Kontekst: {getContextTitle()}
             </Typography>
+            {!hasProjectContext && (
+              <Alert severity="info" sx={{ mb: 2, borderRadius: 2 }}>
+                Denne hurtigflaten trenger et aktivt prosjekt for å vise og lagre worklog-oppføringer i samme workspace-flyt.
+              </Alert>
+            )}
             
             <Button variant="contained"
               startIcon={<AddIcon />}
               onClick={() => setQuickNoteOpen(true)}
+              disabled={!hasProjectContext}
               sx={{
                 background: 'linear-gradient(135deg, #ff6b35, #f7931e)', '&:hover': {
                   background: 'linear-gradient(135deg, #e55a2b, #e8841a)'

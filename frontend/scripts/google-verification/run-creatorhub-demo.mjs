@@ -532,20 +532,28 @@ async function runDemoAction(targetPage, actionKey, timeoutMs = 90000) {
   const result = targetPage.getByTestId(`result-${actionKey}`);
 
   log(`Running demo action: ${actionKey}`);
+  await targetPage.waitForFunction((key) => {
+    return Boolean(window.__creatorhubGoogleVerificationDemoState?.actions?.[key]);
+  }, actionKey, { timeout: 15000 });
   await button.scrollIntoViewIfNeeded().catch(() => undefined);
-  await button.click();
+  await targetPage.evaluate((key) => {
+    const element = document.querySelector(`[data-testid="action-${key}"]`);
+    if (!(element instanceof HTMLElement)) {
+      throw new Error(`Unable to locate action button for ${key}`);
+    }
+    element.click();
+  }, actionKey);
 
   await targetPage.waitForFunction((key) => {
-    const element = document.querySelector(`[data-testid="result-${key}"]`);
-    const status = element?.getAttribute("data-status");
+    const status = window.__creatorhubGoogleVerificationDemoState?.actions?.[key]?.status;
     return status === "success" || status === "error";
   }, actionKey, { timeout: timeoutMs });
 
-  const status = await result.getAttribute("data-status");
-  const text = (await result.textContent().catch(() => ""))?.trim() || "";
   const state = await targetPage.evaluate((key) => {
     return (window.__creatorhubGoogleVerificationDemoState?.actions ?? {})[key] ?? null;
   }, actionKey).catch(() => null);
+  const status = state?.status ?? await result.getAttribute("data-status");
+  const text = state?.message || (await result.textContent().catch(() => ""))?.trim() || "";
 
   return {
     actionKey,
@@ -632,6 +640,19 @@ try {
 
   if (!demoPageReady) {
     throw new Error("Google verification demo page did not render.");
+  }
+
+  await sleep(2500);
+  const overviewRefresh = await runDemoAction(page, "refresh-overview", 45000);
+  report.steps.push({
+    step: "demo-refresh-overview",
+    status: overviewRefresh.status,
+    text: overviewRefresh.text,
+    state: overviewRefresh.state,
+  });
+
+  if (overviewRefresh.status !== "success") {
+    throw new Error(`Demo action failed for refresh-overview: ${overviewRefresh.text}`);
   }
 
   const actionPlan = [

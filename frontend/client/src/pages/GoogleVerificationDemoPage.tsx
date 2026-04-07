@@ -1440,7 +1440,7 @@ export default function GoogleVerificationDemoPage() {
                       {youtubeConnected
                         ? `YouTube er klar${youtubeChannelTitle ? ` på kanalen ${youtubeChannelTitle}` : ''}.`
                         : youtubeNeedsReconnect
-                          ? 'YouTube-scope finnes, men Google Workspace må kobles til på nytt.'
+                          ? 'YouTube-scope finnes, men Google-SSO må fornyes.'
                           : 'YouTube-publisering krever at den tilkoblede Google-kontoen har en aktiv YouTube-kanal.'}
                     </Alert>
                   </Stack>

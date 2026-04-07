@@ -1936,7 +1936,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                 Foto integrasjoner
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                Installer Lightroom-pluginen, verifiser Google Workspace-tilkoblingen og test den faktiske eksportløypa til Google Drive og showcase.
+                Installer Lightroom-pluginen, verifiser Google-SSO i brukerfeltet og test den faktiske eksportløypa til Google Drive og showcase.
               </Typography>
 
               {/* Lightroom Plugin Download Section */}
@@ -1955,7 +1955,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                         icon={<CheckCircle />}
                         label={lightroomStatusQuery.data.workspaceConnected
                           ? `Google Drive: ${lightroomStatusQuery.data.googleEmail || 'koblet'}`
-                          : 'Google Workspace mangler'}
+                          : 'Google-SSO mangler'}
                         color={lightroomStatusQuery.data.workspaceConnected ? 'success' : 'warning'}
                         variant="outlined"
                       />
@@ -2028,7 +2028,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                       onClick={() => { void handleLightroomReconnect(); }}
                       sx={{ borderColor: theme.palette.warning.main, color: theme.palette.warning.main }}
                     >
-                      {lightroomAction === 'reconnect' ? 'Starter…' : 'Koble Google Workspace'}
+                      {lightroomAction === 'reconnect' ? 'Starter…' : 'Forny Google-SSO'}
                     </Button>
                   ) : null}
 

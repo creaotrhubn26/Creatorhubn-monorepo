@@ -3739,8 +3739,8 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
                 {driveStatus?.accountEmail
                   ? driveStatus.accountEmail
                   : tt(
-                      'Koble Google Workspace for aa hente Drive-videoer og Google Vids.',
-                      'Connect Google Workspace to import Drive videos and Google Vids.',
+                      'Aktiver Google-SSO for aa hente Drive-videoer og Google Vids.',
+                      'Activate Google SSO to import Drive videos and Google Vids.',
                     )}
               </Typography>
               <Typography sx={{ mt: 0.35, color: 'rgba(237,240,247,0.52)', fontSize: 12 }}>
@@ -5266,8 +5266,8 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
                     )
                   : driveStatus?.message ||
                     tt(
-                      'Koble Google Workspace for aa hente filer fra Drive og Google Vids.',
-                      'Connect Google Workspace to load files from Drive and Google Vids.',
+                      'Aktiver Google-SSO for aa hente filer fra Drive og Google Vids.',
+                      'Activate Google SSO to load files from Drive and Google Vids.',
                     )}
               </Typography>
               {!driveStatus?.connected ? (

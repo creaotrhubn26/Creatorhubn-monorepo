@@ -445,6 +445,200 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
     return 'Google Drive-forespørselen feilet.';
   };
 
+  const isRecord = (value: unknown): value is Record<string, unknown> => (
+    !!value && typeof value === 'object' && !Array.isArray(value)
+  );
+
+  const GOOGLE_DRIVE_EXPORT_MIME_TYPES: Record<string, { mimeType: string; extension: string }> = {
+    'application/vnd.google-apps.document': {
+      mimeType: 'application/pdf',
+      extension: 'pdf',
+    },
+    'application/vnd.google-apps.spreadsheet': {
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      extension: 'xlsx',
+    },
+    'application/vnd.google-apps.presentation': {
+      mimeType: 'application/pdf',
+      extension: 'pdf',
+    },
+    'application/vnd.google-apps.drawing': {
+      mimeType: 'image/png',
+      extension: 'png',
+    },
+  };
+
+  const GOOGLE_DRIVE_FILE_FIELDS = [
+    'id',
+    'name',
+    'mimeType',
+    'size',
+    'createdTime',
+    'modifiedTime',
+    'description',
+    'iconLink',
+    'thumbnailLink',
+    'webViewLink',
+    'webContentLink',
+    'parents',
+    'version',
+    'fileExtension',
+    'owners(displayName,emailAddress,photoLink)',
+    'permissions(id,type,emailAddress,domain,role,allowFileDiscovery,deleted,pendingOwner)',
+    'capabilities(canEdit,canDownload,canDelete,canRename,canShare)',
+    'shared',
+    'trashed',
+  ].join(',');
+
+  const GOOGLE_DRIVE_LIST_FIELDS = `nextPageToken, files(${GOOGLE_DRIVE_FILE_FIELDS})`;
+
+  const buildDrivePermissionLabel = (permission: Record<string, unknown>): string => {
+    const type = toNonEmptyString(permission.type) ?? 'unknown';
+    if (type === 'user') {
+      return toNonEmptyString(permission.emailAddress) ?? 'Bruker';
+    }
+    if (type === 'domain') {
+      return toNonEmptyString(permission.domain) ?? 'Domene';
+    }
+    if (type === 'anyone') {
+      return 'Alle med lenken';
+    }
+    return type;
+  };
+
+  const buildGoogleDrivePermissionRecord = (permission: unknown) => {
+    const record = isRecord(permission) ? permission : {};
+    return {
+      id: toNonEmptyString(record.id) ?? crypto.randomUUID(),
+      type: toNonEmptyString(record.type) ?? 'unknown',
+      emailAddress: toNonEmptyString(record.emailAddress),
+      domain: toNonEmptyString(record.domain),
+      role: toNonEmptyString(record.role) ?? 'reader',
+      allowFileDiscovery: record.allowFileDiscovery === true,
+      deleted: record.deleted === true,
+      pendingOwner: record.pendingOwner === true,
+      label: buildDrivePermissionLabel(record),
+    };
+  };
+
+  const buildGoogleDriveOwnerRecord = (owner: unknown) => {
+    const record = isRecord(owner) ? owner : {};
+    return {
+      displayName: toNonEmptyString(record.displayName) ?? 'Ukjent eier',
+      emailAddress: toNonEmptyString(record.emailAddress),
+      photoLink: toNonEmptyString(record.photoLink),
+    };
+  };
+
+  const buildGoogleDriveFileRecord = (file: Record<string, unknown>) => {
+    const mimeType = toNonEmptyString(file.mimeType) ?? 'application/octet-stream';
+    const owners = Array.isArray(file.owners)
+      ? file.owners.map((entry) => buildGoogleDriveOwnerRecord(entry))
+      : [];
+    const permissions = Array.isArray(file.permissions)
+      ? file.permissions.map((entry) => buildGoogleDrivePermissionRecord(entry))
+      : [];
+    const capabilities = isRecord(file.capabilities) ? file.capabilities : {};
+    const exportFormat = GOOGLE_DRIVE_EXPORT_MIME_TYPES[mimeType] ?? null;
+
+    return {
+      id: toNonEmptyString(file.id) ?? crypto.randomUUID(),
+      name: toNonEmptyString(file.name) ?? 'Uten navn',
+      mimeType,
+      isFolder: mimeType === 'application/vnd.google-apps.folder',
+      size: file.size == null ? null : Number(file.size),
+      createdTime: toNonEmptyString(file.createdTime),
+      modifiedTime: toNonEmptyString(file.modifiedTime),
+      description: toNonEmptyString(file.description),
+      iconLink: toNonEmptyString(file.iconLink),
+      thumbnailLink: toNonEmptyString(file.thumbnailLink),
+      webViewLink: toNonEmptyString(file.webViewLink),
+      webContentLink: toNonEmptyString(file.webContentLink),
+      version: file.version == null ? null : Number(file.version),
+      fileExtension: toNonEmptyString(file.fileExtension),
+      parents: Array.isArray(file.parents) ? file.parents.filter((value): value is string => typeof value === 'string') : [],
+      owners,
+      owner: owners[0] ?? null,
+      permissions,
+      shared: file.shared === true,
+      trashed: file.trashed === true,
+      capabilities: {
+        canEdit: capabilities.canEdit === true,
+        canDownload: capabilities.canDownload === true,
+        canDelete: capabilities.canDelete === true,
+        canRename: capabilities.canRename === true,
+        canShare: capabilities.canShare === true,
+      },
+      exportFormat,
+    };
+  };
+
+  const mapDriveActivityAction = (activity: Record<string, unknown>): string => {
+    const actions = isRecord(activity.primaryActionDetail) ? activity.primaryActionDetail : {};
+    const actionMap: Array<[string, string]> = [
+      ['create', 'Opprettet'],
+      ['edit', 'Redigert'],
+      ['move', 'Flyttet'],
+      ['rename', 'Omdøpt'],
+      ['delete', 'Slettet'],
+      ['restore', 'Gjenopprettet'],
+      ['permissionChange', 'Tilgang endret'],
+      ['comment', 'Kommentert'],
+      ['reference', 'Referert'],
+      ['settingsChange', 'Innstillinger endret'],
+    ];
+
+    for (const [key, label] of actionMap) {
+      if (isRecord(actions[key])) {
+        return label;
+      }
+    }
+
+    return 'Oppdatert';
+  };
+
+  const mapDriveActivityActors = (activity: Record<string, unknown>): string[] => {
+    const actors = Array.isArray(activity.actors) ? activity.actors : [];
+    return actors.flatMap((actor) => {
+      if (!isRecord(actor) || !isRecord(actor.user)) {
+        return [];
+      }
+      const knownUser = isRecord(actor.user.knownUser) ? actor.user.knownUser : {};
+      const personName = toNonEmptyString(knownUser.personName);
+      const isMe = knownUser.isCurrentUser === true;
+      if (isMe) {
+        return ['Deg'];
+      }
+      if (personName) {
+        return [personName];
+      }
+      return ['Bruker'];
+    });
+  };
+
+  const mapDriveActivityTargets = (activity: Record<string, unknown>): string[] => {
+    const targets = Array.isArray(activity.targets) ? activity.targets : [];
+    return targets.flatMap((target) => {
+      if (!isRecord(target) || !isRecord(target.driveItem)) {
+        return [];
+      }
+      const driveItem = target.driveItem;
+      const title = isRecord(driveItem.title) ? driveItem.title : {};
+      const itemTitle = toNonEmptyString(title.value);
+      const name = toNonEmptyString(driveItem.name);
+      return [itemTitle ?? name ?? 'Drive-element'];
+    });
+  };
+
+  const mapDriveActivityTimestamp = (activity: Record<string, unknown>): string | null => {
+    const timestamp = toNonEmptyString(activity.timestamp);
+    if (timestamp) {
+      return timestamp;
+    }
+    const timeRange = isRecord(activity.timeRange) ? activity.timeRange : {};
+    return toNonEmptyString(timeRange.endTime) || toNonEmptyString(timeRange.startTime);
+  };
+
   const formatGoogleWorkspaceApiError = (apiLabel: string, error: unknown): string => {
     if (error && typeof error === 'object') {
       const candidate = error as {
@@ -4363,8 +4557,7 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
         orderBy: folderId ? 'folder,name_natural,modifiedTime desc' : 'modifiedTime desc,name_natural',
         includeItemsFromAllDrives: true,
         supportsAllDrives: true,
-        fields:
-          'nextPageToken, files(id,name,mimeType,size,modifiedTime,iconLink,thumbnailLink,webViewLink,webContentLink,parents,version,fileExtension)',
+        fields: GOOGLE_DRIVE_LIST_FIELDS,
       });
 
       const files = Array.isArray(response.data.files) ? response.data.files : [];
@@ -4373,20 +4566,7 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
         source: workspaceContext.source,
         connection: workspaceContext.connection,
         nextPageToken: response.data.nextPageToken ?? null,
-        files: files.map((file) => ({
-          id: toNonEmptyString(file.id) ?? crypto.randomUUID(),
-          name: toNonEmptyString(file.name) ?? 'Uten navn',
-          mimeType: toNonEmptyString(file.mimeType) ?? 'application/octet-stream',
-          size: file.size == null ? null : Number(file.size),
-          modifiedTime: toNonEmptyString(file.modifiedTime),
-          iconLink: toNonEmptyString(file.iconLink),
-          thumbnailLink: toNonEmptyString(file.thumbnailLink),
-          webViewLink: toNonEmptyString(file.webViewLink),
-          webContentLink: toNonEmptyString(file.webContentLink),
-          version: file.version == null ? null : Number(file.version),
-          fileExtension: toNonEmptyString(file.fileExtension),
-          parents: Array.isArray(file.parents) ? file.parents.filter((value): value is string => typeof value === 'string') : [],
-        })),
+        files: files.map((file) => buildGoogleDriveFileRecord(file as unknown as Record<string, unknown>)),
       });
     } catch (error) {
       console.error('Error listing google drive files:', error);
@@ -4413,8 +4593,13 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
       const requestedShareMode = toNonEmptyString(payload.shareMode)?.toLowerCase();
       const ensureAccessible = payload.ensureAccessible === true || payload.ensureAccessible === 'true';
       const allowComment = payload.allowComment === true || payload.allowComment === 'true';
+      const requestedRole = toNonEmptyString(payload.role)?.toLowerCase();
       const workspaceDomain = workspaceContext.connection.googleEmail?.split('@')[1] || null;
-      const preferredRole = allowComment ? 'commenter' : 'reader';
+      const preferredRole = requestedRole && ['reader', 'commenter', 'writer'].includes(requestedRole)
+        ? requestedRole
+        : allowComment
+          ? 'commenter'
+          : 'reader';
       const listPermissions = async () => {
         const response = await driveApi.permissions.list({
           fileId,
@@ -4426,8 +4611,7 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
       const fileResponse = await driveApi.files.get({
         fileId,
         supportsAllDrives: true,
-        fields:
-          'id,name,mimeType,size,modifiedTime,iconLink,thumbnailLink,webViewLink,webContentLink,version,fileExtension',
+        fields: GOOGLE_DRIVE_FILE_FIELDS,
       });
 
       const permissions = await listPermissions();
@@ -4498,8 +4682,7 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
         ? await driveApi.files.get({
             fileId,
             supportsAllDrives: true,
-            fields:
-              'id,name,mimeType,size,modifiedTime,iconLink,thumbnailLink,webViewLink,webContentLink,version,fileExtension',
+            fields: GOOGLE_DRIVE_FILE_FIELDS,
           })
         : fileResponse;
       const refreshedPermissions = sharingUpdated ? await listPermissions() : permissions;
@@ -4514,29 +4697,313 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
       return res.json({
         source: workspaceContext.source,
         connection: workspaceContext.connection,
-        id: toNonEmptyString(refreshedFileResponse.data.id) ?? fileId,
-        name: toNonEmptyString(refreshedFileResponse.data.name) ?? 'Uten navn',
-        mimeType: toNonEmptyString(refreshedFileResponse.data.mimeType) ?? 'application/octet-stream',
-        size: refreshedFileResponse.data.size == null ? null : Number(refreshedFileResponse.data.size),
-        modifiedTime: toNonEmptyString(refreshedFileResponse.data.modifiedTime),
-        iconLink: toNonEmptyString(refreshedFileResponse.data.iconLink),
-        thumbnailLink: toNonEmptyString(refreshedFileResponse.data.thumbnailLink),
-        webViewLink: toNonEmptyString(refreshedFileResponse.data.webViewLink),
-        webContentLink: toNonEmptyString(refreshedFileResponse.data.webContentLink),
-        version:
-          refreshedFileResponse.data.version == null
-            ? null
-            : Number(refreshedFileResponse.data.version),
-        fileExtension: toNonEmptyString(refreshedFileResponse.data.fileExtension),
+        ...buildGoogleDriveFileRecord(refreshedFileResponse.data as unknown as Record<string, unknown>),
         shareMode,
         accessState,
         sharingUpdated,
         recipientEmail: recipientEmail || null,
         workspaceDomain,
+        permissions: refreshedPermissions.map((permission) => buildGoogleDrivePermissionRecord(permission as unknown)),
       });
     } catch (error) {
       console.error('Error sharing google drive file:', error);
       return res.status(500).json({ error: formatGoogleDriveError(error) });
+    }
+  };
+
+  const getGoogleDriveFileDetails = async (req: Request, res: Response) => {
+    try {
+      const payload = (req.body || {}) as Record<string, unknown>;
+      const fileId = toNonEmptyString(req.params.fileId);
+      if (!fileId) {
+        return res.status(400).json({ error: 'fileId is required' });
+      }
+
+      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+      const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
+      if (!workspaceContext) {
+        return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
+      }
+
+      const driveApi = google.drive({ version: 'v3', auth: workspaceContext.oauthClient });
+      const [fileResponse, permissionsResponse] = await Promise.all([
+        driveApi.files.get({
+          fileId,
+          supportsAllDrives: true,
+          fields: GOOGLE_DRIVE_FILE_FIELDS,
+        }),
+        driveApi.permissions.list({
+          fileId,
+          supportsAllDrives: true,
+          fields: 'permissions(id,type,emailAddress,domain,role,allowFileDiscovery,deleted,pendingOwner)',
+        }),
+      ]);
+
+      const fileRecord = buildGoogleDriveFileRecord(fileResponse.data as unknown as Record<string, unknown>);
+      const permissions = Array.isArray(permissionsResponse.data.permissions)
+        ? permissionsResponse.data.permissions.map((permission) => buildGoogleDrivePermissionRecord(permission as unknown))
+        : [];
+
+      return res.json({
+        source: workspaceContext.source,
+        connection: workspaceContext.connection,
+        file: {
+          ...fileRecord,
+          permissions,
+        },
+      });
+    } catch (error) {
+      console.error('Error getting google drive file details:', error);
+      return res.status(500).json({ error: formatGoogleDriveError(error) });
+    }
+  };
+
+  const updateGoogleDriveFile = async (req: Request, res: Response) => {
+    try {
+      const payload = (req.body || {}) as Record<string, unknown>;
+      const fileId = toNonEmptyString(req.params.fileId);
+      if (!fileId) {
+        return res.status(400).json({ error: 'fileId is required' });
+      }
+
+      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+      const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
+      if (!workspaceContext) {
+        return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
+      }
+
+      const name = toNonEmptyString(payload.name);
+      const description = toNonEmptyString(payload.description);
+      const parentFolderId = toNonEmptyString(payload.parentFolderId) || toNonEmptyString(payload.targetFolderId);
+      if (!name && description == null && !parentFolderId) {
+        return res.status(400).json({ error: 'Send med navn, beskrivelse eller målmappe for å oppdatere filen.' });
+      }
+
+      const driveApi = google.drive({ version: 'v3', auth: workspaceContext.oauthClient });
+      let addParents: string | undefined;
+      let removeParents: string | undefined;
+      if (parentFolderId) {
+        const parentResponse = await driveApi.files.get({
+          fileId,
+          supportsAllDrives: true,
+          fields: 'parents',
+        });
+        const currentParents = Array.isArray(parentResponse.data.parents)
+          ? parentResponse.data.parents.filter((value): value is string => typeof value === 'string')
+          : [];
+        const normalizedParents = currentParents.filter((parentId) => parentId !== parentFolderId);
+        addParents = currentParents.includes(parentFolderId) ? undefined : parentFolderId;
+        removeParents = normalizedParents.length > 0 ? normalizedParents.join(',') : undefined;
+      }
+
+      const response = await driveApi.files.update({
+        fileId,
+        supportsAllDrives: true,
+        ...(addParents ? { addParents } : {}),
+        ...(removeParents ? { removeParents } : {}),
+        requestBody: {
+          ...(name ? { name } : {}),
+          ...(description != null ? { description } : {}),
+        },
+        fields: GOOGLE_DRIVE_FILE_FIELDS,
+      });
+
+      return res.json({
+        source: workspaceContext.source,
+        connection: workspaceContext.connection,
+        file: buildGoogleDriveFileRecord(response.data as unknown as Record<string, unknown>),
+      });
+    } catch (error) {
+      console.error('Error updating google drive file:', error);
+      return res.status(500).json({ error: formatGoogleDriveError(error) });
+    }
+  };
+
+  const deleteGoogleDriveFile = async (req: Request, res: Response) => {
+    try {
+      const payload = (req.body || {}) as Record<string, unknown>;
+      const fileId = toNonEmptyString(req.params.fileId);
+      if (!fileId) {
+        return res.status(400).json({ error: 'fileId is required' });
+      }
+
+      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+      const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
+      if (!workspaceContext) {
+        return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
+      }
+
+      const driveApi = google.drive({ version: 'v3', auth: workspaceContext.oauthClient });
+      const fileResponse = await driveApi.files.update({
+        fileId,
+        supportsAllDrives: true,
+        requestBody: {
+          trashed: true,
+        },
+        fields: GOOGLE_DRIVE_FILE_FIELDS,
+      });
+
+      return res.json({
+        success: true,
+        source: workspaceContext.source,
+        connection: workspaceContext.connection,
+        file: buildGoogleDriveFileRecord(fileResponse.data as unknown as Record<string, unknown>),
+      });
+    } catch (error) {
+      console.error('Error deleting google drive file:', error);
+      return res.status(500).json({ error: formatGoogleDriveError(error) });
+    }
+  };
+
+  const revokeGoogleDrivePermission = async (req: Request, res: Response) => {
+    try {
+      const payload = (req.body || {}) as Record<string, unknown>;
+      const fileId = toNonEmptyString(req.params.fileId);
+      const permissionId = toNonEmptyString(req.params.permissionId);
+      if (!fileId || !permissionId) {
+        return res.status(400).json({ error: 'fileId and permissionId are required' });
+      }
+
+      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+      const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
+      if (!workspaceContext) {
+        return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
+      }
+
+      const driveApi = google.drive({ version: 'v3', auth: workspaceContext.oauthClient });
+      await driveApi.permissions.delete({
+        fileId,
+        permissionId,
+        supportsAllDrives: true,
+      });
+
+      const permissionsResponse = await driveApi.permissions.list({
+        fileId,
+        supportsAllDrives: true,
+        fields: 'permissions(id,type,emailAddress,domain,role,allowFileDiscovery,deleted,pendingOwner)',
+      });
+
+      return res.json({
+        success: true,
+        source: workspaceContext.source,
+        connection: workspaceContext.connection,
+        permissions: Array.isArray(permissionsResponse.data.permissions)
+          ? permissionsResponse.data.permissions.map((permission) => buildGoogleDrivePermissionRecord(permission as unknown))
+          : [],
+      });
+    } catch (error) {
+      console.error('Error revoking google drive permission:', error);
+      return res.status(500).json({ error: formatGoogleDriveError(error) });
+    }
+  };
+
+  const downloadGoogleDriveFile = async (req: Request, res: Response) => {
+    try {
+      const payload = (req.body || {}) as Record<string, unknown>;
+      const fileId = toNonEmptyString(req.params.fileId);
+      if (!fileId) {
+        return res.status(400).json({ error: 'fileId is required' });
+      }
+
+      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+      const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
+      if (!workspaceContext) {
+        return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
+      }
+
+      const driveApi = google.drive({ version: 'v3', auth: workspaceContext.oauthClient });
+      const metadataResponse = await driveApi.files.get({
+        fileId,
+        supportsAllDrives: true,
+        fields: 'id,name,mimeType,fileExtension',
+      });
+
+      const file = metadataResponse.data as unknown as Record<string, unknown>;
+      const mimeType = toNonEmptyString(file.mimeType) ?? 'application/octet-stream';
+      const baseName = toNonEmptyString(file.name) ?? 'creatorhub-file';
+      const exportFormat = GOOGLE_DRIVE_EXPORT_MIME_TYPES[mimeType] ?? null;
+
+      if (exportFormat) {
+        const exportResponse = await driveApi.files.export(
+          {
+            fileId,
+            mimeType: exportFormat.mimeType,
+          },
+          {
+            responseType: 'stream',
+          },
+        );
+        res.setHeader('Content-Type', exportFormat.mimeType);
+        res.setHeader('Content-Disposition', `attachment; filename="${baseName}.${exportFormat.extension}"`);
+        (exportResponse.data as unknown as Readable).pipe(res);
+        return;
+      }
+
+      const fileExtension = toNonEmptyString(file.fileExtension);
+      const downloadResponse = await driveApi.files.get(
+        {
+          fileId,
+          alt: 'media',
+          supportsAllDrives: true,
+        },
+        {
+          responseType: 'stream',
+        },
+      );
+      res.setHeader('Content-Type', mimeType);
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${fileExtension ? `${baseName}.${fileExtension}` : baseName}"`,
+      );
+      (downloadResponse.data as unknown as Readable).pipe(res);
+    } catch (error) {
+      console.error('Error downloading google drive file:', error);
+      return res.status(500).json({ error: formatGoogleDriveError(error) });
+    }
+  };
+
+  const listGoogleDriveActivity = async (req: Request, res: Response) => {
+    try {
+      const payload = (req.body || {}) as Record<string, unknown>;
+      const fileId = toNonEmptyString(req.params.fileId);
+      if (!fileId) {
+        return res.status(400).json({ error: 'fileId is required' });
+      }
+
+      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+      const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
+      if (!workspaceContext) {
+        return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
+      }
+
+      const driveActivityApi = google.driveactivity({ version: 'v2', auth: workspaceContext.oauthClient });
+      const pageSize = Math.min(Math.max(parseFiniteInteger(req.query.pageSize ?? payload.pageSize, 20), 1), 50);
+      const response = await driveActivityApi.activity.query({
+        requestBody: {
+          itemName: `items/${fileId}`,
+          pageSize,
+        },
+      });
+
+      const activities = Array.isArray(response.data.activities) ? response.data.activities : [];
+      return res.json({
+        source: workspaceContext.source,
+        connection: workspaceContext.connection,
+        activities: activities.map((activity) => {
+          const record = activity as unknown as Record<string, unknown>;
+          return {
+            id: crypto.createHash('sha1').update(JSON.stringify(record)).digest('hex'),
+            action: mapDriveActivityAction(record),
+            actors: mapDriveActivityActors(record),
+            targets: mapDriveActivityTargets(record),
+            timestamp: mapDriveActivityTimestamp(record),
+            raw: record,
+          };
+        }),
+      });
+    } catch (error) {
+      console.error('Error listing google drive activity:', error);
+      return res.status(500).json({ error: formatGoogleWorkspaceApiError('Google Drive Activity API', error) });
     }
   };
 
@@ -4550,6 +5017,30 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
 
   router.get('/api/google/drive/files', async (req, res) => {
     await listGoogleDriveFiles(req, res);
+  });
+
+  router.get('/api/google/drive/files/:fileId/details', async (req, res) => {
+    await getGoogleDriveFileDetails(req, res);
+  });
+
+  router.get('/api/google/drive/files/:fileId/download', async (req, res) => {
+    await downloadGoogleDriveFile(req, res);
+  });
+
+  router.get('/api/google/drive/files/:fileId/activity', async (req, res) => {
+    await listGoogleDriveActivity(req, res);
+  });
+
+  router.patch('/api/google/drive/files/:fileId', async (req, res) => {
+    await updateGoogleDriveFile(req, res);
+  });
+
+  router.delete('/api/google/drive/files/:fileId', async (req, res) => {
+    await deleteGoogleDriveFile(req, res);
+  });
+
+  router.delete('/api/google/drive/files/:fileId/permissions/:permissionId', async (req, res) => {
+    await revokeGoogleDrivePermission(req, res);
   });
 
   router.post('/api/google/drive/upload-contextual', contextualDriveUpload.array('files', 24), async (req, res) => {
@@ -5133,6 +5624,53 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
 
   router.post('/api/google/chat/send-message', async (req, res) => {
     await handleGoogleSend(req, res);
+  });
+
+  router.delete('/api/google/chat/messages/:messageId', async (req, res) => {
+    try {
+      const payload = (req.body || {}) as Record<string, unknown>;
+      const rawMessageId = toNonEmptyString(req.params.messageId);
+      if (!rawMessageId) {
+        return res.status(400).json({ error: 'messageId is required' });
+      }
+
+      const normalizedMessageName = rawMessageId.startsWith('spaces/')
+        ? rawMessageId
+        : `spaces/${rawMessageId}`;
+
+      const liveResponse = await tryLiveGoogleChatRequest(
+        req,
+        `/${normalizedMessageName}`,
+        {
+          method: 'DELETE',
+        },
+        payload,
+      );
+
+      if (liveResponse) {
+        if (!liveResponse.response.ok) {
+          return res.status(liveResponse.response.status).json({
+            error: formatGoogleChatError(liveResponse.response.status, liveResponse.body),
+            source: liveResponse.context.source,
+            connection: liveResponse.context.connection,
+          });
+        }
+
+        return res.json({
+          success: true,
+          deletedMessageId: normalizedMessageName,
+          source: liveResponse.context.source,
+          connection: liveResponse.context.connection,
+        });
+      }
+
+      return res.status(501).json({
+        error: 'Google Chat delete støttes bare når en live Google Chat-kobling er aktiv.',
+      });
+    } catch (error) {
+      console.error('Error deleting google chat message:', error);
+      res.status(500).json({ error: 'Failed to delete Google Chat message' });
+    }
   });
 
   router.post('/api/google/chat/create-space', async (req, res) => {

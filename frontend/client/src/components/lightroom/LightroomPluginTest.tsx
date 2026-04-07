@@ -91,7 +91,7 @@ function IntegrationSummary({
             <Alert severity={status.workspaceConnected ? 'success' : 'warning'}>
               {status.workspaceConnected
                 ? `Koblet til ${status.googleEmail || 'Google Workspace'}`
-                : status.workspaceError || 'Koble Google Workspace før Lightroom-pluginen brukes.'}
+                : status.workspaceError || 'Aktiver Google-SSO før Lightroom-pluginen brukes.'}
             </Alert>
             {status.workspaceWarning ? (
               <Alert severity="info" sx={{ mt: 1.5 }}>
@@ -269,7 +269,7 @@ const LightroomPluginTest: React.FC = () => {
     onError: (error) => {
       setSnackbar({
         open: true,
-        message: error instanceof Error ? error.message : 'Kunne ikke starte Google Workspace-tilkoblingen.',
+        message: error instanceof Error ? error.message : 'Kunne ikke starte Google-SSO.',
         severity: 'error',
       });
     },
@@ -395,7 +395,7 @@ const LightroomPluginTest: React.FC = () => {
                     onClick={() => reconnectMutation.mutate()}
                     disabled={reconnectMutation.isPending}
                   >
-                    {reconnectMutation.isPending ? 'Starter…' : 'Koble Google Workspace'}
+                    {reconnectMutation.isPending ? 'Starter…' : 'Forny Google-SSO'}
                   </Button>
                 ) : null}
                 {status.driveRootFolderUrl ? (

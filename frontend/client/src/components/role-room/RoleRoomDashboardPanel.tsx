@@ -9,7 +9,7 @@
  *  5. Quick sync action
  */
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   Box,
   Card,
@@ -78,7 +78,13 @@ import {
   useRoleRoomBootstrap,
 } from '../../hooks/useRoleRoom';
 import RoleRoomBrandMark from './components/shared/RoleRoomBrandMark';
-import { YouTubeIntegration } from '../youtube/YouTubeIntegration';
+import { YouTubeIntegration, type YouTubePublishingSuggestion } from '../youtube/YouTubeIntegration';
+import GoogleWorkspaceSessionBadge from '../universal/GoogleWorkspaceSessionBadge';
+import {
+  roleRoomAgentService,
+  type RoleRoomAgentAccess,
+  type RoleRoomAgentProducerBootstrapResult,
+} from './services/roleRoomAgentService';
 
 import type {
   CastingProject,
@@ -105,6 +111,87 @@ function formatDate(iso: string | undefined | null): string {
   return new Date(iso).toLocaleDateString('nb-NO', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+function readFirstText(...values: Array<string | null | undefined>) {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return '';
+}
+
+function buildRoleRoomPublishingSuggestion(
+  projectName: string | undefined,
+  snapshot: RoleRoomAgentProducerBootstrapResult | null,
+): YouTubePublishingSuggestion | null {
+  if (!snapshot) {
+    return null;
+  }
+
+  const activation = snapshot.planningDraft.activationPlan;
+  const logic = snapshot.planningDraft.contentLogic;
+  const company = snapshot.companyProfile;
+  const titleSeed = readFirstText(
+    activation.idea,
+    logic.hook,
+    logic.coreMessage,
+    snapshot.intakeDraft.projectGoal,
+    company.companyName,
+  );
+
+  const tags = [
+    company.industry,
+    company.subIndustry,
+    company.contentCategory,
+    logic.contentCategory,
+    logic.productionApproach,
+    ...company.offerings,
+    ...company.targetAudience,
+    ...(logic.proofPoints ?? []),
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .slice(0, 10);
+
+  const descriptionSections = [
+    readFirstText(snapshot.intakeDraft.projectGoal) ? `Mål\n${snapshot.intakeDraft.projectGoal.trim()}` : '',
+    readFirstText(logic.audience, snapshot.intakeDraft.targetAudience) ? `Målgruppe\n${readFirstText(logic.audience, snapshot.intakeDraft.targetAudience)}` : '',
+    readFirstText(logic.hook, activation.idea) ? `Hook\n${readFirstText(logic.hook, activation.idea)}` : '',
+    readFirstText(logic.coreMessage, activation.coreMessage, snapshot.intakeDraft.keyMessage) ? `Kjernebudskap\n${readFirstText(logic.coreMessage, activation.coreMessage, snapshot.intakeDraft.keyMessage)}` : '',
+    logic.proofPoints && logic.proofPoints.length > 0 ? `Bevispunkter\n• ${logic.proofPoints.slice(0, 4).join('\n• ')}` : '',
+    readFirstText(logic.callToAction) ? `CTA\n${logic.callToAction?.trim()}` : '',
+    readFirstText(snapshot.planningDraft.brandGuide.toneOfVoice, company.summary) ? `Tone\n${readFirstText(snapshot.planningDraft.brandGuide.toneOfVoice, company.summary)}` : '',
+  ].filter(Boolean);
+
+  return {
+    sourceLabel: 'The Role Room Agent',
+    summary: readFirstText(
+      activation.direction,
+      logic.distributionPlan,
+      company.summary,
+      snapshot.nextRecommendedSteps[0],
+    ),
+    title: readFirstText(
+      projectName ? `${projectName} | ${titleSeed}` : titleSeed,
+      projectName ? `${projectName} | Ny publisering` : '',
+    ),
+    description: descriptionSections.join('\n\n'),
+    tags,
+    playlistTitle: readFirstText(
+      projectName && company.companyName ? `${projectName} | ${company.companyName}` : '',
+      projectName ? `${projectName} | YouTube playlist` : '',
+      company.companyName ? `${company.companyName} | YouTube playlist` : '',
+    ),
+    chips: [
+      company.industry,
+      logic.contentCategory,
+      logic.productionApproach,
+      snapshot.planningDraft.brandGuide.toneOfVoice,
+    ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0),
+    nextSteps: snapshot.nextRecommendedSteps ?? [],
+  };
+}
+
 // ── Sub-tabs inside the panel ────────────────────────────────
 
 type SubTab = 'roles' | 'candidates' | 'crew' | 'schedule' | 'publishing';
@@ -116,6 +203,11 @@ interface RoleRoomDashboardPanelProps {
   profession?: string;
   /** If provided, auto-links sync to this Creatorhub project */
   creatorhubProjectId?: string;
+  workspaceSummary?: {
+    companyName?: string | null;
+    planName?: string | null;
+    statusLabel?: string | null;
+  } | null;
 }
 
 // ── Main component ──────────────────────────────────────────
@@ -124,6 +216,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
   userId,
   profession,
   creatorhubProjectId,
+  workspaceSummary,
 }) => {
   // Auto-provision API key on first load
   useRoleRoomBootstrap(userId);
@@ -133,6 +226,8 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectDesc, setNewProjectDesc] = useState('');
+  const [roleRoomAgentAccess, setRoleRoomAgentAccess] = useState<RoleRoomAgentAccess | null>(null);
+  const [roleRoomAgentSnapshot, setRoleRoomAgentSnapshot] = useState<RoleRoomAgentProducerBootstrapResult | null>(null);
 
   // ── Queries ──────────────────────────────────────────────
   const {
@@ -239,6 +334,68 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
       : []
   ), [publishingProjectId, selectedProject?.name, selectedProjectId]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    void roleRoomAgentService
+      .getAccess()
+      .then((access) => {
+        if (!cancelled) {
+          setRoleRoomAgentAccess(access);
+        }
+      })
+      .catch((error) => {
+        console.warn('[RoleRoomDashboardPanel] Could not load Role Room Agent access for publishing', error);
+        if (!cancelled) {
+          setRoleRoomAgentAccess(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const canUseAgentSnapshot = Boolean(roleRoomAgentAccess?.allowed && roleRoomAgentAccess?.isAdmin);
+
+    if (!selectedProjectId || !canUseAgentSnapshot) {
+      setRoleRoomAgentSnapshot(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void roleRoomAgentService
+      .getSnapshot(selectedProjectId)
+      .then((snapshot) => {
+        if (!cancelled) {
+          setRoleRoomAgentSnapshot(snapshot);
+        }
+      })
+      .catch((error) => {
+        console.warn('[RoleRoomDashboardPanel] Could not load Role Room Agent snapshot for publishing', error);
+        if (!cancelled) {
+          setRoleRoomAgentSnapshot(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [roleRoomAgentAccess?.allowed, roleRoomAgentAccess?.isAdmin, selectedProjectId]);
+
+  const roleRoomPublishingSuggestion = useMemo(
+    () => (
+      roleRoomAgentAccess?.allowed && roleRoomAgentAccess?.isAdmin
+        ? buildRoleRoomPublishingSuggestion(selectedProject?.name, roleRoomAgentSnapshot)
+        : null
+    ),
+    [roleRoomAgentAccess?.allowed, roleRoomAgentAccess?.isAdmin, roleRoomAgentSnapshot, selectedProject?.name],
+  );
+
   // ── Render ───────────────────────────────────────────────
 
   if (projectsLoading) {
@@ -261,6 +418,50 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
           <Typography variant="body2" color="text.secondary">
             Casting, crew & produksjonsplanlegging
           </Typography>
+          {(workspaceSummary?.planName || workspaceSummary?.companyName || workspaceSummary?.statusLabel) ? (
+            <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mt: 1.1 }}>
+              {workspaceSummary?.statusLabel ? (
+                <Chip
+                  size="small"
+                  label={workspaceSummary.statusLabel}
+                  sx={{
+                    bgcolor: 'rgba(124,58,237,0.12)',
+                    color: '#6d28d9',
+                    fontWeight: 700,
+                  }}
+                />
+              ) : null}
+              {workspaceSummary?.planName ? (
+                <Chip
+                  size="small"
+                  label={workspaceSummary.planName}
+                  variant="outlined"
+                  sx={{
+                    borderColor: 'rgba(124,58,237,0.25)',
+                    color: 'rgba(17,24,39,0.82)',
+                    fontWeight: 600,
+                  }}
+                />
+              ) : null}
+              {workspaceSummary?.companyName ? (
+                <Chip
+                  size="small"
+                  label={workspaceSummary.companyName}
+                  variant="outlined"
+                  sx={{
+                    borderColor: 'rgba(14,165,233,0.25)',
+                    color: 'rgba(17,24,39,0.72)',
+                  }}
+                />
+              ) : null}
+            </Stack>
+          ) : null}
+          <Box sx={{ mt: 1.2 }}>
+            <GoogleWorkspaceSessionBadge
+              userId={userId}
+              tone="role-room"
+            />
+          </Box>
         </Box>
         <Stack direction="row" spacing={1}>
           <Tooltip title="Oppdater">
@@ -520,6 +721,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                       projects={publishingProjects}
                       selectedProjectId={publishingProjectId}
                       brandVariant="role-room"
+                      publishingSuggestion={roleRoomPublishingSuggestion}
                       compact
                       createShowcaseOnUpload={Boolean(publishingProjectId)}
                     />

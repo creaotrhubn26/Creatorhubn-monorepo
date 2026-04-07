@@ -143,10 +143,12 @@ import {
   linkedInWorkspaceApi,
   roleRoomBillingApi,
   type RoleRoomCommercialBillingAccount,
+  type RoleRoomGoogleStatusResponse,
 } from '../services/castingApiService';
 import { consentService } from '../services/consentService';
 import { castingAuthService } from '../services/castingAuthService';
 import { useProducerAccess } from '../hooks/useProducerAccess';
+import GoogleWorkspaceSessionBadge from '../../universal/GoogleWorkspaceSessionBadge';
 import { producerWorkflowService } from '../services/producerWorkflowService';
 import {
   emitProducerWorkflowFocusEvent,
@@ -159,6 +161,7 @@ import {
   makeProducerPackageEntityId,
 } from '../utils/producerWorkflow';
 import {
+  buildClientPortalUrl,
   parseClientPortalIntentFromWindow,
   type ClientPortalWorkspaceFocus,
 } from '../utils/clientPortal';
@@ -221,6 +224,7 @@ import { queryClient } from '@/lib/queryClient';
 import NewProjectCreationModal from './Planning/NewProjectCreationModal';
 import RoleRoomBrandMark from './shared/RoleRoomBrandMark';
 import RoleRoomBillingAccountDialog from './RoleRoomBillingAccountDialog';
+import SelectionMeetPlannerCard from './SelectionMeetPlannerCard';
 
 interface CastingPlannerPanelProps {
   onClose?: () => void;
@@ -412,6 +416,16 @@ interface SelectionDecisionLogEntry {
   actor: string;
   createdAt: string;
 }
+
+interface SelectionMeetDraftState {
+  title: string;
+  date: string;
+  time: string;
+  durationMinutes: number;
+  location: string;
+}
+
+type RoleRoomAdminPreviewMode = 'admin' | 'production_team' | 'content_producer' | 'client';
 
 const SELECTION_STATUS_BY_STAGE: Record<SelectionStage, string> = {
   screening: 'auditioned',
@@ -808,7 +822,7 @@ export function CastingPlannerPanel({
   ));
   const [teamDashboardOpenSignal, setTeamDashboardOpenSignal] = useState(0);
   const [teamDashboardDefaultSegment, setTeamDashboardDefaultSegment] = useState<'all' | 'technical'>('all');
-  type StoryArcView = 'main' | 'story-logic' | 'story-writer' | 'shot-list';
+  type StoryArcView = 'main' | 'story-logic' | 'story-writer' | 'shot-list' | 'planning';
   const [storyArcView, setStoryArcView] = useState<StoryArcView>('main');
   const [selectionPhaseFilter, setSelectionPhaseFilter] = useState<SelectionPhaseFilter>('screening');
   const [selectedSelectionCandidateId, setSelectedSelectionCandidateId] = useState<string | null>(null);
@@ -820,6 +834,16 @@ export function CastingPlannerPanel({
   const [selectionNotesDraft, setSelectionNotesDraft] = useState('');
   const [selectionNotesSaving, setSelectionNotesSaving] = useState(false);
   const [selectionNotesTagExclusions, setSelectionNotesTagExclusions] = useState<string[]>([]);
+  const [selectionGoogleStatus, setSelectionGoogleStatus] = useState<RoleRoomGoogleStatusResponse | null>(null);
+  const [selectionGoogleStatusLoading, setSelectionGoogleStatusLoading] = useState(false);
+  const [selectionMeetBusy, setSelectionMeetBusy] = useState(false);
+  const [selectionMeetDraft, setSelectionMeetDraft] = useState<SelectionMeetDraftState>({
+    title: '',
+    date: '',
+    time: '',
+    durationMinutes: 45,
+    location: 'Google Meet',
+  });
   const [globalTagRegistry, setGlobalTagRegistry] = useState<string[]>([]);
   const [globalTagRegistryLoaded, setGlobalTagRegistryLoaded] = useState(false);
   const [storyLogicData, setStoryLogicData] = useState<StoryLogicState | null>(null);
@@ -1008,6 +1032,7 @@ export function CastingPlannerPanel({
   const appliedClientPortalIntentRef = useRef<string | null>(null);
   const handledGoogleTransferRef = useRef<string | null>(null);
   const handledLinkedInTransferRef = useRef<string | null>(null);
+  const selectionGoogleStatusRequestRef = useRef(0);
   const [producerMediaFocus, setProducerMediaFocus] = useState<ClientPortalWorkspaceFocus | null>(null);
 
   const handleOpenTechnicalTeamDashboard = useCallback(() => {
@@ -1953,6 +1978,12 @@ export function CastingPlannerPanel({
       .map((part) => part[0]?.toUpperCase() || '')
       .join('') || 'RR';
   }, [adminUser?.display_name, adminUser?.email, branding.appName]);
+  const workspaceSessionUserId = useMemo(() => {
+    if (adminUser?.id !== undefined && adminUser?.id !== null) {
+      return String(adminUser.id);
+    }
+    return getUserId();
+  }, [adminUser?.id, getUserId]);
   const currentProjectTeamMembers = useMemo(() => {
     const deduped = new Set<string>();
     return (currentProject?.crew ?? [])
@@ -2523,6 +2554,177 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
     }
   }, [currentRoleRoomProfessionNamespace, getUserId, standaloneRoleRoomMode]);
 
+  const syncScopedRoleRoomSession = useCallback(async () => {
+    const updatedSession = await authSessionService.loadSession();
+    setAdminUser(normalizeAdminUser(updatedSession.adminUser));
+
+    if (!currentProject?.id) {
+      return;
+    }
+
+    setPermissionsLoading(true);
+    try {
+      await ensureScopedSessionProjectRole(currentProject.id);
+      const refreshedProject = await castingService.getProject(currentProject.id);
+      if (refreshedProject) {
+        setCurrentProject(refreshedProject);
+      }
+    } finally {
+      setPermissionsLoading(false);
+    }
+  }, [currentProject, ensureScopedSessionProjectRole]);
+
+  const clearClientPortalIntentUrl = useCallback(() => {
+    if (typeof window === 'undefined') {
+      return '';
+    }
+    const url = new URL(window.location.href);
+    [
+      'portal',
+      'projectId',
+      'tab',
+      'workspace',
+      'section',
+      'page',
+      'reviewId',
+      'artifactId',
+    ].forEach((key) => url.searchParams.delete(key));
+    return url.toString();
+  }, []);
+
+  const currentAdminPreviewMode = useMemo<RoleRoomAdminPreviewMode>(() => {
+    if (!canSwitchRoleRoomRole) {
+      return 'admin';
+    }
+
+    const normalizedRequestedRole = String(adminUser?.requestedRole || '').trim().toLowerCase();
+    const normalizedLoginAs = String(adminUser?.loginAs || '').trim().toLowerCase();
+
+    if (normalizedRequestedRole === 'client') {
+      return 'client';
+    }
+    if (normalizedLoginAs === 'content_producer') {
+      return 'content_producer';
+    }
+    if (normalizedLoginAs === 'production_team') {
+      return 'production_team';
+    }
+    return 'admin';
+  }, [adminUser?.loginAs, adminUser?.requestedRole, canSwitchRoleRoomRole]);
+
+  const currentClientPortalPreviewUrl = useMemo(
+    () => (
+      currentProject?.id
+        ? buildClientPortalUrl(currentProject.id, {
+            tab: 'media',
+            workspace: 'brief',
+          })
+        : ''
+    ),
+    [currentProject?.id],
+  );
+
+  const handleSelectAdminPreviewMode = useCallback(async (mode: RoleRoomAdminPreviewMode) => {
+    if (!canSwitchRoleRoomRole) {
+      toast.showError('Bare admin kan bytte visningsmodus.');
+      return;
+    }
+
+    const nextContext =
+      mode === 'client'
+        ? {
+            loginAs: 'content_producer',
+            requestedRole: 'client',
+            selectedProfession: 'client',
+          }
+        : mode === 'content_producer'
+          ? {
+              loginAs: 'content_producer',
+              requestedRole: 'content_producer',
+              selectedProfession: 'content_producer',
+            }
+          : mode === 'production_team'
+            ? {
+                loginAs: 'production_team',
+                requestedRole: 'producer',
+                selectedProfession: 'producer',
+              }
+            : {
+                loginAs: null,
+                requestedRole: null,
+                selectedProfession: profession ?? null,
+              };
+
+    setBillingActionPending(true);
+    try {
+      await authSessionService.updateRoleContext(nextContext);
+      await syncScopedRoleRoomSession();
+
+      if (mode !== 'client' && clientPortalIntent) {
+        const returnUrl = clearClientPortalIntentUrl();
+        if (returnUrl && typeof window !== 'undefined') {
+          window.location.assign(returnUrl);
+          return;
+        }
+      }
+
+      const modeLabel =
+        mode === 'client'
+          ? 'Klient view'
+          : mode === 'content_producer'
+            ? 'Innholdsprodusent view'
+            : mode === 'production_team'
+              ? 'Produksjonsteam view'
+              : 'Admin view';
+
+      if (mode === currentAdminPreviewMode) {
+        toast.showSuccess(`${modeLabel} er allerede aktivt.`);
+        return;
+      }
+
+      toast.showSuccess(`${modeLabel} er aktivert for denne adminøkten.`);
+    } catch (error) {
+      console.error('Failed to switch Role Room preview mode:', error);
+      toast.showError('Kunne ikke bytte visningsmodus.');
+    } finally {
+      setBillingActionPending(false);
+    }
+  }, [
+    canSwitchRoleRoomRole,
+    clearClientPortalIntentUrl,
+    clientPortalIntent,
+    currentAdminPreviewMode,
+    profession,
+    syncScopedRoleRoomSession,
+    toast,
+  ]);
+
+  const handleOpenClientPortalPreview = useCallback(async () => {
+    if (!canSwitchRoleRoomRole) {
+      return;
+    }
+
+    if (!currentProject?.id || !currentClientPortalPreviewUrl) {
+      toast.showError('Velg et prosjekt før du åpner klientportalen.');
+      return;
+    }
+
+    if (currentAdminPreviewMode !== 'client') {
+      await handleSelectAdminPreviewMode('client');
+    }
+
+    if (typeof window !== 'undefined') {
+      window.location.assign(currentClientPortalPreviewUrl);
+    }
+  }, [
+    canSwitchRoleRoomRole,
+    currentAdminPreviewMode,
+    currentClientPortalPreviewUrl,
+    currentProject?.id,
+    handleSelectAdminPreviewMode,
+    toast,
+  ]);
+
   // Handle role/persona switching from the header dialog.
   const handleProfessionSelect = useCallback(async ({ categoryId, roleId }: CastingProfessionSelection) => {
     if (!canSwitchRoleRoomRole) {
@@ -2574,9 +2776,8 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
       await saveProfession(internalProf);
     }
 
-    const updatedSession = await authSessionService.loadSession();
-    setAdminUser(normalizeAdminUser(updatedSession.adminUser));
-  }, [canSwitchRoleRoomRole, saveProfession, toast]);
+    await syncScopedRoleRoomSession();
+  }, [canSwitchRoleRoomRole, saveProfession, syncScopedRoleRoomSession, toast]);
 
   // Authentication guard - redirect to landing page if not logged in
   useEffect(() => {
@@ -2664,8 +2865,8 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
         );
         toast.showSuccess(
           linkedProjectReady
-            ? `Google Workspace koblet til ${transfer.google.email}, og prosjektet er klargjort.`
-            : `Google Workspace koblet til ${transfer.google.email}`,
+            ? `Google-SSO er aktivt for ${transfer.google.email}, og prosjektet er klargjort.`
+            : `Google-SSO er aktivt for ${transfer.google.email}`,
         );
         clearGoogleIntentFromUrl();
       } catch (googleError) {
@@ -4698,6 +4899,440 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
     return selectionDecisionLog.slice(0, 10);
   }, [selectedSelectionCandidate, selectionDecisionLog]);
 
+  const canManageSelectionMeet = Boolean(
+    currentProject
+    && !isReadOnlyProtectedDemoView
+    && (permissions.canEditProduction || canEditProducerWorkflow),
+  );
+
+  const selectedSelectionCandidateContactInfo = useMemo(
+    () => getCandidateContactInfo(selectedSelectionCandidate),
+    [getCandidateContactInfo, selectedSelectionCandidate],
+  );
+
+  const readSelectionScheduleDateTime = useCallback((schedule?: Schedule | null): Date | null => {
+    if (!schedule) {
+      return null;
+    }
+
+    const scheduleRecord = schedule as unknown as Record<string, unknown>;
+    const directStartValue = [
+      schedule.startTime,
+      scheduleRecord.startTime,
+      scheduleRecord.start_time,
+      scheduleRecord.startDateTime,
+      scheduleRecord.start_date_time,
+      scheduleRecord.start,
+    ].find((value) => typeof value === 'string' && value.trim().length > 0) as string | undefined;
+
+    if (directStartValue) {
+      const directDate = new Date(directStartValue);
+      if (!Number.isNaN(directDate.getTime())) {
+        return directDate;
+      }
+    }
+
+    const dateValue = [
+      schedule.date,
+      scheduleRecord.date,
+      scheduleRecord.startDate,
+      scheduleRecord.start_date,
+    ].find((value) => typeof value === 'string' && value.trim().length > 0) as string | undefined;
+
+    if (!dateValue) {
+      return null;
+    }
+
+    const timeValue = [
+      schedule.startTime,
+      scheduleRecord.startTime,
+      scheduleRecord.start_time,
+      scheduleRecord.time,
+    ].find((value) => typeof value === 'string' && value.trim().length > 0) as string | undefined;
+
+    const normalizedDate = dateValue.includes('T') ? dateValue.slice(0, 10) : dateValue;
+    const normalizedTime = (timeValue && timeValue.includes(':') ? timeValue.slice(0, 5) : '10:00');
+    const combined = new Date(`${normalizedDate}T${normalizedTime}:00`);
+    return Number.isNaN(combined.getTime()) ? null : combined;
+  }, []);
+
+  const readSelectionScheduleEndDateTime = useCallback((schedule?: Schedule | null): Date | null => {
+    if (!schedule) {
+      return null;
+    }
+
+    const scheduleRecord = schedule as unknown as Record<string, unknown>;
+    const directEndValue = [
+      schedule.endTime,
+      scheduleRecord.endTime,
+      scheduleRecord.end_time,
+      scheduleRecord.endDateTime,
+      scheduleRecord.end_date_time,
+      scheduleRecord.end,
+    ].find((value) => typeof value === 'string' && value.trim().length > 0) as string | undefined;
+
+    if (directEndValue) {
+      const directDate = new Date(directEndValue);
+      if (!Number.isNaN(directDate.getTime())) {
+        return directDate;
+      }
+    }
+
+    const startDate = readSelectionScheduleDateTime(schedule);
+    if (!startDate) {
+      return null;
+    }
+
+    const timeValue = [
+      schedule.endTime,
+      scheduleRecord.endTime,
+      scheduleRecord.end_time,
+    ].find((value) => typeof value === 'string' && value.trim().length > 0) as string | undefined;
+
+    if (!timeValue) {
+      return null;
+    }
+
+    const normalizedTime = timeValue.includes(':') ? timeValue.slice(0, 5) : '11:00';
+    const combined = new Date(`${startDate.toISOString().slice(0, 10)}T${normalizedTime}:00`);
+    return Number.isNaN(combined.getTime()) ? null : combined;
+  }, [readSelectionScheduleDateTime]);
+
+  const formatDraftDateValue = useCallback((value: Date): string => value.toISOString().slice(0, 10), []);
+  const formatDraftTimeValue = useCallback(
+    (value: Date): string => `${String(value.getHours()).padStart(2, '0')}:${String(value.getMinutes()).padStart(2, '0')}`,
+    [],
+  );
+
+  const selectedSelectionPrimarySchedule = useMemo(() => {
+    return [...selectedSelectionCandidateSchedules]
+      .sort((left, right) => {
+        const leftDate = readSelectionScheduleDateTime(left)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+        const rightDate = readSelectionScheduleDateTime(right)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+        return leftDate - rightDate;
+      })[0] ?? null;
+  }, [readSelectionScheduleDateTime, selectedSelectionCandidateSchedules]);
+
+  const selectedSelectionMeetArtifact = useMemo(() => {
+    if (!selectedSelectionCandidate) {
+      return null;
+    }
+    return [...(selectionGoogleStatus?.artifacts ?? [])]
+      .filter((artifact) => (
+        artifact.localEntityType === 'selection_meeting'
+        && artifact.localEntityId === selectedSelectionCandidate.id
+      ))
+      .sort((left, right) => {
+        const leftTime = Date.parse(left.updatedAt ?? left.createdAt ?? '');
+        const rightTime = Date.parse(right.updatedAt ?? right.createdAt ?? '');
+        return (Number.isNaN(rightTime) ? 0 : rightTime) - (Number.isNaN(leftTime) ? 0 : leftTime);
+      })[0] ?? null;
+  }, [selectedSelectionCandidate, selectionGoogleStatus?.artifacts]);
+
+  const selectionMeetConnectionState = useMemo<'loading' | 'connected' | 'disconnected' | 'expired' | 'error'>(() => {
+    if (selectionGoogleStatusLoading) {
+      return 'loading';
+    }
+    switch (selectionGoogleStatus?.state) {
+      case 'connected':
+        return 'connected';
+      case 'expired':
+        return 'expired';
+      case 'error':
+        return 'error';
+      default:
+        return 'disconnected';
+    }
+  }, [selectionGoogleStatus?.state, selectionGoogleStatusLoading]);
+
+  const selectionMeetScheduleHint = useMemo(() => {
+    if (!selectedSelectionPrimarySchedule) {
+      return null;
+    }
+    const startValue = readSelectionScheduleDateTime(selectedSelectionPrimarySchedule);
+    const typeLabel = typeof selectedSelectionPrimarySchedule.type === 'string'
+      ? selectedSelectionPrimarySchedule.type
+      : 'Audition';
+    if (!startValue) {
+      return typeLabel;
+    }
+    return `${typeLabel} · ${startValue.toLocaleString('no-NO', {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    })}`;
+  }, [readSelectionScheduleDateTime, selectedSelectionPrimarySchedule]);
+
+  const loadSelectionGoogleStatus = useCallback(async () => {
+    if (!selectionWorkspaceActive || !currentProject?.id || !canManageSelectionMeet) {
+      setSelectionGoogleStatus(null);
+      setSelectionGoogleStatusLoading(false);
+      return;
+    }
+
+    const requestId = ++selectionGoogleStatusRequestRef.current;
+    setSelectionGoogleStatusLoading(true);
+    try {
+      const status = await googleWorkspaceApi.getStatus(currentProject.id);
+      if (requestId !== selectionGoogleStatusRequestRef.current) {
+        return;
+      }
+      setSelectionGoogleStatus(status);
+    } catch (error) {
+      if (requestId !== selectionGoogleStatusRequestRef.current) {
+        return;
+      }
+      console.error('[CastingPlannerPanel] Failed to load selection Google status', error);
+      setSelectionGoogleStatus(null);
+    } finally {
+      if (requestId === selectionGoogleStatusRequestRef.current) {
+        setSelectionGoogleStatusLoading(false);
+      }
+    }
+  }, [canManageSelectionMeet, currentProject?.id, selectionWorkspaceActive]);
+
+  useEffect(() => {
+    if (!selectionWorkspaceActive || !currentProject?.id || !canManageSelectionMeet) {
+      selectionGoogleStatusRequestRef.current += 1;
+      setSelectionGoogleStatus(null);
+      setSelectionGoogleStatusLoading(false);
+      return;
+    }
+    void loadSelectionGoogleStatus();
+  }, [
+    canManageSelectionMeet,
+    currentProject?.id,
+    loadSelectionGoogleStatus,
+    roleRoomGoogleIntent.status,
+    roleRoomGoogleIntent.transferId,
+    selectionWorkspaceActive,
+  ]);
+
+  useEffect(() => {
+    if (!selectedSelectionCandidate) {
+      setSelectionMeetDraft((previous) => ({
+        ...previous,
+        title: '',
+        date: '',
+        time: '',
+        durationMinutes: 45,
+        location: 'Google Meet',
+      }));
+      return;
+    }
+
+    const primaryScheduleStart = readSelectionScheduleDateTime(selectedSelectionPrimarySchedule);
+    const primaryScheduleEnd = readSelectionScheduleEndDateTime(selectedSelectionPrimarySchedule);
+    const fallbackStart = new Date();
+    fallbackStart.setHours(10, 0, 0, 0);
+    if (fallbackStart.getTime() <= Date.now()) {
+      fallbackStart.setDate(fallbackStart.getDate() + 1);
+    }
+    const resolvedStart = primaryScheduleStart ?? fallbackStart;
+    const derivedDuration = primaryScheduleStart && primaryScheduleEnd
+      ? Math.max(15, Math.round((primaryScheduleEnd.getTime() - primaryScheduleStart.getTime()) / 60000))
+      : 45;
+    const scheduleLocation = typeof selectedSelectionPrimarySchedule?.location === 'string'
+      ? selectedSelectionPrimarySchedule.location.trim()
+      : '';
+    const scheduleType = typeof selectedSelectionPrimarySchedule?.type === 'string'
+      ? selectedSelectionPrimarySchedule.type.trim()
+      : '';
+
+    setSelectionMeetDraft({
+      title: `${scheduleType || 'Callback'} · ${selectedSelectionCandidate.name}`,
+      date: formatDraftDateValue(resolvedStart),
+      time: formatDraftTimeValue(resolvedStart),
+      durationMinutes: derivedDuration,
+      location: scheduleLocation ? `${scheduleLocation} / Google Meet` : 'Google Meet',
+    });
+  }, [
+    formatDraftDateValue,
+    formatDraftTimeValue,
+    readSelectionScheduleDateTime,
+    readSelectionScheduleEndDateTime,
+    selectedSelectionCandidate,
+    selectedSelectionPrimarySchedule,
+  ]);
+
+  const handleStartSelectionGoogleSso = useCallback(async () => {
+    if (!currentProject?.id) {
+      toast.showError('Velg et prosjekt før Google Workspace kan brukes i utvelgelsen.');
+      return;
+    }
+
+    try {
+      const response = await googleWorkspaceApi.startOauth({
+        mode: adminUser ? 'link' : 'login',
+        projectId: currentProject.id,
+        browserOrigin: typeof window !== 'undefined' ? window.location.origin : undefined,
+        returnPath: typeof window !== 'undefined'
+          ? `${window.location.pathname}${window.location.search}`
+          : '/',
+        loginAs: adminUser?.loginAs,
+        requestedRole: adminUser?.requestedRole ?? null,
+        email: selectedSelectionCandidateContactInfo.email ?? undefined,
+      });
+
+      if (!response.authorizationUrl) {
+        throw new Error('Google Workspace svarte uten en autorisasjonslenke.');
+      }
+
+      window.location.assign(response.authorizationUrl);
+    } catch (error) {
+      toast.showError(error instanceof Error ? error.message : 'Kunne ikke starte Google Workspace SSO.');
+    }
+  }, [
+    adminUser,
+    currentProject?.id,
+    selectedSelectionCandidateContactInfo.email,
+    toast,
+  ]);
+
+  const handleCreateSelectionMeet = useCallback(async () => {
+    if (!currentProject?.id || !selectedSelectionCandidate) {
+      return;
+    }
+    if (!selectionMeetDraft.date || !selectionMeetDraft.time) {
+      toast.showError('Velg dato og klokkeslett før møtet planlegges.');
+      return;
+    }
+
+    const startValue = new Date(`${selectionMeetDraft.date}T${selectionMeetDraft.time}:00`);
+    if (Number.isNaN(startValue.getTime())) {
+      toast.showError('Møtetidspunktet kunne ikke tolkes.');
+      return;
+    }
+
+    const endValue = new Date(startValue.getTime() + Math.max(15, selectionMeetDraft.durationMinutes || 45) * 60_000);
+    const descriptionParts = [
+      `Planlagt fra utvelgelse i The Role Room for ${selectedSelectionCandidate.name}.`,
+      selectedSelectionMeetArtifact?.meetUrl ? `Forrige Meet: ${selectedSelectionMeetArtifact.meetUrl}` : null,
+      selectedSelectionCandidateContactInfo.email ? `Kandidat: ${selectedSelectionCandidateContactInfo.email}` : null,
+      selectedSelectionSummary?.recommendation ? `Neste steg: ${selectedSelectionSummary.recommendation}` : null,
+    ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+
+    setSelectionMeetBusy(true);
+    try {
+      const response = await googleWorkspaceApi.createMeetSession(currentProject.id, {
+        entityType: 'selection_meeting',
+        entityId: selectedSelectionCandidate.id,
+        title: selectionMeetDraft.title.trim() || `Callback · ${selectedSelectionCandidate.name}`,
+        description: descriptionParts.join('\n'),
+        start: startValue.toISOString(),
+        end: endValue.toISOString(),
+        location: selectionMeetDraft.location.trim() || 'Google Meet',
+        phase: 'selection',
+        includeMeet: true,
+        attendees: selectedSelectionCandidateContactInfo.email
+          ? [{
+              email: selectedSelectionCandidateContactInfo.email,
+              displayName: selectedSelectionCandidate.name,
+            }]
+          : [],
+      });
+
+      await loadSelectionGoogleStatus();
+
+      const meetUrl = typeof response.event?.meetUrl === 'string' ? response.event.meetUrl : '';
+      toast.showSuccess(meetUrl ? 'Google Meet er planlagt fra utvelgelsen.' : 'Kalenderhendelsen er opprettet.');
+      if (meetUrl) {
+        window.open(meetUrl, '_blank', 'noopener,noreferrer');
+      }
+    } catch (error) {
+      toast.showError(error instanceof Error ? error.message : 'Kunne ikke opprette Google Meet fra utvelgelsen.');
+    } finally {
+      setSelectionMeetBusy(false);
+    }
+  }, [
+    currentProject?.id,
+    loadSelectionGoogleStatus,
+    selectedSelectionCandidate,
+    selectedSelectionCandidateContactInfo.email,
+    selectedSelectionMeetArtifact?.meetUrl,
+    selectedSelectionSummary?.recommendation,
+    selectionMeetDraft,
+    toast,
+  ]);
+
+  const handleOpenSelectionMeet = useCallback(() => {
+    if (!selectedSelectionMeetArtifact?.meetUrl) {
+      return;
+    }
+    window.open(selectedSelectionMeetArtifact.meetUrl, '_blank', 'noopener,noreferrer');
+  }, [selectedSelectionMeetArtifact?.meetUrl]);
+
+  const handleCopySelectionMeet = useCallback(async () => {
+    if (!selectedSelectionMeetArtifact?.meetUrl) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(selectedSelectionMeetArtifact.meetUrl);
+      toast.showSuccess('Meet-lenken er kopiert.');
+    } catch {
+      toast.showError('Kunne ikke kopiere Meet-lenken.');
+    }
+  }, [selectedSelectionMeetArtifact?.meetUrl, toast]);
+
+  const renderSelectionMeetPlannerCard = useCallback((compact = false) => {
+    if (!selectedSelectionCandidate || !canManageSelectionMeet) {
+      return null;
+    }
+
+    return (
+      <SelectionMeetPlannerCard
+        compact={compact}
+        candidateName={selectedSelectionCandidate.name}
+        candidateEmail={selectedSelectionCandidateContactInfo.email}
+        scheduleHint={selectionMeetScheduleHint}
+        connectionState={selectionMeetConnectionState}
+        connectLabel={adminUser ? 'Forny Google Workspace SSO' : 'Logg inn med Google Workspace'}
+        canConnect={Boolean(currentProject?.id)}
+        onConnect={() => {
+          void handleStartSelectionGoogleSso();
+        }}
+        title={selectionMeetDraft.title}
+        onTitleChange={(value) => setSelectionMeetDraft((previous) => ({ ...previous, title: value }))}
+        date={selectionMeetDraft.date}
+        onDateChange={(value) => setSelectionMeetDraft((previous) => ({ ...previous, date: value }))}
+        time={selectionMeetDraft.time}
+        onTimeChange={(value) => setSelectionMeetDraft((previous) => ({ ...previous, time: value }))}
+        durationMinutes={selectionMeetDraft.durationMinutes}
+        onDurationChange={(value) => setSelectionMeetDraft((previous) => ({ ...previous, durationMinutes: value }))}
+        location={selectionMeetDraft.location}
+        onLocationChange={(value) => setSelectionMeetDraft((previous) => ({ ...previous, location: value }))}
+        latestMeetUrl={selectedSelectionMeetArtifact?.meetUrl ?? null}
+        latestMeetUpdatedAt={selectedSelectionMeetArtifact?.updatedAt ?? selectedSelectionMeetArtifact?.createdAt ?? null}
+        busy={selectionMeetBusy}
+        onCreateMeet={() => {
+          void handleCreateSelectionMeet();
+        }}
+        onOpenMeet={selectedSelectionMeetArtifact?.meetUrl ? handleOpenSelectionMeet : undefined}
+        onCopyMeet={selectedSelectionMeetArtifact?.meetUrl ? () => {
+          void handleCopySelectionMeet();
+        } : undefined}
+      />
+    );
+  }, [
+    adminUser,
+    canManageSelectionMeet,
+    currentProject?.id,
+    handleCopySelectionMeet,
+    handleCreateSelectionMeet,
+    handleOpenSelectionMeet,
+    handleStartSelectionGoogleSso,
+    selectedSelectionCandidate,
+    selectedSelectionCandidateContactInfo.email,
+    selectedSelectionMeetArtifact?.createdAt,
+    selectedSelectionMeetArtifact?.meetUrl,
+    selectedSelectionMeetArtifact?.updatedAt,
+    selectionMeetConnectionState,
+    selectionMeetDraft,
+    selectionMeetBusy,
+    selectionMeetScheduleHint,
+  ]);
+
   const formatOptionalNoteTimestamp = useCallback((value: unknown): string => {
     if (typeof value !== 'string' || value.trim().length === 0) return '';
     const date = new Date(value);
@@ -6026,6 +6661,13 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                   : undefined,
               }}
             >
+              <Box sx={{ display: { xs: 'none', lg: 'inline-flex' }, flexShrink: 0 }}>
+                <GoogleWorkspaceSessionBadge
+                  userId={workspaceSessionUserId}
+                  tone="role-room"
+                  compact
+                />
+              </Box>
               <Tooltip title={`${workspaceAccountStatusLabel} · ${adminUser.display_name || adminUser.email}`}>
                 <IconButton
                   onClick={handleOpenBillingAccountDialog}
@@ -6706,6 +7348,17 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                 <Button
                   size="small"
                   variant="outlined"
+                  startIcon={<CalendarMonthIcon />}
+                  onClick={() => {
+                    navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'planning' });
+                  }}
+                  sx={{ textTransform: 'none', fontWeight: 700 }}
+                >
+                  The Role Room Planning
+                </Button>
+                <Button
+                  size="small"
+                  variant="outlined"
                   startIcon={<ShotListIcon />}
                   onClick={() => {
                     navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'shot-list' });
@@ -7321,6 +7974,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                             </Box>
 
                             <Box sx={{ flex: { xs: '1 1 auto', md: '1 1 32%' }, p: 1.05, borderRadius: 1.8, border: '1px solid rgba(148,163,184,0.24)', bgcolor: 'rgba(15,23,42,0.66)', display: 'flex', flexDirection: 'column', gap: 0.8, minHeight: 0, overflow: 'auto' }}>
+                              {renderSelectionMeetPlannerCard(true)}
                               <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.82rem' }}>
                                 Audition-notater
                               </Typography>
@@ -7881,6 +8535,8 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                                   );
                                 })}
                               </Box>
+
+                              {renderSelectionMeetPlannerCard(false)}
 
                               <Box sx={{ borderRadius: 1.25, border: '1px solid rgba(148,163,184,0.24)', bgcolor: 'rgba(15,23,42,0.56)', p: 0.7 }}>
                                 <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.69rem', mb: 0.35 }}>
@@ -8844,7 +9500,217 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                     />
                   </CardContent>
                 </Card>
+
+                <Card
+                  sx={{
+                    flex: '1 1 320px',
+                    minWidth: { xs: '100%', sm: 320 },
+                    maxWidth: 460,
+                    borderRadius: 3,
+                    cursor: 'pointer',
+                    background: 'linear-gradient(160deg, rgba(245,158,11,0.18) 0%, rgba(15,23,42,0.88) 100%)',
+                    border: '1px solid rgba(251,191,36,0.36)',
+                    boxShadow: '0 12px 32px rgba(120,53,15,0.28)',
+                    transition: 'all 0.28s ease',
+                    '&:hover': {
+                      transform: 'translateY(-4px)',
+                      borderColor: 'rgba(252,211,77,0.84)',
+                      boxShadow: '0 18px 36px rgba(180,83,9,0.32)',
+                    },
+                  }}
+                  onClick={() => {
+                    startTransition(() => setStoryArcView('planning'));
+                  }}
+                >
+                  <CardContent sx={{ p: 3, textAlign: 'center' }}>
+                    <Box
+                      sx={{
+                        width: 76,
+                        height: 76,
+                        borderRadius: '50%',
+                        bgcolor: 'rgba(245,158,11,0.18)',
+                        border: '1px solid rgba(251,191,36,0.44)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        mx: 'auto',
+                        mb: 2,
+                      }}
+                    >
+                      <CalendarMonthIcon sx={{ fontSize: 38, color: '#fcd34d' }} />
+                    </Box>
+                    <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff', mb: 1 }}>
+                      The Role Room Planning
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: 'rgba(226,232,240,0.88)', mb: 2 }}>
+                      Samle produksjonsdager, teamrytme og møtelogikk i én planflate for studioet.
+                    </Typography>
+                    <Chip
+                      label="PLANNING"
+                      size="small"
+                      sx={{
+                        bgcolor: 'rgba(245,158,11,0.22)',
+                        color: '#fde68a',
+                        border: '1px solid rgba(252,211,77,0.45)',
+                        fontSize: '0.75rem',
+                        fontWeight: 700,
+                      }}
+                    />
+                  </CardContent>
+                </Card>
               </Box>
+            </Box>
+          ) : storyArcView === 'planning' ? (
+            <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+              <Box
+                sx={{
+                  p: 1.5,
+                  borderBottom: '1px solid rgba(255,255,255,0.1)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 1.25,
+                  flexWrap: 'wrap',
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Button
+                    startIcon={<CloseIcon />}
+                    onClick={() => {
+                      startTransition(() => setStoryArcView('main'));
+                    }}
+                    size="small"
+                    sx={{ color: 'rgba(255,255,255,0.87)' }}
+                  >
+                    {branding.tokens.labels.storyArcBackLabel}
+                  </Button>
+                  <Divider orientation="vertical" flexItem sx={{ mx: 1 }} />
+                  <RoleRoomBrandMark width={28} height={28} />
+                  <Box>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#fff', lineHeight: 1.15 }}>
+                      The Role Room Planning
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.72)' }}>
+                      Produksjonsplan, Meet-flyt og teamrytme i ett studio.
+                    </Typography>
+                  </Box>
+                </Box>
+                <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                  <Chip
+                    size="small"
+                    label={`${currentProject?.productionDays?.length ?? 0} produksjonsdager`}
+                    sx={{
+                      bgcolor: 'rgba(245,158,11,0.18)',
+                      color: '#fde68a',
+                      border: '1px solid rgba(252,211,77,0.42)',
+                      fontWeight: 700,
+                    }}
+                  />
+                  <Chip
+                    size="small"
+                    label={`${currentProject?.crew?.length ?? 0} crew`}
+                    sx={{
+                      bgcolor: 'rgba(59,130,246,0.18)',
+                      color: '#bfdbfe',
+                      border: '1px solid rgba(96,165,250,0.42)',
+                      fontWeight: 700,
+                    }}
+                  />
+                  <Chip
+                    size="small"
+                    label={`${selectionMetrics.callbacks} callbacks`}
+                    sx={{
+                      bgcolor: 'rgba(168,85,247,0.18)',
+                      color: '#e9d5ff',
+                      border: '1px solid rgba(192,132,252,0.42)',
+                      fontWeight: 700,
+                    }}
+                  />
+                </Stack>
+              </Box>
+
+              <Box
+                sx={{
+                  px: 1.5,
+                  py: 1.2,
+                  borderBottom: '1px solid rgba(255,255,255,0.08)',
+                  background: 'linear-gradient(90deg, rgba(245,158,11,0.08) 0%, rgba(15,23,42,0.12) 100%)',
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 1.1,
+                }}
+              >
+                <Box sx={{ maxWidth: 720 }}>
+                  <Typography sx={{ color: '#f8fafc', fontWeight: 700, mb: 0.35 }}>
+                    Planlegg dager, samarbeid og møter fra samme operasjonsflate
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(226,232,240,0.76)', fontSize: '0.82rem', lineHeight: 1.55 }}>
+                    Bruk denne flaten som planning-leddet i Role Room Studio. Produksjonsteamet kan hoppe direkte til utvelgelse for Meet-planlegging, videre til produksjonsplanen for dagsstyring og til teamet for bemanning.
+                  </Typography>
+                </Box>
+                <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<SelectionTabIcon />}
+                    onClick={() => {
+                      navigateToTab(SELECTION_TAB_INDEX);
+                    }}
+                    sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 999 }}
+                  >
+                    Til utvelgelse
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<CalendarMonthIcon />}
+                    onClick={() => {
+                      navigateToTab(CALENDAR_TAB_INDEX);
+                    }}
+                    sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 999 }}
+                  >
+                    Produksjonsplan
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<GroupsIcon />}
+                    onClick={() => {
+                      navigateToTab(TEAM_TAB_INDEX);
+                    }}
+                    sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 999 }}
+                  >
+                    Team
+                  </Button>
+                </Stack>
+              </Box>
+
+              {!currentProject ? (
+                <Box sx={{ p: 3, textAlign: 'center', color: 'rgba(255,255,255,0.87)' }}>
+                  <Typography variant="body1" sx={{ fontSize: isDesktop ? '1.125rem' : isTablet ? '1rem' : '0.875rem' }}>
+                    {branding.tokens.labels.noProjectSelected}
+                  </Typography>
+                </Box>
+              ) : !permissions.canEditProduction ? (
+                <Box sx={{ p: 3, textAlign: 'center', color: 'rgba(255,255,255,0.87)' }}>
+                  <Typography variant="body1" sx={{ fontSize: isDesktop ? '1.125rem' : isTablet ? '1rem' : '0.875rem' }}>
+                    Du mangler tilgang til å styre The Role Room Planning for dette prosjektet.
+                  </Typography>
+                </Box>
+              ) : (
+                <Box sx={{ flex: 1, minHeight: 0, overflow: 'hidden', pt: 1 }}>
+                  <ProductionDayView
+                    projectId={currentProject.id}
+                    onUpdate={async () => {
+                      const updated = await castingService.getProject(currentProject.id);
+                      if (updated) setCurrentProject(updated);
+                    }}
+                    profession={profession}
+                  />
+                </Box>
+              )}
             </Box>
           ) : storyArcView === 'story-logic' ? (
             <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -12530,12 +13396,20 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
           workspaceLabel: headerBrandSubtitle,
         }}
         currentProject={currentProject ? {
+          id: currentProject.id,
           name: currentProject.name,
           clientName: currentProject.clientName,
           workflowLabel: currentProject.producerWorkflowStatus
             ? PRODUCER_PROJECT_STATUS_LABELS[currentProject.producerWorkflowStatus]
             : null,
           teamMembers: currentProjectTeamMembers,
+        } : null}
+        adminPreview={canSwitchRoleRoomRole ? {
+          enabled: true,
+          selectedMode: currentAdminPreviewMode,
+          clientPortalAvailable: Boolean(currentClientPortalPreviewUrl),
+          onSelectMode: handleSelectAdminPreviewMode,
+          onOpenClientPortal: handleOpenClientPortalPreview,
         } : null}
       />
 

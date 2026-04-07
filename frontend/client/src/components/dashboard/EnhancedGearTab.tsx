@@ -1239,14 +1239,14 @@ export function EnhancedGearTab({
     const toolModules = [
       {
         id: 'worklog',
-        title: 'Google Keep Arbeidslogg',
+        title: 'Workspace-arbeidslogg',
         status: 'Integrert',
         icon: <Article sx={{ fontSize: 24 }} />,
         accent: '#2563eb',
-        description: 'Arbeidslogger og raske notater holdes i samme flyt som resten av gear-workspace, uten å forlate dashboardet.',
+        description: 'Arbeidslogger og raske notater holdes i samme workspace-flyt som resten av gear-panelet, uten separat Google-kobling.',
         bullets: [
           'Worklog-data kan gjenbrukes når du dokumenterer gear-bruk og vedlikehold.',
-          'Shortcut-flyten er allerede koblet til lynnotater og oppfølging.',
+          'Shortcut-flyten bruker samme prosjekt-worklog og Workspace-økt videre.',
         ],
         meta: 'Ctrl+Shift+W for lynnotat · Ctrl+Shift+N for oversikt',
         primaryAction: {

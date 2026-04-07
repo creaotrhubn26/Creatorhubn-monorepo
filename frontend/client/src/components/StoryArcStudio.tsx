@@ -117,6 +117,7 @@ import CinematographyCompositionOverlay, {
 } from './timeline/CinematographyCompositionOverlay';
 import { LUTEngine } from '../services/lut-engine';
 import { apiRequest } from '@/lib/queryClient';
+import { startCreatorHubGoogleSso } from '@/lib/creatorhubGoogleAuth';
 import { frameTimer } from '../services/frame-accurate-timer';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
@@ -12840,16 +12841,32 @@ export default function StoryArcStudio({
             )}
             {driveInit.status === 'needs_auth' && (
               <Alert severity="warning" action={
-                <Button component="a" href="/api/auth/google?next=/story-arc/studio" color="inherit" size="small">Sign in</Button>
+                <Button
+                  color="inherit"
+                  size="small"
+                  onClick={() => {
+                    void startCreatorHubGoogleSso({ returnPath: '/story-arc/studio' });
+                  }}
+                >
+                  Continue with Google
+                </Button>
               }>
-                {driveInit.message || 'Please sign in to continue.'}
+                {driveInit.message || 'Google-SSO is required to continue in Story Arc Studio.'}
               </Alert>
             )}
             {driveInit.status === 'needs_google_connect' && (
               <Alert severity="warning" action={
-                <Button component="a" href="/api/auth/google?next=/story-arc/studio" color="inherit" size="small">Connect Google</Button>
+                <Button
+                  color="inherit"
+                  size="small"
+                  onClick={() => {
+                    void startCreatorHubGoogleSso({ returnPath: '/story-arc/studio' });
+                  }}
+                >
+                  Refresh Google SSO
+                </Button>
               }>
-                {driveInit.message || 'Connect your Google Drive to continue.'}
+                {driveInit.message || 'Story Arc Studio uses the same Google SSO as the rest of CreatorHub. Refresh the session to continue.'}
               </Alert>
             )}
             {driveInit.status === 'error' && (

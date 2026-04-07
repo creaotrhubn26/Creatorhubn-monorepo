@@ -6206,7 +6206,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 <Chip
                   label={lightroomStatusQuery.data.workspaceConnected
                     ? `Google Drive: ${lightroomStatusQuery.data.googleEmail || 'koblet'}`
-                    : 'Google Workspace mangler'}
+                    : 'Google-SSO mangler'}
                   color={lightroomStatusQuery.data.workspaceConnected ? 'success' : 'warning'}
                   variant="outlined"
                 />

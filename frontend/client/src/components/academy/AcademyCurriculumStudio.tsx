@@ -6453,8 +6453,8 @@ function AcademyCurriculumStudio({
                         >
                           {googleWorkspaceStatusQuery.isLoading
                             ? tt(
-                                "Verifiserer Google Workspace-tilkoblingen din.",
-                                "Verifying your Google Workspace connection.",
+                                "Verifiserer Google-SSO-en din.",
+                                "Verifying your Google SSO session.",
                               )
                             : !googleWorkflowReady
                               ? tt(

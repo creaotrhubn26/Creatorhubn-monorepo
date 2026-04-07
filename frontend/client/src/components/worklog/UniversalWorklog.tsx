@@ -80,6 +80,7 @@ import {
   HelpOutline,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
+import { startCreatorHubGoogleSso } from '@/lib/creatorhubGoogleAuth';
 
 interface WorklogEntry {
   id: number;
@@ -119,6 +120,13 @@ interface UniversalWorklogProps {
   selectedClient?: any;
   onSettingsUpdate?: (settings: any) => void;
   onNotificationCreate?: (notification: any) => void;
+}
+
+interface GoogleWorkspaceWorklogSnapshot {
+  googleDriveConnected?: boolean;
+  driveAccountEmail?: string | null;
+  lastDriveSyncAt?: string | null;
+  workspaceWarning?: string | null;
 }
 
 const getProfessionConfig = (profession: string) => {
@@ -371,11 +379,6 @@ export default function UniversalWorklog({
   const [currentPromptIndex, setCurrentPromptIndex] = useState(0);
   const [showPrompts, setShowPrompts] = useState(false);
   const [showKeepSync, setShowKeepSync] = useState(false);
-  const [keepSyncStatus, setKeepSyncStatus] = useState<{
-    connected: boolean;
-    lastSync: string | null;
-    syncedEntries: number;
-  }>({ connected: false, lastSync: null, syncedEntries: 0 });
   
   // External data insights state
   const [worklogInsights, setWorklogInsights] = useState<any>(null);
@@ -398,8 +401,59 @@ export default function UniversalWorklog({
   
   // Push notifications
   const { user } = useAuth();
-  const currentUserId = userId || user?.id?.toString() || '';
+  const currentUserId = React.useMemo(() => {
+    const explicitUserId = String(userId || '').trim();
+    if (explicitUserId && explicitUserId !== 'demo-user' && explicitUserId !== 'guest') {
+      return explicitUserId;
+    }
+
+    if (typeof user?.id === 'string') {
+      return user.id.trim();
+    }
+
+    if (typeof user?.id === 'number') {
+      return String(user.id);
+    }
+
+    return '';
+  }, [userId, user?.id]);
   const { pushEnabled, isSupported } = usePushNotifications(currentUserId);
+  const {
+    data: googleWorkspaceSnapshot,
+    isLoading: googleWorkspaceStatusLoading,
+    refetch: refetchGoogleWorkspaceStatus,
+  } = useQuery<GoogleWorkspaceWorklogSnapshot>({
+    queryKey: ['/api/google-workspace/storage', currentUserId, 'worklog-google-keep'],
+    enabled: currentUserId.length > 0 && currentUserId !== 'guest',
+    queryFn: async () =>
+      apiRequest(`/api/google-workspace/storage/${encodeURIComponent(currentUserId)}`),
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+
+  const keepSyncStatus = React.useMemo(() => {
+    const accountEmail =
+      typeof googleWorkspaceSnapshot?.driveAccountEmail === 'string'
+        ? googleWorkspaceSnapshot.driveAccountEmail.trim()
+        : '';
+    const workspaceWarning =
+      typeof googleWorkspaceSnapshot?.workspaceWarning === 'string'
+        ? googleWorkspaceSnapshot.workspaceWarning.trim()
+        : '';
+    const lastSync =
+      typeof googleWorkspaceSnapshot?.lastDriveSyncAt === 'string'
+      && googleWorkspaceSnapshot.lastDriveSyncAt.trim().length > 0
+        ? googleWorkspaceSnapshot.lastDriveSyncAt
+        : null;
+
+    return {
+      connected: Boolean(googleWorkspaceSnapshot?.googleDriveConnected),
+      lastSync,
+      syncedEntries: 0,
+      accountEmail: accountEmail || null,
+      workspaceWarning: workspaceWarning || null,
+    };
+  }, [googleWorkspaceSnapshot]);
   
   const [formData, setFormData] = useState({
     day: 1,
@@ -424,10 +478,34 @@ export default function UniversalWorklog({
   });
 };
 
-  const showSuccessToast = (message: string) => showToast(message, 'success');
-  const showErrorToast = (message: string) => showToast(message, 'error');
+  const showSuccessToast = useCallback((message: string) => showToast(message, 'success'), []);
+  const showErrorToast = useCallback((message: string) => showToast(message, 'error'), []);
   const showWarningToast = useCallback((message: string) => showToast(message, 'warning'), []);
   const showInfoToast = useCallback((message: string) => showToast(message, 'info'), []);
+
+  useEffect(() => {
+    const handleWorkspaceLinked = () => {
+      void refetchGoogleWorkspaceStatus();
+    };
+
+    window.addEventListener('creatorhub-google-workspace-linked', handleWorkspaceLinked);
+    window.addEventListener('auth-changed', handleWorkspaceLinked);
+    return () => {
+      window.removeEventListener('creatorhub-google-workspace-linked', handleWorkspaceLinked);
+      window.removeEventListener('auth-changed', handleWorkspaceLinked);
+    };
+  }, [refetchGoogleWorkspaceStatus]);
+
+  const handleKeepGoogleSso = useCallback(async () => {
+    try {
+      await startCreatorHubGoogleSso({
+        targetConnectionUserId: currentUserId || undefined,
+      });
+    } catch (error) {
+      console.error('Could not start shared Google SSO for worklog keep flow:', error);
+      showErrorToast('Kunne ikke starte Google-SSO akkurat nå.');
+    }
+  }, [currentUserId, showErrorToast]);
   
   // Show tutorial on first visit
   useEffect(() => {
@@ -496,26 +574,6 @@ export default function UniversalWorklog({
     return () => offEvent('project_updated', handleProjectUpdate);
   }, [isConnected, projectId, onEvent, offEvent, queryClient, showInfoToast]);
   
-  // Fetch Google Keep sync status
-  useEffect(() => {
-    const fetchKeepStatus = async () => {
-      try {
-        const response = await fetch('/api/google-keep/status', { credentials: 'include' });
-        if (response.ok) {
-          const status = await response.json();
-          setKeepSyncStatus({
-            connected: status.connected || false,
-            lastSync: status.lastSync || null,
-            syncedEntries: status.syncedEntries || 0
-          });
-        }
-      } catch {
-        console.warn('Could not fetch Google Keep status');
-      }
-    };
-    fetchKeepStatus();
-  }, []);
-
   // Fetch worklog insights from external data
   const fetchWorklogInsights = async (location?: string) => {
     if (!location && !workLocation) return;
@@ -641,8 +699,12 @@ export default function UniversalWorklog({
       tone: isConnected ? alpha(theme.palette.success.main, 0.12) : alpha(theme.palette.warning.main, 0.12),
     },
     {
-      label: 'Google Keep',
-      value: keepSyncStatus.connected ? `Synk: ${keepSyncStatus.syncedEntries}` : 'Ikke koblet',
+      label: 'Workspace og Keep',
+      value: keepSyncStatus.connected
+        ? keepSyncStatus.accountEmail || 'Via Workspace'
+        : googleWorkspaceStatusLoading
+          ? 'Sjekker økt'
+          : 'Ikke koblet',
       icon: <Google sx={{ fontSize: 16 }} />,
       tone: keepSyncStatus.connected ? alpha(theme.palette.success.main, 0.12) : alpha(theme.palette.info.main, 0.12),
     },
@@ -664,8 +726,7 @@ export default function UniversalWorklog({
         },
         body: JSON.stringify({ 
           ...data, 
-          userId,
-          syncToGoogleKeep: keepSyncStatus.connected
+          userId
         })
       });
     },
@@ -697,7 +758,7 @@ export default function UniversalWorklog({
           projectId: projectId,
           profession: profession,
           userId: userId,
-          syncedToGoogleKeep: keepSyncStatus.connected
+          workspaceConnected: keepSyncStatus.connected
         });
       }
     }
@@ -867,7 +928,7 @@ export default function UniversalWorklog({
   const handleSettingsSync = useCallback(() => {
     if (onSettingsUpdate) {
       const worklogSettings = {
-        syncToGoogleKeep: keepSyncStatus.connected,
+        workspaceSessionActive: keepSyncStatus.connected,
         defaultCategory: config.categories[0]?.value,
         profession: profession
       };
@@ -1055,7 +1116,9 @@ export default function UniversalWorklog({
                   {worklogEntries.length > 0 ? `${totalEntries} / ${Math.max(totalDays, totalEntries)} aktive dager` : '0 / 0 aktive dager'}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  {keepSyncStatus.connected ? 'Google Keep er koblet og synker fortløpende.' : 'Koble til Keep for mobilnotater og deling.'}
+                  {keepSyncStatus.connected
+                    ? 'Google Workspace er aktivt. Worklog kan bruke Keep uten egen innlogging.'
+                    : 'Aktiver Google-SSO for mobilnotater og deling.'}
                 </Typography>
               </Box>
               <Box
@@ -1134,7 +1197,7 @@ export default function UniversalWorklog({
                     onClick={() => setShowKeepSync(true)}
                     sx={{ borderRadius: 999, borderColor: alpha(config.color, 0.28), color: config.color }}
                   >
-                    Google Keep
+                    Workspace og Keep
                   </Button>
                 </Stack>
               </CardContent>
@@ -1769,7 +1832,7 @@ export default function UniversalWorklog({
                       bgcolor: alpha(theme.palette.success.main, 0.08),
                     }}
                   >
-                    Google Keep
+                    Workspace og Keep
                   </Button>
                   <Button
                     variant="contained"
@@ -2135,8 +2198,8 @@ export default function UniversalWorklog({
                                   <ImportExport fontSize="small" />
                                 </IconButton>
                               </Tooltip>
-                              {entry.googleKeepNoteId && (
-                                <Tooltip title="Del via Google Keep">
+                              {Boolean(projectId) && (
+                                <Tooltip title="Inviter samarbeidspartnere">
                                   <IconButton
                                     onClick={() => {
                                       setSelectedWorklogId(entry.id.toString());
@@ -2237,11 +2300,13 @@ export default function UniversalWorklog({
                       status: isConnected ? 'Aktiv' : 'Offline',
                     },
                     {
-                      title: 'Google Keep',
+                      title: 'Workspace og Keep',
                       description: keepSyncStatus.connected
-                        ? `${keepSyncStatus.syncedEntries} oppføringer er synkronisert.`
-                        : 'Koble til for deling, mobilnotater og enkle påminnelser.',
-                      status: keepSyncStatus.connected ? 'Koblet' : 'Ikke koblet',
+                        ? keepSyncStatus.accountEmail
+                          ? `Koblet via ${keepSyncStatus.accountEmail}. Worklog bruker samme Google-økt på tvers av prosjektet.`
+                          : 'Koblet via Google Workspace. Worklog bruker samme Google-økt på tvers av prosjektet.'
+                        : 'Aktiver Google-SSO for prosjektflyt, mobilnotater og deling i samme workspace.',
+                      status: keepSyncStatus.connected ? 'Koblet' : googleWorkspaceStatusLoading ? 'Sjekker' : 'Ikke koblet',
                     },
                     {
                       title: 'Push-varsler',
@@ -2681,7 +2746,7 @@ export default function UniversalWorklog({
         </DialogTitle>
         <DialogContent sx={{ px: { xs: 2, md: 3 }, pb: 2 }}>
           <Alert severity="info" sx={{ mb: 2, borderRadius: 3 }}>
-            Legg til samarbeidspartnere via Google Keep. De kan lese og oppdatere oppføringen i sin egen Keep-app.
+            Inviter samarbeidspartnere til prosjektets worklog-flyt. De bruker samme workspace i stedet for en separat Keep-innlogging.
           </Alert>
           
           <TextField
@@ -2698,10 +2763,10 @@ export default function UniversalWorklog({
 
           <Stack spacing={1}>
             {[
-              'Se worklog på mobil umiddelbart',
-              'Check av action points i sanntid',
-              'Endringer synkroniseres automatisk',
-              'Enkelt samarbeid uten ekstra verktøy',
+              'Invitasjoner går gjennom prosjektets samarbeidsspor',
+              'Samme Google-økt brukes videre i workspace',
+              'Worklog-konteksten kan følges opp i teamet',
+              'Ingen separat Keep-tilkobling er nødvendig',
             ].map((benefit) => (
               <Paper
                 key={benefit}
@@ -2741,17 +2806,17 @@ export default function UniversalWorklog({
                 .filter(e => e.length > 0 && e.includes('@'));
               
               if (emails.length === 0) {
-                showErrorToast('Please enter valid email addresses');
+                showErrorToast('Legg inn gyldige e-postadresser');
                 return;
               }
 
               try {
-                await addCollaborators(selectedWorklogId, emails);
-                showSuccessToast(`Added ${emails.length} collaborator(s) to Google Keep!`);
+                await addCollaborators(projectId, selectedWorklogId, emails);
+                showSuccessToast(`Inviterte ${emails.length} samarbeidspartner(e) til prosjektet.`);
                 setShowCollaborators(false);
-                setCollaboratorEmails(', ');
+                setCollaboratorEmails('');
               } catch {
-                showErrorToast('Failed to add collaborators');
+                showErrorToast('Kunne ikke invitere samarbeidspartnere');
               }
             }}
             variant="contained"
@@ -2843,7 +2908,7 @@ export default function UniversalWorklog({
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
             <Google sx={{ color: '#4285f4' }} />
             <Typography variant="h5" sx={{ fontWeight: 800, letterSpacing: '-0.04em' }}>
-              Google Keep synkronisering
+              Google Workspace og Keep
             </Typography>
           </Box>
         </DialogTitle>
@@ -2854,13 +2919,23 @@ export default function UniversalWorklog({
             icon={keepSyncStatus.connected ? <CloudSync /> : <Sync />}
           >
             {keepSyncStatus.connected 
-              ? `Tilkoblet! ${keepSyncStatus.syncedEntries} oppføringer synkronisert.`
-              : 'Koble til Google Keep for å synkronisere dine arbeidslogg-notater.'}
+              ? keepSyncStatus.accountEmail
+                ? `Tilkoblet via ${keepSyncStatus.accountEmail}. Worklog bruker samme Google-økt uten separat Keep-innlogging.`
+                : 'Tilkoblet via Google Workspace. Worklog bruker samme Google-økt uten separat Keep-innlogging.'
+              : googleWorkspaceStatusLoading
+                ? 'Sjekker Google Workspace-økten din.'
+                : 'Aktiver Google-SSO for å bruke Worklog med Keep, deling og mobilnotater.'}
           </Alert>
+
+          {keepSyncStatus.workspaceWarning ? (
+            <Alert severity="warning" sx={{ mb: 2, borderRadius: 3 }}>
+              {keepSyncStatus.workspaceWarning}
+            </Alert>
+          ) : null}
           
           {keepSyncStatus.lastSync && (
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Sist synkronisert: {new Date(keepSyncStatus.lastSync).toLocaleString('nb-NO')}
+              Sist oppdatert i Workspace: {new Date(keepSyncStatus.lastSync).toLocaleString('nb-NO')}
             </Typography>
           )}
           
@@ -2899,12 +2974,12 @@ export default function UniversalWorklog({
           <Button onClick={() => setShowKeepSync(false)} sx={{ borderRadius: 999 }}>
             Lukk
           </Button>
-          {!keepSyncStatus.connected && (
+          {(!keepSyncStatus.connected || Boolean(keepSyncStatus.workspaceWarning)) && (
             <Button 
               variant="contained"
               startIcon={<Google />}
               onClick={() => {
-                window.open('/api/auth/google/keep', '_blank');
+                void handleKeepGoogleSso();
               }}
               sx={{
                 borderRadius: 999,
@@ -2913,7 +2988,7 @@ export default function UniversalWorklog({
                 '&:hover': { bgcolor: '#3367d6' },
               }}
             >
-              Koble til Google Keep
+              {keepSyncStatus.connected ? 'Forny Google-SSO' : 'Aktiver Google-SSO'}
             </Button>
           )}
         </DialogActions>

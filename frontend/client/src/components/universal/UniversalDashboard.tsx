@@ -159,6 +159,7 @@ import { AcademyIcon } from '../shared/CreatorHubIcons';
 import GoogleDriveManager from '../google-drive/GoogleDriveManager';
 import GoogleDriveProjectSync from '../google-drive/GoogleDriveProjectSync';
 import GoogleWorkspaceStorageInfo from './GoogleWorkspaceStorageInfo';
+import GoogleWorkspaceSessionBadge from './GoogleWorkspaceSessionBadge';
 
 // Import Equipment Management components
 // import ComprehensiveEquipmentDashboard from '@/components/universal/misc/ComprehensiveEquipmentDashboard';
@@ -206,6 +207,7 @@ import UniversalCRMDashboard from '../crm/UniversalCRMDashboard';
 
 // Import Role Room integration
 import RoleRoomDashboardPanel from '../role-room/RoleRoomDashboardPanel';
+import { useInstallApp, useRoleRoomWorkspaceAccess } from '../../hooks/useRoleRoom';
 
 // Import all missing components to properly wire them up
 import SignatureStatusOverview from './signatures/SignatureStatusOverview';
@@ -529,6 +531,7 @@ interface UniversalDashboardProps {
 // Internal component that uses the context
 const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ profession = 'photographer' }) => {
   const ROLE_ROOM_GOOGLE_TRANSFER_PROCESSING_KEY = 'creatorhub:rr-google-processing';
+  const ROLE_ROOM_MARKETPLACE_URL = 'https://theroleroom.com/?source=creatorhub-marketplace';
   const [, setLocation] = useLocation();
   const { user: currentUser, isPrototypeTester } = useAuth();
   const { status: communicationStatus } = useCommunicationStatus();
@@ -668,6 +671,8 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
   // Derive user identifiers from session and unified auth
   const userId = userSession?.userId || currentUser?.id || 'guest';
   const userEmail = userSession?.email || currentUser?.email;
+  const roleRoomAccess = useRoleRoomWorkspaceAccess(Boolean(userId && userId !== 'guest'));
+  const installRoleRoomAppMutation = useInstallApp();
 
   // Check admin permissions for the resolved user email
   const { data: adminPermissions } = useQuery({
@@ -866,7 +871,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         'support': true,
         'settings': true, // Always available
         'administration': true, // Pricing administration for all professions
-        'role-room': true, // The Role Room - casting & crew management
+        'role-room': roleRoomAccess.hasWorkspaceAccess, // Only after install + paid/active access
         'integration-test': isAdmin // Only for admins
       };
 
@@ -897,7 +902,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
   }, [config.tabs, projectsTabAccess.hasAccess, clientsTabAccess.hasAccess, equipmentTabAccess.hasAccess,
       showcaseTabAccess.hasAccess, settingsTabAccess.hasAccess, timelineTabAccess.hasAccess,
       photoEnhancementAccess.hasAccess, videoEnhancementAccess.hasAccess, audioEnhancementAccess.hasAccess,
-      profession, isAdmin, isMentor, features, universalDashboardAccess.hasAccess]);
+      profession, isAdmin, isMentor, features, roleRoomAccess.hasWorkspaceAccess, universalDashboardAccess.hasAccess]);
 
   // Register this component in the integration system
   useEffect(() => {
@@ -2227,17 +2232,130 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
   const [showShowcase, setShowShowcase] = useState(false);
   // Marketplace navigation state
   const [showMarketplace, setShowMarketplace] = useState(false);
-  const [marketplaceInstallNotice, setMarketplaceInstallNotice] = useState<string | null>(null);
+  const [marketplaceInstallNotice, setMarketplaceInstallNotice] = useState<{
+    severity: 'success' | 'info' | 'warning' | 'error';
+    message: string;
+  } | null>(null);
 
-  const handleMarketplaceInstall = useCallback((appId: string) => {
+  const roleRoomMarketplaceState = useMemo(() => {
+    const planName = roleRoomAccess.billingAccount?.planName?.trim();
+
+    switch (roleRoomAccess.status) {
+      case 'active':
+        return {
+          statusLabel: planName ? `Aktiv · ${planName}` : 'Aktiv tilgang',
+          statusDescription: roleRoomAccess.helperText,
+          ctaLabel: 'Åpne The Role Room',
+          accentColor: '#7c3aed',
+        };
+      case 'payment_failed':
+        return {
+          statusLabel: roleRoomAccess.statusLabel,
+          statusDescription: roleRoomAccess.helperText,
+          ctaLabel: roleRoomAccess.canManageBilling ? 'Oppdater betaling' : 'Se status',
+          accentColor: '#dc2626',
+        };
+      case 'pending_activation':
+        return {
+          statusLabel: 'Venter aktivering',
+          statusDescription: roleRoomAccess.helperText,
+          ctaLabel: 'Åpne aktivering',
+          accentColor: '#f59e0b',
+        };
+      case 'pending_payment':
+      case 'subscription_required':
+        return {
+          statusLabel: roleRoomAccess.statusLabel,
+          statusDescription: roleRoomAccess.helperText,
+          ctaLabel: 'Fullfør abonnement',
+          accentColor: '#f59e0b',
+        };
+      case 'not_installed':
+      default:
+        return {
+          statusLabel: 'Ikke installert',
+          statusDescription: 'Installer appen og fullfør abonnementet for å låse opp The Role Room i CreatorHub.',
+          ctaLabel: 'Installer og velg abonnement',
+          accentColor: '#6366f1',
+        };
+    }
+  }, [roleRoomAccess]);
+
+  const handleMarketplaceInstall = useCallback(async (appId: string) => {
     if (appId === 'resume-builder') {
-      setMarketplaceInstallNotice('ResumeBuilder installeres. Du blir sendt videre...');
+      setMarketplaceInstallNotice({
+        severity: 'success',
+        message: 'ResumeBuilder installeres. Du blir sendt videre...',
+      });
       setTimeout(() => {
         setShowMarketplace(false);
         window.location.href = '/resume-builder';
       }, 800);
+      return;
     }
-  }, []);
+
+    if (appId !== 'role-room') {
+      return;
+    }
+
+    try {
+      setMarketplaceInstallNotice(null);
+
+      if (roleRoomAccess.hasWorkspaceAccess) {
+        setShowMarketplace(false);
+        const roleRoomTabIndex = availableTabs.findIndex((tab) => tab.id === 'role-room');
+        if (roleRoomTabIndex >= 0) {
+          setTabValue(roleRoomTabIndex);
+        }
+        return;
+      }
+
+      if (!roleRoomAccess.hasInstallation) {
+        await installRoleRoomAppMutation.mutateAsync('role-room');
+        setMarketplaceInstallNotice({
+          severity: 'success',
+          message: 'The Role Room er lagt til i Marketplace for denne brukeren. Fullfør abonnementet for å låse opp fanen i CreatorHub.',
+        });
+        await roleRoomAccess.refetch();
+      }
+
+      if (roleRoomAccess.status === 'payment_failed' && roleRoomAccess.canManageBilling) {
+        setMarketplaceInstallNotice({
+          severity: 'info',
+          message: 'Du sendes nå til betalingsportalen for å reaktivere The Role Room.',
+        });
+        const result = await apiRequest('/api/role-room/billing/manage', {
+          method: 'POST',
+          body: {
+            browserOrigin: window.location.origin,
+            returnPath: `${window.location.pathname}${window.location.search}${window.location.hash}`,
+          },
+        }) as { url?: string };
+
+        if (result.url) {
+          window.location.assign(result.url);
+          return;
+        }
+      }
+
+      setMarketplaceInstallNotice({
+        severity: roleRoomAccess.status === 'pending_activation' ? 'warning' : 'info',
+        message: roleRoomAccess.helperText,
+      });
+      window.location.assign(ROLE_ROOM_MARKETPLACE_URL);
+    } catch (error) {
+      setMarketplaceInstallNotice({
+        severity: 'error',
+        message: error instanceof Error ? error.message : 'Kunne ikke starte The Role Room-oppsettet.',
+      });
+    }
+  }, [
+    ROLE_ROOM_MARKETPLACE_URL,
+    availableTabs,
+    installRoleRoomAppMutation,
+    roleRoomAccess,
+    setTabValue,
+  ]);
   
   // selectedProjectForOverview and projectOverviewOpen moved earlier to avoid TDZ error
 
@@ -2736,7 +2854,6 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                       userId: userId,
                       day: (worklogData.day || 1),
                       date: new Date().toISOString(),
-                      syncToGoogleKeep: true // Flag for Google Keep sync
                     })
                   });
 
@@ -2747,7 +2864,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
 
                   // 4. Show success message
                   addNotification({
-                    message: `Godtatt ${changes.length} tidslinjeendring(er) og lagt til i arbeidslogg. Synkronisert til Google Keep for møtediskusjon.`,
+                    message: `Godtatt ${changes.length} tidslinjeendring(er) og lagt til i arbeidslogg for videre møteoppfølging i workspace.`,
                     type: 'success',
                     title: 'Tidslinjeendringer godtatt',
                     read: false
@@ -3133,6 +3250,12 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                   >
                     {customBranding.tagline || `Du har ${projects?.length || 0} aktive prosjekter og ${recentMeetingNotes?.length || 0} nye notater`}
                   </Typography>
+                  <Box sx={{ mt: 1.2, display: 'flex', justifyContent: { xs: 'center', sm: 'flex-start' } }}>
+                    <GoogleWorkspaceSessionBadge
+                      userId={userId}
+                      tone="creatorhub"
+                    />
+                  </Box>
                 </Box>
                 <Box sx={{ 
                   display: 'flex', 
@@ -5305,6 +5428,11 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
               userId={userId}
               profession={profession}
               creatorhubProjectId={selectedProject?.id}
+              workspaceSummary={{
+                companyName: roleRoomAccess.billingAccount?.companyName ?? null,
+                planName: roleRoomAccess.billingAccount?.planName ?? null,
+                statusLabel: roleRoomAccess.billingAccount?.paymentStatusLabel ?? null,
+              }}
             />
           </TabPanel>
 
@@ -6325,9 +6453,11 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                               ⭐ Featured App
                             </Typography>
                             <CreatorHubMarketplace 
-                              onSelect={() => {
-                                // Navigate to ResumeBuilder
-                                window.location.href = '/resume-builder';
+                              profession={profession}
+                              userId={userId}
+                              onSelect={handleMarketplaceInstall}
+                              appStateById={{
+                                'role-room': roleRoomMarketplaceState,
                               }}
                               showPricing={true}
                             />
@@ -7695,14 +7825,17 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         <DialogContent sx={{ p: 0, overflow: 'auto' }}>
           <Box sx={{ p: 3 }}>
             {marketplaceInstallNotice && (
-              <Alert severity="success" sx={{ mb: 2 }}>
-                {marketplaceInstallNotice}
+              <Alert severity={marketplaceInstallNotice.severity} sx={{ mb: 2 }}>
+                {marketplaceInstallNotice.message}
               </Alert>
             )}
             <CreatorHubMarketplace 
               profession={profession}
               userId={userId}
               onSelect={handleMarketplaceInstall}
+              appStateById={{
+                'role-room': roleRoomMarketplaceState,
+              }}
             />
           </Box>
         </DialogContent>

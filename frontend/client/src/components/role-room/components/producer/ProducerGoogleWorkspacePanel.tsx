@@ -50,6 +50,7 @@ import {
 } from '../../utils/producerGoogleWorkspace';
 import type { ProjectFileRecord } from '../../utils/projectFiles';
 import { getRoleRoomReturnPath } from '../../utils/runtime';
+import RoleRoomGoogleCollaborationWorkspace from './RoleRoomGoogleCollaborationWorkspace';
 
 interface ProducerGoogleWorkspacePanelProps {
   project: CastingProject;
@@ -555,7 +556,7 @@ export default function ProducerGoogleWorkspacePanel({
                       : autoBootstrapFailed
                         ? `Aktivert som ${connection.googleEmail}. Automatisk prosjektoppsett feilet, så du kan prøve igjen manuelt.`
                         : `Aktivert som ${connection.googleEmail}. Drive og kalender settes opp automatisk for prosjektet.`
-                    : 'Aktiver Google Workspace én gang for å bruke Drive, kalender og kontaktoppslag videre i samme prosjektflyt.'}
+                    : 'Google Workspace følger Google-SSO på tvers av CreatorHub og Role Room. Hvis brukeren kom inn uten Google, kan du fornye SSO her som fallback.'}
                 </Typography>
               </Box>
 
@@ -568,7 +569,7 @@ export default function ProducerGoogleWorkspacePanel({
                     }}
                     disabled={!googleStatus?.configured || actionKey === 'connect'}
                   >
-                    {actionKey === 'connect' ? 'Aktiverer...' : 'Aktiver Google Workspace'}
+                    {actionKey === 'connect' ? 'Starter SSO...' : 'Fortsett med Google SSO'}
                   </Button>
                 ) : null}
                 {canManageGoogleWorkspace && connection ? (
@@ -862,6 +863,15 @@ export default function ProducerGoogleWorkspacePanel({
             </Stack>
           </Box>
         ) : null}
+
+        <RoleRoomGoogleCollaborationWorkspace
+          projectId={projectId}
+          projectName={projectName}
+          binding={binding}
+          connected={connection?.state === 'connected'}
+          canManageGoogleWorkspace={canManageGoogleWorkspace}
+          onRefreshStatus={loadGoogleStatus}
+        />
       </Stack>
     </Box>
   );

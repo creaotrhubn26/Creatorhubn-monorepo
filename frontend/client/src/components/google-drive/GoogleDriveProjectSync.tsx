@@ -368,23 +368,11 @@ export const GoogleDriveProjectSync: React.FC<GoogleDriveProjectSyncProps> = ({
         {!statusLoading && !status?.connected && (
           <Alert
             severity="warning"
-            action={
-              showWorkspaceReconnectAction ? (
-                <Button
-                  size="small"
-                  startIcon={<GoogleIcon />}
-                  onClick={() => reconnectMutation.mutate()}
-                  disabled={reconnectMutation.isPending}
-                >
-                  {reconnectMutation.isPending ? 'Starter…' : 'Koble Google Workspace'}
-                </Button>
-              ) : undefined
-            }
             sx={{ mb: 2 }}
           >
             {showWorkspaceReconnectAction
-              ? (status?.message || 'Google Drive er ikke koblet til denne brukeren ennå.')
-              : 'Prosjekt Synkronisering bruker samme Google Workspace-kobling som øverst i denne fanen. Koble Workspace én gang der for å aktivere prosjektmapper og synk.'}
+              ? (status?.message || 'Google-økten er ikke aktiv for denne brukeren ennå.')
+              : 'Prosjekt Synkronisering bruker samme Google-SSO som resten av arbeidsflaten. Følg Google-statusen i brukerfeltet for å aktivere prosjektmapper og synk.'}
           </Alert>
         )}
 

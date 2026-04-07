@@ -221,7 +221,9 @@ export const authSessionService = {
 
     const nextAdminUser: AdminUser = {
       ...sessionCache.adminUser,
-      role: update.role ?? sessionCache.adminUser.role,
+      // Keep the underlying account role stable for admins/owners. Preview mode
+      // should only change the scoped Role Room context, not strip admin powers.
+      role: sessionCache.adminUser.role,
       loginAs: update.loginAs === undefined ? sessionCache.adminUser.loginAs : update.loginAs || undefined,
       requestedRole:
         update.requestedRole === undefined

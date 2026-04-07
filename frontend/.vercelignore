@@ -8,6 +8,8 @@ recovery
 e2e
 .vercel
 creatorhub-frontend
+output
+.playwright-cli
 
 academy-dashboard*.png
 prototype-login-guest-option.png

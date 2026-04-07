@@ -147,7 +147,7 @@ export default function DriveOperationsWorkspacePanel({
       id: 'files',
       label: 'Creatorhub Filsystem',
       description: 'Se, del og oppdater filer i aktiv Drive-kontekst uten å gå via innstillinger.',
-      badge: connected ? 'Tilkoblet' : 'Koble Workspace',
+      badge: connected ? 'Tilkoblet' : 'Google-SSO',
       icon: <FolderOpen fontSize="small" />,
     },
     {
@@ -223,12 +223,12 @@ export default function DriveOperationsWorkspacePanel({
                 }}
               />
               <Typography variant="body2" sx={{ fontWeight: 700, color: connected ? 'success.dark' : 'warning.dark' }}>
-                {connected ? 'Tilkoblet Google Drive' : 'Google Workspace ikke koblet'}
+                {connected ? 'Tilkoblet Google Drive' : 'Google-SSO mangler'}
               </Typography>
             </Stack>
             <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 760 }}>
               Dette er den operative arbeidsflaten for filopplasting, Google Drive-filer, prosjekt-synk og backup.
-              Samme Google Workspace-kobling brukes på tvers av hele flyten, så du skal ikke måtte koble til flere steder.
+              Samme Google-SSO brukes på tvers av hele flyten, så du skal ikke måtte aktivere Google flere steder.
             </Typography>
           </Box>
 
@@ -257,7 +257,7 @@ export default function DriveOperationsWorkspacePanel({
 
         <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mt: 2.5, mb: 2 }}>
           <Chip
-            label={connected ? 'Google Workspace koblet' : 'Google Workspace ikke koblet'}
+            label={connected ? 'Google-SSO aktiv' : 'Google-SSO mangler'}
             color={connected ? 'success' : 'warning'}
           />
           {driveStatusQuery.data?.accountEmail && (
@@ -277,8 +277,8 @@ export default function DriveOperationsWorkspacePanel({
 
         <Alert severity={connected ? 'info' : 'warning'}>
           {connected
-            ? 'Drive, prosjektmapper og opplasting bruker samme Google Workspace-konto. Du trenger ikke koble til flere steder.'
-            : 'Google Workspace må kobles til én gang for å aktivere opplasting til Drive, prosjekt-synk og backup.'}
+            ? 'Drive, prosjektmapper og opplasting bruker samme Google-konto som resten av arbeidsflaten. Du trenger ikke aktivere noe på nytt her.'
+            : 'Google-SSO må være aktiv for å bruke opplasting til Drive, prosjekt-synk og backup.'}
         </Alert>
       </Paper>
 
@@ -418,7 +418,7 @@ export default function DriveOperationsWorkspacePanel({
             <Alert severity={connected ? 'info' : 'warning'}>
               {connected
                 ? `Samme konto brukes på tvers av opplasting, Drive-filer, prosjekt-synk og backup${driveStatusQuery.data?.accountEmail ? `: ${driveStatusQuery.data.accountEmail}` : ''}.`
-                : 'Koble Google Workspace én gang for å aktivere lagring, backup og filarbeidsflyt.'}
+                : 'Google-SSO må være aktiv for å bruke lagring, backup og filarbeidsflyt.'}
             </Alert>
 
             <Box
@@ -433,10 +433,10 @@ export default function DriveOperationsWorkspacePanel({
                   Workspace
                 </Typography>
                 <Typography variant="subtitle1" sx={{ fontWeight: 800, mt: 0.4 }}>
-                  {connected ? 'Klar for Drive' : 'Må kobles til'}
+                  {connected ? 'Klar for Drive' : 'Forny Google-SSO'}
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mt: 0.6 }}>
-                  {driveStatusQuery.data?.message || 'Samme kobling brukes for Drive, synk og backup.'}
+                  {driveStatusQuery.data?.message || 'Samme Google-økt brukes for Drive, synk og backup.'}
                 </Typography>
               </Box>
 
@@ -450,7 +450,7 @@ export default function DriveOperationsWorkspacePanel({
                 <Typography variant="body2" color="text.secondary" sx={{ mt: 0.6 }}>
                   {backupStatusQuery.data?.lastBackup
                     ? `Sist kjørt ${formatDateTime(backupStatusQuery.data.lastBackup)}`
-                    : 'Kjør backup når Workspace er koblet og klar.'}
+                    : 'Kjør backup når Google-SSO er aktiv og klar.'}
                 </Typography>
               </Box>
 

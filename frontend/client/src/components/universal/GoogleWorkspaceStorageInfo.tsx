@@ -211,7 +211,7 @@ export const GoogleWorkspaceStorageInfo: React.FC<GoogleWorkspaceStorageInfoProp
       setWorkspaceActionError(
         reconnectError instanceof Error
           ? reconnectError.message
-          : 'Kunne ikke starte Google Workspace-tilkoblingen.',
+          : 'Kunne ikke starte Google-SSO.',
       );
     } finally {
       setWorkspaceAction(null);
@@ -238,16 +238,6 @@ export const GoogleWorkspaceStorageInfo: React.FC<GoogleWorkspaceStorageInfoProp
   }
 
   if (error) {
-    const reconnectButton = (
-      <Button
-        size="small"
-        onClick={handleWorkspaceReconnect}
-        disabled={workspaceAction === 'reconnect'}
-      >
-        {workspaceAction === 'reconnect' ? 'Starter…' : 'Koble Google Workspace'}
-      </Button>
-    );
-
     if (compact) {
       return (
         <Card
@@ -274,6 +264,9 @@ export const GoogleWorkspaceStorageInfo: React.FC<GoogleWorkspaceStorageInfoProp
                 </Tooltip>
               </Stack>
             </Stack>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+              Google-SSO styres fra brukerfeltet, så denne modulen trenger ikke en egen reconnect-knapp.
+            </Typography>
           </CardContent>
         </Card>
       );
@@ -285,15 +278,12 @@ export const GoogleWorkspaceStorageInfo: React.FC<GoogleWorkspaceStorageInfoProp
           <Alert
             severity="warning"
             action={
-              <Stack direction="row" spacing={1}>
-                <Button size="small" onClick={() => void refetch()}>
-                  Prøv igjen
-                </Button>
-                {reconnectButton}
-              </Stack>
+              <Button size="small" onClick={() => void refetch()}>
+                Prøv igjen
+              </Button>
             }
           >
-            Google Workspace lagringsinformasjon er ikke tilgjengelig akkurat nå.
+            Google Workspace lagringsinformasjon er ikke tilgjengelig akkurat nå. Hvis økten må fornyes, gjør du det i brukerfeltet.
           </Alert>
         </CardContent>
       </Card>
@@ -392,7 +382,7 @@ export const GoogleWorkspaceStorageInfo: React.FC<GoogleWorkspaceStorageInfoProp
                   disabled={workspaceAction === 'reconnect'}
                   sx={{ fontSize: '0.7rem', minWidth: 'auto', p: 0.5 }}
                 >
-                  {workspaceAction === 'reconnect' ? 'Starter…' : 'Koble'}
+                  {workspaceAction === 'reconnect' ? 'Starter…' : 'Forny SSO'}
                 </Button>
               )}
               {showDetailsButton && (
@@ -440,23 +430,16 @@ export const GoogleWorkspaceStorageInfo: React.FC<GoogleWorkspaceStorageInfoProp
                   <Refresh />
                 </IconButton>
               </Tooltip>
-              <Button
-                variant={driveConnected ? 'outlined' : 'contained'}
-                size="small"
-                onClick={
-                  driveConnected
-                    ? () => window.open('https://drive.google.com/settings/storage', '_blank')
-                    : handleWorkspaceReconnect
-                }
-                startIcon={driveConnected ? <FolderOpen /> : <GoogleIcon />}
-                disabled={workspaceAction === 'reconnect'}
-              >
-                {driveConnected
-                  ? 'Administrer i Google Drive'
-                  : workspaceAction === 'reconnect'
-                    ? 'Starter…'
-                    : 'Koble Google Workspace'}
-              </Button>
+              {driveConnected ? (
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={() => window.open('https://drive.google.com/settings/storage', '_blank')}
+                  startIcon={<FolderOpen />}
+                >
+                  Administrer i Google Drive
+                </Button>
+              ) : null}
               {showDetailsButton && (
                 <Button
                   variant="outlined"
@@ -467,6 +450,11 @@ export const GoogleWorkspaceStorageInfo: React.FC<GoogleWorkspaceStorageInfoProp
                 </Button>
               )}
             </Stack>
+            {!driveConnected ? (
+              <Typography variant="caption" color="text.secondary">
+                Google-SSO fornyes i brukerfeltet og gjelder deretter for hele arbeidsflaten.
+              </Typography>
+            ) : null}
           </Stack>
 
           <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mb: 2 }}>
@@ -541,7 +529,7 @@ export const GoogleWorkspaceStorageInfo: React.FC<GoogleWorkspaceStorageInfoProp
                     <> • Sist synkronisert {formatDateTime(data.lastDriveSyncAt)}</>
                   )}
                   {!driveConnected && (
-                    <> • Koble Google Workspace for å hente live Drive-kvote og riktig lagringsstatus.</>
+                    <> • Forny Google-SSO for å hente live Drive-kvote og riktig lagringsstatus.</>
                   )}
                   {data.usagePercentage > 90 && (
                     <> - Vi anbefaler å rydde opp i gamle filer eller oppgradere lagringen.</>
@@ -716,7 +704,7 @@ export const GoogleWorkspaceStorageInfo: React.FC<GoogleWorkspaceStorageInfoProp
                 {!driveConnected && (
                   <Alert severity="info">
                     <Typography variant="body2">
-                      <strong>Koble Google Workspace:</strong> Da henter CreatorHub live Drive-kvote og lagrer
+                      <strong>Aktiver Google-SSO:</strong> Da henter CreatorHub live Drive-kvote og lagrer
                       publiseringer, backup og plugin-filer i riktig Google Drive-struktur.
                     </Typography>
                   </Alert>

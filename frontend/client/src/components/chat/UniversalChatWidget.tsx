@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
@@ -81,6 +81,7 @@ import {
   Comment,
   Visibility,
   Edit,
+  DeleteOutline,
   CheckCircle,
   Schedule,
   Warning,
@@ -1431,17 +1432,17 @@ export default function UniversalChatWidget({
         ? response.authorizationUrl
         : null;
       if (!authorizationUrl) {
-        throw new Error('Google Workspace svarte uten en gyldig autorisasjonslenke.');
+        throw new Error('Google-SSO svarte uten en gyldig autorisasjonslenke.');
       }
 
       window.location.assign(authorizationUrl);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Kunne ikke starte Google Workspace-tilkoblingen.';
+      const message = error instanceof Error ? error.message : 'Kunne ikke starte Google-SSO.';
       setGoogleWorkspaceOauthPending(false);
       setSnackbarMessage(
         reason === 'gmail'
-          ? `❌ Kunne ikke koble til Gmail: ${message}`
-          : `❌ Kunne ikke koble til Google Workspace: ${message}`,
+          ? `❌ Kunne ikke aktivere Gmail via Google-SSO: ${message}`
+          : `❌ Kunne ikke aktivere Google-SSO: ${message}`,
       );
       setSnackbarOpen(true);
     }
@@ -1474,11 +1475,13 @@ export default function UniversalChatWidget({
     syncGoogleWorkspaceOauthPending();
     window.addEventListener('focus', syncGoogleWorkspaceOauthPending);
     window.addEventListener('pageshow', syncGoogleWorkspaceOauthPending);
+    window.addEventListener('auth-changed', syncGoogleWorkspaceOauthPending);
     window.addEventListener('creatorhub-google-workspace-linked', syncGoogleWorkspaceOauthPending as EventListener);
 
     return () => {
       window.removeEventListener('focus', syncGoogleWorkspaceOauthPending);
       window.removeEventListener('pageshow', syncGoogleWorkspaceOauthPending);
+      window.removeEventListener('auth-changed', syncGoogleWorkspaceOauthPending);
       window.removeEventListener('creatorhub-google-workspace-linked', syncGoogleWorkspaceOauthPending as EventListener);
     };
   }, []);
@@ -1501,7 +1504,7 @@ export default function UniversalChatWidget({
 
     if (googleStatus === 'error') {
       setGoogleWorkspaceOauthPending(false);
-      setSnackbarMessage(`❌ ${googleMessage || 'Google Workspace-tilkoblingen feilet.'}`);
+      setSnackbarMessage(`❌ ${googleMessage || 'Google-SSO feilet.'}`);
       setSnackbarOpen(true);
       clearGoogleWorkspaceIntentFromUrl();
       return;
@@ -1571,7 +1574,7 @@ export default function UniversalChatWidget({
           || linkedStatus?.connection?.googleEmail
           || linkedStatus?.google?.email
           || 'Google Workspace';
-        setSnackbarMessage(`✅ Google Workspace koblet til ${googleEmail}`);
+        setSnackbarMessage(`✅ Google-SSO er aktivt for ${googleEmail}`);
         setSnackbarOpen(true);
       } catch (error) {
         if (cancelled) {
@@ -1580,7 +1583,7 @@ export default function UniversalChatWidget({
 
         const message = error instanceof Error
           ? error.message
-          : 'Kunne ikke fullføre Google Workspace-tilkoblingen.';
+          : 'Kunne ikke fullføre Google-SSO.';
         setSnackbarMessage(`❌ ${message}`);
         setSnackbarOpen(true);
       } finally {
@@ -4389,6 +4392,27 @@ export default function UniversalChatWidget({
     },
   });
 
+  const deleteGoogleChatMessage = useMutation({
+    mutationFn: async (data: { messageId: string; space: string }) => {
+      return apiRequest(`/api/google/chat/messages/${encodeURIComponent(data.messageId)}`, {
+        headers: {
+          'X-User-Email': userEmail || 'anonymous',
+        },
+        method: 'DELETE',
+      });
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/google/chat/messages', variables.space] });
+      queryClient.invalidateQueries({ queryKey: ['/api/google/chat/spaces'] });
+      setSnackbarMessage('✅ Google Chat-meldingen er slettet');
+      setSnackbarOpen(true);
+    },
+    onError: (error: Error) => {
+      setSnackbarMessage(`❌ Kunne ikke slette Google Chat-meldingen: ${error.message}`);
+      setSnackbarOpen(true);
+    },
+  });
+
   const sendGmailReply = useMutation({
     mutationFn: async (data: { threadId: string; message: string; subject?: string; attachments?: ChatMessageType['attachments'] }) => {
       return apiRequest('/api/communication/email/reply', {
@@ -4439,6 +4463,19 @@ export default function UniversalChatWidget({
       showStatusToast(error.message || 'Kunne ikke sende Gmail-svar.');
     },
   });
+
+  const handleDeleteGoogleChatMessage = useCallback((messageId: string) => {
+    if (!selectedGoogleSpace) {
+      return;
+    }
+    if (!window.confirm('Vil du slette denne Google Chat-meldingen?')) {
+      return;
+    }
+    deleteGoogleChatMessage.mutate({
+      messageId,
+      space: selectedGoogleSpace,
+    });
+  }, [deleteGoogleChatMessage, selectedGoogleSpace]);
 
   const sendCustomerInquiryEmail = useMutation({
     mutationFn: async (data: { to: string; message: string; subject?: string; conversationId: string }) => {
@@ -8406,8 +8443,8 @@ export default function UniversalChatWidget({
             </Typography>
             <Typography variant="caption" color="text.secondary">
               {gmailNeedsReconnect
-                ? 'Koble Gmail på nytt for å hente tråder.'
-                : gmailConnectionErrorMessage || 'Gmail-tråder synkroniseres inn i inboxen.'}
+                ? 'Forny Google-SSO for å hente tråder igjen.'
+                : gmailConnectionErrorMessage || 'Gmail-tråder synkroniseres inn i inboxen via samme Google-økt som resten av arbeidsflaten.'}
             </Typography>
           </Box>
         </Box>
@@ -8428,7 +8465,7 @@ export default function UniversalChatWidget({
             fontWeight: 700,
           }}
         >
-          {gmailNeedsReconnect ? 'Koble Gmail på nytt' : 'Åpne i Gmail'}
+          {gmailNeedsReconnect ? 'Forny Google-SSO' : 'Åpne i Gmail'}
         </Button>
       </Box>
     </Paper>
@@ -8490,10 +8527,10 @@ export default function UniversalChatWidget({
         {!isGmailConnected ? (
           <Box sx={{ p: 2.2, textAlign: 'center' }}>
             <Typography variant="body2" sx={{ fontWeight: 700, color: '#111827' }}>
-              Koble Gmail først
+              Aktiver Google-SSO først
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.4 }}>
-              Når Gmail er koblet til, dukker trådene opp her.
+              Når Google-økten er aktiv, dukker Gmail-trådene opp her automatisk.
             </Typography>
           </Box>
         ) : visibleGmailThreads.length > 0 ? visibleGmailThreads.map((thread) => {
@@ -8582,14 +8619,11 @@ export default function UniversalChatWidget({
         <Box sx={{ flex: 1, minHeight: 0, p: 3, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', gap: 1.2, background: 'linear-gradient(180deg, rgba(248,250,252,0.88) 0%, rgba(255,255,255,0.98) 100%)' }}>
           <Email sx={{ fontSize: 48, color: '#2563eb' }} />
           <Typography variant="h6" sx={{ fontWeight: 800 }}>
-            {gmailNeedsReconnect ? 'Koble Gmail til på nytt for å åpne e-postkanalen' : 'Koble til Gmail for å åpne e-postkanalen'}
+            {gmailNeedsReconnect ? 'Forny Google-SSO for å åpne e-postkanalen' : 'Bruk Google-SSO for å åpne e-postkanalen'}
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 420 }}>
-            {gmailConnectionErrorMessage || 'Når Gmail er koblet til, dukker nye forespørsler opp her som en egen kanal i inboxen.'}
+            {gmailConnectionErrorMessage || 'Gmail bruker samme Google-økt som Drive, Meet og Chat. Følg Google-statusen i brukerfeltet over, så dukker nye forespørsler opp her automatisk.'}
           </Typography>
-          <Button variant="contained" startIcon={<Google />} onClick={handleGoogleChatConnect} disabled={googleWorkspaceOauthUiBusy} sx={{ bgcolor: '#2563eb', '&:hover': { bgcolor: '#1d4ed8' } }}>
-            {googleWorkspaceOauthUiBusy ? 'Kobler...' : gmailNeedsReconnect ? 'Koble Gmail på nytt' : 'Koble til Google Workspace'}
-          </Button>
         </Box>
       ) : !selectedEmailThreadPreview ? (
         <Box sx={{ flex: 1, minHeight: 0, p: 3, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', gap: 1, background: 'linear-gradient(180deg, rgba(248,250,252,0.88) 0%, rgba(255,255,255,0.98) 100%)' }}>
@@ -8974,6 +9008,24 @@ export default function UniversalChatWidget({
                   <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.55 }}>
                     {message.content || 'Tom melding'}
                   </Typography>
+                  <Box sx={{ mt: 0.55, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.25 }}>
+                    <Typography variant="caption" sx={{ color: ownMessage ? 'rgba(255,255,255,0.76)' : '#64748b' }}>
+                      {formatTime(message.timestamp)}
+                    </Typography>
+                    <Tooltip title="Slett melding i Google Chat">
+                      <span>
+                        <IconButton
+                          size="small"
+                          onClick={() => handleDeleteGoogleChatMessage(message.id)}
+                          disabled={deleteGoogleChatMessage.isPending}
+                          sx={{ color: ownMessage ? 'rgba(255,255,255,0.82)' : '#64748b' }}
+                          aria-label="Slett Google Chat-melding"
+                        >
+                          <DeleteOutline sx={{ fontSize: 15 }} />
+                        </IconButton>
+                      </span>
+                    </Tooltip>
+                  </Box>
                 </Box>
               </Box>
             </Box>
@@ -9479,20 +9531,11 @@ export default function UniversalChatWidget({
           >
             <Email sx={{ fontSize: 34, color: '#2563eb' }} />
             <Typography variant="subtitle1" sx={{ fontWeight: 900, mt: 0.8 }}>
-              {gmailNeedsReconnect ? 'Koble Gmail til på nytt' : 'Koble til Gmail'}
+              {gmailNeedsReconnect ? 'Forny Google-SSO' : 'Aktiver Google-SSO'}
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.45, lineHeight: 1.55 }}>
-              {gmailConnectionErrorMessage || 'Når Gmail er koblet til, samles nye e-postforespørsler her i samme inboxflyt.'}
+              {gmailConnectionErrorMessage || 'Gmail bruker samme Google-økt som resten av plattformen. Se Google-statusen i brukerfeltet, så samles nye e-postforespørsler her i samme inboxflyt.'}
             </Typography>
-            <Button
-              variant="contained"
-              startIcon={<Google />}
-              onClick={handleGoogleChatConnect}
-              disabled={googleWorkspaceOauthUiBusy}
-              sx={{ mt: 1.35, bgcolor: '#2563eb', '&:hover': { bgcolor: '#1d4ed8' } }}
-            >
-              {googleWorkspaceOauthUiBusy ? 'Kobler...' : gmailNeedsReconnect ? 'Koble Gmail på nytt' : 'Koble til Google Workspace'}
-            </Button>
           </Box>
         ) : visibleGmailThreads.length > 0 ? visibleGmailThreads.map((thread) => {
           const selected = selectedEmailThread === thread.id;
@@ -11061,26 +11104,6 @@ export default function UniversalChatWidget({
                         }}
                       >
                         <Button
-                          variant="contained"
-                          startIcon={<Google />}
-                          onClick={handleGoogleChatConnect}
-                          disabled={googleWorkspaceOauthUiBusy}
-                          sx={{
-                            bgcolor: '#4285F4',
-                            px: 1.7,
-                            boxShadow: '0 10px 24px rgba(66,133,244,0.22)',
-                            '&:hover': { bgcolor: '#3367D6' }
-                          }}
-                        >
-                          {googleWorkspaceOauthUiBusy
-                            ? 'Kobler...'
-                            : googleChatNeedsReconnect
-                              ? 'Koble Google på nytt'
-                              : isGoogleChatConnected
-                                ? 'Oppdater'
-                                : 'Koble til'}
-                        </Button>
-                        <Button
                           variant="outlined"
                           startIcon={<Add />}
                           onClick={handleCreateGoogleChatRoom}
@@ -11092,17 +11115,6 @@ export default function UniversalChatWidget({
                           }}
                         >
                           Nytt rom
-                        </Button>
-                        <Button
-                          variant="outlined"
-                          onClick={async () => await testGoogleChat()}
-                          sx={{
-                            borderColor: getColorWithAlpha(chatWidgetDesign.accent, 0.26),
-                            color: theming.colors.primary,
-                            bgcolor: 'rgba(255,255,255,0.86)',
-                          }}
-                        >
-                          Test API
                         </Button>
                       </Box>
                     </Box>
@@ -11601,9 +11613,24 @@ export default function UniversalChatWidget({
                                       <Typography variant="body2" sx={{ fontWeight: 800, color: '#0f172a' }}>
                                         {message.sender?.displayName || message.sender?.name || message.senderId}
                                       </Typography>
-                                      <Typography variant="caption" color="text.secondary">
-                                        {formatTime(message.timestamp)}
-                                      </Typography>
+                                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.35 }}>
+                                        <Typography variant="caption" color="text.secondary">
+                                          {formatTime(message.timestamp)}
+                                        </Typography>
+                                        <Tooltip title="Slett melding i Google Chat">
+                                          <span>
+                                            <IconButton
+                                              size="small"
+                                              onClick={() => handleDeleteGoogleChatMessage(message.id)}
+                                              disabled={deleteGoogleChatMessage.isPending}
+                                              sx={{ color: '#94a3b8' }}
+                                              aria-label="Slett Google Chat-melding"
+                                            >
+                                              <DeleteOutline sx={{ fontSize: 15 }} />
+                                            </IconButton>
+                                          </span>
+                                        </Tooltip>
+                                      </Box>
                                     </Box>
                                     <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.55 }}>
                                       {message.content || 'Tom melding'}

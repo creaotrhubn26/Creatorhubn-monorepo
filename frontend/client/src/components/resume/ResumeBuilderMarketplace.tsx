@@ -84,6 +84,11 @@ interface AppStoreItem {
     src: string;
     background: string;
   }[];
+  mediaGallery?: {
+    src: string;
+    alt: string;
+    label: string;
+  }[];
   ctaLabel?: string;
 }
 
@@ -92,6 +97,12 @@ interface CreatorHubMarketplaceProps {
   profession?: string;
   userId?: string;
   showPricing?: boolean;
+  appStateById?: Record<string, {
+    statusLabel?: string;
+    statusDescription?: string;
+    ctaLabel?: string;
+    accentColor?: string;
+  }>;
 }
 
 interface AppReview {
@@ -113,6 +124,128 @@ interface MarketplaceStats {
   totalReviews: number;
   activeUsers: number;
 }
+
+const marketplaceGalleryById: Record<string, AppStoreItem['mediaGallery']> = {
+  'resume-builder': [
+    {
+      src: '/marketplace-previews/resume-builder-editor.png',
+      alt: 'ResumeBuilder med anonym CV-redigering, erfaringsblokker og tydelige forbedringspunkter.',
+      label: 'Editor',
+    },
+    {
+      src: '/marketplace-previews/resume-builder-templates.png',
+      alt: 'ResumeBuilder med flere CV-maler og layoutvalg før eksport.',
+      label: 'Maler',
+    },
+    {
+      src: '/marketplace-previews/resume-builder-insights.png',
+      alt: 'ResumeBuilder med match score, nøkkelord og forbedringsanalyse.',
+      label: 'Analyse',
+    },
+  ],
+  'portfolio-pro': [
+    {
+      src: '/marketplace-previews/portfolio-pro-gallery.png',
+      alt: 'Portfolio Pro med kuratert prosjektgalleri og tydelig bildehierarki.',
+      label: 'Galleri',
+    },
+    {
+      src: '/marketplace-previews/portfolio-pro-story.png',
+      alt: 'Portfolio Pro med case study-visning for prosess, leveranser og respons.',
+      label: 'Case study',
+    },
+    {
+      src: '/marketplace-previews/portfolio-pro-insights.png',
+      alt: 'Portfolio Pro med innsiktspanel for visninger, respons og kontaktpunkter.',
+      label: 'Innsikt',
+    },
+  ],
+  'contract-genius': [
+    {
+      src: '/marketplace-previews/contract-genius-builder.png',
+      alt: 'Contract Genius med modulbasert oppsett av avtaleseksjoner.',
+      label: 'Bygging',
+    },
+    {
+      src: '/marketplace-previews/contract-genius-review.png',
+      alt: 'Contract Genius med avtalerevisjon, endringer og status per klausul.',
+      label: 'Gjennomgang',
+    },
+    {
+      src: '/marketplace-previews/contract-genius-signing.png',
+      alt: 'Contract Genius med oversikt over signering, vedlegg og fremdrift.',
+      label: 'Signering',
+    },
+  ],
+  'accounting-integration': [
+    {
+      src: '/marketplace-previews/accounting-integration-flow.png',
+      alt: 'Regnskapsoppsett med flyt fra avtale til faktura, betaling og bokføring.',
+      label: 'Flyt',
+    },
+    {
+      src: '/marketplace-previews/accounting-integration-ledger.png',
+      alt: 'Regnskapsoppsett med avstemming av bilag, kvitteringer og bokføringsgrunnlag.',
+      label: 'Avstemming',
+    },
+    {
+      src: '/marketplace-previews/accounting-integration-payouts.png',
+      alt: 'Regnskapsoppsett med oppfølging av innbetalinger og manglende dokumentasjon.',
+      label: 'Oppfølging',
+    },
+  ],
+  'invoice-pro': [
+    {
+      src: '/marketplace-previews/invoice-pro-compose.png',
+      alt: 'Invoice Pro med linjebasert fakturakomponering og kontroll før utsending.',
+      label: 'Fakturering',
+    },
+    {
+      src: '/marketplace-previews/invoice-pro-tracking.png',
+      alt: 'Invoice Pro med statusoversikt for sendte, åpnete og betalte fakturaer.',
+      label: 'Sporing',
+    },
+    {
+      src: '/marketplace-previews/invoice-pro-recurring.png',
+      alt: 'Invoice Pro med oppsett for gjentakende fakturaregler og løp.',
+      label: 'Oppsett',
+    },
+  ],
+  'client-management': [
+    {
+      src: '/marketplace-previews/client-management-pipeline.png',
+      alt: 'Client Hub med pipeline for leads, tilbud, aktive løp og oppfølging.',
+      label: 'Pipeline',
+    },
+    {
+      src: '/marketplace-previews/client-management-communication.png',
+      alt: 'Client Hub med kommunikasjonspanel for tråder, notater og oppfølging.',
+      label: 'Kommunikasjon',
+    },
+    {
+      src: '/marketplace-previews/client-management-outcomes.png',
+      alt: 'Client Hub med oversikt over konvertering, oppfølging og leveransehastighet.',
+      label: 'Oppfølging',
+    },
+  ],
+  'time-tracker': [
+    {
+      src: '/marketplace-previews/time-tracker-capture.png',
+      alt: 'Time Tracker med aktiv tidsføring, kategorier og prosjektkontekst.',
+      label: 'Føring',
+    },
+    {
+      src: '/marketplace-previews/time-tracker-timeline.png',
+      alt: 'Time Tracker med tidslinje over arbeidsblokker og prosjektfordeling per dag.',
+      label: 'Oversikt',
+    },
+    {
+      src: '/marketplace-previews/time-tracker-insights.png',
+      alt: 'Time Tracker med innsikt i tidsbruk, kapasitet og lønnsomhet.',
+      label: 'Analyse',
+    },
+  ],
+};
 
 const CategoryIcon: React.FC<{ category: string }> = ({ category }) => {
   const icons: Record<string, React.ReactNode> = {
@@ -141,6 +274,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
   profession = 'photographer',
   userId = 'anonymous',
   showPricing = true,
+  appStateById = {},
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -184,6 +318,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
         { icon: <VersionIcon />, text: 'Versjonskontroll' },
         { icon: <DriveIcon />, text: 'Google Drive-integrasjon' },
       ],
+      mediaGallery: marketplaceGalleryById['resume-builder'],
       pricing: { free: true, price: 149, currency: 'kr/mnd' },
       gradientStart: '#ff8c00',
       gradientEnd: '#14b8a6',
@@ -206,6 +341,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
         { icon: <AnalyzeIcon />, text: 'Analytics dashboard' },
         { icon: <UploadIcon />, text: 'Drag & drop editor' },
       ],
+      mediaGallery: marketplaceGalleryById['portfolio-pro'],
       pricing: { free: true, price: 199, currency: 'kr/mnd' },
       gradientStart: '#6366F1',
       gradientEnd: '#EC4899',
@@ -226,6 +362,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
         { icon: <AIIcon />, text: 'E-signering' },
         { icon: <CheckIcon />, text: 'Juridisk gjennomgang' },
       ],
+      mediaGallery: marketplaceGalleryById['contract-genius'],
       pricing: { free: false, price: 99, currency: 'kr/mnd' },
       gradientStart: '#10B981',
       gradientEnd: '#059669',
@@ -247,6 +384,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
         { icon: <AnalyzeIcon />, text: 'Bilagsgrunnlag for videre bokføring' },
         { icon: <GroupsIcon />, text: 'Enterprise inkludert i avtalen' },
       ],
+      mediaGallery: marketplaceGalleryById['accounting-integration'],
       pricing: {
         free: false,
         displayPrice: 'Fra 6 900 kr',
@@ -279,6 +417,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
         { icon: <AnalyzeIcon />, text: 'Betalingssporing' },
         { icon: <UploadIcon />, text: 'Integrasjoner' },
       ],
+      mediaGallery: marketplaceGalleryById['invoice-pro'],
       pricing: { free: true, price: 79, currency: 'kr/mnd' },
       gradientStart: '#F59E0B',
       gradientEnd: '#D97706',
@@ -300,6 +439,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
         { icon: <AIIcon />, text: 'Automatisering' },
         { icon: <AnalyzeIcon />, text: 'Rapporter' },
       ],
+      mediaGallery: marketplaceGalleryById['client-management'],
       pricing: { free: false, price: 129, currency: 'kr/mnd' },
       gradientStart: '#8B5CF6',
       gradientEnd: '#6366F1',
@@ -320,6 +460,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
         { icon: <AnalyzeIcon />, text: 'Timesedler' },
         { icon: <TrendingIcon />, text: 'Produktivitetsanalyse' },
       ],
+      mediaGallery: marketplaceGalleryById['time-tracker'],
       pricing: { free: true, price: 49, currency: 'kr/mnd' },
       gradientStart: '#06B6D4',
       gradientEnd: '#0891B2',
@@ -342,7 +483,28 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
         { icon: <TimerIcon />, text: 'Tidsplanlegging' },
         { icon: <AnalyzeIcon />, text: 'Prosjektsynkronisering' },
       ],
-      pricing: { free: true },
+      mediaGallery: [
+        {
+          src: '/marketplace-previews/role-room-after-click.png',
+          alt: 'The Role Room velkomstflyt med inngangsvalg for produksjonsteam, innholdsprodusent og utdanningsinstitusjon.',
+          label: 'Inngang',
+        },
+        {
+          src: '/marketplace-previews/role-room-team-step.png',
+          alt: 'The Role Room produksjonsteam-oppsett med plantrinn for bedrift, rolle, team og betaling.',
+          label: 'Produksjonsteam',
+        },
+        {
+          src: '/marketplace-previews/role-room-content-producer-step.png',
+          alt: 'The Role Room innholdsprodusent-oppsett med fokus på brief, storyboard og leveranser.',
+          label: 'Innholdsprodusent',
+        },
+      ],
+      pricing: {
+        free: false,
+        displayPrice: 'Fra 495 kr / mnd eks. mva.',
+        note: 'Installeres fra Marketplace. Fanen i CreatorHub blir tilgjengelig når installasjon, abonnement og aktivering er registrert.',
+      },
       gradientStart: '#F59E0B',
       gradientEnd: '#D946EF',
       categoryIcon: <GroupsIcon />,
@@ -485,6 +647,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
   };
 
   const renderAppCard = (app: AppStoreItem, featured = false) => {
+    const appState = appStateById[app.id];
     const summary = reviewSummaryByApp[app.id];
     const displayRating = Number.isFinite(summary?.avgRating)
       ? summary!.avgRating
@@ -640,6 +803,70 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
             {app.description}
           </Typography>
 
+          {app.mediaGallery?.length ? (
+            <Box sx={{ mb: 2.5 }}>
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                  gap: 1,
+                }}
+              >
+                {app.mediaGallery.slice(0, 3).map((media) => (
+                  <Box
+                    key={media.src}
+                    sx={{
+                      position: 'relative',
+                      height: featured ? 112 : 88,
+                      borderRadius: 2,
+                      overflow: 'hidden',
+                      border: '1px solid rgba(15, 23, 42, 0.08)',
+                      background: '#09090f',
+                      boxShadow: '0 12px 24px rgba(15, 23, 42, 0.12)',
+                    }}
+                  >
+                    <Box
+                      component="img"
+                      src={media.src}
+                      alt={media.alt}
+                      sx={{
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover',
+                        objectPosition: 'center',
+                        filter: 'brightness(0.92) saturate(1.04)',
+                        transform: 'scale(1.01)',
+                      }}
+                    />
+                    <Box
+                      sx={{
+                        position: 'absolute',
+                        inset: 0,
+                        background:
+                          'linear-gradient(180deg, rgba(9, 9, 15, 0.04) 0%, rgba(9, 9, 15, 0.78) 100%)',
+                      }}
+                    />
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        position: 'absolute',
+                        left: 10,
+                        bottom: 8,
+                        color: '#fff',
+                        fontWeight: 700,
+                        letterSpacing: '0.04em',
+                        textTransform: 'uppercase',
+                        fontSize: '0.66rem',
+                      }}
+                    >
+                      {media.label}
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+            </Box>
+          ) : null}
+
           <Box sx={{ display: 'flex', gap: 2, mb: 2.5, pb: 2.5, borderBottom: '1px solid #f0f0f0' }}>
             <Box sx={{ flex: 1 }}>
               {displayReviews > 0 ? (
@@ -770,6 +997,36 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                   {app.pricing.note}
                 </Typography>
               )}
+              {appState?.statusLabel ? (
+                <Box
+                  sx={{
+                    mt: 0.5,
+                    width: '100%',
+                    p: 1.2,
+                    borderRadius: 1.75,
+                    border: '1px solid',
+                    borderColor: appState.accentColor ? `${appState.accentColor}33` : '#e5e7eb',
+                    background: appState.accentColor ? `${appState.accentColor}12` : '#f8fafc',
+                  }}
+                >
+                  <Stack direction="row" spacing={1} alignItems="center" useFlexGap flexWrap="wrap">
+                    <Chip
+                      label={appState.statusLabel}
+                      size="small"
+                      sx={{
+                        background: appState.accentColor ? `${appState.accentColor}22` : '#ffffff',
+                        color: appState.accentColor || '#334155',
+                        fontWeight: 700,
+                      }}
+                    />
+                    {appState.statusDescription ? (
+                      <Typography variant="caption" sx={{ color: '#4b5563', lineHeight: 1.45 }}>
+                        {appState.statusDescription}
+                      </Typography>
+                    ) : null}
+                  </Stack>
+                </Box>
+              ) : null}
             </Box>
           )}
         </CardContent>
@@ -795,7 +1052,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                 },
               }}
             >
-              {app.ctaLabel || `Hent ${app.name}`}
+              {appState?.ctaLabel || app.ctaLabel || `Hent ${app.name}`}
             </Button>
             {app.id !== 'accounting-integration' && (
               <Button

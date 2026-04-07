@@ -505,6 +505,7 @@ const ROLE_ROOM_GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/drive',
   'https://www.googleapis.com/auth/drive.file',
   'https://www.googleapis.com/auth/drive.readonly',
+  'https://www.googleapis.com/auth/drive.activity.readonly',
   'https://www.googleapis.com/auth/documents',
   // Full Calendar access is required when Role Room creates dedicated
   // secondary project calendars in addition to event sync / Meet sessions.
@@ -518,6 +519,7 @@ const ROLE_ROOM_GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/tasks',
   'https://www.googleapis.com/auth/tasks.readonly',
   'https://www.googleapis.com/auth/chat.spaces.readonly',
+  'https://www.googleapis.com/auth/chat.messages',
   'https://www.googleapis.com/auth/chat.messages.readonly',
   'https://www.googleapis.com/auth/chat.messages.create',
   'https://www.googleapis.com/auth/chat.spaces.create',
@@ -3551,6 +3553,68 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     };
   }
 
+  function buildRoleRoomGoogleCalendarRecord(calendar: Record<string, unknown>) {
+    return {
+      id: readStringValue(calendar.id) ?? crypto.randomUUID(),
+      summary: readStringValue(calendar.summary) ?? 'Uten navn',
+      description: readStringValue(calendar.description),
+      primary: readBooleanValue(calendar.primary) === true,
+      accessRole: readStringValue(calendar.accessRole),
+      backgroundColor: readStringValue(calendar.backgroundColor),
+      foregroundColor: readStringValue(calendar.foregroundColor),
+      timeZone: readStringValue(calendar.timeZone),
+      selected: readBooleanValue(calendar.selected) === true,
+      hidden: readBooleanValue(calendar.hidden) === true,
+    };
+  }
+
+  function buildRoleRoomGoogleCalendarAclRecord(rule: Record<string, unknown>) {
+    const scope = readJsonObject(rule.scope);
+    const scopeType = readStringValue(scope.type) ?? 'default';
+    const scopeValue = readStringValue(scope.value);
+    const label = scopeType === 'user'
+      ? scopeValue ?? 'Bruker'
+      : scopeType === 'domain'
+        ? scopeValue ?? 'Domene'
+        : scopeType === 'default'
+          ? 'Standard'
+          : scopeType;
+
+    return {
+      id: readStringValue(rule.id) ?? crypto.randomUUID(),
+      role: readStringValue(rule.role) ?? 'reader',
+      scopeType,
+      scopeValue,
+      label,
+    };
+  }
+
+  function buildRoleRoomGoogleCalendarEventSummary(event: Record<string, unknown>) {
+    const start = readJsonObject(event.start);
+    const end = readJsonObject(event.end);
+    return {
+      id: readStringValue(event.id) ?? crypto.randomUUID(),
+      title: readStringValue(event.summary) ?? 'Kalenderhendelse',
+      description: readStringValue(event.description),
+      status: readStringValue(event.status),
+      location: readStringValue(event.location),
+      start: readStringValue(start.dateTime) ?? readStringValue(start.date),
+      end: readStringValue(end.dateTime) ?? readStringValue(end.date),
+      htmlLink: readStringValue(event.htmlLink),
+      meetUrl: readStringValue(event.hangoutLink),
+    };
+  }
+
+  async function listRoleRoomGoogleCalendarAclRecords(
+    calendarApi: ReturnType<typeof google.calendar>,
+    calendarId: string,
+  ) {
+    const aclResponse = await calendarApi.acl.list({ calendarId });
+    return Array.isArray(aclResponse.data.items)
+      ? aclResponse.data.items.map((rule) => buildRoleRoomGoogleCalendarAclRecord(rule as unknown as Record<string, unknown>))
+      : [];
+  }
+
   async function createRoleRoomGoogleCalendar(
     calendarApi: ReturnType<typeof google.calendar>,
     projectName: string,
@@ -6105,6 +6169,229 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       res.json(buildRoleRoomGoogleProjectBindingResponse(binding, artifacts));
     } catch (error) {
       sendRoleRoomGoogleError(res, error, 'Kunne ikke lagre Google Workspace-bindingen');
+    }
+  });
+
+  router.get('/projects/:projectId/google/calendars', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const { projectId } = req.params;
+      if (!(await ensureProjectAccess(projectId))) {
+        res.status(404).json({ error: 'Prosjekt ikke funnet' });
+        return;
+      }
+
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canReadProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å lese kalendere' });
+        return;
+      }
+
+      const userId = getUserId(req);
+      const googleClient = await buildAuthorizedRoleRoomGoogleClient(req, userId);
+      if (!googleClient) {
+        res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
+        return;
+      }
+
+      const calendarApi = google.calendar({ version: 'v3', auth: googleClient.oauthClient });
+      const response = await calendarApi.calendarList.list({
+        maxResults: 50,
+        showHidden: false,
+      });
+
+      res.json({
+        calendars: Array.isArray(response.data.items)
+          ? response.data.items.map((calendar) => buildRoleRoomGoogleCalendarRecord(calendar as unknown as Record<string, unknown>))
+          : [],
+      });
+    } catch (error) {
+      sendRoleRoomGoogleError(res, error, 'Kunne ikke hente brukerens Google-kalendere');
+    }
+  });
+
+  router.get('/projects/:projectId/google/calendar', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const { projectId } = req.params;
+      if (!(await ensureProjectAccess(projectId))) {
+        res.status(404).json({ error: 'Prosjekt ikke funnet' });
+        return;
+      }
+
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canReadProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til prosjektkalenderen' });
+        return;
+      }
+
+      const userId = getUserId(req);
+      const googleClient = await buildAuthorizedRoleRoomGoogleClient(req, userId);
+      if (!googleClient) {
+        res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
+        return;
+      }
+
+      const binding = await getRoleRoomGoogleProjectBinding(projectId);
+      const requestedCalendarId = readStringValue(req.query.calendarId);
+      const calendarId = requestedCalendarId ?? binding?.calendar_id;
+      if (!calendarId) {
+        res.json({
+          calendar: null,
+          shares: [],
+          events: [],
+        });
+        return;
+      }
+
+      const calendarApi = google.calendar({ version: 'v3', auth: googleClient.oauthClient });
+      const [calendarResponse, shares, eventsResponse] = await Promise.all([
+        calendarApi.calendars.get({ calendarId }),
+        listRoleRoomGoogleCalendarAclRecords(calendarApi, calendarId),
+        calendarApi.events.list({
+          calendarId,
+          singleEvents: true,
+          orderBy: 'startTime',
+          timeMin: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+          maxResults: 20,
+        }),
+      ]);
+
+      res.json({
+        calendar: buildRoleRoomGoogleCalendarRecord(calendarResponse.data as unknown as Record<string, unknown>),
+        shares,
+        events: Array.isArray(eventsResponse.data.items)
+          ? eventsResponse.data.items.map((event) => buildRoleRoomGoogleCalendarEventSummary(event as unknown as Record<string, unknown>))
+          : [],
+      });
+    } catch (error) {
+      sendRoleRoomGoogleError(res, error, 'Kunne ikke hente prosjektkalenderen');
+    }
+  });
+
+  router.post('/projects/:projectId/google/calendar/share', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const { projectId } = req.params;
+      if (!(await ensureProjectAccess(projectId))) {
+        res.status(404).json({ error: 'Prosjekt ikke funnet' });
+        return;
+      }
+
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å dele prosjektkalenderen' });
+        return;
+      }
+
+      const userId = getUserId(req);
+      const googleClient = await buildAuthorizedRoleRoomGoogleClient(req, userId);
+      if (!googleClient) {
+        res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
+        return;
+      }
+
+      const calendarApi = google.calendar({ version: 'v3', auth: googleClient.oauthClient });
+      const existingBinding = await getRoleRoomGoogleProjectBinding(projectId);
+      const calendarId = await resolveRoleRoomGoogleCalendarId(
+        calendarApi,
+        await getRoleRoomProjectName(projectId),
+        readStringValue(req.body?.calendarId) ?? existingBinding?.calendar_id,
+      );
+
+      const shareRole = readStringValue(req.body?.role) ?? 'reader';
+      const scopeType = readStringValue(req.body?.scopeType) ?? (readStringValue(req.body?.domain) ? 'domain' : 'user');
+      const email = readStringValue(req.body?.email);
+      const domain = readStringValue(req.body?.domain);
+      const scopeValue = scopeType === 'domain' ? domain : email;
+      if (!scopeValue) {
+        res.status(400).json({ error: 'Oppgi e-post eller domene som kalenderen skal deles med' });
+        return;
+      }
+
+      const existingRules = await listRoleRoomGoogleCalendarAclRecords(calendarApi, calendarId);
+      const existingRule = existingRules.find((rule) => (
+        rule.scopeType === scopeType && (rule.scopeValue ?? '').toLowerCase() === scopeValue.toLowerCase()
+      ));
+
+      if (!existingRule || existingRule.role !== shareRole) {
+        await calendarApi.acl.insert({
+          calendarId,
+          requestBody: {
+            role: shareRole,
+            scope: {
+              type: scopeType,
+              value: scopeValue,
+            },
+          },
+          sendNotifications: false,
+        });
+      }
+
+      const shares = await listRoleRoomGoogleCalendarAclRecords(calendarApi, calendarId);
+      const updatedBinding = await updateRoleRoomGoogleProjectBinding(projectId, {
+        connectedUserId: userId,
+        calendarId,
+        syncStatus: {
+          ...readJsonObject(existingBinding?.sync_status),
+          calendar: {
+            ...readJsonObject(readJsonObject(existingBinding?.sync_status).calendar),
+            state: 'shared',
+            sharedWith: shares.length,
+            syncedAt: new Date().toISOString(),
+          },
+        },
+        lastCalendarSyncAt: new Date().toISOString(),
+      });
+      const artifacts = await getRoleRoomGoogleArtifactsByProject(projectId);
+
+      res.status(201).json({
+        ...buildRoleRoomGoogleProjectBindingResponse(updatedBinding, artifacts),
+        shares,
+      });
+    } catch (error) {
+      sendRoleRoomGoogleError(res, error, 'Kunne ikke dele prosjektkalenderen');
+    }
+  });
+
+  router.delete('/projects/:projectId/google/calendar/share/:ruleId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const { projectId, ruleId } = req.params;
+      if (!(await ensureProjectAccess(projectId))) {
+        res.status(404).json({ error: 'Prosjekt ikke funnet' });
+        return;
+      }
+
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å oppdatere kalenderdeling' });
+        return;
+      }
+
+      const userId = getUserId(req);
+      const googleClient = await buildAuthorizedRoleRoomGoogleClient(req, userId);
+      if (!googleClient) {
+        res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
+        return;
+      }
+
+      const binding = await getRoleRoomGoogleProjectBinding(projectId);
+      const calendarId = readStringValue(req.query.calendarId) ?? binding?.calendar_id;
+      if (!calendarId) {
+        res.status(400).json({ error: 'Prosjektet mangler en Google-kalender' });
+        return;
+      }
+
+      const calendarApi = google.calendar({ version: 'v3', auth: googleClient.oauthClient });
+      await calendarApi.acl.delete({
+        calendarId,
+        ruleId,
+      });
+      const shares = await listRoleRoomGoogleCalendarAclRecords(calendarApi, calendarId);
+
+      res.json({
+        success: true,
+        shares,
+      });
+    } catch (error) {
+      sendRoleRoomGoogleError(res, error, 'Kunne ikke fjerne kalenderdeling');
     }
   });
 

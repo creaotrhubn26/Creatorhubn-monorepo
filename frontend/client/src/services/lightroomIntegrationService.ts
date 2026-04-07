@@ -1,4 +1,5 @@
 import { apiRequest, getAuthHeader } from '@/lib/queryClient';
+import { startCreatorHubGoogleWorkspaceLink } from '@/lib/creatorhubGoogleAuth';
 
 export type LightroomRecentRun = {
   id: string;
@@ -219,21 +220,10 @@ export const lightroomIntegrationService = {
       authUser.email && !authUser.email.endsWith('@local.dev')
         ? authUser.email
         : null;
-    const response = await apiRequest('/api/role-room/google/oauth/start', {
-      method: 'POST',
-      body: {
-        mode: 'link',
-        browserOrigin: window.location.origin,
-        returnPath: `${window.location.pathname}${window.location.search}`,
-        targetConnectionUserId: resolvedUserId,
-        targetConnectionEmail,
-      },
-    }) as { authorizationUrl?: string };
-
-    if (!response.authorizationUrl) {
-      throw new Error('Kunne ikke starte Google Workspace-tilkoblingen.');
-    }
-
-    window.location.assign(response.authorizationUrl);
+    await startCreatorHubGoogleWorkspaceLink({
+      returnPath: `${window.location.pathname}${window.location.search}`,
+      targetConnectionUserId: resolvedUserId,
+      targetConnectionEmail,
+    });
   },
 };

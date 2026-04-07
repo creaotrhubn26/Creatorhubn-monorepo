@@ -277,10 +277,10 @@ export default function GoogleWorkspaceIntegration({
           <GoogleIcon fontSize="large" />
         </Avatar>
         <Typography variant="h5" fontWeight={700}>
-          Koble til Google Workspace
+          Aktiver Google Workspace
         </Typography>
         <Typography variant="body2" color="text.secondary" textAlign="center">
-          Få en komplett arbeidsflyt med e-post, kalender, filer og møteintegrasjon direkte i CreatorHub.
+          Logg inn med Google én gang for å få en komplett arbeidsflyt med e-post, kalender, filer og møteintegrasjon direkte i CreatorHub.
         </Typography>
       </Stack>
 

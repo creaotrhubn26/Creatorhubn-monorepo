@@ -8,8 +8,10 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import * as rr from '../services/roleRoomService';
+import { apiRequest } from '../lib/queryClient';
+import type { RoleRoomCommercialBillingAccount } from '../components/role-room/services/castingApiService';
 import type {
   CastingProject,
   CastingRole,
@@ -24,6 +26,29 @@ import type {
 const STALE = 5 * 60_000;   // 5 minutes
 const GC    = 10 * 60_000;  // 10 minutes
 
+export type RoleRoomWorkspaceAccessStatus =
+  | 'not_installed'
+  | 'subscription_required'
+  | 'pending_payment'
+  | 'payment_failed'
+  | 'pending_activation'
+  | 'active';
+
+export type RoleRoomWorkspaceAccessSummary = {
+  installedApps: MarketplaceInstallation[];
+  roleRoomInstallation: MarketplaceInstallation | null;
+  billingAccount: RoleRoomCommercialBillingAccount | null;
+  status: RoleRoomWorkspaceAccessStatus;
+  hasInstallation: boolean;
+  hasPaidSubscription: boolean;
+  hasWorkspaceAccess: boolean;
+  needsActivationApproval: boolean;
+  canManageBilling: boolean;
+  ctaLabel: string;
+  statusLabel: string;
+  helperText: string;
+};
+
 // ── Health ───────────────────────────────────────────────────
 
 export function useRoleRoomHealth() {
@@ -32,6 +57,30 @@ export function useRoleRoomHealth() {
     queryFn: () => rr.getHealth(),
     staleTime: 30_000,
     retry: 1,
+  });
+}
+
+export function useRoleRoomBillingAccount(enabled = true) {
+  return useQuery<RoleRoomCommercialBillingAccount | null>({
+    queryKey: ['/api/role-room/billing/account'],
+    queryFn: async () => {
+      try {
+        const result = await apiRequest('/api/role-room/billing/account') as {
+          success?: boolean;
+          account?: RoleRoomCommercialBillingAccount | null;
+        };
+        return result.account ?? null;
+      } catch (error) {
+        if ((error as { status?: number } | null)?.status === 404) {
+          return null;
+        }
+        throw error;
+      }
+    },
+    staleTime: STALE,
+    gcTime: GC,
+    retry: 1,
+    enabled,
   });
 }
 
@@ -262,14 +311,103 @@ export function useRegisterOnboardingRole() {
 
 // ── Marketplace ──────────────────────────────────────────────
 
-export function useInstalledApps() {
+export function useInstalledApps(enabled = true) {
   return useQuery<MarketplaceInstallation[]>({
     queryKey: ['/api/role-room/marketplace/installed'],
     queryFn: () => rr.getInstalledApps(),
     staleTime: STALE,
     gcTime: GC,
     retry: 2,
+    enabled,
   });
+}
+
+export function useRoleRoomWorkspaceAccess(enabled = true) {
+  const installedAppsQuery = useInstalledApps(enabled);
+  const billingAccountQuery = useRoleRoomBillingAccount(enabled);
+
+  const summary = useMemo<RoleRoomWorkspaceAccessSummary>(() => {
+    const installedApps = installedAppsQuery.data ?? [];
+    const roleRoomInstallation =
+      installedApps.find((entry) => entry.app_id === 'role-room' && entry.is_active) ?? null;
+    const billingAccount = billingAccountQuery.data ?? null;
+    const hasInstallation = Boolean(roleRoomInstallation);
+    const hasPaidSubscription = Boolean(billingAccount?.paymentCompleted);
+    const canManageBilling = Boolean(billingAccount?.canManageBilling);
+    const needsActivationApproval = Boolean(
+      billingAccount
+      && !billingAccount.currentUser?.isLeader
+      && !billingAccount.currentUser?.activationApproved
+    );
+
+    let status: RoleRoomWorkspaceAccessStatus = 'not_installed';
+    let statusLabel = 'Ikke installert';
+    let helperText = 'Installer The Role Room fra Marketplace for å starte oppsettet.';
+    let ctaLabel = 'Installer og velg abonnement';
+
+    if (hasInstallation) {
+      status = 'subscription_required';
+      statusLabel = 'Installert';
+      helperText = 'Appen er lagt til i CreatorHub, men abonnementet må være aktivt før fanen blir tilgjengelig.';
+      ctaLabel = 'Fullfør abonnement';
+    }
+
+    if (billingAccount) {
+      if (billingAccount.paymentStatus === 'payment_failed') {
+        status = 'payment_failed';
+        statusLabel = billingAccount.paymentStatusLabel || 'Betaling må oppdateres';
+        helperText = billingAccount.paymentFailureMessage || billingAccount.paymentMessage;
+        ctaLabel = canManageBilling ? 'Oppdater betaling' : 'Se status';
+      } else if (!billingAccount.paymentCompleted) {
+        status = 'pending_payment';
+        statusLabel = billingAccount.paymentStatusLabel || 'Venter på betaling';
+        helperText = billingAccount.paymentMessage;
+        ctaLabel = 'Fullfør abonnement';
+      } else if (needsActivationApproval) {
+        status = 'pending_activation';
+        statusLabel = 'Venter aktivering';
+        helperText =
+          'Abonnementet er aktivt, men denne brukeren må godkjennes i teamet før The Role Room åpnes.';
+        ctaLabel = 'Åpne aktivering';
+      } else {
+        status = 'active';
+        statusLabel = billingAccount.paymentStatusLabel || 'Aktiv tilgang';
+        helperText =
+          billingAccount.companyName
+            ? `${billingAccount.companyName} har aktiv The Role Room-tilgang i denne workspace-kontoen.`
+            : 'The Role Room er aktiv i denne workspace-kontoen.';
+        ctaLabel = 'Åpne The Role Room';
+      }
+    }
+
+    return {
+      installedApps,
+      roleRoomInstallation,
+      billingAccount,
+      status,
+      hasInstallation,
+      hasPaidSubscription,
+      hasWorkspaceAccess: status === 'active',
+      needsActivationApproval,
+      canManageBilling,
+      ctaLabel,
+      statusLabel,
+      helperText,
+    };
+  }, [billingAccountQuery.data, installedAppsQuery.data]);
+
+  return {
+    ...summary,
+    isLoading: installedAppsQuery.isLoading || billingAccountQuery.isLoading,
+    isFetching: installedAppsQuery.isFetching || billingAccountQuery.isFetching,
+    error: installedAppsQuery.error || billingAccountQuery.error || null,
+    refetch: async () => {
+      await Promise.allSettled([
+        installedAppsQuery.refetch(),
+        billingAccountQuery.refetch(),
+      ]);
+    },
+  };
 }
 
 export function useInstallApp() {

@@ -461,7 +461,7 @@ const GoogleTasksIntegration: React.FC<GoogleTasksIntegrationProps> = ({
             Google Tasks
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Oppgaver fra Google Workspace koblet til prosjekt, profesjon og CRM-kontekst.
+            Oppgaver fra samme Google-økt, koblet til prosjekt, profesjon og CRM-kontekst.
           </Typography>
           <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 1.5 }}>
             <Chip size="small" color="primary" variant="outlined" label={`Bruker: ${effectiveUserId}`} />

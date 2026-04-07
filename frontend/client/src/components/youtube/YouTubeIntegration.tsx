@@ -36,6 +36,17 @@ type ProjectOption = {
   clientName?: string;
 };
 
+export interface YouTubePublishingSuggestion {
+  sourceLabel?: string;
+  summary?: string;
+  title?: string;
+  description?: string;
+  tags?: string[];
+  playlistTitle?: string;
+  chips?: string[];
+  nextSteps?: string[];
+}
+
 interface YouTubeIntegrationProps {
   projectId?: string | null;
   userId?: string | null;
@@ -47,6 +58,7 @@ interface YouTubeIntegrationProps {
   compact?: boolean;
   createShowcaseOnUpload?: boolean;
   brandVariant?: 'creatorhub' | 'role-room';
+  publishingSuggestion?: YouTubePublishingSuggestion | null;
 }
 
 type UploadFormState = {
@@ -114,6 +126,27 @@ function tagsToArray(tagsText: string) {
     .split(',')
     .map((entry) => entry.trim())
     .filter(Boolean);
+}
+
+function dedupeSuggestionTags(values: string[] | undefined) {
+  const deduped = new Set<string>();
+  const tags: string[] = [];
+  for (const value of values ?? []) {
+    const normalized = String(value || '').trim();
+    if (!normalized) {
+      continue;
+    }
+    const key = normalized.toLocaleLowerCase('no-NO');
+    if (deduped.has(key)) {
+      continue;
+    }
+    deduped.add(key);
+    tags.push(normalized);
+    if (tags.length >= 10) {
+      break;
+    }
+  }
+  return tags;
 }
 
 function formatCompactNumber(value: number) {
@@ -184,6 +217,7 @@ export const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({
   compact = false,
   createShowcaseOnUpload = true,
   brandVariant = 'creatorhub',
+  publishingSuggestion = null,
 }) => {
   const theme = useTheme();
   const { user } = useAuth();
@@ -274,6 +308,15 @@ export const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({
     playlistId: '',
   });
 
+  const suggestionTags = useMemo(
+    () => dedupeSuggestionTags(publishingSuggestion?.tags),
+    [publishingSuggestion?.tags],
+  );
+  const suggestionChips = useMemo(
+    () => dedupeSuggestionTags(publishingSuggestion?.chips),
+    [publishingSuggestion?.chips],
+  );
+
   React.useEffect(() => {
     setUploadForm((current) => {
       if (current.file || current.title.trim().length > 0) {
@@ -292,6 +335,25 @@ export const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({
       };
     });
   }, [selectedProjectLabel]);
+
+  const applyPublishingSuggestion = React.useCallback(() => {
+    if (!publishingSuggestion) {
+      return;
+    }
+
+    setUploadForm((current) => ({
+      ...current,
+      title: publishingSuggestion.title?.trim() || current.title,
+      description: publishingSuggestion.description?.trim() || current.description,
+      tagsText: suggestionTags.length > 0 ? suggestionTags.join(', ') : current.tagsText,
+    }));
+
+    setPlaylistForm((current) => ({
+      ...current,
+      title: publishingSuggestion.playlistTitle?.trim() || current.title,
+      description: publishingSuggestion.summary?.trim() || current.description,
+    }));
+  }, [publishingSuggestion, suggestionTags]);
 
   const statusQuery = useQuery({
     queryKey: ['/api/youtube/status', { userId: resolvedUserId }],
@@ -690,7 +752,7 @@ export const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({
                       </>
                     ) : (
                       <Button color="inherit" size="small" onClick={connectToGoogleWorkspace}>
-                        {youtubeNeedsReconnect ? 'Koble på nytt' : 'Koble til'}
+                        {youtubeNeedsReconnect ? 'Forny Google-SSO' : 'Fortsett med Google-SSO'}
                       </Button>
                     )}
                   </Stack>
@@ -698,10 +760,10 @@ export const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({
                 sx={{ borderRadius: 3 }}
               >
                 {youtubeNeedsReconnect
-                  ? 'Google Workspace er koblet til, men uten nødvendige YouTube-rettigheter. Koble til på nytt for publisering.'
+                  ? 'Google-økten er aktiv, men uten nødvendige YouTube-rettigheter. Forny Google-SSO for publisering.'
                   : needsYouTubeChannelSetup
                     ? 'Google-kontoen er koblet til riktig, men YouTube-kanalen er ikke aktivert ennå. Opprett kanalen én gang, så blir publiseringsflyten komplett.'
-                    : `Koble Google Workspace til ${workspaceLabel} for å få YouTube-publisering direkte i dashboardet.`}
+                    : `YouTube-publisering i ${workspaceLabel} følger samme Google-SSO som resten av plattformen.`}
               </Alert>
             )}
 
@@ -732,6 +794,62 @@ export const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({
                       Bygg utkastet her. Opplastingen går direkte til YouTube-kanalen din med riktig prosjektkontekst.
                     </Typography>
                   </Box>
+
+                  {publishingSuggestion && (
+                    <Paper
+                      elevation={0}
+                      sx={{
+                        p: 1.6,
+                        borderRadius: 3,
+                        border: `1px solid ${brandStyles.chipBorder}`,
+                        bgcolor: brandStyles.chipBackground,
+                      }}
+                    >
+                      <Stack spacing={1.1}>
+                        <Stack
+                          direction={{ xs: 'column', sm: 'row' }}
+                          spacing={1}
+                          justifyContent="space-between"
+                          alignItems={{ xs: 'flex-start', sm: 'center' }}
+                        >
+                          <Box>
+                            <Typography variant="subtitle2" sx={{ fontWeight: 700, color: brandStyles.primaryText }}>
+                              {publishingSuggestion.sourceLabel || 'Strategiforslag'}
+                            </Typography>
+                            <Typography variant="body2" sx={{ color: brandStyles.secondaryText }}>
+                              {publishingSuggestion.summary || 'Bruk prosjektgrunnlaget til å fylle ut YouTube-utkastet raskere.'}
+                            </Typography>
+                          </Box>
+                          <Button size="small" variant="outlined" onClick={applyPublishingSuggestion}>
+                            Bruk utkastet
+                          </Button>
+                        </Stack>
+
+                        {suggestionChips.length > 0 && (
+                          <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
+                            {suggestionChips.map((chip) => (
+                              <Chip
+                                key={chip}
+                                size="small"
+                                label={chip}
+                                sx={{
+                                  border: `1px solid ${brandStyles.chipBorder}`,
+                                  bgcolor: brandStyles.chipBackground,
+                                  color: brandStyles.chipText,
+                                }}
+                              />
+                            ))}
+                          </Stack>
+                        )}
+
+                        {publishingSuggestion.nextSteps && publishingSuggestion.nextSteps.length > 0 && (
+                          <Typography variant="caption" sx={{ color: brandStyles.secondaryText, lineHeight: 1.5 }}>
+                            Neste steg: {publishingSuggestion.nextSteps.slice(0, 3).join(' · ')}
+                          </Typography>
+                        )}
+                      </Stack>
+                    </Paper>
+                  )}
 
                   <TextField
                     label="Tittel"
