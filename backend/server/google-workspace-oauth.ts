@@ -58,6 +58,10 @@ function defaultCallbackPath(app: GoogleWorkspaceOauthApp): string {
     : '/api/role-room/google/oauth/callback';
 }
 
+function isLocalhostHostname(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '127.0.0.1';
+}
+
 function defaultRedirectUri(app: GoogleWorkspaceOauthApp, req?: Request): string | null {
   const requestOrigin = resolveRequestOrigin(req);
   if (requestOrigin) {
@@ -67,6 +71,43 @@ function defaultRedirectUri(app: GoogleWorkspaceOauthApp, req?: Request): string
   return app === 'creatorhub'
     ? 'http://localhost:5000/api/creatorhub/google/oauth/callback'
     : 'http://localhost:5000/api/role-room/google/oauth/callback';
+}
+
+function resolveGoogleWorkspaceRedirectUri(
+  app: GoogleWorkspaceOauthApp,
+  configuredRedirectUri: string | null,
+  req?: Request,
+): string | null {
+  const requestDerivedRedirectUri = defaultRedirectUri(app, req);
+  if (!configuredRedirectUri) {
+    return requestDerivedRedirectUri;
+  }
+
+  if (!requestDerivedRedirectUri) {
+    return configuredRedirectUri;
+  }
+
+  try {
+    const configuredUrl = new URL(configuredRedirectUri);
+    const requestUrl = new URL(requestDerivedRedirectUri);
+    const configuredIsLocal = isLocalhostHostname(configuredUrl.hostname);
+    const requestIsLocal = isLocalhostHostname(requestUrl.hostname);
+
+    if (configuredIsLocal || requestIsLocal) {
+      return configuredRedirectUri;
+    }
+
+    if (
+      configuredUrl.origin !== requestUrl.origin
+      || configuredUrl.pathname !== requestUrl.pathname
+    ) {
+      return requestDerivedRedirectUri;
+    }
+
+    return configuredRedirectUri;
+  } catch {
+    return requestDerivedRedirectUri;
+  }
 }
 
 function detectGoogleWorkspaceOauthApp(value: unknown): GoogleWorkspaceOauthApp | null {
@@ -155,9 +196,11 @@ export function getGoogleWorkspaceOauthConfig(
   const envPrefix = app === 'creatorhub' ? 'CREATORHUB_GOOGLE' : 'ROLE_ROOM_GOOGLE';
   const clientId = readStringValue(process.env[`${envPrefix}_CLIENT_ID`]);
   const clientSecret = readStringValue(process.env[`${envPrefix}_CLIENT_SECRET`]);
-  const redirectUri =
-    readStringValue(process.env[`${envPrefix}_REDIRECT_URI`])
-    ?? defaultRedirectUri(app, req);
+  const redirectUri = resolveGoogleWorkspaceRedirectUri(
+    app,
+    readStringValue(process.env[`${envPrefix}_REDIRECT_URI`]),
+    req,
+  );
 
   return {
     app,
