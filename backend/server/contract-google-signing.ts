@@ -3,6 +3,11 @@ import { Readable } from 'stream';
 import { google } from 'googleapis';
 import type { Pool } from 'pg';
 import {
+  getGoogleWorkspaceOauthConfig,
+  normalizeGoogleWorkspaceOauthApp,
+  type GoogleWorkspaceOauthApp,
+} from './google-workspace-oauth.js';
+import {
   ensureCustomerWorkflowFolder,
   resolveDocumentBranding,
   upsertStructuredGoogleDocument,
@@ -18,6 +23,7 @@ type RoleRoomGoogleConnectionRow = {
   refresh_token_encrypted: string | null;
   expiry_date: string | null;
   scopes: unknown;
+  oauth_app: string | null;
 };
 
 type ContractGoogleSignatureRow = {
@@ -427,34 +433,26 @@ export async function resolveRoleRoomGoogleConnection(
   preferredUserId?: string | null,
   options?: {
     allowFallbackToAnyUser?: boolean;
+    preferredOauthApps?: GoogleWorkspaceOauthApp[];
   },
 ): Promise<AuthorizedContractGoogleClient> {
   await ensureContractGoogleSigningSchema(pool);
 
-  const clientId = readStringValue(process.env.ROLE_ROOM_GOOGLE_CLIENT_ID ?? process.env.GOOGLE_CLIENT_ID);
-  const clientSecret = readStringValue(process.env.ROLE_ROOM_GOOGLE_CLIENT_SECRET ?? process.env.GOOGLE_CLIENT_SECRET);
-  const redirectUri = readStringValue(
-    process.env.ROLE_ROOM_GOOGLE_REDIRECT_URI
-    ?? process.env.GOOGLE_REDIRECT_URI
-    ?? 'http://localhost:5050/api/auth/google/callback',
-  );
-
-  if (!clientId || !clientSecret || !redirectUri) {
-    throw new Error('Google Workspace er ikke konfigurert.');
-  }
-
   const allowFallbackToAnyUser = options?.allowFallbackToAnyUser !== false;
+  const preferredOauthApps = options?.preferredOauthApps?.length
+    ? options.preferredOauthApps
+    : ['creatorhub', 'role_room'];
   const queries = preferredUserId
     ? [
         {
           sql: `
-            SELECT user_id, google_email, google_subject, access_token_encrypted, refresh_token_encrypted, expiry_date, scopes
+            SELECT user_id, google_email, google_subject, access_token_encrypted, refresh_token_encrypted, expiry_date, scopes, oauth_app
             FROM role_room_google_connections
             WHERE connection_state = 'connected'
               AND (refresh_token_encrypted IS NOT NULL OR access_token_encrypted IS NOT NULL)
               AND user_id = $1
             ORDER BY last_used_at DESC NULLS LAST, updated_at DESC NULLS LAST, created_at DESC NULLS LAST
-            LIMIT 1
+            LIMIT 10
           `,
           params: [preferredUserId],
         },
@@ -462,7 +460,7 @@ export async function resolveRoleRoomGoogleConnection(
           ? [
               {
                 sql: `
-                  SELECT user_id, google_email, google_subject, access_token_encrypted, refresh_token_encrypted, expiry_date, scopes
+                  SELECT user_id, google_email, google_subject, access_token_encrypted, refresh_token_encrypted, expiry_date, scopes, oauth_app
                   FROM role_room_google_connections
                   WHERE connection_state = 'connected'
                     AND (refresh_token_encrypted IS NOT NULL OR access_token_encrypted IS NOT NULL)
@@ -471,7 +469,7 @@ export async function resolveRoleRoomGoogleConnection(
                     last_used_at DESC NULLS LAST,
                     updated_at DESC NULLS LAST,
                     created_at DESC NULLS LAST
-                  LIMIT 1
+                  LIMIT 10
                 `,
                 params: [],
               },
@@ -481,7 +479,7 @@ export async function resolveRoleRoomGoogleConnection(
     : [
         {
           sql: `
-            SELECT user_id, google_email, google_subject, access_token_encrypted, refresh_token_encrypted, expiry_date, scopes
+            SELECT user_id, google_email, google_subject, access_token_encrypted, refresh_token_encrypted, expiry_date, scopes, oauth_app
             FROM role_room_google_connections
             WHERE connection_state = 'connected'
               AND (refresh_token_encrypted IS NOT NULL OR access_token_encrypted IS NOT NULL)
@@ -490,7 +488,7 @@ export async function resolveRoleRoomGoogleConnection(
               last_used_at DESC NULLS LAST,
               updated_at DESC NULLS LAST,
               created_at DESC NULLS LAST
-            LIMIT 1
+            LIMIT 10
           `,
           params: [],
         },
@@ -501,7 +499,16 @@ export async function resolveRoleRoomGoogleConnection(
     try {
       const result = await pool.query<RoleRoomGoogleConnectionRow>(query.sql, query.params);
       if (result.rows.length > 0) {
-        connection = result.rows[0];
+        for (const preferredApp of preferredOauthApps) {
+          const match = result.rows.find(
+            (row) => normalizeGoogleWorkspaceOauthApp(row.oauth_app, 'role_room') === preferredApp,
+          );
+          if (match) {
+            connection = match;
+            break;
+          }
+        }
+        connection = connection ?? result.rows[0];
         break;
       }
     } catch (error) {
@@ -516,7 +523,21 @@ export async function resolveRoleRoomGoogleConnection(
     throw new Error('Fant ingen koblet Google Workspace-konto.');
   }
 
-  const oauthClient = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
+  const oauthApp = normalizeGoogleWorkspaceOauthApp(connection.oauth_app, 'role_room');
+  const oauthConfig = getGoogleWorkspaceOauthConfig(oauthApp);
+  if (!oauthConfig.clientId || !oauthConfig.clientSecret || !oauthConfig.redirectUri) {
+    throw new Error(
+      oauthApp === 'creatorhub'
+        ? 'CreatorHub Google Workspace er ikke konfigurert.'
+        : 'The Role Room Google Workspace er ikke konfigurert.',
+    );
+  }
+
+  const oauthClient = new google.auth.OAuth2(
+    oauthConfig.clientId,
+    oauthConfig.clientSecret,
+    oauthConfig.redirectUri,
+  );
   const refreshToken = decryptRoleRoomGoogleToken(connection.refresh_token_encrypted);
   const accessTokenSeed = decryptRoleRoomGoogleToken(connection.access_token_encrypted);
   oauthClient.setCredentials({

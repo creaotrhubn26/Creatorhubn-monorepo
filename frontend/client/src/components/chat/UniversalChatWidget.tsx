@@ -2,6 +2,11 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
+import {
+  clearCreatorHubGoogleIntentFromUrl,
+  hasCreatorHubGoogleCallbackState,
+  readCreatorHubGoogleCallbackIntent,
+} from '@/lib/creatorhubGoogleAuth';
 import { useTheming } from '../../utils/theming-helper';
 import { useCommunicationStatus } from '../../contexts/CommunicationStatusContext';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
@@ -1367,13 +1372,7 @@ export default function UniversalChatWidget({
     if (typeof window === 'undefined') {
       return;
     }
-
-    const url = new URL(window.location.href);
-    url.searchParams.delete('rrGoogleStatus');
-    url.searchParams.delete('rrGoogleTransfer');
-    url.searchParams.delete('rrGoogleMode');
-    url.searchParams.delete('rrGoogleMessage');
-    window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
+    clearCreatorHubGoogleIntentFromUrl();
   };
 
   const buildGoogleWorkspaceReturnPath = () => {
@@ -1382,10 +1381,9 @@ export default function UniversalChatWidget({
     }
 
     const url = new URL(window.location.href);
-    url.searchParams.delete('rrGoogleStatus');
-    url.searchParams.delete('rrGoogleTransfer');
-    url.searchParams.delete('rrGoogleMode');
-    url.searchParams.delete('rrGoogleMessage');
+    ['chGoogleStatus', 'chGoogleTransfer', 'chGoogleMode', 'chGoogleMessage'].forEach((param) => {
+      url.searchParams.delete(param);
+    });
     return `${url.pathname}${url.search}${url.hash}`;
   };
 
@@ -1413,7 +1411,7 @@ export default function UniversalChatWidget({
         && userId
         && sharedGmailConnectionUserId !== userId,
       );
-      const response = await apiRequest('/api/role-room/google/oauth/start', {
+      const response = await apiRequest('/api/creatorhub/google/oauth/start', {
         method: 'POST',
         body: {
           mode: 'link',
@@ -1456,10 +1454,7 @@ export default function UniversalChatWidget({
     const transferProcessingStorageKey = 'creatorhub:rr-google-processing';
     const syncGoogleWorkspaceOauthPending = () => {
       const params = new URLSearchParams(window.location.search);
-      const hasGoogleWorkspaceCallbackState =
-        params.has('rrGoogleStatus')
-        || params.has('rrGoogleTransfer')
-        || params.has('rrGoogleMode');
+      const hasGoogleWorkspaceCallbackState = hasCreatorHubGoogleCallbackState(params);
       const processingTransferKey = window.sessionStorage.getItem(transferProcessingStorageKey);
 
       if (!hasGoogleWorkspaceCallbackState) {
@@ -1493,10 +1488,11 @@ export default function UniversalChatWidget({
 
     const transferProcessingStorageKey = 'creatorhub:rr-google-processing';
     const params = new URLSearchParams(window.location.search);
-    const googleStatus = params.get('rrGoogleStatus');
-    const googleTransferId = params.get('rrGoogleTransfer');
-    const googleMode = params.get('rrGoogleMode');
-    const googleMessage = params.get('rrGoogleMessage');
+    const googleIntent = readCreatorHubGoogleCallbackIntent(params);
+    const googleStatus = googleIntent.status;
+    const googleTransferId = googleIntent.transferId;
+    const googleMode = googleIntent.mode;
+    const googleMessage = googleIntent.message;
 
     if (!googleStatus) {
       return;
@@ -1529,7 +1525,7 @@ export default function UniversalChatWidget({
       try {
         let transfer: any = null;
         try {
-          transfer = await apiRequest(`/api/role-room/google/oauth/session-result/${encodeURIComponent(googleTransferId)}`);
+          transfer = await apiRequest(`/api/creatorhub/google/oauth/session-result/${encodeURIComponent(googleTransferId)}`);
         } catch (sessionError) {
           const message = sessionError instanceof Error ? sessionError.message : String(sessionError ?? '');
           if (!/404/.test(message)) {
@@ -1545,7 +1541,7 @@ export default function UniversalChatWidget({
 
         let linkedStatus: any = null;
         try {
-          linkedStatus = await apiRequest('/api/role-room/google/link', {
+          linkedStatus = await apiRequest('/api/creatorhub/google/link', {
             method: 'POST',
             body: { transferId: googleTransferId },
           });
@@ -2148,7 +2144,7 @@ export default function UniversalChatWidget({
       return false;
     }
     const params = new URLSearchParams(window.location.search);
-    return params.has('rrGoogleStatus') || params.has('rrGoogleTransfer') || params.has('rrGoogleMode');
+    return hasCreatorHubGoogleCallbackState(params);
   })();
   const googleWorkspaceOauthUiBusy = googleWorkspaceOauthPending && !hasActiveGoogleWorkspaceCallbackState;
   const {

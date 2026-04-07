@@ -404,7 +404,11 @@ async function fetchGoogleConnectionMeta(pool: Pool, userId: string) {
        FROM role_room_google_connections
       WHERE user_id = $1
         AND connection_state = 'connected'
-      ORDER BY last_used_at DESC NULLS LAST, updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+      ORDER BY
+        CASE WHEN oauth_app = 'creatorhub' THEN 0 WHEN oauth_app = 'role_room' THEN 1 ELSE 2 END,
+        last_used_at DESC NULLS LAST,
+        updated_at DESC NULLS LAST,
+        created_at DESC NULLS LAST
       LIMIT 1`,
       [userId],
     )

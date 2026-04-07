@@ -355,11 +355,16 @@ export const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({
     }));
   }, [publishingSuggestion, suggestionTags]);
 
+  const workspaceHeaders = {
+    ...(resolvedUserId ? { 'x-user-id': resolvedUserId } : {}),
+    'x-google-workspace-app': isRoleRoomVariant ? 'role_room' : 'creatorhub',
+  };
+
   const statusQuery = useQuery({
     queryKey: ['/api/youtube/status', { userId: resolvedUserId }],
     queryFn: () => apiRequest('/api/youtube/status', {
       method: 'GET',
-      headers: resolvedUserId ? { 'x-user-id': resolvedUserId } : {},
+      headers: workspaceHeaders,
     }),
     enabled: Boolean(resolvedUserId || hasSessionToken),
   });
@@ -393,7 +398,7 @@ export const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({
     queryKey: ['/api/youtube/videos', { userId: resolvedUserId, projectId: effectiveProjectId }],
     queryFn: () => apiRequest(`/api/youtube/videos${effectiveProjectId ? `?projectId=${encodeURIComponent(effectiveProjectId)}` : ''}`, {
       method: 'GET',
-      headers: resolvedUserId ? { 'x-user-id': resolvedUserId } : {},
+      headers: workspaceHeaders,
     }),
     enabled: Boolean((resolvedUserId || hasSessionToken) && youtubeConnected),
   });
@@ -402,7 +407,7 @@ export const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({
     queryKey: ['/api/youtube/playlists', { userId: resolvedUserId }],
     queryFn: () => apiRequest('/api/youtube/playlists', {
       method: 'GET',
-      headers: resolvedUserId ? { 'x-user-id': resolvedUserId } : {},
+      headers: workspaceHeaders,
     }),
     enabled: Boolean((resolvedUserId || hasSessionToken) && youtubeConnected),
   });
@@ -415,7 +420,7 @@ export const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({
 
       return apiRequest('/api/youtube/playlists', {
         method: 'POST',
-        headers: { 'x-user-id': resolvedUserId },
+        headers: workspaceHeaders,
         body: {
           ...playlistForm,
           userId: resolvedUserId,
@@ -444,7 +449,7 @@ export const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({
 
       return apiRequest(`/api/youtube/videos/${editingVideo.id}`, {
         method: 'PATCH',
-        headers: { 'x-user-id': resolvedUserId },
+        headers: workspaceHeaders,
         body: {
           ...editForm,
           tags: tagsToArray(editForm.tagsText),
@@ -471,7 +476,7 @@ export const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({
 
       return apiRequest(`/api/youtube/videos/${editingVideo.id}/thumbnail`, {
         method: 'POST',
-        headers: { 'x-user-id': resolvedUserId },
+        headers: workspaceHeaders,
         body: formData,
       });
     },
@@ -485,7 +490,10 @@ export const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({
       return;
     }
 
-    const result = await apiRequest('/api/role-room/google/oauth/start', {
+    const oauthStartPath = isRoleRoomVariant
+      ? '/api/role-room/google/oauth/start'
+      : '/api/creatorhub/google/oauth/start';
+    const result = await apiRequest(oauthStartPath, {
       method: 'POST',
       body: {
         mode: 'link',
@@ -537,7 +545,9 @@ export const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({
       Object.entries(authHeaders).forEach(([key, value]) => {
         xhr.setRequestHeader(key, value);
       });
-      xhr.setRequestHeader('x-user-id', resolvedUserId);
+      Object.entries(workspaceHeaders).forEach(([key, value]) => {
+        xhr.setRequestHeader(key, value);
+      });
 
       xhr.upload.addEventListener('progress', (event) => {
         if (!event.lengthComputable) {

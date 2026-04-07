@@ -105,7 +105,7 @@ function buildQueryString(
 export const academyGoogleWorkspaceService = {
   async getStatus(): Promise<AcademyGoogleWorkspaceStatus> {
     return apiRequest(
-      "/api/role-room/google/status",
+      "/api/creatorhub/google/status",
     ) as Promise<AcademyGoogleWorkspaceStatus>;
   },
 
@@ -115,7 +115,7 @@ export const academyGoogleWorkspaceService = {
     }
 
     const storedUser = readStoredAuthUser();
-    const response = (await apiRequest("/api/role-room/google/oauth/start", {
+    const response = (await apiRequest("/api/creatorhub/google/oauth/start", {
       method: "POST",
       body: {
         mode: "link",

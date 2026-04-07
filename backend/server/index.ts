@@ -33,6 +33,7 @@ import { Pool } from "pg";
 import * as schema from "../migrations/schema.js";
 import { and, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { createRoleRoomRouter } from "./role-room-routes.js";
+import { createCreatorHubGoogleRouter } from "./creatorhub-google-routes.js";
 import { createRoleRoomIntegrationsV1Router } from "./role-room-integrations-v1-routes.js";
 import { createCommunicationRouter } from "./communication-routes.js";
 import { createDashboardCompatRouter } from "./dashboard-compat-routes.js";
@@ -89,6 +90,10 @@ import {
   loadPersistedAuthSession,
   persistAuthSession,
 } from "./auth-session-store.js";
+import {
+  derivePreferredGoogleWorkspaceOauthApps,
+  type GoogleWorkspaceOauthApp,
+} from "./google-workspace-oauth.js";
 import { createServer } from "http";
 import {
   MEMORY_CARD_DATABASE as MEMORY_CARD_PRODUCTS_DB,
@@ -844,6 +849,7 @@ function requireInviteRequestApproverSession(
 
 registerTidumAdminRoutes(app, pool, requireAdminSession);
 
+app.use("/api/creatorhub/google", createCreatorHubGoogleRouter(pool, activeSessions));
 app.use("/api/role-room", createRoleRoomRouter(pool, activeSessions));
 app.use("/api/youtube", createYouTubeRouter(pool));
 app.use(
@@ -851,7 +857,7 @@ app.use(
   createRoleRoomIntegrationsV1Router(pool),
 );
 
-const forwardRoleRoomGoogleCallback = (
+const forwardGoogleCallback = (
   req: express.Request,
   res: express.Response,
 ) => {
@@ -870,10 +876,21 @@ const forwardRoleRoomGoogleCallback = (
     }
   }
 
+  const state = String(req.query.state || "").trim();
+  const targetPath = state.startsWith("chg_")
+    ? "/api/creatorhub/google/oauth/callback"
+    : "/api/role-room/google/oauth/callback";
   const queryString = params.toString();
   res.redirect(
-    `/api/role-room/google/oauth/callback${queryString ? `?${queryString}` : ""}`,
+    `${targetPath}${queryString ? `?${queryString}` : ""}`,
   );
+};
+
+const forwardRoleRoomGoogleCallback = (
+  req: express.Request,
+  res: express.Response,
+) => {
+  forwardGoogleCallback(req, res);
 };
 
 app.get("/api/auth/google/callback", forwardRoleRoomGoogleCallback);
@@ -909,8 +926,9 @@ app.get("/auth/linkedin/callback", forwardRoleRoomLinkedInCallback);
 
 const maybeStartRoleRoomGoogleRedirectBridge = () => {
   const redirectCandidate =
+    process.env.CREATORHUB_GOOGLE_REDIRECT_URI ||
     process.env.ROLE_ROOM_GOOGLE_REDIRECT_URI ||
-    process.env.GOOGLE_REDIRECT_URI;
+    null;
   if (!redirectCandidate) {
     return;
   }
@@ -961,9 +979,13 @@ const maybeStartRoleRoomGoogleRedirectBridge = () => {
     }
 
     const queryString = params.toString();
-    res.redirect(
-      `http://localhost:${PORT}/api/role-room/google/oauth/callback${queryString ? `?${queryString}` : ""}`,
-    );
+      const state = String(req.query.state || "").trim();
+      const callbackPath = state.startsWith("chg_")
+        ? "/api/creatorhub/google/oauth/callback"
+        : "/api/role-room/google/oauth/callback";
+      res.redirect(
+        `http://localhost:${PORT}${callbackPath}${queryString ? `?${queryString}` : ""}`,
+      );
   };
 
   bridgeApp.get("/api/auth/google/callback", bridgeHandler);
@@ -23720,6 +23742,7 @@ app.get("/api/file-management/google-drive/status", async (req, res) => {
          FROM role_room_google_connections
          WHERE ${whereClause}
          ORDER BY
+           CASE WHEN oauth_app = 'creatorhub' THEN 0 WHEN oauth_app = 'role_room' THEN 1 ELSE 2 END,
            CASE WHEN refresh_token_encrypted IS NOT NULL THEN 0 ELSE 1 END,
            last_used_at DESC NULLS LAST,
            updated_at DESC NULLS LAST,
@@ -23736,7 +23759,8 @@ app.get("/api/file-management/google-drive/status", async (req, res) => {
        WHERE connection_state = 'connected'
          AND (refresh_token_encrypted IS NOT NULL OR access_token_encrypted IS NOT NULL)
          AND user_id = $1
-       ORDER BY last_used_at DESC NULLS LAST, updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+       ORDER BY CASE WHEN oauth_app = 'creatorhub' THEN 0 WHEN oauth_app = 'role_room' THEN 1 ELSE 2 END,
+                last_used_at DESC NULLS LAST, updated_at DESC NULLS LAST, created_at DESC NULLS LAST
        LIMIT 1`,
       [normalizedUserId],
     );
@@ -23823,6 +23847,7 @@ app.get("/api/file-management/google-drive/status", async (req, res) => {
         const authorized = await resolveRoleRoomGoogleConnection(
           pool,
           roleRoomConnectionUserId,
+          { preferredOauthApps: derivePreferredGoogleWorkspaceOauthApps(req) },
         );
         return res.status(200).json({
           connected: driveEnabled,
@@ -24654,6 +24679,7 @@ async function buildGooglePhotosStatusSnapshot(): Promise<GooglePhotosStatusSnap
 
 async function buildGoogleContactsStatusSnapshot(
   userId: string,
+  preferredOauthApps: GoogleWorkspaceOauthApp[] = ["creatorhub", "role_room"],
 ): Promise<GoogleContactsStatusSnapshot> {
   const normalizedUserId = readString(userId) || "guest";
   if (normalizedUserId === "guest") {
@@ -24676,7 +24702,8 @@ async function buildGoogleContactsStatusSnapshot(
        WHERE connection_state = 'connected'
          AND (refresh_token_encrypted IS NOT NULL OR access_token_encrypted IS NOT NULL)
          AND user_id = $1
-       ORDER BY last_used_at DESC NULLS LAST, updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+       ORDER BY CASE WHEN oauth_app = 'creatorhub' THEN 0 WHEN oauth_app = 'role_room' THEN 1 ELSE 2 END,
+                last_used_at DESC NULLS LAST, updated_at DESC NULLS LAST, created_at DESC NULLS LAST
        LIMIT 1`,
       [normalizedUserId],
     );
@@ -24706,6 +24733,7 @@ async function buildGoogleContactsStatusSnapshot(
       const authorized = await resolveRoleRoomGoogleConnection(
         pool,
         normalizedUserId,
+        { preferredOauthApps },
       );
       return {
         connected: readEnabled,
@@ -24852,6 +24880,7 @@ const readGoogleWorkspaceBackupStatus = async (
 
 async function buildGoogleWorkspaceStorageSnapshot(
   userId: string,
+  preferredOauthApps: GoogleWorkspaceOauthApp[] = ["creatorhub", "role_room"],
 ): Promise<GoogleWorkspaceStorageSnapshot> {
   const normalizedUserId = readString(userId) || "guest";
 
@@ -24965,6 +24994,7 @@ async function buildGoogleWorkspaceStorageSnapshot(
       const authorized = await resolveRoleRoomGoogleConnection(
         pool,
         normalizedUserId,
+        { preferredOauthApps },
       );
       const driveApi = google.drive({
         version: "v3",
@@ -25062,7 +25092,10 @@ app.get("/api/google-workspace/storage/:userId", async (req, res) => {
       readString(req.params.userId) ||
       readString(req.headers["x-user-id"]) ||
       "guest";
-    const snapshot = await buildGoogleWorkspaceStorageSnapshot(userId);
+    const snapshot = await buildGoogleWorkspaceStorageSnapshot(
+      userId,
+      derivePreferredGoogleWorkspaceOauthApps(req),
+    );
     res.json(snapshot);
   } catch (error) {
     console.error("Error fetching Google Workspace storage:", error);
@@ -25076,7 +25109,10 @@ app.get("/api/file-management/google-contacts/status", async (req, res) => {
       readString(req.query.userId) ||
       readString(req.headers["x-user-id"]) ||
       "guest";
-    const snapshot = await buildGoogleContactsStatusSnapshot(userId);
+    const snapshot = await buildGoogleContactsStatusSnapshot(
+      userId,
+      derivePreferredGoogleWorkspaceOauthApps(req),
+    );
     res.json(snapshot);
   } catch (error) {
     console.error("Error fetching Google Contacts status:", error);
@@ -25126,7 +25162,11 @@ app.post("/api/backup/create", async (req, res) => {
     const customerName = readString(req.body?.customerName);
     const companyName = readString(req.body?.companyName);
 
-    const storageSnapshot = await buildGoogleWorkspaceStorageSnapshot(userId);
+    const preferredOauthApps = derivePreferredGoogleWorkspaceOauthApps(req);
+    const storageSnapshot = await buildGoogleWorkspaceStorageSnapshot(
+      userId,
+      preferredOauthApps,
+    );
     if (!storageSnapshot.googleDriveConnected) {
       return res.status(409).json({
         error:
@@ -25136,7 +25176,7 @@ app.post("/api/backup/create", async (req, res) => {
 
     const [contactsSnapshot, photosSnapshot, existingBackupStatus] =
       await Promise.all([
-        buildGoogleContactsStatusSnapshot(userId),
+        buildGoogleContactsStatusSnapshot(userId, preferredOauthApps),
         buildGooglePhotosStatusSnapshot(),
         readGoogleWorkspaceBackupStatus(userId),
       ]);
@@ -25164,7 +25204,9 @@ app.post("/api/backup/create", async (req, res) => {
       },
     };
 
-    const authorized = await resolveRoleRoomGoogleConnection(pool, userId);
+    const authorized = await resolveRoleRoomGoogleConnection(pool, userId, {
+      preferredOauthApps,
+    });
     const driveApi = google.drive({
       version: "v3",
       auth: authorized.oauthClient,
@@ -92091,6 +92133,7 @@ const handleCreateGoogleMeet = async (
       pool,
       req.body ?? {},
       preferredUserId,
+      { preferredOauthApps: derivePreferredGoogleWorkspaceOauthApps(req) },
     );
     const notebookScope = {
       userId: preferredUserId,
@@ -103366,7 +103409,9 @@ async function buildGooglePeopleClient(
   payload?: Record<string, unknown>,
 ) {
   const identity = readWorkspaceIdentity(req, payload);
-  return resolveRoleRoomGoogleConnection(pool, identity.userId);
+  return resolveRoleRoomGoogleConnection(pool, identity.userId, {
+    preferredOauthApps: derivePreferredGoogleWorkspaceOauthApps(req),
+  });
 }
 
 async function mirrorGoogleContactToCrm(payload: {

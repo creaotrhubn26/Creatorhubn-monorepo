@@ -21,6 +21,10 @@ import * as schema from '../migrations/schema.js';
 import crypto from 'crypto';
 import { Readable } from 'stream';
 import { ensureContractsCompatibilitySchema } from './contract-google-signing.js';
+import {
+  getGoogleWorkspaceOauthConfig,
+  normalizeGoogleWorkspaceOauthApp,
+} from './google-workspace-oauth.js';
 
 type DB = NodePgDatabase<typeof schema>;
 
@@ -33,6 +37,7 @@ type RoleRoomGoogleConnectionRow = {
   refresh_token_encrypted: string | null;
   expiry_date: string | null;
   scopes?: unknown;
+  oauth_app?: string | null;
 };
 
 type GoogleScopesCarrier = {
@@ -1009,15 +1014,10 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
     preferredUserId?: string | null,
     preferredUserEmail?: string | null,
   ): Promise<LiveGoogleWorkspaceContext | null> => {
-    const clientId = readStringConfig(process.env.ROLE_ROOM_GOOGLE_CLIENT_ID ?? process.env.GOOGLE_CLIENT_ID);
-    const clientSecret = readStringConfig(process.env.ROLE_ROOM_GOOGLE_CLIENT_SECRET ?? process.env.GOOGLE_CLIENT_SECRET);
     const configuredWorkspaceEmail = readStringConfig(process.env.GOOGLE_WORKSPACE_EMAIL);
     const configuredWorkspaceDomain = configuredWorkspaceEmail?.includes('@')
       ? configuredWorkspaceEmail.split('@')[1]?.toLowerCase() ?? null
       : null;
-    if (!clientId || !clientSecret) {
-      return null;
-    }
 
     const baseFilters = [
       `connection_state = 'connected'`,
@@ -1032,7 +1032,7 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
         ? `${baseWhere} AND ${extraClause}`
         : baseWhere;
       const result = await pool.query<RoleRoomGoogleConnectionRow>(
-        `SELECT user_id, role_room_email, google_email, google_subject, access_token_encrypted, refresh_token_encrypted, expiry_date, scopes
+        `SELECT user_id, role_room_email, google_email, google_subject, access_token_encrypted, refresh_token_encrypted, expiry_date, scopes, oauth_app
          FROM role_room_google_connections
          WHERE ${whereClause}
          ORDER BY
@@ -1040,10 +1040,15 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
            last_used_at DESC NULLS LAST,
            updated_at DESC NULLS LAST,
            created_at DESC NULLS LAST
-         LIMIT 1`,
+         LIMIT 10`,
         params,
       );
-      return result.rows[0] ?? null;
+      return (
+        result.rows.find((entry) => normalizeGoogleWorkspaceOauthApp(entry.oauth_app, 'role_room') === 'creatorhub')
+        ?? result.rows.find((entry) => normalizeGoogleWorkspaceOauthApp(entry.oauth_app, 'role_room') === 'role_room')
+        ?? result.rows[0]
+        ?? null
+      );
     };
 
     let row: RoleRoomGoogleConnectionRow | null = null;
@@ -1104,6 +1109,11 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
     if (!row) {
       return null;
     }
+    const oauthApp = normalizeGoogleWorkspaceOauthApp(row.oauth_app, 'role_room');
+    const oauthConfig = getGoogleWorkspaceOauthConfig(oauthApp);
+    if (!oauthConfig.clientId || !oauthConfig.clientSecret || !oauthConfig.redirectUri) {
+      return null;
+    }
     const refreshToken = decryptRoleRoomGoogleToken(row.refresh_token_encrypted);
     const accessTokenSeed = decryptRoleRoomGoogleToken(row.access_token_encrypted);
     const expiryTimestamp = row.expiry_date ? Date.parse(row.expiry_date) : NaN;
@@ -1113,9 +1123,9 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
     }
 
     const oauthClient = new google.auth.OAuth2(
-      clientId,
-      clientSecret,
-      process.env.ROLE_ROOM_GOOGLE_REDIRECT_URI ?? process.env.GOOGLE_REDIRECT_URI ?? 'http://localhost:5050/api/auth/google/callback',
+      oauthConfig.clientId,
+      oauthConfig.clientSecret,
+      oauthConfig.redirectUri,
     );
 
     oauthClient.setCredentials({

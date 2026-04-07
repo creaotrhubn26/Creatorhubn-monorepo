@@ -13,6 +13,7 @@ import {
   ensureCustomerDriveWorkspace,
   ensureDriveFolder,
 } from './customer-drive-sync.js';
+import { getGoogleWorkspaceOauthConfig } from './google-workspace-oauth.js';
 import { resolveRoleRoomGoogleConnection } from './contract-google-signing.js';
 
 type LightroomIntegrationRow = {
@@ -480,13 +481,10 @@ async function fetchGoogleAccountEmail(
 async function resolveFallbackLightroomGoogleConnection(
   roleRoomError?: Error | null,
 ): Promise<AuthorizedLightroomGoogleClient> {
-  const clientId = readString(process.env.ROLE_ROOM_GOOGLE_CLIENT_ID ?? process.env.GOOGLE_CLIENT_ID);
-  const clientSecret = readString(process.env.ROLE_ROOM_GOOGLE_CLIENT_SECRET ?? process.env.GOOGLE_CLIENT_SECRET);
-  const redirectUri = readString(
-    process.env.ROLE_ROOM_GOOGLE_REDIRECT_URI
-      ?? process.env.GOOGLE_REDIRECT_URI
-      ?? 'http://localhost:5050/api/auth/google/callback',
-  );
+  const oauthConfig = getGoogleWorkspaceOauthConfig('creatorhub');
+  const clientId = oauthConfig.clientId;
+  const clientSecret = oauthConfig.clientSecret;
+  const redirectUri = readString(oauthConfig.redirectUri);
   const envRefreshToken = readString(process.env.GOOGLE_WORKSPACE_REFRESH_TOKEN);
   const fallbackWarning = roleRoomError
     ? 'Den brukerspesifikke Google Workspace-koblingen er utilgjengelig. CreatorHub bruker systemets Google Drive-kobling som fallback.'
@@ -836,6 +834,10 @@ async function getUserScopedWorkspaceRecord(
       `SELECT google_email, scopes, connection_state
        FROM role_room_google_connections
        WHERE user_id = $1
+       ORDER BY CASE WHEN oauth_app = 'creatorhub' THEN 0 WHEN oauth_app = 'role_room' THEN 1 ELSE 2 END,
+                last_used_at DESC NULLS LAST,
+                updated_at DESC NULLS LAST,
+                created_at DESC NULLS LAST
        LIMIT 1`,
       [userId],
     );

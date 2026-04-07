@@ -12,10 +12,10 @@ export const CREATORHUB_USER_EMAIL_KEY = 'userEmail';
 export const CREATORHUB_GOOGLE_LOGIN_ERROR_KEY = 'creatorhub_google_login_error';
 
 const GOOGLE_CALLBACK_PARAMS = [
-  'rrGoogleStatus',
-  'rrGoogleTransfer',
-  'rrGoogleMode',
-  'rrGoogleMessage',
+  'chGoogleStatus',
+  'chGoogleTransfer',
+  'chGoogleMode',
+  'chGoogleMessage',
 ] as const;
 
 const DASHBOARD_ROLE_SET = new Set([
@@ -86,6 +86,13 @@ type RoleRoomGoogleTransferResponse = {
   } | null;
   error?: string;
   message?: string;
+};
+
+export type CreatorHubGoogleCallbackIntent = {
+  status: string | null;
+  transferId: string | null;
+  mode: 'login' | 'link' | null;
+  message: string | null;
 };
 
 export type CreatorHubAcademyAudience = 'student' | 'instructor' | 'admin';
@@ -180,6 +187,22 @@ function removeGoogleCallbackParams(url: URL): void {
   GOOGLE_CALLBACK_PARAMS.forEach((param) => {
     url.searchParams.delete(param);
   });
+}
+
+export function hasCreatorHubGoogleCallbackState(params: URLSearchParams): boolean {
+  return GOOGLE_CALLBACK_PARAMS.some((param) => params.has(param));
+}
+
+export function readCreatorHubGoogleCallbackIntent(
+  params: URLSearchParams,
+): CreatorHubGoogleCallbackIntent {
+  const modeValue = params.get('chGoogleMode');
+  return {
+    status: params.get('chGoogleStatus'),
+    transferId: params.get('chGoogleTransfer'),
+    mode: modeValue === 'login' || modeValue === 'link' ? modeValue : null,
+    message: params.get('chGoogleMessage'),
+  };
 }
 
 function isDashboardRole(value: string | null): boolean {
@@ -688,7 +711,7 @@ export async function startCreatorHubGoogleLogin(): Promise<void> {
     return;
   }
 
-  const response = await fetchCreatorHubJson<{ authorizationUrl?: string }>('/api/role-room/google/oauth/start', {
+  const response = await fetchCreatorHubJson<{ authorizationUrl?: string }>('/api/creatorhub/google/oauth/start', {
     method: 'POST',
     body: {
       mode: 'login',
@@ -721,7 +744,7 @@ export async function startCreatorHubGoogleWorkspaceLink(options?: {
   }
 
   const response = await fetchCreatorHubJson<{ authorizationUrl?: string }>(
-    '/api/role-room/google/oauth/start',
+    '/api/creatorhub/google/oauth/start',
     {
       method: 'POST',
       headers: buildCreatorHubStoredAuthHeaders(),
@@ -764,7 +787,7 @@ export async function completeCreatorHubGoogleLoginTransfer(
   transferId: string,
 ): Promise<CreatorHubAuthUser> {
   const transfer = await fetchCreatorHubJson<RoleRoomGoogleTransferResponse>(
-    `/api/role-room/google/oauth/session-result/${encodeURIComponent(transferId)}`,
+    `/api/creatorhub/google/oauth/session-result/${encodeURIComponent(transferId)}`,
   );
 
   if (transfer.mode !== 'login' || !transfer.sessionToken || !transfer.user) {
@@ -801,10 +824,11 @@ export async function bootstrapCreatorHubGoogleLoginRedirect(): Promise<void> {
   }
 
   const params = new URLSearchParams(window.location.search);
-  const googleStatus = params.get('rrGoogleStatus');
-  const googleMode = params.get('rrGoogleMode');
-  const googleTransferId = params.get('rrGoogleTransfer');
-  const googleMessage = params.get('rrGoogleMessage');
+  const googleIntent = readCreatorHubGoogleCallbackIntent(params);
+  const googleStatus = googleIntent.status;
+  const googleMode = googleIntent.mode;
+  const googleTransferId = googleIntent.transferId;
+  const googleMessage = googleIntent.message;
 
   if (!googleStatus) {
     return;

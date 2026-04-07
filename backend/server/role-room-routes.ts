@@ -26,6 +26,7 @@ import { google } from 'googleapis';
 import { z } from 'zod';
 import { fileURLToPath } from 'url';
 import * as roleRoomSchema from '../migrations/role-room-schema.js';
+import { getGoogleWorkspaceOauthConfig } from './google-workspace-oauth.js';
 import {
   loadPersistedAuthSession,
   persistAuthSession,
@@ -97,6 +98,7 @@ interface RoleRoomGoogleConnectionRow {
   connection_state: RoleRoomGoogleConnectionState | null;
   last_error: string | null;
   profile: Record<string, unknown> | null;
+  oauth_app: string | null;
   created_at: string;
   updated_at: string;
   last_used_at: string | null;
@@ -772,11 +774,6 @@ function getRoleRoomGoogleRedirectUri(req?: Request): string | null {
     return configured;
   }
 
-  const sharedRedirect = readStringValue(process.env.GOOGLE_REDIRECT_URI);
-  if (sharedRedirect) {
-    return sharedRedirect;
-  }
-
   if (!req) {
     return null;
   }
@@ -857,19 +854,15 @@ function sanitizeRoleRoomBrowserOrigin(value: unknown): string | null {
 }
 
 function getRoleRoomGoogleConfig(req?: Request) {
-  const clientId = readStringValue(process.env.ROLE_ROOM_GOOGLE_CLIENT_ID ?? process.env.GOOGLE_CLIENT_ID);
-  const clientSecret = readStringValue(process.env.ROLE_ROOM_GOOGLE_CLIENT_SECRET ?? process.env.GOOGLE_CLIENT_SECRET);
-  const redirectUri = getRoleRoomGoogleRedirectUri(req);
+  const oauthConfig = getGoogleWorkspaceOauthConfig('role_room', req);
   const encryptionKey = deriveRoleRoomGoogleEncryptionKey();
   return {
-    clientId,
-    clientSecret,
-    redirectUri,
-    configured: Boolean(clientId && clientSecret && redirectUri && encryptionKey),
+    clientId: oauthConfig.clientId,
+    clientSecret: oauthConfig.clientSecret,
+    redirectUri: oauthConfig.redirectUri ?? getRoleRoomGoogleRedirectUri(req),
+    configured: Boolean(oauthConfig.clientId && oauthConfig.clientSecret && oauthConfig.redirectUri && encryptionKey),
     missing: [
-      !clientId ? 'ROLE_ROOM_GOOGLE_CLIENT_ID' : null,
-      !clientSecret ? 'ROLE_ROOM_GOOGLE_CLIENT_SECRET' : null,
-      !redirectUri ? 'ROLE_ROOM_GOOGLE_REDIRECT_URI' : null,
+      ...oauthConfig.missing,
       !encryptionKey ? 'ROLE_ROOM_GOOGLE_TOKEN_ENCRYPTION_KEY' : null,
     ].filter((entry): entry is string => Boolean(entry)),
   };
@@ -1514,13 +1507,25 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
             connection_state VARCHAR(32) NOT NULL DEFAULT 'disconnected',
             last_error TEXT,
             profile JSONB NOT NULL DEFAULT '{}'::jsonb,
+            oauth_app VARCHAR(32) NOT NULL DEFAULT 'role_room',
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             last_used_at TIMESTAMPTZ
           );
-          CREATE UNIQUE INDEX IF NOT EXISTS idx_rr_google_connections_user_id_unique ON role_room_google_connections(user_id);
-          CREATE UNIQUE INDEX IF NOT EXISTS idx_rr_google_connections_subject_unique ON role_room_google_connections(google_subject);
+          ALTER TABLE role_room_google_connections
+            ADD COLUMN IF NOT EXISTS oauth_app VARCHAR(32) NOT NULL DEFAULT 'role_room';
+          UPDATE role_room_google_connections
+             SET oauth_app = 'role_room'
+           WHERE oauth_app IS NULL OR TRIM(oauth_app) = '';
+          DROP INDEX IF EXISTS idx_rr_google_connections_user_id_unique;
+          DROP INDEX IF EXISTS idx_rr_google_connections_subject_unique;
+          CREATE INDEX IF NOT EXISTS idx_rr_google_connections_user_id ON role_room_google_connections(user_id);
           CREATE INDEX IF NOT EXISTS idx_rr_google_connections_email ON role_room_google_connections(google_email);
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_rr_google_connections_user_app_unique
+            ON role_room_google_connections(user_id, oauth_app);
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_rr_google_connections_subject_app_unique
+            ON role_room_google_connections(google_subject, oauth_app)
+            WHERE google_subject IS NOT NULL;
 
           CREATE TABLE IF NOT EXISTS role_room_google_project_bindings (
             id UUID PRIMARY KEY,
@@ -1656,7 +1661,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       return null;
     }
     const result = await pool.query<RoleRoomGoogleConnectionRow>(
-      `SELECT * FROM role_room_google_connections WHERE user_id = $1 LIMIT 1`,
+      `SELECT *
+       FROM role_room_google_connections
+       WHERE user_id = $1
+         AND oauth_app = 'role_room'
+       ORDER BY last_used_at DESC NULLS LAST, updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+       LIMIT 1`,
       [userId],
     );
     return result.rows[0] ?? null;
@@ -1715,13 +1725,21 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       await client.query('BEGIN');
 
       const existingByUserResult = await client.query<RoleRoomGoogleConnectionRow>(
-        `SELECT * FROM role_room_google_connections WHERE user_id = $1 LIMIT 1`,
+        `SELECT *
+         FROM role_room_google_connections
+         WHERE user_id = $1
+           AND oauth_app = 'role_room'
+         LIMIT 1`,
         [userId],
       );
       const existingByUser = existingByUserResult.rows[0] ?? null;
 
       const existingBySubjectResult = await client.query<RoleRoomGoogleConnectionRow>(
-        `SELECT * FROM role_room_google_connections WHERE google_subject = $1 LIMIT 1`,
+        `SELECT *
+         FROM role_room_google_connections
+         WHERE google_subject = $1
+           AND oauth_app = 'role_room'
+         LIMIT 1`,
         [googleProfile.subject],
       );
       const existingBySubject = existingBySubjectResult.rows[0] ?? null;
@@ -1747,6 +1765,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
                connection_state = 'connected',
                last_error = NULL,
                profile = $10::jsonb,
+               oauth_app = 'role_room',
                updated_at = NOW(),
                last_used_at = NOW()
            WHERE id = $1
@@ -1772,13 +1791,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         `INSERT INTO role_room_google_connections (
           id, user_id, role_room_email, google_email, google_subject,
           access_token_encrypted, refresh_token_encrypted, expiry_date, scopes,
-          connection_state, last_error, profile, created_at, updated_at, last_used_at
+          connection_state, last_error, profile, oauth_app, created_at, updated_at, last_used_at
         ) VALUES (
           $1, $2, $3, $4, $5,
           $6, $7, $8, $9::jsonb,
-          'connected', NULL, $10::jsonb, NOW(), NOW(), NOW()
+          'connected', NULL, $10::jsonb, 'role_room', NOW(), NOW(), NOW()
         )
-        ON CONFLICT (user_id) DO UPDATE SET
+        ON CONFLICT (user_id, oauth_app) DO UPDATE SET
           role_room_email = EXCLUDED.role_room_email,
           google_email = EXCLUDED.google_email,
           google_subject = EXCLUDED.google_subject,
@@ -2198,7 +2217,11 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       return null;
     }
     const result = await pool.query<RoleRoomGoogleConnectionRow>(
-      `SELECT * FROM role_room_google_connections WHERE google_subject = $1 LIMIT 1`,
+      `SELECT *
+       FROM role_room_google_connections
+       WHERE google_subject = $1
+         AND oauth_app = 'role_room'
+       LIMIT 1`,
       [subject],
     );
     return result.rows[0] ?? null;
@@ -2218,6 +2241,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       await client.query(
         `DELETE FROM role_room_google_connections
          WHERE user_id = $2
+           AND oauth_app = 'role_room'
            AND id <> $1`,
         [connectionId, userId],
       );
@@ -2229,6 +2253,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
              updated_at = NOW(),
              last_used_at = NOW()
          WHERE id = $1
+           AND oauth_app = 'role_room'
          RETURNING *`,
         [connectionId, userId, roleRoomEmail],
       );
@@ -5797,7 +5822,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     try {
       const userId = getUserId(req);
       await ensureRoleRoomGoogleTables();
-      await pool.query(`DELETE FROM role_room_google_connections WHERE user_id = $1`, [userId]);
+      await pool.query(
+        `DELETE FROM role_room_google_connections
+         WHERE user_id = $1
+           AND oauth_app = 'role_room'`,
+        [userId],
+      );
       await pool.query(
         `UPDATE role_room_google_project_bindings
          SET connected_user_id = NULL,

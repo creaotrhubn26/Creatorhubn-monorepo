@@ -9,6 +9,7 @@ import { google } from "googleapis";
 import type { Pool } from "pg";
 import { resolveRoleRoomGoogleConnection } from "./contract-google-signing.js";
 import { loadPersistedAuthSession } from "./auth-session-store.js";
+import { derivePreferredGoogleWorkspaceOauthApps } from "./google-workspace-oauth.js";
 
 const YOUTUBE_REQUIRED_SCOPES = [
   "https://www.googleapis.com/auth/youtube",
@@ -218,9 +219,10 @@ function mapPublishingPlaylist(item: any): PublishingPlaylist {
   };
 }
 
-async function buildAuthorizedYoutubeClient(pool: Pool, userId: string) {
+async function buildAuthorizedYoutubeClient(pool: Pool, userId: string, req?: Request) {
   const authorized = await resolveRoleRoomGoogleConnection(pool, userId, {
     allowFallbackToAnyUser: false,
+    preferredOauthApps: derivePreferredGoogleWorkspaceOauthApps(req),
   });
 
   return {
@@ -545,7 +547,7 @@ export function createYouTubeRouter(pool: Pool) {
     }
 
     try {
-      const { authorized, youtube } = await buildAuthorizedYoutubeClient(pool, userId);
+      const { authorized, youtube } = await buildAuthorizedYoutubeClient(pool, userId, req);
       const storedScopes = authorized.connection.storedScopes ?? [];
       const hasYouTubeScopes = hasRequiredYouTubeScopes(storedScopes);
 
@@ -598,7 +600,7 @@ export function createYouTubeRouter(pool: Pool) {
     const projectId = readProjectId(req);
 
     try {
-      const { authorized, youtube } = await buildAuthorizedYoutubeClient(pool, userId);
+      const { authorized, youtube } = await buildAuthorizedYoutubeClient(pool, userId, req);
       if (!hasRequiredYouTubeScopes(authorized.connection.storedScopes ?? [])) {
         res.status(403).json({ error: "Google-koblingen mangler YouTube-scopes." });
         return;
@@ -623,7 +625,7 @@ export function createYouTubeRouter(pool: Pool) {
     }
 
     try {
-      const { authorized, youtube } = await buildAuthorizedYoutubeClient(pool, userId);
+      const { authorized, youtube } = await buildAuthorizedYoutubeClient(pool, userId, req);
       if (!hasRequiredYouTubeScopes(authorized.connection.storedScopes ?? [])) {
         res.status(403).json({ error: "Google-koblingen mangler YouTube-scopes." });
         return;
@@ -657,7 +659,7 @@ export function createYouTubeRouter(pool: Pool) {
     }
 
     try {
-      const { authorized, youtube } = await buildAuthorizedYoutubeClient(pool, userId);
+      const { authorized, youtube } = await buildAuthorizedYoutubeClient(pool, userId, req);
       if (!hasRequiredYouTubeScopes(authorized.connection.storedScopes ?? [])) {
         res.status(403).json({ error: "Google-koblingen mangler YouTube-scopes." });
         return;
@@ -700,7 +702,7 @@ export function createYouTubeRouter(pool: Pool) {
     }
 
     try {
-      const { authorized, youtube } = await buildAuthorizedYoutubeClient(pool, userId);
+      const { authorized, youtube } = await buildAuthorizedYoutubeClient(pool, userId, req);
       if (!hasRequiredYouTubeScopes(authorized.connection.storedScopes ?? [])) {
         res.status(403).json({ error: "Google-koblingen mangler YouTube-scopes." });
         return;
@@ -746,7 +748,7 @@ export function createYouTubeRouter(pool: Pool) {
     const createShowcase = readBooleanValue(req.body?.createShowcase ?? metadata.createShowcase);
 
     try {
-      const { authorized, youtube } = await buildAuthorizedYoutubeClient(pool, userId);
+      const { authorized, youtube } = await buildAuthorizedYoutubeClient(pool, userId, req);
       if (!hasRequiredYouTubeScopes(authorized.connection.storedScopes ?? [])) {
         res.status(403).json({ error: "Google-koblingen mangler YouTube-scopes." });
         return;
@@ -833,7 +835,7 @@ export function createYouTubeRouter(pool: Pool) {
     }
 
     try {
-      const { authorized, youtube } = await buildAuthorizedYoutubeClient(pool, userId);
+      const { authorized, youtube } = await buildAuthorizedYoutubeClient(pool, userId, req);
       if (!hasRequiredYouTubeScopes(authorized.connection.storedScopes ?? [])) {
         res.status(403).json({ error: "Google-koblingen mangler YouTube-scopes." });
         return;
@@ -933,7 +935,7 @@ export function createYouTubeRouter(pool: Pool) {
     }
 
     try {
-      const { authorized, youtube } = await buildAuthorizedYoutubeClient(pool, userId);
+      const { authorized, youtube } = await buildAuthorizedYoutubeClient(pool, userId, req);
       if (!hasRequiredYouTubeScopes(authorized.connection.storedScopes ?? [])) {
         res.status(403).json({ error: "Google-koblingen mangler YouTube-scopes." });
         return;

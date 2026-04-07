@@ -2,6 +2,10 @@ import { existsSync, readFileSync } from 'fs';
 import crypto from 'crypto';
 import { google } from 'googleapis';
 import type { Pool } from 'pg';
+import {
+  getGoogleWorkspaceOauthConfig,
+  normalizeGoogleWorkspaceOauthApp,
+} from './google-workspace-oauth.js';
 
 export const GOOGLE_CHAT_REQUIRED_SCOPES = [
   'https://www.googleapis.com/auth/chat.spaces.readonly',
@@ -43,6 +47,7 @@ type ResolvedGoogleCredentialSource =
       source: 'role_room_connection';
       clientId: string;
       clientSecret: string;
+      redirectUri: string | null;
       refreshToken: string | null;
       accessToken: string | null;
       expiryDate: string | null;
@@ -189,18 +194,13 @@ type RoleRoomGoogleConnectionRow = {
   refresh_token_encrypted: string | null;
   expiry_date: string | null;
   scopes: unknown;
+  oauth_app: string | null;
 };
 
 async function resolveRoleRoomGoogleCredentialSource(
   pool: Pool,
   preferredUserId?: string | null,
 ): Promise<ResolvedGoogleCredentialSource | null> {
-  const clientId = readStringValue(process.env.ROLE_ROOM_GOOGLE_CLIENT_ID ?? process.env.GOOGLE_CLIENT_ID);
-  const clientSecret = readStringValue(process.env.ROLE_ROOM_GOOGLE_CLIENT_SECRET ?? process.env.GOOGLE_CLIENT_SECRET);
-  if (!clientId || !clientSecret) {
-    return null;
-  }
-
   const params: string[] = [];
   const filters = [
     `connection_state = 'connected'`,
@@ -214,7 +214,7 @@ async function resolveRoleRoomGoogleCredentialSource(
 
   try {
     const result = await pool.query<RoleRoomGoogleConnectionRow>(
-      `SELECT user_id, google_email, google_subject, access_token_encrypted, refresh_token_encrypted, expiry_date, scopes
+      `SELECT user_id, google_email, google_subject, access_token_encrypted, refresh_token_encrypted, expiry_date, scopes, oauth_app
        FROM role_room_google_connections
        WHERE ${filters.join(' AND ')}
        ORDER BY
@@ -222,7 +222,7 @@ async function resolveRoleRoomGoogleCredentialSource(
          last_used_at DESC NULLS LAST,
          updated_at DESC NULLS LAST,
          created_at DESC NULLS LAST
-       LIMIT 1`,
+       LIMIT 10`,
       params,
     );
 
@@ -230,7 +230,15 @@ async function resolveRoleRoomGoogleCredentialSource(
       return null;
     }
 
-    const row = result.rows[0];
+    const row =
+      result.rows.find((entry) => normalizeGoogleWorkspaceOauthApp(entry.oauth_app, 'role_room') === 'creatorhub')
+      ?? result.rows.find((entry) => normalizeGoogleWorkspaceOauthApp(entry.oauth_app, 'role_room') === 'role_room')
+      ?? result.rows[0];
+    const oauthApp = normalizeGoogleWorkspaceOauthApp(row.oauth_app, 'role_room');
+    const oauthConfig = getGoogleWorkspaceOauthConfig(oauthApp);
+    if (!oauthConfig.clientId || !oauthConfig.clientSecret) {
+      return null;
+    }
     const refreshToken = decryptRoleRoomGoogleToken(row.refresh_token_encrypted);
     const accessToken = decryptRoleRoomGoogleToken(row.access_token_encrypted);
     if (!refreshToken && !accessToken) {
@@ -239,8 +247,9 @@ async function resolveRoleRoomGoogleCredentialSource(
 
     return {
       source: 'role_room_connection',
-      clientId,
-      clientSecret,
+      clientId: oauthConfig.clientId,
+      clientSecret: oauthConfig.clientSecret,
+      redirectUri: oauthConfig.redirectUri,
       refreshToken,
       accessToken,
       expiryDate: readStringValue(row.expiry_date),
@@ -268,8 +277,9 @@ async function resolveGoogleChatCredentialSource(
     }
   }
 
-  const clientId = readStringValue(process.env.ROLE_ROOM_GOOGLE_CLIENT_ID ?? process.env.GOOGLE_CLIENT_ID);
-  const clientSecret = readStringValue(process.env.ROLE_ROOM_GOOGLE_CLIENT_SECRET ?? process.env.GOOGLE_CLIENT_SECRET);
+  const fallbackOauthConfig = getGoogleWorkspaceOauthConfig('creatorhub');
+  const clientId = fallbackOauthConfig.clientId;
+  const clientSecret = fallbackOauthConfig.clientSecret;
   const refreshToken = readStringValue(process.env.GOOGLE_WORKSPACE_REFRESH_TOKEN);
 
   if (clientId && clientSecret && refreshToken) {
@@ -450,7 +460,7 @@ async function runUncachedGoogleChatLiveHealthCheck(
     const oauthClient = new google.auth.OAuth2(
       credentialSource.clientId,
       credentialSource.clientSecret,
-      process.env.ROLE_ROOM_GOOGLE_REDIRECT_URI ?? process.env.GOOGLE_REDIRECT_URI ?? 'http://localhost:3000/oauth2callback',
+      credentialSource.redirectUri ?? 'http://localhost:3000/oauth2callback',
     );
     const tokenSeed: {
       refresh_token?: string;

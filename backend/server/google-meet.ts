@@ -1,6 +1,11 @@
 import crypto from 'crypto';
 import { google } from 'googleapis';
 import type { Pool } from 'pg';
+import {
+  type GoogleWorkspaceOauthApp,
+  getGoogleWorkspaceOauthConfig,
+  normalizeGoogleWorkspaceOauthApp,
+} from './google-workspace-oauth.js';
 
 type RoleRoomGoogleConnectionRow = {
   user_id: string | null;
@@ -9,6 +14,7 @@ type RoleRoomGoogleConnectionRow = {
   access_token_encrypted: string | null;
   refresh_token_encrypted: string | null;
   expiry_date: string | null;
+  oauth_app: string | null;
 };
 
 type GoogleMeetPayload = {
@@ -92,14 +98,11 @@ function shouldForceGoogleAccessTokenRefresh(expiryDate?: number | null): boolea
   return !Number.isFinite(expiryDate) || Number(expiryDate) <= Date.now() + 60_000;
 }
 
-async function resolveRoleRoomGoogleCredentialSource(pool: Pool, preferredUserId?: string | null) {
-  const clientId = readStringValue(process.env.ROLE_ROOM_GOOGLE_CLIENT_ID ?? process.env.GOOGLE_CLIENT_ID);
-  const clientSecret = readStringValue(process.env.ROLE_ROOM_GOOGLE_CLIENT_SECRET ?? process.env.GOOGLE_CLIENT_SECRET);
-
-  if (!clientId || !clientSecret) {
-    throw new Error('Google OAuth-klienten mangler i backend-env.');
-  }
-
+async function resolveRoleRoomGoogleCredentialSource(
+  pool: Pool,
+  preferredUserId?: string | null,
+  preferredOauthApps: GoogleWorkspaceOauthApp[] = ['creatorhub', 'role_room'],
+) {
   const params: string[] = [];
   const filters = [
     `connection_state = 'connected'`,
@@ -112,7 +115,7 @@ async function resolveRoleRoomGoogleCredentialSource(pool: Pool, preferredUserId
   }
 
   const result = await pool.query<RoleRoomGoogleConnectionRow>(
-    `SELECT user_id, google_email, google_subject, access_token_encrypted, refresh_token_encrypted, expiry_date
+    `SELECT user_id, google_email, google_subject, access_token_encrypted, refresh_token_encrypted, expiry_date, oauth_app
      FROM role_room_google_connections
      WHERE ${filters.join(' AND ')}
      ORDER BY
@@ -120,7 +123,7 @@ async function resolveRoleRoomGoogleCredentialSource(pool: Pool, preferredUserId
        last_used_at DESC NULLS LAST,
        updated_at DESC NULLS LAST,
        created_at DESC NULLS LAST
-     LIMIT 1`,
+     LIMIT 10`,
     params,
   );
 
@@ -128,7 +131,24 @@ async function resolveRoleRoomGoogleCredentialSource(pool: Pool, preferredUserId
     throw new Error('Google Workspace er ikke koblet til denne brukeren.');
   }
 
-  const row = result.rows[0];
+  const row =
+    preferredOauthApps
+      .map((preferredApp) =>
+        result.rows.find(
+          (entry) => normalizeGoogleWorkspaceOauthApp(entry.oauth_app, 'role_room') === preferredApp,
+        ),
+      )
+      .find((entry): entry is RoleRoomGoogleConnectionRow => Boolean(entry))
+    ?? result.rows[0];
+  const oauthApp = normalizeGoogleWorkspaceOauthApp(row.oauth_app, 'role_room');
+  const oauthConfig = getGoogleWorkspaceOauthConfig(oauthApp);
+  if (!oauthConfig.clientId || !oauthConfig.clientSecret) {
+    throw new Error(
+      oauthApp === 'creatorhub'
+        ? 'CreatorHub Google OAuth-klienten mangler i backend-env.'
+        : 'The Role Room Google OAuth-klienten mangler i backend-env.',
+    );
+  }
   const refreshToken = decryptRoleRoomGoogleToken(row.refresh_token_encrypted);
   const accessToken = decryptRoleRoomGoogleToken(row.access_token_encrypted);
 
@@ -137,8 +157,9 @@ async function resolveRoleRoomGoogleCredentialSource(pool: Pool, preferredUserId
   }
 
   return {
-    clientId,
-    clientSecret,
+    clientId: oauthConfig.clientId,
+    clientSecret: oauthConfig.clientSecret,
+    redirectUri: oauthConfig.redirectUri,
     refreshToken,
     accessToken,
     expiryDate: readStringValue(row.expiry_date),
@@ -243,13 +264,20 @@ export async function createGoogleMeetLink(
   pool: Pool,
   payload: GoogleMeetPayload,
   preferredUserId?: string | null,
+  options?: {
+    preferredOauthApps?: GoogleWorkspaceOauthApp[];
+  },
 ): Promise<GoogleMeetCreationResult> {
   try {
-    const credentialSource = await resolveRoleRoomGoogleCredentialSource(pool, preferredUserId);
+    const credentialSource = await resolveRoleRoomGoogleCredentialSource(
+      pool,
+      preferredUserId,
+      options?.preferredOauthApps,
+    );
     const oauthClient = new google.auth.OAuth2(
       credentialSource.clientId,
       credentialSource.clientSecret,
-      process.env.ROLE_ROOM_GOOGLE_REDIRECT_URI ?? process.env.GOOGLE_REDIRECT_URI ?? 'http://localhost:5050/api/auth/google/callback',
+      credentialSource.redirectUri ?? 'http://localhost:5050/api/creatorhub/google/oauth/callback',
     );
 
     const tokenSeed: {

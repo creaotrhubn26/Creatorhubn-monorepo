@@ -1,0 +1,174 @@
+import type { Request } from 'express';
+
+export type GoogleWorkspaceOauthApp = 'creatorhub' | 'role_room';
+
+type GoogleWorkspaceOauthConfig = {
+  app: GoogleWorkspaceOauthApp;
+  clientId: string | null;
+  clientSecret: string | null;
+  redirectUri: string | null;
+  configured: boolean;
+  missing: string[];
+};
+
+function readStringValue(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function resolveRequestOrigin(req?: Request): string | null {
+  if (!req) {
+    return null;
+  }
+
+  const originHeader = readStringValue(req.headers.origin);
+  const refererHeader = readStringValue(req.headers.referer);
+  for (const candidate of [originHeader, refererHeader]) {
+    if (!candidate) {
+      continue;
+    }
+
+    try {
+      const parsed = new URL(candidate);
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+        return parsed.origin;
+      }
+    } catch {
+      // Ignore malformed values and continue with host fallback.
+    }
+  }
+
+  const host = readStringValue(req.get('host'));
+  if (!host) {
+    return null;
+  }
+
+  const forwardedProto = readStringValue(req.headers['x-forwarded-proto']);
+  const protocol = forwardedProto ?? req.protocol ?? 'http';
+  return `${protocol}://${host}`;
+}
+
+function defaultCallbackPath(app: GoogleWorkspaceOauthApp): string {
+  return app === 'creatorhub'
+    ? '/api/creatorhub/google/oauth/callback'
+    : '/api/role-room/google/oauth/callback';
+}
+
+function defaultRedirectUri(app: GoogleWorkspaceOauthApp, req?: Request): string | null {
+  const requestOrigin = resolveRequestOrigin(req);
+  if (requestOrigin) {
+    return `${requestOrigin}${defaultCallbackPath(app)}`;
+  }
+
+  return app === 'creatorhub'
+    ? 'http://localhost:5000/api/creatorhub/google/oauth/callback'
+    : 'http://localhost:5000/api/role-room/google/oauth/callback';
+}
+
+function detectGoogleWorkspaceOauthApp(value: unknown): GoogleWorkspaceOauthApp | null {
+  const normalized = readStringValue(value)?.toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+
+  if (normalized === 'creatorhub') {
+    return 'creatorhub';
+  }
+
+  if (normalized === 'role_room' || normalized === 'role-room') {
+    return 'role_room';
+  }
+
+  if (
+    normalized.includes('theroleroom')
+    || normalized.includes('role-room')
+    || normalized.includes('/casting')
+    || normalized.includes('casting.html')
+    || normalized.includes('theroleroom.html')
+  ) {
+    return 'role_room';
+  }
+
+  if (normalized.includes('creatorhub')) {
+    return 'creatorhub';
+  }
+
+  return null;
+}
+
+export function normalizeGoogleWorkspaceOauthApp(
+  value: unknown,
+  fallback: GoogleWorkspaceOauthApp = 'creatorhub',
+): GoogleWorkspaceOauthApp {
+  return detectGoogleWorkspaceOauthApp(value) ?? fallback;
+}
+
+export function deriveGoogleWorkspaceOauthApp(
+  req?: Request,
+  fallback: GoogleWorkspaceOauthApp = 'creatorhub',
+): GoogleWorkspaceOauthApp {
+  if (!req) {
+    return fallback;
+  }
+
+  const directHeader = detectGoogleWorkspaceOauthApp(req.headers['x-google-workspace-app']);
+  if (directHeader) {
+    return directHeader;
+  }
+
+  const candidates = [
+    req.headers.origin,
+    req.headers.referer,
+    req.get('host'),
+    req.originalUrl,
+    req.path,
+  ];
+
+  for (const candidate of candidates) {
+    const detected = detectGoogleWorkspaceOauthApp(candidate);
+    if (detected) {
+      return detected;
+    }
+  }
+
+  return fallback;
+}
+
+export function derivePreferredGoogleWorkspaceOauthApps(
+  req?: Request,
+  fallback: GoogleWorkspaceOauthApp = 'creatorhub',
+): GoogleWorkspaceOauthApp[] {
+  const preferred = deriveGoogleWorkspaceOauthApp(req, fallback);
+  return preferred === 'role_room'
+    ? ['role_room', 'creatorhub']
+    : ['creatorhub', 'role_room'];
+}
+
+export function getGoogleWorkspaceOauthConfig(
+  app: GoogleWorkspaceOauthApp,
+  req?: Request,
+): GoogleWorkspaceOauthConfig {
+  const envPrefix = app === 'creatorhub' ? 'CREATORHUB_GOOGLE' : 'ROLE_ROOM_GOOGLE';
+  const clientId = readStringValue(process.env[`${envPrefix}_CLIENT_ID`]);
+  const clientSecret = readStringValue(process.env[`${envPrefix}_CLIENT_SECRET`]);
+  const redirectUri =
+    readStringValue(process.env[`${envPrefix}_REDIRECT_URI`])
+    ?? defaultRedirectUri(app, req);
+
+  return {
+    app,
+    clientId,
+    clientSecret,
+    redirectUri,
+    configured: Boolean(clientId && clientSecret && redirectUri),
+    missing: [
+      !clientId ? `${envPrefix}_CLIENT_ID` : null,
+      !clientSecret ? `${envPrefix}_CLIENT_SECRET` : null,
+      !redirectUri ? `${envPrefix}_REDIRECT_URI` : null,
+    ].filter((entry): entry is string => Boolean(entry)),
+  };
+}

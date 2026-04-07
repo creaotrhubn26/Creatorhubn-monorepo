@@ -17,6 +17,10 @@ import AdminIndicator from '../admin/AdminIndicator';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '../../utils/theming-helper';
 import { useExternalData } from '../../services/ExternalDataService';
+import {
+  clearCreatorHubGoogleIntentFromUrl,
+  readCreatorHubGoogleCallbackIntent,
+} from '@/lib/creatorhubGoogleAuth';
 import { UniversalDashboardProvider, useUniversalDashboard } from './UniversalDashboardContext';
 import { ProjectProvider } from '@/contexts/ProjectContext';
 import { SettingsProvider } from '@/contexts/SettingsContext';
@@ -695,13 +699,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
     if (typeof window === 'undefined') {
       return;
     }
-
-    const url = new URL(window.location.href);
-    url.searchParams.delete('rrGoogleStatus');
-    url.searchParams.delete('rrGoogleTransfer');
-    url.searchParams.delete('rrGoogleMode');
-    url.searchParams.delete('rrGoogleMessage');
-    window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
+    clearCreatorHubGoogleIntentFromUrl();
   }, []);
 
   useEffect(() => {
@@ -710,10 +708,11 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
     }
 
     const params = new URLSearchParams(window.location.search);
-    const googleStatus = params.get('rrGoogleStatus');
-    const googleTransferId = params.get('rrGoogleTransfer');
-    const googleMode = params.get('rrGoogleMode');
-    const googleMessage = params.get('rrGoogleMessage');
+    const googleIntent = readCreatorHubGoogleCallbackIntent(params);
+    const googleStatus = googleIntent.status;
+    const googleTransferId = googleIntent.transferId;
+    const googleMode = googleIntent.mode;
+    const googleMessage = googleIntent.message;
 
     if (!googleStatus) {
       return;
@@ -745,12 +744,12 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
 
     void (async () => {
       try {
-        await apiRequest(`/api/role-room/google/oauth/session-result/${encodeURIComponent(googleTransferId)}`);
+        await apiRequest(`/api/creatorhub/google/oauth/session-result/${encodeURIComponent(googleTransferId)}`);
         if (cancelled) {
           return;
         }
 
-        await apiRequest('/api/role-room/google/link', {
+        await apiRequest('/api/creatorhub/google/link', {
           method: 'POST',
           body: { transferId: googleTransferId },
         });
@@ -759,7 +758,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         }
 
         await Promise.allSettled([
-          queryClient.invalidateQueries({ queryKey: ['/api/role-room/google/status'] }),
+          queryClient.invalidateQueries({ queryKey: ['/api/creatorhub/google/status'] }),
           queryClient.invalidateQueries({ queryKey: ['/api/communication/google-chat/status'] }),
           queryClient.invalidateQueries({ queryKey: ['/api/google/chat/spaces'] }),
           queryClient.invalidateQueries({ queryKey: ['/api/google/chat/messages'] }),
