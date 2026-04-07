@@ -164,6 +164,7 @@ export default function LoginPageSimple() {
                   variant="outlined"
                   fullWidth
                   size="large"
+                  data-google-login-app="creatorhub"
                   disabled={isLoading}
                   startIcon={<GoogleIcon />}
                   onClick={() => {
