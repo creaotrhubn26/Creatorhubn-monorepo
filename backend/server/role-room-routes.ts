@@ -26,7 +26,10 @@ import { google } from 'googleapis';
 import { z } from 'zod';
 import { fileURLToPath } from 'url';
 import * as roleRoomSchema from '../migrations/role-room-schema.js';
-import { getGoogleWorkspaceOauthConfig } from './google-workspace-oauth.js';
+import {
+  getGoogleWorkspaceOauthConfig,
+  resolveGoogleWorkspaceRequestOrigin,
+} from './google-workspace-oauth.js';
 import {
   loadPersistedAuthSession,
   persistAuthSession,
@@ -774,16 +777,8 @@ function getRoleRoomGoogleRedirectUri(req?: Request): string | null {
     return configured;
   }
 
-  if (!req) {
-    return null;
-  }
-  const host = req.get('host');
-  if (!host) {
-    return null;
-  }
-  const forwardedProto = readStringValue(req.headers['x-forwarded-proto']);
-  const protocol = forwardedProto ?? req.protocol ?? 'http';
-  return `${protocol}://${host}/api/role-room/google/oauth/callback`;
+  const requestOrigin = resolveGoogleWorkspaceRequestOrigin('role_room', req);
+  return requestOrigin ? `${requestOrigin}/api/role-room/google/oauth/callback` : null;
 }
 
 function getRoleRoomLinkedInRedirectUri(req?: Request): string | null {
@@ -805,36 +800,7 @@ function getRoleRoomLinkedInRedirectUri(req?: Request): string | null {
 }
 
 function getRoleRoomRequestOrigin(req?: Request): string | null {
-  if (!req) {
-    return null;
-  }
-
-  const candidateOrigins = [
-    readStringValue(req.headers.origin),
-    readStringValue(req.headers.referer),
-  ];
-
-  for (const candidate of candidateOrigins) {
-    if (!candidate) {
-      continue;
-    }
-    try {
-      const parsed = new URL(candidate);
-      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
-        return parsed.origin;
-      }
-    } catch {
-      // Ignore malformed origin/referer values and continue with host fallback.
-    }
-  }
-
-  const host = req.get('host');
-  if (!host) {
-    return null;
-  }
-  const forwardedProto = readStringValue(req.headers['x-forwarded-proto']);
-  const protocol = forwardedProto ?? req.protocol ?? 'http';
-  return `${protocol}://${host}`;
+  return resolveGoogleWorkspaceRequestOrigin('role_room', req);
 }
 
 function sanitizeRoleRoomBrowserOrigin(value: unknown): string | null {
@@ -1024,40 +990,11 @@ function appendQueryParamsToPath(pathname: string, params: Record<string, string
   return `${basePath}${nextQuery ? `?${nextQuery}` : ''}${hashPart ? `#${hashPart}` : ''}`;
 }
 
-function getRoleRoomPublicAppOrigin(): string | null {
-  const candidates = [
-    readStringValue(process.env.PUBLIC_APP_URL),
-    readStringValue(process.env.APP_URL),
-    ...(process.env.CORS_ALLOW_ORIGINS ?? '')
-      .split(',')
-      .map((entry) => readStringValue(entry)),
-  ];
-
-  for (const candidate of candidates) {
-    if (!candidate) {
-      continue;
-    }
-
-    try {
-      const parsed = new URL(candidate);
-      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
-        return parsed.origin;
-      }
-    } catch {
-      // Ignore malformed origin candidates.
-    }
-  }
-
-  return null;
-}
-
 function resolveRoleRoomBrowserOrigin(
   req?: Request,
   browserOrigin?: string | null,
 ): string | null {
-  return sanitizeRoleRoomBrowserOrigin(browserOrigin)
-    ?? getRoleRoomPublicAppOrigin()
-    ?? getRoleRoomRequestOrigin(req);
+  return resolveGoogleWorkspaceRequestOrigin('role_room', req, sanitizeRoleRoomBrowserOrigin(browserOrigin));
 }
 
 function buildRoleRoomGoogleReturnUrl(

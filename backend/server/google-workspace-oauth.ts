@@ -69,10 +69,18 @@ function parseOriginCandidate(value: string | null): URL | null {
   return null;
 }
 
-function resolveRequestOrigin(
+export function resolveGoogleWorkspaceRequestOrigin(
   app: GoogleWorkspaceOauthApp,
   req?: Request,
+  explicitOrigin?: string | null,
 ): string | null {
+  const directOrigin = parseOriginCandidate(readStringValue(explicitOrigin));
+  if (directOrigin) {
+    return isRenderHostname(directOrigin.hostname)
+      ? getDefaultPublicOrigin(app)
+      : directOrigin.origin;
+  }
+
   if (!req) {
     return getDefaultPublicOrigin(app);
   }
@@ -116,7 +124,7 @@ function resolveRequestOrigin(
 }
 
 function defaultRedirectUri(app: GoogleWorkspaceOauthApp, req?: Request): string | null {
-  const requestOrigin = resolveRequestOrigin(app, req);
+  const requestOrigin = resolveGoogleWorkspaceRequestOrigin(app, req);
   if (requestOrigin) {
     return `${requestOrigin}${defaultCallbackPath(app)}`;
   }

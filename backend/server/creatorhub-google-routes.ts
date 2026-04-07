@@ -8,6 +8,7 @@ import {
 } from './auth-session-store.js';
 import {
   getGoogleWorkspaceOauthConfig,
+  resolveGoogleWorkspaceRequestOrigin,
   type GoogleWorkspaceOauthApp,
 } from './google-workspace-oauth.js';
 
@@ -262,22 +263,7 @@ function sanitizeBrowserOrigin(value: unknown): string | null {
 }
 
 function resolveRequestOrigin(req: Request, explicitOrigin?: string | null): string | null {
-  const directOrigin = sanitizeBrowserOrigin(explicitOrigin)
-    ?? sanitizeBrowserOrigin(req.headers.origin)
-    ?? sanitizeBrowserOrigin(req.headers.referer);
-
-  if (directOrigin) {
-    return directOrigin;
-  }
-
-  const host = readStringValue(req.get('host'));
-  if (!host) {
-    return null;
-  }
-
-  const forwardedProto = readStringValue(req.headers['x-forwarded-proto']);
-  const protocol = forwardedProto ?? req.protocol ?? 'http';
-  return `${protocol}://${host}`;
+  return resolveGoogleWorkspaceRequestOrigin('creatorhub', req, sanitizeBrowserOrigin(explicitOrigin));
 }
 
 function buildCreatorHubGoogleReturnUrl(
