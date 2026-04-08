@@ -1,3 +1,5 @@
+import { isRoleRoomStandaloneRuntime } from '../utils/runtime';
+
 export type AdminUser = {
   id: number | string;
   email: string;
@@ -44,6 +46,32 @@ const SESSION_STORAGE_KEY = 'role_room_auth_session';
 let sessionCache: AuthSession = {};
 let hydrated = false;
 let hydratePromise: Promise<AuthSession> | null = null;
+
+const readCreatorHubFallbackToken = (): string | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const token = window.localStorage.getItem('creatorhub_auth_token');
+    return typeof token === 'string' && token.trim() ? token.trim() : null;
+  } catch {
+    return null;
+  }
+};
+
+const shouldDiscardTokenlessStandaloneSession = (session: AuthSession | null | undefined): boolean => {
+  if (typeof window === 'undefined') return false;
+  if (!session?.adminUser || session.sessionToken) return false;
+  if (readTokenMirror() || readCreatorHubFallbackToken()) return false;
+  if (!isRoleRoomStandaloneRuntime()) return false;
+
+  const hostname = window.location.hostname.trim().toLowerCase();
+  const isLocalStandaloneRuntime =
+    import.meta.env.DEV ||
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname.endsWith('.local');
+
+  return !isLocalStandaloneRuntime;
+};
 
 const updateWindowUserId = (userId?: string | null) => {
   if (typeof window === 'undefined') return;
@@ -148,6 +176,15 @@ export const authSessionService = {
     hydratePromise = (async () => {
       const cached = readStoredSession();
       if (cached) {
+        if (shouldDiscardTokenlessStandaloneSession(cached)) {
+          sessionCache = {};
+          updateWindowUserId(undefined);
+          persistTokenMirror(undefined);
+          writeStoredSession({});
+          hydrated = true;
+          return sessionCache;
+        }
+
         sessionCache = cached;
         updateWindowUserId(cached.currentUserId || (cached.adminUser?.id ? String(cached.adminUser.id) : null));
         persistTokenMirror(cached.sessionToken);
@@ -182,13 +219,9 @@ export const authSessionService = {
     }
 
     if (typeof window !== 'undefined') {
-      try {
-        const fallbackToken = window.localStorage.getItem('creatorhub_auth_token');
-        if (fallbackToken && fallbackToken.trim()) {
-          return { Authorization: `Bearer ${fallbackToken.trim()}` };
-        }
-      } catch {
-        // Ignore storage failures.
+      const fallbackToken = readCreatorHubFallbackToken();
+      if (fallbackToken) {
+        return { Authorization: `Bearer ${fallbackToken}` };
       }
     }
 

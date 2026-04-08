@@ -126,7 +126,7 @@ import { castingService } from '../services/castingService';
 import { useToast } from './ToastStack';
 import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
 import { CallSheetGenerator } from './CallSheetGenerator';
-import { detectConflicts } from '../hooks/useCrewData';
+import { detectConflicts, getCrewOfflineQueueStorageKey } from '../hooks/useCrewData';
 import { useAuth } from '../../../hooks/useAuth';
 import crewPng from './icons/Keep/roleroom_crew.png';
 import { CrewManagementGuide } from './production/CrewManagementGuide';
@@ -1157,10 +1157,11 @@ export function CrewManagementPanel({
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const externalCreateSignalRef = useRef(0);
   const externalCreatePendingRef = useRef(false);
+  const crewOfflineQueueStorageKey = getCrewOfflineQueueStorageKey(projectId);
   const [offlinePending, setOfflinePending] = useState<number>(() => {
     try {
-      const q = JSON.parse(localStorage.getItem('crewDataOfflineQueue') || '[]') as Array<{ projectId: string }>;
-      return q.filter(a => a.projectId === projectId).length;
+      const q = JSON.parse(localStorage.getItem(crewOfflineQueueStorageKey) || '[]') as Array<{ projectId: string }>;
+      return q.length;
     } catch {
       return 0;
     }
@@ -1385,8 +1386,8 @@ export function CrewManagementPanel({
   useEffect(() => {
     const countPending = () => {
       try {
-        const q = JSON.parse(localStorage.getItem('crewDataOfflineQueue') || '[]') as Array<{ projectId: string }>;
-        setOfflinePending(q.filter(a => a.projectId === projectId).length);
+        const q = JSON.parse(localStorage.getItem(crewOfflineQueueStorageKey) || '[]') as Array<{ projectId: string }>;
+        setOfflinePending(q.length);
       } catch { setOfflinePending(0); }
     };
     window.addEventListener('online', countPending);
@@ -1395,7 +1396,7 @@ export function CrewManagementPanel({
       window.removeEventListener('online', countPending);
       window.removeEventListener('storage', countPending);
     };
-  }, [projectId]);
+  }, [crewOfflineQueueStorageKey]);
 
   // Profession-specific crew role priorities
   const getCrewRoles = (): CrewRole[] => {

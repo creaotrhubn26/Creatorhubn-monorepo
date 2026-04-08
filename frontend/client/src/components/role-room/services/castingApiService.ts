@@ -107,7 +107,16 @@ async function apiRequest<T>(
       rawBody ||
       `Request failed (${response.status})`;
 
-    throw new CastingApiError(String(detail), response.status, endpoint, parsedBody ?? rawBody);
+    const normalizedDetail = String(detail);
+    const isMissingRoleRoomSession = normalizedDetail.includes('Mangler x-api-key header eller gyldig session');
+    if (isMissingRoleRoomSession) {
+      void authSessionService.clearSession();
+    }
+    const message = isMissingRoleRoomSession
+      ? 'Role Room-sesjonen mangler eller har utløpt. Logg inn på nytt.'
+      : normalizedDetail;
+
+    throw new CastingApiError(message, response.status, endpoint, parsedBody ?? rawBody);
   }
   
   return response.json();

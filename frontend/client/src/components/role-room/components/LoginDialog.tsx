@@ -2056,9 +2056,19 @@ export default function LoginDialog({
 
   /* ── CTA button label ── */
   const ctaButtonLabel = ROLE_ROOM_LANDING_CONFIG.login.ctaButtonLabel;
-  // demoMode defaults to true — switched OFF in admin hides the guest bypass
+  // Keep the guest bypass visible when demo mode is enabled, but never use the
+  // tokenless "local login" path on real hosted Role Room environments.
   const demoModeEnabled = ROLE_ROOM_LANDING_CONFIG.demoModeEnabled;
-  const shouldUseStandaloneDemoAuth = demoModeEnabled && isRoleRoomStandaloneRuntime();
+  const shouldUseStandaloneDemoAuth =
+    demoModeEnabled &&
+    isRoleRoomStandaloneRuntime() &&
+    typeof window !== 'undefined' &&
+    (
+      import.meta.env.DEV ||
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname.endsWith('.local')
+    );
 
   /* cycle use-case scenarios every 3.5 s */
   useEffect(() => {

@@ -3938,7 +3938,7 @@ export function CastingShotListPanel({
         /* 2D Shot Planner View */
         <Box sx={{ height: 'calc(100vh - 300px)', bgcolor: 'rgba(0,0,0,0.2)', borderRadius: 2, overflow: 'hidden' }}>
           <Suspense fallback={<MUICircularProgress sx={{ mt: 4 }} />}>
-            <ShotPlannerPanel />
+            <ShotPlannerPanel key={projectId} projectId={projectId} />
           </Suspense>
         </Box>
       ) : (

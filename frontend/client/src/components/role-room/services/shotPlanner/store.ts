@@ -1,5 +1,4 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
 import { DEFAULT_SCENE, DEFAULT_CAMERA, DEFAULT_ACTOR, DEFAULT_PROP, LENS_FOV_MAP, ShotType, CameraHeight, CameraAngleType, CameraMovement, calculateFocusFromFocalLength, getFocalLengthFromLensType, type Scene2D, type Camera2D, type Actor2D, type Prop2D, type Shot2D, type Point2D, type PlannerTool, type SelectionState, type SceneViewport, type LensType, type HistoryEntry } from "./types";
 import { shotPlannerApi } from "./api";
 
@@ -8,6 +7,7 @@ import { shotPlannerApi } from "./api";
 // =============================================================================
 
 interface ShotPlannerState {
+  activeProjectId: string | null;
   // Current scene
   scene: Scene2D | null;
   scenes: Scene2D[];
@@ -37,6 +37,7 @@ interface ShotPlannerState {
 }
 
 interface ShotPlannerActions {
+  setProjectScope: (projectId: string | null) => void;
   // Scene management
   createScene: (name: string, location?: string) => Promise<string>;
   loadScene: (sceneId: string) => void;
@@ -148,22 +149,101 @@ const getNextShotNumber = (shots: Shot2D[]): number => {
   return Math.max(...shots.map(s => s.number)) + 1;
 };
 
+const LEGACY_STORAGE_KEY = 'shot-planner-storage';
+const STORAGE_KEY_PREFIX = 'shot-planner-storage:';
+
+type PersistedShotPlannerProjectState = {
+  activeSceneId: string | null;
+  scenes: Scene2D[];
+};
+
+const EMPTY_SELECTION: SelectionState = {
+  selectedIds: [],
+  selectionType: null,
+  selectionBounds: null,
+};
+
+const buildStorageKey = (projectId: string) => `${STORAGE_KEY_PREFIX}${projectId}`;
+
+const normalizeProjectScene = (scene: Scene2D, projectId: string): Scene2D => ({
+  ...scene,
+  projectId,
+});
+
+const readProjectState = (projectId: string): PersistedShotPlannerProjectState => {
+  if (typeof window === 'undefined') {
+    return { activeSceneId: null, scenes: [] };
+  }
+
+  try {
+    const raw = window.localStorage.getItem(buildStorageKey(projectId));
+    if (!raw) {
+      return { activeSceneId: null, scenes: [] };
+    }
+
+    const parsed = JSON.parse(raw) as PersistedShotPlannerProjectState;
+    const scenes = Array.isArray(parsed?.scenes)
+      ? parsed.scenes.filter(Boolean).map((scene) => normalizeProjectScene(scene, projectId))
+      : [];
+
+    return {
+      activeSceneId: typeof parsed?.activeSceneId === 'string' ? parsed.activeSceneId : null,
+      scenes,
+    };
+  } catch {
+    return { activeSceneId: null, scenes: [] };
+  }
+};
+
+const writeProjectState = (
+  projectId: string | null,
+  scenes: Scene2D[],
+  activeSceneId: string | null,
+): void => {
+  if (typeof window === 'undefined' || !projectId) {
+    return;
+  }
+
+  try {
+    const scopedScenes = scenes
+      .filter((scene) => scene?.projectId === projectId)
+      .map((scene) => normalizeProjectScene(scene, projectId));
+    window.localStorage.setItem(
+      buildStorageKey(projectId),
+      JSON.stringify({
+        activeSceneId,
+        scenes: scopedScenes,
+      } satisfies PersistedShotPlannerProjectState),
+    );
+  } catch {
+    // Ignore local persistence failures.
+  }
+};
+
+const clearLegacyProjectState = (): void => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+  } catch {
+    // Ignore cleanup failures.
+  }
+};
+
 // =============================================================================
 // Store Implementation
 // =============================================================================
 
 export const useShotPlannerStore = create<ShotPlannerStore>()(
-  persist(
-    (set, get) => ({
+  (set, get) => ({
       // Initial state
+      activeProjectId: null,
       scene: null,
       scenes: [],
       activeTool: 'select',
-      selection: {
-        selectedIds: [],
-        selectionType: null,
-        selectionBounds: null,
-      },
+      selection: EMPTY_SELECTION,
       history: [],
       historyIndex: -1,
       maxHistory: 50,
@@ -174,14 +254,52 @@ export const useShotPlannerStore = create<ShotPlannerStore>()(
       clipboard: null,
       isSyncing: false,
 
+      setProjectScope: (projectId) => {
+        clearLegacyProjectState();
+
+        if (!projectId) {
+          set({
+            activeProjectId: null,
+            scene: null,
+            scenes: [],
+            activeTool: 'select',
+            selection: EMPTY_SELECTION,
+            history: [],
+            historyIndex: -1,
+            clipboard: null,
+            isSyncing: false,
+          });
+          return;
+        }
+
+        const persisted = readProjectState(projectId);
+        const nextScene = persisted.activeSceneId
+          ? persisted.scenes.find((scene) => scene.id === persisted.activeSceneId) ?? persisted.scenes[0] ?? null
+          : persisted.scenes[0] ?? null;
+
+        set({
+          activeProjectId: projectId,
+          scene: nextScene,
+          scenes: persisted.scenes,
+          activeTool: 'select',
+          selection: EMPTY_SELECTION,
+          history: [],
+          historyIndex: -1,
+          clipboard: null,
+          isSyncing: false,
+        });
+      },
+
       // Scene management
       createScene: async (name, location = '') => {
+        const activeProjectId = get().activeProjectId;
         const id = generateId();
         const newScene: Scene2D = {
           ...DEFAULT_SCENE,
           id,
           name,
           location,
+          projectId: activeProjectId ?? undefined,
         };
         
         set(state => ({
@@ -199,19 +317,21 @@ export const useShotPlannerStore = create<ShotPlannerStore>()(
       loadScene: (sceneId) => {
         const scene = get().scenes.find(s => s.id === sceneId);
         if (scene) {
-          set({ scene, selection: { selectedIds: [], selectionType: null, selectionBounds: null } });
+          set({ scene, selection: EMPTY_SELECTION });
         }
       },
 
       loadDemoScene: async (demoScene) => {
+        const activeProjectId = get().activeProjectId;
+        const scopedScene = activeProjectId ? normalizeProjectScene(demoScene, activeProjectId) : demoScene;
         set(state => ({
-          scenes: [...state.scenes, demoScene],
-          scene: demoScene,
-          selection: { selectedIds: [], selectionType: null, selectionBounds: null },
+          scenes: [...state.scenes, scopedScene],
+          scene: scopedScene,
+          selection: EMPTY_SELECTION,
         }));
         
         // Save to database
-        await shotPlannerApi.saveScene(demoScene);
+        await shotPlannerApi.saveScene(scopedScene);
       },
 
       updateScene: async (updates) => {
@@ -243,10 +363,27 @@ export const useShotPlannerStore = create<ShotPlannerStore>()(
       },
 
       syncScenes: async () => {
+        const activeProjectId = get().activeProjectId;
+        if (!activeProjectId) {
+          set({ scenes: [], scene: null, isSyncing: false });
+          return;
+        }
         set({ isSyncing: true });
         try {
-          const scenes = await shotPlannerApi.getScenes();
-          set({ scenes, isSyncing: false });
+          const remoteScenes = await shotPlannerApi.getScenes(activeProjectId);
+          const localScenes = get().scenes.filter((scene) => scene?.projectId === activeProjectId);
+          const scopedScenes = remoteScenes
+            .filter((scene) => scene?.projectId === activeProjectId)
+            .map((scene) => normalizeProjectScene(scene, activeProjectId));
+          const currentSceneId = get().scene?.id ?? null;
+          const nextScenes = scopedScenes.length > 0 ? scopedScenes : localScenes;
+          set({
+            scenes: nextScenes,
+            scene: currentSceneId
+              ? nextScenes.find((scene) => scene.id === currentSceneId) ?? nextScenes[0] ?? null
+              : nextScenes[0] ?? null,
+            isSyncing: false,
+          });
         } catch (error) {
           console.error('Failed to sync scenes:', error);
           set({ isSyncing: false });
@@ -1104,7 +1241,9 @@ export const useShotPlannerStore = create<ShotPlannerStore>()(
 
       importScene: (json) => {
         try {
-          const scene = JSON.parse(json) as Scene2D;
+          const activeProjectId = get().activeProjectId;
+          const parsedScene = JSON.parse(json) as Scene2D;
+          const scene = activeProjectId ? normalizeProjectScene(parsedScene, activeProjectId) : parsedScene;
           set(state => ({
             scenes: [...state.scenes, scene],
             scene,
@@ -1113,15 +1252,21 @@ export const useShotPlannerStore = create<ShotPlannerStore>()(
           console.error('Failed to import scene:', e);
         }
       },
-    }),
-    {
-      name: 'shot-planner-storage',
-      partialize: (state) => ({
-        scenes: state.scenes,
-      }),
-    }
-  )
+    })
 );
+
+useShotPlannerStore.subscribe((state, previousState) => {
+  if (
+    state.activeProjectId === previousState.activeProjectId
+    && state.scenes === previousState.scenes
+    && state.scene === previousState.scene
+  ) {
+    return;
+  }
+
+  clearLegacyProjectState();
+  writeProjectState(state.activeProjectId, state.scenes, state.scene?.id ?? null);
+});
 
 // =============================================================================
 // Selector Hooks

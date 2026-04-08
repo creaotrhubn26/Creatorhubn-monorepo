@@ -184,9 +184,14 @@ export function deriveSceneStatus(
 const ZOOM_KEY = 'pmv:manuscriptZoom';
 const FULLSCREEN_KEY = 'pmv:isFullscreen';
 
-export function loadZoomPreference(): number {
+function buildScopedPreferenceKey(baseKey: string, projectId?: string): string {
+  return `${baseKey}:${projectId || 'global'}`;
+}
+
+export function loadZoomPreference(projectId?: string): number {
   try {
-    const v = localStorage.getItem(ZOOM_KEY);
+    const v = localStorage.getItem(buildScopedPreferenceKey(ZOOM_KEY, projectId))
+      ?? localStorage.getItem(ZOOM_KEY);
     if (v) {
       const n = parseFloat(v);
       if (n >= 0.5 && n <= 2) return n;
@@ -195,16 +200,22 @@ export function loadZoomPreference(): number {
   return 1;
 }
 
-export function saveZoomPreference(zoom: number): void {
-  try { localStorage.setItem(ZOOM_KEY, String(zoom)); } catch { /* noop */ }
+export function saveZoomPreference(zoom: number, projectId?: string): void {
+  try { localStorage.setItem(buildScopedPreferenceKey(ZOOM_KEY, projectId), String(zoom)); } catch { /* noop */ }
 }
 
-export function loadFullscreenPreference(): boolean {
-  try { return localStorage.getItem(FULLSCREEN_KEY) === 'true'; } catch { return false; }
+export function loadFullscreenPreference(projectId?: string): boolean {
+  try {
+    const value = localStorage.getItem(buildScopedPreferenceKey(FULLSCREEN_KEY, projectId))
+      ?? localStorage.getItem(FULLSCREEN_KEY);
+    return value === 'true';
+  } catch {
+    return false;
+  }
 }
 
-export function saveFullscreenPreference(fs: boolean): void {
-  try { localStorage.setItem(FULLSCREEN_KEY, String(fs)); } catch { /* noop */ }
+export function saveFullscreenPreference(fs: boolean, projectId?: string): void {
+  try { localStorage.setItem(buildScopedPreferenceKey(FULLSCREEN_KEY, projectId), String(fs)); } catch { /* noop */ }
 }
 
 // ============================================
@@ -846,9 +857,10 @@ export const INITIAL_INSPECTOR_STATE: InspectorUIState = {
 
 const SECTIONS_KEY = 'pmv:expandedSections';
 
-export function loadExpandedSections(): ExpandedSections {
+export function loadExpandedSections(projectId?: string): ExpandedSections {
   try {
-    const raw = localStorage.getItem(SECTIONS_KEY);
+    const raw = localStorage.getItem(buildScopedPreferenceKey(SECTIONS_KEY, projectId))
+      ?? localStorage.getItem(SECTIONS_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
       return { ...DEFAULT_EXPANDED_SECTIONS, ...parsed };
@@ -857,6 +869,6 @@ export function loadExpandedSections(): ExpandedSections {
   return DEFAULT_EXPANDED_SECTIONS;
 }
 
-export function saveExpandedSections(sections: ExpandedSections): void {
-  try { localStorage.setItem(SECTIONS_KEY, JSON.stringify(sections)); } catch { /* noop */ }
+export function saveExpandedSections(sections: ExpandedSections, projectId?: string): void {
+  try { localStorage.setItem(buildScopedPreferenceKey(SECTIONS_KEY, projectId), JSON.stringify(sections)); } catch { /* noop */ }
 }

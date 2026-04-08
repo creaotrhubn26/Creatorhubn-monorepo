@@ -12,9 +12,10 @@ export const shotPlannerApi = {
   /**
    * Get all scenes from database
    */
-  async getScenes(): Promise<Scene2D[]> {
+  async getScenes(projectId?: string): Promise<Scene2D[]> {
     try {
-      const response = await fetch(`${API_BASE}/scenes`);
+      const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : '';
+      const response = await fetch(`${API_BASE}/scenes${query}`);
       if (!response.ok) {
         throw new Error('Failed to fetch scenes');
       }
@@ -29,9 +30,10 @@ export const shotPlannerApi = {
   /**
    * Get a specific scene by ID
    */
-  async getScene(id: string): Promise<Scene2D | null> {
+  async getScene(id: string, projectId?: string): Promise<Scene2D | null> {
     try {
-      const response = await fetch(`${API_BASE}/scenes/${id}`);
+      const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : '';
+      const response = await fetch(`${API_BASE}/scenes/${id}${query}`);
       if (!response.ok) {
         if (response.status === 404) return null;
         throw new Error('Failed to fetch scene');

@@ -714,6 +714,11 @@ async function producerWorkflowRequest<T>(endpoint: string, options: RequestInit
       ?? (typeof parsedBody === 'string' && parsedBody.trim().length > 0 ? parsedBody.trim() : undefined)
       ?? `Producer workflow request failed (${response.status})`;
 
+    if (detail.includes('Mangler x-api-key header eller gyldig session')) {
+      void authSessionService.clearSession();
+      throw new Error('Role Room-sesjonen mangler eller har utløpt. Logg inn på nytt.');
+    }
+
     throw new Error(detail);
   }
 

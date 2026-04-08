@@ -62,30 +62,40 @@ export interface StoryLogicRecord {
   updatedAt: string;
 }
 
-// Storage key for localStorage fallback
-const STORAGE_KEY = 'story-logic-data';
+const LEGACY_STORAGE_KEY = 'story-logic-data';
+const STORAGE_KEY_PREFIX = 'story-logic-data:';
+
+const buildStorageKey = (projectId: string): string => `${STORAGE_KEY_PREFIX}${projectId}`;
 
 /**
- * Get all story logic data from localStorage
+ * Get story logic data from localStorage for one project
  */
-function getStorageData(): Record<string, StoryLogicRecord> {
+function getStorageData(projectId: string): StoryLogicRecord | null {
   try {
-    const data = localStorage.getItem(STORAGE_KEY);
-    return data ? JSON.parse(data) : {};
+    const data = localStorage.getItem(buildStorageKey(projectId));
+    return data ? JSON.parse(data) as StoryLogicRecord : null;
   } catch (error) {
     console.error('Failed to read story logic from localStorage:', error);
-    return {};
+    return null;
   }
 }
 
 /**
- * Save all story logic data to localStorage
+ * Save story logic data to localStorage for one project
  */
-function saveStorageData(data: Record<string, StoryLogicRecord>): void {
+function saveStorageData(projectId: string, data: StoryLogicRecord): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    localStorage.setItem(buildStorageKey(projectId), JSON.stringify(data));
   } catch (error) {
     console.error('Failed to save story logic to localStorage:', error);
+  }
+}
+
+function deleteStorageData(projectId: string): void {
+  try {
+    localStorage.removeItem(buildStorageKey(projectId));
+  } catch (error) {
+    console.error('Failed to delete story logic from localStorage:', error);
   }
 }
 
@@ -95,8 +105,7 @@ export const storyLogicService = {
    */
   async getStoryLogic(projectId: string): Promise<StoryLogicState | null> {
     if (shouldUseRoleRoomLocalFallback()) {
-      const storageData = getStorageData();
-      return storageData[projectId]?.data || null;
+      return getStorageData(projectId)?.data || null;
     }
 
     // Try database first
@@ -106,15 +115,13 @@ export const storyLogicService = {
         const data = await response.json();
         if (data.success && data.storyLogic) {
           // Also update localStorage as cache
-          const storageData = getStorageData();
-          storageData[projectId] = {
+          saveStorageData(projectId, {
             id: `story-logic-${projectId}`,
             projectId,
             data: data.storyLogic,
             createdAt: data.createdAt || new Date().toISOString(),
             updatedAt: data.updatedAt || new Date().toISOString(),
-          };
-          saveStorageData(storageData);
+          });
           return data.storyLogic;
         }
       }
@@ -123,9 +130,7 @@ export const storyLogicService = {
     }
 
     // Fallback to localStorage
-    const storageData = getStorageData();
-    const record = storageData[projectId];
-    return record?.data || null;
+    return getStorageData(projectId)?.data || null;
   },
 
   /**
@@ -136,16 +141,14 @@ export const storyLogicService = {
     const dataToSave = { ...data, lastSaved: now };
 
     // Always save to localStorage first for immediate persistence
-    const storageData = getStorageData();
-    const existingRecord = storageData[projectId];
-    storageData[projectId] = {
+    const existingRecord = getStorageData(projectId);
+    saveStorageData(projectId, {
       id: existingRecord?.id || `story-logic-${projectId}`,
       projectId,
       data: dataToSave,
       createdAt: existingRecord?.createdAt || now,
       updatedAt: now,
-    };
-    saveStorageData(storageData);
+    });
 
     if (shouldUseRoleRoomLocalFallback()) {
       return;
@@ -178,9 +181,7 @@ export const storyLogicService = {
    */
   async deleteStoryLogic(projectId: string): Promise<void> {
     // Remove from localStorage
-    const storageData = getStorageData();
-    delete storageData[projectId];
-    saveStorageData(storageData);
+    deleteStorageData(projectId);
 
     if (shouldUseRoleRoomLocalFallback()) {
       return;
@@ -211,42 +212,64 @@ export const storyLogicService = {
   /**
    * Migrate old localStorage format to new format
    * Old format: `story-logic-${projectId}` directly in localStorage
-   * New format: Unified storage under STORAGE_KEY
+   * New format: One key per project under STORAGE_KEY_PREFIX
    */
   migrateOldFormat(): void {
     try {
       const allKeys = Object.keys(localStorage);
-      const storyLogicKeys = allKeys.filter(k => k.startsWith('story-logic-') && k !== STORAGE_KEY);
-      
-      if (storyLogicKeys.length === 0) return;
-
-      const storageData = getStorageData();
       let migrated = 0;
 
+      const legacyAggregateRaw = localStorage.getItem(LEGACY_STORAGE_KEY);
+      if (legacyAggregateRaw) {
+        try {
+          const parsed = JSON.parse(legacyAggregateRaw) as Record<string, StoryLogicRecord>;
+          for (const [projectId, record] of Object.entries(parsed ?? {})) {
+            if (!projectId || projectId === 'default' || getStorageData(projectId)) {
+              continue;
+            }
+            if (!record || typeof record !== 'object') {
+              continue;
+            }
+            saveStorageData(projectId, {
+              id: record.id || `story-logic-${projectId}`,
+              projectId,
+              data: record.data,
+              createdAt: record.createdAt || record.data?.lastSaved || new Date().toISOString(),
+              updatedAt: record.updatedAt || record.data?.lastSaved || new Date().toISOString(),
+            });
+            migrated++;
+          }
+          localStorage.removeItem(LEGACY_STORAGE_KEY);
+        } catch (e) {
+          console.warn('Failed to migrate aggregated story logic store:', e);
+        }
+      }
+
+      const storyLogicKeys = allKeys.filter(k => k.startsWith('story-logic-') && k !== LEGACY_STORAGE_KEY);
       for (const key of storyLogicKeys) {
         const projectId = key.replace('story-logic-', '');
-        if (projectId === 'default' || storageData[projectId]) continue;
+        if (projectId === 'default' || getStorageData(projectId)) continue;
 
         try {
           const oldData = localStorage.getItem(key);
           if (oldData) {
             const parsed = JSON.parse(oldData) as StoryLogicState;
-            storageData[projectId] = {
+            saveStorageData(projectId, {
               id: `story-logic-${projectId}`,
               projectId,
               data: parsed,
               createdAt: parsed.lastSaved || new Date().toISOString(),
               updatedAt: parsed.lastSaved || new Date().toISOString(),
-            };
+            });
             migrated++;
           }
+          localStorage.removeItem(key);
         } catch (e) {
           console.warn(`Failed to migrate story logic for key ${key}:`, e);
         }
       }
 
       if (migrated > 0) {
-        saveStorageData(storageData);
         console.log(`✓ Migrated ${migrated} story logic records to new format`);
       }
     } catch (error) {

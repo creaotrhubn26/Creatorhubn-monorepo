@@ -425,6 +425,14 @@ interface SelectionMeetDraftState {
   location: string;
 }
 
+const DEFAULT_SELECTION_MEET_DRAFT: SelectionMeetDraftState = {
+  title: '',
+  date: '',
+  time: '',
+  durationMinutes: 45,
+  location: 'Google Meet',
+};
+
 type RoleRoomAdminPreviewMode = 'admin' | 'production_team' | 'content_producer' | 'client';
 
 const SELECTION_STATUS_BY_STAGE: Record<SelectionStage, string> = {
@@ -837,13 +845,7 @@ export function CastingPlannerPanel({
   const [selectionGoogleStatus, setSelectionGoogleStatus] = useState<RoleRoomGoogleStatusResponse | null>(null);
   const [selectionGoogleStatusLoading, setSelectionGoogleStatusLoading] = useState(false);
   const [selectionMeetBusy, setSelectionMeetBusy] = useState(false);
-  const [selectionMeetDraft, setSelectionMeetDraft] = useState<SelectionMeetDraftState>({
-    title: '',
-    date: '',
-    time: '',
-    durationMinutes: 45,
-    location: 'Google Meet',
-  });
+  const [selectionMeetDraft, setSelectionMeetDraft] = useState<SelectionMeetDraftState>(DEFAULT_SELECTION_MEET_DRAFT);
   const [globalTagRegistry, setGlobalTagRegistry] = useState<string[]>([]);
   const [globalTagRegistryLoaded, setGlobalTagRegistryLoaded] = useState(false);
   const [storyLogicData, setStoryLogicData] = useState<StoryLogicState | null>(null);
@@ -1094,6 +1096,52 @@ export function CastingPlannerPanel({
   useEffect(() => {
     currentProjectRef.current = currentProject;
   }, [currentProject]);
+
+  useEffect(() => {
+    setSelectedSelectionCandidateId(null);
+    setSelectionCompareCandidateIds([]);
+    setSelectionDecisionLog([]);
+    setSelectionSelfTapeIndexByCandidate({});
+    setSelectedRole(null);
+    setSelectedCandidate(null);
+    setSelectedSchedule(null);
+    setSelectionPhaseFilter('screening');
+    setSelectionNotesTagExclusions([]);
+    setSelectionNotesSaving(false);
+    setSelectionGoogleStatus(null);
+    setSelectionGoogleStatusLoading(false);
+    setSelectionMeetBusy(false);
+    setSelectionMeetDraft(DEFAULT_SELECTION_MEET_DRAFT);
+    setCalendarViewMode('production');
+    setCalendarCreateIntent(null);
+    setCalendarPreselectedFromCreate(null);
+    setStoryArcView('main');
+    setAvailableScenes([]);
+    setCandidateStatusFilter('all');
+    setCandidateViewMode('list');
+    setDraggedCandidate(null);
+    setQuickContactIds(new Set());
+    setQuickContactsLoaded(false);
+    setRoleDialogOpen(false);
+    setCandidateDialogOpen(false);
+    setScheduleDialogOpen(false);
+    setSharingModalOpen(false);
+    setSharingDialogOpen(false);
+    setConsentContractDialogOpen(false);
+    setSendConsentOnSave(false);
+    setSelectionBoardMode(false);
+    setSelectionShortcutsOpen(false);
+    setSelectionNotesDraft('');
+    setProducerMediaFocus(null);
+    setShowTutorial(false);
+    setShowTutorialEditor(false);
+    setPreviewTutorial(null);
+    setAdminDashboardOpen(false);
+    setBillingAccountDialogOpen(false);
+    setProjectQuickActionsAnchorEl(null);
+    setProjectQuickActionsProject(null);
+    setProjectSelectorQuery('');
+  }, [currentProject?.id]);
 
   useEffect(() => {
     if (!isRoleRoomDiagnosticsEnabled()) {
@@ -1492,11 +1540,25 @@ export function CastingPlannerPanel({
 
   // Load story logic data when project changes
   useEffect(() => {
-    if (currentProject?.id) {
-      storyLogicService.getStoryLogic(currentProject.id).then(data => {
-        if (data) setStoryLogicData(data);
-      }).catch(err => console.warn('Failed to load story logic:', err));
+    let isMounted = true;
+    setStoryLogicData(null);
+    if (!currentProject?.id) {
+      return () => {
+        isMounted = false;
+      };
     }
+
+    storyLogicService.getStoryLogic(currentProject.id).then(data => {
+      if (isMounted) {
+        setStoryLogicData(data ?? null);
+      }
+    }).catch(err => {
+      console.warn('Failed to load story logic:', err);
+    });
+
+    return () => {
+      isMounted = false;
+    };
   }, [currentProject?.id]);
   
   // Sort and filter project lists used by the quick-switch header and selector dialog
@@ -1952,6 +2014,8 @@ export function CastingPlannerPanel({
   const producerCoreTabMetaLabel = isContentProducerMode || isClientReviewerMode
     ? producerWorkspaceBadgeLabel
     : 'Prosjektstyring';
+  const isFreshProjectCreationFlow = projectCreationModalOpen && !projectToEdit;
+  const headerActiveProject = isFreshProjectCreationFlow ? null : currentProject;
   const useFocusedWorkspaceHeader = !useCompactHeaderLayout && (isContentProducerMode || isClientReviewerMode);
   const headerBrandSubtitle = isClientReviewerMode
     ? 'Klientgjennomgang'
@@ -5111,14 +5175,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
 
   useEffect(() => {
     if (!selectedSelectionCandidate) {
-      setSelectionMeetDraft((previous) => ({
-        ...previous,
-        title: '',
-        date: '',
-        time: '',
-        durationMinutes: 45,
-        location: 'Google Meet',
-      }));
+      setSelectionMeetDraft(DEFAULT_SELECTION_MEET_DRAFT);
       return;
     }
 
@@ -5974,7 +6031,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
             </IconButton>
           </Box>
 
-          {useCompactHeaderLayout ? (
+          {useCompactHeaderLayout && !isMobile ? (
             <Box
               onClick={openProjectSelectorDialog}
               role="button"
@@ -6018,7 +6075,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                     textOverflow: 'ellipsis',
                   }}
                 >
-                  {currentProject?.name || branding.appName}
+                  {headerActiveProject?.name || branding.appName}
                 </Typography>
                 <Typography
                   sx={{
@@ -6084,18 +6141,18 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                     px: { md: 1.3, lg: 1.55 },
                     py: { md: 0.95, lg: 1.05 },
                     borderRadius: { md: 2.25, lg: 2.5 },
-                    border: currentProject ? '1px solid rgba(34,211,238,0.28)' : '1px solid rgba(255,255,255,0.08)',
-                    background: currentProject
+                    border: headerActiveProject ? '1px solid rgba(34,211,238,0.28)' : '1px solid rgba(255,255,255,0.08)',
+                    background: headerActiveProject
                       ? 'linear-gradient(135deg, rgba(8,47,73,0.42) 0%, rgba(17,24,39,0.82) 100%)'
                       : 'rgba(255,255,255,0.03)',
-                    boxShadow: currentProject
+                    boxShadow: headerActiveProject
                       ? '0 10px 26px rgba(0,0,0,0.24), inset 0 1px 0 rgba(255,255,255,0.06)'
                       : 'inset 0 1px 0 rgba(255,255,255,0.03)',
                     cursor: 'pointer',
                     transition: 'border-color 0.2s ease, background-color 0.2s ease, transform 0.2s ease',
                     '&:hover': {
                       borderColor: 'rgba(34,211,238,0.52)',
-                      background: currentProject
+                      background: headerActiveProject
                         ? 'linear-gradient(135deg, rgba(8,47,73,0.5) 0%, rgba(17,24,39,0.9) 100%)'
                         : 'rgba(255,255,255,0.05)',
                       transform: 'translateY(-1px)',
@@ -6109,9 +6166,9 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                           width: 10,
                           height: 10,
                           borderRadius: '50%',
-                          bgcolor: currentProject ? '#22d3ee' : 'rgba(255,255,255,0.22)',
-                          border: currentProject ? '2px solid rgba(255,255,255,0.28)' : '1px solid rgba(255,255,255,0.1)',
-                          boxShadow: currentProject ? '0 0 12px rgba(34,211,238,0.45)' : 'none',
+                          bgcolor: headerActiveProject ? '#22d3ee' : 'rgba(255,255,255,0.22)',
+                          border: headerActiveProject ? '2px solid rgba(255,255,255,0.28)' : '1px solid rgba(255,255,255,0.1)',
+                          boxShadow: headerActiveProject ? '0 0 12px rgba(34,211,238,0.45)' : 'none',
                           flexShrink: 0,
                         }}
                       />
@@ -6127,12 +6184,12 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                           textOverflow: 'ellipsis',
                         }}
                       >
-                        {currentProject?.name || 'Velg aktivt prosjekt'}
+                        {headerActiveProject?.name || 'Velg aktivt prosjekt'}
                       </Typography>
-                      {currentProject?.producerWorkflowStatus ? (
+                      {headerActiveProject?.producerWorkflowStatus ? (
                         <Chip
                           size="small"
-                          label={PRODUCER_PROJECT_STATUS_LABELS[currentProject.producerWorkflowStatus] || 'Klar for arbeid'}
+                          label={PRODUCER_PROJECT_STATUS_LABELS[headerActiveProject.producerWorkflowStatus] || 'Klar for arbeid'}
                           sx={{
                             height: 22,
                             bgcolor: 'rgba(246,195,88,0.12)',
@@ -6149,7 +6206,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                           }}
                         />
                       ) : null}
-                      {currentProject && isProtectedDemoProject(currentProject) ? (
+                      {headerActiveProject && isProtectedDemoProject(headerActiveProject) ? (
                         <Chip
                           size="small"
                           label="Låst demo-mal"
@@ -6177,11 +6234,11 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                       }}
                     >
                       {[
-                        currentProject?.clientName,
+                        headerActiveProject?.clientName,
                         producerWorkspaceBadgeLabel,
-                        currentProject && isProtectedDemoProject(currentProject) && !canMutateProtectedDemoData
+                        headerActiveProject && isProtectedDemoProject(headerActiveProject) && !canMutateProtectedDemoData
                           ? 'Demoen er låst. Lag kopi for å jobbe videre.'
-                          : currentProject
+                          : headerActiveProject
                             ? 'Klikk for å bytte eller åpne eksisterende prosjekt'
                             : 'Åpne arbeidsbiblioteket',
                       ].filter(Boolean).join(' • ')}
@@ -6198,7 +6255,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                   >
                     <Chip
                       icon={<Folder sx={{ fontSize: 16, color: '#7dd3fc !important' }} />}
-                      label={currentProject ? 'Åpne eksisterende prosjekter' : 'Åpne prosjekter'}
+                      label={headerActiveProject ? 'Åpne eksisterende prosjekter' : 'Åpne prosjekter'}
                       sx={{
                         height: 28,
                         bgcolor: 'rgba(125,211,252,0.08)',
@@ -6236,10 +6293,10 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                   Åpne prosjekter
                 </Button>
 
-                {currentProject && isProtectedDemoProject(currentProject) && !canMutateProtectedDemoData ? (
+                {headerActiveProject && isProtectedDemoProject(headerActiveProject) && !canMutateProtectedDemoData ? (
                   <Button
                     size="small"
-                    onClick={() => { void handleCreateProjectCopy(currentProject); }}
+                    onClick={() => { void handleCreateProjectCopy(headerActiveProject); }}
                     startIcon={<ContentCopyIcon sx={{ fontSize: 18 }} />}
                     sx={{
                       minWidth: { md: 124, lg: 138 },
@@ -6262,11 +6319,11 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                   </Button>
                 ) : null}
 
-                {currentProject ? (
+                {headerActiveProject ? (
                   <IconButton
                     size="small"
-                    onClick={(event: MouseEvent<HTMLElement>) => handleOpenProjectQuickActions(event, currentProject)}
-                    aria-label={`Flere handlinger for ${currentProject.name}`}
+                    onClick={(event: MouseEvent<HTMLElement>) => handleOpenProjectQuickActions(event, headerActiveProject)}
+                    aria-label={`Flere handlinger for ${headerActiveProject.name}`}
                     title="Flere handlinger"
                     sx={{
                       color: 'rgba(255,255,255,0.68)',
@@ -7272,7 +7329,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
 
       {/* Content */}
       <Box sx={{ flex: 1, overflow: 'hidden', bgcolor: '#0d1117', display: 'flex', flexDirection: 'column', minHeight: 0, width: '100%' }}>
-        <ProjectProvider>
+        <ProjectProvider key={currentProject?.id ?? 'no-project'}>
           {producerProjectSwitchPending ? (
             <Box
               sx={{
@@ -7302,7 +7359,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
           ) : (
           <ErrorBoundary>
           <Suspense fallback={<Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'rgba(255,255,255,0.87)' }}>{branding.tokens.labels.loadingLabel}</Box>}>
-          {isContentProducerMode && activeTab !== PRODUCER_MEDIA_TAB_INDEX && (
+          {!isMobile && isContentProducerMode && activeTab !== PRODUCER_MEDIA_TAB_INDEX && (
           <Box
             sx={{
               px: { xs: 1.5, md: 2 },
@@ -7384,6 +7441,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
         )}
         <TabPanel value={activeTab} index={0}>
           <DashboardPanel
+            key={currentProject?.id ?? 'no-project'}
             project={currentProject}
             roles={roles}
             candidates={allCandidates}
@@ -7412,6 +7470,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
 
         <TabPanel value={activeTab} index={ROLES_TAB_INDEX}>
           <RoleManagementPanel
+            key={currentProject?.id ?? 'no-project'}
             projectId={currentProject?.id || ''}
             roles={roles}
             onRolesChange={loadProjects}
@@ -7428,6 +7487,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
           {isContentProducerMode ? (
             <ProducerExtrasPanel>
               <CandidateManagementPanel
+                key={currentProject?.id ?? 'no-project'}
                 projectId={currentProject?.id || ''}
                 candidates={candidates}
                 roles={roles}
@@ -7489,6 +7549,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
             {candidateViewMode === 'kanban' ? (
               <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={32} sx={{ color: '#00d4ff' }} /></Box>}>
                 <KanbanPanel
+                  key={currentProject?.id ?? 'no-project'}
                   project={currentProject}
                   candidates={candidates}
                   roles={roles}
@@ -7644,6 +7705,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                 </Box>
               )}
             <CandidateManagementPanel
+              key={currentProject?.id ?? 'no-project'}
               projectId={currentProject?.id || ''}
               candidates={candidates}
               roles={roles}
@@ -7665,6 +7727,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
 
         <TabPanel value={activeTab} index={AUDITIONS_TAB_INDEX}>
           <AuditionSchedulePanel
+            key={currentProject?.id ?? 'no-project'}
             projectId={currentProject?.id || ''}
             schedules={schedules}
             candidates={candidates}
@@ -8833,6 +8896,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                 </Box>
               )}
               <CrewManagementPanel
+                key={currentProject.id}
                 projectId={currentProject.id}
                 onUpdate={async () => {
                   const updated = await castingService.getProject(currentProject.id);
@@ -8987,6 +9051,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
               }}
             >
               <LocationManagementPanel
+                key={currentProject.id}
                 projectId={currentProject.id}
                 onUpdate={async () => {
                   const updated = await castingService.getProject(currentProject.id);
@@ -9016,6 +9081,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
           ) : (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
               <EquipmentManagementPanel
+                key={currentProject.id}
                 projectId={currentProject.id}
                 onUpdate={async () => {
                   const updated = await castingService.getProject(currentProject.id);
@@ -9034,6 +9100,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                   </Typography>
                 </Box>
                 <PropManagementPanel
+                  key={currentProject.id}
                   projectId={currentProject.id}
                   onUpdate={async () => {
                     const updated = await castingService.getProject(currentProject.id);
@@ -9162,6 +9229,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
               {calendarViewMode === 'production' ? (
                 <>
                   <ProductionCalendarPanel
+                    key={currentProject.id}
                     projectId={currentProject.id}
                     candidates={(currentProject.candidates || []).map((candidate) => ({
                       id: candidate.id,
@@ -9207,6 +9275,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                   />
                   <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
                   <ProductionDayView
+                    key={`${currentProject.id}:calendar-production-day`}
                     projectId={currentProject.id}
                     onUpdate={async () => {
                       const updated = await castingService.getProject(currentProject.id);
@@ -9223,6 +9292,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                     </Box>
                   }>
                     <CrewCalendarPanel 
+                      key={`${currentProject.id}:crew-calendar`}
                       projectId={currentProject.id}
                       projectName={currentProject.name}
                       crew={currentProject.crew?.map(c => ({
@@ -9702,6 +9772,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
               ) : (
                 <Box sx={{ flex: 1, minHeight: 0, overflow: 'hidden', pt: 1 }}>
                   <ProductionDayView
+                    key={`${currentProject.id}:planning-production-day`}
                     projectId={currentProject.id}
                     onUpdate={async () => {
                       const updated = await castingService.getProject(currentProject.id);
@@ -9745,7 +9816,11 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                     <CircularProgress size={32} sx={{ color: '#8b5cf6' }} />
                   </Box>
                 }>
-                  <StoryLogicPanel projectId={currentProject?.id} onSave={handleStoryLogicSave} />
+                  <StoryLogicPanel
+                    key={currentProject?.id ?? 'no-project'}
+                    projectId={currentProject?.id}
+                    onSave={handleStoryLogicSave}
+                  />
                 </Suspense>
               </Box>
             </Box>
@@ -9806,6 +9881,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
               ) : (
                 <Box sx={{ flex: 1, overflow: 'hidden', pt: 1 }}>
                   <CastingShotListPanel
+                    key={currentProject.id}
                     projectId={currentProject.id}
                     onUpdate={async () => {
                       const updated = await castingService.getProject(currentProject.id);
@@ -9829,6 +9905,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                     </Box>
                   }>
                     <ManuscriptPanel
+                      key={currentProject?.id ?? 'no-project'}
                       projectId={currentProject?.id}
                       onManuscriptChange={handleManuscriptChange}
                       storyLogicData={storyLogicData}
@@ -9912,6 +9989,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
               detail={{ activeTab, bootstrapVersion: producerWorkflowBootstrapVersion }}
             >
               <ProducerMediaPanel
+                key={`${currentProject.id}:${producerWorkflowBootstrapVersion}:media`}
                 project={currentProject}
                 projectId={currentProject.id}
                 projectName={currentProject.name}
@@ -10200,6 +10278,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
               detail={{ activeTab, bootstrapVersion: producerWorkflowBootstrapVersion }}
             >
               <ProducerExportHandoffPanel
+                key={`${currentProject.id}:${producerWorkflowBootstrapVersion}:export`}
                 project={currentProject}
                 onOpenManuscript={() => {
                   setStoryArcView('story-writer');
@@ -10313,6 +10392,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
             </Button>
           )}
           <LiveSetMode
+            key={currentProject?.id ?? 'no-project'}
             projectId={currentProject?.id ?? ''}
             projectName={
               typeof currentProject?.title === 'string'
@@ -10335,6 +10415,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
             <Suspense fallback={null}>
               {calendarCreateIntent === 'location' && activeTab !== LOCATIONS_TAB_INDEX && (
                 <LocationManagementPanel
+                  key={`${currentProject.id}:calendar-create-location`}
                   projectId={currentProject.id}
                   onUpdate={async () => {
                     const updated = await castingService.getProject(currentProject.id);
@@ -10347,6 +10428,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
               )}
               {calendarCreateIntent === 'crew' && activeTab !== TEAM_TAB_INDEX && (
                 <CrewManagementPanel
+                  key={`${currentProject.id}:calendar-create-crew`}
                   projectId={currentProject.id}
                   onUpdate={async () => {
                     const updated = await castingService.getProject(currentProject.id);
@@ -10363,6 +10445,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
               )}
               {calendarCreateIntent === 'equipment' && activeTab !== EQUIPMENT_TAB_INDEX && (
                 <EquipmentManagementPanel
+                  key={`${currentProject.id}:calendar-create-equipment`}
                   projectId={currentProject.id}
                   onUpdate={async () => {
                     const updated = await castingService.getProject(currentProject.id);
@@ -11481,6 +11564,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                     }
                   >
                     <ConsentManagementPanel
+                      key={`${currentProject.id}:${selectedCandidate.id}`}
                       projectId={currentProject.id}
                       candidateId={selectedCandidate.id}
                       onUpdate={() => {
@@ -12133,7 +12217,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
               }}
             />
           </Box>
-          {currentProject ? (
+          {headerActiveProject ? (
             <Box
               sx={{
                 px: 2,
@@ -12161,12 +12245,12 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
               >
                 <Box sx={{ minWidth: 0 }}>
                   <Typography sx={{ color: '#f8fafc', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {currentProject.name}
+                    {headerActiveProject.name}
                   </Typography>
                   <Typography sx={{ mt: 0.35, fontSize: '0.78rem', color: 'rgba(255,255,255,0.64)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {[
-                      currentProject.clientName,
-                      currentProject.producerWorkflowStatus ? PRODUCER_PROJECT_STATUS_LABELS[currentProject.producerWorkflowStatus] : null,
+                      headerActiveProject.clientName,
+                      headerActiveProject.producerWorkflowStatus ? PRODUCER_PROJECT_STATUS_LABELS[headerActiveProject.producerWorkflowStatus] : null,
                     ].filter(Boolean).join(' • ')}
                   </Typography>
                 </Box>
@@ -12718,6 +12802,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                 )}
               >
                 <SharingPanel
+                  key={currentProject.id}
                   project={currentProject}
                   onOpenSharingDialog={openSharingDialog}
                 />
@@ -12735,6 +12820,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
       {currentProject && sharingDialogOpen && (
         <Suspense fallback={null}>
           <CastingSharingDialog
+            key={currentProject.id}
             open={sharingDialogOpen}
             projectId={currentProject.id}
             onClose={() => setSharingDialogOpen(false)}
@@ -13007,7 +13093,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
           {projectCreationModalOpen && (
             <QueryClientProvider client={queryClient}>
               <MemoryRouter>
-                <ProjectProvider>
+                <ProjectProvider key={projectToEdit?.id ?? 'new-project'}>
                   <Suspense fallback={<Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'rgba(255,255,255,0.87)' }}>{branding.tokens.labels.loadingLabel}</Box>}>
                     <NewProjectCreationModal
                       key={`${projectCreationModalKey}-${projectToEdit?.id ?? 'new'}`}
@@ -13019,10 +13105,10 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                       initialData={projectToEdit || undefined}
                       onProjectIdChange={handleProjectIdChange}
                       onOpenEconomy={(projectId) => {
-                        const targetProjectId = projectId ?? currentProject?.id ?? projectToEdit?.id ?? null;
+                        const targetProjectId = projectId ?? currentProjectId ?? projectToEdit?.id ?? null;
                         if (targetProjectId) {
                           const targetProject = projects.find((project) => project.id === targetProjectId)
-                            ?? (currentProject?.id === targetProjectId ? currentProject : null)
+                            ?? (currentProjectId === targetProjectId && currentProject?.id === targetProjectId ? currentProject : null)
                             ?? (projectToEdit?.id === targetProjectId ? projectToEdit : null);
                           if (targetProject) {
                             setCurrentProject(targetProject);
@@ -13371,14 +13457,16 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
       {adminDashboardOpen && (
         <Suspense fallback={null}>
           <AdminDashboard
+            key={headerActiveProject?.id ?? 'no-project'}
             open={adminDashboardOpen}
             onClose={() => setAdminDashboardOpen(false)}
-            projectName={currentProject?.name}
+            projectName={headerActiveProject?.name}
           />
         </Suspense>
       )}
 
       <RoleRoomBillingAccountDialog
+        key={headerActiveProject?.id ?? 'no-project'}
         open={billingAccountDialogOpen}
         onClose={() => setBillingAccountDialogOpen(false)}
         account={billingAccount}
@@ -13395,12 +13483,12 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
           professionLabel: headerProfessionLabel,
           workspaceLabel: headerBrandSubtitle,
         }}
-        currentProject={currentProject ? {
-          id: currentProject.id,
-          name: currentProject.name,
-          clientName: currentProject.clientName,
-          workflowLabel: currentProject.producerWorkflowStatus
-            ? PRODUCER_PROJECT_STATUS_LABELS[currentProject.producerWorkflowStatus]
+        currentProject={headerActiveProject ? {
+          id: headerActiveProject.id,
+          name: headerActiveProject.name,
+          clientName: headerActiveProject.clientName,
+          workflowLabel: headerActiveProject.producerWorkflowStatus
+            ? PRODUCER_PROJECT_STATUS_LABELS[headerActiveProject.producerWorkflowStatus]
             : null,
           teamMembers: currentProjectTeamMembers,
         } : null}
@@ -13455,6 +13543,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
       {consentContractDialogOpen && (
         <Suspense fallback={null}>
           <ConsentContractDialog
+            key={`${currentProject?.id ?? 'no-project'}:${selectedCandidate?.id ?? 'no-candidate'}`}
             open={consentContractDialogOpen}
             onClose={() => {
               setConsentContractDialogOpen(false);

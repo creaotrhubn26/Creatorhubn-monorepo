@@ -227,10 +227,11 @@ const NewSceneDialog: React.FC<NewSceneDialogProps> = ({ open, onClose, onCreate
 // =============================================================================
 
 interface ShotPlannerPanelProps {
+  projectId: string;
   onClose?: () => void;
 }
 
-export const ShotPlannerPanel: React.FC<ShotPlannerPanelProps> = ({ onClose }) => {
+export const ShotPlannerPanel: React.FC<ShotPlannerPanelProps> = ({ projectId, onClose }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   
@@ -256,6 +257,7 @@ export const ShotPlannerPanel: React.FC<ShotPlannerPanelProps> = ({ onClose }) =
     exportScene,
     exportAsPDF,
     exportShotCallsheet,
+    setProjectScope,
     toggleAssetLibrary,
     toggleCameraSettings,
     toggleShotList,
@@ -286,6 +288,10 @@ export const ShotPlannerPanel: React.FC<ShotPlannerPanelProps> = ({ onClose }) =
   const canvasRef = useRef<HTMLDivElement>(null);
   
   // Handle resize
+  useEffect(() => {
+    setProjectScope(projectId || null);
+  }, [projectId, setProjectScope]);
+
   useEffect(() => {
     const updateSize = () => {
       if (containerRef.current) {
@@ -366,8 +372,11 @@ export const ShotPlannerPanel: React.FC<ShotPlannerPanelProps> = ({ onClose }) =
   
   // Sync scenes from database on mount
   useEffect(() => {
+    if (!projectId) {
+      return;
+    }
     syncScenes();
-  }, [syncScenes]);
+  }, [projectId, syncScenes]);
   
   const handleCreateScene = (name: string, location: string) => {
     createScene(name, location);

@@ -356,6 +356,7 @@ export interface SceneViewport {
 
 export interface Scene2D {
   id: string;
+  projectId?: string;
   name: string;
   description?: string;
   location: string;

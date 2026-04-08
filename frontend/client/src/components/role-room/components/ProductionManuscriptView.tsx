@@ -493,8 +493,8 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   const [sceneStatusOverrides, setSceneStatusOverrides] = useState<Record<string, DerivedSceneStatus>>({});
 
   // Manuscript zoom — persisted to localStorage
-  const [manuscriptZoom, setManuscriptZoom] = useState(loadZoomPreference);
-  const [isManuscriptFullscreen, setIsManuscriptFullscreen] = useState(loadFullscreenPreference);
+  const [manuscriptZoom, setManuscriptZoom] = useState(() => loadZoomPreference(projectId));
+  const [isManuscriptFullscreen, setIsManuscriptFullscreen] = useState(() => loadFullscreenPreference(projectId));
 
   // Add Shot Dialog — FSM via useReducer (all dialog state in one place)
   const [addShotState, addShotDispatch] = useReducer(addShotReducer, { open: false });
@@ -659,15 +659,21 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   // ============================================
   const inspectorInit = useMemo((): typeof INITIAL_INSPECTOR_STATE => ({
     ...INITIAL_INSPECTOR_STATE,
-    expandedSections: loadExpandedSections(),
-  }), []);
+    expandedSections: loadExpandedSections(projectId),
+  }), [projectId]);
 
   const [inspectorUI, dispatchInspector] = useReducer(inspectorReducer, inspectorInit);
 
   // Persist expanded sections preference on change
   useEffect(() => {
-    saveExpandedSections(inspectorUI.expandedSections);
-  }, [inspectorUI.expandedSections]);
+    saveExpandedSections(inspectorUI.expandedSections, projectId);
+  }, [inspectorUI.expandedSections, projectId]);
+
+  useEffect(() => {
+    setManuscriptZoom(loadZoomPreference(projectId));
+    setIsManuscriptFullscreen(loadFullscreenPreference(projectId));
+    dispatchInspector({ type: 'LOAD_SECTIONS', sections: loadExpandedSections(projectId) });
+  }, [projectId]);
 
   // ---- Derived convenience aliases ----
   const shotProperties = inspectorUI.properties;
@@ -1460,7 +1466,7 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   function handleManuscriptZoomIn() {
     setManuscriptZoom(prev => {
       const v = Math.min(prev + 0.25, 2);
-      saveZoomPreference(v);
+      saveZoomPreference(v, projectId);
       return v;
     });
   }
@@ -1468,20 +1474,20 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   function handleManuscriptZoomOut() {
     setManuscriptZoom(prev => {
       const v = Math.max(prev - 0.25, 0.5);
-      saveZoomPreference(v);
+      saveZoomPreference(v, projectId);
       return v;
     });
   }
 
   function handleManuscriptZoomReset() {
     setManuscriptZoom(1);
-    saveZoomPreference(1);
+    saveZoomPreference(1, projectId);
   }
 
   function handleManuscriptFullscreen() {
     setIsManuscriptFullscreen(prev => {
       const v = !prev;
-      saveFullscreenPreference(v);
+      saveFullscreenPreference(v, projectId);
       return v;
     });
   }
@@ -1495,7 +1501,7 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
 
       if (e.key === 'Escape' && isManuscriptFullscreen) {
         setIsManuscriptFullscreen(false);
-        saveFullscreenPreference(false);
+        saveFullscreenPreference(false, projectId);
         return;
       }
       const isMod = e.metaKey || e.ctrlKey;
@@ -1514,7 +1520,7 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isManuscriptFullscreen]);
+  }, [isManuscriptFullscreen, projectId]);
 
   // Build timeline data
   const timelineData = useMemo(() => {

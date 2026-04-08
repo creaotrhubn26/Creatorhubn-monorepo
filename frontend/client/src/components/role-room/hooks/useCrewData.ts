@@ -34,7 +34,10 @@ import { castingService } from '../services/castingService';
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const SEARCH_DEBOUNCE_MS = 300;
-const OFFLINE_QUEUE_KEY = 'crewDataOfflineQueue';
+const OFFLINE_QUEUE_KEY_PREFIX = 'crewDataOfflineQueue';
+
+export const getCrewOfflineQueueStorageKey = (projectId: string): string =>
+  `${OFFLINE_QUEUE_KEY_PREFIX}:${projectId || 'global'}`;
 
 // ─── Role → Department mapping ────────────────────────────────────────────────
 
@@ -295,33 +298,32 @@ interface OfflineAction {
   timestamp: number;
 }
 
-function getOfflineQueue(): OfflineAction[] {
+function getOfflineQueue(projectId: string): OfflineAction[] {
   try {
-    return JSON.parse(localStorage.getItem(OFFLINE_QUEUE_KEY) || '[]');
+    return JSON.parse(localStorage.getItem(getCrewOfflineQueueStorageKey(projectId)) || '[]');
   } catch {
     return [];
   }
 }
 
-function setOfflineQueue(queue: OfflineAction[]): void {
+function setOfflineQueue(projectId: string, queue: OfflineAction[]): void {
   try {
-    localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
+    localStorage.setItem(getCrewOfflineQueueStorageKey(projectId), JSON.stringify(queue));
   } catch {
     // storage quota exceeded – silently drop overflow
   }
 }
 
 function enqueueOffline(action: OfflineAction): void {
-  const q = getOfflineQueue();
+  const q = getOfflineQueue(action.projectId);
   q.push(action);
-  setOfflineQueue(q);
+  setOfflineQueue(action.projectId, q);
 }
 
 async function flushOfflineQueue(projectId: string): Promise<void> {
-  const queue = getOfflineQueue().filter((a) => a.projectId === projectId);
+  const queue = getOfflineQueue(projectId);
   if (!queue.length) return;
-  // Remove project's pending items optimistically
-  setOfflineQueue(getOfflineQueue().filter((a) => a.projectId !== projectId));
+  setOfflineQueue(projectId, []);
   for (const action of queue) {
     try {
       if (action.type === 'save' && action.data) {
@@ -546,7 +548,7 @@ export function useCrewData(
   useEffect(() => {
     const handleOnline = () => {
       flushOfflineQueue(projectId).then(() => {
-        setOfflinePending(getOfflineQueue().filter((a) => a.projectId === projectId).length);
+        setOfflinePending(getOfflineQueue(projectId).length);
         loadCrew();
       });
     };
@@ -556,9 +558,7 @@ export function useCrewData(
 
   // ── Initial offline count ────────────────────────────────────────────────────
   useEffect(() => {
-    setOfflinePending(
-      getOfflineQueue().filter((a) => a.projectId === projectId).length,
-    );
+    setOfflinePending(getOfflineQueue(projectId).length);
   }, [projectId]);
 
   // ── CRUD ─────────────────────────────────────────────────────────────────────
@@ -767,5 +767,4 @@ export function useCrewData(
     getAvailabilityCells,
   };
 }
-
 
