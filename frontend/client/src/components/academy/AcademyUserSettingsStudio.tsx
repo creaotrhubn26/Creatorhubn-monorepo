@@ -14,6 +14,7 @@ import {
 } from '@mui/material';
 import {
   CheckCircleOutline,
+  Logout,
   MailOutline,
   NotificationsNone,
   PersonOutline,
@@ -29,7 +30,9 @@ import { useAcademyLocale } from './academyLocale';
 import AcademyLocaleSwitcher from './AcademyLocaleSwitcher';
 import AcademyLeftSidebar from './AcademyLeftSidebar';
 import { useAcademy } from '@/contexts/AcademyContext';
+import { useAuth } from '@/hooks/useAuth';
 import { ACADEMY_WORKFLOW_INTENTS, type AcademyWorkflowIntentId } from './academyToolCore';
+import { useAcademyUserCenter } from './academyUserCenter';
 
 type UserSettingsState = {
   displayName: string;
@@ -124,6 +127,20 @@ function AcademyUserSettingsStudio() {
   const { state, getInstructor, updateInstructor } = useAcademy();
   const { tt, navLabel } = useAcademyLocale();
   const { analytics } = useEnhancedMasterIntegration();
+  const { logout } = useAuth();
+  const {
+    account,
+    notifications,
+    messages,
+    readNotificationIds,
+    readMessageIds,
+    unreadNotificationCount,
+    unreadMessageCount,
+    markNotificationRead,
+    markMessageRead,
+    markAllNotificationsRead,
+    markAllMessagesRead,
+  } = useAcademyUserCenter();
 
   const [leftNav, setLeftNav] = useState('profile-settings');
   const [settings, setSettings] = useState<UserSettingsState>(defaultState);
@@ -168,11 +185,28 @@ function AcademyUserSettingsStudio() {
     };
   }, []);
 
-  const activeTab = useMemo(() => {
+  useEffect(() => {
+    setSettings((prev) => ({
+      ...prev,
+      displayName:
+        prev.displayName === defaultState.displayName && account.displayName
+          ? account.displayName
+          : prev.displayName,
+      email:
+        prev.email === defaultState.email && account.email
+          ? account.email
+          : prev.email,
+      avatarUrl: prev.avatarUrl || account.avatarUrl || '',
+    }));
+  }, [account.avatarUrl, account.displayName, account.email]);
+
+  const activeQuery = useMemo(() => {
     const query = location.includes('?') ? location.slice(location.indexOf('?') + 1) : '';
-    const tab = new URLSearchParams(query).get('tab');
-    return tab ?? 'profile';
+    return new URLSearchParams(query);
   }, [location]);
+
+  const activeTab = activeQuery.get('tab') ?? 'profile';
+  const highlightedAssignmentId = String(activeQuery.get('assignmentId') || '').trim();
 
   const profileInitial = useMemo(() => {
     const candidate = settings.displayName.trim().charAt(0).toUpperCase();
@@ -238,6 +272,7 @@ function AcademyUserSettingsStudio() {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
       await writeUserSettingsToDb(settings);
+      window.dispatchEvent(new Event('academy-user-settings-changed'));
       if (activeInstructorId) {
         const activeInstructor = getInstructor(activeInstructorId);
         if (activeInstructor) {
@@ -265,19 +300,43 @@ function AcademyUserSettingsStudio() {
     }
   };
 
+  const panelHeading = useMemo(() => {
+    if (activeTab === 'notifications') {
+      return tt('Varslingssenter', 'Notification Center');
+    }
+    if (activeTab === 'messages') {
+      return tt('Meldingssenter', 'Message Center');
+    }
+    return tt('Brukerinnstillinger', 'User Settings');
+  }, [activeTab, tt]);
+
+  const handleOpenRoute = useCallback(
+    async (route: string, itemId?: string, type: 'notification' | 'message' = 'notification') => {
+      if (itemId) {
+        if (type === 'notification') {
+          await markNotificationRead(itemId);
+        } else {
+          await markMessageRead(itemId);
+        }
+      }
+      setLocation(route);
+    },
+    [markMessageRead, markNotificationRead, setLocation],
+  );
+
   const sideCards = (
     <>
       <Box sx={{ ...panelSx, p: 2 }}>
         <Stack direction="row" spacing={1.2} alignItems="center">
-          <Avatar src={settings.avatarUrl || undefined} sx={{ width: 44, height: 44, bgcolor: '#f8b321', color: '#111' }}>
+          <Avatar src={account.avatarUrl || settings.avatarUrl || undefined} sx={{ width: 44, height: 44, bgcolor: '#f8b321', color: '#111' }}>
             {profileInitial}
           </Avatar>
           <Box sx={{ minWidth: 0 }}>
             <Typography sx={{ fontWeight: 700 }} noWrap>
-              {settings.displayName || tt('Bruker', 'User')}
+              {account.displayName || settings.displayName || tt('Bruker', 'User')}
             </Typography>
             <Typography sx={{ color: 'rgba(237,240,247,0.72)', fontSize: 13 }} noWrap>
-              {settings.email}
+              {account.email || settings.email}
             </Typography>
           </Box>
         </Stack>
@@ -290,14 +349,20 @@ function AcademyUserSettingsStudio() {
             <Typography sx={{ fontWeight: 700 }}>{tt('Varslingsstatus', 'Notification Status')}</Typography>
           </Stack>
           <Typography sx={{ color: 'rgba(237,240,247,0.78)', fontSize: 13 }}>
-            {settings.desktopNotifications
+            {account.desktopNotificationsEnabled
               ? tt('Skrivebordsvarsler er aktivert.', 'Desktop notifications are enabled.')
               : tt('Skrivebordsvarsler er deaktivert.', 'Desktop notifications are disabled.')}
           </Typography>
           <Typography sx={{ color: 'rgba(237,240,247,0.78)', fontSize: 13 }}>
-            {settings.twoFactorAuth
+            {account.twoFactorAuthEnabled
               ? tt('Tofaktor-autentisering er aktiv.', 'Two-factor authentication is active.')
               : tt('Tofaktor-autentisering er ikke aktivert.', 'Two-factor authentication is not enabled.')}
+          </Typography>
+          <Typography sx={{ color: 'rgba(248,213,111,0.92)', fontSize: 12.5, fontWeight: 700 }}>
+            {tt(
+              `${unreadNotificationCount} uleste varsler · ${unreadMessageCount} uleste meldinger`,
+              `${unreadNotificationCount} unread notifications · ${unreadMessageCount} unread messages`,
+            )}
           </Typography>
         </Stack>
       </Box>
@@ -308,17 +373,648 @@ function AcademyUserSettingsStudio() {
           <Typography sx={{ fontWeight: 700 }}>{tt('Kontoinfo', 'Account Info')}</Typography>
         </Stack>
         <Typography sx={{ mt: 1, color: 'rgba(237,240,247,0.78)', fontSize: 13 }}>
-          {tt('Bruk denne siden for personlige innstillinger.', 'Use this page for personal preferences.')}
+          {activeTab === 'notifications'
+            ? tt(
+                'Varslinger bygges nå av reelle Academy-data som oppgaver, feedback og sikkerhetsstatus.',
+                'Notifications are now built from real Academy data such as assignments, feedback, and security status.',
+              )
+            : activeTab === 'messages'
+              ? tt(
+                  'Meldinger samler reell feedback fra oppgaver og kurs, i stedet for å være en tom placeholder.',
+                  'Messages collect real assignment and course feedback instead of being an empty placeholder.',
+                )
+              : tt('Bruk denne siden for personlige innstillinger.', 'Use this page for personal preferences.')}
         </Typography>
         <Typography sx={{ mt: 1, color: 'rgba(237,240,247,0.66)', fontSize: 12 }}>
           {activeTab === 'notifications'
-            ? tt('Åpnet fra varselikonet i header.', 'Opened from the notifications icon in the header.')
+            ? tt('Åpnet fra varselikonet i Academy-headeren.', 'Opened from the notifications icon in the Academy header.')
             : activeTab === 'messages'
-              ? tt('Åpnet fra meldingsikonet i header.', 'Opened from the messages icon in the header.')
+              ? tt('Åpnet fra meldingsikonet i Academy-headeren.', 'Opened from the messages icon in the Academy header.')
               : tt('Åpnet fra profilinnstillinger i Academy.', 'Opened from profile settings in Academy.')}
         </Typography>
       </Box>
     </>
+  );
+
+  const profileContent = (
+    <Box
+      sx={{
+        display: 'grid',
+        gap: 1.6,
+        gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' },
+      }}
+    >
+      <Box sx={{ ...panelSx, p: 2 }}>
+        <Stack spacing={1.4}>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <PersonOutline />
+            <Typography sx={{ fontWeight: 700 }}>{tt('Profil', 'Profile')}</Typography>
+          </Stack>
+
+          <TextField
+            label={tt('Visningsnavn', 'Display Name')}
+            value={settings.displayName}
+            onChange={(event) => setSettings((prev) => ({ ...prev, displayName: event.target.value }))}
+            size="small"
+          />
+          <TextField
+            label="E-post"
+            value={settings.email}
+            onChange={(event) => setSettings((prev) => ({ ...prev, email: event.target.value }))}
+            size="small"
+          />
+          <TextField
+            label={tt('Profilbilde URL', 'Profile Image URL')}
+            value={settings.avatarUrl}
+            onChange={(event) => {
+              setSettings((prev) => ({ ...prev, avatarUrl: event.target.value }));
+              if (avatarMessage) setAvatarMessage('');
+            }}
+            size="small"
+          />
+          <input
+            ref={avatarUploadInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleAvatarUpload}
+            style={{ display: 'none' }}
+          />
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.8} alignItems={{ xs: 'stretch', sm: 'center' }}>
+            <Avatar
+              src={settings.avatarUrl || undefined}
+              sx={{ width: 52, height: 52, bgcolor: '#f8b321', color: '#111' }}
+            >
+              {profileInitial}
+            </Avatar>
+            <Stack direction="row" spacing={0.8} flexWrap="wrap" useFlexGap>
+              <Button
+                startIcon={<PhotoCamera />}
+                onClick={() => avatarUploadInputRef.current?.click()}
+                sx={{
+                  textTransform: 'none',
+                  color: '#edf0f7',
+                  border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
+                }}
+              >
+                {tt('Last opp bilde', 'Upload image')}
+              </Button>
+              <Button
+                onClick={() => {
+                  setSettings((prev) => ({ ...prev, avatarUrl: '' }));
+                  setAvatarMessage(tt('Profilbildet er fjernet.', 'Profile image removed.'));
+                }}
+                sx={{
+                  textTransform: 'none',
+                  color: 'rgba(237,240,247,0.86)',
+                  border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
+                }}
+              >
+                {tt('Fjern bilde', 'Remove image')}
+              </Button>
+              <Button
+                startIcon={<Logout />}
+                onClick={() => void logout()}
+                sx={{
+                  textTransform: 'none',
+                  color: 'rgba(237,240,247,0.86)',
+                  border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
+                }}
+              >
+                {tt('Logg ut', 'Log out')}
+              </Button>
+            </Stack>
+          </Stack>
+          {avatarMessage ? (
+            <Typography sx={{ fontSize: 12.5, color: 'rgba(237,240,247,0.72)' }}>
+              {avatarMessage}
+            </Typography>
+          ) : null}
+          <Typography sx={{ fontSize: 12, color: 'rgba(237,240,247,0.62)' }}>
+            {tt(
+              'Bildet synkes til aktiv instruktørprofil og brukes i instruktørkort i avspilleren.',
+              'The image syncs to the active instructor profile and is used in the player instructor card.',
+            )}
+          </Typography>
+          <TextField
+            label={tt('Tidssone', 'Timezone')}
+            value={settings.timezone}
+            onChange={(event) => setSettings((prev) => ({ ...prev, timezone: event.target.value }))}
+            size="small"
+          />
+        </Stack>
+      </Box>
+
+      <Box sx={{ ...panelSx, p: 2 }}>
+        <Stack spacing={1.4}>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Tune />
+            <Typography sx={{ fontWeight: 700 }}>{tt('Preferanser', 'Preferences')}</Typography>
+          </Stack>
+
+          <Box>
+            <Typography sx={{ mb: 0.8, color: 'rgba(237,240,247,0.78)', fontSize: 13 }}>
+              {tt('Språk', 'Language')}
+            </Typography>
+            <Select
+              fullWidth
+              size="small"
+              value={settings.locale}
+              renderValue={(value) => {
+                const option = localeOptions.find((entry) => entry.value === value);
+                return (
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Typography component="span" sx={{ fontSize: 18, lineHeight: 1 }}>
+                      {option?.flag || '🌐'}
+                    </Typography>
+                    <Typography component="span" sx={{ color: '#edf0f7' }}>
+                      {tt(option?.labelNo || String(value), option?.labelEn || String(value))}
+                    </Typography>
+                  </Stack>
+                );
+              }}
+              onChange={(event) =>
+                setSettings((prev) => ({ ...prev, locale: event.target.value as UserSettingsState['locale'] }))
+              }
+              sx={{
+                color: '#edf0f7',
+                bgcolor: 'rgba(11,14,22,0.82)',
+                '& .MuiSelect-select': {
+                  color: '#edf0f7 !important',
+                  display: 'flex',
+                  alignItems: 'center',
+                },
+                '& .MuiOutlinedInput-notchedOutline': {
+                  borderColor: 'rgba(255,255,255,0.16)',
+                },
+                '&:hover .MuiOutlinedInput-notchedOutline': {
+                  borderColor: 'rgba(248,179,33,0.4)',
+                },
+                '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                  borderColor: 'rgba(248,179,33,0.7)',
+                },
+                '& .MuiSvgIcon-root': {
+                  color: 'rgba(237,240,247,0.72)',
+                },
+              }}
+            >
+              {localeOptions.map((option) => (
+                <MenuItem key={option.value} value={option.value}>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Typography component="span" sx={{ fontSize: 18, lineHeight: 1 }}>
+                      {option.flag}
+                    </Typography>
+                    <Typography component="span">
+                      {tt(option.labelNo, option.labelEn)}
+                    </Typography>
+                  </Stack>
+                </MenuItem>
+              ))}
+            </Select>
+          </Box>
+
+          <Divider sx={{ borderColor: 'rgba(255,255,255,0.12)' }} />
+          <Stack spacing={1}>
+            <Typography sx={{ color: 'rgba(237,240,247,0.9)', fontWeight: 700 }}>
+              {tt('Academy workflow', 'Academy workflow')}
+            </Typography>
+            <Typography sx={{ color: 'rgba(237,240,247,0.72)', fontSize: 12.5 }}>
+              {tt(
+                'Velg standard arbeidsflyt på tvers av annotering, CTA, lower thirds, quiz og presentasjon.',
+                'Choose your default workflow across annotation, CTA, lower thirds, quiz, and presentation.',
+              )}
+            </Typography>
+          </Stack>
+          <Box>
+            <Typography sx={{ mb: 0.8, color: 'rgba(237,240,247,0.78)', fontSize: 13 }}>
+              {tt('Standard modus', 'Default mode')}
+            </Typography>
+            <Select
+              fullWidth
+              size="small"
+              value={settings.academyPreferredMode}
+              onChange={(event) =>
+                setSettings((prev) => ({
+                  ...prev,
+                  academyPreferredMode: event.target.value as UserSettingsState['academyPreferredMode'],
+                }))
+              }
+              sx={{
+                color: '#edf0f7',
+                bgcolor: 'rgba(11,14,22,0.82)',
+                '& .MuiOutlinedInput-notchedOutline': {
+                  borderColor: 'rgba(255,255,255,0.16)',
+                },
+                '&:hover .MuiOutlinedInput-notchedOutline': {
+                  borderColor: 'rgba(248,179,33,0.4)',
+                },
+                '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                  borderColor: 'rgba(248,179,33,0.7)',
+                },
+                '& .MuiSvgIcon-root': {
+                  color: 'rgba(237,240,247,0.72)',
+                },
+              }}
+            >
+              <MenuItem value="simple">{tt('Enkel (anbefalt)', 'Simple (recommended)')}</MenuItem>
+              <MenuItem value="pro">{tt('Pro (avansert)', 'Pro (advanced)')}</MenuItem>
+            </Select>
+          </Box>
+          <Box>
+            <Typography sx={{ mb: 0.8, color: 'rgba(237,240,247,0.78)', fontSize: 13 }}>
+              {tt('Standard “Jeg vil lage …”', 'Default "I want to create ..."')}
+            </Typography>
+            <Select
+              fullWidth
+              size="small"
+              value={settings.academyDefaultIntent}
+              onChange={(event) =>
+                setSettings((prev) => ({
+                  ...prev,
+                  academyDefaultIntent: event.target.value as AcademyWorkflowIntentId,
+                }))
+              }
+              sx={{
+                color: '#edf0f7',
+                bgcolor: 'rgba(11,14,22,0.82)',
+                '& .MuiOutlinedInput-notchedOutline': {
+                  borderColor: 'rgba(255,255,255,0.16)',
+                },
+                '&:hover .MuiOutlinedInput-notchedOutline': {
+                  borderColor: 'rgba(248,179,33,0.4)',
+                },
+                '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                  borderColor: 'rgba(248,179,33,0.7)',
+                },
+                '& .MuiSvgIcon-root': {
+                  color: 'rgba(237,240,247,0.72)',
+                },
+              }}
+            >
+              {ACADEMY_WORKFLOW_INTENTS.map((intent) => (
+                <MenuItem key={intent.id} value={intent.id}>
+                  {tt(intent.labelNo, intent.labelEn)}
+                </MenuItem>
+              ))}
+            </Select>
+          </Box>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={settings.academyShowQuickStart}
+                onChange={(event) =>
+                  setSettings((prev) => ({ ...prev, academyShowQuickStart: event.target.checked }))
+                }
+              />
+            }
+            label={tt('Vis hurtigstart-kort i verktøyene', 'Show quick-start cards in tools')}
+          />
+          <FormControlLabel
+            control={
+              <Switch
+                checked={settings.academyShowNextAction}
+                onChange={(event) =>
+                  setSettings((prev) => ({ ...prev, academyShowNextAction: event.target.checked }))
+                }
+              />
+            }
+            label={tt('Vis “Neste handling”-knapp', 'Show "Next action" button')}
+          />
+          <FormControlLabel
+            control={
+              <Switch
+                checked={settings.academyMicroHintsEnabled}
+                onChange={(event) =>
+                  setSettings((prev) => ({ ...prev, academyMicroHintsEnabled: event.target.checked }))
+                }
+              />
+            }
+            label={tt('Vis kontekstuelle mikro-hints', 'Show contextual micro-hints')}
+          />
+
+          <FormControlLabel
+            control={
+              <Switch
+                checked={settings.desktopNotifications}
+                onChange={(event) =>
+                  setSettings((prev) => ({ ...prev, desktopNotifications: event.target.checked }))
+                }
+              />
+            }
+            label={tt('Skrivebordsvarsler', 'Desktop notifications')}
+          />
+          <FormControlLabel
+            control={
+              <Switch
+                checked={settings.productUpdates}
+                onChange={(event) =>
+                  setSettings((prev) => ({ ...prev, productUpdates: event.target.checked }))
+                }
+              />
+            }
+            label={tt('Produktoppdateringer', 'Product updates')}
+          />
+          <FormControlLabel
+            control={
+              <Switch
+                checked={settings.marketingEmails}
+                onChange={(event) =>
+                  setSettings((prev) => ({ ...prev, marketingEmails: event.target.checked }))
+                }
+              />
+            }
+            label={tt('Markedsførings-e-post', 'Marketing emails')}
+          />
+        </Stack>
+      </Box>
+
+      <Box sx={{ ...panelSx, p: 2, gridColumn: '1 / -1' }}>
+        <Stack spacing={1.4}>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Security />
+            <Typography sx={{ fontWeight: 700 }}>{tt('Sikkerhet', 'Security')}</Typography>
+          </Stack>
+
+          <FormControlLabel
+            control={
+              <Switch
+                checked={settings.twoFactorAuth}
+                onChange={(event) =>
+                  setSettings((prev) => ({ ...prev, twoFactorAuth: event.target.checked }))
+                }
+              />
+            }
+            label={tt('Aktiver tofaktor-autentisering', 'Enable two-factor authentication')}
+          />
+          <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
+          <Typography sx={{ color: 'rgba(237,240,247,0.72)', fontSize: 13 }}>
+            {tt(
+              'Endringer lagres lokalt i nettleseren i utviklingsmodus.',
+              'Changes are saved locally in the browser in development mode.',
+            )}
+          </Typography>
+        </Stack>
+      </Box>
+    </Box>
+  );
+
+  const notificationsContent = (
+    <Stack spacing={1.6}>
+      <Box sx={{ ...panelSx, p: 2 }}>
+        <Stack
+          direction={{ xs: 'column', sm: 'row' }}
+          spacing={1}
+          alignItems={{ xs: 'flex-start', sm: 'center' }}
+          justifyContent="space-between"
+        >
+          <Box>
+            <Typography component="h2" sx={{ fontWeight: 700, fontSize: 20 }}>
+              {tt('Varslingssenter', 'Notification Center')}
+            </Typography>
+            <Typography sx={{ color: 'rgba(237,240,247,0.72)', mt: 0.4 }}>
+              {tt(
+                'Her samles reelle Academy-signaler som oppgaver med frist, ny feedback og sikkerhetsoppfølging.',
+                'This gathers real Academy signals such as assignment deadlines, fresh feedback, and security follow-up.',
+              )}
+            </Typography>
+          </Box>
+          <Button
+            onClick={() => void markAllNotificationsRead()}
+            sx={{
+              textTransform: 'none',
+              color: '#edf0f7',
+              border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
+            }}
+          >
+            {tt('Marker alle som lest', 'Mark all as read')}
+          </Button>
+        </Stack>
+      </Box>
+
+      {notifications.length === 0 ? (
+        <Box sx={{ ...panelSx, p: 2 }}>
+          <Typography sx={{ fontWeight: 700 }}>
+            {tt('Ingen varsler akkurat nå', 'No notifications right now')}
+          </Typography>
+          <Typography sx={{ mt: 0.6, color: 'rgba(237,240,247,0.72)' }}>
+            {tt(
+              'Når Academy registrerer nye frister, feedback eller kontosignaler, dukker de opp her.',
+              'When Academy detects new deadlines, feedback, or account signals, they will appear here.',
+            )}
+          </Typography>
+        </Box>
+      ) : (
+        notifications.map((item) => {
+          const isUnread = !readNotificationIds.includes(item.id);
+          return (
+            <Box
+              key={item.id}
+              sx={{
+                ...panelSx,
+                p: 2,
+                borderColor: isUnread ? 'rgba(248,179,33,0.4)' : 'rgba(255,255,255,0.08)',
+              }}
+            >
+              <Stack spacing={1.1}>
+                <Stack direction="row" spacing={1} alignItems="flex-start" justifyContent="space-between">
+                  <Box sx={{ minWidth: 0 }}>
+                    <Typography sx={{ fontWeight: 700 }}>{item.title}</Typography>
+                    <Typography sx={{ mt: 0.5, color: 'rgba(237,240,247,0.74)' }}>
+                      {item.detail}
+                    </Typography>
+                  </Box>
+                  {isUnread ? (
+                    <Typography sx={{ color: 'rgba(248,213,111,0.92)', fontSize: 12, fontWeight: 800 }}>
+                      {tt('Ny', 'New')}
+                    </Typography>
+                  ) : null}
+                </Stack>
+                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                  {item.meta ? (
+                    <Typography sx={{ fontSize: 12, color: 'rgba(237,240,247,0.58)' }}>
+                      {item.meta}
+                    </Typography>
+                  ) : null}
+                  <Typography sx={{ fontSize: 12, color: 'rgba(237,240,247,0.58)' }}>
+                    {new Date(item.createdAt).toLocaleString(settings.locale)}
+                  </Typography>
+                </Stack>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.8}>
+                  <Button
+                    onClick={() => void handleOpenRoute(item.route, item.id, 'notification')}
+                    sx={{
+                      textTransform: 'none',
+                      color: '#111',
+                      fontWeight: 700,
+                      background: 'linear-gradient(180deg, #ffd44e, #f2a616)',
+                    }}
+                  >
+                    {tt('Åpne', 'Open')}
+                  </Button>
+                  {isUnread ? (
+                    <Button
+                      onClick={() => void markNotificationRead(item.id)}
+                      sx={{
+                        textTransform: 'none',
+                        color: '#edf0f7',
+                        border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
+                      }}
+                    >
+                      {tt('Marker som lest', 'Mark as read')}
+                    </Button>
+                  ) : null}
+                </Stack>
+              </Stack>
+            </Box>
+          );
+        })
+      )}
+    </Stack>
+  );
+
+  const messagesContent = (
+    <Stack spacing={1.6}>
+      <Box sx={{ ...panelSx, p: 2 }}>
+        <Stack
+          direction={{ xs: 'column', sm: 'row' }}
+          spacing={1}
+          alignItems={{ xs: 'flex-start', sm: 'center' }}
+          justifyContent="space-between"
+        >
+          <Box>
+            <Typography component="h2" sx={{ fontWeight: 700, fontSize: 20 }}>
+              {tt('Meldingssenter', 'Message Center')}
+            </Typography>
+            <Typography sx={{ color: 'rgba(237,240,247,0.72)', mt: 0.4 }}>
+              {tt(
+                'Her samles reell feedback fra Academy-kursene dine, slik at meldingsikonet i headeren peker til noe nyttig.',
+                'This gathers real feedback from your Academy courses so the header message icon points to something useful.',
+              )}
+            </Typography>
+          </Box>
+          <Button
+            onClick={() => void markAllMessagesRead()}
+            sx={{
+              textTransform: 'none',
+              color: '#edf0f7',
+              border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
+            }}
+          >
+            {tt('Marker alle som lest', 'Mark all as read')}
+          </Button>
+        </Stack>
+      </Box>
+
+      {messages.length === 0 ? (
+        <Box sx={{ ...panelSx, p: 2 }}>
+          <Typography sx={{ fontWeight: 700 }}>
+            {tt('Ingen meldinger ennå', 'No messages yet')}
+          </Typography>
+          <Typography sx={{ mt: 0.6, color: 'rgba(237,240,247,0.72)' }}>
+            {tt(
+              'Når instruktører gir tilbakemeldinger i oppgaver eller kursflyten, samles de her.',
+              'When instructors leave feedback in assignments or the course flow, it will appear here.',
+            )}
+          </Typography>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.8} sx={{ mt: 1.4 }}>
+            <Button
+              onClick={() => setLocation('/academy/assignments')}
+              sx={{
+                textTransform: 'none',
+                color: '#111',
+                fontWeight: 700,
+                background: 'linear-gradient(180deg, #ffd44e, #f2a616)',
+              }}
+            >
+              {tt('Åpne oppgaver', 'Open assignments')}
+            </Button>
+            <Button
+              onClick={() => setLocation('/academy/student-dashboard')}
+              sx={{
+                textTransform: 'none',
+                color: '#edf0f7',
+                border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
+              }}
+            >
+              {tt('Til studentdashbord', 'Go to learner dashboard')}
+            </Button>
+          </Stack>
+        </Box>
+      ) : (
+        messages.map((item) => {
+          const isUnread = !readMessageIds.includes(item.id);
+          const isHighlighted = highlightedAssignmentId && item.route.includes(highlightedAssignmentId);
+
+          return (
+            <Box
+              key={item.id}
+              sx={{
+                ...panelSx,
+                p: 2,
+                borderColor: isHighlighted
+                  ? 'rgba(248,179,33,0.55)'
+                  : isUnread
+                    ? 'rgba(248,179,33,0.35)'
+                    : 'rgba(255,255,255,0.08)',
+              }}
+            >
+              <Stack spacing={1.1}>
+                <Stack direction="row" spacing={1} alignItems="flex-start" justifyContent="space-between">
+                  <Box sx={{ minWidth: 0 }}>
+                    <Typography sx={{ fontWeight: 700 }}>{item.title}</Typography>
+                    <Typography sx={{ mt: 0.5, color: 'rgba(237,240,247,0.74)' }}>
+                      {item.detail}
+                    </Typography>
+                  </Box>
+                  {isUnread ? (
+                    <Typography sx={{ color: 'rgba(248,213,111,0.92)', fontSize: 12, fontWeight: 800 }}>
+                      {tt('Ny', 'New')}
+                    </Typography>
+                  ) : null}
+                </Stack>
+                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                  <Typography sx={{ fontSize: 12, color: 'rgba(237,240,247,0.58)' }}>
+                    {item.author}
+                  </Typography>
+                  {item.meta ? (
+                    <Typography sx={{ fontSize: 12, color: 'rgba(237,240,247,0.58)' }}>
+                      {item.meta}
+                    </Typography>
+                  ) : null}
+                  <Typography sx={{ fontSize: 12, color: 'rgba(237,240,247,0.58)' }}>
+                    {new Date(item.createdAt).toLocaleString(settings.locale)}
+                  </Typography>
+                </Stack>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.8}>
+                  <Button
+                    onClick={() => void handleOpenRoute(item.route, item.id, 'message')}
+                    sx={{
+                      textTransform: 'none',
+                      color: '#111',
+                      fontWeight: 700,
+                      background: 'linear-gradient(180deg, #ffd44e, #f2a616)',
+                    }}
+                  >
+                    {tt('Åpne kontekst', 'Open context')}
+                  </Button>
+                  {isUnread ? (
+                    <Button
+                      onClick={() => void markMessageRead(item.id)}
+                      sx={{
+                        textTransform: 'none',
+                        color: '#edf0f7',
+                        border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
+                      }}
+                    >
+                      {tt('Marker som lest', 'Mark as read')}
+                    </Button>
+                  ) : null}
+                </Stack>
+              </Stack>
+            </Box>
+          );
+        })
+      )}
+    </Stack>
   );
 
   return (
@@ -388,397 +1084,56 @@ function AcademyUserSettingsStudio() {
               <Typography sx={{ letterSpacing: '0.22em', fontSize: 15, color: 'rgba(237,240,247,0.82)' }}>
                 CREATOR STUDIO
               </Typography>
-              <Typography sx={{ fontSize: 21, fontWeight: 600 }} noWrap>
-                {tt('Brukerinnstillinger', 'User Settings')}
+              <Typography component="h1" sx={{ fontSize: 21, fontWeight: 600 }} noWrap>
+                {panelHeading}
               </Typography>
             </Stack>
 
             <Stack direction="row" spacing={1.2} alignItems="center">
               <AcademyLocaleSwitcher />
-              <Button
-                variant="contained"
-                startIcon={<Save />}
-                onClick={handleSave}
-                sx={{
-                  textTransform: 'none',
-                  color: '#0f0f0f',
-                  fontWeight: 700,
-                  background: 'linear-gradient(180deg, #ffd44e, #f2a616)',
-                  boxShadow: '0 10px 24px rgba(248,179,33,0.25)',
-                }}
-              >
-                {tt('Lagre', 'Save')}
-              </Button>
+              {activeTab === 'profile' ? (
+                <Button
+                  variant="contained"
+                  startIcon={<Save />}
+                  onClick={handleSave}
+                  sx={{
+                    textTransform: 'none',
+                    color: '#0f0f0f',
+                    fontWeight: 700,
+                    background: 'linear-gradient(180deg, #ffd44e, #f2a616)',
+                    boxShadow: '0 10px 24px rgba(248,179,33,0.25)',
+                  }}
+                >
+                  {tt('Lagre', 'Save')}
+                </Button>
+              ) : null}
             </Stack>
           </Box>
 
           <Box sx={{ p: { xs: 2, md: 2.6 }, display: 'grid', gap: 1.6 }}>
+            {activeTab === 'notifications'
+              ? notificationsContent
+              : activeTab === 'messages'
+                ? messagesContent
+                : profileContent}
+
+            {saveMessage && activeTab === 'profile' ? (
+              <Box sx={{ ...panelSx, p: 1.4 }}>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <CheckCircleOutline sx={{ color: '#8fcb6d' }} />
+                  <Typography sx={{ color: 'rgba(237,240,247,0.92)' }}>{saveMessage}</Typography>
+                </Stack>
+              </Box>
+            ) : null}
+
             <Box
               sx={{
-                display: 'grid',
-                gap: 1.6,
-                gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' },
+                display: { xs: 'flex', xl: 'none' },
+                flexDirection: 'column',
+                gap: 1.4,
               }}
             >
-              <Box sx={{ ...panelSx, p: 2 }}>
-                <Stack spacing={1.4}>
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <PersonOutline />
-                    <Typography sx={{ fontWeight: 700 }}>{tt('Profil', 'Profile')}</Typography>
-                  </Stack>
-
-                  <TextField
-                    label={tt('Visningsnavn', 'Display Name')}
-                    value={settings.displayName}
-                    onChange={(event) => setSettings((prev) => ({ ...prev, displayName: event.target.value }))}
-                    size="small"
-                  />
-                  <TextField
-                    label="E-post"
-                    value={settings.email}
-                    onChange={(event) => setSettings((prev) => ({ ...prev, email: event.target.value }))}
-                    size="small"
-                  />
-                  <TextField
-                    label={tt('Profilbilde URL', 'Profile Image URL')}
-                    value={settings.avatarUrl}
-                    onChange={(event) => {
-                      setSettings((prev) => ({ ...prev, avatarUrl: event.target.value }));
-                      if (avatarMessage) setAvatarMessage('');
-                    }}
-                    size="small"
-                  />
-                  <input
-                    ref={avatarUploadInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={handleAvatarUpload}
-                    style={{ display: 'none' }}
-                  />
-                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.8} alignItems={{ xs: 'stretch', sm: 'center' }}>
-                    <Avatar
-                      src={settings.avatarUrl || undefined}
-                      sx={{ width: 52, height: 52, bgcolor: '#f8b321', color: '#111' }}
-                    >
-                      {profileInitial}
-                    </Avatar>
-                    <Stack direction="row" spacing={0.8} flexWrap="wrap" useFlexGap>
-                      <Button
-                        startIcon={<PhotoCamera />}
-                        onClick={() => avatarUploadInputRef.current?.click()}
-                        sx={{
-                          textTransform: 'none',
-                          color: '#edf0f7',
-                          border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
-                        }}
-                      >
-                        {tt('Last opp bilde', 'Upload image')}
-                      </Button>
-                      <Button
-                        onClick={() => {
-                          setSettings((prev) => ({ ...prev, avatarUrl: '' }));
-                          setAvatarMessage(tt('Profilbildet er fjernet.', 'Profile image removed.'));
-                        }}
-                        sx={{
-                          textTransform: 'none',
-                          color: 'rgba(237,240,247,0.86)',
-                          border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
-                        }}
-                      >
-                        {tt('Fjern bilde', 'Remove image')}
-                      </Button>
-                    </Stack>
-                  </Stack>
-                  {avatarMessage ? (
-                    <Typography sx={{ fontSize: 12.5, color: 'rgba(237,240,247,0.72)' }}>
-                      {avatarMessage}
-                    </Typography>
-                  ) : null}
-                  <Typography sx={{ fontSize: 12, color: 'rgba(237,240,247,0.62)' }}>
-                    {tt(
-                      'Bildet synkes til aktiv instruktørprofil og brukes i instruktørkort i avspilleren.',
-                      'The image syncs to the active instructor profile and is used in the player instructor card.',
-                    )}
-                  </Typography>
-                  <TextField
-                    label={tt('Tidssone', 'Timezone')}
-                    value={settings.timezone}
-                    onChange={(event) => setSettings((prev) => ({ ...prev, timezone: event.target.value }))}
-                    size="small"
-                  />
-                </Stack>
-              </Box>
-
-              <Box sx={{ ...panelSx, p: 2 }}>
-                <Stack spacing={1.4}>
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <Tune />
-                    <Typography sx={{ fontWeight: 700 }}>{tt('Preferanser', 'Preferences')}</Typography>
-                  </Stack>
-
-                  <Box>
-                    <Typography sx={{ mb: 0.8, color: 'rgba(237,240,247,0.78)', fontSize: 13 }}>
-                      {tt('Språk', 'Language')}
-                    </Typography>
-                    <Select
-                      fullWidth
-                      size="small"
-                      value={settings.locale}
-                      renderValue={(value) => {
-                        const option = localeOptions.find((entry) => entry.value === value);
-                        return (
-                          <Stack direction="row" spacing={1} alignItems="center">
-                            <Typography component="span" sx={{ fontSize: 18, lineHeight: 1 }}>
-                              {option?.flag || '🌐'}
-                            </Typography>
-                            <Typography component="span" sx={{ color: '#edf0f7' }}>
-                              {tt(option?.labelNo || String(value), option?.labelEn || String(value))}
-                            </Typography>
-                          </Stack>
-                        );
-                      }}
-                      onChange={(event) =>
-                        setSettings((prev) => ({ ...prev, locale: event.target.value as UserSettingsState['locale'] }))
-                      }
-                      sx={{
-                        color: '#edf0f7',
-                        bgcolor: 'rgba(11,14,22,0.82)',
-                        '& .MuiSelect-select': {
-                          color: '#edf0f7 !important',
-                          display: 'flex',
-                          alignItems: 'center',
-                        },
-                        '& .MuiOutlinedInput-notchedOutline': {
-                          borderColor: 'rgba(255,255,255,0.16)',
-                        },
-                        '&:hover .MuiOutlinedInput-notchedOutline': {
-                          borderColor: 'rgba(248,179,33,0.4)',
-                        },
-                        '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                          borderColor: 'rgba(248,179,33,0.7)',
-                        },
-                        '& .MuiSvgIcon-root': {
-                          color: 'rgba(237,240,247,0.72)',
-                        },
-                      }}
-                    >
-                      {localeOptions.map((option) => (
-                        <MenuItem key={option.value} value={option.value}>
-                          <Stack direction="row" spacing={1} alignItems="center">
-                            <Typography component="span" sx={{ fontSize: 18, lineHeight: 1 }}>
-                              {option.flag}
-                            </Typography>
-                            <Typography component="span">
-                              {tt(option.labelNo, option.labelEn)}
-                            </Typography>
-                          </Stack>
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </Box>
-
-                  <Divider sx={{ borderColor: 'rgba(255,255,255,0.12)' }} />
-                  <Stack spacing={1}>
-                    <Typography sx={{ color: 'rgba(237,240,247,0.9)', fontWeight: 700 }}>
-                      {tt('Academy workflow', 'Academy workflow')}
-                    </Typography>
-                    <Typography sx={{ color: 'rgba(237,240,247,0.72)', fontSize: 12.5 }}>
-                      {tt(
-                        'Velg standard arbeidsflyt på tvers av annotering, CTA, lower thirds, quiz og presentasjon.',
-                        'Choose your default workflow across annotation, CTA, lower thirds, quiz, and presentation.',
-                      )}
-                    </Typography>
-                  </Stack>
-                  <Box>
-                    <Typography sx={{ mb: 0.8, color: 'rgba(237,240,247,0.78)', fontSize: 13 }}>
-                      {tt('Standard modus', 'Default mode')}
-                    </Typography>
-                    <Select
-                      fullWidth
-                      size="small"
-                      value={settings.academyPreferredMode}
-                      onChange={(event) =>
-                        setSettings((prev) => ({
-                          ...prev,
-                          academyPreferredMode: event.target.value as UserSettingsState['academyPreferredMode'],
-                        }))
-                      }
-                      sx={{
-                        color: '#edf0f7',
-                        bgcolor: 'rgba(11,14,22,0.82)',
-                        '& .MuiOutlinedInput-notchedOutline': {
-                          borderColor: 'rgba(255,255,255,0.16)',
-                        },
-                        '&:hover .MuiOutlinedInput-notchedOutline': {
-                          borderColor: 'rgba(248,179,33,0.4)',
-                        },
-                        '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                          borderColor: 'rgba(248,179,33,0.7)',
-                        },
-                        '& .MuiSvgIcon-root': {
-                          color: 'rgba(237,240,247,0.72)',
-                        },
-                      }}
-                    >
-                      <MenuItem value="simple">{tt('Enkel (anbefalt)', 'Simple (recommended)')}</MenuItem>
-                      <MenuItem value="pro">{tt('Pro (avansert)', 'Pro (advanced)')}</MenuItem>
-                    </Select>
-                  </Box>
-                  <Box>
-                    <Typography sx={{ mb: 0.8, color: 'rgba(237,240,247,0.78)', fontSize: 13 }}>
-                      {tt('Standard “Jeg vil lage …”', 'Default "I want to create ..."')}
-                    </Typography>
-                    <Select
-                      fullWidth
-                      size="small"
-                      value={settings.academyDefaultIntent}
-                      onChange={(event) =>
-                        setSettings((prev) => ({
-                          ...prev,
-                          academyDefaultIntent: event.target.value as AcademyWorkflowIntentId,
-                        }))
-                      }
-                      sx={{
-                        color: '#edf0f7',
-                        bgcolor: 'rgba(11,14,22,0.82)',
-                        '& .MuiOutlinedInput-notchedOutline': {
-                          borderColor: 'rgba(255,255,255,0.16)',
-                        },
-                        '&:hover .MuiOutlinedInput-notchedOutline': {
-                          borderColor: 'rgba(248,179,33,0.4)',
-                        },
-                        '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                          borderColor: 'rgba(248,179,33,0.7)',
-                        },
-                        '& .MuiSvgIcon-root': {
-                          color: 'rgba(237,240,247,0.72)',
-                        },
-                      }}
-                    >
-                      {ACADEMY_WORKFLOW_INTENTS.map((intent) => (
-                        <MenuItem key={intent.id} value={intent.id}>
-                          {tt(intent.labelNo, intent.labelEn)}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </Box>
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={settings.academyShowQuickStart}
-                        onChange={(event) =>
-                          setSettings((prev) => ({ ...prev, academyShowQuickStart: event.target.checked }))
-                        }
-                      />
-                    }
-                    label={tt('Vis hurtigstart-kort i verktøyene', 'Show quick-start cards in tools')}
-                  />
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={settings.academyShowNextAction}
-                        onChange={(event) =>
-                          setSettings((prev) => ({ ...prev, academyShowNextAction: event.target.checked }))
-                        }
-                      />
-                    }
-                    label={tt('Vis “Neste handling”-knapp', 'Show "Next action" button')}
-                  />
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={settings.academyMicroHintsEnabled}
-                        onChange={(event) =>
-                          setSettings((prev) => ({ ...prev, academyMicroHintsEnabled: event.target.checked }))
-                        }
-                      />
-                    }
-                    label={tt('Vis kontekstuelle mikro-hints', 'Show contextual micro-hints')}
-                  />
-
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={settings.desktopNotifications}
-                        onChange={(event) =>
-                          setSettings((prev) => ({ ...prev, desktopNotifications: event.target.checked }))
-                        }
-                      />
-                    }
-                    label={tt('Skrivebordsvarsler', 'Desktop notifications')}
-                  />
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={settings.productUpdates}
-                        onChange={(event) =>
-                          setSettings((prev) => ({ ...prev, productUpdates: event.target.checked }))
-                        }
-                      />
-                    }
-                    label={tt('Produktoppdateringer', 'Product updates')}
-                  />
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={settings.marketingEmails}
-                        onChange={(event) =>
-                          setSettings((prev) => ({ ...prev, marketingEmails: event.target.checked }))
-                        }
-                      />
-                    }
-                    label={tt('Markedsførings-e-post', 'Marketing emails')}
-                  />
-                </Stack>
-              </Box>
-
-              <Box sx={{ ...panelSx, p: 2, gridColumn: '1 / -1' }}>
-                <Stack spacing={1.4}>
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <Security />
-                    <Typography sx={{ fontWeight: 700 }}>{tt('Sikkerhet', 'Security')}</Typography>
-                  </Stack>
-
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={settings.twoFactorAuth}
-                        onChange={(event) =>
-                          setSettings((prev) => ({ ...prev, twoFactorAuth: event.target.checked }))
-                        }
-                      />
-                    }
-                    label={tt('Aktiver tofaktor-autentisering', 'Enable two-factor authentication')}
-                  />
-                  <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
-                  <Typography sx={{ color: 'rgba(237,240,247,0.72)', fontSize: 13 }}>
-                    {tt(
-                      'Endringer lagres lokalt i nettleseren i utviklingsmodus.',
-                      'Changes are saved locally in the browser in development mode.',
-                    )}
-                  </Typography>
-                </Stack>
-              </Box>
-
-              {saveMessage ? (
-                <Box sx={{ ...panelSx, p: 1.4, gridColumn: '1 / -1' }}>
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <CheckCircleOutline sx={{ color: '#8fcb6d' }} />
-                    <Typography sx={{ color: 'rgba(237,240,247,0.92)' }}>{saveMessage}</Typography>
-                  </Stack>
-                </Box>
-              ) : null}
-
-              <Box
-                sx={{
-                  gridColumn: '1 / -1',
-                  display: { xs: 'flex', xl: 'none' },
-                  flexDirection: 'column',
-                  gap: 1.4,
-                }}
-              >
-                {sideCards}
-              </Box>
+              {sideCards}
             </Box>
           </Box>
         </Box>

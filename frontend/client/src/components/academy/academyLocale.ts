@@ -103,7 +103,6 @@ const COMMON_TRANSLATIONS: LocaleEntry[] = [
   { en: 'Localization', no: 'Lokalisering' },
   { en: 'Prerequisites', no: 'Forutsetninger' },
   { en: 'Schedule', no: 'Planlegging' },
-  { en: 'PLACEHOLDER PREVIEW', no: 'PLACEHOLDER FORHÅNDSVISNING' },
 ];
 
 const EN_TO_NO = new Map(COMMON_TRANSLATIONS.map((entry) => [entry.en, entry.no]));

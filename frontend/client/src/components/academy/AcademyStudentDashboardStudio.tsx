@@ -13,7 +13,7 @@ import {
   Stars,
   TipsAndUpdates,
 } from '@mui/icons-material';
-import { Avatar, Box, Button, Chip, IconButton, LinearProgress, Stack, Typography } from '@mui/material';
+import { Avatar, Badge, Box, Button, Chip, IconButton, LinearProgress, Stack, Typography } from '@mui/material';
 import { useLocation } from 'wouter';
 import { type Course, type Enrollment, type Lesson, type StudentProgress, useAcademy } from '@/contexts/AcademyContext';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
@@ -21,6 +21,7 @@ import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC'
 import { useAcademyLocale } from './academyLocale';
 import AcademyLocaleSwitcher from './AcademyLocaleSwitcher';
 import AcademyStudentSidebar from './AcademyStudentSidebar';
+import { useAcademyUserCenter } from './academyUserCenter';
 import {
   buildAcademyStudentNextAction,
   buildAcademyStudentWeekPlan,
@@ -256,6 +257,7 @@ function AcademyStudentDashboardStudio({ courseId, view }: AcademyStudentDashboa
   const { state, getCourse, setCurrentCourse, setCurrentLesson } = useAcademy();
   const { analytics, auth } = useEnhancedMasterIntegration();
   const { tt } = useAcademyLocale();
+  const { account, unreadNotificationCount, unreadMessageCount } = useAcademyUserCenter();
 
   const courses = useMemo(() => (Array.isArray(state?.courses) ? state.courses : []), [state?.courses]);
   const progressRows = useMemo(() => (Array.isArray(state?.progress) ? state.progress : []), [state?.progress]);
@@ -302,6 +304,10 @@ function AcademyStudentDashboardStudio({ courseId, view }: AcademyStudentDashboa
   }, [enrollments, identityHints, progressRows]);
 
   const displayName = useMemo(() => {
+    if (account.displayName) {
+      return account.displayName.split(' ')[0];
+    }
+
     const user = auth.state.user as
       | {
           name?: string;
@@ -328,7 +334,7 @@ function AcademyStudentDashboardStudio({ courseId, view }: AcademyStudentDashboa
     }
 
     return 'Student';
-  }, [auth.state.user, studentEnrollments]);
+  }, [account.displayName, auth.state.user, studentEnrollments]);
 
   const enrolledCourseIds = useMemo(() => {
     const ids = new Set<string>();
@@ -865,7 +871,9 @@ function AcademyStudentDashboardStudio({ courseId, view }: AcademyStudentDashboa
                 aria-label={tt('Varsler', 'Notifications')}
                 sx={{ color: 'rgba(237,240,247,0.75)' }}
               >
-                <NotificationsNone fontSize="small" />
+                <Badge badgeContent={unreadNotificationCount} color="warning">
+                  <NotificationsNone fontSize="small" />
+                </Badge>
               </IconButton>
               <IconButton
                 size="small"
@@ -873,7 +881,9 @@ function AcademyStudentDashboardStudio({ courseId, view }: AcademyStudentDashboa
                 aria-label={tt('Meldinger', 'Messages')}
                 sx={{ color: 'rgba(237,240,247,0.75)' }}
               >
-                <MailOutline fontSize="small" />
+                <Badge badgeContent={unreadMessageCount} color="warning">
+                  <MailOutline fontSize="small" />
+                </Badge>
               </IconButton>
               <IconButton
                 size="small"
@@ -890,6 +900,7 @@ function AcademyStudentDashboardStudio({ courseId, view }: AcademyStudentDashboa
                 sx={{ p: 0 }}
               >
                 <Avatar
+                  src={account.avatarUrl || undefined}
                   sx={{
                     width: 34,
                     height: 34,

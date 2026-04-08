@@ -46,6 +46,7 @@ import { useAcademyLocale } from "./academyLocale";
 import AcademyLocaleSwitcher from "./AcademyLocaleSwitcher";
 import AcademyBrandMark from "./AcademyBrandMark";
 import AcademyLoginModal from "./AcademyLoginModal";
+import { useAcademyUserCenter } from "./academyUserCenter";
 import PublicSocialLinks from "@/components/common/PublicSocialLinks";
 import { getPublicSocialProfiles } from "@/lib/publicBrandLinks";
 
@@ -328,31 +329,13 @@ function AcademyLandingPage() {
   } = useAcademyContext();
   const { analytics, auth } = useEnhancedMasterIntegration();
   const { tt } = useAcademyLocale();
+  const { account, unreadNotificationCount, unreadMessageCount } = useAcademyUserCenter();
 
   const [search, setSearch] = useState("");
   const [loginOpen, setLoginOpen] = useState(false);
-  const isAcademyAuthenticated = Boolean(auth.state.isAuthenticated && auth.state.user);
-
-  const profileName = useMemo(() => {
-    const user = auth.state.user;
-    if (typeof user !== "object" || user === null) return "Creator";
-    if ("name" in user && typeof user.name === "string" && user.name.trim())
-      return user.name;
-    if (
-      "firstName" in user &&
-      typeof user.firstName === "string" &&
-      user.firstName.trim()
-    )
-      return user.firstName;
-    if (
-      "email" in user &&
-      typeof user.email === "string" &&
-      user.email.includes("@")
-    ) {
-      return user.email.split("@")[0];
-    }
-    return "Creator";
-  }, [auth.state.user]);
+  const isAcademyAuthenticated = Boolean(
+    account.isAuthenticated || (auth.state.isAuthenticated && auth.state.user),
+  );
 
   const allCourses = useMemo(() => {
     return filteredCourses.length > 0 ? filteredCourses : state.courses;
@@ -480,7 +463,7 @@ function AcademyLandingPage() {
     [allCourses, goTo, setCurrentCourse, setCurrentLesson],
   );
 
-  const profileInitial = profileName.charAt(0).toUpperCase();
+  const profileInitial = account.initial;
 
   return (
     <Box
@@ -586,23 +569,28 @@ function AcademyLandingPage() {
                   aria-label={tt("Meldinger", "Messages")}
                   sx={{ color: "rgba(248,241,231,0.8)" }}
                 >
-                  <MailOutline />
-                </IconButton>
-                <IconButton
-                  onClick={() => setLocation("/academy/settings?tab=notifications")}
-                  aria-label={tt("Aktive varsler", "Active notifications")}
-                  sx={{ color: "rgba(248,241,231,0.8)" }}
-                >
-                  <Badge badgeContent={2} color="warning">
-                    <NotificationsActive />
+                  <Badge badgeContent={unreadMessageCount} color="warning">
+                    <MailOutline />
                   </Badge>
                 </IconButton>
+                {unreadNotificationCount > 0 ? (
+                  <IconButton
+                    onClick={() => setLocation("/academy/settings?tab=notifications")}
+                    aria-label={tt("Aktive varsler", "Active notifications")}
+                    sx={{ color: "rgba(248,241,231,0.8)" }}
+                  >
+                    <Badge badgeContent={unreadNotificationCount} color="warning">
+                      <NotificationsActive />
+                    </Badge>
+                  </IconButton>
+                ) : null}
                 <IconButton
                   onClick={() => setLocation("/academy/settings?tab=profile")}
                   aria-label={tt("Profil", "Profile")}
                   sx={{ p: 0 }}
                 >
                   <Avatar
+                    src={account.avatarUrl || undefined}
                     sx={{
                       width: 38,
                       height: 38,
@@ -790,19 +778,6 @@ function AcademyLandingPage() {
                 <Box
                   sx={{ position: "absolute", left: 18, bottom: 18, right: 18 }}
                 >
-                  <Chip
-                    size="small"
-                    label={tt(
-                      "PLACEHOLDER FORHÅNDSVISNING",
-                      "PLACEHOLDER PREVIEW",
-                    )}
-                    sx={{
-                      mb: 1,
-                      color: "#fbe6be",
-                      borderColor: "rgba(245,166,35,0.45)",
-                      background: "rgba(245,166,35,0.15)",
-                    }}
-                  />
                   <Typography
                     sx={{
                       fontFamily: "Barlow Condensed, sans-serif",

@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useState } from "react";
 import {
   alpha,
   Avatar,
+  Badge,
   Box,
   Button,
   Chip,
@@ -24,6 +25,7 @@ import { withUniversalIntegration } from "@/integration/UniversalIntegrationHOC"
 import { useAcademyLocale } from "./academyLocale";
 import AcademyLocaleSwitcher from "./AcademyLocaleSwitcher";
 import AcademyVideoPlayerStudio from "./AcademyVideoPlayerStudio";
+import { useAcademyUserCenter } from "./academyUserCenter";
 import { useLocation } from "wouter";
 
 interface CourseLike {
@@ -240,6 +242,7 @@ function AcademyDashboardCinematic() {
   } = useAcademyContext();
   const { analytics, auth } = useEnhancedMasterIntegration();
   const { tt } = useAcademyLocale();
+  const { account, unreadNotificationCount, unreadMessageCount } = useAcademyUserCenter();
 
   const [search, setSearch] = useState("");
   const [selectedCourse, setSelectedCourse] = useState<any | null>(null);
@@ -385,9 +388,9 @@ function AcademyDashboardCinematic() {
       ? ((auth.state.user as { name?: string }).name ?? "")
       : "";
   const profileName = String(
-    auth.state.user?.name || fallbackProfileName || "Norwedfilm",
+    account.displayName || auth.state.user?.name || fallbackProfileName || "Creator",
   );
-  const profileInitial = profileName.charAt(0).toUpperCase();
+  const profileInitial = account.initial;
 
   const openCourse = useCallback(
     (course: any) => {
@@ -554,14 +557,18 @@ function AcademyDashboardCinematic() {
                 aria-label={tt("Varsler", "Notifications")}
                 sx={{ color: "rgba(237,240,247,0.75)" }}
               >
-                <NotificationsNone />
+                <Badge badgeContent={unreadNotificationCount} color="warning">
+                  <NotificationsNone />
+                </Badge>
               </IconButton>
               <IconButton
                 onClick={() => setLocation("/academy/settings?tab=messages")}
                 aria-label={tt("Meldinger", "Messages")}
                 sx={{ color: "rgba(237,240,247,0.75)" }}
               >
-                <MailOutline />
+                <Badge badgeContent={unreadMessageCount} color="warning">
+                  <MailOutline />
+                </Badge>
               </IconButton>
               <IconButton
                 onClick={() => setLocation("/academy/settings?tab=profile")}
@@ -569,6 +576,7 @@ function AcademyDashboardCinematic() {
                 sx={{ p: 0 }}
               >
                 <Avatar
+                  src={account.avatarUrl || undefined}
                   sx={{
                     width: 34,
                     height: 34,
