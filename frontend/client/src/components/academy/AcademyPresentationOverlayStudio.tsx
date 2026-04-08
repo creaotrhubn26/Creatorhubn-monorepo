@@ -10007,7 +10007,7 @@ function AcademyPresentationOverlayStudio({
                     alignItems={{ xs: 'stretch', md: 'center' }}
                   >
                     <Typography sx={{ fontSize: 18, fontWeight: 700 }}>
-                      {tt('Slide-rekkefolge og plassering', 'Slide order and placement')}
+                      {tt('Slide-rekkefølge og plassering', 'Slide order and placement')}
                     </Typography>
                     <Button
                       variant="outlined"

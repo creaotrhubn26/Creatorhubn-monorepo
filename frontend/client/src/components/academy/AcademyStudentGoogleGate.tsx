@@ -9,6 +9,8 @@ import {
   resolveCreatorHubAcademyAudience,
   startCreatorHubGoogleLogin,
 } from '@/lib/creatorhubGoogleAuth';
+import AcademyLoginModal from './AcademyLoginModal';
+import { readAcademyRedirectTarget } from './academyRedirectTarget';
 
 interface AcademyStudentGoogleGateProps {
   children: React.ReactNode;
@@ -24,6 +26,7 @@ function AcademyStudentGoogleGate({ children }: AcademyStudentGoogleGateProps) {
     isValidating,
   } = useCreatorHubStoredSession();
   const [isRedirecting, setIsRedirecting] = useState(false);
+  const [loginOpen, setLoginOpen] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
 
   const hasVerifiedGoogleSession = useMemo(() => {
@@ -48,6 +51,8 @@ function AcademyStudentGoogleGate({ children }: AcademyStudentGoogleGateProps) {
 
   const canOpenStudentAcademy = hasStudentAcademyAccess
     && (hasVerifiedGoogleSession || isAdminImpersonation);
+  const loginTarget = readAcademyRedirectTarget();
+  const needsCreatorHubLogin = !authenticated || !user;
 
   useEffect(() => {
     if (canOpenStudentAcademy) {
@@ -68,7 +73,9 @@ function AcademyStudentGoogleGate({ children }: AcademyStudentGoogleGateProps) {
     setIsRedirecting(true);
 
     try {
-      await startCreatorHubGoogleLogin();
+      await startCreatorHubGoogleLogin({
+        returnPath: loginTarget,
+      });
     } catch (error) {
       setIsRedirecting(false);
       setLocalError(
@@ -218,31 +225,51 @@ function AcademyStudentGoogleGate({ children }: AcademyStudentGoogleGateProps) {
             </Alert>
           ) : null}
 
-          <Button
-            variant="contained"
-            startIcon={
-              isRedirecting ? <CircularProgress size={18} color="inherit" /> : <Google />
-            }
-            onClick={() => void handleGoogleLogin()}
-            disabled={isRedirecting}
-            sx={{
-              textTransform: 'none',
-              minHeight: 48,
-              borderRadius: 1.2,
-              color: '#0f0f0f',
-              fontWeight: 700,
-              background: 'linear-gradient(180deg, #ffd44e, #f2a616)',
-              boxShadow: '0 10px 24px rgba(248,179,33,0.24)',
-            }}
-          >
-            {isRedirecting
-              ? 'Sender deg til Google...'
-              : user?.email
-                ? 'Bytt Google-konto'
-                : 'Logg inn med Google'}
-          </Button>
+          {needsCreatorHubLogin ? (
+            <Button
+              variant="contained"
+              onClick={() => setLoginOpen(true)}
+              sx={{
+                textTransform: 'none',
+                minHeight: 48,
+                borderRadius: 1.2,
+                color: '#0f0f0f',
+                fontWeight: 700,
+                background: 'linear-gradient(180deg, #ffd44e, #f2a616)',
+                boxShadow: '0 10px 24px rgba(248,179,33,0.24)',
+              }}
+            >
+              Logg inn
+            </Button>
+          ) : (
+            <Button
+              variant="contained"
+              startIcon={
+                isRedirecting ? <CircularProgress size={18} color="inherit" /> : <Google />
+              }
+              onClick={() => void handleGoogleLogin()}
+              disabled={isRedirecting}
+              sx={{
+                textTransform: 'none',
+                minHeight: 48,
+                borderRadius: 1.2,
+                color: '#0f0f0f',
+                fontWeight: 700,
+                background: 'linear-gradient(180deg, #ffd44e, #f2a616)',
+                boxShadow: '0 10px 24px rgba(248,179,33,0.24)',
+              }}
+            >
+              {isRedirecting ? 'Sender deg til Google...' : 'Verifiser med Google'}
+            </Button>
+          )}
         </Stack>
       </Box>
+      <AcademyLoginModal
+        open={loginOpen}
+        onClose={() => setLoginOpen(false)}
+        initialAudience="student"
+        redirectTo={loginTarget}
+      />
     </Box>
   );
 }

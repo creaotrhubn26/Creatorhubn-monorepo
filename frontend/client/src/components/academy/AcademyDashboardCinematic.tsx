@@ -88,6 +88,7 @@ const DEMO_COURSES: CourseLike[] = [
     duration: 68,
     progress: 75,
     instructor: "Nora Eidem",
+    thumbnail: "/assets/academy/placeholders/placeholder-directing.png",
     lessons: [
       {
         id: "demo-directing-lesson-1",
@@ -110,6 +111,7 @@ const DEMO_COURSES: CourseLike[] = [
     duration: 19,
     progress: 61,
     instructor: "Aleks Jensen",
+    thumbnail: "/assets/academy/placeholders/placeholder-lighting.png",
     lessons: [
       {
         id: "demo-lighting-lesson-1",
@@ -131,6 +133,7 @@ const DEMO_COURSES: CourseLike[] = [
     duration: 10,
     progress: 48,
     instructor: "Emma Berg",
+    thumbnail: "/assets/academy/placeholders/placeholder-editing.png",
     lessons: [
       {
         id: "demo-editing-lesson-1",

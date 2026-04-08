@@ -1943,7 +1943,7 @@ function AcademyVideoPlayerStudio({
                           borderRadius: 1,
                         }}
                       >
-                        {tt('Supring Studio', 'Lower Thirds Studio')}
+                        {tt('Lower thirds-studio', 'Lower Thirds Studio')}
                       </Button>
                       <Button
                         variant="outlined"

@@ -1,8 +1,10 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Alert, Box, Button, Chip, CircularProgress, Stack, Typography } from '@mui/material';
 import { LockOutlined, SchoolOutlined } from '@mui/icons-material';
 import { useCreatorHubStoredSession } from '@/hooks/useCreatorHubStoredSession';
 import { resolveCreatorHubAcademyAudience } from '@/lib/creatorhubGoogleAuth';
+import AcademyLoginModal from './AcademyLoginModal';
+import { readAcademyRedirectTarget } from './academyRedirectTarget';
 
 type AcademyAccessRequirement = 'authenticated' | 'instructor';
 
@@ -11,23 +13,12 @@ interface AcademyAccessGateProps {
   requirement?: AcademyAccessRequirement;
 }
 
-function readAcademyRedirectTarget(): string {
-  if (typeof window === 'undefined') {
-    return '/academy';
-  }
-
-  const { pathname, search, hash } = window.location;
-  const target = `${pathname}${search}${hash}`;
-  return /^\/academy(?:$|[/-])/.test(pathname) || pathname === '/academy-dashboard'
-    ? target
-    : '/academy';
-}
-
 export default function AcademyAccessGate({
   children,
   requirement = 'authenticated',
 }: AcademyAccessGateProps) {
   const { authenticated, user, token, isValidating } = useCreatorHubStoredSession();
+  const [loginOpen, setLoginOpen] = useState(false);
   const audience = useMemo(
     () => resolveCreatorHubAcademyAudience(user),
     [user],
@@ -73,14 +64,13 @@ export default function AcademyAccessGate({
   }
 
   const loginTarget = readAcademyRedirectTarget();
-  const loginHref = `/login?redirect=${encodeURIComponent(loginTarget)}`;
   const title =
     requirement === 'instructor'
-      ? 'Instruktorinnlogging kreves'
+      ? 'Instruktørinnlogging kreves'
       : 'Innlogging kreves';
   const description =
     requirement === 'instructor'
-      ? 'Denne Academy-studioflaten er kun tilgjengelig for instruktorer og administratorer.'
+      ? 'Denne Academy-studioflaten er kun tilgjengelig for instruktører og administratorer.'
       : 'Denne Academy-flaten krever en aktiv CreatorHub-innlogging.';
   const showRoleMismatch = authenticated && Boolean(user) && !hasRequiredAccess;
 
@@ -136,7 +126,7 @@ export default function AcademyAccessGate({
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
             {user?.email ? (
               <Chip
-                label={`Navaerende oekt: ${user.email}`}
+                label={`Nåværende økt: ${user.email}`}
                 sx={{
                   alignSelf: 'flex-start',
                   bgcolor: 'rgba(255,255,255,0.08)',
@@ -166,7 +156,7 @@ export default function AcademyAccessGate({
             {!authenticated ? (
               <Button
                 variant="contained"
-                href={loginHref}
+                onClick={() => setLoginOpen(true)}
                 sx={{
                   textTransform: 'none',
                   minHeight: 48,
@@ -191,11 +181,17 @@ export default function AcademyAccessGate({
                 color: '#edf0f7',
               }}
             >
-              {audience === 'student' ? 'Gaa til studentoversikt' : 'Gaa til Academy'}
+              {audience === 'student' ? 'Gå til studentoversikt' : 'Gå til Academy'}
             </Button>
           </Stack>
         </Stack>
       </Box>
+      <AcademyLoginModal
+        open={loginOpen}
+        onClose={() => setLoginOpen(false)}
+        redirectTo={loginTarget}
+        initialAudience={requirement === 'instructor' ? 'instructor' : null}
+      />
     </Box>
   );
 }

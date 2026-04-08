@@ -2428,7 +2428,7 @@ function AcademyLowerThirdsStudio({ courseId, onSave }: AcademyLowerThirdsStudio
               >
                 <Stack direction="row" spacing={0.8} alignItems="center" flexWrap="wrap" useFlexGap>
                   <Typography sx={{ fontSize: 'clamp(1.65rem, 1.3rem + 1.1vw, 2.05rem)', fontWeight: 700, letterSpacing: '0.015em', lineHeight: 1.1 }}>
-                    {tt('Supring Studio', 'Lower Thirds Studio')}
+                    {tt('Lower thirds-studio', 'Lower Thirds Studio')}
                   </Typography>
                 </Stack>
 
@@ -3155,7 +3155,7 @@ function AcademyLowerThirdsStudio({ courseId, onSave }: AcademyLowerThirdsStudio
               <Box sx={{ ...panelSx, p: 1.1 }}>
                 <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.8 }}>
                   <Typography sx={{ fontSize: 'clamp(1.2rem, 1rem + 0.75vw, 1.55rem)', fontFamily: 'Barlow Condensed, sans-serif', lineHeight: 1.1 }}>
-                    {tt('Supring Studio', 'Lower Thirds Studio')}
+                    {tt('Lower thirds-studio', 'Lower Thirds Studio')}
                   </Typography>
                   <Switch
                     size="small"

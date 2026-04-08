@@ -69,7 +69,7 @@ const toolItems: ToolItem[] = [
   {
     id: 'lower-thirds',
     navId: 'tool-lower-thirds',
-    labelNo: 'Supring Studio',
+    labelNo: 'Lower thirds-studio',
     labelEn: 'Lower Thirds Studio',
     descriptionNo: 'Administrer navneskilt, titler og grafikk over video.',
     descriptionEn: 'Manage nameplates, titles, and graphics over video.',
@@ -81,7 +81,7 @@ const toolItems: ToolItem[] = [
     navId: 'tool-presentation',
     labelNo: 'Presentasjonsstudio',
     labelEn: 'Presentation Studio',
-    descriptionNo: 'Last opp PPT/PDF, velg slide-rekkefolge, tidsplassering og visningsmal i video.',
+    descriptionNo: 'Last opp PPT/PDF, velg slide-rekkefølge, tidsplassering og visningsmal i video.',
     descriptionEn: 'Upload PPT/PDF, set slide order, timeline placement, and display template in video.',
     route: '/academy/presentation-overlay',
     icon: <Slideshow />,

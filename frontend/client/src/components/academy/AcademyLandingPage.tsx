@@ -34,7 +34,6 @@ import {
   ViewModule,
 } from "@mui/icons-material";
 import { useLocation } from "wouter";
-import LoginModal from "@/components/auth/LoginModal";
 import {
   useAcademyContext,
   type Course,
@@ -46,6 +45,7 @@ import { withVisualEditor } from "@/components/admin/visual-editor/withVisualEdi
 import { useAcademyLocale } from "./academyLocale";
 import AcademyLocaleSwitcher from "./AcademyLocaleSwitcher";
 import AcademyBrandMark from "./AcademyBrandMark";
+import AcademyLoginModal from "./AcademyLoginModal";
 import PublicSocialLinks from "@/components/common/PublicSocialLinks";
 import { getPublicSocialProfiles } from "@/lib/publicBrandLinks";
 
@@ -99,7 +99,7 @@ const DEFAULT_COURSES: LandingCourse[] = [
     instructor: "CreatorHub Team",
     durationLabel: "68 min",
     progress: 72,
-    thumbnail: "",
+    thumbnail: "/assets/academy/placeholders/placeholder-directing.png",
   },
   {
     id: "placeholder-lighting",
@@ -109,7 +109,7 @@ const DEFAULT_COURSES: LandingCourse[] = [
     instructor: "CreatorHub Team",
     durationLabel: "54 min",
     progress: 56,
-    thumbnail: "",
+    thumbnail: "/assets/academy/placeholders/placeholder-lighting.png",
   },
   {
     id: "placeholder-editing",
@@ -120,7 +120,7 @@ const DEFAULT_COURSES: LandingCourse[] = [
     instructor: "CreatorHub Team",
     durationLabel: "42 min",
     progress: 44,
-    thumbnail: "",
+    thumbnail: "/assets/academy/placeholders/placeholder-editing.png",
   },
 ];
 
@@ -226,7 +226,7 @@ const NEW_STUDIO_TOOLS: ToolCard[] = [
     badge: "CTA",
   },
   {
-    titleNo: "Supring Studio",
+    titleNo: "Lower thirds-studio",
     titleEn: "Lower Thirds Studio",
     descriptionNo:
       "Bygg branded lower thirds med timing, style og safe guides.",
@@ -250,7 +250,7 @@ const NEW_STUDIO_TOOLS: ToolCard[] = [
   {
     titleNo: "Påmelding og kohorter",
     titleEn: "Enrollment & Cohorts",
-    descriptionNo: "Administrer kohorter, enrollment-regler og release-planer.",
+    descriptionNo: "Administrer kohorter, påmeldingsregler og release-planer.",
     descriptionEn: "Manage cohorts, enrollment rules, and release plans.",
     route: "/academy/enrollment",
     icon: <Groups />,
@@ -331,6 +331,7 @@ function AcademyLandingPage() {
 
   const [search, setSearch] = useState("");
   const [loginOpen, setLoginOpen] = useState(false);
+  const isAcademyAuthenticated = Boolean(auth.state.isAuthenticated && auth.state.user);
 
   const profileName = useMemo(() => {
     const user = auth.state.user;
@@ -571,45 +572,63 @@ function AcademyLandingPage() {
             alignItems="center"
           >
             <AcademyLocaleSwitcher />
-            <IconButton
-              onClick={() => setLocation("/academy/settings?tab=notifications")}
-              aria-label={tt("Varsler", "Notifications")}
-              sx={{ color: "rgba(248,241,231,0.8)" }}
-            >
-              <NotificationsNone />
-            </IconButton>
-            <IconButton
-              onClick={() => setLocation("/academy/settings?tab=messages")}
-              aria-label={tt("Meldinger", "Messages")}
-              sx={{ color: "rgba(248,241,231,0.8)" }}
-            >
-              <MailOutline />
-            </IconButton>
-            <IconButton
-              onClick={() => setLocation("/academy/settings?tab=notifications")}
-              aria-label={tt("Aktive varsler", "Active notifications")}
-              sx={{ color: "rgba(248,241,231,0.8)" }}
-            >
-              <Badge badgeContent={2} color="warning">
-                <NotificationsActive />
-              </Badge>
-            </IconButton>
-            <IconButton
-              onClick={() => setLocation("/academy/settings?tab=profile")}
-              aria-label={tt("Profil", "Profile")}
-              sx={{ p: 0 }}
-            >
-              <Avatar
+            {isAcademyAuthenticated ? (
+              <>
+                <IconButton
+                  onClick={() => setLocation("/academy/settings?tab=notifications")}
+                  aria-label={tt("Varsler", "Notifications")}
+                  sx={{ color: "rgba(248,241,231,0.8)" }}
+                >
+                  <NotificationsNone />
+                </IconButton>
+                <IconButton
+                  onClick={() => setLocation("/academy/settings?tab=messages")}
+                  aria-label={tt("Meldinger", "Messages")}
+                  sx={{ color: "rgba(248,241,231,0.8)" }}
+                >
+                  <MailOutline />
+                </IconButton>
+                <IconButton
+                  onClick={() => setLocation("/academy/settings?tab=notifications")}
+                  aria-label={tt("Aktive varsler", "Active notifications")}
+                  sx={{ color: "rgba(248,241,231,0.8)" }}
+                >
+                  <Badge badgeContent={2} color="warning">
+                    <NotificationsActive />
+                  </Badge>
+                </IconButton>
+                <IconButton
+                  onClick={() => setLocation("/academy/settings?tab=profile")}
+                  aria-label={tt("Profil", "Profile")}
+                  sx={{ p: 0 }}
+                >
+                  <Avatar
+                    sx={{
+                      width: 38,
+                      height: 38,
+                      bgcolor: "#213047",
+                      border: "2px solid rgba(245,166,35,0.65)",
+                    }}
+                  >
+                    {profileInitial}
+                  </Avatar>
+                </IconButton>
+              </>
+            ) : (
+              <Button
+                variant="outlined"
+                onClick={() => setLoginOpen(true)}
                 sx={{
-                  width: 38,
-                  height: 38,
-                  bgcolor: "#213047",
-                  border: "2px solid rgba(245,166,35,0.65)",
+                  textTransform: "none",
+                  fontFamily: "Rajdhani, sans-serif",
+                  fontWeight: 700,
+                  color: "#f8f1e7",
+                  borderColor: "rgba(255,255,255,0.32)",
                 }}
               >
-                {profileInitial}
-              </Avatar>
-            </IconButton>
+                {tt("Logg inn", "Sign in")}
+              </Button>
+            )}
           </Stack>
         </Box>
 
@@ -1173,23 +1192,6 @@ function AcademyLandingPage() {
                       },
                     }}
                   />
-                  <Stack direction="row" spacing={0.8} sx={{ mt: 1 }}>
-                    <Button
-                      fullWidth
-                      startIcon={<PlayArrow />}
-                      onClick={() => openCourse(course.id)}
-                      sx={{
-                        textTransform: "none",
-                        color: "#1e1306",
-                        fontWeight: 700,
-                        background:
-                          "linear-gradient(180deg, #ffc64d 0%, #f5a623 100%)",
-                        borderRadius: "8px",
-                      }}
-                    >
-                      {tt("Åpne i videospiller", "Open in video player")}
-                    </Button>
-                  </Stack>
                 </Box>
               </Box>
             ))}
@@ -1284,7 +1286,10 @@ function AcademyLandingPage() {
         />
       </Box>
 
-      <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
+      <AcademyLoginModal
+        open={loginOpen}
+        onClose={() => setLoginOpen(false)}
+      />
     </Box>
   );
 }

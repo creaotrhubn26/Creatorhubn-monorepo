@@ -1624,7 +1624,7 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                     border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
                   }}
                 >
-                  {tt('Supring Studio', 'Lower Thirds Studio')}
+                  {tt('Lower thirds-studio', 'Lower Thirds Studio')}
                 </Button>
               </Stack>
 

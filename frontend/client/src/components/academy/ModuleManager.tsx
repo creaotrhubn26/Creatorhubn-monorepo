@@ -602,7 +602,7 @@ function ModuleManager({
                     px: 2,
                   }}
                 >
-                  {tt('Supring Studio', 'Lower Thirds Studio')}
+                  {tt('Lower thirds-studio', 'Lower Thirds Studio')}
                 </Button>
                 <Button
                   startIcon={<Movie />}
@@ -628,7 +628,7 @@ function ModuleManager({
                     px: 2,
                   }}
                 >
-                  {tt('Monetiser', 'Monetize')}
+                  {tt('Monetisering', 'Monetization')}
                 </Button>
                 <AcademyLocaleSwitcher />
                 <Button
