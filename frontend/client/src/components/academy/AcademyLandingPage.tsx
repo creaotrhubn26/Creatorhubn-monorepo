@@ -432,7 +432,7 @@ function AcademyLandingPage() {
       );
     });
 
-    const skills = uniqueSkills.size || lessonCount || null;
+    const skills = uniqueSkills.size || lessonCount || 0;
 
     const uniqueStudents = new Set(
       state.enrollments
@@ -442,7 +442,7 @@ function AcademyLandingPage() {
     const studentsFromCourses = allCourses.reduce((sum, course) => {
       return sum + (toPositiveNumber(course.studentCount) ?? 0);
     }, 0);
-    const students = Math.max(uniqueStudents.size, studentsFromCourses) || null;
+    const students = Math.max(uniqueStudents.size, studentsFromCourses) || 0;
 
     const ratings = allCourses
       .map((course) => toPositiveNumber(course.rating))
@@ -450,7 +450,7 @@ function AcademyLandingPage() {
     const avgRating =
       ratings.length > 0
         ? (ratings.reduce((sum, value) => sum + value, 0) / ratings.length).toFixed(1)
-        : null;
+        : "0.0";
 
     const completionValues = state.progress
       .map((row) => Number(row.progress))
@@ -461,7 +461,7 @@ function AcademyLandingPage() {
             completionValues.reduce((sum, value) => sum + value, 0) /
               completionValues.length,
           )
-        : null;
+        : 0;
 
     return {
       skills,
@@ -472,13 +472,8 @@ function AcademyLandingPage() {
   }, [allCourses, state.enrollments, state.progress]);
 
   const formatMetricValue = useCallback(
-    (value: number | string | null, suffix = ""): string => {
-      if (value === null || value === "") {
-        return state.isLoading ? tt("Laster", "Loading") : "—";
-      }
-      return `${value}${suffix}`;
-    },
-    [state.isLoading, tt],
+    (value: number | string, suffix = ""): string => `${value}${suffix}`,
+    [],
   );
 
   const goTo = useCallback(
@@ -1296,7 +1291,7 @@ function AcademyLandingPage() {
                 lineHeight: 1,
               }}
             >
-              {formatMetricValue(totals.avgCompletion, totals.avgCompletion === null ? "" : "%")}
+              {formatMetricValue(totals.avgCompletion, "%")}
             </Typography>
           </Box>
         </Box>
