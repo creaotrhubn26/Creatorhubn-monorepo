@@ -188,6 +188,22 @@ export function LoginModal({
     setPassword('');
   };
 
+  const handleBackToChoice = () => {
+    setLoginType(null);
+    setIsLoading(false);
+    setError(null);
+    setEmail('');
+    setPassword('');
+  };
+
+  const handleRequestAccess = () => {
+    setError(null);
+    setIsLoading(false);
+    setEmail('');
+    setPassword('');
+    setLocation('/request-access');
+  };
+
   const handleClose = () => {
     resetModal();
     onClose();
@@ -393,6 +409,42 @@ export function LoginModal({
                 </CardContent>
               </MuiCard>
             </Stack>
+
+            <Box
+              sx={{
+                pt: 1,
+                textAlign: 'center',
+              }}
+            >
+              <Typography
+                variant="body2"
+                sx={{
+                  color: 'rgba(255, 255, 255, 0.65)',
+                  mb: 1.5,
+                }}
+              >
+                Har du ikke bruker ennå?
+              </Typography>
+              <Button
+                variant="outlined"
+                onClick={handleRequestAccess}
+                sx={{
+                  borderColor: 'rgba(255,186,108,0.35)',
+                  color: '#ffcf9c',
+                  borderRadius: '12px',
+                  textTransform: 'none',
+                  fontWeight: 700,
+                  px: 2.5,
+                  py: 1,
+                  '&:hover': {
+                    borderColor: '#ffba6c',
+                    background: 'rgba(255,186,108,0.08)',
+                  },
+                }}
+              >
+                Opprett bruker / be om tilgang
+              </Button>
+            </Box>
           </Stack>
         ) : (
           // Google Login for Selected Type
@@ -549,6 +601,23 @@ export function LoginModal({
                   >
                     {isLoading ? 'Logger inn...' : 'Logg inn med e-post'}
                   </Button>
+
+                  <Button
+                    variant="text"
+                    onClick={handleRequestAccess}
+                    disabled={isLoading}
+                    sx={{
+                      color: 'rgba(255,255,255,0.7)',
+                      textTransform: 'none',
+                      fontWeight: 600,
+                      '&:hover': {
+                        color: '#ffba6c',
+                        background: 'transparent',
+                      },
+                    }}
+                  >
+                    Har du ikke bruker? Opprett bruker her
+                  </Button>
                 </Stack>
               </>
             )}
@@ -608,7 +677,7 @@ export function LoginModal({
 
             <Button
               variant="text"
-              onClick={resetModal}
+              onClick={handleBackToChoice}
               sx={{
                 color: 'rgba(255, 255, 255, 0.5)',
                 textTransform: 'none',

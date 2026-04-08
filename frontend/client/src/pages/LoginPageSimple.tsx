@@ -120,7 +120,7 @@ export default function LoginPageSimple() {
         onClose={() => setLocation('/')}
         context="general"
         initialError={googleError}
-        initialLoginType="general"
+        initialLoginType={null}
         redirectTo={redirectTarget || '/dashboard'}
       />
     </Box>

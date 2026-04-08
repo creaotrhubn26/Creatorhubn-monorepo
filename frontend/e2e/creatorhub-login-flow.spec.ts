@@ -57,7 +57,7 @@ test('landing sign in opens the shared login modal in place', async ({ page }) =
   await expect(page).toHaveURL(`${CREATORHUB_ORIGIN}/`);
 });
 
-test('direct /login uses the modal flow and email login redirects correctly', async ({ page }) => {
+test('direct /login shows type selection, request access CTA, and email login redirects correctly', async ({ page }) => {
   await page.route('**/api/auth/login', async (route) => {
     const payload = route.request().postDataJSON();
 
@@ -81,6 +81,17 @@ test('direct /login uses the modal flow and email login redirects correctly', as
 
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible();
+  await expect(dialog.getByText('Hvilken type tilgang trenger du?')).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Opprett bruker / be om tilgang' })).toBeVisible();
+
+  await dialog.getByText('Generell Tilgang').click();
+  await dialog.getByLabel('E-postadresse').fill('admin@creatorhubn.com');
+  await dialog.getByLabel('Passord').fill('super-secret');
+
+  await dialog.getByRole('button', { name: '← Tilbake til valg' }).click();
+  await expect(dialog.getByText('Hvilken type tilgang trenger du?')).toBeVisible();
+
+  await dialog.getByText('Generell Tilgang').click();
   await dialog.getByLabel('E-postadresse').fill('admin@creatorhubn.com');
   await dialog.getByLabel('Passord').fill('super-secret');
 
@@ -119,6 +130,7 @@ test('google login launch uses the shared modal and correct redirect target', as
   await page.goto(`${CREATORHUB_ORIGIN}/login?redirect=%2Fabout`, { waitUntil: 'domcontentloaded' });
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible();
+  await dialog.getByText('Generell Tilgang').click();
 
   await Promise.all([
     page.waitForURL(`${CREATORHUB_ORIGIN}/about?from=google`),
@@ -130,4 +142,18 @@ test('google login launch uses the shared modal and correct redirect target', as
     returnPath: '/about',
     browserOrigin: CREATORHUB_ORIGIN,
   });
+});
+
+test('request access CTA routes users without an account to request-access', async ({ page }) => {
+  await page.goto(`${CREATORHUB_ORIGIN}/login`, { waitUntil: 'domcontentloaded' });
+
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByRole('button', { name: 'Opprett bruker / be om tilgang' })).toBeVisible();
+
+  await Promise.all([
+    page.waitForURL(`${CREATORHUB_ORIGIN}/request-access`),
+    dialog.getByRole('button', { name: 'Opprett bruker / be om tilgang' }).click(),
+  ]);
+
+  await expect(page).toHaveURL(`${CREATORHUB_ORIGIN}/request-access`);
 });
