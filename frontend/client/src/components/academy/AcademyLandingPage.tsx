@@ -1,12 +1,9 @@
 import React, { useCallback, useMemo, useState } from "react";
 import {
   alpha,
-  Avatar,
-  Badge,
   Box,
   Button,
   Chip,
-  IconButton,
   InputAdornment,
   LinearProgress,
   Stack,
@@ -20,11 +17,8 @@ import {
   Campaign,
   Edit,
   Groups,
-  MailOutline,
   MonetizationOn,
   MovieCreation,
-  NotificationsActive,
-  NotificationsNone,
   OndemandVideo,
   PlayArrow,
   Quiz,
@@ -46,12 +40,12 @@ import { useAcademyLocale } from "./academyLocale";
 import AcademyLocaleSwitcher from "./AcademyLocaleSwitcher";
 import AcademyBrandMark from "./AcademyBrandMark";
 import AcademyLoginModal from "./AcademyLoginModal";
-import { useAcademyUserCenter } from "./academyUserCenter";
 import PublicSocialLinks from "@/components/common/PublicSocialLinks";
 import {
   getPublicSocialProfiles,
   resolvePublicBrandFromWindow,
 } from "@/lib/publicBrandLinks";
+import { resolveCreatorHubAcademyAudience } from "@/lib/creatorhubGoogleAuth";
 
 interface LandingCourse {
   id: string;
@@ -344,13 +338,19 @@ function AcademyLandingPage() {
   } = useAcademyContext();
   const { analytics, auth } = useEnhancedMasterIntegration();
   const { tt } = useAcademyLocale();
-  const { account, unreadNotificationCount, unreadMessageCount } = useAcademyUserCenter();
 
   const [search, setSearch] = useState("");
   const [loginOpen, setLoginOpen] = useState(false);
   const isAcademyAuthenticated = Boolean(
-    account.isAuthenticated || (auth.state.isAuthenticated && auth.state.user),
+    auth.state.isAuthenticated && auth.state.user,
   );
+  const academyAudience = useMemo(
+    () => resolveCreatorHubAcademyAudience(auth.state.user ?? null),
+    [auth.state.user],
+  );
+  const academyEntryRoute =
+    academyAudience === "student" ? "/academy/student-dashboard" : "/academy-dashboard";
+  const academyEntryLabel = tt("Åpne Academy", "Open Academy");
   const socialLinks = useMemo(
     () =>
       getPublicSocialProfiles(resolvePublicBrandFromWindow()).filter((link) =>
@@ -516,8 +516,6 @@ function AcademyLandingPage() {
     [allCourses, goTo, setCurrentCourse, setCurrentLesson],
   );
 
-  const profileInitial = account.initial;
-
   return (
     <Box
       sx={{
@@ -609,52 +607,25 @@ function AcademyLandingPage() {
           >
             <AcademyLocaleSwitcher />
             {isAcademyAuthenticated ? (
-              <>
-                <IconButton
-                  onClick={() => setLocation("/academy/settings?tab=notifications")}
-                  aria-label={tt("Varsler", "Notifications")}
-                  sx={{ color: "rgba(248,241,231,0.8)" }}
-                >
-                  <NotificationsNone />
-                </IconButton>
-                <IconButton
-                  onClick={() => setLocation("/academy/settings?tab=messages")}
-                  aria-label={tt("Meldinger", "Messages")}
-                  sx={{ color: "rgba(248,241,231,0.8)" }}
-                >
-                  <Badge badgeContent={unreadMessageCount} color="warning">
-                    <MailOutline />
-                  </Badge>
-                </IconButton>
-                {unreadNotificationCount > 0 ? (
-                  <IconButton
-                    onClick={() => setLocation("/academy/settings?tab=notifications")}
-                    aria-label={tt("Aktive varsler", "Active notifications")}
-                    sx={{ color: "rgba(248,241,231,0.8)" }}
-                  >
-                    <Badge badgeContent={unreadNotificationCount} color="warning">
-                      <NotificationsActive />
-                    </Badge>
-                  </IconButton>
-                ) : null}
-                <IconButton
-                  onClick={() => setLocation("/academy/settings?tab=profile")}
-                  aria-label={tt("Profil", "Profile")}
-                  sx={{ p: 0 }}
-                >
-                  <Avatar
-                    src={account.avatarUrl || undefined}
-                    sx={{
-                      width: 38,
-                      height: 38,
-                      bgcolor: "#213047",
-                      border: "2px solid rgba(245,166,35,0.65)",
-                    }}
-                  >
-                    {profileInitial}
-                  </Avatar>
-                </IconButton>
-              </>
+              <Button
+                variant="contained"
+                onClick={() =>
+                  goTo(academyEntryRoute, "academy_landing_open_authenticated_entry")
+                }
+                sx={{
+                  textTransform: "none",
+                  fontFamily: "Rajdhani, sans-serif",
+                  fontWeight: 700,
+                  borderRadius: "10px",
+                  px: 2,
+                  color: "#1e1306",
+                  background:
+                    "linear-gradient(180deg, #ffc64d 0%, #f5a623 100%)",
+                  boxShadow: "0 8px 24px rgba(245,166,35,0.28)",
+                }}
+              >
+                {academyEntryLabel}
+              </Button>
             ) : (
               <Button
                 variant="outlined"
