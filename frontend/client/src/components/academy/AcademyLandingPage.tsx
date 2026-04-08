@@ -48,7 +48,10 @@ import AcademyBrandMark from "./AcademyBrandMark";
 import AcademyLoginModal from "./AcademyLoginModal";
 import { useAcademyUserCenter } from "./academyUserCenter";
 import PublicSocialLinks from "@/components/common/PublicSocialLinks";
-import { getPublicSocialProfiles } from "@/lib/publicBrandLinks";
+import {
+  getPublicSocialProfiles,
+  resolvePublicBrandFromWindow,
+} from "@/lib/publicBrandLinks";
 
 interface LandingCourse {
   id: string;
@@ -89,7 +92,6 @@ const PLACEHOLDER_BACKDROPS = [
   "linear-gradient(145deg, rgba(18,22,31,0.9), rgba(10,14,20,0.96)), radial-gradient(circle at 85% 10%, rgba(105,145,255,0.22), rgba(0,0,0,0))",
   "linear-gradient(145deg, rgba(24,21,17,0.88), rgba(14,13,12,0.96)), radial-gradient(circle at 80% 20%, rgba(245,165,35,0.28), rgba(0,0,0,0))",
 ];
-const creatorhubSocialLinks = getPublicSocialProfiles("creatorhub");
 
 const DEFAULT_COURSES: LandingCourse[] = [
   {
@@ -304,6 +306,19 @@ const formatDuration = (seconds: number): string => {
   return `${Math.max(1, Math.round(seconds / 60))} min`;
 };
 
+const toPositiveNumber = (value: unknown): number | null => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return parsed;
+};
+
+const addMetricLabel = (target: Set<string>, value: unknown): void => {
+  const normalized = String(value || "").trim();
+  if (normalized) {
+    target.add(normalized);
+  }
+};
+
 const resolveInstructor = (course: Course): string => {
   if (typeof course.instructor === "string") return course.instructor;
   return course.instructor?.name || "CreatorHub Team";
@@ -335,6 +350,13 @@ function AcademyLandingPage() {
   const [loginOpen, setLoginOpen] = useState(false);
   const isAcademyAuthenticated = Boolean(
     account.isAuthenticated || (auth.state.isAuthenticated && auth.state.user),
+  );
+  const socialLinks = useMemo(
+    () =>
+      getPublicSocialProfiles(resolvePublicBrandFromWindow()).filter((link) =>
+        String(link.href || "").trim(),
+      ),
+    [],
   );
 
   const allCourses = useMemo(() => {
@@ -387,41 +409,77 @@ function AcademyLandingPage() {
     visibleCourses[0] || mappedCourses[0] || DEFAULT_COURSES[0];
 
   const totals = useMemo(() => {
-    const lessons = allCourses.reduce(
-      (sum, course) =>
-        sum + (Array.isArray(course.lessons) ? course.lessons.length : 0),
-      0,
+    const uniqueSkills = new Set<string>();
+    let lessonCount = 0;
+
+    allCourses.forEach((course) => {
+      if (Array.isArray(course.lessons)) {
+        lessonCount += course.lessons.length;
+        course.lessons.forEach((lesson) => addMetricLabel(uniqueSkills, lesson.title));
+      }
+
+      course.learningOutcomes?.forEach((outcome) =>
+        addMetricLabel(uniqueSkills, outcome),
+      );
+      course.pedagogicalArchitecture?.skills?.forEach((skill) =>
+        addMetricLabel(uniqueSkills, skill),
+      );
+      course.pedagogicalArchitecture?.competencies?.forEach((competency) =>
+        addMetricLabel(uniqueSkills, competency),
+      );
+      course.pedagogicalArchitecture?.skillMap?.forEach((item) =>
+        addMetricLabel(uniqueSkills, item.title),
+      );
+    });
+
+    const skills = uniqueSkills.size || lessonCount || null;
+
+    const uniqueStudents = new Set(
+      state.enrollments
+        .map((enrollment) => String(enrollment.studentId || "").trim())
+        .filter(Boolean),
     );
-    const students = allCourses.reduce(
-      (sum, course) => sum + Number(course.studentCount || 0),
-      0,
-    );
+    const studentsFromCourses = allCourses.reduce((sum, course) => {
+      return sum + (toPositiveNumber(course.studentCount) ?? 0);
+    }, 0);
+    const students = Math.max(uniqueStudents.size, studentsFromCourses) || null;
+
+    const ratings = allCourses
+      .map((course) => toPositiveNumber(course.rating))
+      .filter((value): value is number => value !== null);
     const avgRating =
-      allCourses.length > 0
-        ? (
-            allCourses.reduce(
-              (sum, course) => sum + Number(course.rating || 0),
-              0,
-            ) / allCourses.length
-          ).toFixed(1)
-        : "4.8";
+      ratings.length > 0
+        ? (ratings.reduce((sum, value) => sum + value, 0) / ratings.length).toFixed(1)
+        : null;
+
+    const completionValues = state.progress
+      .map((row) => Number(row.progress))
+      .filter((value) => Number.isFinite(value) && value >= 0);
     const avgCompletion =
-      state.progress.length > 0
+      completionValues.length > 0
         ? Math.round(
-            state.progress.reduce(
-              (sum, row) => sum + Number(row.progress || 0),
-              0,
-            ) / state.progress.length,
+            completionValues.reduce((sum, value) => sum + value, 0) /
+              completionValues.length,
           )
-        : 68;
+        : null;
 
     return {
-      lessons,
+      skills,
       students,
       avgRating,
       avgCompletion,
     };
-  }, [allCourses, state.progress]);
+  }, [allCourses, state.enrollments, state.progress]);
+
+  const formatMetricValue = useCallback(
+    (value: number | string | null, suffix = ""): string => {
+      if (value === null || value === "") {
+        return state.isLoading ? tt("Laster", "Loading") : "—";
+      }
+      return `${value}${suffix}`;
+    },
+    [state.isLoading, tt],
+  );
 
   const goTo = useCallback(
     (route: string, eventName: string) => {
@@ -1196,7 +1254,7 @@ function AcademyLandingPage() {
                 lineHeight: 1,
               }}
             >
-              {totals.lessons}
+              {formatMetricValue(totals.skills)}
             </Typography>
           </Box>
           <Box>
@@ -1210,7 +1268,7 @@ function AcademyLandingPage() {
                 lineHeight: 1,
               }}
             >
-              {totals.students}
+              {formatMetricValue(totals.students)}
             </Typography>
           </Box>
           <Box>
@@ -1224,7 +1282,7 @@ function AcademyLandingPage() {
                 lineHeight: 1,
               }}
             >
-              {totals.avgRating}
+              {formatMetricValue(totals.avgRating)}
             </Typography>
           </Box>
           <Box>
@@ -1238,27 +1296,29 @@ function AcademyLandingPage() {
                 lineHeight: 1,
               }}
             >
-              {totals.avgCompletion}%
+              {formatMetricValue(totals.avgCompletion, totals.avgCompletion === null ? "" : "%")}
             </Typography>
           </Box>
         </Box>
 
-        <PublicSocialLinks
-          label={tt("Sosiale medier", "Social media")}
-          body={tt(
-            "Følg CreatorHub Academy for nye kurs, lanseringer og oppdateringer fra plattformen.",
-            "Follow CreatorHub Academy for new courses, launches, and updates from the platform.",
-          )}
-          links={creatorhubSocialLinks}
-          tone="creatorhub"
-          sx={{
-            mt: 2.2,
-            p: 1.6,
-            borderRadius: "10px",
-            border: `var(--academy-hairline-width, 1px) solid ${alpha("#f5a623", 0.2)}`,
-            background: "rgba(7, 10, 16, 0.8)",
-          }}
-        />
+        {socialLinks.length > 0 ? (
+          <PublicSocialLinks
+            label={tt("Sosiale medier", "Social media")}
+            body={tt(
+              `Følg CreatorHub Academy i ${socialLinks.length} aktive kanaler for nye kurs, lanseringer og oppdateringer fra plattformen.`,
+              `Follow CreatorHub Academy across ${socialLinks.length} active channels for new courses, launches, and platform updates.`,
+            )}
+            links={socialLinks}
+            tone="creatorhub"
+            sx={{
+              mt: 2.2,
+              p: 1.6,
+              borderRadius: "10px",
+              border: `var(--academy-hairline-width, 1px) solid ${alpha("#f5a623", 0.2)}`,
+              background: "rgba(7, 10, 16, 0.8)",
+            }}
+          />
+        ) : null}
       </Box>
 
       <AcademyLoginModal
