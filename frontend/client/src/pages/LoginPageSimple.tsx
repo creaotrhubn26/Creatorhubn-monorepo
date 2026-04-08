@@ -1,52 +1,32 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import { useAuth } from '@/hooks/useAuth';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Box, CircularProgress, Typography } from '@mui/material';
 import { useLocation } from 'wouter';
+import LoginModal from '@/components/auth/LoginModal';
+import { useAuth } from '@/hooks/useAuth';
 import {
+  CREATORHUB_AUTH_TOKEN_KEY,
   consumeCreatorHubGoogleLoginError,
-  startCreatorHubGoogleLogin,
 } from '@/lib/creatorhubGoogleAuth';
-import {
-  Box,
-  Typography,
-  TextField,
-  Button,
-  Alert,
-  CircularProgress,
-  Card,
-  CardContent,
-  InputAdornment,
-  IconButton,
-  Container,
-  Divider,
-} from '@mui/material';
-import {
-  Visibility,
-  VisibilityOff,
-  Login as LoginIcon,
-  Person,
-  Lock,
-  CameraAlt,
-  Google as GoogleIcon,
-} from '@mui/icons-material';
-
-const ADMIN_DEMO_EMAIL = 'academy-guest@creatorhubn.com';
-const ADMIN_DEMO_PASSWORD = 'guest-access';
-const IS_DEVELOPMENT =
-  typeof window !== 'undefined' &&
-  (import.meta.env.DEV || window.location.hostname === 'localhost');
 
 export default function LoginPageSimple() {
-  const { login, isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const [, setLocation] = useLocation();
-  const redirectTarget = (() => {
-    if (typeof window === 'undefined') return null;
+  const [googleError, setGoogleError] = useState<string | null>(null);
+
+  const redirectTarget = useMemo(() => {
+    if (typeof window === 'undefined') {
+      return null;
+    }
+
     const candidate = new URLSearchParams(window.location.search).get('redirect');
     return candidate && candidate.startsWith('/') ? candidate : null;
-  })();
-  const hasStoredToken = (() => {
-    if (typeof window === 'undefined') return false;
-    return Boolean(window.localStorage.getItem('creatorhub_auth_token'));
-  })();
+  }, []);
+
+  const hasStoredToken =
+    typeof window !== 'undefined'
+      ? Boolean(window.localStorage.getItem(CREATORHUB_AUTH_TOKEN_KEY))
+      : false;
+
   const currentRole = String(user?.role || '').toLowerCase();
   const currentUserCanAccessRedirect =
     !redirectTarget ||
@@ -54,227 +34,95 @@ export default function LoginPageSimple() {
     currentRole === 'admin' ||
     currentRole === 'super_admin';
 
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  useEffect(() => {
+    setGoogleError(consumeCreatorHubGoogleLoginError());
+  }, []);
 
   useEffect(() => {
-    const nextGoogleError = consumeCreatorHubGoogleLoginError();
-    if (nextGoogleError) {
-      setError(nextGoogleError);
+    if (!isAuthenticated || !hasStoredToken || !currentUserCanAccessRedirect) {
+      return;
     }
-  }, []);
 
-  // If already authenticated, redirect to dashboard
-  if (isAuthenticated && hasStoredToken && currentUserCanAccessRedirect) {
     setLocation(redirectTarget || '/dashboard');
-    return null;
+  }, [currentUserCanAccessRedirect, hasStoredToken, isAuthenticated, redirectTarget, setLocation]);
+
+  if (isAuthenticated && hasStoredToken && currentUserCanAccessRedirect) {
+    return (
+      <Box
+        sx={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background:
+            'radial-gradient(circle at top, rgba(255, 186, 108, 0.28) 0%, rgba(20, 16, 11, 0.96) 52%, #060709 100%)',
+        }}
+      >
+        <CircularProgress sx={{ color: '#ffba6c' }} />
+      </Box>
+    );
   }
 
-  const handleSubmit = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email) return;
-    setIsLoading(true);
-    setError('');
-
-    try {
-      const normalizedEmail = email.trim().toLowerCase();
-      const effectivePassword =
-        IS_DEVELOPMENT &&
-        !password.trim() &&
-        normalizedEmail === ADMIN_DEMO_EMAIL
-          ? ADMIN_DEMO_PASSWORD
-          : password || 'auto';
-      const data = await login(email, effectivePassword);
-      if (redirectTarget) {
-        setLocation(redirectTarget);
-      } else if (data.user?.role === 'couple') {
-        setLocation('/dashboard');
-      } else if (data.user?.role === 'vendor') {
-        setLocation('/fotograf');
-      } else if (data.user?.role === 'admin' || data.user?.role === 'super_admin') {
-        setLocation('/admin');
-      } else {
-        setLocation('/dashboard');
-      }
-    } catch (err: any) {
-      setError(err.message || 'Innlogging feilet');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [email, password, login, redirectTarget, setLocation]);
-
-  const handleGoogleLogin = useCallback(async () => {
-    setIsLoading(true);
-    setError('');
-
-    try {
-      await startCreatorHubGoogleLogin();
-    } catch (err: any) {
-      setError(err?.message || 'Kunne ikke starte Google-innlogging.');
-      setIsLoading(false);
-    }
-  }, []);
-
   return (
-    <Box sx={{
-      minHeight: '100vh',
-      background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center'
-    }}>
-      <Container maxWidth="sm">
-        <Card sx={{
-          borderRadius: 3,
-          boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
-          overflow: 'hidden'
-        }}>
-          <Box sx={{
-            background: 'linear-gradient(90deg, #e94560, #0f3460)',
-            p: 4,
-            textAlign: 'center'
-          }}>
-            <CameraAlt sx={{ fontSize: 48, color: 'white', mb: 1 }} />
-            <Typography variant="h4" sx={{ color: 'white', fontWeight: 700 }}>
-              CreatorHub
-            </Typography>
-            <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)', mt: 0.5 }}>
-              Logg inn for å fortsette
+    <Box
+      sx={{
+        minHeight: '100vh',
+        position: 'relative',
+        overflow: 'hidden',
+        background:
+          'radial-gradient(circle at top, rgba(255, 186, 108, 0.28) 0%, rgba(20, 16, 11, 0.96) 52%, #060709 100%)',
+      }}
+    >
+      <Box
+        sx={{
+          position: 'absolute',
+          inset: 0,
+          background:
+            'linear-gradient(135deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0) 48%, rgba(255,186,108,0.06) 100%)',
+        }}
+      />
+      <Box
+        sx={{
+          position: 'relative',
+          zIndex: 1,
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          px: 3,
+        }}
+      >
+        {isAuthenticated && hasStoredToken && !currentUserCanAccessRedirect && (
+          <Box
+            sx={{
+              position: 'absolute',
+              top: 32,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              maxWidth: 560,
+              px: 2.5,
+              py: 1.5,
+              borderRadius: '999px',
+              border: '1px solid rgba(255,186,108,0.24)',
+              background: 'rgba(18,15,11,0.84)',
+              backdropFilter: 'blur(18px)',
+            }}
+          >
+            <Typography sx={{ color: '#ffcf9c', fontSize: 14, textAlign: 'center' }}>
+              Du er allerede logget inn uten admin-tilgang. Logg inn på nytt med admin-kontoen for å åpne admin.
             </Typography>
           </Box>
+        )}
+      </Box>
 
-          <CardContent sx={{ p: 4 }}>
-            <form onSubmit={handleSubmit}>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                {error && (
-                  <Alert severity="error">{error}</Alert>
-                )}
-
-                {isAuthenticated && hasStoredToken && !currentUserCanAccessRedirect && (
-                  <Alert severity="info">
-                    Du er allerede logget inn med en konto uten admin-tilgang. Logg inn på nytt med admin-kontoen for å fortsette til admin.
-                  </Alert>
-                )}
-
-                <Button
-                  type="button"
-                  variant="outlined"
-                  fullWidth
-                  size="large"
-                  data-google-login-app="creatorhub"
-                  disabled={isLoading}
-                  startIcon={<GoogleIcon />}
-                  onClick={() => {
-                    void handleGoogleLogin();
-                  }}
-                  sx={{
-                    py: 1.5,
-                    borderColor: 'rgba(15, 52, 96, 0.16)',
-                    color: '#16213e',
-                    backgroundColor: '#fff',
-                    '&:hover': {
-                      borderColor: '#0f3460',
-                      backgroundColor: '#f7f9fc',
-                    },
-                  }}
-                >
-                  Fortsett med Google
-                </Button>
-
-                <Divider sx={{ color: 'text.secondary', fontSize: 12 }}>
-                  eller logg inn med e-post
-                </Divider>
-
-                <TextField
-                  fullWidth
-                  label="E-postadresse"
-                  type="email"
-                  value={email}
-                  onChange={(e) => { setEmail(e.target.value); setError(''); }}
-                  required
-                  disabled={isLoading}
-                  autoFocus
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <Person color="action" />
-                      </InputAdornment>
-                    )
-                  }}
-                />
-
-                <TextField
-                  fullWidth
-                  label="Passord"
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => { setPassword(e.target.value); setError(''); }}
-                  disabled={isLoading}
-                  helperText={
-                    IS_DEVELOPMENT
-                      ? `Admin demo: ${ADMIN_DEMO_EMAIL} / ${ADMIN_DEMO_PASSWORD}`
-                      : undefined
-                  }
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <Lock color="action" />
-                      </InputAdornment>
-                    ),
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        <IconButton
-                          onClick={() => setShowPassword(!showPassword)}
-                          edge="end"
-                          disabled={isLoading}
-                        >
-                          {showPassword ? <VisibilityOff /> : <Visibility />}
-                        </IconButton>
-                      </InputAdornment>
-                    )
-                  }}
-                />
-
-                <Button
-                  type="submit"
-                  variant="contained"
-                  fullWidth
-                  size="large"
-                  disabled={isLoading || !email}
-                  startIcon={isLoading ? <CircularProgress size={20} color="inherit" /> : <LoginIcon />}
-                  sx={{
-                    py: 1.5,
-                    background: 'linear-gradient(90deg, #e94560, #0f3460)',
-                    '&:hover': { background: 'linear-gradient(90deg, #d63851, #0d2d50)' }
-                  }}
-                >
-                  {isLoading ? 'Logger inn...' : 'Logg inn'}
-                </Button>
-              </Box>
-            </form>
-
-            {IS_DEVELOPMENT ? (
-              <Box sx={{ mt: 3, p: 2, bgcolor: '#f5f5f5', borderRadius: 2 }}>
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1, fontWeight: 600 }}>
-                Demo-kontoer:
-              </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                <strong>Admin:</strong> {ADMIN_DEMO_EMAIL}
-              </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                <strong>Passord:</strong> {ADMIN_DEMO_PASSWORD}
-              </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                Tomt passord fungerer også for denne demo-kontoen.
-              </Typography>
-              </Box>
-            ) : null}
-          </CardContent>
-        </Card>
-      </Container>
+      <LoginModal
+        open={true}
+        onClose={() => setLocation('/')}
+        context="general"
+        initialError={googleError}
+        initialLoginType="general"
+        redirectTo={redirectTarget || '/dashboard'}
+      />
     </Box>
   );
 }

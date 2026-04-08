@@ -12,6 +12,8 @@ import {
   CardContent,
   Alert,
   CircularProgress,
+  Divider,
+  TextField,
 } from '@mui/material';
 import {
   Google,
@@ -22,12 +24,15 @@ import {
 } from '@mui/icons-material';
 import { PrototypeTesterIcon } from '../icons/PrototypeTesterIcon';
 import { startCreatorHubGoogleLogin } from '@/lib/creatorhubGoogleAuth';
+import { useAuth } from '@/hooks/useAuth';
 
 interface LoginModalProps {
   open: boolean;
   onClose: () => void;
   context?: 'community' | 'academy' | 'general';
   initialError?: string | null;
+  initialLoginType?: 'general' | 'prototype' | null;
+  redirectTo?: string | null;
 }
 
 const AUTH_TOKEN_KEY = 'creatorhub_auth_token';
@@ -55,14 +60,37 @@ export function LoginModal({
   onClose,
   context = 'general',
   initialError = null,
+  initialLoginType = null,
+  redirectTo = null,
 }: LoginModalProps) {
   const [, setLocation] = useLocation();
-  const [loginType, setLoginType] = useState<'general' | 'prototype' | null>(null);
+  const { login } = useAuth();
+  const [loginType, setLoginType] = useState<'general' | 'prototype' | null>(initialLoginType);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
 
   // Get contextual title
   const contextTitle = getContextTitle(context);
+  const safeRedirectTo =
+    typeof redirectTo === 'string' && redirectTo.startsWith('/') ? redirectTo : null;
+
+  const resolvePostLoginRoute = (role?: string | null): string => {
+    if (safeRedirectTo) {
+      return safeRedirectTo;
+    }
+
+    switch (String(role || '').toLowerCase()) {
+      case 'vendor':
+        return '/fotograf';
+      case 'admin':
+      case 'super_admin':
+        return '/admin';
+      default:
+        return '/dashboard';
+    }
+  };
 
   useEffect(() => {
     if (!open) {
@@ -70,7 +98,8 @@ export function LoginModal({
     }
 
     setError(initialError);
-  }, [initialError, open]);
+    setLoginType(initialLoginType);
+  }, [initialError, initialLoginType, open]);
 
   const handleGoogleLogin = async () => {
     if (!loginType) {
@@ -83,12 +112,37 @@ export function LoginModal({
 
     try {
       console.log(`🔐 Attempting Google login with type: ${loginType}...`);
-      await startCreatorHubGoogleLogin();
+      await startCreatorHubGoogleLogin({
+        returnPath: safeRedirectTo || undefined,
+      });
 
     } catch (error) {
       console.error('❌ Login error:', error);
       setIsLoading(false);
       setError(error instanceof Error ? error.message : 'An unexpected error occurred');
+    }
+  };
+
+  const handleEmailLogin = async () => {
+    if (loginType !== 'general') {
+      return;
+    }
+
+    if (!email.trim()) {
+      setError('Skriv inn e-postadressen din.');
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const data = await login(email, password || 'auto');
+      setLocation(resolvePostLoginRoute(data?.user?.role || null));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Innlogging feilet');
+      setIsLoading(false);
+      return;
     }
   };
 
@@ -127,9 +181,11 @@ export function LoginModal({
   };
 
   const resetModal = () => {
-    setLoginType(null);
+    setLoginType(initialLoginType);
     setIsLoading(false);
     setError(null);
+    setEmail('');
+    setPassword('');
   };
 
   const handleClose = () => {
@@ -417,6 +473,85 @@ export function LoginModal({
                 {isLoading ? 'Logger inn...' : 'Fortsett med Google'}
               </Button>
             </Box>
+
+            {loginType === 'general' && (
+              <>
+                <Divider sx={{ borderColor: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.5)' }}>
+                  eller logg inn med e-post
+                </Divider>
+
+                <Stack spacing={2}>
+                  <TextField
+                    label="E-postadresse"
+                    type="email"
+                    value={email}
+                    onChange={(event) => {
+                      setEmail(event.target.value);
+                      if (error) setError(null);
+                    }}
+                    disabled={isLoading}
+                    autoComplete="email"
+                    fullWidth
+                    InputLabelProps={{ sx: { color: 'rgba(255,255,255,0.68)' } }}
+                    sx={{
+                      '& .MuiOutlinedInput-root': {
+                        color: '#fff',
+                        borderRadius: '12px',
+                        background: 'rgba(255,255,255,0.04)',
+                        '& fieldset': { borderColor: 'rgba(255,255,255,0.12)' },
+                        '&:hover fieldset': { borderColor: 'rgba(255,186,108,0.35)' },
+                        '&.Mui-focused fieldset': { borderColor: '#ffba6c' },
+                      },
+                    }}
+                  />
+                  <TextField
+                    label="Passord"
+                    type="password"
+                    value={password}
+                    onChange={(event) => {
+                      setPassword(event.target.value);
+                      if (error) setError(null);
+                    }}
+                    disabled={isLoading}
+                    autoComplete="current-password"
+                    fullWidth
+                    InputLabelProps={{ sx: { color: 'rgba(255,255,255,0.68)' } }}
+                    sx={{
+                      '& .MuiOutlinedInput-root': {
+                        color: '#fff',
+                        borderRadius: '12px',
+                        background: 'rgba(255,255,255,0.04)',
+                        '& fieldset': { borderColor: 'rgba(255,255,255,0.12)' },
+                        '&:hover fieldset': { borderColor: 'rgba(255,186,108,0.35)' },
+                        '&.Mui-focused fieldset': { borderColor: '#ffba6c' },
+                      },
+                    }}
+                  />
+                  <Button
+                    variant="outlined"
+                    size="large"
+                    onClick={() => {
+                      void handleEmailLogin();
+                    }}
+                    disabled={isLoading || !email.trim()}
+                    sx={{
+                      borderColor: 'rgba(255,186,108,0.45)',
+                      color: '#ffcf9c',
+                      py: 1.3,
+                      borderRadius: '12px',
+                      textTransform: 'none',
+                      fontWeight: 700,
+                      '&:hover': {
+                        borderColor: '#ffba6c',
+                        background: 'rgba(255,186,108,0.08)',
+                      },
+                    }}
+                  >
+                    {isLoading ? 'Logger inn...' : 'Logg inn med e-post'}
+                  </Button>
+                </Stack>
+              </>
+            )}
 
             {IS_DEVELOPMENT && loginType === 'prototype' && context === 'academy' && (
               <Box sx={{ textAlign: 'center' }}>

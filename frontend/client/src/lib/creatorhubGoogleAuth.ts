@@ -706,7 +706,10 @@ export function clearCreatorHubGoogleIntentFromUrl(): void {
   window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
 }
 
-export async function startCreatorHubGoogleLogin(): Promise<void> {
+export async function startCreatorHubGoogleLogin(options?: {
+  returnPath?: string;
+  browserOrigin?: string;
+}): Promise<void> {
   if (typeof window === 'undefined') {
     return;
   }
@@ -715,8 +718,8 @@ export async function startCreatorHubGoogleLogin(): Promise<void> {
     method: 'POST',
     body: {
       mode: 'login',
-      browserOrigin: window.location.origin,
-      returnPath: buildCreatorHubGoogleReturnPath(),
+      browserOrigin: options?.browserOrigin ?? window.location.origin,
+      returnPath: options?.returnPath ?? buildCreatorHubGoogleReturnPath(),
     },
   });
 

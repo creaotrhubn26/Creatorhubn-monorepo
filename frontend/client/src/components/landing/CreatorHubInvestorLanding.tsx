@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import {
   AccountTree,
   ArrowForward,
@@ -14,6 +14,7 @@ import {
 import {
   Box,
   Button,
+  CircularProgress,
   Container,
   Divider,
   Drawer,
@@ -25,6 +26,7 @@ import {
 import { motion } from 'framer-motion';
 import { useLocation } from 'wouter';
 import PublicSocialLinks from '@/components/common/PublicSocialLinks';
+import LoginModal from '@/components/auth/LoginModal';
 import { GdprNotice } from '@/components/common/GdprNotice';
 import { useLanguage } from '@/components/language-provider';
 import { getPublicSocialProfiles, PUBLIC_BRAND_LINKS } from '@/lib/publicBrandLinks';
@@ -531,6 +533,7 @@ export default function CreatorHubInvestorLanding({
   mode,
 }: CreatorHubInvestorLandingProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [loginOpen, setLoginOpen] = useState(false);
   const [pricingBillingCycle, setPricingBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
   const [publicPricingPlans, setPublicPricingPlans] = useState<CreatorHubPublicPricingPlan[] | null>(null);
   const [, setLocation] = useLocation();
@@ -612,6 +615,11 @@ export default function CreatorHubInvestorLanding({
   const openRoute = (path: string) => {
     setMenuOpen(false);
     setLocation(path);
+  };
+
+  const openLoginModal = () => {
+    setMenuOpen(false);
+    setLoginOpen(true);
   };
 
   const openSubscriptionSelection = (
@@ -860,7 +868,7 @@ export default function CreatorHubInvestorLanding({
 
                 {!isMobile ? (
                   <Button
-                    onClick={() => openRoute('/login')}
+                    onClick={openLoginModal}
                     variant="outlined"
                     endIcon={<ArrowForward />}
                     sx={{
@@ -2164,7 +2172,7 @@ export default function CreatorHubInvestorLanding({
               {copy.hero.primaryCta}
             </Button>
             <Button
-              onClick={() => openRoute('/login')}
+              onClick={openLoginModal}
               variant="outlined"
               sx={{
                 borderRadius: '999px',
@@ -2182,6 +2190,22 @@ export default function CreatorHubInvestorLanding({
           </Stack>
         </Stack>
       </Drawer>
+
+      <Suspense
+        fallback={
+          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', p: 4 }}>
+            <CircularProgress sx={{ color: '#ffba6c' }} />
+          </Box>
+        }
+      >
+        <LoginModal
+          open={loginOpen}
+          onClose={() => setLoginOpen(false)}
+          context="general"
+          initialLoginType="general"
+          redirectTo="/dashboard"
+        />
+      </Suspense>
 
       <GdprNotice position="bottom" />
     </Box>
