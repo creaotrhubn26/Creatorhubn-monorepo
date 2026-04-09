@@ -178,13 +178,8 @@ function CastingStandaloneRuntimeContent() {
               } catch {
                 // Ignore storage cleanup failures.
               }
-              const cleanUrl = getCleanGoogleIntentUrl();
-              if (typeof window !== 'undefined' && cleanUrl) {
-                window.location.replace(cleanUrl);
-                return;
-              }
-              setIsAuthenticated(true);
               clearGoogleIntentFromUrl();
+              setIsAuthenticated(true);
               setProcessingGoogleLogin(false);
               setAuthResolved(true);
               return;
@@ -222,13 +217,8 @@ function CastingStandaloneRuntimeContent() {
                 transfer.sessionToken,
               );
               if (!isMounted) return;
-              const cleanUrl = getCleanClientInviteUrl();
-              if (typeof window !== 'undefined' && cleanUrl) {
-                window.location.replace(cleanUrl);
-                return;
-              }
-              setIsAuthenticated(true);
               clearClientInviteIntentFromUrl();
+              setIsAuthenticated(true);
               setProcessingClientInviteLogin(false);
               setAuthResolved(true);
               return;
