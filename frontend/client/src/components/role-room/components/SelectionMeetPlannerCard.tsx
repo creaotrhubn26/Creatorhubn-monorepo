@@ -208,7 +208,7 @@ export default function SelectionMeetPlannerCard({
             ? 'Google Workspace-SSO må fornyes før møtet kan planlegges.'
             : connectionState === 'error'
               ? 'Google Workspace-SSO svarte med feil. Forny innloggingen og prøv igjen.'
-              : 'Meet-planleggingen bruker samme Google-SSO som resten av plattformen. Følg Google-statusen i brukerfeltet over for å aktivere prosjektmøter.'}
+              : 'Meet-planleggingen bruker samme Google-SSO som resten av plattformen. Åpne kontoprofilen for å se eller aktivere Google-statusen for prosjektmøter.'}
         </Alert>
       ) : null}
 

@@ -148,7 +148,6 @@ import {
 import { consentService } from '../services/consentService';
 import { castingAuthService } from '../services/castingAuthService';
 import { useProducerAccess } from '../hooks/useProducerAccess';
-import GoogleWorkspaceSessionBadge from '../../universal/GoogleWorkspaceSessionBadge';
 import { producerWorkflowService } from '../services/producerWorkflowService';
 import {
   emitProducerWorkflowFocusEvent,
@@ -2043,12 +2042,6 @@ export function CastingPlannerPanel({
       .map((part) => part[0]?.toUpperCase() || '')
       .join('') || 'RR';
   }, [adminUser?.display_name, adminUser?.email, branding.appName]);
-  const workspaceSessionUserId = useMemo(() => {
-    if (adminUser?.id !== undefined && adminUser?.id !== null) {
-      return String(adminUser.id);
-    }
-    return getUserId();
-  }, [adminUser?.id, getUserId]);
   const currentProjectTeamMembers = useMemo(() => {
     const deduped = new Set<string>();
     return (currentProject?.crew ?? [])
@@ -6719,13 +6712,6 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                   : undefined,
               }}
             >
-              <Box sx={{ display: { xs: 'none', lg: 'inline-flex' }, flexShrink: 0 }}>
-                <GoogleWorkspaceSessionBadge
-                  userId={workspaceSessionUserId}
-                  tone="role-room"
-                  compact
-                />
-              </Box>
               <Tooltip title={`${workspaceAccountStatusLabel} · ${adminUser.display_name || adminUser.email}`}>
                 <IconButton
                   onClick={handleOpenBillingAccountDialog}

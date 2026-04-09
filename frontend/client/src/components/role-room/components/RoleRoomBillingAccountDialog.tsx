@@ -1,4 +1,4 @@
-import type { FC } from 'react';
+import { type FC, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
@@ -19,15 +19,23 @@ import {
 } from '@mui/material';
 import {
   Business as BusinessIcon,
-  CreditCard as CreditCardIcon,
+  CalendarMonthOutlined as CalendarMonthOutlinedIcon,
+  CloudDoneOutlined as CloudDoneOutlinedIcon,
+  CloudSyncOutlined as CloudSyncOutlinedIcon,
   FolderOpen as FolderOpenIcon,
+  LinkOffOutlined as LinkOffOutlinedIcon,
   Person as PersonIcon,
   People as PeopleIcon,
   Refresh as RefreshIcon,
   SupervisorAccount as SupervisorAccountIcon,
 } from '@mui/icons-material';
 
-import type { RoleRoomCommercialBillingAccount } from '../services/castingApiService';
+import {
+  googleWorkspaceApi,
+  type RoleRoomCommercialBillingAccount,
+  type RoleRoomGoogleStatusResponse,
+} from '../services/castingApiService';
+import { getRoleRoomReturnPath } from '../utils/runtime';
 
 type WorkspaceAccountTeamMember = {
   name: string;
@@ -116,6 +124,36 @@ function getInitials(value?: string | null) {
   return normalized || 'RR';
 }
 
+function hasText(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function getGoogleStatusTone(status?: RoleRoomGoogleStatusResponse['state']) {
+  switch (status) {
+    case 'connected':
+      return 'success' as const;
+    case 'expired':
+      return 'warning' as const;
+    case 'error':
+      return 'error' as const;
+    default:
+      return 'info' as const;
+  }
+}
+
+function getGoogleStatusLabel(status?: RoleRoomGoogleStatusResponse['state']) {
+  switch (status) {
+    case 'connected':
+      return 'Aktiv';
+    case 'expired':
+      return 'Utløpt';
+    case 'error':
+      return 'Krever oppfølging';
+    default:
+      return 'Ikke koblet';
+  }
+}
+
 const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
   open,
   onClose,
@@ -136,6 +174,105 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
   const canManageBilling = Boolean(account?.canManageBilling);
   const canRetryPayment = Boolean(account?.canManageBilling && account?.canRetryPayment);
   const currentUserInitials = getInitials(currentUser.name || currentUser.email);
+  const [googleStatus, setGoogleStatus] = useState<RoleRoomGoogleStatusResponse | null>(null);
+  const [googleStatusLoading, setGoogleStatusLoading] = useState(false);
+  const [googleStatusError, setGoogleStatusError] = useState<string | null>(null);
+  const [googleActionPending, setGoogleActionPending] = useState(false);
+
+  const loadGoogleStatus = useCallback(async () => {
+    if (!open) {
+      return;
+    }
+    setGoogleStatusLoading(true);
+    setGoogleStatusError(null);
+    try {
+      const status = await googleWorkspaceApi.getStatus(currentProject?.id);
+      setGoogleStatus(status);
+    } catch (statusError) {
+      const message = statusError instanceof Error
+        ? statusError.message
+        : 'Kunne ikke hente Google Workspace-status.';
+      setGoogleStatusError(message);
+    } finally {
+      setGoogleStatusLoading(false);
+    }
+  }, [currentProject?.id, open]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    void loadGoogleStatus();
+  }, [loadGoogleStatus, open]);
+
+  const googleConnection = googleStatus?.connection ?? null;
+  const googleBinding = googleStatus?.projectBinding ?? null;
+  const googleIsConnected = googleStatus?.state === 'connected';
+  const googleDriveReady = hasText(googleBinding?.driveRootFolderId);
+  const googleCalendarReady = hasText(googleBinding?.calendarId);
+  const googleNeedsProjectSetup = Boolean(
+    currentProject?.id && googleIsConnected && (!googleDriveReady || !googleCalendarReady),
+  );
+  const googleStatusSeverity = getGoogleStatusTone(googleStatus?.state);
+  const googleStatusLabel = getGoogleStatusLabel(googleStatus?.state);
+  const googleHelperText = useMemo(() => {
+    if (!googleStatus?.configured) {
+      return 'Google Workspace er ikke ferdig konfigurert for denne installasjonen ennå.';
+    }
+    if (googleStatus.state === 'connected') {
+      return 'Når du logger inn med Google i The Role Room, brukes koblingen automatisk. Du trenger bare å fornye den hvis den er utløpt eller prosjektintegrasjonen må repareres.';
+    }
+    if (googleStatus.state === 'expired') {
+      return 'Google-koblingen er utløpt. Forny den her inne i kontoprofilen for å få møter, signering og Drive tilbake.';
+    }
+    if (googleStatus.state === 'error') {
+      return googleConnection?.lastError || 'Google Workspace svarte med en feil. Prøv å fornye koblingen.';
+    }
+    return 'Google vises nå bare her inne i kontoprofilen. Koble den til her hvis prosjektet trenger Drive, Kalender eller signering.';
+  }, [googleConnection?.lastError, googleStatus]);
+
+  const handleConnectGoogle = useCallback(async () => {
+    setGoogleActionPending(true);
+    setGoogleStatusError(null);
+    try {
+      const response = await googleWorkspaceApi.startOauth({
+        mode: 'link',
+        projectId: currentProject?.id ?? undefined,
+        browserOrigin: typeof window !== 'undefined' ? window.location.origin : undefined,
+        returnPath: typeof window !== 'undefined'
+          ? getRoleRoomReturnPath(window.location)
+          : getRoleRoomReturnPath(null),
+        email: currentUser.email || undefined,
+      });
+      window.location.assign(response.authorizationUrl);
+    } catch (connectError) {
+      const message = connectError instanceof Error
+        ? connectError.message
+        : 'Kunne ikke starte Google Workspace-koblingen.';
+      setGoogleStatusError(message);
+    } finally {
+      setGoogleActionPending(false);
+    }
+  }, [currentProject?.id, currentUser.email]);
+
+  const handlePrepareProjectBinding = useCallback(async () => {
+    if (!currentProject?.id) {
+      return;
+    }
+    setGoogleActionPending(true);
+    setGoogleStatusError(null);
+    try {
+      await googleWorkspaceApi.ensureProjectBindingReady(currentProject.id, googleBinding);
+      await loadGoogleStatus();
+    } catch (bindingError) {
+      const message = bindingError instanceof Error
+        ? bindingError.message
+        : 'Kunne ikke klargjøre prosjektet for Google Workspace.';
+      setGoogleStatusError(message);
+    } finally {
+      setGoogleActionPending(false);
+    }
+  }, [currentProject?.id, googleBinding, loadGoogleStatus]);
 
   return (
     <Dialog
@@ -161,7 +298,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
               Konto, abonnement og team
             </Typography>
             <Typography sx={{ color: 'rgba(255,255,255,0.64)', fontSize: '0.84rem' }}>
-              Oversikt over hvem som er innlogget, aktivt prosjekt og workspace-abonnementet.
+              Oversikt over hvem som er innlogget, aktivt prosjekt, Google Workspace og workspace-abonnementet.
             </Typography>
           </Box>
         </Stack>
@@ -359,6 +496,168 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
               ) : null}
             </Stack>
           ) : null}
+
+          <Stack
+            spacing={1.2}
+            sx={{
+              p: 2,
+              borderRadius: 2.5,
+              border: '1px solid rgba(246,195,88,0.16)',
+              background: 'linear-gradient(135deg, rgba(40,28,12,0.48) 0%, rgba(15,23,42,0.92) 100%)',
+            }}
+          >
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              spacing={1}
+              alignItems={{ xs: 'flex-start', sm: 'center' }}
+              justifyContent="space-between"
+            >
+              <Stack direction="row" spacing={1} alignItems="center">
+                <CloudSyncOutlinedIcon sx={{ color: '#f6c358', fontSize: 18 }} />
+                <Typography sx={{ fontWeight: 700 }}>
+                  Google Workspace
+                </Typography>
+              </Stack>
+              <Chip
+                size="small"
+                color={googleStatusSeverity}
+                variant={googleIsConnected ? 'filled' : 'outlined'}
+                label={googleStatusLoading ? 'Oppdaterer…' : googleStatusLabel}
+              />
+            </Stack>
+
+            <Typography sx={{ fontWeight: 700, color: '#f8fafc' }}>
+              {googleConnection?.googleEmail || googleConnection?.roleRoomEmail || 'Ingen aktiv Google-kobling ennå'}
+            </Typography>
+            <Typography sx={{ color: 'rgba(255,255,255,0.72)', fontSize: '0.84rem' }}>
+              {googleHelperText}
+            </Typography>
+
+            <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+              {googleIsConnected ? (
+                <Chip
+                  size="small"
+                  icon={<CloudDoneOutlinedIcon sx={{ fontSize: 16 }} />}
+                  label="Google-login aktiv"
+                  sx={{
+                    bgcolor: 'rgba(16,185,129,0.16)',
+                    color: '#86efac',
+                    border: '1px solid rgba(16,185,129,0.28)',
+                  }}
+                />
+              ) : (
+                <Chip
+                  size="small"
+                  icon={<LinkOffOutlinedIcon sx={{ fontSize: 16 }} />}
+                  label="Ingen Google-kobling"
+                  sx={{
+                    bgcolor: 'rgba(148,163,184,0.12)',
+                    color: '#cbd5e1',
+                    border: '1px solid rgba(148,163,184,0.24)',
+                  }}
+                />
+              )}
+              {currentProject ? (
+                <Chip
+                  size="small"
+                  icon={<CalendarMonthOutlinedIcon sx={{ fontSize: 16 }} />}
+                  label={googleCalendarReady ? 'Kalender klar' : 'Kalender ikke klargjort'}
+                  sx={{
+                    bgcolor: googleCalendarReady ? 'rgba(59,130,246,0.16)' : 'rgba(148,163,184,0.12)',
+                    color: googleCalendarReady ? '#bfdbfe' : '#cbd5e1',
+                    border: `1px solid ${googleCalendarReady ? 'rgba(59,130,246,0.28)' : 'rgba(148,163,184,0.24)'}`,
+                  }}
+                />
+              ) : null}
+              {currentProject ? (
+                <Chip
+                  size="small"
+                  icon={<FolderOpenIcon sx={{ fontSize: 16 }} />}
+                  label={googleDriveReady ? 'Drive klar' : 'Drive ikke klargjort'}
+                  sx={{
+                    bgcolor: googleDriveReady ? 'rgba(125,211,252,0.16)' : 'rgba(148,163,184,0.12)',
+                    color: googleDriveReady ? '#bae6fd' : '#cbd5e1',
+                    border: `1px solid ${googleDriveReady ? 'rgba(125,211,252,0.28)' : 'rgba(148,163,184,0.24)'}`,
+                  }}
+                />
+              ) : null}
+              {googleConnection?.lastUsedAt ? (
+                <Chip
+                  size="small"
+                  label={`Sist brukt ${formatDateTime(googleConnection.lastUsedAt)}`}
+                  sx={{
+                    bgcolor: 'rgba(255,255,255,0.05)',
+                    color: 'rgba(255,255,255,0.72)',
+                  }}
+                />
+              ) : null}
+            </Stack>
+
+            {googleStatusError ? (
+              <Alert severity="error">
+                {googleStatusError}
+              </Alert>
+            ) : null}
+
+            {!googleStatusLoading && !googleStatus?.configured ? (
+              <Alert severity="warning">
+                Google Workspace mangler konfigurasjon for denne installasjonen.
+                {googleStatus?.missing?.length ? ` Mangler: ${googleStatus.missing.join(', ')}.` : ''}
+              </Alert>
+            ) : null}
+
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              spacing={1}
+              alignItems={{ xs: 'stretch', sm: 'center' }}
+            >
+              {!googleIsConnected ? (
+                <Button
+                  variant="contained"
+                  onClick={() => {
+                    void handleConnectGoogle();
+                  }}
+                  disabled={googleStatusLoading || googleActionPending || !googleStatus?.configured}
+                  sx={{
+                    bgcolor: '#f6c358',
+                    color: '#171410',
+                    fontWeight: 800,
+                    '&:hover': { bgcolor: '#efb93e' },
+                    '&.Mui-disabled': { bgcolor: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.38)' },
+                  }}
+                >
+                  {googleStatus?.state === 'expired' || googleStatus?.state === 'error'
+                    ? 'Forny Google'
+                    : 'Koble til Google'}
+                </Button>
+              ) : null}
+
+              {googleNeedsProjectSetup ? (
+                <Button
+                  variant="outlined"
+                  onClick={() => {
+                    void handlePrepareProjectBinding();
+                  }}
+                  disabled={googleStatusLoading || googleActionPending}
+                  sx={{ borderColor: 'rgba(125,211,252,0.34)', color: '#bae6fd' }}
+                >
+                  Klargjør prosjekt
+                </Button>
+              ) : null}
+
+              <Button
+                variant="text"
+                startIcon={<RefreshIcon />}
+                onClick={() => {
+                  void loadGoogleStatus();
+                }}
+                disabled={googleStatusLoading || googleActionPending}
+                sx={{ color: 'rgba(255,255,255,0.78)' }}
+              >
+                Oppdater Google-status
+              </Button>
+            </Stack>
+          </Stack>
         </Stack>
 
         {loading ? (
