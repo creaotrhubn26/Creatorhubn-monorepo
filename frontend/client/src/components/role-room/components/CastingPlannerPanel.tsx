@@ -9921,7 +9921,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                       <Button
                         size="small"
                         variant="outlined"
-                        startIcon={<ReviewTabIcon />}
+                        startIcon={<FactCheckIcon />}
                         onClick={() => {
                           navigateToTab(PRODUCER_REVIEWS_TAB_INDEX);
                         }}
@@ -9932,7 +9932,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                       <Button
                         size="small"
                         variant="outlined"
-                        startIcon={<ExportTabIcon />}
+                        startIcon={<ImportExportIcon />}
                         onClick={() => {
                           navigateToTab(PRODUCER_EXPORT_TAB_INDEX);
                         }}

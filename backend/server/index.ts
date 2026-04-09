@@ -36002,8 +36002,9 @@ app.get("/api/role-room/billing/account", async (req, res) => {
   try {
     const account = await resolveRoleRoomCommercialAccountForRequest(req);
     if (!account) {
-      return res.status(404).json({
-        error: "Fant ingen Role Room-abonnementskonto for denne brukeren.",
+      return res.json({
+        success: true,
+        account: null,
       });
     }
 

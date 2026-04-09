@@ -2375,11 +2375,11 @@ export const linkedInWorkspaceApi = {
 };
 
 export const roleRoomBillingApi = {
-  getAccount: async (): Promise<RoleRoomCommercialBillingAccount> => {
-    const result = await apiRequest<{ success: boolean; account: RoleRoomCommercialBillingAccount }>(
+  getAccount: async (): Promise<RoleRoomCommercialBillingAccount | null> => {
+    const result = await apiRequest<{ success: boolean; account: RoleRoomCommercialBillingAccount | null }>(
       '/billing/account',
     );
-    return result.account;
+    return result.account ?? null;
   },
 
   openBillingPortal: async (payload?: {
