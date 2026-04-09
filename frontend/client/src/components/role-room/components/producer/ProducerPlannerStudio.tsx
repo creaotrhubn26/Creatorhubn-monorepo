@@ -560,6 +560,11 @@ export default function ProducerPlannerStudio({
   }, [liveProject]);
 
   useEffect(() => {
+    notificationBaselineReadyRef.current = false;
+    seenNotificationStateRef.current = new Map();
+  }, [project.id]);
+
+  useEffect(() => {
     const nextSnapshot = new Map<string, string>();
     for (const notification of notifications) {
       nextSnapshot.set(notification.id, `${notification.updated_at}:${notification.read ? 'read' : 'unread'}`);
