@@ -81,10 +81,12 @@ type PlannerViewMode = 'timeline' | 'calendar' | 'coordination';
 type TimelineActionKind = 'milestone' | 'task';
 type PlannerAlertSeverity = 'error' | 'warning' | 'info';
 type MeetingDraftStep = 0 | 1 | 2 | 3;
+type ProducerPlannerAudience = 'production_team' | 'content_producer';
 
 interface ProducerPlannerStudioProps {
   project: CastingProject;
   readOnly?: boolean;
+  audience?: ProducerPlannerAudience;
   ownerOptions?: ProducerWorkflowOwnerOption[];
   entityOptions?: ProducerWorkflowEntityOption[];
   onProjectUpdated?: (project: CastingProject) => Promise<void> | void;
@@ -491,6 +493,7 @@ const getNearestPhaseForView = (planning: ProducerProjectPlanning): ProducerPlan
 export default function ProducerPlannerStudio({
   project,
   readOnly = false,
+  audience = 'production_team',
   ownerOptions = [],
   entityOptions = [],
   onProjectUpdated,
@@ -515,6 +518,7 @@ export default function ProducerPlannerStudio({
   const [timelineActionDraft, setTimelineActionDraft] = useState<TimelineActionDraft | null>(null);
   const [clientIntake, setClientIntake] = useState<ProducerClientIntake>(EMPTY_CLIENT_INTAKE);
   const [googleArtifacts, setGoogleArtifacts] = useState<RoleRoomGoogleArtifactRef[]>([]);
+  const isContentProducerPlanner = audience === 'content_producer';
   const safeProject = useMemo<CastingProject>(() => ({
     ...project,
     crew: Array.isArray(project.crew) ? project.crew : [],
@@ -572,10 +576,32 @@ export default function ProducerPlannerStudio({
   }, [estimatedProject, safeProject]);
   const notificationBaselineReadyRef = useRef(false);
   const seenNotificationStateRef = useRef<Map<string, string>>(new Map());
+  const availableViewOptions = useMemo(
+    () => (isContentProducerPlanner ? VIEW_OPTIONS.filter((option) => option.value !== 'coordination') : VIEW_OPTIONS),
+    [isContentProducerPlanner],
+  );
+  const meetingTypeEntries = useMemo(
+    () => Object.entries(PRODUCER_PLANNER_MEETING_TYPE_LABELS).filter(([value]) => (
+      !isContentProducerPlanner || value === 'creative' || value === 'delivery'
+    )),
+    [isContentProducerPlanner],
+  );
 
   useEffect(() => {
     setPlanningDraft(normalizeProducerProjectPlanning(liveProject));
   }, [liveProject]);
+
+  useEffect(() => {
+    if (isContentProducerPlanner && viewMode === 'coordination') {
+      setViewMode('timeline');
+    }
+  }, [isContentProducerPlanner, viewMode]);
+
+  useEffect(() => {
+    if (isContentProducerPlanner && !['creative', 'delivery'].includes(coordinationMeetingType)) {
+      setCoordinationMeetingType('creative');
+    }
+  }, [coordinationMeetingType, isContentProducerPlanner]);
 
   useEffect(() => {
     notificationBaselineReadyRef.current = false;
@@ -745,7 +771,7 @@ export default function ProducerPlannerStudio({
     const unscheduledLoad = productionEstimate.productionDayLoads.find((entry) => entry.dayId === 'unscheduled');
     const editReviewExists = timelineItems.some((item) => /edit review|klippgjennomgang|cut review|delivery review/i.test(item.title));
 
-    if (firstProductionDay && !techScoutExists) {
+    if (!isContentProducerPlanner && firstProductionDay && !techScoutExists) {
       alerts.push({
         id: 'tech-scout',
         severity: 'warning',
@@ -755,7 +781,7 @@ export default function ProducerPlannerStudio({
       });
     }
 
-    if (phaseInView === 'production' && !hasDoP) {
+    if (!isContentProducerPlanner && phaseInView === 'production' && !hasDoP) {
       alerts.push({
         id: 'missing-dop',
         severity: 'error',
@@ -765,7 +791,7 @@ export default function ProducerPlannerStudio({
       });
     }
 
-    if (phaseInView === 'production' && (!hasDirector || !hasProducer)) {
+    if (!isContentProducerPlanner && phaseInView === 'production' && (!hasDirector || !hasProducer)) {
       alerts.push({
         id: 'core-crew-gap',
         severity: 'warning',
@@ -775,7 +801,7 @@ export default function ProducerPlannerStudio({
       });
     }
 
-    if ((unscheduledLoad?.shotListCount ?? 0) > 0) {
+    if (!isContentProducerPlanner && (unscheduledLoad?.shotListCount ?? 0) > 0) {
       alerts.push({
         id: 'unscheduled-shotlists',
         severity: 'warning',
@@ -795,6 +821,24 @@ export default function ProducerPlannerStudio({
       });
     }
 
+    if (isContentProducerPlanner && planningDraft.contentCalendar.length === 0) {
+      alerts.push({
+        id: 'missing-deliveries',
+        severity: 'info',
+        title: 'Ingen leveranser ligger i planen ennå',
+        detail: 'Legg inn publiseringer, review-frister eller leveranser så klient og team får et tydelig neste steg.',
+      });
+    }
+
+    if (isContentProducerPlanner && reviewSummary.pending > 0) {
+      alerts.push({
+        id: 'pending-approvals',
+        severity: 'info',
+        title: 'Godkjenninger venter på beslutning',
+        detail: `${reviewSummary.pending} reviewpunkter står fortsatt som ventende. Samle dem i neste gjennomgang eller leveringsrunde.`,
+      });
+    }
+
     if (reviewSummary.changesRequested > 0) {
       alerts.push({
         id: 'changes-requested',
@@ -805,7 +849,7 @@ export default function ProducerPlannerStudio({
     }
 
     return alerts;
-  }, [liveProject.crew, phaseInView, planningDraft.contentCalendar.length, productionDays, productionEstimate.productionDayLoads, reviewSummary.changesRequested, timelineItems]);
+  }, [isContentProducerPlanner, liveProject.crew, phaseInView, planningDraft.contentCalendar.length, productionDays, productionEstimate.productionDayLoads, reviewSummary.changesRequested, reviewSummary.pending, timelineItems]);
 
   const recentNotifications = useMemo(
     () => notifications.slice(0, 6),
@@ -1178,21 +1222,23 @@ export default function ProducerPlannerStudio({
       });
     });
 
-    productionDays.forEach((day) => {
-      if (!isValidDate(day.date)) {
-        return;
-      }
-      const locationName = liveProject.locations.find((location) => location.id === day.locationId)?.name ?? 'Lokasjon ikke satt';
-      entries.push({
-        id: day.id,
-        type: 'shoot',
-        title: `Shoot day · ${locationName}`,
-        detail: `${(day.scenes ?? []).length} scener · ${(day.crew ?? []).length} crew`,
-        date: day.date,
-        phase: 'production',
-        roleTags: ['producer', 'director', 'dop', 'crew'],
+    if (!isContentProducerPlanner) {
+      productionDays.forEach((day) => {
+        if (!isValidDate(day.date)) {
+          return;
+        }
+        const locationName = liveProject.locations.find((location) => location.id === day.locationId)?.name ?? 'Lokasjon ikke satt';
+        entries.push({
+          id: day.id,
+          type: 'shoot',
+          title: `Shoot day · ${locationName}`,
+          detail: `${(day.scenes ?? []).length} scener · ${(day.crew ?? []).length} crew`,
+          date: day.date,
+          phase: 'production',
+          roleTags: ['producer', 'director', 'dop', 'crew'],
+        });
       });
-    });
+    }
 
     if (isValidDate(planningDraft.meetingWorkspace.scheduledAt)) {
       entries.push({
@@ -1226,9 +1272,9 @@ export default function ProducerPlannerStudio({
     return entries
       .filter((entry) => selectedPhase === 'all' || entry.phase === selectedPhase)
       .filter((entry) => calendarTypeFilter === 'all' || entry.type === calendarTypeFilter)
-      .filter((entry) => calendarRoleFilter === 'all' || entry.roleTags.some((tag) => tag.includes(calendarRoleFilter)))
+      .filter((entry) => isContentProducerPlanner || calendarRoleFilter === 'all' || entry.roleTags.some((tag) => tag.includes(calendarRoleFilter)))
       .sort((left, right) => compareDatesAsc(left.date, right.date));
-  }, [calendarRoleFilter, calendarTypeFilter, liveProject.locations, ownerLookup, phaseInView, planningDraft, productionDays, reviews, selectedPhase, timelineItems]);
+  }, [calendarRoleFilter, calendarTypeFilter, isContentProducerPlanner, liveProject.locations, ownerLookup, phaseInView, planningDraft, productionDays, reviews, selectedPhase, timelineItems]);
 
   const handleCreateTimelineItem = useCallback(async () => {
     if (!timelineActionDraft || !timelineActionDraft.title.trim()) {
@@ -1372,8 +1418,9 @@ export default function ProducerPlannerStudio({
               </Typography>
             </Stack>
             <Typography sx={{ color: 'rgba(226,232,240,0.76)', fontSize: '0.9rem', maxWidth: 920, lineHeight: 1.55 }}>
-              Planneren samler faseoversikt, møteflyt, deadlines, approvals og koordinering i én operativ produksjonsflate.
-              Dette er ikke bare en kalender, men produksjonens administrative backbone.
+              {isContentProducerPlanner
+                ? 'Planneren samler faseoversikt, innholdsmøter, deadlines, approvals og leveranser i én operativ flate for innholdsprodusenten.'
+                : 'Planneren samler faseoversikt, møteflyt, deadlines, approvals og koordinering i én operativ produksjonsflate. Dette er ikke bare en kalender, men produksjonens administrative backbone.'}
             </Typography>
           </Box>
 
@@ -1415,7 +1462,7 @@ export default function ProducerPlannerStudio({
                 },
               }}
             >
-              {VIEW_OPTIONS.map((option) => (
+              {availableViewOptions.map((option) => (
                 <ToggleButton key={option.value} value={option.value}>{option.label}</ToggleButton>
               ))}
             </ToggleButtonGroup>
@@ -1428,7 +1475,7 @@ export default function ProducerPlannerStudio({
                   onClick={() => openMeetingDialog()}
                   sx={{ bgcolor: '#2563eb', textTransform: 'none', fontWeight: 700 }}
                 >
-                  Create Meeting
+                  {isContentProducerPlanner ? 'Opprett gjennomgang' : 'Create Meeting'}
                 </Button>
                 <Button
                   size="small"
@@ -1446,7 +1493,7 @@ export default function ProducerPlannerStudio({
                   onClick={() => openTimelineActionDialog('task')}
                   sx={{ textTransform: 'none', fontWeight: 700 }}
                 >
-                  Assign Task
+                  {isContentProducerPlanner ? 'Legg til oppfølging' : 'Assign Task'}
                 </Button>
               </Stack>
             ) : null}
@@ -1560,7 +1607,9 @@ export default function ProducerPlannerStudio({
               Varsler
             </Typography>
             <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.85rem' }}>
-              Produsentvarsler for klientbrief, materiale, kommentarer og godkjenninger.
+              {isContentProducerPlanner
+                ? 'Varsler for brief, materiale, kommentarer, endringer og godkjenninger.'
+                : 'Produsentvarsler for klientbrief, materiale, kommentarer og godkjenninger.'}
             </Typography>
           </Box>
           <Stack direction="row" spacing={0.8} alignItems="center">
@@ -1916,10 +1965,12 @@ export default function ProducerPlannerStudio({
             <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1} justifyContent="space-between">
               <Box>
                 <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                  Klassisk kalender, men filtrert på produksjonslogikk
+                  {isContentProducerPlanner ? 'Kalender for innhold, reviews og leveranser' : 'Klassisk kalender, men filtrert på produksjonslogikk'}
                 </Typography>
                 <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.84rem', mt: 0.35 }}>
-                  Bruk denne visningen for å se møtepunkter, shoot days, leveranser og approvals i én samlet tidslinje.
+                  {isContentProducerPlanner
+                    ? 'Bruk denne visningen for å se briefpunkter, møter, leveranser og approvals i én samlet tidslinje.'
+                    : 'Bruk denne visningen for å se møtepunkter, shoot days, leveranser og approvals i én samlet tidslinje.'}
                 </Typography>
               </Box>
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
@@ -1938,24 +1989,26 @@ export default function ProducerPlannerStudio({
                     ))}
                   </Select>
                 </FormControl>
-                <FormControl size="small" sx={{ minWidth: 160 }}>
-                  <InputLabel id="planner-calendar-role-label" sx={{ color: 'rgba(226,232,240,0.82)' }}>Rolle</InputLabel>
-                  <Select
-                    labelId="planner-calendar-role-label"
-                    label="Rolle"
-                    value={calendarRoleFilter}
-                    onChange={(event) => setCalendarRoleFilter(event.target.value as (typeof ROLE_FILTER_OPTIONS)[number])}
-                    sx={{ color: '#fff', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.28)' } }}
-                  >
-                    <MenuItem value="all">Alle</MenuItem>
-                    <MenuItem value="client">Klient</MenuItem>
-                    <MenuItem value="producer">Produsent</MenuItem>
-                    <MenuItem value="director">Regissør</MenuItem>
-                    <MenuItem value="dop">DoP</MenuItem>
-                    <MenuItem value="editor">Editor</MenuItem>
-                    <MenuItem value="crew">Crew</MenuItem>
-                  </Select>
-                </FormControl>
+                {!isContentProducerPlanner ? (
+                  <FormControl size="small" sx={{ minWidth: 160 }}>
+                    <InputLabel id="planner-calendar-role-label" sx={{ color: 'rgba(226,232,240,0.82)' }}>Rolle</InputLabel>
+                    <Select
+                      labelId="planner-calendar-role-label"
+                      label="Rolle"
+                      value={calendarRoleFilter}
+                      onChange={(event) => setCalendarRoleFilter(event.target.value as (typeof ROLE_FILTER_OPTIONS)[number])}
+                      sx={{ color: '#fff', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.28)' } }}
+                    >
+                      <MenuItem value="all">Alle</MenuItem>
+                      <MenuItem value="client">Klient</MenuItem>
+                      <MenuItem value="producer">Produsent</MenuItem>
+                      <MenuItem value="director">Regissør</MenuItem>
+                      <MenuItem value="dop">DoP</MenuItem>
+                      <MenuItem value="editor">Editor</MenuItem>
+                      <MenuItem value="crew">Crew</MenuItem>
+                    </Select>
+                  </FormControl>
+                ) : null}
               </Stack>
             </Stack>
 
@@ -1994,7 +2047,7 @@ export default function ProducerPlannerStudio({
         </Stack>
       ) : null}
 
-      {viewMode === 'coordination' ? (
+      {viewMode === 'coordination' && !isContentProducerPlanner ? (
         <Stack spacing={1.25}>
           <Box
             sx={{
@@ -2023,7 +2076,7 @@ export default function ProducerPlannerStudio({
                     onChange={(event) => setCoordinationMeetingType(event.target.value as ProducerPlannerMeetingType)}
                     sx={{ color: '#fff', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.28)' } }}
                   >
-                    {Object.entries(PRODUCER_PLANNER_MEETING_TYPE_LABELS).map(([value, label]) => (
+                    {meetingTypeEntries.map(([value, label]) => (
                       <MenuItem key={value} value={value}>{label}</MenuItem>
                     ))}
                   </Select>
@@ -2036,7 +2089,7 @@ export default function ProducerPlannerStudio({
                     onClick={() => openMeetingDialog(coordinationMeetingType)}
                     sx={{ bgcolor: '#2563eb', textTransform: 'none', fontWeight: 700 }}
                   >
-                    Create Meeting
+                    {isContentProducerPlanner ? 'Opprett gjennomgang' : 'Create Meeting'}
                   </Button>
                 ) : null}
               </Stack>
@@ -2161,7 +2214,7 @@ export default function ProducerPlannerStudio({
                     }}
                     fullWidth
                   >
-                    {Object.entries(PRODUCER_PLANNER_MEETING_TYPE_LABELS).map(([value, label]) => (
+                    {meetingTypeEntries.map(([value, label]) => (
                       <MenuItem key={value} value={value}>{label}</MenuItem>
                     ))}
                   </TextField>

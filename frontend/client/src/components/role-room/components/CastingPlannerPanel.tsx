@@ -2061,6 +2061,7 @@ export function CastingPlannerPanel({
   const canMakeProducerReviewDecision = !isReadOnlyProtectedDemoView && (isClientReviewerSession || producerAccess.canMakeReviewDecision);
   const canSendBudgetReview = canEditProducerWorkflow && canViewProducerEconomy && !isClientReviewerMode;
   const producerWorkspaceBadgeLabel = isClientReviewerMode ? 'Klient' : 'Innholdsprodusent';
+  const plannerAudience: 'production_team' | 'content_producer' = isContentProducerMode ? 'content_producer' : 'production_team';
   const producerCoreTabMetaLabel = isContentProducerMode || isClientReviewerMode
     ? producerWorkspaceBadgeLabel
     : 'Prosjektstyring';
@@ -9761,7 +9762,9 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                       The Role Room Planning
                     </Typography>
                     <Typography variant="body2" sx={{ color: 'rgba(226,232,240,0.88)', mb: 2 }}>
-                      Samle produksjonsdager, teamrytme og møtelogikk i én planflate for studioet.
+                      {plannerAudience === 'content_producer'
+                        ? 'Samle brief, leveranser, reviews og møtepunkter i én planflate for innholdsarbeidet.'
+                        : 'Samle produksjonsdager, teamrytme og møtelogikk i én planflate for studioet.'}
                     </Typography>
                     <Chip
                       label="PLANNING"
@@ -9809,41 +9812,70 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                       The Role Room Planning
                     </Typography>
                     <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.72)' }}>
-                      Produksjonsplan, Meet-flyt og teamrytme i ett studio.
+                      {plannerAudience === 'content_producer'
+                        ? 'Brief, reviews, leveranser og kreative møter i ett studio.'
+                        : 'Produksjonsplan, Meet-flyt og teamrytme i ett studio.'}
                     </Typography>
                   </Box>
                 </Box>
                 <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
-                  <Chip
-                    size="small"
-                    label={`${currentProject?.productionDays?.length ?? 0} produksjonsdager`}
-                    sx={{
-                      bgcolor: 'rgba(245,158,11,0.18)',
-                      color: '#fde68a',
-                      border: '1px solid rgba(252,211,77,0.42)',
-                      fontWeight: 700,
-                    }}
-                  />
-                  <Chip
-                    size="small"
-                    label={`${currentProject?.crew?.length ?? 0} crew`}
-                    sx={{
-                      bgcolor: 'rgba(59,130,246,0.18)',
-                      color: '#bfdbfe',
-                      border: '1px solid rgba(96,165,250,0.42)',
-                      fontWeight: 700,
-                    }}
-                  />
-                  <Chip
-                    size="small"
-                    label={`${selectionMetrics.callbacks} callbacks`}
-                    sx={{
-                      bgcolor: 'rgba(168,85,247,0.18)',
-                      color: '#e9d5ff',
-                      border: '1px solid rgba(192,132,252,0.42)',
-                      fontWeight: 700,
-                    }}
-                  />
+                  {plannerAudience === 'content_producer' ? (
+                    <>
+                      <Chip
+                        size="small"
+                        label={`${currentProject?.shotLists?.length ?? 0} shotlists`}
+                        sx={{
+                          bgcolor: 'rgba(245,158,11,0.18)',
+                          color: '#fde68a',
+                          border: '1px solid rgba(252,211,77,0.42)',
+                          fontWeight: 700,
+                        }}
+                      />
+                      <Chip
+                        size="small"
+                        label={`${currentProject?.sceneBreakdowns?.length ?? 0} storyboardseksjoner`}
+                        sx={{
+                          bgcolor: 'rgba(59,130,246,0.18)',
+                          color: '#bfdbfe',
+                          border: '1px solid rgba(96,165,250,0.42)',
+                          fontWeight: 700,
+                        }}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <Chip
+                        size="small"
+                        label={`${currentProject?.productionDays?.length ?? 0} produksjonsdager`}
+                        sx={{
+                          bgcolor: 'rgba(245,158,11,0.18)',
+                          color: '#fde68a',
+                          border: '1px solid rgba(252,211,77,0.42)',
+                          fontWeight: 700,
+                        }}
+                      />
+                      <Chip
+                        size="small"
+                        label={`${currentProject?.crew?.length ?? 0} crew`}
+                        sx={{
+                          bgcolor: 'rgba(59,130,246,0.18)',
+                          color: '#bfdbfe',
+                          border: '1px solid rgba(96,165,250,0.42)',
+                          fontWeight: 700,
+                        }}
+                      />
+                      <Chip
+                        size="small"
+                        label={`${selectionMetrics.callbacks} callbacks`}
+                        sx={{
+                          bgcolor: 'rgba(168,85,247,0.18)',
+                          color: '#e9d5ff',
+                          border: '1px solid rgba(192,132,252,0.42)',
+                          fontWeight: 700,
+                        }}
+                      />
+                    </>
+                  )}
                 </Stack>
               </Box>
 
@@ -9862,46 +9894,90 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
               >
                 <Box sx={{ maxWidth: 720 }}>
                   <Typography sx={{ color: '#f8fafc', fontWeight: 700, mb: 0.35 }}>
-                    Planlegg dager, samarbeid og møter fra samme operasjonsflate
+                    {plannerAudience === 'content_producer'
+                      ? 'Planlegg innhold, godkjenninger og leveranser fra samme operasjonsflate'
+                      : 'Planlegg dager, samarbeid og møter fra samme operasjonsflate'}
                   </Typography>
                   <Typography sx={{ color: 'rgba(226,232,240,0.76)', fontSize: '0.82rem', lineHeight: 1.55 }}>
-                    Bruk denne flaten som planning-leddet i Role Room Studio. Produksjonsteamet kan hoppe direkte til utvelgelse for Meet-planlegging, videre til produksjonsplanen for dagsstyring og til teamet for bemanning.
+                    {plannerAudience === 'content_producer'
+                      ? 'Bruk denne flaten som oversiktslag for brief, storyboard, manus, shotlist, reviews og leveranser. Herfra kan innholdsprodusenten gå direkte til prosjektrommet, godkjenningene og levering.'
+                      : 'Bruk denne flaten som planning-leddet i Role Room Studio. Produksjonsteamet kan hoppe direkte til utvelgelse for Meet-planlegging, videre til produksjonsplanen for dagsstyring og til teamet for bemanning.'}
                   </Typography>
                 </Box>
                 <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    startIcon={<SelectionTabIcon />}
-                    onClick={() => {
-                      navigateToTab(SELECTION_TAB_INDEX);
-                    }}
-                    sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 999 }}
-                  >
-                    Til utvelgelse
-                  </Button>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    startIcon={<CalendarMonthIcon />}
-                    onClick={() => {
-                      navigateToTab(CALENDAR_TAB_INDEX);
-                    }}
-                    sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 999 }}
-                  >
-                    Produksjonsplan
-                  </Button>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    startIcon={<GroupsIcon />}
-                    onClick={() => {
-                      navigateToTab(TEAM_TAB_INDEX);
-                    }}
-                    sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 999 }}
-                  >
-                    Team
-                  </Button>
+                  {plannerAudience === 'content_producer' ? (
+                    <>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<FolderOpenIcon />}
+                        onClick={() => {
+                          navigateToTab(PRODUCER_MEDIA_TAB_INDEX);
+                        }}
+                        sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 999 }}
+                      >
+                        Prosjektrom
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<ReviewTabIcon />}
+                        onClick={() => {
+                          navigateToTab(PRODUCER_REVIEWS_TAB_INDEX);
+                        }}
+                        sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 999 }}
+                      >
+                        Godkjenning
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<ExportTabIcon />}
+                        onClick={() => {
+                          navigateToTab(PRODUCER_EXPORT_TAB_INDEX);
+                        }}
+                        sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 999 }}
+                      >
+                        Levering
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<SelectionTabIcon />}
+                        onClick={() => {
+                          navigateToTab(SELECTION_TAB_INDEX);
+                        }}
+                        sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 999 }}
+                      >
+                        Til utvelgelse
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<CalendarMonthIcon />}
+                        onClick={() => {
+                          navigateToTab(CALENDAR_TAB_INDEX);
+                        }}
+                        sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 999 }}
+                      >
+                        Produksjonsplan
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<GroupsIcon />}
+                        onClick={() => {
+                          navigateToTab(TEAM_TAB_INDEX);
+                        }}
+                        sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 999 }}
+                      >
+                        Team
+                      </Button>
+                    </>
+                  )}
                 </Stack>
               </Box>
 
@@ -9923,16 +9999,17 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                     key={`${currentProject.id}:${producerWorkflowBootstrapVersion}:planner-studio`}
                     project={currentProject}
                     readOnly={!canManageProductionWorkspace}
+                    audience={plannerAudience}
                     ownerOptions={producerWorkflowOwnerOptions}
                     entityOptions={producerWorkflowEntityOptions}
                     onProjectUpdated={async (updatedProject) => {
                       setCurrentProject(updatedProject);
                       await loadProjects();
                     }}
-                    onOpenSelection={() => {
+                    onOpenSelection={plannerAudience === 'content_producer' ? undefined : () => {
                       navigateToTab(SELECTION_TAB_INDEX);
                     }}
-                    onOpenTeam={() => {
+                    onOpenTeam={plannerAudience === 'content_producer' ? undefined : () => {
                       navigateToTab(TEAM_TAB_INDEX);
                     }}
                     onOpenShotList={(focus) => {
