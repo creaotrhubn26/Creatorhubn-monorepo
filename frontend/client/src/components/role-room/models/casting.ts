@@ -1280,6 +1280,26 @@ export type ProducerWorkspaceTabPlacement = 'top' | 'left';
 export type ProducerWorkspacePagePlacement = 'left' | 'right';
 
 export type ProducerMeetingWorkspaceStatus = 'planned' | 'lobby' | 'live' | 'follow_up';
+export type ProducerPlannerMeetingType = 'casting' | 'production' | 'creative' | 'delivery';
+export type ProducerPlannerMeetingMode = 'digital' | 'onsite';
+
+export interface ProducerMeetingParticipant {
+  id: string;
+  label: string;
+  role?: string;
+  kind?: 'client' | 'crew' | 'cast' | 'internal' | 'location';
+  required?: boolean;
+  availability?: 'available' | 'tentative' | 'unavailable' | 'unknown';
+  note?: string;
+}
+
+export interface ProducerMeetingAssetRef {
+  id: string;
+  label: string;
+  type?: 'brief' | 'storyboard' | 'manuscript' | 'shotlist' | 'reference' | 'contract' | 'timeline';
+  linkedEntityType?: string;
+  linkedEntityId?: string;
+}
 
 export interface ProducerMeetingAgendaItem {
   id: string;
@@ -1320,6 +1340,15 @@ export interface ProducerMeetingFollowUpItem {
 export interface ProducerMeetingWorkspace {
   status: ProducerMeetingWorkspaceStatus;
   sessionLabel?: string;
+  meetingType?: ProducerPlannerMeetingType;
+  meetingMode?: ProducerPlannerMeetingMode;
+  phase?: ProducerPlanningPhase;
+  scheduledAt?: string;
+  locationLabel?: string;
+  contextSummary?: string;
+  expectations?: string[];
+  participants?: ProducerMeetingParticipant[];
+  assets?: ProducerMeetingAssetRef[];
   activeMeetUrl?: string;
   activeMeetArtifactId?: string;
   activeMeetCalendarEventId?: string;

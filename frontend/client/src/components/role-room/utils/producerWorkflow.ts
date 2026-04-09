@@ -59,6 +59,7 @@ const ENTITY_TYPE_LABELS: Record<string, string> = {
   client_material: 'Klientmateriale',
   meeting_decision: 'Møtebeslutning',
   meeting_follow_up: 'Møteoppfølging',
+  meeting_workspace: 'Møteplan',
 };
 
 const REVIEW_STATUS_LABELS: Record<string, string> = {

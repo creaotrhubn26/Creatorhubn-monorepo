@@ -193,6 +193,7 @@ const ProjectEconomyHub = lazy(() => import('./ProjectEconomyHub'));
 const ProductionCalendarPanel = lazy(() => import('./ProductionCalendarPanel'));
 const CrewCalendarPanel = lazy(() => import('./production/CrewCalendarPanel').then(m => ({ default: m.CrewCalendarPanel })));
 const ProducerTimelinePanel = lazy(() => import('./producer/ProducerTimelinePanel'));
+const ProducerPlannerStudio = lazy(() => import('./producer/ProducerPlannerStudio'));
 const ProducerClientReviewPanel = lazy(() => import('./producer/ProducerClientReviewPanel'));
 const ProducerMediaPanel = lazy(() => import('./producer/ProducerMediaPanel'));
 const ProducerExtrasPanel = lazy(() => import('./producer/ProducerExtrasPanel'));
@@ -9771,14 +9772,40 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                 </Box>
               ) : (
                 <Box sx={{ flex: 1, minHeight: 0, overflow: 'hidden', pt: 1 }}>
-                  <ProductionDayView
-                    key={`${currentProject.id}:planning-production-day`}
-                    projectId={currentProject.id}
-                    onUpdate={async () => {
-                      const updated = await castingService.getProject(currentProject.id);
-                      if (updated) setCurrentProject(updated);
+                  <ProducerPlannerStudio
+                    key={`${currentProject.id}:${producerWorkflowBootstrapVersion}:planner-studio`}
+                    project={currentProject}
+                    readOnly={!permissions.canEditProduction}
+                    ownerOptions={producerWorkflowOwnerOptions}
+                    entityOptions={producerWorkflowEntityOptions}
+                    onProjectUpdated={async (updatedProject) => {
+                      setCurrentProject(updatedProject);
+                      await loadProjects();
                     }}
-                    profession={profession}
+                    onOpenSelection={() => {
+                      navigateToTab(SELECTION_TAB_INDEX);
+                    }}
+                    onOpenTeam={() => {
+                      navigateToTab(TEAM_TAB_INDEX);
+                    }}
+                    onOpenShotList={(focus) => {
+                      startTransition(() => setStoryArcView('shot-list'));
+                      if (focus?.phase) {
+                        logRoleRoomDiagnostic('planning-open-shotlist', {
+                          projectId: currentProject.id,
+                          phase: focus.phase,
+                        });
+                      }
+                    }}
+                    onOpenReviews={(focus) => {
+                      navigateToProducerWorkflowTabWithFocus(PRODUCER_REVIEWS_TAB_INDEX, focus);
+                    }}
+                    onOpenEconomy={(focus) => {
+                      navigateToProducerWorkflowTabWithFocus(PRODUCER_ECONOMY_TAB_INDEX, focus);
+                    }}
+                    onOpenMedia={(focus) => {
+                      navigateToProducerMediaWorkspace(focus);
+                    }}
                   />
                 </Box>
               )}

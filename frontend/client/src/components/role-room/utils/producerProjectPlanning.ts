@@ -24,8 +24,12 @@ import type {
   ProducerDeliveryPresetId,
   ProducerDeliveryWorkflow,
   ProducerMeetingAgendaItem,
+  ProducerMeetingAssetRef,
   ProducerMeetingDecisionItem,
   ProducerMeetingFollowUpItem,
+  ProducerMeetingParticipant,
+  ProducerPlannerMeetingMode,
+  ProducerPlannerMeetingType,
   ProducerMeetingWorkspace,
   ProducerMeetingWorkspaceStatus,
   ProducerPhasePlanItem,
@@ -65,6 +69,18 @@ export const PRODUCER_CONTENT_CALENDAR_STATUS_LABELS: Record<ProducerContentCale
   in_review: 'Til gjennomgang',
   scheduled: 'Planlagt publisert',
   published: 'Publisert',
+};
+
+export const PRODUCER_PLANNER_MEETING_TYPE_LABELS: Record<ProducerPlannerMeetingType, string> = {
+  casting: 'Casting',
+  production: 'Production',
+  creative: 'Creative',
+  delivery: 'Delivery',
+};
+
+export const PRODUCER_PLANNER_MEETING_MODE_LABELS: Record<ProducerPlannerMeetingMode, string> = {
+  digital: 'Digitalt',
+  onsite: 'På lokasjon',
 };
 
 export interface ProducerContentFormatOption {
@@ -883,6 +899,15 @@ const DEFAULT_DELIVERY_WORKFLOW: ProducerDeliveryWorkflow = {
 const DEFAULT_MEETING_WORKSPACE: ProducerMeetingWorkspace = {
   status: 'planned',
   sessionLabel: 'Klientsync',
+  meetingType: 'production',
+  meetingMode: 'digital',
+  phase: 'preproduction',
+  scheduledAt: '',
+  locationLabel: '',
+  contextSummary: '',
+  expectations: [],
+  participants: [],
+  assets: [],
   activeMeetUrl: '',
   activeMeetArtifactId: '',
   activeMeetCalendarEventId: '',
@@ -1609,6 +1634,71 @@ const normalizeMeetingFollowUpItem = (
   };
 };
 
+const normalizeMeetingParticipant = (
+  value: unknown,
+  index: number,
+): ProducerMeetingParticipant | null => {
+  const record = value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+  if (!record || !hasText(record.label)) {
+    return null;
+  }
+
+  const availability = record.availability === 'available'
+    || record.availability === 'tentative'
+    || record.availability === 'unavailable'
+    || record.availability === 'unknown'
+    ? record.availability
+    : 'unknown';
+
+  return {
+    id: hasText(record.id) ? record.id.trim() : `meeting-participant-${index + 1}`,
+    label: record.label.trim(),
+    role: hasText(record.role) ? record.role.trim() : undefined,
+    kind: record.kind === 'client'
+      || record.kind === 'crew'
+      || record.kind === 'cast'
+      || record.kind === 'internal'
+      || record.kind === 'location'
+      ? record.kind
+      : undefined,
+    required: typeof record.required === 'boolean' ? record.required : undefined,
+    availability,
+    note: hasText(record.note) ? record.note.trim() : undefined,
+  };
+};
+
+const normalizeMeetingAssetRef = (
+  value: unknown,
+  index: number,
+): ProducerMeetingAssetRef | null => {
+  const record = value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+  if (!record || !hasText(record.label)) {
+    return null;
+  }
+
+  const type = record.type === 'brief'
+    || record.type === 'storyboard'
+    || record.type === 'manuscript'
+    || record.type === 'shotlist'
+    || record.type === 'reference'
+    || record.type === 'contract'
+    || record.type === 'timeline'
+    ? record.type
+    : undefined;
+
+  return {
+    id: hasText(record.id) ? record.id.trim() : `meeting-asset-${index + 1}`,
+    label: record.label.trim(),
+    type,
+    linkedEntityType: hasText(record.linkedEntityType) ? record.linkedEntityType.trim() : undefined,
+    linkedEntityId: hasText(record.linkedEntityId) ? record.linkedEntityId.trim() : undefined,
+  };
+};
+
 const normalizeMeetingWorkspace = (value: unknown, fallback: ProducerMeetingWorkspace): ProducerMeetingWorkspace => {
   const record = value !== null && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -1619,10 +1709,44 @@ const normalizeMeetingWorkspace = (value: unknown, fallback: ProducerMeetingWork
     || rawStatus === 'follow_up'
     ? rawStatus
     : 'planned';
+  const meetingType: ProducerPlannerMeetingType | undefined = record.meetingType === 'casting'
+    || record.meetingType === 'production'
+    || record.meetingType === 'creative'
+    || record.meetingType === 'delivery'
+    ? record.meetingType
+    : fallback.meetingType;
+  const meetingMode: ProducerPlannerMeetingMode | undefined = record.meetingMode === 'digital'
+    || record.meetingMode === 'onsite'
+    ? record.meetingMode
+    : fallback.meetingMode;
+  const phase = record.phase === 'preproduction'
+    || record.phase === 'production'
+    || record.phase === 'postproduction'
+    ? record.phase
+    : fallback.phase;
 
   return {
     status,
     sessionLabel: hasText(record.sessionLabel) ? record.sessionLabel.trim() : fallback.sessionLabel,
+    meetingType,
+    meetingMode,
+    phase,
+    scheduledAt: hasText(record.scheduledAt) ? record.scheduledAt.trim() : fallback.scheduledAt,
+    locationLabel: hasText(record.locationLabel) ? record.locationLabel.trim() : fallback.locationLabel,
+    contextSummary: hasText(record.contextSummary) ? record.contextSummary.trim() : fallback.contextSummary,
+    expectations: Array.isArray(record.expectations)
+      ? normalizeStringArray(record.expectations)
+      : normalizeStringArray(fallback.expectations),
+    participants: Array.isArray(record.participants)
+      ? record.participants
+        .map((item, itemIndex) => normalizeMeetingParticipant(item, itemIndex))
+        .filter((item): item is ProducerMeetingParticipant => item !== null)
+      : (fallback.participants ?? []).map((item) => ({ ...item })),
+    assets: Array.isArray(record.assets)
+      ? record.assets
+        .map((item, itemIndex) => normalizeMeetingAssetRef(item, itemIndex))
+        .filter((item): item is ProducerMeetingAssetRef => item !== null)
+      : (fallback.assets ?? []).map((item) => ({ ...item })),
     activeMeetUrl: hasText(record.activeMeetUrl) ? record.activeMeetUrl.trim() : '',
     activeMeetArtifactId: hasText(record.activeMeetArtifactId) ? record.activeMeetArtifactId.trim() : '',
     activeMeetCalendarEventId: hasText(record.activeMeetCalendarEventId) ? record.activeMeetCalendarEventId.trim() : '',

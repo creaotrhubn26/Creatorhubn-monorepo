@@ -38,6 +38,8 @@ import {
   buildProducerGoogleMeetSession,
 } from '../../utils/producerGoogleWorkspace';
 import {
+  PRODUCER_PLANNER_MEETING_MODE_LABELS,
+  PRODUCER_PLANNER_MEETING_TYPE_LABELS,
   PRODUCER_MEETING_WORKSPACE_STATUS_LABELS,
   PRODUCER_PLANNING_PHASE_LABELS,
 } from '../../utils/producerProjectPlanning';
@@ -353,6 +355,8 @@ export default function ProducerMeetingWorkspace({
       hasText(activeMeetUrl) ? 'Meet er koblet til' : '',
     ].filter(Boolean).join(' · ');
   }, [activeMeetUrl, agendaReadyCount, loggedDecisionCount, meetingMissingItems.length, openFollowUpCount]);
+  const participantCount = meetingWorkspace.participants?.length ?? 0;
+  const assetCount = meetingWorkspace.assets?.length ?? 0;
 
   const updateMeetingWorkspace = useCallback((
     updater: (workspace: ProducerMeetingWorkspace) => ProducerMeetingWorkspace,
@@ -566,6 +570,81 @@ export default function ProducerMeetingWorkspace({
             </Typography>
           </Stack>
         </Stack>
+
+        {(meetingWorkspace.meetingType || meetingWorkspace.scheduledAt || meetingWorkspace.locationLabel || participantCount > 0 || assetCount > 0 || hasText(meetingWorkspace.contextSummary)) ? (
+          <Box
+            sx={{
+              mt: 1.05,
+              px: 0.8,
+              py: 0.72,
+              borderRadius: 1.5,
+              border: '1px solid rgba(96,165,250,0.12)',
+              bgcolor: 'rgba(15,23,42,0.22)',
+            }}
+          >
+            <Stack direction="row" spacing={0.65} flexWrap="wrap" useFlexGap>
+              {meetingWorkspace.meetingType ? (
+                <Chip
+                  size="small"
+                  label={PRODUCER_PLANNER_MEETING_TYPE_LABELS[meetingWorkspace.meetingType]}
+                  sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }}
+                />
+              ) : null}
+              {meetingWorkspace.phase ? (
+                <Chip
+                  size="small"
+                  label={PRODUCER_PLANNING_PHASE_LABELS[meetingWorkspace.phase]}
+                  sx={{ bgcolor: 'rgba(167,139,250,0.16)', color: '#e9d5ff' }}
+                />
+              ) : null}
+              {meetingWorkspace.meetingMode ? (
+                <Chip
+                  size="small"
+                  label={PRODUCER_PLANNER_MEETING_MODE_LABELS[meetingWorkspace.meetingMode]}
+                  sx={{ bgcolor: 'rgba(34,197,94,0.16)', color: '#bbf7d0' }}
+                />
+              ) : null}
+              {hasText(meetingWorkspace.scheduledAt) ? (
+                <Chip
+                  size="small"
+                  label={formatDateTime(meetingWorkspace.scheduledAt)}
+                  sx={{ bgcolor: 'rgba(251,191,36,0.16)', color: '#fde68a' }}
+                />
+              ) : null}
+              {hasText(meetingWorkspace.locationLabel) ? (
+                <Chip
+                  size="small"
+                  label={meetingWorkspace.locationLabel}
+                  sx={{ bgcolor: 'rgba(148,163,184,0.16)', color: '#cbd5e1' }}
+                />
+              ) : null}
+              {participantCount > 0 ? (
+                <Chip
+                  size="small"
+                  label={`${participantCount} deltakere`}
+                  sx={{ bgcolor: 'rgba(14,165,233,0.16)', color: '#bae6fd' }}
+                />
+              ) : null}
+              {assetCount > 0 ? (
+                <Chip
+                  size="small"
+                  label={`${assetCount} assets`}
+                  sx={{ bgcolor: 'rgba(192,132,252,0.16)', color: '#f3e8ff' }}
+                />
+              ) : null}
+            </Stack>
+            {hasText(meetingWorkspace.contextSummary) ? (
+              <Typography sx={{ color: 'rgba(226,232,240,0.88)', fontSize: '0.82rem', mt: 0.7, lineHeight: 1.45 }}>
+                {meetingWorkspace.contextSummary}
+              </Typography>
+            ) : null}
+            {(meetingWorkspace.expectations?.length ?? 0) > 0 ? (
+              <Typography sx={{ color: 'rgba(191,219,254,0.78)', fontSize: '0.78rem', mt: 0.45, lineHeight: 1.45 }}>
+                {`Forventninger: ${(meetingWorkspace.expectations ?? []).join(' · ')}`}
+              </Typography>
+            ) : null}
+          </Box>
+        ) : null}
 
         {meetingMissingItems.length > 0 ? (
           <Box
