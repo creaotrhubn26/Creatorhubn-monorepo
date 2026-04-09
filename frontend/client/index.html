@@ -112,11 +112,11 @@
         return trimmedValue;
       }
 
-      var GOOGLE_TAG_MANAGER_ID = resolveStaticAnalyticsValue('%VITE_GOOGLE_TAG_MANAGER_ID%', 'GTM-MFWW7X83');
-      var CREATORHUB_GOOGLE_TAG_MANAGER_ID = resolveStaticAnalyticsValue('%VITE_CREATORHUB_GOOGLE_TAG_MANAGER_ID%', GOOGLE_TAG_MANAGER_ID);
-      var ROLE_ROOM_GOOGLE_TAG_MANAGER_ID = resolveStaticAnalyticsValue('%VITE_ROLE_ROOM_GOOGLE_TAG_MANAGER_ID%', GOOGLE_TAG_MANAGER_ID);
-      var CREATORHUB_GA_MEASUREMENT_ID = resolveStaticAnalyticsValue('%VITE_CREATORHUB_GA_MEASUREMENT_ID%', 'G-6E5MJT8REW');
-      var ROLE_ROOM_GA_MEASUREMENT_ID = resolveStaticAnalyticsValue('%VITE_ROLE_ROOM_GA_MEASUREMENT_ID%', 'G-9T7K5TJVFX');
+      var GOOGLE_TAG_MANAGER_ID = 'GTM-MFWW7X83';
+      var CREATORHUB_GOOGLE_TAG_MANAGER_ID = 'GTM-MFWW7X83';
+      var ROLE_ROOM_GOOGLE_TAG_MANAGER_ID = 'GTM-TNWTVHSP';
+      var CREATORHUB_GA_MEASUREMENT_ID = 'G-6E5MJT8REW';
+      var ROLE_ROOM_GA_MEASUREMENT_ID = 'G-9T7K5TJVFX';
       var analyticsConfig = resolveAnalyticsConfig();
       var analyticsBootstrapState = {
         tagManagerLoaded: false,
