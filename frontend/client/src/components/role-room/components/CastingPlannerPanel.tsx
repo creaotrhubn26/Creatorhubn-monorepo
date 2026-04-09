@@ -569,6 +569,7 @@ export function CastingPlannerPanel({
   const isTablet = useMediaQuery(theme.breakpoints.down('md'));
   const isDesktop = useMediaQuery(theme.breakpoints.up('lg'));
   const useCompactHeaderLayout = isTablet;
+  const isDenseDesktopViewport = useMediaQuery('(min-width: 1024px) and (max-width: 1720px)');
   // Responsive quick-contact tiers (7-level layout scaling)
   const quickTier2 = useMediaQuery('(min-width:480px)');
   const quickTier3 = useMediaQuery('(min-width:768px)');
@@ -577,6 +578,7 @@ export function CastingPlannerPanel({
   const quickTier6 = useMediaQuery('(min-width:1600px)');
   const quickTier7 = useMediaQuery('(min-width:2000px)');
   const isHiDpi = useMediaQuery('(min-resolution: 2dppx), (min-resolution: 192dpi), (-webkit-min-device-pixel-ratio: 2)');
+  const useDenseDesktopHeader = !useCompactHeaderLayout && isDenseDesktopViewport;
   const toast = useToast();
   const branding = useBrandingSettings();
   
@@ -597,21 +599,27 @@ export function CastingPlannerPanel({
   // Unified nav sizing for mobile -> 5K + HiDPI
   const navIconSizePx = useMemo(() => {
     let base = quickTier7 ? 26 : quickTier6 ? 24 : quickTier5 ? 22 : quickTier4 ? 21 : quickTier3 ? 20 : 18;
-    if (isHiDpi) base += 1;
+    if (!useCompactHeaderLayout && isHiDpi) base -= 1;
+    if (useDenseDesktopHeader) base -= 1;
+    base = Math.max(17, base);
     return base;
-  }, [quickTier3, quickTier4, quickTier5, quickTier6, quickTier7, isHiDpi]);
+  }, [quickTier3, quickTier4, quickTier5, quickTier6, quickTier7, isHiDpi, useCompactHeaderLayout, useDenseDesktopHeader]);
 
   const projectChipActionSizePx = useMemo(() => {
     let base = quickTier7 ? 40 : quickTier6 ? 38 : quickTier5 ? 36 : quickTier4 ? 34 : quickTier3 ? 32 : 28;
-    if (isHiDpi) base += 1;
+    if (!useCompactHeaderLayout && isHiDpi) base -= 1;
+    if (useDenseDesktopHeader) base -= 2;
+    base = Math.max(28, base);
     return base;
-  }, [quickTier3, quickTier4, quickTier5, quickTier6, quickTier7, isHiDpi]);
+  }, [quickTier3, quickTier4, quickTier5, quickTier6, quickTier7, isHiDpi, useCompactHeaderLayout, useDenseDesktopHeader]);
 
   const navActionButtonSizePx = useMemo(() => {
     let base = quickTier7 ? 48 : quickTier6 ? 46 : quickTier5 ? 44 : quickTier4 ? 42 : quickTier3 ? 40 : 44;
-    if (isHiDpi) base += 1;
+    if (!useCompactHeaderLayout && isHiDpi) base -= 2;
+    if (useDenseDesktopHeader) base -= 4;
+    base = Math.max(useCompactHeaderLayout ? TOUCH_TARGET_SIZE : 38, base);
     return base;
-  }, [quickTier3, quickTier4, quickTier5, quickTier6, quickTier7, isHiDpi]);
+  }, [quickTier3, quickTier4, quickTier5, quickTier6, quickTier7, isHiDpi, useCompactHeaderLayout, useDenseDesktopHeader]);
 
   const tabIconBoxSizePx = useMemo(() => {
     let base = quickTier7 ? 32 : quickTier6 ? 30 : quickTier5 ? 28 : quickTier4 ? 26 : quickTier3 ? 24 : 20;
@@ -1047,6 +1055,7 @@ export function CastingPlannerPanel({
   const [projectSelectorQuery, setProjectSelectorQuery] = useState('');
   const [projectQuickActionsAnchorEl, setProjectQuickActionsAnchorEl] = useState<HTMLElement | null>(null);
   const [projectQuickActionsProject, setProjectQuickActionsProject] = useState<CastingProject | null>(null);
+  const [headerToolsAnchorEl, setHeaderToolsAnchorEl] = useState<HTMLElement | null>(null);
   const [pinnedProjectIds, setPinnedProjectIds] = useState<string[]>([]);
   const [draggingPinnedProjectId, setDraggingPinnedProjectId] = useState<string | null>(null);
   const [publishedTemplates, setPublishedTemplates] = useState<CastingProject[]>([]);
@@ -1752,6 +1761,41 @@ export function CastingPlannerPanel({
     setProjectQuickActionsProject(null);
   }, []);
 
+  const handleOpenHeaderToolsMenu = useCallback((event: MouseEvent<HTMLElement>) => {
+    event.stopPropagation();
+    setHeaderToolsAnchorEl(event.currentTarget);
+  }, []);
+
+  const handleCloseHeaderToolsMenu = useCallback(() => {
+    setHeaderToolsAnchorEl(null);
+  }, []);
+
+  const handleRestartWorkspaceOnboarding = useCallback(() => {
+    handleCloseHeaderToolsMenu();
+    resetOnboarding();
+    startTransition(() => {
+      triggerProfessionOnboarding();
+    });
+  }, [handleCloseHeaderToolsMenu, resetOnboarding, triggerProfessionOnboarding]);
+
+  const handleWorkspaceLogout = useCallback(async () => {
+    handleCloseHeaderToolsMenu();
+    if (_onClose) {
+      _onClose();
+      return;
+    }
+    await authSessionService.clearSession();
+    setAdminUser(null);
+    setCurrentProject(null);
+    setProjects([]);
+    setProjectSelectorOpen(false);
+    setProjectCreationModalOpen(false);
+    setProjectToEdit(null);
+    setCurrentProjectId(null);
+    setActiveTab(0);
+    window.location.assign(getRoleRoomCanonicalPath(window.location));
+  }, [handleCloseHeaderToolsMenu, _onClose]);
+
   const pinnedProjectIdSet = useMemo(() => new Set(pinnedProjectIds), [pinnedProjectIds]);
   const pinnedProjectAccentColorById = useMemo(() => {
     const accentMap = new Map<string, string>();
@@ -2017,11 +2061,17 @@ export function CastingPlannerPanel({
   const isFreshProjectCreationFlow = projectCreationModalOpen && !projectToEdit;
   const headerActiveProject = isFreshProjectCreationFlow ? null : currentProject;
   const useFocusedWorkspaceHeader = !useCompactHeaderLayout && (isContentProducerMode || isClientReviewerMode);
+  const showDenseDesktopHeaderUtilities = !useCompactHeaderLayout && useDenseDesktopHeader;
   const headerBrandSubtitle = isClientReviewerMode
     ? 'Klientgjennomgang'
     : isContentProducerMode
       ? 'Innholdsprodusent-workspace'
       : 'Produksjonsteam-workspace';
+  const headerOpenProjectsButtonLabel = useDenseDesktopHeader ? 'Prosjekter' : 'Åpne prosjekter';
+  const headerCopyButtonLabel = useDenseDesktopHeader ? 'Kopi' : 'Lag kopi';
+  const headerProjectMetaHint = useDenseDesktopHeader
+    ? 'Klikk for å bytte prosjekt'
+    : 'Klikk for å bytte eller åpne eksisterende prosjekt';
   const workspaceAccountStatusColor = billingAccount?.paymentStatus === 'payment_failed'
     ? '#fb7185'
     : billingAccount?.paymentCompleted
@@ -5910,7 +5960,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
             display: 'flex',
             alignItems: useCompactHeaderLayout ? 'stretch' : 'center',
             flexWrap: useCompactHeaderLayout ? 'wrap' : 'nowrap',
-            gap: { xs: 0.75, sm: 1 },
+            gap: useDenseDesktopHeader ? 0.75 : { xs: 0.75, sm: 1 },
             minWidth: 0,
             pt: { xs: 0.35, sm: 0.5 },
             pb: { xs: 0.55, sm: 0.75 },
@@ -5921,23 +5971,23 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
               sx={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: { md: 1, lg: 1.25 },
+                gap: useDenseDesktopHeader ? { md: 0.75, lg: 0.9 } : { md: 1, lg: 1.25 },
                 minWidth: 0,
                 flexShrink: 0,
                 order: 0,
-                pr: { md: 0.5, lg: 1 },
+                pr: useDenseDesktopHeader ? { md: 0.25, lg: 0.5 } : { md: 0.5, lg: 1 },
               }}
             >
               <RoleRoomBrandMark
                 appearance="header"
                 showLabel={false}
                 sx={{
-                  width: { md: 120, lg: 134, xl: 150 },
+                  width: useDenseDesktopHeader ? { md: 108, lg: 118, xl: 126 } : { md: 120, lg: 134, xl: 150 },
                   flexShrink: 0,
                   opacity: 0.96,
                 }}
               />
-              <Box sx={{ minWidth: 0, display: { xs: 'none', lg: 'block' } }}>
+              <Box sx={{ minWidth: 0, display: useDenseDesktopHeader ? 'none' : { xs: 'none', lg: 'block' } }}>
                 <Typography
                   sx={{
                     color: '#f8fafc',
@@ -5971,7 +6021,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
             sx={{
               display: 'flex',
               alignItems: 'center',
-              gap: { xs: 0.75, sm: 1 },
+              gap: useDenseDesktopHeader ? 0.6 : { xs: 0.75, sm: 1 },
               flexShrink: 0,
               order: useCompactHeaderLayout ? 1 : 2,
             }}
@@ -6000,29 +6050,30 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
               <AddIcon sx={{ fontSize: navIconSizePx }} />
             </IconButton>
 
-            {/* Tutorial button */}
-            <IconButton
-              size="small"
-              onClick={openTutorial}
-              aria-label={branding.tokens.labels.tutorialLabel}
-              title={branding.tokens.labels.tutorialTitle}
-              sx={{
-                width: navActionButtonSizePx,
-                height: navActionButtonSizePx,
-                minWidth: navActionButtonSizePx,
-                border: '1px solid rgba(233, 30, 99, 0.3)',
-                borderRadius: { xs: 1.5, sm: 2 },
-                color: '#e91e63',
-                flexShrink: 0,
-                bgcolor: 'rgba(233, 30, 99, 0.1)',
-                '&:hover, &:active': {
-                  borderColor: '#e91e63',
-                  bgcolor: 'rgba(233, 30, 99, 0.2)',
-                },
-              }}
-            >
-              <TutorialIcon sx={{ fontSize: navIconSizePx }} />
-            </IconButton>
+            {!showDenseDesktopHeaderUtilities ? (
+              <IconButton
+                size="small"
+                onClick={openTutorial}
+                aria-label={branding.tokens.labels.tutorialLabel}
+                title={branding.tokens.labels.tutorialTitle}
+                sx={{
+                  width: navActionButtonSizePx,
+                  height: navActionButtonSizePx,
+                  minWidth: navActionButtonSizePx,
+                  border: '1px solid rgba(233, 30, 99, 0.3)',
+                  borderRadius: { xs: 1.5, sm: 2 },
+                  color: '#e91e63',
+                  flexShrink: 0,
+                  bgcolor: 'rgba(233, 30, 99, 0.1)',
+                  '&:hover, &:active': {
+                    borderColor: '#e91e63',
+                    bgcolor: 'rgba(233, 30, 99, 0.2)',
+                  },
+                }}
+              >
+                <TutorialIcon sx={{ fontSize: navIconSizePx }} />
+              </IconButton>
+            ) : null}
           </Box>
 
           {useCompactHeaderLayout && !isMobile ? (
@@ -6098,18 +6149,20 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
             sx={{
               display: 'flex',
               alignItems: 'stretch',
-              gap: { xs: 0.75, sm: 1 },
+              gap: useDenseDesktopHeader ? 0.75 : { xs: 0.75, sm: 1 },
               flex: useCompactHeaderLayout ? '1 1 100%' : 1,
               minWidth: 0,
               order: useCompactHeaderLayout ? 4 : 1,
               overflowX: 'auto',
               overflowY: 'hidden',
               WebkitOverflowScrolling: 'touch',
-              scrollbarWidth: 'thin',
+              scrollbarWidth: useCompactHeaderLayout ? 'thin' : 'none',
               scrollSnapType: 'x proximity',
               pr: 0.25,
-              '&::-webkit-scrollbar': { height: 4 },
-              '&::-webkit-scrollbar-thumb': { backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 2 },
+              '&::-webkit-scrollbar': useCompactHeaderLayout ? { height: 4 } : { display: 'none', height: 0 },
+              '&::-webkit-scrollbar-thumb': useCompactHeaderLayout
+                ? { backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 2 }
+                : undefined,
             }}
           >
             {useFocusedWorkspaceHeader ? (
@@ -6233,7 +6286,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                         headerActiveProject && isProtectedDemoProject(headerActiveProject) && !canMutateProtectedDemoData
                           ? 'Demoen er låst. Lag kopi for å jobbe videre.'
                           : headerActiveProject
-                            ? 'Klikk for å bytte eller åpne eksisterende prosjekt'
+                            ? headerProjectMetaHint
                             : 'Åpne arbeidsbiblioteket',
                       ].filter(Boolean).join(' • ')}
                     </Typography>
@@ -6268,8 +6321,8 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                   startIcon={<FolderOpenIcon sx={{ fontSize: 18 }} />}
                   data-testid="role-room-open-projects"
                   sx={{
-                    minWidth: { md: 146, lg: 158 },
-                    px: { md: 1.3, lg: 1.55 },
+                    minWidth: useDenseDesktopHeader ? { md: 112, lg: 122 } : { md: 146, lg: 158 },
+                    px: useDenseDesktopHeader ? { md: 1.05, lg: 1.2 } : { md: 1.3, lg: 1.55 },
                     borderRadius: { md: 2.25, lg: 2.5 },
                     border: '1px solid rgba(96,165,250,0.24)',
                     bgcolor: 'rgba(96,165,250,0.08)',
@@ -6284,7 +6337,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                     },
                   }}
                 >
-                  Åpne prosjekter
+                  {headerOpenProjectsButtonLabel}
                 </Button>
 
                 {headerActiveProject && isProtectedDemoProject(headerActiveProject) && !canMutateProtectedDemoData ? (
@@ -6293,8 +6346,8 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                     onClick={() => { void handleCreateProjectCopy(headerActiveProject); }}
                     startIcon={<ContentCopyIcon sx={{ fontSize: 18 }} />}
                     sx={{
-                      minWidth: { md: 124, lg: 138 },
-                      px: { md: 1.2, lg: 1.45 },
+                      minWidth: useDenseDesktopHeader ? { md: 98, lg: 108 } : { md: 124, lg: 138 },
+                      px: useDenseDesktopHeader ? { md: 1, lg: 1.15 } : { md: 1.2, lg: 1.45 },
                       borderRadius: { md: 2.25, lg: 2.5 },
                       border: '1px solid rgba(244,114,182,0.24)',
                       bgcolor: 'rgba(244,114,182,0.08)',
@@ -6309,7 +6362,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                       },
                     }}
                   >
-                    Lag kopi
+                    {headerCopyButtonLabel}
                   </Button>
                 ) : null}
 
@@ -6697,7 +6750,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
               sx={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: useCompactHeaderLayout ? 0.5 : 1,
+                gap: useCompactHeaderLayout ? 0.5 : showDenseDesktopHeaderUtilities ? 0.4 : 1,
                 flexShrink: 0,
                 order: useCompactHeaderLayout ? 3 : 5,
                 flex: useCompactHeaderLayout ? '1 1 100%' : '0 0 auto',
@@ -6760,99 +6813,102 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                   </Badge>
                 </IconButton>
               </Tooltip>
-              {canSwitchRoleRoomRole && (
+              {showDenseDesktopHeaderUtilities ? (
                 <IconButton
-                  onClick={openProfessionDialog}
-                  aria-label={branding.tokens.labels.switchProfessionLabel}
-                  title={branding.tokens.labels.switchProfessionLabel}
+                  onClick={handleOpenHeaderToolsMenu}
+                  aria-label="Flere kontohandlinger"
+                  title="Flere handlinger"
                   sx={{
-                    color: '#10b981',
+                    color: 'rgba(255,255,255,0.74)',
                     width: navActionButtonSizePx,
                     height: navActionButtonSizePx,
-                    '&:hover': { bgcolor: 'rgba(16,185,129,0.1)' },
+                    borderRadius: 2,
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    bgcolor: 'rgba(255,255,255,0.03)',
+                    '&:hover': {
+                      color: '#7dd3fc',
+                      bgcolor: 'rgba(96,165,250,0.12)',
+                      borderColor: 'rgba(96,165,250,0.22)',
+                    },
                   }}
                 >
-                  <SwapHorizIcon sx={{ fontSize: navIconSizePx }} />
+                  <MoreHorizIcon sx={{ fontSize: Math.max(18, navIconSizePx) }} />
                 </IconButton>
-              )}
-              {/* Admin Dashboard - kun for admin/owner */}
-              {(adminUser.role === 'owner' || adminUser.role === 'admin') && (
+              ) : (
                 <>
+                  {canSwitchRoleRoomRole && (
+                    <IconButton
+                      onClick={openProfessionDialog}
+                      aria-label={branding.tokens.labels.switchProfessionLabel}
+                      title={branding.tokens.labels.switchProfessionLabel}
+                      sx={{
+                        color: '#10b981',
+                        width: navActionButtonSizePx,
+                        height: navActionButtonSizePx,
+                        '&:hover': { bgcolor: 'rgba(16,185,129,0.1)' },
+                      }}
+                    >
+                      <SwapHorizIcon sx={{ fontSize: navIconSizePx }} />
+                    </IconButton>
+                  )}
+                  {(adminUser.role === 'owner' || adminUser.role === 'admin') && (
+                    <>
+                      <IconButton
+                        onClick={openTutorialEditor}
+                        aria-label={branding.tokens.labels.editTutorialsLabel}
+                        title={branding.tokens.labels.editTutorialsLabel}
+                        sx={{
+                          color: '#e91e63',
+                          width: navActionButtonSizePx,
+                          height: navActionButtonSizePx,
+                          '&:hover': { bgcolor: 'rgba(233,30,99,0.1)' },
+                        }}
+                      >
+                        <TutorialIcon sx={{ fontSize: navIconSizePx }} />
+                      </IconButton>
+                      <IconButton
+                        onClick={openAdminDashboard}
+                        aria-label={branding.tokens.labels.manageUsersLabel}
+                        title={branding.tokens.labels.manageUsersLabel}
+                        sx={{
+                          color: '#8b5cf6',
+                          width: navActionButtonSizePx,
+                          height: navActionButtonSizePx,
+                          '&:hover': { bgcolor: 'rgba(139,92,246,0.1)' },
+                        }}
+                      >
+                        <AdminPanelSettingsIcon sx={{ fontSize: navIconSizePx }} />
+                      </IconButton>
+                    </>
+                  )}
                   <IconButton
-                    onClick={openTutorialEditor}
-                    aria-label={branding.tokens.labels.editTutorialsLabel}
-                    title={branding.tokens.labels.editTutorialsLabel}
+                    onClick={handleRestartWorkspaceOnboarding}
+                    aria-label={branding.tokens.labels.showIntroLabel}
+                    title={branding.tokens.labels.showIntroTitle}
                     sx={{
-                      color: '#e91e63',
+                      color: '#ffb800',
                       width: navActionButtonSizePx,
                       height: navActionButtonSizePx,
-                      '&:hover': { bgcolor: 'rgba(233,30,99,0.1)' },
+                      '&:hover': { bgcolor: 'rgba(255,184,0,0.1)' },
                     }}
                   >
-                    <TutorialIcon sx={{ fontSize: navIconSizePx }} />
+                    <PlayArrowIcon sx={{ fontSize: navIconSizePx }} />
                   </IconButton>
                   <IconButton
-                    onClick={openAdminDashboard}
-                    aria-label={branding.tokens.labels.manageUsersLabel}
-                    title={branding.tokens.labels.manageUsersLabel}
+                    onClick={handleWorkspaceLogout}
+                    aria-label={branding.tokens.labels.logoutLabel}
+                    title={branding.tokens.labels.logoutLabel}
                     sx={{
-                      color: '#8b5cf6',
+                      color: 'rgba(255,255,255,0.87)',
                       width: navActionButtonSizePx,
                       height: navActionButtonSizePx,
-                      '&:hover': { bgcolor: 'rgba(139,92,246,0.1)' },
+                      '&:hover': { color: '#ef4444', bgcolor: 'rgba(239,68,68,0.1)' },
                     }}
                   >
-                    <AdminPanelSettingsIcon sx={{ fontSize: navIconSizePx }} />
+                    <LogoutIcon sx={{ fontSize: navIconSizePx }} />
                   </IconButton>
                 </>
               )}
-              {/* Onboarding controls */}
-              <IconButton
-                onClick={() => {
-                  resetOnboarding();
-                  startTransition(() => {
-                    triggerProfessionOnboarding();
-                  });
-                }}
-                aria-label={branding.tokens.labels.showIntroLabel}
-                title={branding.tokens.labels.showIntroTitle}
-                sx={{
-                  color: '#ffb800',
-                  width: navActionButtonSizePx,
-                  height: navActionButtonSizePx,
-                  '&:hover': { bgcolor: 'rgba(255,184,0,0.1)' },
-                }}
-              >
-                <PlayArrowIcon sx={{ fontSize: navIconSizePx }} />
-              </IconButton>
-              <IconButton
-                onClick={async () => {
-                  if (_onClose) {
-                    _onClose();
-                    return;
-                  }
-                  await authSessionService.clearSession();
-                  setAdminUser(null);
-                  setCurrentProject(null);
-                  setProjects([]);
-                  setProjectSelectorOpen(false);
-                  setProjectCreationModalOpen(false);
-                  setProjectToEdit(null);
-                  setCurrentProjectId(null);
-                  setActiveTab(0);
-                  window.location.assign(getRoleRoomCanonicalPath(window.location));
-                }}
-                aria-label={branding.tokens.labels.logoutLabel}
-                title={branding.tokens.labels.logoutLabel}
-                sx={{
-                  color: 'rgba(255,255,255,0.87)',
-                  width: navActionButtonSizePx,
-                  height: navActionButtonSizePx,
-                  '&:hover': { color: '#ef4444', bgcolor: 'rgba(239,68,68,0.1)' },
-                }}
-              >
-                <LogoutIcon sx={{ fontSize: navIconSizePx }} />
-              </IconButton>
             </Box>
           ) : (
             <IconButton
@@ -6869,6 +6925,80 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
               <LoginIcon sx={{ fontSize: navIconSizePx }} />
             </IconButton>
           )}
+          {adminUser && showDenseDesktopHeaderUtilities ? (
+            <Menu
+              anchorEl={headerToolsAnchorEl}
+              open={Boolean(headerToolsAnchorEl)}
+              onClose={handleCloseHeaderToolsMenu}
+              anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+              transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+              slotProps={{
+                paper: {
+                  sx: {
+                    mt: 0.75,
+                    minWidth: 220,
+                    borderRadius: 2,
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    bgcolor: 'rgba(18, 24, 33, 0.96)',
+                    color: '#fff',
+                    backdropFilter: 'blur(14px)',
+                    boxShadow: '0 18px 40px rgba(0,0,0,0.42)',
+                  },
+                },
+              }}
+            >
+              {canSwitchRoleRoomRole ? (
+                <MenuItem
+                  onClick={() => {
+                    handleCloseHeaderToolsMenu();
+                    openProfessionDialog();
+                  }}
+                  sx={{ minHeight: 40, fontSize: '0.86rem', gap: 1 }}
+                >
+                  <SwapHorizIcon sx={{ fontSize: 18, color: '#10b981' }} />
+                  Bytt arbeidsmodus
+                </MenuItem>
+              ) : null}
+              <MenuItem
+                onClick={handleRestartWorkspaceOnboarding}
+                sx={{ minHeight: 40, fontSize: '0.86rem', gap: 1 }}
+              >
+                <PlayArrowIcon sx={{ fontSize: 18, color: '#fbbf24' }} />
+                Start intro på nytt
+              </MenuItem>
+              {(adminUser.role === 'owner' || adminUser.role === 'admin') ? (
+                <MenuItem
+                  onClick={() => {
+                    handleCloseHeaderToolsMenu();
+                    openTutorialEditor();
+                  }}
+                  sx={{ minHeight: 40, fontSize: '0.86rem', gap: 1 }}
+                >
+                  <TutorialIcon sx={{ fontSize: 18, color: '#f472b6' }} />
+                  Rediger opplæring
+                </MenuItem>
+              ) : null}
+              {(adminUser.role === 'owner' || adminUser.role === 'admin') ? (
+                <MenuItem
+                  onClick={() => {
+                    handleCloseHeaderToolsMenu();
+                    openAdminDashboard();
+                  }}
+                  sx={{ minHeight: 40, fontSize: '0.86rem', gap: 1 }}
+                >
+                  <AdminPanelSettingsIcon sx={{ fontSize: 18, color: '#a78bfa' }} />
+                  Åpne adminpanel
+                </MenuItem>
+              ) : null}
+              <MenuItem
+                onClick={handleWorkspaceLogout}
+                sx={{ minHeight: 40, fontSize: '0.86rem', gap: 1, color: '#fda4af' }}
+              >
+                <LogoutIcon sx={{ fontSize: 18 }} />
+                Logg ut
+              </MenuItem>
+            </Menu>
+          ) : null}
         </Box>
 
       </Box>
