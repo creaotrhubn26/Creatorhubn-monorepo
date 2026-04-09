@@ -188,6 +188,7 @@ interface RoleRoomGoogleOauthState {
   mode: RoleRoomGoogleOauthMode;
   returnPath: string;
   browserOrigin?: string | null;
+  redirectUri?: string | null;
   loginAs?: string | null;
   requestedRole?: string | null;
   projectId?: string | null;
@@ -1007,14 +1008,20 @@ function sanitizeRoleRoomBrowserOrigin(value: unknown): string | null {
   return null;
 }
 
-function getRoleRoomGoogleConfig(req?: Request) {
+function getRoleRoomGoogleConfig(
+  req?: Request,
+  redirectUriOverride?: string | null,
+) {
   const oauthConfig = getGoogleWorkspaceOauthConfig('role_room', req);
   const encryptionKey = deriveRoleRoomGoogleEncryptionKey();
+  const redirectUri = readStringValue(redirectUriOverride)
+    ?? oauthConfig.redirectUri
+    ?? getRoleRoomGoogleRedirectUri(req);
   return {
     clientId: oauthConfig.clientId,
     clientSecret: oauthConfig.clientSecret,
-    redirectUri: oauthConfig.redirectUri ?? getRoleRoomGoogleRedirectUri(req),
-    configured: Boolean(oauthConfig.clientId && oauthConfig.clientSecret && oauthConfig.redirectUri && encryptionKey),
+    redirectUri,
+    configured: Boolean(oauthConfig.clientId && oauthConfig.clientSecret && redirectUri && encryptionKey),
     missing: [
       ...oauthConfig.missing,
       !encryptionKey ? 'ROLE_ROOM_GOOGLE_TOKEN_ENCRYPTION_KEY' : null,
@@ -1041,8 +1048,11 @@ function getRoleRoomLinkedInConfig(req?: Request) {
   };
 }
 
-function createRoleRoomGoogleOAuthClient(req?: Request) {
-  const config = getRoleRoomGoogleConfig(req);
+function createRoleRoomGoogleOAuthClient(
+  req?: Request,
+  redirectUriOverride?: string | null,
+) {
+  const config = getRoleRoomGoogleConfig(req, redirectUriOverride);
   if (!config.clientId || !config.clientSecret || !config.redirectUri) {
     return null;
   }
@@ -6180,7 +6190,11 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
   router.post('/google/oauth/start', async (req: Request, res: Response) => {
     try {
       pruneExpiredRoleRoomGoogleState();
-      const config = getRoleRoomGoogleConfig(req);
+      const browserOrigin = sanitizeRoleRoomBrowserOrigin(req.body?.browserOrigin) ?? getRoleRoomRequestOrigin(req);
+      const requestScopedRedirectUri = browserOrigin
+        ? `${browserOrigin}/api/role-room/google/oauth/callback`
+        : null;
+      const config = getRoleRoomGoogleConfig(req, requestScopedRedirectUri);
       if (!config.configured) {
         res.status(400).json({
           error: 'Google Workspace er ikke konfigurert',
@@ -6196,7 +6210,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         return;
       }
 
-      const oauthClient = createRoleRoomGoogleOAuthClient(req);
+      const oauthClient = createRoleRoomGoogleOAuthClient(req, config.redirectUri);
       if (!oauthClient) {
         res.status(500).json({ error: 'Google OAuth-klient er ikke tilgjengelig' });
         return;
@@ -6232,7 +6246,8 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       roleRoomGoogleOauthStateStore.set(stateId, {
         mode,
         returnPath,
-        browserOrigin: sanitizeRoleRoomBrowserOrigin(req.body?.browserOrigin) ?? getRoleRoomRequestOrigin(req),
+        browserOrigin,
+        redirectUri: config.redirectUri ?? null,
         loginAs,
         requestedRole,
         projectId,
@@ -6267,7 +6282,6 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
 
   router.get('/google/oauth/callback', async (req: Request, res: Response) => {
     pruneExpiredRoleRoomGoogleState();
-    const config = getRoleRoomGoogleConfig(req);
     const fallbackReturnPath = sanitizeRoleRoomReturnPath(req.query.returnPath, req);
     const requestOrigin = resolveRoleRoomBrowserOrigin(req);
 
@@ -6280,14 +6294,14 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       );
     };
 
-    if (!config.configured) {
-      redirectWithError(fallbackReturnPath, 'Google Workspace er ikke konfigurert');
-      return;
-    }
-
     const stateId = readStringValue(req.query.state);
     const code = readStringValue(req.query.code);
     const oauthState = stateId ? roleRoomGoogleOauthStateStore.get(stateId) : null;
+    const config = getRoleRoomGoogleConfig(req, oauthState?.redirectUri);
+    if (!config.configured) {
+      redirectWithError(oauthState?.returnPath ?? fallbackReturnPath, 'Google Workspace er ikke konfigurert', oauthState?.browserOrigin);
+      return;
+    }
     if (!oauthState || !code) {
       redirectWithError(oauthState?.returnPath ?? fallbackReturnPath, 'Ugyldig Google-forespørsel', oauthState?.browserOrigin);
       return;
@@ -6296,7 +6310,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     roleRoomGoogleOauthStateStore.delete(stateId!);
 
     try {
-      const oauthClient = createRoleRoomGoogleOAuthClient(req);
+      const oauthClient = createRoleRoomGoogleOAuthClient(req, oauthState.redirectUri);
       if (!oauthClient) {
         redirectWithError(oauthState.returnPath, 'Google OAuth-klient er ikke tilgjengelig', oauthState.browserOrigin);
         return;
