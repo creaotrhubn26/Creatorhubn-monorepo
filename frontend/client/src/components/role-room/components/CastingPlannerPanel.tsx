@@ -5950,8 +5950,8 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
         bgcolor: 'linear-gradient(180deg, #1c2128 0%, #161b22 100%)',
         background: 'linear-gradient(180deg, #1c2128 0%, #161b22 100%)',
         borderBottom: '1px solid rgba(255,255,255,0.08)',
-        px: { xs: 1.5, sm: 2, md: 3 },
-        py: { xs: 0.65, sm: 0.85 },
+        px: useDenseDesktopHeader ? { xs: 1.5, sm: 2, md: 2.25, lg: 2.5 } : { xs: 1.5, sm: 2, md: 3 },
+        py: useDenseDesktopHeader ? { xs: 0.6, sm: 0.75 } : { xs: 0.65, sm: 0.85 },
         position: 'relative',
       }}>
         {/* Project chips row */}
@@ -5962,8 +5962,8 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
             flexWrap: useCompactHeaderLayout ? 'wrap' : 'nowrap',
             gap: useDenseDesktopHeader ? 0.75 : { xs: 0.75, sm: 1 },
             minWidth: 0,
-            pt: { xs: 0.35, sm: 0.5 },
-            pb: { xs: 0.55, sm: 0.75 },
+            pt: useDenseDesktopHeader ? { xs: 0.2, sm: 0.28 } : { xs: 0.35, sm: 0.5 },
+            pb: useDenseDesktopHeader ? { xs: 0.35, sm: 0.45 } : { xs: 0.55, sm: 0.75 },
           }}
         >
           {!useCompactHeaderLayout ? (
@@ -6183,10 +6183,10 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                     minWidth: 0,
                     display: 'grid',
                     gridTemplateColumns: { md: 'minmax(0, 1fr)', xl: 'minmax(0, 1fr) auto' },
-                    gap: 1.1,
+                    gap: useDenseDesktopHeader ? 0.85 : 1.1,
                     alignItems: 'center',
-                    px: { md: 1.3, lg: 1.55 },
-                    py: { md: 0.95, lg: 1.05 },
+                    px: useDenseDesktopHeader ? { md: 1.05, lg: 1.2 } : { md: 1.3, lg: 1.55 },
+                    py: useDenseDesktopHeader ? { md: 0.76, lg: 0.84 } : { md: 0.95, lg: 1.05 },
                     borderRadius: { md: 2.25, lg: 2.5 },
                     border: headerActiveProject ? '1px solid rgba(34,211,238,0.28)' : '1px solid rgba(255,255,255,0.08)',
                     background: headerActiveProject
@@ -6207,11 +6207,11 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                   }}
                 >
                   <Box sx={{ minWidth: 0 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.9, minWidth: 0, flexWrap: 'wrap' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: useDenseDesktopHeader ? 0.65 : 0.9, minWidth: 0, flexWrap: 'wrap' }}>
                       <Box
                         sx={{
-                          width: 10,
-                          height: 10,
+                          width: useDenseDesktopHeader ? 8 : 10,
+                          height: useDenseDesktopHeader ? 8 : 10,
                           borderRadius: '50%',
                           bgcolor: headerActiveProject ? '#22d3ee' : 'rgba(255,255,255,0.22)',
                           border: headerActiveProject ? '2px solid rgba(255,255,255,0.28)' : '1px solid rgba(255,255,255,0.1)',
@@ -6222,7 +6222,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                       <Typography
                         sx={{
                           color: '#f8fafc',
-                          fontSize: { md: '0.96rem', lg: '1.04rem', xl: '1.08rem' },
+                          fontSize: useDenseDesktopHeader ? { md: '0.88rem', lg: '0.96rem', xl: '1rem' } : { md: '0.96rem', lg: '1.04rem', xl: '1.08rem' },
                           fontWeight: 800,
                           lineHeight: 1.1,
                           minWidth: 0,
@@ -6233,7 +6233,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                       >
                         {headerActiveProject?.name || 'Velg aktivt prosjekt'}
                       </Typography>
-                      {headerActiveProject?.producerWorkflowStatus ? (
+                      {headerActiveProject?.producerWorkflowStatus && !useDenseDesktopHeader ? (
                         <Chip
                           size="small"
                           label={PRODUCER_PROJECT_STATUS_LABELS[headerActiveProject.producerWorkflowStatus] || 'Klar for arbeid'}
@@ -6253,7 +6253,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                           }}
                         />
                       ) : null}
-                      {headerActiveProject && isProtectedDemoProject(headerActiveProject) ? (
+                      {headerActiveProject && isProtectedDemoProject(headerActiveProject) && !useDenseDesktopHeader ? (
                         <Chip
                           size="small"
                           label="Låst demo-mal"
@@ -6270,9 +6270,9 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                     </Box>
                     <Typography
                       sx={{
-                        mt: 0.45,
+                        mt: useDenseDesktopHeader ? 0.28 : 0.45,
                         color: 'rgba(226,232,240,0.68)',
-                        fontSize: { md: '0.72rem', lg: '0.76rem' },
+                        fontSize: useDenseDesktopHeader ? { md: '0.68rem', lg: '0.72rem' } : { md: '0.72rem', lg: '0.76rem' },
                         fontWeight: 600,
                         lineHeight: 1.25,
                         whiteSpace: 'nowrap',
