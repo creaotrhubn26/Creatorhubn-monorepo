@@ -3398,51 +3398,12 @@ export function CastingPlannerPanel({
         setPublishedTemplates(loadedProjectsRaw.filter((project) => castingService.isTemplateProject(project)));
         const projects = filterProjectsForSession(loadedProjectsRaw);
         
-        let shouldInitializeMock = false;
-        
-        if (projects.length === 0) {
-          shouldInitializeMock = true;
-        } else {
-          if (!isProducerWorkspaceSession) {
-            const hasTrollDemo = projects.some((project) => isTrollProject(project));
-            if (!hasTrollDemo) {
-              shouldInitializeMock = true;
-            }
-          } else {
-            const hasContentProducerDemo = projects.some((project) => isContentProducerDemoProject(project));
-            if (!hasContentProducerDemo) {
-              shouldInitializeMock = true;
-            }
-          }
-
-          // Check if the first project is empty (no candidates, roles, etc.)
-          // Also check counts from backend (rolesCount, candidatesCount, etc.)
-          const firstProject = projects[0];
-          const hasArrayData = 
-            (firstProject.candidates && firstProject.candidates.length > 0) ||
-            (firstProject.roles && firstProject.roles.length > 0) ||
-            (firstProject.crew && firstProject.crew.length > 0) ||
-            (firstProject.locations && firstProject.locations.length > 0);
-          
-          // Backend may return counts instead of full arrays
-          const hasCountData = 
-            (firstProject.rolesCount && firstProject.rolesCount > 0) ||
-            (firstProject.candidatesCount && firstProject.candidatesCount > 0) ||
-            (firstProject.crewCount && firstProject.crewCount > 0) ||
-            (firstProject.locationsCount && firstProject.locationsCount > 0);
-          
-          const isEmpty = !hasArrayData && !hasCountData;
-          
-          if (isEmpty) {
-            // Delete empty project
-            try {
-              await castingService.deleteProject(firstProject.id);
-            } catch (error) {
-              console.error('Failed to delete empty project:', error);
-            }
-            shouldInitializeMock = true;
-          }
-        }
+        const shouldInitializeMock = projects.length === 0
+          || (
+            !isProducerWorkspaceSession
+              ? !projects.some((project) => isTrollProject(project))
+              : !projects.some((project) => isContentProducerDemoProject(project))
+          );
         
         if (shouldInitializeMock) {
           try {
@@ -13474,7 +13435,7 @@ export function CastingPlannerPanel({
                             setProjects(loadedProjects);
                             if (loadedProjects.length > 0) {
                               const preferredProject = isProducerWorkspaceSession
-                                ? loadedProjects.find((project) => isContentProducerDemoProject(project)) || loadedProjects[0]
+                                ? loadedProjects.find((project) => !isContentProducerDemoProject(project)) ?? null
                                 : loadedProjects[0];
                               setCurrentProject(preferredProject);
                             }
