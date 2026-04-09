@@ -127,6 +127,24 @@ export interface ProducerClientReview {
   comments: ProducerReviewComment[];
 }
 
+export interface ProducerProjectNotification {
+  id: string;
+  project_id: string;
+  audience: string;
+  event_type: string;
+  title: string;
+  message?: string | null;
+  linked_entity_type?: string | null;
+  linked_entity_id?: string | null;
+  metadata?: Record<string, unknown>;
+  created_by_user_id?: string | null;
+  created_by_role?: string | null;
+  created_at: string;
+  updated_at: string;
+  read: boolean;
+  read_at?: string | null;
+}
+
 export interface CreateProducerTimelineItemInput {
   phase: ProducerPhase;
   title: string;
@@ -1023,6 +1041,29 @@ function normalizeReview(value: unknown, projectId: string): ProducerClientRevie
   };
 }
 
+function normalizeNotification(value: unknown, projectId: string): ProducerProjectNotification {
+  const record = asRecord(value);
+  const createdAt = readFirstNonEmptyString(record.created_at, record.createdAt) ?? nowIso();
+  const updatedAt = readFirstNonEmptyString(record.updated_at, record.updatedAt) ?? createdAt;
+  return {
+    id: readFirstNonEmptyString(record.id) ?? generateId('producer-notification'),
+    project_id: readFirstNonEmptyString(record.project_id, record.projectId) ?? projectId,
+    audience: readFirstNonEmptyString(record.audience) ?? 'producer_team',
+    event_type: readFirstNonEmptyString(record.event_type, record.eventType) ?? 'unknown',
+    title: readFirstNonEmptyString(record.title) ?? 'Nytt varsel',
+    message: readFirstNonEmptyString(record.message) ?? null,
+    linked_entity_type: readFirstNonEmptyString(record.linked_entity_type, record.linkedEntityType) ?? null,
+    linked_entity_id: readFirstNonEmptyString(record.linked_entity_id, record.linkedEntityId) ?? null,
+    metadata: normalizeMetadata(record.metadata),
+    created_by_user_id: readFirstNonEmptyString(record.created_by_user_id, record.createdByUserId) ?? null,
+    created_by_role: readFirstNonEmptyString(record.created_by_role, record.createdByRole) ?? null,
+    created_at: createdAt,
+    updated_at: updatedAt,
+    read: normalizeBoolean(record.read, false),
+    read_at: readFirstNonEmptyString(record.read_at, record.readAt) ?? null,
+  };
+}
+
 async function readLegacyTimelineStore(projectId: string): Promise<ProducerTimelineItem[]> {
   const stored = await settingsService.getSetting<ProducerTimelineItem[]>(TIMELINE_NAMESPACE, { projectId });
   if (!Array.isArray(stored)) {
@@ -1085,6 +1126,14 @@ async function fetchReviews(projectId: string): Promise<ProducerClientReview[]> 
   const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/reviews`);
   const items = Array.isArray(response.items) ? response.items : [];
   return sortReviews(items.map((review) => normalizeReview(review, projectId)));
+}
+
+async function fetchNotifications(projectId: string): Promise<ProducerProjectNotification[]> {
+  const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/notifications`);
+  const items = Array.isArray(response.items) ? response.items : [];
+  return items
+    .map((item) => normalizeNotification(item, projectId))
+    .sort((left, right) => compareIso(right.updated_at, left.updated_at));
 }
 
 async function fetchClientIntake(projectId: string): Promise<ProducerClientIntake> {
@@ -2323,8 +2372,10 @@ export const producerWorkflowService = {
       }),
     });
     const normalized = normalizeClientIntake(response.intake ?? {});
-    await syncClientGroundingTimeline(projectId);
-    await syncClientGroundingReviews(projectId);
+    if (canCurrentSessionMutateProducerWorkflow()) {
+      await syncClientGroundingTimeline(projectId);
+      await syncClientGroundingReviews(projectId);
+    }
     emitProducerWorkflowEvent({
       projectId,
       domain: 'project',
@@ -2362,7 +2413,9 @@ export const producerWorkflowService = {
       mutation: 'created',
       entityId: item.id,
     });
-    queueClientGroundingResync(projectId);
+    if (canCurrentSessionMutateProducerWorkflow()) {
+      queueClientGroundingResync(projectId);
+    }
     return item;
   },
 
@@ -2391,7 +2444,9 @@ export const producerWorkflowService = {
       mutation: 'updated',
       entityId: item.id,
     });
-    queueClientGroundingResync(projectId);
+    if (canCurrentSessionMutateProducerWorkflow()) {
+      queueClientGroundingResync(projectId);
+    }
     return item;
   },
 
@@ -2405,7 +2460,9 @@ export const producerWorkflowService = {
       mutation: 'deleted',
       entityId: materialId,
     });
-    queueClientGroundingResync(projectId);
+    if (canCurrentSessionMutateProducerWorkflow()) {
+      queueClientGroundingResync(projectId);
+    }
   },
 
   async createEconomyItem(projectId: string, payload: CreateProducerEconomyItemInput): Promise<ProducerEconomyItem> {
@@ -2490,6 +2547,34 @@ export const producerWorkflowService = {
     const reviews = await migrateLegacyReviewsIfNeeded(projectId, remoteItems);
     await syncProjectWorkflowStatusSnapshot(projectId, reviews);
     return reviews;
+  },
+
+  async getNotifications(projectId: string): Promise<ProducerProjectNotification[]> {
+    return fetchNotifications(projectId);
+  },
+
+  async markNotificationRead(projectId: string, notificationId: string): Promise<void> {
+    await producerWorkflowRequest<{ success?: boolean }>(`/projects/${projectId}/producer/notifications/${notificationId}/read`, {
+      method: 'POST',
+    });
+    emitProducerWorkflowEvent({
+      projectId,
+      domain: 'notifications',
+      mutation: 'updated',
+      entityId: notificationId,
+    });
+  },
+
+  async markAllNotificationsRead(projectId: string): Promise<void> {
+    await producerWorkflowRequest<{ success?: boolean }>(`/projects/${projectId}/producer/notifications/read-all`, {
+      method: 'POST',
+    });
+    emitProducerWorkflowEvent({
+      projectId,
+      domain: 'notifications',
+      mutation: 'updated',
+      entityId: projectId,
+    });
   },
 
   async createReview(projectId: string, payload: CreateProducerReviewInput): Promise<ProducerClientReview> {

@@ -1,4 +1,4 @@
-export type ProducerWorkflowEventDomain = 'timeline' | 'economy' | 'reviews' | 'project';
+export type ProducerWorkflowEventDomain = 'timeline' | 'economy' | 'reviews' | 'project' | 'notifications';
 export type ProducerWorkflowEventMutation = 'created' | 'updated' | 'deleted' | 'reloaded';
 
 export interface ProducerWorkflowEventPayload {

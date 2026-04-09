@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -55,11 +55,13 @@ import {
   producerWorkflowService,
   type CreateProducerTimelineItemInput,
   type ProducerClientReview,
+  type ProducerProjectNotification,
   type ProducerPhase,
   type ProducerTimelineItem,
 } from '../../services/producerWorkflowService';
 import { useProducerTimeline } from '../../hooks/useProducerTimeline';
 import { useProducerReviews } from '../../hooks/useProducerReviews';
+import { useProducerNotifications } from '../../hooks/useProducerNotifications';
 import { useProjectProductionEstimate } from '../../hooks/useProjectProductionEstimate';
 import type {
   ProducerWorkflowEntityOption,
@@ -242,6 +244,18 @@ const toDateOnly = (value?: string | null): string => {
   }
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? '' : parsed.toISOString().slice(0, 10);
+};
+
+const getNotificationSeverity = (notification: ProducerProjectNotification): PlannerAlertSeverity => {
+  if (notification.event_type === 'client_review_decision') {
+    const status = String(notification.metadata?.reviewStatus ?? '').trim().toLowerCase();
+    if (status === 'changes_requested' || status === 'rejected') {
+      return 'warning';
+    }
+    return 'info';
+  }
+
+  return 'info';
 };
 
 const isValidDate = (value?: string | null): boolean => {
@@ -516,6 +530,14 @@ export default function ProducerPlannerStudio({
     error: reviewsError,
   } = useProducerReviews(project.id);
   const {
+    items: notifications,
+    loading: notificationsLoading,
+    error: notificationsError,
+    unreadCount: notificationsUnreadCount,
+    markAsRead,
+    markAllAsRead,
+  } = useProducerNotifications(project.id);
+  const {
     project: estimatedProject,
     shotLists,
     productionDays,
@@ -530,10 +552,38 @@ export default function ProducerPlannerStudio({
   });
 
   const liveProject = estimatedProject ?? project;
+  const notificationBaselineReadyRef = useRef(false);
+  const seenNotificationStateRef = useRef<Map<string, string>>(new Map());
 
   useEffect(() => {
     setPlanningDraft(normalizeProducerProjectPlanning(liveProject));
   }, [liveProject]);
+
+  useEffect(() => {
+    const nextSnapshot = new Map<string, string>();
+    for (const notification of notifications) {
+      nextSnapshot.set(notification.id, `${notification.updated_at}:${notification.read ? 'read' : 'unread'}`);
+    }
+
+    if (!notificationBaselineReadyRef.current) {
+      seenNotificationStateRef.current = nextSnapshot;
+      notificationBaselineReadyRef.current = true;
+      return;
+    }
+
+    for (const notification of notifications) {
+      const signature = `${notification.updated_at}:${notification.read ? 'read' : 'unread'}`;
+      const previous = seenNotificationStateRef.current.get(notification.id);
+      if (!notification.read && previous !== undefined && previous !== signature) {
+        enqueueSnackbar(notification.title, { variant: 'info' });
+      }
+      if (!notification.read && previous === undefined) {
+        enqueueSnackbar(notification.title, { variant: 'info' });
+      }
+    }
+
+    seenNotificationStateRef.current = nextSnapshot;
+  }, [enqueueSnackbar, notifications]);
 
   const phaseInView = selectedPhase === 'all'
     ? getNearestPhaseForView(planningDraft)
@@ -733,6 +783,52 @@ export default function ProducerPlannerStudio({
 
     return alerts;
   }, [liveProject.crew, phaseInView, planningDraft.contentCalendar.length, productionDays, productionEstimate.productionDayLoads, reviewSummary.changesRequested, timelineItems]);
+
+  const recentNotifications = useMemo(
+    () => notifications.slice(0, 6),
+    [notifications],
+  );
+
+  const handleMarkNotificationRead = useCallback(async (notificationId: string) => {
+    try {
+      await markAsRead(notificationId);
+    } catch (error) {
+      enqueueSnackbar(error instanceof Error ? error.message : 'Kunne ikke markere varselet som lest.', {
+        variant: 'error',
+      });
+    }
+  }, [enqueueSnackbar, markAsRead]);
+
+  const handleOpenNotification = useCallback(async (notification: ProducerProjectNotification) => {
+    if (!notification.read) {
+      await handleMarkNotificationRead(notification.id);
+    }
+
+    if (notification.linked_entity_type === 'client_intake') {
+      onOpenMedia?.({ workspace: 'brief' });
+      return;
+    }
+
+    if (notification.linked_entity_type === 'client_material') {
+      onOpenMedia?.({ workspace: 'materials' });
+      return;
+    }
+
+    if (notification.linked_entity_type === 'client_review') {
+      onOpenReviews?.();
+      return;
+    }
+  }, [handleMarkNotificationRead, onOpenMedia, onOpenReviews]);
+
+  const handleMarkAllNotificationsRead = useCallback(async () => {
+    try {
+      await markAllAsRead();
+    } catch (error) {
+      enqueueSnackbar(error instanceof Error ? error.message : 'Kunne ikke markere varsler som lest.', {
+        variant: 'error',
+      });
+    }
+  }, [enqueueSnackbar, markAllAsRead]);
 
   const contractCount = useMemo(
     () => timelineItems.filter((item) => item.linked_entity_type === 'project_agreement' || hasText(asRecord(item.metadata).agreementId)).length,
@@ -1397,8 +1493,9 @@ export default function ProducerPlannerStudio({
       {savingPlanning ? <Alert severity="info">Lagrer planner-data og synkroniserer møteflyt.</Alert> : null}
       {timelineError ? <Alert severity="error">{timelineError}</Alert> : null}
       {reviewsError ? <Alert severity="warning">{reviewsError}</Alert> : null}
+      {notificationsError ? <Alert severity="warning">{notificationsError}</Alert> : null}
       {estimateError ? <Alert severity="warning">{estimateError}</Alert> : null}
-      {(timelineLoading || reviewsLoading || estimateLoading) ? <LinearProgress sx={{ borderRadius: 999 }} /> : null}
+      {(timelineLoading || reviewsLoading || notificationsLoading || estimateLoading) ? <LinearProgress sx={{ borderRadius: 999 }} /> : null}
 
       {plannerAlerts.length > 0 ? (
         <Box
@@ -1425,6 +1522,116 @@ export default function ProducerPlannerStudio({
           </Stack>
         </Box>
       ) : null}
+
+      <Box
+        sx={{
+          p: 1.1,
+          borderRadius: 2,
+          border: '1px solid rgba(148,163,184,0.18)',
+          background: 'rgba(15,23,42,0.78)',
+        }}
+      >
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between" sx={{ mb: 0.9 }}>
+          <Box>
+            <Typography sx={{ color: '#fff', fontWeight: 700 }}>
+              Varsler
+            </Typography>
+            <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.85rem' }}>
+              Produsentvarsler for klientbrief, materiale, kommentarer og godkjenninger.
+            </Typography>
+          </Box>
+          <Stack direction="row" spacing={0.8} alignItems="center">
+            <Chip
+              size="small"
+              label={notificationsUnreadCount > 0 ? `${notificationsUnreadCount} uleste` : 'Alt lest'}
+              sx={{
+                bgcolor: notificationsUnreadCount > 0 ? 'rgba(59,130,246,0.18)' : 'rgba(148,163,184,0.16)',
+                color: notificationsUnreadCount > 0 ? '#bfdbfe' : '#cbd5e1',
+              }}
+            />
+            {notificationsUnreadCount > 0 ? (
+              <Button
+                size="small"
+                variant="text"
+                onClick={() => { void handleMarkAllNotificationsRead(); }}
+                sx={{ textTransform: 'none', fontWeight: 700 }}
+              >
+                Marker alle som lest
+              </Button>
+            ) : null}
+          </Stack>
+        </Stack>
+
+        {recentNotifications.length === 0 ? (
+          <Alert severity="info">Ingen varsler ennå. Når klienten fyller ut brief, kommenterer eller godkjenner, dukker det opp her.</Alert>
+        ) : (
+          <Stack spacing={0.8}>
+            {recentNotifications.map((notification) => (
+              <Box
+                key={notification.id}
+                sx={{
+                  p: 0.95,
+                  borderRadius: 1.6,
+                  border: notification.read
+                    ? '1px solid rgba(148,163,184,0.16)'
+                    : '1px solid rgba(59,130,246,0.28)',
+                  background: notification.read
+                    ? 'rgba(2,6,23,0.36)'
+                    : 'rgba(15,23,42,0.92)',
+                }}
+              >
+                <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.9} justifyContent="space-between">
+                  <Stack spacing={0.45} sx={{ minWidth: 0 }}>
+                    <Stack direction="row" spacing={0.8} alignItems="center" flexWrap="wrap" useFlexGap>
+                      <Chip
+                        size="small"
+                        label={notification.read ? 'Lest' : 'Ny'}
+                        sx={{
+                          bgcolor: notification.read ? 'rgba(148,163,184,0.16)' : 'rgba(59,130,246,0.18)',
+                          color: notification.read ? '#cbd5e1' : '#bfdbfe',
+                        }}
+                      />
+                      <Chip
+                        size="small"
+                        color={getNotificationSeverity(notification) === 'warning' ? 'warning' : 'info'}
+                        label={toDisplayDateTime(notification.updated_at)}
+                        variant="outlined"
+                      />
+                    </Stack>
+                    <Typography sx={{ color: '#fff', fontWeight: 700 }}>
+                      {notification.title}
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(226,232,240,0.76)', fontSize: '0.85rem', lineHeight: 1.5 }}>
+                      {notification.message || 'Varslet mangler beskrivelse.'}
+                    </Typography>
+                  </Stack>
+
+                  <Stack direction={{ xs: 'row', md: 'column' }} spacing={0.7} alignItems={{ md: 'flex-end' }}>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => { void handleOpenNotification(notification); }}
+                      sx={{ textTransform: 'none', fontWeight: 700 }}
+                    >
+                      Åpne
+                    </Button>
+                    {!notification.read ? (
+                      <Button
+                        size="small"
+                        variant="text"
+                        onClick={() => { void handleMarkNotificationRead(notification.id); }}
+                        sx={{ textTransform: 'none', fontWeight: 700 }}
+                      >
+                        Marker som lest
+                      </Button>
+                    ) : null}
+                  </Stack>
+                </Stack>
+              </Box>
+            ))}
+          </Stack>
+        )}
+      </Box>
 
       {viewMode === 'timeline' ? (
         <Box
