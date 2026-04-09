@@ -195,6 +195,74 @@ export interface RoleRoomGoogleLoginResult {
   };
 }
 
+export interface RoleRoomClientInvite {
+  id: string;
+  email?: string | null;
+  status: string;
+  expiresAt?: string | null;
+  lastSentAt?: string | null;
+  lastViewedAt?: string | null;
+  acceptedAt?: string | null;
+  metadata: Record<string, unknown>;
+  inviteUrl?: string | null;
+  workspace?: string | null;
+  tab?: string | null;
+  sectionId?: string | null;
+  pageId?: string | null;
+  reviewId?: string | null;
+  artifactId?: string | null;
+  recipientName?: string | null;
+  message?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface RoleRoomClientInviteCreateInput {
+  email: string;
+  recipientName?: string | null;
+  message?: string | null;
+  browserOrigin?: string;
+  workspace?: string;
+  tab?: string;
+  sectionId?: string | null;
+  pageId?: string | null;
+  reviewId?: string | null;
+  artifactId?: string | null;
+  expiresAt?: string | null;
+  expiresInDays?: number;
+}
+
+export interface RoleRoomClientInviteSessionResult {
+  success: boolean;
+  transferId: string;
+  projectId: string;
+  sessionToken: string;
+  user: {
+    id: number | string;
+    email: string;
+    role: string;
+    display_name: string;
+    name?: string;
+    loginAs?: string;
+    requestedRole?: string | null;
+  };
+  invite: {
+    id: string;
+    email: string;
+    status: string;
+    expiresAt?: string | null;
+    acceptedAt?: string | null;
+  };
+  portal: {
+    tab: string;
+    workspace: string;
+    sectionId?: string | null;
+    pageId?: string | null;
+    reviewId?: string | null;
+    artifactId?: string | null;
+  };
+}
+
 export interface RoleRoomLinkedInLinkResult {
   success: boolean;
   mode: 'link';

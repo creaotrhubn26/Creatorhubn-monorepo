@@ -1,5 +1,8 @@
 import authSessionService from './authSessionService';
 import type {
+  RoleRoomClientInvite,
+  RoleRoomClientInviteCreateInput,
+  RoleRoomClientInviteSessionResult,
   RoleRoomGoogleAgreementSignature,
   RoleRoomGoogleAgreementSignatureStatus,
   RoleRoomGoogleCalendarSyncInput,
@@ -910,6 +913,22 @@ export const talentPortalApi = {
   },
 
   fetchProtectedMediaBlob: async (url: string): Promise<Blob> => apiBlobRequest(url),
+};
+
+export const clientInvitesApi = {
+  create: async (
+    projectId: string,
+    payload: RoleRoomClientInviteCreateInput,
+  ): Promise<{ invite: RoleRoomClientInvite & { projectId: string; inviteToken?: string } }> => (
+    apiRequest(`/projects/${encodeURIComponent(projectId)}/client-invites`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+  ),
+
+  getSessionResult: async (transferId: string): Promise<RoleRoomClientInviteSessionResult> => (
+    apiRequest<RoleRoomClientInviteSessionResult>(`/client/invites/session-result/${encodeURIComponent(transferId)}`)
+  ),
 };
 
 export type WorkflowStatus = 'pending' | 'auditioned' | 'selected' | 'offer_sent' | 'confirmed' | 'declined' | 'contracted' | 'production';

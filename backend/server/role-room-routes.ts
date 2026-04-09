@@ -227,6 +227,52 @@ interface RoleRoomGoogleTransferPayload {
   };
 }
 
+interface RoleRoomClientInviteRow {
+  id: string;
+  project_id: string;
+  email: string | null;
+  token_hash: string;
+  status: string | null;
+  created_by_user_id: string | null;
+  created_at: string;
+  updated_at: string;
+  last_sent_at: string | null;
+  last_viewed_at: string | null;
+  accepted_at: string | null;
+  expires_at: string | null;
+  metadata: Record<string, unknown> | null;
+}
+
+interface RoleRoomClientInviteTransferPayload {
+  createdAt: number;
+  projectId: string;
+  sessionToken: string;
+  user: {
+    id: string;
+    email: string;
+    role: string;
+    name: string;
+    display_name: string;
+    loginAs?: string;
+    requestedRole?: string | null;
+  };
+  invite: {
+    id: string;
+    email: string;
+    status: string;
+    expiresAt?: string | null;
+    acceptedAt?: string | null;
+  };
+  portal: {
+    tab: string;
+    workspace: string;
+    sectionId?: string | null;
+    pageId?: string | null;
+    reviewId?: string | null;
+    artifactId?: string | null;
+  };
+}
+
 interface RoleRoomLinkedInConnectionRow {
   id: string;
   user_id: string;
@@ -468,6 +514,14 @@ function hashRoleRoomTalentInviteToken(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
+function buildRoleRoomClientInviteToken(): string {
+  return `rrcli_${crypto.randomBytes(24).toString('hex')}`;
+}
+
+function hashRoleRoomClientInviteToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const PROJECT_FILE_STORAGE_ROOT = path.join(REPO_ROOT, 'uploads', 'project-files');
 const ROLE_ROOM_TALENT_UPLOAD_ROOT = path.join(REPO_ROOT, 'uploads', 'role-room-talent');
@@ -548,11 +602,24 @@ const ROLE_ROOM_GOOGLE_DRIVE_FOLDERS = [
   { key: 'meetings', label: '06 Møter' },
 ] as const;
 const ROLE_ROOM_GOOGLE_STATE_TTL_MS = 15 * 60 * 1000;
+const ROLE_ROOM_CLIENT_PORTAL_WORKSPACES = [
+  'brief',
+  'materials',
+  'storyboard',
+  'manuscript',
+  'shotlist',
+  'brand',
+  'accounts',
+  'delivery',
+  'meetings',
+] as const;
+const ROLE_ROOM_CLIENT_PORTAL_TABS = ['media', 'reviews', 'export'] as const;
 
 const roleRoomGoogleOauthStateStore = new Map<string, RoleRoomGoogleOauthState>();
 const roleRoomGoogleTransferStore = new Map<string, RoleRoomGoogleTransferPayload>();
 const roleRoomLinkedInOauthStateStore = new Map<string, RoleRoomLinkedInOauthState>();
 const roleRoomLinkedInTransferStore = new Map<string, RoleRoomLinkedInTransferPayload>();
+const roleRoomClientInviteTransferStore = new Map<string, RoleRoomClientInviteTransferPayload>();
 
 function readStringValue(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
@@ -643,6 +710,32 @@ function readStringArray(value: unknown): string[] {
   return [];
 }
 
+function normalizeRoleRoomClientPortalWorkspace(value: unknown): typeof ROLE_ROOM_CLIENT_PORTAL_WORKSPACES[number] {
+  const normalized = readStringValue(value)?.toLowerCase();
+  if (
+    normalized
+    && ROLE_ROOM_CLIENT_PORTAL_WORKSPACES.includes(
+      normalized as (typeof ROLE_ROOM_CLIENT_PORTAL_WORKSPACES)[number],
+    )
+  ) {
+    return normalized as (typeof ROLE_ROOM_CLIENT_PORTAL_WORKSPACES)[number];
+  }
+  return 'brief';
+}
+
+function normalizeRoleRoomClientPortalTab(value: unknown): typeof ROLE_ROOM_CLIENT_PORTAL_TABS[number] {
+  const normalized = readStringValue(value)?.toLowerCase();
+  if (
+    normalized
+    && ROLE_ROOM_CLIENT_PORTAL_TABS.includes(
+      normalized as (typeof ROLE_ROOM_CLIENT_PORTAL_TABS)[number],
+    )
+  ) {
+    return normalized as (typeof ROLE_ROOM_CLIENT_PORTAL_TABS)[number];
+  }
+  return 'media';
+}
+
 function pruneExpiredRoleRoomGoogleState(): void {
   const now = Date.now();
   for (const [key, value] of roleRoomGoogleOauthStateStore.entries()) {
@@ -663,6 +756,11 @@ function pruneExpiredRoleRoomGoogleState(): void {
   for (const [key, value] of roleRoomLinkedInTransferStore.entries()) {
     if (now - value.createdAt > ROLE_ROOM_GOOGLE_STATE_TTL_MS) {
       roleRoomLinkedInTransferStore.delete(key);
+    }
+  }
+  for (const [key, value] of roleRoomClientInviteTransferStore.entries()) {
+    if (now - value.createdAt > ROLE_ROOM_GOOGLE_STATE_TTL_MS) {
+      roleRoomClientInviteTransferStore.delete(key);
     }
   }
 }
@@ -1007,6 +1105,27 @@ function buildRoleRoomGoogleReturnUrl(
     return `${browserOrigin}${nextPath}`;
   }
   return nextPath;
+}
+
+function buildRoleRoomClientPortalReturnPath(options: {
+  projectId: string;
+  workspace?: string | null;
+  tab?: string | null;
+  sectionId?: string | null;
+  pageId?: string | null;
+  reviewId?: string | null;
+  artifactId?: string | null;
+}): string {
+  return appendQueryParamsToPath(ROLE_ROOM_CANONICAL_PATH, {
+    portal: 'client',
+    projectId: options.projectId,
+    tab: normalizeRoleRoomClientPortalTab(options.tab),
+    workspace: normalizeRoleRoomClientPortalWorkspace(options.workspace),
+    section: readStringValue(options.sectionId),
+    page: readStringValue(options.pageId),
+    reviewId: readStringValue(options.reviewId),
+    artifactId: readStringValue(options.artifactId),
+  });
 }
 
 function getRoleRoomGoogleFolderKeyForFile(fileRecord: Record<string, unknown>): string {
@@ -4465,6 +4584,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
   }
 
   let roleRoomTalentPortalTablesReadyPromise: Promise<boolean> | null = null;
+  let roleRoomClientInviteTablesReadyPromise: Promise<boolean> | null = null;
   async function ensureRoleRoomTalentPortalTables(): Promise<boolean> {
     if (roleRoomTalentPortalTablesReadyPromise) return roleRoomTalentPortalTablesReadyPromise;
     roleRoomTalentPortalTablesReadyPromise = (async () => {
@@ -4540,6 +4660,45 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       }
     })();
     return roleRoomTalentPortalTablesReadyPromise;
+  }
+
+  async function ensureRoleRoomClientInviteTables(): Promise<boolean> {
+    if (roleRoomClientInviteTablesReadyPromise) return roleRoomClientInviteTablesReadyPromise;
+    roleRoomClientInviteTablesReadyPromise = (async () => {
+      try {
+        const castingProjectsReady = await ensureCastingProjectsTable();
+        if (!castingProjectsReady) {
+          return false;
+        }
+
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS role_room_client_invites (
+            id UUID PRIMARY KEY,
+            project_id VARCHAR(255) NOT NULL REFERENCES casting_projects(id) ON DELETE CASCADE,
+            email VARCHAR(255) NOT NULL,
+            token_hash VARCHAR(255) NOT NULL UNIQUE,
+            status VARCHAR(40) NOT NULL DEFAULT 'sent',
+            created_by_user_id VARCHAR(255),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            last_sent_at TIMESTAMPTZ,
+            last_viewed_at TIMESTAMPTZ,
+            accepted_at TIMESTAMPTZ,
+            expires_at TIMESTAMPTZ,
+            metadata JSONB NOT NULL DEFAULT '{}'::jsonb
+          );
+          CREATE INDEX IF NOT EXISTS idx_rr_client_invites_project ON role_room_client_invites(project_id);
+          CREATE INDEX IF NOT EXISTS idx_rr_client_invites_email ON role_room_client_invites(email);
+          CREATE INDEX IF NOT EXISTS idx_rr_client_invites_status ON role_room_client_invites(status);
+        `);
+
+        return true;
+      } catch (error) {
+        console.warn('Role Room client invite tables unavailable:', error);
+        return false;
+      }
+    })();
+    return roleRoomClientInviteTablesReadyPromise;
   }
 
   function normalizeRoleRoomTestimonialRoleId(value: unknown): string {
@@ -4916,6 +5075,133 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     url.searchParams.set('inviteToken', options.inviteToken);
     url.searchParams.set('section', 'overview');
     return url.toString();
+  }
+
+  function buildRoleRoomClientInviteUrl(req: Request, options: {
+    inviteToken: string;
+    browserOrigin?: string | null;
+  }): string {
+    const configuredOrigin = sanitizeRoleRoomBrowserOrigin(
+      process.env.ROLE_ROOM_CLIENT_PORTAL_ORIGIN
+      ?? process.env.ROLE_ROOM_PUBLIC_ORIGIN
+      ?? process.env.ROLE_ROOM_FRONTEND_ORIGIN,
+    );
+    const origin = sanitizeRoleRoomBrowserOrigin(options.browserOrigin)
+      ?? configuredOrigin
+      ?? getRoleRoomRequestOrigin(req)
+      ?? DEFAULT_ROLE_ROOM_TALENT_PUBLIC_ORIGIN;
+    return new URL(`/api/role-room/client/invites/${encodeURIComponent(options.inviteToken)}/activate`, origin).toString();
+  }
+
+  function buildRoleRoomClientInvite(
+    row: RoleRoomClientInviteRow,
+    options?: {
+      inviteUrl?: string | null;
+    },
+  ) {
+    const metadata = readJsonObject(row.metadata);
+    return {
+      id: row.id,
+      email: normalizeEmailValue(row.email),
+      status: readStringValue(row.status) ?? 'sent',
+      expiresAt: readStringValue(row.expires_at),
+      lastSentAt: readStringValue(row.last_sent_at),
+      lastViewedAt: readStringValue(row.last_viewed_at),
+      acceptedAt: readStringValue(row.accepted_at),
+      metadata,
+      inviteUrl: readStringValue(options?.inviteUrl ?? null),
+      workspace: normalizeRoleRoomClientPortalWorkspace(metadata.workspace),
+      tab: normalizeRoleRoomClientPortalTab(metadata.tab),
+      sectionId: readStringValue(metadata.sectionId),
+      pageId: readStringValue(metadata.pageId),
+      reviewId: readStringValue(metadata.reviewId),
+      artifactId: readStringValue(metadata.artifactId),
+      recipientName: readStringValue(metadata.recipientName),
+      message: readStringValue(metadata.message),
+      createdAt: readStringValue(row.created_at),
+      updatedAt: readStringValue(row.updated_at),
+    };
+  }
+
+  async function getRoleRoomClientInviteByToken(inviteToken: string): Promise<RoleRoomClientInviteRow | null> {
+    if (!(await ensureRoleRoomClientInviteTables())) {
+      return null;
+    }
+
+    const tokenHash = hashRoleRoomClientInviteToken(inviteToken);
+    const result = await pool.query<RoleRoomClientInviteRow>(
+      `SELECT *
+         FROM role_room_client_invites
+        WHERE token_hash = $1
+        LIMIT 1`,
+      [tokenHash],
+    );
+    return result.rows[0] ?? null;
+  }
+
+  function isRoleRoomClientInviteExpired(invite: RoleRoomClientInviteRow | null | undefined): boolean {
+    const expiresAt = readStringValue(invite?.expires_at);
+    if (!expiresAt) {
+      return false;
+    }
+    const parsed = Date.parse(expiresAt);
+    return Number.isFinite(parsed) && parsed < Date.now();
+  }
+
+  async function syncRoleRoomClientInviteContactToProject(options: {
+    projectId: string;
+    email: string;
+    recipientName?: string | null;
+    updatedByUserId?: string | null;
+    updatedByRole?: string | null;
+  }): Promise<void> {
+    const metadataPatch = {
+      clientEmail: options.email,
+      client_email: options.email,
+      ...(readStringValue(options.recipientName)
+        ? {
+            clientName: readStringValue(options.recipientName),
+            client_name: readStringValue(options.recipientName),
+          }
+        : {}),
+    };
+
+    await pool.query(
+      `UPDATE casting_projects
+          SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb,
+              updated_at = NOW()
+        WHERE id = $1`,
+      [options.projectId, JSON.stringify(metadataPatch)],
+    ).catch((error) => {
+      console.warn('Role Room client invite metadata sync failed:', error);
+    });
+
+    if (!(await ensureProducerWorkflowTables())) {
+      return;
+    }
+
+    await pool.query(
+      `INSERT INTO role_room_client_intake (
+        project_id, contact_name, contact_email, metadata, updated_by_user_id, updated_by_role, created_at, updated_at
+      ) VALUES (
+        $1, $2, $3, '{}'::jsonb, $4, $5, NOW(), NOW()
+      )
+      ON CONFLICT (project_id) DO UPDATE SET
+        contact_name = COALESCE(EXCLUDED.contact_name, role_room_client_intake.contact_name),
+        contact_email = EXCLUDED.contact_email,
+        updated_by_user_id = EXCLUDED.updated_by_user_id,
+        updated_by_role = EXCLUDED.updated_by_role,
+        updated_at = NOW()`,
+      [
+        options.projectId,
+        readStringValue(options.recipientName),
+        options.email,
+        options.updatedByUserId ?? null,
+        options.updatedByRole ?? null,
+      ],
+    ).catch((error) => {
+      console.warn('Role Room client invite contact sync failed:', error);
+    });
   }
 
   async function getRoleRoomTalentInviteByToken(inviteToken: string): Promise<RoleRoomTalentInviteRow | null> {
@@ -10255,6 +10541,314 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     } catch (error) {
       console.error('Role Room testimonial submission error:', error);
       res.status(500).json({ error: 'Kunne ikke sende inn testimonial' });
+    }
+  });
+
+  router.post('/projects/:projectId/client-invites', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      if (!(await ensureRoleRoomClientInviteTables())) {
+        res.status(503).json({ error: 'Klientinvitasjoner er midlertidig utilgjengelig' });
+        return;
+      }
+
+      const { projectId } = req.params;
+      if (!(await ensureProjectAccess(projectId))) {
+        res.status(404).json({ error: 'Prosjekt ikke funnet' });
+        return;
+      }
+
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å invitere klient' });
+        return;
+      }
+
+      const targetEmail = normalizeEmailValue(req.body?.email);
+      if (!targetEmail) {
+        res.status(400).json({ error: 'Invitasjonen trenger en gyldig e-postadresse' });
+        return;
+      }
+
+      const requestedExpiresAt = readStringValue(req.body?.expiresAt);
+      const fallbackDays = typeof req.body?.expiresInDays === 'number' && Number.isFinite(req.body.expiresInDays)
+        ? Math.max(1, Math.min(30, Math.floor(req.body.expiresInDays)))
+        : 14;
+      const requestedExpiryTime = requestedExpiresAt ? Date.parse(requestedExpiresAt) : NaN;
+      if (requestedExpiresAt && !Number.isFinite(requestedExpiryTime)) {
+        res.status(400).json({ error: 'expiresAt er ugyldig' });
+        return;
+      }
+
+      const recipientName = readStringValue(req.body?.recipientName);
+      const workspace = normalizeRoleRoomClientPortalWorkspace(req.body?.workspace);
+      const tab = normalizeRoleRoomClientPortalTab(req.body?.tab);
+      const sectionId = readStringValue(req.body?.sectionId);
+      const pageId = readStringValue(req.body?.pageId);
+      const reviewId = readStringValue(req.body?.reviewId);
+      const artifactId = readStringValue(req.body?.artifactId);
+      const browserOrigin = sanitizeRoleRoomBrowserOrigin(req.body?.browserOrigin) ?? getRoleRoomRequestOrigin(req);
+      const expiresAt = Number.isFinite(requestedExpiryTime)
+        ? new Date(requestedExpiryTime).toISOString()
+        : new Date(Date.now() + fallbackDays * 24 * 60 * 60 * 1000).toISOString();
+      const requestUser = getOptionalRequestUser(req);
+      const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
+      const inviteToken = buildRoleRoomClientInviteToken();
+      const inviteId = makeId();
+      const inviteMetadata = {
+        createdFrom: 'producer_portal',
+        browserOrigin: browserOrigin ?? null,
+        recipientName,
+        message: readStringValue(req.body?.message),
+        tab,
+        workspace,
+        sectionId,
+        pageId,
+        reviewId,
+        artifactId,
+      };
+
+      await syncRoleRoomClientInviteContactToProject({
+        projectId,
+        email: targetEmail,
+        recipientName,
+        updatedByUserId: requestUser?.userId ?? null,
+        updatedByRole: effectiveRoleRecord?.role ?? (requireScope(req, 'admin') ? 'admin' : requestUser?.role ?? null),
+      });
+
+      await pool.query(
+        `INSERT INTO role_room_client_invites (
+          id, project_id, email, token_hash, status, created_by_user_id, last_sent_at, expires_at, metadata
+        ) VALUES ($1, $2, $3, $4, 'sent', $5, NOW(), $6, $7::jsonb)`,
+        [
+          inviteId,
+          projectId,
+          targetEmail,
+          hashRoleRoomClientInviteToken(inviteToken),
+          requestUser?.userId ?? null,
+          expiresAt,
+          JSON.stringify(inviteMetadata),
+        ],
+      );
+
+      const inviteUrl = buildRoleRoomClientInviteUrl(req, {
+        inviteToken,
+        browserOrigin,
+      });
+
+      res.status(201).json({
+        invite: {
+          ...buildRoleRoomClientInvite({
+            id: inviteId,
+            project_id: projectId,
+            email: targetEmail,
+            token_hash: '',
+            status: 'sent',
+            created_by_user_id: requestUser?.userId ?? null,
+            created_at: nowISO(),
+            updated_at: nowISO(),
+            last_sent_at: nowISO(),
+            last_viewed_at: null,
+            accepted_at: null,
+            expires_at: expiresAt,
+            metadata: inviteMetadata,
+          } as RoleRoomClientInviteRow, {
+            inviteUrl,
+          }),
+          projectId,
+          inviteToken,
+        },
+      });
+    } catch (error) {
+      console.error('Role Room client invite create error:', error);
+      res.status(500).json({ error: 'Kunne ikke opprette klientinvitasjon' });
+    }
+  });
+
+  router.get('/client/invites/:inviteToken/activate', async (req: Request, res: Response) => {
+    try {
+      if (!(await ensureRoleRoomClientInviteTables())) {
+        res.status(503).send('Klientinvitasjoner er midlertidig utilgjengelig');
+        return;
+      }
+
+      pruneExpiredRoleRoomGoogleState();
+      const inviteToken = readStringValue(req.params.inviteToken);
+      if (!inviteToken) {
+        res.status(400).send('inviteToken er påkrevd');
+        return;
+      }
+
+      const invite = await getRoleRoomClientInviteByToken(inviteToken);
+      if (!invite) {
+        res.status(404).send('Fant ikke klientinvitasjonen');
+        return;
+      }
+
+      const normalizedStatus = readStringValue(invite.status)?.toLowerCase() ?? 'sent';
+      if (['cancelled', 'revoked'].includes(normalizedStatus)) {
+        res.status(410).send('Invitasjonen er ikke lenger aktiv');
+        return;
+      }
+
+      if (isRoleRoomClientInviteExpired(invite)) {
+        await pool.query(
+          `UPDATE role_room_client_invites
+              SET status = 'expired',
+                  updated_at = NOW()
+            WHERE id = $1`,
+          [invite.id],
+        ).catch(() => undefined);
+        res.status(410).send('Invitasjonen har utløpt');
+        return;
+      }
+
+      const inviteEmail = normalizeEmailValue(invite.email);
+      if (!inviteEmail) {
+        res.status(400).send('Invitasjonen mangler mottakeradresse');
+        return;
+      }
+
+      const inviteMetadata = readJsonObject(invite.metadata);
+      const projectId = readStringValue(invite.project_id);
+      if (!projectId || !(await ensureProjectAccess(projectId, { allowBootstrap: false }))) {
+        res.status(404).send('Prosjektet som invitasjonen peker til finnes ikke lenger');
+        return;
+      }
+
+      const ensuredUser = await ensureRoleRoomUserByEmail(inviteEmail, {
+        name: readStringValue(inviteMetadata.recipientName),
+      });
+      const existingRoleRecord = await getProjectRoleRecord(projectId, [
+        ensuredUser.userId,
+        ensuredUser.email,
+      ]);
+
+      if (
+        !existingRoleRecord
+        || isGenericProjectRole(existingRoleRecord.role)
+        || isRoleRoomClientReviewerRole(existingRoleRecord.role)
+      ) {
+        await ensureRoleRoomProjectRoleAssignment(
+          projectId,
+          ensuredUser.userId,
+          ensuredUser.email,
+          'client_reviewer',
+          readStringValue(invite.created_by_user_id),
+        );
+      }
+
+      await pool.query(
+        `UPDATE role_room_client_invites
+            SET status = 'accepted',
+                last_viewed_at = NOW(),
+                accepted_at = COALESCE(accepted_at, NOW()),
+                updated_at = NOW()
+          WHERE id = $1`,
+        [invite.id],
+      );
+
+      const sessionToken = crypto.randomUUID();
+      const sessionData: SessionData = {
+        userId: ensuredUser.userId,
+        email: ensuredUser.email,
+        name: ensuredUser.name,
+        role: 'client_reviewer',
+        displayName: ensuredUser.name,
+        requestedRole: 'client',
+        loginAs: 'content_producer',
+        loginAt: new Date().toISOString(),
+      };
+      activeSessions?.set(sessionToken, sessionData);
+      await persistAuthSession(pool, sessionToken, sessionData);
+
+      const transferId = crypto.randomUUID();
+      roleRoomClientInviteTransferStore.set(transferId, {
+        createdAt: Date.now(),
+        projectId,
+        sessionToken,
+        user: {
+          id: ensuredUser.userId,
+          email: ensuredUser.email,
+          role: 'client_reviewer',
+          name: ensuredUser.name,
+          display_name: ensuredUser.name,
+          loginAs: 'content_producer',
+          requestedRole: 'client',
+        },
+        invite: {
+          id: invite.id,
+          email: ensuredUser.email,
+          status: 'accepted',
+          expiresAt: readStringValue(invite.expires_at),
+          acceptedAt: nowISO(),
+        },
+        portal: {
+          tab: normalizeRoleRoomClientPortalTab(inviteMetadata.tab),
+          workspace: normalizeRoleRoomClientPortalWorkspace(inviteMetadata.workspace),
+          sectionId: readStringValue(inviteMetadata.sectionId),
+          pageId: readStringValue(inviteMetadata.pageId),
+          reviewId: readStringValue(inviteMetadata.reviewId),
+          artifactId: readStringValue(inviteMetadata.artifactId),
+        },
+      });
+
+      const returnPath = buildRoleRoomClientPortalReturnPath({
+        projectId,
+        tab: readStringValue(inviteMetadata.tab),
+        workspace: readStringValue(inviteMetadata.workspace),
+        sectionId: readStringValue(inviteMetadata.sectionId),
+        pageId: readStringValue(inviteMetadata.pageId),
+        reviewId: readStringValue(inviteMetadata.reviewId),
+        artifactId: readStringValue(inviteMetadata.artifactId),
+      });
+      const browserOrigin = resolveRoleRoomBrowserOrigin(
+        req,
+        readStringValue(inviteMetadata.browserOrigin),
+      ) ?? getRoleRoomRequestOrigin(req);
+
+      res.redirect(
+        buildRoleRoomGoogleReturnUrl(returnPath, {
+          rrClientInviteStatus: 'success',
+          rrClientInviteTransfer: transferId,
+        }, browserOrigin),
+      );
+    } catch (error) {
+      console.error('Role Room client invite activation error:', error);
+      res.status(500).send(
+        error instanceof Error ? error.message : 'Kunne ikke aktivere klientinvitasjonen',
+      );
+    }
+  });
+
+  router.get('/client/invites/session-result/:transferId', async (req: Request, res: Response) => {
+    try {
+      pruneExpiredRoleRoomGoogleState();
+      const transferId = readStringValue(req.params.transferId);
+      if (!transferId) {
+        res.status(400).json({ error: 'transferId mangler' });
+        return;
+      }
+
+      const payload = roleRoomClientInviteTransferStore.get(transferId);
+      if (!payload) {
+        res.status(404).json({ error: 'Klientinvitasjonen er utløpt eller brukt' });
+        return;
+      }
+
+      roleRoomClientInviteTransferStore.delete(transferId);
+
+      res.json({
+        success: true,
+        transferId,
+        projectId: payload.projectId,
+        sessionToken: payload.sessionToken,
+        user: payload.user,
+        invite: payload.invite,
+        portal: payload.portal,
+      });
+    } catch (error) {
+      console.error('Role Room client invite session result error:', error);
+      res.status(500).json({ error: 'Kunne ikke hente klientinvitasjonen' });
     }
   });
 

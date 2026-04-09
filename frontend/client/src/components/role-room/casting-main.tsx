@@ -9,7 +9,7 @@ import RoleRoomEducationPartnershipPage from './components/RoleRoomEducationPart
 import TalentPortalView from './components/TalentPortalView';
 import { ToastProvider } from './components/ToastStack';
 import authSessionService from './services/authSessionService';
-import { googleWorkspaceApi } from './services/castingApiService';
+import { clientInvitesApi, googleWorkspaceApi } from './services/castingApiService';
 import { EnhancedMasterIntegrationProvider } from '@/integration/EnhancedMasterIntegrationProvider';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { parseTalentPortalIntentFromWindow } from './utils/talentPortal';
@@ -87,7 +87,9 @@ function CastingStandaloneRuntimeContent() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authResolved, setAuthResolved] = useState(false);
   const [processingGoogleLogin, setProcessingGoogleLogin] = useState(false);
+  const [processingClientInviteLogin, setProcessingClientInviteLogin] = useState(false);
   const handledGoogleTransferRef = useRef<string | null>(null);
+  const handledClientInviteTransferRef = useRef<string | null>(null);
 
   const guestMode = false;
 
@@ -114,6 +116,26 @@ function CastingStandaloneRuntimeContent() {
       }
       window.history.replaceState({}, document.title, cleanUrl);
     };
+    const getCleanClientInviteUrl = () => {
+      if (typeof window === 'undefined') {
+        return null;
+      }
+      const url = new URL(window.location.href);
+      url.searchParams.delete('rrClientInviteStatus');
+      url.searchParams.delete('rrClientInviteTransfer');
+      url.searchParams.delete('rrClientInviteMessage');
+      return `${url.pathname}${url.search}${url.hash}`;
+    };
+    const clearClientInviteIntentFromUrl = () => {
+      if (typeof window === 'undefined') {
+        return;
+      }
+      const cleanUrl = getCleanClientInviteUrl();
+      if (!cleanUrl) {
+        return;
+      }
+      window.history.replaceState({}, document.title, cleanUrl);
+    };
 
     const bootstrapAuthState = async () => {
       const session = await authSessionService.loadSession();
@@ -125,6 +147,8 @@ function CastingStandaloneRuntimeContent() {
       const googleStatus = params.get('rrGoogleStatus');
       const googleTransferId = params.get('rrGoogleTransfer');
       const googleMode = params.get('rrGoogleMode');
+      const clientInviteStatus = params.get('rrClientInviteStatus');
+      const clientInviteTransferId = params.get('rrClientInviteTransfer');
 
       if (googleStatus === 'success' && googleMode === 'login' && googleTransferId) {
         const transferKey = `${googleMode}:${googleTransferId}`;
@@ -176,6 +200,50 @@ function CastingStandaloneRuntimeContent() {
         }
       }
 
+      if (clientInviteStatus === 'success' && clientInviteTransferId) {
+        if (handledClientInviteTransferRef.current !== clientInviteTransferId) {
+          handledClientInviteTransferRef.current = clientInviteTransferId;
+          setProcessingClientInviteLogin(true);
+          try {
+            const transfer = await clientInvitesApi.getSessionResult(clientInviteTransferId);
+            if (!isMounted) return;
+
+            if (transfer.user && transfer.sessionToken) {
+              await authSessionService.applyRoleRoomLogin(
+                {
+                  id: transfer.user.id,
+                  email: transfer.user.email,
+                  role: transfer.user.role,
+                  display_name: transfer.user.display_name,
+                  name: transfer.user.name,
+                  loginAs: transfer.user.loginAs,
+                  requestedRole: transfer.user.requestedRole ?? null,
+                },
+                transfer.sessionToken,
+              );
+              if (!isMounted) return;
+              const cleanUrl = getCleanClientInviteUrl();
+              if (typeof window !== 'undefined' && cleanUrl) {
+                window.location.replace(cleanUrl);
+                return;
+              }
+              setIsAuthenticated(true);
+              clearClientInviteIntentFromUrl();
+              setProcessingClientInviteLogin(false);
+              setAuthResolved(true);
+              return;
+            }
+          } catch (error) {
+            console.error('[CastingStandaloneApp] Failed to complete client invite redirect', error);
+          } finally {
+            if (isMounted) {
+              clearClientInviteIntentFromUrl();
+              setProcessingClientInviteLogin(false);
+            }
+          }
+        }
+      }
+
       setIsAuthenticated(!!session.adminUser);
       setAuthResolved(true);
     };
@@ -212,6 +280,7 @@ function CastingStandaloneRuntimeContent() {
     setIsAuthenticated(false);
     setAuthResolved(true);
     setProcessingGoogleLogin(false);
+    setProcessingClientInviteLogin(false);
 
     if (typeof window !== 'undefined') {
       const url = new URL(window.location.href);
@@ -221,6 +290,9 @@ function CastingStandaloneRuntimeContent() {
       url.searchParams.delete('rrGoogleTransfer');
       url.searchParams.delete('rrGoogleMode');
       url.searchParams.delete('rrGoogleMessage');
+      url.searchParams.delete('rrClientInviteStatus');
+      url.searchParams.delete('rrClientInviteTransfer');
+      url.searchParams.delete('rrClientInviteMessage');
       window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
       window.scrollTo({ top: 0, behavior: 'auto' });
     }
@@ -246,7 +318,7 @@ function CastingStandaloneRuntimeContent() {
 
   return (
     <Box sx={{ width: '100%', minHeight: '100vh', position: 'relative' }}>
-      {!authResolved || processingGoogleLogin ? (
+      {!authResolved || processingGoogleLogin || processingClientInviteLogin ? (
         <Box
           sx={{
             minHeight: '100vh',
@@ -261,7 +333,11 @@ function CastingStandaloneRuntimeContent() {
         >
           <CircularProgress size={30} sx={{ color: '#8b5cf6' }} />
           <Typography sx={{ fontSize: '0.95rem', fontWeight: 600 }}>
-            {processingGoogleLogin ? 'Fullfører Google-innlogging…' : 'Laster Role Room…'}
+            {processingGoogleLogin
+              ? 'Fullfører Google-innlogging…'
+              : processingClientInviteLogin
+                ? 'Åpner klienttilgang…'
+                : 'Laster Role Room…'}
           </Typography>
         </Box>
       ) : !isAuthenticated ? (
