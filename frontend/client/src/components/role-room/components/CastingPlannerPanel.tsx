@@ -832,10 +832,12 @@ export function CastingPlannerPanel({
   }), [branding.tokens.labels]);
   
   type StoryArcView = 'main' | 'story-logic' | 'story-writer' | 'shot-list' | 'planning';
+  type ContentProducerPlannerSurface = 'overview' | 'project_room' | 'approval' | 'delivery' | 'economy';
   type RoleRoomWorkspaceState = {
     projectId: string | null;
     activeTab: number;
     storyArcView: StoryArcView;
+    contentProducerPlannerSurface?: ContentProducerPlannerSurface;
   };
   const [activeTab, setActiveTab] = useState(0);
   const [lastNonLiveTab, setLastNonLiveTab] = useState(0);
@@ -855,6 +857,7 @@ export function CastingPlannerPanel({
   const [selectionNotesDraft, setSelectionNotesDraft] = useState('');
   const [selectionNotesSaving, setSelectionNotesSaving] = useState(false);
   const [selectionNotesTagExclusions, setSelectionNotesTagExclusions] = useState<string[]>([]);
+  const [contentProducerPlannerSurface, setContentProducerPlannerSurface] = useState<ContentProducerPlannerSurface>('overview');
   const [selectionGoogleStatus, setSelectionGoogleStatus] = useState<RoleRoomGoogleStatusResponse | null>(null);
   const [selectionGoogleStatusLoading, setSelectionGoogleStatusLoading] = useState(false);
   const [selectionMeetBusy, setSelectionMeetBusy] = useState(false);
@@ -1295,10 +1298,64 @@ export function CastingPlannerPanel({
     commitTab(tabIndex);
   }, [activeTab, currentProject, exitLiveSetFullscreen, requestLiveSetFullscreen, toast]);
 
+  const openContentProducerPlannerSurface = useCallback((
+    surface: ContentProducerPlannerSurface,
+    options?: {
+      mediaFocus?: ClientPortalWorkspaceFocus | null;
+      focusPayload?: Omit<ProducerWorkflowFocusPayload, 'projectId' | 'panel'>;
+      focusPanel?: 'reviews' | 'economy';
+    },
+  ) => {
+    if (options && 'mediaFocus' in options) {
+      setProducerMediaFocus(options.mediaFocus ?? null);
+    }
+    setContentProducerPlannerSurface(surface);
+    navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'planning' });
+
+    if (currentProject && options?.focusPayload && options.focusPanel) {
+      window.setTimeout(() => {
+        emitProducerWorkflowFocusEvent({
+          projectId: currentProject.id,
+          panel: options.focusPanel,
+          ...options.focusPayload,
+        });
+      }, 100);
+    }
+  }, [currentProject, navigateToTab]);
+
   const navigateToProducerWorkflowTabWithFocus = useCallback((
     tabIndex: number,
     focus?: Omit<ProducerWorkflowFocusPayload, 'projectId' | 'panel'>,
   ) => {
+    if (isContentProducerMode) {
+      if (tabIndex === PRODUCER_MEDIA_TAB_INDEX) {
+        openContentProducerPlannerSurface('project_room');
+        return;
+      }
+      if (tabIndex === PRODUCER_REVIEWS_TAB_INDEX) {
+        openContentProducerPlannerSurface('approval', {
+          focusPanel: 'reviews',
+          focusPayload: focus,
+        });
+        return;
+      }
+      if (tabIndex === PRODUCER_EXPORT_TAB_INDEX) {
+        openContentProducerPlannerSurface('delivery');
+        return;
+      }
+      if (tabIndex === PRODUCER_ECONOMY_TAB_INDEX) {
+        openContentProducerPlannerSurface('economy', {
+          focusPanel: 'economy',
+          focusPayload: focus,
+        });
+        return;
+      }
+      if (tabIndex === PRODUCER_TIMELINE_TAB_INDEX) {
+        openContentProducerPlannerSurface('overview');
+        return;
+      }
+    }
+
     if (!currentProject) {
       return;
     }
@@ -1317,12 +1374,18 @@ export function CastingPlannerPanel({
         ...focus,
       });
     }, 80);
-  }, [currentProject, navigateToTab]);
+  }, [currentProject, isContentProducerMode, navigateToTab, openContentProducerPlannerSurface]);
 
   const navigateToProducerMediaWorkspace = useCallback((focus?: ClientPortalWorkspaceFocus) => {
+    if (isContentProducerMode) {
+      openContentProducerPlannerSurface('project_room', {
+        mediaFocus: focus ?? null,
+      });
+      return;
+    }
     setProducerMediaFocus(focus ?? null);
     navigateToTab(PRODUCER_MEDIA_TAB_INDEX);
-  }, [navigateToTab]);
+  }, [isContentProducerMode, navigateToTab, openContentProducerPlannerSurface]);
 
   const queueProducerReviewCreate = useCallback(async (draft: {
     reviewType: string;
@@ -1380,7 +1443,7 @@ export function CastingPlannerPanel({
   const getTabReturnLabel = useCallback((tabIndex: number): string => {
     switch (tabIndex) {
       case STORY_ARC_TAB_INDEX:
-        return 'Role Room Studio';
+        return isContentProducerMode ? 'Planner' : 'Role Room Studio';
       case ROLES_TAB_INDEX:
         return branding.tokens.labels.roles;
       case CANDIDATES_TAB_INDEX:
@@ -1398,20 +1461,20 @@ export function CastingPlannerPanel({
       case EQUIPMENT_TAB_INDEX:
         return branding.tokens.labels.equipment;
       case PRODUCER_MEDIA_TAB_INDEX:
-        return 'Media';
+        return 'Prosjektrom';
       case PRODUCER_ECONOMY_TAB_INDEX:
         return 'Økonomi';
       case PRODUCER_TIMELINE_TAB_INDEX:
-        return 'Tidslinje';
+        return 'Planner';
       case PRODUCER_REVIEWS_TAB_INDEX:
-        return 'Kunde-review';
+        return 'Godkjenning';
       case PRODUCER_EXPORT_TAB_INDEX:
-        return 'Eksport';
+        return 'Levering';
       case 0:
       default:
         return branding.tokens.labels.dashboard;
     }
-  }, [branding.tokens.labels]);
+  }, [branding.tokens.labels, isContentProducerMode]);
 
   const handleExitLiveSet = useCallback(() => {
     const nextTab = lastNonLiveTab === LIVE_SET_TAB_INDEX ? 0 : lastNonLiveTab;
@@ -2124,17 +2187,24 @@ export function CastingPlannerPanel({
         return null;
       }
       const nextStoryArcView = stored.storyArcView;
+      const nextContentProducerPlannerSurface = stored.contentProducerPlannerSurface;
       const storyArcViewValid = nextStoryArcView === 'main'
         || nextStoryArcView === 'story-logic'
         || nextStoryArcView === 'story-writer'
         || nextStoryArcView === 'shot-list'
         || nextStoryArcView === 'planning';
+      const plannerSurfaceValid = nextContentProducerPlannerSurface === 'overview'
+        || nextContentProducerPlannerSurface === 'project_room'
+        || nextContentProducerPlannerSurface === 'approval'
+        || nextContentProducerPlannerSurface === 'delivery'
+        || nextContentProducerPlannerSurface === 'economy';
       return {
         projectId: typeof stored.projectId === 'string' && stored.projectId.trim().length > 0
           ? stored.projectId
           : null,
         activeTab: Number.isFinite(stored.activeTab) ? stored.activeTab : 0,
         storyArcView: storyArcViewValid ? nextStoryArcView : 'main',
+        contentProducerPlannerSurface: plannerSurfaceValid ? nextContentProducerPlannerSurface : 'overview',
       };
     } catch (error) {
       console.warn('Failed to load persisted Role Room workspace state:', error);
@@ -2155,6 +2225,7 @@ export function CastingPlannerPanel({
       }
       persistedWorkspaceStateRef.current = stored;
       setStoryArcView(stored.storyArcView);
+      setContentProducerPlannerSurface(stored.contentProducerPlannerSurface ?? 'overview');
       setActiveTab(stored.activeTab);
     };
 
@@ -2455,16 +2526,7 @@ export function CastingPlannerPanel({
       const producerTabs = [
         STORY_ARC_TAB_INDEX,
         CANDIDATES_TAB_INDEX,
-        LOCATIONS_TAB_INDEX,
-        EQUIPMENT_TAB_INDEX,
-        PRODUCER_MEDIA_TAB_INDEX,
-        PRODUCER_TIMELINE_TAB_INDEX,
-        PRODUCER_REVIEWS_TAB_INDEX,
-        PRODUCER_EXPORT_TAB_INDEX,
       ];
-      if (canViewProducerEconomy) {
-        producerTabs.splice(5, 0, PRODUCER_ECONOMY_TAB_INDEX);
-      }
       return producerTabs;
     }
 
@@ -2508,6 +2570,16 @@ export function CastingPlannerPanel({
     : (visibleTabValues[0] ?? 0);
 
   useEffect(() => {
+    if (!isContentProducerMode && contentProducerPlannerSurface !== 'overview') {
+      setContentProducerPlannerSurface('overview');
+      return;
+    }
+    if (!canViewProducerEconomy && contentProducerPlannerSurface === 'economy') {
+      setContentProducerPlannerSurface('overview');
+    }
+  }, [canViewProducerEconomy, contentProducerPlannerSurface, isContentProducerMode]);
+
+  useEffect(() => {
     if (!authLoaded || !adminUser) {
       return;
     }
@@ -2518,6 +2590,7 @@ export function CastingPlannerPanel({
         : null,
       activeTab: displayedActiveTab,
       storyArcView: displayedActiveTab === STORY_ARC_TAB_INDEX ? storyArcView : 'main',
+      contentProducerPlannerSurface: isContentProducerMode ? contentProducerPlannerSurface : undefined,
     };
     persistedWorkspaceStateRef.current = nextState;
 
@@ -2532,7 +2605,9 @@ export function CastingPlannerPanel({
     currentProject,
     displayedActiveTab,
     getSettingsUserId,
+    contentProducerPlannerSurface,
     isContentProducerDemoProject,
+    isContentProducerMode,
     roleRoomWorkspaceStateNamespace,
     storyArcView,
   ]);
@@ -2549,6 +2624,10 @@ export function CastingPlannerPanel({
     }
     return PRODUCER_MEDIA_TAB_INDEX;
   }, [clientPortalIntent]);
+
+  const effectiveStoryArcView: StoryArcView = isContentProducerMode && storyArcView === 'main'
+    ? 'planning'
+    : storyArcView;
 
   useEffect(() => {
     if (!authLoaded || !isClientReviewerSession || !clientPortalIntent || projects.length === 0) {
@@ -7242,7 +7321,7 @@ export function CastingPlannerPanel({
               : navTabMetaFontSizePx;
             const tabLabels = [
               branding.tokens.labels.dashboard,
-              isContentProducerMode ? 'Storyboard' : 'Role Room Studio',
+              isContentProducerMode ? 'Planner' : 'Role Room Studio',
               branding.tokens.labels.roles,
               isContentProducerMode ? 'Medvirkende' : branding.tokens.labels.candidates,
               branding.tokens.labels.auditions,
@@ -7252,11 +7331,11 @@ export function CastingPlannerPanel({
               branding.tokens.labels.team,
               isContentProducerMode ? 'Utstyr' : branding.tokens.labels.equipment,
               'Live Set',
-              isExternalClientPortalMode ? 'Workspace' : isClientReviewerMode ? 'Klientflate' : 'Media',
+              isExternalClientPortalMode ? 'Workspace' : isClientReviewerMode ? 'Klientflate' : 'Prosjektrom',
               'Økonomi',
-              'Tidslinje',
-              isExternalClientPortalMode ? 'Godkjenning' : 'Klientsamarbeid',
-              isExternalClientPortalMode ? 'Levering' : 'Eksport',
+              'Planner',
+              'Godkjenning',
+              'Levering',
             ];
             const tabIds = [
               'tab-oversikt',
@@ -7350,7 +7429,7 @@ export function CastingPlannerPanel({
                         Casting
                       </Box>
                     )}
-                    {showTabMeta && isPreProductionTab && (
+                    {showTabMeta && isPreProductionTab && !isContentProducerMode && (
                       <Box
                         component="span"
                         sx={{
@@ -9463,7 +9542,7 @@ export function CastingPlannerPanel({
         </TabPanel>
 
         <TabPanel value={activeTab} index={STORY_ARC_TAB_INDEX}>
-          {storyArcView === 'main' ? (
+          {effectiveStoryArcView === 'main' ? (
             <Box sx={{ p: { xs: 2, sm: 2.5, md: 3 }, display: 'flex', flexDirection: 'column', gap: { xs: 2, sm: 2.5 } }}>
               <Box
                 sx={{
@@ -9765,7 +9844,7 @@ export function CastingPlannerPanel({
                 </Card>
               </Box>
             </Box>
-          ) : storyArcView === 'planning' ? (
+          ) : effectiveStoryArcView === 'planning' ? (
             <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
               <Box
                 sx={{
@@ -9779,25 +9858,29 @@ export function CastingPlannerPanel({
                 }}
               >
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Button
-                    startIcon={<CloseIcon />}
-                    onClick={() => {
-                      startTransition(() => setStoryArcView('main'));
-                    }}
-                    size="small"
-                    sx={{ color: 'rgba(255,255,255,0.87)' }}
-                  >
-                    {branding.tokens.labels.storyArcBackLabel}
-                  </Button>
-                  <Divider orientation="vertical" flexItem sx={{ mx: 1 }} />
+                  {plannerAudience === 'content_producer' ? null : (
+                    <>
+                      <Button
+                        startIcon={<CloseIcon />}
+                        onClick={() => {
+                          startTransition(() => setStoryArcView('main'));
+                        }}
+                        size="small"
+                        sx={{ color: 'rgba(255,255,255,0.87)' }}
+                      >
+                        {branding.tokens.labels.storyArcBackLabel}
+                      </Button>
+                      <Divider orientation="vertical" flexItem sx={{ mx: 1 }} />
+                    </>
+                  )}
                   <RoleRoomBrandMark width={28} height={28} />
                   <Box>
                     <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#fff', lineHeight: 1.15 }}>
-                      The Role Room Planning
+                      {plannerAudience === 'content_producer' ? 'Planner' : 'The Role Room Planning'}
                     </Typography>
                     <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.72)' }}>
                       {plannerAudience === 'content_producer'
-                        ? 'Brief, reviews, leveranser og kreative møter i ett studio.'
+                        ? 'Prosjektrom, godkjenning og levering samlet i én operativ flate.'
                         : 'Produksjonsplan, Meet-flyt og teamrytme i ett studio.'}
                     </Typography>
                   </Box>
@@ -9879,52 +9962,63 @@ export function CastingPlannerPanel({
                 <Box sx={{ maxWidth: 720 }}>
                   <Typography sx={{ color: '#f8fafc', fontWeight: 700, mb: 0.35 }}>
                     {plannerAudience === 'content_producer'
-                      ? 'Planlegg innhold, godkjenninger og leveranser fra samme operasjonsflate'
+                      ? 'Styr innhold, godkjenning og levering fra samme operasjonsflate'
                       : 'Planlegg dager, samarbeid og møter fra samme operasjonsflate'}
                   </Typography>
                   <Typography sx={{ color: 'rgba(226,232,240,0.76)', fontSize: '0.82rem', lineHeight: 1.55 }}>
                     {plannerAudience === 'content_producer'
-                      ? 'Bruk denne flaten som oversiktslag for brief, storyboard, manus, shotlist, reviews og leveranser. Herfra kan innholdsprodusenten gå direkte til prosjektrommet, godkjenningene og levering.'
+                      ? 'Planner er nå hovedhjemmet for innholdsprodusent. Prosjektrom, godkjenning og levering ligger som underfaner her, slik at hele arbeidsløpet holdes samlet.'
                       : 'Bruk denne flaten som planning-leddet i Role Room Studio. Produksjonsteamet kan hoppe direkte til utvelgelse for Meet-planlegging, videre til produksjonsplanen for dagsstyring og til teamet for bemanning.'}
                   </Typography>
                 </Box>
                 <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
                   {plannerAudience === 'content_producer' ? (
-                    <>
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        startIcon={<FolderOpenIcon />}
-                        onClick={() => {
-                          navigateToTab(PRODUCER_MEDIA_TAB_INDEX);
+                    <Box sx={{ width: '100%', overflowX: 'auto' }}>
+                      <Tabs
+                        value={contentProducerPlannerSurface}
+                        onChange={(_, nextValue: ContentProducerPlannerSurface) => {
+                          setContentProducerPlannerSurface(nextValue);
                         }}
-                        sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 999 }}
-                      >
-                        Prosjektrom
-                      </Button>
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        startIcon={<FactCheckIcon />}
-                        onClick={() => {
-                          navigateToTab(PRODUCER_REVIEWS_TAB_INDEX);
+                        variant="scrollable"
+                        allowScrollButtonsMobile
+                        sx={{
+                          minHeight: 0,
+                          '& .MuiTabs-flexContainer': {
+                            gap: 0.75,
+                            flexWrap: 'wrap',
+                          },
+                          '& .MuiTabs-indicator': {
+                            display: 'none',
+                          },
                         }}
-                        sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 999 }}
                       >
-                        Godkjenning
-                      </Button>
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        startIcon={<ImportExportIcon />}
-                        onClick={() => {
-                          navigateToTab(PRODUCER_EXPORT_TAB_INDEX);
-                        }}
-                        sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 999 }}
-                      >
-                        Levering
-                      </Button>
-                    </>
+                        {[
+                          { value: 'overview', label: 'Oversikt' },
+                          { value: 'project_room', label: 'Prosjektrom' },
+                          { value: 'approval', label: 'Godkjenning' },
+                          { value: 'delivery', label: 'Levering' },
+                          ...(canViewProducerEconomy ? [{ value: 'economy', label: 'Økonomi' }] : []),
+                        ].map((item) => (
+                          <Tab
+                            key={item.value}
+                            value={item.value}
+                            label={item.label}
+                            sx={{
+                              minHeight: 0,
+                              px: 1.6,
+                              py: 0.8,
+                              borderRadius: 999,
+                              textTransform: 'none',
+                              fontWeight: 700,
+                              color: contentProducerPlannerSurface === item.value ? '#0f172a' : '#e2e8f0',
+                              bgcolor: contentProducerPlannerSurface === item.value ? '#f8fafc' : 'rgba(15,23,42,0.42)',
+                              border: '1px solid rgba(148,163,184,0.22)',
+                              minWidth: 'fit-content',
+                            }}
+                          />
+                        ))}
+                      </Tabs>
+                    </Box>
                   ) : (
                     <>
                       <Button
@@ -9979,46 +10073,263 @@ export function CastingPlannerPanel({
                 </Box>
               ) : (
                 <Box sx={{ flex: 1, minHeight: 0, overflow: 'hidden', pt: 1 }}>
-                  <ProducerPlannerStudio
-                    key={`${currentProject.id}:${producerWorkflowBootstrapVersion}:planner-studio`}
-                    project={currentProject}
-                    readOnly={!canManageProductionWorkspace}
-                    audience={plannerAudience}
-                    ownerOptions={producerWorkflowOwnerOptions}
-                    entityOptions={producerWorkflowEntityOptions}
-                    onProjectUpdated={async (updatedProject) => {
-                      setCurrentProject(updatedProject);
-                      await loadProjects();
-                    }}
-                    onOpenSelection={plannerAudience === 'content_producer' ? undefined : () => {
-                      navigateToTab(SELECTION_TAB_INDEX);
-                    }}
-                    onOpenTeam={plannerAudience === 'content_producer' ? undefined : () => {
-                      navigateToTab(TEAM_TAB_INDEX);
-                    }}
-                    onOpenShotList={(focus) => {
-                      startTransition(() => setStoryArcView('shot-list'));
-                      if (focus?.phase) {
-                        logRoleRoomDiagnostic('planning-open-shotlist', {
-                          projectId: currentProject.id,
-                          phase: focus.phase,
-                        });
-                      }
-                    }}
-                    onOpenReviews={(focus) => {
-                      navigateToProducerWorkflowTabWithFocus(PRODUCER_REVIEWS_TAB_INDEX, focus);
-                    }}
-                    onOpenEconomy={(focus) => {
-                      navigateToProducerWorkflowTabWithFocus(PRODUCER_ECONOMY_TAB_INDEX, focus);
-                    }}
-                    onOpenMedia={(focus) => {
-                      navigateToProducerMediaWorkspace(focus);
-                    }}
-                  />
+                  {plannerAudience !== 'content_producer' || contentProducerPlannerSurface === 'overview' ? (
+                    <ProducerPlannerStudio
+                      key={`${currentProject.id}:${producerWorkflowBootstrapVersion}:planner-studio`}
+                      project={currentProject}
+                      readOnly={!canManageProductionWorkspace}
+                      audience={plannerAudience}
+                      ownerOptions={producerWorkflowOwnerOptions}
+                      entityOptions={producerWorkflowEntityOptions}
+                      onProjectUpdated={async (updatedProject) => {
+                        setCurrentProject(updatedProject);
+                        await loadProjects();
+                      }}
+                      onOpenSelection={plannerAudience === 'content_producer' ? undefined : () => {
+                        navigateToTab(SELECTION_TAB_INDEX);
+                      }}
+                      onOpenTeam={plannerAudience === 'content_producer' ? undefined : () => {
+                        navigateToTab(TEAM_TAB_INDEX);
+                      }}
+                      onOpenShotList={(focus) => {
+                        startTransition(() => setStoryArcView('shot-list'));
+                        if (focus?.phase) {
+                          logRoleRoomDiagnostic('planning-open-shotlist', {
+                            projectId: currentProject.id,
+                            phase: focus.phase,
+                          });
+                        }
+                      }}
+                      onOpenReviews={(focus) => {
+                        if (plannerAudience === 'content_producer') {
+                          openContentProducerPlannerSurface('approval', {
+                            focusPanel: 'reviews',
+                            focusPayload: focus,
+                          });
+                          return;
+                        }
+                        navigateToProducerWorkflowTabWithFocus(PRODUCER_REVIEWS_TAB_INDEX, focus);
+                      }}
+                      onOpenEconomy={(focus) => {
+                        if (plannerAudience === 'content_producer') {
+                          openContentProducerPlannerSurface('economy', {
+                            focusPanel: 'economy',
+                            focusPayload: focus,
+                          });
+                          return;
+                        }
+                        navigateToProducerWorkflowTabWithFocus(PRODUCER_ECONOMY_TAB_INDEX, focus);
+                      }}
+                      onOpenMedia={(focus) => {
+                        if (plannerAudience === 'content_producer') {
+                          openContentProducerPlannerSurface('project_room', {
+                            mediaFocus: focus ?? null,
+                          });
+                          return;
+                        }
+                        navigateToProducerMediaWorkspace(focus);
+                      }}
+                    />
+                  ) : null}
+
+                  {plannerAudience === 'content_producer' && contentProducerPlannerSurface === 'project_room' ? (
+                    <RoleRoomDiagnosticsProbe
+                      name="ProducerMediaPanel"
+                      projectId={currentProject.id}
+                      detail={{ activeTab, bootstrapVersion: producerWorkflowBootstrapVersion, plannerSurface: contentProducerPlannerSurface }}
+                    >
+                      <ProducerMediaPanel
+                        key={`${currentProject.id}:${producerWorkflowBootstrapVersion}:planner-media`}
+                        project={currentProject}
+                        projectId={currentProject.id}
+                        projectName={currentProject.name}
+                        mediaCount={(currentProject.props?.length ?? 0) + (currentProject.shotLists?.length ?? 0)}
+                        storyboardCount={currentProject.sceneBreakdowns?.length ?? 0}
+                        shotCount={currentProject.shotLists?.length ?? 0}
+                        shotLists={currentProject.shotLists ?? []}
+                        readOnly={!canCommentInProducerWorkflow && !canEditProducerWorkflow}
+                        canContributeClientInput={canCommentInProducerWorkflow || canEditProducerWorkflow}
+                        isClientReviewerMode={isClientReviewerMode}
+                        initialWorkspace={producerMediaFocus?.workspace}
+                        initialSectionId={producerMediaFocus?.sectionId}
+                        initialPageId={producerMediaFocus?.pageId}
+                        initialArtifactId={producerMediaFocus?.artifactId}
+                        onProjectUpdated={async (updatedProject) => {
+                          setCurrentProject(updatedProject);
+                          await loadProjects();
+                        }}
+                        onOpenStoryboard={() => {
+                          navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'main' });
+                        }}
+                        onOpenManuscript={() => {
+                          navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'story-writer' });
+                        }}
+                        onOpenShotList={() => {
+                          navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'shot-list' });
+                        }}
+                        onOpenSceneNotes={() => {
+                          navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'story-logic' });
+                        }}
+                        onPrepareStoryboardReview={() => {
+                          if (!currentProject) {
+                            return;
+                          }
+                          queueProducerReviewCreate({
+                            reviewType: 'storyboard',
+                            title: 'Storyboard klar for klientgodkjenning',
+                            description: 'Vennligst gjennomgå storyboard og gi godkjenning eller endringsønsker.',
+                            targetEntityType: 'storyboard',
+                            targetEntityId: makeProducerPackageEntityId('storyboard', currentProject.id),
+                          });
+                        }}
+                        onPrepareManuscriptReview={() => {
+                          if (!currentProject) {
+                            return;
+                          }
+                          queueProducerReviewCreate({
+                            reviewType: 'manuscript',
+                            title: 'Manus klar for klientgodkjenning',
+                            description: 'Vennligst gjennomgå manus og gi godkjenning eller endringsønsker.',
+                            targetEntityType: 'manuscript',
+                            targetEntityId: makeProducerPackageEntityId('manuscript', currentProject.id),
+                          });
+                        }}
+                        onPrepareShotListReview={() => {
+                          if (!currentProject) {
+                            return;
+                          }
+                          queueProducerReviewCreate({
+                            reviewType: 'shotlist',
+                            title: 'Shotlist klar for klientgodkjenning',
+                            description: 'Vennligst gjennomgå shotlist og gi godkjenning eller endringsønsker.',
+                            targetEntityType: 'shotlist',
+                            targetEntityId: makeProducerPackageEntityId('shotlist', currentProject.id),
+                          });
+                        }}
+                      />
+                    </RoleRoomDiagnosticsProbe>
+                  ) : null}
+
+                  {plannerAudience === 'content_producer' && contentProducerPlannerSurface === 'approval' ? (
+                    <RoleRoomDiagnosticsProbe
+                      name="ProducerClientReviewPanel"
+                      projectId={currentProject.id}
+                      detail={{ activeTab, bootstrapVersion: producerWorkflowBootstrapVersion, plannerSurface: contentProducerPlannerSurface }}
+                    >
+                      <ProducerClientReviewPanel
+                        key={`${currentProject.id}:${producerWorkflowBootstrapVersion}:planner-reviews`}
+                        projectId={currentProject.id}
+                        projectName={currentProject.name}
+                        project={currentProject}
+                        projectWorkflowStatus={currentProject.producerWorkflowStatus}
+                        projectWorkflowMeta={currentProject.producerWorkflowMeta}
+                        canEdit={canEditProducerWorkflow}
+                        canComment={canCommentInProducerWorkflow}
+                        canDecide={canMakeProducerReviewDecision}
+                        canApproveReview={canApproveProducerReview}
+                        canRequestReviewChanges={canRequestProducerReviewChanges}
+                        entityOptions={producerWorkflowEntityOptions}
+                        onOpenMedia={(focus) => {
+                          openContentProducerPlannerSurface('project_room', {
+                            mediaFocus: focus ?? null,
+                          });
+                        }}
+                        onOpenTimeline={() => {
+                          openContentProducerPlannerSurface('overview');
+                        }}
+                        onOpenEconomy={(focus) => {
+                          openContentProducerPlannerSurface('economy', {
+                            focusPanel: 'economy',
+                            focusPayload: focus,
+                          });
+                        }}
+                      />
+                    </RoleRoomDiagnosticsProbe>
+                  ) : null}
+
+                  {plannerAudience === 'content_producer' && contentProducerPlannerSurface === 'delivery' ? (
+                    <RoleRoomDiagnosticsProbe
+                      name="ProducerExportHandoffPanel"
+                      projectId={currentProject.id}
+                      detail={{ activeTab, bootstrapVersion: producerWorkflowBootstrapVersion, plannerSurface: contentProducerPlannerSurface }}
+                    >
+                      <ProducerExportHandoffPanel
+                        key={`${currentProject.id}:${producerWorkflowBootstrapVersion}:planner-export`}
+                        project={currentProject}
+                        onOpenManuscript={() => {
+                          setStoryArcView('story-writer');
+                          navigateToTab(STORY_ARC_TAB_INDEX);
+                        }}
+                        onOpenShotList={() => {
+                          setStoryArcView('shot-list');
+                          navigateToTab(STORY_ARC_TAB_INDEX);
+                        }}
+                        onOpenMedia={(focus) => {
+                          openContentProducerPlannerSurface('project_room', {
+                            mediaFocus: focus ?? null,
+                          });
+                        }}
+                        onOpenReviews={() => {
+                          openContentProducerPlannerSurface('approval');
+                        }}
+                        onOpenTimeline={() => {
+                          openContentProducerPlannerSurface('overview');
+                        }}
+                        onSendToClient={async () => {
+                          openSharingModal();
+                        }}
+                      />
+                    </RoleRoomDiagnosticsProbe>
+                  ) : null}
+
+                  {plannerAudience === 'content_producer' && contentProducerPlannerSurface === 'economy' && canViewProducerEconomy ? (
+                    <RoleRoomDiagnosticsProbe
+                      name="ProjectEconomyHub"
+                      projectId={currentProject.id}
+                      detail={{ activeTab, bootstrapVersion: producerWorkflowBootstrapVersion, plannerSurface: contentProducerPlannerSurface }}
+                    >
+                      <ProjectEconomyHub
+                        key={`${currentProject.id}:${producerWorkflowBootstrapVersion}:planner-economy`}
+                        project={currentProject}
+                        profession={profession ?? 'videographer'}
+                        readOnly={!canEditProducerWorkflow}
+                        canSendBudgetReview={canSendBudgetReview}
+                        onProjectUpdated={async (updatedProject) => {
+                          setCurrentProject(updatedProject);
+                          await loadProjects();
+                        }}
+                        onOpenReviews={(focus) => {
+                          openContentProducerPlannerSurface('approval', {
+                            focusPanel: 'reviews',
+                            focusPayload: focus,
+                          });
+                        }}
+                        onOpenTimeline={() => {
+                          openContentProducerPlannerSurface('overview');
+                        }}
+                        onOpenMedia={(focus) => {
+                          openContentProducerPlannerSurface('project_room', {
+                            mediaFocus: focus ?? null,
+                          });
+                        }}
+                        onOpenDeliverableSource={(target) => {
+                          if (target === 'shotlist') {
+                            navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'shot-list' });
+                            return;
+                          }
+                          if (target === 'manuscript') {
+                            navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'story-writer' });
+                            return;
+                          }
+                          navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'main' });
+                        }}
+                      />
+                    </RoleRoomDiagnosticsProbe>
+                  ) : null}
                 </Box>
               )}
             </Box>
-          ) : storyArcView === 'story-logic' ? (
+          ) : effectiveStoryArcView === 'story-logic' ? (
             <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
               {/* Back button header */}
               <Box sx={{ 
@@ -10059,7 +10370,7 @@ export function CastingPlannerPanel({
                 </Suspense>
               </Box>
             </Box>
-          ) : storyArcView === 'shot-list' ? (
+          ) : effectiveStoryArcView === 'shot-list' ? (
             <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
               <Box
                 sx={{

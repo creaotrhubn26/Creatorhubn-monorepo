@@ -181,9 +181,9 @@ const EMPTY_CLIENT_INTAKE: ProducerClientIntake = {
 
 const PHASE_ORDER: ProducerPlanningPhase[] = ['preproduction', 'production', 'postproduction'];
 const VIEW_OPTIONS: Array<{ value: PlannerViewMode; label: string }> = [
-  { value: 'timeline', label: 'Timeline' },
-  { value: 'calendar', label: 'Calendar' },
-  { value: 'coordination', label: 'Coordination' },
+  { value: 'timeline', label: 'Tidslinje' },
+  { value: 'calendar', label: 'Kalender' },
+  { value: 'coordination', label: 'Koordinering' },
 ];
 const CALENDAR_TYPE_LABELS: Record<PlannerCalendarEntry['type'], string> = {
   meeting: 'Møte',
@@ -1475,7 +1475,7 @@ export default function ProducerPlannerStudio({
                   onClick={() => openMeetingDialog()}
                   sx={{ bgcolor: '#2563eb', textTransform: 'none', fontWeight: 700 }}
                 >
-                  {isContentProducerPlanner ? 'Opprett gjennomgang' : 'Create Meeting'}
+                  {isContentProducerPlanner ? 'Opprett gjennomgang' : 'Opprett møte'}
                 </Button>
                 <Button
                   size="small"
@@ -1484,7 +1484,7 @@ export default function ProducerPlannerStudio({
                   onClick={() => openTimelineActionDialog('milestone')}
                   sx={{ textTransform: 'none', fontWeight: 700 }}
                 >
-                  Add Milestone
+                  Legg til milepæl
                 </Button>
                 <Button
                   size="small"
@@ -1493,7 +1493,7 @@ export default function ProducerPlannerStudio({
                   onClick={() => openTimelineActionDialog('task')}
                   sx={{ textTransform: 'none', fontWeight: 700 }}
                 >
-                  {isContentProducerPlanner ? 'Legg til oppfølging' : 'Assign Task'}
+                  {isContentProducerPlanner ? 'Legg til oppfølging' : 'Tildel oppgave'}
                 </Button>
               </Stack>
             ) : null}
@@ -1868,7 +1868,7 @@ export default function ProducerPlannerStudio({
                       onClick={() => onOpenReviews({ focusedPhase: phaseInView })}
                       sx={{ textTransform: 'none', fontWeight: 700 }}
                     >
-                      Approvals
+                      Godkjenning
                     </Button>
                   ) : null}
                   {onOpenEconomy ? (
@@ -1878,7 +1878,7 @@ export default function ProducerPlannerStudio({
                       onClick={() => onOpenEconomy({ focusedPhase: phaseInView })}
                       sx={{ textTransform: 'none', fontWeight: 700 }}
                     >
-                      Economy
+                      Økonomi
                     </Button>
                   ) : null}
                   {onOpenMedia ? (
@@ -1888,7 +1888,7 @@ export default function ProducerPlannerStudio({
                       onClick={() => onOpenMedia({ workspace: 'brief' })}
                       sx={{ textTransform: 'none', fontWeight: 700 }}
                     >
-                      Brief / media
+                      Prosjektrom
                     </Button>
                   ) : null}
                 </Stack>
@@ -2060,7 +2060,7 @@ export default function ProducerPlannerStudio({
             <Stack direction={{ xs: 'column', xl: 'row' }} spacing={1} justifyContent="space-between">
               <Box>
                 <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                  Coordination view
+                  Koordineringsvisning
                 </Typography>
                 <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.84rem', mt: 0.35 }}>
                   Dette er plasseringsmotoren for hvem som må være med, hva som kolliderer og når neste møte realistisk bør skje.
@@ -2068,10 +2068,10 @@ export default function ProducerPlannerStudio({
               </Box>
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
                 <FormControl size="small" sx={{ minWidth: 200 }}>
-                  <InputLabel id="planner-coordination-type-label" sx={{ color: 'rgba(226,232,240,0.82)' }}>Meeting type</InputLabel>
+                  <InputLabel id="planner-coordination-type-label" sx={{ color: 'rgba(226,232,240,0.82)' }}>Møtetype</InputLabel>
                   <Select
                     labelId="planner-coordination-type-label"
-                    label="Meeting type"
+                    label="Møtetype"
                     value={coordinationMeetingType}
                     onChange={(event) => setCoordinationMeetingType(event.target.value as ProducerPlannerMeetingType)}
                     sx={{ color: '#fff', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.28)' } }}
@@ -2089,7 +2089,7 @@ export default function ProducerPlannerStudio({
                     onClick={() => openMeetingDialog(coordinationMeetingType)}
                     sx={{ bgcolor: '#2563eb', textTransform: 'none', fontWeight: 700 }}
                   >
-                    {isContentProducerPlanner ? 'Opprett gjennomgang' : 'Create Meeting'}
+                    {isContentProducerPlanner ? 'Opprett gjennomgang' : 'Opprett møte'}
                   </Button>
                 ) : null}
               </Stack>
@@ -2206,7 +2206,7 @@ export default function ProducerPlannerStudio({
                 <>
                   <TextField
                     select
-                    label="Meeting type"
+                    label="Møtetype"
                     value={meetingDraft.type}
                     onChange={(event) => {
                       const nextType = event.target.value as ProducerPlannerMeetingType;
