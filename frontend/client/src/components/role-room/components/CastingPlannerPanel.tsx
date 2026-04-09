@@ -1905,6 +1905,7 @@ export function CastingPlannerPanel({
 
     if (normalized === 'owner') return 'director';
     if (normalized === 'admin') return 'producer';
+    if (normalized === 'super_admin') return 'director';
     if (normalized === 'director') return 'director';
     if (normalized === 'producer') return 'producer';
     if (normalized === 'content_producer') return 'content_producer';
@@ -1969,6 +1970,10 @@ export function CastingPlannerPanel({
   const headerRoleLabel = projectRoleLabel && accountRoleLabel && projectRoleLabel !== accountRoleLabel
     ? `${accountRoleLabel} (konto) • ${projectRoleLabel} (prosjekt)`
     : projectRoleLabel || accountRoleLabel;
+  const normalizedAdminAccountRole = String(adminUser?.role || '').trim().toLowerCase();
+  const isRoleRoomAdminSession = normalizedAdminAccountRole === 'admin'
+    || normalizedAdminAccountRole === 'owner'
+    || normalizedAdminAccountRole === 'super_admin';
   const mappedSessionProjectRole = useMemo(
     () => mapAccountRoleToProjectRole(adminUser?.role, adminUser?.loginAs, adminUser?.requestedRole),
     [adminUser?.role, adminUser?.loginAs, adminUser?.requestedRole],
@@ -2047,7 +2052,8 @@ export function CastingPlannerPanel({
   const isReadOnlyProtectedDemoView = Boolean(
     currentProject && isProtectedDemoProject(currentProject) && !canMutateProtectedDemoData,
   );
-  const canEditProducerWorkflow = !isReadOnlyProtectedDemoView && (isContentProducerMode || producerAccess.canEditProductionData);
+  const canEditProducerWorkflow = !isReadOnlyProtectedDemoView && (isRoleRoomAdminSession || isContentProducerMode || producerAccess.canEditProductionData);
+  const canManageProductionWorkspace = permissions.canEditProduction || isRoleRoomAdminSession;
   const canCommentInProducerWorkflow = !isReadOnlyProtectedDemoView && (isContentProducerMode || isClientReviewerMode || producerAccess.canComment);
   const canViewProducerEconomy = isContentProducerMode || producerAccess.canViewEconomy || permissions.canViewEconomy;
   const canApproveProducerReview = !isReadOnlyProtectedDemoView && (isClientReviewerSession || producerAccess.canApproveReview);
@@ -3500,12 +3506,12 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
 
         // Preserve admin bypass only for non-scoped sessions. Explicit Role Room personas
         // such as content producer and client reviewer must respect their mapped project role.
-        if (adminUser && (adminUser.role === 'admin' || adminUser.role === 'owner') && !isScopedRoleRoomLogin) {
+        if (isRoleRoomAdminSession && adminUser && !isScopedRoleRoomLogin) {
           setCurrentUserRole({
             id: `role-${adminUser.id}-${projectIdForRequest}`,
             userId: String(adminUser.id),
             projectId: projectIdForRequest,
-            role: adminUser.role === 'owner' ? 'director' : 'producer',
+            role: normalizedAdminAccountRole === 'owner' || normalizedAdminAccountRole === 'super_admin' ? 'director' : 'producer',
             permissions: {
               canViewAll: true,
               canEditCasting: true,
@@ -3577,8 +3583,33 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
           return;
         }
         
-        setCurrentUserRole(role);
-        setPermissions(buildPermissionStateFromRole(role));
+        const resolvedRole = role ?? (
+          isRoleRoomAdminSession && adminUser
+            ? {
+                id: `role-admin-fallback-${resolvedUserId}-${projectIdForRequest}`,
+                userId: resolvedUserId,
+                projectId: projectIdForRequest,
+                role: normalizedAdminAccountRole === 'owner' || normalizedAdminAccountRole === 'super_admin' ? 'director' : 'producer',
+                permissions: {
+                  canViewAll: true,
+                  canEditCasting: true,
+                  canEditProduction: true,
+                  canEditShotLists: true,
+                  canManageCrew: true,
+                  canManageLocations: true,
+                  canApprove: true,
+                  canComment: true,
+                  canRequestChanges: true,
+                  canViewEconomy: true,
+                },
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              }
+            : null
+        );
+
+        setCurrentUserRole(resolvedRole);
+        setPermissions(buildPermissionStateFromRole(resolvedRole));
       } catch (error) {
         console.error('Error loading user role:', error);
         // Only update state if this is still the current project
@@ -3646,7 +3677,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
         canViewEconomy: false,
       });
     }
-  }, [adminUser, buildPermissionStateFromRole, canMutateProtectedDemoData, getUserId, isGuestMode, isContentProducerDemoProject, isProtectedDemoProject]);
+  }, [adminUser, buildPermissionStateFromRole, canMutateProtectedDemoData, getUserId, isGuestMode, isContentProducerDemoProject, isProtectedDemoProject, isRoleRoomAdminSession, normalizedAdminAccountRole]);
 
   const loadAvailableScenes = useCallback(() => {
     const sceneMap = new Map<string, { id: string; name: string; thumbnail?: string }>();
@@ -9189,7 +9220,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                 {branding.tokens.labels.noProjectSelected}
               </Typography>
             </Box>
-          ) : !permissions.canEditProduction ? (
+          ) : !canManageProductionWorkspace ? (
             <Box sx={{ p: 3, textAlign: 'center', color: 'rgba(255,255,255,0.87)' }}>
               <Typography variant="body1" sx={{ fontSize: isDesktop ? '1.125rem' : isTablet ? '1rem' : '0.875rem' }}>
                 {branding.tokens.labels.noAccessEquipment}
@@ -9236,7 +9267,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                 {branding.tokens.labels.noProjectSelected}
               </Typography>
             </Box>
-          ) : !permissions.canEditProduction ? (
+          ) : !canManageProductionWorkspace ? (
             <Box sx={{ p: 3, textAlign: 'center', color: 'rgba(255,255,255,0.87)' }}>
               <Typography variant="body1" sx={{ fontSize: isDesktop ? '1.125rem' : isTablet ? '1rem' : '0.875rem' }}>
                 {branding.tokens.labels.noAccessSchedule}
@@ -9880,7 +9911,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                     {branding.tokens.labels.noProjectSelected}
                   </Typography>
                 </Box>
-              ) : !permissions.canEditProduction ? (
+              ) : !canManageProductionWorkspace ? (
                 <Box sx={{ p: 3, textAlign: 'center', color: 'rgba(255,255,255,0.87)' }}>
                   <Typography variant="body1" sx={{ fontSize: isDesktop ? '1.125rem' : isTablet ? '1rem' : '0.875rem' }}>
                     Du mangler tilgang til å styre The Role Room Planning for dette prosjektet.
@@ -9891,7 +9922,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                   <ProducerPlannerStudio
                     key={`${currentProject.id}:${producerWorkflowBootstrapVersion}:planner-studio`}
                     project={currentProject}
-                    readOnly={!permissions.canEditProduction}
+                    readOnly={!canManageProductionWorkspace}
                     ownerOptions={producerWorkflowOwnerOptions}
                     entityOptions={producerWorkflowEntityOptions}
                     onProjectUpdated={async (updatedProject) => {

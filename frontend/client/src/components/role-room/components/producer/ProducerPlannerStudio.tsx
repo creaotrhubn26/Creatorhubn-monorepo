@@ -515,6 +515,14 @@ export default function ProducerPlannerStudio({
   const [timelineActionDraft, setTimelineActionDraft] = useState<TimelineActionDraft | null>(null);
   const [clientIntake, setClientIntake] = useState<ProducerClientIntake>(EMPTY_CLIENT_INTAKE);
   const [googleArtifacts, setGoogleArtifacts] = useState<RoleRoomGoogleArtifactRef[]>([]);
+  const safeProject = useMemo<CastingProject>(() => ({
+    ...project,
+    crew: Array.isArray(project.crew) ? project.crew : [],
+    roles: Array.isArray(project.roles) ? project.roles : [],
+    locations: Array.isArray(project.locations) ? project.locations : [],
+    shotLists: Array.isArray(project.shotLists) ? project.shotLists : [],
+    productionDays: Array.isArray(project.productionDays) ? project.productionDays : [],
+  }), [project]);
 
   const {
     groupedByPhase,
@@ -546,12 +554,22 @@ export default function ProducerPlannerStudio({
     error: estimateError,
   } = useProjectProductionEstimate({
     projectId: project.id,
-    initialProject: project,
-    initialShotLists: project.shotLists,
-    initialProductionDays: project.productionDays,
+    initialProject: safeProject,
+    initialShotLists: safeProject.shotLists,
+    initialProductionDays: safeProject.productionDays,
   });
 
-  const liveProject = estimatedProject ?? project;
+  const liveProject = useMemo<CastingProject>(() => {
+    const source = estimatedProject ?? safeProject;
+    return {
+      ...source,
+      crew: Array.isArray(source.crew) ? source.crew : [],
+      roles: Array.isArray(source.roles) ? source.roles : [],
+      locations: Array.isArray(source.locations) ? source.locations : [],
+      shotLists: Array.isArray(source.shotLists) ? source.shotLists : safeProject.shotLists,
+      productionDays: Array.isArray(source.productionDays) ? source.productionDays : safeProject.productionDays,
+    };
+  }, [estimatedProject, safeProject]);
   const notificationBaselineReadyRef = useRef(false);
   const seenNotificationStateRef = useRef<Map<string, string>>(new Map());
 
