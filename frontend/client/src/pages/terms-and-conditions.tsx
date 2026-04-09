@@ -23,6 +23,7 @@ import {
 } from '@mui/icons-material';
 import { useLocation } from 'wouter';
 import PublicSocialLinks from '@/components/common/PublicSocialLinks';
+import RoleRoomBrandMark from '@/components/role-room/components/shared/RoleRoomBrandMark';
 import {
   getPublicSocialProfiles,
   PUBLIC_BRAND_LINKS,
@@ -139,39 +140,134 @@ const TermsAndConditions: React.FC = () => {
   return (
     <Box sx={{ minHeight: '100vh', background: brand.pageBg, py: 6 }}>
       <Container maxWidth="lg">
-        <Paper elevation={3} sx={{ ...surfaceSx, mb: 4 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+        <Paper
+          elevation={3}
+          sx={{
+            ...surfaceSx,
+            mb: 4,
+            overflow: 'hidden',
+            p: 0,
+          }}
+        >
+          <Box
+            sx={{
+              position: 'relative',
+              px: { xs: 2.5, md: 4 },
+              py: { xs: 3, md: 4 },
+              background: isRoleRoom
+                ? 'linear-gradient(135deg, rgba(8,15,28,0.96) 0%, rgba(9,22,38,0.94) 52%, rgba(22,28,51,0.92) 100%)'
+                : 'linear-gradient(135deg, rgba(255,255,255,0.74) 0%, rgba(255,247,237,0.94) 48%, rgba(255,237,213,0.92) 100%)',
+            }}
+          >
             <Box
               sx={{
-                width: 64,
-                height: 64,
-                borderRadius: '14px',
-                background: brand.iconGradient,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                mr: 3,
+                position: 'absolute',
+                inset: 0,
+                pointerEvents: 'none',
+                background: isRoleRoom
+                  ? 'radial-gradient(circle at 12% 18%, rgba(34,211,238,0.18) 0%, transparent 28%), radial-gradient(circle at 82% 22%, rgba(168,85,247,0.16) 0%, transparent 26%)'
+                  : 'radial-gradient(circle at 12% 18%, rgba(255,140,0,0.14) 0%, transparent 28%), radial-gradient(circle at 82% 22%, rgba(251,191,36,0.12) 0%, transparent 26%)',
               }}
+            />
+            <Stack
+              direction={{ xs: 'column', lg: 'row' }}
+              justifyContent="space-between"
+              alignItems={{ lg: 'flex-start' }}
+              spacing={3}
+              sx={{ position: 'relative' }}
             >
-              <Gavel sx={{ fontSize: 32, color: 'white' }} />
-            </Box>
-            <Box>
-              <Typography variant="h3" sx={{ fontWeight: 800, color: isRoleRoom ? '#f8fafc' : '#1f2937', ...theming.colors }}>
-                {brand.appName} · Vilkår og betingelser
-              </Typography>
-              <Typography variant="body1" sx={{ color: mutedColor, mt: 1 }}>
-                {brand.subtitle} · Sist oppdatert: 6. april 2026
-              </Typography>
-            </Box>
+              <Stack spacing={2} sx={{ minWidth: 0, flex: 1 }}>
+                <Stack direction="row" spacing={2} alignItems="center">
+                  {isRoleRoom ? (
+                    <RoleRoomBrandMark appearance="header" showLabel={false} sx={{ width: { xs: 124, md: 152 }, flexShrink: 0 }} />
+                  ) : (
+                    <Box
+                      sx={{
+                        width: 64,
+                        height: 64,
+                        borderRadius: '14px',
+                        background: brand.iconGradient,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Gavel sx={{ fontSize: 32, color: 'white' }} />
+                    </Box>
+                  )}
+                  <Box sx={{ minWidth: 0 }}>
+                    <Typography
+                      sx={{
+                        color: isRoleRoom ? 'rgba(148,163,184,0.92)' : '#9a3412',
+                        fontSize: '0.76rem',
+                        fontWeight: 800,
+                        letterSpacing: '0.12em',
+                        textTransform: 'uppercase',
+                      }}
+                    >
+                      Juridisk informasjon
+                    </Typography>
+                    <Typography variant="h3" sx={{ fontWeight: 800, color: isRoleRoom ? '#f8fafc' : '#1f2937', ...theming.colors }}>
+                      {brand.appName} · Vilkår og betingelser
+                    </Typography>
+                    <Typography variant="body1" sx={{ color: mutedColor, mt: 1 }}>
+                      {brand.subtitle} · Sist oppdatert: 6. april 2026
+                    </Typography>
+                  </Box>
+                </Stack>
+
+                <Typography
+                  variant="body1"
+                  sx={{
+                    maxWidth: 780,
+                    color: bodyColor,
+                    lineHeight: 1.8,
+                    fontSize: { xs: '0.95rem', md: '1rem' },
+                  }}
+                >
+                  {brand.intro}
+                </Typography>
+
+                <Stack direction="row" spacing={1.2} flexWrap="wrap">
+                  <Chip icon={<Gavel />} label="Juridisk bindende" variant="outlined" sx={{ borderColor: brand.accentBorder, color: isRoleRoom ? '#f8fafc' : undefined }} />
+                  <Chip icon={<Security />} label="Norsk lovgivning" variant="outlined" sx={{ borderColor: brand.accentBorder, color: isRoleRoom ? '#f8fafc' : undefined }} />
+                  <Chip icon={<Info />} label="Oppdatert for abonnement, Google og AI" variant="outlined" sx={{ borderColor: brand.accentBorder, color: isRoleRoom ? '#f8fafc' : undefined }} />
+                </Stack>
+              </Stack>
+
+              <Paper
+                sx={{
+                  minWidth: { xs: '100%', lg: 300 },
+                  maxWidth: 360,
+                  p: 2.2,
+                  borderRadius: '16px',
+                  bgcolor: isRoleRoom ? 'rgba(8,15,28,0.72)' : 'rgba(255,255,255,0.72)',
+                  border: `1px solid ${brand.accentBorder}`,
+                  boxShadow: isRoleRoom ? '0 18px 44px rgba(2,8,23,0.36)' : '0 18px 44px rgba(217,119,6,0.12)',
+                  backdropFilter: 'blur(18px)',
+                }}
+              >
+                <Typography sx={{ color: brand.accent, fontWeight: 800, mb: 1.2 }}>
+                  Hurtigvalg
+                </Typography>
+                <Typography variant="body2" sx={{ color: bodyColor, lineHeight: 1.7, mb: 2 }}>
+                  Gå tilbake til forsiden, kontakt support eller hopp direkte til personvernerklæringen.
+                </Typography>
+                <Stack spacing={1.1}>
+                  <Button variant="contained" href={`mailto:${brand.supportEmail}`} startIcon={<ContactMail />} sx={{ ...theming.getThemedButtonSx(), background: brand.iconGradient }}>
+                    Kontakt support
+                  </Button>
+                  <Button variant="outlined" onClick={() => setLocation('/')}>
+                    Tilbake til forsiden
+                  </Button>
+                  <Button variant="text" href="/privacy-policy" sx={{ color: brand.accent }}>
+                    Personvernerklæring
+                  </Button>
+                </Stack>
+              </Paper>
+            </Stack>
           </Box>
-
-          <Divider sx={{ my: 3, borderColor: brand.accentBorder }} />
-
-          <Stack direction="row" spacing={2} flexWrap="wrap">
-            <Chip icon={<Gavel />} label="Juridisk bindende" variant="outlined" sx={{ borderColor: brand.accentBorder, color: isRoleRoom ? '#f8fafc' : undefined }} />
-            <Chip icon={<Security />} label="Norsk lovgivning" variant="outlined" sx={{ borderColor: brand.accentBorder, color: isRoleRoom ? '#f8fafc' : undefined }} />
-            <Chip icon={<Info />} label="Oppdatert for abonnement, Google og AI" variant="outlined" sx={{ borderColor: brand.accentBorder, color: isRoleRoom ? '#f8fafc' : undefined }} />
-          </Stack>
         </Paper>
 
         <Paper elevation={3} sx={surfaceSx}>

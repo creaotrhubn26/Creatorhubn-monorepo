@@ -831,6 +831,12 @@ export function CastingPlannerPanel({
     },
   }), [branding.tokens.labels]);
   
+  type StoryArcView = 'main' | 'story-logic' | 'story-writer' | 'shot-list' | 'planning';
+  type RoleRoomWorkspaceState = {
+    projectId: string | null;
+    activeTab: number;
+    storyArcView: StoryArcView;
+  };
   const [activeTab, setActiveTab] = useState(0);
   const [lastNonLiveTab, setLastNonLiveTab] = useState(0);
   const [isBrowserFullscreen, setIsBrowserFullscreen] = useState<boolean>(() => (
@@ -838,7 +844,6 @@ export function CastingPlannerPanel({
   ));
   const [teamDashboardOpenSignal, setTeamDashboardOpenSignal] = useState(0);
   const [teamDashboardDefaultSegment, setTeamDashboardDefaultSegment] = useState<'all' | 'technical'>('all');
-  type StoryArcView = 'main' | 'story-logic' | 'story-writer' | 'shot-list' | 'planning';
   const [storyArcView, setStoryArcView] = useState<StoryArcView>('main');
   const [selectionPhaseFilter, setSelectionPhaseFilter] = useState<SelectionPhaseFilter>('screening');
   const [selectedSelectionCandidateId, setSelectedSelectionCandidateId] = useState<string | null>(null);
@@ -923,6 +928,7 @@ export function CastingPlannerPanel({
   // Ref to track current project ID for stale response detection
   const currentProjectIdRef = useRef<string | null>(null);
   const currentProjectRef = useRef<CastingProject | null>(null);
+  const persistedWorkspaceStateRef = useRef<RoleRoomWorkspaceState | null>(null);
   const projectSwitchInFlightRef = useRef<string | null>(null);
   const projectSwitchTraceRef = useRef<{
     fromProjectId: string | null;
@@ -1071,6 +1077,13 @@ export function CastingPlannerPanel({
     return 'default-user';
   }, []);
 
+  const getSettingsUserId = useCallback((): string => {
+    if (adminUser?.id !== undefined && adminUser?.id !== null) {
+      return String(adminUser.id);
+    }
+    return getUserId();
+  }, [adminUser?.id, getUserId]);
+
   useEffect(() => {
     if (typeof window === 'undefined') {
       return;
@@ -1167,12 +1180,8 @@ export function CastingPlannerPanel({
     let cancelled = false;
 
     const loadPinnedProjects = async () => {
-      const userId = adminUser?.id !== undefined && adminUser?.id !== null
-        ? String(adminUser.id)
-        : getUserId();
-
       try {
-        const stored = await settingsService.getSetting<string[]>(pinnedProjectsNamespace, { userId });
+        const stored = await settingsService.getSetting<string[]>(pinnedProjectsNamespace, { userId: getSettingsUserId() });
         if (!cancelled) {
           setPinnedProjectIds(Array.isArray(stored) ? stored.filter((value): value is string => typeof value === 'string' && value.trim().length > 0) : []);
         }
@@ -1189,7 +1198,7 @@ export function CastingPlannerPanel({
     return () => {
       cancelled = true;
     };
-  }, [adminUser?.id, getUserId]);
+  }, [getSettingsUserId]);
 
   // Preload lazily-rendered dialog modules after initial mount so first open
   // does not suspend during a synchronous user interaction.
@@ -1806,17 +1815,14 @@ export function CastingPlannerPanel({
   }, [pinnedProjectIds]);
 
   const persistPinnedProjects = useCallback(async (nextPinnedProjectIds: string[]) => {
-    const userId = adminUser?.id !== undefined && adminUser?.id !== null
-      ? String(adminUser.id)
-      : getUserId();
     const sanitized = nextPinnedProjectIds.filter((value, index, array) => value && array.indexOf(value) === index);
     setPinnedProjectIds(sanitized);
     try {
-      await settingsService.setSetting(pinnedProjectsNamespace, sanitized, { userId });
+      await settingsService.setSetting(pinnedProjectsNamespace, sanitized, { userId: getSettingsUserId() });
     } catch (error) {
       console.warn('Failed to persist pinned projects:', error);
     }
-  }, [adminUser?.id, getUserId]);
+  }, [getSettingsUserId]);
 
   const handleTogglePinnedProject = useCallback(async (projectId: string) => {
     const nextPinnedProjectIds = pinnedProjectIdSet.has(projectId)
@@ -2074,8 +2080,13 @@ export function CastingPlannerPanel({
     : isContentProducerMode
       ? 'Innholdsprodusent-workspace'
       : 'Produksjonsteam-workspace';
+  const headerBrandDisplaySubtitle = isClientReviewerMode
+    ? 'Klientrom'
+    : isContentProducerMode
+      ? 'Innholdsprodusent'
+      : 'Produksjonsteam';
   const headerOpenProjectsButtonLabel = useDenseDesktopHeader ? 'Prosjekter' : 'Åpne prosjekter';
-  const headerCopyButtonLabel = useDenseDesktopHeader ? 'Kopi' : 'Lag kopi';
+  const headerWorkspaceActionLabel = useFocusedWorkspaceHeader ? 'Prosjekter' : headerOpenProjectsButtonLabel;
   const headerProjectMetaHint = useDenseDesktopHeader
     ? 'Klikk for å bytte prosjekt'
     : 'Klikk for å bytte eller åpne eksisterende prosjekt';
@@ -2099,6 +2110,60 @@ export function CastingPlannerPanel({
       .map((part) => part[0]?.toUpperCase() || '')
       .join('') || 'RR';
   }, [adminUser?.display_name, adminUser?.email, branding.appName]);
+  const roleRoomWorkspaceStateNamespace = isClientReviewerMode
+    ? 'roleRoom_workspaceState_client_reviewer'
+    : isContentProducerMode
+      ? 'roleRoom_workspaceState_content_producer'
+      : 'roleRoom_workspaceState_production_team';
+  const loadPersistedWorkspaceState = useCallback(async (): Promise<RoleRoomWorkspaceState | null> => {
+    try {
+      const stored = await settingsService.getSetting<RoleRoomWorkspaceState>(roleRoomWorkspaceStateNamespace, {
+        userId: getSettingsUserId(),
+      });
+      if (!stored || typeof stored !== 'object') {
+        return null;
+      }
+      const nextStoryArcView = stored.storyArcView;
+      const storyArcViewValid = nextStoryArcView === 'main'
+        || nextStoryArcView === 'story-logic'
+        || nextStoryArcView === 'story-writer'
+        || nextStoryArcView === 'shot-list'
+        || nextStoryArcView === 'planning';
+      return {
+        projectId: typeof stored.projectId === 'string' && stored.projectId.trim().length > 0
+          ? stored.projectId
+          : null,
+        activeTab: Number.isFinite(stored.activeTab) ? stored.activeTab : 0,
+        storyArcView: storyArcViewValid ? nextStoryArcView : 'main',
+      };
+    } catch (error) {
+      console.warn('Failed to load persisted Role Room workspace state:', error);
+      return null;
+    }
+  }, [getSettingsUserId, roleRoomWorkspaceStateNamespace]);
+  useEffect(() => {
+    if (!authLoaded || !adminUser) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const hydrateWorkspaceState = async () => {
+      const stored = await loadPersistedWorkspaceState();
+      if (cancelled || !stored) {
+        return;
+      }
+      persistedWorkspaceStateRef.current = stored;
+      setStoryArcView(stored.storyArcView);
+      setActiveTab(stored.activeTab);
+    };
+
+    void hydrateWorkspaceState();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [adminUser, authLoaded, loadPersistedWorkspaceState]);
   const currentProjectTeamMembers = useMemo(() => {
     const deduped = new Set<string>();
     return (currentProject?.crew ?? [])
@@ -2441,6 +2506,37 @@ export function CastingPlannerPanel({
   const displayedActiveTab = visibleTabValues.includes(activeTab)
     ? activeTab
     : (visibleTabValues[0] ?? 0);
+
+  useEffect(() => {
+    if (!authLoaded || !adminUser) {
+      return;
+    }
+
+    const nextState: RoleRoomWorkspaceState = {
+      projectId: currentProject && !isContentProducerDemoProject(currentProject)
+        ? currentProject.id
+        : null,
+      activeTab: displayedActiveTab,
+      storyArcView: displayedActiveTab === STORY_ARC_TAB_INDEX ? storyArcView : 'main',
+    };
+    persistedWorkspaceStateRef.current = nextState;
+
+    void settingsService
+      .setSetting(roleRoomWorkspaceStateNamespace, nextState, { userId: getSettingsUserId() })
+      .catch((error) => {
+        console.warn('Failed to persist Role Room workspace state:', error);
+      });
+  }, [
+    adminUser,
+    authLoaded,
+    currentProject,
+    displayedActiveTab,
+    getSettingsUserId,
+    isContentProducerDemoProject,
+    roleRoomWorkspaceStateNamespace,
+    storyArcView,
+  ]);
+
   const clientPortalTargetTab = useMemo(() => {
     if (!clientPortalIntent) {
       return null;
@@ -2506,8 +2602,8 @@ export function CastingPlannerPanel({
     projects,
   ]);
 
-  // Producer workspace sessions must not stick to TROLL from previous state/session.
-  // Enforce a role-safe project selection and auto-initialize the producer demo if needed.
+  // Producer workspace sessions must not auto-select the demo project.
+  // Demo stays an explicit choice in the project selector only.
   useEffect(() => {
     if (!isProducerWorkspaceSession) return;
 
@@ -2522,15 +2618,25 @@ export function CastingPlannerPanel({
         setProjects(loadedProjects);
 
         const activeProject = currentProjectRef.current;
-        const hasValidCurrentProject = Boolean(activeProject && !isTrollProject(activeProject));
+        const hasValidCurrentProject = Boolean(
+          activeProject
+          && !isTrollProject(activeProject)
+          && !isContentProducerDemoProject(activeProject),
+        );
         if (hasValidCurrentProject) {
           return;
         }
 
-        const preferredProject =
-          loadedProjects.find((project) => isContentProducerDemoProject(project)) ||
-          loadedProjects[0] ||
-          null;
+        const persistedWorkspaceState = persistedWorkspaceStateRef.current ?? await loadPersistedWorkspaceState();
+        if (persistedWorkspaceState) {
+          persistedWorkspaceStateRef.current = persistedWorkspaceState;
+        }
+
+        const preferredProject = (
+          persistedWorkspaceState?.projectId
+            ? loadedProjects.find((project) => project.id === persistedWorkspaceState.projectId)
+            : null
+        ) ?? loadedProjects.find((project) => !isContentProducerDemoProject(project)) ?? null;
 
         setCurrentProject((previous) => {
           if ((previous?.id ?? null) === (preferredProject?.id ?? null)) {
@@ -2553,6 +2659,7 @@ export function CastingPlannerPanel({
     isContentProducerDemoProject,
     isProducerWorkspaceSession,
     isTrollProject,
+    loadPersistedWorkspaceState,
   ]);
 
   useEffect(() => {
@@ -2592,9 +2699,9 @@ export function CastingPlannerPanel({
   const roleDialogBackdrop = `url(${rolesBackdrop4})`;
   const standaloneRoleRoomMode = shouldUseRoleRoomLocalFallback();
   const currentRoleRoomProfessionNamespace = 'roleRoom_castingProfession';
-const legacyRoleRoomProfessionNamespace = 'virtualStudio_castingProfession';
-const pinnedProjectsNamespace = 'roleRoom_pinnedProjects';
-const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
+  const legacyRoleRoomProfessionNamespace = 'virtualStudio_castingProfession';
+  const pinnedProjectsNamespace = 'roleRoom_pinnedProjects';
+  const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
 
   // Load profession from API or settings cache
   const loadProfession = useCallback(async (): Promise<'photographer' | 'videographer' | null> => {
@@ -3100,6 +3207,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
 
   useEffect(() => {
     if (!authLoaded || adminUser) return;
+    persistedWorkspaceStateRef.current = null;
     setCurrentProject(null);
     setProjects([]);
     setProjectSelectorOpen(false);
@@ -3829,17 +3937,30 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
       setPublishedTemplates(rawProjects.filter((project) => castingService.isTemplateProject(project)));
       const loadedProjects = filterProjectsForSession(rawProjects);
       setProjects(loadedProjects);
+      const persistedWorkspaceState = persistedWorkspaceStateRef.current ?? await loadPersistedWorkspaceState();
+      if (persistedWorkspaceState) {
+        persistedWorkspaceStateRef.current = persistedWorkspaceState;
+      }
       
       // If we have a current project already selected, refresh its data
       // Otherwise, DON'T auto-select - let user choose from the project selector
-      const projectIdToLoad = currentProjectRef.current?.id;
+      const activeProjectId = currentProjectRef.current?.id;
+      const projectIdToLoad = isProducerWorkspaceSession
+        ? (
+            activeProjectId && currentProjectRef.current && !isContentProducerDemoProject(currentProjectRef.current)
+              ? activeProjectId
+              : persistedWorkspaceState?.projectId ?? null
+          )
+        : activeProjectId;
       
       if (loadedProjects.length > 0 && projectIdToLoad) {
         // Only refresh data if user already selected a project
         const targetProject = loadedProjects.find(p => p.id === projectIdToLoad);
         const resolvedTargetProject =
-          targetProject && !isProducerWorkspaceSession && isContentProducerDemoProject(targetProject)
-            ? loadedProjects.find((project) => !isContentProducerDemoProject(project)) ?? targetProject
+          targetProject && isProducerWorkspaceSession && isContentProducerDemoProject(targetProject)
+            ? loadedProjects.find((project) => !isContentProducerDemoProject(project)) ?? null
+            : targetProject && !isProducerWorkspaceSession && isContentProducerDemoProject(targetProject)
+              ? loadedProjects.find((project) => !isContentProducerDemoProject(project)) ?? targetProject
             : targetProject;
         
         if (resolvedTargetProject) {
@@ -3854,16 +3975,13 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
           // Current project is no longer visible in this session (e.g. content producer + TROLL),
           // switch to the best available project instead of keeping stale state.
           const preferredProject = isProducerWorkspaceSession
-            ? loadedProjects.find((project) => String(project.id || '').trim().toLowerCase() === castingService.getContentProducerDemoProjectId())
+            ? loadedProjects.find((project) => !isContentProducerDemoProject(project)) ?? null
             : loadedProjects[0];
-          setCurrentProject(preferredProject ?? loadedProjects[0] ?? null);
+          setCurrentProject(preferredProject ?? null);
         }
       } else if (loadedProjects.length > 0 && !projectIdToLoad && isProducerWorkspaceSession) {
-        // In producer-workspace mode we select the producer demo automatically when no project is active.
-        const preferredProject = loadedProjects.find(
-          (project) => String(project.id || '').trim().toLowerCase() === castingService.getContentProducerDemoProjectId()
-        );
-        setCurrentProject(preferredProject ?? loadedProjects[0]);
+        const preferredProject = loadedProjects.find((project) => !isContentProducerDemoProject(project)) ?? null;
+        setCurrentProject(preferredProject);
       } else if (loadedProjects.length > 0 && !projectIdToLoad && !isProducerWorkspaceSession) {
         const preferredProject =
           loadedProjects.find((project) => isTrollProject(project)) ??
@@ -3903,17 +4021,29 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
         const loadedProjects = filterProjectsForSession(rawProjects);
         setProjects(loadedProjects);
         if (loadedProjects.length > 0) {
+          const persistedWorkspaceState = persistedWorkspaceStateRef.current ?? await loadPersistedWorkspaceState();
+          if (persistedWorkspaceState) {
+            persistedWorkspaceStateRef.current = persistedWorkspaceState;
+          }
           // Maintain current project if possible, otherwise choose a role-aware fallback.
           const roleAwareFallback = isProducerWorkspaceSession
-            ? loadedProjects.find((project) => String(project.id || '').trim().toLowerCase() === castingService.getContentProducerDemoProjectId())
+            ? loadedProjects.find((project) => !isContentProducerDemoProject(project)) ?? null
             : loadedProjects[0];
-          const activeProjectId = currentProjectRef.current?.id;
+          const activeProjectId = isProducerWorkspaceSession
+            ? (
+                currentProjectRef.current && !isContentProducerDemoProject(currentProjectRef.current)
+                  ? currentProjectRef.current.id
+                  : persistedWorkspaceState?.projectId ?? null
+              )
+            : currentProjectRef.current?.id;
           const targetProject = activeProjectId
             ? loadedProjects.find(p => p.id === activeProjectId) || roleAwareFallback || loadedProjects[0]
             : roleAwareFallback || loadedProjects[0];
           const resolvedTargetProject =
-            targetProject && !isProducerWorkspaceSession && isContentProducerDemoProject(targetProject)
-              ? loadedProjects.find((project) => !isContentProducerDemoProject(project)) ?? targetProject
+            targetProject && isProducerWorkspaceSession && isContentProducerDemoProject(targetProject)
+              ? loadedProjects.find((project) => !isContentProducerDemoProject(project)) ?? null
+              : targetProject && !isProducerWorkspaceSession && isContentProducerDemoProject(targetProject)
+                ? loadedProjects.find((project) => !isContentProducerDemoProject(project)) ?? targetProject
               : targetProject;
           setCurrentProject(resolvedTargetProject ?? null);
         } else {
@@ -3925,7 +4055,14 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
         setCurrentProject(null);
       }
     }
-  }, [profession, filterProjectsForSession, isProducerWorkspaceSession]);
+  }, [
+    filterProjectsForSession,
+    isContentProducerDemoProject,
+    isProducerWorkspaceSession,
+    isTrollProject,
+    loadPersistedWorkspaceState,
+    profession,
+  ]);
 
   const handleQuickContactsChange = useCallback((ids: string[]) => {
     startTransition(() => {
@@ -6014,16 +6151,16 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                 appearance="header"
                 showLabel={false}
                 sx={{
-                  width: useDenseDesktopHeader ? { md: 108, lg: 118, xl: 126 } : { md: 120, lg: 134, xl: 150 },
+                  width: useDenseDesktopHeader ? { md: 104, lg: 114, xl: 122 } : { md: 112, lg: 124, xl: 136 },
                   flexShrink: 0,
-                  opacity: 0.96,
+                  opacity: 0.94,
                 }}
               />
               <Box sx={{ minWidth: 0, display: useDenseDesktopHeader ? 'none' : { xs: 'none', lg: 'block' } }}>
                 <Typography
                   sx={{
                     color: '#f8fafc',
-                    fontSize: { lg: '0.96rem', xl: '1rem' },
+                    fontSize: { lg: '0.92rem', xl: '0.96rem' },
                     fontWeight: 800,
                     lineHeight: 1.05,
                     letterSpacing: '-0.01em',
@@ -6036,14 +6173,14 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                   sx={{
                     mt: 0.25,
                     color: 'rgba(148,163,184,0.88)',
-                    fontSize: { lg: '0.68rem', xl: '0.72rem' },
+                    fontSize: { lg: '0.7rem', xl: '0.74rem' },
                     fontWeight: 700,
-                    letterSpacing: '0.12em',
-                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                    textTransform: 'none',
                     whiteSpace: 'nowrap',
                   }}
                 >
-                  {headerBrandSubtitle}
+                  {headerBrandDisplaySubtitle}
                 </Typography>
               </Box>
             </Box>
@@ -6180,7 +6317,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
           <Box
             sx={{
               display: 'flex',
-              alignItems: 'stretch',
+              alignItems: useFocusedWorkspaceHeader ? 'center' : 'stretch',
               gap: useDenseDesktopHeader ? 0.75 : { xs: 0.75, sm: 1 },
               flex: useCompactHeaderLayout ? '1 1 100%' : 1,
               minWidth: 0,
@@ -6213,19 +6350,21 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                   sx={{
                     flex: '1 1 auto',
                     minWidth: 0,
+                    maxWidth: { md: 520, lg: 600, xl: 680 },
                     display: 'grid',
-                    gridTemplateColumns: { md: 'minmax(0, 1fr)', xl: 'minmax(0, 1fr) auto' },
+                    gridTemplateColumns: 'minmax(0, 1fr)',
                     gap: useDenseDesktopHeader ? 0.85 : 1.1,
                     alignItems: 'center',
-                    px: useDenseDesktopHeader ? { md: 1.05, lg: 1.2 } : { md: 1.3, lg: 1.55 },
-                    py: useDenseDesktopHeader ? { md: 0.76, lg: 0.84 } : { md: 0.95, lg: 1.05 },
-                    borderRadius: { md: 2.25, lg: 2.5 },
+                    px: useDenseDesktopHeader ? { md: 1, lg: 1.15 } : { md: 1.15, lg: 1.35 },
+                    py: useDenseDesktopHeader ? { md: 0.68, lg: 0.78 } : { md: 0.8, lg: 0.92 },
+                    minHeight: { md: 54, lg: 58 },
+                    borderRadius: { md: 2, lg: 2.25 },
                     border: headerActiveProject ? '1px solid rgba(34,211,238,0.28)' : '1px solid rgba(255,255,255,0.08)',
                     background: headerActiveProject
-                      ? 'linear-gradient(135deg, rgba(8,47,73,0.42) 0%, rgba(17,24,39,0.82) 100%)'
+                      ? 'linear-gradient(135deg, rgba(8,47,73,0.34) 0%, rgba(17,24,39,0.78) 100%)'
                       : 'rgba(255,255,255,0.03)',
                     boxShadow: headerActiveProject
-                      ? '0 10px 26px rgba(0,0,0,0.24), inset 0 1px 0 rgba(255,255,255,0.06)'
+                      ? '0 8px 20px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.05)'
                       : 'inset 0 1px 0 rgba(255,255,255,0.03)',
                     cursor: 'pointer',
                     transition: 'border-color 0.2s ease, background-color 0.2s ease, transform 0.2s ease',
@@ -6254,7 +6393,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                       <Typography
                         sx={{
                           color: '#f8fafc',
-                          fontSize: useDenseDesktopHeader ? { md: '0.88rem', lg: '0.96rem', xl: '1rem' } : { md: '0.96rem', lg: '1.04rem', xl: '1.08rem' },
+                          fontSize: useDenseDesktopHeader ? { md: '0.84rem', lg: '0.9rem', xl: '0.96rem' } : { md: '0.9rem', lg: '0.98rem', xl: '1.02rem' },
                           fontWeight: 800,
                           lineHeight: 1.1,
                           minWidth: 0,
@@ -6270,15 +6409,15 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                           size="small"
                           label={PRODUCER_PROJECT_STATUS_LABELS[headerActiveProject.producerWorkflowStatus] || 'Klar for arbeid'}
                           sx={{
-                            height: 22,
+                            height: 20,
                             bgcolor: 'rgba(246,195,88,0.12)',
                             color: '#fcd34d',
                             border: '1px solid rgba(246,195,88,0.22)',
-                            fontSize: '0.66rem',
+                            fontSize: '0.62rem',
                             fontWeight: 700,
-                            maxWidth: 180,
+                            maxWidth: 150,
                             '& .MuiChip-label': {
-                              px: 0.9,
+                              px: 0.75,
                               overflow: 'hidden',
                               textOverflow: 'ellipsis',
                             },
@@ -6302,9 +6441,9 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                     </Box>
                     <Typography
                       sx={{
-                        mt: useDenseDesktopHeader ? 0.28 : 0.45,
-                        color: 'rgba(226,232,240,0.68)',
-                        fontSize: useDenseDesktopHeader ? { md: '0.68rem', lg: '0.72rem' } : { md: '0.72rem', lg: '0.76rem' },
+                        mt: useDenseDesktopHeader ? 0.18 : 0.28,
+                        color: 'rgba(226,232,240,0.64)',
+                        fontSize: useDenseDesktopHeader ? { md: '0.64rem', lg: '0.68rem' } : { md: '0.68rem', lg: '0.72rem' },
                         fontWeight: 600,
                         lineHeight: 1.25,
                         whiteSpace: 'nowrap',
@@ -6324,27 +6463,6 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                     </Typography>
                   </Box>
 
-                  <Box
-                    sx={{
-                      display: { md: 'none', xl: 'flex' },
-                      alignItems: 'center',
-                      justifyContent: 'flex-end',
-                      minWidth: 0,
-                    }}
-                  >
-                    <Chip
-                      icon={<Folder sx={{ fontSize: 16, color: '#7dd3fc !important' }} />}
-                      label={headerActiveProject ? 'Åpne eksisterende prosjekter' : 'Åpne prosjekter'}
-                      sx={{
-                        height: 28,
-                        bgcolor: 'rgba(125,211,252,0.08)',
-                        color: '#dbeafe',
-                        border: '1px solid rgba(125,211,252,0.18)',
-                        fontSize: '0.7rem',
-                        fontWeight: 700,
-                      }}
-                    />
-                  </Box>
                 </Box>
 
                 <Button
@@ -6353,50 +6471,27 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                   startIcon={<FolderOpenIcon sx={{ fontSize: 18 }} />}
                   data-testid="role-room-open-projects"
                   sx={{
-                    minWidth: useDenseDesktopHeader ? { md: 112, lg: 122 } : { md: 146, lg: 158 },
-                    px: useDenseDesktopHeader ? { md: 1.05, lg: 1.2 } : { md: 1.3, lg: 1.55 },
-                    borderRadius: { md: 2.25, lg: 2.5 },
+                    minWidth: useDenseDesktopHeader ? { md: 108, lg: 116 } : { md: 122, lg: 132 },
+                    height: { md: 44, lg: 48 },
+                    px: useDenseDesktopHeader ? { md: 1, lg: 1.1 } : { md: 1.15, lg: 1.35 },
+                    borderRadius: { md: 2, lg: 2.25 },
                     border: '1px solid rgba(96,165,250,0.24)',
                     bgcolor: 'rgba(96,165,250,0.08)',
                     color: '#bfdbfe',
-                    fontSize: { md: '0.72rem', lg: '0.76rem' },
+                    fontSize: { md: '0.7rem', lg: '0.74rem' },
                     fontWeight: 700,
+                    textTransform: 'none',
                     whiteSpace: 'nowrap',
                     flexShrink: 0,
+                    alignSelf: 'center',
                     '&:hover': {
                       bgcolor: 'rgba(96,165,250,0.14)',
                       borderColor: 'rgba(96,165,250,0.4)',
                     },
                   }}
                 >
-                  {headerOpenProjectsButtonLabel}
+                  {headerWorkspaceActionLabel}
                 </Button>
-
-                {headerActiveProject && isProtectedDemoProject(headerActiveProject) && !canMutateProtectedDemoData ? (
-                  <Button
-                    size="small"
-                    onClick={() => { void handleCreateProjectCopy(headerActiveProject); }}
-                    startIcon={<ContentCopyIcon sx={{ fontSize: 18 }} />}
-                    sx={{
-                      minWidth: useDenseDesktopHeader ? { md: 98, lg: 108 } : { md: 124, lg: 138 },
-                      px: useDenseDesktopHeader ? { md: 1, lg: 1.15 } : { md: 1.2, lg: 1.45 },
-                      borderRadius: { md: 2.25, lg: 2.5 },
-                      border: '1px solid rgba(244,114,182,0.24)',
-                      bgcolor: 'rgba(244,114,182,0.08)',
-                      color: '#fbcfe8',
-                      fontSize: { md: '0.72rem', lg: '0.76rem' },
-                      fontWeight: 700,
-                      whiteSpace: 'nowrap',
-                      flexShrink: 0,
-                      '&:hover': {
-                        bgcolor: 'rgba(244,114,182,0.14)',
-                        borderColor: 'rgba(244,114,182,0.38)',
-                      },
-                    }}
-                  >
-                    {headerCopyButtonLabel}
-                  </Button>
-                ) : null}
 
                 {headerActiveProject ? (
                   <IconButton
@@ -6409,6 +6504,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                       width: projectChipActionSizePx,
                       height: projectChipActionSizePx,
                       minWidth: projectChipActionSizePx,
+                      alignSelf: 'center',
                       borderRadius: 1.5,
                       border: '1px solid rgba(255,255,255,0.08)',
                       bgcolor: 'rgba(255,255,255,0.04)',
@@ -6775,7 +6871,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
             ) : null}
           </Menu>
 
-          {!useCompactHeaderLayout ? <Box sx={{ flex: 1 }} /> : null}
+          {!useCompactHeaderLayout && !useFocusedWorkspaceHeader ? <Box sx={{ flex: 1 }} /> : null}
 
           {adminUser ? (
             <Box
@@ -6791,6 +6887,13 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                 overflowY: 'hidden',
                 scrollbarWidth: useCompactHeaderLayout ? 'thin' : 'auto',
                 pb: useCompactHeaderLayout ? 0.15 : 0,
+                px: useFocusedWorkspaceHeader && !useCompactHeaderLayout ? 0.6 : 0,
+                py: useFocusedWorkspaceHeader && !useCompactHeaderLayout ? 0.45 : 0,
+                borderRadius: useFocusedWorkspaceHeader && !useCompactHeaderLayout ? 2.25 : 0,
+                border: useFocusedWorkspaceHeader && !useCompactHeaderLayout ? '1px solid rgba(255,255,255,0.08)' : 'none',
+                background: useFocusedWorkspaceHeader && !useCompactHeaderLayout
+                  ? 'linear-gradient(135deg, rgba(255,255,255,0.035) 0%, rgba(15,23,42,0.28) 100%)'
+                  : 'transparent',
                 '&::-webkit-scrollbar': useCompactHeaderLayout ? { height: 4 } : undefined,
                 '&::-webkit-scrollbar-thumb': useCompactHeaderLayout
                   ? { backgroundColor: 'rgba(255,255,255,0.18)', borderRadius: 999 }
@@ -7508,86 +7611,6 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
           ) : (
           <ErrorBoundary>
           <Suspense fallback={<Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'rgba(255,255,255,0.87)' }}>{branding.tokens.labels.loadingLabel}</Box>}>
-          {!isMobile && isContentProducerMode && activeTab !== PRODUCER_MEDIA_TAB_INDEX && (
-          <Box
-            sx={{
-              px: { xs: 1.5, md: 2 },
-              pt: 1.5,
-              pb: 1,
-              borderBottom: '1px solid rgba(148,163,184,0.2)',
-              background: 'linear-gradient(90deg, rgba(30,41,59,0.32) 0%, rgba(2,6,23,0.2) 100%)',
-            }}
-          >
-            <Stack
-              direction={{ xs: 'column', md: 'row' }}
-              spacing={1}
-              alignItems={{ md: 'center' }}
-              justifyContent="space-between"
-              flexWrap="wrap"
-            >
-              <Typography sx={{ color: 'rgba(226,232,240,0.92)', fontWeight: 700 }}>
-                {`${producerWorkspaceBadgeLabel}-flyt`}
-              </Typography>
-              <Stack direction="row" spacing={1} flexWrap="wrap">
-                <Button
-                  size="small"
-                  variant="outlined"
-                  startIcon={<StoryArcIcon />}
-                  onClick={() => {
-                    navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'main' });
-                  }}
-                  sx={{ textTransform: 'none', fontWeight: 700 }}
-                >
-                  Storyboard
-                </Button>
-                <Button
-                  size="small"
-                  variant="outlined"
-                  startIcon={<StoryWriterIcon />}
-                  onClick={() => {
-                    navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'story-writer' });
-                  }}
-                  sx={{ textTransform: 'none', fontWeight: 700 }}
-                >
-                  Manus
-                </Button>
-                <Button
-                  size="small"
-                  variant="outlined"
-                  startIcon={<CalendarMonthIcon />}
-                  onClick={() => {
-                    navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'planning' });
-                  }}
-                  sx={{ textTransform: 'none', fontWeight: 700 }}
-                >
-                  The Role Room Planning
-                </Button>
-                <Button
-                  size="small"
-                  variant="outlined"
-                  startIcon={<ShotListIcon />}
-                  onClick={() => {
-                    navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'shot-list' });
-                  }}
-                  sx={{ textTransform: 'none', fontWeight: 700 }}
-                >
-                  Shotlist
-                </Button>
-                <Button
-                  size="small"
-                  variant="outlined"
-                  startIcon={<NotesIcon />}
-                  onClick={() => {
-                    navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'story-logic' });
-                  }}
-                  sx={{ textTransform: 'none', fontWeight: 700 }}
-                >
-                  Scene-notater
-                </Button>
-              </Stack>
-            </Stack>
-          </Box>
-        )}
         <TabPanel value={activeTab} index={0}>
           <DashboardPanel
             key={currentProject?.id ?? 'no-project'}
