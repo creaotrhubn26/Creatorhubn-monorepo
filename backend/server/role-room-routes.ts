@@ -18,6 +18,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { Readable } from 'stream';
 import multer from 'multer';
+import nodemailer from 'nodemailer';
 import QRCode from 'qrcode';
 import { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
@@ -242,6 +243,8 @@ interface RoleRoomClientInviteRow {
   expires_at: string | null;
   metadata: Record<string, unknown> | null;
 }
+
+type RoleRoomClientInviteAccessDuration = 'forever' | 'project_end';
 
 interface RoleRoomClientInviteTransferPayload {
   createdAt: number;
@@ -614,6 +617,7 @@ const ROLE_ROOM_CLIENT_PORTAL_WORKSPACES = [
   'meetings',
 ] as const;
 const ROLE_ROOM_CLIENT_PORTAL_TABS = ['media', 'reviews', 'export'] as const;
+const ROLE_ROOM_CLIENT_INVITE_DEFAULT_EXPIRES_IN_DAYS = 14;
 
 const roleRoomGoogleOauthStateStore = new Map<string, RoleRoomGoogleOauthState>();
 const roleRoomGoogleTransferStore = new Map<string, RoleRoomGoogleTransferPayload>();
@@ -632,6 +636,92 @@ function normalizeEmailValue(value: unknown): string | null {
 
 function readBooleanValue(value: unknown): boolean | null {
   return typeof value === 'boolean' ? value : null;
+}
+
+function normalizeRoleRoomClientInviteAccessDuration(
+  value: unknown,
+): RoleRoomClientInviteAccessDuration {
+  return readStringValue(value)?.trim().toLowerCase() === 'project_end'
+    ? 'project_end'
+    : 'forever';
+}
+
+function escapeRoleRoomClientInviteEmailHtml(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function replaceRoleRoomClientInviteVariables(
+  template: string,
+  variables: Record<string, string | null | undefined>,
+  mode: 'text' | 'html' = 'text',
+): string {
+  return template.replace(/\{\{([^}]+)\}\}/g, (_match, key) => {
+    const rawValue = variables[String(key).trim()] ?? '';
+    const resolved = String(rawValue);
+    return mode === 'html'
+      ? escapeRoleRoomClientInviteEmailHtml(resolved)
+      : resolved;
+  });
+}
+
+function renderRoleRoomClientInviteBodyHtml(body: string): string {
+  const paragraphs = body
+    .split(/\n{2,}/)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+
+  if (!paragraphs.length) {
+    return '';
+  }
+
+  return paragraphs
+    .map((paragraph) => (
+      `<p style="margin:0 0 16px;font-size:15px;line-height:1.75;color:#e8ecf4;white-space:pre-wrap">${escapeRoleRoomClientInviteEmailHtml(
+        paragraph,
+      )}</p>`
+    ))
+    .join('');
+}
+
+function formatRoleRoomClientInviteDateLabel(value: string | null | undefined): string | null {
+  const rawValue = readStringValue(value);
+  if (!rawValue) {
+    return null;
+  }
+
+  const parsed = Date.parse(rawValue);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+
+  return new Intl.DateTimeFormat('nb-NO', {
+    dateStyle: 'long',
+  }).format(new Date(parsed));
+}
+
+function normalizeRoleRoomProjectAccessExpiry(value: string | null | undefined): string | null {
+  const rawValue = readStringValue(value);
+  if (!rawValue) {
+    return null;
+  }
+
+  const dateOnlyMatch = rawValue.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateOnlyMatch) {
+    const [, year, month, day] = dateOnlyMatch;
+    return `${year}-${month}-${day}T23:59:59.999Z`;
+  }
+
+  const parsed = Date.parse(rawValue);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+
+  return new Date(parsed).toISOString();
 }
 
 function isRecordValue(value: unknown): value is Record<string, unknown> {
@@ -3414,6 +3504,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       `SELECT role
        FROM casting_user_roles
        WHERE project_id = $1
+         AND (expires_at IS NULL OR expires_at > NOW())
          AND (
            LOWER(COALESCE(email, '')) = LOWER($2)
            OR LOWER(COALESCE(user_id, '')) = LOWER($2)
@@ -3483,14 +3574,18 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     email: string,
     role: string,
     addedBy: string | null,
+    options?: {
+      expiresAt?: string | null;
+    },
   ): Promise<void> {
     await pool.query(
-      `INSERT INTO casting_user_roles (id, project_id, user_id, email, role, permissions, added_by)
-       VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)
+      `INSERT INTO casting_user_roles (id, project_id, user_id, email, role, permissions, added_by, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)
        ON CONFLICT (project_id, user_id) DO UPDATE SET
          email = EXCLUDED.email,
          role = EXCLUDED.role,
          permissions = EXCLUDED.permissions,
+         expires_at = EXCLUDED.expires_at,
          updated_at = NOW()`,
       [
         crypto.randomUUID(),
@@ -3500,6 +3595,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         role,
         JSON.stringify(buildProjectRolePermissions(role)),
         addedBy,
+        readStringValue(options?.expiresAt),
       ],
     );
   }
@@ -4058,7 +4154,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     const result = await pool.query(
       `SELECT role, permissions
        FROM casting_user_roles
-       WHERE project_id = $1 AND user_id = ANY($2::text[])
+       WHERE project_id = $1
+         AND user_id = ANY($2::text[])
+         AND (expires_at IS NULL OR expires_at > NOW())
        LIMIT 1`,
       [projectId, identifiers],
     );
@@ -4068,7 +4166,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       const fallbackResult = await pool.query(
         `SELECT role, permissions
          FROM casting_user_roles
-         WHERE project_id = '__global__' AND user_id = ANY($1::text[])
+         WHERE project_id = '__global__'
+           AND user_id = ANY($1::text[])
+           AND (expires_at IS NULL OR expires_at > NOW())
          LIMIT 1`,
         [identifiers],
       );
@@ -5093,6 +5193,162 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     return new URL(`/api/role-room/client/invites/${encodeURIComponent(options.inviteToken)}/activate`, origin).toString();
   }
 
+  function getRoleRoomClientInviteMailer() {
+    const user = normalizeEmailValue(
+      process.env.GMAIL_USER
+      ?? process.env.GOOGLE_WORKSPACE_EMAIL
+      ?? process.env.GOOGLE_ADMIN_EMAIL,
+    );
+    const password = readStringValue(process.env.GMAIL_APP_PASSWORD)?.replace(/\s+/g, '') ?? null;
+
+    if (!user || !password) {
+      return null;
+    }
+
+    return {
+      user,
+      transporter: nodemailer.createTransport({
+        service: 'gmail',
+        auth: {
+          user,
+          pass: password,
+        },
+      }),
+    };
+  }
+
+  async function sendRoleRoomClientInviteEmail(options: {
+    recipientEmail: string;
+    replyToEmail?: string | null;
+    subjectTemplate: string;
+    bodyTemplate: string;
+    inviteUrl: string;
+    projectName: string;
+    recipientName?: string | null;
+    companyName?: string | null;
+    senderName?: string | null;
+    accessDuration: RoleRoomClientInviteAccessDuration;
+    accessEndsAt?: string | null;
+    inviteExpiresAt?: string | null;
+  }) {
+    const mailer = getRoleRoomClientInviteMailer();
+    if (!mailer) {
+      return {
+        sent: false,
+        reason: 'missing_email_config',
+        provider: null as string | null,
+        messageId: null as string | null,
+        accepted: [] as string[],
+      };
+    }
+
+    const accessEndsAtLabel = formatRoleRoomClientInviteDateLabel(options.accessEndsAt);
+    const inviteExpiresAtLabel = formatRoleRoomClientInviteDateLabel(options.inviteExpiresAt);
+    const accessDurationLabel = options.accessDuration === 'project_end'
+      ? 'Til prosjektets slutt'
+      : 'For alltid';
+    const accessNote = options.accessDuration === 'project_end'
+      ? (accessEndsAtLabel
+        ? `Tilgangen varer til prosjektet avsluttes ${accessEndsAtLabel}.`
+        : 'Tilgangen varer til prosjektet avsluttes.')
+      : 'Tilgangen forblir aktiv til den blir endret eller fjernet av teamet.';
+    const variables = {
+      recipientName: readStringValue(options.recipientName) ?? 'der',
+      recipientEmail: options.recipientEmail,
+      projectName: options.projectName,
+      magicLink: options.inviteUrl,
+      companyName: readStringValue(options.companyName) ?? 'The Role Room',
+      senderName: readStringValue(options.senderName) ?? 'The Role Room-teamet',
+      accessDurationLabel,
+      accessEndsAt: accessEndsAtLabel ?? '',
+      accessNote,
+      inviteExpiresAt: inviteExpiresAtLabel ?? '',
+      inviteExpiresNote: inviteExpiresAtLabel
+        ? `Magic-linken er aktiv til ${inviteExpiresAtLabel}.`
+        : '',
+    };
+    const subject = replaceRoleRoomClientInviteVariables(options.subjectTemplate, variables, 'text');
+    const bodyText = replaceRoleRoomClientInviteVariables(options.bodyTemplate, variables, 'text');
+    const htmlBody = renderRoleRoomClientInviteBodyHtml(
+      replaceRoleRoomClientInviteVariables(options.bodyTemplate, variables, 'text'),
+    );
+    const replyToEmail = normalizeEmailValue(options.replyToEmail) ?? mailer.user;
+    const fromLabel = readStringValue(options.companyName) ?? 'The Role Room';
+    const accessHtml = options.accessDuration === 'project_end'
+      ? (accessEndsAtLabel
+        ? `Klienttilgangen er aktiv til <strong>${escapeRoleRoomClientInviteEmailHtml(accessEndsAtLabel)}</strong>.`
+        : 'Klienttilgangen er aktiv frem til prosjektets slutt.')
+      : 'Klienttilgangen er satt til <strong>for alltid</strong>.';
+    const inviteExpiryHtml = inviteExpiresAtLabel
+      ? `Magic-linken kan brukes frem til <strong>${escapeRoleRoomClientInviteEmailHtml(inviteExpiresAtLabel)}</strong>.`
+      : 'Magic-linken er klar til bruk med en gang.';
+    const html = `
+      <div style="margin:0;background:#0b1020;padding:32px 16px;font-family:Inter,Segoe UI,Arial,sans-serif;color:#e8ecf4">
+        <div style="max-width:640px;margin:0 auto;background:#111827;border:1px solid rgba(255,255,255,0.08);border-radius:24px;overflow:hidden">
+          <div style="padding:28px 28px 20px;background:linear-gradient(135deg,#1c2438 0%,#0f172a 100%)">
+            <div style="font-size:12px;letter-spacing:0.16em;text-transform:uppercase;color:#8dd3ff;font-weight:700;margin-bottom:12px">${escapeRoleRoomClientInviteEmailHtml(fromLabel)}</div>
+            <h1 style="margin:0;font-size:28px;line-height:1.15;color:#ffffff">Klientinvitasjon til ${escapeRoleRoomClientInviteEmailHtml(options.projectName)}</h1>
+          </div>
+          <div style="padding:28px">
+            ${htmlBody}
+            <div style="margin:0 0 18px;padding:18px;border-radius:18px;background:#0f172a;border:1px solid rgba(141,211,255,0.16);font-size:14px;line-height:1.7;color:#cbd5e1">
+              <div style="font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:#8dd3ff;font-weight:700;margin-bottom:10px">Tilgang og lenke</div>
+              <div style="margin-bottom:8px">${accessHtml}</div>
+              <div>${inviteExpiryHtml}</div>
+            </div>
+            <div style="margin:28px 0 0">
+              <a href="${escapeRoleRoomClientInviteEmailHtml(options.inviteUrl)}" style="display:inline-block;padding:14px 20px;border-radius:14px;background:#00d4ff;color:#031019;text-decoration:none;font-weight:800">Åpne klientportalen</a>
+            </div>
+            <div style="margin:18px 0 0;font-size:13px;line-height:1.7;color:#94a3b8;word-break:break-word">
+              Hvis knappen ikke virker, kan du bruke denne lenken direkte:<br />
+              <a href="${escapeRoleRoomClientInviteEmailHtml(options.inviteUrl)}" style="color:#93c5fd">${escapeRoleRoomClientInviteEmailHtml(options.inviteUrl)}</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    const text = [
+      bodyText,
+      '',
+      accessNote,
+      variables.inviteExpiresNote,
+      '',
+      `Åpne klientportalen: ${options.inviteUrl}`,
+    ]
+      .filter((entry) => typeof entry === 'string' && entry.trim().length > 0)
+      .join('\n');
+
+    try {
+      const info = await mailer.transporter.sendMail({
+        from: `${fromLabel} <${mailer.user}>`,
+        to: options.recipientEmail,
+        replyTo: replyToEmail,
+        subject,
+        text,
+        html,
+      });
+
+      return {
+        sent: true,
+        reason: null,
+        provider: 'smtp',
+        messageId: readStringValue(info.messageId),
+        accepted: Array.isArray(info.accepted)
+          ? info.accepted.map((value) => String(value))
+          : [],
+      };
+    } catch (error) {
+      console.error('Role Room client invite email send error:', error);
+      return {
+        sent: false,
+        reason: 'send_failed',
+        provider: 'smtp',
+        messageId: null,
+        accepted: [] as string[],
+      };
+    }
+  }
+
   function buildRoleRoomClientInvite(
     row: RoleRoomClientInviteRow,
     options?: {
@@ -5100,11 +5356,14 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     },
   ) {
     const metadata = readJsonObject(row.metadata);
+    const delivery = readRecordValue(metadata.delivery);
     return {
       id: row.id,
       email: normalizeEmailValue(row.email),
       status: readStringValue(row.status) ?? 'sent',
       expiresAt: readStringValue(row.expires_at),
+      accessDuration: normalizeRoleRoomClientInviteAccessDuration(metadata.accessDuration),
+      accessEndsAt: readStringValue(metadata.accessEndsAt),
       lastSentAt: readStringValue(row.last_sent_at),
       lastViewedAt: readStringValue(row.last_viewed_at),
       acceptedAt: readStringValue(row.accepted_at),
@@ -5118,8 +5377,23 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       artifactId: readStringValue(metadata.artifactId),
       recipientName: readStringValue(metadata.recipientName),
       message: readStringValue(metadata.message),
+      emailSubject: readStringValue(metadata.emailSubject),
+      emailBody: readStringValue(metadata.emailBody),
       createdAt: readStringValue(row.created_at),
       updatedAt: readStringValue(row.updated_at),
+      delivery: delivery
+        ? {
+            sent: readBooleanValue(delivery.sent) === true,
+            reason: readStringValue(delivery.reason),
+            provider: readStringValue(delivery.provider),
+            messageId: readStringValue(delivery.messageId),
+            accepted: Array.isArray(delivery.accepted)
+              ? delivery.accepted
+                .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+                .map((entry) => entry.trim())
+              : [],
+          }
+        : null,
     };
   }
 
@@ -10569,10 +10843,23 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         return;
       }
 
+      const projectResult = await pool.query<CastingProjectRow>(
+        `SELECT id, name, end_date, metadata
+           FROM casting_projects
+          WHERE id = $1
+          LIMIT 1`,
+        [projectId],
+      );
+      const projectRow = projectResult.rows[0] ?? null;
+      if (!projectRow) {
+        res.status(404).json({ error: 'Prosjekt ikke funnet' });
+        return;
+      }
+
       const requestedExpiresAt = readStringValue(req.body?.expiresAt);
       const fallbackDays = typeof req.body?.expiresInDays === 'number' && Number.isFinite(req.body.expiresInDays)
         ? Math.max(1, Math.min(30, Math.floor(req.body.expiresInDays)))
-        : 14;
+        : ROLE_ROOM_CLIENT_INVITE_DEFAULT_EXPIRES_IN_DAYS;
       const requestedExpiryTime = requestedExpiresAt ? Date.parse(requestedExpiresAt) : NaN;
       if (requestedExpiresAt && !Number.isFinite(requestedExpiryTime)) {
         res.status(400).json({ error: 'expiresAt er ugyldig' });
@@ -10580,12 +10867,29 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       }
 
       const recipientName = readStringValue(req.body?.recipientName);
+      const accessDuration = normalizeRoleRoomClientInviteAccessDuration(req.body?.accessDuration);
+      const sendEmail = readBooleanValue(req.body?.sendEmail) === true;
       const workspace = normalizeRoleRoomClientPortalWorkspace(req.body?.workspace);
       const tab = normalizeRoleRoomClientPortalTab(req.body?.tab);
       const sectionId = readStringValue(req.body?.sectionId);
       const pageId = readStringValue(req.body?.pageId);
       const reviewId = readStringValue(req.body?.reviewId);
       const artifactId = readStringValue(req.body?.artifactId);
+      const projectMetadata = readJsonObject(projectRow.metadata);
+      const accessEndsAt = accessDuration === 'project_end'
+        ? normalizeRoleRoomProjectAccessExpiry(
+          readStringValue(projectRow.end_date)
+          ?? readStringValue(projectMetadata.endDate)
+          ?? readStringValue(projectMetadata.end_date)
+          ?? readStringValue(projectMetadata.eventDate)
+          ?? readStringValue(projectMetadata.event_date),
+        )
+        : null;
+      if (accessDuration === 'project_end' && !accessEndsAt) {
+        res.status(400).json({ error: 'Prosjektet mangler sluttdato. Sett prosjektdato før du gir tilgang til prosjektets slutt.' });
+        return;
+      }
+
       const browserOrigin = sanitizeRoleRoomBrowserOrigin(req.body?.browserOrigin) ?? getRoleRoomRequestOrigin(req);
       const expiresAt = Number.isFinite(requestedExpiryTime)
         ? new Date(requestedExpiryTime).toISOString()
@@ -10594,11 +10898,33 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
       const inviteToken = buildRoleRoomClientInviteToken();
       const inviteId = makeId();
+      const emailSubject = readStringValue(req.body?.emailSubject)
+        ?? 'Invitasjon til {{projectName}} i The Role Room';
+      const emailBody = readStringValue(req.body?.emailBody)
+        ?? [
+          'Hei {{recipientName}},',
+          '',
+          'Du er invitert inn i The Role Room for prosjektet "{{projectName}}".',
+          'Klikk på lenken under for å åpne klientportalen direkte.',
+          '',
+          'Magic-link: {{magicLink}}',
+          '',
+          'Tilgang: {{accessDurationLabel}}',
+          '{{accessNote}}',
+          '{{inviteExpiresNote}}',
+          '',
+          'Hilsen',
+          '{{companyName}}',
+        ].join('\n');
       const inviteMetadata = {
         createdFrom: 'producer_portal',
         browserOrigin: browserOrigin ?? null,
         recipientName,
         message: readStringValue(req.body?.message),
+        emailSubject,
+        emailBody,
+        accessDuration,
+        accessEndsAt,
         tab,
         workspace,
         sectionId,
@@ -10606,6 +10932,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         reviewId,
         artifactId,
       };
+      const initialLastSentAt = null;
 
       await syncRoleRoomClientInviteContactToProject({
         projectId,
@@ -10618,13 +10945,14 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       await pool.query(
         `INSERT INTO role_room_client_invites (
           id, project_id, email, token_hash, status, created_by_user_id, last_sent_at, expires_at, metadata
-        ) VALUES ($1, $2, $3, $4, 'sent', $5, NOW(), $6, $7::jsonb)`,
+        ) VALUES ($1, $2, $3, $4, 'sent', $5, $6, $7, $8::jsonb)`,
         [
           inviteId,
           projectId,
           targetEmail,
           hashRoleRoomClientInviteToken(inviteToken),
           requestUser?.userId ?? null,
+          initialLastSentAt,
           expiresAt,
           JSON.stringify(inviteMetadata),
         ],
@@ -10634,6 +10962,59 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         inviteToken,
         browserOrigin,
       });
+      const senderName = requestUser?.email
+        ? requestUser.email.split('@')[0] || 'The Role Room-teamet'
+        : 'The Role Room-teamet';
+      let delivery:
+        | {
+            sent: boolean;
+            reason: string | null;
+            provider: string | null;
+            messageId: string | null;
+            accepted: string[];
+          }
+        | null = null;
+
+      if (sendEmail) {
+        delivery = await sendRoleRoomClientInviteEmail({
+          recipientEmail: targetEmail,
+          replyToEmail: requestUser?.email ?? null,
+          subjectTemplate: emailSubject,
+          bodyTemplate: emailBody,
+          inviteUrl,
+          projectName: readStringValue(projectRow.name) ?? projectId,
+          recipientName,
+          companyName: 'The Role Room',
+          senderName,
+          accessDuration,
+          accessEndsAt,
+          inviteExpiresAt: expiresAt,
+        });
+
+        await pool.query(
+          `UPDATE role_room_client_invites
+              SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb,
+                  last_sent_at = CASE WHEN $3 THEN NOW() ELSE last_sent_at END,
+                  updated_at = NOW()
+            WHERE id = $1`,
+          [
+            inviteId,
+            JSON.stringify({
+              delivery,
+            }),
+            delivery.sent === true,
+          ],
+        ).catch((error) => {
+          console.warn('Failed to persist Role Room client invite delivery metadata:', error);
+        });
+      } else {
+        await pool.query(
+          `UPDATE role_room_client_invites
+              SET updated_at = NOW()
+            WHERE id = $1`,
+          [inviteId],
+        ).catch(() => undefined);
+      }
 
       res.status(201).json({
         invite: {
@@ -10646,11 +11027,14 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
             created_by_user_id: requestUser?.userId ?? null,
             created_at: nowISO(),
             updated_at: nowISO(),
-            last_sent_at: nowISO(),
+            last_sent_at: delivery?.sent ? nowISO() : null,
             last_viewed_at: null,
             accepted_at: null,
             expires_at: expiresAt,
-            metadata: inviteMetadata,
+            metadata: {
+              ...inviteMetadata,
+              ...(delivery ? { delivery } : {}),
+            },
           } as RoleRoomClientInviteRow, {
             inviteUrl,
           }),
@@ -10710,6 +11094,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
 
       const inviteMetadata = readJsonObject(invite.metadata);
       const projectId = readStringValue(invite.project_id);
+      const accessEndsAt = readStringValue(inviteMetadata.accessEndsAt);
       if (!projectId || !(await ensureProjectAccess(projectId, { allowBootstrap: false }))) {
         res.status(404).send('Prosjektet som invitasjonen peker til finnes ikke lenger');
         return;
@@ -10734,6 +11119,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           ensuredUser.email,
           'client_reviewer',
           readStringValue(invite.created_by_user_id),
+          {
+            expiresAt: accessEndsAt,
+          },
         );
       }
 
@@ -11959,6 +12347,24 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           CREATE INDEX IF NOT EXISTS casting_projects_created_by_idx ON casting_projects (created_by);
           CREATE INDEX IF NOT EXISTS casting_projects_status_idx ON casting_projects (status);
           CREATE INDEX IF NOT EXISTS casting_projects_creatorhub_project_id_idx ON casting_projects (creatorhub_project_id);
+
+          CREATE TABLE IF NOT EXISTS casting_user_roles (
+            id VARCHAR(255) PRIMARY KEY NOT NULL,
+            project_id VARCHAR(255) NOT NULL REFERENCES casting_projects(id) ON DELETE CASCADE,
+            user_id VARCHAR(255) NOT NULL,
+            email VARCHAR(255),
+            role VARCHAR(50) NOT NULL,
+            permissions JSONB DEFAULT '{}'::jsonb,
+            added_by VARCHAR(255),
+            expires_at TIMESTAMPTZ,
+            created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+            updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+            UNIQUE(project_id, user_id)
+          );
+          ALTER TABLE casting_user_roles ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
+          CREATE INDEX IF NOT EXISTS casting_user_roles_user_id_idx ON casting_user_roles (user_id);
+          CREATE INDEX IF NOT EXISTS casting_user_roles_project_user_idx ON casting_user_roles (project_id, user_id);
+          CREATE INDEX IF NOT EXISTS casting_user_roles_expires_at_idx ON casting_user_roles (expires_at);
         `);
         return true;
       } catch (error) {

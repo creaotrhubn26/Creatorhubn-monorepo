@@ -200,6 +200,8 @@ export interface RoleRoomClientInvite {
   email?: string | null;
   status: string;
   expiresAt?: string | null;
+  accessDuration?: RoleRoomClientInviteAccessDuration | null;
+  accessEndsAt?: string | null;
   lastSentAt?: string | null;
   lastViewedAt?: string | null;
   acceptedAt?: string | null;
@@ -213,14 +215,27 @@ export interface RoleRoomClientInvite {
   artifactId?: string | null;
   recipientName?: string | null;
   message?: string | null;
+  emailSubject?: string | null;
+  emailBody?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
+  delivery?: {
+    sent: boolean;
+    reason?: string | null;
+    provider?: string | null;
+    messageId?: string | null;
+    accepted?: string[];
+  } | null;
 }
+
+export type RoleRoomClientInviteAccessDuration = 'forever' | 'project_end';
 
 export interface RoleRoomClientInviteCreateInput {
   email: string;
   recipientName?: string | null;
   message?: string | null;
+  emailSubject?: string | null;
+  emailBody?: string | null;
   browserOrigin?: string;
   workspace?: string;
   tab?: string;
@@ -228,6 +243,8 @@ export interface RoleRoomClientInviteCreateInput {
   pageId?: string | null;
   reviewId?: string | null;
   artifactId?: string | null;
+  accessDuration?: RoleRoomClientInviteAccessDuration;
+  sendEmail?: boolean;
   expiresAt?: string | null;
   expiresInDays?: number;
 }

@@ -90,7 +90,10 @@ import { apiRequest } from '@/lib/queryClient';
 import settingsService, { getCurrentUserId } from '../../services/settingsService';
 import { castingService } from '../../services/castingService';
 import { clientInvitesApi } from '../../services/castingApiService';
-import type { RoleRoomClientInvite } from '../../models/casting';
+import type {
+  RoleRoomClientInvite,
+  RoleRoomClientInviteAccessDuration,
+} from '../../models/casting';
 import {
   PRODUCER_DEMO_CLIENT_ADDRESS,
   PRODUCER_DEMO_CLIENT_COMPANY,
@@ -186,6 +189,17 @@ const focusVisibleStyles = {
     outlineOffset: '2px',
   },
 };
+
+const CLIENT_INVITE_TEMPLATE_TOKENS = [
+  '{{recipientName}}',
+  '{{projectName}}',
+  '{{magicLink}}',
+  '{{companyName}}',
+  '{{accessDurationLabel}}',
+  '{{accessEndsAt}}',
+  '{{accessNote}}',
+  '{{inviteExpiresNote}}',
+] as const;
 
 export default function NewProjectCreationModal({
   profession,
@@ -676,8 +690,11 @@ export default function NewProjectCreationModal({
   const [savedProjectIdForInvite, setSavedProjectIdForInvite] = useState<string | null>(null);
   const [clientInviteRecipientEmail, setClientInviteRecipientEmail] = useState('');
   const [clientInviteRecipientName, setClientInviteRecipientName] = useState('');
+  const [clientInviteSubjectDraft, setClientInviteSubjectDraft] = useState('');
+  const [clientInviteBodyDraft, setClientInviteBodyDraft] = useState('');
+  const [clientInviteAccessDuration, setClientInviteAccessDuration] = useState<RoleRoomClientInviteAccessDuration>('forever');
   const [generatedClientInvite, setGeneratedClientInvite] = useState<RoleRoomClientInvite | null>(null);
-  const [generatedClientInviteEmail, setGeneratedClientInviteEmail] = useState<string | null>(null);
+  const [generatedClientInviteSignature, setGeneratedClientInviteSignature] = useState<string | null>(null);
   const [clientInviteLoading, setClientInviteLoading] = useState(false);
   const [newCollaboratorEmail, setNewCollaboratorEmail] = useState('');
   const [newCollaboratorName, setNewCollaboratorName] = useState('');
@@ -891,45 +908,125 @@ export default function NewProjectCreationModal({
   const canPrepareClientInvite = useMemo(() => (
     isCastingPlanner &&
     Boolean(inviteProjectId) &&
-    clientInviteEmailIsValid
-  ), [clientInviteEmailIsValid, inviteProjectId, isCastingPlanner]);
+    clientInviteEmailIsValid &&
+    (
+      clientInviteAccessDuration !== 'project_end'
+      || Boolean(resolveClientInviteAccessEndLabel())
+    )
+  ), [
+    clientInviteAccessDuration,
+    clientInviteEmailIsValid,
+    inviteProjectId,
+    isCastingPlanner,
+    resolveClientInviteAccessEndLabel,
+  ]);
 
-  const clientInviteSubject = useMemo(() => (
-    `Invitasjon til ${projectData.projectName || 'prosjektet ditt'} i Role Room`
-  ), [projectData.projectName]);
+  const resolveClientInviteAccessEndLabel = useCallback(() => (
+    projectData.eventDate?.trim() || generatedClientInvite?.accessEndsAt || ''
+  ), [
+    generatedClientInvite?.accessEndsAt,
+    projectData.eventDate,
+  ]);
 
-  const buildClientInviteBody = useCallback((inviteUrlOverride?: string | null) => {
-    const greetingName = clientInviteRecipientName?.trim() || projectData.clientName?.trim() || 'hei';
-    const projectName = projectData.projectName?.trim() || 'prosjektet';
-    const inviteUrl = inviteUrlOverride || clientInviteUrl || '[magic-link mangler]';
-    const companyName = brandingSettings.companyName?.trim() || 'Role Room';
+  const buildDefaultClientInviteSubject = useCallback(() => (
+    'Invitasjon til {{projectName}} i The Role Room'
+  ), []);
+
+  const buildDefaultClientInviteBody = useCallback(() => {
+    const companyName = brandingSettings.companyName?.trim() || 'The Role Room';
 
     return [
-      `Hei ${greetingName},`,
+      'Hei {{recipientName}},',
       '',
-      `Du er invitert inn i Role Room for prosjektet "${projectName}".`,
-      'Klikk på magic-linken under, så blir du logget direkte inn som klient i prosjektet.',
+      'Du er invitert inn i The Role Room for prosjektet "{{projectName}}".',
+      'Klikk på magic-linken under for å åpne klientportalen direkte.',
       '',
-      'I klientflaten kan du:',
-      '- fylle ut brief',
-      '- laste opp materiale og referanser',
-      '- se godkjenninger og neste steg',
+      'Magic-link: {{magicLink}}',
       '',
-      `Åpne klientflaten her: ${inviteUrl}`,
+      'Tilgang: {{accessDurationLabel}}',
+      '{{accessNote}}',
+      '{{inviteExpiresNote}}',
       '',
       'Hilsen',
       companyName,
     ].join('\n');
+  }, [brandingSettings.companyName]);
+
+  const renderClientInviteTemplate = useCallback((template: string, inviteUrlOverride?: string | null) => {
+    const inviteUrl = inviteUrlOverride || clientInviteUrl || '[magic-link genereres når invitasjonen opprettes]';
+    const accessEndLabel = resolveClientInviteAccessEndLabel();
+    const accessDurationLabel = clientInviteAccessDuration === 'project_end'
+      ? 'Til prosjektets slutt'
+      : 'For alltid';
+    const accessNote = clientInviteAccessDuration === 'project_end'
+      ? (accessEndLabel
+        ? `Tilgangen varer til prosjektet avsluttes ${accessEndLabel}.`
+        : 'Tilgangen varer til prosjektet avsluttes når prosjektdato er satt.')
+      : 'Tilgangen forblir aktiv til den blir endret eller fjernet av teamet.';
+    const inviteExpiresNote = generatedClientInvite?.expiresAt
+      ? `Magic-linken kan brukes frem til ${generatedClientInvite.expiresAt.slice(0, 10)}.`
+      : 'Magic-linken opprettes når du kopierer eller sender invitasjonen.';
+
+    return template.replace(/\{\{([^}]+)\}\}/g, (_match, rawKey) => {
+      const key = String(rawKey).trim();
+      switch (key) {
+        case 'recipientName':
+          return clientInviteRecipientName?.trim() || projectData.clientName?.trim() || 'der';
+        case 'projectName':
+          return projectData.projectName?.trim() || 'prosjektet';
+        case 'magicLink':
+          return inviteUrl;
+        case 'companyName':
+          return brandingSettings.companyName?.trim() || 'The Role Room';
+        case 'accessDurationLabel':
+          return accessDurationLabel;
+        case 'accessEndsAt':
+          return accessEndLabel;
+        case 'accessNote':
+          return accessNote;
+        case 'inviteExpiresNote':
+          return inviteExpiresNote;
+        default:
+          return '';
+      }
+    });
   }, [
     brandingSettings.companyName,
+    clientInviteAccessDuration,
     clientInviteRecipientName,
     clientInviteUrl,
+    generatedClientInvite?.expiresAt,
     projectData.clientName,
     projectData.projectName,
+    resolveClientInviteAccessEndLabel,
   ]);
+
+  const clientInviteDraftSignature = useMemo(() => JSON.stringify({
+    email: normalizeInviteEmail(clientInviteRecipientEmail),
+    recipientName: clientInviteRecipientName.trim(),
+    subject: clientInviteSubjectDraft.trim(),
+    body: clientInviteBodyDraft.trim(),
+    accessDuration: clientInviteAccessDuration,
+  }), [
+    clientInviteAccessDuration,
+    clientInviteBodyDraft,
+    clientInviteRecipientEmail,
+    clientInviteRecipientName,
+    clientInviteSubjectDraft,
+  ]);
+
+  const clientInviteSubject = useMemo(
+    () => renderClientInviteTemplate(
+      clientInviteSubjectDraft || buildDefaultClientInviteSubject(),
+    ),
+    [buildDefaultClientInviteSubject, clientInviteSubjectDraft, renderClientInviteTemplate],
+  );
+
   const clientInviteBody = useMemo(
-    () => buildClientInviteBody(),
-    [buildClientInviteBody],
+    () => renderClientInviteTemplate(
+      clientInviteBodyDraft || buildDefaultClientInviteBody(),
+    ),
+    [buildDefaultClientInviteBody, clientInviteBodyDraft, renderClientInviteTemplate],
   );
 
   const createClientMagicInvite = useCallback(async (
@@ -937,6 +1034,7 @@ export default function NewProjectCreationModal({
     options?: {
       silent?: boolean;
       force?: boolean;
+      sendEmail?: boolean;
     },
   ): Promise<RoleRoomClientInvite | null> => {
     const targetEmail = normalizeInviteEmail(rawEmail ?? clientInviteRecipientEmail);
@@ -955,7 +1053,17 @@ export default function NewProjectCreationModal({
       return null;
     }
 
-    if (!options?.force && generatedClientInvite && generatedClientInviteEmail === targetEmail) {
+    if (
+      clientInviteAccessDuration === 'project_end'
+      && !resolveClientInviteAccessEndLabel()
+    ) {
+      if (!options?.silent) {
+        toast.showWarning('Prosjektet mangler sluttdato. Sett prosjektdato før du gir klienten tilgang til prosjektets slutt.');
+      }
+      return null;
+    }
+
+    if (!options?.force && generatedClientInvite && generatedClientInviteSignature === clientInviteDraftSignature) {
       return generatedClientInvite;
     }
 
@@ -964,12 +1072,28 @@ export default function NewProjectCreationModal({
       const response = await clientInvitesApi.create(inviteProjectId, {
         email: targetEmail,
         recipientName: clientInviteRecipientName?.trim() || projectData.clientName?.trim() || undefined,
+        emailSubject: clientInviteSubjectDraft.trim() || buildDefaultClientInviteSubject(),
+        emailBody: clientInviteBodyDraft.trim() || buildDefaultClientInviteBody(),
         browserOrigin: typeof window !== 'undefined' ? window.location.origin : undefined,
         workspace: 'brief',
         tab: 'media',
+        accessDuration: clientInviteAccessDuration,
+        sendEmail: options?.sendEmail === true,
       });
       setGeneratedClientInvite(response.invite);
-      setGeneratedClientInviteEmail(targetEmail);
+      setGeneratedClientInviteSignature(clientInviteDraftSignature);
+      if (options?.sendEmail) {
+        if (response.invite.delivery?.sent) {
+          toast.showSuccess('Klientinvitasjonen er sendt fra The Role Room.');
+        } else {
+          const deliveryReason = response.invite.delivery?.reason;
+          toast.showWarning(
+            deliveryReason === 'missing_email_config'
+              ? 'Invitasjonen ble opprettet, men systemet mangler e-postoppsett. Du kan fortsatt kopiere magic-linken.'
+              : 'Invitasjonen ble opprettet, men e-posten ble ikke sendt automatisk. Du kan fortsatt kopiere magic-linken.',
+          );
+        }
+      }
       return response.invite;
     } catch (error) {
       console.error('Failed to create client magic invite:', error);
@@ -983,10 +1107,17 @@ export default function NewProjectCreationModal({
   }, [
     clientInviteRecipientEmail,
     clientInviteRecipientName,
+    clientInviteAccessDuration,
+    clientInviteBodyDraft,
+    clientInviteDraftSignature,
+    clientInviteSubjectDraft,
+    buildDefaultClientInviteBody,
+    buildDefaultClientInviteSubject,
     generatedClientInvite,
-    generatedClientInviteEmail,
+    generatedClientInviteSignature,
     inviteProjectId,
     projectData.clientName,
+    resolveClientInviteAccessEndLabel,
     toast,
   ]);
 
@@ -999,12 +1130,32 @@ export default function NewProjectCreationModal({
     const defaultName = projectData.clientName || '';
     setClientInviteRecipientEmail(defaultEmail);
     setClientInviteRecipientName(defaultName);
+    setClientInviteSubjectDraft(buildDefaultClientInviteSubject());
+    setClientInviteBodyDraft(buildDefaultClientInviteBody());
+    setClientInviteAccessDuration('forever');
     setGeneratedClientInvite(null);
-    setGeneratedClientInviteEmail(null);
+    setGeneratedClientInviteSignature(null);
   }, [
+    buildDefaultClientInviteBody,
+    buildDefaultClientInviteSubject,
     clientInviteDialogOpen,
     projectData.clientEmail,
     projectData.clientName,
+  ]);
+
+  useEffect(() => {
+    if (!generatedClientInvite || !generatedClientInviteSignature) {
+      return;
+    }
+
+    if (generatedClientInviteSignature !== clientInviteDraftSignature) {
+      setGeneratedClientInvite(null);
+      setGeneratedClientInviteSignature(null);
+    }
+  }, [
+    clientInviteDraftSignature,
+    generatedClientInvite,
+    generatedClientInviteSignature,
   ]);
 
   const resetToFreshProjectDraft = () => {
@@ -1582,36 +1733,44 @@ export default function NewProjectCreationModal({
     if (!invite?.inviteUrl) {
       return;
     }
-    const inviteBody = buildClientInviteBody(invite?.inviteUrl || clientInviteUrl);
+    const inviteSubject = renderClientInviteTemplate(
+      clientInviteSubjectDraft || buildDefaultClientInviteSubject(),
+      invite.inviteUrl,
+    );
+    const inviteBody = renderClientInviteTemplate(
+      clientInviteBodyDraft || buildDefaultClientInviteBody(),
+      invite.inviteUrl,
+    );
     try {
-      await navigator.clipboard.writeText(`Emne: ${clientInviteSubject}\n\n${inviteBody}`);
+      await navigator.clipboard.writeText(`Emne: ${inviteSubject}\n\n${inviteBody}`);
       toast.showSuccess('Klientinvitasjon kopiert.');
     } catch (error) {
       console.error('Failed to copy client invite:', error);
       toast.showError('Kunne ikke kopiere klientinvitasjonen.');
     }
-  }, [buildClientInviteBody, clientInviteSubject, clientInviteUrl, createClientMagicInvite, toast]);
+  }, [
+    buildDefaultClientInviteBody,
+    buildDefaultClientInviteSubject,
+    clientInviteBodyDraft,
+    clientInviteSubjectDraft,
+    createClientMagicInvite,
+    renderClientInviteTemplate,
+    toast,
+  ]);
 
-  const handleOpenClientInviteEmail = useCallback(async (): Promise<boolean> => {
-    const invite = await createClientMagicInvite();
-    const targetEmail = clientInviteRecipientEmail.trim();
+  const handleSendClientInviteEmail = useCallback(async (): Promise<boolean> => {
+    const targetEmail = clientInviteRecipientEmail.trim().toLowerCase();
     if (!validateEmail(targetEmail)) {
       toast.showWarning('Legg inn en gyldig klient-epost før du sender invitasjonen.');
       return false;
     }
-    if (!invite?.inviteUrl) {
-      toast.showError('Magic-link mangler. Oppdater invitasjonen og prøv igjen.');
-      return false;
-    }
-
-    const inviteBody = buildClientInviteBody(invite.inviteUrl);
-    const mailtoUrl = `mailto:${encodeURIComponent(targetEmail)}?subject=${encodeURIComponent(clientInviteSubject)}&body=${encodeURIComponent(inviteBody)}`;
-    window.location.href = mailtoUrl;
-    return true;
+    const sentInvite = await createClientMagicInvite(targetEmail, {
+      force: true,
+      sendEmail: true,
+    });
+    return Boolean(sentInvite?.delivery?.sent);
   }, [
     clientInviteRecipientEmail,
-    clientInviteSubject,
-    buildClientInviteBody,
     createClientMagicInvite,
     toast,
   ]);
@@ -1619,7 +1778,7 @@ export default function NewProjectCreationModal({
   const completeProjectCreatedFlow = useCallback(() => {
     setClientInviteDialogOpen(false);
     setGeneratedClientInvite(null);
-    setGeneratedClientInviteEmail(null);
+    setGeneratedClientInviteSignature(null);
     onClose?.();
   }, [onClose]);
 
@@ -4190,7 +4349,7 @@ export default function NewProjectCreationModal({
             alignItems: 'center',
           }}
         >
-          Forhåndsvis klientinvitasjon
+          Send klientinvitasjon
           <IconButton onClick={completeProjectCreatedFlow} aria-label="Lukk invitasjonsvisning" sx={{ color: 'rgba(255,255,255,0.87)' }}>
             <CloseIcon />
           </IconButton>
@@ -4207,29 +4366,62 @@ export default function NewProjectCreationModal({
                 '& .MuiAlert-icon': { color: '#00d4ff' },
               }}
             >
-              Prosjektet er opprettet. Her kan du oppdatere mottaker, generere en ekte magic-link og sende invitasjonen videre via ferdig utfylt e-post eller ved å kopiere teksten.
+              Prosjektet er opprettet. Her kan du redigere mottaker, emne, e-postinnhold og hvor lenge klienten skal ha tilgang før The Role Room sender invitasjonen fra systemet.
             </Alert>
 
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+              <TextField
+                label="Mottaker navn"
+                value={clientInviteRecipientName}
+                onChange={(event) => {
+                  setClientInviteRecipientName(event.target.value);
+                }}
+                fullWidth
+                helperText="Navnet brukes i hilsen og i klientportalen."
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    color: '#fff',
+                    '& fieldset': { borderColor: 'rgba(255,255,255,0.15)' },
+                    '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.25)' },
+                    '&.Mui-focused fieldset': { borderColor: '#00d4ff' },
+                  },
+                  '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.75)' },
+                  '& .MuiFormHelperText-root': { color: 'rgba(255,255,255,0.66)' },
+                }}
+              />
+              <TextField
+                label="Mottaker e-post"
+                value={clientInviteRecipientEmail}
+                onChange={(event) => {
+                  setClientInviteRecipientEmail(event.target.value);
+                }}
+                type="email"
+                fullWidth
+                helperText={clientInviteEmailIsValid
+                  ? 'Denne adressen brukes for magic-linken som sendes til klienten.'
+                  : 'Legg inn en gyldig e-postadresse for å generere magic-link.'}
+                error={Boolean(clientInviteRecipientEmail) && !clientInviteEmailIsValid}
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    color: '#fff',
+                    '& fieldset': { borderColor: 'rgba(255,255,255,0.15)' },
+                    '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.25)' },
+                    '&.Mui-focused fieldset': { borderColor: '#00d4ff' },
+                  },
+                  '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.75)' },
+                  '& .MuiFormHelperText-root': { color: 'rgba(255,255,255,0.66)' },
+                }}
+              />
+            </Stack>
+
             <TextField
-              label="Mottaker e-post"
-              value={clientInviteRecipientEmail}
+              label="Emne"
+              value={clientInviteSubjectDraft}
               onChange={(event) => {
-                const nextEmail = event.target.value;
-                setClientInviteRecipientEmail(nextEmail);
-                const normalizedNextEmail = validateEmail(nextEmail)
-                  ? normalizeInviteEmail(nextEmail)
-                  : null;
-                if (!normalizedNextEmail || normalizedNextEmail !== generatedClientInviteEmail) {
-                  setGeneratedClientInvite(null);
-                  setGeneratedClientInviteEmail(null);
-                }
+                setClientInviteSubjectDraft(event.target.value);
               }}
-              type="email"
               fullWidth
-              helperText={clientInviteEmailIsValid
-                ? 'Denne adressen brukes for magic-linken som sendes til klienten.'
-                : 'Legg inn en gyldig e-postadresse for å generere magic-link.'}
-              error={Boolean(clientInviteRecipientEmail) && !clientInviteEmailIsValid}
+              helperText={`Du kan bruke tokens som ${CLIENT_INVITE_TEMPLATE_TOKENS.slice(0, 4).join(', ')}`}
               sx={{
                 '& .MuiOutlinedInput-root': {
                   color: '#fff',
@@ -4241,6 +4433,34 @@ export default function NewProjectCreationModal({
                 '& .MuiFormHelperText-root': { color: 'rgba(255,255,255,0.66)' },
               }}
             />
+
+            <FormControl fullWidth>
+              <InputLabel sx={{ color: 'rgba(255,255,255,0.75)' }}>Klienttilgang</InputLabel>
+              <Select
+                value={clientInviteAccessDuration}
+                label="Klienttilgang"
+                onChange={(event) => {
+                  setClientInviteAccessDuration(event.target.value as RoleRoomClientInviteAccessDuration);
+                }}
+                MenuProps={selectMenuProps}
+                sx={{
+                  color: '#fff',
+                  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.15)' },
+                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.25)' },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#00d4ff' },
+                }}
+              >
+                <MenuItem value="forever">For alltid</MenuItem>
+                <MenuItem value="project_end">Til prosjekt slutt</MenuItem>
+              </Select>
+              <Typography variant="caption" sx={{ mt: 1, color: 'rgba(255,255,255,0.66)' }}>
+                {clientInviteAccessDuration === 'project_end'
+                  ? (resolveClientInviteAccessEndLabel()
+                    ? `Klienttilgangen stopper når prosjektet avsluttes ${resolveClientInviteAccessEndLabel()}.`
+                    : 'Prosjektet må ha en sluttdato før du kan sende tilgang til prosjektets slutt.')
+                  : 'Klienttilgangen blir stående til du endrer eller fjerner den senere.'}
+              </Typography>
+            </FormControl>
 
             <Card sx={{ bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)' }}>
               <CardContent>
@@ -4271,17 +4491,44 @@ export default function NewProjectCreationModal({
                         : clientInviteUrl || 'Magic-link genereres når du kopierer eller sender invitasjonen'}
                     </Typography>
                   </Box>
+                  <Box>
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', fontWeight: 700 }}>
+                      Tilgang
+                    </Typography>
+                    <Typography sx={{ color: '#fff', fontWeight: 600 }}>
+                      {clientInviteAccessDuration === 'project_end'
+                        ? `Til prosjekt slutt${resolveClientInviteAccessEndLabel() ? ` (${resolveClientInviteAccessEndLabel()})` : ''}`
+                        : 'For alltid'}
+                    </Typography>
+                  </Box>
+                  {generatedClientInvite?.delivery ? (
+                    <Alert
+                      severity={generatedClientInvite.delivery.sent ? 'success' : 'warning'}
+                      sx={{
+                        bgcolor: generatedClientInvite.delivery.sent ? 'rgba(34,197,94,0.12)' : 'rgba(245,158,11,0.12)',
+                        border: `1px solid ${generatedClientInvite.delivery.sent ? 'rgba(34,197,94,0.24)' : 'rgba(245,158,11,0.24)'}`,
+                        color: '#fff',
+                      }}
+                    >
+                      {generatedClientInvite.delivery.sent
+                        ? 'Invitasjonen er sendt fra systemet.'
+                        : 'Invitasjonen er opprettet, men ble ikke sendt automatisk. Du kan fortsatt kopiere tekst eller magic-link.'}
+                    </Alert>
+                  ) : null}
                 </Stack>
               </CardContent>
             </Card>
 
             <TextField
               label="Invitasjonstekst"
-              value={clientInviteBody}
+              value={clientInviteBodyDraft}
               multiline
               minRows={12}
               fullWidth
-              InputProps={{ readOnly: true }}
+              onChange={(event) => {
+                setClientInviteBodyDraft(event.target.value);
+              }}
+              helperText={`Støttede tokens: ${CLIENT_INVITE_TEMPLATE_TOKENS.join(', ')}`}
               sx={{
                 '& .MuiOutlinedInput-root': {
                   color: '#fff',
@@ -4290,6 +4537,25 @@ export default function NewProjectCreationModal({
                   '& fieldset': { borderColor: 'rgba(255,255,255,0.15)' },
                   '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.25)' },
                   '&.Mui-focused fieldset': { borderColor: '#00d4ff' },
+                },
+                '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.75)' },
+                '& .MuiFormHelperText-root': { color: 'rgba(255,255,255,0.66)' },
+              }}
+            />
+
+            <TextField
+              label="Forhåndsvisning"
+              value={clientInviteBody}
+              multiline
+              minRows={10}
+              fullWidth
+              InputProps={{ readOnly: true }}
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  color: '#cbd5f5',
+                  alignItems: 'flex-start',
+                  fontFamily: 'inherit',
+                  '& fieldset': { borderColor: 'rgba(255,255,255,0.15)' },
                 },
                 '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.75)' },
               }}
@@ -4337,7 +4603,7 @@ export default function NewProjectCreationModal({
               variant="contained"
                 startIcon={<MailOutlineIcon />}
                 onClick={() => {
-                void handleOpenClientInviteEmail().then((sent) => {
+                void handleSendClientInviteEmail().then((sent) => {
                   if (sent) {
                     completeProjectCreatedFlow();
                   }
@@ -4354,7 +4620,7 @@ export default function NewProjectCreationModal({
                 '&:hover': { bgcolor: '#00b8e6' },
               }}
             >
-              {clientInviteLoading ? 'Genererer…' : 'Send invite'}
+              {clientInviteLoading ? 'Sender…' : 'Send e-post'}
             </Button>
           </Stack>
         </DialogActions>
