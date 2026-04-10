@@ -2516,6 +2516,30 @@ export function CastingPlannerPanel({
     return projectId === castingService.getContentProducerDemoProjectId();
   }, []);
 
+  const isRestorableWorkspaceProject = useCallback((project: CastingProject | null | undefined): project is CastingProject => {
+    if (!project) {
+      return false;
+    }
+    if (isTemplateProject(project)) {
+      return false;
+    }
+    if (isTrollProject(project)) {
+      return false;
+    }
+    if (isContentProducerDemoProject(project)) {
+      return false;
+    }
+    if (isProtectedDemoProject(project)) {
+      return false;
+    }
+    return true;
+  }, [
+    isContentProducerDemoProject,
+    isProtectedDemoProject,
+    isTemplateProject,
+    isTrollProject,
+  ]);
+
   const filterProjectsForSession = useCallback((projectList: CastingProject[]): CastingProject[] => {
     const workspaceProjects = projectList.filter((project) => !isTemplateProject(project));
     if (isProducerWorkspaceSession) {
@@ -2808,10 +2832,11 @@ export function CastingPlannerPanel({
       return;
     }
 
+    const persistedRealProjectId = persistedWorkspaceStateRef.current?.projectId ?? null;
     const nextState: RoleRoomWorkspaceState = {
-      projectId: currentProject && !isContentProducerDemoProject(currentProject)
+      projectId: isRestorableWorkspaceProject(currentProject)
         ? currentProject.id
-        : null,
+        : persistedRealProjectId,
       activeTab: displayedActiveTab,
       storyArcView: displayedActiveTab === STORY_ARC_TAB_INDEX ? storyArcView : 'main',
       contentProducerPlannerSurface: isContentProducerMode ? contentProducerPlannerSurface : undefined,
@@ -2831,8 +2856,8 @@ export function CastingPlannerPanel({
     displayedActiveTab,
     getSettingsUserId,
     contentProducerPlannerSurface,
-    isContentProducerDemoProject,
     isContentProducerMode,
+    isRestorableWorkspaceProject,
     roleRoomWorkspaceStateNamespace,
     storyArcView,
   ]);
@@ -2922,11 +2947,7 @@ export function CastingPlannerPanel({
         setProjects(loadedProjects);
 
         const activeProject = currentProjectRef.current;
-        const hasValidCurrentProject = Boolean(
-          activeProject
-          && !isTrollProject(activeProject)
-          && !isContentProducerDemoProject(activeProject),
-        );
+        const hasValidCurrentProject = isRestorableWorkspaceProject(activeProject);
         if (hasValidCurrentProject) {
           return;
         }
@@ -2938,9 +2959,12 @@ export function CastingPlannerPanel({
 
         const preferredProject = (
           persistedWorkspaceState?.projectId
-            ? loadedProjects.find((project) => project.id === persistedWorkspaceState.projectId)
+            ? loadedProjects.find((project) => (
+              project.id === persistedWorkspaceState.projectId
+              && isRestorableWorkspaceProject(project)
+            ))
             : null
-        ) ?? loadedProjects.find((project) => !isContentProducerDemoProject(project)) ?? null;
+        ) ?? loadedProjects.find((project) => isRestorableWorkspaceProject(project)) ?? null;
 
         setCurrentProject((previous) => {
           if ((previous?.id ?? null) === (preferredProject?.id ?? null)) {
@@ -2960,9 +2984,8 @@ export function CastingPlannerPanel({
     };
   }, [
     filterProjectsForSession,
-    isContentProducerDemoProject,
     isProducerWorkspaceSession,
-    isTrollProject,
+    isRestorableWorkspaceProject,
     loadPersistedWorkspaceState,
   ]);
 
@@ -4199,21 +4222,21 @@ export function CastingPlannerPanel({
       if (persistedWorkspaceState) {
         persistedWorkspaceStateRef.current = persistedWorkspaceState;
       }
+
+      const activeRestorableProjectId = isRestorableWorkspaceProject(currentProjectRef.current)
+        ? currentProjectRef.current.id
+        : null;
       
       // If we have a current project already selected, refresh its data
       // Otherwise, DON'T auto-select - let user choose from the project selector
-      const activeProjectId = currentProjectRef.current?.id;
-      const projectIdToLoad = isProducerWorkspaceSession
-        ? (
-            activeProjectId && currentProjectRef.current && !isContentProducerDemoProject(currentProjectRef.current)
-              ? activeProjectId
-              : persistedWorkspaceState?.projectId ?? null
-          )
-        : activeProjectId;
+      const projectIdToLoad = activeRestorableProjectId ?? persistedWorkspaceState?.projectId ?? null;
       
       if (loadedProjects.length > 0 && projectIdToLoad) {
         // Only refresh data if user already selected a project
-        const targetProject = loadedProjects.find(p => p.id === projectIdToLoad);
+        const targetProject = loadedProjects.find((project) => (
+          project.id === projectIdToLoad
+          && isRestorableWorkspaceProject(project)
+        ));
         const resolvedTargetProject =
           targetProject && isProducerWorkspaceSession && isContentProducerDemoProject(targetProject)
             ? loadedProjects.find((project) => !isContentProducerDemoProject(project)) ?? null
@@ -4232,16 +4255,16 @@ export function CastingPlannerPanel({
         } else {
           // Current project is no longer visible in this session (e.g. content producer + TROLL),
           // switch to the best available project instead of keeping stale state.
-          const preferredProject = isProducerWorkspaceSession
-            ? loadedProjects.find((project) => !isContentProducerDemoProject(project)) ?? null
-            : loadedProjects[0];
+          const preferredProject = loadedProjects.find((project) => isRestorableWorkspaceProject(project))
+            ?? (isProducerWorkspaceSession ? null : loadedProjects[0]);
           setCurrentProject(preferredProject ?? null);
         }
       } else if (loadedProjects.length > 0 && !projectIdToLoad && isProducerWorkspaceSession) {
-        const preferredProject = loadedProjects.find((project) => !isContentProducerDemoProject(project)) ?? null;
+        const preferredProject = loadedProjects.find((project) => isRestorableWorkspaceProject(project)) ?? null;
         setCurrentProject(preferredProject);
       } else if (loadedProjects.length > 0 && !projectIdToLoad && !isProducerWorkspaceSession) {
         const preferredProject =
+          loadedProjects.find((project) => isRestorableWorkspaceProject(project)) ??
           loadedProjects.find((project) => isTrollProject(project)) ??
           (loadedProjects.length === 1 ? loadedProjects[0] : null);
         if (preferredProject) {
@@ -4283,19 +4306,19 @@ export function CastingPlannerPanel({
           if (persistedWorkspaceState) {
             persistedWorkspaceStateRef.current = persistedWorkspaceState;
           }
+          const activeRestorableProjectId = isRestorableWorkspaceProject(currentProjectRef.current)
+            ? currentProjectRef.current.id
+            : null;
           // Maintain current project if possible, otherwise choose a role-aware fallback.
           const roleAwareFallback = isProducerWorkspaceSession
-            ? loadedProjects.find((project) => !isContentProducerDemoProject(project)) ?? null
-            : loadedProjects[0];
-          const activeProjectId = isProducerWorkspaceSession
-            ? (
-                currentProjectRef.current && !isContentProducerDemoProject(currentProjectRef.current)
-                  ? currentProjectRef.current.id
-                  : persistedWorkspaceState?.projectId ?? null
-              )
-            : currentProjectRef.current?.id;
+            ? loadedProjects.find((project) => isRestorableWorkspaceProject(project)) ?? null
+            : loadedProjects.find((project) => isRestorableWorkspaceProject(project)) ?? loadedProjects[0];
+          const activeProjectId = activeRestorableProjectId ?? persistedWorkspaceState?.projectId ?? null;
           const targetProject = activeProjectId
-            ? loadedProjects.find(p => p.id === activeProjectId) || roleAwareFallback || loadedProjects[0]
+            ? loadedProjects.find((project) => (
+              project.id === activeProjectId
+              && isRestorableWorkspaceProject(project)
+            )) || roleAwareFallback || loadedProjects[0]
             : roleAwareFallback || loadedProjects[0];
           const resolvedTargetProject =
             targetProject && isProducerWorkspaceSession && isContentProducerDemoProject(targetProject)
@@ -4317,6 +4340,7 @@ export function CastingPlannerPanel({
     filterProjectsForSession,
     isContentProducerDemoProject,
     isProducerWorkspaceSession,
+    isRestorableWorkspaceProject,
     isTrollProject,
     loadPersistedWorkspaceState,
     profession,
