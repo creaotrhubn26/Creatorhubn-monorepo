@@ -82,6 +82,8 @@ type TimelineActionKind = 'milestone' | 'task';
 type PlannerAlertSeverity = 'error' | 'warning' | 'info';
 type MeetingDraftStep = 0 | 1 | 2 | 3;
 type ProducerPlannerAudience = 'production_team' | 'content_producer';
+type ProducerInboxFilter = 'all' | 'follow_up' | 'workspace' | 'approval' | 'delivery';
+type ProducerInboxCategory = 'workspace' | 'approval' | 'delivery' | 'other';
 
 interface ProducerPlannerStudioProps {
   project: CastingProject;
@@ -164,6 +166,23 @@ interface TimelineActionDraft {
   linkedEntityId: string;
 }
 
+interface ProducerInboxItem {
+  id: string;
+  source: 'notification' | 'approval';
+  category: ProducerInboxCategory;
+  title: string;
+  detail: string;
+  statusLabel: string;
+  actionLabel: string;
+  tone: 'info' | 'warning' | 'error' | 'success';
+  updatedAt: string;
+  dueAt?: string;
+  unread: boolean;
+  needsFollowUp: boolean;
+  notification?: ProducerProjectNotification;
+  review?: ProducerClientReview;
+}
+
 const EMPTY_CLIENT_INTAKE: ProducerClientIntake = {
   projectGoal: '',
   deliverables: '',
@@ -194,6 +213,19 @@ const CALENDAR_TYPE_LABELS: Record<PlannerCalendarEntry['type'], string> = {
 };
 const MEETING_STEPS = ['Velg type', 'Foreslå deltakere', 'Tid og kontekst', 'Inviter'];
 const ROLE_FILTER_OPTIONS = ['all', 'client', 'producer', 'director', 'dop', 'editor', 'crew'] as const;
+const PRODUCER_INBOX_FILTER_LABELS: Record<ProducerInboxFilter, string> = {
+  all: 'Alt',
+  follow_up: 'Til oppfølging',
+  workspace: 'Prosjektrom',
+  approval: 'Godkjenning',
+  delivery: 'Levering',
+};
+const PRODUCER_INBOX_CATEGORY_LABELS: Record<ProducerInboxCategory, string> = {
+  workspace: 'Prosjektrom',
+  approval: 'Godkjenning',
+  delivery: 'Levering',
+  other: 'Aktivitet',
+};
 
 const hasText = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
 
@@ -258,6 +290,45 @@ const getNotificationSeverity = (notification: ProducerProjectNotification): Pla
   }
 
   return 'info';
+};
+
+const getNotificationInboxCategory = (notification: ProducerProjectNotification): ProducerInboxCategory => {
+  const linkedEntityType = String(notification.linked_entity_type ?? '').trim().toLowerCase();
+  const eventType = String(notification.event_type ?? '').trim().toLowerCase();
+  const title = `${notification.title ?? ''} ${notification.message ?? ''}`.toLowerCase();
+
+  if (linkedEntityType === 'client_intake' || linkedEntityType === 'client_material') {
+    return 'workspace';
+  }
+
+  if (linkedEntityType === 'client_review' || eventType.includes('review')) {
+    return 'approval';
+  }
+
+  if (
+    linkedEntityType.includes('delivery')
+    || linkedEntityType.includes('export')
+    || eventType.includes('delivery')
+    || eventType.includes('export')
+    || /levering|eksport/.test(title)
+  ) {
+    return 'delivery';
+  }
+
+  return 'other';
+};
+
+const getNotificationActionLabel = (category: ProducerInboxCategory): string => {
+  switch (category) {
+    case 'workspace':
+      return 'Åpne Prosjektrom';
+    case 'approval':
+      return 'Åpne Godkjenning';
+    case 'delivery':
+      return 'Åpne Levering';
+    default:
+      return 'Åpne';
+  }
 };
 
 const getReviewStatusLabel = (status?: string | null): string => {
@@ -560,6 +631,7 @@ export default function ProducerPlannerStudio({
   const [calendarTypeFilter, setCalendarTypeFilter] = useState<PlannerCalendarEntry['type'] | 'all'>('all');
   const [calendarRoleFilter, setCalendarRoleFilter] = useState<(typeof ROLE_FILTER_OPTIONS)[number]>('all');
   const [coordinationMeetingType, setCoordinationMeetingType] = useState<ProducerPlannerMeetingType>('production');
+  const [inboxFilter, setInboxFilter] = useState<ProducerInboxFilter>('all');
   const [planningDraft, setPlanningDraft] = useState<ProducerProjectPlanning>(() => normalizeProducerProjectPlanning(project));
   const [savingPlanning, setSavingPlanning] = useState(false);
   const [meetingDialogOpen, setMeetingDialogOpen] = useState(false);
@@ -656,6 +728,7 @@ export default function ProducerPlannerStudio({
   useEffect(() => {
     notificationBaselineReadyRef.current = false;
     seenNotificationStateRef.current = new Map();
+    setInboxFilter('all');
   }, [project.id]);
 
   useEffect(() => {
@@ -924,6 +997,98 @@ export default function ProducerPlannerStudio({
       })
   ), [reviews]);
 
+  const contentProducerInboxItems = useMemo<ProducerInboxItem[]>(() => {
+    const approvalItems = outstandingClientApprovals.map((review) => {
+      const normalizedStatus = String(review.status ?? '').trim().toLowerCase();
+      const tone = getReviewStatusTone(review.status);
+      const phase = resolveReviewPhase(review);
+      return {
+        id: `approval:${review.id}`,
+        source: 'approval' as const,
+        category: 'approval' as const,
+        title: review.title || getReviewTypeLabel(review),
+        detail: review.description?.trim() || 'Denne godkjenningen trenger fortsatt en beslutning før arbeidsløpet kan gå videre.',
+        statusLabel: getReviewStatusLabel(review.status),
+        actionLabel: 'Åpne Godkjenning',
+        tone,
+        updatedAt: review.updated_at,
+        dueAt: review.due_at ?? undefined,
+        unread: false,
+        needsFollowUp: normalizedStatus === 'pending' || normalizedStatus === 'changes_requested' || normalizedStatus === 'rejected',
+        review,
+      } satisfies ProducerInboxItem;
+    });
+
+    const notificationItems = notifications.map((notification) => {
+      const category = getNotificationInboxCategory(notification);
+      const severity = getNotificationSeverity(notification);
+      return {
+        id: `notification:${notification.id}`,
+        source: 'notification' as const,
+        category,
+        title: notification.title,
+        detail: notification.message?.trim() || 'Varslet mangler beskrivelse.',
+        statusLabel: notification.read ? 'Lest' : 'Ny',
+        actionLabel: getNotificationActionLabel(category),
+        tone: severity === 'warning' ? 'warning' : 'info',
+        updatedAt: notification.updated_at,
+        unread: !notification.read,
+        needsFollowUp: !notification.read || category === 'approval',
+        notification,
+      } satisfies ProducerInboxItem;
+    });
+
+    return [...approvalItems, ...notificationItems].sort((left, right) => {
+      const getPriority = (item: ProducerInboxItem): number => {
+        if (item.source === 'approval' && item.review) {
+          const status = String(item.review.status ?? '').trim().toLowerCase();
+          if (status === 'changes_requested') return 0;
+          if (status === 'rejected') return 1;
+          if (status === 'pending') return 2;
+        }
+        if (item.unread && item.category === 'approval') return 3;
+        if (item.unread) return 4;
+        if (item.category === 'delivery') return 5;
+        return 6;
+      };
+      const leftPriority = getPriority(left);
+      const rightPriority = getPriority(right);
+      if (leftPriority !== rightPriority) {
+        return leftPriority - rightPriority;
+      }
+      return compareDatesAsc(right.updatedAt, left.updatedAt);
+    });
+  }, [notifications, outstandingClientApprovals]);
+
+  const filteredContentProducerInboxItems = useMemo(() => {
+    return contentProducerInboxItems.filter((item) => {
+      if (inboxFilter === 'all') {
+        return true;
+      }
+      if (inboxFilter === 'follow_up') {
+        return item.needsFollowUp;
+      }
+      if (inboxFilter === 'workspace') {
+        return item.category === 'workspace';
+      }
+      if (inboxFilter === 'approval') {
+        return item.category === 'approval';
+      }
+      if (inboxFilter === 'delivery') {
+        return item.category === 'delivery';
+      }
+      return true;
+    });
+  }, [contentProducerInboxItems, inboxFilter]);
+
+  const contentProducerInboxSummary = useMemo(() => ({
+    followUp: contentProducerInboxItems.filter((item) => item.needsFollowUp).length,
+    unread: contentProducerInboxItems.filter((item) => item.unread).length,
+    workspace: contentProducerInboxItems.filter((item) => item.category === 'workspace').length,
+    approval: contentProducerInboxItems.filter((item) => item.category === 'approval').length,
+    delivery: contentProducerInboxItems.filter((item) => item.category === 'delivery').length,
+  }), [contentProducerInboxItems]);
+
   const handleMarkNotificationRead = useCallback(async (notificationId: string) => {
     try {
       await markAsRead(notificationId);
@@ -953,7 +1118,31 @@ export default function ProducerPlannerStudio({
       onOpenReviews?.();
       return;
     }
+
+    const category = getNotificationInboxCategory(notification);
+    if (category === 'delivery') {
+      onOpenMedia?.({ workspace: 'delivery' });
+    }
   }, [handleMarkNotificationRead, onOpenMedia, onOpenReviews]);
+
+  const handleOpenInboxItem = useCallback(async (item: ProducerInboxItem) => {
+    if (item.source === 'notification' && item.notification) {
+      await handleOpenNotification(item.notification);
+      return;
+    }
+
+    if (item.source === 'approval' && item.review) {
+      const approvalTemplate = item.review.review_type === 'storyboard'
+        || item.review.review_type === 'manuscript'
+        || item.review.review_type === 'shotlist'
+        ? item.review.review_type
+        : undefined;
+      onOpenReviews?.({
+        focusedPhase: resolveReviewPhase(item.review),
+        approvalTemplate,
+      });
+    }
+  }, [handleOpenNotification, onOpenReviews]);
 
   const handleMarkAllNotificationsRead = useCallback(async () => {
     try {
@@ -1661,65 +1850,105 @@ export default function ProducerPlannerStudio({
         </Box>
       ) : null}
 
-      <Box
-        sx={{
-          p: 1.1,
-          borderRadius: 2,
-          border: '1px solid rgba(148,163,184,0.18)',
-          background: 'rgba(15,23,42,0.78)',
-        }}
-      >
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between" sx={{ mb: 0.9 }}>
-          <Box>
-            <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-              Utestående klientgodkjenninger
-            </Typography>
-            <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.85rem' }}>
-              {isContentProducerPlanner
-                ? 'Her ser du alt som fortsatt venter på godkjenning, endringer eller ny beslutning fra klientløpet.'
-                : 'Her ser du hvilke klientgodkjenninger og reviewpunkter som fortsatt blokkerer videre fremdrift.'}
-            </Typography>
-          </Box>
-          <Stack direction="row" spacing={0.8} alignItems="center">
-            <Chip
-              size="small"
-              label={outstandingClientApprovals.length > 0 ? `${outstandingClientApprovals.length} åpne` : 'Ingen åpne'}
-              sx={{
-                bgcolor: outstandingClientApprovals.length > 0 ? 'rgba(245,158,11,0.18)' : 'rgba(34,197,94,0.16)',
-                color: outstandingClientApprovals.length > 0 ? '#fde68a' : '#bbf7d0',
-              }}
-            />
-            {outstandingClientApprovals.length > 0 && onOpenReviews ? (
-              <Button
+      {isContentProducerPlanner ? (
+        <Box
+          sx={{
+            p: 1.1,
+            borderRadius: 2,
+            border: '1px solid rgba(148,163,184,0.18)',
+            background: 'rgba(15,23,42,0.78)',
+          }}
+        >
+          <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1} justifyContent="space-between" sx={{ mb: 0.95 }}>
+            <Box sx={{ minWidth: 0 }}>
+              <Typography sx={{ color: '#fff', fontWeight: 700 }}>
+                Innboks
+              </Typography>
+              <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.85rem' }}>
+                Ett sted for alt som krever oppfølging i innholdsløpet: brief, prosjektrom, klientgodkjenning og levering.
+              </Typography>
+            </Box>
+            <Stack direction="row" spacing={0.8} flexWrap="wrap" useFlexGap alignItems="center">
+              <Chip
                 size="small"
-                variant="outlined"
-                onClick={() => onOpenReviews({ focusedPhase: phaseInView })}
-                sx={{ textTransform: 'none', fontWeight: 700 }}
-              >
-                Åpne Godkjenning
-              </Button>
-            ) : null}
+                label={contentProducerInboxSummary.followUp > 0 ? `${contentProducerInboxSummary.followUp} til oppfølging` : 'Ingen åpne oppfølginger'}
+                sx={{
+                  bgcolor: contentProducerInboxSummary.followUp > 0 ? 'rgba(245,158,11,0.18)' : 'rgba(34,197,94,0.16)',
+                  color: contentProducerInboxSummary.followUp > 0 ? '#fde68a' : '#bbf7d0',
+                }}
+              />
+              <Chip
+                size="small"
+                label={contentProducerInboxSummary.unread > 0 ? `${contentProducerInboxSummary.unread} uleste` : 'Alt lest'}
+                sx={{
+                  bgcolor: contentProducerInboxSummary.unread > 0 ? 'rgba(59,130,246,0.18)' : 'rgba(148,163,184,0.16)',
+                  color: contentProducerInboxSummary.unread > 0 ? '#bfdbfe' : '#cbd5e1',
+                }}
+              />
+              {notificationsUnreadCount > 0 ? (
+                <Button
+                  size="small"
+                  variant="text"
+                  onClick={() => { void handleMarkAllNotificationsRead(); }}
+                  sx={{ textTransform: 'none', fontWeight: 700 }}
+                >
+                  Marker varsler som lest
+                </Button>
+              ) : null}
+            </Stack>
           </Stack>
-        </Stack>
 
-        {outstandingClientApprovals.length === 0 ? (
-          <Alert severity="success">Ingen utestående klientgodkjenninger akkurat nå.</Alert>
-        ) : (
-          <Stack spacing={0.85}>
-            {outstandingClientApprovals.slice(0, 5).map((review) => {
-              const statusTone = getReviewStatusTone(review.status);
-              const phase = resolveReviewPhase(review);
-              const approvalTemplate = review.review_type === 'storyboard' || review.review_type === 'manuscript' || review.review_type === 'shotlist'
-                ? review.review_type
-                : undefined;
+          <Stack direction="row" spacing={0.8} flexWrap="wrap" useFlexGap sx={{ mb: 1 }}>
+            {(Object.keys(PRODUCER_INBOX_FILTER_LABELS) as ProducerInboxFilter[]).map((filterKey) => {
+              const count = filterKey === 'all'
+                ? contentProducerInboxItems.length
+                : filterKey === 'follow_up'
+                  ? contentProducerInboxSummary.followUp
+                  : filterKey === 'workspace'
+                    ? contentProducerInboxSummary.workspace
+                    : filterKey === 'approval'
+                      ? contentProducerInboxSummary.approval
+                      : contentProducerInboxSummary.delivery;
               return (
+                <Chip
+                  key={filterKey}
+                  clickable
+                  color={inboxFilter === filterKey ? 'primary' : 'default'}
+                  label={`${PRODUCER_INBOX_FILTER_LABELS[filterKey]} · ${count}`}
+                  onClick={() => setInboxFilter(filterKey)}
+                  sx={{
+                    bgcolor: inboxFilter === filterKey ? 'rgba(59,130,246,0.18)' : 'rgba(148,163,184,0.12)',
+                    color: inboxFilter === filterKey ? '#bfdbfe' : '#cbd5e1',
+                    border: inboxFilter === filterKey ? '1px solid rgba(96,165,250,0.32)' : '1px solid rgba(148,163,184,0.14)',
+                    fontWeight: 700,
+                  }}
+                />
+              );
+            })}
+          </Stack>
+
+          {filteredContentProducerInboxItems.length === 0 ? (
+            <Alert severity="success">
+              Innboksen er tom. Når klienten oppdaterer briefen, legger inn materiale eller sender noe til godkjenning, dukker det opp her.
+            </Alert>
+          ) : (
+            <Stack spacing={0.8} sx={{ maxHeight: { xs: 'none', lg: 460 }, overflowY: { lg: 'auto' }, pr: { lg: 0.4 } }}>
+              {filteredContentProducerInboxItems.map((item) => (
                 <Box
-                  key={review.id}
+                  key={item.id}
                   sx={{
                     p: 0.95,
                     borderRadius: 1.6,
-                    border: '1px solid rgba(148,163,184,0.16)',
-                    background: 'rgba(2,6,23,0.42)',
+                    border: item.needsFollowUp
+                      ? '1px solid rgba(245,158,11,0.28)'
+                      : item.unread
+                        ? '1px solid rgba(59,130,246,0.28)'
+                        : '1px solid rgba(148,163,184,0.16)',
+                    background: item.needsFollowUp
+                      ? 'rgba(30,41,59,0.92)'
+                      : item.unread
+                        ? 'rgba(15,23,42,0.92)'
+                        : 'rgba(2,6,23,0.36)',
                   }}
                 >
                   <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.9} justifyContent="space-between">
@@ -1727,175 +1956,297 @@ export default function ProducerPlannerStudio({
                       <Stack direction="row" spacing={0.8} alignItems="center" flexWrap="wrap" useFlexGap>
                         <Chip
                           size="small"
-                          color={statusTone}
-                          label={getReviewStatusLabel(review.status)}
-                          variant={statusTone === 'info' ? 'outlined' : 'filled'}
-                        />
-                        <Chip
-                          size="small"
-                          label={getReviewTypeLabel(review)}
+                          label={PRODUCER_INBOX_CATEGORY_LABELS[item.category]}
                           sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }}
                         />
                         <Chip
                           size="small"
-                          label={PRODUCER_PLANNING_PHASE_LABELS[phase]}
+                          label={item.statusLabel}
+                          color={item.tone === 'warning' ? 'warning' : item.tone === 'error' ? 'error' : item.tone === 'success' ? 'success' : 'info'}
+                          variant={item.tone === 'info' ? 'outlined' : 'filled'}
+                        />
+                        <Chip
+                          size="small"
+                          label={toDisplayDateTime(item.updatedAt)}
                           sx={{ bgcolor: 'rgba(148,163,184,0.16)', color: '#cbd5e1' }}
                         />
-                        {hasText(review.due_at) ? (
+                        {hasText(item.dueAt) ? (
                           <Chip
                             size="small"
-                            label={`Frist ${toDisplayDateTime(review.due_at)}`}
+                            label={`Frist ${toDisplayDateTime(item.dueAt)}`}
                             sx={{ bgcolor: 'rgba(244,63,94,0.14)', color: '#fecdd3' }}
                           />
                         ) : null}
                       </Stack>
                       <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                        {review.title || getReviewTypeLabel(review)}
+                        {item.title}
                       </Typography>
                       <Typography sx={{ color: 'rgba(226,232,240,0.76)', fontSize: '0.85rem', lineHeight: 1.5 }}>
-                        {review.description?.trim() || 'Denne godkjenningen trenger fortsatt en beslutning før arbeidsløpet kan gå videre.'}
-                      </Typography>
-                      <Typography sx={{ color: 'rgba(148,163,184,0.78)', fontSize: '0.76rem' }}>
-                        Sist oppdatert {toDisplayDateTime(review.updated_at)}
+                        {item.detail}
                       </Typography>
                     </Stack>
 
-                    {onOpenReviews ? (
+                    <Stack direction={{ xs: 'row', md: 'column' }} spacing={0.7} alignItems={{ md: 'flex-end' }}>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() => { void handleOpenInboxItem(item); }}
+                        sx={{ textTransform: 'none', fontWeight: 700 }}
+                      >
+                        {item.actionLabel}
+                      </Button>
+                      {item.source === 'notification' && item.notification && !item.notification.read ? (
+                        <Button
+                          size="small"
+                          variant="text"
+                          onClick={() => { void handleMarkNotificationRead(item.notification!.id); }}
+                          sx={{ textTransform: 'none', fontWeight: 700 }}
+                        >
+                          Marker som lest
+                        </Button>
+                      ) : null}
+                    </Stack>
+                  </Stack>
+                </Box>
+              ))}
+            </Stack>
+          )}
+        </Box>
+      ) : (
+        <>
+          <Box
+            sx={{
+              p: 1.1,
+              borderRadius: 2,
+              border: '1px solid rgba(148,163,184,0.18)',
+              background: 'rgba(15,23,42,0.78)',
+            }}
+          >
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between" sx={{ mb: 0.9 }}>
+              <Box>
+                <Typography sx={{ color: '#fff', fontWeight: 700 }}>
+                  Utestående klientgodkjenninger
+                </Typography>
+                <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.85rem' }}>
+                  Her ser du hvilke klientgodkjenninger og reviewpunkter som fortsatt blokkerer videre fremdrift.
+                </Typography>
+              </Box>
+              <Stack direction="row" spacing={0.8} alignItems="center">
+                <Chip
+                  size="small"
+                  label={outstandingClientApprovals.length > 0 ? `${outstandingClientApprovals.length} åpne` : 'Ingen åpne'}
+                  sx={{
+                    bgcolor: outstandingClientApprovals.length > 0 ? 'rgba(245,158,11,0.18)' : 'rgba(34,197,94,0.16)',
+                    color: outstandingClientApprovals.length > 0 ? '#fde68a' : '#bbf7d0',
+                  }}
+                />
+                {outstandingClientApprovals.length > 0 && onOpenReviews ? (
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => onOpenReviews({ focusedPhase: phaseInView })}
+                    sx={{ textTransform: 'none', fontWeight: 700 }}
+                  >
+                    Åpne Godkjenning
+                  </Button>
+                ) : null}
+              </Stack>
+            </Stack>
+
+            {outstandingClientApprovals.length === 0 ? (
+              <Alert severity="success">Ingen utestående klientgodkjenninger akkurat nå.</Alert>
+            ) : (
+              <Stack spacing={0.85}>
+                {outstandingClientApprovals.slice(0, 5).map((review) => {
+                  const statusTone = getReviewStatusTone(review.status);
+                  const phase = resolveReviewPhase(review);
+                  const approvalTemplate = review.review_type === 'storyboard' || review.review_type === 'manuscript' || review.review_type === 'shotlist'
+                    ? review.review_type
+                    : undefined;
+                  return (
+                    <Box
+                      key={review.id}
+                      sx={{
+                        p: 0.95,
+                        borderRadius: 1.6,
+                        border: '1px solid rgba(148,163,184,0.16)',
+                        background: 'rgba(2,6,23,0.42)',
+                      }}
+                    >
+                      <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.9} justifyContent="space-between">
+                        <Stack spacing={0.45} sx={{ minWidth: 0 }}>
+                          <Stack direction="row" spacing={0.8} alignItems="center" flexWrap="wrap" useFlexGap>
+                            <Chip
+                              size="small"
+                              color={statusTone}
+                              label={getReviewStatusLabel(review.status)}
+                              variant={statusTone === 'info' ? 'outlined' : 'filled'}
+                            />
+                            <Chip
+                              size="small"
+                              label={getReviewTypeLabel(review)}
+                              sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }}
+                            />
+                            <Chip
+                              size="small"
+                              label={PRODUCER_PLANNING_PHASE_LABELS[phase]}
+                              sx={{ bgcolor: 'rgba(148,163,184,0.16)', color: '#cbd5e1' }}
+                            />
+                            {hasText(review.due_at) ? (
+                              <Chip
+                                size="small"
+                                label={`Frist ${toDisplayDateTime(review.due_at)}`}
+                                sx={{ bgcolor: 'rgba(244,63,94,0.14)', color: '#fecdd3' }}
+                              />
+                            ) : null}
+                          </Stack>
+                          <Typography sx={{ color: '#fff', fontWeight: 700 }}>
+                            {review.title || getReviewTypeLabel(review)}
+                          </Typography>
+                          <Typography sx={{ color: 'rgba(226,232,240,0.76)', fontSize: '0.85rem', lineHeight: 1.5 }}>
+                            {review.description?.trim() || 'Denne godkjenningen trenger fortsatt en beslutning før arbeidsløpet kan gå videre.'}
+                          </Typography>
+                          <Typography sx={{ color: 'rgba(148,163,184,0.78)', fontSize: '0.76rem' }}>
+                            Sist oppdatert {toDisplayDateTime(review.updated_at)}
+                          </Typography>
+                        </Stack>
+
+                        {onOpenReviews ? (
+                          <Stack direction={{ xs: 'row', md: 'column' }} spacing={0.7} alignItems={{ md: 'flex-end' }}>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              onClick={() => onOpenReviews({ focusedPhase: phase, approvalTemplate })}
+                              sx={{ textTransform: 'none', fontWeight: 700 }}
+                            >
+                              Åpne
+                            </Button>
+                          </Stack>
+                        ) : null}
+                      </Stack>
+                    </Box>
+                  );
+                })}
+                {outstandingClientApprovals.length > 5 ? (
+                  <Typography sx={{ color: 'rgba(148,163,184,0.8)', fontSize: '0.78rem' }}>
+                    + {outstandingClientApprovals.length - 5} flere åpne godkjenninger ligger i modulen `Godkjenning`.
+                  </Typography>
+                ) : null}
+              </Stack>
+            )}
+          </Box>
+
+          <Box
+            sx={{
+              p: 1.1,
+              borderRadius: 2,
+              border: '1px solid rgba(148,163,184,0.18)',
+              background: 'rgba(15,23,42,0.78)',
+            }}
+          >
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between" sx={{ mb: 0.9 }}>
+              <Box>
+                <Typography sx={{ color: '#fff', fontWeight: 700 }}>
+                  Varsler
+                </Typography>
+                <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.85rem' }}>
+                  Produsentvarsler for klientbrief, materiale, kommentarer og godkjenninger.
+                </Typography>
+              </Box>
+              <Stack direction="row" spacing={0.8} alignItems="center">
+                <Chip
+                  size="small"
+                  label={notificationsUnreadCount > 0 ? `${notificationsUnreadCount} uleste` : 'Alt lest'}
+                  sx={{
+                    bgcolor: notificationsUnreadCount > 0 ? 'rgba(59,130,246,0.18)' : 'rgba(148,163,184,0.16)',
+                    color: notificationsUnreadCount > 0 ? '#bfdbfe' : '#cbd5e1',
+                  }}
+                />
+                {notificationsUnreadCount > 0 ? (
+                  <Button
+                    size="small"
+                    variant="text"
+                    onClick={() => { void handleMarkAllNotificationsRead(); }}
+                    sx={{ textTransform: 'none', fontWeight: 700 }}
+                  >
+                    Marker alle som lest
+                  </Button>
+                ) : null}
+              </Stack>
+            </Stack>
+
+            {recentNotifications.length === 0 ? (
+              <Alert severity="info">Ingen varsler ennå. Når klienten fyller ut brief, kommenterer eller godkjenner, dukker det opp her.</Alert>
+            ) : (
+              <Stack spacing={0.8}>
+                {recentNotifications.map((notification) => (
+                  <Box
+                    key={notification.id}
+                    sx={{
+                      p: 0.95,
+                      borderRadius: 1.6,
+                      border: notification.read
+                        ? '1px solid rgba(148,163,184,0.16)'
+                        : '1px solid rgba(59,130,246,0.28)',
+                      background: notification.read
+                        ? 'rgba(2,6,23,0.36)'
+                        : 'rgba(15,23,42,0.92)',
+                    }}
+                  >
+                    <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.9} justifyContent="space-between">
+                      <Stack spacing={0.45} sx={{ minWidth: 0 }}>
+                        <Stack direction="row" spacing={0.8} alignItems="center" flexWrap="wrap" useFlexGap>
+                          <Chip
+                            size="small"
+                            label={notification.read ? 'Lest' : 'Ny'}
+                            sx={{
+                              bgcolor: notification.read ? 'rgba(148,163,184,0.16)' : 'rgba(59,130,246,0.18)',
+                              color: notification.read ? '#cbd5e1' : '#bfdbfe',
+                            }}
+                          />
+                          <Chip
+                            size="small"
+                            color={getNotificationSeverity(notification) === 'warning' ? 'warning' : 'info'}
+                            label={toDisplayDateTime(notification.updated_at)}
+                            variant="outlined"
+                          />
+                        </Stack>
+                        <Typography sx={{ color: '#fff', fontWeight: 700 }}>
+                          {notification.title}
+                        </Typography>
+                        <Typography sx={{ color: 'rgba(226,232,240,0.76)', fontSize: '0.85rem', lineHeight: 1.5 }}>
+                          {notification.message || 'Varslet mangler beskrivelse.'}
+                        </Typography>
+                      </Stack>
+
                       <Stack direction={{ xs: 'row', md: 'column' }} spacing={0.7} alignItems={{ md: 'flex-end' }}>
                         <Button
                           size="small"
                           variant="outlined"
-                          onClick={() => onOpenReviews({ focusedPhase: phase, approvalTemplate })}
+                          onClick={() => { void handleOpenNotification(notification); }}
                           sx={{ textTransform: 'none', fontWeight: 700 }}
                         >
                           Åpne
                         </Button>
+                        {!notification.read ? (
+                          <Button
+                            size="small"
+                            variant="text"
+                            onClick={() => { void handleMarkNotificationRead(notification.id); }}
+                            sx={{ textTransform: 'none', fontWeight: 700 }}
+                          >
+                            Marker som lest
+                          </Button>
+                        ) : null}
                       </Stack>
-                    ) : null}
-                  </Stack>
-                </Box>
-              );
-            })}
-            {outstandingClientApprovals.length > 5 ? (
-              <Typography sx={{ color: 'rgba(148,163,184,0.8)', fontSize: '0.78rem' }}>
-                + {outstandingClientApprovals.length - 5} flere åpne godkjenninger ligger i modulen `Godkjenning`.
-              </Typography>
-            ) : null}
-          </Stack>
-        )}
-      </Box>
-
-      <Box
-        sx={{
-          p: 1.1,
-          borderRadius: 2,
-          border: '1px solid rgba(148,163,184,0.18)',
-          background: 'rgba(15,23,42,0.78)',
-        }}
-      >
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between" sx={{ mb: 0.9 }}>
-          <Box>
-            <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-              Varsler
-            </Typography>
-            <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.85rem' }}>
-              {isContentProducerPlanner
-                ? 'Varsler for brief, materiale, kommentarer, endringer og godkjenninger.'
-                : 'Produsentvarsler for klientbrief, materiale, kommentarer og godkjenninger.'}
-            </Typography>
-          </Box>
-          <Stack direction="row" spacing={0.8} alignItems="center">
-            <Chip
-              size="small"
-              label={notificationsUnreadCount > 0 ? `${notificationsUnreadCount} uleste` : 'Alt lest'}
-              sx={{
-                bgcolor: notificationsUnreadCount > 0 ? 'rgba(59,130,246,0.18)' : 'rgba(148,163,184,0.16)',
-                color: notificationsUnreadCount > 0 ? '#bfdbfe' : '#cbd5e1',
-              }}
-            />
-            {notificationsUnreadCount > 0 ? (
-              <Button
-                size="small"
-                variant="text"
-                onClick={() => { void handleMarkAllNotificationsRead(); }}
-                sx={{ textTransform: 'none', fontWeight: 700 }}
-              >
-                Marker alle som lest
-              </Button>
-            ) : null}
-          </Stack>
-        </Stack>
-
-        {recentNotifications.length === 0 ? (
-          <Alert severity="info">Ingen varsler ennå. Når klienten fyller ut brief, kommenterer eller godkjenner, dukker det opp her.</Alert>
-        ) : (
-          <Stack spacing={0.8}>
-            {recentNotifications.map((notification) => (
-              <Box
-                key={notification.id}
-                sx={{
-                  p: 0.95,
-                  borderRadius: 1.6,
-                  border: notification.read
-                    ? '1px solid rgba(148,163,184,0.16)'
-                    : '1px solid rgba(59,130,246,0.28)',
-                  background: notification.read
-                    ? 'rgba(2,6,23,0.36)'
-                    : 'rgba(15,23,42,0.92)',
-                }}
-              >
-                <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.9} justifyContent="space-between">
-                  <Stack spacing={0.45} sx={{ minWidth: 0 }}>
-                    <Stack direction="row" spacing={0.8} alignItems="center" flexWrap="wrap" useFlexGap>
-                      <Chip
-                        size="small"
-                        label={notification.read ? 'Lest' : 'Ny'}
-                        sx={{
-                          bgcolor: notification.read ? 'rgba(148,163,184,0.16)' : 'rgba(59,130,246,0.18)',
-                          color: notification.read ? '#cbd5e1' : '#bfdbfe',
-                        }}
-                      />
-                      <Chip
-                        size="small"
-                        color={getNotificationSeverity(notification) === 'warning' ? 'warning' : 'info'}
-                        label={toDisplayDateTime(notification.updated_at)}
-                        variant="outlined"
-                      />
                     </Stack>
-                    <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                      {notification.title}
-                    </Typography>
-                    <Typography sx={{ color: 'rgba(226,232,240,0.76)', fontSize: '0.85rem', lineHeight: 1.5 }}>
-                      {notification.message || 'Varslet mangler beskrivelse.'}
-                    </Typography>
-                  </Stack>
-
-                  <Stack direction={{ xs: 'row', md: 'column' }} spacing={0.7} alignItems={{ md: 'flex-end' }}>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      onClick={() => { void handleOpenNotification(notification); }}
-                      sx={{ textTransform: 'none', fontWeight: 700 }}
-                    >
-                      Åpne
-                    </Button>
-                    {!notification.read ? (
-                      <Button
-                        size="small"
-                        variant="text"
-                        onClick={() => { void handleMarkNotificationRead(notification.id); }}
-                        sx={{ textTransform: 'none', fontWeight: 700 }}
-                      >
-                        Marker som lest
-                      </Button>
-                    ) : null}
-                  </Stack>
-                </Stack>
-              </Box>
-            ))}
-          </Stack>
-        )}
-      </Box>
+                  </Box>
+                ))}
+              </Stack>
+            )}
+          </Box>
+        </>
+      )}
 
       {viewMode === 'timeline' ? (
         <Box
