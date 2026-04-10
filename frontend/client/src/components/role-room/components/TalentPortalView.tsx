@@ -271,6 +271,60 @@ const renderActivityMeta = (invite?: RoleRoomTalentPortalInvite | null): string 
   return 'Invitasjon sendt';
 };
 
+const extractFirstUrl = (...values: Array<string | null | undefined>): string | null => {
+  for (const value of values) {
+    if (typeof value !== 'string' || value.trim().length === 0) {
+      continue;
+    }
+    const match = value.match(/https?:\/\/[^\s)]+/i);
+    if (match?.[0]) {
+      return match[0];
+    }
+  }
+  return null;
+};
+
+const buildGoogleCalendarHref = (
+  schedule: RoleRoomTalentPortalSchedule,
+  assignment: RoleRoomTalentPortalAssignment,
+): string | null => {
+  if (!schedule.date || !schedule.startTime) {
+    return null;
+  }
+
+  const start = new Date(`${schedule.date}T${schedule.startTime}`);
+  if (Number.isNaN(start.getTime())) {
+    return null;
+  }
+
+  const [endHours, endMinutes] = typeof schedule.endTime === 'string' && schedule.endTime.length >= 5
+    ? schedule.endTime.split(':').map((value) => Number(value))
+    : [NaN, NaN];
+  const end = Number.isFinite(endHours) && Number.isFinite(endMinutes)
+    ? new Date(`${schedule.date}T${schedule.endTime}`)
+    : new Date(start.getTime() + 45 * 60 * 1000);
+
+  const formatCalendarDate = (value: Date) => value.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+  const title = `${schedule.roleName || 'Møte'} · ${assignment.project.name}`;
+  const details = [
+    schedule.notes?.trim(),
+    assignment.project.description?.trim(),
+  ].filter((value): value is string => typeof value === 'string' && value.length > 0).join('\n\n');
+
+  const params = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: title,
+    dates: `${formatCalendarDate(start)}/${formatCalendarDate(end)}`,
+    location: schedule.location?.trim() || 'The Role Room',
+  });
+
+  if (details.length > 0) {
+    params.set('details', details);
+  }
+
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+};
+
 export default function TalentPortalView({ intent, onClose }: TalentPortalViewProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [portalData, setPortalData] = useState<RoleRoomTalentPortalResponse | null>(null);
@@ -395,6 +449,14 @@ export default function TalentPortalView({ intent, onClose }: TalentPortalViewPr
     [selectedAssignment],
   );
   const invite = selectedAssignment?.invite ?? null;
+  const nextScheduleJoinUrl = useMemo(
+    () => extractFirstUrl(nextSchedule?.location, nextSchedule?.notes),
+    [nextSchedule?.location, nextSchedule?.notes],
+  );
+  const nextScheduleCalendarHref = useMemo(
+    () => (selectedAssignment && nextSchedule ? buildGoogleCalendarHref(nextSchedule, selectedAssignment) : null),
+    [nextSchedule, selectedAssignment],
+  );
 
   const nextStep = useMemo(() => {
     if (!selectedAssignment) {
@@ -878,6 +940,50 @@ export default function TalentPortalView({ intent, onClose }: TalentPortalViewPr
                     }}
                   />
                 </Stack>
+                <Stack
+                  direction={{ xs: 'column', sm: 'row' }}
+                  spacing={1}
+                  sx={{ mt: 1.5 }}
+                >
+                  <Button
+                    variant="contained"
+                    onClick={() => setActiveSection('auditions')}
+                    startIcon={invite.acceptedAt ? <CheckCircleOutlineIcon /> : <MarkEmailReadIcon />}
+                    sx={{
+                      width: { xs: '100%', sm: 'auto' },
+                      borderRadius: 999,
+                      textTransform: 'none',
+                      fontWeight: 800,
+                      background: 'linear-gradient(135deg, #7dd3fc, #38bdf8)',
+                      color: '#031522',
+                      '&:hover': {
+                        background: 'linear-gradient(135deg, #bae6fd, #0ea5e9)',
+                      },
+                    }}
+                  >
+                    {invite.acceptedAt ? 'Se møteinvitasjoner' : 'Åpne invitasjonen'}
+                  </Button>
+                  {nextScheduleCalendarHref ? (
+                    <Button
+                      component="a"
+                      href={nextScheduleCalendarHref}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      variant="outlined"
+                      startIcon={<CalendarMonthIcon />}
+                      sx={{
+                        width: { xs: '100%', sm: 'auto' },
+                        borderRadius: 999,
+                        textTransform: 'none',
+                        fontWeight: 700,
+                        color: '#dbeafe',
+                        borderColor: 'rgba(125, 211, 252, 0.28)',
+                      }}
+                    >
+                      Legg i kalender
+                    </Button>
+                  ) : null}
+                </Stack>
               </Box>
             ) : null}
 
@@ -943,6 +1049,113 @@ export default function TalentPortalView({ intent, onClose }: TalentPortalViewPr
               ) : null}
 
               <Stack spacing={2.1}>
+                {nextSchedule ? (
+                  <Box
+                    sx={{
+                      ...cardSx,
+                      display: { xs: 'block', md: 'none' },
+                      p: 2,
+                      borderColor: 'rgba(125, 211, 252, 0.22)',
+                      bgcolor: 'rgba(8, 15, 30, 0.92)',
+                    }}
+                  >
+                    <Stack spacing={1.35}>
+                      <Stack spacing={0.55}>
+                        <Typography sx={{ fontSize: '0.76rem', letterSpacing: '0.22em', textTransform: 'uppercase', color: TEXT_MUTED }}>
+                          Neste møteinvitasjon
+                        </Typography>
+                        <Typography sx={{ fontSize: '1.18rem', fontWeight: 800, lineHeight: 1.2 }}>
+                          {nextSchedule.roleName || 'Audition'}
+                        </Typography>
+                        <Typography sx={{ color: TEXT_SECONDARY, lineHeight: 1.6 }}>
+                          Invitasjonen er {invite?.acceptedAt ? 'aktivert' : 'klar'} og kan håndteres direkte fra mobilen.
+                        </Typography>
+                      </Stack>
+                      <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                        <Chip
+                          size="small"
+                          label={formatDateLabel(nextSchedule.date)}
+                          sx={{ bgcolor: 'rgba(15, 23, 42, 0.78)', color: '#e2e8f0' }}
+                        />
+                        {nextSchedule.startTime ? (
+                          <Chip
+                            size="small"
+                            label={formatTimeLabel(nextSchedule.startTime)}
+                            sx={{ bgcolor: 'rgba(15, 23, 42, 0.78)', color: '#e2e8f0' }}
+                          />
+                        ) : null}
+                        <Chip
+                          size="small"
+                          label={normalizeStatusLabel(nextSchedule.status)}
+                          sx={{ bgcolor: 'rgba(8, 47, 73, 0.44)', color: '#bae6fd', border: `1px solid ${BORDER}` }}
+                        />
+                      </Stack>
+                      <Typography sx={{ color: TEXT_MUTED, fontSize: '0.92rem', lineHeight: 1.6 }}>
+                        {nextSchedule.location || 'Lokasjon kommer'}{nextSchedule.type ? ` • ${nextSchedule.type}` : ''}
+                      </Typography>
+                      <Stack spacing={0.85}>
+                        {nextScheduleJoinUrl ? (
+                          <Button
+                            component="a"
+                            href={nextScheduleJoinUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            variant="contained"
+                            startIcon={<ArrowOutwardIcon />}
+                            sx={{
+                              width: '100%',
+                              borderRadius: 999,
+                              textTransform: 'none',
+                              fontWeight: 800,
+                              background: 'linear-gradient(135deg, #7dd3fc, #38bdf8)',
+                              color: '#031522',
+                              '&:hover': {
+                                background: 'linear-gradient(135deg, #bae6fd, #0ea5e9)',
+                              },
+                            }}
+                          >
+                            Åpne møtelenke
+                          </Button>
+                        ) : null}
+                        {nextScheduleCalendarHref ? (
+                          <Button
+                            component="a"
+                            href={nextScheduleCalendarHref}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            variant="outlined"
+                            startIcon={<CalendarMonthIcon />}
+                            sx={{
+                              width: '100%',
+                              borderRadius: 999,
+                              textTransform: 'none',
+                              fontWeight: 700,
+                              color: '#dbeafe',
+                              borderColor: 'rgba(125, 211, 252, 0.28)',
+                            }}
+                          >
+                            Legg i kalender
+                          </Button>
+                        ) : null}
+                        <Button
+                          variant="text"
+                          startIcon={<ForumIcon />}
+                          onClick={() => setActiveSection('activity')}
+                          sx={{
+                            width: '100%',
+                            borderRadius: 999,
+                            textTransform: 'none',
+                            fontWeight: 700,
+                            color: '#fde68a',
+                          }}
+                        >
+                          Kontakt teamet
+                        </Button>
+                      </Stack>
+                    </Stack>
+                  </Box>
+                ) : null}
+
                 <Box
                   sx={{
                     display: 'grid',
@@ -1032,6 +1245,8 @@ export default function TalentPortalView({ intent, onClose }: TalentPortalViewPr
                             selectedAssignment.schedules.map((schedule) => {
                               const tone = getStatusTone(schedule.status);
                               const upcoming = isUpcomingSchedule(schedule);
+                              const scheduleJoinUrl = extractFirstUrl(schedule.location, schedule.notes);
+                              const scheduleCalendarHref = buildGoogleCalendarHref(schedule, selectedAssignment);
                               return (
                                 <Box
                                   key={schedule.id}
@@ -1073,6 +1288,57 @@ export default function TalentPortalView({ intent, onClose }: TalentPortalViewPr
                                       <Typography sx={{ color: TEXT_SECONDARY, lineHeight: 1.65 }}>
                                         {schedule.notes}
                                       </Typography>
+                                    ) : null}
+                                    {(scheduleJoinUrl || scheduleCalendarHref) ? (
+                                      <Stack
+                                        direction={{ xs: 'column', sm: 'row' }}
+                                        spacing={0.9}
+                                        sx={{ pt: 0.4 }}
+                                      >
+                                        {scheduleJoinUrl ? (
+                                          <Button
+                                            component="a"
+                                            href={scheduleJoinUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            variant="contained"
+                                            startIcon={<ArrowOutwardIcon />}
+                                            sx={{
+                                              width: { xs: '100%', sm: 'auto' },
+                                              borderRadius: 999,
+                                              textTransform: 'none',
+                                              fontWeight: 800,
+                                              background: 'linear-gradient(135deg, #7dd3fc, #38bdf8)',
+                                              color: '#031522',
+                                              '&:hover': {
+                                                background: 'linear-gradient(135deg, #bae6fd, #0ea5e9)',
+                                              },
+                                            }}
+                                          >
+                                            Åpne møtelenke
+                                          </Button>
+                                        ) : null}
+                                        {scheduleCalendarHref ? (
+                                          <Button
+                                            component="a"
+                                            href={scheduleCalendarHref}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            variant="outlined"
+                                            startIcon={<CalendarMonthIcon />}
+                                            sx={{
+                                              width: { xs: '100%', sm: 'auto' },
+                                              borderRadius: 999,
+                                              textTransform: 'none',
+                                              fontWeight: 700,
+                                              color: '#dbeafe',
+                                              borderColor: 'rgba(125, 211, 252, 0.28)',
+                                            }}
+                                          >
+                                            Legg i kalender
+                                          </Button>
+                                        ) : null}
+                                      </Stack>
                                     ) : null}
                                   </Stack>
                                 </Box>
