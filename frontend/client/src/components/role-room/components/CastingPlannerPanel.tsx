@@ -2516,6 +2516,38 @@ export function CastingPlannerPanel({
     return projectId === castingService.getContentProducerDemoProjectId();
   }, []);
 
+  const getProjectCreatorLabel = useCallback((project: CastingProject | null | undefined): string | null => {
+    if (!project) {
+      return null;
+    }
+
+    const rawProject = project as Record<string, unknown>;
+    const rawCreatorValue = [
+      rawProject.created_by_label,
+      rawProject.createdByLabel,
+      rawProject.createdBy,
+      rawProject.created_by,
+      rawProject.templateCreatedBy,
+    ].find((value) => typeof value === 'string' && value.trim().length > 0);
+
+    if (typeof rawCreatorValue !== 'string') {
+      return null;
+    }
+
+    const normalizedCreatorValue = rawCreatorValue.trim();
+    const normalizedAdminId = String(adminUser?.id ?? '').trim();
+    const normalizedAdminEmail = String(adminUser?.email ?? '').trim().toLowerCase();
+
+    if (
+      normalizedCreatorValue === normalizedAdminId
+      || normalizedCreatorValue.toLowerCase() === normalizedAdminEmail
+    ) {
+      return adminUser?.display_name || adminUser?.name || adminUser?.email || 'Deg';
+    }
+
+    return normalizedCreatorValue;
+  }, [adminUser?.display_name, adminUser?.email, adminUser?.id, adminUser?.name]);
+
   const isRestorableWorkspaceProject = useCallback((project: CastingProject | null | undefined): project is CastingProject => {
     if (!project) {
       return false;
@@ -13034,6 +13066,7 @@ export function CastingPlannerPanel({
             >
               {(() => {
                 const { roleLabel, accessLabel } = getProjectRoleDetails(headerActiveProject);
+                const creatorLabel = getProjectCreatorLabel(headerActiveProject);
                 return (
                   <>
                     <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.56)' }}>
@@ -13089,6 +13122,11 @@ export function CastingPlannerPanel({
                             headerActiveProject.producerWorkflowStatus ? PRODUCER_PROJECT_STATUS_LABELS[headerActiveProject.producerWorkflowStatus] : null,
                           ].filter(Boolean).join(' • ')}
                         </Typography>
+                        {creatorLabel ? (
+                          <Typography sx={{ mt: 0.45, fontSize: '0.74rem', color: 'rgba(255,255,255,0.54)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            Opprettet av {creatorLabel}
+                          </Typography>
+                        ) : null}
                       </Box>
                       <Chip
                         size="small"
@@ -13204,6 +13242,7 @@ export function CastingPlannerPanel({
                       ? PRODUCER_PROJECT_STATUS_LABELS[workflowStatus]
                       : 'Klar for arbeid';
                     const { roleLabel, accessLabel } = getProjectRoleDetails(project);
+                    const creatorLabel = getProjectCreatorLabel(project);
                     const isDragging = draggingPinnedProjectId === project.id;
 
                     return (
@@ -13279,6 +13318,11 @@ export function CastingPlannerPanel({
                         <Typography sx={{ mt: 0.7, fontSize: '0.72rem', color: 'rgba(255,255,255,0.64)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {project.clientName || 'Uten klientnavn'}
                         </Typography>
+                        {creatorLabel ? (
+                          <Typography sx={{ mt: 0.45, fontSize: '0.7rem', color: 'rgba(255,255,255,0.54)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            Opprettet av {creatorLabel}
+                          </Typography>
+                        ) : null}
                         <Box sx={{ mt: 0.8, display: 'flex', alignItems: 'center', gap: 0.55, flexWrap: 'wrap' }}>
                           <Chip
                             size="small"
@@ -13399,6 +13443,7 @@ export function CastingPlannerPanel({
                             border: '1px solid rgba(148, 163, 184, 0.18)',
                           };
                       const { roleLabel, accessLabel } = getProjectRoleDetails(project);
+                      const creatorLabel = getProjectCreatorLabel(project);
                       const updatedDate = project.updatedAt
                         ? new Date(project.updatedAt).toLocaleDateString('nb-NO', {
                             day: '2-digit',
@@ -13523,6 +13568,11 @@ export function CastingPlannerPanel({
                                 {project.clientName ? `${project.clientName} • ` : ''}{branding.tokens.labels.lastUpdatedLabel} {updatedDate}
                               </Typography>
                             </Box>
+                            {creatorLabel ? (
+                              <Typography sx={{ mt: 0.55, fontSize: '0.72rem', color: 'rgba(255,255,255,0.52)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                Opprettet av {creatorLabel}
+                              </Typography>
+                            ) : null}
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.7, mt: 0.8, minWidth: 0, flexWrap: 'wrap' }}>
                               <Chip
                                 size="small"

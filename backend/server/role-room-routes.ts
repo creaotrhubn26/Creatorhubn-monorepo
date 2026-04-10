@@ -56,6 +56,7 @@ interface CastingProjectRow {
   description: string | null;
   status: string | null;
   created_by: string | null;
+  created_by_label?: string | null;
   genre: string | null;
   project_type: string | null;
   start_date: string | null;
@@ -8448,8 +8449,17 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       }
 
       const result = await pool.query<CastingProjectRow>(
-        `SELECT cp.* FROM casting_projects cp
+        `SELECT
+           cp.*,
+           COALESCE(
+             NULLIF(TRIM(CONCAT_WS(' ', NULLIF(u.first_name, ''), NULLIF(u.last_name, ''))), ''),
+             NULLIF(u.username, ''),
+             NULLIF(u.email, ''),
+             NULLIF(cp.created_by, '')
+           ) AS created_by_label
+         FROM casting_projects cp
          LEFT JOIN casting_user_roles cur ON cp.id = cur.project_id AND cur.user_id = $1
+         LEFT JOIN users u ON CAST(u.id AS TEXT) = cp.created_by OR LOWER(COALESCE(u.email, '')) = LOWER(COALESCE(cp.created_by, ''))
          WHERE cp.created_by = $1 OR cur.user_id IS NOT NULL
          ORDER BY cp.updated_at DESC`,
         [userId]
@@ -8495,7 +8505,18 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       }
 
       const result = await pool.query<CastingProjectRow>(
-        'SELECT * FROM casting_projects WHERE id = $1', [req.params.id]
+        `SELECT
+           cp.*,
+           COALESCE(
+             NULLIF(TRIM(CONCAT_WS(' ', NULLIF(u.first_name, ''), NULLIF(u.last_name, ''))), ''),
+             NULLIF(u.username, ''),
+             NULLIF(u.email, ''),
+             NULLIF(cp.created_by, '')
+           ) AS created_by_label
+         FROM casting_projects cp
+         LEFT JOIN users u ON CAST(u.id AS TEXT) = cp.created_by OR LOWER(COALESCE(u.email, '')) = LOWER(COALESCE(cp.created_by, ''))
+         WHERE cp.id = $1`,
+        [req.params.id]
       );
       if (result.rowCount === 0) {
         res.status(404).json({ error: 'Prosjekt ikke funnet' });
