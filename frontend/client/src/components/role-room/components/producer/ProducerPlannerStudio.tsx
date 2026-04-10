@@ -331,6 +331,10 @@ const getNotificationActionLabel = (category: ProducerInboxCategory): string => 
   }
 };
 
+const getLatestNotification = (items: ProducerProjectNotification[]): ProducerProjectNotification | undefined => (
+  [...items].sort((left, right) => compareDatesAsc(right.updated_at, left.updated_at))[0]
+);
+
 const getReviewStatusLabel = (status?: string | null): string => {
   const normalizedStatus = String(status ?? '').trim().toLowerCase();
   if (normalizedStatus === 'pending') {
@@ -998,28 +1002,60 @@ export default function ProducerPlannerStudio({
   ), [reviews]);
 
   const contentProducerInboxItems = useMemo<ProducerInboxItem[]>(() => {
+    const reviewNotificationMap = new Map<string, ProducerProjectNotification[]>();
+    for (const notification of notifications) {
+      if (String(notification.linked_entity_type ?? '').trim().toLowerCase() !== 'client_review') {
+        continue;
+      }
+      const linkedEntityId = String(notification.linked_entity_id ?? '').trim();
+      if (!linkedEntityId) {
+        continue;
+      }
+      const existing = reviewNotificationMap.get(linkedEntityId) ?? [];
+      existing.push(notification);
+      reviewNotificationMap.set(linkedEntityId, existing);
+    }
+
     const approvalItems = outstandingClientApprovals.map((review) => {
       const normalizedStatus = String(review.status ?? '').trim().toLowerCase();
       const tone = getReviewStatusTone(review.status);
-      const phase = resolveReviewPhase(review);
+      const relatedNotifications = reviewNotificationMap.get(review.id) ?? [];
+      const latestRelatedNotification = getLatestNotification(relatedNotifications);
+      const hasUnreadRelatedNotification = relatedNotifications.some((notification) => !notification.read);
       return {
         id: `approval:${review.id}`,
         source: 'approval' as const,
         category: 'approval' as const,
         title: review.title || getReviewTypeLabel(review),
-        detail: review.description?.trim() || 'Denne godkjenningen trenger fortsatt en beslutning før arbeidsløpet kan gå videre.',
+        detail: latestRelatedNotification?.message?.trim()
+          || review.description?.trim()
+          || 'Denne godkjenningen trenger fortsatt en beslutning før arbeidsløpet kan gå videre.',
         statusLabel: getReviewStatusLabel(review.status),
         actionLabel: 'Åpne Godkjenning',
         tone,
-        updatedAt: review.updated_at,
+        updatedAt: latestRelatedNotification?.updated_at ?? review.updated_at,
         dueAt: review.due_at ?? undefined,
-        unread: false,
-        needsFollowUp: normalizedStatus === 'pending' || normalizedStatus === 'changes_requested' || normalizedStatus === 'rejected',
+        unread: hasUnreadRelatedNotification,
+        needsFollowUp: hasUnreadRelatedNotification
+          || normalizedStatus === 'pending'
+          || normalizedStatus === 'changes_requested'
+          || normalizedStatus === 'rejected',
         review,
       } satisfies ProducerInboxItem;
     });
 
-    const notificationItems = notifications.map((notification) => {
+    const notificationItems = notifications
+      .filter((notification) => {
+        if (String(notification.linked_entity_type ?? '').trim().toLowerCase() !== 'client_review') {
+          return true;
+        }
+        const linkedEntityId = String(notification.linked_entity_id ?? '').trim();
+        if (!linkedEntityId) {
+          return true;
+        }
+        return !outstandingClientApprovals.some((review) => review.id === linkedEntityId);
+      })
+      .map((notification) => {
       const category = getNotificationInboxCategory(notification);
       const severity = getNotificationSeverity(notification);
       return {
@@ -1036,7 +1072,7 @@ export default function ProducerPlannerStudio({
         needsFollowUp: !notification.read || category === 'approval',
         notification,
       } satisfies ProducerInboxItem;
-    });
+      });
 
     return [...approvalItems, ...notificationItems].sort((left, right) => {
       const getPriority = (item: ProducerInboxItem): number => {
