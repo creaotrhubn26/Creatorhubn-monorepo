@@ -840,6 +840,37 @@ export function CastingPlannerPanel({
   
   type StoryArcView = 'main' | 'story-logic' | 'story-writer' | 'shot-list' | 'planning';
   type ContentProducerPlannerSurface = 'overview' | 'project_room' | 'approval' | 'delivery' | 'economy';
+  const CONTENT_PRODUCER_PLANNER_SURFACE_ITEMS: Array<{
+    value: ContentProducerPlannerSurface;
+    label: string;
+    description: string;
+  }> = [
+    {
+      value: 'overview',
+      label: 'Oversikt',
+      description: 'Se fremdrift, varsler, møter og administrative blokker i én samlet startflate.',
+    },
+    {
+      value: 'project_room',
+      label: 'Prosjektrom',
+      description: 'Jobb med brief, materialer, storyboard, manus, shotlist og prosjektgrunnlag.',
+    },
+    {
+      value: 'approval',
+      label: 'Godkjenning',
+      description: 'Samle klientfeedback, beslutninger og endringer som må avklares før neste steg.',
+    },
+    {
+      value: 'delivery',
+      label: 'Levering',
+      description: 'Hold kontroll på leveranser, eksport, overlevering og hva som faktisk er klart til utsending.',
+    },
+    {
+      value: 'economy',
+      label: 'Økonomi',
+      description: 'Følg budsjett, økonomiske beslutninger og hva som må godkjennes kommersielt.',
+    },
+  ];
   type RoleRoomWorkspaceState = {
     projectId: string | null;
     activeTab: number;
@@ -1505,9 +1536,10 @@ export function CastingPlannerPanel({
   }, [projectSelectorOpen]);
 
   const getTabReturnLabel = useCallback((tabIndex: number): string => {
+    const activePlannerSurfaceLabel = CONTENT_PRODUCER_PLANNER_SURFACE_ITEMS.find((item) => item.value === contentProducerPlannerSurface)?.label ?? 'Oversikt';
     switch (tabIndex) {
       case STORY_ARC_TAB_INDEX:
-        return isContentProducerMode ? 'Planner' : 'Role Room Studio';
+        return isContentProducerMode ? `Planner · ${activePlannerSurfaceLabel}` : 'Role Room Studio';
       case ROLES_TAB_INDEX:
         return branding.tokens.labels.roles;
       case CANDIDATES_TAB_INDEX:
@@ -1529,7 +1561,7 @@ export function CastingPlannerPanel({
       case PRODUCER_ECONOMY_TAB_INDEX:
         return 'Økonomi';
       case PRODUCER_TIMELINE_TAB_INDEX:
-        return 'Planner';
+        return isContentProducerMode ? 'Planner · Oversikt' : 'Planner';
       case PRODUCER_REVIEWS_TAB_INDEX:
         return 'Godkjenning';
       case PRODUCER_EXPORT_TAB_INDEX:
@@ -1538,7 +1570,7 @@ export function CastingPlannerPanel({
       default:
         return branding.tokens.labels.dashboard;
     }
-  }, [branding.tokens.labels, isContentProducerMode]);
+  }, [CONTENT_PRODUCER_PLANNER_SURFACE_ITEMS, branding.tokens.labels, contentProducerPlannerSurface, isContentProducerMode]);
 
   const handleExitLiveSet = useCallback(() => {
     const nextTab = lastNonLiveTab === LIVE_SET_TAB_INDEX ? 0 : lastNonLiveTab;
@@ -2858,6 +2890,22 @@ export function CastingPlannerPanel({
       setContentProducerPlannerSurface('overview');
     }
   }, [canViewProducerEconomy, contentProducerPlannerSurface, isContentProducerMode]);
+
+  const contentProducerPlannerSurfaceItems = useMemo(
+    () => (
+      canViewProducerEconomy
+        ? CONTENT_PRODUCER_PLANNER_SURFACE_ITEMS
+        : CONTENT_PRODUCER_PLANNER_SURFACE_ITEMS.filter((item) => item.value !== 'economy')
+    ),
+    [CONTENT_PRODUCER_PLANNER_SURFACE_ITEMS, canViewProducerEconomy],
+  );
+
+  const activeContentProducerPlannerSurfaceItem = useMemo(
+    () => contentProducerPlannerSurfaceItems.find((item) => item.value === contentProducerPlannerSurface)
+      ?? contentProducerPlannerSurfaceItems[0]
+      ?? CONTENT_PRODUCER_PLANNER_SURFACE_ITEMS[0],
+    [CONTENT_PRODUCER_PLANNER_SURFACE_ITEMS, contentProducerPlannerSurface, contentProducerPlannerSurfaceItems],
+  );
 
   useEffect(() => {
     if (!authLoaded || !adminUser) {
@@ -10236,12 +10284,12 @@ export function CastingPlannerPanel({
                 <Box sx={{ maxWidth: 720 }}>
                   <Typography sx={{ color: '#f8fafc', fontWeight: 700, mb: 0.35 }}>
                     {plannerAudience === 'content_producer'
-                      ? 'Styr innhold, godkjenning og levering fra samme operasjonsflate'
+                      ? `Planner · ${activeContentProducerPlannerSurfaceItem?.label ?? 'Oversikt'}`
                       : 'Planlegg dager, samarbeid og møter fra samme operasjonsflate'}
                   </Typography>
                   <Typography sx={{ color: 'rgba(226,232,240,0.76)', fontSize: '0.82rem', lineHeight: 1.55 }}>
                     {plannerAudience === 'content_producer'
-                      ? 'Planner er nå hovedhjemmet for innholdsprodusent. Prosjektrom, godkjenning og levering ligger som underfaner her, slik at hele arbeidsløpet holdes samlet.'
+                      ? activeContentProducerPlannerSurfaceItem?.description ?? 'Planner er hovedhjemmet for innholdsprodusent.'
                       : 'Bruk denne flaten som planning-leddet i Role Room Studio. Produksjonsteamet kan hoppe direkte til utvelgelse for Meet-planlegging, videre til produksjonsplanen for dagsstyring og til teamet for bemanning.'}
                   </Typography>
                 </Box>
@@ -10266,13 +10314,7 @@ export function CastingPlannerPanel({
                           },
                         }}
                       >
-                        {[
-                          { value: 'overview', label: 'Oversikt' },
-                          { value: 'project_room', label: 'Prosjektrom' },
-                          { value: 'approval', label: 'Godkjenning' },
-                          { value: 'delivery', label: 'Levering' },
-                          ...(canViewProducerEconomy ? [{ value: 'economy', label: 'Økonomi' }] : []),
-                        ].map((item) => (
+                        {contentProducerPlannerSurfaceItems.map((item) => (
                           <Tab
                             key={item.value}
                             value={item.value}
