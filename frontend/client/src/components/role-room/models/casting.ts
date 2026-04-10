@@ -1328,14 +1328,64 @@ export type ProducerAccountAccessStatus =
   | 'connected'
   | 'revoked';
 
+export type ProducerAccountAccessTier =
+  | 'delegated_access'
+  | 'sensitive_secret';
+
+export type ProducerAccountAccessRiskLevel =
+  | 'low'
+  | 'medium'
+  | 'high';
+
+export type ProducerAccountAccessTwoFactorStatus =
+  | 'enabled'
+  | 'missing'
+  | 'unknown';
+
+export type ProducerAccountAccessSecretStatus =
+  | 'not_shared'
+  | 'requested'
+  | 'stored_externally'
+  | 'revoked';
+
+export type ProducerAccountAccessRevealPolicy =
+  | 'approval_required'
+  | 'one_time'
+  | 'manual_only';
+
+export type ProducerAccountAccessRoleTarget =
+  | 'client_owner'
+  | 'producer'
+  | 'editor'
+  | 'social_media_manager'
+  | 'admin';
+
+export type ProducerAccountAccessVaultTab =
+  | 'accounts'
+  | 'requests'
+  | 'secrets'
+  | 'permissions'
+  | 'audit'
+  | 'emergency';
+
 export interface ProducerAccountAccessEntry {
   platform: ProducerAccountAccessPlatform;
   method: ProducerAccountAccessMethod;
   status: ProducerAccountAccessStatus;
+  tier?: ProducerAccountAccessTier;
+  riskLevel?: ProducerAccountAccessRiskLevel;
   accountLabel?: string;
   inviteTarget?: string;
   accessScope?: string;
   ownerName?: string;
+  sharedWithRoles?: ProducerAccountAccessRoleTarget[];
+  twoFactorStatus?: ProducerAccountAccessTwoFactorStatus;
+  lastUsedAt?: string;
+  expiresAt?: string;
+  secretStatus?: ProducerAccountAccessSecretStatus;
+  secretLabel?: string;
+  maskedReference?: string;
+  revealPolicy?: ProducerAccountAccessRevealPolicy;
   notes?: string;
   twoFactorRequired?: boolean;
   lastUpdatedAt?: string;
@@ -1343,8 +1393,13 @@ export interface ProducerAccountAccessEntry {
 
 export interface ProducerAccountAccessWorkspace {
   entries: ProducerAccountAccessEntry[];
+  activeVaultTab?: ProducerAccountAccessVaultTab;
   securityNotes?: string;
   revokePlan?: string;
+  emergencyContactName?: string;
+  emergencyContactEmail?: string;
+  emergencyContactPhone?: string;
+  emergencyAccessNotes?: string;
   updatedAt?: string;
 }
 

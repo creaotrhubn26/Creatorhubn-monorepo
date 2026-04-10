@@ -58,6 +58,13 @@ import type {
   CastingProject,
   Manuscript,
   ProducerAccountAccessPlatform,
+  ProducerAccountAccessRevealPolicy,
+  ProducerAccountAccessRiskLevel,
+  ProducerAccountAccessRoleTarget,
+  ProducerAccountAccessSecretStatus,
+  ProducerAccountAccessTier,
+  ProducerAccountAccessTwoFactorStatus,
+  ProducerAccountAccessVaultTab,
   ProducerBrandGuideColor,
   ProducerBrandLogoDetection,
   ProducerBrandLogoVariant,
@@ -109,7 +116,14 @@ import {
   getProducerAccountAccessPlatformFromMomentId,
   PRODUCER_ACCOUNT_ACCESS_METHOD_LABELS,
   PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS,
+  PRODUCER_ACCOUNT_ACCESS_REVEAL_POLICY_LABELS,
+  PRODUCER_ACCOUNT_ACCESS_RISK_LABELS,
+  PRODUCER_ACCOUNT_ACCESS_ROLE_TARGET_LABELS,
+  PRODUCER_ACCOUNT_ACCESS_SECRET_STATUS_LABELS,
   PRODUCER_ACCOUNT_ACCESS_STATUS_LABELS,
+  PRODUCER_ACCOUNT_ACCESS_TIER_LABELS,
+  PRODUCER_ACCOUNT_ACCESS_TWO_FACTOR_STATUS_LABELS,
+  PRODUCER_ACCOUNT_ACCESS_VAULT_TAB_LABELS,
   getProducerDeliveryWorkflowPreset,
   getProducerClientContributionTasks,
   PRODUCER_CONTENT_CALENDAR_STATUS_LABELS,
@@ -152,6 +166,7 @@ import { shouldUseRoleRoomLocalFallback } from '../../utils/runtime';
 import ProducerGoogleWorkspacePanel from './ProducerGoogleWorkspacePanel';
 import ProducerMeetingWorkspace from './ProducerMeetingWorkspace';
 import RoleRoomAgentDialog from './RoleRoomAgentDialog';
+import AccountProviderLogo from './AccountProviderLogo';
 
 interface ProducerMediaPanelProps {
   project: CastingProject;
@@ -771,6 +786,80 @@ const ACCOUNT_ACCESS_PLATFORM_FLOW_CONFIG: Record<ProducerAccountAccessPlatform,
     secondaryLabel: 'TikTok-hjelp',
     secondaryHref: 'https://business.tiktok.com/help',
   },
+};
+
+const ACCOUNT_ACCESS_SECRET_PATTERN = /(?:passord|password|pwd|api(?:\s|-)?key|access(?:\s|-)?token|refresh(?:\s|-)?token|secret|backup(?:\s|-)?code|recovery(?:\s|-)?code|gjenopprettingskode|2fa|otp)\s*[:=]\s*\S+/i;
+const ACCOUNT_ACCESS_TOKEN_PATTERN = /\b(?:ghp_[A-Za-z0-9]{20,}|sk_(?:live|test)_[A-Za-z0-9]+|AIza[0-9A-Za-z\-_]{20,}|ya29\.[0-9A-Za-z\-_]+)\b/;
+
+const detectAccountAccessSecret = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  if (ACCOUNT_ACCESS_SECRET_PATTERN.test(trimmed) || ACCOUNT_ACCESS_TOKEN_PATTERN.test(trimmed)) {
+    return 'Dette feltet ser ut til å inneholde en hemmelighet. Bruk sikker deling eller maskert referanse i stedet for rå credentials.';
+  }
+  return null;
+};
+
+const parseAccountAccessRoleTargets = (value: string): ProducerAccountAccessRoleTarget[] => {
+  const next = new Set<ProducerAccountAccessRoleTarget>();
+  value
+    .split(/[,\n]/u)
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean)
+    .forEach((entry) => {
+      if (entry === 'klienteier' || entry === 'client owner' || entry === 'client_owner') {
+        next.add('client_owner');
+      } else if (entry === 'innholdsprodusent' || entry === 'producer') {
+        next.add('producer');
+      } else if (entry === 'editor' || entry === 'klipper') {
+        next.add('editor');
+      } else if (entry === 'some-ansvarlig' || entry === 'social media manager' || entry === 'social_media_manager' || entry === 'sosiale medier') {
+        next.add('social_media_manager');
+      } else if (entry === 'administrator' || entry === 'admin') {
+        next.add('admin');
+      }
+    });
+  return Array.from(next);
+};
+
+const stringifyAccountAccessRoleTargets = (value: ProducerAccountAccessRoleTarget[] | undefined): string => (
+  Array.isArray(value)
+    ? value
+      .map((entry) => PRODUCER_ACCOUNT_ACCESS_ROLE_TARGET_LABELS[entry] ?? entry)
+      .join(', ')
+    : ''
+);
+
+const toDateTimeLocalValue = (value: string | undefined): string => {
+  if (!hasText(value)) {
+    return '';
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  const hours = `${date.getHours()}`.padStart(2, '0');
+  const minutes = `${date.getMinutes()}`.padStart(2, '0');
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+};
+
+const fromDateTimeLocalValue = (value: string): string | undefined => {
+  if (!hasText(value)) {
+    return undefined;
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return undefined;
+  }
+  return date.toISOString();
 };
 
 const readPlanningMomentIdFromReview = (review: ProducerClientReview): string | null => {
@@ -3006,6 +3095,18 @@ export default function ProducerMediaPanel({
     }));
   }, []);
 
+  const updateAccountAccessWorkspace = useCallback((
+    updater: (workspace: ProducerProjectPlanning['accountAccess']) => ProducerProjectPlanning['accountAccess'],
+  ) => {
+    setPlanningDraft((previous) => ({
+      ...previous,
+      accountAccess: {
+        ...updater(previous.accountAccess),
+        updatedAt: new Date().toISOString(),
+      },
+    }));
+  }, []);
+
   const handleStartGoogleAccountLink = useCallback(async () => {
     try {
       setGoogleAccessActionKey('connect');
@@ -3741,6 +3842,41 @@ export default function ProducerMediaPanel({
       })),
     [requiredAccountEntries],
   );
+  const accountAccessVaultTab = planningDraft.accountAccess.activeVaultTab ?? 'accounts';
+  const accountAccessEntryWarnings = useMemo(() => (
+    effectiveAccountEntries.reduce<Record<string, string>>((accumulator, entry) => {
+      const warning = detectAccountAccessSecret(entry.notes);
+      if (warning) {
+        accumulator[`entry:${entry.platform}:notes`] = warning;
+      }
+      return accumulator;
+    }, {})
+  ), [effectiveAccountEntries]);
+  const accountAccessWorkspaceWarnings = useMemo(() => {
+    const warnings: Record<string, string> = {};
+    const securityWarning = detectAccountAccessSecret(planningDraft.accountAccess.securityNotes);
+    if (securityWarning) {
+      warnings.securityNotes = securityWarning;
+    }
+    const emergencyWarning = detectAccountAccessSecret(planningDraft.accountAccess.emergencyAccessNotes);
+    if (emergencyWarning) {
+      warnings.emergencyAccessNotes = emergencyWarning;
+    }
+    const revokeWarning = detectAccountAccessSecret(planningDraft.accountAccess.revokePlan);
+    if (revokeWarning) {
+      warnings.revokePlan = revokeWarning;
+    }
+    return warnings;
+  }, [
+    planningDraft.accountAccess.emergencyAccessNotes,
+    planningDraft.accountAccess.revokePlan,
+    planningDraft.accountAccess.securityNotes,
+  ]);
+  const accountAccessGuardrailMessages = useMemo(
+    () => [...Object.values(accountAccessEntryWarnings), ...Object.values(accountAccessWorkspaceWarnings)],
+    [accountAccessEntryWarnings, accountAccessWorkspaceWarnings],
+  );
+  const accountAccessHasSensitiveContent = accountAccessGuardrailMessages.length > 0;
 
   const briefReadyCount = useMemo(
     () => [
@@ -6243,6 +6379,74 @@ export default function ProducerMediaPanel({
     });
     return lookup;
   }, [pendingAccountAccessReviews]);
+  const accountAccessRequestCards = useMemo(() => {
+    const reviewRequests = pendingAccountAccessReviews.map((review) => {
+      const platforms = readAccountAccessPlatformsFromReview(review);
+      const primaryPlatform = platforms[0] ?? null;
+      return {
+        id: `review-${review.id}`,
+        platform: primaryPlatform,
+        eyebrow: 'Klientbekreftelse',
+        title: review.title,
+        detail: readFirstNonEmptyString(
+          review.description ?? '',
+          review.due_at ? `Frist ${formatTimestamp(review.due_at)}` : '',
+          review.requested_at ? `Bedt om ${formatTimestamp(review.requested_at)}` : '',
+        ),
+        actionLabel: 'Åpne review',
+        href: buildAccountAccessReviewUrl(review.id),
+      };
+    });
+    const operationalRequests = effectiveAccountEntries
+      .filter((entry) => entry.status === 'client_action' || entry.status === 'invite_sent' || entry.status === 'not_started')
+      .map((entry) => ({
+        id: `request-${entry.platform}`,
+        platform: entry.platform,
+        eyebrow: entry.status === 'invite_sent' ? 'Invitasjon sendt' : 'Trenger avklaring',
+        title: PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[entry.platform],
+        detail: readFirstNonEmptyString(
+          entry.accessScope,
+          entry.status === 'client_action'
+            ? 'Klienten må fullføre delegert tilgang eller bekrefte ansvarlig person.'
+            : entry.status === 'invite_sent'
+              ? 'Invitasjonen er sendt, men er ikke bekreftet ferdig ennå.'
+              : 'Ingen sikker tilgang er definert ennå.',
+        ),
+        actionLabel: 'Åpne konto',
+        href: '',
+      }));
+    return [...reviewRequests, ...operationalRequests];
+  }, [buildAccountAccessReviewUrl, effectiveAccountEntries, pendingAccountAccessReviews]);
+  const accountAccessSensitiveEntries = useMemo(
+    () => effectiveAccountEntries.filter((entry) => entry.tier === 'sensitive_secret' || entry.method === 'manual_handoff' || entry.secretStatus !== 'not_shared'),
+    [effectiveAccountEntries],
+  );
+  const accountAccessAuditItems = useMemo(() => {
+    const entryEvents = effectiveAccountEntries
+      .filter((entry) => hasText(entry.lastUpdatedAt))
+      .map((entry) => ({
+        id: `audit-${entry.platform}`,
+        platform: entry.platform,
+        title: `${PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[entry.platform]} oppdatert`,
+        detail: [
+          PRODUCER_ACCOUNT_ACCESS_STATUS_LABELS[entry.status],
+          PRODUCER_ACCOUNT_ACCESS_TIER_LABELS[entry.tier ?? 'delegated_access'],
+          entry.ownerName ? `Eier: ${entry.ownerName}` : '',
+        ].filter(hasText).join(' · '),
+        createdAt: entry.lastUpdatedAt ?? '',
+      }));
+    const reviewEvents = pendingAccountAccessReviews.map((review) => ({
+      id: `audit-review-${review.id}`,
+      platform: readAccountAccessPlatformsFromReview(review)[0] ?? null,
+      title: review.status === 'changes_requested' ? 'Klient ba om endringer' : 'Klientreview venter',
+      detail: review.title,
+      createdAt: review.requested_at ?? review.created_at ?? '',
+    }));
+    return [...entryEvents, ...reviewEvents]
+      .filter((item) => hasText(item.createdAt))
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt, 'nb-NO'))
+      .slice(0, 12);
+  }, [effectiveAccountEntries, pendingAccountAccessReviews]);
   const readyDeliveryItems = useMemo(
     () => planningDraft.contentCalendar
       .filter((item) => item.status === 'scheduled' || item.status === 'published')
@@ -11050,10 +11254,10 @@ export default function ProducerMediaPanel({
               <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1} sx={{ mb: 1.25 }}>
                 <Box>
                   <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '1.42rem', lineHeight: 1.05 }}>
-                    Avklar kontotilgang
+                    Client Access Vault
                   </Typography>
                   <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.82rem', lineHeight: 1.5, mt: 0.3, maxWidth: 660 }}>
-                    Hold kontoarbeidet som et sikkert spor. Bruk OAuth, business invite eller klientstyrt handling. Ikke lagre passord eller 2-faktor-koder i prosjektet.
+                    Hold all klienttilgang i ett kontrollert spor. Start med delegert tilgang og invite-flyt. Hvis kunden faktisk må dele noe sensitivt, skal det beskrives som sikker håndtering, maskert referanse og tydelig ansvar, ikke som rå credentials i prosjekttekst.
                   </Typography>
                 </Box>
                 <Stack
@@ -11103,7 +11307,59 @@ export default function ProducerMediaPanel({
                 </Stack>
               </Stack>
 
-              {accountAccessMissingItems.length > 0 ? (
+              <Stack
+                direction="row"
+                spacing={0.55}
+                flexWrap="wrap"
+                useFlexGap
+                sx={{ mb: 1.05 }}
+              >
+                {(Object.keys(PRODUCER_ACCOUNT_ACCESS_VAULT_TAB_LABELS) as ProducerAccountAccessVaultTab[]).map((tab) => (
+                  <Button
+                    key={tab}
+                    size="small"
+                    variant={accountAccessVaultTab === tab ? 'contained' : 'outlined'}
+                    onClick={() => updateAccountAccessWorkspace((workspace) => ({
+                      ...workspace,
+                      activeVaultTab: tab,
+                    }))}
+                    sx={{
+                      minHeight: 34,
+                      textTransform: 'none',
+                      fontWeight: 700,
+                      borderRadius: 999,
+                      px: 1.1,
+                      borderColor: 'rgba(96,165,250,0.18)',
+                      color: accountAccessVaultTab === tab ? '#f8fafc' : 'rgba(226,232,240,0.82)',
+                      bgcolor: accountAccessVaultTab === tab ? 'rgba(59,130,246,0.24)' : 'transparent',
+                      '&:hover': {
+                        borderColor: 'rgba(125,211,252,0.34)',
+                        bgcolor: accountAccessVaultTab === tab ? 'rgba(59,130,246,0.3)' : 'rgba(30,41,59,0.5)',
+                      },
+                    }}
+                  >
+                    {PRODUCER_ACCOUNT_ACCESS_VAULT_TAB_LABELS[tab]}
+                  </Button>
+                ))}
+              </Stack>
+
+              {accountAccessHasSensitiveContent ? (
+                <Alert
+                  severity="warning"
+                  sx={{
+                    mb: 1.05,
+                    borderRadius: 1.8,
+                    bgcolor: 'rgba(120,53,15,0.28)',
+                    color: '#fde68a',
+                    border: '1px solid rgba(245,158,11,0.2)',
+                    '& .MuiAlert-icon': { color: '#fbbf24' },
+                  }}
+                >
+                  {accountAccessGuardrailMessages[0]}
+                </Alert>
+              ) : null}
+
+              {accountAccessVaultTab === 'accounts' && (accountAccessMissingItems.length > 0 ? (
                 <Box
                   sx={{
                     mb: 1.05,
@@ -11155,9 +11411,9 @@ export default function ProducerMediaPanel({
                     Kontotilgangen er avklart for de plattformene dette prosjektet faktisk bruker.
                   </Typography>
                 </Stack>
-              )}
+              ))}
 
-              {pendingAccountAccessReviews.length > 0 ? (
+              {accountAccessVaultTab === 'accounts' && pendingAccountAccessReviews.length > 0 ? (
                 <Box
                   sx={{
                     mb: 1.05,
@@ -11261,6 +11517,7 @@ export default function ProducerMediaPanel({
                 </Box>
               ) : null}
 
+              {accountAccessVaultTab === 'accounts' ? (
               <Box
                 sx={{
                   mb: 1.05,
@@ -11290,7 +11547,9 @@ export default function ProducerMediaPanel({
                   </Stack>
                 </Stack>
               </Box>
+              ) : null}
 
+              {accountAccessVaultTab === 'accounts' ? (
               <Box
                 sx={{
                   display: 'grid',
@@ -11346,7 +11605,7 @@ export default function ProducerMediaPanel({
                       }}
                     >
                       <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={0.8} sx={{ mb: 0.85 }}>
-                        <Box sx={{ minWidth: 0 }}>
+                        <Box sx={{ minWidth: 0, flex: 1 }}>
                           <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap sx={{ mb: 0.35 }}>
                             <Chip
                               size="small"
@@ -11386,9 +11645,17 @@ export default function ProducerMediaPanel({
                               />
                             ) : null}
                           </Stack>
-                          <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.92rem' }}>
-                            {PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[entry.platform]}
-                          </Typography>
+                          <Stack direction="row" spacing={0.8} alignItems="center" sx={{ mb: 0.22 }}>
+                            <AccountProviderLogo platform={entry.platform} size={38} />
+                            <Box sx={{ minWidth: 0 }}>
+                              <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.98rem', lineHeight: 1.2 }}>
+                                {PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[entry.platform]}
+                              </Typography>
+                              <Typography sx={{ color: 'rgba(148,163,184,0.76)', fontSize: '0.71rem', lineHeight: 1.35 }}>
+                                {`${PRODUCER_ACCOUNT_ACCESS_TIER_LABELS[entry.tier ?? 'delegated_access']} · ${PRODUCER_ACCOUNT_ACCESS_RISK_LABELS[entry.riskLevel ?? 'low']}`}
+                              </Typography>
+                            </Box>
+                          </Stack>
                           <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.76rem', lineHeight: 1.45, mt: 0.22 }}>
                             {readFirstNonEmptyString(
                               entry.accessScope || '',
@@ -11504,6 +11771,48 @@ export default function ProducerMediaPanel({
                           <ToggleButtonGroup
                             size="small"
                             exclusive
+                            value={entry.method}
+                            onChange={(_, nextValue: ProducerProjectPlanning['accountAccess']['entries'][number]['method'] | null) => {
+                              if (!nextValue) {
+                                return;
+                              }
+                              updateAccountAccessEntry(entry.platform, (current) => ({
+                                ...current,
+                                method: nextValue,
+                                tier: nextValue === 'manual_handoff' ? 'sensitive_secret' : current.tier,
+                                riskLevel: nextValue === 'manual_handoff' ? 'high' : current.riskLevel,
+                                secretStatus: nextValue === 'manual_handoff'
+                                  ? (current.secretStatus === 'not_shared' ? 'requested' : current.secretStatus)
+                                  : current.secretStatus,
+                              }));
+                            }}
+                            sx={{
+                              mb: 0.72,
+                              gap: 0.45,
+                              flexWrap: 'wrap',
+                              '& .MuiToggleButton-root': {
+                                borderRadius: '999px !important',
+                                px: 0.7,
+                                py: 0.08,
+                                textTransform: 'none',
+                                fontWeight: 700,
+                                borderColor: 'rgba(148,163,184,0.18)',
+                                color: 'rgba(226,232,240,0.78)',
+                              },
+                              '& .Mui-selected': {
+                                bgcolor: 'rgba(59,130,246,0.16) !important',
+                                borderColor: 'rgba(59,130,246,0.28) !important',
+                                color: '#dbeafe !important',
+                              },
+                            }}
+                          >
+                            <ToggleButton value="business_invite" disabled={!canEditClientInput}>Delegert invite</ToggleButton>
+                            <ToggleButton value="manual_handoff" disabled={!canEditClientInput}>Sensitiv handoff</ToggleButton>
+                          </ToggleButtonGroup>
+
+                          <ToggleButtonGroup
+                            size="small"
+                            exclusive
                             value={entry.status}
                             onChange={(_, nextValue: typeof entry.status | null) => {
                               if (!nextValue) {
@@ -11614,6 +11923,24 @@ export default function ProducerMediaPanel({
                         </>
                       ) : null}
 
+                      <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap sx={{ mb: 0.8 }}>
+                        <Chip
+                          size="small"
+                          label={`Delt med: ${readFirstNonEmptyString(stringifyAccountAccessRoleTargets(entry.sharedWithRoles), 'Ingen mottakere satt')}`}
+                          sx={{ bgcolor: 'rgba(15,23,42,0.48)', color: '#cbd5e1' }}
+                        />
+                        <Chip
+                          size="small"
+                          label={PRODUCER_ACCOUNT_ACCESS_TWO_FACTOR_STATUS_LABELS[entry.twoFactorStatus ?? 'unknown']}
+                          sx={{ bgcolor: 'rgba(15,23,42,0.48)', color: '#cbd5e1' }}
+                        />
+                        <Chip
+                          size="small"
+                          label={entry.expiresAt ? `Utløper ${formatTimestamp(entry.expiresAt)}` : 'Ingen utløp satt'}
+                          sx={{ bgcolor: 'rgba(15,23,42,0.48)', color: '#cbd5e1' }}
+                        />
+                      </Stack>
+
                       <Box
                         sx={{
                           display: 'grid',
@@ -11661,7 +11988,111 @@ export default function ProducerMediaPanel({
                           fullWidth
                           disabled={!canEditClientInput}
                         />
+                        <TextField
+                          label="Delt med roller"
+                          value={stringifyAccountAccessRoleTargets(entry.sharedWithRoles)}
+                          onChange={(event) => updateAccountAccessEntry(entry.platform, (current) => ({
+                            ...current,
+                            sharedWithRoles: parseAccountAccessRoleTargets(event.target.value),
+                          }))}
+                          fullWidth
+                          disabled={!canEditClientInput}
+                          helperText="For eksempel Klienteier, Innholdsprodusent, Editor, SoMe-ansvarlig."
+                        />
+                        <TextField
+                          label="Utløper"
+                          type="datetime-local"
+                          value={toDateTimeLocalValue(entry.expiresAt)}
+                          onChange={(event) => updateAccountAccessEntry(entry.platform, (current) => ({
+                            ...current,
+                            expiresAt: fromDateTimeLocalValue(event.target.value),
+                          }))}
+                          fullWidth
+                          disabled={!canEditClientInput}
+                          InputLabelProps={{ shrink: true }}
+                        />
                       </Box>
+
+                      <Stack
+                        direction={{ xs: 'column', md: 'row' }}
+                        spacing={0.7}
+                        sx={{ mt: 0.85 }}
+                      >
+                        <ToggleButtonGroup
+                          size="small"
+                          exclusive
+                          value={entry.tier ?? 'delegated_access'}
+                          onChange={(_, nextValue: ProducerAccountAccessTier | null) => {
+                            if (!nextValue) {
+                              return;
+                            }
+                            updateAccountAccessEntry(entry.platform, (current) => ({
+                              ...current,
+                              tier: nextValue,
+                              secretStatus: nextValue === 'sensitive_secret'
+                                ? (current.secretStatus === 'not_shared' ? 'requested' : current.secretStatus)
+                                : current.secretStatus,
+                            }));
+                          }}
+                          sx={{
+                            gap: 0.45,
+                            flexWrap: 'wrap',
+                            '& .MuiToggleButton-root': {
+                              borderRadius: '999px !important',
+                              px: 0.68,
+                              py: 0.08,
+                              textTransform: 'none',
+                              fontWeight: 700,
+                              borderColor: 'rgba(148,163,184,0.18)',
+                              color: 'rgba(226,232,240,0.78)',
+                            },
+                            '& .Mui-selected': {
+                              bgcolor: 'rgba(168,85,247,0.18) !important',
+                              borderColor: 'rgba(168,85,247,0.28) !important',
+                              color: '#f5d0fe !important',
+                            },
+                          }}
+                        >
+                          <ToggleButton value="delegated_access" disabled={!canEditClientInput}>Delegert tilgang</ToggleButton>
+                          <ToggleButton value="sensitive_secret" disabled={!canEditClientInput}>Sensitiv hemmelighet</ToggleButton>
+                        </ToggleButtonGroup>
+                        <ToggleButtonGroup
+                          size="small"
+                          exclusive
+                          value={entry.riskLevel ?? 'low'}
+                          onChange={(_, nextValue: ProducerAccountAccessRiskLevel | null) => {
+                            if (!nextValue) {
+                              return;
+                            }
+                            updateAccountAccessEntry(entry.platform, (current) => ({
+                              ...current,
+                              riskLevel: nextValue,
+                            }));
+                          }}
+                          sx={{
+                            gap: 0.45,
+                            flexWrap: 'wrap',
+                            '& .MuiToggleButton-root': {
+                              borderRadius: '999px !important',
+                              px: 0.68,
+                              py: 0.08,
+                              textTransform: 'none',
+                              fontWeight: 700,
+                              borderColor: 'rgba(148,163,184,0.18)',
+                              color: 'rgba(226,232,240,0.78)',
+                            },
+                            '& .Mui-selected': {
+                              bgcolor: 'rgba(244,114,182,0.16) !important',
+                              borderColor: 'rgba(244,114,182,0.28) !important',
+                              color: '#fbcfe8 !important',
+                            },
+                          }}
+                        >
+                          <ToggleButton value="low" disabled={!canEditClientInput}>Lav risiko</ToggleButton>
+                          <ToggleButton value="medium" disabled={!canEditClientInput}>Middels</ToggleButton>
+                          <ToggleButton value="high" disabled={!canEditClientInput}>Høy</ToggleButton>
+                        </ToggleButtonGroup>
+                      </Stack>
 
                       <TextField
                         label="Notater"
@@ -11674,24 +12105,155 @@ export default function ProducerMediaPanel({
                         multiline
                         minRows={2}
                         disabled={!canEditClientInput}
+                        error={Boolean(accountAccessEntryWarnings[`entry:${entry.platform}:notes`])}
+                        helperText={accountAccessEntryWarnings[`entry:${entry.platform}:notes`] ?? 'Bruk notater til prosess og ansvar, ikke hemmeligheter.'}
                         sx={{ mt: 0.85 }}
                       />
 
+                      {(entry.tier === 'sensitive_secret' || entry.method === 'manual_handoff') ? (
+                        <Box
+                          sx={{
+                            mt: 0.85,
+                            p: 0.85,
+                            borderRadius: 1.5,
+                            border: '1px solid rgba(244,114,182,0.16)',
+                            bgcolor: 'rgba(76,29,149,0.16)',
+                          }}
+                        >
+                          <Typography sx={{ color: '#f5d0fe', fontWeight: 700, fontSize: '0.82rem', mb: 0.15 }}>
+                            Sikker deling
+                          </Typography>
+                          <Typography sx={{ color: 'rgba(245,208,254,0.8)', fontSize: '0.73rem', lineHeight: 1.45, mb: 0.7 }}>
+                            Role Room lagrer her bare kontrollinformasjon, policy og maskert referanse. Selve hemmeligheten skal deles via godkjent sikker kanal utenfor fri tekst i prosjektet.
+                          </Typography>
+                          <Box
+                            sx={{
+                              display: 'grid',
+                              gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' },
+                              gap: 0.8,
+                            }}
+                          >
+                            <TextField
+                              label="Type hemmelighet"
+                              value={entry.secretLabel ?? ''}
+                              onChange={(event) => updateAccountAccessEntry(entry.platform, (current) => ({
+                                ...current,
+                                secretLabel: event.target.value,
+                              }))}
+                              fullWidth
+                              disabled={!canEditClientInput}
+                              helperText="For eksempel API key, recovery code, CMS-bruker eller annonsekonto."
+                            />
+                            <TextField
+                              label="Maskert referanse"
+                              value={entry.maskedReference ?? ''}
+                              onChange={(event) => updateAccountAccessEntry(entry.platform, (current) => ({
+                                ...current,
+                                maskedReference: event.target.value,
+                              }))}
+                              fullWidth
+                              disabled={!canEditClientInput}
+                              helperText="For eksempel brukernavn eller de siste 4 tegnene. Ikke legg inn selve hemmeligheten."
+                            />
+                          </Box>
+                          <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.7} sx={{ mt: 0.75 }}>
+                            <ToggleButtonGroup
+                              size="small"
+                              exclusive
+                              value={entry.secretStatus ?? 'not_shared'}
+                              onChange={(_, nextValue: ProducerAccountAccessSecretStatus | null) => {
+                                if (!nextValue) {
+                                  return;
+                                }
+                                updateAccountAccessEntry(entry.platform, (current) => ({
+                                  ...current,
+                                  secretStatus: nextValue,
+                                }));
+                              }}
+                              sx={{
+                                gap: 0.45,
+                                flexWrap: 'wrap',
+                                '& .MuiToggleButton-root': {
+                                  borderRadius: '999px !important',
+                                  px: 0.68,
+                                  py: 0.08,
+                                  textTransform: 'none',
+                                  fontWeight: 700,
+                                  borderColor: 'rgba(148,163,184,0.18)',
+                                  color: 'rgba(226,232,240,0.78)',
+                                },
+                                '& .Mui-selected': {
+                                  bgcolor: 'rgba(244,114,182,0.16) !important',
+                                  borderColor: 'rgba(244,114,182,0.28) !important',
+                                  color: '#fbcfe8 !important',
+                                },
+                              }}
+                            >
+                              <ToggleButton value="not_shared" disabled={!canEditClientInput}>Ikke delt</ToggleButton>
+                              <ToggleButton value="requested" disabled={!canEditClientInput}>Etterspurt</ToggleButton>
+                              <ToggleButton value="stored_externally" disabled={!canEditClientInput}>Ligger sikkert utenfor</ToggleButton>
+                              <ToggleButton value="revoked" disabled={!canEditClientInput}>Tilbakekalt</ToggleButton>
+                            </ToggleButtonGroup>
+                            <ToggleButtonGroup
+                              size="small"
+                              exclusive
+                              value={entry.revealPolicy ?? 'approval_required'}
+                              onChange={(_, nextValue: ProducerAccountAccessRevealPolicy | null) => {
+                                if (!nextValue) {
+                                  return;
+                                }
+                                updateAccountAccessEntry(entry.platform, (current) => ({
+                                  ...current,
+                                  revealPolicy: nextValue,
+                                }));
+                              }}
+                              sx={{
+                                gap: 0.45,
+                                flexWrap: 'wrap',
+                                '& .MuiToggleButton-root': {
+                                  borderRadius: '999px !important',
+                                  px: 0.68,
+                                  py: 0.08,
+                                  textTransform: 'none',
+                                  fontWeight: 700,
+                                  borderColor: 'rgba(148,163,184,0.18)',
+                                  color: 'rgba(226,232,240,0.78)',
+                                },
+                                '& .Mui-selected': {
+                                  bgcolor: 'rgba(168,85,247,0.18) !important',
+                                  borderColor: 'rgba(168,85,247,0.28) !important',
+                                  color: '#f5d0fe !important',
+                                },
+                              }}
+                            >
+                              <ToggleButton value="approval_required" disabled={!canEditClientInput}>Krever godkjenning</ToggleButton>
+                              <ToggleButton value="one_time" disabled={!canEditClientInput}>Kun én visning</ToggleButton>
+                              <ToggleButton value="manual_only" disabled={!canEditClientInput}>Manuell utlevering</ToggleButton>
+                            </ToggleButtonGroup>
+                          </Stack>
+                        </Box>
+                      ) : null}
+
                       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.6} justifyContent="space-between" alignItems={{ sm: 'center' }} sx={{ mt: 0.85 }}>
                         <Typography sx={{ color: 'rgba(148,163,184,0.74)', fontSize: '0.74rem', lineHeight: 1.4 }}>
-                          {entry.lastUpdatedAt ? `Sist oppdatert ${formatTimestamp(entry.lastUpdatedAt)}` : 'Ikke loggført ennå.'}
+                          {readFirstNonEmptyString(
+                            entry.lastUsedAt ? `Sist brukt ${formatTimestamp(entry.lastUsedAt)}` : '',
+                            entry.lastUpdatedAt ? `Sist oppdatert ${formatTimestamp(entry.lastUpdatedAt)}` : '',
+                            'Ikke loggført ennå.',
+                          )}
                         </Typography>
                         <ToggleButtonGroup
                           size="small"
                           exclusive
-                          value={entry.twoFactorRequired ? 'required' : 'not-required'}
-                          onChange={(_, nextValue: 'required' | 'not-required' | null) => {
+                          value={entry.twoFactorStatus ?? 'unknown'}
+                          onChange={(_, nextValue: ProducerAccountAccessTwoFactorStatus | null) => {
                             if (!nextValue) {
                               return;
                             }
                             updateAccountAccessEntry(entry.platform, (current) => ({
                               ...current,
-                              twoFactorRequired: nextValue === 'required',
+                              twoFactorRequired: nextValue === 'enabled',
+                              twoFactorStatus: nextValue,
                             }));
                           }}
                           sx={{
@@ -11713,15 +12275,18 @@ export default function ProducerMediaPanel({
                             },
                           }}
                         >
-                          <ToggleButton value="required" disabled={!canEditClientInput}>2-faktor hos kontoeier</ToggleButton>
-                          <ToggleButton value="not-required" disabled={!canEditClientInput}>Ingen ekstra markering</ToggleButton>
+                          <ToggleButton value="enabled" disabled={!canEditClientInput}>2FA aktiv</ToggleButton>
+                          <ToggleButton value="missing" disabled={!canEditClientInput}>2FA mangler</ToggleButton>
+                          <ToggleButton value="unknown" disabled={!canEditClientInput}>Ikke bekreftet</ToggleButton>
                         </ToggleButtonGroup>
                       </Stack>
                     </Box>
                   );
                 })}
               </Box>
+              ) : null}
 
+              {accountAccessVaultTab === 'accounts' ? (
               <Box
                 sx={{
                   p: 0.95,
@@ -11741,37 +12306,371 @@ export default function ProducerMediaPanel({
                   <TextField
                     label="Sikkerhetsnotat"
                     value={planningDraft.accountAccess.securityNotes ?? ''}
-                    onChange={(event) => setPlanningDraft((previous) => ({
-                      ...previous,
-                      accountAccess: {
-                        ...previous.accountAccess,
-                        securityNotes: event.target.value,
-                        updatedAt: new Date().toISOString(),
-                      },
+                    onChange={(event) => updateAccountAccessWorkspace((workspace) => ({
+                      ...workspace,
+                      securityNotes: event.target.value,
                     }))}
                     fullWidth
                     multiline
                     minRows={2}
                     disabled={!canEditClientInput}
+                    error={Boolean(accountAccessWorkspaceWarnings.securityNotes)}
+                    helperText={accountAccessWorkspaceWarnings.securityNotes ?? 'Bruk dette til policy og ansvar. Ikke legg inn passord, tokens eller backup-koder.'}
                   />
                   <TextField
                     label="Plan for tilbakekalling av tilgang"
                     value={planningDraft.accountAccess.revokePlan ?? ''}
-                    onChange={(event) => setPlanningDraft((previous) => ({
-                      ...previous,
-                      accountAccess: {
-                        ...previous.accountAccess,
-                        revokePlan: event.target.value,
-                        updatedAt: new Date().toISOString(),
-                      },
+                    onChange={(event) => updateAccountAccessWorkspace((workspace) => ({
+                      ...workspace,
+                      revokePlan: event.target.value,
                     }))}
                     fullWidth
                     multiline
                     minRows={2}
                     disabled={!canEditClientInput}
+                    error={Boolean(accountAccessWorkspaceWarnings.revokePlan)}
+                    helperText={accountAccessWorkspaceWarnings.revokePlan ?? 'Beskriv når tilgang trekkes tilbake, hvem som gjør det, og hva som må roteres.'}
                   />
                 </Stack>
               </Box>
+              ) : null}
+
+              {accountAccessVaultTab === 'requests' ? (
+                <Box
+                  sx={{
+                    p: 0.95,
+                    borderRadius: 1.5,
+                    border: '1px solid rgba(96,165,250,0.14)',
+                    bgcolor: 'rgba(2,6,23,0.42)',
+                    mb: 1.1,
+                  }}
+                >
+                  <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.18 }}>
+                    Tilgangsforespørsler
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(203,213,225,0.75)', fontSize: '0.82rem', lineHeight: 1.5, mb: 0.9 }}>
+                    Samle alt som venter på klient, review eller invitasjonsbekreftelse i én arbeidsliste.
+                  </Typography>
+                  <Stack spacing={0.75}>
+                    {accountAccessRequestCards.length > 0 ? accountAccessRequestCards.map((item) => (
+                      <Box
+                        key={item.id}
+                        sx={{
+                          p: 0.85,
+                          borderRadius: 1.5,
+                          border: '1px solid rgba(148,163,184,0.12)',
+                          bgcolor: 'rgba(15,23,42,0.4)',
+                        }}
+                      >
+                        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.8} justifyContent="space-between" alignItems={{ sm: 'center' }}>
+                          <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 0 }}>
+                            {item.platform ? <AccountProviderLogo platform={item.platform} size={34} /> : null}
+                            <Box sx={{ minWidth: 0 }}>
+                              <Typography sx={{ color: '#bfdbfe', fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', mb: 0.1 }}>
+                                {item.eyebrow}
+                              </Typography>
+                              <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.82rem', lineHeight: 1.35 }}>
+                                {item.title}
+                              </Typography>
+                              <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.74rem', lineHeight: 1.42, mt: 0.14 }}>
+                                {item.detail}
+                              </Typography>
+                            </Box>
+                          </Stack>
+                          <Button
+                            size="small"
+                            component={item.href ? 'a' : 'button'}
+                            href={item.href || undefined}
+                            onClick={item.href ? undefined : () => openSurfaceWorkspace('accounts')}
+                            sx={{ textTransform: 'none', fontWeight: 700, minHeight: 34 }}
+                          >
+                            {item.actionLabel}
+                          </Button>
+                        </Stack>
+                      </Box>
+                    )) : (
+                      <Alert severity="success" sx={{ borderRadius: 1.5 }}>
+                        Ingen åpne tilgangsforespørsler akkurat nå.
+                      </Alert>
+                    )}
+                  </Stack>
+                </Box>
+              ) : null}
+
+              {accountAccessVaultTab === 'secrets' ? (
+                <Box
+                  sx={{
+                    p: 0.95,
+                    borderRadius: 1.5,
+                    border: '1px solid rgba(236,72,153,0.16)',
+                    bgcolor: 'rgba(76,29,149,0.16)',
+                    mb: 1.1,
+                  }}
+                >
+                  <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.18 }}>
+                    Delte hemmeligheter
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(245,208,254,0.82)', fontSize: '0.82rem', lineHeight: 1.5, mb: 0.9 }}>
+                    Dette er en kontrollflate for sensitiv tilgang. Selve hemmeligheten skal ikke lagres i vanlig prosjekttekst. Bruk maskert referanse, policy og tydelig ansvar.
+                  </Typography>
+                  <Stack spacing={0.75}>
+                    {accountAccessSensitiveEntries.length > 0 ? accountAccessSensitiveEntries.map((entry) => (
+                      <Box
+                        key={`secret-${entry.platform}`}
+                        sx={{
+                          p: 0.85,
+                          borderRadius: 1.5,
+                          border: '1px solid rgba(244,114,182,0.16)',
+                          bgcolor: 'rgba(15,23,42,0.38)',
+                        }}
+                      >
+                        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.8} justifyContent="space-between" alignItems={{ sm: 'center' }}>
+                          <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 0 }}>
+                            <AccountProviderLogo platform={entry.platform} size={34} />
+                            <Box sx={{ minWidth: 0 }}>
+                              <Typography sx={{ color: '#f5d0fe', fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', mb: 0.1 }}>
+                                {PRODUCER_ACCOUNT_ACCESS_SECRET_STATUS_LABELS[entry.secretStatus ?? 'not_shared']}
+                              </Typography>
+                              <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.82rem', lineHeight: 1.35 }}>
+                                {PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[entry.platform]}
+                              </Typography>
+                              <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.74rem', lineHeight: 1.42, mt: 0.14 }}>
+                                {readFirstNonEmptyString(
+                                  entry.secretLabel,
+                                  entry.maskedReference ? `Maskert referanse: ${entry.maskedReference}` : '',
+                                  PRODUCER_ACCOUNT_ACCESS_REVEAL_POLICY_LABELS[entry.revealPolicy ?? 'approval_required'],
+                                  'Ingen sensitiv deling definert ennå.',
+                                )}
+                              </Typography>
+                            </Box>
+                          </Stack>
+                          <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap>
+                            <Chip size="small" label={PRODUCER_ACCOUNT_ACCESS_RISK_LABELS[entry.riskLevel ?? 'low']} sx={{ bgcolor: 'rgba(236,72,153,0.14)', color: '#fbcfe8' }} />
+                            <Chip size="small" label={entry.expiresAt ? `Utløper ${formatTimestamp(entry.expiresAt)}` : 'Ingen utløp'} sx={{ bgcolor: 'rgba(236,72,153,0.14)', color: '#fbcfe8' }} />
+                          </Stack>
+                        </Stack>
+                      </Box>
+                    )) : (
+                      <Alert severity="info" sx={{ borderRadius: 1.5 }}>
+                        Ingen sensitive secrets er registrert. Hold deg helst til delegert tilgang og invitasjoner.
+                      </Alert>
+                    )}
+                  </Stack>
+                </Box>
+              ) : null}
+
+              {accountAccessVaultTab === 'permissions' ? (
+                <Box
+                  sx={{
+                    p: 0.95,
+                    borderRadius: 1.5,
+                    border: '1px solid rgba(96,165,250,0.14)',
+                    bgcolor: 'rgba(2,6,23,0.42)',
+                    mb: 1.1,
+                  }}
+                >
+                  <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.18 }}>
+                    Plattformrettigheter
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(203,213,225,0.75)', fontSize: '0.82rem', lineHeight: 1.5, mb: 0.9 }}>
+                    Vis hvem som eier kontoen, hvem som får tilgang, hvilken rolle som trengs og om 2FA er bekreftet.
+                  </Typography>
+                  <Stack spacing={0.75}>
+                    {effectiveAccountEntries.map((entry) => (
+                      <Box
+                        key={`permission-${entry.platform}`}
+                        sx={{
+                          p: 0.85,
+                          borderRadius: 1.5,
+                          border: '1px solid rgba(148,163,184,0.12)',
+                          bgcolor: 'rgba(15,23,42,0.4)',
+                        }}
+                      >
+                        <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.85} justifyContent="space-between">
+                          <Stack direction="row" spacing={0.75} alignItems="center">
+                            <AccountProviderLogo platform={entry.platform} size={34} />
+                            <Box>
+                              <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.82rem' }}>
+                                {PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[entry.platform]}
+                              </Typography>
+                              <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.74rem', lineHeight: 1.42, mt: 0.14 }}>
+                                {readFirstNonEmptyString(entry.accessScope, 'Ingen rolle eller scope er definert ennå.')}
+                              </Typography>
+                            </Box>
+                          </Stack>
+                          <Stack spacing={0.18} sx={{ minWidth: { md: 280 } }}>
+                            <Typography sx={{ color: '#cbd5e1', fontSize: '0.74rem' }}>
+                              Eier: {readFirstNonEmptyString(entry.ownerName, 'Ikke satt')}
+                            </Typography>
+                            <Typography sx={{ color: '#cbd5e1', fontSize: '0.74rem' }}>
+                              Delt med: {readFirstNonEmptyString(stringifyAccountAccessRoleTargets(entry.sharedWithRoles), 'Ingen mottakere')}
+                            </Typography>
+                            <Typography sx={{ color: '#cbd5e1', fontSize: '0.74rem' }}>
+                              {PRODUCER_ACCOUNT_ACCESS_TWO_FACTOR_STATUS_LABELS[entry.twoFactorStatus ?? 'unknown']}
+                            </Typography>
+                          </Stack>
+                        </Stack>
+                      </Box>
+                    ))}
+                  </Stack>
+                </Box>
+              ) : null}
+
+              {accountAccessVaultTab === 'audit' ? (
+                <Box
+                  sx={{
+                    p: 0.95,
+                    borderRadius: 1.5,
+                    border: '1px solid rgba(96,165,250,0.14)',
+                    bgcolor: 'rgba(2,6,23,0.42)',
+                    mb: 1.1,
+                  }}
+                >
+                  <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.18 }}>
+                    Aktivitetslogg
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(203,213,225,0.75)', fontSize: '0.82rem', lineHeight: 1.5, mb: 0.9 }}>
+                    Se når kontoer ble oppdatert, hvilke reviews som venter, og hvilke plattformer som nylig har endret status.
+                  </Typography>
+                  <Stack spacing={0.72}>
+                    {accountAccessAuditItems.length > 0 ? accountAccessAuditItems.map((item) => (
+                      <Stack
+                        key={item.id}
+                        direction={{ xs: 'column', sm: 'row' }}
+                        spacing={0.75}
+                        justifyContent="space-between"
+                        sx={{
+                          p: 0.78,
+                          borderRadius: 1.4,
+                          border: '1px solid rgba(148,163,184,0.12)',
+                          bgcolor: 'rgba(15,23,42,0.4)',
+                        }}
+                      >
+                        <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 0 }}>
+                          {item.platform ? <AccountProviderLogo platform={item.platform} size={30} /> : null}
+                          <Box sx={{ minWidth: 0 }}>
+                            <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.79rem' }}>
+                              {item.title}
+                            </Typography>
+                            <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.73rem', lineHeight: 1.42 }}>
+                              {item.detail}
+                            </Typography>
+                          </Box>
+                        </Stack>
+                        <Typography sx={{ color: 'rgba(148,163,184,0.72)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>
+                          {formatTimestamp(item.createdAt)}
+                        </Typography>
+                      </Stack>
+                    )) : (
+                      <Alert severity="info" sx={{ borderRadius: 1.5 }}>
+                        Ingen loggførte hendelser ennå.
+                      </Alert>
+                    )}
+                  </Stack>
+                </Box>
+              ) : null}
+
+              {accountAccessVaultTab === 'emergency' ? (
+                <Box
+                  sx={{
+                    p: 0.95,
+                    borderRadius: 1.5,
+                    border: '1px solid rgba(148,163,184,0.16)',
+                    background: 'rgba(2,6,23,0.42)',
+                    mb: 1.1,
+                  }}
+                >
+                  <Typography sx={{ color: '#fff', fontWeight: 700 }}>
+                    Nødtilgang og tilbakekalling
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(203,213,225,0.75)', fontSize: '0.84rem', mt: 0.35, lineHeight: 1.5, mb: 0.8 }}>
+                    Definer hvem som kontaktes hvis publisering stopper opp, hvordan tilgang tilbakekalles, og hva som må roteres når prosjektet avsluttes.
+                  </Typography>
+                  <Box
+                    sx={{
+                      display: 'grid',
+                      gridTemplateColumns: { xs: '1fr', md: 'repeat(3, minmax(0, 1fr))' },
+                      gap: 0.85,
+                      mb: 0.85,
+                    }}
+                  >
+                    <TextField
+                      label="Nødkontakt"
+                      value={planningDraft.accountAccess.emergencyContactName ?? ''}
+                      onChange={(event) => updateAccountAccessWorkspace((workspace) => ({
+                        ...workspace,
+                        emergencyContactName: event.target.value,
+                      }))}
+                      fullWidth
+                      disabled={!canEditClientInput}
+                    />
+                    <TextField
+                      label="Nødkontakt e-post"
+                      value={planningDraft.accountAccess.emergencyContactEmail ?? ''}
+                      onChange={(event) => updateAccountAccessWorkspace((workspace) => ({
+                        ...workspace,
+                        emergencyContactEmail: event.target.value,
+                      }))}
+                      fullWidth
+                      disabled={!canEditClientInput}
+                    />
+                    <TextField
+                      label="Nødkontakt telefon"
+                      value={planningDraft.accountAccess.emergencyContactPhone ?? ''}
+                      onChange={(event) => updateAccountAccessWorkspace((workspace) => ({
+                        ...workspace,
+                        emergencyContactPhone: event.target.value,
+                      }))}
+                      fullWidth
+                      disabled={!canEditClientInput}
+                    />
+                  </Box>
+                  <Stack spacing={0.85}>
+                    <TextField
+                      label="Sikkerhetsnotat"
+                      value={planningDraft.accountAccess.securityNotes ?? ''}
+                      onChange={(event) => updateAccountAccessWorkspace((workspace) => ({
+                        ...workspace,
+                        securityNotes: event.target.value,
+                      }))}
+                      fullWidth
+                      multiline
+                      minRows={2}
+                      disabled={!canEditClientInput}
+                      error={Boolean(accountAccessWorkspaceWarnings.securityNotes)}
+                      helperText={accountAccessWorkspaceWarnings.securityNotes ?? 'Beskriv hva systemet lagrer, hva klienten eier, og hvilken metode som er foretrukket.'}
+                    />
+                    <TextField
+                      label="Plan for tilbakekalling av tilgang"
+                      value={planningDraft.accountAccess.revokePlan ?? ''}
+                      onChange={(event) => updateAccountAccessWorkspace((workspace) => ({
+                        ...workspace,
+                        revokePlan: event.target.value,
+                      }))}
+                      fullWidth
+                      multiline
+                      minRows={2}
+                      disabled={!canEditClientInput}
+                      error={Boolean(accountAccessWorkspaceWarnings.revokePlan)}
+                      helperText={accountAccessWorkspaceWarnings.revokePlan ?? 'Beskriv hvordan passord, tokens og invitasjoner roteres eller avsluttes etter prosjektet.'}
+                    />
+                    <TextField
+                      label="Nødtilgangsnotat"
+                      value={planningDraft.accountAccess.emergencyAccessNotes ?? ''}
+                      onChange={(event) => updateAccountAccessWorkspace((workspace) => ({
+                        ...workspace,
+                        emergencyAccessNotes: event.target.value,
+                      }))}
+                      fullWidth
+                      multiline
+                      minRows={3}
+                      disabled={!canEditClientInput}
+                      error={Boolean(accountAccessWorkspaceWarnings.emergencyAccessNotes)}
+                      helperText={accountAccessWorkspaceWarnings.emergencyAccessNotes ?? 'Beskriv hvem som kan godkjenne reveal, når nødtilgang er lov, og hvordan klienten varsles.'}
+                    />
+                  </Stack>
+                </Box>
+              ) : null}
 
               {canEditClientInput ? (
                 <Stack
@@ -11786,7 +12685,7 @@ export default function ProducerMediaPanel({
                   }}
                 >
                   <Typography sx={{ color: 'rgba(148,163,184,0.7)', fontSize: '0.72rem', lineHeight: 1.4 }}>
-                    Lagre når kontoer, eierskap og sikkerhetsnotater faktisk er avklart for prosjektet.
+                    Lagre når vault-flyten faktisk speiler hvem som har tilgang, hva som krever klienthandling, og hvordan tilgang stoppes igjen.
                   </Typography>
                   <Button
                     size="small"
@@ -11795,7 +12694,7 @@ export default function ProducerMediaPanel({
                     onClick={() => {
                       void handleSavePlanningContext();
                     }}
-                    disabled={savingPlanning}
+                    disabled={savingPlanning || accountAccessHasSensitiveContent}
                     sx={{
                       alignSelf: { xs: 'flex-start', sm: 'center' },
                       minHeight: 32,
@@ -11807,7 +12706,7 @@ export default function ProducerMediaPanel({
                       '&:hover': { bgcolor: '#0f766e' },
                     }}
                   >
-                    {savingPlanning ? 'Lagrer kontotilgang...' : 'Lagre kontotilgang'}
+                    {savingPlanning ? 'Lagrer kontotilgang...' : 'Lagre vault'}
                   </Button>
                 </Stack>
               ) : null}

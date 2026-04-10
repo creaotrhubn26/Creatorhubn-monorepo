@@ -3,7 +3,14 @@ import type {
   ProducerAccountAccessEntry,
   ProducerAccountAccessMethod,
   ProducerAccountAccessPlatform,
+  ProducerAccountAccessRevealPolicy,
+  ProducerAccountAccessRiskLevel,
+  ProducerAccountAccessRoleTarget,
+  ProducerAccountAccessSecretStatus,
   ProducerAccountAccessStatus,
+  ProducerAccountAccessTier,
+  ProducerAccountAccessTwoFactorStatus,
+  ProducerAccountAccessVaultTab,
   ProducerAccountAccessWorkspace,
   ProducerActivationPlan,
   ProducerBrandGuide,
@@ -511,6 +518,53 @@ export const PRODUCER_ACCOUNT_ACCESS_STATUS_LABELS: Record<ProducerAccountAccess
   revoked: 'Avsluttet',
 };
 
+export const PRODUCER_ACCOUNT_ACCESS_TIER_LABELS: Record<ProducerAccountAccessTier, string> = {
+  delegated_access: 'Delegert tilgang',
+  sensitive_secret: 'Sensitiv hemmelighet',
+};
+
+export const PRODUCER_ACCOUNT_ACCESS_RISK_LABELS: Record<ProducerAccountAccessRiskLevel, string> = {
+  low: 'Lav risiko',
+  medium: 'Middels risiko',
+  high: 'Høy risiko',
+};
+
+export const PRODUCER_ACCOUNT_ACCESS_TWO_FACTOR_STATUS_LABELS: Record<ProducerAccountAccessTwoFactorStatus, string> = {
+  enabled: '2FA aktiv',
+  missing: '2FA mangler',
+  unknown: '2FA ikke bekreftet',
+};
+
+export const PRODUCER_ACCOUNT_ACCESS_SECRET_STATUS_LABELS: Record<ProducerAccountAccessSecretStatus, string> = {
+  not_shared: 'Ikke delt',
+  requested: 'Etterspurt',
+  stored_externally: 'Ligger sikkert utenfor Role Room',
+  revoked: 'Tilbakekalt',
+};
+
+export const PRODUCER_ACCOUNT_ACCESS_REVEAL_POLICY_LABELS: Record<ProducerAccountAccessRevealPolicy, string> = {
+  approval_required: 'Krever godkjenning',
+  one_time: 'Kun én visning',
+  manual_only: 'Manuell utlevering',
+};
+
+export const PRODUCER_ACCOUNT_ACCESS_ROLE_TARGET_LABELS: Record<ProducerAccountAccessRoleTarget, string> = {
+  client_owner: 'Klienteier',
+  producer: 'Innholdsprodusent',
+  editor: 'Klipper / editor',
+  social_media_manager: 'SoMe-ansvarlig',
+  admin: 'Administrator',
+};
+
+export const PRODUCER_ACCOUNT_ACCESS_VAULT_TAB_LABELS: Record<ProducerAccountAccessVaultTab, string> = {
+  accounts: 'Kontoer',
+  requests: 'Tilgangsforespørsler',
+  secrets: 'Delte hemmeligheter',
+  permissions: 'Rettigheter',
+  audit: 'Aktivitetslogg',
+  emergency: 'Nødtilgang',
+};
+
 export const PRODUCER_COLLABORATION_STATUS_LABELS: Record<NonNullable<ProducerCollaborationTerms['status']>, string> = {
   discovery: 'Kartlegging',
   proposal_sent: 'Forslag sendt',
@@ -807,7 +861,13 @@ const DEFAULT_ACCOUNT_ACCESS: ProducerAccountAccessWorkspace = {
       platform: 'google',
       method: 'oauth',
       status: 'not_started',
+      tier: 'delegated_access',
+      riskLevel: 'low',
       accessScope: 'Drive, Kalender og Meet for prosjektet.',
+      sharedWithRoles: ['producer', 'admin'],
+      twoFactorStatus: 'unknown',
+      secretStatus: 'not_shared',
+      revealPolicy: 'approval_required',
       notes: 'Bruk Google OAuth. Ikke del passord eller 2FA-koder i prosjektrommet.',
       twoFactorRequired: true,
     },
@@ -815,7 +875,13 @@ const DEFAULT_ACCOUNT_ACCESS: ProducerAccountAccessWorkspace = {
       platform: 'meta',
       method: 'business_invite',
       status: 'not_started',
+      tier: 'delegated_access',
+      riskLevel: 'low',
       accessScope: 'Meta Business Manager, side og annonsekontoer.',
+      sharedWithRoles: ['producer', 'social_media_manager', 'admin'],
+      twoFactorStatus: 'unknown',
+      secretStatus: 'not_shared',
+      revealPolicy: 'approval_required',
       notes: 'Be klienten invitere riktig jobbprofil eller Business Manager-bruker. Ikke lagre passord.',
       twoFactorRequired: true,
     },
@@ -823,7 +889,13 @@ const DEFAULT_ACCOUNT_ACCESS: ProducerAccountAccessWorkspace = {
       platform: 'linkedin',
       method: 'business_invite',
       status: 'not_started',
+      tier: 'delegated_access',
+      riskLevel: 'low',
       accessScope: 'Company page og publiseringsrettigheter.',
+      sharedWithRoles: ['producer', 'social_media_manager', 'admin'],
+      twoFactorStatus: 'unknown',
+      secretStatus: 'not_shared',
+      revealPolicy: 'approval_required',
       notes: 'Be sideeier gi admin- eller super admin-tilgang. Hold 2-faktor hos klienten.',
       twoFactorRequired: true,
     },
@@ -831,7 +903,13 @@ const DEFAULT_ACCOUNT_ACCESS: ProducerAccountAccessWorkspace = {
       platform: 'youtube',
       method: 'business_invite',
       status: 'not_started',
+      tier: 'delegated_access',
+      riskLevel: 'low',
       accessScope: 'Brand Account eller kanalrettigheter for opplasting.',
+      sharedWithRoles: ['producer', 'editor', 'admin'],
+      twoFactorStatus: 'unknown',
+      secretStatus: 'not_shared',
+      revealPolicy: 'approval_required',
       notes: 'Be om rollebasert kanaltilgang, ikke delt Google-passord.',
       twoFactorRequired: true,
     },
@@ -839,13 +917,24 @@ const DEFAULT_ACCOUNT_ACCESS: ProducerAccountAccessWorkspace = {
       platform: 'tiktok',
       method: 'business_invite',
       status: 'not_started',
+      tier: 'delegated_access',
+      riskLevel: 'medium',
       accessScope: 'TikTok Business Center eller sikker publiseringstilgang for vertikale flater.',
+      sharedWithRoles: ['producer', 'social_media_manager', 'admin'],
+      twoFactorStatus: 'unknown',
+      secretStatus: 'not_shared',
+      revealPolicy: 'approval_required',
       notes: 'Bruk Business Center-invitasjon eller annen rollebasert tilgang. Unngå å lagre login i prosjektet.',
       twoFactorRequired: true,
     },
   ],
+  activeVaultTab: 'accounts',
   securityNotes: 'Bruk OAuth, business invite eller klientstyrt handling. Ikke lagre passord eller 2FA-koder i Role Room.',
   revokePlan: 'Revider tilgang etter publisering og fjern koblinger som ikke lenger trengs.',
+  emergencyContactName: '',
+  emergencyContactEmail: '',
+  emergencyContactPhone: '',
+  emergencyAccessNotes: '',
   updatedAt: undefined,
 };
 
@@ -1106,6 +1195,84 @@ const normalizeProducerAccountAccessStatus = (value: unknown): ProducerAccountAc
     : 'not_started'
 );
 
+const normalizeProducerAccountAccessTier = (value: unknown, fallback: ProducerAccountAccessTier): ProducerAccountAccessTier => (
+  value === 'delegated_access'
+  || value === 'sensitive_secret'
+    ? value
+    : fallback
+);
+
+const normalizeProducerAccountAccessRiskLevel = (
+  value: unknown,
+  fallback: ProducerAccountAccessRiskLevel,
+): ProducerAccountAccessRiskLevel => (
+  value === 'low'
+  || value === 'medium'
+  || value === 'high'
+    ? value
+    : fallback
+);
+
+const normalizeProducerAccountAccessTwoFactorStatus = (
+  value: unknown,
+  fallback: ProducerAccountAccessTwoFactorStatus,
+): ProducerAccountAccessTwoFactorStatus => (
+  value === 'enabled'
+  || value === 'missing'
+  || value === 'unknown'
+    ? value
+    : fallback
+);
+
+const normalizeProducerAccountAccessSecretStatus = (
+  value: unknown,
+  fallback: ProducerAccountAccessSecretStatus,
+): ProducerAccountAccessSecretStatus => (
+  value === 'not_shared'
+  || value === 'requested'
+  || value === 'stored_externally'
+  || value === 'revoked'
+    ? value
+    : fallback
+);
+
+const normalizeProducerAccountAccessRevealPolicy = (
+  value: unknown,
+  fallback: ProducerAccountAccessRevealPolicy,
+): ProducerAccountAccessRevealPolicy => (
+  value === 'approval_required'
+  || value === 'one_time'
+  || value === 'manual_only'
+    ? value
+    : fallback
+);
+
+const normalizeProducerAccountAccessRoleTarget = (
+  value: unknown,
+): ProducerAccountAccessRoleTarget | null => (
+  value === 'client_owner'
+  || value === 'producer'
+  || value === 'editor'
+  || value === 'social_media_manager'
+  || value === 'admin'
+    ? value
+    : null
+);
+
+const normalizeProducerAccountAccessVaultTab = (
+  value: unknown,
+  fallback: ProducerAccountAccessVaultTab,
+): ProducerAccountAccessVaultTab => (
+  value === 'accounts'
+  || value === 'requests'
+  || value === 'secrets'
+  || value === 'permissions'
+  || value === 'audit'
+  || value === 'emergency'
+    ? value
+    : fallback
+);
+
 const normalizeProducerAccountAccessEntry = (
   value: unknown,
   fallback: ProducerAccountAccessEntry,
@@ -1115,10 +1282,27 @@ const normalizeProducerAccountAccessEntry = (
     platform: fallback.platform,
     method: normalizeProducerAccountAccessMethod(record.method, fallback.method),
     status: normalizeProducerAccountAccessStatus(record.status),
+    tier: normalizeProducerAccountAccessTier(record.tier, fallback.tier ?? 'delegated_access'),
+    riskLevel: normalizeProducerAccountAccessRiskLevel(record.riskLevel, fallback.riskLevel ?? 'low'),
     accountLabel: hasText(record.accountLabel) ? record.accountLabel.trim() : '',
     inviteTarget: hasText(record.inviteTarget) ? record.inviteTarget.trim() : '',
     accessScope: hasText(record.accessScope) ? record.accessScope.trim() : fallback.accessScope,
     ownerName: hasText(record.ownerName) ? record.ownerName.trim() : '',
+    sharedWithRoles: Array.isArray(record.sharedWithRoles)
+      ? record.sharedWithRoles
+        .map(normalizeProducerAccountAccessRoleTarget)
+        .filter((value): value is ProducerAccountAccessRoleTarget => value !== null)
+      : (fallback.sharedWithRoles ?? []),
+    twoFactorStatus: normalizeProducerAccountAccessTwoFactorStatus(
+      record.twoFactorStatus,
+      fallback.twoFactorStatus ?? 'unknown',
+    ),
+    lastUsedAt: hasText(record.lastUsedAt) ? record.lastUsedAt.trim() : undefined,
+    expiresAt: hasText(record.expiresAt) ? record.expiresAt.trim() : undefined,
+    secretStatus: normalizeProducerAccountAccessSecretStatus(record.secretStatus, fallback.secretStatus ?? 'not_shared'),
+    secretLabel: hasText(record.secretLabel) ? record.secretLabel.trim() : '',
+    maskedReference: hasText(record.maskedReference) ? record.maskedReference.trim() : '',
+    revealPolicy: normalizeProducerAccountAccessRevealPolicy(record.revealPolicy, fallback.revealPolicy ?? 'approval_required'),
     notes: hasText(record.notes) ? record.notes.trim() : fallback.notes,
     twoFactorRequired: typeof record.twoFactorRequired === 'boolean' ? record.twoFactorRequired : fallback.twoFactorRequired,
     lastUpdatedAt: hasText(record.lastUpdatedAt) ? record.lastUpdatedAt.trim() : undefined,
@@ -1138,8 +1322,13 @@ const normalizeProducerAccountAccessWorkspace = (
 
   return {
     entries,
+    activeVaultTab: normalizeProducerAccountAccessVaultTab(record.activeVaultTab, fallback.activeVaultTab ?? 'accounts'),
     securityNotes: hasText(record.securityNotes) ? record.securityNotes.trim() : fallback.securityNotes,
     revokePlan: hasText(record.revokePlan) ? record.revokePlan.trim() : fallback.revokePlan,
+    emergencyContactName: hasText(record.emergencyContactName) ? record.emergencyContactName.trim() : fallback.emergencyContactName,
+    emergencyContactEmail: hasText(record.emergencyContactEmail) ? record.emergencyContactEmail.trim() : fallback.emergencyContactEmail,
+    emergencyContactPhone: hasText(record.emergencyContactPhone) ? record.emergencyContactPhone.trim() : fallback.emergencyContactPhone,
+    emergencyAccessNotes: hasText(record.emergencyAccessNotes) ? record.emergencyAccessNotes.trim() : fallback.emergencyAccessNotes,
     updatedAt: hasText(record.updatedAt) ? record.updatedAt.trim() : fallback.updatedAt,
   };
 };
