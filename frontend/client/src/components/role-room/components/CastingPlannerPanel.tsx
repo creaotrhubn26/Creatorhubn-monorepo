@@ -635,6 +635,15 @@ export function CastingPlannerPanel({
     base = Math.max(useCompactHeaderLayout ? TOUCH_TARGET_SIZE : 38, base);
     return base;
   }, [quickTier3, quickTier4, quickTier5, quickTier6, quickTier7, isHiDpi, useCompactHeaderLayout, useDenseDesktopHeader]);
+  const MOBILE_TOUCH_TARGET_SIZE = 48;
+  const safeHeaderActionButtonSizePx = isMobile
+    ? Math.max(navActionButtonSizePx, MOBILE_TOUCH_TARGET_SIZE)
+    : navActionButtonSizePx;
+  const safeHeaderProjectActionSizePx = isMobile
+    ? Math.max(projectChipActionSizePx, MOBILE_TOUCH_TARGET_SIZE)
+    : projectChipActionSizePx;
+  const headerMenuItemMinHeight = isMobile ? MOBILE_TOUCH_TARGET_SIZE : TOUCH_TARGET_SIZE;
+  const headerMenuPaperWidth = isMobile ? 'min(280px, calc(100vw - 24px))' : undefined;
 
   const tabIconBoxSizePx = useMemo(() => {
     let base = quickTier7 ? 32 : quickTier6 ? 30 : quickTier5 ? 28 : quickTier4 ? 26 : quickTier3 ? 24 : 20;
@@ -6604,13 +6613,14 @@ export function CastingPlannerPanel({
               aria-label={branding.tokens.labels.newProjectTitle}
               data-tutorial-target="create-project-button"
               sx={{
-                width: navActionButtonSizePx,
-                height: navActionButtonSizePx,
-                minWidth: navActionButtonSizePx,
+                width: safeHeaderActionButtonSizePx,
+                height: safeHeaderActionButtonSizePx,
+                minWidth: safeHeaderActionButtonSizePx,
                 border: '1px dashed rgba(255,255,255,0.2)',
                 borderRadius: { xs: 1.5, sm: 2 },
                 color: 'rgba(255,255,255,0.87)',
                 flexShrink: 0,
+                p: 0,
                 '&:hover, &:active': {
                   borderColor: '#00d4ff',
                   color: '#00d4ff',
@@ -6628,14 +6638,15 @@ export function CastingPlannerPanel({
                 aria-label={branding.tokens.labels.tutorialLabel}
                 title={branding.tokens.labels.tutorialTitle}
                 sx={{
-                  width: navActionButtonSizePx,
-                  height: navActionButtonSizePx,
-                  minWidth: navActionButtonSizePx,
+                  width: safeHeaderActionButtonSizePx,
+                  height: safeHeaderActionButtonSizePx,
+                  minWidth: safeHeaderActionButtonSizePx,
                   border: '1px solid rgba(233, 30, 99, 0.3)',
                   borderRadius: { xs: 1.5, sm: 2 },
                   color: '#e91e63',
                   flexShrink: 0,
                   bgcolor: 'rgba(233, 30, 99, 0.1)',
+                  p: 0,
                   '&:hover, &:active': {
                     borderColor: '#e91e63',
                     bgcolor: 'rgba(233, 30, 99, 0.2)',
@@ -7133,9 +7144,9 @@ export function CastingPlannerPanel({
                           color: isActive ? '#00d4ff' : 'rgba(255,255,255,0.88)',
                           bgcolor: isActive ? 'rgba(0, 212, 255, 0.15)' : 'rgba(255,255,255,0.08)',
                         },
-                        width: projectChipActionSizePx,
-                        height: projectChipActionSizePx,
-                        minWidth: projectChipActionSizePx,
+                        width: safeHeaderProjectActionSizePx,
+                        height: safeHeaderProjectActionSizePx,
+                        minWidth: safeHeaderProjectActionSizePx,
                         p: 0,
                         borderRadius: 1.5,
                       }}
@@ -7153,6 +7164,7 @@ export function CastingPlannerPanel({
                 onClick={openProjectSelectorDialog}
                 sx={{
                   minWidth: useFocusedWorkspaceHeader ? { xs: 126, sm: 136 } : { xs: 136, sm: 148 },
+                  minHeight: safeHeaderActionButtonSizePx,
                   px: { xs: 1.25, sm: 1.5 },
                   borderRadius: { xs: 2, sm: 2.5 },
                   border: '1px solid rgba(139, 92, 246, 0.28)',
@@ -7186,8 +7198,10 @@ export function CastingPlannerPanel({
               paper: {
                 sx: {
                   mt: 0.75,
-                  minWidth: 180,
-                  borderRadius: 2,
+                  minWidth: isMobile ? 232 : 180,
+                  width: headerMenuPaperWidth,
+                  maxWidth: isMobile ? 'calc(100vw - 24px)' : undefined,
+                  borderRadius: isMobile ? 2.5 : 2,
                   border: '1px solid rgba(255,255,255,0.08)',
                   bgcolor: 'rgba(18, 24, 33, 0.96)',
                   color: '#fff',
@@ -7203,7 +7217,7 @@ export function CastingPlannerPanel({
                   if (!projectQuickActionsProject) return;
                   void handleCreateProjectCopy(projectQuickActionsProject, { closeSelector: true });
                 }}
-                sx={{ minHeight: 40, fontSize: '0.86rem', gap: 1 }}
+                sx={{ minHeight: headerMenuItemMinHeight, fontSize: isMobile ? '0.94rem' : '0.86rem', gap: 1.2, py: isMobile ? 1 : 0.5 }}
               >
                 <ContentCopyIcon sx={{ fontSize: 18, color: '#f9a8d4' }} />
                 {isTemplateProject(projectQuickActionsProject) ? 'Lag prosjekt fra mal' : 'Lag kopi av demo'}
@@ -7215,7 +7229,7 @@ export function CastingPlannerPanel({
                 void handleTogglePinnedProject(projectQuickActionsProject.id);
                 handleCloseProjectQuickActions();
               }}
-              sx={{ minHeight: 40, fontSize: '0.86rem', gap: 1 }}
+              sx={{ minHeight: headerMenuItemMinHeight, fontSize: isMobile ? '0.94rem' : '0.86rem', gap: 1.2, py: isMobile ? 1 : 0.5 }}
             >
               <PushPinIcon
                 sx={{
@@ -7234,7 +7248,7 @@ export function CastingPlannerPanel({
                   if (!projectQuickActionsProject) return;
                   void handlePublishProjectTemplate(projectQuickActionsProject);
                 }}
-                sx={{ minHeight: 40, fontSize: '0.86rem', gap: 1 }}
+                sx={{ minHeight: headerMenuItemMinHeight, fontSize: isMobile ? '0.94rem' : '0.86rem', gap: 1.2, py: isMobile ? 1 : 0.5 }}
               >
                 <PublishIcon sx={{ fontSize: 18, color: '#c084fc' }} />
                 Publiser som template
@@ -7248,7 +7262,7 @@ export function CastingPlannerPanel({
                     openProjectEditModal(projectQuickActionsProject);
                     handleCloseProjectQuickActions();
                   }}
-                  sx={{ minHeight: 40, fontSize: '0.86rem', gap: 1 }}
+                  sx={{ minHeight: headerMenuItemMinHeight, fontSize: isMobile ? '0.94rem' : '0.86rem', gap: 1.2, py: isMobile ? 1 : 0.5 }}
                 >
                   <EditIcon sx={{ fontSize: 18, color: '#7dd3fc' }} />
                   Rediger prosjekt
@@ -7264,7 +7278,7 @@ export function CastingPlannerPanel({
                     setConfirmDeleteOpen(true);
                     handleCloseProjectQuickActions();
                   }}
-                  sx={{ minHeight: 40, fontSize: '0.86rem', gap: 1, color: '#fda4af' }}
+                  sx={{ minHeight: headerMenuItemMinHeight, fontSize: isMobile ? '0.94rem' : '0.86rem', gap: 1.2, py: isMobile ? 1 : 0.5, color: '#fda4af' }}
                 >
                   <DeleteIcon sx={{ fontSize: 18 }} />
                   Slett prosjekt
@@ -7308,12 +7322,13 @@ export function CastingPlannerPanel({
                   aria-label="Åpne konto, abonnement og team"
                   data-testid="role-room-account-button"
                   sx={{
-                    width: navActionButtonSizePx,
-                    height: navActionButtonSizePx,
+                    width: safeHeaderActionButtonSizePx,
+                    height: safeHeaderActionButtonSizePx,
                     borderRadius: 2,
                     border: '1px solid rgba(125,211,252,0.24)',
                     bgcolor: 'rgba(15,23,42,0.88)',
                     color: '#e2e8f0',
+                    p: 0,
                     '&:hover': {
                       bgcolor: 'rgba(30,41,59,0.96)',
                       borderColor: 'rgba(125,211,252,0.44)',
@@ -7333,8 +7348,8 @@ export function CastingPlannerPanel({
                   >
                     <Box
                       sx={{
-                        width: Math.max(26, navActionButtonSizePx - 10),
-                        height: Math.max(26, navActionButtonSizePx - 10),
+                        width: Math.max(28, safeHeaderActionButtonSizePx - 10),
+                        height: Math.max(28, safeHeaderActionButtonSizePx - 10),
                         borderRadius: '50%',
                         display: 'grid',
                         placeItems: 'center',
@@ -7357,11 +7372,12 @@ export function CastingPlannerPanel({
                   title="Flere handlinger"
                   sx={{
                     color: 'rgba(255,255,255,0.74)',
-                    width: navActionButtonSizePx,
-                    height: navActionButtonSizePx,
+                    width: safeHeaderActionButtonSizePx,
+                    height: safeHeaderActionButtonSizePx,
                     borderRadius: 2,
                     border: '1px solid rgba(255,255,255,0.08)',
                     bgcolor: 'rgba(255,255,255,0.03)',
+                    p: 0,
                     '&:hover': {
                       color: '#7dd3fc',
                       bgcolor: 'rgba(96,165,250,0.12)',
@@ -7380,8 +7396,9 @@ export function CastingPlannerPanel({
                       title={branding.tokens.labels.switchProfessionLabel}
                       sx={{
                         color: '#10b981',
-                        width: navActionButtonSizePx,
-                        height: navActionButtonSizePx,
+                        width: safeHeaderActionButtonSizePx,
+                        height: safeHeaderActionButtonSizePx,
+                        p: 0,
                         '&:hover': { bgcolor: 'rgba(16,185,129,0.1)' },
                       }}
                     >
@@ -7396,8 +7413,9 @@ export function CastingPlannerPanel({
                         title={branding.tokens.labels.editTutorialsLabel}
                         sx={{
                           color: '#e91e63',
-                          width: navActionButtonSizePx,
-                          height: navActionButtonSizePx,
+                          width: safeHeaderActionButtonSizePx,
+                          height: safeHeaderActionButtonSizePx,
+                          p: 0,
                           '&:hover': { bgcolor: 'rgba(233,30,99,0.1)' },
                         }}
                       >
@@ -7409,8 +7427,9 @@ export function CastingPlannerPanel({
                         title={branding.tokens.labels.manageUsersLabel}
                         sx={{
                           color: '#8b5cf6',
-                          width: navActionButtonSizePx,
-                          height: navActionButtonSizePx,
+                          width: safeHeaderActionButtonSizePx,
+                          height: safeHeaderActionButtonSizePx,
+                          p: 0,
                           '&:hover': { bgcolor: 'rgba(139,92,246,0.1)' },
                         }}
                       >
@@ -7424,8 +7443,9 @@ export function CastingPlannerPanel({
                     title={branding.tokens.labels.showIntroTitle}
                     sx={{
                       color: '#ffb800',
-                      width: navActionButtonSizePx,
-                      height: navActionButtonSizePx,
+                      width: safeHeaderActionButtonSizePx,
+                      height: safeHeaderActionButtonSizePx,
+                      p: 0,
                       '&:hover': { bgcolor: 'rgba(255,184,0,0.1)' },
                     }}
                   >
@@ -7437,8 +7457,9 @@ export function CastingPlannerPanel({
                     title={branding.tokens.labels.logoutLabel}
                     sx={{
                       color: 'rgba(255,255,255,0.87)',
-                      width: navActionButtonSizePx,
-                      height: navActionButtonSizePx,
+                      width: safeHeaderActionButtonSizePx,
+                      height: safeHeaderActionButtonSizePx,
+                      p: 0,
                       '&:hover': { color: '#ef4444', bgcolor: 'rgba(239,68,68,0.1)' },
                     }}
                   >
@@ -7456,6 +7477,10 @@ export function CastingPlannerPanel({
               sx={{
                 color: '#8b5cf6',
                 flexShrink: 0,
+                width: safeHeaderActionButtonSizePx,
+                height: safeHeaderActionButtonSizePx,
+                minWidth: safeHeaderActionButtonSizePx,
+                p: 0,
                 '&:hover': { bgcolor: 'rgba(139,92,246,0.1)' },
               }}
             >
@@ -7470,14 +7495,16 @@ export function CastingPlannerPanel({
               anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
               transformOrigin={{ vertical: 'top', horizontal: 'right' }}
               slotProps={{
-                paper: {
-                  sx: {
-                    mt: 0.75,
-                    minWidth: 220,
-                    borderRadius: 2,
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    bgcolor: 'rgba(18, 24, 33, 0.96)',
-                    color: '#fff',
+              paper: {
+                sx: {
+                  mt: 0.75,
+                  minWidth: isMobile ? 240 : 220,
+                  width: headerMenuPaperWidth,
+                  maxWidth: isMobile ? 'calc(100vw - 24px)' : undefined,
+                  borderRadius: isMobile ? 2.5 : 2,
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  bgcolor: 'rgba(18, 24, 33, 0.96)',
+                  color: '#fff',
                     backdropFilter: 'blur(14px)',
                     boxShadow: '0 18px 40px rgba(0,0,0,0.42)',
                   },
@@ -7490,16 +7517,16 @@ export function CastingPlannerPanel({
                     handleCloseHeaderToolsMenu();
                     openProfessionDialog();
                   }}
-                  sx={{ minHeight: 40, fontSize: '0.86rem', gap: 1 }}
+                  sx={{ minHeight: headerMenuItemMinHeight, fontSize: isMobile ? '0.94rem' : '0.86rem', gap: 1.2, py: isMobile ? 1 : 0.5 }}
                 >
                   <SwapHorizIcon sx={{ fontSize: 18, color: '#10b981' }} />
                   Bytt visning
                 </MenuItem>
               ) : null}
-              <MenuItem
-                onClick={handleRestartWorkspaceOnboarding}
-                sx={{ minHeight: 40, fontSize: '0.86rem', gap: 1 }}
-              >
+                <MenuItem
+                  onClick={handleRestartWorkspaceOnboarding}
+                  sx={{ minHeight: headerMenuItemMinHeight, fontSize: isMobile ? '0.94rem' : '0.86rem', gap: 1.2, py: isMobile ? 1 : 0.5 }}
+                >
                 <PlayArrowIcon sx={{ fontSize: 18, color: '#fbbf24' }} />
                 Start intro på nytt
               </MenuItem>
@@ -7509,7 +7536,7 @@ export function CastingPlannerPanel({
                     handleCloseHeaderToolsMenu();
                     openTutorialEditor();
                   }}
-                  sx={{ minHeight: 40, fontSize: '0.86rem', gap: 1 }}
+                  sx={{ minHeight: headerMenuItemMinHeight, fontSize: isMobile ? '0.94rem' : '0.86rem', gap: 1.2, py: isMobile ? 1 : 0.5 }}
                 >
                   <TutorialIcon sx={{ fontSize: 18, color: '#f472b6' }} />
                   Rediger opplæring
@@ -7521,7 +7548,7 @@ export function CastingPlannerPanel({
                     handleCloseHeaderToolsMenu();
                     openAdminDashboard();
                   }}
-                  sx={{ minHeight: 40, fontSize: '0.86rem', gap: 1 }}
+                  sx={{ minHeight: headerMenuItemMinHeight, fontSize: isMobile ? '0.94rem' : '0.86rem', gap: 1.2, py: isMobile ? 1 : 0.5 }}
                 >
                   <AdminPanelSettingsIcon sx={{ fontSize: 18, color: '#a78bfa' }} />
                   Åpne adminpanel
@@ -7529,7 +7556,7 @@ export function CastingPlannerPanel({
               ) : null}
               <MenuItem
                 onClick={handleWorkspaceLogout}
-                sx={{ minHeight: 40, fontSize: '0.86rem', gap: 1, color: '#fda4af' }}
+                sx={{ minHeight: headerMenuItemMinHeight, fontSize: isMobile ? '0.94rem' : '0.86rem', gap: 1.2, py: isMobile ? 1 : 0.5, color: '#fda4af' }}
               >
                 <LogoutIcon sx={{ fontSize: 18 }} />
                 Logg ut
