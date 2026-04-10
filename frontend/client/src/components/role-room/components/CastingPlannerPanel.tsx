@@ -164,6 +164,10 @@ import {
   parseClientPortalIntentFromWindow,
   type ClientPortalWorkspaceFocus,
 } from '../utils/clientPortal';
+import {
+  flattenProducerWorkspacePages,
+  getClientVisibleProducerWorkspaceNavigation,
+} from '../utils/producerProjectPlanning';
 import type { Tutorial } from '../services/tutorialService';
 
 // Lazy load heavy panels for better performance
@@ -3242,15 +3246,24 @@ export function CastingPlannerPanel({
   }, [adminUser?.loginAs, adminUser?.requestedRole, canSwitchRoleRoomRole]);
 
   const currentClientPortalPreviewUrl = useMemo(
-    () => (
-      currentProject?.id
-        ? buildClientPortalUrl(currentProject.id, {
-            tab: 'media',
-            workspace: 'brief',
-          })
-        : ''
-    ),
-    [currentProject?.id],
+    () => {
+      if (!currentProject?.id) {
+        return '';
+      }
+      const navigation = getClientVisibleProducerWorkspaceNavigation(currentProject.producerPlanning?.workspaceNavigation);
+      const firstVisibleSection = navigation.sections[0];
+      const firstVisiblePage = firstVisibleSection ? flattenProducerWorkspacePages(firstVisibleSection)[0] : null;
+      if (!firstVisiblePage) {
+        return '';
+      }
+      return buildClientPortalUrl(currentProject.id, {
+        tab: 'media',
+        workspace: firstVisiblePage.surface,
+        sectionId: firstVisibleSection?.id,
+        pageId: firstVisiblePage.id,
+      });
+    },
+    [currentProject?.id, currentProject?.producerPlanning?.workspaceNavigation],
   );
 
   const handleSelectAdminPreviewMode = useCallback(async (mode: RoleRoomAdminPreviewMode) => {

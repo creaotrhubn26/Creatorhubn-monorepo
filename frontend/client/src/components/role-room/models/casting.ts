@@ -1382,6 +1382,7 @@ export interface ProducerWorkspacePage {
   surface: ProducerWorkspaceSurfaceKey;
   color?: string;
   pinned?: boolean;
+  clientVisible?: boolean;
   order?: number;
   parentPageId?: string | null;
 }

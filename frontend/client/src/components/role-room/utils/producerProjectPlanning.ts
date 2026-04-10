@@ -1251,6 +1251,7 @@ export const createProducerWorkspacePage = (
   surface,
   color: normalizeWorkspaceColor(overrides.color, PRODUCER_WORKSPACE_SURFACE_COLORS[surface]),
   pinned: Boolean(overrides.pinned),
+  clientVisible: overrides.clientVisible !== false,
   order: typeof overrides.order === 'number' ? overrides.order : 0,
   parentPageId: hasText(overrides.parentPageId) ? overrides.parentPageId.trim() : null,
 });
@@ -1370,6 +1371,7 @@ const normalizeProducerWorkspacePage = (value: unknown, index: number): Producer
     title: hasText(record.title) ? record.title.trim() : PRODUCER_WORKSPACE_SURFACE_LABELS[normalizedSurface],
     color: normalizeWorkspaceColor(record.color, PRODUCER_WORKSPACE_SURFACE_COLORS[normalizedSurface]),
     pinned: Boolean(record.pinned),
+    clientVisible: record.clientVisible !== false,
     order: typeof record.order === 'number' ? record.order : index,
     parentPageId: hasText(record.parentPageId) ? record.parentPageId.trim() : null,
   });
@@ -1451,6 +1453,57 @@ export const normalizeProducerWorkspaceNavigation = (
     activeSectionId,
     activePageId,
     sections: normalizedSections,
+  };
+};
+
+export const getClientVisibleProducerWorkspaceNavigation = (
+  raw: ProducerWorkspaceNavigation | undefined,
+): ProducerWorkspaceNavigation => {
+  const navigation = normalizeProducerWorkspaceNavigation(raw);
+  const visibleSections = navigation.sections
+    .map((section, index) => {
+      const visiblePages = flattenProducerWorkspacePages(section)
+        .filter((page) => page.clientVisible !== false)
+        .map((page) => ({ ...page }));
+
+      if (visiblePages.length === 0) {
+        return null;
+      }
+
+      const visiblePageIds = new Set(visiblePages.map((page) => page.id));
+      return {
+        ...section,
+        order: index,
+        pages: visiblePages.map((page) => ({
+          ...page,
+          parentPageId: page.parentPageId && visiblePageIds.has(page.parentPageId)
+            ? page.parentPageId
+            : null,
+        })),
+      };
+    })
+    .filter((section): section is ProducerWorkspaceSection => section !== null);
+
+  if (visibleSections.length === 0) {
+    return {
+      ...navigation,
+      activeSectionId: undefined,
+      activePageId: undefined,
+      sections: [],
+    };
+  }
+
+  const activeSection = visibleSections.find((section) => section.id === navigation.activeSectionId)
+    ?? visibleSections[0];
+  const activePages = flattenProducerWorkspacePages(activeSection);
+  const activePage = activePages.find((page) => page.id === navigation.activePageId)
+    ?? activePages[0];
+
+  return {
+    ...navigation,
+    activeSectionId: activeSection.id,
+    activePageId: activePage?.id,
+    sections: visibleSections,
   };
 };
 

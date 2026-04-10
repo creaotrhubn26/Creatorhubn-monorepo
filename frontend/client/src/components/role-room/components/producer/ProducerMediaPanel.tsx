@@ -114,6 +114,7 @@ import {
   resolveProducerBrandLogoVariant,
   getProducerStrategySnapshot,
   normalizeProducerProjectPlanning,
+  getClientVisibleProducerWorkspaceNavigation,
   normalizeProducerWorkspaceNavigation,
   PRODUCER_BRAND_LOGO_PLACEMENT_LABELS,
   PRODUCER_BRAND_LOGO_TIMING_LABELS,
@@ -214,6 +215,7 @@ interface WorkspaceContextMenuState {
   colorValue: string;
   layoutValue?: ProducerWorkspaceLayout;
   surfaceValue?: ProducerWorkspaceSurfaceKey;
+  clientVisibleValue?: boolean;
 }
 
 interface WorkspaceSupportAction {
@@ -1755,9 +1757,15 @@ export default function ProducerMediaPanel({
     () => normalizeProducerWorkspaceNavigation(planningDraft.workspaceNavigation),
     [planningDraft.workspaceNavigation],
   );
+  const effectiveWorkspaceNavigation = useMemo(
+    () => (isClientReviewerMode
+      ? getClientVisibleProducerWorkspaceNavigation(workspaceNavigation)
+      : workspaceNavigation),
+    [isClientReviewerMode, workspaceNavigation],
+  );
   const workspaceSections = useMemo(
-    () => [...workspaceNavigation.sections].sort((left, right) => (left.order ?? 0) - (right.order ?? 0)),
-    [workspaceNavigation.sections],
+    () => [...effectiveWorkspaceNavigation.sections].sort((left, right) => (left.order ?? 0) - (right.order ?? 0)),
+    [effectiveWorkspaceNavigation.sections],
   );
   const activeSection = useMemo(() => {
     return workspaceSections.find((section) => section.id === activeSectionId) ?? workspaceSections[0] ?? null;
@@ -1770,6 +1778,7 @@ export default function ProducerMediaPanel({
     return activeSectionPages.find((page) => page.id === activePageId) ?? activeSectionPages[0] ?? null;
   }, [activePageId, activeSectionPages]);
   const activeWorkspace = activePage?.surface ?? 'brief';
+  const showClientWorkspaceEmptyState = isClientReviewerMode && workspaceSections.length === 0;
   const activeLayout = activeSection?.layout ?? 'split';
   const isClientPortalView = useMemo(() => {
     if (typeof window === 'undefined') {
@@ -3190,6 +3199,7 @@ export default function ProducerMediaPanel({
         : (section.color ?? '#38bdf8'),
       layoutValue: targetType === 'section' ? (section.layout ?? 'split') : undefined,
       surfaceValue: page?.surface,
+      clientVisibleValue: targetType === 'page' ? page?.clientVisible !== false : undefined,
     });
   }, []);
 
@@ -3226,6 +3236,7 @@ export default function ProducerMediaPanel({
                 title: menuState.renameValue.trim() || page.title,
                 color: menuState.colorValue.trim() || page.color,
                 surface: menuState.surfaceValue ?? page.surface,
+                clientVisible: menuState.clientVisibleValue !== false,
               }
               : page
           )),
@@ -4580,13 +4591,13 @@ export default function ProducerMediaPanel({
       : `${activeWorkspaceCard.title} er nå hovedflaten. Hold retning, materiale og neste handling koblet til samme produksjonsgrunnlag.`;
   }, [activeWorkspaceCard.title, briefBlocksForwardFlow, isClientReviewerMode]);
   const displayWorkspaceNavigation = useMemo(
-    () => (showWorkspaceOperations ? workspaceNavigation : {
-      ...workspaceNavigation,
+    () => (showWorkspaceOperations ? effectiveWorkspaceNavigation : {
+      ...effectiveWorkspaceNavigation,
       sectionTabPlacement: 'left' as ProducerWorkspaceTabPlacement,
       pageTabPlacement: 'left' as ProducerWorkspacePagePlacement,
       navigationPinned: true,
     }),
-    [showWorkspaceOperations, workspaceNavigation],
+    [effectiveWorkspaceNavigation, showWorkspaceOperations],
   );
   const useReferenceWorkspaceShell = displayWorkspaceNavigation.sectionTabPlacement === 'left'
     && displayWorkspaceNavigation.pageTabPlacement === 'left'
@@ -4606,7 +4617,9 @@ export default function ProducerMediaPanel({
     'Deler brief, materiale og godkjenninger',
   );
   const producerDisplayName = isClientReviewerMode ? 'Produsent' : 'Innholdsprodusent';
-  const workspaceFocusLabel = activeSection
+  const workspaceFocusLabel = showClientWorkspaceEmptyState
+    ? 'Ingen rom åpnet'
+    : activeSection
     ? `${activeSection.title} · ${activePage?.title ?? PRODUCER_WORKSPACE_SURFACE_LABELS[activeWorkspace]}`
     : PRODUCER_WORKSPACE_SURFACE_LABELS[activeWorkspace];
   const mediaHeaderMeta = useMemo(
@@ -6170,7 +6183,7 @@ export default function ProducerMediaPanel({
                   {page.title}
                 </Typography>
                 <Typography sx={{ color: 'rgba(203,213,225,0.62)', fontSize: '0.76rem' }} noWrap>
-                  {PRODUCER_WORKSPACE_SURFACE_LABELS[page.surface]}
+                  {`${PRODUCER_WORKSPACE_SURFACE_LABELS[page.surface]} · ${page.clientVisible !== false ? 'Klient ser' : 'Kun internt'}`}
                 </Typography>
               </Box>
             </Stack>
@@ -6802,7 +6815,7 @@ export default function ProducerMediaPanel({
                               {page.title}
                             </Typography>
                             <Typography sx={{ color: 'rgba(203,213,225,0.54)', fontSize: '0.73rem' }} noWrap>
-                              {sectionTitle}
+                              {`${sectionTitle} · ${page.clientVisible !== false ? 'Klient ser' : 'Kun internt'}`}
                             </Typography>
                           </Box>
                         </Stack>
@@ -7132,11 +7145,21 @@ export default function ProducerMediaPanel({
                     <Typography sx={{ color: 'rgba(148,163,184,0.82)', fontSize: '0.76rem', mb: 0.55 }}>
                       {sectionTitle}
                     </Typography>
-                    <Chip
-                      size="small"
-                      label={card.progressLabel}
-                      sx={{ bgcolor: `${page.color ?? '#38bdf8'}22`, color: '#e2e8f0' }}
-                    />
+                    <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap>
+                      <Chip
+                        size="small"
+                        label={card.progressLabel}
+                        sx={{ bgcolor: `${page.color ?? '#38bdf8'}22`, color: '#e2e8f0' }}
+                      />
+                      <Chip
+                        size="small"
+                        label={page.clientVisible !== false ? 'Klient ser' : 'Kun internt'}
+                        sx={{
+                          bgcolor: page.clientVisible !== false ? 'rgba(52,211,153,0.14)' : 'rgba(148,163,184,0.12)',
+                          color: page.clientVisible !== false ? '#bbf7d0' : '#cbd5e1',
+                        }}
+                      />
+                    </Stack>
                   </Box>
                 );
               })}
@@ -7169,7 +7192,31 @@ export default function ProducerMediaPanel({
             minWidth: 0,
           }}
         >
-          {activeWorkspace === 'brief' ? (
+          {showClientWorkspaceEmptyState ? (
+            <Box
+              sx={{
+                borderRadius: 3,
+                border: '1px solid rgba(96,165,250,0.16)',
+                bgcolor: 'rgba(15,23,42,0.62)',
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
+                p: { xs: 1.6, md: 2 },
+              }}
+            >
+              <Stack spacing={1.1}>
+                <Typography sx={{ color: '#f8fafc', fontWeight: 800, fontSize: '1.28rem' }}>
+                  Ingen rom er åpnet for klient ennå
+                </Typography>
+                <Typography sx={{ color: 'rgba(203,213,225,0.74)', lineHeight: 1.65, maxWidth: 560 }}>
+                  Produsenten har ikke delt noen rom i prosjektrommet ennå. Når et rom åpnes for klient, dukker det opp her automatisk.
+                </Typography>
+                <Alert severity="info" sx={{ bgcolor: 'rgba(8,47,73,0.34)', color: '#e2e8f0' }}>
+                  Be produsenten åpne de rommene du skal bruke, for eksempel brief, materiale, levering eller møter.
+                </Alert>
+              </Stack>
+            </Box>
+          ) : null}
+
+          {!showClientWorkspaceEmptyState && activeWorkspace === 'brief' ? (
             <Box
               sx={{
                 borderRadius: 3,
@@ -7902,7 +7949,7 @@ export default function ProducerMediaPanel({
             </Box>
           ) : null}
 
-          {activeWorkspace === 'storyboard' ? (
+          {!showClientWorkspaceEmptyState && activeWorkspace === 'storyboard' ? (
             <Box
               data-testid="producer-media-storyboard-workspace"
               sx={{
@@ -8220,7 +8267,7 @@ export default function ProducerMediaPanel({
             </Box>
           ) : null}
 
-          {activeWorkspace === 'manuscript' ? (
+          {!showClientWorkspaceEmptyState && activeWorkspace === 'manuscript' ? (
             <Box
               data-testid="producer-media-manuscript-workspace"
               sx={{
@@ -8511,7 +8558,7 @@ export default function ProducerMediaPanel({
             </Box>
           ) : null}
 
-          {activeWorkspace === 'shotlist' ? (
+          {!showClientWorkspaceEmptyState && activeWorkspace === 'shotlist' ? (
             <Box
               data-testid="producer-media-shotlist-workspace"
               sx={{
@@ -8620,7 +8667,7 @@ export default function ProducerMediaPanel({
             </Box>
           ) : null}
 
-          {activeWorkspace === 'brand' ? (
+          {!showClientWorkspaceEmptyState && activeWorkspace === 'brand' ? (
             <Box
               sx={{
                 borderRadius: 3,
@@ -10085,7 +10132,7 @@ export default function ProducerMediaPanel({
             </Box>
           ) : null}
 
-          {activeWorkspace === 'accounts' ? (
+          {!showClientWorkspaceEmptyState && activeWorkspace === 'accounts' ? (
             <Box
               sx={{
                 borderRadius: 3,
@@ -10873,7 +10920,7 @@ export default function ProducerMediaPanel({
             </Box>
           ) : null}
 
-          {activeWorkspace === 'delivery' ? (
+          {!showClientWorkspaceEmptyState && activeWorkspace === 'delivery' ? (
             <Box
               sx={{
                 borderRadius: 3,
@@ -11564,7 +11611,7 @@ export default function ProducerMediaPanel({
             </Box>
           ) : null}
 
-          {activeWorkspace === 'meetings' ? (
+          {!showClientWorkspaceEmptyState && activeWorkspace === 'meetings' ? (
             <>
               <ProducerMeetingWorkspace
                 project={project}
@@ -11585,7 +11632,7 @@ export default function ProducerMediaPanel({
             </>
           ) : null}
 
-          {activeWorkspace === 'materials' ? (
+          {!showClientWorkspaceEmptyState && activeWorkspace === 'materials' ? (
             <>
               <Box
                 sx={{
@@ -13271,20 +13318,42 @@ export default function ProducerMediaPanel({
                   ))}
                 </TextField>
               ) : (
-                <TextField
-                  select
-                  size="small"
-                  label="Sideflate"
-                  value={workspaceContextMenu.surfaceValue ?? 'brief'}
-                  onChange={(event) => setWorkspaceContextMenu((previous) => previous ? {
-                    ...previous,
-                    surfaceValue: event.target.value as ProducerWorkspaceSurfaceKey,
-                  } : previous)}
-                >
-                  {Object.entries(PRODUCER_WORKSPACE_SURFACE_LABELS).map(([value, label]) => (
-                    <MenuItem key={value} value={value}>{label}</MenuItem>
-                  ))}
-                </TextField>
+                <>
+                  <TextField
+                    select
+                    size="small"
+                    label="Sideflate"
+                    value={workspaceContextMenu.surfaceValue ?? 'brief'}
+                    onChange={(event) => setWorkspaceContextMenu((previous) => previous ? {
+                      ...previous,
+                      surfaceValue: event.target.value as ProducerWorkspaceSurfaceKey,
+                    } : previous)}
+                  >
+                    {Object.entries(PRODUCER_WORKSPACE_SURFACE_LABELS).map(([value, label]) => (
+                      <MenuItem key={value} value={value}>{label}</MenuItem>
+                    ))}
+                  </TextField>
+                  <ToggleButtonGroup
+                    size="small"
+                    exclusive
+                    value={workspaceContextMenu.clientVisibleValue === false ? 'internal' : 'client'}
+                    onChange={(_event, value: 'internal' | 'client' | null) => {
+                      if (!value) {
+                        return;
+                      }
+                      setWorkspaceContextMenu((previous) => previous ? {
+                        ...previous,
+                        clientVisibleValue: value === 'client',
+                      } : previous);
+                    }}
+                  >
+                    <ToggleButton value="client">Synlig for klient</ToggleButton>
+                    <ToggleButton value="internal">Kun internt</ToggleButton>
+                  </ToggleButtonGroup>
+                  <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.76rem', lineHeight: 1.5 }}>
+                    Dette styrer hvilke rom klientrollen kan åpne i Prosjektrom.
+                  </Typography>
+                </>
               )}
               <Box>
                 <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.78rem', mb: 0.55 }}>
