@@ -838,6 +838,7 @@ export function CastingPlannerPanel({
     activeTab: number;
     storyArcView: StoryArcView;
     contentProducerPlannerSurface?: ContentProducerPlannerSurface;
+    producerMediaFocus?: ClientPortalWorkspaceFocus | null;
   };
   const [activeTab, setActiveTab] = useState(0);
   const [lastNonLiveTab, setLastNonLiveTab] = useState(0);
@@ -1053,6 +1054,7 @@ export function CastingPlannerPanel({
   const handledLinkedInTransferRef = useRef<string | null>(null);
   const selectionGoogleStatusRequestRef = useRef(0);
   const [producerMediaFocus, setProducerMediaFocus] = useState<ClientPortalWorkspaceFocus | null>(null);
+  const lastProducerMediaFocusRef = useRef<ClientPortalWorkspaceFocus | null>(null);
 
   const handleOpenTechnicalTeamDashboard = useCallback(() => {
     setTeamDashboardDefaultSegment('technical');
@@ -1123,6 +1125,20 @@ export function CastingPlannerPanel({
   }, [currentProject]);
 
   useEffect(() => {
+    if (!producerMediaFocus) {
+      return;
+    }
+    if (!producerMediaFocus.workspace && !producerMediaFocus.sectionId && !producerMediaFocus.pageId && !producerMediaFocus.artifactId) {
+      return;
+    }
+    lastProducerMediaFocusRef.current = producerMediaFocus;
+  }, [producerMediaFocus]);
+
+  useEffect(() => {
+    const persisted = persistedWorkspaceStateRef.current;
+    lastProducerMediaFocusRef.current = persisted?.projectId === (currentProject?.id ?? null)
+      ? (persisted.producerMediaFocus ?? null)
+      : null;
     setSelectedSelectionCandidateId(null);
     setSelectionCompareCandidateIds([]);
     setSelectionDecisionLog([]);
@@ -1166,6 +1182,17 @@ export function CastingPlannerPanel({
     setProjectQuickActionsAnchorEl(null);
     setProjectQuickActionsProject(null);
     setProjectSelectorQuery('');
+  }, [currentProject?.id]);
+
+  useEffect(() => {
+    const persisted = persistedWorkspaceStateRef.current;
+    if (!currentProject || !persisted || persisted.projectId !== currentProject.id) {
+      return;
+    }
+    if (persisted.producerMediaFocus) {
+      setProducerMediaFocus(persisted.producerMediaFocus);
+      lastProducerMediaFocusRef.current = persisted.producerMediaFocus;
+    }
   }, [currentProject?.id]);
 
   useEffect(() => {
@@ -2188,6 +2215,7 @@ export function CastingPlannerPanel({
       }
       const nextStoryArcView = stored.storyArcView;
       const nextContentProducerPlannerSurface = stored.contentProducerPlannerSurface;
+      const nextProducerMediaFocus = stored.producerMediaFocus;
       const storyArcViewValid = nextStoryArcView === 'main'
         || nextStoryArcView === 'story-logic'
         || nextStoryArcView === 'story-writer'
@@ -2198,6 +2226,22 @@ export function CastingPlannerPanel({
         || nextContentProducerPlannerSurface === 'approval'
         || nextContentProducerPlannerSurface === 'delivery'
         || nextContentProducerPlannerSurface === 'economy';
+      const producerMediaFocusValid = nextProducerMediaFocus && typeof nextProducerMediaFocus === 'object'
+        ? {
+            workspace: typeof nextProducerMediaFocus.workspace === 'string' && nextProducerMediaFocus.workspace.trim().length > 0
+              ? nextProducerMediaFocus.workspace
+              : undefined,
+            sectionId: typeof nextProducerMediaFocus.sectionId === 'string' && nextProducerMediaFocus.sectionId.trim().length > 0
+              ? nextProducerMediaFocus.sectionId.trim()
+              : undefined,
+            pageId: typeof nextProducerMediaFocus.pageId === 'string' && nextProducerMediaFocus.pageId.trim().length > 0
+              ? nextProducerMediaFocus.pageId.trim()
+              : undefined,
+            artifactId: typeof nextProducerMediaFocus.artifactId === 'string' && nextProducerMediaFocus.artifactId.trim().length > 0
+              ? nextProducerMediaFocus.artifactId.trim()
+              : undefined,
+          }
+        : null;
       return {
         projectId: typeof stored.projectId === 'string' && stored.projectId.trim().length > 0
           ? stored.projectId
@@ -2205,6 +2249,7 @@ export function CastingPlannerPanel({
         activeTab: Number.isFinite(stored.activeTab) ? stored.activeTab : 0,
         storyArcView: storyArcViewValid ? nextStoryArcView : 'main',
         contentProducerPlannerSurface: plannerSurfaceValid ? nextContentProducerPlannerSurface : 'overview',
+        producerMediaFocus: producerMediaFocusValid,
       };
     } catch (error) {
       console.warn('Failed to load persisted Role Room workspace state:', error);
@@ -2226,6 +2271,7 @@ export function CastingPlannerPanel({
       persistedWorkspaceStateRef.current = stored;
       setStoryArcView(stored.storyArcView);
       setContentProducerPlannerSurface(stored.contentProducerPlannerSurface ?? 'overview');
+      lastProducerMediaFocusRef.current = stored.producerMediaFocus ?? null;
       setActiveTab(stored.activeTab);
     };
 
@@ -2591,6 +2637,7 @@ export function CastingPlannerPanel({
       activeTab: displayedActiveTab,
       storyArcView: displayedActiveTab === STORY_ARC_TAB_INDEX ? storyArcView : 'main',
       contentProducerPlannerSurface: isContentProducerMode ? contentProducerPlannerSurface : undefined,
+      producerMediaFocus: lastProducerMediaFocusRef.current,
     };
     persistedWorkspaceStateRef.current = nextState;
 
@@ -10154,6 +10201,9 @@ export function CastingPlannerPanel({
                         initialSectionId={producerMediaFocus?.sectionId}
                         initialPageId={producerMediaFocus?.pageId}
                         initialArtifactId={producerMediaFocus?.artifactId}
+                        onWorkspaceFocusChange={(focus) => {
+                          setProducerMediaFocus(focus);
+                        }}
                         onProjectUpdated={async (updatedProject) => {
                           setCurrentProject(updatedProject);
                           await loadProjects();
@@ -10586,6 +10636,9 @@ export function CastingPlannerPanel({
                       : undefined
                   )
                 }
+                onWorkspaceFocusChange={(focus) => {
+                  setProducerMediaFocus(focus);
+                }}
                 onProjectUpdated={async (updatedProject) => {
                   setCurrentProject(updatedProject);
                   await loadProjects();

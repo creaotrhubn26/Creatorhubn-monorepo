@@ -162,6 +162,7 @@ interface ProducerMediaPanelProps {
   initialSectionId?: string;
   initialPageId?: string;
   initialArtifactId?: string;
+  onWorkspaceFocusChange?: (focus: ClientPortalWorkspaceFocus) => void;
   onOpenStoryboard?: () => void;
   onOpenManuscript?: () => void;
   onOpenShotList?: () => void;
@@ -1648,6 +1649,7 @@ export default function ProducerMediaPanel({
   initialSectionId,
   initialPageId,
   initialArtifactId,
+  onWorkspaceFocusChange,
   onOpenStoryboard,
   onOpenManuscript,
   onOpenShotList,
@@ -1775,6 +1777,15 @@ export default function ProducerMediaPanel({
       return false;
     }
   }, []);
+
+  useEffect(() => {
+    onWorkspaceFocusChange?.({
+      workspace: activeWorkspace,
+      sectionId: activeSection?.id,
+      pageId: activePage?.id,
+      artifactId: focusedArtifactId ?? undefined,
+    });
+  }, [activePage?.id, activeSection?.id, activeWorkspace, focusedArtifactId, onWorkspaceFocusChange]);
   const strategySnapshot = useMemo(
     () => getProducerStrategySnapshot(planningDraft),
     [planningDraft],
