@@ -2686,59 +2686,6 @@ export default function ProducerMediaPanel({
     savedIntakeSnapshotRef.current = serializeIntakeSnapshot(nextDraft);
   }, [intakeDraft, isClientReviewerMode, onProjectUpdated, project, projectId, serializeIntakeSnapshot]);
 
-  const handleSubmitMaterial = useCallback(async () => {
-    if (!materialDraft.title.trim()) {
-      setError('Materialet må ha en tittel.');
-      return;
-    }
-
-    setSavingMaterial(true);
-    setError(null);
-    try {
-      const payload = {
-        entryType: materialDraft.entryType,
-        title: materialDraft.title.trim(),
-        description: materialDraft.description.trim() || undefined,
-        externalUrl: materialDraft.externalUrl.trim() || undefined,
-        phase: materialDraft.phase || undefined,
-        linkedShotListId: materialDraft.linkedShotListId || undefined,
-        status: materialDraft.status.trim() || 'provided',
-        metadata: {
-          fileName: materialDraft.fileName.trim() || undefined,
-          versionLabel: materialDraft.versionLabel.trim() || undefined,
-          usageNotes: materialDraft.usageNotes.trim() || undefined,
-          sourceLabel: materialDraft.sourceLabel.trim() || undefined,
-          priority: materialDraft.priority,
-          linkedCalendarItemId: materialDraft.linkedCalendarItemId || undefined,
-          folderPath: materialDraft.folderPath.trim() || undefined,
-          packageName: materialDraft.packageName.trim() || undefined,
-          projectFileId: materialDraft.projectFileId.trim() || undefined,
-          projectFileDownloadUrl: materialDraft.projectFileDownloadUrl.trim() || undefined,
-        },
-      } as const;
-
-      if (materialDraft.id) {
-        const updated = await producerWorkflowService.updateClientMaterial(projectId, materialDraft.id, payload);
-        setMaterials((previous) => previous.map((item) => (item.id === updated.id ? updated : item)));
-      } else {
-        const created = await producerWorkflowService.createClientMaterial(projectId, payload);
-        setMaterials((previous) => [created, ...previous]);
-      }
-
-      setMaterialDraft(EMPTY_MATERIAL_DRAFT);
-      setSelectedMaterialFile(null);
-      setMaterialsMode('library');
-      if (materialFileInputRef.current) {
-        materialFileInputRef.current.value = '';
-      }
-    } catch (saveError) {
-      console.error('[ProducerMediaPanel] Failed to save client material', saveError);
-      setError('Kunne ikke lagre klientmateriale.');
-    } finally {
-      setSavingMaterial(false);
-    }
-  }, [materialDraft, projectId]);
-
   const handleSubmitManuscriptSuggestion = useCallback(async () => {
     if (!manuscriptSuggestionDraft.title.trim() || !manuscriptSuggestionDraft.suggestion.trim()) {
       setError('Forslaget må ha en tittel og en konkret endring.');
@@ -3898,6 +3845,13 @@ export default function ProducerMediaPanel({
     () => (showAllMaterials ? sortedMaterials : sortedMaterials.slice(0, 4)),
     [showAllMaterials, sortedMaterials],
   );
+  const briefReferenceMaterials = useMemo(
+    () => sortedMaterials.filter((material) => material.entry_type === 'reference').slice(0, 3),
+    [sortedMaterials],
+  );
+  const briefReferenceDraftActive = materialDraft.entryType === 'reference';
+  const canSubmitBriefReference = briefReferenceDraftActive
+    && (Boolean(selectedMaterialFile) || hasText(materialDraft.projectFileId));
   const activeBriefStepSummary = useMemo(() => {
     if (activeBriefStep === 'goal') {
       return readFirstNonEmptyString(
@@ -4207,6 +4161,182 @@ export default function ProducerMediaPanel({
     });
   }, [openSurfaceWorkspace]);
 
+  const resetMaterialFileInput = useCallback(() => {
+    if (materialFileInputRef.current) {
+      materialFileInputRef.current.value = '';
+    }
+  }, []);
+
+  const createReferenceMaterialDraft = useCallback((): ClientMaterialDraft => {
+    const referenceTemplate = CLIENT_MATERIAL_TEMPLATES.find((template) => template.id === 'reference-film');
+    return {
+      ...EMPTY_MATERIAL_DRAFT,
+      ...(referenceTemplate?.draft ?? {}),
+      entryType: 'reference',
+      phase: 'preproduction',
+      status: 'provided',
+      sourceLabel: isClientReviewerMode ? 'Klient' : (referenceTemplate?.draft.sourceLabel ?? 'Produsent'),
+      usageNotes: referenceTemplate?.draft.usageNotes ?? 'Brukes til tone, tempo og forventninger i briefen.',
+    };
+  }, [isClientReviewerMode]);
+
+  const buildMaterialPayload = useCallback((draft: ClientMaterialDraft) => ({
+    entryType: draft.entryType,
+    title: draft.title.trim(),
+    description: draft.description.trim() || undefined,
+    externalUrl: draft.externalUrl.trim() || undefined,
+    phase: draft.phase || undefined,
+    linkedShotListId: draft.linkedShotListId || undefined,
+    status: draft.status.trim() || 'provided',
+    metadata: {
+      fileName: draft.fileName.trim() || undefined,
+      versionLabel: draft.versionLabel.trim() || undefined,
+      usageNotes: draft.usageNotes.trim() || undefined,
+      sourceLabel: draft.sourceLabel.trim() || undefined,
+      priority: draft.priority,
+      linkedCalendarItemId: draft.linkedCalendarItemId || undefined,
+      folderPath: draft.folderPath.trim() || undefined,
+      packageName: draft.packageName.trim() || undefined,
+      projectFileId: draft.projectFileId.trim() || undefined,
+      projectFileDownloadUrl: draft.projectFileDownloadUrl.trim() || undefined,
+    },
+  } as const), []);
+
+  const uploadMaterialProjectFile = useCallback(async (
+    file: File,
+    draft: ClientMaterialDraft,
+  ): Promise<Partial<ClientMaterialDraft>> => {
+    const normalizedPhase = draft.phase || 'general';
+    const folderPath = `client-materials/${normalizedPhase}/${draft.entryType}`;
+    const packageName = `${projectName.trim() || 'prosjekt'}-client-materials`;
+    const uploadedFile = await uploadProjectFile(projectId, file, {
+      source: 'role_room_client_material',
+      entryType: draft.entryType,
+      phase: draft.phase || undefined,
+      linkedShotListId: draft.linkedShotListId || undefined,
+      linkedCalendarItemId: draft.linkedCalendarItemId || undefined,
+      folderPath,
+      packageName,
+      versionLabel: draft.versionLabel.trim() || 'v1',
+      sourceLabel: draft.sourceLabel.trim() || (isClientReviewerMode ? 'Klient' : 'Produsent'),
+      usageNotes: draft.usageNotes.trim() || undefined,
+      priority: draft.priority,
+    });
+
+    const downloadUrl = readFirstNonEmptyString(
+      (uploadedFile as Record<string, unknown>).downloadUrl,
+    );
+    const projectFileId = readFirstNonEmptyString(
+      (uploadedFile as Record<string, unknown>).id,
+    );
+
+    return {
+      title: draft.title.trim().length > 0
+        ? draft.title
+        : file.name.replace(/\.[^.]+$/u, '').trim(),
+      externalUrl: downloadUrl || draft.externalUrl,
+      fileName: draft.fileName.trim().length > 0 ? draft.fileName : file.name,
+      versionLabel: draft.versionLabel.trim().length > 0 ? draft.versionLabel : 'v1',
+      sourceLabel: draft.sourceLabel.trim().length > 0 ? draft.sourceLabel : (isClientReviewerMode ? 'Klient' : 'Produsent'),
+      description: draft.description.trim().length > 0
+        ? draft.description
+        : `Prosjektfil lastet opp: ${file.name}`,
+      usageNotes: draft.usageNotes.trim().length > 0 ? draft.usageNotes : 'Brukes som prosjektfil i klientgrunnlaget.',
+      status: draft.status.trim().length > 0 ? draft.status : 'provided',
+      folderPath,
+      packageName,
+      projectFileId,
+      projectFileDownloadUrl: downloadUrl,
+    };
+  }, [isClientReviewerMode, projectId, projectName, uploadProjectFile]);
+
+  const handleOpenBriefReferenceFilePicker = useCallback(() => {
+    setSelectedMaterialFile(null);
+    resetMaterialFileInput();
+    setMaterialDraft((previous) => ({
+      ...createReferenceMaterialDraft(),
+      title: previous.entryType === 'reference' ? previous.title : '',
+      description: previous.entryType === 'reference' ? previous.description : '',
+      externalUrl: previous.entryType === 'reference' ? previous.externalUrl : '',
+    }));
+    materialFileInputRef.current?.click();
+  }, [createReferenceMaterialDraft, resetMaterialFileInput]);
+
+  const handleSubmitMaterial = useCallback(async () => {
+    if (!materialDraft.title.trim()) {
+      setError('Materialet må ha en tittel.');
+      return;
+    }
+
+    setSavingMaterial(true);
+    setError(null);
+    try {
+      const payload = buildMaterialPayload(materialDraft);
+
+      if (materialDraft.id) {
+        const updated = await producerWorkflowService.updateClientMaterial(projectId, materialDraft.id, payload);
+        setMaterials((previous) => previous.map((item) => (item.id === updated.id ? updated : item)));
+      } else {
+        const created = await producerWorkflowService.createClientMaterial(projectId, payload);
+        setMaterials((previous) => [created, ...previous]);
+      }
+
+      setMaterialDraft(EMPTY_MATERIAL_DRAFT);
+      setSelectedMaterialFile(null);
+      setMaterialsMode('library');
+      resetMaterialFileInput();
+    } catch (saveError) {
+      console.error('[ProducerMediaPanel] Failed to save client material', saveError);
+      setError('Kunne ikke lagre klientmateriale.');
+    } finally {
+      setSavingMaterial(false);
+    }
+  }, [buildMaterialPayload, materialDraft, projectId, resetMaterialFileInput]);
+
+  const handleSubmitBriefReference = useCallback(async () => {
+    const hasExistingProjectFile = hasText(materialDraft.projectFileId);
+    if (!selectedMaterialFile && !hasExistingProjectFile) {
+      setError('Velg en referansefil før du legger den til i briefen.');
+      return;
+    }
+
+    setSavingMaterial(true);
+    setError(null);
+    try {
+      const baseDraft: ClientMaterialDraft = {
+        ...createReferenceMaterialDraft(),
+        ...materialDraft,
+        entryType: 'reference',
+        phase: materialDraft.phase || 'preproduction',
+        status: materialDraft.status.trim() || 'provided',
+        sourceLabel: materialDraft.sourceLabel.trim() || (isClientReviewerMode ? 'Klient' : 'Produsent'),
+        title: materialDraft.title.trim() || selectedMaterialFile?.name.replace(/\.[^.]+$/u, '').trim() || 'Referanse',
+        description: materialDraft.description.trim() || 'Referanse lastet opp direkte i briefen.',
+        usageNotes: materialDraft.usageNotes.trim() || 'Brukes til retning, tone og forventninger i briefen.',
+        priority: materialDraft.priority || 'important',
+      };
+
+      const finalDraft = selectedMaterialFile
+        ? {
+          ...baseDraft,
+          ...(await uploadMaterialProjectFile(selectedMaterialFile, baseDraft)),
+        }
+        : baseDraft;
+
+      const created = await producerWorkflowService.createClientMaterial(projectId, buildMaterialPayload(finalDraft));
+      setMaterials((previous) => [created, ...previous]);
+      setMaterialDraft(EMPTY_MATERIAL_DRAFT);
+      setSelectedMaterialFile(null);
+      resetMaterialFileInput();
+      void loadDeliveryWorkspaceAssets();
+    } catch (saveError) {
+      console.error('[ProducerMediaPanel] Failed to save brief reference', saveError);
+      setError('Kunne ikke legge til referansen i briefen.');
+    } finally {
+      setSavingMaterial(false);
+    }
+  }, [buildMaterialPayload, createReferenceMaterialDraft, isClientReviewerMode, loadDeliveryWorkspaceAssets, materialDraft, projectId, resetMaterialFileInput, selectedMaterialFile, uploadMaterialProjectFile]);
+
   const handleMaterialFileSelected = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     const nextFile = event.target.files?.[0] ?? null;
     setSelectedMaterialFile(nextFile);
@@ -4238,48 +4368,10 @@ export default function ProducerMediaPanel({
     setUploadingMaterialFile(true);
     setError(null);
     try {
-      const normalizedPhase = materialDraft.phase || 'general';
-      const folderPath = `client-materials/${normalizedPhase}/${materialDraft.entryType}`;
-      const packageName = `${projectName.trim() || 'prosjekt'}-client-materials`;
-      const uploadedFile = await uploadProjectFile(projectId, selectedMaterialFile, {
-        source: 'role_room_client_material',
-        entryType: materialDraft.entryType,
-        phase: materialDraft.phase || undefined,
-        linkedShotListId: materialDraft.linkedShotListId || undefined,
-        linkedCalendarItemId: materialDraft.linkedCalendarItemId || undefined,
-        folderPath,
-        packageName,
-        versionLabel: materialDraft.versionLabel.trim() || 'v1',
-        sourceLabel: materialDraft.sourceLabel.trim() || (isClientReviewerMode ? 'Klient' : 'Produsent'),
-        usageNotes: materialDraft.usageNotes.trim() || undefined,
-        priority: materialDraft.priority,
-      });
-
-      const downloadUrl = readFirstNonEmptyString(
-        (uploadedFile as Record<string, unknown>).downloadUrl,
-      );
-      const projectFileId = readFirstNonEmptyString(
-        (uploadedFile as Record<string, unknown>).id,
-      );
-
+      const uploadResult = await uploadMaterialProjectFile(selectedMaterialFile, materialDraft);
       setMaterialDraft((previous) => ({
         ...previous,
-        title: previous.title.trim().length > 0
-          ? previous.title
-          : selectedMaterialFile.name.replace(/\.[^.]+$/u, '').trim(),
-        externalUrl: downloadUrl || previous.externalUrl,
-        fileName: previous.fileName.trim().length > 0 ? previous.fileName : selectedMaterialFile.name,
-        versionLabel: previous.versionLabel.trim().length > 0 ? previous.versionLabel : 'v1',
-        sourceLabel: previous.sourceLabel.trim().length > 0 ? previous.sourceLabel : (isClientReviewerMode ? 'Klient' : 'Produsent'),
-        description: previous.description.trim().length > 0
-          ? previous.description
-          : `Prosjektfil lastet opp: ${selectedMaterialFile.name}`,
-        usageNotes: previous.usageNotes.trim().length > 0 ? previous.usageNotes : 'Brukes som prosjektfil i klientgrunnlaget.',
-        status: previous.status.trim().length > 0 ? previous.status : 'provided',
-        folderPath,
-        packageName,
-        projectFileId,
-        projectFileDownloadUrl: downloadUrl,
+        ...uploadResult,
       }));
       void loadDeliveryWorkspaceAssets();
       setError(null);
@@ -4289,7 +4381,7 @@ export default function ProducerMediaPanel({
     } finally {
       setUploadingMaterialFile(false);
     }
-  }, [isClientReviewerMode, loadDeliveryWorkspaceAssets, materialDraft.entryType, materialDraft.linkedCalendarItemId, materialDraft.linkedShotListId, materialDraft.phase, materialDraft.priority, materialDraft.sourceLabel, materialDraft.usageNotes, materialDraft.versionLabel, projectId, projectName, selectedMaterialFile, uploadProjectFile]);
+  }, [loadDeliveryWorkspaceAssets, materialDraft, selectedMaterialFile, uploadMaterialProjectFile]);
 
   const handleOpenBrandLogoFilePicker = useCallback((variantType: ProducerBrandLogoVariantType = 'primary') => {
     setBrandLogoUploadVariantType(variantType);
@@ -7216,6 +7308,13 @@ export default function ProducerMediaPanel({
             </Box>
           ) : null}
 
+          <input
+            ref={materialFileInputRef}
+            type="file"
+            hidden
+            onChange={handleMaterialFileSelected}
+          />
+
           {!showClientWorkspaceEmptyState && activeWorkspace === 'brief' ? (
             <Box
               sx={{
@@ -7691,6 +7790,144 @@ export default function ProducerMediaPanel({
                         minRows={3}
                         disabled={!canEditClientInput}
                       />
+                    </Box>
+                    <Box
+                      sx={{
+                        p: 1,
+                        borderRadius: 1.6,
+                        border: '1px solid rgba(56,189,248,0.12)',
+                        bgcolor: 'rgba(8,47,73,0.16)',
+                      }}
+                    >
+                      <Stack
+                        direction={{ xs: 'column', md: 'row' }}
+                        spacing={1}
+                        justifyContent="space-between"
+                        alignItems={{ xs: 'flex-start', md: 'center' }}
+                      >
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.92rem', mb: 0.22 }}>
+                            Last opp referanser direkte i briefen
+                          </Typography>
+                          <Typography sx={{ color: 'rgba(203,213,225,0.68)', fontSize: '0.76rem', lineHeight: 1.5 }}>
+                            Legg ved filmer, PDF-er, bilder eller annet grunnlag her. Referansen blir lagret i prosjektet og kan brukes videre i prosjektrommet.
+                          </Typography>
+                        </Box>
+                        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.8} alignItems={{ md: 'flex-start' }}>
+                          <Button
+                            variant="outlined"
+                            startIcon={<UploadFileIcon />}
+                            onClick={handleOpenBriefReferenceFilePicker}
+                            disabled={!canEditClientInput}
+                            sx={{ textTransform: 'none', fontWeight: 700 }}
+                          >
+                            Velg referansefil
+                          </Button>
+                          <Button
+                            variant="contained"
+                            startIcon={<CloudUploadIcon />}
+                            onClick={() => {
+                              void handleSubmitBriefReference();
+                            }}
+                            disabled={!canEditClientInput || savingMaterial || uploadingMaterialFile || !canSubmitBriefReference}
+                            sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#38bdf8', color: '#082f49', '&:hover': { bgcolor: '#0ea5e9' } }}
+                          >
+                            {savingMaterial || uploadingMaterialFile ? 'Laster opp...' : 'Legg til referanse'}
+                          </Button>
+                        </Stack>
+                      </Stack>
+
+                      {briefReferenceDraftActive && (selectedMaterialFile || hasText(materialDraft.projectFileId)) ? (
+                        <Box
+                          sx={{
+                            mt: 0.9,
+                            px: 0.85,
+                            py: 0.7,
+                            borderRadius: 1.4,
+                            border: '1px solid rgba(96,165,250,0.12)',
+                            bgcolor: 'rgba(15,23,42,0.28)',
+                          }}
+                        >
+                          <Typography sx={{ color: 'rgba(191,219,254,0.82)', fontSize: '0.8rem', fontWeight: 700 }}>
+                            {selectedMaterialFile
+                              ? `Klar til opplasting: ${selectedMaterialFile.name}`
+                              : `Klar til å lagres: ${materialDraft.fileName || materialDraft.title || 'Referanse'}`}
+                          </Typography>
+                          <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.74rem', lineHeight: 1.45, mt: 0.24 }}>
+                            Referansen lagres som en egen prosjektressurs og blir tilgjengelig videre i Prosjektrom.
+                          </Typography>
+                        </Box>
+                      ) : null}
+
+                      {briefReferenceMaterials.length > 0 ? (
+                        <Stack spacing={0.65} sx={{ mt: 0.95 }}>
+                          <Typography sx={{ color: 'rgba(191,219,254,0.72)', fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase' }}>
+                            Referanser som allerede er lagt inn
+                          </Typography>
+                          {briefReferenceMaterials.map((material) => {
+                            const metadata = parseMaterialMetadata(material);
+                            const materialLink = hasText(metadata.projectFileDownloadUrl)
+                              ? metadata.projectFileDownloadUrl
+                              : material.external_url;
+
+                            return (
+                              <Stack
+                                key={material.id}
+                                direction={{ xs: 'column', sm: 'row' }}
+                                spacing={0.75}
+                                justifyContent="space-between"
+                                sx={{
+                                  px: 0.85,
+                                  py: 0.7,
+                                  borderRadius: 1.4,
+                                  border: '1px solid rgba(96,165,250,0.1)',
+                                  bgcolor: 'rgba(15,23,42,0.24)',
+                                }}
+                              >
+                                <Box sx={{ minWidth: 0 }}>
+                                  <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.86rem' }}>
+                                    {material.title}
+                                  </Typography>
+                                  <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.74rem', lineHeight: 1.45, mt: 0.2 }}>
+                                    {readFirstNonEmptyString(
+                                      metadata.fileName ? `Fil: ${metadata.fileName}` : '',
+                                      material.description ?? '',
+                                      'Referanse lagt til i briefen.',
+                                    )}
+                                  </Typography>
+                                </Box>
+                                <Stack direction="row" spacing={0.65} alignItems="center">
+                                  <Chip
+                                    size="small"
+                                    label={metadata.sourceLabel || 'Klient'}
+                                    sx={{ bgcolor: 'rgba(59,130,246,0.18)', color: '#bfdbfe' }}
+                                  />
+                                  {hasText(materialLink) ? (
+                                    <Button
+                                      size="small"
+                                      variant="text"
+                                      href={materialLink}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      sx={{ textTransform: 'none', fontWeight: 700, color: 'rgba(191,219,254,0.82)' }}
+                                    >
+                                      Åpne
+                                    </Button>
+                                  ) : null}
+                                </Stack>
+                              </Stack>
+                            );
+                          })}
+                          <Button
+                            size="small"
+                            variant="text"
+                            onClick={() => openSurfaceWorkspace('materials')}
+                            sx={{ textTransform: 'none', fontWeight: 700, alignSelf: 'flex-start' }}
+                          >
+                            Se alle referanser i Prosjektrom
+                          </Button>
+                        </Stack>
+                      ) : null}
                     </Box>
                     <Box
                       sx={{
@@ -11949,12 +12186,6 @@ export default function ProducerMediaPanel({
                             ) : null}
                           </Box>
                           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ md: 'flex-start' }}>
-                            <input
-                              ref={materialFileInputRef}
-                              type="file"
-                              hidden
-                              onChange={handleMaterialFileSelected}
-                            />
                             <Button
                               variant="outlined"
                               startIcon={<UploadFileIcon />}
@@ -12045,12 +12276,6 @@ export default function ProducerMediaPanel({
                             ) : null}
                           </Box>
                           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ md: 'flex-start' }}>
-                            <input
-                              ref={materialFileInputRef}
-                              type="file"
-                              hidden
-                              onChange={handleMaterialFileSelected}
-                            />
                             <Button
                               variant="outlined"
                               startIcon={<UploadFileIcon />}
