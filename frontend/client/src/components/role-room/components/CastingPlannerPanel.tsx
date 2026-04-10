@@ -165,6 +165,10 @@ import {
   type ClientPortalWorkspaceFocus,
 } from '../utils/clientPortal';
 import {
+  normalizeStoryArcNavigationFocus,
+  type StoryArcNavigationFocus,
+} from '../utils/storyArcFocus';
+import {
   flattenProducerWorkspacePages,
   getClientVisibleProducerWorkspaceNavigation,
 } from '../utils/producerProjectPlanning';
@@ -879,6 +883,7 @@ export function CastingPlannerPanel({
     projectId: string | null;
     activeTab: number;
     storyArcView: StoryArcView;
+    storyArcFocus?: StoryArcNavigationFocus | null;
     contentProducerPlannerSurface?: ContentProducerPlannerSurface;
     producerMediaFocus?: ClientPortalWorkspaceFocus | null;
   };
@@ -890,6 +895,7 @@ export function CastingPlannerPanel({
   const [teamDashboardOpenSignal, setTeamDashboardOpenSignal] = useState(0);
   const [teamDashboardDefaultSegment, setTeamDashboardDefaultSegment] = useState<'all' | 'technical'>('all');
   const [storyArcView, setStoryArcView] = useState<StoryArcView>('main');
+  const [storyArcFocus, setStoryArcFocus] = useState<StoryArcNavigationFocus | null>(null);
   const [selectionPhaseFilter, setSelectionPhaseFilter] = useState<SelectionPhaseFilter>('screening');
   const [selectedSelectionCandidateId, setSelectedSelectionCandidateId] = useState<string | null>(null);
   const [selectionCompareCandidateIds, setSelectionCompareCandidateIds] = useState<string[]>([]);
@@ -1229,6 +1235,7 @@ export function CastingPlannerPanel({
     setCalendarCreateIntent(null);
     setCalendarPreselectedFromCreate(null);
     setStoryArcView('main');
+    setStoryArcFocus(null);
     setAvailableScenes([]);
     setCandidateStatusFilter('all');
     setCandidateViewMode('list');
@@ -1264,6 +1271,9 @@ export function CastingPlannerPanel({
     if (persisted.producerMediaFocus) {
       setProducerMediaFocus(persisted.producerMediaFocus);
       lastProducerMediaFocusRef.current = persisted.producerMediaFocus;
+    }
+    if (persisted.storyArcFocus) {
+      setStoryArcFocus(persisted.storyArcFocus);
     }
   }, [currentProject?.id]);
 
@@ -1368,7 +1378,13 @@ export function CastingPlannerPanel({
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
 
-  const navigateToTab = useCallback((tabIndex: number, options?: { storyArcView?: StoryArcView }) => {
+  const navigateToTab = useCallback((
+    tabIndex: number,
+    options?: {
+      storyArcView?: StoryArcView;
+      storyArcFocus?: StoryArcNavigationFocus | null;
+    },
+  ) => {
     const commitTab = (nextTab: number) => {
       if (activeTab === LIVE_SET_TAB_INDEX && nextTab !== LIVE_SET_TAB_INDEX) {
         void exitLiveSetFullscreen();
@@ -1380,6 +1396,9 @@ export function CastingPlannerPanel({
 
     if (tabIndex === SHOT_LIST_TAB_INDEX) {
       setStoryArcView('shot-list');
+      if (options && 'storyArcFocus' in options) {
+        setStoryArcFocus(normalizeStoryArcNavigationFocus(options.storyArcFocus));
+      }
       commitTab(STORY_ARC_TAB_INDEX);
       return;
     }
@@ -1393,6 +1412,9 @@ export function CastingPlannerPanel({
     }
     if (tabIndex === STORY_ARC_TAB_INDEX) {
       setStoryArcView(options?.storyArcView ?? 'main');
+      if (options && 'storyArcFocus' in options) {
+        setStoryArcFocus(normalizeStoryArcNavigationFocus(options.storyArcFocus));
+      }
     }
     commitTab(tabIndex);
   }, [activeTab, currentProject, exitLiveSetFullscreen, requestLiveSetFullscreen, toast]);
@@ -2424,6 +2446,7 @@ export function CastingPlannerPanel({
         return null;
       }
       const nextStoryArcView = stored.storyArcView;
+      const nextStoryArcFocus = normalizeStoryArcNavigationFocus(stored.storyArcFocus);
       const nextContentProducerPlannerSurface = stored.contentProducerPlannerSurface;
       const nextProducerMediaFocus = stored.producerMediaFocus;
       const storyArcViewValid = nextStoryArcView === 'main'
@@ -2458,6 +2481,7 @@ export function CastingPlannerPanel({
           : null,
         activeTab: Number.isFinite(stored.activeTab) ? stored.activeTab : 0,
         storyArcView: storyArcViewValid ? nextStoryArcView : 'main',
+        storyArcFocus: nextStoryArcFocus,
         contentProducerPlannerSurface: plannerSurfaceValid ? nextContentProducerPlannerSurface : 'overview',
         producerMediaFocus: producerMediaFocusValid,
       };
@@ -2480,6 +2504,7 @@ export function CastingPlannerPanel({
       }
       persistedWorkspaceStateRef.current = stored;
       setStoryArcView(stored.storyArcView);
+      setStoryArcFocus(stored.storyArcFocus ?? null);
       setContentProducerPlannerSurface(stored.contentProducerPlannerSurface ?? 'overview');
       lastProducerMediaFocusRef.current = stored.producerMediaFocus ?? null;
       setActiveTab(stored.activeTab);
@@ -2923,6 +2948,7 @@ export function CastingPlannerPanel({
         : persistedRealProjectId,
       activeTab: displayedActiveTab,
       storyArcView: displayedActiveTab === STORY_ARC_TAB_INDEX ? storyArcView : 'main',
+      storyArcFocus: displayedActiveTab === STORY_ARC_TAB_INDEX ? storyArcFocus : null,
       contentProducerPlannerSurface: isContentProducerMode ? contentProducerPlannerSurface : undefined,
       producerMediaFocus: lastProducerMediaFocusRef.current,
     };
@@ -2943,6 +2969,7 @@ export function CastingPlannerPanel({
     isContentProducerMode,
     isRestorableWorkspaceProject,
     roleRoomWorkspaceStateNamespace,
+    storyArcFocus,
     storyArcView,
   ]);
 
@@ -10493,14 +10520,23 @@ export function CastingPlannerPanel({
                           setCurrentProject(updatedProject);
                           await loadProjects();
                         }}
-                        onOpenStoryboard={() => {
-                          navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'main' });
+                        onOpenStoryboard={(focus) => {
+                          navigateToTab(STORY_ARC_TAB_INDEX, {
+                            storyArcView: 'main',
+                            storyArcFocus: focus ?? storyArcFocus,
+                          });
                         }}
-                        onOpenManuscript={() => {
-                          navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'story-writer' });
+                        onOpenManuscript={(focus) => {
+                          navigateToTab(STORY_ARC_TAB_INDEX, {
+                            storyArcView: 'story-writer',
+                            storyArcFocus: focus ?? storyArcFocus,
+                          });
                         }}
-                        onOpenShotList={() => {
-                          navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'shot-list' });
+                        onOpenShotList={(focus) => {
+                          navigateToTab(STORY_ARC_TAB_INDEX, {
+                            storyArcView: 'shot-list',
+                            storyArcFocus: focus ?? storyArcFocus,
+                          });
                         }}
                         onOpenSceneNotes={() => {
                           navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'story-logic' });
@@ -10767,6 +10803,11 @@ export function CastingPlannerPanel({
                   <CastingShotListPanel
                     key={currentProject.id}
                     projectId={currentProject.id}
+                    initialSceneId={storyArcFocus?.sceneId}
+                    initialShotId={storyArcFocus?.shotId}
+                    onStoryArcFocusChange={(focus) => {
+                      setStoryArcFocus(normalizeStoryArcNavigationFocus(focus));
+                    }}
                     onUpdate={async () => {
                       const updated = await castingService.getProject(currentProject.id);
                       if (updated) setCurrentProject(updated);
@@ -10791,6 +10832,10 @@ export function CastingPlannerPanel({
                     <ManuscriptPanel
                       key={currentProject?.id ?? 'no-project'}
                       projectId={currentProject?.id}
+                      initialSceneId={storyArcFocus?.sceneId}
+                      onStoryArcFocusChange={(focus) => {
+                        setStoryArcFocus(normalizeStoryArcNavigationFocus(focus));
+                      }}
                       onManuscriptChange={handleManuscriptChange}
                       storyLogicData={storyLogicData}
                       onUnsavedStateChange={(hasUnsaved, reason) => {
@@ -10937,14 +10982,23 @@ export function CastingPlannerPanel({
                   setCurrentProject(updatedProject);
                   await loadProjects();
                 }}
-                onOpenStoryboard={() => {
-                  navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'main' });
+                onOpenStoryboard={(focus) => {
+                  navigateToTab(STORY_ARC_TAB_INDEX, {
+                    storyArcView: 'main',
+                    storyArcFocus: focus ?? storyArcFocus,
+                  });
                 }}
-                onOpenManuscript={() => {
-                  navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'story-writer' });
+                onOpenManuscript={(focus) => {
+                  navigateToTab(STORY_ARC_TAB_INDEX, {
+                    storyArcView: 'story-writer',
+                    storyArcFocus: focus ?? storyArcFocus,
+                  });
                 }}
-                onOpenShotList={() => {
-                  navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'shot-list' });
+                onOpenShotList={(focus) => {
+                  navigateToTab(STORY_ARC_TAB_INDEX, {
+                    storyArcView: 'shot-list',
+                    storyArcFocus: focus ?? storyArcFocus,
+                  });
                 }}
                 onOpenSceneNotes={() => {
                   navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'story-logic' });

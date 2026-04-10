@@ -144,6 +144,7 @@ import {
   type ProjectFileRecord,
 } from '../../utils/projectFiles';
 import { buildClientPortalUrl } from '../../utils/clientPortal';
+import type { StoryArcNavigationFocus } from '../../utils/storyArcFocus';
 import { shouldUseRoleRoomLocalFallback } from '../../utils/runtime';
 import ProducerGoogleWorkspacePanel from './ProducerGoogleWorkspacePanel';
 import ProducerMeetingWorkspace from './ProducerMeetingWorkspace';
@@ -164,9 +165,9 @@ interface ProducerMediaPanelProps {
   initialPageId?: string;
   initialArtifactId?: string;
   onWorkspaceFocusChange?: (focus: ClientPortalWorkspaceFocus) => void;
-  onOpenStoryboard?: () => void;
-  onOpenManuscript?: () => void;
-  onOpenShotList?: () => void;
+  onOpenStoryboard?: (focus?: StoryArcNavigationFocus) => void;
+  onOpenManuscript?: (focus?: StoryArcNavigationFocus) => void;
+  onOpenShotList?: (focus?: StoryArcNavigationFocus) => void;
   onOpenSceneNotes?: () => void;
   onPrepareStoryboardReview?: () => void;
   onPrepareManuscriptReview?: () => void;
@@ -1145,6 +1146,7 @@ interface WorkspaceShowcaseTile {
   eyebrow: string;
   title: string;
   meta: string;
+  storyArcFocus?: StoryArcNavigationFocus;
 }
 
 const getShotListLabel = (shotList: ShotList): string => (
@@ -5012,6 +5014,7 @@ export default function ProducerMediaPanel({
         eyebrow: index === 0 ? 'Storyboard' : 'Scene',
         title: getSceneDisplayLabel(scene),
         meta: `${scene.storyboardFrames?.length ?? 0} frames`,
+        storyArcFocus: { sceneId: scene.id },
       }));
     }
     if (shotLists.length > 0) {
@@ -5020,6 +5023,7 @@ export default function ProducerMediaPanel({
         eyebrow: index === 0 ? 'Shot list' : 'Sceneplan',
         title: getShotListLabel(shotList),
         meta: `${shotList.shots.length} shots`,
+        storyArcFocus: shotList.sceneId ? { sceneId: shotList.sceneId } : undefined,
       }));
     }
     if (planningDraft.contentCalendar.length > 0) {
@@ -5045,6 +5049,10 @@ export default function ProducerMediaPanel({
       },
     ];
   }, [planningDraft.contentCalendar, shotLists, storyboardScenes]);
+  const primaryStoryboardFocus = useMemo(
+    () => storyboardPreviewTiles.find((tile) => tile.storyArcFocus)?.storyArcFocus,
+    [storyboardPreviewTiles],
+  );
   const workspaceSummaryRows = useMemo(() => {
     if (activeWorkspace === 'materials') {
       return [
@@ -5657,25 +5665,29 @@ export default function ProducerMediaPanel({
               eyebrow: tile.eyebrow,
               title: tile.title,
               detail: tile.meta,
+              actionLabel: tile.storyArcFocus && onOpenStoryboard ? 'Åpne scene' : undefined,
+              onAction: tile.storyArcFocus && onOpenStoryboard
+                ? () => onOpenStoryboard(tile.storyArcFocus)
+                : undefined,
             })),
             actions: [
               {
                 id: 'open-storyboard',
                 label: workflowOpenLabels.storyboard,
                 variant: 'contained',
-                onClick: onOpenStoryboard,
+                onClick: () => onOpenStoryboard?.(primaryStoryboardFocus),
               },
               {
                 id: 'open-shotlist',
                 label: workflowOpenLabels.shotList,
                 variant: 'outlined',
-                onClick: onOpenShotList,
+                onClick: () => onOpenShotList?.(primaryStoryboardFocus),
               },
               {
                 id: 'open-manus',
                 label: workflowOpenLabels.manuscript,
                 variant: 'text',
-                onClick: onOpenManuscript,
+                onClick: () => onOpenManuscript?.(primaryStoryboardFocus),
               },
             ],
           },
@@ -5770,19 +5782,23 @@ export default function ProducerMediaPanel({
               eyebrow: tile.eyebrow,
               title: tile.title,
               detail: tile.meta,
+              actionLabel: tile.storyArcFocus && onOpenStoryboard ? 'Åpne scene' : undefined,
+              onAction: tile.storyArcFocus && onOpenStoryboard
+                ? () => onOpenStoryboard(tile.storyArcFocus)
+                : undefined,
             })),
             actions: [
               {
                 id: 'brand-open-storyboard',
                 label: workflowOpenLabels.storyboard,
                 variant: 'outlined',
-                onClick: onOpenStoryboard,
+                onClick: () => onOpenStoryboard?.(primaryStoryboardFocus),
               },
               {
                 id: 'brand-open-shotlist',
                 label: workflowOpenLabels.shotList,
                 variant: 'text',
-                onClick: onOpenShotList,
+                onClick: () => onOpenShotList?.(primaryStoryboardFocus),
               },
             ],
           },
@@ -5933,13 +5949,13 @@ export default function ProducerMediaPanel({
                 id: 'materials-open-shotlist',
                 label: workflowOpenLabels.shotList,
                 variant: 'outlined',
-                onClick: onOpenShotList,
+                onClick: () => onOpenShotList?.(primaryStoryboardFocus),
               },
               {
                 id: 'materials-open-storyboard',
                 label: workflowOpenLabels.storyboard,
                 variant: 'text',
-                onClick: onOpenStoryboard,
+                onClick: () => onOpenStoryboard?.(primaryStoryboardFocus),
               },
             ],
           },
@@ -6054,6 +6070,7 @@ export default function ProducerMediaPanel({
     onOpenStoryboard,
     onPrepareShotListReview,
     onPrepareStoryboardReview,
+    primaryStoryboardFocus,
     openSurfaceWorkspace,
     parsedBrandColors,
     parsedBrandDos,

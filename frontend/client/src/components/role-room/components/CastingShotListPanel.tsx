@@ -123,6 +123,7 @@ import { ProductionDayCardInfo } from './ProductionDayCardInfo';
 import { castingAuthService } from '../services/castingAuthService';
 import settingsService, { getCurrentUserId } from '../services/settingsService';
 import { useAuth } from '@/hooks/useAuth';
+import type { StoryArcNavigationFocus } from '../utils/storyArcFocus';
 import AddShotDialog, { type AddShotDialogCreatePayload } from './production/AddShotDialog';
 import SceneStoryboardDialog from './production/SceneStoryboardDialog';
 import {
@@ -248,6 +249,9 @@ function SortableShotItem({ id, children }: SortableShotItemProps) {
 
 interface CastingShotListPanelProps {
   projectId: string;
+  initialSceneId?: string;
+  initialShotId?: string;
+  onStoryArcFocusChange?: (focus?: StoryArcNavigationFocus | null) => void;
   onUpdate?: () => void;
   profession?: 'photographer' | 'videographer' | null;
   teamDashboardOpenSignal?: number;
@@ -256,6 +260,9 @@ interface CastingShotListPanelProps {
 
 export function CastingShotListPanel({
   projectId,
+  initialSceneId,
+  initialShotId,
+  onStoryArcFocusChange,
   onUpdate,
   profession,
   teamDashboardOpenSignal = 0,
@@ -284,6 +291,8 @@ export function CastingShotListPanel({
   });
   const [showAuditLog, setShowAuditLog] = useState(false);
   const auditLogAnchorRef = useRef<HTMLButtonElement | null>(null);
+  const shotListCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const shotRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   // Unique IDs for WCAG
   const baseId = useId();
@@ -469,6 +478,58 @@ export function CastingShotListPanel({
 
   // Expanded cards state
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
+  const [focusedSceneId, setFocusedSceneId] = useState(initialSceneId ?? '');
+  const [focusedShotId, setFocusedShotId] = useState(initialShotId ?? '');
+
+  const publishStoryArcFocus = useCallback((focus?: StoryArcNavigationFocus | null) => {
+    const nextSceneId = focus?.sceneId?.trim() || '';
+    const nextShotId = focus?.shotId?.trim() || '';
+    setFocusedSceneId(nextSceneId);
+    setFocusedShotId(nextShotId);
+    onStoryArcFocusChange?.(
+      nextSceneId || nextShotId
+        ? { sceneId: nextSceneId || undefined, shotId: nextShotId || undefined }
+        : null,
+    );
+  }, [onStoryArcFocusChange]);
+
+  useEffect(() => {
+    setFocusedSceneId(initialSceneId ?? '');
+  }, [initialSceneId]);
+
+  useEffect(() => {
+    setFocusedShotId(initialShotId ?? '');
+  }, [initialShotId]);
+
+  useEffect(() => {
+    const targetShotList = initialShotId
+      ? shotLists.find((shotList) => shotList.shots.some((shot) => shot.id === initialShotId))
+      : initialSceneId
+        ? shotLists.find((shotList) => shotList.sceneId === initialSceneId)
+        : null;
+    if (!targetShotList) {
+      return;
+    }
+
+    setExpandedCards((current) => {
+      if (current.has(targetShotList.id)) {
+        return current;
+      }
+      const next = new Set(current);
+      next.add(targetShotList.id);
+      return next;
+    });
+
+    const timeoutId = window.setTimeout(() => {
+      const targetNode = (initialShotId ? shotRowRefs.current[initialShotId] : null)
+        ?? shotListCardRefs.current[targetShotList.id];
+      targetNode?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 140);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [initialSceneId, initialShotId, shotLists]);
 
   // Drag-and-drop sensors
   const sensors = useSensors(
@@ -1231,6 +1292,7 @@ export function CastingShotListPanel({
     setCommentDraft('');
     setEditingCommentId(null);
     setEditingCommentDraft('');
+    const parentShotList = shotLists.find((sl) => sl.id === shotListId) || null;
     if (shot) {
       setEditingShot(shot);
       setShotFormData({
@@ -1238,12 +1300,15 @@ export function CastingShotListPanel({
         comments: shot.comments || [],
         assigneeId: shot.assigneeId || '',
       });
+      publishStoryArcFocus({
+        sceneId: shot.sceneId || parentShotList?.sceneId || undefined,
+        shotId: shot.id,
+      });
       setShowAdvancedCamera(hasAdvancedCameraValues(shot));
       // Soft-lock: signal to collaborators that we're editing this shot
       rt.acquireLock(shotListId, shot.id);
     } else {
-      const shotList = shotLists.find(sl => sl.id === shotListId);
-      const preset = getShotPreset(shotList);
+      const preset = getShotPreset(parentShotList);
       setEditingShot(null);
       setShotFormData({
         shotType: 'Medium',
@@ -1252,7 +1317,7 @@ export function CastingShotListPanel({
         focalLength: undefined,
         description: '',
         roleId: roles.length > 0 ? roles[0].id : '',
-        sceneId: shotList?.sceneId || '',
+        sceneId: parentShotList?.sceneId || '',
         duration: undefined,
         notes: '',
         mediaType: preset.mediaType,
@@ -1263,6 +1328,9 @@ export function CastingShotListPanel({
         backgroundRecommendation: preset.backgroundRecommendation,
         assigneeId: '',
         comments: [],
+      });
+      publishStoryArcFocus({
+        sceneId: parentShotList?.sceneId || undefined,
       });
       setShowAdvancedCamera(false);
     }
@@ -2889,12 +2957,13 @@ export function CastingShotListPanel({
 </html>`;
   };
 
-  const toggleCardExpanded = (id: string) => {
+  const toggleCardExpanded = (shotList: ShotList) => {
     const newExpanded = new Set(expandedCards);
-    if (newExpanded.has(id)) {
-      newExpanded.delete(id);
+    if (newExpanded.has(shotList.id)) {
+      newExpanded.delete(shotList.id);
     } else {
-      newExpanded.add(id);
+      newExpanded.add(shotList.id);
+      publishStoryArcFocus({ sceneId: shotList.sceneId || undefined });
     }
     setExpandedCards(newExpanded);
   };
@@ -3946,6 +4015,8 @@ export function CastingShotListPanel({
         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 1.5, sm: 2, md: 3 } }}>
           {filteredAndSortedShotLists.map((shotList) => {
             const shotListSummary = shotListSummaryMap.get(shotList.id);
+            const isFocusedShotList = (focusedSceneId && shotList.sceneId === focusedSceneId)
+              || (focusedShotId && shotList.shots.some((shot) => shot.id === focusedShotId));
             const storyboardCoverage =
               shotListSummary?.storyboardCoverage
               ?? computeStoryboardCoverageSummary(shotList.shots, manuscriptSceneById.get(shotList.sceneId));
@@ -3968,9 +4039,22 @@ export function CastingShotListPanel({
               >
                 <Card
                   component="article"
+                  ref={(node) => {
+                    shotListCardRefs.current[shotList.id] = node;
+                  }}
+                  data-story-arc-scene-id={shotList.sceneId || undefined}
                   sx={{
-                    bgcolor: selectedIds.has(shotList.id) ? 'rgba(233,30,99,0.15)' : 'rgba(255,255,255,0.05)',
-                    border: selectedIds.has(shotList.id) ? '2px solid #e91e63' : '1px solid rgba(255,255,255,0.1)',
+                    bgcolor: isFocusedShotList
+                      ? 'rgba(56,189,248,0.12)'
+                      : selectedIds.has(shotList.id)
+                        ? 'rgba(233,30,99,0.15)'
+                        : 'rgba(255,255,255,0.05)',
+                    border: isFocusedShotList
+                      ? '2px solid rgba(56,189,248,0.65)'
+                      : selectedIds.has(shotList.id)
+                        ? '2px solid #e91e63'
+                        : '1px solid rgba(255,255,255,0.1)',
+                    boxShadow: isFocusedShotList ? '0 0 0 1px rgba(125,211,252,0.18), 0 16px 34px rgba(8,47,73,0.28)' : 'none',
                     borderRadius: 2,
                     transition: 'all 0.2s ease',
                     '&:hover': { bgcolor: 'rgba(255,255,255,0.08)', transform: 'translateY(-2px)' },
@@ -4473,14 +4557,24 @@ export function CastingShotListPanel({
                               )}
                               <SortableShotItem id={shot.id}>
                               <Box 
+                                ref={(node) => {
+                                  shotRowRefs.current[shot.id] = node;
+                                }}
+                                data-story-arc-shot-id={shot.id}
+                                onClick={() => publishStoryArcFocus({
+                                  sceneId: shot.sceneId || shotList.sceneId || undefined,
+                                  shotId: shot.id,
+                                })}
                                 sx={{ 
                                   display: 'flex', 
                                   flexDirection: 'column', 
                                   gap: 1,
                                   p: 1.5,
-                                  bgcolor: 'rgba(255,255,255,0.03)',
+                                  bgcolor: focusedShotId === shot.id ? 'rgba(56,189,248,0.14)' : 'rgba(255,255,255,0.03)',
                                   borderRadius: 2,
-                                  border: '1px solid rgba(255,255,255,0.08)',
+                                  border: focusedShotId === shot.id
+                                    ? '1px solid rgba(56,189,248,0.55)'
+                                    : '1px solid rgba(255,255,255,0.08)',
                                   transition: 'all 0.2s ease',
                                   '&:hover': {
                                     bgcolor: 'rgba(255,255,255,0.05)',
@@ -5217,7 +5311,7 @@ export function CastingShotListPanel({
                     <Button
                       size="small"
                       fullWidth
-                      onClick={() => toggleCardExpanded(shotList.id)}
+                      onClick={() => toggleCardExpanded(shotList)}
                       endIcon={expandedCards.has(shotList.id) ? <CollapseIcon /> : <ExpandIcon />}
                       sx={{ 
                         color: 'rgba(255,255,255,0.87)', 

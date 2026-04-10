@@ -428,12 +428,15 @@ import { characterProfileService, type CharacterProfile as StoredCharacterProfil
 import type { Template } from '../data/manuscriptTemplates';
 import { ProductionManuscriptView } from './ProductionManuscriptView';
 import { ScriptStoryboardProvider } from '../contexts/ScriptStoryboardContext';
+import type { StoryArcNavigationFocus } from '../utils/storyArcFocus';
 
 interface ManuscriptPanelProps {
   projectId?: string;
+  initialSceneId?: string;
   onManuscriptChange?: (manuscript: Manuscript) => void;
   storyLogicData?: StoryLogicState | null;
   headerLeftContent?: React.ReactNode;
+  onStoryArcFocusChange?: (focus?: StoryArcNavigationFocus | null) => void;
   onUnsavedStateChange?: (hasUnsaved: boolean, reason?: string) => void;
 }
 
@@ -473,9 +476,11 @@ const buildSceneAutosaveSnapshot = (scene: SceneBreakdown) => {
 
 const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
   projectId,
+  initialSceneId,
   onManuscriptChange,
   storyLogicData,
   headerLeftContent,
+  onStoryArcFocusChange,
   onUnsavedStateChange,
 }) => {
   const { showToast, showSuccess, showError, showWarning, showInfo } = useToast();
@@ -588,6 +593,26 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
   const [productionWorkspaceMode, setProductionWorkspaceMode] = useState<'storyboard' | 'split'>('storyboard');
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showTemplatePanel, setShowTemplatePanel] = useState(false);
+
+  useEffect(() => {
+    if (!initialSceneId || scenes.length === 0) {
+      return;
+    }
+    const matchedScene = scenes.find((scene) => scene.id === initialSceneId) ?? null;
+    if (!matchedScene) {
+      return;
+    }
+    setSelectedScene((current) => (current?.id === matchedScene.id ? current : matchedScene));
+    setActiveTab((current) => (current === 'editor' ? 'scenes' : current));
+  }, [initialSceneId, scenes]);
+
+  useEffect(() => {
+    onStoryArcFocusChange?.(
+      selectedScene
+        ? { sceneId: selectedScene.id }
+        : null,
+    );
+  }, [onStoryArcFocusChange, selectedScene]);
 
   // New manuscript form state
   const [newManuscript, setNewManuscript] = useState({
