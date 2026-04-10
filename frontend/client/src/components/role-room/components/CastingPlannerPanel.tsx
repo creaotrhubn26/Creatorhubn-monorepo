@@ -435,6 +435,13 @@ const DEFAULT_SELECTION_MEET_DRAFT: SelectionMeetDraftState = {
 
 type RoleRoomAdminPreviewMode = 'admin' | 'production_team' | 'content_producer' | 'client';
 
+const ROLE_ROOM_PREVIEW_MODE_LABELS: Record<RoleRoomAdminPreviewMode, string> = {
+  admin: 'Administrator',
+  production_team: 'Produksjon',
+  content_producer: 'Innhold',
+  client: 'Klient',
+};
+
 const SELECTION_STATUS_BY_STAGE: Record<SelectionStage, string> = {
   screening: 'auditioned',
   callbacks: 'awaiting_callback',
@@ -2166,15 +2173,15 @@ export function CastingPlannerPanel({
   const useFocusedWorkspaceHeader = !useCompactHeaderLayout && (isContentProducerMode || isClientReviewerMode);
   const showDenseDesktopHeaderUtilities = !useCompactHeaderLayout && useDenseDesktopHeader;
   const headerBrandSubtitle = isClientReviewerMode
-    ? 'Klientgjennomgang'
+    ? 'Klientrom'
     : isContentProducerMode
-      ? 'Innholdsprodusent-workspace'
-      : 'Produksjonsteam-workspace';
+      ? 'Innholdsarbeid'
+      : 'Produksjonsarbeid';
   const headerBrandDisplaySubtitle = isClientReviewerMode
     ? 'Klientrom'
     : isContentProducerMode
-      ? 'Innholdsprodusent'
-      : 'Produksjonsteam';
+      ? 'Innhold'
+      : 'Produksjon';
   const headerOpenProjectsButtonLabel = useDenseDesktopHeader ? 'Prosjekter' : 'Åpne prosjekter';
   const headerWorkspaceActionLabel = useFocusedWorkspaceHeader ? 'Prosjekter' : headerOpenProjectsButtonLabel;
   const headerProjectMetaHint = useDenseDesktopHeader
@@ -3016,14 +3023,7 @@ export function CastingPlannerPanel({
         }
       }
 
-      const modeLabel =
-        mode === 'client'
-          ? 'Klient view'
-          : mode === 'content_producer'
-            ? 'Innholdsprodusent view'
-            : mode === 'production_team'
-              ? 'Produksjonsteam view'
-              : 'Admin view';
+      const modeLabel = ROLE_ROOM_PREVIEW_MODE_LABELS[mode];
 
       if (mode === currentAdminPreviewMode) {
         toast.showSuccess(`${modeLabel} er allerede aktivt.`);
@@ -7178,7 +7178,7 @@ export function CastingPlannerPanel({
                   sx={{ minHeight: 40, fontSize: '0.86rem', gap: 1 }}
                 >
                   <SwapHorizIcon sx={{ fontSize: 18, color: '#10b981' }} />
-                  Bytt arbeidsmodus
+                  Bytt visning
                 </MenuItem>
               ) : null}
               <MenuItem

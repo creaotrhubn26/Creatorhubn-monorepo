@@ -44,6 +44,13 @@ type WorkspaceAccountTeamMember = {
 
 type RoleRoomAdminPreviewMode = 'admin' | 'production_team' | 'content_producer' | 'client';
 
+const ROLE_ROOM_PREVIEW_MODE_LABELS: Record<RoleRoomAdminPreviewMode, string> = {
+  admin: 'Administrator',
+  production_team: 'Produksjon',
+  content_producer: 'Innhold',
+  client: 'Klient',
+};
+
 type RoleRoomBillingAccountDialogProps = {
   open: boolean;
   onClose: () => void;
@@ -378,7 +385,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
               {adminPreview?.enabled ? (
                 <Stack spacing={0.9} sx={{ pt: 1 }}>
                   <Typography sx={{ color: 'rgba(255,255,255,0.62)', fontSize: '0.76rem' }}>
-                    Test klientflaten uten å miste adminrettighetene. Dette bytter bare visningsmodus.
+                    Se løsningen slik ulike roller opplever den. Dette endrer bare visningen for din adminøkt.
                   </Typography>
                   <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} useFlexGap flexWrap="wrap">
                     <FormControl
@@ -401,10 +408,10 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                         },
                       }}
                     >
-                      <InputLabel id="role-room-preview-mode-label">Vis som</InputLabel>
+                      <InputLabel id="role-room-preview-mode-label">Åpne som</InputLabel>
                       <Select
                         labelId="role-room-preview-mode-label"
-                        label="Vis som"
+                        label="Åpne som"
                         value={adminPreview.selectedMode}
                         disabled={actionPending}
                         onChange={(event) => {
@@ -412,10 +419,10 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                           void adminPreview.onSelectMode(nextMode);
                         }}
                       >
-                        <MenuItem value="admin">Admin view</MenuItem>
-                        <MenuItem value="production_team">Produksjonsteam view</MenuItem>
-                        <MenuItem value="content_producer">Innholdsprodusent view</MenuItem>
-                        <MenuItem value="client">Klient view</MenuItem>
+                        <MenuItem value="admin">{ROLE_ROOM_PREVIEW_MODE_LABELS.admin}</MenuItem>
+                        <MenuItem value="production_team">{ROLE_ROOM_PREVIEW_MODE_LABELS.production_team}</MenuItem>
+                        <MenuItem value="content_producer">{ROLE_ROOM_PREVIEW_MODE_LABELS.content_producer}</MenuItem>
+                        <MenuItem value="client">{ROLE_ROOM_PREVIEW_MODE_LABELS.client}</MenuItem>
                       </Select>
                     </FormControl>
                     {currentProject && adminPreview.clientPortalAvailable ? (

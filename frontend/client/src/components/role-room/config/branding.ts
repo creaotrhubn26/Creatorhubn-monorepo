@@ -1487,7 +1487,7 @@ const DEFAULT_TOKENS: BrandingTokens = {
     deleteProjectLabel: 'Slett prosjekt',
     tutorialLabel: 'Veiledning',
     tutorialTitle: 'Interaktiv veiledning',
-    switchProfessionLabel: 'Bytt profesjon',
+    switchProfessionLabel: 'Bytt visning',
     editTutorialsLabel: 'Rediger veiledninger',
     manageUsersLabel: 'Administrer brukere',
     confirmResetDemoProjects: 'Nullstill demoprosjekter? Dette vil gjenopprette standarddata.',
