@@ -103,6 +103,12 @@ interface ProducerPlannerStudioProps {
   onOpenReviews?: (focus?: { focusedPhase?: ProducerPhase; approvalTemplate?: 'storyboard' | 'manuscript' | 'shotlist' }) => void;
   onOpenEconomy?: (focus?: { focusedPhase?: ProducerPhase }) => void;
   onOpenMedia?: (focus?: ClientPortalWorkspaceFocus) => void;
+  resumeCard?: {
+    title: string;
+    detail: string;
+    actionLabel: string;
+  } | null;
+  onResumeWorkspace?: () => void;
 }
 
 interface PlannerAlert {
@@ -633,6 +639,8 @@ export default function ProducerPlannerStudio({
   onOpenReviews,
   onOpenEconomy,
   onOpenMedia,
+  resumeCard = null,
+  onResumeWorkspace,
 }: ProducerPlannerStudioProps) {
   const { enqueueSnackbar } = useSnackbar();
   const theme = useTheme();
@@ -2390,6 +2398,51 @@ export default function ProducerPlannerStudio({
                     Det viktigste først: oppfølginger, neste holdepunkt og rask vei tilbake til riktig arbeidsflate.
                   </Typography>
                 </Box>
+                {resumeCard && onResumeWorkspace ? (
+                  <Box
+                    sx={{
+                      p: 1,
+                      borderRadius: 1.8,
+                      border: '1px solid rgba(37,99,235,0.3)',
+                      background: 'linear-gradient(135deg, rgba(30,64,175,0.24) 0%, rgba(15,23,42,0.92) 100%)',
+                    }}
+                  >
+                    <Stack spacing={0.8}>
+                      <Stack direction="row" spacing={0.7} alignItems="center" flexWrap="wrap" useFlexGap>
+                        <Chip
+                          size="small"
+                          label="Fortsett der du slapp"
+                          sx={{
+                            bgcolor: 'rgba(59,130,246,0.16)',
+                            color: '#bfdbfe',
+                            border: '1px solid rgba(96,165,250,0.34)',
+                            fontWeight: 700,
+                          }}
+                        />
+                        <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.92rem' }}>
+                          {resumeCard.title}
+                        </Typography>
+                      </Stack>
+                      <Typography sx={{ color: 'rgba(226,232,240,0.76)', fontSize: '0.82rem', lineHeight: 1.45 }}>
+                        {resumeCard.detail}
+                      </Typography>
+                      <Button
+                        size="small"
+                        variant="contained"
+                        onClick={onResumeWorkspace}
+                        sx={{
+                          minHeight: 48,
+                          borderRadius: 1.6,
+                          bgcolor: '#2563eb',
+                          textTransform: 'none',
+                          fontWeight: 700,
+                        }}
+                      >
+                        {resumeCard.actionLabel}
+                      </Button>
+                    </Stack>
+                  </Box>
+                ) : null}
                 <Stack spacing={0.75}>
                   {mobilePlannerFeedItems.length > 0 ? mobilePlannerFeedItems.map((item) => {
                     const tone = getTimelineStatusTone(item.status);

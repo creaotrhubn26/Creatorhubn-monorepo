@@ -855,8 +855,12 @@ export function CastingPlannerPanel({
     },
   }), [branding.tokens.labels]);
   
-  type StoryArcView = 'main' | 'story-logic' | 'story-writer' | 'shot-list' | 'planning';
-  type ContentProducerPlannerSurface = 'overview' | 'project_room' | 'approval' | 'delivery' | 'economy';
+type StoryArcView = 'main' | 'story-logic' | 'story-writer' | 'shot-list' | 'planning';
+type ContentProducerPlannerSurface = 'overview' | 'project_room' | 'approval' | 'delivery' | 'economy';
+type ContentProducerResumeTarget = {
+  surface: ContentProducerPlannerSurface;
+  mediaFocus?: ClientPortalWorkspaceFocus | null;
+};
   const CONTENT_PRODUCER_PLANNER_SURFACE_ITEMS: Array<{
     value: ContentProducerPlannerSurface;
     label: string;
@@ -895,6 +899,7 @@ export function CastingPlannerPanel({
     storyArcFocus?: StoryArcNavigationFocus | null;
     contentProducerPlannerSurface?: ContentProducerPlannerSurface;
     producerMediaFocus?: ClientPortalWorkspaceFocus | null;
+    contentProducerResumeTarget?: ContentProducerResumeTarget | null;
   };
   const [activeTab, setActiveTab] = useState(0);
   const [lastNonLiveTab, setLastNonLiveTab] = useState(0);
@@ -916,6 +921,7 @@ export function CastingPlannerPanel({
   const [selectionNotesSaving, setSelectionNotesSaving] = useState(false);
   const [selectionNotesTagExclusions, setSelectionNotesTagExclusions] = useState<string[]>([]);
   const [contentProducerPlannerSurface, setContentProducerPlannerSurface] = useState<ContentProducerPlannerSurface>('overview');
+  const [contentProducerResumeTarget, setContentProducerResumeTarget] = useState<ContentProducerResumeTarget | null>(null);
   const [selectionGoogleStatus, setSelectionGoogleStatus] = useState<RoleRoomGoogleStatusResponse | null>(null);
   const [selectionGoogleStatusLoading, setSelectionGoogleStatusLoading] = useState(false);
   const [selectionMeetBusy, setSelectionMeetBusy] = useState(false);
@@ -2458,6 +2464,7 @@ export function CastingPlannerPanel({
       const nextStoryArcFocus = normalizeStoryArcNavigationFocus(stored.storyArcFocus);
       const nextContentProducerPlannerSurface = stored.contentProducerPlannerSurface;
       const nextProducerMediaFocus = stored.producerMediaFocus;
+      const nextContentProducerResumeTarget = stored.contentProducerResumeTarget;
       const storyArcViewValid = nextStoryArcView === 'main'
         || nextStoryArcView === 'story-logic'
         || nextStoryArcView === 'story-writer'
@@ -2484,6 +2491,22 @@ export function CastingPlannerPanel({
               : undefined,
           }
         : null;
+      const contentProducerResumeTargetValid = nextContentProducerResumeTarget && typeof nextContentProducerResumeTarget === 'object'
+        ? {
+            surface:
+              nextContentProducerResumeTarget.surface === 'overview'
+              || nextContentProducerResumeTarget.surface === 'project_room'
+              || nextContentProducerResumeTarget.surface === 'approval'
+              || nextContentProducerResumeTarget.surface === 'delivery'
+              || nextContentProducerResumeTarget.surface === 'economy'
+                ? nextContentProducerResumeTarget.surface
+                : 'overview',
+            mediaFocus:
+              nextContentProducerResumeTarget.surface === 'project_room'
+                ? producerMediaFocusValid
+                : null,
+          }
+        : null;
       return {
         projectId: typeof stored.projectId === 'string' && stored.projectId.trim().length > 0
           ? stored.projectId
@@ -2493,6 +2516,7 @@ export function CastingPlannerPanel({
         storyArcFocus: nextStoryArcFocus,
         contentProducerPlannerSurface: plannerSurfaceValid ? nextContentProducerPlannerSurface : 'overview',
         producerMediaFocus: producerMediaFocusValid,
+        contentProducerResumeTarget: contentProducerResumeTargetValid,
       };
     } catch (error) {
       console.warn('Failed to load persisted Role Room workspace state:', error);
@@ -2516,6 +2540,7 @@ export function CastingPlannerPanel({
       setStoryArcFocus(stored.storyArcFocus ?? null);
       setContentProducerPlannerSurface(stored.contentProducerPlannerSurface ?? 'overview');
       lastProducerMediaFocusRef.current = stored.producerMediaFocus ?? null;
+      setContentProducerResumeTarget(stored.contentProducerResumeTarget ?? null);
       setActiveTab(stored.activeTab);
     };
 
@@ -2946,6 +2971,86 @@ export function CastingPlannerPanel({
   );
 
   useEffect(() => {
+    if (!isContentProducerMode) {
+      return;
+    }
+
+    if (contentProducerPlannerSurface === 'overview') {
+      return;
+    }
+
+    setContentProducerResumeTarget((previous) => ({
+      surface: contentProducerPlannerSurface,
+      mediaFocus: contentProducerPlannerSurface === 'project_room'
+        ? (producerMediaFocus ?? previous?.mediaFocus ?? lastProducerMediaFocusRef.current ?? null)
+        : null,
+    }));
+  }, [contentProducerPlannerSurface, isContentProducerMode, producerMediaFocus]);
+
+  const contentProducerWorkspaceLabels: Record<string, string> = {
+    brief: 'Brief',
+    materials: 'Materialer',
+    storyboard: 'Storyboard',
+    manuscript: 'Manus',
+    shotlist: 'Shotlist',
+    brand: 'Merkevare',
+    accounts: 'Kontotilgang',
+    delivery: 'Levering',
+    meetings: 'Møter',
+  };
+
+  const contentProducerResumeCard = useMemo(() => {
+    if (!isContentProducerMode || !contentProducerResumeTarget || contentProducerResumeTarget.surface === 'overview') {
+      return null;
+    }
+
+    if (contentProducerResumeTarget.surface === 'project_room') {
+      const workspaceLabel = contentProducerWorkspaceLabels[contentProducerResumeTarget.mediaFocus?.workspace ?? 'brief'] ?? 'Prosjektrom';
+      const pageDetail = contentProducerResumeTarget.mediaFocus?.pageId?.trim()
+        || contentProducerResumeTarget.mediaFocus?.sectionId?.trim()
+        || contentProducerResumeTarget.mediaFocus?.artifactId?.trim()
+        || '';
+      return {
+        title: workspaceLabel,
+        detail: pageDetail
+          ? `Sist jobbet du i ${workspaceLabel.toLowerCase()} · ${pageDetail}`
+          : `Sist jobbet du i ${workspaceLabel.toLowerCase()}.`,
+        actionLabel: `Fortsett i ${workspaceLabel.toLowerCase()}`,
+      };
+    }
+
+    const surfaceLabel = CONTENT_PRODUCER_PLANNER_SURFACE_ITEMS.find((item) => item.value === contentProducerResumeTarget.surface)?.label
+      ?? 'Oversikt';
+    const surfaceDetails: Record<Exclude<ContentProducerPlannerSurface, 'overview' | 'project_room'>, string> = {
+      approval: 'Gå tilbake til klientfeedback, åpne punkter og beslutninger som venter.',
+      delivery: 'Fortsett med leveranser, eksport og hva som skal ut til kunden.',
+      economy: 'Gå tilbake til budsjett, økonomiske avklaringer og godkjenninger.',
+    };
+
+    return {
+      title: surfaceLabel,
+      detail: surfaceDetails[contentProducerResumeTarget.surface as Exclude<ContentProducerPlannerSurface, 'overview' | 'project_room'>],
+      actionLabel: `Fortsett i ${surfaceLabel.toLowerCase()}`,
+    };
+  }, [CONTENT_PRODUCER_PLANNER_SURFACE_ITEMS, contentProducerResumeTarget, contentProducerWorkspaceLabels, isContentProducerMode]);
+
+  const handleResumeContentProducerWorkspace = useCallback(() => {
+    const resumeTarget = contentProducerResumeTarget;
+    if (!resumeTarget || resumeTarget.surface === 'overview') {
+      openContentProducerPlannerSurface('project_room', {
+        mediaFocus: producerMediaFocus ?? lastProducerMediaFocusRef.current ?? null,
+      });
+      return;
+    }
+
+    openContentProducerPlannerSurface(resumeTarget.surface, {
+      mediaFocus: resumeTarget.surface === 'project_room'
+        ? (resumeTarget.mediaFocus ?? producerMediaFocus ?? lastProducerMediaFocusRef.current ?? null)
+        : null,
+    });
+  }, [contentProducerResumeTarget, openContentProducerPlannerSurface, producerMediaFocus]);
+
+  useEffect(() => {
     if (!authLoaded || !adminUser) {
       return;
     }
@@ -2960,6 +3065,7 @@ export function CastingPlannerPanel({
       storyArcFocus: displayedActiveTab === STORY_ARC_TAB_INDEX ? storyArcFocus : null,
       contentProducerPlannerSurface: isContentProducerMode ? contentProducerPlannerSurface : undefined,
       producerMediaFocus: lastProducerMediaFocusRef.current,
+      contentProducerResumeTarget: isContentProducerMode ? contentProducerResumeTarget : undefined,
     };
     persistedWorkspaceStateRef.current = nextState;
 
@@ -2975,6 +3081,7 @@ export function CastingPlannerPanel({
     displayedActiveTab,
     getSettingsUserId,
     contentProducerPlannerSurface,
+    contentProducerResumeTarget,
     isContentProducerMode,
     isRestorableWorkspaceProject,
     roleRoomWorkspaceStateNamespace,
@@ -10512,6 +10619,8 @@ export function CastingPlannerPanel({
                         }
                         navigateToProducerMediaWorkspace(focus);
                       }}
+                      resumeCard={plannerAudience === 'content_producer' ? contentProducerResumeCard : null}
+                      onResumeWorkspace={plannerAudience === 'content_producer' ? handleResumeContentProducerWorkspace : undefined}
                     />
                   ) : null}
 
