@@ -879,6 +879,10 @@ function deriveRoleRoomLinkedInEncryptionKey(): Buffer | null {
   return deriveRoleRoomServiceEncryptionKey('ROLE_ROOM_LINKEDIN_TOKEN_ENCRYPTION_KEY');
 }
 
+function deriveRoleRoomVaultEncryptionKey(): Buffer | null {
+  return deriveRoleRoomServiceEncryptionKey('ROLE_ROOM_VAULT_ENCRYPTION_KEY');
+}
+
 function encryptRoleRoomGoogleToken(value: string): string {
   const key = deriveRoleRoomGoogleEncryptionKey();
   if (!key) {
@@ -959,6 +963,110 @@ function decryptRoleRoomLinkedInToken(value: string | null | undefined): string 
   } catch {
     return null;
   }
+}
+
+function encryptRoleRoomVaultSecret(value: string): string {
+  const key = deriveRoleRoomVaultEncryptionKey();
+  if (!key) {
+    throw new Error('ROLE_ROOM_VAULT_ENCRYPTION_KEY mangler');
+  }
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const encrypted = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return `v1.${iv.toString('base64url')}.${tag.toString('base64url')}.${encrypted.toString('base64url')}`;
+}
+
+function decryptRoleRoomVaultSecret(value: string | null | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+  const key = deriveRoleRoomVaultEncryptionKey();
+  if (!key) {
+    return null;
+  }
+  const [version, ivPart, tagPart, encryptedPart] = value.split('.');
+  if (version !== 'v1' || !ivPart || !tagPart || !encryptedPart) {
+    return null;
+  }
+  try {
+    const decipher = crypto.createDecipheriv(
+      'aes-256-gcm',
+      key,
+      Buffer.from(ivPart, 'base64url'),
+    );
+    decipher.setAuthTag(Buffer.from(tagPart, 'base64url'));
+    const decrypted = Buffer.concat([
+      decipher.update(Buffer.from(encryptedPart, 'base64url')),
+      decipher.final(),
+    ]);
+    return decrypted.toString('utf8');
+  } catch {
+    return null;
+  }
+}
+
+function normalizeProducerAccountAccessPlatform(value: unknown): ProducerAccountAccessPlatform | null {
+  const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  if (
+    normalized === 'google'
+    || normalized === 'meta'
+    || normalized === 'linkedin'
+    || normalized === 'youtube'
+    || normalized === 'tiktok'
+  ) {
+    return normalized as ProducerAccountAccessPlatform;
+  }
+  return null;
+}
+
+function normalizeRoleRoomVaultRevealPolicy(value: unknown): RoleRoomAccessVaultRevealPolicy {
+  const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  if (normalized === 'one_time' || normalized === 'manual_only') {
+    return normalized;
+  }
+  return 'approval_required';
+}
+
+function normalizeRoleRoomVaultSecretStatus(value: unknown): RoleRoomAccessVaultSecretStatus {
+  const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  if (normalized === 'requested' || normalized === 'stored_externally' || normalized === 'revoked') {
+    return normalized;
+  }
+  return 'not_shared';
+}
+
+function normalizeRoleRoomVaultRoleTargets(value: unknown): string[] {
+  const targets = readJsonArray(value)
+    .map((entry) => (typeof entry === 'string' ? entry.trim().toLowerCase() : ''))
+    .filter((entry) => (
+      entry === 'client_owner'
+      || entry === 'producer'
+      || entry === 'editor'
+      || entry === 'social_media_manager'
+      || entry === 'admin'
+    ));
+  return Array.from(new Set(targets));
+}
+
+function maskRoleRoomVaultSecretValue(value: string | null | undefined): string | null {
+  if (!value || value.trim().length === 0) {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (trimmed.length <= 4) {
+    return '••••';
+  }
+  return `••••${trimmed.slice(-4)}`;
+}
+
+function readVaultTimestamp(value: unknown): string | null {
+  const timestamp = readStringValue(value);
+  if (!timestamp) {
+    return null;
+  }
+  const parsed = Date.parse(timestamp);
+  return Number.isNaN(parsed) ? null : new Date(parsed).toISOString();
 }
 
 function getRoleRoomGoogleRedirectUri(req?: Request): string | null {
@@ -4294,6 +4402,30 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     return effectiveRoleRecord.permissions.canEditProduction === true || effectiveRoleRecord.permissions.canComment === true;
   }
 
+  function canManageProducerAccessVault(req: Request, roleRecord: ProjectRoleRecord | null): boolean {
+    if (requireScope(req, 'admin')) return true;
+    const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
+    if (!effectiveRoleRecord) return false;
+    return ['director', 'producer', 'content_producer'].includes(effectiveRoleRecord.role)
+      || effectiveRoleRecord.permissions.canEditProduction === true;
+  }
+
+  function canRequestProducerAccessVaultReveal(req: Request, roleRecord: ProjectRoleRecord | null): boolean {
+    if (requireScope(req, 'admin')) return true;
+    const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
+    if (!effectiveRoleRecord) return false;
+    return ['director', 'producer', 'content_producer', 'production_manager'].includes(effectiveRoleRecord.role)
+      || effectiveRoleRecord.permissions.canViewAll === true;
+  }
+
+  function canApproveProducerAccessVaultReveal(req: Request, roleRecord: ProjectRoleRecord | null): boolean {
+    if (requireScope(req, 'admin')) return true;
+    const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
+    if (!effectiveRoleRecord) return false;
+    return ['director', 'producer', 'client_reviewer'].includes(effectiveRoleRecord.role)
+      || effectiveRoleRecord.permissions.canApprove === true;
+  }
+
   type ProducerReviewRow = {
     id: string;
     review_type?: string | null;
@@ -4381,6 +4513,98 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     last_sent_at?: string | null;
     last_error?: string | null;
     disabled_at?: string | null;
+  };
+
+  type ProducerAccountAccessPlatform =
+    | 'google'
+    | 'meta'
+    | 'linkedin'
+    | 'youtube'
+    | 'tiktok';
+
+  type RoleRoomAccessVaultSecretStatus =
+    | 'not_shared'
+    | 'requested'
+    | 'stored_externally'
+    | 'revoked';
+
+  type RoleRoomAccessVaultRevealPolicy =
+    | 'approval_required'
+    | 'one_time'
+    | 'manual_only';
+
+  type RoleRoomAccessVaultRevealRequestStatus =
+    | 'pending'
+    | 'approved'
+    | 'rejected'
+    | 'revealed'
+    | 'expired';
+
+  type RoleRoomAccessVaultAuditAction =
+    | 'secret_saved'
+    | 'secret_revoked'
+    | 'reveal_requested'
+    | 'reveal_approved'
+    | 'reveal_rejected'
+    | 'secret_revealed';
+
+  type RoleRoomAccessVaultSecretRow = {
+    id: string;
+    project_id: string;
+    platform: ProducerAccountAccessPlatform;
+    label?: string | null;
+    secret_type?: string | null;
+    username_encrypted?: string | null;
+    secret_encrypted?: string | null;
+    backup_code_encrypted?: string | null;
+    masked_reference?: string | null;
+    tier?: string | null;
+    risk_level?: string | null;
+    reveal_policy?: RoleRoomAccessVaultRevealPolicy | null;
+    status?: RoleRoomAccessVaultSecretStatus | null;
+    owner_label?: string | null;
+    shared_with_roles?: unknown;
+    expires_at?: string | null;
+    metadata?: Record<string, unknown> | null;
+    created_by_user_id?: string | null;
+    created_by_role?: string | null;
+    created_at?: string | null;
+    updated_at?: string | null;
+    last_revealed_at?: string | null;
+    revoked_at?: string | null;
+  };
+
+  type RoleRoomAccessVaultRevealRequestRow = {
+    id: string;
+    secret_id: string;
+    project_id: string;
+    platform: ProducerAccountAccessPlatform;
+    status?: RoleRoomAccessVaultRevealRequestStatus | null;
+    request_reason?: string | null;
+    approval_notes?: string | null;
+    requested_by_user_id?: string | null;
+    requested_by_role?: string | null;
+    approved_by_user_id?: string | null;
+    approved_by_role?: string | null;
+    requested_at?: string | null;
+    approved_at?: string | null;
+    rejected_at?: string | null;
+    revealed_at?: string | null;
+    expires_at?: string | null;
+    updated_at?: string | null;
+  };
+
+  type RoleRoomAccessVaultAuditRow = {
+    id: string;
+    project_id: string;
+    secret_id?: string | null;
+    reveal_request_id?: string | null;
+    platform?: ProducerAccountAccessPlatform | null;
+    action?: RoleRoomAccessVaultAuditAction | null;
+    actor_user_id?: string | null;
+    actor_role?: string | null;
+    metadata?: Record<string, unknown> | null;
+    created_at?: string | null;
   };
 
   const PRODUCER_NOTIFICATION_CLIENT_MATERIALS_ENTITY_ID = 'client-materials';
@@ -4877,6 +5101,135 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     });
   }
 
+  function buildRoleRoomVaultAuditMetadata(req: Request, metadata?: Record<string, unknown>): Record<string, unknown> {
+    return {
+      ...(metadata ?? {}),
+      ip: req.ip ?? null,
+      userAgent: readOptionalHeaderValue(req, 'user-agent') ?? null,
+    };
+  }
+
+  async function appendRoleRoomAccessVaultAuditEvent(input: {
+    req: Request;
+    projectId: string;
+    secretId?: string | null;
+    revealRequestId?: string | null;
+    platform?: ProducerAccountAccessPlatform | null;
+    action: RoleRoomAccessVaultAuditAction;
+    actorUserId?: string | null;
+    actorRole?: string | null;
+    metadata?: Record<string, unknown>;
+  }): Promise<void> {
+    await pool.query(
+      `INSERT INTO role_room_access_vault_audit_events (
+        id, project_id, secret_id, reveal_request_id, platform, action,
+        actor_user_id, actor_role, metadata, created_at
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6,
+        $7, $8, $9::jsonb, NOW()
+      )`,
+      [
+        crypto.randomUUID(),
+        input.projectId,
+        input.secretId ?? null,
+        input.revealRequestId ?? null,
+        input.platform ?? null,
+        input.action,
+        input.actorUserId ?? null,
+        input.actorRole ?? null,
+        JSON.stringify(buildRoleRoomVaultAuditMetadata(input.req, input.metadata)),
+      ],
+    );
+  }
+
+  function buildRoleRoomAccessVaultSecretSummary(row: RoleRoomAccessVaultSecretRow) {
+    return {
+      id: row.id,
+      projectId: row.project_id,
+      platform: row.platform,
+      label: readStringValue(row.label),
+      secretType: readStringValue(row.secret_type),
+      maskedReference: readStringValue(row.masked_reference),
+      tier: readStringValue(row.tier),
+      riskLevel: readStringValue(row.risk_level),
+      revealPolicy: normalizeRoleRoomVaultRevealPolicy(row.reveal_policy),
+      status: normalizeRoleRoomVaultSecretStatus(row.status),
+      ownerName: readStringValue(row.owner_label),
+      sharedWithRoles: normalizeRoleRoomVaultRoleTargets(row.shared_with_roles),
+      expiresAt: row.expires_at ?? null,
+      createdAt: row.created_at ?? null,
+      updatedAt: row.updated_at ?? null,
+      lastRevealedAt: row.last_revealed_at ?? null,
+      revokedAt: row.revoked_at ?? null,
+      hasStoredSecret: Boolean(readStringValue(row.secret_encrypted)),
+      hasUsername: Boolean(readStringValue(row.username_encrypted)),
+      hasBackupCode: Boolean(readStringValue(row.backup_code_encrypted)),
+    };
+  }
+
+  function buildRoleRoomAccessVaultRevealRequestResponse(row: RoleRoomAccessVaultRevealRequestRow) {
+    return {
+      id: row.id,
+      secretId: row.secret_id,
+      projectId: row.project_id,
+      platform: row.platform,
+      status: (() => {
+        const normalized = typeof row.status === 'string' ? row.status.trim().toLowerCase() : '';
+        if (
+          normalized === 'approved'
+          || normalized === 'rejected'
+          || normalized === 'revealed'
+          || normalized === 'expired'
+        ) {
+          return normalized as RoleRoomAccessVaultRevealRequestStatus;
+        }
+        return 'pending' as const;
+      })(),
+      requestReason: readStringValue(row.request_reason),
+      approvalNotes: readStringValue(row.approval_notes),
+      requestedByUserId: readStringValue(row.requested_by_user_id),
+      requestedByRole: readStringValue(row.requested_by_role),
+      approvedByUserId: readStringValue(row.approved_by_user_id),
+      approvedByRole: readStringValue(row.approved_by_role),
+      requestedAt: row.requested_at ?? null,
+      approvedAt: row.approved_at ?? null,
+      rejectedAt: row.rejected_at ?? null,
+      revealedAt: row.revealed_at ?? null,
+      expiresAt: row.expires_at ?? null,
+      updatedAt: row.updated_at ?? null,
+    };
+  }
+
+  function buildRoleRoomAccessVaultAuditResponse(row: RoleRoomAccessVaultAuditRow) {
+    return {
+      id: row.id,
+      projectId: row.project_id,
+      secretId: readStringValue(row.secret_id),
+      revealRequestId: readStringValue(row.reveal_request_id),
+      platform: normalizeProducerAccountAccessPlatform(row.platform),
+      action: readStringValue(row.action),
+      actorUserId: readStringValue(row.actor_user_id),
+      actorRole: readStringValue(row.actor_role),
+      metadata: readJsonObject(row.metadata),
+      createdAt: row.created_at ?? null,
+    };
+  }
+
+  async function getRoleRoomAccessVaultSecretByPlatform(
+    projectId: string,
+    platform: ProducerAccountAccessPlatform,
+  ): Promise<RoleRoomAccessVaultSecretRow | null> {
+    const result = await pool.query(
+      `SELECT *
+       FROM role_room_access_vault_secrets
+       WHERE project_id = $1
+         AND platform = $2
+       LIMIT 1`,
+      [projectId, platform],
+    );
+    return (result.rows[0] as RoleRoomAccessVaultSecretRow | undefined) ?? null;
+  }
+
   function readProducerPhaseFromMetadata(metadata?: Record<string, unknown> | null): string | null {
     const phase = typeof metadata?.focusedPhase === 'string'
       ? metadata.focusedPhase.trim().toLowerCase()
@@ -5227,6 +5580,75 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
             ON role_room_push_subscriptions(project_id, scope, updated_at DESC);
           CREATE INDEX IF NOT EXISTS idx_rr_push_subscriptions_user
             ON role_room_push_subscriptions(user_id, updated_at DESC);
+
+          CREATE TABLE IF NOT EXISTS role_room_access_vault_secrets (
+            id UUID PRIMARY KEY,
+            project_id VARCHAR(255) NOT NULL REFERENCES casting_projects(id) ON DELETE CASCADE,
+            platform VARCHAR(32) NOT NULL,
+            label VARCHAR(255),
+            secret_type VARCHAR(120),
+            username_encrypted TEXT,
+            secret_encrypted TEXT,
+            backup_code_encrypted TEXT,
+            masked_reference TEXT,
+            tier VARCHAR(32) NOT NULL DEFAULT 'sensitive_secret',
+            risk_level VARCHAR(32) NOT NULL DEFAULT 'medium',
+            reveal_policy VARCHAR(32) NOT NULL DEFAULT 'approval_required',
+            status VARCHAR(32) NOT NULL DEFAULT 'not_shared',
+            owner_label VARCHAR(255),
+            shared_with_roles JSONB NOT NULL DEFAULT '[]'::jsonb,
+            expires_at TIMESTAMPTZ,
+            metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_by_user_id VARCHAR(255),
+            created_by_role VARCHAR(80),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            last_revealed_at TIMESTAMPTZ,
+            revoked_at TIMESTAMPTZ
+          );
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_rr_access_vault_secrets_platform
+            ON role_room_access_vault_secrets(project_id, platform);
+          CREATE INDEX IF NOT EXISTS idx_rr_access_vault_secrets_project
+            ON role_room_access_vault_secrets(project_id, updated_at DESC);
+
+          CREATE TABLE IF NOT EXISTS role_room_access_vault_reveal_requests (
+            id UUID PRIMARY KEY,
+            secret_id UUID NOT NULL REFERENCES role_room_access_vault_secrets(id) ON DELETE CASCADE,
+            project_id VARCHAR(255) NOT NULL REFERENCES casting_projects(id) ON DELETE CASCADE,
+            platform VARCHAR(32) NOT NULL,
+            status VARCHAR(32) NOT NULL DEFAULT 'pending',
+            request_reason TEXT,
+            approval_notes TEXT,
+            requested_by_user_id VARCHAR(255),
+            requested_by_role VARCHAR(80),
+            approved_by_user_id VARCHAR(255),
+            approved_by_role VARCHAR(80),
+            requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            approved_at TIMESTAMPTZ,
+            rejected_at TIMESTAMPTZ,
+            revealed_at TIMESTAMPTZ,
+            expires_at TIMESTAMPTZ,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+          CREATE INDEX IF NOT EXISTS idx_rr_access_vault_requests_project
+            ON role_room_access_vault_reveal_requests(project_id, requested_at DESC);
+          CREATE INDEX IF NOT EXISTS idx_rr_access_vault_requests_secret
+            ON role_room_access_vault_reveal_requests(secret_id, requested_at DESC);
+
+          CREATE TABLE IF NOT EXISTS role_room_access_vault_audit_events (
+            id UUID PRIMARY KEY,
+            project_id VARCHAR(255) NOT NULL REFERENCES casting_projects(id) ON DELETE CASCADE,
+            secret_id UUID REFERENCES role_room_access_vault_secrets(id) ON DELETE SET NULL,
+            reveal_request_id UUID REFERENCES role_room_access_vault_reveal_requests(id) ON DELETE SET NULL,
+            platform VARCHAR(32),
+            action VARCHAR(64) NOT NULL,
+            actor_user_id VARCHAR(255),
+            actor_role VARCHAR(80),
+            metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+          CREATE INDEX IF NOT EXISTS idx_rr_access_vault_audit_project
+            ON role_room_access_vault_audit_events(project_id, created_at DESC);
         `);
         return true;
       } catch (error) {
@@ -10487,6 +10909,545 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     } catch (error) {
       console.error('Producer client material delete error:', error);
       res.status(500).json({ error: 'Kunne ikke slette klientmateriale' });
+    }
+  });
+
+  router.get('/projects/:projectId/producer/access-vault', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!(await ensureProducerWorkflowTables())) {
+      res.status(500).json({ error: 'Producer-tabeller er ikke tilgjengelige' });
+      return;
+    }
+
+    const projectId = req.params.projectId;
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canReadProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til Client Access Vault' });
+        return;
+      }
+
+      const [secretsResult, requestsResult, auditResult] = await Promise.all([
+        pool.query(
+          `SELECT *
+           FROM role_room_access_vault_secrets
+           WHERE project_id = $1
+           ORDER BY updated_at DESC, created_at DESC`,
+          [projectId],
+        ),
+        pool.query(
+          `SELECT *
+           FROM role_room_access_vault_reveal_requests
+           WHERE project_id = $1
+           ORDER BY requested_at DESC, updated_at DESC`,
+          [projectId],
+        ),
+        pool.query(
+          `SELECT *
+           FROM role_room_access_vault_audit_events
+           WHERE project_id = $1
+           ORDER BY created_at DESC
+           LIMIT 80`,
+          [projectId],
+        ),
+      ]);
+
+      res.json({
+        secrets: secretsResult.rows.map((row) => buildRoleRoomAccessVaultSecretSummary(row as RoleRoomAccessVaultSecretRow)),
+        requests: requestsResult.rows.map((row) => buildRoleRoomAccessVaultRevealRequestResponse(row as RoleRoomAccessVaultRevealRequestRow)),
+        audit: auditResult.rows.map((row) => buildRoleRoomAccessVaultAuditResponse(row as RoleRoomAccessVaultAuditRow)),
+      });
+    } catch (error) {
+      console.error('Producer access vault fetch error:', error);
+      res.status(500).json({ error: 'Kunne ikke hente Client Access Vault' });
+    }
+  });
+
+  router.put('/projects/:projectId/producer/access-vault/secrets/:platform', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!(await ensureProducerWorkflowTables())) {
+      res.status(500).json({ error: 'Producer-tabeller er ikke tilgjengelige' });
+      return;
+    }
+
+    const projectId = req.params.projectId;
+    const platform = normalizeProducerAccountAccessPlatform(req.params.platform);
+    const userId = getUserId(req);
+    if (!platform) {
+      res.status(400).json({ error: 'Ugyldig plattform for vault' });
+      return;
+    }
+
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canManageProducerAccessVault(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å lagre sensitive secrets' });
+        return;
+      }
+
+      const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
+      const existing = await getRoleRoomAccessVaultSecretByPlatform(projectId, platform);
+      const label = readStringValue(req.body?.label) ?? readStringValue(existing?.label) ?? null;
+      const secretType = readStringValue(req.body?.secretType) ?? readStringValue(existing?.secret_type) ?? null;
+      const username = readStringValue(req.body?.username);
+      const secretValue = readStringValue(req.body?.secretValue);
+      const backupCode = readStringValue(req.body?.backupCode);
+      const nextMaskedReference = readStringValue(req.body?.maskedReference)
+        ?? (secretValue ? maskRoleRoomVaultSecretValue(secretValue) : readStringValue(existing?.masked_reference))
+        ?? null;
+      const revealPolicy = normalizeRoleRoomVaultRevealPolicy(req.body?.revealPolicy ?? existing?.reveal_policy);
+      const status = normalizeRoleRoomVaultSecretStatus(req.body?.status ?? existing?.status);
+      const tier = readStringValue(req.body?.tier) ?? readStringValue(existing?.tier) ?? 'sensitive_secret';
+      const riskLevel = readStringValue(req.body?.riskLevel) ?? readStringValue(existing?.risk_level) ?? 'medium';
+      const ownerName = readStringValue(req.body?.ownerName) ?? readStringValue(existing?.owner_label) ?? null;
+      const expiresAt = readVaultTimestamp(req.body?.expiresAt) ?? existing?.expires_at ?? null;
+      const sharedWithRoles = normalizeRoleRoomVaultRoleTargets(req.body?.sharedWithRoles ?? existing?.shared_with_roles);
+      const metadata = readJsonObject(req.body?.metadata);
+
+      if (!label && !secretType && !nextMaskedReference && !secretValue && !backupCode && !existing) {
+        res.status(400).json({ error: 'Oppgi minst label, type, maskert referanse eller hemmelig verdi.' });
+        return;
+      }
+
+      const result = await pool.query(
+        `INSERT INTO role_room_access_vault_secrets (
+          id, project_id, platform, label, secret_type, username_encrypted, secret_encrypted,
+          backup_code_encrypted, masked_reference, tier, risk_level, reveal_policy, status, owner_label,
+          shared_with_roles, expires_at, metadata, created_by_user_id, created_by_role, created_at, updated_at, revoked_at
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7,
+          $8, $9, $10, $11, $12, $13, $14,
+          $15::jsonb, $16, $17::jsonb, $18, $19, NOW(), NOW(), NULL
+        )
+        ON CONFLICT (project_id, platform) DO UPDATE SET
+          label = EXCLUDED.label,
+          secret_type = EXCLUDED.secret_type,
+          username_encrypted = COALESCE(EXCLUDED.username_encrypted, role_room_access_vault_secrets.username_encrypted),
+          secret_encrypted = COALESCE(EXCLUDED.secret_encrypted, role_room_access_vault_secrets.secret_encrypted),
+          backup_code_encrypted = COALESCE(EXCLUDED.backup_code_encrypted, role_room_access_vault_secrets.backup_code_encrypted),
+          masked_reference = EXCLUDED.masked_reference,
+          tier = EXCLUDED.tier,
+          risk_level = EXCLUDED.risk_level,
+          reveal_policy = EXCLUDED.reveal_policy,
+          status = EXCLUDED.status,
+          owner_label = EXCLUDED.owner_label,
+          shared_with_roles = EXCLUDED.shared_with_roles,
+          expires_at = EXCLUDED.expires_at,
+          metadata = EXCLUDED.metadata,
+          created_by_user_id = EXCLUDED.created_by_user_id,
+          created_by_role = EXCLUDED.created_by_role,
+          revoked_at = NULL,
+          updated_at = NOW()
+        RETURNING *`,
+        [
+          existing?.id ?? crypto.randomUUID(),
+          projectId,
+          platform,
+          label,
+          secretType,
+          username ? encryptRoleRoomVaultSecret(username) : null,
+          secretValue ? encryptRoleRoomVaultSecret(secretValue) : null,
+          backupCode ? encryptRoleRoomVaultSecret(backupCode) : null,
+          nextMaskedReference,
+          tier,
+          riskLevel,
+          revealPolicy,
+          status,
+          ownerName,
+          JSON.stringify(sharedWithRoles),
+          expiresAt,
+          JSON.stringify(metadata),
+          userId,
+          effectiveRoleRecord?.role ?? (requireScope(req, 'admin') ? 'admin' : 'unknown'),
+        ],
+      );
+
+      const secretRow = result.rows[0] as RoleRoomAccessVaultSecretRow;
+      await appendRoleRoomAccessVaultAuditEvent({
+        req,
+        projectId,
+        secretId: secretRow.id,
+        platform,
+        action: 'secret_saved',
+        actorUserId: userId,
+        actorRole: effectiveRoleRecord?.role ?? null,
+        metadata: {
+          revealPolicy,
+          status,
+          hasStoredSecret: Boolean(secretValue || existing?.secret_encrypted),
+          hasBackupCode: Boolean(backupCode || existing?.backup_code_encrypted),
+        },
+      });
+
+      res.json({ secret: buildRoleRoomAccessVaultSecretSummary(secretRow) });
+    } catch (error) {
+      console.error('Producer access vault secret save error:', error);
+      res.status(500).json({ error: 'Kunne ikke lagre secret i Client Access Vault' });
+    }
+  });
+
+  router.delete('/projects/:projectId/producer/access-vault/secrets/:platform', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!(await ensureProducerWorkflowTables())) {
+      res.status(500).json({ error: 'Producer-tabeller er ikke tilgjengelige' });
+      return;
+    }
+
+    const projectId = req.params.projectId;
+    const platform = normalizeProducerAccountAccessPlatform(req.params.platform);
+    const userId = getUserId(req);
+    if (!platform) {
+      res.status(400).json({ error: 'Ugyldig plattform for vault' });
+      return;
+    }
+
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canManageProducerAccessVault(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å tilbakekalle secret' });
+        return;
+      }
+
+      const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
+      const existing = await getRoleRoomAccessVaultSecretByPlatform(projectId, platform);
+      if (!existing) {
+        res.status(404).json({ error: 'Fant ikke secret for plattformen' });
+        return;
+      }
+
+      const result = await pool.query(
+        `UPDATE role_room_access_vault_secrets
+         SET status = 'revoked',
+             username_encrypted = NULL,
+             secret_encrypted = NULL,
+             backup_code_encrypted = NULL,
+             revoked_at = NOW(),
+             updated_at = NOW()
+         WHERE id = $1
+         RETURNING *`,
+        [existing.id],
+      );
+
+      await appendRoleRoomAccessVaultAuditEvent({
+        req,
+        projectId,
+        secretId: existing.id,
+        platform,
+        action: 'secret_revoked',
+        actorUserId: userId,
+        actorRole: effectiveRoleRecord?.role ?? null,
+      });
+
+      res.json({ secret: buildRoleRoomAccessVaultSecretSummary(result.rows[0] as RoleRoomAccessVaultSecretRow) });
+    } catch (error) {
+      console.error('Producer access vault revoke error:', error);
+      res.status(500).json({ error: 'Kunne ikke tilbakekalle secret' });
+    }
+  });
+
+  router.post('/projects/:projectId/producer/access-vault/secrets/:platform/request-reveal', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!(await ensureProducerWorkflowTables())) {
+      res.status(500).json({ error: 'Producer-tabeller er ikke tilgjengelige' });
+      return;
+    }
+
+    const projectId = req.params.projectId;
+    const platform = normalizeProducerAccountAccessPlatform(req.params.platform);
+    const userId = getUserId(req);
+    if (!platform) {
+      res.status(400).json({ error: 'Ugyldig plattform for vault' });
+      return;
+    }
+
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canRequestProducerAccessVaultReveal(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å be om reveal' });
+        return;
+      }
+
+      const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
+      const secret = await getRoleRoomAccessVaultSecretByPlatform(projectId, platform);
+      if (!secret || secret.revoked_at) {
+        res.status(404).json({ error: 'Fant ikke aktiv secret for plattformen' });
+        return;
+      }
+
+      const existingRequestResult = await pool.query(
+        `SELECT *
+         FROM role_room_access_vault_reveal_requests
+         WHERE project_id = $1
+           AND secret_id = $2
+           AND requested_by_user_id = $3
+           AND status IN ('pending', 'approved')
+         ORDER BY requested_at DESC
+         LIMIT 1`,
+        [projectId, secret.id, userId],
+      );
+      if ((existingRequestResult.rowCount ?? 0) > 0) {
+        res.json({ request: buildRoleRoomAccessVaultRevealRequestResponse(existingRequestResult.rows[0] as RoleRoomAccessVaultRevealRequestRow) });
+        return;
+      }
+
+      const requestReason = readStringValue(req.body?.requestReason);
+      const expiresAt = readVaultTimestamp(req.body?.expiresAt) ?? new Date(Date.now() + (24 * 60 * 60 * 1000)).toISOString();
+      const result = await pool.query(
+        `INSERT INTO role_room_access_vault_reveal_requests (
+          id, secret_id, project_id, platform, status, request_reason,
+          requested_by_user_id, requested_by_role, expires_at, requested_at, updated_at
+        ) VALUES (
+          $1, $2, $3, $4, 'pending', $5,
+          $6, $7, $8, NOW(), NOW()
+        )
+        RETURNING *`,
+        [
+          crypto.randomUUID(),
+          secret.id,
+          projectId,
+          platform,
+          requestReason,
+          userId,
+          effectiveRoleRecord?.role ?? (requireScope(req, 'admin') ? 'admin' : 'unknown'),
+          expiresAt,
+        ],
+      );
+
+      await appendRoleRoomAccessVaultAuditEvent({
+        req,
+        projectId,
+        secretId: secret.id,
+        revealRequestId: String(result.rows[0]?.id ?? ''),
+        platform,
+        action: 'reveal_requested',
+        actorUserId: userId,
+        actorRole: effectiveRoleRecord?.role ?? null,
+        metadata: {
+          requestReason,
+          revealPolicy: secret.reveal_policy ?? null,
+        },
+      });
+
+      res.status(201).json({ request: buildRoleRoomAccessVaultRevealRequestResponse(result.rows[0] as RoleRoomAccessVaultRevealRequestRow) });
+    } catch (error) {
+      console.error('Producer access vault reveal request error:', error);
+      res.status(500).json({ error: 'Kunne ikke opprette reveal-forespørsel' });
+    }
+  });
+
+  router.post('/projects/:projectId/producer/access-vault/reveal-requests/:requestId/decision', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!(await ensureProducerWorkflowTables())) {
+      res.status(500).json({ error: 'Producer-tabeller er ikke tilgjengelige' });
+      return;
+    }
+
+    const projectId = req.params.projectId;
+    const requestId = req.params.requestId;
+    const userId = getUserId(req);
+    const decision = readStringValue(req.body?.decision);
+    const approvalNotes = readStringValue(req.body?.approvalNotes);
+
+    if (decision !== 'approve' && decision !== 'reject') {
+      res.status(400).json({ error: 'decision må være approve eller reject' });
+      return;
+    }
+
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canApproveProducerAccessVaultReveal(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å beslutte reveal-forespørselen' });
+        return;
+      }
+
+      const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
+      const requestResult = await pool.query(
+        `SELECT *
+         FROM role_room_access_vault_reveal_requests
+         WHERE id = $1 AND project_id = $2
+         LIMIT 1`,
+        [requestId, projectId],
+      );
+      if (requestResult.rowCount === 0) {
+        res.status(404).json({ error: 'Fant ikke reveal-forespørselen' });
+        return;
+      }
+
+      const requestRow = requestResult.rows[0] as RoleRoomAccessVaultRevealRequestRow;
+      if (String(requestRow.status ?? '').trim().toLowerCase() !== 'pending') {
+        res.status(409).json({ error: 'Reveal-forespørselen er ikke lenger åpen.' });
+        return;
+      }
+
+      const result = await pool.query(
+        decision === 'approve'
+          ? `UPDATE role_room_access_vault_reveal_requests
+             SET status = 'approved',
+                 approval_notes = $2,
+                 approved_by_user_id = $3,
+                 approved_by_role = $4,
+                 approved_at = NOW(),
+                 updated_at = NOW()
+             WHERE id = $1
+             RETURNING *`
+          : `UPDATE role_room_access_vault_reveal_requests
+             SET status = 'rejected',
+                 approval_notes = $2,
+                 approved_by_user_id = $3,
+                 approved_by_role = $4,
+                 rejected_at = NOW(),
+                 updated_at = NOW()
+             WHERE id = $1
+             RETURNING *`,
+        [
+          requestId,
+          approvalNotes,
+          userId,
+          effectiveRoleRecord?.role ?? (requireScope(req, 'admin') ? 'admin' : 'unknown'),
+        ],
+      );
+
+      await appendRoleRoomAccessVaultAuditEvent({
+        req,
+        projectId,
+        secretId: requestRow.secret_id,
+        revealRequestId: requestId,
+        platform: requestRow.platform,
+        action: decision === 'approve' ? 'reveal_approved' : 'reveal_rejected',
+        actorUserId: userId,
+        actorRole: effectiveRoleRecord?.role ?? null,
+        metadata: {
+          approvalNotes,
+        },
+      });
+
+      res.json({ request: buildRoleRoomAccessVaultRevealRequestResponse(result.rows[0] as RoleRoomAccessVaultRevealRequestRow) });
+    } catch (error) {
+      console.error('Producer access vault reveal decision error:', error);
+      res.status(500).json({ error: 'Kunne ikke oppdatere reveal-forespørselen' });
+    }
+  });
+
+  router.post('/projects/:projectId/producer/access-vault/reveal-requests/:requestId/reveal', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!(await ensureProducerWorkflowTables())) {
+      res.status(500).json({ error: 'Producer-tabeller er ikke tilgjengelige' });
+      return;
+    }
+
+    const projectId = req.params.projectId;
+    const requestId = req.params.requestId;
+    const userId = getUserId(req);
+
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canRequestProducerAccessVaultReveal(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å åpne secret' });
+        return;
+      }
+
+      const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
+      const requestResult = await pool.query(
+        `SELECT *
+         FROM role_room_access_vault_reveal_requests
+         WHERE id = $1 AND project_id = $2
+         LIMIT 1`,
+        [requestId, projectId],
+      );
+      if (requestResult.rowCount === 0) {
+        res.status(404).json({ error: 'Fant ikke reveal-forespørselen' });
+        return;
+      }
+
+      const requestRow = requestResult.rows[0] as RoleRoomAccessVaultRevealRequestRow;
+      if (requestRow.requested_by_user_id !== userId && !requireScope(req, 'admin')) {
+        res.status(403).json({ error: 'Reveal er kun tilgjengelig for den som ba om innsyn.' });
+        return;
+      }
+      if (String(requestRow.status ?? '').trim().toLowerCase() !== 'approved') {
+        res.status(409).json({ error: 'Reveal-forespørselen er ikke godkjent.' });
+        return;
+      }
+      if (requestRow.expires_at && Date.parse(requestRow.expires_at) < Date.now()) {
+        await pool.query(
+          `UPDATE role_room_access_vault_reveal_requests
+           SET status = 'expired',
+               updated_at = NOW()
+           WHERE id = $1`,
+          [requestId],
+        );
+        res.status(410).json({ error: 'Reveal-forespørselen har utløpt. Be om nytt innsyn.' });
+        return;
+      }
+
+      const secretResult = await pool.query(
+        `SELECT *
+         FROM role_room_access_vault_secrets
+         WHERE id = $1 AND project_id = $2
+         LIMIT 1`,
+        [requestRow.secret_id, projectId],
+      );
+      if (secretResult.rowCount === 0) {
+        res.status(404).json({ error: 'Fant ikke secret' });
+        return;
+      }
+
+      const secretRow = secretResult.rows[0] as RoleRoomAccessVaultSecretRow;
+      if (normalizeRoleRoomVaultRevealPolicy(secretRow.reveal_policy) === 'manual_only') {
+        res.status(409).json({ error: 'Denne secret-en kan ikke vises direkte. Bruk manuell handoff.' });
+        return;
+      }
+
+      const secretValue = decryptRoleRoomVaultSecret(secretRow.secret_encrypted);
+      const username = decryptRoleRoomVaultSecret(secretRow.username_encrypted);
+      const backupCode = decryptRoleRoomVaultSecret(secretRow.backup_code_encrypted);
+      if (!secretValue && !username && !backupCode) {
+        res.status(404).json({ error: 'Ingen lagret hemmelig verdi er tilgjengelig for reveal.' });
+        return;
+      }
+
+      const nowIso = new Date().toISOString();
+      await pool.query(
+        `UPDATE role_room_access_vault_reveal_requests
+         SET status = 'revealed',
+             revealed_at = NOW(),
+             updated_at = NOW()
+         WHERE id = $1`,
+        [requestId],
+      );
+      await pool.query(
+        `UPDATE role_room_access_vault_secrets
+         SET last_revealed_at = NOW(),
+             updated_at = NOW()
+         WHERE id = $1`,
+        [secretRow.id],
+      );
+
+      await appendRoleRoomAccessVaultAuditEvent({
+        req,
+        projectId,
+        secretId: secretRow.id,
+        revealRequestId: requestId,
+        platform: secretRow.platform,
+        action: 'secret_revealed',
+        actorUserId: userId,
+        actorRole: effectiveRoleRecord?.role ?? null,
+        metadata: {
+          revealPolicy: secretRow.reveal_policy ?? null,
+          oneTime: normalizeRoleRoomVaultRevealPolicy(secretRow.reveal_policy) === 'one_time',
+        },
+      });
+
+      res.json({
+        reveal: {
+          secretId: secretRow.id,
+          platform: secretRow.platform,
+          label: readStringValue(secretRow.label),
+          secretType: readStringValue(secretRow.secret_type),
+          username,
+          secretValue,
+          backupCode,
+          maskedReference: readStringValue(secretRow.masked_reference),
+          revealedAt: nowIso,
+        },
+      });
+    } catch (error) {
+      console.error('Producer access vault reveal error:', error);
+      res.status(500).json({ error: 'Kunne ikke åpne secret' });
     }
   });
 

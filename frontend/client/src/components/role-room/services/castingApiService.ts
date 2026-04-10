@@ -1,8 +1,13 @@
 import authSessionService from './authSessionService';
 import type {
+  ProducerAccountAccessPlatform,
   RoleRoomClientInvite,
   RoleRoomClientInviteCreateInput,
   RoleRoomClientInviteSessionResult,
+  RoleRoomAccessVaultRevealResult,
+  RoleRoomAccessVaultState,
+  RoleRoomAccessVaultSecretSummary,
+  RoleRoomAccessVaultRevealRequest,
   RoleRoomGoogleAgreementSignature,
   RoleRoomGoogleAgreementSignatureStatus,
   RoleRoomGoogleCalendarSyncInput,
@@ -2419,6 +2424,106 @@ export const roleRoomBillingApi = {
   ),
 };
 
+export const roleRoomAccessVaultApi = {
+  getVault: async (projectId: string): Promise<RoleRoomAccessVaultState> => (
+    apiRequest<RoleRoomAccessVaultState>(`/projects/${encodeURIComponent(projectId)}/producer/access-vault`)
+  ),
+
+  upsertSecret: async (
+    projectId: string,
+    platform: ProducerAccountAccessPlatform,
+    payload: {
+      label?: string;
+      secretType?: string;
+      username?: string;
+      secretValue?: string;
+      backupCode?: string;
+      maskedReference?: string;
+      revealPolicy?: string;
+      status?: string;
+      tier?: string;
+      riskLevel?: string;
+      ownerName?: string;
+      sharedWithRoles?: string[];
+      expiresAt?: string | null;
+      metadata?: Record<string, unknown>;
+    },
+  ): Promise<RoleRoomAccessVaultSecretSummary | null> => {
+    const result = await apiRequest<{ secret: RoleRoomAccessVaultSecretSummary | null }>(
+      `/projects/${encodeURIComponent(projectId)}/producer/access-vault/secrets/${encodeURIComponent(platform)}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      },
+    );
+    return result.secret ?? null;
+  },
+
+  revokeSecret: async (
+    projectId: string,
+    platform: ProducerAccountAccessPlatform,
+  ): Promise<RoleRoomAccessVaultSecretSummary | null> => {
+    const result = await apiRequest<{ secret: RoleRoomAccessVaultSecretSummary | null }>(
+      `/projects/${encodeURIComponent(projectId)}/producer/access-vault/secrets/${encodeURIComponent(platform)}`,
+      {
+        method: 'DELETE',
+        body: JSON.stringify({}),
+      },
+    );
+    return result.secret ?? null;
+  },
+
+  requestReveal: async (
+    projectId: string,
+    platform: ProducerAccountAccessPlatform,
+    payload?: {
+      requestReason?: string;
+      expiresAt?: string | null;
+    },
+  ): Promise<RoleRoomAccessVaultRevealRequest | null> => {
+    const result = await apiRequest<{ request: RoleRoomAccessVaultRevealRequest | null }>(
+      `/projects/${encodeURIComponent(projectId)}/producer/access-vault/secrets/${encodeURIComponent(platform)}/request-reveal`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload ?? {}),
+      },
+    );
+    return result.request ?? null;
+  },
+
+  decideRevealRequest: async (
+    projectId: string,
+    requestId: string,
+    payload: {
+      decision: 'approve' | 'reject';
+      approvalNotes?: string;
+    },
+  ): Promise<RoleRoomAccessVaultRevealRequest | null> => {
+    const result = await apiRequest<{ request: RoleRoomAccessVaultRevealRequest | null }>(
+      `/projects/${encodeURIComponent(projectId)}/producer/access-vault/reveal-requests/${encodeURIComponent(requestId)}/decision`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+    );
+    return result.request ?? null;
+  },
+
+  revealSecret: async (
+    projectId: string,
+    requestId: string,
+  ): Promise<RoleRoomAccessVaultRevealResult | null> => {
+    const result = await apiRequest<{ reveal: RoleRoomAccessVaultRevealResult | null }>(
+      `/projects/${encodeURIComponent(projectId)}/producer/access-vault/reveal-requests/${encodeURIComponent(requestId)}/reveal`,
+      {
+        method: 'POST',
+        body: JSON.stringify({}),
+      },
+    );
+    return result.reveal ?? null;
+  },
+};
+
 export const roleRoomPushApi = {
   listProducerSubscriptions: async (projectId: string): Promise<RoleRoomPushSubscriptionStatus[]> => {
     const result = await apiRequest<{ items: RoleRoomPushSubscriptionStatus[] }>(
@@ -2497,6 +2602,7 @@ export const castingApi = {
   googleWorkspace: googleWorkspaceApi,
   linkedInWorkspace: linkedInWorkspaceApi,
   roleRoomBilling: roleRoomBillingApi,
+  roleRoomAccessVault: roleRoomAccessVaultApi,
   roleRoomPush: roleRoomPushApi,
 };
 

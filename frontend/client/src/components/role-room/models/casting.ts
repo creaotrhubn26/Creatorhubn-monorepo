@@ -1368,6 +1368,95 @@ export type ProducerAccountAccessVaultTab =
   | 'audit'
   | 'emergency';
 
+export type RoleRoomAccessVaultRevealRequestStatus =
+  | 'pending'
+  | 'approved'
+  | 'rejected'
+  | 'revealed'
+  | 'expired';
+
+export type RoleRoomAccessVaultAuditAction =
+  | 'secret_saved'
+  | 'secret_revoked'
+  | 'reveal_requested'
+  | 'reveal_approved'
+  | 'reveal_rejected'
+  | 'secret_revealed';
+
+export interface RoleRoomAccessVaultSecretSummary {
+  id: string;
+  projectId: string;
+  platform: ProducerAccountAccessPlatform;
+  label?: string | null;
+  secretType?: string | null;
+  maskedReference?: string | null;
+  tier?: ProducerAccountAccessTier | string | null;
+  riskLevel?: ProducerAccountAccessRiskLevel | string | null;
+  revealPolicy?: ProducerAccountAccessRevealPolicy | string | null;
+  status?: ProducerAccountAccessSecretStatus | string | null;
+  ownerName?: string | null;
+  sharedWithRoles: ProducerAccountAccessRoleTarget[];
+  expiresAt?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  lastRevealedAt?: string | null;
+  revokedAt?: string | null;
+  hasStoredSecret: boolean;
+  hasUsername: boolean;
+  hasBackupCode: boolean;
+}
+
+export interface RoleRoomAccessVaultRevealRequest {
+  id: string;
+  secretId: string;
+  projectId: string;
+  platform: ProducerAccountAccessPlatform;
+  status: RoleRoomAccessVaultRevealRequestStatus;
+  requestReason?: string | null;
+  approvalNotes?: string | null;
+  requestedByUserId?: string | null;
+  requestedByRole?: string | null;
+  approvedByUserId?: string | null;
+  approvedByRole?: string | null;
+  requestedAt?: string | null;
+  approvedAt?: string | null;
+  rejectedAt?: string | null;
+  revealedAt?: string | null;
+  expiresAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface RoleRoomAccessVaultAuditEvent {
+  id: string;
+  projectId: string;
+  secretId?: string | null;
+  revealRequestId?: string | null;
+  platform?: ProducerAccountAccessPlatform | null;
+  action?: RoleRoomAccessVaultAuditAction | string | null;
+  actorUserId?: string | null;
+  actorRole?: string | null;
+  metadata: Record<string, unknown>;
+  createdAt?: string | null;
+}
+
+export interface RoleRoomAccessVaultState {
+  secrets: RoleRoomAccessVaultSecretSummary[];
+  requests: RoleRoomAccessVaultRevealRequest[];
+  audit: RoleRoomAccessVaultAuditEvent[];
+}
+
+export interface RoleRoomAccessVaultRevealResult {
+  secretId: string;
+  platform: ProducerAccountAccessPlatform;
+  label?: string | null;
+  secretType?: string | null;
+  username?: string | null;
+  secretValue?: string | null;
+  backupCode?: string | null;
+  maskedReference?: string | null;
+  revealedAt?: string | null;
+}
+
 export interface ProducerAccountAccessEntry {
   platform: ProducerAccountAccessPlatform;
   method: ProducerAccountAccessMethod;

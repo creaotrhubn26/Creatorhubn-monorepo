@@ -81,6 +81,10 @@ import type {
   ProducerWorkspaceSection,
   ProducerWorkspaceSurfaceKey,
   ProducerWorkspaceTabPlacement,
+  RoleRoomAccessVaultRevealRequest,
+  RoleRoomAccessVaultRevealResult,
+  RoleRoomAccessVaultSecretSummary,
+  RoleRoomAccessVaultState,
   ShotList,
 } from '../../models/casting';
 import { castingService } from '../../services/castingService';
@@ -105,6 +109,7 @@ import {
   googleWorkspaceApi,
   linkedInWorkspaceApi,
   projectAgreementsApi,
+  roleRoomAccessVaultApi,
   type ProjectAgreement,
 } from '../../services/castingApiService';
 import {
@@ -290,6 +295,18 @@ interface ClientDashboardCard {
   priority: WorkspaceSupportPriority;
   items: ClientDashboardItem[];
   action?: WorkspaceSupportAction;
+}
+
+interface VaultSecretDraft {
+  label: string;
+  secretType: string;
+  username: string;
+  secretValue: string;
+  backupCode: string;
+  maskedReference: string;
+  expiresAt: string;
+  requestReason: string;
+  approvalNotes: string;
 }
 
 type BriefStepKey = 'goal' | 'audience' | 'logic' | 'foundation' | 'references' | 'contact';
@@ -860,6 +877,35 @@ const fromDateTimeLocalValue = (value: string): string | undefined => {
     return undefined;
   }
   return date.toISOString();
+};
+
+const VAULT_REVEAL_REQUEST_STATUS_LABELS: Record<RoleRoomAccessVaultRevealRequest['status'], string> = {
+  pending: 'Venter på godkjenning',
+  approved: 'Godkjent for innsyn',
+  rejected: 'Avvist',
+  revealed: 'Åpnet én gang',
+  expired: 'Utløpt',
+};
+
+const VAULT_AUDIT_ACTION_LABELS: Record<string, string> = {
+  secret_saved: 'Secret lagret',
+  secret_revoked: 'Secret tilbakekalt',
+  reveal_requested: 'Innsyn bedt om',
+  reveal_approved: 'Innsyn godkjent',
+  reveal_rejected: 'Innsyn avvist',
+  secret_revealed: 'Secret åpnet',
+};
+
+const EMPTY_VAULT_SECRET_DRAFT: VaultSecretDraft = {
+  label: '',
+  secretType: '',
+  username: '',
+  secretValue: '',
+  backupCode: '',
+  maskedReference: '',
+  expiresAt: '',
+  requestReason: '',
+  approvalNotes: '',
 };
 
 const readPlanningMomentIdFromReview = (review: ProducerClientReview): string | null => {
@@ -1841,6 +1887,16 @@ export default function ProducerMediaPanel({
   const [linkedInAccessActionKey, setLinkedInAccessActionKey] = useState<string | null>(null);
   const [accountAccessActionKey, setAccountAccessActionKey] = useState<string | null>(null);
   const [roleRoomSession, setRoleRoomSession] = useState(() => authSessionService.getSessionSync());
+  const [accessVaultState, setAccessVaultState] = useState<RoleRoomAccessVaultState>({
+    secrets: [],
+    requests: [],
+    audit: [],
+  });
+  const [loadingAccessVault, setLoadingAccessVault] = useState(false);
+  const [accessVaultError, setAccessVaultError] = useState<string | null>(null);
+  const [accessVaultActionKey, setAccessVaultActionKey] = useState<string | null>(null);
+  const [accessVaultDrafts, setAccessVaultDrafts] = useState<Partial<Record<ProducerAccountAccessPlatform, VaultSecretDraft>>>({});
+  const [revealedVaultSecrets, setRevealedVaultSecrets] = useState<Record<string, RoleRoomAccessVaultRevealResult>>({});
   const [roleRoomAgentAccess, setRoleRoomAgentAccess] = useState<RoleRoomAgentAccess | null>(null);
   const [loadingRoleRoomAgentAccess, setLoadingRoleRoomAgentAccess] = useState(false);
   const [roleRoomAgentDialogOpen, setRoleRoomAgentDialogOpen] = useState(false);
@@ -1862,6 +1918,24 @@ export default function ProducerMediaPanel({
   const mobileWorkspaceDraftHydratedRef = useRef(false);
 
   const canEditClientInput = canContributeClientInput && !readOnly;
+  const sessionRoleForVault = useMemo(
+    () => String(roleRoomSession.adminUser?.role || '').trim().toLowerCase(),
+    [roleRoomSession.adminUser?.role],
+  );
+  const canManageAccessVaultSecrets = canEditClientInput && !isClientReviewerMode;
+  const canApproveAccessVaultReveal = isClientReviewerMode
+    || sessionRoleForVault === 'producer'
+    || sessionRoleForVault === 'director'
+    || sessionRoleForVault === 'admin'
+    || sessionRoleForVault === 'super_admin';
+  const canRequestAccessVaultReveal = !isClientReviewerMode && (
+    sessionRoleForVault === 'content_producer'
+    || sessionRoleForVault === 'producer'
+    || sessionRoleForVault === 'director'
+    || sessionRoleForVault === 'production_manager'
+    || sessionRoleForVault === 'admin'
+    || sessionRoleForVault === 'super_admin'
+  );
   const isBriefLockedByApproval = project.producerWorkflowStatus === 'approved';
   const canEditBriefInput = canEditClientInput && !isBriefLockedByApproval;
   const workspaceNavigation = useMemo(
@@ -2507,6 +2581,34 @@ export default function ProducerMediaPanel({
     }
   }, [getProjectFiles, projectId, readLocalAgreements, useLocalAgreementFallback]);
 
+  const loadAccessVault = useCallback(async () => {
+    try {
+      setLoadingAccessVault(true);
+      const nextVault = await roleRoomAccessVaultApi.getVault(projectId);
+      setAccessVaultState(nextVault);
+      setAccessVaultError(null);
+    } catch (vaultError) {
+      console.error('[ProducerMediaPanel] Failed to load Client Access Vault', vaultError);
+      setAccessVaultError(vaultError instanceof Error ? vaultError.message : 'Kunne ikke hente Client Access Vault.');
+    } finally {
+      setLoadingAccessVault(false);
+    }
+  }, [projectId]);
+
+  const updateAccessVaultDraft = useCallback((
+    platform: ProducerAccountAccessPlatform,
+    updater: (draft: VaultSecretDraft) => VaultSecretDraft,
+  ) => {
+    setAccessVaultDrafts((previous) => ({
+      ...previous,
+      [platform]: updater(previous[platform] ?? EMPTY_VAULT_SECRET_DRAFT),
+    }));
+  }, []);
+
+  useEffect(() => {
+    void loadAccessVault();
+  }, [loadAccessVault]);
+
   useEffect(() => {
     let active = true;
 
@@ -2595,8 +2697,9 @@ export default function ProducerMediaPanel({
       }
       void loadClientWorkspace();
       void loadDeliveryWorkspaceAssets();
+      void loadAccessVault();
     });
-  }, [loadClientWorkspace, loadDeliveryWorkspaceAssets, projectId]);
+  }, [loadAccessVault, loadClientWorkspace, loadDeliveryWorkspaceAssets, projectId]);
 
   useEffect(() => onProjectAgreementEvent((payload) => {
     if (payload.projectId !== projectId) {
@@ -3189,6 +3292,139 @@ export default function ProducerMediaPanel({
     }));
   }, [persistAccountAccessEntry]);
 
+  const handleSaveAccessVaultSecret = useCallback(async (
+    entry: ProducerProjectPlanning['accountAccess']['entries'][number],
+  ) => {
+    const draft = accessVaultDrafts[entry.platform] ?? EMPTY_VAULT_SECRET_DRAFT;
+    setAccessVaultActionKey(`${entry.platform}:save`);
+    setAccessVaultError(null);
+    try {
+      await roleRoomAccessVaultApi.upsertSecret(projectId, entry.platform, {
+        label: readFirstNonEmptyString(draft.label, entry.accountLabel, PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[entry.platform]),
+        secretType: readFirstNonEmptyString(draft.secretType, entry.secretLabel, 'Kontoopplysning'),
+        username: draft.username.trim() || undefined,
+        secretValue: draft.secretValue.trim() || undefined,
+        backupCode: draft.backupCode.trim() || undefined,
+        maskedReference: readFirstNonEmptyString(draft.maskedReference, entry.maskedReference),
+        revealPolicy: entry.revealPolicy ?? 'approval_required',
+        status: entry.secretStatus ?? 'stored_externally',
+        tier: entry.tier ?? 'sensitive_secret',
+        riskLevel: entry.riskLevel ?? 'medium',
+        ownerName: entry.ownerName,
+        sharedWithRoles: entry.sharedWithRoles,
+        expiresAt: fromDateTimeLocalValue(draft.expiresAt) ?? entry.expiresAt ?? null,
+        metadata: {
+          source: 'producer_media_panel',
+          method: entry.method,
+          accessScope: entry.accessScope ?? null,
+        },
+      });
+      setAccessVaultDrafts((previous) => ({
+        ...previous,
+        [entry.platform]: {
+          ...(previous[entry.platform] ?? EMPTY_VAULT_SECRET_DRAFT),
+          label: readFirstNonEmptyString(draft.label, entry.accountLabel, PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[entry.platform]) ?? '',
+          secretType: readFirstNonEmptyString(draft.secretType, entry.secretLabel, 'Kontoopplysning') ?? '',
+          username: '',
+          secretValue: '',
+          backupCode: '',
+        },
+      }));
+      await loadAccessVault();
+    } catch (vaultError) {
+      console.error('[ProducerMediaPanel] Failed to save access vault secret', vaultError);
+      setAccessVaultError(vaultError instanceof Error ? vaultError.message : 'Kunne ikke lagre secret.');
+    } finally {
+      setAccessVaultActionKey(null);
+    }
+  }, [accessVaultDrafts, loadAccessVault, projectId]);
+
+  const handleRevokeAccessVaultSecret = useCallback(async (platform: ProducerAccountAccessPlatform) => {
+    setAccessVaultActionKey(`${platform}:revoke`);
+    setAccessVaultError(null);
+    try {
+      await roleRoomAccessVaultApi.revokeSecret(projectId, platform);
+      await loadAccessVault();
+    } catch (vaultError) {
+      console.error('[ProducerMediaPanel] Failed to revoke access vault secret', vaultError);
+      setAccessVaultError(vaultError instanceof Error ? vaultError.message : 'Kunne ikke tilbakekalle secret.');
+    } finally {
+      setAccessVaultActionKey(null);
+    }
+  }, [loadAccessVault, projectId]);
+
+  const handleRequestAccessVaultReveal = useCallback(async (platform: ProducerAccountAccessPlatform) => {
+    const draft = accessVaultDrafts[platform] ?? EMPTY_VAULT_SECRET_DRAFT;
+    setAccessVaultActionKey(`${platform}:request`);
+    setAccessVaultError(null);
+    try {
+      await roleRoomAccessVaultApi.requestReveal(projectId, platform, {
+        requestReason: draft.requestReason.trim() || undefined,
+      });
+      setAccessVaultDrafts((previous) => ({
+        ...previous,
+        [platform]: {
+          ...(previous[platform] ?? EMPTY_VAULT_SECRET_DRAFT),
+          requestReason: '',
+        },
+      }));
+      await loadAccessVault();
+    } catch (vaultError) {
+      console.error('[ProducerMediaPanel] Failed to request access vault reveal', vaultError);
+      setAccessVaultError(vaultError instanceof Error ? vaultError.message : 'Kunne ikke be om innsyn.');
+    } finally {
+      setAccessVaultActionKey(null);
+    }
+  }, [accessVaultDrafts, loadAccessVault, projectId]);
+
+  const handleDecideAccessVaultReveal = useCallback(async (
+    request: RoleRoomAccessVaultRevealRequest,
+    decision: 'approve' | 'reject',
+  ) => {
+    const draft = accessVaultDrafts[request.platform] ?? EMPTY_VAULT_SECRET_DRAFT;
+    setAccessVaultActionKey(`${request.id}:${decision}`);
+    setAccessVaultError(null);
+    try {
+      await roleRoomAccessVaultApi.decideRevealRequest(projectId, request.id, {
+        decision,
+        approvalNotes: draft.approvalNotes.trim() || undefined,
+      });
+      setAccessVaultDrafts((previous) => ({
+        ...previous,
+        [request.platform]: {
+          ...(previous[request.platform] ?? EMPTY_VAULT_SECRET_DRAFT),
+          approvalNotes: '',
+        },
+      }));
+      await loadAccessVault();
+    } catch (vaultError) {
+      console.error('[ProducerMediaPanel] Failed to decide access vault reveal', vaultError);
+      setAccessVaultError(vaultError instanceof Error ? vaultError.message : 'Kunne ikke oppdatere reveal-forespørselen.');
+    } finally {
+      setAccessVaultActionKey(null);
+    }
+  }, [accessVaultDrafts, loadAccessVault, projectId]);
+
+  const handleRevealAccessVaultSecret = useCallback(async (request: RoleRoomAccessVaultRevealRequest) => {
+    setAccessVaultActionKey(`${request.id}:reveal`);
+    setAccessVaultError(null);
+    try {
+      const revealed = await roleRoomAccessVaultApi.revealSecret(projectId, request.id);
+      if (revealed) {
+        setRevealedVaultSecrets((previous) => ({
+          ...previous,
+          [request.id]: revealed,
+        }));
+      }
+      await loadAccessVault();
+    } catch (vaultError) {
+      console.error('[ProducerMediaPanel] Failed to reveal access vault secret', vaultError);
+      setAccessVaultError(vaultError instanceof Error ? vaultError.message : 'Kunne ikke åpne secret.');
+    } finally {
+      setAccessVaultActionKey(null);
+    }
+  }, [loadAccessVault, projectId]);
+
   const buildAccountAccessReviewUrl = useCallback((reviewId?: string | null) => (
     reviewId
       ? buildClientPortalUrl(projectId, {
@@ -3776,6 +4012,46 @@ export default function ProducerMediaPanel({
     ),
     [planningDraft.accountAccess.entries],
   );
+  const accessVaultSecretsByPlatform = useMemo(() => {
+    const lookup = new Map<ProducerAccountAccessPlatform, RoleRoomAccessVaultSecretSummary>();
+    accessVaultState.secrets.forEach((entry) => {
+      lookup.set(entry.platform, entry);
+    });
+    return lookup;
+  }, [accessVaultState.secrets]);
+  const accessVaultRequestsByPlatform = useMemo(() => {
+    const lookup = new Map<ProducerAccountAccessPlatform, RoleRoomAccessVaultRevealRequest[]>();
+    accessVaultState.requests.forEach((request) => {
+      const current = lookup.get(request.platform) ?? [];
+      current.push(request);
+      lookup.set(request.platform, current);
+    });
+    return lookup;
+  }, [accessVaultState.requests]);
+  const currentRoleRoomUserId = useMemo(() => {
+    if (typeof roleRoomSession.currentUserId === 'string' && roleRoomSession.currentUserId.trim().length > 0) {
+      return roleRoomSession.currentUserId.trim();
+    }
+    return '';
+  }, [roleRoomSession.currentUserId]);
+
+  useEffect(() => {
+    setAccessVaultDrafts((previous) => {
+      const next: Partial<Record<ProducerAccountAccessPlatform, VaultSecretDraft>> = { ...previous };
+      accountAccessEntries.forEach((entry) => {
+        const existingDraft = previous[entry.platform];
+        const serverSecret = accessVaultSecretsByPlatform.get(entry.platform);
+        next[entry.platform] = {
+          ...(existingDraft ?? EMPTY_VAULT_SECRET_DRAFT),
+          label: existingDraft?.label ?? serverSecret?.label ?? entry.accountLabel ?? '',
+          secretType: existingDraft?.secretType ?? serverSecret?.secretType ?? entry.secretLabel ?? '',
+          maskedReference: existingDraft?.maskedReference ?? serverSecret?.maskedReference ?? entry.maskedReference ?? '',
+          expiresAt: existingDraft?.expiresAt ?? toDateTimeLocalValue(serverSecret?.expiresAt ?? entry.expiresAt),
+        };
+      });
+      return next;
+    });
+  }, [accessVaultSecretsByPlatform, accountAccessEntries]);
   const requiredAccountPlatforms = useMemo(() => {
     const signature = planningDraft.contentCalendar
       .map((item) => `${item.channel ?? ''} ${item.format ?? ''}`)
@@ -6379,7 +6655,35 @@ export default function ProducerMediaPanel({
     });
     return lookup;
   }, [pendingAccountAccessReviews]);
+  const activeVaultRevealRequestsByPlatform = useMemo(() => {
+    const lookup = new Map<ProducerAccountAccessPlatform, RoleRoomAccessVaultRevealRequest>();
+    ACCOUNT_ACCESS_PLATFORM_ORDER.forEach((platform) => {
+      const request = (accessVaultRequestsByPlatform.get(platform) ?? [])
+        .filter((entry) => entry.status === 'pending' || entry.status === 'approved')
+        .sort((left, right) => (right.requestedAt ?? '').localeCompare(left.requestedAt ?? '', 'nb-NO'))[0];
+      if (request) {
+        lookup.set(platform, request);
+      }
+    });
+    return lookup;
+  }, [accessVaultRequestsByPlatform]);
   const accountAccessRequestCards = useMemo(() => {
+    const vaultRequests = accessVaultState.requests
+      .filter((request) => request.status === 'pending' || request.status === 'approved')
+      .map((request) => ({
+        id: `vault-request-${request.id}`,
+        platform: request.platform,
+        eyebrow: 'Vault-innsyn',
+        title: `${PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[request.platform]} · ${VAULT_REVEAL_REQUEST_STATUS_LABELS[request.status]}`,
+        detail: readFirstNonEmptyString(
+          request.requestReason ?? '',
+          request.requestedAt ? `Bedt om ${formatTimestamp(request.requestedAt)}` : '',
+          request.expiresAt ? `Utløper ${formatTimestamp(request.expiresAt)}` : '',
+          'Secret krever beslutning eller innsyn.',
+        ),
+        actionLabel: request.status === 'approved' ? 'Åpne secrets' : 'Se forespørsel',
+        href: '',
+      }));
     const reviewRequests = pendingAccountAccessReviews.map((review) => {
       const platforms = readAccountAccessPlatformsFromReview(review);
       const primaryPlatform = platforms[0] ?? null;
@@ -6415,13 +6719,46 @@ export default function ProducerMediaPanel({
         actionLabel: 'Åpne konto',
         href: '',
       }));
-    return [...reviewRequests, ...operationalRequests];
-  }, [buildAccountAccessReviewUrl, effectiveAccountEntries, pendingAccountAccessReviews]);
+    return [...vaultRequests, ...reviewRequests, ...operationalRequests];
+  }, [accessVaultState.requests, buildAccountAccessReviewUrl, effectiveAccountEntries, pendingAccountAccessReviews]);
+  const accessVaultPendingRequests = useMemo(
+    () => accessVaultState.requests.filter((request) => request.status === 'pending'),
+    [accessVaultState.requests],
+  );
+  const accessVaultApprovedRequests = useMemo(
+    () => accessVaultState.requests.filter((request) => request.status === 'approved'),
+    [accessVaultState.requests],
+  );
+  const accountAccessOperationalRequestCards = useMemo(
+    () => accountAccessRequestCards.filter((item) => !item.id.startsWith('vault-request-')),
+    [accountAccessRequestCards],
+  );
   const accountAccessSensitiveEntries = useMemo(
-    () => effectiveAccountEntries.filter((entry) => entry.tier === 'sensitive_secret' || entry.method === 'manual_handoff' || entry.secretStatus !== 'not_shared'),
-    [effectiveAccountEntries],
+    () => effectiveAccountEntries.filter((entry) => (
+      entry.tier === 'sensitive_secret'
+      || entry.method === 'manual_handoff'
+      || entry.secretStatus !== 'not_shared'
+      || accessVaultSecretsByPlatform.has(entry.platform)
+    )),
+    [accessVaultSecretsByPlatform, effectiveAccountEntries],
   );
   const accountAccessAuditItems = useMemo(() => {
+    if (accessVaultState.audit.length > 0) {
+      return accessVaultState.audit.map((item) => ({
+        id: item.id,
+        platform: item.platform ?? null,
+        title: VAULT_AUDIT_ACTION_LABELS[item.action ?? ''] ?? 'Vault-hendelse',
+        detail: readFirstNonEmptyString(
+          typeof item.metadata.label === 'string' ? item.metadata.label : '',
+          typeof item.metadata.requestReason === 'string' ? item.metadata.requestReason : '',
+          typeof item.metadata.approvalNotes === 'string' ? item.metadata.approvalNotes : '',
+          typeof item.metadata.revealPolicy === 'string' ? `Policy: ${item.metadata.revealPolicy}` : '',
+          item.actorRole ? `Utført som ${item.actorRole}` : '',
+          'Ingen detaljer loggført.',
+        ),
+        createdAt: item.createdAt ?? '',
+      }));
+    }
     const entryEvents = effectiveAccountEntries
       .filter((entry) => hasText(entry.lastUpdatedAt))
       .map((entry) => ({
@@ -6446,7 +6783,7 @@ export default function ProducerMediaPanel({
       .filter((item) => hasText(item.createdAt))
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt, 'nb-NO'))
       .slice(0, 12);
-  }, [effectiveAccountEntries, pendingAccountAccessReviews]);
+  }, [accessVaultState.audit, effectiveAccountEntries, pendingAccountAccessReviews]);
   const readyDeliveryItems = useMemo(
     () => planningDraft.contentCalendar
       .filter((item) => item.status === 'scheduled' || item.status === 'published')
@@ -11358,6 +11695,32 @@ export default function ProducerMediaPanel({
                   {accountAccessGuardrailMessages[0]}
                 </Alert>
               ) : null}
+              {loadingAccessVault ? (
+                <Alert
+                  severity="info"
+                  sx={{
+                    mb: 1.05,
+                    borderRadius: 1.8,
+                    bgcolor: 'rgba(2,132,199,0.16)',
+                    color: '#e0f2fe',
+                    border: '1px solid rgba(56,189,248,0.16)',
+                    '& .MuiAlert-icon': { color: '#7dd3fc' },
+                  }}
+                >
+                  Henter Client Access Vault fra server...
+                </Alert>
+              ) : null}
+              {accessVaultError ? (
+                <Alert
+                  severity="error"
+                  sx={{
+                    mb: 1.05,
+                    borderRadius: 1.8,
+                  }}
+                >
+                  {accessVaultError}
+                </Alert>
+              ) : null}
 
               {accountAccessVaultTab === 'accounts' && (accountAccessMissingItems.length > 0 ? (
                 <Box
@@ -12124,7 +12487,7 @@ export default function ProducerMediaPanel({
                             Sikker deling
                           </Typography>
                           <Typography sx={{ color: 'rgba(245,208,254,0.8)', fontSize: '0.73rem', lineHeight: 1.45, mb: 0.7 }}>
-                            Role Room lagrer her bare kontrollinformasjon, policy og maskert referanse. Selve hemmeligheten skal deles via godkjent sikker kanal utenfor fri tekst i prosjektet.
+                            Role Room kan lagre hemmeligheten kryptert i Client Access Vault. Hold likevel vanlig prosjekttekst fri for passord, backup-koder og tokens.
                           </Typography>
                           <Box
                             sx={{
@@ -12352,7 +12715,151 @@ export default function ProducerMediaPanel({
                     Samle alt som venter på klient, review eller invitasjonsbekreftelse i én arbeidsliste.
                   </Typography>
                   <Stack spacing={0.75}>
-                    {accountAccessRequestCards.length > 0 ? accountAccessRequestCards.map((item) => (
+                    {accessVaultPendingRequests.map((request) => {
+                      const draft = accessVaultDrafts[request.platform] ?? EMPTY_VAULT_SECRET_DRAFT;
+                      return (
+                        <Box
+                          key={`vault-request-${request.id}`}
+                          sx={{
+                            p: 0.85,
+                            borderRadius: 1.5,
+                            border: '1px solid rgba(244,114,182,0.16)',
+                            bgcolor: 'rgba(15,23,42,0.4)',
+                          }}
+                        >
+                          <Stack spacing={0.8}>
+                            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.8} justifyContent="space-between" alignItems={{ sm: 'center' }}>
+                              <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 0 }}>
+                                <AccountProviderLogo platform={request.platform} size={34} />
+                                <Box sx={{ minWidth: 0 }}>
+                                  <Typography sx={{ color: '#bfdbfe', fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', mb: 0.1 }}>
+                                    Vault-innsyn
+                                  </Typography>
+                                  <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.82rem', lineHeight: 1.35 }}>
+                                    {PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[request.platform]} · {VAULT_REVEAL_REQUEST_STATUS_LABELS[request.status]}
+                                  </Typography>
+                                  <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.74rem', lineHeight: 1.42, mt: 0.14 }}>
+                                    {readFirstNonEmptyString(
+                                      request.requestReason ?? '',
+                                      request.requestedAt ? `Bedt om ${formatTimestamp(request.requestedAt)}` : '',
+                                      'Innsyn er bedt om og venter på godkjenning.',
+                                    )}
+                                  </Typography>
+                                </Box>
+                              </Stack>
+                              <Chip
+                                size="small"
+                                label={request.requestedByRole ? `Bedt om som ${request.requestedByRole}` : 'Venter på godkjenning'}
+                                sx={{ bgcolor: 'rgba(96,165,250,0.14)', color: '#dbeafe' }}
+                              />
+                            </Stack>
+                            {canApproveAccessVaultReveal ? (
+                              <>
+                                <TextField
+                                  label="Notat til beslutning"
+                                  value={draft.approvalNotes}
+                                  onChange={(event) => updateAccessVaultDraft(request.platform, (current) => ({
+                                    ...current,
+                                    approvalNotes: event.target.value,
+                                  }))}
+                                  fullWidth
+                                  multiline
+                                  minRows={2}
+                                  helperText="Legg gjerne ved instruks eller begrunnelse for godkjenningen."
+                                />
+                                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.6}>
+                                  <Button
+                                    size="small"
+                                    variant="contained"
+                                    onClick={() => {
+                                      void handleDecideAccessVaultReveal(request, 'approve');
+                                    }}
+                                    disabled={Boolean(accessVaultActionKey)}
+                                    sx={{ textTransform: 'none', fontWeight: 700, minHeight: 34, bgcolor: '#14b8a6', '&:hover': { bgcolor: '#0f766e' } }}
+                                  >
+                                    {accessVaultActionKey === `${request.id}:approve` ? 'Godkjenner...' : 'Godkjenn innsyn'}
+                                  </Button>
+                                  <Button
+                                    size="small"
+                                    variant="outlined"
+                                    onClick={() => {
+                                      void handleDecideAccessVaultReveal(request, 'reject');
+                                    }}
+                                    disabled={Boolean(accessVaultActionKey)}
+                                    sx={{ textTransform: 'none', fontWeight: 700, minHeight: 34, borderColor: 'rgba(244,114,182,0.28)', color: '#fbcfe8' }}
+                                  >
+                                    {accessVaultActionKey === `${request.id}:reject` ? 'Avviser...' : 'Avvis'}
+                                  </Button>
+                                </Stack>
+                              </>
+                            ) : (
+                              <Alert severity="info" sx={{ borderRadius: 1.5 }}>
+                                Innsynsforespørselen venter på en godkjenner med riktig rolle.
+                              </Alert>
+                            )}
+                          </Stack>
+                        </Box>
+                      );
+                    })}
+                    {accessVaultApprovedRequests.map((request) => {
+                      const canReveal = request.requestedByUserId === currentRoleRoomUserId
+                        || normalizedSessionRole === 'admin'
+                        || normalizedSessionRole === 'super_admin';
+                      const revealed = revealedVaultSecrets[request.id];
+                      return (
+                        <Box
+                          key={`vault-approved-${request.id}`}
+                          sx={{
+                            p: 0.85,
+                            borderRadius: 1.5,
+                            border: '1px solid rgba(20,184,166,0.16)',
+                            bgcolor: 'rgba(15,23,42,0.4)',
+                          }}
+                        >
+                          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.8} justifyContent="space-between" alignItems={{ sm: 'center' }}>
+                            <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 0 }}>
+                              <AccountProviderLogo platform={request.platform} size={34} />
+                              <Box sx={{ minWidth: 0 }}>
+                                <Typography sx={{ color: '#86efac', fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', mb: 0.1 }}>
+                                  Innsyn klart
+                                </Typography>
+                                <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.82rem', lineHeight: 1.35 }}>
+                                  {PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[request.platform]} · {VAULT_REVEAL_REQUEST_STATUS_LABELS[request.status]}
+                                </Typography>
+                                <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.74rem', lineHeight: 1.42, mt: 0.14 }}>
+                                  {readFirstNonEmptyString(
+                                    request.approvalNotes ?? '',
+                                    request.approvedAt ? `Godkjent ${formatTimestamp(request.approvedAt)}` : '',
+                                    'Innsyn er godkjent og kan åpnes én gang.',
+                                  )}
+                                </Typography>
+                              </Box>
+                            </Stack>
+                            {canReveal ? (
+                              <Button
+                                size="small"
+                                variant="contained"
+                                onClick={() => {
+                                  void handleRevealAccessVaultSecret(request);
+                                }}
+                                disabled={Boolean(accessVaultActionKey)}
+                                sx={{ textTransform: 'none', fontWeight: 700, minHeight: 34, bgcolor: '#8b5cf6', '&:hover': { bgcolor: '#7c3aed' } }}
+                              >
+                                {accessVaultActionKey === `${request.id}:reveal` ? 'Åpner...' : 'Åpne én gang'}
+                              </Button>
+                            ) : (
+                              <Chip size="small" label="Kun den som ba om innsyn kan åpne" sx={{ bgcolor: 'rgba(148,163,184,0.14)', color: '#cbd5e1' }} />
+                            )}
+                          </Stack>
+                          {revealed ? (
+                            <Alert severity="warning" sx={{ borderRadius: 1.5, mt: 0.8 }}>
+                              Secret er åpnet. Denne visningen bør behandles som midlertidig og roteres ved behov.
+                            </Alert>
+                          ) : null}
+                        </Box>
+                      );
+                    })}
+                    {accountAccessOperationalRequestCards.length > 0 ? accountAccessOperationalRequestCards.map((item) => (
                       <Box
                         key={item.id}
                         sx={{
@@ -12381,18 +12888,27 @@ export default function ProducerMediaPanel({
                             size="small"
                             component={item.href ? 'a' : 'button'}
                             href={item.href || undefined}
-                            onClick={item.href ? undefined : () => openSurfaceWorkspace('accounts')}
+                            onClick={item.href ? undefined : () => {
+                              openSurfaceWorkspace('accounts');
+                              updateAccountAccessWorkspace((workspace) => ({
+                                ...workspace,
+                                activeVaultTab: 'requests',
+                              }));
+                            }}
                             sx={{ textTransform: 'none', fontWeight: 700, minHeight: 34 }}
                           >
                             {item.actionLabel}
                           </Button>
                         </Stack>
                       </Box>
-                    )) : (
+                    )) : null}
+                    {accessVaultPendingRequests.length === 0
+                    && accessVaultApprovedRequests.length === 0
+                    && accountAccessOperationalRequestCards.length === 0 ? (
                       <Alert severity="success" sx={{ borderRadius: 1.5 }}>
                         Ingen åpne tilgangsforespørsler akkurat nå.
                       </Alert>
-                    )}
+                    ) : null}
                   </Stack>
                 </Box>
               ) : null}
@@ -12411,46 +12927,264 @@ export default function ProducerMediaPanel({
                     Delte hemmeligheter
                   </Typography>
                   <Typography sx={{ color: 'rgba(245,208,254,0.82)', fontSize: '0.82rem', lineHeight: 1.5, mb: 0.9 }}>
-                    Dette er en kontrollflate for sensitiv tilgang. Selve hemmeligheten skal ikke lagres i vanlig prosjekttekst. Bruk maskert referanse, policy og tydelig ansvar.
+                    Dette er den sikre flaten for sensitiv tilgang. Secrets lagres kryptert i backend, reveal krever egen flyt, og vanlig prosjekttekst skal fortsatt være fri for passord og backup-koder.
                   </Typography>
                   <Stack spacing={0.75}>
-                    {accountAccessSensitiveEntries.length > 0 ? accountAccessSensitiveEntries.map((entry) => (
-                      <Box
-                        key={`secret-${entry.platform}`}
-                        sx={{
-                          p: 0.85,
-                          borderRadius: 1.5,
-                          border: '1px solid rgba(244,114,182,0.16)',
-                          bgcolor: 'rgba(15,23,42,0.38)',
-                        }}
-                      >
-                        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.8} justifyContent="space-between" alignItems={{ sm: 'center' }}>
-                          <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 0 }}>
-                            <AccountProviderLogo platform={entry.platform} size={34} />
-                            <Box sx={{ minWidth: 0 }}>
-                              <Typography sx={{ color: '#f5d0fe', fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', mb: 0.1 }}>
-                                {PRODUCER_ACCOUNT_ACCESS_SECRET_STATUS_LABELS[entry.secretStatus ?? 'not_shared']}
-                              </Typography>
-                              <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.82rem', lineHeight: 1.35 }}>
-                                {PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[entry.platform]}
-                              </Typography>
-                              <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.74rem', lineHeight: 1.42, mt: 0.14 }}>
-                                {readFirstNonEmptyString(
-                                  entry.secretLabel,
-                                  entry.maskedReference ? `Maskert referanse: ${entry.maskedReference}` : '',
-                                  PRODUCER_ACCOUNT_ACCESS_REVEAL_POLICY_LABELS[entry.revealPolicy ?? 'approval_required'],
-                                  'Ingen sensitiv deling definert ennå.',
-                                )}
-                              </Typography>
+                    {accountAccessSensitiveEntries.length > 0 ? accountAccessSensitiveEntries.map((entry) => {
+                      const serverSecret = accessVaultSecretsByPlatform.get(entry.platform);
+                      const activeRevealRequest = activeVaultRevealRequestsByPlatform.get(entry.platform);
+                      const draft = accessVaultDrafts[entry.platform] ?? EMPTY_VAULT_SECRET_DRAFT;
+                      const revealed = activeRevealRequest ? revealedVaultSecrets[activeRevealRequest.id] : null;
+                      const canRevealApprovedSecret = Boolean(
+                        activeRevealRequest
+                        && activeRevealRequest.status === 'approved'
+                        && (
+                          activeRevealRequest.requestedByUserId === currentRoleRoomUserId
+                          || normalizedSessionRole === 'admin'
+                          || normalizedSessionRole === 'super_admin'
+                        ),
+                      );
+                      return (
+                        <Box
+                          key={`secret-${entry.platform}`}
+                          sx={{
+                            p: 0.85,
+                            borderRadius: 1.5,
+                            border: '1px solid rgba(244,114,182,0.16)',
+                            bgcolor: 'rgba(15,23,42,0.38)',
+                          }}
+                        >
+                          <Stack spacing={0.8}>
+                            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.8} justifyContent="space-between" alignItems={{ sm: 'center' }}>
+                              <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 0 }}>
+                                <AccountProviderLogo platform={entry.platform} size={34} />
+                                <Box sx={{ minWidth: 0 }}>
+                                  <Typography sx={{ color: '#f5d0fe', fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', mb: 0.1 }}>
+                                    {PRODUCER_ACCOUNT_ACCESS_SECRET_STATUS_LABELS[(serverSecret?.status as ProducerAccountAccessSecretStatus | undefined) ?? entry.secretStatus ?? 'not_shared']}
+                                  </Typography>
+                                  <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.82rem', lineHeight: 1.35 }}>
+                                    {PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[entry.platform]}
+                                  </Typography>
+                                  <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.74rem', lineHeight: 1.42, mt: 0.14 }}>
+                                    {readFirstNonEmptyString(
+                                      serverSecret?.secretType ?? entry.secretLabel,
+                                      serverSecret?.maskedReference ? `Maskert referanse: ${serverSecret.maskedReference}` : '',
+                                      entry.maskedReference ? `Maskert referanse: ${entry.maskedReference}` : '',
+                                      PRODUCER_ACCOUNT_ACCESS_REVEAL_POLICY_LABELS[(serverSecret?.revealPolicy as ProducerAccountAccessRevealPolicy | undefined) ?? entry.revealPolicy ?? 'approval_required'],
+                                      'Ingen sensitiv deling definert ennå.',
+                                    )}
+                                  </Typography>
+                                </Box>
+                              </Stack>
+                              <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap>
+                                <Chip size="small" label={PRODUCER_ACCOUNT_ACCESS_RISK_LABELS[(serverSecret?.riskLevel as ProducerAccountAccessRiskLevel | undefined) ?? entry.riskLevel ?? 'low']} sx={{ bgcolor: 'rgba(236,72,153,0.14)', color: '#fbcfe8' }} />
+                                <Chip size="small" label={(serverSecret?.expiresAt ?? entry.expiresAt) ? `Utløper ${formatTimestamp(serverSecret?.expiresAt ?? entry.expiresAt ?? '')}` : 'Ingen utløp'} sx={{ bgcolor: 'rgba(236,72,153,0.14)', color: '#fbcfe8' }} />
+                                {serverSecret?.hasStoredSecret ? (
+                                  <Chip size="small" label="Kryptert lagret" sx={{ bgcolor: 'rgba(20,184,166,0.14)', color: '#ccfbf1' }} />
+                                ) : null}
+                              </Stack>
+                            </Stack>
+
+                            <Box
+                              sx={{
+                                display: 'grid',
+                                gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' },
+                                gap: 0.8,
+                              }}
+                            >
+                              <TextField
+                                label="Label"
+                                value={draft.label}
+                                onChange={(event) => updateAccessVaultDraft(entry.platform, (current) => ({
+                                  ...current,
+                                  label: event.target.value,
+                                }))}
+                                fullWidth
+                                disabled={!canManageAccessVaultSecrets}
+                              />
+                              <TextField
+                                label="Type hemmelighet"
+                                value={draft.secretType}
+                                onChange={(event) => updateAccessVaultDraft(entry.platform, (current) => ({
+                                  ...current,
+                                  secretType: event.target.value,
+                                }))}
+                                fullWidth
+                                disabled={!canManageAccessVaultSecrets}
+                              />
+                              <TextField
+                                label="Brukernavn / konto"
+                                value={draft.username}
+                                onChange={(event) => updateAccessVaultDraft(entry.platform, (current) => ({
+                                  ...current,
+                                  username: event.target.value,
+                                }))}
+                                fullWidth
+                                disabled={!canManageAccessVaultSecrets}
+                                helperText={serverSecret?.hasUsername ? 'Brukernavn er lagret sikkert på serveren.' : 'Valgfritt. La stå tomt hvis bare selve secret skal lagres.'}
+                              />
+                              <TextField
+                                label="Maskert referanse"
+                                value={draft.maskedReference}
+                                onChange={(event) => updateAccessVaultDraft(entry.platform, (current) => ({
+                                  ...current,
+                                  maskedReference: event.target.value,
+                                }))}
+                                fullWidth
+                                disabled={!canManageAccessVaultSecrets}
+                              />
+                              <TextField
+                                label="Secret"
+                                type="password"
+                                value={draft.secretValue}
+                                onChange={(event) => updateAccessVaultDraft(entry.platform, (current) => ({
+                                  ...current,
+                                  secretValue: event.target.value,
+                                }))}
+                                fullWidth
+                                disabled={!canManageAccessVaultSecrets}
+                                helperText={serverSecret?.hasStoredSecret ? 'Ny verdi overskriver lagret secret. La stå tomt for å beholde dagens.' : 'Lagres kryptert på serveren når du trykker lagre.'}
+                              />
+                              <TextField
+                                label="Backup-kode / recovery"
+                                type="password"
+                                value={draft.backupCode}
+                                onChange={(event) => updateAccessVaultDraft(entry.platform, (current) => ({
+                                  ...current,
+                                  backupCode: event.target.value,
+                                }))}
+                                fullWidth
+                                disabled={!canManageAccessVaultSecrets}
+                                helperText={serverSecret?.hasBackupCode ? 'Backup-kode er allerede lagret. Fyll inn på nytt for å oppdatere.' : 'Valgfritt. Lagres kryptert hvis du fyller det inn.'}
+                              />
+                              <TextField
+                                label="Utløper"
+                                type="datetime-local"
+                                value={draft.expiresAt}
+                                onChange={(event) => updateAccessVaultDraft(entry.platform, (current) => ({
+                                  ...current,
+                                  expiresAt: event.target.value,
+                                }))}
+                                fullWidth
+                                disabled={!canManageAccessVaultSecrets}
+                                InputLabelProps={{ shrink: true }}
+                              />
                             </Box>
+
+                            {revealed ? (
+                              <Box
+                                sx={{
+                                  p: 0.8,
+                                  borderRadius: 1.5,
+                                  border: '1px solid rgba(245,158,11,0.18)',
+                                  bgcolor: 'rgba(120,53,15,0.2)',
+                                }}
+                              >
+                                <Typography sx={{ color: '#fde68a', fontWeight: 700, fontSize: '0.78rem', mb: 0.45 }}>
+                                  Åpnet secret
+                                </Typography>
+                                <Box
+                                  sx={{
+                                    display: 'grid',
+                                    gridTemplateColumns: { xs: '1fr', md: 'repeat(3, minmax(0, 1fr))' },
+                                    gap: 0.75,
+                                  }}
+                                >
+                                  <TextField label="Brukernavn" value={revealed.username ?? ''} fullWidth InputProps={{ readOnly: true }} />
+                                  <TextField label="Secret" value={revealed.secretValue ?? ''} fullWidth InputProps={{ readOnly: true }} />
+                                  <TextField label="Backup-kode" value={revealed.backupCode ?? ''} fullWidth InputProps={{ readOnly: true }} />
+                                </Box>
+                                <Typography sx={{ color: 'rgba(254,240,138,0.84)', fontSize: '0.73rem', lineHeight: 1.45, mt: 0.55 }}>
+                                  Åpnet {formatTimestamp(revealed.revealedAt ?? '')}. Behandle dette som midlertidig innsyn og roter tilgangen ved behov.
+                                </Typography>
+                              </Box>
+                            ) : null}
+
+                            <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.6} flexWrap="wrap" useFlexGap>
+                              {canManageAccessVaultSecrets ? (
+                                <Button
+                                  size="small"
+                                  variant="contained"
+                                  onClick={() => {
+                                    void handleSaveAccessVaultSecret(entry);
+                                  }}
+                                  disabled={Boolean(accessVaultActionKey)}
+                                  sx={{ textTransform: 'none', fontWeight: 700, minHeight: 34, bgcolor: '#8b5cf6', '&:hover': { bgcolor: '#7c3aed' } }}
+                                >
+                                  {accessVaultActionKey === `${entry.platform}:save` ? 'Lagrer sikkert...' : 'Lagre sikkert'}
+                                </Button>
+                              ) : null}
+                              {canRequestAccessVaultReveal && serverSecret?.hasStoredSecret && !activeRevealRequest ? (
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  onClick={() => {
+                                    void handleRequestAccessVaultReveal(entry.platform);
+                                  }}
+                                  disabled={Boolean(accessVaultActionKey)}
+                                  sx={{ textTransform: 'none', fontWeight: 700, minHeight: 34, borderColor: 'rgba(125,211,252,0.28)', color: '#e0f2fe' }}
+                                >
+                                  {accessVaultActionKey === `${entry.platform}:request` ? 'Ber om innsyn...' : 'Be om innsyn'}
+                                </Button>
+                              ) : null}
+                              {canRevealApprovedSecret && activeRevealRequest ? (
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  onClick={() => {
+                                    void handleRevealAccessVaultSecret(activeRevealRequest);
+                                  }}
+                                  disabled={Boolean(accessVaultActionKey)}
+                                  sx={{ textTransform: 'none', fontWeight: 700, minHeight: 34, borderColor: 'rgba(192,132,252,0.28)', color: '#f5d0fe' }}
+                                >
+                                  {accessVaultActionKey === `${activeRevealRequest.id}:reveal` ? 'Åpner...' : 'Åpne godkjent innsyn'}
+                                </Button>
+                              ) : null}
+                              {canManageAccessVaultSecrets && serverSecret ? (
+                                <Button
+                                  size="small"
+                                  color="error"
+                                  variant="text"
+                                  onClick={() => {
+                                    void handleRevokeAccessVaultSecret(entry.platform);
+                                  }}
+                                  disabled={Boolean(accessVaultActionKey)}
+                                  sx={{ textTransform: 'none', fontWeight: 700, minHeight: 34 }}
+                                >
+                                  {accessVaultActionKey === `${entry.platform}:revoke` ? 'Tilbakekaller...' : 'Tilbakekall secret'}
+                                </Button>
+                              ) : null}
+                            </Stack>
+
+                            {canRequestAccessVaultReveal && serverSecret?.hasStoredSecret && !activeRevealRequest ? (
+                              <TextField
+                                label="Hvorfor trenger du innsyn?"
+                                value={draft.requestReason}
+                                onChange={(event) => updateAccessVaultDraft(entry.platform, (current) => ({
+                                  ...current,
+                                  requestReason: event.target.value,
+                                }))}
+                                fullWidth
+                                multiline
+                                minRows={2}
+                                helperText="Begrunnelsen logges i audit og vises for godkjenner."
+                              />
+                            ) : null}
+
+                            {activeRevealRequest ? (
+                              <Alert
+                                severity={activeRevealRequest.status === 'approved' ? 'success' : 'info'}
+                                sx={{ borderRadius: 1.5 }}
+                              >
+                                {activeRevealRequest.status === 'approved'
+                                  ? 'Innsyn er godkjent. Åpne det her eller fra Tilgangsforespørsler.'
+                                  : `Innsyn venter allerede på behandling for ${PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[entry.platform]}.`}
+                              </Alert>
+                            ) : null}
                           </Stack>
-                          <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap>
-                            <Chip size="small" label={PRODUCER_ACCOUNT_ACCESS_RISK_LABELS[entry.riskLevel ?? 'low']} sx={{ bgcolor: 'rgba(236,72,153,0.14)', color: '#fbcfe8' }} />
-                            <Chip size="small" label={entry.expiresAt ? `Utløper ${formatTimestamp(entry.expiresAt)}` : 'Ingen utløp'} sx={{ bgcolor: 'rgba(236,72,153,0.14)', color: '#fbcfe8' }} />
-                          </Stack>
-                        </Stack>
-                      </Box>
-                    )) : (
+                        </Box>
+                      );
+                    }) : (
                       <Alert severity="info" sx={{ borderRadius: 1.5 }}>
                         Ingen sensitive secrets er registrert. Hold deg helst til delegert tilgang og invitasjoner.
                       </Alert>
