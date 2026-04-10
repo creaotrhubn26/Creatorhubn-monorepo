@@ -1753,6 +1753,8 @@ export default function ProducerMediaPanel({
   const savedPlanningSnapshotRef = useRef<string>('');
 
   const canEditClientInput = canContributeClientInput && !readOnly;
+  const isBriefLockedByApproval = project.producerWorkflowStatus === 'approved';
+  const canEditBriefInput = canEditClientInput && !isBriefLockedByApproval;
   const workspaceNavigation = useMemo(
     () => normalizeProducerWorkspaceNavigation(planningDraft.workspaceNavigation),
     [planningDraft.workspaceNavigation],
@@ -2473,6 +2475,11 @@ export default function ProducerMediaPanel({
   }, [persistPlanningDraft, planningDraft]);
 
   const handleSaveIntake = useCallback(async () => {
+    if (isBriefLockedByApproval) {
+      setError('Briefen er låst fordi prosjektet er godkjent.');
+      return;
+    }
+
     setSavingIntake(true);
     setError(null);
     try {
@@ -2490,7 +2497,7 @@ export default function ProducerMediaPanel({
     } finally {
       setSavingIntake(false);
     }
-  }, [intakeDraft, persistPlanningDraft, planningDraft, projectId, serializeIntakeSnapshot]);
+  }, [intakeDraft, isBriefLockedByApproval, persistPlanningDraft, planningDraft, projectId, serializeIntakeSnapshot]);
 
   const handleGenerateRoleRoomAgent = useCallback(async (input: {
     projectId: string;
@@ -2517,6 +2524,13 @@ export default function ProducerMediaPanel({
   }, []);
 
   const handleApplyRoleRoomAgent = useCallback(async (result: RoleRoomAgentProducerBootstrapResult) => {
+    if (isBriefLockedByApproval) {
+      const message = 'Briefen er låst fordi prosjektet er godkjent.';
+      setRoleRoomAgentError(message);
+      setError(message);
+      return;
+    }
+
     setRoleRoomAgentApplying(true);
     setRoleRoomAgentError(null);
     setRoleRoomAgentNotice(null);
@@ -2650,7 +2664,7 @@ export default function ProducerMediaPanel({
     } finally {
       setRoleRoomAgentApplying(false);
     }
-  }, [intakeDraft, persistPlanningDraft, planningDraft, project, projectId, serializeIntakeSnapshot]);
+  }, [intakeDraft, isBriefLockedByApproval, persistPlanningDraft, planningDraft, project, projectId, serializeIntakeSnapshot]);
 
   const handleImportGoogleContact = useCallback(async (contact: {
     name?: string | null;
@@ -4396,6 +4410,11 @@ export default function ProducerMediaPanel({
   }, [isClientReviewerMode, projectId, projectName, uploadProjectFile]);
 
   const handleOpenBriefReferenceFilePicker = useCallback(() => {
+    if (isBriefLockedByApproval) {
+      setError('Briefen er låst fordi prosjektet er godkjent.');
+      return;
+    }
+
     setSelectedMaterialFile(null);
     resetMaterialFileInput();
     setMaterialDraft((previous) => ({
@@ -4405,7 +4424,7 @@ export default function ProducerMediaPanel({
       externalUrl: previous.entryType === 'reference' ? previous.externalUrl : '',
     }));
     materialFileInputRef.current?.click();
-  }, [createReferenceMaterialDraft, resetMaterialFileInput]);
+  }, [createReferenceMaterialDraft, isBriefLockedByApproval, resetMaterialFileInput]);
 
   const handleSubmitMaterial = useCallback(async () => {
     if (!materialDraft.title.trim()) {
@@ -4439,6 +4458,11 @@ export default function ProducerMediaPanel({
   }, [buildMaterialPayload, materialDraft, projectId, resetMaterialFileInput]);
 
   const handleSubmitBriefReference = useCallback(async () => {
+    if (isBriefLockedByApproval) {
+      setError('Briefen er låst fordi prosjektet er godkjent.');
+      return;
+    }
+
     const hasExistingProjectFile = hasText(materialDraft.projectFileId);
     if (!selectedMaterialFile && !hasExistingProjectFile) {
       setError('Velg en referansefil før du legger den til i briefen.');
@@ -4480,7 +4504,7 @@ export default function ProducerMediaPanel({
     } finally {
       setSavingMaterial(false);
     }
-  }, [buildMaterialPayload, createReferenceMaterialDraft, isClientReviewerMode, loadDeliveryWorkspaceAssets, materialDraft, projectId, resetMaterialFileInput, selectedMaterialFile, uploadMaterialProjectFile]);
+  }, [buildMaterialPayload, createReferenceMaterialDraft, isBriefLockedByApproval, isClientReviewerMode, loadDeliveryWorkspaceAssets, materialDraft, projectId, resetMaterialFileInput, selectedMaterialFile, uploadMaterialProjectFile]);
 
   const handleMaterialFileSelected = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     const nextFile = event.target.files?.[0] ?? null;
@@ -7613,6 +7637,17 @@ export default function ProducerMediaPanel({
                         color: activeBriefStepDescriptor.missing.length === 0 ? '#86efac' : '#bfdbfe',
                       }}
                     />
+                    {isBriefLockedByApproval ? (
+                      <Chip
+                        size="small"
+                        label="Låst etter godkjenning"
+                        sx={{
+                          height: 22,
+                          bgcolor: 'rgba(250,204,21,0.14)',
+                          color: '#fde68a',
+                        }}
+                      />
+                    ) : null}
                   </Stack>
                   <Typography sx={{ color: 'rgba(203,213,225,0.64)', fontSize: '0.76rem', lineHeight: 1.45, mt: 0.28, maxWidth: 500 }}>
                     {activeBriefStepDescriptor.description}
@@ -7656,7 +7691,9 @@ export default function ProducerMediaPanel({
                     />
                   </Box>
                   <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.74rem', lineHeight: 1.4 }}>
-                    {nextBriefStepDescriptor && nextBriefStepDescriptor.key !== activeBriefStep
+                    {isBriefLockedByApproval
+                      ? 'Briefen er låst etter godkjenning. Endringer krever en ny godkjenningsrunde.'
+                      : nextBriefStepDescriptor && nextBriefStepDescriptor.key !== activeBriefStep
                       ? `Deretter: ${nextBriefStepDescriptor.label}`
                       : activeBriefStepDescriptor.missing.length > 0
                         ? `Fyll ut ${activeBriefStepDescriptor.label.toLowerCase()} før du går videre.`
@@ -7689,6 +7726,24 @@ export default function ProducerMediaPanel({
                 </Box>
               ) : null}
 
+              {isBriefLockedByApproval ? (
+                <Alert
+                  severity="success"
+                  sx={{
+                    mb: 1.05,
+                    borderRadius: 1.5,
+                    bgcolor: 'rgba(20,83,45,0.28)',
+                    border: '1px solid rgba(74,222,128,0.18)',
+                    color: '#dcfce7',
+                    '& .MuiAlert-icon': {
+                      color: '#86efac',
+                    },
+                  }}
+                >
+                  Briefen er låst fordi prosjektet er godkjent. Endringer i mål, budskap, referanser og kontaktpunkt må tas gjennom en ny godkjenningsrunde.
+                </Alert>
+              ) : null}
+
               <Box
                 sx={{
                   p: 1,
@@ -7716,7 +7771,7 @@ export default function ProducerMediaPanel({
                         value={intakeDraft.projectGoal ?? ''}
                         onChange={(event) => setIntakeDraft((previous) => ({ ...previous, projectGoal: event.target.value }))}
                         fullWidth
-                        disabled={!canEditClientInput}
+                        disabled={!canEditBriefInput}
                       />
                     </Box>
                     <Box>
@@ -7729,7 +7784,7 @@ export default function ProducerMediaPanel({
                         value={intakeDraft.deliverables ?? ''}
                         onChange={(event) => setIntakeDraft((previous) => ({ ...previous, deliverables: event.target.value }))}
                         fullWidth
-                        disabled={!canEditClientInput}
+                        disabled={!canEditBriefInput}
                       />
                     </Box>
                   </Stack>
@@ -7747,7 +7802,7 @@ export default function ProducerMediaPanel({
                         value={intakeDraft.targetAudience ?? ''}
                         onChange={(event) => setIntakeDraft((previous) => ({ ...previous, targetAudience: event.target.value }))}
                         fullWidth
-                        disabled={!canEditClientInput}
+                        disabled={!canEditBriefInput}
                       />
                     </Box>
                     <Box>
@@ -7760,7 +7815,7 @@ export default function ProducerMediaPanel({
                         value={intakeDraft.keyMessage ?? ''}
                         onChange={(event) => setIntakeDraft((previous) => ({ ...previous, keyMessage: event.target.value }))}
                         fullWidth
-                        disabled={!canEditClientInput}
+                        disabled={!canEditBriefInput}
                       />
                     </Box>
                   </Stack>
@@ -7805,7 +7860,7 @@ export default function ProducerMediaPanel({
                                 },
                               }))}
                               fullWidth
-                              disabled={!canEditClientInput}
+                              disabled={!canEditBriefInput}
                             />
                           </Box>
                           <Box sx={{ flex: 1 }}>
@@ -7829,7 +7884,7 @@ export default function ProducerMediaPanel({
                                 },
                               }))}
                               fullWidth
-                              disabled={!canEditClientInput}
+                              disabled={!canEditBriefInput}
                             />
                           </Box>
                         </Stack>
@@ -7855,7 +7910,7 @@ export default function ProducerMediaPanel({
                                 },
                               }))}
                               fullWidth
-                              disabled={!canEditClientInput}
+                              disabled={!canEditBriefInput}
                             />
                           </Box>
                           <Box sx={{ flex: 1 }}>
@@ -7875,7 +7930,7 @@ export default function ProducerMediaPanel({
                                 },
                               }))}
                               fullWidth
-                              disabled={!canEditClientInput}
+                              disabled={!canEditBriefInput}
                             />
                           </Box>
                         </Stack>
@@ -7898,7 +7953,7 @@ export default function ProducerMediaPanel({
                         fullWidth
                         multiline
                         minRows={3}
-                        disabled={!canEditClientInput}
+                        disabled={!canEditBriefInput}
                       />
                     </Box>
                     <Box>
@@ -7913,7 +7968,7 @@ export default function ProducerMediaPanel({
                         fullWidth
                         multiline
                         minRows={3}
-                        disabled={!canEditClientInput}
+                        disabled={!canEditBriefInput}
                       />
                     </Box>
                     <Box>
@@ -7928,7 +7983,7 @@ export default function ProducerMediaPanel({
                         fullWidth
                         multiline
                         minRows={3}
-                        disabled={!canEditClientInput}
+                        disabled={!canEditBriefInput}
                       />
                     </Box>
                   </Stack>
@@ -7948,7 +8003,7 @@ export default function ProducerMediaPanel({
                         fullWidth
                         multiline
                         minRows={3}
-                        disabled={!canEditClientInput}
+                        disabled={!canEditBriefInput}
                       />
                     </Box>
                     <Box
@@ -7978,7 +8033,7 @@ export default function ProducerMediaPanel({
                             variant="outlined"
                             startIcon={<UploadFileIcon />}
                             onClick={handleOpenBriefReferenceFilePicker}
-                            disabled={!canEditClientInput}
+                            disabled={!canEditBriefInput}
                             sx={{ textTransform: 'none', fontWeight: 700 }}
                           >
                             Velg referansefil
@@ -7989,7 +8044,7 @@ export default function ProducerMediaPanel({
                             onClick={() => {
                               void handleSubmitBriefReference();
                             }}
-                            disabled={!canEditClientInput || savingMaterial || uploadingMaterialFile || !canSubmitBriefReference}
+                            disabled={!canEditBriefInput || savingMaterial || uploadingMaterialFile || !canSubmitBriefReference}
                             sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#38bdf8', color: '#082f49', '&:hover': { bgcolor: '#0ea5e9' } }}
                           >
                             {savingMaterial || uploadingMaterialFile ? 'Laster opp...' : 'Legg til referanse'}
@@ -8123,7 +8178,7 @@ export default function ProducerMediaPanel({
                             fullWidth
                             multiline
                             minRows={3}
-                            disabled={!canEditClientInput}
+                            disabled={!canEditBriefInput}
                           />
                         </Box>
                         <Box>
@@ -8149,7 +8204,7 @@ export default function ProducerMediaPanel({
                             fullWidth
                             multiline
                             minRows={3}
-                            disabled={!canEditClientInput}
+                            disabled={!canEditBriefInput}
                           />
                         </Box>
                       </Stack>
@@ -8169,7 +8224,7 @@ export default function ProducerMediaPanel({
                         value={intakeDraft.contactName ?? ''}
                         onChange={(event) => setIntakeDraft((previous) => ({ ...previous, contactName: event.target.value }))}
                         fullWidth
-                        disabled={!canEditClientInput}
+                        disabled={!canEditBriefInput}
                       />
                     </Box>
                     <Box>
@@ -8182,7 +8237,7 @@ export default function ProducerMediaPanel({
                         value={intakeDraft.contactEmail ?? ''}
                         onChange={(event) => setIntakeDraft((previous) => ({ ...previous, contactEmail: event.target.value }))}
                         fullWidth
-                        disabled={!canEditClientInput}
+                        disabled={!canEditBriefInput}
                       />
                     </Box>
                     <Box>
@@ -8195,7 +8250,7 @@ export default function ProducerMediaPanel({
                         value={intakeDraft.contactPhone ?? ''}
                         onChange={(event) => setIntakeDraft((previous) => ({ ...previous, contactPhone: event.target.value }))}
                         fullWidth
-                        disabled={!canEditClientInput}
+                        disabled={!canEditBriefInput}
                       />
                     </Box>
                     <Box>
@@ -8210,7 +8265,7 @@ export default function ProducerMediaPanel({
                         fullWidth
                         multiline
                         minRows={3}
-                        disabled={!canEditClientInput}
+                        disabled={!canEditBriefInput}
                       />
                     </Box>
                   </Stack>
@@ -8280,7 +8335,7 @@ export default function ProducerMediaPanel({
                           onClick={() => {
                             void handleSaveIntake();
                           }}
-                          disabled={savingIntake}
+                          disabled={!canEditBriefInput || savingIntake}
                           sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44 }}
                         >
                           {savingIntake ? 'Lagrer...' : 'Lagre'}
@@ -8334,7 +8389,7 @@ export default function ProducerMediaPanel({
                         onClick={() => {
                           void handleSaveIntake();
                         }}
-                        disabled={savingIntake}
+                        disabled={!canEditBriefInput || savingIntake}
                         sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44, bgcolor: '#38bdf8', color: '#082f49', '&:hover': { bgcolor: '#0ea5e9' } }}
                       >
                         {savingIntake ? 'Lagrer brief...' : 'Lagre brief'}
