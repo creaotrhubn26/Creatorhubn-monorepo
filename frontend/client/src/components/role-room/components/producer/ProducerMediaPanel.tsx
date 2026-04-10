@@ -171,6 +171,7 @@ interface ProducerMediaPanelProps {
   onPrepareManuscriptReview?: () => void;
   onPrepareShotListReview?: () => void;
   onProjectUpdated?: (project: CastingProject) => Promise<void> | void;
+  onUnsavedStateChange?: (hasUnsaved: boolean, reason?: string) => void;
 }
 
 interface ClientMaterialDraft {
@@ -1658,6 +1659,7 @@ export default function ProducerMediaPanel({
   onPrepareManuscriptReview: _onPrepareManuscriptReview,
   onPrepareShotListReview,
   onProjectUpdated,
+  onUnsavedStateChange,
 }: ProducerMediaPanelProps) {
   const { uploadProjectFile, deleteProjectFile, getProjectFiles } = useProject();
   const useLocalAgreementFallback = shouldUseRoleRoomLocalFallback();
@@ -1745,6 +1747,8 @@ export default function ProducerMediaPanel({
   const materialFileInputRef = useRef<HTMLInputElement | null>(null);
   const googleAccessRequestRef = useRef(0);
   const linkedInAccessRequestRef = useRef(0);
+  const savedIntakeSnapshotRef = useRef<string>(JSON.stringify(EMPTY_INTAKE));
+  const savedPlanningSnapshotRef = useRef<string>('');
 
   const canEditClientInput = canContributeClientInput && !readOnly;
   const workspaceNavigation = useMemo(
@@ -1790,6 +1794,29 @@ export default function ProducerMediaPanel({
     () => getProducerStrategySnapshot(planningDraft),
     [planningDraft],
   );
+  const serializeIntakeSnapshot = useCallback((value: ProducerClientIntake) => JSON.stringify({
+    ...EMPTY_INTAKE,
+    ...value,
+    updatedAt: undefined,
+    updatedByRole: undefined,
+    lastSaved: undefined,
+  }), []);
+  const serializePlanningSnapshot = useCallback((value: ProducerProjectPlanning, drafts?: {
+    fonts?: string;
+    colors?: string;
+    dos?: string;
+    donts?: string;
+  }) => JSON.stringify({
+    ...value,
+    updatedAt: undefined,
+    brandGuide: {
+      ...value.brandGuide,
+      fonts: parseLineSeparatedValues(drafts?.fonts ?? stringifyLineSeparatedValues(value.brandGuide.fonts)),
+      colors: parseBrandColors(drafts?.colors ?? stringifyBrandColors(value.brandGuide.colors)),
+      dos: parseLineSeparatedValues(drafts?.dos ?? stringifyLineSeparatedValues(value.brandGuide.dos)),
+      donts: parseLineSeparatedValues(drafts?.donts ?? stringifyLineSeparatedValues(value.brandGuide.donts)),
+    },
+  }), []);
   const contentLogicDraft = useMemo(() => ({
     objective: planningDraft.contentLogic?.objective ?? planningDraft.activationPlan.businessGoal ?? '',
     audience: planningDraft.contentLogic?.audience ?? planningDraft.activationPlan.targetAudience ?? '',
@@ -2008,7 +2035,8 @@ export default function ProducerMediaPanel({
         : '';
     setActiveSectionId(nextSectionId);
     setActivePageId(nextPageId);
-  }, [project]);
+    savedPlanningSnapshotRef.current = serializePlanningSnapshot(normalizedPlanning);
+  }, [project, serializePlanningSnapshot]);
 
   const loadClientWorkspace = useCallback(async () => {
     setLoading(true);
@@ -2024,10 +2052,12 @@ export default function ProducerMediaPanel({
       const clientInputFailures: Array<'intake' | 'materials'> = [];
 
       if (nextIntake.status === 'fulfilled') {
-        setIntakeDraft({
+        const nextDraft = {
           ...EMPTY_INTAKE,
           ...nextIntake.value,
-        });
+        };
+        setIntakeDraft(nextDraft);
+        savedIntakeSnapshotRef.current = serializeIntakeSnapshot(nextDraft);
       } else {
         console.error('[ProducerMediaPanel] Failed to load client intake', nextIntake.reason);
         clientInputFailures.push('intake');
@@ -2087,7 +2117,7 @@ export default function ProducerMediaPanel({
     } finally {
       setLoading(false);
     }
-  }, [project, projectId]);
+  }, [project, projectId, serializeIntakeSnapshot]);
 
   useEffect(() => {
     void loadClientWorkspace();
@@ -2388,11 +2418,17 @@ export default function ProducerMediaPanel({
     setReviews(meetingWorkflow.reviews);
     setTimelineItems(meetingWorkflow.timelineItems);
     setPlanningDraft(stampedPlanning);
+    savedPlanningSnapshotRef.current = serializePlanningSnapshot(stampedPlanning, {
+      fonts: brandFontsDraft,
+      colors: brandColorsDraft,
+      dos: brandDosDraft,
+      donts: brandDontsDraft,
+    });
     const navigation = normalizeProducerWorkspaceNavigation(stampedPlanning.workspaceNavigation);
     setActiveSectionId(navigation.activeSectionId ?? navigation.sections[0]?.id ?? '');
     setActivePageId(navigation.activePageId ?? navigation.sections[0]?.pages[0]?.id ?? '');
     setError(null);
-  }, [onProjectUpdated, project, projectId]);
+  }, [brandColorsDraft, brandDosDraft, brandDontsDraft, brandFontsDraft, onProjectUpdated, project, projectId, serializePlanningSnapshot]);
 
   const updateWorkspaceNavigationLocal = useCallback((
     updater: (navigation: ReturnType<typeof normalizeProducerWorkspaceNavigation>) => ReturnType<typeof normalizeProducerWorkspaceNavigation>,
@@ -2433,17 +2469,19 @@ export default function ProducerMediaPanel({
     try {
       const saved = await producerWorkflowService.updateClientIntake(projectId, intakeDraft);
       await persistPlanningDraft(planningDraft);
-      setIntakeDraft({
+      const nextDraft = {
         ...EMPTY_INTAKE,
         ...saved,
-      });
+      };
+      setIntakeDraft(nextDraft);
+      savedIntakeSnapshotRef.current = serializeIntakeSnapshot(nextDraft);
     } catch (saveError) {
       console.error('[ProducerMediaPanel] Failed to save client intake', saveError);
       setError('Kunne ikke lagre klientbrief og content logic.');
     } finally {
       setSavingIntake(false);
     }
-  }, [intakeDraft, persistPlanningDraft, planningDraft, projectId]);
+  }, [intakeDraft, persistPlanningDraft, planningDraft, projectId, serializeIntakeSnapshot]);
 
   const handleGenerateRoleRoomAgent = useCallback(async (input: {
     projectId: string;
@@ -2584,10 +2622,12 @@ export default function ProducerMediaPanel({
         nextStoryLogic as Parameters<typeof storyLogicService.saveStoryLogic>[1],
       );
 
-      setIntakeDraft({
+      const nextDraft = {
         ...EMPTY_INTAKE,
         ...savedIntake,
-      });
+      };
+      setIntakeDraft(nextDraft);
+      savedIntakeSnapshotRef.current = serializeIntakeSnapshot(nextDraft);
       setRoleRoomAgentResult(result);
       setRoleRoomAgentDialogOpen(false);
       setRoleRoomAgentNotice('The Role Room Agent fylte nå brief, branding-utkast og story logikk i prosjektet.');
@@ -2601,7 +2641,7 @@ export default function ProducerMediaPanel({
     } finally {
       setRoleRoomAgentApplying(false);
     }
-  }, [intakeDraft, persistPlanningDraft, planningDraft, project, projectId]);
+  }, [intakeDraft, persistPlanningDraft, planningDraft, project, projectId, serializeIntakeSnapshot]);
 
   const handleImportGoogleContact = useCallback(async (contact: {
     name?: string | null;
@@ -2629,11 +2669,13 @@ export default function ProducerMediaPanel({
     const savedIntake = await producerWorkflowService.updateClientIntake(projectId, nextIntake);
     await castingService.saveProject(nextProject);
     await onProjectUpdated?.(nextProject);
-    setIntakeDraft({
+    const nextDraft = {
       ...EMPTY_INTAKE,
       ...savedIntake,
-    });
-  }, [intakeDraft, isClientReviewerMode, onProjectUpdated, project, projectId]);
+    };
+    setIntakeDraft(nextDraft);
+    savedIntakeSnapshotRef.current = serializeIntakeSnapshot(nextDraft);
+  }, [intakeDraft, isClientReviewerMode, onProjectUpdated, project, projectId, serializeIntakeSnapshot]);
 
   const handleSubmitMaterial = useCallback(async () => {
     if (!materialDraft.title.trim()) {
@@ -2785,6 +2827,85 @@ export default function ProducerMediaPanel({
       setSavingPlanning(false);
     }
   }, [brandColorsDraft, brandDontsDraft, brandDosDraft, brandFontsDraft, persistPlanningDraft, planningDraft]);
+
+  const hasUnsavedProducerMediaState = useMemo(() => {
+    const intakeDirty = serializeIntakeSnapshot(intakeDraft) !== savedIntakeSnapshotRef.current;
+    const planningDirty = serializePlanningSnapshot(planningDraft, {
+      fonts: brandFontsDraft,
+      colors: brandColorsDraft,
+      dos: brandDosDraft,
+      donts: brandDontsDraft,
+    }) !== savedPlanningSnapshotRef.current;
+    const materialDraftDirty = JSON.stringify(materialDraft) !== JSON.stringify(EMPTY_MATERIAL_DRAFT) || Boolean(selectedMaterialFile);
+    const manuscriptSuggestionDirty = Boolean(
+      manuscriptSuggestionDraft.title.trim()
+      || manuscriptSuggestionDraft.suggestion.trim()
+      || manuscriptSuggestionDraft.rationale.trim(),
+    );
+    const storyboardInspirationDirty = Boolean(
+      storyboardInspirationDraft.title.trim()
+      || storyboardInspirationDraft.note.trim()
+      || storyboardInspirationDraft.externalUrl.trim(),
+    );
+
+    return (
+      intakeDirty
+      || planningDirty
+      || materialDraftDirty
+      || manuscriptSuggestionDirty
+      || storyboardInspirationDirty
+      || savingIntake
+      || savingPlanning
+      || savingMaterial
+      || uploadingMaterialFile
+    );
+  }, [
+    brandColorsDraft,
+    brandDosDraft,
+    brandDontsDraft,
+    brandFontsDraft,
+    intakeDraft,
+    manuscriptSuggestionDraft.rationale,
+    manuscriptSuggestionDraft.suggestion,
+    manuscriptSuggestionDraft.title,
+    materialDraft,
+    planningDraft,
+    savingIntake,
+    savingMaterial,
+    savingPlanning,
+    selectedMaterialFile,
+    serializeIntakeSnapshot,
+    serializePlanningSnapshot,
+    storyboardInspirationDraft.externalUrl,
+    storyboardInspirationDraft.note,
+    storyboardInspirationDraft.title,
+    uploadingMaterialFile,
+  ]);
+  const unsavedProducerMediaReason = useMemo(() => {
+    const labels: Partial<Record<ProducerWorkspaceSurfaceKey, string>> = {
+      brief: 'brief',
+      materials: 'materialer',
+      storyboard: 'prosjektrom',
+      manuscript: 'prosjektrom',
+      shotlist: 'prosjektrom',
+      brand: 'merkevare',
+      accounts: 'kontotilgang',
+      delivery: 'levering',
+      meetings: 'møter',
+    };
+    return labels[activeWorkspace] ?? 'prosjektrom';
+  }, [activeWorkspace]);
+
+  useEffect(() => {
+    onUnsavedStateChange?.(
+      hasUnsavedProducerMediaState,
+      hasUnsavedProducerMediaState ? unsavedProducerMediaReason : undefined,
+    );
+
+    return () => {
+      onUnsavedStateChange?.(false);
+    };
+  }, [hasUnsavedProducerMediaState, onUnsavedStateChange, unsavedProducerMediaReason]);
 
   const updateAccountAccessEntry = useCallback((
     platform: ProducerAccountAccessPlatform,

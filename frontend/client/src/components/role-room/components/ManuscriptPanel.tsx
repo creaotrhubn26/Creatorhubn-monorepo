@@ -434,6 +434,7 @@ interface ManuscriptPanelProps {
   onManuscriptChange?: (manuscript: Manuscript) => void;
   storyLogicData?: StoryLogicState | null;
   headerLeftContent?: React.ReactNode;
+  onUnsavedStateChange?: (hasUnsaved: boolean, reason?: string) => void;
 }
 
 type ManuscriptTabValue = 'editor' | 'acts' | 'scenes' | 'characters' | 'dialogue' | 'breakdown' | 'revisions' | 'timeline' | 'production' | 'productionview';
@@ -475,6 +476,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
   onManuscriptChange,
   storyLogicData,
   headerLeftContent,
+  onUnsavedStateChange,
 }) => {
   const { showToast, showSuccess, showError, showWarning, showInfo } = useToast();
   const branding = useBrandingSettings();
@@ -549,6 +551,17 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
   const [_isOnline, setIsOnline] = useState(navigator.onLine);
   const [showNewManuscriptDialog, setShowNewManuscriptDialog] = useState(false);
   const [showSceneDialog, setShowSceneDialog] = useState(false);
+
+  useEffect(() => {
+    onUnsavedStateChange?.(
+      manuscriptSaveStatus !== 'saved',
+      manuscriptSaveStatus !== 'saved' ? 'manus' : undefined,
+    );
+
+    return () => {
+      onUnsavedStateChange?.(false);
+    };
+  }, [manuscriptSaveStatus, onUnsavedStateChange]);
   const [editingScene, setEditingScene] = useState<SceneBreakdown | null>(null);
   const [sceneForm, setSceneForm] = useState({
     sceneNumber: '',

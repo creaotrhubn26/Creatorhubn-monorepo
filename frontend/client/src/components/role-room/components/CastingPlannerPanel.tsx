@@ -1078,6 +1078,7 @@ export function CastingPlannerPanel({
   const [draggingPinnedProjectId, setDraggingPinnedProjectId] = useState<string | null>(null);
   const [publishedTemplates, setPublishedTemplates] = useState<CastingProject[]>([]);
   const protectedDemoBlockedToastRef = useRef<{ key: string; shownAt: number } | null>(null);
+  const unsavedProjectSwitchStateRef = useRef<Record<string, string>>({});
 
   // Keep the UI fallback aligned with settingsService/castingService demo seeds.
   const getUserId = useCallback((): string => {
@@ -1095,6 +1096,35 @@ export function CastingPlannerPanel({
     }
     return getUserId();
   }, [adminUser?.id, getUserId]);
+  const setUnsavedProjectSwitchSource = useCallback((source: string, hasUnsaved: boolean, reason?: string) => {
+    if (!source) {
+      return;
+    }
+    if (hasUnsaved) {
+      unsavedProjectSwitchStateRef.current[source] = reason || source;
+      return;
+    }
+    delete unsavedProjectSwitchStateRef.current[source];
+  }, []);
+  const confirmProjectSwitchIfNeeded = useCallback((targetProject: CastingProject): boolean => {
+    const activeUnsavedReasons = Array.from(new Set(
+      Object.values(unsavedProjectSwitchStateRef.current)
+        .map((value) => String(value || '').trim())
+        .filter(Boolean),
+    ));
+
+    if (activeUnsavedReasons.length === 0) {
+      return true;
+    }
+
+    const reasonText = activeUnsavedReasons.length === 1
+      ? activeUnsavedReasons[0]
+      : `${activeUnsavedReasons.slice(0, -1).join(', ')} og ${activeUnsavedReasons[activeUnsavedReasons.length - 1]}`;
+
+    return window.confirm(
+      `Du har ulagret arbeid i ${reasonText}. Hvis du bytter til "${targetProject.name}", kan endringene gå tapt. Vil du fortsette?`,
+    );
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -2537,6 +2567,10 @@ export function CastingPlannerPanel({
       return;
     }
 
+    if (!confirmProjectSwitchIfNeeded(project)) {
+      return;
+    }
+
     const switchStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
     projectSwitchTraceRef.current = {
       fromProjectId: currentProjectRef.current?.id ?? null,
@@ -2588,7 +2622,7 @@ export function CastingPlannerPanel({
         projectSwitchInFlightRef.current = null;
       }
     }
-  }, [activeTab, ensureScopedSessionProjectRole, isProducerWorkspaceSession, isTrollProject, toast]);
+  }, [activeTab, confirmProjectSwitchIfNeeded, ensureScopedSessionProjectRole, isProducerWorkspaceSession, isTrollProject, toast]);
 
   const handleCreateProjectCopy = useCallback(async (
     project: CastingProject,
@@ -10341,6 +10375,9 @@ export function CastingPlannerPanel({
                         onWorkspaceFocusChange={(focus) => {
                           setProducerMediaFocus(focus);
                         }}
+                        onUnsavedStateChange={(hasUnsaved, reason) => {
+                          setUnsavedProjectSwitchSource('project_room', hasUnsaved, reason);
+                        }}
                         onProjectUpdated={async (updatedProject) => {
                           setCurrentProject(updatedProject);
                           await loadProjects();
@@ -10553,6 +10590,9 @@ export function CastingPlannerPanel({
                     key={currentProject?.id ?? 'no-project'}
                     projectId={currentProject?.id}
                     onSave={handleStoryLogicSave}
+                    onUnsavedStateChange={(hasUnsaved, reason) => {
+                      setUnsavedProjectSwitchSource('story_logic', hasUnsaved, reason);
+                    }}
                   />
                 </Suspense>
               </Box>
@@ -10642,6 +10682,9 @@ export function CastingPlannerPanel({
                       projectId={currentProject?.id}
                       onManuscriptChange={handleManuscriptChange}
                       storyLogicData={storyLogicData}
+                      onUnsavedStateChange={(hasUnsaved, reason) => {
+                        setUnsavedProjectSwitchSource('manuscript', hasUnsaved, reason);
+                      }}
                       headerLeftContent={
                         <Box
                           sx={{
@@ -10775,6 +10818,9 @@ export function CastingPlannerPanel({
                 }
                 onWorkspaceFocusChange={(focus) => {
                   setProducerMediaFocus(focus);
+                }}
+                onUnsavedStateChange={(hasUnsaved, reason) => {
+                  setUnsavedProjectSwitchSource('project_room', hasUnsaved, reason);
                 }}
                 onProjectUpdated={async (updatedProject) => {
                   setCurrentProject(updatedProject);

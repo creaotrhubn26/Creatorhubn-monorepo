@@ -1598,12 +1598,14 @@ interface StoryLogicPanelProps {
   projectId?: string;
   onSave?: (data: StoryLogicState) => void;
   initialData?: StoryLogicState;
+  onUnsavedStateChange?: (hasUnsaved: boolean, reason?: string) => void;
 }
 
 export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
   projectId,
   onSave,
   initialData,
+  onUnsavedStateChange,
 }) => {
   const branding = useBrandingSettings();
   const [state, setState] = useState<StoryLogicState>(initialData || DEFAULT_STATE);
@@ -1618,6 +1620,17 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
   const [showTemplates, setShowTemplates] = useState(false);
   const [premiseChangeAlert, setPremiseChangeAlert] = useState<string | null>(null);
   const prevPremiseRef = useRef(state.concept.corePremise);
+
+  useEffect(() => {
+    onUnsavedStateChange?.(
+      saveStatus === 'unsaved' || saveStatus === 'offline' || saveStatus === 'saving',
+      saveStatus === 'saved' ? undefined : 'story logic',
+    );
+
+    return () => {
+      onUnsavedStateChange?.(false);
+    };
+  }, [onUnsavedStateChange, saveStatus]);
 
   // Refs for autosave + jump-to-field (#1, #5)
   const fieldRefs = useRef<Record<string, HTMLElement | null>>({});
