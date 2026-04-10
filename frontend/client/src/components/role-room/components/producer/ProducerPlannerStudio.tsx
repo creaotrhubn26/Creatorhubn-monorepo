@@ -260,6 +260,56 @@ const getNotificationSeverity = (notification: ProducerProjectNotification): Pla
   return 'info';
 };
 
+const getReviewStatusLabel = (status?: string | null): string => {
+  const normalizedStatus = String(status ?? '').trim().toLowerCase();
+  if (normalizedStatus === 'pending') {
+    return 'Venter';
+  }
+  if (normalizedStatus === 'changes_requested') {
+    return 'Endringer ønsket';
+  }
+  if (normalizedStatus === 'rejected') {
+    return 'Avvist';
+  }
+  if (normalizedStatus === 'approved') {
+    return 'Godkjent';
+  }
+  return normalizedStatus || 'Uavklart';
+};
+
+const getReviewStatusTone = (status?: string | null): 'info' | 'warning' | 'error' | 'success' => {
+  const normalizedStatus = String(status ?? '').trim().toLowerCase();
+  if (normalizedStatus === 'changes_requested') {
+    return 'warning';
+  }
+  if (normalizedStatus === 'rejected') {
+    return 'error';
+  }
+  if (normalizedStatus === 'approved') {
+    return 'success';
+  }
+  return 'info';
+};
+
+const getReviewTypeLabel = (review: ProducerClientReview): string => {
+  const normalizedReviewType = String(review.review_type ?? '').trim().toLowerCase();
+  const normalizedTargetEntityType = String(review.target_entity_type ?? '').trim().toLowerCase();
+
+  if (normalizedReviewType === 'storyboard') return 'Storyboard';
+  if (normalizedReviewType === 'manuscript') return 'Manus';
+  if (normalizedReviewType === 'shotlist') return 'Shotlist';
+  if (normalizedReviewType === 'client_intake_request') return 'Brief';
+  if (normalizedReviewType === 'client_material_request') return 'Materiale';
+  if (normalizedReviewType === 'content_delivery' || normalizedTargetEntityType === 'content_calendar') return 'Levering';
+  if (normalizedReviewType === 'budget_package' || normalizedTargetEntityType === 'economy') return 'Økonomi';
+  if (normalizedReviewType === 'account_access' || normalizedTargetEntityType === 'account_access') return 'Kontotilgang';
+  if (normalizedReviewType === 'change_order') return 'Endringsordre';
+  if (normalizedReviewType === 'client_approval') return 'Klientgodkjenning';
+  if (normalizedTargetEntityType === 'project_agreement') return 'Avtale';
+
+  return review.review_type || 'Godkjenning';
+};
+
 const isValidDate = (value?: string | null): boolean => {
   if (!hasText(value)) {
     return false;
@@ -855,6 +905,24 @@ export default function ProducerPlannerStudio({
     () => notifications.slice(0, 6),
     [notifications],
   );
+
+  const outstandingClientApprovals = useMemo(() => (
+    reviews
+      .filter((review) => {
+        const normalizedStatus = String(review.status ?? '').trim().toLowerCase();
+        return normalizedStatus === 'pending'
+          || normalizedStatus === 'changes_requested'
+          || normalizedStatus === 'rejected';
+      })
+      .sort((left, right) => {
+        const leftPriority = left.status === 'changes_requested' ? 0 : left.status === 'rejected' ? 1 : 2;
+        const rightPriority = right.status === 'changes_requested' ? 0 : right.status === 'rejected' ? 1 : 2;
+        if (leftPriority !== rightPriority) {
+          return leftPriority - rightPriority;
+        }
+        return compareDatesAsc(left.due_at ?? left.requested_at ?? left.updated_at, right.due_at ?? right.requested_at ?? right.updated_at);
+      })
+  ), [reviews]);
 
   const handleMarkNotificationRead = useCallback(async (notificationId: string) => {
     try {
@@ -1592,6 +1660,130 @@ export default function ProducerPlannerStudio({
           </Stack>
         </Box>
       ) : null}
+
+      <Box
+        sx={{
+          p: 1.1,
+          borderRadius: 2,
+          border: '1px solid rgba(148,163,184,0.18)',
+          background: 'rgba(15,23,42,0.78)',
+        }}
+      >
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between" sx={{ mb: 0.9 }}>
+          <Box>
+            <Typography sx={{ color: '#fff', fontWeight: 700 }}>
+              Utestående klientgodkjenninger
+            </Typography>
+            <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.85rem' }}>
+              {isContentProducerPlanner
+                ? 'Her ser du alt som fortsatt venter på godkjenning, endringer eller ny beslutning fra klientløpet.'
+                : 'Her ser du hvilke klientgodkjenninger og reviewpunkter som fortsatt blokkerer videre fremdrift.'}
+            </Typography>
+          </Box>
+          <Stack direction="row" spacing={0.8} alignItems="center">
+            <Chip
+              size="small"
+              label={outstandingClientApprovals.length > 0 ? `${outstandingClientApprovals.length} åpne` : 'Ingen åpne'}
+              sx={{
+                bgcolor: outstandingClientApprovals.length > 0 ? 'rgba(245,158,11,0.18)' : 'rgba(34,197,94,0.16)',
+                color: outstandingClientApprovals.length > 0 ? '#fde68a' : '#bbf7d0',
+              }}
+            />
+            {outstandingClientApprovals.length > 0 && onOpenReviews ? (
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => onOpenReviews({ focusedPhase: phaseInView })}
+                sx={{ textTransform: 'none', fontWeight: 700 }}
+              >
+                Åpne Godkjenning
+              </Button>
+            ) : null}
+          </Stack>
+        </Stack>
+
+        {outstandingClientApprovals.length === 0 ? (
+          <Alert severity="success">Ingen utestående klientgodkjenninger akkurat nå.</Alert>
+        ) : (
+          <Stack spacing={0.85}>
+            {outstandingClientApprovals.slice(0, 5).map((review) => {
+              const statusTone = getReviewStatusTone(review.status);
+              const phase = resolveReviewPhase(review);
+              const approvalTemplate = review.review_type === 'storyboard' || review.review_type === 'manuscript' || review.review_type === 'shotlist'
+                ? review.review_type
+                : undefined;
+              return (
+                <Box
+                  key={review.id}
+                  sx={{
+                    p: 0.95,
+                    borderRadius: 1.6,
+                    border: '1px solid rgba(148,163,184,0.16)',
+                    background: 'rgba(2,6,23,0.42)',
+                  }}
+                >
+                  <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.9} justifyContent="space-between">
+                    <Stack spacing={0.45} sx={{ minWidth: 0 }}>
+                      <Stack direction="row" spacing={0.8} alignItems="center" flexWrap="wrap" useFlexGap>
+                        <Chip
+                          size="small"
+                          color={statusTone}
+                          label={getReviewStatusLabel(review.status)}
+                          variant={statusTone === 'info' ? 'outlined' : 'filled'}
+                        />
+                        <Chip
+                          size="small"
+                          label={getReviewTypeLabel(review)}
+                          sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }}
+                        />
+                        <Chip
+                          size="small"
+                          label={PRODUCER_PLANNING_PHASE_LABELS[phase]}
+                          sx={{ bgcolor: 'rgba(148,163,184,0.16)', color: '#cbd5e1' }}
+                        />
+                        {hasText(review.due_at) ? (
+                          <Chip
+                            size="small"
+                            label={`Frist ${toDisplayDateTime(review.due_at)}`}
+                            sx={{ bgcolor: 'rgba(244,63,94,0.14)', color: '#fecdd3' }}
+                          />
+                        ) : null}
+                      </Stack>
+                      <Typography sx={{ color: '#fff', fontWeight: 700 }}>
+                        {review.title || getReviewTypeLabel(review)}
+                      </Typography>
+                      <Typography sx={{ color: 'rgba(226,232,240,0.76)', fontSize: '0.85rem', lineHeight: 1.5 }}>
+                        {review.description?.trim() || 'Denne godkjenningen trenger fortsatt en beslutning før arbeidsløpet kan gå videre.'}
+                      </Typography>
+                      <Typography sx={{ color: 'rgba(148,163,184,0.78)', fontSize: '0.76rem' }}>
+                        Sist oppdatert {toDisplayDateTime(review.updated_at)}
+                      </Typography>
+                    </Stack>
+
+                    {onOpenReviews ? (
+                      <Stack direction={{ xs: 'row', md: 'column' }} spacing={0.7} alignItems={{ md: 'flex-end' }}>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={() => onOpenReviews({ focusedPhase: phase, approvalTemplate })}
+                          sx={{ textTransform: 'none', fontWeight: 700 }}
+                        >
+                          Åpne
+                        </Button>
+                      </Stack>
+                    ) : null}
+                  </Stack>
+                </Box>
+              );
+            })}
+            {outstandingClientApprovals.length > 5 ? (
+              <Typography sx={{ color: 'rgba(148,163,184,0.8)', fontSize: '0.78rem' }}>
+                + {outstandingClientApprovals.length - 5} flere åpne godkjenninger ligger i modulen `Godkjenning`.
+              </Typography>
+            ) : null}
+          </Stack>
+        )}
+      </Box>
 
       <Box
         sx={{
