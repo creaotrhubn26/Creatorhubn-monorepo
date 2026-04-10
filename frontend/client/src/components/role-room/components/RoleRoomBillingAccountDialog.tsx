@@ -23,7 +23,10 @@ import {
   CloudDoneOutlined as CloudDoneOutlinedIcon,
   CloudSyncOutlined as CloudSyncOutlinedIcon,
   FolderOpen as FolderOpenIcon,
+  InstallMobileOutlined as InstallMobileOutlinedIcon,
   LinkOffOutlined as LinkOffOutlinedIcon,
+  NotificationsActiveOutlined as NotificationsActiveOutlinedIcon,
+  NotificationsOffOutlined as NotificationsOffOutlinedIcon,
   Person as PersonIcon,
   People as PeopleIcon,
   Refresh as RefreshIcon,
@@ -35,6 +38,7 @@ import {
   type RoleRoomCommercialBillingAccount,
   type RoleRoomGoogleStatusResponse,
 } from '../services/castingApiService';
+import { useRoleRoomPwa } from '../hooks/useRoleRoomPwa';
 import { getRoleRoomReturnPath } from '../utils/runtime';
 
 type WorkspaceAccountTeamMember = {
@@ -185,6 +189,23 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
   const [googleStatusLoading, setGoogleStatusLoading] = useState(false);
   const [googleStatusError, setGoogleStatusError] = useState<string | null>(null);
   const [googleActionPending, setGoogleActionPending] = useState(false);
+  const {
+    canInstall,
+    disablePush,
+    enablePush,
+    error: pwaError,
+    installHint,
+    installPwa,
+    isBusy: pwaBusy,
+    isInstalled: pwaInstalled,
+    isSupported: pwaSupported,
+    notificationPermission,
+    pushEnabled,
+    pushLastError,
+    sendTestPush,
+    statusMessage: pwaStatusMessage,
+    supportsPush,
+  } = useRoleRoomPwa(currentProject?.id, open);
 
   const loadGoogleStatus = useCallback(async () => {
     if (!open) {
@@ -662,6 +683,186 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                 sx={{ color: 'rgba(255,255,255,0.78)' }}
               >
                 Oppdater Google-status
+              </Button>
+            </Stack>
+          </Stack>
+
+          <Stack
+            spacing={1.2}
+            sx={{
+              p: 2,
+              borderRadius: 2.5,
+              border: '1px solid rgba(125,211,252,0.16)',
+              background: 'linear-gradient(135deg, rgba(9,22,34,0.5) 0%, rgba(15,23,42,0.92) 100%)',
+            }}
+          >
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              spacing={1}
+              alignItems={{ xs: 'flex-start', sm: 'center' }}
+              justifyContent="space-between"
+            >
+              <Stack direction="row" spacing={1} alignItems="center">
+                <InstallMobileOutlinedIcon sx={{ color: '#7dd3fc', fontSize: 18 }} />
+                <Typography sx={{ fontWeight: 700 }}>
+                  Mobilapp og varsler
+                </Typography>
+              </Stack>
+              <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                <Chip
+                  size="small"
+                  label={pwaInstalled ? 'App installert' : 'App ikke installert'}
+                  sx={{
+                    bgcolor: pwaInstalled ? 'rgba(16,185,129,0.16)' : 'rgba(148,163,184,0.12)',
+                    color: pwaInstalled ? '#86efac' : '#cbd5e1',
+                    border: `1px solid ${pwaInstalled ? 'rgba(16,185,129,0.28)' : 'rgba(148,163,184,0.24)'}`,
+                  }}
+                />
+                <Chip
+                  size="small"
+                  icon={pushEnabled ? <NotificationsActiveOutlinedIcon sx={{ fontSize: 16 }} /> : <NotificationsOffOutlinedIcon sx={{ fontSize: 16 }} />}
+                  label={pushEnabled ? 'Mobilvarsler på' : 'Mobilvarsler av'}
+                  sx={{
+                    bgcolor: pushEnabled ? 'rgba(59,130,246,0.16)' : 'rgba(148,163,184,0.12)',
+                    color: pushEnabled ? '#bfdbfe' : '#cbd5e1',
+                    border: `1px solid ${pushEnabled ? 'rgba(59,130,246,0.28)' : 'rgba(148,163,184,0.24)'}`,
+                  }}
+                />
+              </Stack>
+            </Stack>
+
+            <Typography sx={{ color: 'rgba(255,255,255,0.78)', fontSize: '0.84rem' }}>
+              Installer The Role Room på mobilen og få varsler når klienten sender brief, materiale eller godkjenning i dette prosjektet.
+            </Typography>
+
+            <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+              <Chip
+                size="small"
+                label={
+                  notificationPermission === 'granted'
+                    ? 'Varsler tillatt'
+                    : notificationPermission === 'denied'
+                      ? 'Varsler blokkert'
+                      : notificationPermission === 'default'
+                        ? 'Varsler ikke tillatt ennå'
+                        : 'Varsler støttes ikke'
+                }
+                sx={{
+                  bgcolor: notificationPermission === 'granted'
+                    ? 'rgba(16,185,129,0.16)'
+                    : 'rgba(255,255,255,0.05)',
+                  color: notificationPermission === 'granted' ? '#86efac' : 'rgba(255,255,255,0.76)',
+                }}
+              />
+              {currentProject ? (
+                <Chip
+                  size="small"
+                  label={`Prosjekt: ${currentProject.name}`}
+                  sx={{
+                    bgcolor: 'rgba(125,211,252,0.12)',
+                    color: '#bae6fd',
+                    border: '1px solid rgba(125,211,252,0.24)',
+                  }}
+                />
+              ) : null}
+            </Stack>
+
+            {pwaStatusMessage ? (
+              <Alert severity="success">
+                {pwaStatusMessage}
+              </Alert>
+            ) : null}
+
+            {pushLastError ? (
+              <Alert severity="warning">
+                Sist registrerte push-feil: {pushLastError}
+              </Alert>
+            ) : null}
+
+            {pwaError ? (
+              <Alert severity="error">
+                {pwaError}
+              </Alert>
+            ) : null}
+
+            {!pwaSupported ? (
+              <Alert severity="info">
+                {installHint}
+              </Alert>
+            ) : null}
+
+            {pwaSupported && !currentProject ? (
+              <Alert severity="info">
+                Velg et aktivt prosjekt først. Installering av appen fungerer uten prosjekt, men mobilvarsler knyttes til prosjektet du står i.
+              </Alert>
+            ) : null}
+
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              spacing={1}
+              alignItems={{ xs: 'stretch', sm: 'center' }}
+            >
+              <Button
+                variant={pwaInstalled ? 'outlined' : 'contained'}
+                startIcon={<InstallMobileOutlinedIcon />}
+                onClick={() => {
+                  void installPwa();
+                }}
+                disabled={pwaBusy || (!canInstall && pwaInstalled)}
+                sx={pwaInstalled
+                  ? { borderColor: 'rgba(125,211,252,0.34)', color: '#bae6fd' }
+                  : {
+                      bgcolor: '#7dd3fc',
+                      color: '#082f49',
+                      fontWeight: 800,
+                      '&:hover': { bgcolor: '#bae6fd' },
+                    }}
+              >
+                {pwaInstalled ? 'App installert' : 'Installer app'}
+              </Button>
+
+              {pushEnabled ? (
+                <Button
+                  variant="outlined"
+                  startIcon={<NotificationsOffOutlinedIcon />}
+                  onClick={() => {
+                    void disablePush();
+                  }}
+                  disabled={pwaBusy || !currentProject}
+                  sx={{ borderColor: 'rgba(248,113,113,0.36)', color: '#fca5a5' }}
+                >
+                  Skru av mobilvarsler
+                </Button>
+              ) : (
+                <Button
+                  variant="contained"
+                  startIcon={<NotificationsActiveOutlinedIcon />}
+                  onClick={() => {
+                    void enablePush();
+                  }}
+                  disabled={pwaBusy || !supportsPush || !currentProject}
+                  sx={{
+                    bgcolor: '#f6c358',
+                    color: '#171410',
+                    fontWeight: 800,
+                    '&:hover': { bgcolor: '#efb93e' },
+                    '&.Mui-disabled': { bgcolor: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.38)' },
+                  }}
+                >
+                  Aktiver mobilvarsler
+                </Button>
+              )}
+
+              <Button
+                variant="text"
+                startIcon={<RefreshIcon />}
+                onClick={() => {
+                  void sendTestPush();
+                }}
+                disabled={pwaBusy || !pushEnabled || !currentProject}
+                sx={{ color: 'rgba(255,255,255,0.78)' }}
+              >
+                Send testvarsel
               </Button>
             </Stack>
           </Stack>

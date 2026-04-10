@@ -8,6 +8,7 @@ import { initSentry } from './utils/sentry';
 import { bootstrapCreatorHubGoogleLoginRedirect } from './lib/creatorhubGoogleAuth';
 import { normalizeRequestUrl } from './lib/normalizeRequestUrl';
 import { isRoleRoomDedicatedHost } from './components/role-room/utils/runtime';
+import { registerRoleRoomPwaServiceWorker } from './components/role-room/services/roleRoomPwaService';
 import './styles/academy-responsive.css';
 
 declare global {
@@ -137,6 +138,12 @@ try {
 
 installFetchNormalization();
 installPerformanceTimingFallback();
+
+if (shouldUseRoleRoomDedicatedHostBootstrap(window.location)) {
+  void registerRoleRoomPwaServiceWorker().catch((error) => {
+    console.warn('[main.tsx] Role Room service worker registration failed:', error);
+  });
+}
 
 // #region agent log
 console.log('[main.tsx] Getting root element');

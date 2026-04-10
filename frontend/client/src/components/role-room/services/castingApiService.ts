@@ -240,6 +240,22 @@ export interface RoleRoomGoogleBindingResponse {
   artifacts: RoleRoomGoogleArtifactRef[];
 }
 
+export interface RoleRoomPushSubscriptionPayload {
+  endpoint: string;
+  keys: {
+    p256dh: string;
+    auth: string;
+  };
+}
+
+export interface RoleRoomPushSubscriptionStatus {
+  endpoint: string;
+  last_sent_at?: string | null;
+  last_error?: string | null;
+  disabled_at?: string | null;
+  updated_at?: string | null;
+}
+
 export interface RoleRoomGoogleCalendarSummary {
   id: string;
   summary: string;
@@ -2403,6 +2419,54 @@ export const roleRoomBillingApi = {
   ),
 };
 
+export const roleRoomPushApi = {
+  listProducerSubscriptions: async (projectId: string): Promise<RoleRoomPushSubscriptionStatus[]> => {
+    const result = await apiRequest<{ items: RoleRoomPushSubscriptionStatus[] }>(
+      `/projects/${encodeURIComponent(projectId)}/producer/push-subscription`,
+    );
+    return Array.isArray(result.items) ? result.items : [];
+  },
+
+  subscribeProducer: async (
+    projectId: string,
+    subscription: RoleRoomPushSubscriptionPayload,
+  ): Promise<RoleRoomPushSubscriptionStatus | null> => {
+    const result = await apiRequest<{
+      success: boolean;
+      subscription: RoleRoomPushSubscriptionStatus | null;
+    }>(`/projects/${encodeURIComponent(projectId)}/producer/push-subscription`, {
+      method: 'POST',
+      body: JSON.stringify({ subscription }),
+    });
+    return result.subscription ?? null;
+  },
+
+  unsubscribeProducer: async (
+    projectId: string,
+    endpoint: string,
+  ): Promise<boolean> => {
+    const result = await apiRequest<{ success: boolean }>(
+      `/projects/${encodeURIComponent(projectId)}/producer/push-subscription`,
+      {
+        method: 'DELETE',
+        body: JSON.stringify({ endpoint }),
+      },
+    );
+    return result.success === true;
+  },
+
+  sendProducerTest: async (projectId: string): Promise<number> => {
+    const result = await apiRequest<{ success: boolean; sent?: number }>(
+      `/projects/${encodeURIComponent(projectId)}/producer/push-subscription/test`,
+      {
+        method: 'POST',
+        body: JSON.stringify({}),
+      },
+    );
+    return typeof result.sent === 'number' ? result.sent : 0;
+  },
+};
+
 export const castingApi = {
   favorites: favoritesApi,
   projects: projectsApi,
@@ -2433,6 +2497,7 @@ export const castingApi = {
   googleWorkspace: googleWorkspaceApi,
   linkedInWorkspace: linkedInWorkspaceApi,
   roleRoomBilling: roleRoomBillingApi,
+  roleRoomPush: roleRoomPushApi,
 };
 
 export default castingApi;

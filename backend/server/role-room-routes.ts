@@ -4365,7 +4365,173 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     read_at?: string | null;
   };
 
+  type RoleRoomPushScope = 'producer_team';
+
+  type RoleRoomPushSubscriptionRow = {
+    id: string;
+    user_id: string;
+    project_id: string;
+    scope?: string | null;
+    endpoint?: string | null;
+    p256dh?: string | null;
+    auth?: string | null;
+    user_agent?: string | null;
+    created_at?: string | null;
+    updated_at?: string | null;
+    last_sent_at?: string | null;
+    last_error?: string | null;
+    disabled_at?: string | null;
+  };
+
   const PRODUCER_NOTIFICATION_CLIENT_MATERIALS_ENTITY_ID = 'client-materials';
+
+  type RoleRoomPushPayload = {
+    title: string;
+    body: string;
+    url?: string | null;
+    tag?: string | null;
+    projectId?: string | null;
+    eventType?: string | null;
+    linkedEntityType?: string | null;
+    linkedEntityId?: string | null;
+  };
+
+  function readTrimmedEnv(name: string): string | null {
+    const value = process.env[name];
+    return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+  }
+
+  function getRoleRoomPushConfig() {
+    const publicKey = readTrimmedEnv('VAPID_PUBLIC_KEY');
+    const privateKey = readTrimmedEnv('VAPID_PRIVATE_KEY');
+    if (!publicKey || !privateKey) {
+      return null;
+    }
+
+    return {
+      publicKey,
+      privateKey,
+      subject: readTrimmedEnv('VAPID_SUBJECT') ?? 'mailto:support@theroleroom.com',
+    };
+  }
+
+  function normalizePushEndpoint(value: unknown): string {
+    return typeof value === 'string' ? value.trim() : '';
+  }
+
+  async function getConfiguredWebPushClient() {
+    const config = getRoleRoomPushConfig();
+    if (!config) {
+      return null;
+    }
+
+    const webPushModule = await import('web-push');
+    const webPushClient = (webPushModule.default ?? webPushModule) as typeof import('web-push');
+    webPushClient.setVapidDetails(config.subject, config.publicKey, config.privateKey);
+    return webPushClient;
+  }
+
+  function toWebPushSubscription(row: RoleRoomPushSubscriptionRow) {
+    const endpoint = normalizePushEndpoint(row.endpoint);
+    const p256dh = typeof row.p256dh === 'string' ? row.p256dh.trim() : '';
+    const auth = typeof row.auth === 'string' ? row.auth.trim() : '';
+    if (!endpoint || !p256dh || !auth) {
+      return null;
+    }
+
+    return {
+      endpoint,
+      expirationTime: null,
+      keys: {
+        p256dh,
+        auth,
+      },
+    };
+  }
+
+  async function dispatchRoleRoomPushNotifications(
+    subscriptions: RoleRoomPushSubscriptionRow[],
+    payload: RoleRoomPushPayload,
+  ): Promise<number> {
+    const webPushClient = await getConfiguredWebPushClient();
+    if (!webPushClient || subscriptions.length === 0) {
+      return 0;
+    }
+
+    const serializedPayload = JSON.stringify({
+      title: payload.title,
+      message: payload.body,
+      url: payload.url ?? '/',
+      tag: payload.tag ?? undefined,
+      projectId: payload.projectId ?? undefined,
+      eventType: payload.eventType ?? undefined,
+      linkedEntityType: payload.linkedEntityType ?? undefined,
+      linkedEntityId: payload.linkedEntityId ?? undefined,
+    });
+
+    let sentCount = 0;
+    for (const row of subscriptions) {
+      const subscription = toWebPushSubscription(row);
+      if (!subscription) {
+        continue;
+      }
+
+      try {
+        await webPushClient.sendNotification(subscription, serializedPayload);
+        sentCount += 1;
+        await pool.query(
+          `UPDATE role_room_push_subscriptions
+           SET last_sent_at = NOW(),
+               last_error = NULL,
+               disabled_at = NULL,
+               updated_at = NOW()
+           WHERE id = $1`,
+          [row.id],
+        );
+      } catch (error) {
+        const statusCode = typeof error === 'object' && error !== null
+          ? Number((error as { statusCode?: unknown }).statusCode ?? 0)
+          : 0;
+        const errorMessage = error instanceof Error ? error.message : 'Push notification failed';
+        const shouldDisable = statusCode === 404 || statusCode === 410;
+
+        await pool.query(
+          `UPDATE role_room_push_subscriptions
+           SET last_error = $2,
+               disabled_at = CASE WHEN $3 THEN NOW() ELSE disabled_at END,
+               updated_at = NOW()
+           WHERE id = $1`,
+          [row.id, errorMessage, shouldDisable],
+        );
+      }
+    }
+
+    return sentCount;
+  }
+
+  async function sendRoleRoomPushNotificationToAudience(input: {
+    projectId: string;
+    scope: RoleRoomPushScope;
+    payload: RoleRoomPushPayload;
+  }): Promise<number> {
+    if (!(await ensureProducerWorkflowTables())) {
+      return 0;
+    }
+
+    const subscriptionResult = await pool.query(
+      `SELECT *
+       FROM role_room_push_subscriptions
+       WHERE project_id = $1
+         AND scope = $2
+         AND disabled_at IS NULL`,
+      [input.projectId, input.scope],
+    );
+
+    return dispatchRoleRoomPushNotifications(
+      subscriptionResult.rows as RoleRoomPushSubscriptionRow[],
+      input.payload,
+    );
+  }
 
   function isClientReviewerProjectRole(role?: string | null): boolean {
     return String(role ?? '').trim().toLowerCase() === 'client_reviewer';
@@ -4402,6 +4568,10 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
 
   function canReadProducerNotifications(req: Request, roleRecord: ProjectRoleRecord | null): boolean {
     return getProducerNotificationAudiences(req, roleRecord).length > 0;
+  }
+
+  function canManageProducerPushNotifications(req: Request, roleRecord: ProjectRoleRecord | null): boolean {
+    return getProducerNotificationAudiences(req, roleRecord).includes('producer_team');
   }
 
   async function upsertProducerProjectNotification(input: {
@@ -4444,6 +4614,33 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
 
     const serializedMetadata = JSON.stringify(metadata ?? {});
 
+    const deliverPushNotification = async () => {
+      if (audience !== 'producer_team') {
+        return;
+      }
+
+      try {
+        await sendRoleRoomPushNotificationToAudience({
+          projectId,
+          scope: 'producer_team',
+          payload: {
+            title: title.trim(),
+            body: typeof message === 'string' && message.trim().length > 0
+              ? message.trim()
+              : title.trim(),
+            url: '/',
+            tag: `role-room:${projectId}:${eventType.trim()}:${linkedEntityType ?? 'general'}:${linkedEntityId ?? 'all'}`,
+            projectId,
+            eventType: eventType.trim(),
+            linkedEntityType: linkedEntityType ?? null,
+            linkedEntityId: linkedEntityId ?? null,
+          },
+        });
+      } catch (error) {
+        console.warn('Role Room push delivery skipped:', error);
+      }
+    };
+
     if ((existingResult.rowCount ?? 0) > 0) {
       const notificationId = String(existingResult.rows[0]?.id ?? '');
       const updatedResult = await pool.query(
@@ -4472,6 +4669,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         [notificationId],
       );
 
+      await deliverPushNotification();
       return updatedResult.rows[0] as ProducerProjectNotificationRow;
     }
 
@@ -4499,6 +4697,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       ],
     );
 
+    await deliverPushNotification();
     return insertedResult.rows[0] as ProducerProjectNotificationRow;
   }
 
@@ -5006,6 +5205,28 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
             PRIMARY KEY (notification_id, user_id)
           );
           CREATE INDEX IF NOT EXISTS idx_rr_notification_reads_user ON role_room_project_notification_reads(user_id, read_at DESC);
+
+          CREATE TABLE IF NOT EXISTS role_room_push_subscriptions (
+            id UUID PRIMARY KEY,
+            user_id VARCHAR(255) NOT NULL,
+            project_id VARCHAR(255) NOT NULL REFERENCES casting_projects(id) ON DELETE CASCADE,
+            scope VARCHAR(32) NOT NULL DEFAULT 'producer_team',
+            endpoint TEXT NOT NULL,
+            p256dh TEXT NOT NULL,
+            auth TEXT NOT NULL,
+            user_agent TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            last_sent_at TIMESTAMPTZ,
+            last_error TEXT,
+            disabled_at TIMESTAMPTZ
+          );
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_rr_push_subscriptions_unique_endpoint
+            ON role_room_push_subscriptions(project_id, scope, endpoint);
+          CREATE INDEX IF NOT EXISTS idx_rr_push_subscriptions_project
+            ON role_room_push_subscriptions(project_id, scope, updated_at DESC);
+          CREATE INDEX IF NOT EXISTS idx_rr_push_subscriptions_user
+            ON role_room_push_subscriptions(user_id, updated_at DESC);
         `);
         return true;
       } catch (error) {
@@ -9049,6 +9270,221 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     } catch (error) {
       console.error('Producer notification mark-all-read error:', error);
       res.status(500).json({ error: 'Kunne ikke markere varsler som lest' });
+    }
+  });
+
+  router.get('/projects/:projectId/producer/push-subscription', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!(await ensureProducerWorkflowTables())) {
+      res.status(500).json({ error: 'Producer-tabeller er ikke tilgjengelige' });
+      return;
+    }
+
+    const projectId = req.params.projectId;
+    const userId = getUserId(req);
+
+    if (!userId) {
+      res.status(401).json({ error: 'Mangler bruker for push-varsler' });
+      return;
+    }
+
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canManageProducerPushNotifications(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til mobilvarsler' });
+        return;
+      }
+
+      const result = await pool.query(
+        `SELECT endpoint, last_sent_at, last_error, disabled_at, updated_at
+         FROM role_room_push_subscriptions
+         WHERE project_id = $1
+           AND user_id = $2
+           AND scope = 'producer_team'
+         ORDER BY updated_at DESC`,
+        [projectId, userId],
+      );
+
+      res.json({ items: result.rows });
+    } catch (error) {
+      console.error('Producer push subscription fetch error:', error);
+      res.status(500).json({ error: 'Kunne ikke hente mobilvarsler' });
+    }
+  });
+
+  router.post('/projects/:projectId/producer/push-subscription', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!(await ensureProducerWorkflowTables())) {
+      res.status(500).json({ error: 'Producer-tabeller er ikke tilgjengelige' });
+      return;
+    }
+
+    const projectId = req.params.projectId;
+    const userId = getUserId(req);
+    const payload = req.body as Record<string, unknown>;
+    const subscription = payload.subscription as Record<string, unknown> | null | undefined;
+    const subscriptionKeys = subscription?.keys as Record<string, unknown> | null | undefined;
+    const endpoint = normalizePushEndpoint(subscription?.endpoint);
+    const p256dh = typeof subscriptionKeys?.p256dh === 'string' ? subscriptionKeys.p256dh.trim() : '';
+    const auth = typeof subscriptionKeys?.auth === 'string' ? subscriptionKeys.auth.trim() : '';
+
+    if (!userId) {
+      res.status(401).json({ error: 'Mangler bruker for push-varsler' });
+      return;
+    }
+    if (!endpoint || !p256dh || !auth) {
+      res.status(400).json({ error: 'Ugyldig push-abonnement' });
+      return;
+    }
+
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canManageProducerPushNotifications(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til mobilvarsler' });
+        return;
+      }
+
+      const result = await pool.query(
+        `INSERT INTO role_room_push_subscriptions (
+           id, user_id, project_id, scope, endpoint, p256dh, auth, user_agent,
+           created_at, updated_at, last_sent_at, last_error, disabled_at
+         ) VALUES (
+           $1, $2, $3, 'producer_team', $4, $5, $6, $7,
+           NOW(), NOW(), NULL, NULL, NULL
+         )
+         ON CONFLICT (project_id, scope, endpoint)
+         DO UPDATE SET
+           user_id = EXCLUDED.user_id,
+           p256dh = EXCLUDED.p256dh,
+           auth = EXCLUDED.auth,
+           user_agent = EXCLUDED.user_agent,
+           updated_at = NOW(),
+           last_error = NULL,
+           disabled_at = NULL
+         RETURNING endpoint, last_sent_at, last_error, disabled_at, updated_at`,
+        [
+          crypto.randomUUID(),
+          userId,
+          projectId,
+          endpoint,
+          p256dh,
+          auth,
+          req.get('user-agent') ?? null,
+        ],
+      );
+
+      res.status(201).json({ success: true, subscription: result.rows[0] });
+    } catch (error) {
+      console.error('Producer push subscription create error:', error);
+      res.status(500).json({ error: 'Kunne ikke aktivere mobilvarsler' });
+    }
+  });
+
+  router.delete('/projects/:projectId/producer/push-subscription', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!(await ensureProducerWorkflowTables())) {
+      res.status(500).json({ error: 'Producer-tabeller er ikke tilgjengelige' });
+      return;
+    }
+
+    const projectId = req.params.projectId;
+    const userId = getUserId(req);
+    const endpoint = normalizePushEndpoint((req.body as Record<string, unknown> | null | undefined)?.endpoint);
+
+    if (!userId) {
+      res.status(401).json({ error: 'Mangler bruker for push-varsler' });
+      return;
+    }
+    if (!endpoint) {
+      res.status(400).json({ error: 'endpoint er påkrevd' });
+      return;
+    }
+
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canManageProducerPushNotifications(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til mobilvarsler' });
+        return;
+      }
+
+      await pool.query(
+        `DELETE FROM role_room_push_subscriptions
+         WHERE project_id = $1
+           AND user_id = $2
+           AND scope = 'producer_team'
+           AND endpoint = $3`,
+        [projectId, userId, endpoint],
+      );
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Producer push subscription delete error:', error);
+      res.status(500).json({ error: 'Kunne ikke skru av mobilvarsler' });
+    }
+  });
+
+  router.post('/projects/:projectId/producer/push-subscription/test', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!(await ensureProducerWorkflowTables())) {
+      res.status(500).json({ error: 'Producer-tabeller er ikke tilgjengelige' });
+      return;
+    }
+
+    const projectId = req.params.projectId;
+    const userId = getUserId(req);
+
+    if (!userId) {
+      res.status(401).json({ error: 'Mangler bruker for push-varsler' });
+      return;
+    }
+    if (!getRoleRoomPushConfig()) {
+      res.status(503).json({ error: 'Push-varsler er ikke konfigurert for denne installasjonen' });
+      return;
+    }
+
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canManageProducerPushNotifications(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til mobilvarsler' });
+        return;
+      }
+
+      const subscriptionResult = await pool.query(
+        `SELECT *
+         FROM role_room_push_subscriptions
+         WHERE project_id = $1
+           AND user_id = $2
+           AND scope = 'producer_team'
+           AND disabled_at IS NULL`,
+        [projectId, userId],
+      );
+
+      if ((subscriptionResult.rowCount ?? 0) === 0) {
+        res.status(404).json({ error: 'Ingen aktive mobilvarsler funnet for dette prosjektet' });
+        return;
+      }
+
+      const projectResult = await pool.query(
+        `SELECT name
+         FROM casting_projects
+         WHERE id = $1
+         LIMIT 1`,
+        [projectId],
+      );
+      const projectName = String(projectResult.rows[0]?.name ?? 'The Role Room').trim() || 'The Role Room';
+
+      const sent = await dispatchRoleRoomPushNotifications(
+        subscriptionResult.rows as RoleRoomPushSubscriptionRow[],
+        {
+          title: 'The Role Room',
+          body: `Mobilvarsler er aktive for ${projectName}.`,
+          url: '/',
+          tag: `role-room:test:${projectId}`,
+          projectId,
+          eventType: 'test',
+        },
+      );
+
+      res.json({ success: true, sent });
+    } catch (error) {
+      console.error('Producer push subscription test error:', error);
+      res.status(500).json({ error: 'Kunne ikke sende testvarsel' });
     }
   });
 
