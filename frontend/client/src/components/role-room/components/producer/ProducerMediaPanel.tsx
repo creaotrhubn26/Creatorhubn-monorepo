@@ -273,7 +273,7 @@ interface ClientDashboardCard {
   action?: WorkspaceSupportAction;
 }
 
-type BriefStepKey = 'goal' | 'foundation' | 'contact';
+type BriefStepKey = 'goal' | 'audience' | 'logic' | 'foundation' | 'references' | 'contact';
 type MaterialWizardStepKey = 'source' | 'details' | 'linking' | 'review';
 type MaterialsMode = 'capture' | 'library';
 
@@ -3711,6 +3711,13 @@ export default function ProducerMediaPanel({
     if (!hasText(intakeDraft.deliverables)) {
       items.push({ id: 'deliverables', label: 'Leveranser mangler' });
     }
+    return items;
+  }, [
+    intakeDraft.deliverables,
+    intakeDraft.projectGoal,
+  ]);
+  const missingAudienceFields = useMemo(() => {
+    const items: Array<{ id: string; label: string }> = [];
     if (!hasText(intakeDraft.targetAudience)) {
       items.push({ id: 'target-audience', label: 'Målgruppe mangler' });
     }
@@ -3719,10 +3726,29 @@ export default function ProducerMediaPanel({
     }
     return items;
   }, [
-    intakeDraft.deliverables,
     intakeDraft.keyMessage,
-    intakeDraft.projectGoal,
     intakeDraft.targetAudience,
+  ]);
+  const missingLogicFields = useMemo(() => {
+    const items: Array<{ id: string; label: string }> = [];
+    if (!hasText(contentLogicDraft.objective)) {
+      items.push({ id: 'logic-objective', label: 'Content Logic-mål mangler' });
+    }
+    if (!hasText(contentLogicDraft.audience)) {
+      items.push({ id: 'logic-audience', label: 'Content Logic-målgruppe mangler' });
+    }
+    if (!hasText(contentLogicDraft.hook)) {
+      items.push({ id: 'logic-hook', label: 'Hook mangler' });
+    }
+    if (!hasText(contentLogicDraft.callToAction)) {
+      items.push({ id: 'logic-cta', label: 'CTA mangler' });
+    }
+    return items;
+  }, [
+    contentLogicDraft.audience,
+    contentLogicDraft.callToAction,
+    contentLogicDraft.hook,
+    contentLogicDraft.objective,
   ]);
   const missingFoundationFields = useMemo(() => {
     const items: Array<{ id: string; label: string }> = [];
@@ -3735,15 +3761,28 @@ export default function ProducerMediaPanel({
     if (!hasText(intakeDraft.materialOverview)) {
       items.push({ id: 'material-overview', label: 'Eksisterende materiale er ikke beskrevet' });
     }
-    if (!hasText(intakeDraft.referenceLinks) && !materials.some((item) => item.entry_type === 'reference')) {
-      items.push({ id: 'reference-links', label: 'Referanser mangler' });
-    }
     return items;
   }, [
     intakeDraft.brandNotes,
     intakeDraft.materialOverview,
-    intakeDraft.referenceLinks,
     intakeDraft.timingConstraints,
+  ]);
+  const missingReferenceFields = useMemo(() => {
+    const items: Array<{ id: string; label: string }> = [];
+    if (!hasText(intakeDraft.referenceLinks) && !materials.some((item) => item.entry_type === 'reference')) {
+      items.push({ id: 'reference-links', label: 'Referanser mangler' });
+    }
+    if (contentLogicDraft.proofPoints.length === 0) {
+      items.push({ id: 'proof-points', label: 'Proof points mangler' });
+    }
+    if (!hasText(contentLogicDraft.distributionPlan)) {
+      items.push({ id: 'distribution-plan', label: 'Distribusjonsplan mangler' });
+    }
+    return items;
+  }, [
+    contentLogicDraft.distributionPlan,
+    contentLogicDraft.proofPoints.length,
+    intakeDraft.referenceLinks,
     materials,
   ]);
   const missingContactFields = useMemo(() => {
@@ -3760,56 +3799,123 @@ export default function ProducerMediaPanel({
     intakeDraft.contactName,
   ]);
   const briefMissingItems = useMemo(() => {
-    return [...missingGoalFields, ...missingContactFields];
-  }, [missingContactFields, missingGoalFields]);
+    return [
+      ...missingGoalFields,
+      ...missingAudienceFields,
+      ...missingLogicFields,
+      ...missingContactFields,
+    ];
+  }, [missingAudienceFields, missingContactFields, missingGoalFields, missingLogicFields]);
   const foundationBlockingItems = useMemo(
-    () => [...briefMissingItems, ...missingFoundationFields],
-    [briefMissingItems, missingFoundationFields],
+    () => [...briefMissingItems, ...missingFoundationFields, ...missingReferenceFields],
+    [briefMissingItems, missingFoundationFields, missingReferenceFields],
   );
   const recommendedBriefStep = useMemo<BriefStepKey>(() => {
     if (missingGoalFields.length > 0) {
       return 'goal';
     }
+    if (missingAudienceFields.length > 0) {
+      return 'audience';
+    }
+    if (missingLogicFields.length > 0) {
+      return 'logic';
+    }
     if (missingFoundationFields.length > 0) {
       return 'foundation';
+    }
+    if (missingReferenceFields.length > 0) {
+      return 'references';
     }
     if (missingContactFields.length > 0) {
       return 'contact';
     }
     return 'goal';
-  }, [missingContactFields.length, missingFoundationFields.length, missingGoalFields.length]);
+  }, [
+    missingAudienceFields.length,
+    missingContactFields.length,
+    missingFoundationFields.length,
+    missingGoalFields.length,
+    missingLogicFields.length,
+    missingReferenceFields.length,
+  ]);
   const briefStepProgress = useMemo(() => ({
     goal: {
-      ready: 4 - missingGoalFields.length,
+      ready: 2 - missingGoalFields.length,
+      total: 2,
+    },
+    audience: {
+      ready: 2 - missingAudienceFields.length,
+      total: 2,
+    },
+    logic: {
+      ready: 4 - missingLogicFields.length,
       total: 4,
     },
     foundation: {
-      ready: 4 - missingFoundationFields.length,
-      total: 4,
+      ready: 3 - missingFoundationFields.length,
+      total: 3,
+    },
+    references: {
+      ready: 3 - missingReferenceFields.length,
+      total: 3,
     },
     contact: {
       ready: 2 - missingContactFields.length,
       total: 2,
     },
-  }), [missingContactFields.length, missingFoundationFields.length, missingGoalFields.length]);
+  }), [
+    missingAudienceFields.length,
+    missingContactFields.length,
+    missingFoundationFields.length,
+    missingGoalFields.length,
+    missingLogicFields.length,
+    missingReferenceFields.length,
+  ]);
   const briefStepDescriptors = useMemo(() => ([
     {
       key: 'goal' as const,
-      label: 'Mål',
-      description: 'Mål, leveranse, målgruppe og budskap.',
+      label: 'Mål og leveranse',
+      description: 'Hva prosjektet skal oppnå og hva som faktisk skal leveres.',
       status: briefStepProgress.goal.ready === briefStepProgress.goal.total
         ? 'Klar'
         : `${briefStepProgress.goal.ready}/${briefStepProgress.goal.total} fylt`,
       missing: missingGoalFields,
     },
     {
+      key: 'audience' as const,
+      label: 'Målgruppe og budskap',
+      description: 'Hvem innholdet er for og hva de skal sitte igjen med.',
+      status: briefStepProgress.audience.ready === briefStepProgress.audience.total
+        ? 'Klar'
+        : `${briefStepProgress.audience.ready}/${briefStepProgress.audience.total} fylt`,
+      missing: missingAudienceFields,
+    },
+    {
+      key: 'logic' as const,
+      label: 'Content Logic',
+      description: 'Mål, krok og handling slik produsenten planlegger videre.',
+      status: briefStepProgress.logic.ready === briefStepProgress.logic.total
+        ? 'Klar'
+        : `${briefStepProgress.logic.ready}/${briefStepProgress.logic.total} fylt`,
+      missing: missingLogicFields,
+    },
+    {
       key: 'foundation' as const,
       label: 'Grunnlag',
-      description: 'Tidsrammer, materiale og referanser.',
+      description: 'Tidsrammer, avklaringer og hva som allerede finnes.',
       status: briefStepProgress.foundation.ready === briefStepProgress.foundation.total
         ? 'Klar'
         : `${briefStepProgress.foundation.ready}/${briefStepProgress.foundation.total} fylt`,
       missing: missingFoundationFields,
+    },
+    {
+      key: 'references' as const,
+      label: 'Referanser og bevis',
+      description: 'Referanser, proof points og hvordan innholdet skal fordeles.',
+      status: briefStepProgress.references.ready === briefStepProgress.references.total
+        ? 'Klar'
+        : `${briefStepProgress.references.ready}/${briefStepProgress.references.total} fylt`,
+      missing: missingReferenceFields,
     },
     {
       key: 'contact' as const,
@@ -3820,7 +3926,15 @@ export default function ProducerMediaPanel({
         : `${briefStepProgress.contact.ready}/${briefStepProgress.contact.total} fylt`,
       missing: missingContactFields,
     },
-  ]), [briefStepProgress, missingContactFields, missingFoundationFields, missingGoalFields]);
+  ]), [
+    briefStepProgress,
+    missingAudienceFields,
+    missingContactFields,
+    missingFoundationFields,
+    missingGoalFields,
+    missingLogicFields,
+    missingReferenceFields,
+  ]);
   const activeBriefStepDescriptor = useMemo(
     () => briefStepDescriptors.find((step) => step.key === activeBriefStep) ?? briefStepDescriptors[0],
     [activeBriefStep, briefStepDescriptors],
@@ -3860,12 +3974,35 @@ export default function ProducerMediaPanel({
         'Mål og leveranse er ikke skrevet inn ennå.',
       );
     }
+    if (activeBriefStep === 'audience') {
+      return readFirstNonEmptyString(
+        intakeDraft.targetAudience,
+        intakeDraft.keyMessage,
+        'Målgruppe og kjernebudskap er ikke beskrevet ennå.',
+      );
+    }
+    if (activeBriefStep === 'logic') {
+      return readFirstNonEmptyString(
+        contentLogicDraft.objective,
+        contentLogicDraft.hook,
+        contentLogicDraft.callToAction,
+        'Content Logic er ikke fylt ut ennå.',
+      );
+    }
     if (activeBriefStep === 'foundation') {
       return readFirstNonEmptyString(
         intakeDraft.timingConstraints,
         intakeDraft.materialOverview,
+        intakeDraft.brandNotes,
+        'Avhengigheter, materiale og avklaringer er ikke beskrevet ennå.',
+      );
+    }
+    if (activeBriefStep === 'references') {
+      return readFirstNonEmptyString(
         intakeDraft.referenceLinks,
-        'Avhengigheter, eksisterende materiale og referanser er ikke beskrevet ennå.',
+        stringifyLineSeparatedValues(contentLogicDraft.proofPoints),
+        contentLogicDraft.distributionPlan,
+        'Referanser, proof points og distribusjon er ikke beskrevet ennå.',
       );
     }
     return readFirstNonEmptyString(
@@ -3876,14 +4013,22 @@ export default function ProducerMediaPanel({
     );
   }, [
     activeBriefStep,
+    contentLogicDraft.callToAction,
+    contentLogicDraft.distributionPlan,
+    contentLogicDraft.hook,
+    contentLogicDraft.objective,
+    contentLogicDraft.proofPoints,
     intakeDraft.contactEmail,
     intakeDraft.contactName,
     intakeDraft.contactPhone,
     intakeDraft.deliverables,
+    intakeDraft.brandNotes,
+    intakeDraft.keyMessage,
     intakeDraft.materialOverview,
     intakeDraft.projectGoal,
     intakeDraft.referenceLinks,
     intakeDraft.timingConstraints,
+    intakeDraft.targetAudience,
   ]);
   const materialSourceMissingItems = useMemo(() => {
     const items: Array<{ id: string; label: string }> = [];
@@ -7587,6 +7732,11 @@ export default function ProducerMediaPanel({
                         disabled={!canEditClientInput}
                       />
                     </Box>
+                  </Stack>
+                ) : null}
+
+                {activeBriefStep === 'audience' ? (
+                  <Stack spacing={1.35}>
                     <Box>
                       {renderFieldLead(
                         'Skriv hvem innholdet er for.',
@@ -7613,6 +7763,11 @@ export default function ProducerMediaPanel({
                         disabled={!canEditClientInput}
                       />
                     </Box>
+                  </Stack>
+                ) : null}
+
+                {activeBriefStep === 'logic' ? (
+                  <Stack spacing={1.35}>
                     <Box
                       sx={{
                         p: 1,
@@ -7776,6 +7931,11 @@ export default function ProducerMediaPanel({
                         disabled={!canEditClientInput}
                       />
                     </Box>
+                  </Stack>
+                ) : null}
+
+                {activeBriefStep === 'references' ? (
+                  <Stack spacing={1.35}>
                     <Box>
                       {renderFieldLead(
                         'Legg inn referanser som skal påvirke retningen.',
@@ -8160,7 +8320,7 @@ export default function ProducerMediaPanel({
                         <Button
                           size="small"
                           variant="outlined"
-                          onClick={() => setActiveBriefStep(nextBriefStepDescriptor?.key ?? 'contact')}
+                          onClick={() => setActiveBriefStep(nextBriefStepDescriptor?.key ?? briefStepDescriptors[briefStepDescriptors.length - 1]?.key ?? 'contact')}
                           disabled={activeBriefStepIndex === briefStepDescriptors.length - 1}
                           sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44 }}
                         >
