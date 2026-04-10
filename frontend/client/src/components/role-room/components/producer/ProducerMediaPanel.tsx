@@ -4044,6 +4044,98 @@ export default function ProducerMediaPanel({
     intakeDraft.timingConstraints,
     intakeDraft.targetAudience,
   ]);
+  const briefSummarySections = useMemo(() => ([
+    {
+      key: 'goal',
+      label: 'Mål',
+      value: readFirstNonEmptyString(
+        intakeDraft.projectGoal,
+        contentLogicDraft.objective,
+      ),
+      helper: 'Hva prosjektet skal oppnå.',
+      status: hasText(intakeDraft.projectGoal) || hasText(contentLogicDraft.objective) ? 'filled' : 'missing',
+    },
+    {
+      key: 'deliverables',
+      label: 'Leveranse',
+      value: readFirstNonEmptyString(
+        intakeDraft.deliverables,
+        intakeDraft.materialOverview,
+      ),
+      helper: 'Hva som faktisk skal leveres.',
+      status: hasText(intakeDraft.deliverables) ? 'filled' : 'missing',
+    },
+    {
+      key: 'audience',
+      label: 'Målgruppe',
+      value: readFirstNonEmptyString(
+        intakeDraft.targetAudience,
+        contentLogicDraft.audience,
+      ),
+      helper: 'Hvem innholdet er for.',
+      status: hasText(intakeDraft.targetAudience) || hasText(contentLogicDraft.audience) ? 'filled' : 'missing',
+    },
+    {
+      key: 'message',
+      label: 'Budskap og handling',
+      value: readFirstNonEmptyString(
+        intakeDraft.keyMessage,
+        contentLogicDraft.hook,
+        contentLogicDraft.callToAction,
+      ),
+      helper: 'Hva publikum skal sitte igjen med og gjøre.',
+      status: hasText(intakeDraft.keyMessage) || hasText(contentLogicDraft.hook) || hasText(contentLogicDraft.callToAction) ? 'filled' : 'missing',
+    },
+    {
+      key: 'references',
+      label: 'Referanser og bevis',
+      value: readFirstNonEmptyString(
+        intakeDraft.referenceLinks,
+        stringifyLineSeparatedValues(contentLogicDraft.proofPoints),
+        contentLogicDraft.distributionPlan,
+        briefReferenceMaterials.length > 0 ? `${briefReferenceMaterials.length} referanse${briefReferenceMaterials.length === 1 ? '' : 'r'} lastet opp` : '',
+      ),
+      helper: 'Referanser, proof points og distribusjon.',
+      status: hasText(intakeDraft.referenceLinks)
+        || contentLogicDraft.proofPoints.length > 0
+        || hasText(contentLogicDraft.distributionPlan)
+        || briefReferenceMaterials.length > 0
+        ? 'filled'
+        : 'missing',
+    },
+    {
+      key: 'contact',
+      label: 'Kontakt',
+      value: readFirstNonEmptyString(
+        intakeDraft.contactName,
+        intakeDraft.contactEmail,
+        intakeDraft.contactPhone,
+      ),
+      helper: 'Hvem produsenten følger opp.',
+      status: hasText(intakeDraft.contactName) || hasText(intakeDraft.contactEmail) ? 'filled' : 'missing',
+    },
+  ]), [
+    briefReferenceMaterials.length,
+    contentLogicDraft.audience,
+    contentLogicDraft.callToAction,
+    contentLogicDraft.distributionPlan,
+    contentLogicDraft.hook,
+    contentLogicDraft.objective,
+    contentLogicDraft.proofPoints,
+    intakeDraft.contactEmail,
+    intakeDraft.contactName,
+    intakeDraft.contactPhone,
+    intakeDraft.deliverables,
+    intakeDraft.keyMessage,
+    intakeDraft.materialOverview,
+    intakeDraft.projectGoal,
+    intakeDraft.referenceLinks,
+    intakeDraft.targetAudience,
+  ]);
+  const briefSummaryMissingCount = useMemo(
+    () => briefSummarySections.filter((section) => section.status !== 'filled').length,
+    [briefSummarySections],
+  );
   const materialSourceMissingItems = useMemo(() => {
     const items: Array<{ id: string; label: string }> = [];
     if (!hasText(materialDraft.title)) {
@@ -7587,6 +7679,116 @@ export default function ProducerMediaPanel({
                   ) : null}
                 </Stack>
               </Stack>
+
+              {!isClientReviewerMode ? (
+                <Box
+                  sx={{
+                    mb: 1.05,
+                    p: 1,
+                    borderRadius: 2,
+                    border: '1px solid rgba(96,165,250,0.12)',
+                    bgcolor: 'rgba(2,6,23,0.34)',
+                  }}
+                >
+                  <Stack
+                    direction={{ xs: 'column', md: 'row' }}
+                    spacing={0.8}
+                    justifyContent="space-between"
+                    alignItems={{ xs: 'flex-start', md: 'center' }}
+                    sx={{ mb: 0.95 }}
+                  >
+                    <Box>
+                      <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.98rem' }}>
+                        Brief-sammendrag
+                      </Typography>
+                      <Typography sx={{ color: 'rgba(203,213,225,0.64)', fontSize: '0.76rem', lineHeight: 1.45, mt: 0.2 }}>
+                        Ett skjermkort med det viktigste produsenten trenger for å forstå retning, leveranse og oppfølging.
+                      </Typography>
+                    </Box>
+                    <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap>
+                      <Chip
+                        size="small"
+                        label={`${briefSummarySections.length - briefSummaryMissingCount}/${briefSummarySections.length} felt klare`}
+                        sx={{
+                          bgcolor: 'rgba(56,189,248,0.14)',
+                          color: '#bfdbfe',
+                        }}
+                      />
+                      {briefSummaryMissingCount > 0 ? (
+                        <Chip
+                          size="small"
+                          label={`${briefSummaryMissingCount} mangler fortsatt`}
+                          sx={{
+                            bgcolor: 'rgba(251,191,36,0.14)',
+                            color: '#fde68a',
+                          }}
+                        />
+                      ) : (
+                        <Chip
+                          size="small"
+                          label="Klar til produksjon"
+                          sx={{
+                            bgcolor: 'rgba(34,197,94,0.14)',
+                            color: '#86efac',
+                          }}
+                        />
+                      )}
+                    </Stack>
+                  </Stack>
+
+                  <Box
+                    sx={{
+                      display: 'grid',
+                      gap: 0.8,
+                      gridTemplateColumns: {
+                        xs: '1fr',
+                        md: 'repeat(2, minmax(0, 1fr))',
+                        xl: 'repeat(3, minmax(0, 1fr))',
+                      },
+                    }}
+                  >
+                    {briefSummarySections.map((section) => (
+                      <Box
+                        key={section.key}
+                        sx={{
+                          minWidth: 0,
+                          p: 0.9,
+                          borderRadius: 1.6,
+                          border: section.status === 'filled'
+                            ? '1px solid rgba(56,189,248,0.12)'
+                            : '1px solid rgba(251,191,36,0.12)',
+                          bgcolor: section.status === 'filled'
+                            ? 'rgba(15,23,42,0.28)'
+                            : 'rgba(120,53,15,0.16)',
+                        }}
+                      >
+                        <Stack direction="row" spacing={0.6} justifyContent="space-between" alignItems="flex-start" sx={{ mb: 0.45 }}>
+                          <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.86rem' }}>
+                            {section.label}
+                          </Typography>
+                          <Chip
+                            size="small"
+                            label={section.status === 'filled' ? 'Fylt ut' : 'Mangler'}
+                            sx={{
+                              height: 20,
+                              bgcolor: section.status === 'filled'
+                                ? 'rgba(34,197,94,0.14)'
+                                : 'rgba(251,191,36,0.14)',
+                              color: section.status === 'filled' ? '#86efac' : '#fde68a',
+                            }}
+                          />
+                        </Stack>
+                        <Typography sx={{ color: section.status === 'filled' ? 'rgba(226,232,240,0.92)' : 'rgba(253,230,138,0.92)', fontSize: '0.8rem', lineHeight: 1.5 }}>
+                          {section.value || 'Ikke fylt ut ennå.'}
+                        </Typography>
+                        <Typography sx={{ color: 'rgba(148,163,184,0.72)', fontSize: '0.72rem', lineHeight: 1.4, mt: 0.45 }}>
+                          {section.helper}
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Box>
+                </Box>
+              ) : null}
 
               {!briefWizardEnabled ? (
                 <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap sx={{ mb: 1.05 }}>
