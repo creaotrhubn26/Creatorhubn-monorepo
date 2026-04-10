@@ -1065,6 +1065,66 @@ type ContentProducerResumeTarget = {
   const [adminUser, setAdminUser] = useState<RoleRoomAdminUser | null>(
     () => normalizeAdminUser(authSessionService.getSessionSync().adminUser)
   );
+  const inferredSessionProjectRole = useMemo<UserRoleType | null>(() => {
+    const normalizedLoginAs = String(adminUser?.loginAs || '').trim().toLowerCase();
+    const normalizedRequestedRole = String(adminUser?.requestedRole || '').trim().toLowerCase();
+    const normalizedRole = String(adminUser?.role || '').trim().toLowerCase();
+
+    if (normalizedLoginAs === 'content_producer') {
+      return normalizedRequestedRole === 'client' ? 'client_reviewer' : 'content_producer';
+    }
+
+    if (normalizedLoginAs === 'production_team' && normalizedRequestedRole) {
+      if (normalizedRequestedRole === 'client') {
+        return 'client_reviewer';
+      }
+      if (['film_photographer', 'photographer', 'photo_director', 'photo_assistant'].includes(normalizedRequestedRole)) {
+        return 'content_producer';
+      }
+      if (
+        [
+          'director',
+          'producer',
+          'casting_director',
+          'production_manager',
+          'camera_team',
+          'writer',
+          'script_editor',
+          'reader',
+          'agency',
+        ].includes(normalizedRequestedRole)
+      ) {
+        return normalizedRequestedRole as UserRoleType;
+      }
+    }
+
+    if (!normalizedRole) return null;
+    if (normalizedRole === 'owner' || normalizedRole === 'super_admin') return 'director';
+    if (normalizedRole === 'admin') return 'producer';
+    if (normalizedRole === 'content_producer') return 'content_producer';
+    if (normalizedRole === 'client_reviewer' || normalizedRole === 'client') return 'client_reviewer';
+    if (
+      [
+        'director',
+        'producer',
+        'casting_director',
+        'production_manager',
+        'camera_team',
+        'writer',
+        'script_editor',
+        'reader',
+        'agency',
+      ].includes(normalizedRole)
+    ) {
+      return normalizedRole as UserRoleType;
+    }
+    if (['photographer', 'film_photographer', 'photo_director', 'photo_assistant'].includes(normalizedRole)) {
+      return 'content_producer';
+    }
+    return null;
+  }, [adminUser?.loginAs, adminUser?.requestedRole, adminUser?.role]);
+  const isContentProducerMode = inferredSessionProjectRole === 'content_producer' || producerAccess.isContentProducerMode;
+  const isClientReviewerMode = inferredSessionProjectRole === 'client_reviewer' || producerAccess.isClientReviewerMode;
   const canSwitchRoleRoomRole = adminUser?.role === 'owner' || adminUser?.role === 'admin';
   const [authLoaded, setAuthLoaded] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<CastingProject | null>(null);
@@ -2390,8 +2450,6 @@ type ContentProducerResumeTarget = {
       : profession
         ? PROFESSION_CONFIG[profession]?.name
         : '';
-  const isContentProducerMode = isContentProducerSession || producerAccess.isContentProducerMode;
-  const isClientReviewerMode = isClientReviewerSession || producerAccess.isClientReviewerMode;
   const isReadOnlyProtectedDemoView = Boolean(
     currentProject && isProtectedDemoProject(currentProject) && !canMutateProtectedDemoData,
   );
