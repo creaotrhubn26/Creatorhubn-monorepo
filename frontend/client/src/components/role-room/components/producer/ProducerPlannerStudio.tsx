@@ -10,7 +10,9 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
+  Drawer,
   FormControl,
+  IconButton,
   InputLabel,
   LinearProgress,
   MenuItem,
@@ -28,11 +30,14 @@ import {
   ToggleButton,
   ToggleButtonGroup,
   Typography,
+  useMediaQuery,
 } from '@mui/material';
+import { useTheme } from '@mui/material/styles';
 import {
   AddTask as AddTaskIcon,
   AssignmentTurnedIn as AssignmentTurnedInIcon,
   AutoAwesome as AutoAwesomeIcon,
+  MoreHoriz as MoreHorizIcon,
   MovieFilter as MovieFilterIcon,
   VideoCall as VideoCallIcon,
 } from '@mui/icons-material';
@@ -630,12 +635,15 @@ export default function ProducerPlannerStudio({
   onOpenMedia,
 }: ProducerPlannerStudioProps) {
   const { enqueueSnackbar } = useSnackbar();
+  const theme = useTheme();
+  const isMobilePlanner = useMediaQuery(theme.breakpoints.down('sm'));
   const [viewMode, setViewMode] = useState<PlannerViewMode>('timeline');
   const [selectedPhase, setSelectedPhase] = useState<ProducerPlanningPhase | 'all'>('all');
   const [calendarTypeFilter, setCalendarTypeFilter] = useState<PlannerCalendarEntry['type'] | 'all'>('all');
   const [calendarRoleFilter, setCalendarRoleFilter] = useState<(typeof ROLE_FILTER_OPTIONS)[number]>('all');
   const [coordinationMeetingType, setCoordinationMeetingType] = useState<ProducerPlannerMeetingType>('production');
   const [inboxFilter, setInboxFilter] = useState<ProducerInboxFilter>('all');
+  const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
   const [planningDraft, setPlanningDraft] = useState<ProducerProjectPlanning>(() => normalizeProducerProjectPlanning(project));
   const [savingPlanning, setSavingPlanning] = useState(false);
   const [meetingDialogOpen, setMeetingDialogOpen] = useState(false);
@@ -645,6 +653,7 @@ export default function ProducerPlannerStudio({
   const [clientIntake, setClientIntake] = useState<ProducerClientIntake>(EMPTY_CLIENT_INTAKE);
   const [googleArtifacts, setGoogleArtifacts] = useState<RoleRoomGoogleArtifactRef[]>([]);
   const isContentProducerPlanner = audience === 'content_producer';
+  const useMobileContentProducerPlanner = isContentProducerPlanner && isMobilePlanner;
   const safeProject = useMemo<CastingProject>(() => ({
     ...project,
     crew: Array.isArray(project.crew) ? project.crew : [],
@@ -1463,6 +1472,10 @@ export default function ProducerPlannerStudio({
       .slice(0, 8),
     [timelineItems],
   );
+  const mobilePlannerFeedItems = useMemo(
+    () => timelineUrgentItems.slice(0, 4),
+    [timelineUrgentItems],
+  );
 
   const calendarEntries = useMemo<PlannerCalendarEntry[]>(() => {
     const entries: PlannerCalendarEntry[] = [];
@@ -1717,80 +1730,151 @@ export default function ProducerPlannerStudio({
             </Typography>
           </Box>
 
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
-            <FormControl size="small" sx={{ minWidth: 180 }}>
-              <InputLabel id="planner-phase-filter-label" sx={{ color: 'rgba(226,232,240,0.82)' }}>Fase</InputLabel>
-              <Select
-                labelId="planner-phase-filter-label"
-                label="Fase"
-                value={selectedPhase}
-                onChange={(event) => setSelectedPhase(event.target.value as ProducerPlanningPhase | 'all')}
-                sx={{ color: '#fff', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.28)' } }}
-              >
-                <MenuItem value="all">Alle faser</MenuItem>
-                {PHASE_ORDER.map((phase) => (
-                  <MenuItem key={phase} value={phase}>{PRODUCER_PLANNING_PHASE_LABELS[phase]}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <ToggleButtonGroup
-              exclusive
-              size="small"
-              value={viewMode}
-              onChange={(_, nextValue: PlannerViewMode | null) => {
-                if (nextValue) {
-                  setViewMode(nextValue);
-                }
-              }}
-              sx={{
-                '& .MuiToggleButton-root': {
-                  color: 'rgba(226,232,240,0.84)',
-                  borderColor: 'rgba(148,163,184,0.22)',
-                  textTransform: 'none',
-                  fontWeight: 700,
-                },
-                '& .Mui-selected': {
-                  bgcolor: 'rgba(59,130,246,0.18) !important',
-                  color: '#bfdbfe !important',
-                },
-              }}
-            >
-              {availableViewOptions.map((option) => (
-                <ToggleButton key={option.value} value={option.value}>{option.label}</ToggleButton>
-              ))}
-            </ToggleButtonGroup>
-            {!readOnly ? (
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                <Button
+          {useMobileContentProducerPlanner ? (
+            <Stack spacing={0.9}>
+              <Stack direction="row" spacing={0.7} flexWrap="wrap" useFlexGap>
+                <Chip
                   size="small"
-                  variant="contained"
-                  startIcon={<VideoCallIcon />}
-                  onClick={() => openMeetingDialog()}
-                  sx={{ bgcolor: '#2563eb', textTransform: 'none', fontWeight: 700 }}
-                >
-                  {isContentProducerPlanner ? 'Opprett gjennomgang' : 'Opprett møte'}
-                </Button>
-                <Button
+                  label={contentProducerInboxSummary.followUp > 0 ? `${contentProducerInboxSummary.followUp} krever oppfølging` : 'Rolig nå'}
+                  sx={{
+                    bgcolor: contentProducerInboxSummary.followUp > 0 ? 'rgba(245,158,11,0.18)' : 'rgba(34,197,94,0.16)',
+                    color: contentProducerInboxSummary.followUp > 0 ? '#fde68a' : '#bbf7d0',
+                  }}
+                />
+                <Chip
                   size="small"
-                  variant="outlined"
-                  startIcon={<AssignmentTurnedInIcon />}
-                  onClick={() => openTimelineActionDialog('milestone')}
-                  sx={{ textTransform: 'none', fontWeight: 700 }}
-                >
-                  Legg til milepæl
-                </Button>
-                <Button
-                  size="small"
-                  variant="outlined"
-                  startIcon={<AddTaskIcon />}
-                  onClick={() => openTimelineActionDialog('task')}
-                  sx={{ textTransform: 'none', fontWeight: 700 }}
-                >
-                  {isContentProducerPlanner ? 'Legg til oppfølging' : 'Tildel oppgave'}
-                </Button>
+                  label={notificationsUnreadCount > 0 ? `${notificationsUnreadCount} nye varsler` : 'Ingen nye varsler'}
+                  sx={{
+                    bgcolor: notificationsUnreadCount > 0 ? 'rgba(59,130,246,0.18)' : 'rgba(148,163,184,0.16)',
+                    color: notificationsUnreadCount > 0 ? '#bfdbfe' : '#cbd5e1',
+                  }}
+                />
               </Stack>
-            ) : null}
-          </Stack>
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                  gap: 0.8,
+                }}
+              >
+                {!readOnly ? (
+                  <Button
+                    size="small"
+                    variant="contained"
+                    startIcon={<VideoCallIcon />}
+                    onClick={() => openMeetingDialog('creative')}
+                    sx={{ minHeight: 44, bgcolor: '#2563eb', textTransform: 'none', fontWeight: 700 }}
+                  >
+                    Gjennomgang
+                  </Button>
+                ) : null}
+                {onOpenMedia ? (
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => onOpenMedia({ workspace: 'brief' })}
+                    sx={{ minHeight: 44, textTransform: 'none', fontWeight: 700 }}
+                  >
+                    Prosjektrom
+                  </Button>
+                ) : null}
+                {onOpenReviews ? (
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => onOpenReviews({ focusedPhase: phaseInView })}
+                    sx={{ minHeight: 44, textTransform: 'none', fontWeight: 700 }}
+                  >
+                    Godkjenning
+                  </Button>
+                ) : null}
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<MoreHorizIcon />}
+                  onClick={() => setMobileActionsOpen(true)}
+                  sx={{ minHeight: 44, textTransform: 'none', fontWeight: 700 }}
+                >
+                  Mer
+                </Button>
+              </Box>
+            </Stack>
+          ) : (
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
+              <FormControl size="small" sx={{ minWidth: 180 }}>
+                <InputLabel id="planner-phase-filter-label" sx={{ color: 'rgba(226,232,240,0.82)' }}>Fase</InputLabel>
+                <Select
+                  labelId="planner-phase-filter-label"
+                  label="Fase"
+                  value={selectedPhase}
+                  onChange={(event) => setSelectedPhase(event.target.value as ProducerPlanningPhase | 'all')}
+                  sx={{ color: '#fff', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.28)' } }}
+                >
+                  <MenuItem value="all">Alle faser</MenuItem>
+                  {PHASE_ORDER.map((phase) => (
+                    <MenuItem key={phase} value={phase}>{PRODUCER_PLANNING_PHASE_LABELS[phase]}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <ToggleButtonGroup
+                exclusive
+                size="small"
+                value={viewMode}
+                onChange={(_, nextValue: PlannerViewMode | null) => {
+                  if (nextValue) {
+                    setViewMode(nextValue);
+                  }
+                }}
+                sx={{
+                  '& .MuiToggleButton-root': {
+                    color: 'rgba(226,232,240,0.84)',
+                    borderColor: 'rgba(148,163,184,0.22)',
+                    textTransform: 'none',
+                    fontWeight: 700,
+                  },
+                  '& .Mui-selected': {
+                    bgcolor: 'rgba(59,130,246,0.18) !important',
+                    color: '#bfdbfe !important',
+                  },
+                }}
+              >
+                {availableViewOptions.map((option) => (
+                  <ToggleButton key={option.value} value={option.value}>{option.label}</ToggleButton>
+                ))}
+              </ToggleButtonGroup>
+              {!readOnly ? (
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    startIcon={<VideoCallIcon />}
+                    onClick={() => openMeetingDialog()}
+                    sx={{ bgcolor: '#2563eb', textTransform: 'none', fontWeight: 700 }}
+                  >
+                    {isContentProducerPlanner ? 'Opprett gjennomgang' : 'Opprett møte'}
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<AssignmentTurnedInIcon />}
+                    onClick={() => openTimelineActionDialog('milestone')}
+                    sx={{ textTransform: 'none', fontWeight: 700 }}
+                  >
+                    Legg til milepæl
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<AddTaskIcon />}
+                    onClick={() => openTimelineActionDialog('task')}
+                    sx={{ textTransform: 'none', fontWeight: 700 }}
+                  >
+                    {isContentProducerPlanner ? 'Legg til oppfølging' : 'Tildel oppgave'}
+                  </Button>
+                </Stack>
+              ) : null}
+            </Stack>
+          )}
         </Stack>
 
         <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1} sx={{ mt: 1.15 }}>
@@ -1822,7 +1906,7 @@ export default function ProducerPlannerStudio({
                   <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.92rem' }}>
                     {card.title}
                   </Typography>
-                  <Typography sx={{ color: 'rgba(203,213,225,0.76)', fontSize: '0.82rem', minHeight: 38 }}>
+                  <Typography sx={{ color: 'rgba(203,213,225,0.76)', fontSize: '0.82rem', minHeight: useMobileContentProducerPlanner ? 'auto' : 38 }}>
                     {card.summary}
                   </Typography>
                   <LinearProgress
@@ -1841,7 +1925,9 @@ export default function ProducerPlannerStudio({
                   <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
                     <Chip size="small" label={`${card.progress}% fremdrift`} sx={{ bgcolor: 'rgba(148,163,184,0.16)', color: '#cbd5e1' }} />
                     <Chip size="small" label={`${card.blockers} blockers`} sx={{ bgcolor: 'rgba(248,113,113,0.16)', color: '#fecaca' }} />
-                    <Chip size="small" label={`${card.approvals} approvals`} sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }} />
+                    {!useMobileContentProducerPlanner ? (
+                      <Chip size="small" label={`${card.approvals} approvals`} sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }} />
+                    ) : null}
                   </Stack>
                   <Typography sx={{ color: 'rgba(148,163,184,0.78)', fontSize: '0.76rem' }}>
                     Neste holdepunkt: {card.nextDate ? toDisplayDateTime(`${toDateOnly(card.nextDate)}T09:00:00`) : 'Ikke satt'}
@@ -2285,6 +2371,97 @@ export default function ProducerPlannerStudio({
       )}
 
       {viewMode === 'timeline' ? (
+        useMobileContentProducerPlanner ? (
+          <Stack spacing={1.1}>
+            <Box
+              sx={{
+                p: 1.1,
+                borderRadius: 2,
+                border: '1px solid rgba(148,163,184,0.18)',
+                background: 'rgba(15,23,42,0.78)',
+              }}
+            >
+              <Stack spacing={0.95}>
+                <Box>
+                  <Typography sx={{ color: '#fff', fontWeight: 700 }}>
+                    Mobiloversikt
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.82rem', mt: 0.28 }}>
+                    Det viktigste først: oppfølginger, neste holdepunkt og rask vei tilbake til riktig arbeidsflate.
+                  </Typography>
+                </Box>
+                <Stack spacing={0.75}>
+                  {mobilePlannerFeedItems.length > 0 ? mobilePlannerFeedItems.map((item) => {
+                    const tone = getTimelineStatusTone(item.status);
+                    const styles = getToneStyles(tone);
+                    return (
+                      <Box
+                        key={item.id}
+                        sx={{
+                          p: 0.95,
+                          borderRadius: 1.5,
+                          border: `1px solid ${styles.border}`,
+                          background: styles.background,
+                        }}
+                      >
+                        <Stack spacing={0.55}>
+                          <Stack direction="row" spacing={0.7} alignItems="center" flexWrap="wrap" useFlexGap>
+                            <Chip size="small" label={PRODUCER_PLANNING_PHASE_LABELS[getPhaseForTimelineItem(item)]} sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }} />
+                            <Chip size="small" label={item.status} sx={{ bgcolor: styles.chipBackground, color: styles.chipColor }} />
+                            {hasText(item.due_at) ? (
+                              <Chip size="small" label={toDisplayDateTime(item.due_at)} sx={{ bgcolor: 'rgba(148,163,184,0.16)', color: '#cbd5e1' }} />
+                            ) : null}
+                          </Stack>
+                          <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.92rem' }}>
+                            {item.title}
+                          </Typography>
+                          <Typography sx={{ color: 'rgba(226,232,240,0.74)', fontSize: '0.8rem', lineHeight: 1.45 }}>
+                            {item.description?.trim() || 'Ingen detalj lagt inn ennå.'}
+                          </Typography>
+                        </Stack>
+                      </Box>
+                    );
+                  }) : (
+                    <Alert severity="success">Ingen åpne oppfølgingskort akkurat nå.</Alert>
+                  )}
+                </Stack>
+
+                <Stack direction="row" spacing={0.7} flexWrap="wrap" useFlexGap>
+                  {onOpenMedia ? (
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => onOpenMedia({ workspace: 'brief' })}
+                      sx={{ minHeight: 44, textTransform: 'none', fontWeight: 700 }}
+                    >
+                      Åpne prosjektrom
+                    </Button>
+                  ) : null}
+                  {onOpenReviews ? (
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => onOpenReviews({ focusedPhase: phaseInView })}
+                      sx={{ minHeight: 44, textTransform: 'none', fontWeight: 700 }}
+                    >
+                      Åpne godkjenning
+                    </Button>
+                  ) : null}
+                  {!readOnly ? (
+                    <Button
+                      size="small"
+                      variant="contained"
+                      onClick={() => openMeetingDialog('creative')}
+                      sx={{ minHeight: 44, bgcolor: '#2563eb', textTransform: 'none', fontWeight: 700 }}
+                    >
+                      Ny gjennomgang
+                    </Button>
+                  ) : null}
+                </Stack>
+              </Stack>
+            </Box>
+          </Stack>
+        ) : (
         <Box
           sx={{
             display: 'grid',
@@ -2529,6 +2706,7 @@ export default function ProducerPlannerStudio({
             </Box>
           </Stack>
         </Box>
+        )
       ) : null}
 
       {viewMode === 'calendar' ? (
@@ -2766,6 +2944,147 @@ export default function ProducerPlannerStudio({
             </Table>
           </Box>
         </Stack>
+      ) : null}
+
+      {useMobileContentProducerPlanner ? (
+        <Drawer
+          anchor="bottom"
+          open={mobileActionsOpen}
+          onClose={() => setMobileActionsOpen(false)}
+          PaperProps={{
+            sx: {
+              borderTopLeftRadius: 20,
+              borderTopRightRadius: 20,
+              border: '1px solid rgba(148,163,184,0.18)',
+              borderBottom: 'none',
+              background: 'linear-gradient(180deg, rgba(15,23,42,0.98) 0%, rgba(2,6,23,0.96) 100%)',
+              p: 1.4,
+            },
+          }}
+        >
+          <Stack spacing={1.1}>
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Box>
+                <Typography sx={{ color: '#fff', fontWeight: 700 }}>
+                  Flere handlinger
+                </Typography>
+                <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.8rem' }}>
+                  Sekundære valg og filtre for mobil.
+                </Typography>
+              </Box>
+              <IconButton onClick={() => setMobileActionsOpen(false)} sx={{ color: '#cbd5e1' }}>
+                <MoreHorizIcon />
+              </IconButton>
+            </Stack>
+
+            <FormControl size="small" fullWidth>
+              <InputLabel id="planner-mobile-phase-filter-label" sx={{ color: 'rgba(226,232,240,0.82)' }}>Fase</InputLabel>
+              <Select
+                labelId="planner-mobile-phase-filter-label"
+                label="Fase"
+                value={selectedPhase}
+                onChange={(event) => setSelectedPhase(event.target.value as ProducerPlanningPhase | 'all')}
+                sx={{ color: '#fff', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.28)' } }}
+              >
+                <MenuItem value="all">Alle faser</MenuItem>
+                {PHASE_ORDER.map((phase) => (
+                  <MenuItem key={phase} value={phase}>{PRODUCER_PLANNING_PHASE_LABELS[phase]}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <ToggleButtonGroup
+              exclusive
+              size="small"
+              value={viewMode}
+              onChange={(_, nextValue: PlannerViewMode | null) => {
+                if (nextValue) {
+                  setViewMode(nextValue);
+                  setMobileActionsOpen(false);
+                }
+              }}
+              sx={{
+                alignSelf: 'stretch',
+                '& .MuiToggleButton-root': {
+                  flex: 1,
+                  color: 'rgba(226,232,240,0.84)',
+                  borderColor: 'rgba(148,163,184,0.22)',
+                  textTransform: 'none',
+                  fontWeight: 700,
+                },
+                '& .Mui-selected': {
+                  bgcolor: 'rgba(59,130,246,0.18) !important',
+                  color: '#bfdbfe !important',
+                },
+              }}
+            >
+              {availableViewOptions.map((option) => (
+                <ToggleButton key={option.value} value={option.value}>{option.label}</ToggleButton>
+              ))}
+            </ToggleButtonGroup>
+
+            {!readOnly ? (
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                  gap: 0.8,
+                }}
+              >
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<AssignmentTurnedInIcon />}
+                  onClick={() => {
+                    setMobileActionsOpen(false);
+                    openTimelineActionDialog('milestone');
+                  }}
+                  sx={{ minHeight: 44, textTransform: 'none', fontWeight: 700 }}
+                >
+                  Milepæl
+                </Button>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<AddTaskIcon />}
+                  onClick={() => {
+                    setMobileActionsOpen(false);
+                    openTimelineActionDialog('task');
+                  }}
+                  sx={{ minHeight: 44, textTransform: 'none', fontWeight: 700 }}
+                >
+                  Oppfølging
+                </Button>
+                {onOpenMedia ? (
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => {
+                      setMobileActionsOpen(false);
+                      onOpenMedia({ workspace: 'delivery' });
+                    }}
+                    sx={{ minHeight: 44, textTransform: 'none', fontWeight: 700 }}
+                  >
+                    Levering
+                  </Button>
+                ) : null}
+                {onOpenEconomy ? (
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => {
+                      setMobileActionsOpen(false);
+                      onOpenEconomy({ focusedPhase: phaseInView });
+                    }}
+                    sx={{ minHeight: 44, textTransform: 'none', fontWeight: 700 }}
+                  >
+                    Økonomi
+                  </Button>
+                ) : null}
+              </Box>
+            ) : null}
+          </Stack>
+        </Drawer>
       ) : null}
 
       <Dialog open={meetingDialogOpen} onClose={closeMeetingDialog} fullWidth maxWidth="md">

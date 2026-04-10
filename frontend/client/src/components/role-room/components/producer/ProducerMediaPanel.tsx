@@ -22,7 +22,9 @@ import {
   ToggleButtonGroup,
   Tooltip,
   Typography,
+  useMediaQuery,
 } from '@mui/material';
+import { useTheme } from '@mui/material/styles';
 import {
   AddOutlined as AddOutlinedIcon,
   AdminPanelSettingsOutlined as AdminPanelSettingsOutlinedIcon,
@@ -49,6 +51,7 @@ import {
   UploadFile as UploadFileIcon,
   VerticalSplitOutlined as VerticalSplitOutlinedIcon,
   MoreHoriz as MoreHorizIcon,
+  PhotoCameraOutlined as PhotoCameraOutlinedIcon,
   VideoCallOutlined as VideoCallOutlinedIcon,
 } from '@mui/icons-material';
 import type {
@@ -351,6 +354,16 @@ const MATERIAL_STATUS_LABELS: Record<string, string> = {
   in_review: 'Til gjennomgang',
   approved: 'Godkjent',
   outdated: 'Trenger oppdatering',
+};
+
+const formatFileSize = (value?: number | null): string => {
+  if (typeof value !== 'number' || Number.isNaN(value) || value <= 0) {
+    return 'Ukjent størrelse';
+  }
+  if (value < 1024 * 1024) {
+    return `${Math.max(1, Math.round(value / 1024))} KB`;
+  }
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 };
 
 const formatVideoSecond = (value: number): string => {
@@ -1666,6 +1679,8 @@ export default function ProducerMediaPanel({
   onUnsavedStateChange,
 }: ProducerMediaPanelProps) {
   const { uploadProjectFile, deleteProjectFile, getProjectFiles } = useProject();
+  const theme = useTheme();
+  const isMobileWorkspace = useMediaQuery(theme.breakpoints.down('sm'));
   const useLocalAgreementFallback = shouldUseRoleRoomLocalFallback();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1707,6 +1722,7 @@ export default function ProducerMediaPanel({
     externalUrl: '',
   });
   const [selectedMaterialFile, setSelectedMaterialFile] = useState<File | null>(null);
+  const [selectedMaterialPreviewUrl, setSelectedMaterialPreviewUrl] = useState<string | null>(null);
   const [activeSectionId, setActiveSectionId] = useState(() => normalizeProducerProjectPlanning(project).workspaceNavigation?.activeSectionId ?? getDefaultProducerWorkspaceNavigation().activeSectionId ?? '');
   const [activePageId, setActivePageId] = useState(() => normalizeProducerProjectPlanning(project).workspaceNavigation?.activePageId ?? getDefaultProducerWorkspaceNavigation().activePageId ?? '');
   const activeSectionIdRef = useRef(activeSectionId);
@@ -1749,10 +1765,12 @@ export default function ProducerMediaPanel({
   const brandLogoFileInputRef = useRef<HTMLInputElement | null>(null);
   const brandPreviewFrameRef = useRef<HTMLDivElement | null>(null);
   const materialFileInputRef = useRef<HTMLInputElement | null>(null);
+  const materialCameraInputRef = useRef<HTMLInputElement | null>(null);
   const googleAccessRequestRef = useRef(0);
   const linkedInAccessRequestRef = useRef(0);
   const savedIntakeSnapshotRef = useRef<string>(JSON.stringify(EMPTY_INTAKE));
   const savedPlanningSnapshotRef = useRef<string>('');
+  const mobileWorkspaceDraftHydratedRef = useRef(false);
 
   const canEditClientInput = canContributeClientInput && !readOnly;
   const isBriefLockedByApproval = project.producerWorkflowStatus === 'approved';
@@ -1784,6 +1802,10 @@ export default function ProducerMediaPanel({
   const activeWorkspace = activePage?.surface ?? 'brief';
   const showClientWorkspaceEmptyState = isClientReviewerMode && workspaceSections.length === 0;
   const activeLayout = activeSection?.layout ?? 'split';
+  const mobileWorkspaceDraftStorageKey = useMemo(
+    () => `role-room-mobile-workspace-draft:${projectId}`,
+    [projectId],
+  );
   const isClientPortalView = useMemo(() => {
     if (typeof window === 'undefined') {
       return false;
@@ -1794,6 +1816,10 @@ export default function ProducerMediaPanel({
       return false;
     }
   }, []);
+
+  useEffect(() => {
+    mobileWorkspaceDraftHydratedRef.current = false;
+  }, [projectId]);
 
   useEffect(() => {
     onWorkspaceFocusChange?.({
@@ -2135,6 +2161,86 @@ export default function ProducerMediaPanel({
   useEffect(() => {
     void loadClientWorkspace();
   }, [loadClientWorkspace]);
+
+  useEffect(() => {
+    if (!selectedMaterialFile || !selectedMaterialFile.type.startsWith('image/')) {
+      setSelectedMaterialPreviewUrl(null);
+      return undefined;
+    }
+    const previewUrl = URL.createObjectURL(selectedMaterialFile);
+    setSelectedMaterialPreviewUrl(previewUrl);
+    return () => {
+      URL.revokeObjectURL(previewUrl);
+    };
+  }, [selectedMaterialFile]);
+
+  useEffect(() => {
+    if (!isMobileWorkspace || loading || mobileWorkspaceDraftHydratedRef.current || typeof window === 'undefined') {
+      return;
+    }
+    mobileWorkspaceDraftHydratedRef.current = true;
+    try {
+      const rawDraft = window.localStorage.getItem(mobileWorkspaceDraftStorageKey);
+      if (!rawDraft) {
+        return;
+      }
+      const parsed = JSON.parse(rawDraft) as {
+        intakeDraft?: ProducerClientIntake;
+        activeBriefStep?: BriefStepKey;
+        materialDraft?: ClientMaterialDraft;
+        materialsMode?: MaterialsMode;
+      };
+      if (parsed.intakeDraft && serializeIntakeSnapshot(parsed.intakeDraft) !== savedIntakeSnapshotRef.current) {
+        setIntakeDraft({
+          ...EMPTY_INTAKE,
+          ...parsed.intakeDraft,
+        });
+      }
+      if (parsed.activeBriefStep) {
+        setActiveBriefStep(parsed.activeBriefStep);
+      }
+      if (parsed.materialDraft && JSON.stringify(parsed.materialDraft) !== JSON.stringify(EMPTY_MATERIAL_DRAFT)) {
+        setMaterialDraft({
+          ...EMPTY_MATERIAL_DRAFT,
+          ...parsed.materialDraft,
+        });
+        setMaterialsMode(parsed.materialsMode === 'library' ? 'library' : 'capture');
+      }
+    } catch (storageError) {
+      console.warn('[ProducerMediaPanel] Failed to restore mobile draft', storageError);
+    }
+  }, [isMobileWorkspace, loading, mobileWorkspaceDraftStorageKey, serializeIntakeSnapshot]);
+
+  useEffect(() => {
+    if (!isMobileWorkspace || loading || typeof window === 'undefined') {
+      return undefined;
+    }
+    const timeoutId = window.setTimeout(() => {
+      const intakeDirty = serializeIntakeSnapshot(intakeDraft) !== savedIntakeSnapshotRef.current;
+      const materialDraftDirty = JSON.stringify(materialDraft) !== JSON.stringify(EMPTY_MATERIAL_DRAFT);
+      if (!intakeDirty && !materialDraftDirty) {
+        window.localStorage.removeItem(mobileWorkspaceDraftStorageKey);
+        return;
+      }
+      window.localStorage.setItem(mobileWorkspaceDraftStorageKey, JSON.stringify({
+        intakeDraft,
+        activeBriefStep,
+        materialDraft: materialDraftDirty ? materialDraft : undefined,
+        materialsMode,
+        updatedAt: new Date().toISOString(),
+      }));
+    }, 280);
+    return () => window.clearTimeout(timeoutId);
+  }, [
+    activeBriefStep,
+    intakeDraft,
+    isMobileWorkspace,
+    loading,
+    materialDraft,
+    materialsMode,
+    mobileWorkspaceDraftStorageKey,
+    serializeIntakeSnapshot,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -4520,6 +4626,23 @@ export default function ProducerMediaPanel({
     materialFileInputRef.current?.click();
   }, [createReferenceMaterialDraft, isBriefLockedByApproval, resetMaterialFileInput]);
 
+  const handleOpenBriefReferenceCameraPicker = useCallback(() => {
+    if (isBriefLockedByApproval) {
+      setError('Briefen er låst fordi prosjektet er godkjent.');
+      return;
+    }
+
+    setSelectedMaterialFile(null);
+    resetMaterialFileInput();
+    setMaterialDraft((previous) => ({
+      ...createReferenceMaterialDraft(),
+      title: previous.entryType === 'reference' ? previous.title : '',
+      description: previous.entryType === 'reference' ? previous.description : '',
+      externalUrl: previous.entryType === 'reference' ? previous.externalUrl : '',
+    }));
+    materialCameraInputRef.current?.click();
+  }, [createReferenceMaterialDraft, isBriefLockedByApproval, resetMaterialFileInput]);
+
   const handleSubmitMaterial = useCallback(async () => {
     if (!materialDraft.title.trim()) {
       setError('Materialet må ha en tittel.');
@@ -4620,6 +4743,11 @@ export default function ProducerMediaPanel({
 
   const handleOpenMaterialFilePicker = useCallback(() => {
     materialFileInputRef.current?.click();
+  }, []);
+
+  const handleOpenMaterialCameraPicker = useCallback(() => {
+    setMaterialsMode('capture');
+    materialCameraInputRef.current?.click();
   }, []);
 
   const handleUploadMaterialFile = useCallback(async () => {
@@ -7592,6 +7720,14 @@ export default function ProducerMediaPanel({
             hidden
             onChange={handleMaterialFileSelected}
           />
+          <input
+            ref={materialCameraInputRef}
+            type="file"
+            hidden
+            accept="image/*,video/*"
+            capture="environment"
+            onChange={handleMaterialFileSelected}
+          />
 
           {!showClientWorkspaceEmptyState && activeWorkspace === 'brief' ? (
             <Box
@@ -7674,6 +7810,29 @@ export default function ProducerMediaPanel({
                         {intakeUpdatedLabel}
                       </Typography>
                     </Box>
+                    {isMobileWorkspace ? (
+                      <Box
+                        sx={{
+                          alignSelf: 'flex-start',
+                          px: 0.7,
+                          py: 0.28,
+                          borderRadius: 999,
+                          border: '1px solid rgba(74,222,128,0.14)',
+                          bgcolor: 'rgba(20,83,45,0.24)',
+                        }}
+                      >
+                        <Typography
+                          sx={{
+                            color: '#bbf7d0',
+                            fontSize: '0.64rem',
+                            fontWeight: 700,
+                            lineHeight: 1.1,
+                          }}
+                        >
+                          Mobilutkast lagres automatisk
+                        </Typography>
+                      </Box>
+                    ) : null}
                   </Stack>
                   {canEditClientInput ? (
                     <Button
@@ -7697,7 +7856,7 @@ export default function ProducerMediaPanel({
                 </Stack>
               </Stack>
 
-              {!isClientReviewerMode ? (
+              {!isClientReviewerMode && !isMobileWorkspace ? (
                 <Box
                   sx={{
                     mb: 1.05,
@@ -8257,6 +8416,17 @@ export default function ProducerMediaPanel({
                           >
                             Velg referansefil
                           </Button>
+                          {isMobileWorkspace ? (
+                            <Button
+                              variant="outlined"
+                              startIcon={<PhotoCameraOutlinedIcon />}
+                              onClick={handleOpenBriefReferenceCameraPicker}
+                              disabled={!canEditBriefInput}
+                              sx={{ textTransform: 'none', fontWeight: 700 }}
+                            >
+                              Ta bilde/video
+                            </Button>
+                          ) : null}
                           <Button
                             variant="contained"
                             startIcon={<CloudUploadIcon />}
@@ -8270,6 +8440,59 @@ export default function ProducerMediaPanel({
                           </Button>
                         </Stack>
                       </Stack>
+
+                      {isMobileWorkspace && (selectedMaterialFile || hasText(materialDraft.projectFileId)) ? (
+                        <Box
+                          sx={{
+                            mt: 0.9,
+                            p: 0.9,
+                            borderRadius: 1.4,
+                            border: '1px solid rgba(96,165,250,0.12)',
+                            bgcolor: 'rgba(15,23,42,0.26)',
+                          }}
+                        >
+                          <Stack direction="row" spacing={0.85} alignItems="center">
+                            {selectedMaterialPreviewUrl ? (
+                              <Box
+                                component="img"
+                                src={selectedMaterialPreviewUrl}
+                                alt={selectedMaterialFile?.name || 'Valgt referanse'}
+                                sx={{
+                                  width: 64,
+                                  height: 64,
+                                  borderRadius: 1.2,
+                                  objectFit: 'cover',
+                                  border: '1px solid rgba(148,163,184,0.18)',
+                                }}
+                              />
+                            ) : (
+                              <Box
+                                sx={{
+                                  width: 64,
+                                  height: 64,
+                                  borderRadius: 1.2,
+                                  display: 'grid',
+                                  placeItems: 'center',
+                                  bgcolor: 'rgba(30,41,59,0.82)',
+                                  border: '1px solid rgba(148,163,184,0.18)',
+                                }}
+                              >
+                                <PermMediaIcon sx={{ color: '#bfdbfe' }} />
+                              </Box>
+                            )}
+                            <Box sx={{ minWidth: 0 }}>
+                              <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.84rem' }}>
+                                {selectedMaterialFile?.name || materialDraft.fileName || materialDraft.title || 'Referanse klar'}
+                              </Typography>
+                              <Typography sx={{ color: 'rgba(203,213,225,0.68)', fontSize: '0.74rem', mt: 0.18 }}>
+                                {selectedMaterialFile
+                                  ? `${selectedMaterialFile.type || 'Fil'} · ${formatFileSize(selectedMaterialFile.size)}`
+                                  : 'Prosjektfil er allerede koblet og klar til lagring.'}
+                              </Typography>
+                            </Box>
+                          </Stack>
+                        </Box>
+                      ) : null}
 
                       {briefReferenceDraftActive && (selectedMaterialFile || hasText(materialDraft.projectFileId)) ? (
                         <Box
@@ -12628,6 +12851,16 @@ export default function ProducerMediaPanel({
                             >
                               Velg fil
                             </Button>
+                            {isMobileWorkspace ? (
+                              <Button
+                                variant="outlined"
+                                startIcon={<PhotoCameraOutlinedIcon />}
+                                onClick={handleOpenMaterialCameraPicker}
+                                sx={{ textTransform: 'none', fontWeight: 700 }}
+                              >
+                                Kamera
+                              </Button>
+                            ) : null}
                             <Button
                               variant="contained"
                               startIcon={<CloudUploadIcon />}
@@ -12641,6 +12874,58 @@ export default function ProducerMediaPanel({
                             </Button>
                           </Stack>
                         </Stack>
+                        {isMobileWorkspace && (selectedMaterialFile || hasText(materialDraft.projectFileId)) ? (
+                          <Box
+                            sx={{
+                              mt: 0.9,
+                              p: 0.9,
+                              borderRadius: 1.4,
+                              border: '1px solid rgba(96,165,250,0.12)',
+                              bgcolor: 'rgba(15,23,42,0.26)',
+                            }}
+                          >
+                            <Stack direction="row" spacing={0.85} alignItems="center">
+                              {selectedMaterialPreviewUrl ? (
+                                <Box
+                                  component="img"
+                                  src={selectedMaterialPreviewUrl}
+                                  alt={selectedMaterialFile?.name || 'Valgt fil'}
+                                  sx={{
+                                    width: 64,
+                                    height: 64,
+                                    borderRadius: 1.2,
+                                    objectFit: 'cover',
+                                    border: '1px solid rgba(148,163,184,0.18)',
+                                  }}
+                                />
+                              ) : (
+                                <Box
+                                  sx={{
+                                    width: 64,
+                                    height: 64,
+                                    borderRadius: 1.2,
+                                    display: 'grid',
+                                    placeItems: 'center',
+                                    bgcolor: 'rgba(30,41,59,0.82)',
+                                    border: '1px solid rgba(148,163,184,0.18)',
+                                  }}
+                                >
+                                  <PermMediaIcon sx={{ color: '#bfdbfe' }} />
+                                </Box>
+                              )}
+                              <Box sx={{ minWidth: 0 }}>
+                                <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.84rem' }}>
+                                  {selectedMaterialFile?.name || materialDraft.fileName || materialDraft.title || 'Fil klar'}
+                                </Typography>
+                                <Typography sx={{ color: 'rgba(203,213,225,0.68)', fontSize: '0.74rem', mt: 0.18 }}>
+                                  {selectedMaterialFile
+                                    ? `${selectedMaterialFile.type || 'Fil'} · ${formatFileSize(selectedMaterialFile.size)}`
+                                    : 'Prosjektfil er koblet og klar til materialet.'}
+                                </Typography>
+                              </Box>
+                            </Stack>
+                          </Box>
+                        ) : null}
                       </Box>
                     </Box>
                   ) : !isMaterialWizardActive ? (
@@ -12718,6 +13003,16 @@ export default function ProducerMediaPanel({
                             >
                               Velg fil
                             </Button>
+                            {isMobileWorkspace ? (
+                              <Button
+                                variant="outlined"
+                                startIcon={<PhotoCameraOutlinedIcon />}
+                                onClick={handleOpenMaterialCameraPicker}
+                                sx={{ textTransform: 'none', fontWeight: 700 }}
+                              >
+                                Kamera
+                              </Button>
+                            ) : null}
                             <Button
                               variant="contained"
                               startIcon={<CloudUploadIcon />}
@@ -12731,6 +13026,58 @@ export default function ProducerMediaPanel({
                             </Button>
                           </Stack>
                         </Stack>
+                        {isMobileWorkspace && (selectedMaterialFile || hasText(materialDraft.projectFileId)) ? (
+                          <Box
+                            sx={{
+                              mt: 0.9,
+                              p: 0.9,
+                              borderRadius: 1.4,
+                              border: '1px solid rgba(96,165,250,0.12)',
+                              bgcolor: 'rgba(15,23,42,0.26)',
+                            }}
+                          >
+                            <Stack direction="row" spacing={0.85} alignItems="center">
+                              {selectedMaterialPreviewUrl ? (
+                                <Box
+                                  component="img"
+                                  src={selectedMaterialPreviewUrl}
+                                  alt={selectedMaterialFile?.name || 'Valgt fil'}
+                                  sx={{
+                                    width: 64,
+                                    height: 64,
+                                    borderRadius: 1.2,
+                                    objectFit: 'cover',
+                                    border: '1px solid rgba(148,163,184,0.18)',
+                                  }}
+                                />
+                              ) : (
+                                <Box
+                                  sx={{
+                                    width: 64,
+                                    height: 64,
+                                    borderRadius: 1.2,
+                                    display: 'grid',
+                                    placeItems: 'center',
+                                    bgcolor: 'rgba(30,41,59,0.82)',
+                                    border: '1px solid rgba(148,163,184,0.18)',
+                                  }}
+                                >
+                                  <PermMediaIcon sx={{ color: '#bfdbfe' }} />
+                                </Box>
+                              )}
+                              <Box sx={{ minWidth: 0 }}>
+                                <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.84rem' }}>
+                                  {selectedMaterialFile?.name || materialDraft.fileName || materialDraft.title || 'Fil klar'}
+                                </Typography>
+                                <Typography sx={{ color: 'rgba(203,213,225,0.68)', fontSize: '0.74rem', mt: 0.18 }}>
+                                  {selectedMaterialFile
+                                    ? `${selectedMaterialFile.type || 'Fil'} · ${formatFileSize(selectedMaterialFile.size)}`
+                                    : 'Prosjektfil er koblet og klar til materialet.'}
+                                </Typography>
+                              </Box>
+                            </Stack>
+                          </Box>
+                        ) : null}
                       </Box>
                     </Box>
                   ) : null

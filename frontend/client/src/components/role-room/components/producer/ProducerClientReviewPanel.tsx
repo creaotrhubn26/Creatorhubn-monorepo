@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type TouchEvent as ReactTouchEvent } from 'react';
 import {
   Alert,
   Box,
@@ -6,6 +6,7 @@ import {
   Chip,
   Divider,
   FormControl,
+  IconButton,
   InputLabel,
   ListSubheader,
   MenuItem,
@@ -13,8 +14,12 @@ import {
   Stack,
   TextField,
   Typography,
+  useMediaQuery,
 } from '@mui/material';
+import { useTheme } from '@mui/material/styles';
 import {
+  ChevronLeft as ChevronLeftIcon,
+  ChevronRight as ChevronRightIcon,
   RateReview as RateReviewIcon,
   Send as SendIcon,
 } from '@mui/icons-material';
@@ -452,6 +457,8 @@ export default function ProducerClientReviewPanel({
   onOpenTimeline,
 }: ProducerClientReviewPanelProps) {
   const { enqueueSnackbar } = useSnackbar();
+  const theme = useTheme();
+  const isMobileReview = useMediaQuery(theme.breakpoints.down('sm'));
   const { items, summary, loading, error, createReview, addComment, setDecision } = useProducerReviews(projectId);
   const [agreementsById, setAgreementsById] = useState<Record<string, ProjectAgreement>>({});
   const [clientIntake, setClientIntake] = useState<ProducerClientIntake>(EMPTY_CLIENT_INTAKE);
@@ -475,6 +482,8 @@ export default function ProducerClientReviewPanel({
   const [savingDeliveryLogoById, setSavingDeliveryLogoById] = useState<Record<string, boolean>>({});
   const [pendingFocus, setPendingFocus] = useState<ProducerWorkflowFocusPayload | null>(null);
   const [highlightedReviewId, setHighlightedReviewId] = useState<string | null>(null);
+  const [mobileReviewIndex, setMobileReviewIndex] = useState(0);
+  const mobileReviewSwipeStartRef = useRef<number | null>(null);
   const useLocalFallback = shouldUseRoleRoomLocalFallback();
   const isEconomyManagedDraftType = ECONOMY_MANAGED_REVIEW_TYPES.has(newType);
   const selectedApprovalTemplate = normalizeApprovalTemplate(newType);
@@ -781,6 +790,14 @@ export default function ProducerClientReviewPanel({
     () => sortedReviewItems.filter((review) => !isResolvedClientGroundingReview(review)),
     [sortedReviewItems],
   );
+  const mobileFocusedReview = useMemo(
+    () => (isMobileReview ? visibleReviewItems[mobileReviewIndex] ?? null : null),
+    [isMobileReview, mobileReviewIndex, visibleReviewItems],
+  );
+  const displayedReviewItems = useMemo(
+    () => (isMobileReview ? (mobileFocusedReview ? [mobileFocusedReview] : []) : visibleReviewItems),
+    [isMobileReview, mobileFocusedReview, visibleReviewItems],
+  );
   const statusDriverReview = useMemo(() => {
     if (projectWorkflowStatus === 'changes_requested') {
       return sortedReviewItems.find((review) => (
@@ -797,6 +814,27 @@ export default function ProducerClientReviewPanel({
     }
     return null;
   }, [projectWorkflowStatus, sortedReviewItems]);
+
+  useEffect(() => {
+    if (!isMobileReview) {
+      return;
+    }
+    if (visibleReviewItems.length === 0) {
+      setMobileReviewIndex(0);
+      return;
+    }
+    setMobileReviewIndex((previous) => Math.min(previous, visibleReviewItems.length - 1));
+  }, [isMobileReview, visibleReviewItems.length]);
+
+  useEffect(() => {
+    if (!isMobileReview || !highlightedReviewId) {
+      return;
+    }
+    const targetIndex = visibleReviewItems.findIndex((review) => review.id === highlightedReviewId);
+    if (targetIndex >= 0) {
+      setMobileReviewIndex(targetIndex);
+    }
+  }, [highlightedReviewId, isMobileReview, visibleReviewItems]);
   const getEconomyFocusForReview = useCallback((review: ProducerClientReview): Partial<ProducerWorkflowFocusPayload> | null => {
     const metadata = asRecord(review.metadata);
     const approvalTemplate = normalizeApprovalTemplate(readFirstNonEmptyString(
@@ -1225,6 +1263,12 @@ export default function ProducerClientReviewPanel({
     }
 
     setHighlightedReviewId(resolvedReviewId);
+    if (isMobileReview) {
+      const targetIndex = visibleReviewItems.findIndex((review) => review.id === resolvedReviewId);
+      if (targetIndex >= 0) {
+        setMobileReviewIndex(targetIndex);
+      }
+    }
     const target = reviewRefs.current[resolvedReviewId];
     if (target) {
       target.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1236,7 +1280,7 @@ export default function ProducerClientReviewPanel({
     }, 2600);
 
     return () => window.clearTimeout(timeoutId);
-  }, [pendingFocus, resolveFocusedReviewId]);
+  }, [isMobileReview, pendingFocus, resolveFocusedReviewId, visibleReviewItems]);
 
   const buildReviewPortalUrl = useCallback((review: ProducerClientReview): string => {
     const focus = getWorkspaceFocusForReview(review);
@@ -1488,6 +1532,36 @@ export default function ProducerClientReviewPanel({
     setDecisionReasonByReview((prev) => ({ ...prev, [review.id]: '' }));
     setDecisionTimestampByReview((prev) => ({ ...prev, [review.id]: '' }));
   }, [decisionReasonByReview, decisionTimestampByReview, setDecision, syncAgreementFromReviewDecision]);
+
+  const stepMobileReview = useCallback((direction: 'prev' | 'next') => {
+    if (visibleReviewItems.length === 0) {
+      return;
+    }
+    setMobileReviewIndex((previous) => {
+      if (direction === 'prev') {
+        return previous <= 0 ? 0 : previous - 1;
+      }
+      return previous >= visibleReviewItems.length - 1 ? visibleReviewItems.length - 1 : previous + 1;
+    });
+  }, [visibleReviewItems.length]);
+
+  const handleMobileReviewTouchStart = useCallback((event: ReactTouchEvent<HTMLDivElement>) => {
+    mobileReviewSwipeStartRef.current = event.touches[0]?.clientX ?? null;
+  }, []);
+
+  const handleMobileReviewTouchEnd = useCallback((event: ReactTouchEvent<HTMLDivElement>) => {
+    const startX = mobileReviewSwipeStartRef.current;
+    const endX = event.changedTouches[0]?.clientX ?? null;
+    mobileReviewSwipeStartRef.current = null;
+    if (startX === null || endX === null) {
+      return;
+    }
+    const deltaX = endX - startX;
+    if (Math.abs(deltaX) < 48) {
+      return;
+    }
+    stepMobileReview(deltaX < 0 ? 'next' : 'prev');
+  }, [stepMobileReview]);
 
   return (
     <Box
@@ -2109,12 +2183,67 @@ export default function ProducerClientReviewPanel({
       <Divider sx={{ borderColor: 'rgba(148,163,184,0.2)' }} />
 
       <Stack spacing={1.2}>
+        {isMobileReview && mobileFocusedReview ? (
+          <Box
+            sx={{
+              p: 1.05,
+              borderRadius: 1.6,
+              border: '1px solid rgba(96,165,250,0.2)',
+              background: 'rgba(8,47,73,0.28)',
+            }}
+          >
+            <Stack spacing={0.8}>
+              <Stack direction="row" justifyContent="space-between" spacing={1} alignItems="center">
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography sx={{ color: '#fff', fontWeight: 700 }}>
+                    Mobilreview
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(191,219,254,0.76)', fontSize: '0.78rem' }}>
+                    {`${mobileReviewIndex + 1} av ${visibleReviewItems.length} · Swipe sideveis mellom elementene`}
+                  </Typography>
+                </Box>
+                <Chip
+                  size="small"
+                  label={getProducerReviewStatusLabel(mobileFocusedReview.status)}
+                  sx={{ bgcolor: 'rgba(59,130,246,0.18)', color: '#bfdbfe' }}
+                />
+              </Stack>
+              <Stack direction="row" spacing={0.5} alignItems="center">
+                <IconButton
+                  size="small"
+                  onClick={() => stepMobileReview('prev')}
+                  disabled={mobileReviewIndex === 0}
+                  sx={{ color: '#e2e8f0' }}
+                >
+                  <ChevronLeftIcon />
+                </IconButton>
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>
+                    {mobileFocusedReview.title}
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.78rem', mt: 0.12 }}>
+                    {getProducerReviewTypeLabel(mobileFocusedReview.review_type)}
+                  </Typography>
+                </Box>
+                <IconButton
+                  size="small"
+                  onClick={() => stepMobileReview('next')}
+                  disabled={mobileReviewIndex >= visibleReviewItems.length - 1}
+                  sx={{ color: '#e2e8f0' }}
+                >
+                  <ChevronRightIcon />
+                </IconButton>
+              </Stack>
+            </Stack>
+          </Box>
+        ) : null}
+
         {visibleReviewItems.length === 0 ? (
           <Typography sx={{ color: 'rgba(148,163,184,0.82)' }}>
             Ingen åpne reviews opprettet enda.
           </Typography>
         ) : (
-          visibleReviewItems.map((review) => {
+          displayedReviewItems.map((review) => {
             const entityLabel = getEntityLabel(review.target_entity_type, review.target_entity_id);
             const linkedAgreement = review.target_entity_type === 'project_agreement' && review.target_entity_id
               ? agreementsById[review.target_entity_id]
@@ -2185,6 +2314,8 @@ export default function ProducerClientReviewPanel({
               <Box
                 key={review.id}
                 ref={(node: HTMLDivElement | null) => { reviewRefs.current[review.id] = node; }}
+                onTouchStart={isMobileReview ? handleMobileReviewTouchStart : undefined}
+                onTouchEnd={isMobileReview ? handleMobileReviewTouchEnd : undefined}
                 sx={{
                   borderRadius: 1.5,
                   border: highlightedReviewId === review.id
@@ -2280,39 +2411,78 @@ export default function ProducerClientReviewPanel({
                   </Typography>
                 )}
                 {isAccountAccessReview ? (
-                  <Box
-                    sx={{
-                      mt: 0.9,
-                      p: 0.95,
-                      borderRadius: 1.2,
-                      border: '1px solid rgba(45,212,191,0.2)',
-                      bgcolor: 'rgba(15,23,42,0.42)',
-                    }}
-                  >
-                    <Typography sx={{ color: '#e2e8f0', fontSize: '0.8rem', fontWeight: 800 }}>
-                      Konto og tilgang i denne saken
-                    </Typography>
-                    <Stack spacing={0.5} sx={{ mt: 0.35 }}>
-                      {linkedAccountAccessEntries.map((entry) => (
-                        <Box key={entry.platform}>
-                          <Typography sx={{ color: '#ccfbf1', fontSize: '0.78rem', fontWeight: 700 }}>
-                            {`${PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[entry.platform]} · ${PRODUCER_ACCOUNT_ACCESS_STATUS_LABELS[entry.status]}`}
-                          </Typography>
-                          <Typography sx={{ color: 'rgba(203,213,225,0.76)', fontSize: '0.76rem', mt: 0.18 }}>
-                            {`${PRODUCER_ACCOUNT_ACCESS_METHOD_LABELS[entry.method]} · ${entry.accessScope || 'Scope ikke satt'}`}
-                          </Typography>
-                          <Typography sx={{ color: 'rgba(191,219,254,0.84)', fontSize: '0.75rem', mt: 0.18 }}>
-                            {`Invite / konto: ${entry.inviteTarget || entry.accountLabel || 'Ikke satt'}${entry.clientOwnerLabel ? ` · Eier: ${entry.clientOwnerLabel}` : ''}`}
-                          </Typography>
-                        </Box>
-                      ))}
-                      <Typography sx={{ color: 'rgba(191,219,254,0.82)', fontSize: '0.75rem', mt: 0.1 }}>
-                        2-faktor skal bli hos kontoeier. Role Room skal bare styre invite, OAuth og status.
+                  isMobileReview ? (
+                    <Box
+                      sx={{
+                        mt: 0.9,
+                        p: 0.85,
+                        borderRadius: 1.2,
+                        border: '1px solid rgba(45,212,191,0.2)',
+                        bgcolor: 'rgba(15,23,42,0.42)',
+                      }}
+                    >
+                      <Typography sx={{ color: '#ccfbf1', fontSize: '0.78rem', fontWeight: 700 }}>
+                        {linkedAccountAccessEntries[0]
+                          ? `${PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[linkedAccountAccessEntries[0].platform]} · ${PRODUCER_ACCOUNT_ACCESS_STATUS_LABELS[linkedAccountAccessEntries[0].status]}`
+                          : 'Kontotilgang må avklares'}
                       </Typography>
-                    </Stack>
-                  </Box>
+                      <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.75rem', mt: 0.18 }}>
+                        Swipe videre eller åpne arbeidsflaten for full tilgangsdetalj.
+                      </Typography>
+                    </Box>
+                  ) : (
+                    <Box
+                      sx={{
+                        mt: 0.9,
+                        p: 0.95,
+                        borderRadius: 1.2,
+                        border: '1px solid rgba(45,212,191,0.2)',
+                        bgcolor: 'rgba(15,23,42,0.42)',
+                      }}
+                    >
+                      <Typography sx={{ color: '#e2e8f0', fontSize: '0.8rem', fontWeight: 800 }}>
+                        Konto og tilgang i denne saken
+                      </Typography>
+                      <Stack spacing={0.5} sx={{ mt: 0.35 }}>
+                        {linkedAccountAccessEntries.map((entry) => (
+                          <Box key={entry.platform}>
+                            <Typography sx={{ color: '#ccfbf1', fontSize: '0.78rem', fontWeight: 700 }}>
+                              {`${PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[entry.platform]} · ${PRODUCER_ACCOUNT_ACCESS_STATUS_LABELS[entry.status]}`}
+                            </Typography>
+                            <Typography sx={{ color: 'rgba(203,213,225,0.76)', fontSize: '0.76rem', mt: 0.18 }}>
+                              {`${PRODUCER_ACCOUNT_ACCESS_METHOD_LABELS[entry.method]} · ${entry.accessScope || 'Scope ikke satt'}`}
+                            </Typography>
+                            <Typography sx={{ color: 'rgba(191,219,254,0.84)', fontSize: '0.75rem', mt: 0.18 }}>
+                              {`Invite / konto: ${entry.inviteTarget || entry.accountLabel || 'Ikke satt'}${entry.clientOwnerLabel ? ` · Eier: ${entry.clientOwnerLabel}` : ''}`}
+                            </Typography>
+                          </Box>
+                        ))}
+                        <Typography sx={{ color: 'rgba(191,219,254,0.82)', fontSize: '0.75rem', mt: 0.1 }}>
+                          2-faktor skal bli hos kontoeier. Role Room skal bare styre invite, OAuth og status.
+                        </Typography>
+                      </Stack>
+                    </Box>
+                  )
                 ) : null}
                 {linkedDeliveryItem && linkedDeliveryVariantResolution ? (
+                  isMobileReview ? (
+                    <Box
+                      sx={{
+                        mt: 0.9,
+                        p: 0.85,
+                        borderRadius: 1.2,
+                        border: '1px solid rgba(59,130,246,0.2)',
+                        bgcolor: 'rgba(15,23,42,0.42)',
+                      }}
+                    >
+                      <Typography sx={{ color: '#bfdbfe', fontSize: '0.78rem', fontWeight: 700 }}>
+                        {`${linkedDeliveryItem.title} · ${linkedDeliveryVariantResolution.resolvedLabel}`}
+                      </Typography>
+                      <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.75rem', mt: 0.18 }}>
+                        Logo og leveransedetaljer er komprimert på mobil. Åpne arbeidsflaten for full kontroll.
+                      </Typography>
+                    </Box>
+                  ) : (
                   <Box
                     sx={{
                       mt: 0.9,
@@ -2393,6 +2563,7 @@ export default function ProducerClientReviewPanel({
                       </FormControl>
                     </Stack>
                   </Box>
+                  )
                 ) : null}
                 {isContentLogicReview ? (
                   <Typography sx={{ color: 'rgba(191,219,254,0.86)', fontSize: '0.8rem', mt: 0.65, fontWeight: 600 }}>
