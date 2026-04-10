@@ -905,6 +905,12 @@ export default function NewProjectCreationModal({
     () => generatedClientInvite?.inviteUrl || '',
     [generatedClientInvite?.inviteUrl],
   );
+  const resolveClientInviteAccessEndLabel = useCallback(() => (
+    projectData.eventDate?.trim() || generatedClientInvite?.accessEndsAt || ''
+  ), [
+    generatedClientInvite?.accessEndsAt,
+    projectData.eventDate,
+  ]);
   const canPrepareClientInvite = useMemo(() => (
     isCastingPlanner &&
     Boolean(inviteProjectId) &&
@@ -919,13 +925,6 @@ export default function NewProjectCreationModal({
     inviteProjectId,
     isCastingPlanner,
     resolveClientInviteAccessEndLabel,
-  ]);
-
-  const resolveClientInviteAccessEndLabel = useCallback(() => (
-    projectData.eventDate?.trim() || generatedClientInvite?.accessEndsAt || ''
-  ), [
-    generatedClientInvite?.accessEndsAt,
-    projectData.eventDate,
   ]);
 
   const buildDefaultClientInviteSubject = useCallback(() => (
