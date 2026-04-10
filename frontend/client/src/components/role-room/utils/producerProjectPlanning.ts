@@ -7,6 +7,10 @@ import type {
   ProducerAccountAccessWorkspace,
   ProducerActivationPlan,
   ProducerBrandGuide,
+  ProducerCollaborationAgreementModel,
+  ProducerCollaborationCompensationModel,
+  ProducerCollaborationCostCoverage,
+  ProducerCollaborationTerms,
   ProducerBrandLogoDetection,
   ProducerBrandLogoVariantSelection,
   ProducerBrandLogoVariantType,
@@ -507,6 +511,39 @@ export const PRODUCER_ACCOUNT_ACCESS_STATUS_LABELS: Record<ProducerAccountAccess
   revoked: 'Avsluttet',
 };
 
+export const PRODUCER_COLLABORATION_STATUS_LABELS: Record<NonNullable<ProducerCollaborationTerms['status']>, string> = {
+  discovery: 'Kartlegging',
+  proposal_sent: 'Forslag sendt',
+  under_review: 'Til vurdering',
+  pilot_active: 'Oppstartsperiode',
+  active: 'Aktivt samarbeid',
+  paused: 'Satt på vent',
+  completed: 'Avsluttet',
+};
+
+export const PRODUCER_COLLABORATION_AGREEMENT_MODEL_LABELS: Record<ProducerCollaborationAgreementModel, string> = {
+  one_time_project: 'Engangsprosjekt',
+  retainer: 'Fast samarbeid',
+  startup_growth: 'Startup · vekstmodell',
+  startup_equity: 'Startup · eierskapsmodell',
+  holding_company: 'Holdingselskap / investeringsløp',
+  hybrid: 'Hybridmodell',
+};
+
+export const PRODUCER_COLLABORATION_COMPENSATION_MODEL_LABELS: Record<ProducerCollaborationCompensationModel, string> = {
+  fixed_fee: 'Fast honorar',
+  growth_based: 'Vekstbasert modell',
+  equity: 'Eierskapsmodell',
+  hybrid: 'Hybrid kompensasjon',
+};
+
+export const PRODUCER_COLLABORATION_COST_COVERAGE_LABELS: Record<ProducerCollaborationCostCoverage, string> = {
+  client: 'Kunden dekker',
+  producer: 'Innholdsprodusent dekker',
+  shared: 'Delt kostnad',
+  case_by_case: 'Avklares per behov',
+};
+
 export const PRODUCER_MEETING_WORKSPACE_STATUS_LABELS: Record<ProducerMeetingWorkspaceStatus, string> = {
   planned: 'Planlagt',
   lobby: 'Lobby',
@@ -896,6 +933,36 @@ const DEFAULT_DELIVERY_WORKFLOW: ProducerDeliveryWorkflow = {
   deliveryCadence: 'Send første utkast med tydelig frist for tilbakemelding. Loggfør hver revisjon og bekreft leveringsklar final i samme tråd.',
 };
 
+const DEFAULT_COLLABORATION_TERMS: ProducerCollaborationTerms = {
+  status: 'discovery',
+  agreementModel: 'one_time_project',
+  agreementLabel: '',
+  commercialVehicle: '',
+  agreementSummary: '',
+  deliverablesInScopeVisible: true,
+  deliverablesInScope: [],
+  productionCadence: '',
+  productionResponsibilities: [],
+  brandingResponsibilities: [],
+  marketingResponsibilities: [],
+  startupEconomicModel: '',
+  costItems: [
+    { id: 'extras-cast', label: 'Statister', coveredBy: 'case_by_case', notes: '', amountLabel: '', reimbursable: true },
+    { id: 'extras-props', label: 'Rekvisitter', coveredBy: 'case_by_case', notes: '', amountLabel: '', reimbursable: true },
+    { id: 'extras-locations', label: 'Lokasjoner', coveredBy: 'case_by_case', notes: '', amountLabel: '', reimbursable: true },
+    { id: 'extras-ads', label: 'Annonsering', coveredBy: 'case_by_case', notes: '', amountLabel: '', reimbursable: true },
+    { id: 'extras-graphics', label: 'Grafiske elementer', coveredBy: 'case_by_case', notes: '', amountLabel: '', reimbursable: true },
+    { id: 'extras-vendors', label: 'Eksterne leverandører', coveredBy: 'case_by_case', notes: '', amountLabel: '', reimbursable: true },
+  ],
+  compensationModel: 'fixed_fee',
+  compensationSummary: '',
+  evaluationPlan: '',
+  clientUsageRights: '',
+  producerPortfolioRights: '',
+  workloadCap: '',
+  liabilityExclusions: '',
+};
+
 const DEFAULT_MEETING_WORKSPACE: ProducerMeetingWorkspace = {
   status: 'planned',
   sessionLabel: 'Klientsync',
@@ -984,6 +1051,43 @@ const normalizeProducerAccountAccessPlatform = (value: unknown): ProducerAccount
     : 'google'
 );
 
+const normalizeProducerCollaborationAgreementModel = (value: unknown): ProducerCollaborationAgreementModel => (
+  value === 'retainer'
+  || value === 'startup_growth'
+  || value === 'startup_equity'
+  || value === 'holding_company'
+  || value === 'hybrid'
+    ? value
+    : 'one_time_project'
+);
+
+const normalizeProducerCollaborationStatus = (value: unknown): NonNullable<ProducerCollaborationTerms['status']> => (
+  value === 'proposal_sent'
+  || value === 'under_review'
+  || value === 'pilot_active'
+  || value === 'active'
+  || value === 'paused'
+  || value === 'completed'
+    ? value
+    : 'discovery'
+);
+
+const normalizeProducerCollaborationCompensationModel = (value: unknown): ProducerCollaborationCompensationModel => (
+  value === 'growth_based'
+  || value === 'equity'
+  || value === 'hybrid'
+    ? value
+    : 'fixed_fee'
+);
+
+const normalizeProducerCollaborationCostCoverage = (value: unknown): ProducerCollaborationCostCoverage => (
+  value === 'client'
+  || value === 'producer'
+  || value === 'shared'
+    ? value
+    : 'case_by_case'
+);
+
 const normalizeProducerAccountAccessMethod = (value: unknown, fallback: ProducerAccountAccessMethod): ProducerAccountAccessMethod => (
   value === 'oauth'
   || value === 'business_invite'
@@ -1037,6 +1141,67 @@ const normalizeProducerAccountAccessWorkspace = (
     securityNotes: hasText(record.securityNotes) ? record.securityNotes.trim() : fallback.securityNotes,
     revokePlan: hasText(record.revokePlan) ? record.revokePlan.trim() : fallback.revokePlan,
     updatedAt: hasText(record.updatedAt) ? record.updatedAt.trim() : fallback.updatedAt,
+  };
+};
+
+const normalizeProducerCollaborationTerms = (value: unknown): ProducerCollaborationTerms => {
+  const record = asRecord(value);
+  const costItemsSource = Array.isArray(record.costItems) ? record.costItems : DEFAULT_COLLABORATION_TERMS.costItems ?? [];
+
+  return {
+    status: normalizeProducerCollaborationStatus(record.status),
+    agreementModel: normalizeProducerCollaborationAgreementModel(record.agreementModel),
+    agreementLabel: hasText(record.agreementLabel) ? record.agreementLabel.trim() : '',
+    commercialVehicle: hasText(record.commercialVehicle) ? record.commercialVehicle.trim() : '',
+    agreementSummary: hasText(record.agreementSummary) ? record.agreementSummary.trim() : '',
+    deliverablesInScopeVisible: typeof record.deliverablesInScopeVisible === 'boolean'
+      ? record.deliverablesInScopeVisible
+      : DEFAULT_COLLABORATION_TERMS.deliverablesInScopeVisible,
+    deliverablesInScope: normalizeStringArray(record.deliverablesInScope),
+    productionCadence: hasText(record.productionCadence) ? record.productionCadence.trim() : '',
+    productionResponsibilities: normalizeStringArray(record.productionResponsibilities),
+    brandingResponsibilities: normalizeStringArray(record.brandingResponsibilities),
+    marketingResponsibilities: normalizeStringArray(record.marketingResponsibilities),
+    startupEconomicModel: hasText(record.startupEconomicModel) ? record.startupEconomicModel.trim() : '',
+    costItems: costItemsSource.map((item, index) => {
+      const entry = asRecord(item);
+      return {
+        id: hasText(entry.id) ? entry.id.trim() : `collaboration-cost-${index + 1}`,
+        label: hasText(entry.label) ? entry.label.trim() : `Kostnad ${index + 1}`,
+        coveredBy: normalizeProducerCollaborationCostCoverage(entry.coveredBy),
+        notes: hasText(entry.notes) ? entry.notes.trim() : '',
+        amountLabel: hasText(entry.amountLabel) ? entry.amountLabel.trim() : '',
+        reimbursable: typeof entry.reimbursable === 'boolean' ? entry.reimbursable : true,
+        receiptFileId: hasText(entry.receiptFileId) ? entry.receiptFileId.trim() : '',
+        receiptFileName: hasText(entry.receiptFileName) ? entry.receiptFileName.trim() : '',
+        receiptUrl: hasText(entry.receiptUrl) ? entry.receiptUrl.trim() : '',
+        receiptMerchant: hasText(entry.receiptMerchant) ? entry.receiptMerchant.trim() : '',
+        receiptDate: hasText(entry.receiptDate) ? entry.receiptDate.trim() : '',
+        receiptAmountValue: typeof entry.receiptAmountValue === 'number' && Number.isFinite(entry.receiptAmountValue)
+          ? entry.receiptAmountValue
+          : typeof entry.receiptAmountValue === 'string' && Number.isFinite(Number(entry.receiptAmountValue))
+            ? Number(entry.receiptAmountValue)
+            : undefined,
+        ocrStatus: entry.ocrStatus === 'pending'
+          || entry.ocrStatus === 'completed'
+          || entry.ocrStatus === 'failed'
+          || entry.ocrStatus === 'not_supported'
+          ? entry.ocrStatus
+          : undefined,
+        ocrConfidence: entry.ocrConfidence === 'low'
+          || entry.ocrConfidence === 'medium'
+          || entry.ocrConfidence === 'high'
+          ? entry.ocrConfidence
+          : undefined,
+      };
+    }),
+    compensationModel: normalizeProducerCollaborationCompensationModel(record.compensationModel),
+    compensationSummary: hasText(record.compensationSummary) ? record.compensationSummary.trim() : '',
+    evaluationPlan: hasText(record.evaluationPlan) ? record.evaluationPlan.trim() : '',
+    clientUsageRights: hasText(record.clientUsageRights) ? record.clientUsageRights.trim() : '',
+    producerPortfolioRights: hasText(record.producerPortfolioRights) ? record.producerPortfolioRights.trim() : '',
+    workloadCap: hasText(record.workloadCap) ? record.workloadCap.trim() : '',
+    liabilityExclusions: hasText(record.liabilityExclusions) ? record.liabilityExclusions.trim() : '',
   };
 };
 
@@ -2477,6 +2642,14 @@ export const getDefaultProducerProjectPlanning = (projectName: string): Producer
     entries: DEFAULT_ACCOUNT_ACCESS.entries.map((entry) => ({ ...entry })),
   },
   deliveryWorkflow: { ...DEFAULT_DELIVERY_WORKFLOW },
+  collaborationTerms: {
+    ...DEFAULT_COLLABORATION_TERMS,
+    deliverablesInScope: [...(DEFAULT_COLLABORATION_TERMS.deliverablesInScope ?? [])],
+    productionResponsibilities: [...(DEFAULT_COLLABORATION_TERMS.productionResponsibilities ?? [])],
+    brandingResponsibilities: [...(DEFAULT_COLLABORATION_TERMS.brandingResponsibilities ?? [])],
+    marketingResponsibilities: [...(DEFAULT_COLLABORATION_TERMS.marketingResponsibilities ?? [])],
+    costItems: (DEFAULT_COLLABORATION_TERMS.costItems ?? []).map((item) => ({ ...item })),
+  },
   meetingWorkspace: {
     ...DEFAULT_MEETING_WORKSPACE,
     sessionLabel: `Klientsync · ${projectName}`,
@@ -2575,6 +2748,7 @@ export const normalizeProducerProjectPlanning = (project: CastingProject): Produ
       backupRoutine: hasText(deliveryWorkflow.backupRoutine) ? deliveryWorkflow.backupRoutine.trim() : '',
       deliveryCadence: hasText(deliveryWorkflow.deliveryCadence) ? deliveryWorkflow.deliveryCadence.trim() : '',
     },
+    collaborationTerms: normalizeProducerCollaborationTerms(source.collaborationTerms),
     meetingWorkspace: normalizeMeetingWorkspace(source.meetingWorkspace, defaults.meetingWorkspace),
     workspaceNavigation: normalizeProducerWorkspaceNavigation(source.workspaceNavigation),
     updatedAt: hasText(source.updatedAt) ? source.updatedAt.trim() : undefined,

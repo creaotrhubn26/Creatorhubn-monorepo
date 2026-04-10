@@ -1153,6 +1153,75 @@ export interface ProducerDeliveryWorkflow {
   deliveryCadence?: string;
 }
 
+export type ProducerCollaborationAgreementModel =
+  | 'one_time_project'
+  | 'retainer'
+  | 'startup_growth'
+  | 'startup_equity'
+  | 'holding_company'
+  | 'hybrid';
+
+export type ProducerCollaborationStatus =
+  | 'discovery'
+  | 'proposal_sent'
+  | 'under_review'
+  | 'pilot_active'
+  | 'active'
+  | 'paused'
+  | 'completed';
+
+export type ProducerCollaborationCostCoverage =
+  | 'client'
+  | 'producer'
+  | 'shared'
+  | 'case_by_case';
+
+export type ProducerCollaborationCompensationModel =
+  | 'fixed_fee'
+  | 'growth_based'
+  | 'equity'
+  | 'hybrid';
+
+export interface ProducerCollaborationCostItem {
+  id: string;
+  label: string;
+  coveredBy: ProducerCollaborationCostCoverage;
+  notes?: string;
+  amountLabel?: string;
+  reimbursable?: boolean;
+  receiptFileId?: string;
+  receiptFileName?: string;
+  receiptUrl?: string;
+  receiptMerchant?: string;
+  receiptDate?: string;
+  receiptAmountValue?: number;
+  ocrStatus?: 'pending' | 'completed' | 'failed' | 'not_supported';
+  ocrConfidence?: 'low' | 'medium' | 'high';
+}
+
+export interface ProducerCollaborationTerms {
+  status?: ProducerCollaborationStatus;
+  agreementModel?: ProducerCollaborationAgreementModel;
+  agreementLabel?: string;
+  commercialVehicle?: string;
+  agreementSummary?: string;
+  deliverablesInScopeVisible?: boolean;
+  deliverablesInScope?: string[];
+  productionCadence?: string;
+  productionResponsibilities?: string[];
+  brandingResponsibilities?: string[];
+  marketingResponsibilities?: string[];
+  startupEconomicModel?: string;
+  costItems?: ProducerCollaborationCostItem[];
+  compensationModel?: ProducerCollaborationCompensationModel;
+  compensationSummary?: string;
+  evaluationPlan?: string;
+  clientUsageRights?: string;
+  producerPortfolioRights?: string;
+  workloadCap?: string;
+  liabilityExclusions?: string;
+}
+
 export interface ProducerClientIntake {
   projectGoal?: string;
   deliverables?: string;
@@ -1414,6 +1483,7 @@ export interface ProducerProjectPlanning {
   brandGuide: ProducerBrandGuide;
   accountAccess: ProducerAccountAccessWorkspace;
   deliveryWorkflow: ProducerDeliveryWorkflow;
+  collaborationTerms?: ProducerCollaborationTerms;
   meetingWorkspace: ProducerMeetingWorkspace;
   workspaceNavigation?: ProducerWorkspaceNavigation;
   updatedAt?: string;

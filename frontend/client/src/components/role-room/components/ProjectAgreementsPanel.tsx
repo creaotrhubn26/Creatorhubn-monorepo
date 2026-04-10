@@ -29,14 +29,17 @@ import {
   Description as DescriptionIcon,
   Draw as DrawIcon,
   OpenInNew as OpenInNewIcon,
+  ReceiptLong as ReceiptLongIcon,
   Send as SendIcon,
   TaskAlt as TaskAltIcon,
   Visibility as VisibilityIcon,
 } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
+import { useProject } from '@/contexts/ProjectContext';
 import type {
   Candidate,
   CastingProject,
+  ProducerCollaborationTerms,
   RoleRoomGoogleAgreementSignatureStatus,
 } from '../models/casting';
 import { useProducerReviews } from '../hooks/useProducerReviews';
@@ -90,12 +93,22 @@ import {
   type ExtraAgreementType,
   type ProjectAgreementDraft,
 } from '../utils/projectAgreements';
+import {
+  normalizeProducerProjectPlanning,
+  PRODUCER_COLLABORATION_AGREEMENT_MODEL_LABELS,
+  PRODUCER_COLLABORATION_COMPENSATION_MODEL_LABELS,
+  PRODUCER_COLLABORATION_COST_COVERAGE_LABELS,
+  PRODUCER_COLLABORATION_STATUS_LABELS,
+} from '../utils/producerProjectPlanning';
+import { getAbsoluteProjectFileUrl, normalizeProjectFileRecord } from '../utils/projectFiles';
+import { runReceiptOcr } from '../utils/receiptOcr';
 import type { ClientPortalWorkspaceFocus } from '../utils/clientPortal';
 import OffersContractsPanel from './OffersContractsPanel';
 
 interface ProjectAgreementsPanelProps {
   project: CastingProject;
   readOnly?: boolean;
+  onProjectUpdated?: (project: CastingProject) => Promise<void> | void;
   onCandidateStatusChange?: (candidateId: string, status: string) => void;
   onOpenReviews?: (focus?: Partial<ProducerWorkflowFocusPayload>) => void;
   onOpenTimeline?: (focus?: Partial<ProducerWorkflowFocusPayload>) => void;
@@ -168,6 +181,19 @@ const GOOGLE_SIGNATURE_TRANSITION_LABELS: Record<RoleRoomGoogleAgreementSignatur
   changes_requested: 'Endringer ønsket',
   error: 'Feil i signaturflyten',
 };
+
+const RECEIPT_OCR_STATUS_LABELS = {
+  pending: 'Leser kvittering',
+  completed: 'OCR klar',
+  failed: 'OCR feilet',
+  not_supported: 'Kun fil lagret',
+} as const;
+
+const RECEIPT_OCR_CONFIDENCE_LABELS = {
+  low: 'Lav sikkerhet',
+  medium: 'Middels sikkerhet',
+  high: 'Høy sikkerhet',
+} as const;
 
 const getReviewSummaryCopy = (review: ProducerClientReview): string => {
   const timestamp = formatAgreementEventTime(review.decision_at ?? review.requested_at);
@@ -251,12 +277,14 @@ const buildAgreementSectionsForDraft = (
 const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
   project,
   readOnly = false,
+  onProjectUpdated,
   onCandidateStatusChange,
   onOpenReviews,
   onOpenTimeline,
   onOpenMedia,
 }) => {
   const { enqueueSnackbar } = useSnackbar();
+  const { uploadProjectFile } = useProject();
   const [tabValue, setTabValue] = useState(0);
   const [agreements, setAgreements] = useState<ProjectAgreement[]>([]);
   const [loading, setLoading] = useState(true);
@@ -302,6 +330,9 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
     startDate: '',
     endDate: '',
   });
+  const [collaborationDraft, setCollaborationDraft] = useState<ProducerCollaborationTerms>({});
+  const [uploadingReceiptItemId, setUploadingReceiptItemId] = useState<string | null>(null);
+  const [receiptOcrProgress, setReceiptOcrProgress] = useState<Record<string, number>>({});
   const useLocalFallback = shouldUseRoleRoomLocalFallback();
   const agreementRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const autoSyncedAgreementMarkersRef = useRef<Record<string, string>>({});
@@ -314,6 +345,198 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
       session.adminUser?.email,
     ) ?? '';
   }, []);
+  const producerPlanning = useMemo(
+    () => normalizeProducerProjectPlanning(project),
+    [project],
+  );
+  const collaborationTerms = producerPlanning.collaborationTerms ?? null;
+  const canEditCollaborationTerms = !readOnly && typeof onProjectUpdated === 'function';
+
+  const updateCollaborationTerms = useCallback(async (
+    updater: (current: ProducerCollaborationTerms) => ProducerCollaborationTerms,
+  ) => {
+    if (!onProjectUpdated) {
+      return;
+    }
+    const nextCurrent = normalizeProducerProjectPlanning(project).collaborationTerms ?? {};
+    const nextTerms = updater(nextCurrent);
+    const nextProject: CastingProject = {
+      ...project,
+      updatedAt: new Date().toISOString(),
+      producerPlanning: {
+        ...normalizeProducerProjectPlanning(project),
+        collaborationTerms: nextTerms,
+        updatedAt: new Date().toISOString(),
+      },
+    };
+    await onProjectUpdated(nextProject);
+  }, [onProjectUpdated, project]);
+
+  const updateCollaborationTextList = useCallback(async (
+    key: keyof Pick<
+      ProducerCollaborationTerms,
+      'deliverablesInScope'
+      | 'productionResponsibilities'
+      | 'brandingResponsibilities'
+      | 'marketingResponsibilities'
+    >,
+    value: string,
+  ) => {
+    const items = value
+      .split('\n')
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+    await updateCollaborationTerms((current) => ({
+      ...current,
+      [key]: items,
+    }));
+  }, [updateCollaborationTerms]);
+
+  const updateCollaborationCostItemDraft = useCallback((
+    itemId: string,
+    updater: (item: NonNullable<ProducerCollaborationTerms['costItems']>[number]) => NonNullable<ProducerCollaborationTerms['costItems']>[number],
+  ) => {
+    setCollaborationDraft((prev) => ({
+      ...prev,
+      costItems: (prev.costItems ?? []).map((entry) => (
+        entry.id === itemId ? updater(entry) : entry
+      )),
+    }));
+  }, []);
+
+  const persistCollaborationCostItem = useCallback(async (
+    itemId: string,
+    updater: (item: NonNullable<ProducerCollaborationTerms['costItems']>[number]) => NonNullable<ProducerCollaborationTerms['costItems']>[number],
+  ) => {
+    await updateCollaborationTerms((current) => ({
+      ...current,
+      costItems: (current.costItems ?? []).map((entry) => (
+        entry.id === itemId ? updater(entry) : entry
+      )),
+    }));
+  }, [updateCollaborationTerms]);
+
+  useEffect(() => {
+    setCollaborationDraft(producerPlanning.collaborationTerms ?? {});
+  }, [producerPlanning.collaborationTerms, project.id]);
+
+  const persistCollaborationDraft = useCallback(async () => {
+    if (!canEditCollaborationTerms) {
+      return;
+    }
+    await updateCollaborationTerms(() => ({
+      ...collaborationDraft,
+    }));
+    enqueueSnackbar('Samarbeidsrammen er oppdatert.', { variant: 'success' });
+  }, [canEditCollaborationTerms, collaborationDraft, enqueueSnackbar, updateCollaborationTerms]);
+
+  const deliverablesInScopeValue = (collaborationDraft.deliverablesInScope ?? []).join('\n');
+  const productionResponsibilitiesValue = (collaborationDraft.productionResponsibilities ?? []).join('\n');
+  const brandingResponsibilitiesValue = (collaborationDraft.brandingResponsibilities ?? []).join('\n');
+  const marketingResponsibilitiesValue = (collaborationDraft.marketingResponsibilities ?? []).join('\n');
+  const handleReceiptUpload = useCallback(async (itemId: string, file: File) => {
+    if (!canEditCollaborationTerms) {
+      return;
+    }
+
+    const currentItem = (collaborationDraft.costItems ?? []).find((entry) => entry.id === itemId);
+    if (!currentItem) {
+      return;
+    }
+
+    setUploadingReceiptItemId(itemId);
+    updateCollaborationCostItemDraft(itemId, (entry) => ({
+      ...entry,
+      ocrStatus: file.type.startsWith('image/') ? 'pending' : 'not_supported',
+      ocrConfidence: undefined,
+    }));
+
+    try {
+      const ocrResult = await runReceiptOcr(file, {
+        onProgress: (progress) => {
+          setReceiptOcrProgress((prev) => ({ ...prev, [itemId]: progress.progress }));
+        },
+      });
+
+      const uploadResponse = await uploadProjectFile(project.id, file, {
+        module: 'role_room_collaboration_receipt',
+        source: 'role_room_collaboration_cost',
+        collaborationCostItemId: itemId,
+        collaborationCostLabel: currentItem.label,
+        receiptMerchant: ocrResult.merchant,
+        receiptDate: ocrResult.date,
+        receiptAmountValue: ocrResult.amountValue,
+        receiptAmountLabel: ocrResult.amountLabel,
+        ocrStatus: ocrResult.status,
+        ocrConfidence: ocrResult.confidence,
+        ocrText: ocrResult.text,
+      });
+
+      const uploadedFile = normalizeProjectFileRecord(uploadResponse);
+      const receiptUrl = uploadedFile ? getAbsoluteProjectFileUrl(uploadedFile.downloadUrl) || uploadedFile.downloadUrl || '' : '';
+      const summaryParts = [
+        ocrResult.merchant,
+        ocrResult.amountLabel,
+        ocrResult.date,
+      ].filter((value) => typeof value === 'string' && value.trim().length > 0);
+
+      const nextNotes = currentItem.notes?.trim()
+        ? currentItem.notes
+        : summaryParts.length > 0
+          ? `Kvittering: ${summaryParts.join(' · ')}`
+          : currentItem.notes ?? '';
+
+      const updateItem = (
+        entry: NonNullable<ProducerCollaborationTerms['costItems']>[number],
+      ): NonNullable<ProducerCollaborationTerms['costItems']>[number] => ({
+        ...entry,
+        receiptFileId: uploadedFile?.id ?? entry.receiptFileId ?? '',
+        receiptFileName: uploadedFile?.name ?? file.name,
+        receiptUrl: receiptUrl || entry.receiptUrl || '',
+        receiptMerchant: ocrResult.merchant || entry.receiptMerchant || '',
+        receiptDate: ocrResult.date || entry.receiptDate || '',
+        receiptAmountValue: typeof ocrResult.amountValue === 'number'
+          ? ocrResult.amountValue
+          : entry.receiptAmountValue,
+        amountLabel: ocrResult.amountLabel || entry.amountLabel || '',
+        notes: nextNotes,
+        ocrStatus: ocrResult.status,
+        ocrConfidence: ocrResult.confidence,
+      });
+
+      updateCollaborationCostItemDraft(itemId, updateItem);
+      await persistCollaborationCostItem(itemId, updateItem);
+
+      if (ocrResult.status === 'completed') {
+        enqueueSnackbar('Kvittering lagret og lest med OCR.', { variant: 'success' });
+      } else {
+        enqueueSnackbar('Kvittering lagret. OCR trengte manuell oppfolging.', { variant: 'info' });
+      }
+    } catch (receiptError) {
+      console.error('[ProjectAgreementsPanel] Failed to upload collaboration receipt', receiptError);
+      updateCollaborationCostItemDraft(itemId, (entry) => ({
+        ...entry,
+        ocrStatus: 'failed',
+        ocrConfidence: 'low',
+      }));
+      enqueueSnackbar('Kunne ikke laste opp kvitteringen.', { variant: 'error' });
+    } finally {
+      setUploadingReceiptItemId((current) => (current === itemId ? null : current));
+      setReceiptOcrProgress((prev) => {
+        const next = { ...prev };
+        delete next[itemId];
+        return next;
+      });
+    }
+  }, [
+    canEditCollaborationTerms,
+    collaborationDraft.costItems,
+    enqueueSnackbar,
+    persistCollaborationCostItem,
+    project.id,
+    updateCollaborationCostItemDraft,
+    uploadProjectFile,
+  ]);
   const {
     items: reviewItems,
     summary: reviewSummary,
@@ -1754,6 +1977,483 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
           ) : null}
         </Stack>
       </Box>
+
+      <Card
+        sx={{
+          mb: 2.5,
+          bgcolor: 'rgba(15,23,42,0.74)',
+          border: '1px solid rgba(148,163,184,0.16)',
+          borderRadius: 2.5,
+        }}
+      >
+        <CardContent>
+          <Stack spacing={1.5}>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.2} justifyContent="space-between">
+              <Box>
+                <Typography sx={{ color: '#fff', fontWeight: 800 }}>
+                  Samarbeidsramme
+                </Typography>
+                <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.88rem', maxWidth: 860 }}>
+                  Avklar hvilken avtale prosjektet faktisk går på, hva som ligger innenfor scope, hvem som dekker ekstrakostnader og hvordan kompensasjonen er tenkt i oppstartsperioden og etterpå.
+                </Typography>
+              </Box>
+              <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                <Chip
+                  size="small"
+                  label={PRODUCER_COLLABORATION_STATUS_LABELS[collaborationDraft.status ?? 'discovery']}
+                  sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }}
+                />
+                <Chip
+                  size="small"
+                  label={PRODUCER_COLLABORATION_AGREEMENT_MODEL_LABELS[collaborationDraft.agreementModel ?? 'one_time_project']}
+                  sx={{ bgcolor: 'rgba(139,92,246,0.16)', color: '#ddd6fe' }}
+                />
+                <Chip
+                  size="small"
+                  label={PRODUCER_COLLABORATION_COMPENSATION_MODEL_LABELS[collaborationDraft.compensationModel ?? 'fixed_fee']}
+                  sx={{ bgcolor: 'rgba(16,185,129,0.16)', color: '#86efac' }}
+                />
+                <Chip
+                  size="small"
+                  label={collaborationDraft.deliverablesInScopeVisible === false ? 'Scope skjult for klient' : 'Scope synlig for klient'}
+                  sx={{
+                    bgcolor: collaborationDraft.deliverablesInScopeVisible === false ? 'rgba(148,163,184,0.16)' : 'rgba(251,191,36,0.16)',
+                    color: collaborationDraft.deliverablesInScopeVisible === false ? '#cbd5e1' : '#fde68a',
+                  }}
+                />
+              </Stack>
+            </Stack>
+
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 12, md: 4 }}>
+                <FormControl fullWidth>
+                  <InputLabel>Status</InputLabel>
+                  <Select
+                    value={collaborationDraft.status ?? 'discovery'}
+                    label="Status"
+                    disabled={!canEditCollaborationTerms}
+                    onChange={(event) => {
+                      const nextValue = event.target.value as NonNullable<ProducerCollaborationTerms['status']>;
+                      setCollaborationDraft((prev) => ({ ...prev, status: nextValue }));
+                      void updateCollaborationTerms((prev) => ({ ...prev, status: nextValue }));
+                    }}
+                  >
+                    {Object.entries(PRODUCER_COLLABORATION_STATUS_LABELS).map(([value, label]) => (
+                      <MenuItem key={value} value={value}>{label}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid size={{ xs: 12, md: 4 }}>
+                <FormControl fullWidth>
+                  <InputLabel>Avtaletype</InputLabel>
+                  <Select
+                    value={collaborationDraft.agreementModel ?? 'one_time_project'}
+                    label="Avtaletype"
+                    disabled={!canEditCollaborationTerms}
+                    onChange={(event) => {
+                      const nextValue = event.target.value as NonNullable<ProducerCollaborationTerms['agreementModel']>;
+                      setCollaborationDraft((prev) => ({ ...prev, agreementModel: nextValue }));
+                      void updateCollaborationTerms((prev) => ({ ...prev, agreementModel: nextValue }));
+                    }}
+                  >
+                    {Object.entries(PRODUCER_COLLABORATION_AGREEMENT_MODEL_LABELS).map(([value, label]) => (
+                      <MenuItem key={value} value={value}>{label}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid size={{ xs: 12, md: 4 }}>
+                <FormControl fullWidth>
+                  <InputLabel>Kompensasjonsmodell</InputLabel>
+                  <Select
+                    value={collaborationDraft.compensationModel ?? 'fixed_fee'}
+                    label="Kompensasjonsmodell"
+                    disabled={!canEditCollaborationTerms}
+                    onChange={(event) => {
+                      const nextValue = event.target.value as NonNullable<ProducerCollaborationTerms['compensationModel']>;
+                      setCollaborationDraft((prev) => ({ ...prev, compensationModel: nextValue }));
+                      void updateCollaborationTerms((prev) => ({ ...prev, compensationModel: nextValue }));
+                    }}
+                  >
+                    {Object.entries(PRODUCER_COLLABORATION_COMPENSATION_MODEL_LABELS).map(([value, label]) => (
+                      <MenuItem key={value} value={value}>{label}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              <Grid size={{ xs: 12, md: 6 }}>
+                <TextField
+                  label="Hva slags samarbeid er dette?"
+                  value={collaborationDraft.agreementLabel ?? ''}
+                  onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, agreementLabel: event.target.value }))}
+                  onBlur={() => { void persistCollaborationDraft(); }}
+                  fullWidth
+                  disabled={!canEditCollaborationTerms}
+                  helperText="For eksempel: Holy Crust oppstartsperiode, engangsprosjekt eller holdingselskap-løp."
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <TextField
+                  label="Hvilket selskap / vehicle går avtalen gjennom?"
+                  value={collaborationDraft.commercialVehicle ?? ''}
+                  onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, commercialVehicle: event.target.value }))}
+                  onBlur={() => { void persistCollaborationDraft(); }}
+                  fullWidth
+                  disabled={!canEditCollaborationTerms}
+                  helperText="For eksempel holdingselskap, driftsselskap eller personlig foretak."
+                />
+              </Grid>
+              <Grid size={{ xs: 12 }}>
+                <TextField
+                  label="Kort samarbeidssammendrag"
+                  value={collaborationDraft.agreementSummary ?? ''}
+                  onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, agreementSummary: event.target.value }))}
+                  onBlur={() => { void persistCollaborationDraft(); }}
+                  fullWidth
+                  multiline
+                  minRows={2}
+                  disabled={!canEditCollaborationTerms}
+                />
+              </Grid>
+
+              <Grid size={{ xs: 12, md: 6 }}>
+                <TextField
+                  label="Leveranser innenfor scope"
+                  value={deliverablesInScopeValue}
+                  onChange={(event) => setCollaborationDraft((prev) => ({
+                    ...prev,
+                    deliverablesInScope: event.target.value.split('\n').map((entry) => entry.trim()).filter(Boolean),
+                  }))}
+                  onBlur={(event) => { void updateCollaborationTextList('deliverablesInScope', event.target.value); }}
+                  fullWidth
+                  multiline
+                  minRows={6}
+                  disabled={!canEditCollaborationTerms}
+                  helperText="Én leveranse per linje, for eksempel TikTok-innhold, Instagram reels eller BTS fra kjøkken."
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <Stack spacing={1}>
+                  <Button
+                    variant={collaborationDraft.deliverablesInScopeVisible === false ? 'outlined' : 'contained'}
+                    onClick={() => {
+                      const nextValue = !(collaborationDraft.deliverablesInScopeVisible === true);
+                      setCollaborationDraft((prev) => ({ ...prev, deliverablesInScopeVisible: nextValue }));
+                      void updateCollaborationTerms((prev) => ({ ...prev, deliverablesInScopeVisible: nextValue }));
+                    }}
+                    disabled={!canEditCollaborationTerms}
+                    sx={{ alignSelf: 'flex-start', textTransform: 'none', fontWeight: 700 }}
+                  >
+                    {collaborationDraft.deliverablesInScopeVisible === false ? 'Vis scope mot klient' : 'Skjul scope mot klient'}
+                  </Button>
+                  <TextField
+                    label="Produksjonsdager per uke / måned"
+                    value={collaborationDraft.productionCadence ?? ''}
+                    onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, productionCadence: event.target.value }))}
+                    onBlur={() => { void persistCollaborationDraft(); }}
+                    fullWidth
+                    disabled={!canEditCollaborationTerms}
+                  />
+                  <TextField
+                    label="Oppstartsmodell / økonomi i pilotperioden"
+                    value={collaborationDraft.startupEconomicModel ?? ''}
+                    onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, startupEconomicModel: event.target.value }))}
+                    onBlur={() => { void persistCollaborationDraft(); }}
+                    fullWidth
+                    multiline
+                    minRows={2}
+                    disabled={!canEditCollaborationTerms}
+                  />
+                </Stack>
+              </Grid>
+
+              <Grid size={{ xs: 12, md: 4 }}>
+                <TextField
+                  label="Rolle og ansvar · Produksjon"
+                  value={productionResponsibilitiesValue}
+                  onChange={(event) => setCollaborationDraft((prev) => ({
+                    ...prev,
+                    productionResponsibilities: event.target.value.split('\n').map((entry) => entry.trim()).filter(Boolean),
+                  }))}
+                  onBlur={(event) => { void updateCollaborationTextList('productionResponsibilities', event.target.value); }}
+                  fullWidth
+                  multiline
+                  minRows={6}
+                  disabled={!canEditCollaborationTerms}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 4 }}>
+                <TextField
+                  label="Rolle og ansvar · Branding"
+                  value={brandingResponsibilitiesValue}
+                  onChange={(event) => setCollaborationDraft((prev) => ({
+                    ...prev,
+                    brandingResponsibilities: event.target.value.split('\n').map((entry) => entry.trim()).filter(Boolean),
+                  }))}
+                  onBlur={(event) => { void updateCollaborationTextList('brandingResponsibilities', event.target.value); }}
+                  fullWidth
+                  multiline
+                  minRows={6}
+                  disabled={!canEditCollaborationTerms}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 4 }}>
+                <TextField
+                  label="Rolle og ansvar · Markedsføring"
+                  value={marketingResponsibilitiesValue}
+                  onChange={(event) => setCollaborationDraft((prev) => ({
+                    ...prev,
+                    marketingResponsibilities: event.target.value.split('\n').map((entry) => entry.trim()).filter(Boolean),
+                  }))}
+                  onBlur={(event) => { void updateCollaborationTextList('marketingResponsibilities', event.target.value); }}
+                  fullWidth
+                  multiline
+                  minRows={6}
+                  disabled={!canEditCollaborationTerms}
+                />
+              </Grid>
+
+              <Grid size={{ xs: 12 }}>
+                <Box sx={{ p: 1.5, borderRadius: 2, border: '1px solid rgba(148,163,184,0.16)', background: 'rgba(255,255,255,0.03)' }}>
+                  <Typography sx={{ color: '#fff', fontWeight: 700, mb: 1 }}>
+                    Hvem dekker ekstrakostnader?
+                  </Typography>
+                  <Stack spacing={1}>
+                    {(collaborationDraft.costItems ?? []).map((item, index) => (
+                      <Grid container spacing={1} key={item.id}>
+                        <Grid size={{ xs: 12, md: 3 }}>
+                          <TextField
+                            label="Kostnad"
+                            value={item.label}
+                            onChange={(event) => updateCollaborationCostItemDraft(item.id, (entry) => ({
+                              ...entry,
+                              label: event.target.value,
+                            }))}
+                            onBlur={() => { void persistCollaborationDraft(); }}
+                            fullWidth
+                            disabled={!canEditCollaborationTerms}
+                          />
+                        </Grid>
+                        <Grid size={{ xs: 12, md: 3 }}>
+                          <FormControl fullWidth>
+                            <InputLabel>Dekkes av</InputLabel>
+                            <Select
+                              label="Dekkes av"
+                              value={item.coveredBy}
+                              disabled={!canEditCollaborationTerms}
+                              onChange={(event) => {
+                                const nextValue = event.target.value as typeof item.coveredBy;
+                                updateCollaborationCostItemDraft(item.id, (entry) => ({
+                                  ...entry,
+                                  coveredBy: nextValue,
+                                }));
+                                void updateCollaborationTerms((prev) => ({
+                                  ...prev,
+                                  costItems: (prev.costItems ?? []).map((entry, entryIndex) => (
+                                    entryIndex === index ? { ...entry, coveredBy: nextValue } : entry
+                                  )),
+                                }));
+                              }}
+                            >
+                              {Object.entries(PRODUCER_COLLABORATION_COST_COVERAGE_LABELS).map(([value, label]) => (
+                                <MenuItem key={value} value={value}>{label}</MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                        </Grid>
+                        <Grid size={{ xs: 12, md: 2 }}>
+                          <TextField
+                            label="Beløp / ramme"
+                            value={item.amountLabel ?? ''}
+                            onChange={(event) => updateCollaborationCostItemDraft(item.id, (entry) => ({
+                              ...entry,
+                              amountLabel: event.target.value,
+                            }))}
+                            onBlur={() => { void persistCollaborationDraft(); }}
+                            fullWidth
+                            disabled={!canEditCollaborationTerms}
+                          />
+                        </Grid>
+                        <Grid size={{ xs: 12, md: 4 }}>
+                          <TextField
+                            label="Notat"
+                            value={item.notes ?? ''}
+                            onChange={(event) => updateCollaborationCostItemDraft(item.id, (entry) => ({
+                              ...entry,
+                              notes: event.target.value,
+                            }))}
+                            onBlur={() => { void persistCollaborationDraft(); }}
+                            fullWidth
+                            disabled={!canEditCollaborationTerms}
+                          />
+                        </Grid>
+                        <Grid size={{ xs: 12 }}>
+                          <Stack
+                            direction={{ xs: 'column', md: 'row' }}
+                            spacing={1}
+                            alignItems={{ xs: 'flex-start', md: 'center' }}
+                            sx={{
+                              p: 1.25,
+                              borderRadius: 2,
+                              border: '1px solid rgba(148,163,184,0.16)',
+                              background: 'rgba(15,23,42,0.18)',
+                            }}
+                          >
+                            <Button
+                              component="label"
+                              variant={item.receiptFileId ? 'outlined' : 'contained'}
+                              color={item.receiptFileId ? 'inherit' : 'primary'}
+                              startIcon={<ReceiptLongIcon />}
+                              disabled={!canEditCollaborationTerms || uploadingReceiptItemId === item.id}
+                              sx={{ textTransform: 'none', fontWeight: 700 }}
+                            >
+                              {uploadingReceiptItemId === item.id
+                                ? `Behandler${receiptOcrProgress[item.id] ? ` ${Math.round(receiptOcrProgress[item.id] * 100)}%` : '...'}`
+                                : item.receiptFileId
+                                  ? 'Bytt kvittering'
+                                  : 'Last opp kvittering'}
+                              <input
+                                hidden
+                                type="file"
+                                accept="image/*,application/pdf"
+                                onChange={(event) => {
+                                  const nextFile = event.target.files?.[0];
+                                  event.currentTarget.value = '';
+                                  if (nextFile) {
+                                    void handleReceiptUpload(item.id, nextFile);
+                                  }
+                                }}
+                              />
+                            </Button>
+                            {item.receiptFileId ? (
+                              <Button
+                                variant="text"
+                                color="inherit"
+                                startIcon={<OpenInNewIcon />}
+                                href={item.receiptUrl || undefined}
+                                target="_blank"
+                                rel="noreferrer"
+                                sx={{ textTransform: 'none', fontWeight: 700 }}
+                              >
+                                Åpne kvittering
+                              </Button>
+                            ) : null}
+                            {item.receiptFileName ? (
+                              <Chip
+                                label={item.receiptFileName}
+                                sx={{ color: '#e2e8f0', borderColor: 'rgba(148,163,184,0.28)' }}
+                                variant="outlined"
+                              />
+                            ) : null}
+                            {item.ocrStatus ? (
+                              <Chip
+                                label={RECEIPT_OCR_STATUS_LABELS[item.ocrStatus]}
+                                color={item.ocrStatus === 'completed' ? 'success' : item.ocrStatus === 'failed' ? 'warning' : 'default'}
+                                variant={item.ocrStatus === 'completed' ? 'filled' : 'outlined'}
+                              />
+                            ) : null}
+                            {item.ocrConfidence ? (
+                              <Chip
+                                label={RECEIPT_OCR_CONFIDENCE_LABELS[item.ocrConfidence]}
+                                variant="outlined"
+                                sx={{ color: '#cbd5f5', borderColor: 'rgba(99,102,241,0.35)' }}
+                              />
+                            ) : null}
+                            {(item.receiptMerchant || item.receiptDate || item.receiptAmountValue) ? (
+                              <Typography sx={{ color: 'rgba(226,232,240,0.88)', fontSize: 13 }}>
+                                {[item.receiptMerchant, item.amountLabel, item.receiptDate]
+                                  .filter((value) => typeof value === 'string' && value.trim().length > 0)
+                                  .join(' · ')}
+                              </Typography>
+                            ) : (
+                              <Typography sx={{ color: 'rgba(148,163,184,0.78)', fontSize: 13 }}>
+                                Last opp mobilbilde av kvittering for automatisk OCR og dokumentasjon av utlegg.
+                              </Typography>
+                            )}
+                          </Stack>
+                        </Grid>
+                      </Grid>
+                    ))}
+                  </Stack>
+                </Box>
+              </Grid>
+
+              <Grid size={{ xs: 12, md: 6 }}>
+                <TextField
+                  label="Kompensasjonsoppsett etter oppstartsperioden"
+                  value={collaborationDraft.compensationSummary ?? ''}
+                  onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, compensationSummary: event.target.value }))}
+                  onBlur={() => { void persistCollaborationDraft(); }}
+                  fullWidth
+                  multiline
+                  minRows={4}
+                  disabled={!canEditCollaborationTerms}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <TextField
+                  label="Evaluering etter samarbeidsperioden"
+                  value={collaborationDraft.evaluationPlan ?? ''}
+                  onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, evaluationPlan: event.target.value }))}
+                  onBlur={() => { void persistCollaborationDraft(); }}
+                  fullWidth
+                  multiline
+                  minRows={4}
+                  disabled={!canEditCollaborationTerms}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <TextField
+                  label="Rettigheter til bruk hos kunden"
+                  value={collaborationDraft.clientUsageRights ?? ''}
+                  onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, clientUsageRights: event.target.value }))}
+                  onBlur={() => { void persistCollaborationDraft(); }}
+                  fullWidth
+                  multiline
+                  minRows={3}
+                  disabled={!canEditCollaborationTerms}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <TextField
+                  label="Bruk i egen portefølje / markedsføring"
+                  value={collaborationDraft.producerPortfolioRights ?? ''}
+                  onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, producerPortfolioRights: event.target.value }))}
+                  onBlur={() => { void persistCollaborationDraft(); }}
+                  fullWidth
+                  multiline
+                  minRows={3}
+                  disabled={!canEditCollaborationTerms}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <TextField
+                  label="Arbeidsomfang / timer per måned"
+                  value={collaborationDraft.workloadCap ?? ''}
+                  onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, workloadCap: event.target.value }))}
+                  onBlur={() => { void persistCollaborationDraft(); }}
+                  fullWidth
+                  disabled={!canEditCollaborationTerms}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <TextField
+                  label="Hva innholdsprodusenten ikke holdes ansvarlig for"
+                  value={collaborationDraft.liabilityExclusions ?? ''}
+                  onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, liabilityExclusions: event.target.value }))}
+                  onBlur={() => { void persistCollaborationDraft(); }}
+                  fullWidth
+                  multiline
+                  minRows={2}
+                  disabled={!canEditCollaborationTerms}
+                />
+              </Grid>
+            </Grid>
+          </Stack>
+        </CardContent>
+      </Card>
 
       <Tabs
         value={tabValue}

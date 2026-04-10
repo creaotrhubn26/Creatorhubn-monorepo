@@ -14,6 +14,8 @@ import {
   MenuItem,
   Select,
   Stack,
+  Tab,
+  Tabs,
   Typography,
   CircularProgress,
 } from '@mui/material';
@@ -38,6 +40,8 @@ import {
   type RoleRoomCommercialBillingAccount,
   type RoleRoomGoogleStatusResponse,
 } from '../services/castingApiService';
+import { castingService, type RoleRoomProjectSnapshot, type RoleRoomProjectSyncMeta, type RoleRoomQueuedProjectChange } from '../services/castingService';
+import type { CastingProject } from '../models/casting';
 import { useRoleRoomPwa } from '../hooks/useRoleRoomPwa';
 import { getRoleRoomReturnPath } from '../utils/runtime';
 
@@ -86,6 +90,7 @@ type RoleRoomBillingAccountDialogProps = {
     onSelectMode: (mode: RoleRoomAdminPreviewMode) => void | Promise<void>;
     onOpenClientPortal: () => void | Promise<void>;
   } | null;
+  onProjectUpdated?: (project: CastingProject | null) => void | Promise<void>;
 };
 
 const moneyFormatter = new Intl.NumberFormat('nb-NO', {
@@ -178,7 +183,9 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
   currentUser,
   currentProject,
   adminPreview = null,
+  onProjectUpdated,
 }) => {
+  const [tabValue, setTabValue] = useState(0);
   const paymentTimestamp = formatDateTime(account?.paymentTimestamp);
   const paymentFailedAt = formatDateTime(account?.paymentFailedAt);
   const nextPaymentAttemptAt = formatDateTime(account?.nextPaymentAttemptAt);
@@ -189,6 +196,13 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
   const [googleStatusLoading, setGoogleStatusLoading] = useState(false);
   const [googleStatusError, setGoogleStatusError] = useState<string | null>(null);
   const [googleActionPending, setGoogleActionPending] = useState(false);
+  const [syncMeta, setSyncMeta] = useState<RoleRoomProjectSyncMeta | null>(null);
+  const [queuedChanges, setQueuedChanges] = useState<RoleRoomQueuedProjectChange[]>([]);
+  const [snapshots, setSnapshots] = useState<RoleRoomProjectSnapshot[]>([]);
+  const [syncLoading, setSyncLoading] = useState(false);
+  const [syncActionPending, setSyncActionPending] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [syncNotice, setSyncNotice] = useState<string | null>(null);
   const {
     canInstall,
     disablePush,
@@ -226,12 +240,44 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
     }
   }, [currentProject?.id, open]);
 
+  const loadSyncState = useCallback(async () => {
+    if (!open || !currentProject?.id) {
+      setSyncMeta(null);
+      setQueuedChanges([]);
+      setSnapshots([]);
+      return;
+    }
+    setSyncLoading(true);
+    setSyncError(null);
+    try {
+      const [nextMeta, nextQueue, nextSnapshots] = await Promise.all([
+        castingService.getProjectSyncMeta(currentProject.id),
+        castingService.getQueuedProjectChanges(currentProject.id),
+        castingService.getProjectSnapshots(currentProject.id),
+      ]);
+      setSyncMeta(nextMeta);
+      setQueuedChanges(nextQueue);
+      setSnapshots(nextSnapshots);
+    } catch (stateError) {
+      setSyncError(stateError instanceof Error ? stateError.message : 'Kunne ikke hente prosjektets sync-status.');
+    } finally {
+      setSyncLoading(false);
+    }
+  }, [currentProject?.id, open]);
+
   useEffect(() => {
     if (!open) {
       return;
     }
     void loadGoogleStatus();
   }, [loadGoogleStatus, open]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    void loadSyncState();
+  }, [loadSyncState, open]);
 
   const googleConnection = googleStatus?.connection ?? null;
   const googleBinding = googleStatus?.projectBinding ?? null;
@@ -302,6 +348,68 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
     }
   }, [currentProject?.id, googleBinding, loadGoogleStatus]);
 
+  const handleSyncQueuedChanges = useCallback(async () => {
+    if (!currentProject?.id) {
+      return;
+    }
+    setSyncActionPending(true);
+    setSyncError(null);
+    setSyncNotice(null);
+    try {
+      const result = await castingService.syncQueuedProjectChanges(currentProject.id);
+      if (result.failed.length > 0) {
+        throw new Error(result.failed[0]?.error ?? 'Kunne ikke synkronisere lokale endringer.');
+      }
+      setSyncNotice(result.synced.length > 0 ? 'Lokale endringer er synkronisert med serveren.' : 'Ingen lokale endringer lå i kø.');
+      await loadSyncState();
+    } catch (error) {
+      setSyncError(error instanceof Error ? error.message : 'Kunne ikke synkronisere lokale endringer.');
+    } finally {
+      setSyncActionPending(false);
+    }
+  }, [currentProject?.id, loadSyncState]);
+
+  const handleResyncFromServer = useCallback(async () => {
+    if (!currentProject?.id) {
+      return;
+    }
+    setSyncActionPending(true);
+    setSyncError(null);
+    setSyncNotice(null);
+    try {
+      const project = await castingService.resyncProjectFromServer(currentProject.id);
+      if (!project) {
+        throw new Error('Fant ikke prosjektet på serveren.');
+      }
+      await onProjectUpdated?.(project);
+      await loadSyncState();
+      setSyncNotice('Prosjektet er hentet på nytt fra serveren uten hard refresh.');
+    } catch (error) {
+      setSyncError(error instanceof Error ? error.message : 'Kunne ikke hente prosjektet på nytt fra serveren.');
+    } finally {
+      setSyncActionPending(false);
+    }
+  }, [currentProject?.id, loadSyncState, onProjectUpdated]);
+
+  const handleRestoreSnapshot = useCallback(async (snapshotId: string) => {
+    if (!currentProject?.id) {
+      return;
+    }
+    setSyncActionPending(true);
+    setSyncError(null);
+    setSyncNotice(null);
+    try {
+      const restoredProject = await castingService.restoreProjectSnapshot(currentProject.id, snapshotId);
+      await onProjectUpdated?.(restoredProject);
+      await loadSyncState();
+      setSyncNotice('Nylige endringer er gjenopprettet i prosjektet.');
+    } catch (error) {
+      setSyncError(error instanceof Error ? error.message : 'Kunne ikke gjenopprette prosjektendringen.');
+    } finally {
+      setSyncActionPending(false);
+    }
+  }, [currentProject?.id, loadSyncState, onProjectUpdated]);
+
   return (
     <Dialog
       open={open}
@@ -333,6 +441,212 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
       </DialogTitle>
 
       <DialogContent sx={{ pt: 1.5 }}>
+        <Tabs
+          value={tabValue}
+          onChange={(_, value) => setTabValue(value)}
+          sx={{
+            mb: 2,
+            '& .MuiTab-root': { textTransform: 'none', fontWeight: 700, color: 'rgba(255,255,255,0.72)' },
+            '& .Mui-selected': { color: '#f8fafc' },
+            '& .MuiTabs-indicator': { bgcolor: '#7dd3fc' },
+          }}
+        >
+          <Tab label="Oversikt" />
+          <Tab label="Sync og gjenoppretting" />
+        </Tabs>
+
+        {tabValue === 1 ? (
+          <Stack spacing={2}>
+            {!currentProject ? (
+              <Alert severity="info">
+                Velg et prosjekt først for å se resync, nylige endringer og lokale endringer som venter på synk.
+              </Alert>
+            ) : null}
+
+            {syncNotice ? (
+              <Alert severity="success">{syncNotice}</Alert>
+            ) : null}
+
+            {syncError ? (
+              <Alert severity="error">{syncError}</Alert>
+            ) : null}
+
+            {syncLoading ? (
+              <Box sx={{ py: 4, display: 'flex', justifyContent: 'center' }}>
+                <CircularProgress sx={{ color: '#7dd3fc' }} />
+              </Box>
+            ) : null}
+
+            {!syncLoading && currentProject ? (
+              <>
+                <Stack
+                  spacing={1.2}
+                  sx={{
+                    p: 2,
+                    borderRadius: 2.5,
+                    border: '1px solid rgba(125,211,252,0.16)',
+                    background: 'linear-gradient(135deg, rgba(9,22,34,0.5) 0%, rgba(15,23,42,0.92) 100%)',
+                  }}
+                >
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between">
+                    <Box>
+                      <Typography sx={{ fontWeight: 700, color: '#f8fafc' }}>
+                        Resync uten refresh
+                      </Typography>
+                      <Typography sx={{ color: 'rgba(255,255,255,0.72)', fontSize: '0.84rem' }}>
+                        Hent prosjektet på nytt fra serveren, synk lokale endringer som lå i kø, eller gjenopprett et nylig endringspunkt.
+                      </Typography>
+                    </Box>
+                    <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                      <Chip
+                        size="small"
+                        label={syncMeta?.lastSyncedAt ? `Sist synket ${formatDateTime(syncMeta.lastSyncedAt)}` : 'Ikke synket ennå'}
+                        sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }}
+                      />
+                      <Chip
+                        size="small"
+                        label={queuedChanges.length > 0 ? `${queuedChanges.length} lokale endring${queuedChanges.length === 1 ? '' : 'er'} i kø` : 'Ingen lokale endringer i kø'}
+                        sx={{
+                          bgcolor: queuedChanges.length > 0 ? 'rgba(251,191,36,0.16)' : 'rgba(16,185,129,0.16)',
+                          color: queuedChanges.length > 0 ? '#fde68a' : '#86efac',
+                        }}
+                      />
+                    </Stack>
+                  </Stack>
+
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} flexWrap="wrap" useFlexGap>
+                    <Button
+                      variant="contained"
+                      startIcon={<CloudSyncOutlinedIcon />}
+                      onClick={() => {
+                        void handleSyncQueuedChanges();
+                      }}
+                      disabled={syncActionPending || !currentProject || queuedChanges.length === 0}
+                      sx={{
+                        bgcolor: '#7dd3fc',
+                        color: '#082f49',
+                        fontWeight: 800,
+                        '&:hover': { bgcolor: '#bae6fd' },
+                      }}
+                    >
+                      Synk lokale endringer
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      startIcon={<RefreshIcon />}
+                      onClick={() => {
+                        void handleResyncFromServer();
+                      }}
+                      disabled={syncActionPending || !currentProject || queuedChanges.length > 0}
+                      sx={{ borderColor: 'rgba(125,211,252,0.34)', color: '#bae6fd' }}
+                    >
+                      Resync fra server
+                    </Button>
+                    <Button
+                      variant="text"
+                      startIcon={<RefreshIcon />}
+                      onClick={() => {
+                        void loadSyncState();
+                      }}
+                      disabled={syncActionPending || !currentProject}
+                      sx={{ color: 'rgba(255,255,255,0.78)' }}
+                    >
+                      Oppdater oversikten
+                    </Button>
+                  </Stack>
+
+                  <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                    {syncMeta?.lastLocalSaveAt ? (
+                      <Chip
+                        size="small"
+                        label={`Sist lagret lokalt ${formatDateTime(syncMeta.lastLocalSaveAt)}`}
+                        sx={{ bgcolor: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.78)' }}
+                      />
+                    ) : null}
+                    {syncMeta?.lastResyncedAt ? (
+                      <Chip
+                        size="small"
+                        label={`Resync ${formatDateTime(syncMeta.lastResyncedAt)}`}
+                        sx={{ bgcolor: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.78)' }}
+                      />
+                    ) : null}
+                    {syncMeta?.lastRestoreAt ? (
+                      <Chip
+                        size="small"
+                        label={`Sist gjenopprettet ${formatDateTime(syncMeta.lastRestoreAt)}`}
+                        sx={{ bgcolor: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.78)' }}
+                      />
+                    ) : null}
+                  </Stack>
+                </Stack>
+
+                <Stack
+                  spacing={1.2}
+                  sx={{
+                    p: 2,
+                    borderRadius: 2.5,
+                    border: '1px solid rgba(246,195,88,0.16)',
+                    background: 'rgba(255,255,255,0.025)',
+                  }}
+                >
+                  <Typography sx={{ fontWeight: 700, color: '#f8fafc' }}>
+                    Nylige endringspunkter
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(255,255,255,0.72)', fontSize: '0.84rem' }}>
+                    Gjenopprett et nylig lagret punkt hvis noe ble feil. Dette lager en ny versjon av prosjektet, uten hard refresh.
+                  </Typography>
+                  {snapshots.length === 0 ? (
+                    <Alert severity="info">Ingen nylige endringspunkter er lagret ennå.</Alert>
+                  ) : (
+                    <Stack spacing={1}>
+                      {snapshots.slice(0, 8).map((snapshot) => (
+                        <Box
+                          key={snapshot.id}
+                          sx={{
+                            p: 1.2,
+                            borderRadius: 2,
+                            border: '1px solid rgba(255,255,255,0.08)',
+                            background: 'rgba(255,255,255,0.03)',
+                          }}
+                        >
+                          <Stack
+                            direction={{ xs: 'column', sm: 'row' }}
+                            spacing={1}
+                            justifyContent="space-between"
+                            alignItems={{ sm: 'center' }}
+                          >
+                            <Box sx={{ minWidth: 0 }}>
+                              <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>
+                                {snapshot.label}
+                              </Typography>
+                              <Typography sx={{ color: 'rgba(255,255,255,0.68)', fontSize: '0.82rem' }}>
+                                {formatDateTime(snapshot.createdAt) ?? 'Ukjent tidspunkt'}
+                              </Typography>
+                            </Box>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              onClick={() => {
+                                void handleRestoreSnapshot(snapshot.id);
+                              }}
+                              disabled={syncActionPending}
+                              sx={{ textTransform: 'none', fontWeight: 700, borderColor: 'rgba(246,195,88,0.34)', color: '#f6c358' }}
+                            >
+                              Gjenopprett
+                            </Button>
+                          </Stack>
+                        </Box>
+                      ))}
+                    </Stack>
+                  )}
+                </Stack>
+              </>
+            ) : null}
+          </Stack>
+        ) : null}
+
+        {tabValue === 0 ? (
+          <>
         <Stack spacing={2} sx={{ mb: 2 }}>
           <Stack
             direction={{ xs: 'column', md: 'row' }}
@@ -1056,6 +1370,8 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
           <Alert severity="info" sx={{ mt: 1 }}>
             Abonnementsinformasjon blir tilgjengelig når denne workspacen er koblet til en kommersiell konto.
           </Alert>
+        ) : null}
+          </>
         ) : null}
       </DialogContent>
 
