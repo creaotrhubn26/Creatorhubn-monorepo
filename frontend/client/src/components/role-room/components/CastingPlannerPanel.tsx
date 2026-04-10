@@ -2067,6 +2067,51 @@ export function CastingPlannerPanel({
       canViewEconomy: Boolean(mergedPermissions.canViewEconomy),
     };
   }, []);
+  const buildProjectAccessLabel = useCallback((userRole: UserRole | null): string => {
+    if (!userRole) {
+      return 'Tilgang ikke satt opp';
+    }
+
+    const permissionState = buildPermissionStateFromRole(userRole);
+    const hasEditAccess = permissionState.canEditCasting
+      || permissionState.canEditProduction
+      || permissionState.canEditShotLists
+      || permissionState.canManageCrew
+      || permissionState.canManageLocations;
+    const hasDecisionAccess = permissionState.canApprove || permissionState.canRequestChanges;
+
+    if (
+      permissionState.canViewAll
+      && permissionState.canEditCasting
+      && permissionState.canEditProduction
+      && permissionState.canApprove
+      && permissionState.canViewEconomy
+    ) {
+      return 'Full tilgang';
+    }
+
+    if (hasEditAccess && hasDecisionAccess) {
+      return 'Kan redigere og godkjenne';
+    }
+
+    if (hasEditAccess) {
+      return 'Kan redigere';
+    }
+
+    if (hasDecisionAccess) {
+      return permissionState.canComment ? 'Kan kommentere og godkjenne' : 'Kan godkjenne';
+    }
+
+    if (permissionState.canComment) {
+      return 'Kan kommentere';
+    }
+
+    if (permissionState.canViewAll) {
+      return 'Lesetilgang';
+    }
+
+    return 'Begrenset tilgang';
+  }, [buildPermissionStateFromRole]);
 
   const accountRoleLabel = adminUser?.role ? getHeaderRoleLabel(adminUser.role) : '';
   const projectRoleLabel = currentUserRole?.role ? getHeaderRoleLabel(currentUserRole.role) : '';
@@ -2081,6 +2126,98 @@ export function CastingPlannerPanel({
     () => mapAccountRoleToProjectRole(adminUser?.role, adminUser?.loginAs, adminUser?.requestedRole),
     [adminUser?.role, adminUser?.loginAs, adminUser?.requestedRole],
   );
+  const isScopedRoleRoomLogin = typeof adminUser?.loginAs === 'string'
+    && adminUser.loginAs.trim().length > 0;
+  const getProjectRoleDetails = useCallback((project: CastingProject): {
+    roleLabel: string;
+    accessLabel: string;
+  } => {
+    const sessionUserId = adminUser?.id !== undefined && adminUser?.id !== null
+      ? String(adminUser.id)
+      : getUserId();
+    const sessionEmail = String(adminUser?.email || user?.email || '')
+      .trim()
+      .toLowerCase();
+    const projectRoles = Array.isArray(project.userRoles) ? project.userRoles : [];
+    const matchedRole = (
+      currentProject?.id === project.id && currentUserRole
+        ? currentUserRole
+        : projectRoles.find((candidateRole) => {
+            const candidateUserId = String(candidateRole.userId ?? candidateRole.user_id ?? '').trim();
+            const candidateEmail = String(candidateRole.email || '').trim().toLowerCase();
+            if (sessionUserId && candidateUserId && candidateUserId === sessionUserId) {
+              return true;
+            }
+            if (sessionEmail && candidateEmail && candidateEmail === sessionEmail) {
+              return true;
+            }
+            return false;
+          }) ?? null
+    );
+
+    if (matchedRole) {
+      return {
+        roleLabel: getHeaderRoleLabel(matchedRole.role),
+        accessLabel: buildProjectAccessLabel(matchedRole),
+      };
+    }
+
+    if (isRoleRoomAdminSession && adminUser && !isScopedRoleRoomLogin) {
+      const adminProjectRole: UserRole = {
+        id: `project-selector-admin-${project.id}-${sessionUserId || 'session'}`,
+        userId: sessionUserId || undefined,
+        projectId: project.id,
+        role: normalizedAdminAccountRole === 'owner' || normalizedAdminAccountRole === 'super_admin' ? 'director' : 'producer',
+        permissions: {
+          canViewAll: true,
+          canEditCasting: true,
+          canEditProduction: true,
+          canEditShotLists: true,
+          canManageCrew: true,
+          canManageLocations: true,
+          canApprove: true,
+          canComment: true,
+          canRequestChanges: true,
+          canViewEconomy: true,
+        },
+      };
+      return {
+        roleLabel: getHeaderRoleLabel(adminProjectRole.role),
+        accessLabel: buildProjectAccessLabel(adminProjectRole),
+      };
+    }
+
+    if (mappedSessionProjectRole) {
+      const fallbackRole: UserRole = {
+        id: `project-selector-fallback-${project.id}-${sessionUserId || 'session'}`,
+        userId: sessionUserId || undefined,
+        projectId: project.id,
+        role: mappedSessionProjectRole,
+        permissions: castingAuthService.getDefaultPermissions(mappedSessionProjectRole),
+      };
+      return {
+        roleLabel: getHeaderRoleLabel(fallbackRole.role),
+        accessLabel: buildProjectAccessLabel(fallbackRole),
+      };
+    }
+
+    return {
+      roleLabel: 'Ikke tildelt',
+      accessLabel: 'Tilgang ikke satt opp',
+    };
+  }, [
+    adminUser,
+    buildProjectAccessLabel,
+    currentProject?.id,
+    currentUserRole,
+    getHeaderRoleLabel,
+    getUserId,
+    isRoleRoomAdminSession,
+    isScopedRoleRoomLogin,
+    mappedSessionProjectRole,
+    normalizedAdminAccountRole,
+    user?.email,
+  ]);
   const ensureScopedSessionProjectRole = useCallback(async (projectId: string) => {
     if (!adminUser) {
       return;
@@ -12825,45 +12962,78 @@ export function CastingPlannerPanel({
                 background: 'linear-gradient(180deg, rgba(34,211,238,0.06) 0%, rgba(255,255,255,0) 100%)',
               }}
             >
-              <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.56)' }}>
-                Aktivt nå
-              </Typography>
-              <Box
-                sx={{
-                  mt: 1,
-                  px: 1.4,
-                  py: 1.2,
-                  borderRadius: 2,
-                  border: '1px solid rgba(34,211,238,0.18)',
-                  bgcolor: 'rgba(15,23,42,0.48)',
-                  display: 'grid',
-                  gridTemplateColumns: 'minmax(0, 1fr) auto',
-                  gap: 1,
-                  alignItems: 'center',
-                }}
-              >
-                <Box sx={{ minWidth: 0 }}>
-                  <Typography sx={{ color: '#f8fafc', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {headerActiveProject.name}
-                  </Typography>
-                  <Typography sx={{ mt: 0.35, fontSize: '0.78rem', color: 'rgba(255,255,255,0.64)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {[
-                      headerActiveProject.clientName,
-                      headerActiveProject.producerWorkflowStatus ? PRODUCER_PROJECT_STATUS_LABELS[headerActiveProject.producerWorkflowStatus] : null,
-                    ].filter(Boolean).join(' • ')}
-                  </Typography>
-                </Box>
-                <Chip
-                  size="small"
-                  label="Aktivt prosjekt"
-                  sx={{
-                    bgcolor: 'rgba(34,211,238,0.12)',
-                    color: '#67e8f9',
-                    border: '1px solid rgba(34,211,238,0.24)',
-                    fontWeight: 700,
-                  }}
-                />
-              </Box>
+              {(() => {
+                const { roleLabel, accessLabel } = getProjectRoleDetails(headerActiveProject);
+                return (
+                  <>
+                    <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.56)' }}>
+                      Aktivt nå
+                    </Typography>
+                    <Box
+                      sx={{
+                        mt: 1,
+                        px: 1.4,
+                        py: 1.2,
+                        borderRadius: 2,
+                        border: '1px solid rgba(34,211,238,0.18)',
+                        bgcolor: 'rgba(15,23,42,0.48)',
+                        display: 'grid',
+                        gridTemplateColumns: 'minmax(0, 1fr) auto',
+                        gap: 1,
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography sx={{ color: '#f8fafc', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {headerActiveProject.name}
+                        </Typography>
+                        <Box sx={{ mt: 0.7, display: 'flex', alignItems: 'center', gap: 0.7, flexWrap: 'wrap' }}>
+                          <Chip
+                            size="small"
+                            label={`Rolle: ${roleLabel}`}
+                            sx={{
+                              height: 22,
+                              bgcolor: 'rgba(99,102,241,0.14)',
+                              color: '#c7d2fe',
+                              border: '1px solid rgba(99,102,241,0.26)',
+                              fontSize: '0.66rem',
+                              fontWeight: 700,
+                            }}
+                          />
+                          <Chip
+                            size="small"
+                            label={`Tilgang: ${accessLabel}`}
+                            sx={{
+                              height: 22,
+                              bgcolor: 'rgba(16,185,129,0.14)',
+                              color: '#bbf7d0',
+                              border: '1px solid rgba(16,185,129,0.24)',
+                              fontSize: '0.66rem',
+                              fontWeight: 700,
+                            }}
+                          />
+                        </Box>
+                        <Typography sx={{ mt: 0.55, fontSize: '0.78rem', color: 'rgba(255,255,255,0.64)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {[
+                            headerActiveProject.clientName,
+                            headerActiveProject.producerWorkflowStatus ? PRODUCER_PROJECT_STATUS_LABELS[headerActiveProject.producerWorkflowStatus] : null,
+                          ].filter(Boolean).join(' • ')}
+                        </Typography>
+                      </Box>
+                      <Chip
+                        size="small"
+                        label="Aktivt prosjekt"
+                        sx={{
+                          bgcolor: 'rgba(34,211,238,0.12)',
+                          color: '#67e8f9',
+                          border: '1px solid rgba(34,211,238,0.24)',
+                          fontWeight: 700,
+                        }}
+                      />
+                    </Box>
+                  </>
+                );
+              })()}
             </Box>
           ) : null}
           <Box sx={{ maxHeight: '60vh', overflow: 'auto' }}>
@@ -12963,6 +13133,7 @@ export function CastingPlannerPanel({
                     const workflowStatusLabel = workflowStatus
                       ? PRODUCER_PROJECT_STATUS_LABELS[workflowStatus]
                       : 'Klar for arbeid';
+                    const { roleLabel, accessLabel } = getProjectRoleDetails(project);
                     const isDragging = draggingPinnedProjectId === project.id;
 
                     return (
@@ -13038,6 +13209,32 @@ export function CastingPlannerPanel({
                         <Typography sx={{ mt: 0.7, fontSize: '0.72rem', color: 'rgba(255,255,255,0.64)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {project.clientName || 'Uten klientnavn'}
                         </Typography>
+                        <Box sx={{ mt: 0.8, display: 'flex', alignItems: 'center', gap: 0.55, flexWrap: 'wrap' }}>
+                          <Chip
+                            size="small"
+                            label={`Rolle: ${roleLabel}`}
+                            sx={{
+                              height: 20,
+                              bgcolor: 'rgba(99,102,241,0.14)',
+                              color: '#c7d2fe',
+                              border: '1px solid rgba(99,102,241,0.22)',
+                              fontSize: '0.62rem',
+                              fontWeight: 700,
+                            }}
+                          />
+                          <Chip
+                            size="small"
+                            label={`Tilgang: ${accessLabel}`}
+                            sx={{
+                              height: 20,
+                              bgcolor: 'rgba(16,185,129,0.14)',
+                              color: '#bbf7d0',
+                              border: '1px solid rgba(16,185,129,0.22)',
+                              fontSize: '0.62rem',
+                              fontWeight: 700,
+                            }}
+                          />
+                        </Box>
                         <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
                           <Chip
                             size="small"
@@ -13131,6 +13328,7 @@ export function CastingPlannerPanel({
                             color: 'rgba(226, 232, 240, 0.9)',
                             border: '1px solid rgba(148, 163, 184, 0.18)',
                           };
+                      const { roleLabel, accessLabel } = getProjectRoleDetails(project);
                       const updatedDate = project.updatedAt
                         ? new Date(project.updatedAt).toLocaleDateString('nb-NO', {
                             day: '2-digit',
@@ -13254,6 +13452,32 @@ export function CastingPlannerPanel({
                               <Typography sx={{ fontSize: '0.74rem', color: 'rgba(255,255,255,0.6)', minWidth: 0 }}>
                                 {project.clientName ? `${project.clientName} • ` : ''}{branding.tokens.labels.lastUpdatedLabel} {updatedDate}
                               </Typography>
+                            </Box>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.7, mt: 0.8, minWidth: 0, flexWrap: 'wrap' }}>
+                              <Chip
+                                size="small"
+                                label={`Rolle: ${roleLabel}`}
+                                sx={{
+                                  height: 22,
+                                  bgcolor: 'rgba(99,102,241,0.14)',
+                                  color: '#c7d2fe',
+                                  border: '1px solid rgba(99,102,241,0.22)',
+                                  fontSize: '0.66rem',
+                                  fontWeight: 700,
+                                }}
+                              />
+                              <Chip
+                                size="small"
+                                label={`Tilgang: ${accessLabel}`}
+                                sx={{
+                                  height: 22,
+                                  bgcolor: 'rgba(16,185,129,0.14)',
+                                  color: '#bbf7d0',
+                                  border: '1px solid rgba(16,185,129,0.22)',
+                                  fontSize: '0.66rem',
+                                  fontWeight: 700,
+                                }}
+                              />
                             </Box>
                           </Box>
 
