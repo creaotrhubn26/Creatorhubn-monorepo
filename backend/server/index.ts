@@ -69336,16 +69336,16 @@ const VIDEO_ANALYSIS_ANALYSIS_TRACK_USE_DEMUCS = ![
     readString(process.env.VIDEO_ANALYSIS_ANALYSIS_TRACK_USE_DEMUCS) || "true"
   ).toLowerCase(),
 );
-const STORY_ARC_V2_STARTUP_WARMUP_ENABLED = ![
-  "0",
-  "false",
-  "off",
-  "no",
-].includes(
-  (
-    readString(process.env.STORY_ARC_V2_STARTUP_WARMUP_ENABLED) || "true"
-  ).toLowerCase(),
+const STORY_ARC_V2_STARTUP_WARMUP_SETTING = readString(
+  process.env.STORY_ARC_V2_STARTUP_WARMUP_ENABLED,
 );
+const STORY_ARC_V2_STARTUP_WARMUP_ENABLED =
+  STORY_ARC_V2_STARTUP_WARMUP_SETTING
+    ? !["0", "false", "off", "no"].includes(
+        STORY_ARC_V2_STARTUP_WARMUP_SETTING.toLowerCase(),
+      )
+    : Boolean(readString(process.env.PYANNOTE_DIARIZATION_URL)) &&
+      VIDEO_ANALYSIS_DIARIZATION_ENABLED;
 const STORY_ARC_V2_STARTUP_WARMUP_RETRIES = Math.max(
   1,
   Math.min(

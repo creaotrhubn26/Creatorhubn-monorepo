@@ -8,7 +8,7 @@ if (!DATABASE_URL) {
 
 export default {
   out: './migrations',
-  schema: './shared/schema.ts',
+  schema: '../frontend/shared/schema.ts',
   dialect: 'postgresql',
   dbCredentials: {
     url: DATABASE_URL,
