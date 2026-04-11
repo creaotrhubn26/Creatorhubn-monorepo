@@ -235,6 +235,28 @@ async function resolveGfpganModelStatus(): Promise<PhotoEnhancerModelStatus> {
     reason: r2.enabled
       ? "GFPGAN weights were not found in configured R2 bucket"
       : "R2 model credentials are not configured",
+    weights: {
+      configured: r2.enabled,
+      found: false,
+      bucket: null,
+      key: null,
+      checkedBuckets: r2.buckets,
+      checkedKeys: gfpganCandidateKeys,
+      reason: r2.enabled
+        ? "GFPGAN weights were not found in configured R2 bucket"
+        : "R2 model credentials are not configured",
+    },
+    runner: {
+      configured: Boolean(firstNonEmpty(process.env.PHOTO_ENHANCER_GFPGAN_URL, process.env.GFPGAN_SERVICE_URL)),
+      healthy: null,
+      endpoint: firstNonEmpty(process.env.PHOTO_ENHANCER_GFPGAN_URL, process.env.GFPGAN_SERVICE_URL),
+      envKeys: ["PHOTO_ENHANCER_GFPGAN_URL", "GFPGAN_SERVICE_URL"],
+      reason: "Runner health is not checked in fallback status",
+    },
+    inferenceAvailable: false,
+    readinessReason: r2.enabled
+      ? "GFPGAN weights were not found in configured R2 bucket"
+      : "R2 model credentials are not configured",
     r2: {
       enabled: r2.enabled,
       endpoint: r2.endpoint,
@@ -848,6 +870,242 @@ async function enhanceUploadedFile(params: {
   };
 }
 
+type PhotoEnhancerSelfTestCheck = {
+  id: string;
+  label: string;
+  status: "pass" | "warn" | "fail" | "skip";
+  durationMs: number;
+  details?: Record<string, unknown>;
+  error?: string;
+};
+
+const defaultRawSelfTestUrl =
+  "https://raw.pixls.us/getfile.php/129/nice/Canon%20-%20EOS%207D%20-%20sRAW2%20%28sRAW%29%20%283%3A2%29.CR2";
+
+function makeMemoryUploadFile(params: {
+  buffer: Buffer;
+  originalname: string;
+  mimetype: string;
+}): Express.Multer.File {
+  return {
+    fieldname: "image",
+    originalname: params.originalname,
+    encoding: "7bit",
+    mimetype: params.mimetype,
+    size: params.buffer.byteLength,
+    buffer: params.buffer,
+    destination: "",
+    filename: params.originalname,
+    path: "",
+    stream: undefined as never,
+  };
+}
+
+async function runSelfTestCheck(
+  id: string,
+  label: string,
+  fn: () => Promise<Omit<PhotoEnhancerSelfTestCheck, "id" | "label" | "durationMs">>,
+): Promise<PhotoEnhancerSelfTestCheck> {
+  const startedAt = Date.now();
+  try {
+    const result = await fn();
+    return {
+      id,
+      label,
+      durationMs: Date.now() - startedAt,
+      ...result,
+    };
+  } catch (error) {
+    return {
+      id,
+      label,
+      status: "fail",
+      durationMs: Date.now() - startedAt,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function summarizeSelfTest(checks: PhotoEnhancerSelfTestCheck[]): "pass" | "warn" | "fail" {
+  if (checks.some((check) => check.status === "fail")) return "fail";
+  if (checks.some((check) => check.status === "warn" || check.status === "skip")) return "warn";
+  return "pass";
+}
+
+async function buildPhotoEnhancerSelfTest(options: {
+  includeRaw: boolean;
+}): Promise<{
+  success: boolean;
+  overallStatus: "pass" | "warn" | "fail";
+  checks: PhotoEnhancerSelfTestCheck[];
+  rawSupport: Awaited<ReturnType<typeof resolveRuntimeSupport>>["raw"];
+  metadataSupport: Awaited<ReturnType<typeof resolveRuntimeSupport>>["metadata"];
+  models: {
+    total: number;
+    weightsAvailable: number;
+    inferenceAvailable: number;
+    gfpgan: PhotoEnhancerModelStatus | null;
+  };
+}> {
+  const [runtimeSupport, modelStatuses] = await Promise.all([
+    resolveRuntimeSupport(),
+    resolvePhotoEnhancerModelStatuses(),
+  ]);
+  const gfpgan = modelStatuses.find((model) => model.id === "gfpgan") ?? null;
+  const checks: PhotoEnhancerSelfTestCheck[] = [];
+
+  checks.push(
+    await runSelfTestCheck("r2-model-registry", "R2 model registry", async () => {
+      const weightsAvailable = modelStatuses.filter((model) => model.weights?.found || model.available).length;
+      return {
+        status: weightsAvailable > 0 ? "pass" : "fail",
+        details: {
+          total: modelStatuses.length,
+          weightsAvailable,
+          inferenceAvailable: modelStatuses.filter((model) => model.inferenceAvailable).length,
+        },
+      };
+    }),
+  );
+
+  checks.push(
+    await runSelfTestCheck("gfpgan-readiness", "GFPGAN weights and runner readiness", async () => ({
+      status: gfpgan?.weights?.found
+        ? gfpgan.inferenceAvailable
+          ? "pass"
+          : "warn"
+        : "fail",
+      details: {
+        weightsFound: Boolean(gfpgan?.weights?.found || gfpgan?.available),
+        runnerConfigured: Boolean(gfpgan?.runner?.configured),
+        runnerHealthy: gfpgan?.runner?.healthy ?? null,
+        inferenceAvailable: Boolean(gfpgan?.inferenceAvailable),
+        readinessReason: gfpgan?.readinessReason ?? null,
+      },
+    })),
+  );
+
+  checks.push(
+    await runSelfTestCheck("sharp-raster-pipeline", "Raster enhancement pipeline", async () => {
+      const sharpModule = await import("sharp");
+      const buffer = await sharpModule.default({
+        create: {
+          width: 128,
+          height: 96,
+          channels: 3,
+          background: { r: 126, g: 92, b: 58 },
+        },
+      })
+        .jpeg({ quality: 90 })
+        .toBuffer();
+      const output = await enhanceWithSharp(
+        makeMemoryUploadFile({
+          buffer,
+          originalname: "self-test.jpg",
+          mimetype: "image/jpeg",
+        }),
+        defaultSettings,
+      );
+      return {
+        status: output.metadata.width && output.metadata.height ? "pass" : "fail",
+        details: {
+          outputMimeType: output.mimeType,
+          output: output.metadata,
+        },
+      };
+    }),
+  );
+
+  checks.push(
+    await runSelfTestCheck("raw-runtime", "RAW converter runtime", async () => {
+      const converters = runtimeSupport.raw.converters;
+      const activeConverters = Object.entries(converters)
+        .filter(([, enabled]) => enabled)
+        .map(([name]) => name);
+      return {
+        status: runtimeSupport.raw.available ? "pass" : "fail",
+        details: {
+          activeConverters,
+          converters,
+          metadata: runtimeSupport.metadata,
+        },
+      };
+    }),
+  );
+
+  if (options.includeRaw) {
+    checks.push(
+      await runSelfTestCheck("raw-cr2-conversion", "Live CR2 conversion sample", async () => {
+        const rawUrl = readString(process.env.PHOTO_ENHANCER_SELF_TEST_RAW_URL) || defaultRawSelfTestUrl;
+        const controller = new AbortController();
+        const timer = setTimeout(
+          () => controller.abort(),
+          Number(process.env.PHOTO_ENHANCER_SELF_TEST_RAW_TIMEOUT_MS || 90_000),
+        );
+        try {
+          const response = await fetch(rawUrl, { signal: controller.signal });
+          if (!response.ok) {
+            throw new Error(`RAW sample download returned HTTP ${response.status}`);
+          }
+          const buffer = Buffer.from(await response.arrayBuffer());
+          const prepared = await prepareProcessableImage(
+            makeMemoryUploadFile({
+              buffer,
+              originalname: "self-test.CR2",
+              mimetype: "image/x-canon-cr2",
+            }),
+          );
+          if (prepared.raw.raw && prepared.raw.converter === null) {
+            throw new Error(
+              typeof prepared.raw.error === "string" ? prepared.raw.error : "RAW conversion unavailable",
+            );
+          }
+          const sharpModule = await import("sharp");
+          const metadata = await sharpModule.default(prepared.file.buffer, { failOn: "none" }).metadata();
+          return {
+            status: metadata.width && metadata.height ? "pass" : "fail",
+            details: {
+              bytes: buffer.byteLength,
+              raw: prepared.raw,
+              processedMimeType: prepared.file.mimetype,
+              width: metadata.width ?? null,
+              height: metadata.height ?? null,
+              format: metadata.format ?? null,
+            },
+          };
+        } finally {
+          clearTimeout(timer);
+        }
+      }),
+    );
+  } else {
+    checks.push({
+      id: "raw-cr2-conversion",
+      label: "Live CR2 conversion sample",
+      status: "skip",
+      durationMs: 0,
+      details: {
+        reason: "Pass ?raw=1 to run the external RAW sample conversion test",
+      },
+    });
+  }
+
+  const overallStatus = summarizeSelfTest(checks);
+  return {
+    success: overallStatus !== "fail",
+    overallStatus,
+    checks,
+    rawSupport: runtimeSupport.raw,
+    metadataSupport: runtimeSupport.metadata,
+    models: {
+      total: modelStatuses.length,
+      weightsAvailable: modelStatuses.filter((model) => model.weights?.found || model.available).length,
+      inferenceAvailable: modelStatuses.filter((model) => model.inferenceAvailable).length,
+      gfpgan,
+    },
+  };
+}
+
 export function createPhotoEnhancerRouter() {
   const router = express.Router();
 
@@ -859,12 +1117,19 @@ export function createPhotoEnhancerRouter() {
       resolveRuntimeSupport(),
     ]);
     const improvementBacklog = buildPhotoEnhancerImprovementBacklog();
+    const weightsAvailable = modelStatuses.filter((model) => model.weights?.found || model.available).length;
+    const inferenceAvailable = modelStatuses.filter((model) => model.inferenceAvailable).length;
     res.json({
       success: true,
       r2: buildPhotoEnhancerR2Config(),
       models: {
         gfpgan,
         registry: modelStatuses,
+        summary: {
+          total: modelStatuses.length,
+          weightsAvailable,
+          inferenceAvailable,
+        },
         faceApi: {
           id: "face-api.js",
           available: faceApiAvailable,
@@ -885,6 +1150,19 @@ export function createPhotoEnhancerRouter() {
         total: improvementBacklog.length,
         tracked: improvementBacklog.slice(0, 25),
       },
+    });
+  });
+
+  router.get("/self-test", async (req, res) => {
+    const includeRaw =
+      req.query.raw === "1" ||
+      req.query.raw === "true" ||
+      req.query.includeRaw === "1" ||
+      req.query.includeRaw === "true";
+    const result = await buildPhotoEnhancerSelfTest({ includeRaw });
+    res.status(result.overallStatus === "fail" ? 503 : 200).json({
+      ...result,
+      generatedAt: new Date().toISOString(),
     });
   });
 

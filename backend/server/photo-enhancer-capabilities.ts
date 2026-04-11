@@ -21,6 +21,24 @@ export type PhotoEnhancerModelStatus = PhotoEnhancerModelDefinition & {
   r2Key: string;
   available: boolean;
   reason: string | null;
+  weights: {
+    configured: boolean;
+    found: boolean;
+    bucket: string | null;
+    key: string | null;
+    checkedBuckets: string[];
+    checkedKeys: string[];
+    reason: string | null;
+  };
+  runner: {
+    configured: boolean;
+    healthy: boolean | null;
+    endpoint: string | null;
+    envKeys: string[];
+    reason: string | null;
+  };
+  inferenceAvailable: boolean;
+  readinessReason: string | null;
   r2: {
     enabled: boolean;
     endpoint: string | null;
@@ -296,6 +314,91 @@ function uniqueBuckets(...values: Array<string | null | undefined>): string[] {
   );
 }
 
+async function probeModelRunner(endpoint: string | null): Promise<{
+  healthy: boolean | null;
+  reason: string | null;
+}> {
+  if (!endpoint) {
+    return {
+      healthy: null,
+      reason: "Runner endpoint is not configured",
+    };
+  }
+
+  const timeoutMs = Number(process.env.PHOTO_ENHANCER_RUNNER_HEALTH_TIMEOUT_MS || 1_500);
+  const normalizedEndpoint = endpoint.replace(/\/+$/u, "");
+  const candidateUrls = [`${normalizedEndpoint}/health`, normalizedEndpoint];
+
+  for (const url of candidateUrls) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, {
+        method: "GET",
+        signal: controller.signal,
+      });
+      if (response.ok) {
+        return {
+          healthy: true,
+          reason: null,
+        };
+      }
+      if (response.status !== 404) {
+        return {
+          healthy: false,
+          reason: `Runner health check returned HTTP ${response.status}`,
+        };
+      }
+    } catch (error) {
+      return {
+        healthy: false,
+        reason: error instanceof Error ? error.message : String(error),
+      };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  return {
+    healthy: false,
+    reason: "Runner did not expose a healthy /health or root endpoint",
+  };
+}
+
+async function resolveRunnerStatus(model: PhotoEnhancerModelDefinition): Promise<PhotoEnhancerModelStatus["runner"]> {
+  const endpoint = firstNonEmpty(...model.runnerEnvKeys.map((key) => process.env[key]));
+  if (model.runnerEnvKeys.length === 0) {
+    return {
+      configured: true,
+      healthy: true,
+      endpoint: null,
+      envKeys: [],
+      reason: null,
+    };
+  }
+
+  const probe = await probeModelRunner(endpoint);
+  return {
+    configured: Boolean(endpoint),
+    healthy: endpoint ? probe.healthy : null,
+    endpoint,
+    envKeys: model.runnerEnvKeys,
+    reason: probe.reason,
+  };
+}
+
+function buildReadinessReason(options: {
+  weightsFound: boolean;
+  weightsReason: string | null;
+  runner: PhotoEnhancerModelStatus["runner"];
+}): string | null {
+  if (!options.weightsFound) return options.weightsReason;
+  if (!options.runner.configured) return "Model weights found; runner endpoint is not configured";
+  if (options.runner.healthy === false) return `Model weights found; runner is unhealthy: ${options.runner.reason || "unknown error"}`;
+  if (options.runner.healthy === null) return "Model weights found; runner health is unknown";
+  return null;
+}
+
 export function buildPhotoEnhancerR2Config(): PhotoEnhancerR2Config {
   const accountId = firstNonEmpty(
     process.env.CLOUDFLARE_R2_ACCOUNT_ID,
@@ -342,14 +445,37 @@ export async function resolvePhotoEnhancerModelStatuses(): Promise<PhotoEnhancer
   };
 
   if (!r2.enabled) {
-    return photoEnhancerModelRegistry.map((model) => ({
-      ...model,
-      storageType: "r2" as const,
-      r2Key: model.candidateKeys[0],
-      available: false,
-      reason: "R2 model credentials are not configured",
-      r2: baseR2,
-    }));
+    return Promise.all(
+      photoEnhancerModelRegistry.map(async (model) => {
+        const runner = await resolveRunnerStatus(model);
+        const weightsReason = "R2 model credentials are not configured";
+        const readinessReason = buildReadinessReason({
+          weightsFound: false,
+          weightsReason,
+          runner,
+        });
+        return {
+          ...model,
+          storageType: "r2" as const,
+          r2Key: model.candidateKeys[0],
+          available: false,
+          reason: weightsReason,
+          weights: {
+            configured: false,
+            found: false,
+            bucket: null,
+            key: null,
+            checkedBuckets: baseR2.buckets,
+            checkedKeys: model.candidateKeys,
+            reason: weightsReason,
+          },
+          runner,
+          inferenceAvailable: false,
+          readinessReason,
+          r2: baseR2,
+        };
+      }),
+    );
   }
 
   const client = new S3Client({
@@ -363,6 +489,7 @@ export async function resolvePhotoEnhancerModelStatuses(): Promise<PhotoEnhancer
 
   return Promise.all(
     photoEnhancerModelRegistry.map(async (model) => {
+      const runner = await resolveRunnerStatus(model);
       for (const bucketName of r2.buckets) {
         for (const key of model.candidateKeys) {
           try {
@@ -372,12 +499,29 @@ export async function resolvePhotoEnhancerModelStatuses(): Promise<PhotoEnhancer
                 Key: key,
               }),
             );
+            const readinessReason = buildReadinessReason({
+              weightsFound: true,
+              weightsReason: null,
+              runner,
+            });
             return {
               ...model,
               storageType: "r2" as const,
               r2Key: key,
               available: true,
               reason: null,
+              weights: {
+                configured: true,
+                found: true,
+                bucket: bucketName,
+                key,
+                checkedBuckets: r2.buckets,
+                checkedKeys: model.candidateKeys,
+                reason: null,
+              },
+              runner,
+              inferenceAvailable: readinessReason === null,
+              readinessReason,
               r2: {
                 ...baseR2,
                 bucket: bucketName,
@@ -389,12 +533,30 @@ export async function resolvePhotoEnhancerModelStatuses(): Promise<PhotoEnhancer
         }
       }
 
+      const weightsReason = "Model weights were not found in configured R2 buckets";
+      const readinessReason = buildReadinessReason({
+        weightsFound: false,
+        weightsReason,
+        runner,
+      });
       return {
         ...model,
         storageType: "r2" as const,
         r2Key: model.candidateKeys[0],
         available: false,
-        reason: "Model weights were not found in configured R2 buckets",
+        reason: weightsReason,
+        weights: {
+          configured: true,
+          found: false,
+          bucket: null,
+          key: null,
+          checkedBuckets: r2.buckets,
+          checkedKeys: model.candidateKeys,
+          reason: weightsReason,
+        },
+        runner,
+        inferenceAvailable: false,
+        readinessReason,
         r2: baseR2,
       };
     }),

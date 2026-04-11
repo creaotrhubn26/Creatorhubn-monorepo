@@ -1,12 +1,12 @@
 services:
   - type: web
     name: creatorhub-backend
-    runtime: node
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
     plan: free
     branch: main
     autoDeploy: true
-    buildCommand: cd backend && npm install --include=dev && npm run build
-    startCommand: cd backend && npm start
     healthCheckPath: /api/health
     envVars:
       - key: DATABASE_URL
