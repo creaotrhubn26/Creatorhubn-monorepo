@@ -14,6 +14,7 @@ import {
   PHOTO_ENHANCER_RAW_FORMATS,
   buildPhotoEnhancerImprovementBacklog,
   buildPhotoEnhancerR2Config,
+  buildPublicPhotoEnhancerR2Config,
   photoEnhancerModelRegistry,
   resolvePhotoEnhancerModelStatuses,
   type PhotoEnhancerModelStatus,
@@ -1121,7 +1122,7 @@ export function createPhotoEnhancerRouter() {
     const inferenceAvailable = modelStatuses.filter((model) => model.inferenceAvailable).length;
     res.json({
       success: true,
-      r2: buildPhotoEnhancerR2Config(),
+      r2: buildPublicPhotoEnhancerR2Config(),
       models: {
         gfpgan,
         registry: modelStatuses,
@@ -1172,7 +1173,7 @@ export function createPhotoEnhancerRouter() {
       success: true,
       models: statuses,
       registry: photoEnhancerModelRegistry,
-      r2: buildPhotoEnhancerR2Config(),
+      r2: buildPublicPhotoEnhancerR2Config(),
     });
   });
 

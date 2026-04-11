@@ -56,6 +56,13 @@ export type PhotoEnhancerR2Config = {
   secretAccessKey: string | null;
 };
 
+export type PublicPhotoEnhancerR2Config = Omit<
+  PhotoEnhancerR2Config,
+  "accessKeyId" | "secretAccessKey"
+> & {
+  credentialsConfigured: boolean;
+};
+
 export const photoEnhancerModelRegistry: PhotoEnhancerModelDefinition[] = [
   {
     id: "gfpgan",
@@ -432,6 +439,14 @@ export function buildPhotoEnhancerR2Config(): PhotoEnhancerR2Config {
     buckets,
     accessKeyId,
     secretAccessKey,
+  };
+}
+
+export function buildPublicPhotoEnhancerR2Config(): PublicPhotoEnhancerR2Config {
+  const { accessKeyId, secretAccessKey, ...safeConfig } = buildPhotoEnhancerR2Config();
+  return {
+    ...safeConfig,
+    credentialsConfigured: Boolean(accessKeyId && secretAccessKey),
   };
 }
 
