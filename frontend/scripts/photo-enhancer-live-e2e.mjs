@@ -20,6 +20,7 @@ const baseUrl = String(
     "https://creatorhub-backend-rtbl.onrender.com",
 ).replace(/\/$/u, "");
 const passes = Math.max(1, Number(args.get("--passes") || 60));
+const retries = Math.max(0, Number(args.get("--retries") || 4));
 
 const sourceImages = [
   {
@@ -94,6 +95,14 @@ async function downloadWithRequest(api, source) {
   return Buffer.from(await response.body());
 }
 
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableStatus(status) {
+  return status === 408 || status === 425 || status === 429 || status >= 500;
+}
+
 async function loadSources(api) {
   const loaded = [];
   for (const source of sourceImages) {
@@ -114,18 +123,36 @@ async function loadSources(api) {
 }
 
 async function postImage(api, endpoint, source, preset) {
-  return api.post(`${baseUrl}${endpoint}`, {
-    multipart: {
-      image: {
-        name: source.name,
-        mimeType: source.mimeType,
-        buffer: source.buffer,
-      },
-      preset: preset.preset,
-      settings: JSON.stringify(preset.settings),
-    },
-    timeout: 60_000,
-  });
+  let lastError = null;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const response = await api.post(`${baseUrl}${endpoint}`, {
+        multipart: {
+          image: {
+            name: source.name,
+            mimeType: source.mimeType,
+            buffer: source.buffer,
+          },
+          preset: preset.preset,
+          settings: JSON.stringify(preset.settings),
+        },
+        timeout: 90_000,
+      });
+      if (response.ok() || !isRetryableStatus(response.status()) || attempt === retries) {
+        return response;
+      }
+      lastError = new Error(`${endpoint} returned retryable HTTP ${response.status()}`);
+    } catch (error) {
+      lastError = error;
+      if (attempt === retries) {
+        throw error;
+      }
+    }
+    const backoffMs = 750 * (attempt + 1);
+    console.error(`[photo-enhancer-e2e] retry ${attempt + 1}/${retries} for ${endpoint}: ${lastError instanceof Error ? lastError.message : String(lastError)}`);
+    await delay(backoffMs);
+  }
+  throw lastError || new Error(`${endpoint} failed`);
 }
 
 async function main() {
@@ -174,6 +201,9 @@ async function main() {
         outputMimeType: enhanceBody.output?.mimeType || null,
         perceptualHash: analyzeBody.analysis?.perceptualHash || null,
       });
+      console.error(
+        `[photo-enhancer-e2e] pass ${index + 1}/${passes} ok (${source.provider}/${preset.preset})`,
+      );
     }
 
     const report = {
