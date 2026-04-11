@@ -34,8 +34,8 @@ RUN apt-get update \
 
 WORKDIR /app/backend
 
-COPY backend/package*.json ./
-RUN npm ci --include=dev
+COPY backend/package*.json backend/.npmrc ./
+RUN npm ci --include=dev --legacy-peer-deps
 
 COPY backend ./
 RUN npm run build
