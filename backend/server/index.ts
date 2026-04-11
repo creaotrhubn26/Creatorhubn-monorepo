@@ -38,7 +38,10 @@ import { createRoleRoomIntegrationsV1Router } from "./role-room-integrations-v1-
 import { createCommunicationRouter } from "./communication-routes.js";
 import { createDashboardCompatRouter } from "./dashboard-compat-routes.js";
 import { createLightroomRouter } from "./lightroom-routes.js";
-import { createPhotoEnhancerRouter } from "./photo-enhancer-routes.js";
+import {
+  createPhotoEnhancerRouter,
+  createPhotoEnhancementCompatRouter,
+} from "./photo-enhancer-routes.js";
 import { ensureGoogleWorkspaceConnectionsSchema } from "./google-workspace-connections-schema.js";
 import {
   ensureContractsCompatibilitySchema,
@@ -855,6 +858,7 @@ app.use("/api/creatorhub/google", createCreatorHubGoogleRouter(pool, activeSessi
 app.use("/api/role-room", createRoleRoomRouter(pool, activeSessions));
 app.use("/api/youtube", createYouTubeRouter(pool));
 app.use("/api/photo-enhancer", createPhotoEnhancerRouter());
+app.use("/api/photo-enhancement", createPhotoEnhancementCompatRouter());
 app.use(
   "/api/integrations/v1/role-room",
   createRoleRoomIntegrationsV1Router(pool),

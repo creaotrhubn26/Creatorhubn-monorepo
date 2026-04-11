@@ -10,11 +10,13 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  Divider,
   FormControl,
   Grid,
   InputLabel,
   LinearProgress,
   MenuItem,
+  Paper,
   Select,
   Slider,
   Stack,
@@ -24,11 +26,14 @@ import {
 import {
   Assessment as AssessmentIcon,
   AutoFixHigh as AutoFixHighIcon,
+  CloudDone as CloudDoneIcon,
   CloudUpload as CloudUploadIcon,
   Compare as CompareIcon,
   Face as FaceIcon,
+  Memory as MemoryIcon,
   Palette as PaletteIcon,
   Save as SaveIcon,
+  Storage as StorageIcon,
   Tune as TuneIcon,
 } from '@mui/icons-material';
 import { useMutation, useQuery } from '@tanstack/react-query';
@@ -61,6 +66,39 @@ interface EnhancementSettings {
   faceEnhancement: number;
 }
 
+interface PhotoEnhancerModelStatus {
+  id: string;
+  displayName?: string;
+  modelType?: string;
+  available?: boolean;
+  reason?: string | null;
+  r2Key?: string;
+  recommendedFor?: string[];
+}
+
+interface PhotoEnhancerStatus {
+  success?: boolean;
+  models?: {
+    gfpgan?: PhotoEnhancerModelStatus;
+    registry?: PhotoEnhancerModelStatus[];
+    faceApi?: { available?: boolean };
+    imageHash?: { available?: boolean };
+  };
+  rawSupport?: {
+    available?: boolean;
+    supportedExtensions?: string[];
+    rasterExtensions?: string[];
+    converters?: Record<string, boolean>;
+  };
+  googleDrive?: {
+    folderStructure?: Array<{ id: string; name: string; description?: string }>;
+  };
+  improvements?: {
+    total?: number;
+    tracked?: Array<{ id: string; category: string; title: string; status: string }>;
+  };
+}
+
 const PRESETS = [
   { id: 'auto', name: 'Auto Enhancer', description: 'Automatisk optimalisering', icon: <AutoFixHighIcon /> },
   { id: 'portrait', name: 'Portrait Pro', description: 'Ansiktsforbedring', icon: <FaceIcon /> },
@@ -76,6 +114,50 @@ const DEFAULT_SETTINGS: EnhancementSettings = {
   denoising: 50,
   faceEnhancement: 75,
 };
+
+const RAW_UPLOAD_EXTENSIONS = [
+  '.3fr',
+  '.ari',
+  '.arw',
+  '.bay',
+  '.braw',
+  '.cr2',
+  '.cr3',
+  '.crw',
+  '.dng',
+  '.erf',
+  '.fff',
+  '.gpr',
+  '.iiq',
+  '.mef',
+  '.mos',
+  '.mrw',
+  '.nef',
+  '.nrw',
+  '.orf',
+  '.pef',
+  '.raf',
+  '.raw',
+  '.rwl',
+  '.rw2',
+  '.sr2',
+  '.srf',
+  '.srw',
+  '.x3f',
+];
+
+const PHOTO_UPLOAD_ACCEPT = [
+  'image/*',
+  '.jpg',
+  '.jpeg',
+  '.png',
+  '.webp',
+  '.heic',
+  '.heif',
+  '.tif',
+  '.tiff',
+  ...RAW_UPLOAD_EXTENSIONS,
+].join(',');
 
 function normalizeProfession(value: SupportedProfession | undefined): 'photographer' | 'videographer' | 'music_producer' | 'vendor' {
   if (value === 'photographer' || value === 'videographer' || value === 'vendor') return value;
@@ -179,7 +261,28 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
   const professionConfig = getProfessionConfig(profession);
   const accentColor = professionConfig?.iconColor || '#ff8c00';
 
-  const folders = useMemo(() => getFoldersForProfession(profession), [profession]);
+  const statusQuery = useQuery<PhotoEnhancerStatus>({
+    queryKey: ['creatorhub-photo-enhancer-status'],
+    queryFn: async () => apiRequest('/api/photo-enhancer/status'),
+    staleTime: 60_000,
+    retry: 1,
+  });
+
+  const modelRegistry = statusQuery.data?.models?.registry || [];
+  const availableModels = modelRegistry.filter((model) => model.available).length;
+  const rawConverters = statusQuery.data?.rawSupport?.converters || {};
+
+  const folders = useMemo(() => {
+    const driveStructure = statusQuery.data?.googleDrive?.folderStructure || [];
+    if (driveStructure.length > 0) {
+      return driveStructure.map((folder) => ({
+        id: folder.id,
+        name: folder.name,
+        description: folder.description,
+      }));
+    }
+    return getFoldersForProfession(profession);
+  }, [profession, statusQuery.data?.googleDrive?.folderStructure]);
 
   const projectsQuery = useQuery<EnhancerProject[]>({
     queryKey: ['creatorhub-photo-enhancer-projects', profession],
@@ -193,6 +296,12 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
   });
 
   const projects = isDemoMode ? demoProjects : projectsQuery.data || [];
+
+  useEffect(() => {
+    if (!selectedFolderId && folders[0]?.id) {
+      setSelectedFolderId(folders[0].id);
+    }
+  }, [folders, selectedFolderId]);
 
   useEffect(() => {
     return () => {
@@ -332,9 +441,48 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                   AI-enhancement for {profession.replace('_', ' ')} workflows.
                 </Typography>
 
+                <Paper
+                  variant="outlined"
+                  sx={{
+                    p: 1.5,
+                    borderColor: `${accentColor}33`,
+                    bgcolor: `${accentColor}0d`,
+                  }}
+                >
+                  <Stack spacing={1}>
+                    <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                      <Chip
+                        size="small"
+                        icon={<StorageIcon />}
+                        label={`${availableModels}/${modelRegistry.length || 0} R2-modeller`}
+                        color={availableModels > 0 ? 'success' : 'warning'}
+                      />
+                      <Chip
+                        size="small"
+                        icon={<FaceIcon />}
+                        label={statusQuery.data?.models?.faceApi?.available ? 'face-api aktiv' : 'face-api sjekkes'}
+                        variant="outlined"
+                      />
+                      <Chip
+                        size="small"
+                        icon={<MemoryIcon />}
+                        label={statusQuery.data?.models?.imageHash?.available ? 'image-hash aktiv' : 'hash fallback'}
+                        variant="outlined"
+                      />
+                    </Stack>
+                    <Typography variant="caption" color="text.secondary">
+                      RAW-støtte: {statusQuery.data?.rawSupport?.available ? 'aktiv' : 'krever konverter på server'} ·
+                      {' '}Konvertere: {Object.entries(rawConverters).filter(([, enabled]) => enabled).map(([name]) => name).join(', ') || 'ingen funnet'}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Drive-struktur: {folders.length} mapper · Forbedringskatalog: {statusQuery.data?.improvements?.total || 0} punkter
+                    </Typography>
+                  </Stack>
+                </Paper>
+
                 <Button component="label" variant="contained" startIcon={<CloudUploadIcon />}>
                   Last opp bilde
-                  <input hidden accept="image/*" type="file" onChange={onImageUpload} />
+                  <input hidden accept={PHOTO_UPLOAD_ACCEPT} type="file" onChange={onImageUpload} />
                 </Button>
 
                 {uploadedImage ? <Chip label={uploadedImage.name} size="small" /> : null}
@@ -417,7 +565,9 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
 
                 {analysisResult ? (
                   <Alert severity="success" icon={<AssessmentIcon />}>
-                    Analyse fullført.
+                    Analyse fullført
+                    {toRecord(analysisResult.analysis).perceptualHash ? ' · hash klar' : ''}
+                    {toRecord(analysisResult.analysis).format ? ` · ${String(toRecord(analysisResult.analysis).format).toUpperCase()}` : ''}
                   </Alert>
                 ) : null}
               </Stack>
@@ -528,6 +678,44 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                   Komposisjon score: {Math.round(compositionAnalysis.overall_score)} · Rule of Thirds: {Math.round(compositionAnalysis.rule_of_thirds_score)}
                 </Alert>
               ) : null}
+
+              <Grid container spacing={1.5} sx={{ mt: 1.5 }}>
+                <Grid item xs={12} md={6}>
+                  <Paper variant="outlined" sx={{ p: 1.5, height: '100%' }}>
+                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                      <StorageIcon fontSize="small" sx={{ color: accentColor }} />
+                      <Typography variant="subtitle2">Modellpipeline</Typography>
+                    </Stack>
+                    <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
+                      {modelRegistry.slice(0, 8).map((model) => (
+                        <Chip
+                          key={model.id}
+                          size="small"
+                          label={model.displayName || model.id}
+                          color={model.available ? 'success' : 'default'}
+                          variant={model.available ? 'filled' : 'outlined'}
+                        />
+                      ))}
+                      {modelRegistry.length > 8 ? (
+                        <Chip size="small" label={`+${modelRegistry.length - 8}`} variant="outlined" />
+                      ) : null}
+                    </Stack>
+                  </Paper>
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <Paper variant="outlined" sx={{ p: 1.5, height: '100%' }}>
+                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                      <CloudDoneIcon fontSize="small" sx={{ color: accentColor }} />
+                      <Typography variant="subtitle2">Google Drive-mapper</Typography>
+                    </Stack>
+                    <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
+                      {folders.slice(0, 6).map((folder) => (
+                        <Chip key={folder.id} size="small" label={folder.name} variant="outlined" />
+                      ))}
+                    </Stack>
+                  </Paper>
+                </Grid>
+              </Grid>
 
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 1.5 }}>
                 <Button

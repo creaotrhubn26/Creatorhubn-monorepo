@@ -143,6 +143,7 @@ import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import ProfessionAdapter from './ProfessionAdapter';
 import SmartWorkflowBuilder from './SmartWorkflowBuilder'; // Visual workflow builder with action buttons
 import FloatingActionButtons from './misc/FloatingActionButtons';
+import CreatorHubPhotoEnhancer from './misc/CreatorHubPhotoEnhancer';
 
 // Import Settings Components
 import PriceAdministration from '../PriceAdministration';
@@ -247,7 +248,6 @@ import VendorOrchestrator from './VendorOrchestrator';
 import SplitSheetManager from './split-sheets/SplitSheetManager';
 
 // Import AI Enhancement Systems
-import PhotoEnhancementSuite from '../enhancement/PhotoEnhancementSuite';
 import AudioEnhancementSuite from '../enhancement/AudioEnhancementSuite';
 import { useProfessionConfigs, type ProfessionConfigs } from '@/hooks/useProfessionConfigs';
 
@@ -5612,11 +5612,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
 
               {/* Tab 8: AI Forbedring - Photo Enhancement Suite */}
               <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'ai-enhancement')}>
-                <PhotoEnhancementSuite 
-                  userId={userId} 
-                  selectedProject={selectedProject}
-                  onProjectSelect={setSelectedProject}
-                />
+                <CreatorHubPhotoEnhancer profession={getComponentProfession(profession) as any} />
               </TabPanel>
 
               {/* Tab 10: Worklog */}
@@ -5991,11 +5987,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                     <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
                       AI Forbedringer
                     </Typography>
-                    <PhotoEnhancementSuite 
-                      userId={userId} 
-                      selectedProject={selectedProject}
-                      onProjectSelect={setSelectedProject}
-                    />
+                    <CreatorHubPhotoEnhancer profession={getComponentProfession(profession) as any} />
                   </Box>
                   
                   <Divider sx={{ my: 3 }} />
