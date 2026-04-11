@@ -46,6 +46,7 @@ RUN npm config set fetch-retries 5 \
     sleep $((attempt * 15)); \
   done
 
+COPY frontend /app/frontend
 COPY backend ./
 RUN npm run build
 
