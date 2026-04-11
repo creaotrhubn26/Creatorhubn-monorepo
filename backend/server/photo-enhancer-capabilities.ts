@@ -48,11 +48,7 @@ export const photoEnhancerModelRegistry: PhotoEnhancerModelDefinition[] = [
       "models/gfpgan/weights/GFPGANv1.3.pth",
       "models/gfpgan/weights/GFPGANv1.2.pth",
     ],
-    runnerEnvKeys: [
-      "PHOTO_ENHANCER_GFPGAN_URL",
-      "PHOTO_ENHANCER_GFPAGAN_URL",
-      "GFPGAN_SERVICE_URL",
-    ],
+    runnerEnvKeys: ["PHOTO_ENHANCER_GFPGAN_URL", "GFPGAN_SERVICE_URL"],
   },
   {
     id: "codeformer",
