@@ -452,13 +452,6 @@ async function convertRawWithExternalTool(file: Express.Multer.File): Promise<{
     streamStdout?: boolean;
   }> = [
     {
-      id: "imagemagick",
-      binaries: ["magick", "convert"],
-      args: [inputPath, "-auto-orient", "-colorspace", "sRGB", outputPath],
-      outputPath,
-      outputMimeType: "image/png",
-    },
-    {
       id: "darktable",
       binaries: ["darktable-cli"],
       args: [inputPath, outputPath],
@@ -479,6 +472,13 @@ async function convertRawWithExternalTool(file: Express.Multer.File): Promise<{
       outputPath: outputPpmPath,
       outputMimeType: "image/x-portable-pixmap",
       streamStdout: true,
+    },
+    {
+      id: "imagemagick",
+      binaries: ["magick", "convert"],
+      args: [inputPath, "-auto-orient", "-colorspace", "sRGB", outputPath],
+      outputPath,
+      outputMimeType: "image/png",
     },
   ];
 
@@ -506,6 +506,18 @@ async function convertRawWithExternalTool(file: Express.Multer.File): Promise<{
           continue;
         }
         const buffer = await fs.readFile(attempt.outputPath);
+        try {
+          const sharpModule = await import("sharp");
+          const metadata = await sharpModule.default(buffer, { failOn: "none" }).metadata();
+          if (!metadata.width || !metadata.height) {
+            throw new Error("converted image has no dimensions");
+          }
+        } catch (validationError) {
+          errors.push(
+            `${attempt.id}: unreadable output (${validationError instanceof Error ? validationError.message : String(validationError)})`,
+          );
+          continue;
+        }
         return {
           file: {
             ...file,
