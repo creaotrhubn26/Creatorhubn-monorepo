@@ -25,6 +25,7 @@ export type PhotoEnhancerModelStatus = PhotoEnhancerModelDefinition & {
     enabled: boolean;
     endpoint: string | null;
     bucket: string | null;
+    buckets?: string[];
   };
 };
 
@@ -32,6 +33,7 @@ export type PhotoEnhancerR2Config = {
   enabled: boolean;
   endpoint: string | null;
   bucket: string | null;
+  buckets: string[];
   accessKeyId: string | null;
   secretAccessKey: string | null;
 };
@@ -280,6 +282,20 @@ function firstNonEmpty(...values: Array<string | undefined>): string | null {
   return null;
 }
 
+function splitBucketList(value: string | undefined): string[] {
+  if (!value) return [];
+  return value
+    .split(",")
+    .map((bucket) => bucket.trim())
+    .filter(Boolean);
+}
+
+function uniqueBuckets(...values: Array<string | null | undefined>): string[] {
+  return Array.from(
+    new Set(values.flatMap((value) => splitBucketList(value || undefined))),
+  );
+}
+
 export function buildPhotoEnhancerR2Config(): PhotoEnhancerR2Config {
   const accountId = firstNonEmpty(
     process.env.CLOUDFLARE_R2_ACCOUNT_ID,
@@ -289,12 +305,14 @@ export function buildPhotoEnhancerR2Config(): PhotoEnhancerR2Config {
     process.env.CLOUDFLARE_R2_ENDPOINT,
     accountId ? `https://${accountId}.r2.cloudflarestorage.com` : undefined,
   );
-  const bucket = firstNonEmpty(
+  const buckets = uniqueBuckets(
+    process.env.CLOUDFLARE_R2_MODELS_BUCKETS,
     process.env.CLOUDFLARE_R2_MODELS_BUCKET,
     process.env.PHOTO_ENHANCER_R2_MODELS_BUCKET,
     process.env.CLOUDFLARE_R2_BUCKET,
     process.env.R2_BUCKET,
   );
+  const bucket = buckets[0] || null;
   const accessKeyId = firstNonEmpty(
     process.env.CLOUDFLARE_R2_ACCESS_KEY_ID,
     process.env.R2_ACCESS_KEY_ID,
@@ -305,9 +323,10 @@ export function buildPhotoEnhancerR2Config(): PhotoEnhancerR2Config {
   );
 
   return {
-    enabled: Boolean(endpoint && bucket && accessKeyId && secretAccessKey),
+    enabled: Boolean(endpoint && buckets.length > 0 && accessKeyId && secretAccessKey),
     endpoint,
     bucket,
+    buckets,
     accessKeyId,
     secretAccessKey,
   };
@@ -319,6 +338,7 @@ export async function resolvePhotoEnhancerModelStatuses(): Promise<PhotoEnhancer
     enabled: r2.enabled,
     endpoint: r2.endpoint,
     bucket: r2.bucket,
+    buckets: r2.buckets,
   };
 
   if (!r2.enabled) {
@@ -343,24 +363,29 @@ export async function resolvePhotoEnhancerModelStatuses(): Promise<PhotoEnhancer
 
   return Promise.all(
     photoEnhancerModelRegistry.map(async (model) => {
-      for (const key of model.candidateKeys) {
-        try {
-          await client.send(
-            new HeadObjectCommand({
-              Bucket: r2.bucket || "",
-              Key: key,
-            }),
-          );
-          return {
-            ...model,
-            storageType: "r2" as const,
-            r2Key: key,
-            available: true,
-            reason: null,
-            r2: baseR2,
-          };
-        } catch {
-          // Continue checking fallback keys before reporting unavailable.
+      for (const bucketName of r2.buckets) {
+        for (const key of model.candidateKeys) {
+          try {
+            await client.send(
+              new HeadObjectCommand({
+                Bucket: bucketName,
+                Key: key,
+              }),
+            );
+            return {
+              ...model,
+              storageType: "r2" as const,
+              r2Key: key,
+              available: true,
+              reason: null,
+              r2: {
+                ...baseR2,
+                bucket: bucketName,
+              },
+            };
+          } catch {
+            // Continue checking fallback keys and buckets before reporting unavailable.
+          }
         }
       }
 
@@ -369,7 +394,7 @@ export async function resolvePhotoEnhancerModelStatuses(): Promise<PhotoEnhancer
         storageType: "r2" as const,
         r2Key: model.candidateKeys[0],
         available: false,
-        reason: "Model weights were not found in configured R2 bucket",
+        reason: "Model weights were not found in configured R2 buckets",
         r2: baseR2,
       };
     }),

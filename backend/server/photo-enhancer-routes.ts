@@ -2,11 +2,11 @@ import express from "express";
 import multer from "multer";
 import crypto from "crypto";
 import fs from "fs/promises";
-import { existsSync } from "fs";
+import { constants as fsConstants, createWriteStream, existsSync } from "fs";
 import os from "os";
 import path from "path";
 import { fileURLToPath } from "url";
-import { execFile } from "child_process";
+import { execFile, spawn } from "child_process";
 import { promisify } from "util";
 import {
   PHOTO_ENHANCER_DRIVE_STRUCTURE,
@@ -33,6 +33,11 @@ const repoRoot = path.resolve(
   "..",
   "..",
 );
+const photoEnhancerBinarySearchDirs = [
+  process.env.PHOTO_ENHANCER_BIN_DIR,
+  path.join(repoRoot, "backend", ".render-bin"),
+  path.join(repoRoot, ".render-bin"),
+].filter((value): value is string => Boolean(value));
 const projectFileStorageRoot = path.join(repoRoot, "uploads", "project-files");
 const photoEnhancerStorageRoot = path.join(repoRoot, "uploads", "photo-enhancer");
 const photoEnhancerManifestPath = path.join(
@@ -234,6 +239,7 @@ async function resolveGfpganModelStatus(): Promise<PhotoEnhancerModelStatus> {
       enabled: r2.enabled,
       endpoint: r2.endpoint,
       bucket: r2.bucket,
+      buckets: r2.buckets,
     },
   };
 }
@@ -272,22 +278,101 @@ async function isFaceApiAvailable(): Promise<boolean> {
   }
 }
 
-async function commandPath(binary: string): Promise<string | null> {
+async function canExecute(filePath: string): Promise<boolean> {
   try {
-    const { stdout } = await execFileAsync("which", [binary], { timeout: 2_000 });
-    const resolved = String(stdout || "").trim().split("\n")[0];
-    return resolved || null;
+    await fs.access(filePath, fsConstants.X_OK);
+    return true;
   } catch {
-    return null;
+    return false;
   }
 }
 
+async function commandPath(...binaries: string[]): Promise<string | null> {
+  for (const binary of binaries) {
+    if (binary.includes("/")) {
+      if (await canExecute(binary)) return binary;
+      continue;
+    }
+
+    for (const directory of photoEnhancerBinarySearchDirs) {
+      const candidate = path.join(directory, binary);
+      if (await canExecute(candidate)) return candidate;
+    }
+
+    try {
+      const { stdout } = await execFileAsync("which", [binary], { timeout: 2_000 });
+      const resolved = String(stdout || "").trim().split("\n")[0];
+      if (resolved) return resolved;
+    } catch {
+      // Try next binary alias.
+    }
+  }
+  return null;
+}
+
+async function execFileToFile(
+  binary: string,
+  args: string[],
+  outputPath: string,
+  options: { cwd: string; timeout: number },
+): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(binary, args, {
+      cwd: options.cwd,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const output = createWriteStream(outputPath);
+    let stderr = "";
+    let settled = false;
+    let childClosed = false;
+    let childExitCode: number | null = null;
+    let outputFinished = false;
+    const timeout = setTimeout(() => {
+      child.kill("SIGKILL");
+      settle(new Error(`Command timed out after ${options.timeout}ms`));
+    }, options.timeout);
+
+    const settle = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (error) output.destroy();
+      if (error) reject(error);
+      else resolve();
+    };
+
+    const maybeFinish = () => {
+      if (!childClosed || !outputFinished) return;
+      if (childExitCode === 0) settle();
+      else settle(new Error(stderr || `Command exited with code ${childExitCode}`));
+    };
+
+    child.stderr?.on("data", (chunk) => {
+      stderr += String(chunk).slice(0, 4096);
+    });
+    child.stdout?.pipe(output);
+    child.on("error", settle);
+    output.on("error", settle);
+    output.on("finish", () => {
+      outputFinished = true;
+      maybeFinish();
+    });
+    child.on("close", (code) => {
+      childClosed = true;
+      childExitCode = code;
+      maybeFinish();
+    });
+  });
+}
+
 async function resolveRuntimeSupport() {
-  const [magick, darktable, rawtherapee, dcraw, exiftool] = await Promise.all([
-    commandPath("magick"),
+  const [imageMagick, darktable, rawtherapee, dcraw, dcrawEmu, simpleDcraw, exiftool] = await Promise.all([
+    commandPath("magick", "convert"),
     commandPath("darktable-cli"),
     commandPath("rawtherapee-cli"),
     commandPath("dcraw"),
+    commandPath("dcraw_emu"),
+    commandPath("simple_dcraw"),
     commandPath("exiftool"),
   ]);
 
@@ -296,12 +381,14 @@ async function resolveRuntimeSupport() {
       supportedExtensions: PHOTO_ENHANCER_RAW_FORMATS,
       rasterExtensions: PHOTO_ENHANCER_RASTER_FORMATS,
       converters: {
-        magick: Boolean(magick),
+        imageMagick: Boolean(imageMagick),
         darktable: Boolean(darktable),
         rawtherapee: Boolean(rawtherapee),
         dcraw: Boolean(dcraw),
+        dcrawEmu: Boolean(dcrawEmu),
+        simpleDcraw: Boolean(simpleDcraw),
       },
-      available: Boolean(magick || darktable || rawtherapee || dcraw),
+      available: Boolean(imageMagick || darktable || rawtherapee || dcraw || dcrawEmu || simpleDcraw),
     },
     metadata: {
       exiftool: Boolean(exiftool),
@@ -353,59 +440,88 @@ async function convertRawWithExternalTool(file: Express.Multer.File): Promise<{
   const extension = getUploadExtension(file) || ".raw";
   const inputPath = path.join(tempDir, `source${extension}`);
   const outputPath = path.join(tempDir, "converted.png");
+  const outputPpmPath = path.join(tempDir, "converted.ppm");
   await fs.writeFile(inputPath, file.buffer);
 
   const attempts: Array<{
     id: string;
-    binary: string;
+    binaries: string[];
     args: string[];
+    outputPath: string;
+    outputMimeType: string;
+    streamStdout?: boolean;
   }> = [
     {
-      id: "magick",
-      binary: "magick",
+      id: "imagemagick",
+      binaries: ["magick", "convert"],
       args: [inputPath, "-auto-orient", "-colorspace", "sRGB", outputPath],
+      outputPath,
+      outputMimeType: "image/png",
     },
     {
       id: "darktable",
-      binary: "darktable-cli",
+      binaries: ["darktable-cli"],
       args: [inputPath, outputPath],
+      outputPath,
+      outputMimeType: "image/png",
     },
     {
       id: "rawtherapee",
-      binary: "rawtherapee-cli",
+      binaries: ["rawtherapee-cli"],
       args: ["-o", outputPath, "-c", inputPath],
+      outputPath,
+      outputMimeType: "image/png",
+    },
+    {
+      id: "dcraw",
+      binaries: ["dcraw", "dcraw_emu"],
+      args: ["-c", "-w", inputPath],
+      outputPath: outputPpmPath,
+      outputMimeType: "image/x-portable-pixmap",
+      streamStdout: true,
     },
   ];
 
   const errors: string[] = [];
   try {
     for (const attempt of attempts) {
-      const resolved = await commandPath(attempt.binary);
+      const resolved = await commandPath(...attempt.binaries);
       if (!resolved) continue;
       try {
-        await execFileAsync(resolved, attempt.args, {
-          cwd: tempDir,
-          timeout: Number(process.env.PHOTO_ENHANCER_RAW_TIMEOUT_MS || 60_000),
-          maxBuffer: 10 * 1024 * 1024,
-        });
-        if (!existsSync(outputPath)) {
+        const timeout = Number(process.env.PHOTO_ENHANCER_RAW_TIMEOUT_MS || 60_000);
+        if (attempt.streamStdout) {
+          await execFileToFile(resolved, attempt.args, attempt.outputPath, {
+            cwd: tempDir,
+            timeout,
+          });
+        } else {
+          await execFileAsync(resolved, attempt.args, {
+            cwd: tempDir,
+            timeout,
+            maxBuffer: 10 * 1024 * 1024,
+          });
+        }
+        if (!existsSync(attempt.outputPath)) {
           errors.push(`${attempt.id}: no output`);
           continue;
         }
-        const buffer = await fs.readFile(outputPath);
+        const buffer = await fs.readFile(attempt.outputPath);
         return {
           file: {
             ...file,
             buffer,
             size: buffer.byteLength,
-            mimetype: "image/png",
-            originalname: file.originalname.replace(/\.[^.]+$/u, ".png"),
+            mimetype: attempt.outputMimeType,
+            originalname: file.originalname.replace(
+              /\.[^.]+$/u,
+              attempt.outputMimeType === "image/png" ? ".png" : ".ppm",
+            ),
           },
           conversion: {
             raw: true,
             sourceExtension: extension,
             converter: attempt.id,
-            outputMimeType: "image/png",
+            outputMimeType: attempt.outputMimeType,
           },
         };
       } catch (error) {
@@ -475,7 +591,6 @@ async function runGfpganService(params: {
 }): Promise<{ enhancedImageUrl: string; modelUsed: string } | null> {
   const endpoint = firstNonEmpty(
     process.env.PHOTO_ENHANCER_GFPGAN_URL,
-    process.env.PHOTO_ENHANCER_GFPAGAN_URL,
     process.env.GFPGAN_SERVICE_URL,
   );
   if (!endpoint || !params.model.available) return null;

@@ -49,3 +49,4 @@ temp/
 
 # Render
 .render
+.render-bin/
