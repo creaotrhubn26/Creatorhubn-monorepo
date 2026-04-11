@@ -440,7 +440,7 @@ async function convertRawWithExternalTool(file: Express.Multer.File): Promise<{
   const extension = getUploadExtension(file) || ".raw";
   const inputPath = path.join(tempDir, `source${extension}`);
   const outputPath = path.join(tempDir, "converted.png");
-  const outputPpmPath = path.join(tempDir, "converted.ppm");
+  const outputTiffPath = path.join(tempDir, "source.tiff");
   await fs.writeFile(inputPath, file.buffer);
 
   const attempts: Array<{
@@ -468,10 +468,9 @@ async function convertRawWithExternalTool(file: Express.Multer.File): Promise<{
     {
       id: "dcraw",
       binaries: ["dcraw", "dcraw_emu"],
-      args: ["-c", "-w", inputPath],
-      outputPath: outputPpmPath,
-      outputMimeType: "image/x-portable-pixmap",
-      streamStdout: true,
+      args: ["-w", "-T", inputPath],
+      outputPath: outputTiffPath,
+      outputMimeType: "image/tiff",
     },
     {
       id: "imagemagick",
@@ -526,7 +525,7 @@ async function convertRawWithExternalTool(file: Express.Multer.File): Promise<{
             mimetype: attempt.outputMimeType,
             originalname: file.originalname.replace(
               /\.[^.]+$/u,
-              attempt.outputMimeType === "image/png" ? ".png" : ".ppm",
+              attempt.outputMimeType === "image/png" ? ".png" : ".tiff",
             ),
           },
           conversion: {
