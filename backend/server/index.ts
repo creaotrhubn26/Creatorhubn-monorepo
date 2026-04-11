@@ -19097,7 +19097,7 @@ type CompatPlatformSubscriptionPlan = {
   name: string;
   displayName: string;
   description: string;
-  tier: "free" | "basic" | "professional" | "premium" | "enterprise";
+  tier: "free" | "prototype" | "basic" | "professional" | "premium" | "enterprise";
   price: number;
   monthlyPrice?: number | null;
   yearlyPrice?: number | null;
@@ -19544,6 +19544,40 @@ void ensureCompatPlatformSubscriptionPlanOverridesLoaded();
 function buildCompatPlatformSubscriptionPlans(): CompatPlatformSubscriptionPlan[] {
   const nowIso = new Date().toISOString();
   return [
+    {
+      id: "prototype",
+      name: "prototype",
+      displayName: "Prototype",
+      description:
+        "Gratis testtilgang for prototyper, tidlig validering og enkel gjennomgang før full CreatorHub-plan velges.",
+      tier: "prototype",
+      price: 0,
+      monthlyPrice: 0,
+      yearlyPrice: 0,
+      currency: "NOK",
+      billingCycle: "monthly",
+      interval: "måned",
+      features: [
+        "Prototype-tilgang",
+        "Enkel prosjektgjennomgang",
+        "Tilbakemeldinger og testflyt",
+        "Begrenset lagring",
+      ],
+      limits: {
+        maxUsers: 0,
+        maxProjects: 3,
+        maxClients: 5,
+        maxStorageGB: 2,
+        maxApiCalls: 500,
+      },
+      isActive: true,
+      isPublic: true,
+      publicPriceLabel: "Gratis",
+      ctaLabel: "Velg Prototype",
+      trialDays: 0,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    },
     {
       id: "basic",
       name: "basic",
@@ -20257,6 +20291,9 @@ function deriveCompatMembershipTier(
 
 function deriveCompatMembershipType(planName: string, planId: string | null) {
   const normalizedPlanId = normalizeBillingPlanId(planId);
+  if (normalizedPlanId === "prototype") {
+    return "Prototype";
+  }
   if (normalizedPlanId === "enterprise") {
     return "Enterprise";
   }

@@ -3,7 +3,7 @@
  * Centralized plan definitions with display names, features, and pricing
  */
 
-export type PlanTier = 'basic' | 'pro' | 'enterprise' | 'marketplace';
+export type PlanTier = 'prototype' | 'basic' | 'pro' | 'enterprise' | 'marketplace';
 
 export interface SubscriptionPlan {
   id: PlanTier;
@@ -43,6 +43,36 @@ export interface SubscriptionPlan {
 }
 
 export const SUBSCRIPTION_PLANS: Record<PlanTier, SubscriptionPlan> = {
+  prototype: {
+    id: 'prototype',
+    name: 'Prototype',
+    displayName: 'Prototype',
+    shortName: 'Prototype',
+    description: 'Gratis testtilgang for prototyper, validering og enkel gjennomgang før full plan.',
+    priceMonthly: 0,
+    priceAnnual: 0,
+    features: [
+      'Prototype-tilgang',
+      'Enkel prosjektgjennomgang',
+      'Tilbakemeldinger og testflyt',
+      'Begrenset lagring',
+    ],
+    limits: {
+      maxProjects: 3,
+      maxStorage: 2,
+      maxShowcaseItems: 10,
+      maxClientCommunications: 10,
+      maxExports: 5,
+      maxTeamMembers: 0,
+    },
+    color: '#00bcd4',
+    trial: {
+      enabled: false,
+      duration: 0,
+      restrictedFeatures: [],
+    },
+  },
+
   basic: {
     id: 'basic',
     name: 'Basic Creator',
@@ -232,14 +262,19 @@ export function planHasFeature(tier: PlanTier, featureId: string): boolean {
  * Get all available plans (excluding marketplace)
  */
 export function getAvailablePlans(): SubscriptionPlan[] {
-  return [SUBSCRIPTION_PLANS.basic, SUBSCRIPTION_PLANS.pro, SUBSCRIPTION_PLANS.enterprise];
+  return [
+    SUBSCRIPTION_PLANS.prototype,
+    SUBSCRIPTION_PLANS.basic,
+    SUBSCRIPTION_PLANS.pro,
+    SUBSCRIPTION_PLANS.enterprise,
+  ];
 }
 
 /**
  * Compare plans (for upgrade/downgrade)
  */
 export function comparePlans(from: PlanTier, to: PlanTier): 'upgrade' | 'downgrade' | 'same' {
-  const order: PlanTier[] = ['basic', 'pro', 'enterprise'];
+  const order: PlanTier[] = ['prototype', 'basic', 'pro', 'enterprise'];
   const fromIndex = order.indexOf(from);
   const toIndex = order.indexOf(to);
 

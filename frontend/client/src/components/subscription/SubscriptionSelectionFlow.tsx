@@ -450,8 +450,10 @@ export default function SubscriptionSelectionFlow({
 
   const plans: SubscriptionPlan[] = plansData?.plans || [];
   const publicPlans = plans.filter((plan) => plan.isPublic !== false);
+  const isPrototypePlan = (plan: SubscriptionPlan | null | undefined) =>
+    plan?.id === 'prototype';
   const selfServePlans = publicPlans.filter(
-    (plan) => !plan.contactSalesOnly && plan.price > 0,
+    (plan) => !plan.contactSalesOnly && (plan.price > 0 || isPrototypePlan(plan)),
   );
   const enterprisePlan =
     publicPlans.find((plan) => plan.contactSalesOnly) || null;
@@ -475,7 +477,11 @@ export default function SubscriptionSelectionFlow({
     }
 
     const matchedPlan = plans.find((plan) => plan.id === initialPlanId);
-    if (matchedPlan && !matchedPlan.contactSalesOnly && matchedPlan.price > 0) {
+    if (
+      matchedPlan &&
+      !matchedPlan.contactSalesOnly &&
+      (matchedPlan.price > 0 || isPrototypePlan(matchedPlan))
+    ) {
       setSelectedPlan(matchedPlan);
     }
   }, [initialPlanId, plans, selectedPlan]);
@@ -591,7 +597,7 @@ export default function SubscriptionSelectionFlow({
   };
 
   const selectedPlanPriceLabel = selectedPlan
-    ? formatPrice(resolvePlanPrice(selectedPlan), selectedPlan.currency)
+    ? selectedPlan.publicPriceLabel || formatPrice(resolvePlanPrice(selectedPlan), selectedPlan.currency)
     : null;
 
   const selectedPlanSummaryRows = selectedPlan
@@ -725,7 +731,7 @@ export default function SubscriptionSelectionFlow({
 
           <Grid container spacing={2.5}>
             {[0, 1, 2].map((index) => (
-              <Grid size={{ xs: 12, md: 4 }} key={index}>
+              <Grid item xs={12} md={4} key={index}>
                 <Box
                   sx={{
                     borderRadius: '24px',
@@ -972,8 +978,12 @@ export default function SubscriptionSelectionFlow({
 
       {/* Plans Grid */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
-        {selfServePlans.map((plan) => (
-          <Grid size={{ xs: 12, md: 4 }} key={plan.id}>
+        {selfServePlans.map((plan) => {
+          const showUserLimit = !isPrototypePlan(plan);
+          const limitColumnSize = showUserLimit ? 4 : 6;
+
+          return (
+          <Grid item xs={12} md={4} key={plan.id}>
             <Card
               sx={{
                 height: '100%',
@@ -1028,7 +1038,7 @@ export default function SubscriptionSelectionFlow({
                       fontSize: '2.5rem',
                       lineHeight: 1,
                     }}>
-                      {formatPrice(resolvePlanPrice(plan), plan.currency)}
+                      {plan.publicPriceLabel || formatPrice(resolvePlanPrice(plan), plan.currency)}
                     </Typography>
                     <Typography variant="body2" sx={{ 
                       color: 'rgba(255, 255, 255, 0.6)',
@@ -1108,23 +1118,25 @@ export default function SubscriptionSelectionFlow({
                 }} />
 
                 <Grid container spacing={2} sx={{ textAlign: 'center', mb: 3 }}>
-                  <Grid size={{ xs: 4 }}>
-                    <Typography variant="caption" sx={{ 
-                      color: 'rgba(255, 255, 255, 0.5)',
-                      display: 'block',
-                      mb: 0.5,
-                    }}>
-                      Brukere
-                    </Typography>
-                    <Typography variant="body2" sx={{ 
-                      fontWeight: 700,
-                      color: '#fff',
-                      fontSize: '1rem',
-                    }}>
-                      {formatPlanLimit(plan.maxUsers)}
-                    </Typography>
-                  </Grid>
-                  <Grid size={{ xs: 4 }}>
+                  {showUserLimit ? (
+                    <Grid item xs={4}>
+                      <Typography variant="caption" sx={{
+                        color: 'rgba(255, 255, 255, 0.5)',
+                        display: 'block',
+                        mb: 0.5,
+                      }}>
+                        Brukere
+                      </Typography>
+                      <Typography variant="body2" sx={{
+                        fontWeight: 700,
+                        color: '#fff',
+                        fontSize: '1rem',
+                      }}>
+                        {formatPlanLimit(plan.maxUsers)}
+                      </Typography>
+                    </Grid>
+                  ) : null}
+                  <Grid item xs={limitColumnSize}>
                     <Typography variant="caption" sx={{ 
                       color: 'rgba(255, 255, 255, 0.5)',
                       display: 'block',
@@ -1140,7 +1152,7 @@ export default function SubscriptionSelectionFlow({
                       {formatPlanLimit(plan.maxProjects)}
                     </Typography>
                   </Grid>
-                  <Grid size={{ xs: 4 }}>
+                  <Grid item xs={limitColumnSize}>
                     <Typography variant="caption" sx={{ 
                       color: 'rgba(255, 255, 255, 0.5)',
                       display: 'block',
@@ -1196,7 +1208,8 @@ export default function SubscriptionSelectionFlow({
               </CardContent>
             </Card>
           </Grid>
-        ))}
+          );
+        })}
       </Grid>
 
       {enterprisePlan && (
@@ -1303,7 +1316,7 @@ export default function SubscriptionSelectionFlow({
               {copy.planSummaryLabel}: {selectedPlan.name}
               </Typography>
               <Typography sx={{ color: 'rgba(255,255,255,0.72)', lineHeight: 1.7 }}>
-                {formatPrice(resolvePlanPrice(selectedPlan), selectedPlan.currency)} per{' '}
+                {selectedPlanPriceLabel} per{' '}
                 {resolveCadenceLabel()}.
               {selectedBillingCycle === 'yearly' && selectedPlan.yearlySavingsLabel
                 ? ` ${selectedPlan.yearlySavingsLabel}.`
@@ -1465,7 +1478,7 @@ export default function SubscriptionSelectionFlow({
           </Typography>
 
           <Grid container spacing={1.5}>
-            <Grid size={{ xs: 12, md: 6 }}>
+            <Grid item xs={12} md={6}>
               <Box
                 sx={{
                   height: '100%',
@@ -1500,7 +1513,7 @@ export default function SubscriptionSelectionFlow({
                 </Stack>
               </Box>
             </Grid>
-            <Grid size={{ xs: 12, md: 6 }}>
+            <Grid item xs={12} md={6}>
               <Box
                 sx={{
                   height: '100%',

@@ -42,7 +42,7 @@ export function OnboardingPlanSelection({
   selectedProfession,
 }: OnboardingPlanSelectionProps) {
   const { subscriptionPlans, formatPrice, isLoading } = usePlatformPricing();
-  const [selectedPlanId, setSelectedPlanId] = useState<string>('free');
+  const [selectedPlanId, setSelectedPlanId] = useState<string>('prototype');
   const [wantsTrial, setWantsTrial] = useState(true);
 
   const handleContinue = () => {
@@ -54,6 +54,8 @@ export function OnboardingPlanSelection({
 
   const getPlanIcon = (tier: string) => {
     switch (tier) {
+      case 'prototype':
+        return <Speed sx={{ color: '#00bcd4' }} />;
       case 'premium':
       case 'enterprise':
         return <Star sx={{ color: '#ffd700' }} />;
@@ -83,6 +85,8 @@ export function OnboardingPlanSelection({
           {subscriptionPlans.map((plan) => {
             const isSelected = selectedPlanId === plan.id;
             const hasTrial = plan.trialDays > 0;
+            const showUserLimit = plan.id !== 'prototype';
+            const limitColumnSize = showUserLimit ? 4 : 6;
 
             return (
               <Grid item xs={12} md={plan.isPopular ? 12 : 6} key={plan.id}>
@@ -165,15 +169,17 @@ export function OnboardingPlanSelection({
                     {/* Limits */}
                     <Box sx={{ mt: 2, p: 2, bgcolor: 'background.default', borderRadius: 1 }}>
                       <Grid container spacing={2}>
-                        <Grid item xs={4}>
-                          <Typography variant="caption" color="text.secondary">
-                            Users
-                          </Typography>
-                          <Typography variant="body2" fontWeight={600}>
-                            {plan.limits.maxUsers === -1 ? '∞' : plan.limits.maxUsers}
-                          </Typography>
-                        </Grid>
-                        <Grid item xs={4}>
+                        {showUserLimit ? (
+                          <Grid item xs={4}>
+                            <Typography variant="caption" color="text.secondary">
+                              Users
+                            </Typography>
+                            <Typography variant="body2" fontWeight={600}>
+                              {plan.limits.maxUsers === -1 ? '∞' : plan.limits.maxUsers}
+                            </Typography>
+                          </Grid>
+                        ) : null}
+                        <Grid item xs={limitColumnSize}>
                           <Typography variant="caption" color="text.secondary">
                             Projects
                           </Typography>
@@ -181,7 +187,7 @@ export function OnboardingPlanSelection({
                             {plan.limits.maxProjects === -1 ? '∞' : plan.limits.maxProjects}
                           </Typography>
                         </Grid>
-                        <Grid item xs={4}>
+                        <Grid item xs={limitColumnSize}>
                           <Typography variant="caption" color="text.secondary">
                             Storage
                           </Typography>

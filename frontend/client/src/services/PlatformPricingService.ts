@@ -6,7 +6,7 @@
 import { useQuery } from '@tanstack/react-query';
 
 // Platform subscription types
-export type PlatformTier = 'free' | 'basic' | 'professional' | 'premium' | 'enterprise';
+export type PlatformTier = 'free' | 'prototype' | 'basic' | 'professional' | 'premium' | 'enterprise';
 export type BillingCycle = 'monthly' | 'yearly';
 export type Currency = 'NOK' | 'SEK' | 'DKK' | 'USD';
 
@@ -159,6 +159,37 @@ class PlatformPricingService {
 
   public getFallbackPlatformPlans(): PlatformSubscriptionPlan[] {
     return [
+      {
+        id: 'prototype',
+        name: 'prototype',
+        displayName: 'Prototype',
+        description: 'Gratis testtilgang for prototyper, tidlig validering og enkel gjennomgang.',
+        tier: 'prototype',
+        price: 0,
+        monthlyPrice: 0,
+        yearlyPrice: 0,
+        currency: 'NOK',
+        billingCycle: 'monthly',
+        publicPriceLabel: 'Gratis',
+        ctaLabel: 'Velg Prototype',
+        features: [
+          'Prototype-tilgang',
+          'Enkel prosjektgjennomgang',
+          'Tilbakemeldinger og testflyt',
+          'Begrenset lagring',
+        ],
+        limits: {
+          maxUsers: 0,
+          maxProjects: 3,
+          maxClients: 5,
+          maxStorageGB: 2,
+          maxApiCalls: 500,
+        },
+        isActive: true,
+        trialDays: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
       {
         id: 'basic',
         name: 'basic',
@@ -573,7 +604,7 @@ class PlatformPricingService {
     if (feature.isIncluded) return true;
 
     // Check if feature is available for user's tier
-    const tierOrder = { free: 0, basic: 1, professional: 2, premium: 3, enterprise: 4 };
+    const tierOrder = { free: 0, prototype: 0, basic: 1, professional: 2, premium: 3, enterprise: 4 };
     const featureTierOrder = { core: 0, professional: 1, premium: 2, enterprise: 3 };
     
     return tierOrder[userTier] >= featureTierOrder[feature.category];
@@ -629,6 +660,5 @@ export const usePlatformPricing = (options?: { enabled?: boolean }) => {
 };
 
 export default PlatformPricingService;
-
 
 

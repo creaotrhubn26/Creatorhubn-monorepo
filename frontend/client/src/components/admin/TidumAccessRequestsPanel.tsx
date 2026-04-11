@@ -1,11 +1,13 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  Autocomplete,
   Box,
   Button,
   Card,
   CardContent,
   Chip,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -57,6 +59,36 @@ type TidumAccessRequest = {
 type TidumVendor = {
   id: number;
   name: string;
+  orgNumber?: string | null;
+  organizationNumber?: string | null;
+  brregVerified?: boolean | null;
+};
+
+type TidumBrregCompany = {
+  organizationNumber: string;
+  name: string;
+  organizationForm: string;
+  organizationFormCode: string | null;
+  industry: string;
+  industryCode: string | null;
+  employees: number | null;
+  website: string | null;
+  registeredVat: boolean;
+  bankrupt: boolean;
+  underLiquidation: boolean;
+  businessAddress: {
+    addressLine: string;
+    postalCode: string;
+    city: string;
+    municipality: string;
+  };
+  mailingAddress: {
+    addressLine: string;
+    postalCode: string;
+    city: string;
+    municipality: string;
+  };
+  source: 'brreg';
 };
 
 const roleOptions = [
@@ -66,11 +98,39 @@ const roleOptions = [
   { value: 'admin', label: 'Admin' },
 ];
 
+const TIDUM_PANEL_QUERY_STALE_MS = 60 * 1000;
+const TIDUM_PANEL_QUERY_GC_MS = 10 * 60 * 1000;
+
 function formatDate(value: string | null) {
   if (!value) return 'Ikke registrert';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return 'Ikke registrert';
   return date.toLocaleString('nb-NO');
+}
+
+function normalizeOrgNumber(value?: string | number | null) {
+  return typeof value === 'string'
+    ? value.replace(/\D/g, '')
+    : typeof value === 'number'
+      ? String(value).replace(/\D/g, '')
+      : '';
+}
+
+function formatOrgNumber(value?: string | number | null) {
+  const normalized = normalizeOrgNumber(value);
+  if (normalized.length !== 9) return normalized || 'Ikke oppgitt';
+  return `${normalized.slice(0, 3)} ${normalized.slice(3, 6)} ${normalized.slice(6)}`;
+}
+
+function getVendorOrgNumber(vendor: TidumVendor) {
+  return normalizeOrgNumber(vendor.orgNumber || vendor.organizationNumber || null);
+}
+
+function findVendorForBrregCompany(vendors: TidumVendor[], company: TidumBrregCompany | null) {
+  if (!company) return null;
+  const companyOrgNumber = normalizeOrgNumber(company.organizationNumber);
+  if (!companyOrgNumber) return null;
+  return vendors.find((vendor) => getVendorOrgNumber(vendor) === companyOrgNumber) || null;
 }
 
 function getStatusChip(status: string) {
@@ -91,14 +151,63 @@ export default function TidumAccessRequestsPanel() {
   const [selectedRequest, setSelectedRequest] = useState<TidumAccessRequest | null>(null);
   const [selectedVendorId, setSelectedVendorId] = useState('');
   const [selectedRole, setSelectedRole] = useState('tiltaksleder');
+  const [brregInputValue, setBrregInputValue] = useState('');
+  const [debouncedBrregQuery, setDebouncedBrregQuery] = useState('');
+  const [selectedBrregCompany, setSelectedBrregCompany] = useState<TidumBrregCompany | null>(null);
+  const [brregVendorMessage, setBrregVendorMessage] = useState('');
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setDebouncedBrregQuery(brregInputValue.trim());
+    }, 300);
+
+    return () => window.clearTimeout(timeout);
+  }, [brregInputValue]);
 
   const { data: requests = [], error, isLoading } = useQuery<TidumAccessRequest[]>({
     queryKey: ['/api/admin/tidum-access-requests', { status: statusFilter }],
+    staleTime: TIDUM_PANEL_QUERY_STALE_MS,
+    gcTime: TIDUM_PANEL_QUERY_GC_MS,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
   });
 
   const { data: vendors = [] } = useQuery<TidumVendor[]>({
     queryKey: ['/api/admin/tidum/vendors'],
+    staleTime: TIDUM_PANEL_QUERY_STALE_MS,
+    gcTime: TIDUM_PANEL_QUERY_GC_MS,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
   });
+
+  const normalizedBrregQuery = debouncedBrregQuery.trim();
+  const brregQueryDigits = normalizeOrgNumber(normalizedBrregQuery);
+  const brregNumericOnlyQuery = normalizedBrregQuery.replace(/[\s.-]/g, '');
+  const brregSearchEnabled = Boolean(selectedRequest) && (
+    brregQueryDigits.length === 9 ||
+    (normalizedBrregQuery.length >= 3 && !/^\d+$/.test(brregNumericOnlyQuery))
+  );
+
+  const {
+    data: brregSearchPayload,
+    error: brregSearchError,
+    isFetching: brregSearching,
+  } = useQuery<{ items: TidumBrregCompany[] }>({
+    queryKey: ['tidum-brreg-search', normalizedBrregQuery],
+    queryFn: () =>
+      apiRequest(
+        `/api/admin/tidum/brreg-search?q=${encodeURIComponent(normalizedBrregQuery)}&limit=10`,
+      ),
+    enabled: brregSearchEnabled,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const brregOptions = brregSearchPayload?.items ?? [];
+  const existingVendorForSelectedBrreg = useMemo(
+    () => findVendorForBrregCompany(vendors, selectedBrregCompany),
+    [selectedBrregCompany, vendors],
+  );
+  const selectedVendorExists = vendors.some((vendor) => String(vendor.id) === selectedVendorId);
 
   const filteredRequests = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
@@ -137,6 +246,29 @@ export default function TidumAccessRequestsPanel() {
     return base;
   }, [requests]);
 
+  const resetApprovalDialog = () => {
+    setSelectedRequest(null);
+    setSelectedVendorId('');
+    setSelectedRole('tiltaksleder');
+    setBrregInputValue('');
+    setDebouncedBrregQuery('');
+    setSelectedBrregCompany(null);
+    setBrregVendorMessage('');
+  };
+
+  const createVendorMutation = useMutation({
+    mutationFn: async (company: TidumBrregCompany) =>
+      apiRequest('/api/admin/tidum/vendors', {
+        method: 'POST',
+        body: { company },
+      }) as Promise<TidumVendor>,
+    onSuccess: (vendor) => {
+      void queryClient.invalidateQueries({ queryKey: ['/api/admin/tidum/vendors'] });
+      setSelectedVendorId(String(vendor.id));
+      setBrregVendorMessage(`Opprettet ${vendor.name} i Tidum og valgte virksomheten.`);
+    },
+  });
+
   const decisionMutation = useMutation({
     mutationFn: async ({
       requestId,
@@ -155,9 +287,7 @@ export default function TidumAccessRequestsPanel() {
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['/api/admin/tidum-access-requests'] });
-      setSelectedRequest(null);
-      setSelectedVendorId('');
-      setSelectedRole('tiltaksleder');
+      resetApprovalDialog();
     },
   });
 
@@ -165,6 +295,10 @@ export default function TidumAccessRequestsPanel() {
     setSelectedRequest(request);
     setSelectedVendorId(request.vendorId ? String(request.vendorId) : '');
     setSelectedRole(request.approvalRole || 'tiltaksleder');
+    setBrregInputValue(request.orgNumber || request.company || '');
+    setDebouncedBrregQuery(request.orgNumber || request.company || '');
+    setSelectedBrregCompany(null);
+    setBrregVendorMessage('');
   };
 
   return (
@@ -345,9 +479,9 @@ export default function TidumAccessRequestsPanel() {
 
       <Dialog
         open={Boolean(selectedRequest)}
-        onClose={() => setSelectedRequest(null)}
+        onClose={resetApprovalDialog}
         fullWidth
-        maxWidth="sm"
+        maxWidth="md"
       >
         <DialogTitle>Godkjenn Tidum-forespørsel</DialogTitle>
         <DialogContent sx={{ display: 'grid', gap: 2.5, pt: '12px !important' }}>
@@ -355,12 +489,185 @@ export default function TidumAccessRequestsPanel() {
             Godkjenning her sender status tilbake til Tidum og oppdaterer tilgangsforespørselen der.
           </Alert>
 
-          <TextField
-            label="Virksomhet"
-            value={selectedRequest?.company || ''}
-            disabled
-            fullWidth
-          />
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={7}>
+              <TextField
+                label="Virksomhet fra forespørsel"
+                value={selectedRequest?.company || ''}
+                disabled
+                fullWidth
+              />
+            </Grid>
+            <Grid item xs={12} md={5}>
+              <TextField
+                label="Org.nr fra forespørsel"
+                value={formatOrgNumber(selectedRequest?.orgNumber)}
+                disabled
+                fullWidth
+              />
+            </Grid>
+          </Grid>
+
+          <Box sx={{ p: 2, borderRadius: '18px', border: '1px solid #eadfce', backgroundColor: '#fffdfa' }}>
+            <Stack spacing={1.5}>
+              <Box>
+                <Typography sx={{ fontWeight: 700, color: '#181512' }}>
+                  Finn virksomhet i Brønnøysundregistrene
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Søk på navn eller 9-sifret organisasjonsnummer. Valgt bedrift kan kobles til
+                  eksisterende Tidum-leverandør eller opprettes som ny leverandør.
+                </Typography>
+              </Box>
+
+              <Autocomplete
+                value={selectedBrregCompany}
+                inputValue={brregInputValue}
+                options={brregOptions}
+                loading={brregSearching}
+                filterOptions={(options) => options}
+                isOptionEqualToValue={(option, value) =>
+                  option.organizationNumber === value.organizationNumber
+                }
+                getOptionLabel={(option) =>
+                  `${option.name} (${formatOrgNumber(option.organizationNumber)})`
+                }
+                noOptionsText={
+                  brregSearchEnabled
+                    ? 'Ingen BRREG-treff'
+                    : 'Skriv minst 3 tegn, eller hele organisasjonsnummeret'
+                }
+                onInputChange={(_, value) => setBrregInputValue(value)}
+                onChange={(_, company) => {
+                  setSelectedBrregCompany(company);
+                  const existingVendor = findVendorForBrregCompany(vendors, company);
+                  if (existingVendor) {
+                    setSelectedVendorId(String(existingVendor.id));
+                    setBrregVendorMessage(
+                      `Fant eksisterende Tidum-leverandør: ${existingVendor.name}.`,
+                    );
+                  } else {
+                    setBrregVendorMessage('');
+                  }
+                }}
+                renderOption={(props, option) => (
+                  <Box component="li" {...props} key={option.organizationNumber}>
+                    <Stack spacing={0.25}>
+                      <Typography sx={{ fontWeight: 700 }}>{option.name}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Org.nr {formatOrgNumber(option.organizationNumber)}
+                        {option.businessAddress.city ? ` · ${option.businessAddress.city}` : ''}
+                        {option.organizationForm ? ` · ${option.organizationForm}` : ''}
+                      </Typography>
+                    </Stack>
+                  </Box>
+                )}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Søk i BRREG"
+                    placeholder="Firmanavn eller org.nr."
+                    helperText="Data hentes live fra Enhetsregisteret."
+                    InputProps={{
+                      ...params.InputProps,
+                      endAdornment: (
+                        <>
+                          {brregSearching ? <CircularProgress color="inherit" size={18} /> : null}
+                          {params.InputProps.endAdornment}
+                        </>
+                      ),
+                    }}
+                  />
+                )}
+              />
+
+              {brregSearchError ? (
+                <Alert severity="error">
+                  Kunne ikke søke i BRREG. Prøv igjen, eller sjekk organisasjonsnummeret.
+                </Alert>
+              ) : null}
+
+              {selectedBrregCompany ? (
+                <Box sx={{ p: 2, borderRadius: '16px', backgroundColor: '#f8f3ea' }}>
+                  <Stack spacing={1.25}>
+                    <Stack
+                      direction={{ xs: 'column', sm: 'row' }}
+                      justifyContent="space-between"
+                      spacing={1}
+                    >
+                      <Box>
+                        <Typography sx={{ fontWeight: 800 }}>{selectedBrregCompany.name}</Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Org.nr {formatOrgNumber(selectedBrregCompany.organizationNumber)}
+                          {selectedBrregCompany.organizationForm
+                            ? ` · ${selectedBrregCompany.organizationForm}`
+                            : ''}
+                        </Typography>
+                      </Box>
+                      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                        <Chip
+                          size="small"
+                          color={selectedBrregCompany.registeredVat ? 'success' : 'default'}
+                          label={selectedBrregCompany.registeredVat ? 'MVA-registrert' : 'Ikke MVA'}
+                        />
+                        <Chip size="small" label="BRREG-verifisert" />
+                      </Stack>
+                    </Stack>
+
+                    <Typography variant="body2" color="text.secondary">
+                      {selectedBrregCompany.businessAddress.addressLine || 'Adresse ikke oppgitt'}
+                      {selectedBrregCompany.businessAddress.postalCode
+                        ? `, ${selectedBrregCompany.businessAddress.postalCode}`
+                        : ''}
+                      {selectedBrregCompany.businessAddress.city
+                        ? ` ${selectedBrregCompany.businessAddress.city}`
+                        : ''}
+                    </Typography>
+
+                    {selectedBrregCompany.bankrupt || selectedBrregCompany.underLiquidation ? (
+                      <Alert severity="warning">
+                        BRREG markerer virksomheten som konkurs eller under avvikling. Kontroller før
+                        godkjenning.
+                      </Alert>
+                    ) : null}
+
+                    {brregVendorMessage ? (
+                      <Alert severity="success">{brregVendorMessage}</Alert>
+                    ) : null}
+
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
+                      {existingVendorForSelectedBrreg ? (
+                        <Button
+                          variant="contained"
+                          onClick={() => {
+                            setSelectedVendorId(String(existingVendorForSelectedBrreg.id));
+                            setBrregVendorMessage(
+                              `Valgte eksisterende Tidum-leverandør: ${existingVendorForSelectedBrreg.name}.`,
+                            );
+                          }}
+                        >
+                          Bruk eksisterende Tidum-leverandør
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="contained"
+                          disabled={createVendorMutation.isPending}
+                          onClick={() => createVendorMutation.mutate(selectedBrregCompany)}
+                        >
+                          Opprett leverandør fra BRREG
+                        </Button>
+                      )}
+                      {createVendorMutation.error ? (
+                        <Alert severity="error" sx={{ flex: 1 }}>
+                          Kunne ikke opprette leverandør i Tidum.
+                        </Alert>
+                      ) : null}
+                    </Stack>
+                  </Stack>
+                </Box>
+              ) : null}
+            </Stack>
+          </Box>
 
           <FormControl fullWidth>
             <InputLabel id="tidum-vendor-select-label">Koble til virksomhet</InputLabel>
@@ -370,9 +677,20 @@ export default function TidumAccessRequestsPanel() {
               value={selectedVendorId}
               onChange={(event) => setSelectedVendorId(String(event.target.value))}
             >
+              {selectedVendorId && !selectedVendorExists ? (
+                <MenuItem value={selectedVendorId}>Valgt leverandør #{selectedVendorId}</MenuItem>
+              ) : null}
               {vendors.map((vendor) => (
                 <MenuItem key={vendor.id} value={String(vendor.id)}>
-                  {vendor.name}
+                  <Stack spacing={0.25}>
+                    <Typography>{vendor.name}</Typography>
+                    {getVendorOrgNumber(vendor) ? (
+                      <Typography variant="caption" color="text.secondary">
+                        Org.nr {formatOrgNumber(getVendorOrgNumber(vendor))}
+                        {vendor.brregVerified ? ' · BRREG' : ''}
+                      </Typography>
+                    ) : null}
+                  </Stack>
                 </MenuItem>
               ))}
             </Select>
@@ -402,10 +720,15 @@ export default function TidumAccessRequestsPanel() {
           ) : null}
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 3 }}>
-          <Button onClick={() => setSelectedRequest(null)}>Avbryt</Button>
+          <Button onClick={resetApprovalDialog}>Avbryt</Button>
           <Button
             variant="contained"
-            disabled={!selectedVendorId || decisionMutation.isPending || !selectedRequest}
+            disabled={
+              !selectedVendorId ||
+              decisionMutation.isPending ||
+              createVendorMutation.isPending ||
+              !selectedRequest
+            }
             onClick={() => {
               if (!selectedRequest) return;
               decisionMutation.mutate({
