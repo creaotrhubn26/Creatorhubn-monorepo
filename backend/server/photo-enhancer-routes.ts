@@ -24,6 +24,13 @@ import {
   type PhotoEnhancerRawFormatMatrixEntry,
   type PhotoEnhancerModelStatus,
 } from "./photo-enhancer-capabilities.js";
+import {
+  buildPhotoEnhancerProfileRegistrySummary,
+  matchPhotoEnhancerCameraProfile,
+  matchPhotoEnhancerLensProfile,
+  normalizePhotoEnhancerExif,
+  parsePhotoEnhancerXmpSidecar,
+} from "./photo-enhancer-profiles.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -97,6 +104,35 @@ type PhotoEnhancerTelemetryEvent = {
   outputMimeType?: string | null;
   error?: string | null;
 };
+
+type PhotoEnhancerDuplicateIndexEntry = {
+  hash: string;
+  perceptualHash: string | null;
+  fileName: string;
+  mimeType: string;
+  size: number;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  count: number;
+};
+
+type PhotoEnhancerStatsChannel = {
+  min?: number;
+  max?: number;
+  mean?: number;
+  stdev?: number;
+};
+
+type PhotoEnhancerSharpStats = {
+  channels?: PhotoEnhancerStatsChannel[];
+  dominant?: Record<string, number>;
+};
+
+const photoEnhancerOriginalHashIndex = new Map<string, PhotoEnhancerDuplicateIndexEntry>();
+const photoEnhancerPerceptualHashIndex = new Map<string, PhotoEnhancerDuplicateIndexEntry>();
+const PHOTO_ENHANCER_DUPLICATE_INDEX_LIMIT = Number(
+  process.env.PHOTO_ENHANCER_DUPLICATE_INDEX_LIMIT || 5_000,
+);
 
 type PhotoEnhancerRawFormatRuntimeStatus =
   | "verified"
@@ -563,6 +599,254 @@ async function computeImageHash(file: Express.Multer.File): Promise<string | nul
   }
 }
 
+function computeOriginalFileHash(file: Express.Multer.File): string {
+  return crypto.createHash("sha256").update(file.buffer).digest("hex");
+}
+
+function capDuplicateIndex(index: Map<string, PhotoEnhancerDuplicateIndexEntry>) {
+  while (index.size > PHOTO_ENHANCER_DUPLICATE_INDEX_LIMIT) {
+    const oldestKey = index.keys().next().value as string | undefined;
+    if (!oldestKey) break;
+    index.delete(oldestKey);
+  }
+}
+
+function bitDistance(left: string | null, right: string | null): number | null {
+  if (!left || !right || left.length !== right.length) return null;
+  if (/^[01]+$/.test(left) && /^[01]+$/.test(right)) {
+    let distance = 0;
+    for (let index = 0; index < left.length; index += 1) {
+      if (left[index] !== right[index]) distance += 1;
+    }
+    return distance;
+  }
+  if (/^[a-f0-9]+$/i.test(left) && /^[a-f0-9]+$/i.test(right)) {
+    let distance = 0;
+    for (let index = 0; index < left.length; index += 1) {
+      const xor = Number.parseInt(left[index], 16) ^ Number.parseInt(right[index], 16);
+      distance += xor.toString(2).replace(/0/g, "").length;
+    }
+    return distance;
+  }
+  return null;
+}
+
+function detectAndRecordDuplicate(
+  file: Express.Multer.File,
+  originalHash: string,
+  perceptualHash: string | null,
+) {
+  const now = new Date().toISOString();
+  const exact = photoEnhancerOriginalHashIndex.get(originalHash) || null;
+  let perceptual: (PhotoEnhancerDuplicateIndexEntry & { distance: number }) | null = null;
+
+  if (perceptualHash) {
+    for (const entry of photoEnhancerPerceptualHashIndex.values()) {
+      const distance = bitDistance(perceptualHash, entry.perceptualHash);
+      if (distance !== null && distance <= 8) {
+        perceptual = { ...entry, distance };
+        break;
+      }
+    }
+  }
+
+  const entry: PhotoEnhancerDuplicateIndexEntry = exact
+    ? {
+        ...exact,
+        lastSeenAt: now,
+        count: exact.count + 1,
+      }
+    : {
+        hash: originalHash,
+        perceptualHash,
+        fileName: file.originalname,
+        mimeType: file.mimetype,
+        size: file.size,
+        firstSeenAt: now,
+        lastSeenAt: now,
+        count: 1,
+      };
+
+  photoEnhancerOriginalHashIndex.set(originalHash, entry);
+  if (perceptualHash) photoEnhancerPerceptualHashIndex.set(perceptualHash, entry);
+  capDuplicateIndex(photoEnhancerOriginalHashIndex);
+  capDuplicateIndex(photoEnhancerPerceptualHashIndex);
+
+  return {
+    exactDuplicate: Boolean(exact),
+    perceptualDuplicate: Boolean(perceptual && (!exact || perceptual.hash !== originalHash)),
+    originalHashSeenCount: entry.count,
+    exactMatch: exact
+      ? {
+          fileName: exact.fileName,
+          firstSeenAt: exact.firstSeenAt,
+          lastSeenAt: exact.lastSeenAt,
+          count: exact.count,
+        }
+      : null,
+    perceptualMatch: perceptual
+      ? {
+          fileName: perceptual.fileName,
+          hash: perceptual.hash,
+          distance: perceptual.distance,
+          firstSeenAt: perceptual.firstSeenAt,
+        }
+      : null,
+    index: {
+      originalHashes: photoEnhancerOriginalHashIndex.size,
+      perceptualHashes: photoEnhancerPerceptualHashIndex.size,
+      retention: "process-memory",
+    },
+  };
+}
+
+function qualityStatus(score: number, warningThreshold: number, failThreshold: number) {
+  if (score < failThreshold) return "fail";
+  if (score < warningThreshold) return "warning";
+  return "pass";
+}
+
+async function analyzeLumaQuality(file: Express.Multer.File) {
+  try {
+    const sharpModule = await import("sharp");
+    const previewBuffer = await sharpModule
+      .default(file.buffer, { failOn: "none" })
+      .rotate()
+      .resize({ width: 384, height: 384, fit: "inside", withoutEnlargement: true })
+      .normalise()
+      .gamma()
+      .grayscale()
+      .png()
+      .toBuffer();
+    const { data, info } = await sharpModule
+      .default(previewBuffer, { failOn: "none" })
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    const width = info.width;
+    const height = info.height;
+    const channels = Math.max(1, info.channels || 1);
+    const total = Math.max(1, width * height);
+    let lumaSum = 0;
+    let blackClipped = 0;
+    let whiteClipped = 0;
+    let residualSum = 0;
+    let residualCount = 0;
+    const laplacianValues: number[] = [];
+
+    for (let index = 0; index < data.length; index += channels) {
+      const value = data[index] || 0;
+      lumaSum += value;
+      if (value <= 3) blackClipped += 1;
+      if (value >= 252) whiteClipped += 1;
+    }
+
+    for (let y = 1; y < height - 1; y += 1) {
+      for (let x = 1; x < width - 1; x += 1) {
+        const index = (y * width + x) * channels;
+        const center = data[index] || 0;
+        const top = data[index - width * channels] || 0;
+        const bottom = data[index + width * channels] || 0;
+        const left = data[index - channels] || 0;
+        const right = data[index + channels] || 0;
+        const laplacian = top + bottom + left + right - 4 * center;
+        laplacianValues.push(laplacian);
+        const neighborMean = (top + bottom + left + right) / 4;
+        residualSum += Math.abs(center - neighborMean);
+        residualCount += 1;
+      }
+    }
+
+    const laplacianMean =
+      laplacianValues.reduce((sum, value) => sum + value, 0) / Math.max(1, laplacianValues.length);
+    const blurVariance =
+      laplacianValues.reduce((sum, value) => sum + (value - laplacianMean) ** 2, 0) /
+      Math.max(1, laplacianValues.length);
+    const blurScore = clampNumber((blurVariance / 900) * 100, 0, 100);
+    const noiseResidual = residualSum / Math.max(1, residualCount);
+    const noiseScore = clampNumber((noiseResidual / 18) * 100, 0, 100);
+    const meanLuma = lumaSum / total;
+    const whiteClippingPct = (whiteClipped / total) * 100;
+    const blackClippingPct = (blackClipped / total) * 100;
+
+    return {
+      sample: { width, height, pixels: total },
+      blur: {
+        variance: Number(blurVariance.toFixed(2)),
+        score: Math.round(blurScore),
+        status: qualityStatus(blurScore, 35, 15),
+      },
+      noise: {
+        residual: Number(noiseResidual.toFixed(2)),
+        score: Math.round(noiseScore),
+        status: noiseScore > 65 ? "warning" : "pass",
+        method: "local-luma-residual",
+      },
+      exposure: {
+        meanLuma: Math.round(meanLuma),
+        status: meanLuma < 45 ? "underexposed" : meanLuma > 210 ? "overexposed" : "balanced",
+      },
+      clipping: {
+        blackPct: Number(blackClippingPct.toFixed(3)),
+        whitePct: Number(whiteClippingPct.toFixed(3)),
+        status: blackClippingPct > 1 || whiteClippingPct > 1 ? "warning" : "pass",
+      },
+    };
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "quality_analysis_failed",
+      blur: null,
+      noise: null,
+      exposure: null,
+      clipping: null,
+    };
+  }
+}
+
+function analyzeCompressionQuality(file: Express.Multer.File, metadata: Record<string, unknown>) {
+  const width = typeof metadata.width === "number" ? metadata.width : null;
+  const height = typeof metadata.height === "number" ? metadata.height : null;
+  const format = readString(metadata.format)?.toLowerCase() || "";
+  const megapixels = width && height ? (width * height) / 1_000_000 : null;
+  const bytesPerMegapixel = megapixels ? file.size / Math.max(0.01, megapixels) : null;
+
+  if (!bytesPerMegapixel) {
+    return {
+      status: "unknown",
+      bytesPerMegapixel: null,
+      note: "Image dimensions unavailable.",
+    };
+  }
+
+  const isLossy = format === "jpeg" || file.mimetype.toLowerCase().includes("jpeg");
+  if (!isLossy) {
+    return {
+      status: "not-applicable",
+      bytesPerMegapixel: Math.round(bytesPerMegapixel),
+      note: "Compression score is only warning-based for lossy JPEG inputs.",
+    };
+  }
+
+  const score = clampNumber((bytesPerMegapixel / 1_200_000) * 100, 0, 100);
+  return {
+    status: score < 25 ? "warning" : "pass",
+    score: Math.round(score),
+    bytesPerMegapixel: Math.round(bytesPerMegapixel),
+    note: "Low bytes-per-megapixel can indicate aggressive JPEG compression.",
+  };
+}
+
+async function analyzeFaceQuality(faceApiAvailable: boolean) {
+  return {
+    available: false,
+    packageAvailable: faceApiAvailable,
+    faceCount: null,
+    eyeSharpness: null,
+    reason: faceApiAvailable
+      ? "face-api.js package is installed, but Photo Enhancer server-side model loading is not configured yet."
+      : "face-api.js package is unavailable in this runtime.",
+  };
+}
+
 async function isFaceApiAvailable(): Promise<boolean> {
   try {
     const faceApi = await import("face-api.js");
@@ -731,20 +1015,105 @@ async function readExifMetadata(file: Express.Multer.File): Promise<Record<strin
         "-json",
         "-Make",
         "-Model",
+        "-CameraModelName",
+        "-Lens",
         "-LensModel",
+        "-LensID",
+        "-LensInfo",
+        "-LensSerialNumber",
+        "-SerialNumber",
+        "-BodySerialNumber",
         "-FocalLength",
+        "-FocalLengthIn35mmFormat",
         "-ISO",
         "-ExposureTime",
         "-FNumber",
+        "-ApertureValue",
+        "-ShutterSpeedValue",
+        "-ExposureCompensation",
+        "-ExposureProgram",
+        "-MeteringMode",
+        "-Flash",
+        "-WhiteBalance",
+        "-ColorSpace",
+        "-ProfileDescription",
+        "-BitsPerSample",
+        "-ColorComponents",
+        "-Orientation",
+        "-ImageWidth",
+        "-ImageHeight",
+        "-Copyright",
+        "-Artist",
+        "-Creator",
+        "-Credit",
+        "-By-line",
+        "-OwnerName",
+        "-Title",
+        "-Description",
+        "-Caption-Abstract",
+        "-UsageTerms",
         "-FileType",
         "-MIMEType",
         inputPath,
       ],
-      { timeout: 5_000, maxBuffer: 1024 * 1024 },
+      {
+        timeout: 15_000,
+        maxBuffer: 2 * 1024 * 1024,
+        env: {
+          ...process.env,
+          LC_ALL: "C",
+          LC_CTYPE: "C",
+          LANG: "C",
+        },
+      },
     );
     const parsed = JSON.parse(String(stdout || "[]"));
     return Array.isArray(parsed) && parsed[0] ? parsed[0] : null;
   } catch {
+    return null;
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
+async function extractEmbeddedPreviewImage(file: Express.Multer.File): Promise<Express.Multer.File | null> {
+  if (!isCameraRawFile(file)) return null;
+  const exiftool = await commandPath("exiftool");
+  if (!exiftool) return null;
+
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "creatorhub-photo-preview-"));
+  const inputPath = path.join(tempDir, `source${getUploadExtension(file) || ".raw"}`);
+  const outputPath = path.join(tempDir, "preview.jpg");
+  try {
+    await fs.writeFile(inputPath, file.buffer);
+    for (const tag of ["-PreviewImage", "-JpgFromRaw", "-ThumbnailImage"]) {
+      await execFileAsync(exiftool, ["-b", tag, inputPath], {
+        timeout: 15_000,
+        maxBuffer: 20 * 1024 * 1024,
+        encoding: "buffer",
+        env: {
+          ...process.env,
+          LC_ALL: "C",
+          LC_CTYPE: "C",
+          LANG: "C",
+        },
+      })
+        .then(async ({ stdout }) => {
+          const buffer = Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout);
+          if (buffer.byteLength > 1024) await fs.writeFile(outputPath, buffer);
+        })
+        .catch(() => undefined);
+      const buffer = await fs.readFile(outputPath).catch(() => null);
+      if (buffer && buffer.byteLength > 1024) {
+        return {
+          ...file,
+          buffer,
+          size: buffer.byteLength,
+          originalname: `${path.basename(file.originalname, path.extname(file.originalname))}-preview.jpg`,
+          mimetype: "image/jpeg",
+        };
+      }
+    }
     return null;
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
@@ -1626,7 +1995,15 @@ export function createPhotoEnhancerRouter() {
         formatMatrixSummary: rawFormatMatrix.summary,
       },
       rawFormatMatrix,
-      metadataSupport: runtimeSupport.metadata,
+      metadataSupport: {
+        ...runtimeSupport.metadata,
+        exifNormalization: true,
+        xmpSidecarIngest: true,
+        iptcIngest: true,
+        copyrightFields: true,
+        clientNameMetadata: true,
+        profileRegistry: buildPhotoEnhancerProfileRegistrySummary(),
+      },
       googleDrive: {
         folderStructure: PHOTO_ENHANCER_DRIVE_STRUCTURE,
         folderNames: getPhotoEnhancerDriveFolderNames(),
@@ -1801,23 +2178,41 @@ export function createPhotoEnhancerRouter() {
           });
         }
         const processFile = prepared.file;
+        const embeddedPreviewFile = await extractEmbeddedPreviewImage(req.file);
+        const analysisFile = embeddedPreviewFile || processFile;
+        const analysisSource = embeddedPreviewFile ? "embedded-preview" : "processed-image";
         const sharpModule = await import("sharp");
         const sharp = sharpModule.default;
-        const [metadata, stats, perceptualHash, gfpgan, faceApiAvailable, exif] =
+        const originalHash = computeOriginalFileHash(req.file);
+        const [metadata, analysisMetadata, stats, perceptualHash, gfpgan, faceApiAvailable, exif, lumaQuality] =
           await Promise.all([
             sharp(processFile.buffer, { failOn: "none" }).metadata(),
-            sharp(processFile.buffer, { failOn: "none" }).stats().catch(() => null),
-            computeImageHash(processFile),
+            sharp(analysisFile.buffer, { failOn: "none" }).metadata(),
+            sharp(analysisFile.buffer, { failOn: "none" }).stats().catch(() => null),
+            computeImageHash(analysisFile),
             resolveGfpganModelStatus(),
             isFaceApiAvailable(),
             readExifMetadata(req.file),
+            analyzeLumaQuality(analysisFile),
           ]);
+        const faceQuality = await analyzeFaceQuality(faceApiAvailable);
+        const normalizedExif = normalizePhotoEnhancerExif(exif);
+        const sidecar = parsePhotoEnhancerXmpSidecar(
+          readString(req.body?.xmpSidecar) || readString(req.body?.sidecarXmp) || readString(req.body?.xmp),
+        );
+        const clientName = readString(req.body?.clientName) || sidecar.clientName || normalizedExif.credit;
+        const lensProfile = matchPhotoEnhancerLensProfile(normalizedExif.lensModel);
+        const cameraProfile = matchPhotoEnhancerCameraProfile(normalizedExif.make, normalizedExif.model);
+        const duplicateDetection = detectAndRecordDuplicate(req.file, originalHash, perceptualHash);
+        const compression = analyzeCompressionQuality(analysisFile, analysisMetadata as unknown as Record<string, unknown>);
+        const hasEmbeddedProfile = Boolean((metadata as { hasProfile?: boolean }).hasProfile || normalizedExif.iccProfile);
 
         const meanBrightness = stats
-          ? Math.round(
-              stats.channels.reduce((sum, channel) => sum + channel.mean, 0) /
-                Math.max(1, stats.channels.length),
-            )
+          ? (() => {
+              const channels = (stats as PhotoEnhancerSharpStats).channels || [];
+              const totalMean = channels.reduce((sum, channel) => sum + (channel.mean || 0), 0);
+              return Math.round(totalMean / Math.max(1, channels.length));
+            })()
           : null;
 
         res.json({
@@ -1828,15 +2223,64 @@ export function createPhotoEnhancerRouter() {
             mimeType: req.file.mimetype,
             size: req.file.size,
             processedMimeType: processFile.mimetype,
+            analysisSource,
+            analysisMimeType: analysisFile.mimetype,
             width: metadata.width || null,
             height: metadata.height || null,
+            analysisWidth: analysisMetadata.width || null,
+            analysisHeight: analysisMetadata.height || null,
             format: metadata.format || null,
             hasAlpha: Boolean(metadata.hasAlpha),
             orientation: metadata.orientation || null,
             meanBrightness,
             dominantColor: stats?.dominant || null,
+            fileHash: {
+              algorithm: "sha256",
+              value: originalHash,
+            },
             perceptualHash,
+            duplicateDetection,
+            quality: {
+              blur: lumaQuality.blur,
+              face: faceQuality,
+              eyeSharpness: faceQuality.eyeSharpness,
+              exposure: lumaQuality.exposure,
+              clipping: lumaQuality.clipping,
+              noise: lumaQuality.noise,
+              compression,
+            },
             raw: prepared.raw,
+            metadata: {
+              exifNormalized: normalizedExif,
+              iptc: {
+                copyright: normalizedExif.copyright,
+                creator: normalizedExif.creator || normalizedExif.artist,
+                credit: normalizedExif.credit,
+                title: normalizedExif.title,
+                description: normalizedExif.description,
+              },
+              sidecar,
+              copyright: {
+                value: sidecar.rights || normalizedExif.copyright,
+                creator: sidecar.creators[0] || normalizedExif.creator || normalizedExif.artist,
+                usageTerms: sidecar.usageTerms || normalizedExif.usageTerms,
+              },
+              clientName,
+              lensProfile,
+              cameraProfile,
+              whiteBalancePolicy: {
+                source: normalizedExif.whiteBalance ? "exif" : "missing",
+                value: normalizedExif.whiteBalance,
+                action: normalizedExif.whiteBalance ? "preserve-camera-white-balance-as-baseline" : "require-manual-or-auto-neutral-baseline",
+              },
+              colorProfilePolicy: {
+                embeddedProfile: hasEmbeddedProfile,
+                inputColorSpace: normalizedExif.colorSpace || readString((metadata as { space?: string }).space),
+                iccProfile: normalizedExif.iccProfile,
+                action: hasEmbeddedProfile ? "preserve-embedded-icc-through-export" : "convert-export-to-srgb-and-mark-missing-input-profile",
+              },
+              iccPreserved: hasEmbeddedProfile,
+            },
             exif,
           },
           models: {
@@ -1849,6 +2293,10 @@ export function createPhotoEnhancerRouter() {
               id: "image-hash",
               available: Boolean(perceptualHash),
             },
+            profiles: {
+              lensMatched: Boolean(lensProfile),
+              cameraMatched: Boolean(cameraProfile),
+            },
           },
           recommendations: [
             gfpgan.available
@@ -1857,6 +2305,12 @@ export function createPhotoEnhancerRouter() {
             perceptualHash
               ? "Perceptual hash generated for duplicate detection."
               : "Perceptual hash could not be generated for this image type.",
+            lensProfile
+              ? `Lens profile matched: ${lensProfile.name}.`
+              : "No lens profile matched; preserve original EXIF and warn before applying lens correction.",
+            hasEmbeddedProfile
+              ? "Embedded color profile detected and marked for preservation."
+              : "No embedded ICC profile detected; export should normalize to sRGB.",
           ],
         });
         trackPhotoEnhancerEvent({

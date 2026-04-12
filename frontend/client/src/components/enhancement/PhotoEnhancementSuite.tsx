@@ -322,6 +322,23 @@ interface PhotoEnhancerStatusResponse {
   };
   metadataSupport?: {
     exiftool?: boolean;
+    exifNormalization?: boolean;
+    xmpSidecarIngest?: boolean;
+    iptcIngest?: boolean;
+    copyrightFields?: boolean;
+    clientNameMetadata?: boolean;
+    profileRegistry?: {
+      sourceRevision?: string;
+      canonRf?: {
+        total?: number;
+        byCoverage?: Record<string, number>;
+      };
+      mirrorlessFamilies?: Array<{
+        id: string;
+        brand: string;
+        mount: string;
+      }>;
+    };
   };
   googleDrive?: {
     folderStructure?: PhotoEnhancerDriveFolder[];
@@ -1580,6 +1597,8 @@ const PhotoEnhancementSuite: React.FC<PhotoEnhancementSuiteProps> = ({
   const rawFormatSummary =
     photoEnhancerStatus?.rawFormatMatrix?.summary ||
     photoEnhancerStatus?.rawSupport?.formatMatrixSummary;
+  const profileRegistry = photoEnhancerStatus?.metadataSupport?.profileRegistry;
+  const mirrorlessFamilies = profileRegistry?.mirrorlessFamilies || [];
   const formatRate = (rate?: number) => `${Math.round((rate || 0) * 100)}%`;
 
   return (
@@ -1870,6 +1889,69 @@ const PhotoEnhancementSuite: React.FC<PhotoEnhancementSuiteProps> = ({
                 </TableBody>
               </Table>
             </TableContainer>
+          </Paper>
+        )}
+
+        {profileRegistry && (
+          <Paper variant="outlined" sx={{ mt: 2, p: 2, borderRadius: 2 }}>
+            <Stack
+              direction={{ xs: 'column', md: 'row' }}
+              spacing={1.5}
+              alignItems={{ xs: 'flex-start', md: 'center' }}
+              justifyContent="space-between"
+            >
+              <Box>
+                <Typography variant="body2" fontWeight={800}>
+                  Metadata- og linseprofil registry
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  EXIF/IPTC/XMP normalisering, Canon RF/RF-S-profiler og mirrorless mount-familier.
+                </Typography>
+              </Box>
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                <Chip
+                  size="small"
+                  color={photoEnhancerStatus?.metadataSupport?.exifNormalization ? 'success' : 'default'}
+                  label="EXIF-normalisering"
+                />
+                <Chip
+                  size="small"
+                  color={photoEnhancerStatus?.metadataSupport?.xmpSidecarIngest ? 'success' : 'default'}
+                  label="XMP-sidecar"
+                />
+                <Chip
+                  size="small"
+                  color={photoEnhancerStatus?.metadataSupport?.iptcIngest ? 'success' : 'default'}
+                  label="IPTC"
+                />
+              </Stack>
+            </Stack>
+
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 1.5, mt: 1.5 }}>
+              <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(33, 150, 243, 0.06)' }}>
+                <Typography variant="caption" color="text.secondary">
+                  Canon RF/RF-S profiler
+                </Typography>
+                <Typography variant="h6" fontWeight={900}>
+                  {profileRegistry.canonRf?.total ?? 0}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Full-frame {profileRegistry.canonRf?.byCoverage?.['full-frame'] ?? 0} · APS-C {profileRegistry.canonRf?.byCoverage?.['aps-c'] ?? 0} · Cine {profileRegistry.canonRf?.byCoverage?.['cinema-full-frame'] ?? 0}
+                </Typography>
+              </Paper>
+
+              <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(255, 193, 7, 0.07)' }}>
+                <Typography variant="caption" color="text.secondary">
+                  Nye mirrorless-familier
+                </Typography>
+                <Typography variant="h6" fontWeight={900}>
+                  {mirrorlessFamilies.length}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {mirrorlessFamilies.map((family) => family.mount).join(' / ') || 'Ikke lastet'}
+                </Typography>
+              </Paper>
+            </Box>
           </Paper>
         )}
 
