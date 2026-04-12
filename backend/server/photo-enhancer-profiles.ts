@@ -111,7 +111,7 @@ function rfLens(
   return {
     id: `canon-${slugify(name)}`,
     brand: "Canon",
-    mount: "Canon RF",
+    mount: isRfS ? "Canon RF-S" : "Canon RF",
     name,
     aliases: options.aliases || [],
     coverage: options.coverage || (isRfS ? "aps-c" : "full-frame"),
@@ -197,10 +197,14 @@ function sigmaLens(
   maxAperture: string,
   options: Parameters<typeof nativeMirrorlessLens>[6] = {},
 ): PhotoEnhancerLensProfile {
-  return nativeMirrorlessLens("Sigma", mount, name, focalRangeMm, maxAperture, "sigma-mirrorless-lineup-2026-04", {
+  const profile = nativeMirrorlessLens("Sigma", mount, name, focalRangeMm, maxAperture, "sigma-mirrorless-lineup-2026-04", {
     correctionProfileStatus: "external-profile-needed",
     ...options,
   });
+  return {
+    ...profile,
+    id: `${profile.id}-${slugify(mount)}`,
+  };
 }
 
 export const PHOTO_ENHANCER_CANON_RF_LENS_PROFILES: PhotoEnhancerLensProfile[] = [
@@ -1051,29 +1055,23 @@ export function buildPhotoEnhancerProfileRegistrySummary() {
     canonRf: {
       total: canonRfProfiles.length,
       byCoverage,
-      profiles: canonRfProfiles,
     },
     nativeMirrorless: {
       total: nativeMirrorlessProfiles.length,
       byBrand: nativeByBrand,
       byMount: nativeByMount,
-      profiles: nativeMirrorlessProfiles,
     },
     sonyE: {
       total: PHOTO_ENHANCER_SONY_E_LENS_PROFILES.length,
-      profiles: PHOTO_ENHANCER_SONY_E_LENS_PROFILES,
     },
     nikonZ: {
       total: PHOTO_ENHANCER_NIKON_Z_LENS_PROFILES.length,
-      profiles: PHOTO_ENHANCER_NIKON_Z_LENS_PROFILES,
     },
     fujifilmXGfx: {
       total: PHOTO_ENHANCER_FUJIFILM_X_GFX_LENS_PROFILES.length,
-      profiles: PHOTO_ENHANCER_FUJIFILM_X_GFX_LENS_PROFILES,
     },
     sigmaMirrorless: {
       total: PHOTO_ENHANCER_SIGMA_MIRRORLESS_LENS_PROFILES.length,
-      profiles: PHOTO_ENHANCER_SIGMA_MIRRORLESS_LENS_PROFILES,
     },
     mirrorlessFamilies: PHOTO_ENHANCER_MIRRORLESS_PROFILE_FAMILIES,
     cameraProfiles: PHOTO_ENHANCER_CAMERA_PROFILE_SEEDS,
