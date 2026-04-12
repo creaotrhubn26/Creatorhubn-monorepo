@@ -39,6 +39,7 @@
     "upload-diffbir-weights": "tsx scripts/upload-diffbir-weights.ts",
     "test-r2": "tsx scripts/test-r2-connection.ts",
     "test-integration": "tsx scripts/test-complete-integration.ts",
+    "photo-enhancer:e2e:live": "node scripts/photo-enhancer-live-e2e.mjs",
     "oauth:check": "node scripts/check-oauth-scopes.js",
     "oauth:update": "./scripts/update-oauth-scopes.sh",
     "oauth:chat": "node regenerate-google-chat-token.js",

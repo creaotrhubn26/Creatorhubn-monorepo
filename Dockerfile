@@ -23,9 +23,11 @@ RUN apt-get update \
     imagemagick \
     libcairo2-dev \
     libgif-dev \
+    libheif-examples \
     libjpeg-dev \
     libimage-exiftool-perl \
     libpango1.0-dev \
+    libraw-dev \
     libraw-bin \
     librsvg2-dev \
     make \

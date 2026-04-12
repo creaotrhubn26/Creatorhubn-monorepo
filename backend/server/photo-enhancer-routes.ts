@@ -10,11 +10,13 @@ import { execFile, spawn } from "child_process";
 import { promisify } from "util";
 import {
   PHOTO_ENHANCER_DRIVE_STRUCTURE,
+  PHOTO_ENHANCER_MODEL_REGISTRY_POLICY,
   PHOTO_ENHANCER_RASTER_FORMATS,
   PHOTO_ENHANCER_RAW_FORMATS,
   buildPhotoEnhancerImprovementBacklog,
   buildPhotoEnhancerR2Config,
   buildPublicPhotoEnhancerR2Config,
+  getPhotoEnhancerDriveFolderNames,
   photoEnhancerModelRegistry,
   resolvePhotoEnhancerModelStatuses,
   resolvePhotoEnhancerRunnerEndpoint,
@@ -75,6 +77,131 @@ type PhotoEnhancerSavedFile = {
   createdAt: string;
 };
 
+type PhotoEnhancerTelemetryEvent = {
+  id: string;
+  timestamp: string;
+  route: "analyze" | "enhance" | "batch";
+  success: boolean;
+  fileName?: string | null;
+  sourceExtension?: string | null;
+  sourceMimeType?: string | null;
+  raw: boolean;
+  heic?: boolean;
+  rawConverter?: string | null;
+  preset?: string | null;
+  modelUsed?: string | null;
+  inferenceMode?: string | null;
+  processingMs: number;
+  outputMimeType?: string | null;
+  error?: string | null;
+};
+
+const photoEnhancerTelemetry = {
+  serviceStartedAt: new Date().toISOString(),
+  requestsTotal: 0,
+  successTotal: 0,
+  errorTotal: 0,
+  fallbackTotal: 0,
+  rawConversionTotal: 0,
+  heicConversionTotal: 0,
+  runnerFallbackTotal: 0,
+  modelUsage: new Map<string, number>(),
+  inferenceModes: new Map<string, number>(),
+  rawConverters: new Map<string, number>(),
+  recentEvents: [] as PhotoEnhancerTelemetryEvent[],
+  lastErrors: [] as PhotoEnhancerTelemetryEvent[],
+};
+
+function incrementCounter(map: Map<string, number>, key: string | null | undefined) {
+  if (!key) return;
+  map.set(key, (map.get(key) || 0) + 1);
+}
+
+function rollingPercentile(values: number[], percentile: number): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const index = Math.min(
+    sorted.length - 1,
+    Math.max(0, Math.ceil((percentile / 100) * sorted.length) - 1),
+  );
+  return sorted[index];
+}
+
+function trackPhotoEnhancerEvent(event: Omit<PhotoEnhancerTelemetryEvent, "id" | "timestamp">) {
+  const record: PhotoEnhancerTelemetryEvent = {
+    id: crypto.randomUUID(),
+    timestamp: new Date().toISOString(),
+    ...event,
+  };
+
+  photoEnhancerTelemetry.requestsTotal += 1;
+  if (record.success) {
+    photoEnhancerTelemetry.successTotal += 1;
+  } else {
+    photoEnhancerTelemetry.errorTotal += 1;
+    photoEnhancerTelemetry.lastErrors.unshift(record);
+    photoEnhancerTelemetry.lastErrors = photoEnhancerTelemetry.lastErrors.slice(0, 25);
+  }
+
+  if (record.raw) photoEnhancerTelemetry.rawConversionTotal += 1;
+  if (record.heic) photoEnhancerTelemetry.heicConversionTotal += 1;
+  if (record.modelUsed?.includes("fallback") || record.inferenceMode === "local-sharp") {
+    photoEnhancerTelemetry.fallbackTotal += 1;
+  }
+  if (record.modelUsed === "sharp-fallback") {
+    photoEnhancerTelemetry.runnerFallbackTotal += 1;
+  }
+  incrementCounter(photoEnhancerTelemetry.modelUsage, record.modelUsed);
+  incrementCounter(photoEnhancerTelemetry.inferenceModes, record.inferenceMode);
+  incrementCounter(photoEnhancerTelemetry.rawConverters, record.rawConverter);
+
+  photoEnhancerTelemetry.recentEvents.unshift(record);
+  photoEnhancerTelemetry.recentEvents = photoEnhancerTelemetry.recentEvents.slice(0, 200);
+}
+
+function summarizePhotoEnhancerTelemetry() {
+  const durations = photoEnhancerTelemetry.recentEvents
+    .filter((event) => event.success)
+    .map((event) => event.processingMs)
+    .filter((value) => Number.isFinite(value));
+  const averageProcessingMs =
+    durations.length > 0
+      ? Math.round(durations.reduce((sum, value) => sum + value, 0) / durations.length)
+      : null;
+  const errorRate =
+    photoEnhancerTelemetry.requestsTotal > 0
+      ? Number((photoEnhancerTelemetry.errorTotal / photoEnhancerTelemetry.requestsTotal).toFixed(4))
+      : 0;
+  const fallbackRate =
+    photoEnhancerTelemetry.requestsTotal > 0
+      ? Number((photoEnhancerTelemetry.fallbackTotal / photoEnhancerTelemetry.requestsTotal).toFixed(4))
+      : 0;
+
+  return {
+    serviceStartedAt: photoEnhancerTelemetry.serviceStartedAt,
+    requestsTotal: photoEnhancerTelemetry.requestsTotal,
+    successTotal: photoEnhancerTelemetry.successTotal,
+    errorTotal: photoEnhancerTelemetry.errorTotal,
+    errorRate,
+    fallbackTotal: photoEnhancerTelemetry.fallbackTotal,
+    fallbackRate,
+    runnerFallbackTotal: photoEnhancerTelemetry.runnerFallbackTotal,
+    rawConversionTotal: photoEnhancerTelemetry.rawConversionTotal,
+    heicConversionTotal: photoEnhancerTelemetry.heicConversionTotal,
+    processingTimeMs: {
+      average: averageProcessingMs,
+      p50: rollingPercentile(durations, 50),
+      p95: rollingPercentile(durations, 95),
+      sampleSize: durations.length,
+    },
+    modelUsage: Object.fromEntries(photoEnhancerTelemetry.modelUsage),
+    inferenceModes: Object.fromEntries(photoEnhancerTelemetry.inferenceModes),
+    rawConverters: Object.fromEntries(photoEnhancerTelemetry.rawConverters),
+    lastErrors: photoEnhancerTelemetry.lastErrors.slice(0, 10),
+    recentEvents: photoEnhancerTelemetry.recentEvents.slice(0, 25),
+  };
+}
+
 const defaultSettings: PhotoEnhancerSettings = {
   brightness: 0,
   contrast: 0,
@@ -121,6 +248,25 @@ function isCameraRawFile(file: Pick<Express.Multer.File, "originalname" | "mimet
     mimetype.includes("x-sony-arw") ||
     mimetype.includes("x-adobe-dng")
   );
+}
+
+function isHeicFile(file: Pick<Express.Multer.File, "originalname" | "mimetype">): boolean {
+  const extension = getUploadExtension(file);
+  const mimetype = String(file.mimetype || "").toLowerCase();
+  return extension === ".heic" || extension === ".heif" || mimetype.includes("heic") || mimetype.includes("heif");
+}
+
+function hasUnavailableSourceConversion(conversion: Record<string, unknown>): boolean {
+  return Boolean((conversion.raw || conversion.heic) && conversion.converter === null && conversion.error);
+}
+
+function conversionErrorCode(conversion: Record<string, unknown>): string {
+  return conversion.heic ? "heic_conversion_unavailable" : "raw_conversion_unavailable";
+}
+
+function conversionErrorMessage(conversion: Record<string, unknown>): string {
+  if (typeof conversion.error === "string" && conversion.error) return conversion.error;
+  return conversion.heic ? "HEIC conversion unavailable" : "RAW conversion unavailable";
 }
 
 function isSupportedPhotoUpload(file: Pick<Express.Multer.File, "originalname" | "mimetype">): boolean {
@@ -415,13 +561,14 @@ async function execRawConverter(
 }
 
 async function resolveRuntimeSupport() {
-  const [imageMagick, darktable, rawtherapee, dcraw, dcrawEmu, simpleDcraw, exiftool] = await Promise.all([
+  const [imageMagick, darktable, rawtherapee, dcraw, dcrawEmu, simpleDcraw, heifConvert, exiftool] = await Promise.all([
     commandPath("magick", "convert"),
     commandPath("darktable-cli"),
     commandPath("rawtherapee-cli"),
     commandPath("dcraw"),
     commandPath("dcraw_emu"),
     commandPath("simple_dcraw"),
+    commandPath("heif-convert"),
     commandPath("exiftool"),
   ]);
 
@@ -436,8 +583,16 @@ async function resolveRuntimeSupport() {
         dcraw: Boolean(dcraw),
         dcrawEmu: Boolean(dcrawEmu),
         simpleDcraw: Boolean(simpleDcraw),
+        heifConvert: Boolean(heifConvert),
       },
       available: Boolean(imageMagick || darktable || rawtherapee || dcraw || dcrawEmu || simpleDcraw),
+      heic: {
+        available: Boolean(heifConvert || imageMagick),
+        converters: {
+          heifConvert: Boolean(heifConvert),
+          imageMagick: Boolean(imageMagick),
+        },
+      },
     },
     metadata: {
       exiftool: Boolean(exiftool),
@@ -616,10 +771,118 @@ async function convertRawWithExternalTool(file: Express.Multer.File): Promise<{
   }
 }
 
+async function convertHeicWithExternalTool(file: Express.Multer.File): Promise<{
+  file: Express.Multer.File;
+  conversion: Record<string, unknown>;
+} | null> {
+  if (!isHeicFile(file)) return null;
+
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "creatorhub-photo-heic-"));
+  const extension = getUploadExtension(file) || ".heic";
+  const inputPath = path.join(tempDir, `source${extension}`);
+  const outputPath = path.join(tempDir, "converted.jpg");
+  await fs.writeFile(inputPath, file.buffer);
+
+  const attempts: Array<{
+    id: string;
+    binaries: string[];
+    args: string[];
+  }> = [
+    {
+      id: "heif-convert",
+      binaries: ["heif-convert"],
+      args: [inputPath, outputPath],
+    },
+    {
+      id: "imagemagick",
+      binaries: ["magick", "convert"],
+      args: [inputPath, "-auto-orient", "-colorspace", "sRGB", outputPath],
+    },
+  ];
+
+  const errors: string[] = [];
+  try {
+    for (const attempt of attempts) {
+      const resolved = await commandPath(...attempt.binaries);
+      if (!resolved) continue;
+      try {
+        await execRawConverter(resolved, attempt.args, {
+          cwd: tempDir,
+          timeout: Number(process.env.PHOTO_ENHANCER_HEIC_TIMEOUT_MS || 30_000),
+          maxBuffer: 10 * 1024 * 1024,
+        });
+        if (!existsSync(outputPath)) {
+          errors.push(`${attempt.id}: no output`);
+          continue;
+        }
+        const buffer = await fs.readFile(outputPath);
+        const sharpModule = await import("sharp");
+        const metadata = await sharpModule.default(buffer, { failOn: "none" }).metadata();
+        if (!metadata.width || !metadata.height) {
+          errors.push(`${attempt.id}: converted image has no dimensions`);
+          continue;
+        }
+        return {
+          file: {
+            ...file,
+            buffer,
+            size: buffer.byteLength,
+            mimetype: "image/jpeg",
+            originalname: file.originalname.replace(/\.[^.]+$/u, ".jpg"),
+          },
+          conversion: {
+            raw: false,
+            heic: true,
+            sourceExtension: extension,
+            converter: attempt.id,
+            outputMimeType: "image/jpeg",
+          },
+        };
+      } catch (error) {
+        errors.push(`${attempt.id}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+
+    return {
+      file,
+      conversion: {
+        raw: false,
+        heic: true,
+        sourceExtension: extension,
+        converter: null,
+        error: errors.join(" | ") || "No HEIC converter available",
+      },
+    };
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
 async function prepareProcessableImage(file: Express.Multer.File): Promise<{
   file: Express.Multer.File;
   raw: Record<string, unknown>;
 }> {
+  if (isHeicFile(file)) {
+    const converted = await convertHeicWithExternalTool(file);
+    if (!converted || converted.file === file) {
+      return {
+        file,
+        raw: converted?.conversion || {
+          raw: false,
+          heic: true,
+          sourceExtension: getUploadExtension(file),
+          converter: null,
+          error: "No HEIC converter available",
+        },
+      };
+    }
+
+    return {
+      file: converted.file,
+      raw: converted.conversion,
+    };
+  }
+
   if (!isCameraRawFile(file)) {
     return {
       file,
@@ -865,12 +1128,8 @@ async function enhanceUploadedFile(params: {
   raw: Record<string, unknown>;
 }> {
   const prepared = await prepareProcessableImage(params.file);
-  if (prepared.raw.raw && prepared.raw.converter === null) {
-    const message =
-      typeof prepared.raw.error === "string"
-        ? prepared.raw.error
-        : "RAW conversion unavailable";
-    throw new Error(`raw_conversion_unavailable: ${message}`);
+  if (hasUnavailableSourceConversion(prepared.raw)) {
+    throw new Error(`${conversionErrorCode(prepared.raw)}: ${conversionErrorMessage(prepared.raw)}`);
   }
 
   const gfpgan = await resolveGfpganModelStatus();
@@ -1072,6 +1331,22 @@ async function buildPhotoEnhancerSelfTest(options: {
     }),
   );
 
+  checks.push(
+    await runSelfTestCheck("heic-runtime", "HEIC converter runtime", async () => {
+      const heic = runtimeSupport.raw.heic;
+      const activeConverters = Object.entries(heic.converters)
+        .filter(([, enabled]) => enabled)
+        .map(([name]) => name);
+      return {
+        status: heic.available ? "pass" : "warn",
+        details: {
+          activeConverters,
+          converters: heic.converters,
+        },
+      };
+    }),
+  );
+
   if (options.includeRaw) {
     checks.push(
       await runSelfTestCheck("raw-cr2-conversion", "Live CR2 conversion sample", async () => {
@@ -1164,6 +1439,7 @@ export function createPhotoEnhancerRouter() {
       models: {
         gfpgan,
         registry: modelStatuses,
+        registryPolicy: PHOTO_ENHANCER_MODEL_REGISTRY_POLICY,
         summary: {
           total: modelStatuses.length,
           weightsAvailable,
@@ -1184,7 +1460,10 @@ export function createPhotoEnhancerRouter() {
       metadataSupport: runtimeSupport.metadata,
       googleDrive: {
         folderStructure: PHOTO_ENHANCER_DRIVE_STRUCTURE,
+        folderNames: getPhotoEnhancerDriveFolderNames(),
+        requiredFolders: PHOTO_ENHANCER_DRIVE_STRUCTURE.filter((folder) => folder.required).map((folder) => folder.name),
       },
+      observability: summarizePhotoEnhancerTelemetry(),
       improvements: {
         total: improvementBacklog.length,
         tracked: improvementBacklog.slice(0, 25),
@@ -1211,7 +1490,38 @@ export function createPhotoEnhancerRouter() {
       success: true,
       models: statuses,
       registry: photoEnhancerModelRegistry,
+      registryPolicy: PHOTO_ENHANCER_MODEL_REGISTRY_POLICY,
       r2: buildPublicPhotoEnhancerR2Config(),
+    });
+  });
+
+  router.get("/observability", async (_req, res) => {
+    const [modelStatuses, gfpgan, runtimeSupport] = await Promise.all([
+      resolvePhotoEnhancerModelStatuses(),
+      resolveGfpganModelStatus(),
+      resolveRuntimeSupport(),
+    ]);
+    res.json({
+      success: true,
+      generatedAt: new Date().toISOString(),
+      telemetry: summarizePhotoEnhancerTelemetry(),
+      readiness: {
+        gfpgan: {
+          available: gfpgan.available,
+          inferenceAvailable: gfpgan.inferenceAvailable,
+          runnerHealthy: gfpgan.runner.healthy,
+          readinessReason: gfpgan.readinessReason,
+          weightsBucket: gfpgan.weights.bucket,
+          weightsKey: gfpgan.weights.key,
+        },
+        models: {
+          total: modelStatuses.length,
+          weightsAvailable: modelStatuses.filter((model) => model.weights?.found || model.available).length,
+          inferenceAvailable: modelStatuses.filter((model) => model.inferenceAvailable).length,
+        },
+        raw: runtimeSupport.raw,
+        metadata: runtimeSupport.metadata,
+      },
     });
   });
 
@@ -1242,12 +1552,26 @@ export function createPhotoEnhancerRouter() {
       }
 
       try {
+        const startedAt = Date.now();
         const preset = readString(req.body?.preset) || "auto";
         const prepared = await prepareProcessableImage(req.file);
-        if (prepared.raw.raw && prepared.raw.converter === null) {
+        if (hasUnavailableSourceConversion(prepared.raw)) {
+          trackPhotoEnhancerEvent({
+            route: "analyze",
+            success: false,
+            fileName: req.file.originalname,
+            sourceExtension: getUploadExtension(req.file),
+            sourceMimeType: req.file.mimetype,
+            raw: Boolean(prepared.raw.raw),
+            heic: Boolean(prepared.raw.heic),
+            rawConverter: null,
+            preset,
+            processingMs: Date.now() - startedAt,
+            error: conversionErrorMessage(prepared.raw),
+          });
           return res.status(422).json({
             success: false,
-            error: "raw_conversion_unavailable",
+            error: conversionErrorCode(prepared.raw),
             raw: prepared.raw,
             rawSupport: await resolveRuntimeSupport(),
           });
@@ -1311,8 +1635,35 @@ export function createPhotoEnhancerRouter() {
               : "Perceptual hash could not be generated for this image type.",
           ],
         });
+        trackPhotoEnhancerEvent({
+          route: "analyze",
+          success: true,
+          fileName: req.file.originalname,
+          sourceExtension: getUploadExtension(req.file),
+          sourceMimeType: req.file.mimetype,
+          raw: Boolean(prepared.raw.raw),
+          heic: Boolean(prepared.raw.heic),
+          rawConverter: readString(prepared.raw.converter),
+          preset,
+          modelUsed: null,
+          inferenceMode: "analysis",
+          processingMs: Date.now() - startedAt,
+          outputMimeType: processFile.mimetype,
+        });
       } catch (error) {
         console.error("[photo-enhancer] analyze failed:", error);
+        trackPhotoEnhancerEvent({
+          route: "analyze",
+          success: false,
+          fileName: req.file.originalname,
+          sourceExtension: getUploadExtension(req.file),
+          sourceMimeType: req.file.mimetype,
+          raw: isCameraRawFile(req.file),
+          heic: isHeicFile(req.file),
+          preset: readString(req.body?.preset) || "auto",
+          processingMs: 0,
+          error: error instanceof Error ? error.message : String(error),
+        });
         res.status(500).json({ success: false, error: "photo_analyze_failed" });
       }
     },
@@ -1327,20 +1678,33 @@ export function createPhotoEnhancerRouter() {
       }
 
       try {
+        const startedAt = Date.now();
         const preset = readString(req.body?.preset) || "auto";
         const settings = normalizeSettings(req.body?.settings, preset);
         const prepared = await prepareProcessableImage(req.file);
-        if (prepared.raw.raw && prepared.raw.converter === null) {
+        if (hasUnavailableSourceConversion(prepared.raw)) {
+          trackPhotoEnhancerEvent({
+            route: "enhance",
+            success: false,
+            fileName: req.file.originalname,
+            sourceExtension: getUploadExtension(req.file),
+            sourceMimeType: req.file.mimetype,
+            raw: Boolean(prepared.raw.raw),
+            heic: Boolean(prepared.raw.heic),
+            rawConverter: null,
+            preset,
+            processingMs: Date.now() - startedAt,
+            error: conversionErrorMessage(prepared.raw),
+          });
           return res.status(422).json({
             success: false,
-            error: "raw_conversion_unavailable",
+            error: conversionErrorCode(prepared.raw),
             raw: prepared.raw,
             rawSupport: await resolveRuntimeSupport(),
           });
         }
         const processFile = prepared.file;
         const gfpgan = await resolveGfpganModelStatus();
-        const startedAt = Date.now();
 
         if (shouldUseGfpgan(preset, settings)) {
           const modelResult = await runGfpganService({
@@ -1350,6 +1714,22 @@ export function createPhotoEnhancerRouter() {
             model: gfpgan,
           });
           if (modelResult) {
+            const processingMs = Date.now() - startedAt;
+            trackPhotoEnhancerEvent({
+              route: "enhance",
+              success: true,
+              fileName: req.file.originalname,
+              sourceExtension: getUploadExtension(req.file),
+              sourceMimeType: req.file.mimetype,
+              raw: Boolean(prepared.raw.raw),
+              heic: Boolean(prepared.raw.heic),
+              rawConverter: readString(prepared.raw.converter),
+              preset,
+              modelUsed: modelResult.modelUsed,
+              inferenceMode: "gfpgan-service",
+              processingMs,
+              outputMimeType: processFile.mimetype,
+            });
             return res.json({
               success: true,
               enhancedImageUrl: modelResult.enhancedImageUrl,
@@ -1361,7 +1741,7 @@ export function createPhotoEnhancerRouter() {
               inferenceMode: "gfpgan-service",
               models: { gfpgan },
               raw: prepared.raw,
-              processingMs: Date.now() - startedAt,
+              processingMs,
             });
           }
         }
@@ -1393,8 +1773,35 @@ export function createPhotoEnhancerRouter() {
           },
           processingMs: Date.now() - startedAt,
         });
+        trackPhotoEnhancerEvent({
+          route: "enhance",
+          success: true,
+          fileName: req.file.originalname,
+          sourceExtension: getUploadExtension(req.file),
+          sourceMimeType: req.file.mimetype,
+          raw: Boolean(prepared.raw.raw),
+          heic: Boolean(prepared.raw.heic),
+          rawConverter: readString(prepared.raw.converter),
+          preset,
+          modelUsed: shouldUseGfpgan(preset, settings) ? "sharp-fallback" : "sharp",
+          inferenceMode: "local-sharp",
+          processingMs: Date.now() - startedAt,
+          outputMimeType: output.mimeType,
+        });
       } catch (error) {
         console.error("[photo-enhancer] enhance failed:", error);
+        trackPhotoEnhancerEvent({
+          route: "enhance",
+          success: false,
+          fileName: req.file.originalname,
+          sourceExtension: getUploadExtension(req.file),
+          sourceMimeType: req.file.mimetype,
+          raw: isCameraRawFile(req.file),
+          heic: isHeicFile(req.file),
+          preset: readString(req.body?.preset) || "auto",
+          processingMs: 0,
+          error: error instanceof Error ? error.message : String(error),
+        });
         res.status(500).json({ success: false, error: "photo_enhance_failed" });
       }
     },
@@ -1532,18 +1939,31 @@ export function createPhotoEnhancementCompatRouter() {
       resolveRuntimeSupport(),
     ]);
     const availableModels = models.filter((model) => model.available).length;
+    const observability = summarizePhotoEnhancerTelemetry();
     res.json({
       gpuUsage: 0,
       memoryUsage: "runtime-managed",
-      processingSpeed: availableModels > 0 ? "model-ready" : "sharp-fallback",
+      processingSpeed:
+        models.some((model) => model.id === "gfpgan" && model.inferenceAvailable)
+          ? "gfpgan-service"
+          : availableModels > 0
+            ? "model-ready"
+            : "sharp-fallback",
       totalJobsCompleted: (await readPhotoEnhancerManifest()).length,
-      avgProcessingTime: "live",
+      avgProcessingTime:
+        observability.processingTimeMs.average === null
+          ? "Ingen jobber ennå"
+          : `${observability.processingTimeMs.average} ms`,
       qualityImprovement: "tracked",
       models: {
         available: availableModels,
         total: models.length,
+        inferenceAvailable: models.filter((model) => model.inferenceAvailable).length,
+        registry: models,
       },
       raw: runtimeSupport.raw,
+      metadata: runtimeSupport.metadata,
+      observability,
     });
   });
 
@@ -1611,6 +2031,7 @@ export function createPhotoEnhancementCompatRouter() {
     const jobs = [];
     for (const file of files) {
       const jobStartedAt = new Date().toISOString();
+      const jobStartedMs = Date.now();
       try {
         const output = await enhanceUploadedFile({ file, preset, settings });
         const record = await persistEnhancedBuffer({
@@ -1634,6 +2055,21 @@ export function createPhotoEnhancementCompatRouter() {
           raw: output.raw,
           metadata: output.metadata,
         });
+        trackPhotoEnhancerEvent({
+          route: "batch",
+          success: true,
+          fileName: file.originalname,
+          sourceExtension: getUploadExtension(file),
+          sourceMimeType: file.mimetype,
+          raw: Boolean(output.raw.raw),
+          heic: Boolean(output.raw.heic),
+          rawConverter: readString(output.raw.converter),
+          preset,
+          modelUsed: output.modelUsed,
+          inferenceMode: output.inferenceMode,
+          processingMs: Date.now() - jobStartedMs,
+          outputMimeType: output.mimeType,
+        });
       } catch (error) {
         jobs.push({
           id: crypto.randomUUID(),
@@ -1649,6 +2085,18 @@ export function createPhotoEnhancementCompatRouter() {
           processingTime: Math.round((Date.now() - startedAt) / 1000),
           errorMessage: error instanceof Error ? error.message : String(error),
         });
+        trackPhotoEnhancerEvent({
+          route: "batch",
+          success: false,
+          fileName: file.originalname,
+          sourceExtension: getUploadExtension(file),
+          sourceMimeType: file.mimetype,
+          raw: isCameraRawFile(file),
+          heic: isHeicFile(file),
+          preset,
+          processingMs: Date.now() - jobStartedMs,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     }
 
@@ -1660,7 +2108,9 @@ export function createPhotoEnhancementCompatRouter() {
         requested: Boolean(options.googleDriveUpload),
         folderId,
         folderStructure: PHOTO_ENHANCER_DRIVE_STRUCTURE,
+        folderNames: getPhotoEnhancerDriveFolderNames(),
       },
+      observability: summarizePhotoEnhancerTelemetry(),
     });
   });
 

@@ -27,6 +27,13 @@ _model_lock = threading.Lock()
 _restorer = None
 _restorer_key = None
 _last_import_error: str | None = None
+_service_started_at = time.time()
+_requests_total = 0
+_errors_total = 0
+_model_load_count = 0
+_last_model_load_ms: int | None = None
+_last_enhance_ms: int | None = None
+_last_error: str | None = None
 
 
 class ModelPayload(BaseModel):
@@ -175,12 +182,13 @@ def _import_gfpgan():
 
 
 def _get_restorer(weight_key: str | None):
-    global _restorer, _restorer_key
+    global _restorer, _restorer_key, _model_load_count, _last_model_load_ms
     with _model_lock:
         weight_path, bucket, resolved_key = _download_weight(weight_key)
         if _restorer is not None and _restorer_key == resolved_key:
             return _restorer, bucket, resolved_key
 
+        load_started = time.time()
         GFPGANer = _import_gfpgan()
         upscale = max(1, int(os.getenv("GFPGAN_UPSCALE", "1")))
         _restorer = GFPGANer(
@@ -191,6 +199,8 @@ def _get_restorer(weight_key: str | None):
             bg_upsampler=None,
         )
         _restorer_key = resolved_key
+        _model_load_count += 1
+        _last_model_load_ms = round((time.time() - load_started) * 1000)
         return _restorer, bucket, resolved_key
 
 
@@ -239,6 +249,7 @@ def health() -> dict[str, Any]:
     return {
         "service": "creatorhub-gfpgan-runner",
         "status": "healthy" if healthy else "unavailable",
+        "uptimeSeconds": round(time.time() - _service_started_at),
         "r2Configured": r2["enabled"],
         "bucketsConfigured": len(r2["buckets"]),
         "gfpganImport": import_ok,
@@ -246,6 +257,12 @@ def health() -> dict[str, Any]:
         "modelLoaded": _restorer is not None,
         "modelKey": _restorer_key,
         "lastImportError": _last_import_error,
+        "requestsTotal": _requests_total,
+        "errorsTotal": _errors_total,
+        "modelLoadCount": _model_load_count,
+        "lastModelLoadMs": _last_model_load_ms,
+        "lastEnhanceMs": _last_enhance_ms,
+        "lastError": _last_error,
         "maxInputEdge": int(os.getenv("GFPGAN_MAX_INPUT_EDGE", "1600")),
         "upscale": int(os.getenv("GFPGAN_UPSCALE", "1")),
     }
@@ -255,6 +272,8 @@ def health() -> dict[str, Any]:
 @app.post("/enhance")
 @app.post("/api/gfpgan/enhance")
 def enhance(payload: EnhancePayload) -> dict[str, Any]:
+    global _requests_total, _errors_total, _last_enhance_ms, _last_error
+    _requests_total += 1
     started = time.time()
     try:
         image = _decode_image(payload.imageBase64)
@@ -280,6 +299,9 @@ def enhance(payload: EnhancePayload) -> dict[str, Any]:
         if not ok:
             raise RuntimeError("Failed to encode GFPGAN output")
 
+        processing_ms = round((time.time() - started) * 1000)
+        _last_enhance_ms = processing_ms
+        _last_error = None
         return {
             "success": True,
             "imageBase64": base64.b64encode(encoded.tobytes()).decode("ascii"),
@@ -288,9 +310,15 @@ def enhance(payload: EnhancePayload) -> dict[str, Any]:
             "weightsBucket": bucket,
             "weightsKey": resolved_key,
             "resizedInputScale": resize_scale,
-            "processingMs": round((time.time() - started) * 1000),
+            "processingMs": processing_ms,
         }
     except ValueError as exc:
+        _errors_total += 1
+        _last_enhance_ms = round((time.time() - started) * 1000)
+        _last_error = str(exc)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
+        _errors_total += 1
+        _last_enhance_ms = round((time.time() - started) * 1000)
+        _last_error = str(exc)
         raise HTTPException(status_code=503, detail=str(exc)) from exc

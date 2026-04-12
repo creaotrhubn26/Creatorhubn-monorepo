@@ -64,6 +64,32 @@ export type PublicPhotoEnhancerR2Config = Omit<
   credentialsConfigured: boolean;
 };
 
+export type PhotoEnhancerDriveFolderDefinition = {
+  id: string;
+  name: string;
+  description: string;
+  role:
+    | "originals"
+    | "selects"
+    | "working"
+    | "enhanced"
+    | "review"
+    | "export"
+    | "metadata"
+    | "archive";
+  required: boolean;
+  aliases: string[];
+};
+
+export const PHOTO_ENHANCER_MODEL_REGISTRY_POLICY = {
+  source: "backend/server/photo-enhancer-capabilities.ts",
+  storage: "cloudflare-r2",
+  matching: "explicit-candidate-keys-only",
+  runners: "explicit-runner-env-or-approved-default-only",
+  note:
+    "Models are only considered available when an approved registry definition, R2 weight match, and runner health agree.",
+};
+
 function resolveDefaultGfpganRunnerUrl(): string | null {
   const disabled = process.env.PHOTO_ENHANCER_DISABLE_DEFAULT_GFPGAN_RUNNER === "true";
   if (disabled) return null;
@@ -276,43 +302,76 @@ export const PHOTO_ENHANCER_RAW_FORMATS = [
   ".x3f",
 ];
 
-export const PHOTO_ENHANCER_DRIVE_STRUCTURE = [
+export const PHOTO_ENHANCER_DRIVE_STRUCTURE: PhotoEnhancerDriveFolderDefinition[] = [
+  {
+    id: "00-metadata",
+    name: "00_Metadata",
+    description: "Manifester, hashes, modellstatus og eksportlogger.",
+    role: "metadata",
+    required: true,
+    aliases: ["Metadata", "Manifester", "Logs"],
+  },
   {
     id: "01-raw-ingest",
-    name: "01_RAW_Ingest",
-    description: "Original camera files and untouched source images.",
+    name: "01_Originaler",
+    description: "Originale JPEG, PNG, HEIC og kamera-RAW uten endringer.",
+    role: "originals",
+    required: true,
+    aliases: ["RAW - Originale bilder", "Originaler", "Originals", "RAW Ingest"],
   },
   {
     id: "02-selects",
     name: "02_Selects",
-    description: "Chosen images ready for enhancement or client review.",
+    description: "Valgte bilder før AI-forbedring eller klientreview.",
+    role: "selects",
+    required: false,
+    aliases: ["Selects", "Utvalg"],
   },
   {
     id: "03-enhancer-working",
     name: "03_Photo_Enhancer_Working",
-    description: "Intermediate TIFF/PNG outputs, model outputs, and comparison frames.",
+    description: "Mellomfiler, TIFF/PNG, previews og sammenligninger.",
+    role: "working",
+    required: true,
+    aliases: ["Arbeidsfiler", "Working", "Mellomfiler"],
   },
   {
     id: "04-ai-restoration",
-    name: "04_AI_Restoration",
-    description: "GFPGAN, CodeFormer, Real-ESRGAN, DiffBIR, and retouch outputs.",
+    name: "04_Forbedret",
+    description: "Ferdige GFPGAN, CodeFormer, Real-ESRGAN, DiffBIR og retouch-resultater.",
+    role: "enhanced",
+    required: true,
+    aliases: ["Bearbeidede bilder", "Forbedret", "AI Restoration", "Enhanced"],
   },
   {
     id: "05-client-review",
     name: "05_Client_Review",
-    description: "Images prepared for client approval and comments.",
+    description: "Bilder klare for klientgodkjenning og kommentarer.",
+    role: "review",
+    required: false,
+    aliases: ["Client Review", "Klientreview", "Review"],
   },
   {
     id: "06-final-delivery",
-    name: "06_Final_Delivery",
-    description: "Approved JPEG, PNG, WebP, TIFF, and social export packages.",
+    name: "06_Eksport",
+    description: "Godkjente JPEG, PNG, WebP, TIFF og sosiale medier-pakker.",
+    role: "export",
+    required: true,
+    aliases: ["Leveranse til klient", "Final Delivery", "Eksport", "Delivery"],
   },
   {
     id: "07-archive",
     name: "07_Archive",
-    description: "Final manifests, hashes, and locked project archive.",
+    description: "Låst arkiv med sluttfiler, metadata og kontrollsummer.",
+    role: "archive",
+    required: false,
+    aliases: ["Arkiv", "Archive"],
   },
 ];
+
+export function getPhotoEnhancerDriveFolderNames(): string[] {
+  return PHOTO_ENHANCER_DRIVE_STRUCTURE.map((folder) => folder.name);
+}
 
 function firstNonEmpty(...values: Array<string | undefined>): string | null {
   for (const value of values) {

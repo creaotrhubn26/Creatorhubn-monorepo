@@ -64,6 +64,12 @@ import {
   LinkedIn,
   MusicNote,
   PushPin,
+  Notifications,
+  NotificationsActive,
+  Storage,
+  Speed,
+  CloudDone,
+  FolderOutlined,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 
@@ -180,7 +186,109 @@ interface SystemTelemetry {
   processingSpeed: string;
   totalJobsCompleted: number;
   avgProcessingTime: string;
-  qualityImprovement: string
+  qualityImprovement: string;
+  models?: {
+    available: number;
+    total: number;
+    inferenceAvailable?: number;
+    registry?: PhotoEnhancerModelStatus[];
+  };
+  raw?: PhotoEnhancerRawSupport;
+  metadata?: {
+    exiftool?: boolean;
+  };
+  observability?: PhotoEnhancerObservabilitySummary;
+}
+
+interface PhotoEnhancerRawSupport {
+  available: boolean;
+  supportedExtensions?: string[];
+  rasterExtensions?: string[];
+  converters?: Record<string, boolean>;
+  heic?: {
+    available: boolean;
+    converters?: Record<string, boolean>;
+  };
+}
+
+interface PhotoEnhancerModelStatus {
+  id: string;
+  displayName: string;
+  modelType: string;
+  available: boolean;
+  inferenceAvailable: boolean;
+  readinessReason?: string | null;
+  weights?: {
+    found?: boolean;
+    bucket?: string | null;
+    key?: string | null;
+    reason?: string | null;
+  };
+  runner?: {
+    configured?: boolean;
+    healthy?: boolean | null;
+    endpoint?: string | null;
+    reason?: string | null;
+  };
+}
+
+interface PhotoEnhancerDriveFolder {
+  id: string;
+  name: string;
+  description: string;
+  role: string;
+  required: boolean;
+  aliases?: string[];
+}
+
+interface PhotoEnhancerObservabilitySummary {
+  requestsTotal: number;
+  successTotal: number;
+  errorTotal: number;
+  errorRate: number;
+  fallbackTotal: number;
+  fallbackRate: number;
+  runnerFallbackTotal: number;
+  rawConversionTotal: number;
+  heicConversionTotal?: number;
+  processingTimeMs: {
+    average: number | null;
+    p50: number | null;
+    p95: number | null;
+    sampleSize: number;
+  };
+  modelUsage: Record<string, number>;
+  inferenceModes: Record<string, number>;
+  rawConverters: Record<string, number>;
+}
+
+interface PhotoEnhancerStatusResponse {
+  success: boolean;
+  models: {
+    gfpgan?: PhotoEnhancerModelStatus;
+    registry?: PhotoEnhancerModelStatus[];
+    summary?: {
+      total: number;
+      weightsAvailable: number;
+      inferenceAvailable: number;
+    };
+    faceApi?: {
+      available: boolean;
+    };
+    imageHash?: {
+      available: boolean;
+    };
+  };
+  rawSupport: PhotoEnhancerRawSupport;
+  metadataSupport?: {
+    exiftool?: boolean;
+  };
+  googleDrive?: {
+    folderStructure?: PhotoEnhancerDriveFolder[];
+    folderNames?: string[];
+    requiredFolders?: string[];
+  };
+  observability?: PhotoEnhancerObservabilitySummary;
 }
 
 const PhotoEnhancementSuite: React.FC<PhotoEnhancementSuiteProps> = ({
@@ -700,6 +808,159 @@ const PhotoEnhancementSuite: React.FC<PhotoEnhancementSuiteProps> = ({
     refetchInterval: isTabVisible ? 30000 : false,
 });
 
+  const { data: photoEnhancerStatus } = useQuery({
+    queryKey: ['/api/photo-enhancer/status'],
+    queryFn: async ({ signal }) => {
+      return apiRequest('/api/photo-enhancer/status', { signal }) as Promise<PhotoEnhancerStatusResponse>;
+    },
+    staleTime: 30 * 1000,
+    refetchInterval: isTabVisible ? 30000 : false,
+  });
+
+  const photoEnhancerDriveFolders = useMemo(() => {
+    const names = photoEnhancerStatus?.googleDrive?.folderNames;
+    if (Array.isArray(names) && names.length > 0) return names;
+    return [
+      '00_Metadata',
+      '01_Originaler',
+      '02_Selects',
+      '03_Photo_Enhancer_Working',
+      '04_Forbedret',
+      '05_Client_Review',
+      '06_Eksport',
+      '07_Archive',
+    ];
+  }, [photoEnhancerStatus]);
+
+  const findPhotoEnhancerDriveFolder = useCallback((context: any, roles: string[], fallbackNames: string[]) => {
+    const sections = Array.isArray(context?.sections) ? context.sections : [];
+    const folderStructure = Array.isArray(photoEnhancerStatus?.googleDrive?.folderStructure)
+      ? photoEnhancerStatus.googleDrive.folderStructure
+      : [];
+    const candidateNames = new Set(
+      folderStructure
+        .filter((folder) => roles.includes(folder.role))
+        .flatMap((folder) => [folder.name, ...(folder.aliases || [])])
+        .concat(fallbackNames)
+        .map((name) => name.toLowerCase()),
+    );
+
+    return sections.find((section: any) => {
+      const sectionName = String(section?.folderName || section?.label || '').toLowerCase();
+      if (!sectionName) return false;
+      return Array.from(candidateNames).some((name) => sectionName.includes(name) || name.includes(sectionName));
+    }) || null;
+  }, [photoEnhancerStatus]);
+
+  const uploadFilesToDriveSection = useCallback(async (params: {
+    files: File[];
+    section: any;
+    sectionLabel: string;
+  }) => {
+    if (params.files.length === 0 || !params.section?.folderId) {
+      return { skipped: true, uploaded: [] };
+    }
+
+    const formData = new FormData();
+    params.files.forEach((file) => formData.append('files', file));
+    const effectiveProjectId = projectId || effectiveProject?.id?.toString() || '';
+    formData.append('userId', String(currentUserId || userId || ''));
+    formData.append('profession', profession);
+    formData.append('projectId', effectiveProjectId);
+    formData.append('projectName', String(effectiveProject?.title || effectiveProject?.name || 'Photo Enhancer'));
+    formData.append('sectionId', String(params.section.id || params.sectionLabel));
+    formData.append('sectionLabel', params.sectionLabel);
+    formData.append('targetFolderId', String(params.section.folderId));
+    formData.append('targetFolderName', String(params.section.folderName || params.sectionLabel));
+    formData.append('customStructureJson', JSON.stringify(photoEnhancerDriveFolders));
+
+    const response = await fetch('/api/google/drive/upload-contextual', {
+      method: 'POST',
+      credentials: 'include',
+      body: formData,
+    });
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '');
+      throw new Error(errorText || `Google Drive upload failed (${response.status})`);
+    }
+    return response.json();
+  }, [currentUserId, effectiveProject, photoEnhancerDriveFolders, profession, projectId, userId]);
+
+  const syncPhotoEnhancerArtifactsToDrive = useCallback(async (params: {
+    sourceFiles: File[];
+    jobs: EnhancementJob[];
+    options: BatchProcessingOptions;
+  }) => {
+    if (!params.options.googleDriveUpload) {
+      return { skipped: true, reason: 'google_drive_upload_disabled' };
+    }
+
+    const effectiveProjectId = projectId || effectiveProject?.id?.toString();
+    const projectName = String(effectiveProject?.title || effectiveProject?.name || 'Photo Enhancer');
+    const context = await apiRequest('/api/google/drive/context', {
+      method: 'POST',
+      body: {
+        userId: currentUserId || userId,
+        profession,
+        projectId: effectiveProjectId,
+        projectName,
+        customStructure: photoEnhancerDriveFolders,
+      },
+    });
+
+    const originalsSection = findPhotoEnhancerDriveFolder(
+      context,
+      ['originals'],
+      ['01_Originaler', 'RAW - Originale bilder', 'Originaler'],
+    );
+    const enhancedSection = findPhotoEnhancerDriveFolder(
+      context,
+      ['enhanced', 'export'],
+      ['04_Forbedret', '06_Eksport', 'Leveranse til klient', 'Bearbeidede bilder'],
+    );
+
+    const completedJobs = params.jobs.filter((job) => job.status === 'completed' && job.enhancedUrl);
+    const enhancedFiles: File[] = [];
+    for (const job of completedJobs) {
+      const response = await fetch(job.enhancedUrl!, { credentials: 'include' });
+      if (!response.ok) continue;
+      const blob = await response.blob();
+      enhancedFiles.push(new File([blob], sanitizeFilename(job.filename || `enhanced-${job.id}.jpg`), {
+        type: blob.type || 'image/jpeg',
+      }));
+    }
+
+    const [originalUpload, enhancedUpload] = await Promise.all([
+      uploadFilesToDriveSection({
+        files: params.sourceFiles,
+        section: originalsSection,
+        sectionLabel: 'Photo Enhancer originaler',
+      }),
+      uploadFilesToDriveSection({
+        files: enhancedFiles,
+        section: enhancedSection,
+        sectionLabel: 'Photo Enhancer forbedret og eksport',
+      }),
+    ]);
+
+    return {
+      skipped: false,
+      context,
+      originalUpload,
+      enhancedUpload,
+    };
+  }, [
+    currentUserId,
+    effectiveProject,
+    findPhotoEnhancerDriveFolder,
+    photoEnhancerDriveFolders,
+    profession,
+    projectId,
+    sanitizeFilename,
+    uploadFilesToDriveSection,
+    userId,
+  ]);
+
   // Start enhancement mutation with AbortController
   const startEnhancementMutation = useMutation({
     mutationFn: async (data: {
@@ -729,12 +990,43 @@ const PhotoEnhancementSuite: React.FC<PhotoEnhancementSuiteProps> = ({
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
 
-      return await response.json();
+      const result = await response.json();
+      if (data.options.googleDriveUpload) {
+        try {
+          const driveSync = await syncPhotoEnhancerArtifactsToDrive({
+            sourceFiles: data.files,
+            jobs: Array.isArray(result?.jobs) ? result.jobs : [],
+            options: data.options,
+          });
+          return {
+            ...result,
+            googleDrive: {
+              ...(result?.googleDrive || {}),
+              sync: driveSync,
+            },
+          };
+        } catch (error) {
+          return {
+            ...result,
+            googleDrive: {
+              ...(result?.googleDrive || {}),
+              sync: {
+                skipped: false,
+                error: error instanceof Error ? error.message : String(error),
+              },
+            },
+          };
+        }
+      }
+
+      return result;
   },
     onSuccess: () => {
       setSelectedFiles([]);
       setHashedFiles(new Map());
       queryClient.invalidateQueries({ queryKey: ['/api/photo-enhancement/jobs', userId, projectId, effectiveProject?.id] });
+      queryClient.invalidateQueries({ queryKey: ['/api/photo-enhancement/telemetry'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/photo-enhancer/status'] });
   },
     retry: (failureCount, error: any) => {
       if (error?.name === 'AbortError') return false;
@@ -1211,6 +1503,20 @@ const PhotoEnhancementSuite: React.FC<PhotoEnhancementSuiteProps> = ({
     { label: 'Presets', icon: theming.getThemedIcon('tune') || <Assessment /> }
   ];
 
+  const gfpganStatus = photoEnhancerStatus?.models?.gfpgan;
+  const modelSummary = photoEnhancerStatus?.models?.summary;
+  const rawConverters = photoEnhancerStatus?.rawSupport?.converters || systemTelemetry?.raw?.converters || {};
+  const activeRawConverters = Object.entries(rawConverters)
+    .filter(([, enabled]) => enabled)
+    .map(([name]) => name);
+  const rawOrHeicAvailable = Boolean(
+    photoEnhancerStatus?.rawSupport?.available ||
+      photoEnhancerStatus?.rawSupport?.heic?.available ||
+      systemTelemetry?.raw?.available ||
+      systemTelemetry?.raw?.heic?.available,
+  );
+  const observability = photoEnhancerStatus?.observability || systemTelemetry?.observability;
+  const formatRate = (rate?: number) => `${Math.round((rate || 0) * 100)}%`;
 
   return (
     <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -1342,6 +1648,98 @@ const PhotoEnhancementSuite: React.FC<PhotoEnhancementSuiteProps> = ({
             </Stack>
           </Alert>
         )}
+
+        <Box
+          sx={{
+            mt: 2,
+            display: 'grid',
+            gridTemplateColumns: { xs: '1fr', md: 'repeat(4, minmax(0, 1fr))' },
+            gap: 1.5,
+          }}
+        >
+          <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(233, 30, 99, 0.06)' }}>
+            <Stack direction="row" spacing={1.25} alignItems="center">
+              <Avatar sx={{ width: 32, height: 32, bgcolor: gfpganStatus?.inferenceAvailable ? 'success.main' : 'warning.main' }}>
+                <Face fontSize="small" />
+              </Avatar>
+              <Box sx={{ minWidth: 0 }}>
+                <Typography variant="caption" color="text.secondary">GFPGAN</Typography>
+                <Typography variant="body2" fontWeight={700}>
+                  {gfpganStatus?.inferenceAvailable ? 'Aktiv' : gfpganStatus?.available ? 'Vekter klare' : 'Fallback'}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" noWrap>
+                  {gfpganStatus?.runner?.healthy === true
+                    ? 'Runner healthy'
+                    : gfpganStatus?.readinessReason || 'Henter status'}
+                </Typography>
+              </Box>
+            </Stack>
+          </Paper>
+
+          <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(25, 118, 210, 0.06)' }}>
+            <Stack direction="row" spacing={1.25} alignItems="center">
+              <Avatar sx={{ width: 32, height: 32, bgcolor: rawOrHeicAvailable ? 'info.main' : 'warning.main' }}>
+                <Storage fontSize="small" />
+              </Avatar>
+              <Box sx={{ minWidth: 0 }}>
+                <Typography variant="caption" color="text.secondary">RAW / HEIC</Typography>
+                <Typography variant="body2" fontWeight={700}>
+                  {rawOrHeicAvailable ? 'Konvertering klar' : 'Ikke klar'}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" noWrap>
+                  {activeRawConverters.length > 0 ? activeRawConverters.join(', ') : 'Ingen convertere funnet'}
+                </Typography>
+              </Box>
+            </Stack>
+          </Paper>
+
+          <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(76, 175, 80, 0.07)' }}>
+            <Stack direction="row" spacing={1.25} alignItems="center">
+              <Avatar sx={{ width: 32, height: 32, bgcolor: 'success.main' }}>
+                <CloudDone fontSize="small" />
+              </Avatar>
+              <Box sx={{ minWidth: 0 }}>
+                <Typography variant="caption" color="text.secondary">Modellregistry</Typography>
+                <Typography variant="body2" fontWeight={700}>
+                  {modelSummary?.inferenceAvailable ?? systemTelemetry?.models?.inferenceAvailable ?? 0}/{modelSummary?.total ?? systemTelemetry?.models?.total ?? 0} inference
+                </Typography>
+                <Typography variant="caption" color="text.secondary" noWrap>
+                  {gfpganStatus?.weights?.bucket ? `${gfpganStatus.weights.bucket}/${gfpganStatus.weights.key}` : 'R2 sjekkes'}
+                </Typography>
+              </Box>
+            </Stack>
+          </Paper>
+
+          <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(255, 152, 0, 0.08)' }}>
+            <Stack direction="row" spacing={1.25} alignItems="center">
+              <Avatar sx={{ width: 32, height: 32, bgcolor: 'warning.main' }}>
+                <Speed fontSize="small" />
+              </Avatar>
+              <Box sx={{ minWidth: 0 }}>
+                <Typography variant="caption" color="text.secondary">Observability</Typography>
+                <Typography variant="body2" fontWeight={700}>
+                  Feil {formatRate(observability?.errorRate)} · Fallback {formatRate(observability?.fallbackRate)}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" noWrap>
+                  {observability?.processingTimeMs?.average ? `${observability.processingTimeMs.average} ms snitt` : 'Ingen målinger ennå'}
+                </Typography>
+              </Box>
+            </Stack>
+          </Paper>
+        </Box>
+
+        <Alert
+          severity="info"
+          icon={<FolderOutlined />}
+          sx={{ mt: 2 }}
+        >
+          <Typography variant="body2" fontWeight={700}>
+            Google Drive-struktur for Photo Enhancer
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            {photoEnhancerDriveFolders.join(' / ')}
+          </Typography>
+        </Alert>
       </Paper>
 
 	    <Box sx={{ flex: 1, display: 'flex' }}>
