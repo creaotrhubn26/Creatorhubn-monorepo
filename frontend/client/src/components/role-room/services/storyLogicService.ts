@@ -1,10 +1,14 @@
 /**
  * Story Logic Service
  * Handles persistence for story logic data (concept, logline, theme)
- * Uses database with localStorage fallback
+ * Uses authenticated Role Room API persistence with local cache only after server confirmation.
  */
 
-import { shouldUseRoleRoomLocalFallback } from '../utils/runtime';
+import authSessionService from './authSessionService';
+import {
+  isRoleRoomDemoProjectId,
+  isRoleRoomDemoSeedAllowed,
+} from '../constants/producerDemo';
 
 // Story Logic types (matching StoryLogicPanel)
 export interface ConceptData {
@@ -40,6 +44,19 @@ export interface ThemeData {
   moralArgument: string;
 }
 
+export interface PhaseLocks {
+  concept: boolean;
+  logline: boolean;
+  theme: boolean;
+}
+
+export interface StoryVersion {
+  id: string;
+  label: string;
+  timestamp: string;
+  snapshot: string;
+}
+
 export interface StoryLogicState {
   concept: ConceptData;
   logline: LoglineData;
@@ -51,21 +68,135 @@ export interface StoryLogicState {
     theme: 'incomplete' | 'weak' | 'ready';
   };
   lastSaved: string | null;
-  isLocked: boolean;
+  locks?: PhaseLocks;
+  versions?: StoryVersion[];
+  isLocked?: boolean;
 }
 
 export interface StoryLogicRecord {
   id: string;
   projectId: string;
   data: StoryLogicState;
+  version?: number;
   createdAt: string;
   updatedAt: string;
 }
 
+export type StoryLogicSyncStatus = 'idle' | 'loading' | 'saving' | 'synced' | 'local_only' | 'error' | 'conflict';
+
+export interface StoryLogicSyncMeta {
+  projectId: string;
+  status: StoryLogicSyncStatus;
+  source: 'server' | 'local' | 'none';
+  version?: number;
+  lastLoadedAt?: string;
+  lastSyncedAt?: string;
+  lastError?: string;
+}
+
+interface StoryLogicApiResponse {
+  success?: boolean;
+  projectId?: string;
+  storyLogic?: StoryLogicState | null;
+  version?: number;
+  createdAt?: string;
+  updatedAt?: string;
+  error?: string;
+  current?: StoryLogicApiResponse;
+}
+
 const LEGACY_STORAGE_KEY = 'story-logic-data';
 const STORAGE_KEY_PREFIX = 'story-logic-data:';
+const SYNC_META_PREFIX = 'story-logic-sync-meta:';
+const ROLE_ROOM_STORY_LOGIC_API_PREFIX = '/api/role-room/projects';
 
 const buildStorageKey = (projectId: string): string => `${STORAGE_KEY_PREFIX}${projectId}`;
+const buildSyncMetaKey = (projectId: string): string => `${SYNC_META_PREFIX}${projectId}`;
+
+function normalizeStoryLogicProjectId(projectId: string): string {
+  const normalizedProjectId = String(projectId || '').trim();
+  if (!normalizedProjectId) {
+    throw new Error('Story Logic krever gyldig prosjekt-ID.');
+  }
+
+  if (normalizedProjectId === 'default' || normalizedProjectId === 'default-project') {
+    throw new Error('Story Logic kan ikke lagres mot standardprosjekt. Velg et ekte prosjekt først.');
+  }
+
+  if (isRoleRoomDemoProjectId(normalizedProjectId) && !isRoleRoomDemoSeedAllowed()) {
+    throw new Error('Story Logic kan ikke lagres mot låst demo-ID i produksjon. Lag en kopi først.');
+  }
+
+  return normalizedProjectId;
+}
+
+function shouldUseExplicitStoryLogicLocalFallback(): boolean {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  return params.get('roleRoomLocalFallback') === '1'
+    || params.get('storyLogicLocalFallback') === '1';
+}
+
+function getStoryLogicApiUrl(projectId: string): string {
+  return `${ROLE_ROOM_STORY_LOGIC_API_PREFIX}/${encodeURIComponent(projectId)}/story-logic`;
+}
+
+function getRequiredAuthHeaders(): Record<string, string> {
+  const authHeaders = authSessionService.getAuthHeadersSync();
+  if (!authHeaders.Authorization) {
+    throw new Error('Story Logic krever gyldig Role Room-session.');
+  }
+  return authHeaders;
+}
+
+async function readApiPayload(response: Response): Promise<StoryLogicApiResponse> {
+  try {
+    return await response.json() as StoryLogicApiResponse;
+  } catch {
+    return {};
+  }
+}
+
+function writeSyncMeta(projectId: string, meta: Omit<StoryLogicSyncMeta, 'projectId'>): StoryLogicSyncMeta {
+  const nextMeta: StoryLogicSyncMeta = { projectId, ...meta };
+  try {
+    localStorage.setItem(buildSyncMetaKey(projectId), JSON.stringify(nextMeta));
+  } catch (error) {
+    console.warn('Failed to write story logic sync meta:', error);
+  }
+  return nextMeta;
+}
+
+function getSyncMeta(projectId: string): StoryLogicSyncMeta {
+  try {
+    const raw = localStorage.getItem(buildSyncMetaKey(projectId));
+    if (raw) {
+      const parsed = JSON.parse(raw) as StoryLogicSyncMeta;
+      return {
+        projectId,
+        status: parsed.status || 'idle',
+        source: parsed.source || 'none',
+        version: typeof parsed.version === 'number' ? parsed.version : undefined,
+        lastLoadedAt: parsed.lastLoadedAt,
+        lastSyncedAt: parsed.lastSyncedAt,
+        lastError: parsed.lastError,
+      };
+    }
+  } catch (error) {
+    console.warn('Failed to read story logic sync meta:', error);
+  }
+
+  return { projectId, status: 'idle', source: 'none' };
+}
+
+function assertMatchingProjectPayload(projectId: string, payload: StoryLogicApiResponse): void {
+  if (payload.projectId && payload.projectId !== projectId) {
+    throw new Error('Serveren returnerte Story Logic for feil prosjekt.');
+  }
+}
 
 /**
  * Get story logic data from localStorage for one project
@@ -104,75 +235,185 @@ export const storyLogicService = {
    * Get story logic data for a project
    */
   async getStoryLogic(projectId: string): Promise<StoryLogicState | null> {
-    if (shouldUseRoleRoomLocalFallback()) {
-      return getStorageData(projectId)?.data || null;
+    const normalizedProjectId = normalizeStoryLogicProjectId(projectId);
+
+    if (shouldUseExplicitStoryLogicLocalFallback()) {
+      writeSyncMeta(normalizedProjectId, {
+        status: 'local_only',
+        source: 'local',
+        lastLoadedAt: new Date().toISOString(),
+      });
+      return getStorageData(normalizedProjectId)?.data || null;
     }
 
-    // Try database first
+    writeSyncMeta(normalizedProjectId, {
+      ...getSyncMeta(normalizedProjectId),
+      status: 'loading',
+      source: 'server',
+    });
+
     try {
-      const response = await fetch(`/api/projects/${projectId}/story-logic`);
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success && data.storyLogic) {
-          // Also update localStorage as cache
-          saveStorageData(projectId, {
-            id: `story-logic-${projectId}`,
-            projectId,
-            data: data.storyLogic,
-            createdAt: data.createdAt || new Date().toISOString(),
-            updatedAt: data.updatedAt || new Date().toISOString(),
-          });
-          return data.storyLogic;
-        }
-      }
-    } catch (error) {
-      console.warn('Failed to fetch story logic from API, using localStorage:', error);
-    }
+      const response = await fetch(getStoryLogicApiUrl(normalizedProjectId), {
+        headers: getRequiredAuthHeaders(),
+      });
+      const payload = await readApiPayload(response);
 
-    // Fallback to localStorage
-    return getStorageData(projectId)?.data || null;
+      if (response.status === 404 && payload.error === 'story_logic_not_found') {
+        writeSyncMeta(normalizedProjectId, {
+          status: 'synced',
+          source: 'server',
+          lastLoadedAt: new Date().toISOString(),
+        });
+        return null;
+      }
+
+      if (!response.ok) {
+        throw new Error(payload.error || `Kunne ikke hente Story Logic (${response.status})`);
+      }
+
+      assertMatchingProjectPayload(normalizedProjectId, payload);
+      if (payload.success && payload.storyLogic) {
+        saveStorageData(normalizedProjectId, {
+          id: `story-logic-${normalizedProjectId}`,
+          projectId: normalizedProjectId,
+          data: payload.storyLogic,
+          version: payload.version,
+          createdAt: payload.createdAt || new Date().toISOString(),
+          updatedAt: payload.updatedAt || new Date().toISOString(),
+        });
+        writeSyncMeta(normalizedProjectId, {
+          status: 'synced',
+          source: 'server',
+          version: payload.version,
+          lastLoadedAt: new Date().toISOString(),
+          lastSyncedAt: payload.updatedAt || new Date().toISOString(),
+        });
+        return payload.storyLogic;
+      }
+
+      writeSyncMeta(normalizedProjectId, {
+        status: 'synced',
+        source: 'server',
+        version: payload.version,
+        lastLoadedAt: new Date().toISOString(),
+      });
+      return null;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Kunne ikke hente Story Logic.';
+      writeSyncMeta(normalizedProjectId, {
+        ...getSyncMeta(normalizedProjectId),
+        status: 'error',
+        source: 'server',
+        lastError: message,
+      });
+      throw error;
+    }
   },
 
   /**
    * Save story logic data for a project
    */
   async saveStoryLogic(projectId: string, data: StoryLogicState): Promise<void> {
+    const normalizedProjectId = normalizeStoryLogicProjectId(projectId);
     const now = new Date().toISOString();
     const dataToSave = { ...data, lastSaved: now };
 
-    // Always save to localStorage first for immediate persistence
-    const existingRecord = getStorageData(projectId);
-    saveStorageData(projectId, {
-      id: existingRecord?.id || `story-logic-${projectId}`,
-      projectId,
-      data: dataToSave,
-      createdAt: existingRecord?.createdAt || now,
-      updatedAt: now,
-    });
-
-    if (shouldUseRoleRoomLocalFallback()) {
+    if (shouldUseExplicitStoryLogicLocalFallback()) {
+      const existingRecord = getStorageData(normalizedProjectId);
+      saveStorageData(normalizedProjectId, {
+        id: existingRecord?.id || `story-logic-${normalizedProjectId}`,
+        projectId: normalizedProjectId,
+        data: dataToSave,
+        version: existingRecord?.version,
+        createdAt: existingRecord?.createdAt || now,
+        updatedAt: now,
+      });
+      writeSyncMeta(normalizedProjectId, {
+        status: 'local_only',
+        source: 'local',
+        version: existingRecord?.version,
+        lastSyncedAt: now,
+      });
       return;
     }
 
-    // Then try to sync with database
+    const currentMeta = getSyncMeta(normalizedProjectId);
+    writeSyncMeta(normalizedProjectId, {
+      ...currentMeta,
+      status: 'saving',
+      source: 'server',
+      lastError: undefined,
+    });
+
     try {
-      const response = await fetch(`/api/projects/${projectId}/story-logic`, {
+      const response = await fetch(getStoryLogicApiUrl(normalizedProjectId), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...getRequiredAuthHeaders(),
+        },
         body: JSON.stringify({
+          projectId: normalizedProjectId,
           storyLogic: dataToSave,
+          expectedVersion: currentMeta.version,
           updatedAt: now,
         }),
       });
+      const payload = await readApiPayload(response);
 
-      if (!response.ok) {
-        throw new Error(`Failed to save story logic: ${response.statusText}`);
+      if (response.status === 409) {
+        writeSyncMeta(normalizedProjectId, {
+          ...currentMeta,
+          status: 'conflict',
+          source: 'server',
+          version: payload.current?.version ?? currentMeta.version,
+          lastError: payload.error || 'Story Logic-konflikt. Last inn siste serverversjon før du lagrer igjen.',
+        });
+        throw new Error(payload.error || 'Story Logic-konflikt. Last inn siste serverversjon før du lagrer igjen.');
       }
 
-      console.log('✓ Story logic saved to database for project:', projectId);
+      if (!response.ok) {
+        throw new Error(payload.error || `Kunne ikke lagre Story Logic (${response.status})`);
+      }
+
+      assertMatchingProjectPayload(normalizedProjectId, payload);
+
+      const confirmResponse = await fetch(getStoryLogicApiUrl(normalizedProjectId), {
+        headers: getRequiredAuthHeaders(),
+      });
+      const confirmedPayload = await readApiPayload(confirmResponse);
+      if (!confirmResponse.ok || !confirmedPayload.storyLogic) {
+        throw new Error(confirmedPayload.error || 'Serverbekreftelse for Story Logic-save feilet.');
+      }
+      assertMatchingProjectPayload(normalizedProjectId, confirmedPayload);
+
+      saveStorageData(normalizedProjectId, {
+        id: `story-logic-${normalizedProjectId}`,
+        projectId: normalizedProjectId,
+        data: confirmedPayload.storyLogic,
+        version: confirmedPayload.version ?? payload.version,
+        createdAt: confirmedPayload.createdAt || payload.createdAt || now,
+        updatedAt: confirmedPayload.updatedAt || payload.updatedAt || now,
+      });
+      writeSyncMeta(normalizedProjectId, {
+        status: 'synced',
+        source: 'server',
+        version: confirmedPayload.version ?? payload.version,
+        lastSyncedAt: confirmedPayload.updatedAt || payload.updatedAt || now,
+        lastLoadedAt: now,
+        lastError: undefined,
+      });
     } catch (error) {
-      console.warn('Failed to save story logic to API, using localStorage only:', error);
-      // Data is already in localStorage, so user can continue working
+      if (getSyncMeta(normalizedProjectId).status !== 'conflict') {
+        const message = error instanceof Error ? error.message : 'Kunne ikke lagre Story Logic.';
+        writeSyncMeta(normalizedProjectId, {
+          ...currentMeta,
+          status: 'error',
+          source: 'server',
+          lastError: message,
+        });
+      }
+      throw error;
     }
   },
 
@@ -180,24 +421,50 @@ export const storyLogicService = {
    * Delete story logic data for a project
    */
   async deleteStoryLogic(projectId: string): Promise<void> {
-    // Remove from localStorage
-    deleteStorageData(projectId);
+    const normalizedProjectId = normalizeStoryLogicProjectId(projectId);
 
-    if (shouldUseRoleRoomLocalFallback()) {
+    if (shouldUseExplicitStoryLogicLocalFallback()) {
+      deleteStorageData(normalizedProjectId);
+      writeSyncMeta(normalizedProjectId, {
+        status: 'local_only',
+        source: 'local',
+        lastSyncedAt: new Date().toISOString(),
+      });
       return;
     }
 
-    // Try to delete from database
+    writeSyncMeta(normalizedProjectId, {
+      ...getSyncMeta(normalizedProjectId),
+      status: 'saving',
+      source: 'server',
+    });
+
     try {
-      const response = await fetch(`/api/projects/${projectId}/story-logic`, {
+      const response = await fetch(getStoryLogicApiUrl(normalizedProjectId), {
         method: 'DELETE',
+        headers: getRequiredAuthHeaders(),
       });
+      const payload = await readApiPayload(response);
 
       if (!response.ok) {
-        console.warn('Failed to delete story logic from API:', response.statusText);
+        throw new Error(payload.error || `Kunne ikke slette Story Logic (${response.status})`);
       }
+
+      deleteStorageData(normalizedProjectId);
+      writeSyncMeta(normalizedProjectId, {
+        status: 'synced',
+        source: 'server',
+        lastSyncedAt: new Date().toISOString(),
+      });
     } catch (error) {
-      console.warn('Failed to delete story logic from API:', error);
+      const message = error instanceof Error ? error.message : 'Kunne ikke slette Story Logic.';
+      writeSyncMeta(normalizedProjectId, {
+        ...getSyncMeta(normalizedProjectId),
+        status: 'error',
+        source: 'server',
+        lastError: message,
+      });
+      throw error;
     }
   },
 
@@ -207,6 +474,10 @@ export const storyLogicService = {
   async hasStoryLogic(projectId: string): Promise<boolean> {
     const data = await this.getStoryLogic(projectId);
     return data !== null;
+  },
+
+  getStoryLogicSyncMeta(projectId: string): StoryLogicSyncMeta {
+    return getSyncMeta(normalizeStoryLogicProjectId(projectId));
   },
 
   /**

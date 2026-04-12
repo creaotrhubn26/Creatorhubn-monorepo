@@ -4,12 +4,48 @@
  */
 
 import type { CastingProject } from '../models/casting';
+import {
+  CONTENT_PRODUCER_DEMO_PROJECT_ID,
+  TROLL_DEMO_PROJECT_ID,
+} from '../constants/producerDemo';
 import { shouldUseRoleRoomLocalFallback } from '../utils/runtime';
+
+function normalizeRequiredProjectId(projectId: string | null | undefined, operation: string): string {
+  const normalized = String(projectId || '').trim();
+  if (!normalized) {
+    throw new Error(`Mangler prosjekt-ID for ${operation}.`);
+  }
+  const lowered = normalized.toLowerCase();
+  if (
+    lowered === 'default' ||
+    lowered === 'default-project' ||
+    lowered === 'demo' ||
+    lowered === 'undefined' ||
+    lowered === 'null' ||
+    normalized.includes('/') ||
+    normalized.includes('\\') ||
+    normalized.includes('..')
+  ) {
+    throw new Error(`Ugyldig prosjekt-ID for ${operation}: ${normalized}`);
+  }
+  return normalized;
+}
+
+function assertCanWriteProject(projectId: string, operation: string): void {
+  const normalized = normalizeRequiredProjectId(projectId, operation);
+  if (
+    (normalized === CONTENT_PRODUCER_DEMO_PROJECT_ID || normalized === TROLL_DEMO_PROJECT_ID)
+  ) {
+    throw new Error('Demo-ID er låst i dette miljøet. Lag en kopi før du endrer prosjektdata.');
+  }
+}
 
 /**
  * Save casting project to database
  */
 export async function saveCastingProjectToDb(project: CastingProject): Promise<void> {
+  project = { ...project, id: normalizeRequiredProjectId(project.id, 'saveCastingProjectToDb') };
+  assertCanWriteProject(project.id, 'saveCastingProjectToDb');
   if (shouldUseRoleRoomLocalFallback()) {
     return;
   }
@@ -59,6 +95,7 @@ export async function getCastingProjectsFromDb(): Promise<CastingProject[]> {
  * Get casting project by ID from database
  */
 export async function getCastingProjectFromDb(id: string): Promise<CastingProject | null> {
+  id = normalizeRequiredProjectId(id, 'getCastingProjectFromDb');
   if (shouldUseRoleRoomLocalFallback()) {
     return null;
   }
@@ -85,6 +122,8 @@ export async function getCastingProjectFromDb(id: string): Promise<CastingProjec
  * Delete casting project from database
  */
 export async function deleteCastingProjectFromDb(id: string): Promise<void> {
+  id = normalizeRequiredProjectId(id, 'deleteCastingProjectFromDb');
+  assertCanWriteProject(id, 'deleteCastingProjectFromDb');
   if (shouldUseRoleRoomLocalFallback()) {
     return;
   }
@@ -118,8 +157,6 @@ export async function isDatabaseAvailable(): Promise<boolean> {
     return false;
   }
 }
-
-
 
 
 

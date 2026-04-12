@@ -104,6 +104,8 @@ import {
   FolderOpen as FolderOpenIcon,
   ContentCopy as ContentCopyIcon,
   Publish as PublishIcon,
+  Archive as ArchiveIcon,
+  Unarchive as UnarchiveIcon,
 } from '@mui/icons-material';
 import { alpha } from '@mui/material/styles';
 
@@ -137,7 +139,7 @@ import rolesBackdrop4 from './icons/Keep/roles_backdrop_4.png';
 import { storyLogicService, type StoryLogicState } from '../services/storyLogicService';
 
 // Custom icon: Person holding camera with list/clipboard
-import { castingService } from '../services/castingService';
+import { castingService, type RoleRoomProjectCopyOptions, type RoleRoomProjectSyncMeta } from '../services/castingService';
 import {
   googleWorkspaceApi,
   linkedInWorkspaceApi,
@@ -861,6 +863,54 @@ type ContentProducerResumeTarget = {
   surface: ContentProducerPlannerSurface;
   mediaFocus?: ClientPortalWorkspaceFocus | null;
 };
+type RoleRoomWorkspaceSurfaceKey =
+  | 'dashboard'
+  | 'roles'
+  | 'candidates'
+  | 'auditions'
+  | 'selection'
+  | 'locations'
+  | 'calendar'
+  | 'team'
+  | 'equipment'
+  | 'live_set'
+  | `story_arc:${StoryArcView}`
+  | `planner:${ContentProducerPlannerSurface}`
+  | 'producer_media'
+  | 'producer_economy'
+  | 'producer_timeline'
+  | 'producer_reviews'
+  | 'producer_export';
+type RoleRoomWorkspaceScrollState = {
+  top: number;
+  left: number;
+  updatedAt: string;
+};
+type RoleRoomWorkspaceFilterState = {
+  candidateStatusFilter?: string;
+  candidateViewMode?: 'list' | 'kanban';
+  selectionPhaseFilter?: SelectionPhaseFilter;
+  calendarViewMode?: 'production' | 'crew';
+  contentProducerPlannerSurface?: ContentProducerPlannerSurface;
+  producerMediaWorkspace?: string | null;
+};
+type RoleRoomWorkspaceSortState = {
+  key: string;
+  direction: 'asc' | 'desc';
+};
+type RoleRoomProjectWorkspaceState = {
+  projectId: string;
+  activeTab: number;
+  storyArcView: StoryArcView;
+  storyArcFocus?: StoryArcNavigationFocus | null;
+  contentProducerPlannerSurface?: ContentProducerPlannerSurface;
+  producerMediaFocus?: ClientPortalWorkspaceFocus | null;
+  contentProducerResumeTarget?: ContentProducerResumeTarget | null;
+  scrollBySurface?: Partial<Record<RoleRoomWorkspaceSurfaceKey, RoleRoomWorkspaceScrollState>>;
+  filtersBySurface?: Partial<Record<RoleRoomWorkspaceSurfaceKey, RoleRoomWorkspaceFilterState>>;
+  sortingBySurface?: Partial<Record<RoleRoomWorkspaceSurfaceKey, RoleRoomWorkspaceSortState>>;
+  updatedAt: string;
+};
   const CONTENT_PRODUCER_PLANNER_SURFACE_ITEMS: Array<{
     value: ContentProducerPlannerSurface;
     label: string;
@@ -894,12 +944,15 @@ type ContentProducerResumeTarget = {
   ];
   type RoleRoomWorkspaceState = {
     projectId: string | null;
+    lastRealProjectId?: string | null;
     activeTab: number;
     storyArcView: StoryArcView;
     storyArcFocus?: StoryArcNavigationFocus | null;
     contentProducerPlannerSurface?: ContentProducerPlannerSurface;
     producerMediaFocus?: ClientPortalWorkspaceFocus | null;
     contentProducerResumeTarget?: ContentProducerResumeTarget | null;
+    projectStates?: Record<string, RoleRoomProjectWorkspaceState>;
+    updatedAt?: string;
   };
   const [activeTab, setActiveTab] = useState(0);
   const [lastNonLiveTab, setLastNonLiveTab] = useState(0);
@@ -996,6 +1049,9 @@ type ContentProducerResumeTarget = {
   const currentProjectIdRef = useRef<string | null>(null);
   const currentProjectRef = useRef<CastingProject | null>(null);
   const persistedWorkspaceStateRef = useRef<RoleRoomWorkspaceState | null>(null);
+  const workspaceRootRef = useRef<HTMLDivElement | null>(null);
+  const workspaceRestoreProjectIdRef = useRef<string | null>(null);
+  const workspacePersistTimerRef = useRef<number | null>(null);
   const projectSwitchInFlightRef = useRef<string | null>(null);
   const projectSwitchTraceRef = useRef<{
     fromProjectId: string | null;
@@ -1189,11 +1245,23 @@ type ContentProducerResumeTarget = {
   const [projectSelectorQuery, setProjectSelectorQuery] = useState('');
   const [projectQuickActionsAnchorEl, setProjectQuickActionsAnchorEl] = useState<HTMLElement | null>(null);
   const [projectQuickActionsProject, setProjectQuickActionsProject] = useState<CastingProject | null>(null);
+  const [projectCopyDialog, setProjectCopyDialog] = useState<{
+    project: CastingProject;
+    closeSelector?: boolean;
+    name: string;
+    includeClientData: boolean;
+    includeReviewHistory: boolean;
+    includeEconomy: boolean;
+    includeTeam: boolean;
+    includeProductionData: boolean;
+  } | null>(null);
+  const [projectCopySubmitting, setProjectCopySubmitting] = useState(false);
   const [headerToolsAnchorEl, setHeaderToolsAnchorEl] = useState<HTMLElement | null>(null);
   const [pinnedProjectIds, setPinnedProjectIds] = useState<string[]>([]);
   const [draggingPinnedProjectId, setDraggingPinnedProjectId] = useState<string | null>(null);
   const [publishedTemplates, setPublishedTemplates] = useState<CastingProject[]>([]);
-  const protectedDemoBlockedToastRef = useRef<{ key: string; shownAt: number } | null>(null);
+  const [projectSyncMetaById, setProjectSyncMetaById] = useState<Record<string, RoleRoomProjectSyncMeta>>({});
+  const [projectSyncActionProjectId, setProjectSyncActionProjectId] = useState<string | null>(null);
   const unsavedProjectSwitchStateRef = useRef<Record<string, string>>({});
 
   // Keep the UI fallback aligned with settingsService/castingService demo seeds.
@@ -1235,43 +1303,16 @@ type ContentProducerResumeTarget = {
 
     const reasonText = activeUnsavedReasons.length === 1
       ? activeUnsavedReasons[0]
-      : `${activeUnsavedReasons.slice(0, -1).join(', ')} og ${activeUnsavedReasons[activeUnsavedReasons.length - 1]}`;
+        : `${activeUnsavedReasons.slice(0, -1).join(', ')} og ${activeUnsavedReasons[activeUnsavedReasons.length - 1]}`;
+
+    if (typeof window === 'undefined' || typeof window.confirm !== 'function') {
+      return true;
+    }
 
     return window.confirm(
       `Du har ulagret arbeid i ${reasonText}. Hvis du bytter til "${targetProject.name}", kan endringene gå tapt. Vil du fortsette?`,
     );
   }, []);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-
-    const handleProtectedDemoWriteBlocked = (event: Event) => {
-      const detail = event instanceof CustomEvent
-        ? event.detail as { projectId?: string; mutation?: string; message?: string } | undefined
-        : undefined;
-      const dedupeKey = `${detail?.projectId || 'unknown'}:${detail?.mutation || 'unknown'}`;
-      const now = Date.now();
-      if (
-        protectedDemoBlockedToastRef.current
-        && protectedDemoBlockedToastRef.current.key === dedupeKey
-        && now - protectedDemoBlockedToastRef.current.shownAt < 2500
-      ) {
-        return;
-      }
-      protectedDemoBlockedToastRef.current = { key: dedupeKey, shownAt: now };
-      toast.showWarning(
-        detail?.message || 'Dette er en låst demo-mal. Lag en kopi for å jobbe videre.',
-        3200,
-      );
-    };
-
-    window.addEventListener('role-room-protected-demo-write-blocked', handleProtectedDemoWriteBlocked);
-    return () => {
-      window.removeEventListener('role-room-protected-demo-write-blocked', handleProtectedDemoWriteBlocked);
-    };
-  }, [toast]);
 
   useEffect(() => {
     currentProjectRef.current = currentProject;
@@ -1289,9 +1330,21 @@ type ContentProducerResumeTarget = {
 
   useEffect(() => {
     const persisted = persistedWorkspaceStateRef.current;
-    lastProducerMediaFocusRef.current = persisted?.projectId === (currentProject?.id ?? null)
-      ? (persisted.producerMediaFocus ?? null)
+    const projectWorkspaceState = currentProject?.id
+      ? persisted?.projectStates?.[currentProject.id] ?? null
       : null;
+    workspaceRestoreProjectIdRef.current = currentProject?.id ?? null;
+    if (typeof window !== 'undefined') {
+      window.setTimeout(() => {
+        if (workspaceRestoreProjectIdRef.current === (currentProject?.id ?? null)) {
+          workspaceRestoreProjectIdRef.current = null;
+        }
+      }, 0);
+    } else {
+      workspaceRestoreProjectIdRef.current = null;
+    }
+    lastProducerMediaFocusRef.current = projectWorkspaceState?.producerMediaFocus
+      ?? (persisted?.projectId === (currentProject?.id ?? null) ? (persisted.producerMediaFocus ?? null) : null);
     setSelectedSelectionCandidateId(null);
     setSelectionCompareCandidateIds([]);
     setSelectionDecisionLog([]);
@@ -1306,14 +1359,14 @@ type ContentProducerResumeTarget = {
     setSelectionGoogleStatusLoading(false);
     setSelectionMeetBusy(false);
     setSelectionMeetDraft(DEFAULT_SELECTION_MEET_DRAFT);
-    setCalendarViewMode('production');
+    setCalendarViewMode(projectWorkspaceState?.filtersBySurface?.calendar?.calendarViewMode ?? 'production');
     setCalendarCreateIntent(null);
     setCalendarPreselectedFromCreate(null);
-    setStoryArcView('main');
-    setStoryArcFocus(null);
+    setStoryArcView(projectWorkspaceState?.storyArcView ?? 'main');
+    setStoryArcFocus(projectWorkspaceState?.storyArcFocus ?? null);
     setAvailableScenes([]);
-    setCandidateStatusFilter('all');
-    setCandidateViewMode('list');
+    setCandidateStatusFilter(projectWorkspaceState?.filtersBySurface?.candidates?.candidateStatusFilter ?? 'all');
+    setCandidateViewMode(projectWorkspaceState?.filtersBySurface?.candidates?.candidateViewMode ?? 'list');
     setDraggedCandidate(null);
     setQuickContactIds(new Set());
     setQuickContactsLoaded(false);
@@ -1327,7 +1380,11 @@ type ContentProducerResumeTarget = {
     setSelectionBoardMode(false);
     setSelectionShortcutsOpen(false);
     setSelectionNotesDraft('');
-    setProducerMediaFocus(null);
+    setSelectionPhaseFilter(projectWorkspaceState?.filtersBySurface?.selection?.selectionPhaseFilter ?? 'screening');
+    setContentProducerPlannerSurface(projectWorkspaceState?.contentProducerPlannerSurface ?? 'overview');
+    setContentProducerResumeTarget(projectWorkspaceState?.contentProducerResumeTarget ?? null);
+    setProducerMediaFocus(projectWorkspaceState?.producerMediaFocus ?? null);
+    setActiveTab(projectWorkspaceState?.activeTab ?? 0);
     setShowTutorial(false);
     setShowTutorialEditor(false);
     setPreviewTutorial(null);
@@ -1340,15 +1397,18 @@ type ContentProducerResumeTarget = {
 
   useEffect(() => {
     const persisted = persistedWorkspaceStateRef.current;
-    if (!currentProject || !persisted || persisted.projectId !== currentProject.id) {
+    const projectWorkspaceState = currentProject?.id
+      ? persisted?.projectStates?.[currentProject.id] ?? null
+      : null;
+    if (!currentProject || !projectWorkspaceState) {
       return;
     }
-    if (persisted.producerMediaFocus) {
-      setProducerMediaFocus(persisted.producerMediaFocus);
-      lastProducerMediaFocusRef.current = persisted.producerMediaFocus;
+    if (projectWorkspaceState.producerMediaFocus) {
+      setProducerMediaFocus(projectWorkspaceState.producerMediaFocus);
+      lastProducerMediaFocusRef.current = projectWorkspaceState.producerMediaFocus;
     }
-    if (persisted.storyArcFocus) {
-      setStoryArcFocus(persisted.storyArcFocus);
+    if (projectWorkspaceState.storyArcFocus) {
+      setStoryArcFocus(projectWorkspaceState.storyArcFocus);
     }
   }, [currentProject?.id]);
 
@@ -1582,6 +1642,22 @@ type ContentProducerResumeTarget = {
     setProducerMediaFocus(focus ?? null);
     navigateToTab(PRODUCER_MEDIA_TAB_INDEX);
   }, [isContentProducerMode, navigateToTab, openContentProducerPlannerSurface]);
+
+  const openContentProducerCreativeTool = useCallback((
+    tool: 'storyboard' | 'story-writer' | 'shot-list' | 'story-logic',
+  ) => {
+    if (tool === 'storyboard') {
+      openContentProducerPlannerSurface('project_room', {
+        mediaFocus: { workspace: 'storyboard' },
+      });
+      return;
+    }
+
+    navigateToTab(STORY_ARC_TAB_INDEX, {
+      storyArcView: tool,
+      storyArcFocus: storyArcFocus ?? null,
+    });
+  }, [navigateToTab, openContentProducerPlannerSurface, storyArcFocus]);
 
   const queueProducerReviewCreate = useCallback(async (draft: {
     reviewType: string;
@@ -2019,6 +2095,96 @@ type ContentProducerResumeTarget = {
 
   const hiddenProjectsCount = Math.max(0, orderedProjects.length - headerProjects.length);
   const hasMoreProjects = hiddenProjectsCount > 0;
+  const loadProjectSyncMeta = useCallback(async (projectIds: string[]) => {
+    const uniqueProjectIds = Array.from(new Set(
+      projectIds
+        .map((projectId) => String(projectId || '').trim())
+        .filter(Boolean),
+    ));
+    if (uniqueProjectIds.length === 0) {
+      return;
+    }
+
+    const entries = await Promise.all(
+      uniqueProjectIds.map(async (projectId) => {
+        const meta = await castingService.getProjectSyncMeta(projectId);
+        return [projectId, meta] as const;
+      }),
+    );
+
+    setProjectSyncMetaById((previous) => ({
+      ...previous,
+      ...Object.fromEntries(entries),
+    }));
+  }, []);
+
+  const getProjectSyncStatus = useCallback((projectId: string) => {
+    const meta = projectSyncMetaById[projectId];
+    if (!meta) {
+      return {
+        label: 'Sjekker lagring',
+        helper: 'Åpne prosjektstatus for å hente siste sync-status.',
+        bgcolor: 'rgba(148,163,184,0.12)',
+        color: 'rgba(226,232,240,0.86)',
+        border: '1px solid rgba(148,163,184,0.18)',
+      };
+    }
+    if (meta.queuedChangeCount > 0) {
+      return {
+        label: `${meta.queuedChangeCount} venter på sync`,
+        helper: meta.lastError || 'Prosjektet er lagret lokalt, men ikke bekreftet på server ennå.',
+        bgcolor: 'rgba(251,191,36,0.16)',
+        color: '#fde68a',
+        border: '1px solid rgba(251,191,36,0.34)',
+      };
+    }
+    if (meta.lastError) {
+      return {
+        label: 'Sync må sjekkes',
+        helper: meta.lastError,
+        bgcolor: 'rgba(248,113,113,0.14)',
+        color: '#fecaca',
+        border: '1px solid rgba(248,113,113,0.32)',
+      };
+    }
+    if (meta.lastSyncedAt) {
+      return {
+        label: 'Lagret på server',
+        helper: `Server bekreftet lagring ${new Date(meta.lastSyncedAt).toLocaleString('nb-NO')}.`,
+        bgcolor: 'rgba(16,185,129,0.14)',
+        color: '#bbf7d0',
+        border: '1px solid rgba(16,185,129,0.28)',
+      };
+    }
+    if (meta.lastLocalSaveAt) {
+      return {
+        label: 'Kun lokalt',
+        helper: 'Prosjektet finnes lokalt, men serverlagring er ikke bekreftet ennå.',
+        bgcolor: 'rgba(251,146,60,0.14)',
+        color: '#fed7aa',
+        border: '1px solid rgba(251,146,60,0.3)',
+      };
+    }
+    return {
+      label: 'Ikke verifisert',
+      helper: 'Ingen lagringsbekreftelse er registrert for dette prosjektet.',
+      bgcolor: 'rgba(148,163,184,0.12)',
+      color: 'rgba(226,232,240,0.86)',
+      border: '1px solid rgba(148,163,184,0.18)',
+    };
+  }, [projectSyncMetaById]);
+
+  useEffect(() => {
+    const projectIds = [
+      currentProject?.id,
+      ...(projectSelectorOpen ? filteredProjectSelectorItems.map((project) => project.id) : []),
+    ].filter(Boolean) as string[];
+    if (projectIds.length === 0) {
+      return;
+    }
+    void loadProjectSyncMeta(projectIds);
+  }, [currentProject?.id, currentProject?.updatedAt, filteredProjectSelectorItems, loadProjectSyncMeta, projectSelectorOpen]);
+
   const handleOpenProjectQuickActions = useCallback((event: MouseEvent<HTMLElement>, project: CastingProject) => {
     event.stopPropagation();
     setProjectQuickActionsAnchorEl(event.currentTarget);
@@ -2510,6 +2676,144 @@ type ContentProducerResumeTarget = {
     : isContentProducerMode
       ? 'roleRoom_workspaceState_content_producer'
       : 'roleRoom_workspaceState_production_team';
+
+  const normalizeWorkspaceSurfaceKey = useCallback((value: unknown): RoleRoomWorkspaceSurfaceKey | null => {
+    if (typeof value !== 'string' || value.trim().length === 0) {
+      return null;
+    }
+    const normalized = value.trim();
+    const staticKeys = new Set<string>([
+      'dashboard',
+      'roles',
+      'candidates',
+      'auditions',
+      'selection',
+      'locations',
+      'calendar',
+      'team',
+      'equipment',
+      'live_set',
+      'producer_media',
+      'producer_economy',
+      'producer_timeline',
+      'producer_reviews',
+      'producer_export',
+    ]);
+    if (staticKeys.has(normalized)) {
+      return normalized as RoleRoomWorkspaceSurfaceKey;
+    }
+    if (
+      normalized === 'story_arc:main'
+      || normalized === 'story_arc:story-logic'
+      || normalized === 'story_arc:story-writer'
+      || normalized === 'story_arc:shot-list'
+      || normalized === 'story_arc:planning'
+      || normalized === 'planner:overview'
+      || normalized === 'planner:project_room'
+      || normalized === 'planner:approval'
+      || normalized === 'planner:delivery'
+      || normalized === 'planner:economy'
+    ) {
+      return normalized as RoleRoomWorkspaceSurfaceKey;
+    }
+    return null;
+  }, []);
+
+  const getWorkspaceSurfaceKey = useCallback((
+    tabIndex = activeTab,
+    nextStoryArcView = storyArcView,
+    nextPlannerSurface = contentProducerPlannerSurface,
+  ): RoleRoomWorkspaceSurfaceKey => {
+    switch (tabIndex) {
+      case STORY_ARC_TAB_INDEX:
+        return isContentProducerMode && nextStoryArcView === 'planning'
+          ? `planner:${nextPlannerSurface}`
+          : `story_arc:${nextStoryArcView}`;
+      case ROLES_TAB_INDEX:
+        return 'roles';
+      case CANDIDATES_TAB_INDEX:
+        return 'candidates';
+      case AUDITIONS_TAB_INDEX:
+        return 'auditions';
+      case SELECTION_TAB_INDEX:
+        return 'selection';
+      case LOCATIONS_TAB_INDEX:
+        return 'locations';
+      case CALENDAR_TAB_INDEX:
+        return 'calendar';
+      case TEAM_TAB_INDEX:
+        return 'team';
+      case EQUIPMENT_TAB_INDEX:
+        return 'equipment';
+      case LIVE_SET_TAB_INDEX:
+        return 'live_set';
+      case PRODUCER_MEDIA_TAB_INDEX:
+        return 'producer_media';
+      case PRODUCER_ECONOMY_TAB_INDEX:
+        return 'producer_economy';
+      case PRODUCER_TIMELINE_TAB_INDEX:
+        return 'producer_timeline';
+      case PRODUCER_REVIEWS_TAB_INDEX:
+        return 'producer_reviews';
+      case PRODUCER_EXPORT_TAB_INDEX:
+        return 'producer_export';
+      default:
+        return 'dashboard';
+    }
+  }, [activeTab, contentProducerPlannerSurface, isContentProducerMode, storyArcView]);
+
+  const buildWorkspaceFiltersForCurrentSurface = useCallback((): RoleRoomWorkspaceFilterState => ({
+    candidateStatusFilter,
+    candidateViewMode,
+    selectionPhaseFilter,
+    calendarViewMode,
+    contentProducerPlannerSurface,
+    producerMediaWorkspace: producerMediaFocus?.workspace ?? null,
+  }), [
+    calendarViewMode,
+    candidateStatusFilter,
+    candidateViewMode,
+    contentProducerPlannerSurface,
+    producerMediaFocus?.workspace,
+    selectionPhaseFilter,
+  ]);
+
+  const buildWorkspaceSortingForCurrentSurface = useCallback((surfaceKey: RoleRoomWorkspaceSurfaceKey): RoleRoomWorkspaceSortState => {
+    if (surfaceKey === 'selection') {
+      return { key: selectionPhaseFilter === 'all' ? 'score' : selectionPhaseFilter, direction: 'desc' };
+    }
+    if (surfaceKey === 'calendar') {
+      return { key: calendarViewMode === 'crew' ? 'crew-start' : 'production-start', direction: 'asc' };
+    }
+    if (surfaceKey === 'candidates') {
+      return { key: candidateViewMode === 'kanban' ? 'status' : 'updatedAt', direction: 'desc' };
+    }
+    return { key: 'updatedAt', direction: 'desc' };
+  }, [calendarViewMode, candidateViewMode, selectionPhaseFilter]);
+
+  const scheduleWorkspaceStatePersist = useCallback((nextState: RoleRoomWorkspaceState) => {
+    persistedWorkspaceStateRef.current = nextState;
+    if (typeof window === 'undefined') {
+      void settingsService.setSetting(roleRoomWorkspaceStateNamespace, nextState, { userId: getSettingsUserId() });
+      return;
+    }
+    if (workspacePersistTimerRef.current !== null) {
+      window.clearTimeout(workspacePersistTimerRef.current);
+    }
+    workspacePersistTimerRef.current = window.setTimeout(() => {
+      workspacePersistTimerRef.current = null;
+      const stateToPersist = persistedWorkspaceStateRef.current;
+      if (!stateToPersist) {
+        return;
+      }
+      void settingsService
+        .setSetting(roleRoomWorkspaceStateNamespace, stateToPersist, { userId: getSettingsUserId() })
+        .catch((error) => {
+          console.warn('Failed to persist Role Room workspace state:', error);
+        });
+    }, 180);
+  }, [getSettingsUserId, roleRoomWorkspaceStateNamespace]);
+
   const loadPersistedWorkspaceState = useCallback(async (): Promise<RoleRoomWorkspaceState | null> => {
     try {
       const stored = await settingsService.getSetting<RoleRoomWorkspaceState>(roleRoomWorkspaceStateNamespace, {
@@ -2523,6 +2827,7 @@ type ContentProducerResumeTarget = {
       const nextContentProducerPlannerSurface = stored.contentProducerPlannerSurface;
       const nextProducerMediaFocus = stored.producerMediaFocus;
       const nextContentProducerResumeTarget = stored.contentProducerResumeTarget;
+      const storedRecord = stored as RoleRoomWorkspaceState & Record<string, unknown>;
       const storyArcViewValid = nextStoryArcView === 'main'
         || nextStoryArcView === 'story-logic'
         || nextStoryArcView === 'story-writer'
@@ -2565,22 +2870,151 @@ type ContentProducerResumeTarget = {
                 : null,
           }
         : null;
+      const normalizeScrollBySurface = (value: unknown): RoleRoomProjectWorkspaceState['scrollBySurface'] => {
+        if (!value || typeof value !== 'object') {
+          return {};
+        }
+        return Object.entries(value as Record<string, unknown>).reduce<RoleRoomProjectWorkspaceState['scrollBySurface']>((acc, [key, entry]) => {
+          const surfaceKey = normalizeWorkspaceSurfaceKey(key);
+          if (!surfaceKey || !entry || typeof entry !== 'object') {
+            return acc;
+          }
+          const record = entry as Record<string, unknown>;
+          const top = typeof record.top === 'number' && Number.isFinite(record.top) ? Math.max(0, record.top) : 0;
+          const left = typeof record.left === 'number' && Number.isFinite(record.left) ? Math.max(0, record.left) : 0;
+          acc[surfaceKey] = {
+            top,
+            left,
+            updatedAt: typeof record.updatedAt === 'string' ? record.updatedAt : new Date().toISOString(),
+          };
+          return acc;
+        }, {});
+      };
+      const normalizeFiltersBySurface = (value: unknown): RoleRoomProjectWorkspaceState['filtersBySurface'] => {
+        if (!value || typeof value !== 'object') {
+          return {};
+        }
+        return Object.entries(value as Record<string, unknown>).reduce<RoleRoomProjectWorkspaceState['filtersBySurface']>((acc, [key, entry]) => {
+          const surfaceKey = normalizeWorkspaceSurfaceKey(key);
+          if (!surfaceKey || !entry || typeof entry !== 'object') {
+            return acc;
+          }
+          const record = entry as Record<string, unknown>;
+          acc[surfaceKey] = {
+            candidateStatusFilter: typeof record.candidateStatusFilter === 'string' ? record.candidateStatusFilter : undefined,
+            candidateViewMode: record.candidateViewMode === 'kanban' ? 'kanban' : record.candidateViewMode === 'list' ? 'list' : undefined,
+            selectionPhaseFilter:
+              record.selectionPhaseFilter === 'screening'
+              || record.selectionPhaseFilter === 'callbacks'
+              || record.selectionPhaseFilter === 'final'
+              || record.selectionPhaseFilter === 'all'
+                ? record.selectionPhaseFilter
+                : undefined,
+            calendarViewMode: record.calendarViewMode === 'crew' ? 'crew' : record.calendarViewMode === 'production' ? 'production' : undefined,
+            contentProducerPlannerSurface:
+              record.contentProducerPlannerSurface === 'overview'
+              || record.contentProducerPlannerSurface === 'project_room'
+              || record.contentProducerPlannerSurface === 'approval'
+              || record.contentProducerPlannerSurface === 'delivery'
+              || record.contentProducerPlannerSurface === 'economy'
+                ? record.contentProducerPlannerSurface
+                : undefined,
+            producerMediaWorkspace: typeof record.producerMediaWorkspace === 'string' ? record.producerMediaWorkspace : null,
+          };
+          return acc;
+        }, {});
+      };
+      const normalizeSortingBySurface = (value: unknown): RoleRoomProjectWorkspaceState['sortingBySurface'] => {
+        if (!value || typeof value !== 'object') {
+          return {};
+        }
+        return Object.entries(value as Record<string, unknown>).reduce<RoleRoomProjectWorkspaceState['sortingBySurface']>((acc, [key, entry]) => {
+          const surfaceKey = normalizeWorkspaceSurfaceKey(key);
+          if (!surfaceKey || !entry || typeof entry !== 'object') {
+            return acc;
+          }
+          const record = entry as Record<string, unknown>;
+          const sortKey = typeof record.key === 'string' && record.key.trim().length > 0 ? record.key.trim() : 'updatedAt';
+          acc[surfaceKey] = {
+            key: sortKey,
+            direction: record.direction === 'asc' ? 'asc' : 'desc',
+          };
+          return acc;
+        }, {});
+      };
+      const normalizeProjectState = (projectId: string, value: unknown): RoleRoomProjectWorkspaceState | null => {
+        if (!projectId || !value || typeof value !== 'object') {
+          return null;
+        }
+        const record = value as RoleRoomProjectWorkspaceState & Record<string, unknown>;
+        const projectStoryArcView = record.storyArcView;
+        const projectStoryArcViewValid = projectStoryArcView === 'main'
+          || projectStoryArcView === 'story-logic'
+          || projectStoryArcView === 'story-writer'
+          || projectStoryArcView === 'shot-list'
+          || projectStoryArcView === 'planning';
+        const projectPlannerSurface = record.contentProducerPlannerSurface;
+        const projectPlannerSurfaceValid = projectPlannerSurface === 'overview'
+          || projectPlannerSurface === 'project_room'
+          || projectPlannerSurface === 'approval'
+          || projectPlannerSurface === 'delivery'
+          || projectPlannerSurface === 'economy';
+        return {
+          projectId,
+          activeTab: Number.isFinite(record.activeTab) ? record.activeTab : 0,
+          storyArcView: projectStoryArcViewValid ? projectStoryArcView : 'main',
+          storyArcFocus: normalizeStoryArcNavigationFocus(record.storyArcFocus),
+          contentProducerPlannerSurface: projectPlannerSurfaceValid ? projectPlannerSurface : 'overview',
+          producerMediaFocus: record.producerMediaFocus && typeof record.producerMediaFocus === 'object'
+            ? {
+                workspace: typeof record.producerMediaFocus.workspace === 'string' ? record.producerMediaFocus.workspace : undefined,
+                sectionId: typeof record.producerMediaFocus.sectionId === 'string' ? record.producerMediaFocus.sectionId : undefined,
+                pageId: typeof record.producerMediaFocus.pageId === 'string' ? record.producerMediaFocus.pageId : undefined,
+                artifactId: typeof record.producerMediaFocus.artifactId === 'string' ? record.producerMediaFocus.artifactId : undefined,
+              }
+            : null,
+          contentProducerResumeTarget: record.contentProducerResumeTarget && typeof record.contentProducerResumeTarget === 'object'
+            ? contentProducerResumeTargetValid
+            : null,
+          scrollBySurface: normalizeScrollBySurface(record.scrollBySurface),
+          filtersBySurface: normalizeFiltersBySurface(record.filtersBySurface),
+          sortingBySurface: normalizeSortingBySurface(record.sortingBySurface),
+          updatedAt: typeof record.updatedAt === 'string' ? record.updatedAt : new Date().toISOString(),
+        };
+      };
+      const projectStatesRecord = storedRecord.projectStates && typeof storedRecord.projectStates === 'object'
+        ? storedRecord.projectStates as Record<string, unknown>
+        : {};
+      const projectStates = Object.entries(projectStatesRecord).reduce<Record<string, RoleRoomProjectWorkspaceState>>((acc, [projectId, value]) => {
+        const normalizedProjectId = typeof projectId === 'string' ? projectId.trim() : '';
+        const projectState = normalizeProjectState(normalizedProjectId, value);
+        if (projectState) {
+          acc[normalizedProjectId] = projectState;
+        }
+        return acc;
+      }, {});
+      const lastRealProjectId = typeof storedRecord.lastRealProjectId === 'string' && storedRecord.lastRealProjectId.trim().length > 0
+        ? storedRecord.lastRealProjectId.trim()
+        : typeof stored.projectId === 'string' && stored.projectId.trim().length > 0
+          ? stored.projectId.trim()
+          : null;
       return {
-        projectId: typeof stored.projectId === 'string' && stored.projectId.trim().length > 0
-          ? stored.projectId
-          : null,
+        projectId: lastRealProjectId,
+        lastRealProjectId,
         activeTab: Number.isFinite(stored.activeTab) ? stored.activeTab : 0,
         storyArcView: storyArcViewValid ? nextStoryArcView : 'main',
         storyArcFocus: nextStoryArcFocus,
         contentProducerPlannerSurface: plannerSurfaceValid ? nextContentProducerPlannerSurface : 'overview',
         producerMediaFocus: producerMediaFocusValid,
         contentProducerResumeTarget: contentProducerResumeTargetValid,
+        projectStates,
+        updatedAt: typeof storedRecord.updatedAt === 'string' ? storedRecord.updatedAt : undefined,
       };
     } catch (error) {
       console.warn('Failed to load persisted Role Room workspace state:', error);
       return null;
     }
-  }, [getSettingsUserId, roleRoomWorkspaceStateNamespace]);
+  }, [getSettingsUserId, normalizeWorkspaceSurfaceKey, roleRoomWorkspaceStateNamespace]);
   useEffect(() => {
     if (!authLoaded || !adminUser) {
       return;
@@ -2678,6 +3112,7 @@ type ContentProducerResumeTarget = {
     const rawCreatorValue = [
       rawProject.created_by_label,
       rawProject.createdByLabel,
+      rawProject.createdByEmail,
       rawProject.createdBy,
       rawProject.created_by,
       rawProject.templateCreatedBy,
@@ -2700,6 +3135,40 @@ type ContentProducerResumeTarget = {
 
     return normalizedCreatorValue;
   }, [adminUser?.display_name, adminUser?.email, adminUser?.id, adminUser?.name]);
+
+  const getProjectOwnerLabel = useCallback((project: CastingProject | null | undefined): string | null => {
+    if (!project) {
+      return null;
+    }
+    const rawProject = project as Record<string, unknown>;
+    const rawOwnerValue = [
+      rawProject.ownerLabel,
+      rawProject.owner_label,
+      rawProject.ownerEmail,
+      rawProject.owner_email,
+      rawProject.ownerId,
+      rawProject.owner_id,
+    ].find((value) => typeof value === 'string' && value.trim().length > 0);
+
+    if (typeof rawOwnerValue !== 'string') {
+      return getProjectCreatorLabel(project);
+    }
+
+    const normalizedOwnerValue = rawOwnerValue.trim();
+    const normalizedAdminId = String(adminUser?.id ?? '').trim();
+    const normalizedAdminEmail = String(adminUser?.email ?? '').trim().toLowerCase();
+    if (
+      normalizedOwnerValue === normalizedAdminId
+      || normalizedOwnerValue.toLowerCase() === normalizedAdminEmail
+    ) {
+      return adminUser?.display_name || adminUser?.name || adminUser?.email || 'Deg';
+    }
+    return normalizedOwnerValue;
+  }, [adminUser?.display_name, adminUser?.email, adminUser?.id, adminUser?.name, getProjectCreatorLabel]);
+
+  const isArchivedWorkspaceProject = useCallback((project: CastingProject | null | undefined): boolean => (
+    castingService.isArchivedProject(project)
+  ), []);
 
   const isRestorableWorkspaceProject = useCallback((project: CastingProject | null | undefined): project is CastingProject => {
     if (!project) {
@@ -2727,12 +3196,23 @@ type ContentProducerResumeTarget = {
 
   const filterProjectsForSession = useCallback((projectList: CastingProject[]): CastingProject[] => {
     const workspaceProjects = projectList.filter((project) => !isTemplateProject(project));
+    if (isClientReviewerMode || isClientReviewerSession) {
+      return workspaceProjects.filter((project) => !isProtectedDemoProject(project));
+    }
     if (isProducerWorkspaceSession) {
       return workspaceProjects.filter((project) => !isTrollProject(project));
     }
 
     return workspaceProjects.filter((project) => !isContentProducerDemoProject(project));
-  }, [isContentProducerDemoProject, isProducerWorkspaceSession, isTemplateProject, isTrollProject]);
+  }, [
+    isClientReviewerMode,
+    isClientReviewerSession,
+    isContentProducerDemoProject,
+    isProducerWorkspaceSession,
+    isProtectedDemoProject,
+    isTemplateProject,
+    isTrollProject,
+  ]);
 
   useEffect(() => onProducerWorkflowEvent((payload) => {
     if (payload.domain !== 'project') {
@@ -2759,6 +3239,11 @@ type ContentProducerResumeTarget = {
   }), [filterProjectsForSession]);
 
   const handleSelectProjectFromSelector = useCallback(async (project: CastingProject) => {
+    if ((isClientReviewerMode || isClientReviewerSession) && isProtectedDemoProject(project)) {
+      toast.showWarning('Demo-prosjekter er ikke tilgjengelige for klienter.');
+      return;
+    }
+
     if (isProducerWorkspaceSession && isTrollProject(project)) {
       toast.showWarning('TROLL-prosjektet er kun tilgjengelig for produksjonsteam.');
       return;
@@ -2831,38 +3316,134 @@ type ContentProducerResumeTarget = {
         projectSwitchInFlightRef.current = null;
       }
     }
-  }, [activeTab, confirmProjectSwitchIfNeeded, ensureScopedSessionProjectRole, isProducerWorkspaceSession, isTrollProject, toast]);
+  }, [
+    activeTab,
+    confirmProjectSwitchIfNeeded,
+    ensureScopedSessionProjectRole,
+    isClientReviewerMode,
+    isClientReviewerSession,
+    isProducerWorkspaceSession,
+    isProtectedDemoProject,
+    isTrollProject,
+    toast,
+  ]);
 
-  const handleCreateProjectCopy = useCallback(async (
+  const applyProjectSyncResult = useCallback((project: CastingProject) => {
+    setProjects((previous) => {
+      const nextProjects = previous.some((entry) => entry.id === project.id)
+        ? previous.map((entry) => (entry.id === project.id ? project : entry))
+        : [project, ...previous];
+      return filterProjectsForSession(nextProjects);
+    });
+    if (currentProjectRef.current?.id === project.id) {
+      setCurrentProject(project);
+    }
+  }, [filterProjectsForSession]);
+
+  const handleVerifyProjectStorage = useCallback(async (project: CastingProject) => {
+    if (projectSyncActionProjectId) {
+      return;
+    }
+
+    setProjectSyncActionProjectId(project.id);
+    try {
+      const syncMeta = projectSyncMetaById[project.id] ?? await castingService.getProjectSyncMeta(project.id);
+      let nextProject: CastingProject | null = null;
+      let notice = 'Prosjektlagring er verifisert.';
+
+      if (syncMeta.queuedChangeCount > 0) {
+        const result = await castingService.syncQueuedProjectChanges(project.id);
+        if (result.failed.length > 0) {
+          throw new Error(result.failed[0]?.error ?? 'Kunne ikke synkronisere lokale endringer.');
+        }
+        nextProject = await castingService.getProject(project.id);
+        notice = 'Lokale endringer er synkronisert og bekreftet på server.';
+      } else if (!syncMeta.lastSyncedAt) {
+        await castingService.saveProject(project);
+        nextProject = await castingService.getProject(project.id);
+        notice = 'Prosjektet er sendt til server og bekreftet lagret.';
+      } else {
+        nextProject = await castingService.resyncProjectFromServer(project.id);
+        notice = 'Prosjektet er hentet fra server uten hard refresh.';
+      }
+
+      if (nextProject) {
+        applyProjectSyncResult(nextProject);
+      }
+      await loadProjectSyncMeta([project.id]);
+      toast.showSuccess(notice);
+    } catch (error) {
+      console.error('Failed to verify project storage:', error);
+      toast.showError(error instanceof Error ? error.message : 'Kunne ikke verifisere prosjektlagringen.');
+      await loadProjectSyncMeta([project.id]).catch(() => undefined);
+    } finally {
+      setProjectSyncActionProjectId(null);
+    }
+  }, [applyProjectSyncResult, loadProjectSyncMeta, projectSyncActionProjectId, projectSyncMetaById, toast]);
+
+  const handleOpenProjectCopyDialog = useCallback((
     project: CastingProject,
     options?: { closeSelector?: boolean },
   ) => {
+    const copyName = isTemplateProject(project)
+      ? `${String(project.templateSourceProjectName || project.name || 'Mal').replace(/^Template\s*·\s*/i, '')} · prosjekt`
+      : `${project.name || 'Prosjekt'} · kopi`;
+    setProjectCopyDialog({
+      project,
+      closeSelector: options?.closeSelector,
+      name: copyName,
+      includeClientData: false,
+      includeReviewHistory: false,
+      includeEconomy: false,
+      includeTeam: true,
+      includeProductionData: true,
+    });
+    setProjectQuickActionsAnchorEl(null);
+    setProjectQuickActionsProject(null);
+  }, [isTemplateProject]);
+
+  const handleSubmitProjectCopy = useCallback(async () => {
+    if (!projectCopyDialog) {
+      return;
+    }
+    const { project } = projectCopyDialog;
     try {
-      const copyName = isTemplateProject(project)
-        ? `${String(project.templateSourceProjectName || project.name || 'Mal').replace(/^Template\s*·\s*/i, '')} · prosjekt`
-        : undefined;
-      const copiedProject = await castingService.createProjectCopy(project.id, { name: copyName });
+      setProjectCopySubmitting(true);
+      const copyOptions: RoleRoomProjectCopyOptions = {
+        name: projectCopyDialog.name.trim() || undefined,
+        includeClientData: projectCopyDialog.includeClientData,
+        includeReviewHistory: projectCopyDialog.includeReviewHistory,
+        includeEconomy: projectCopyDialog.includeEconomy,
+        includeTeam: projectCopyDialog.includeTeam,
+        includeProductionData: projectCopyDialog.includeProductionData,
+        includeSecrets: false,
+      };
+      const copiedProject = await castingService.createProjectCopy(project.id, copyOptions);
       const rawProjects = await castingService.getProjects();
       setPublishedTemplates(rawProjects.filter((entry) => castingService.isTemplateProject(entry)));
       setProjects(filterProjectsForSession(rawProjects));
       setCurrentProject(copiedProject);
       setCurrentProjectId(copiedProject.id);
-      if (options?.closeSelector) {
+      await loadProjectSyncMeta([copiedProject.id]);
+      if (projectCopyDialog.closeSelector) {
         setProjectSelectorOpen(false);
         setProjectSelectorQuery('');
       }
       setProjectQuickActionsAnchorEl(null);
       setProjectQuickActionsProject(null);
+      setProjectCopyDialog(null);
       toast.showSuccess(
         isTemplateProject(project)
           ? 'Ny prosjektkopi ble opprettet fra malen.'
-          : 'Ny prosjektkopi ble opprettet fra demoen.',
+          : 'Ny trygg prosjektkopi ble opprettet.',
       );
     } catch (error) {
       console.error('Failed to create project copy:', error);
       toast.showError('Kunne ikke lage en kopi av prosjektet.');
+    } finally {
+      setProjectCopySubmitting(false);
     }
-  }, [filterProjectsForSession, isTemplateProject, toast]);
+  }, [filterProjectsForSession, isTemplateProject, loadProjectSyncMeta, projectCopyDialog, toast]);
 
   const handlePublishProjectTemplate = useCallback(async (project: CastingProject) => {
     try {
@@ -2885,6 +3466,41 @@ type ContentProducerResumeTarget = {
       toast.showError('Kunne ikke publisere prosjektet som template.');
     }
   }, [filterProjectsForSession, templateAudienceForSession, toast]);
+
+  const refreshProjectsAfterLifecycleChange = useCallback(async (updatedProject: CastingProject) => {
+    const rawProjects = await castingService.getProjects();
+    setPublishedTemplates(rawProjects.filter((entry) => castingService.isTemplateProject(entry)));
+    setProjects(filterProjectsForSession(rawProjects));
+    if (currentProject?.id === updatedProject.id) {
+      setCurrentProject(updatedProject);
+      setCurrentProjectId(updatedProject.id);
+    }
+    await loadProjectSyncMeta([updatedProject.id]).catch(() => undefined);
+  }, [currentProject?.id, filterProjectsForSession, loadProjectSyncMeta]);
+
+  const handleArchiveProject = useCallback(async (project: CastingProject) => {
+    try {
+      const archivedProject = await castingService.archiveProject(project.id);
+      await refreshProjectsAfterLifecycleChange(archivedProject);
+      handleCloseProjectQuickActions();
+      toast.showSuccess('Prosjektet er arkivert.');
+    } catch (error) {
+      console.error('Failed to archive project:', error);
+      toast.showError(error instanceof Error ? error.message : 'Kunne ikke arkivere prosjektet.');
+    }
+  }, [handleCloseProjectQuickActions, refreshProjectsAfterLifecycleChange, toast]);
+
+  const handleRestoreArchivedProject = useCallback(async (project: CastingProject) => {
+    try {
+      const restoredProject = await castingService.restoreArchivedProject(project.id);
+      await refreshProjectsAfterLifecycleChange(restoredProject);
+      handleCloseProjectQuickActions();
+      toast.showSuccess('Prosjektet er gjenopprettet.');
+    } catch (error) {
+      console.error('Failed to restore project:', error);
+      toast.showError(error instanceof Error ? error.message : 'Kunne ikke gjenopprette prosjektet.');
+    }
+  }, [handleCloseProjectQuickActions, refreshProjectsAfterLifecycleChange, toast]);
 
   useEffect(() => {
     if (lastPermissionsLoadingRef.current === permissionsLoading) {
@@ -3113,37 +3729,222 @@ type ContentProducerResumeTarget = {
       return;
     }
 
-    const persistedRealProjectId = persistedWorkspaceStateRef.current?.projectId ?? null;
+    if (
+      currentProject?.id
+      && workspaceRestoreProjectIdRef.current === currentProject.id
+    ) {
+      return;
+    }
+
+    const previousState = persistedWorkspaceStateRef.current;
+    const previousRealProjectId = previousState?.lastRealProjectId ?? previousState?.projectId ?? null;
+    const isCurrentProjectRestorable = isRestorableWorkspaceProject(currentProject);
+    const lastRealProjectId = isCurrentProjectRestorable ? currentProject.id : previousRealProjectId;
+    const surfaceKey = getWorkspaceSurfaceKey(displayedActiveTab, storyArcView, contentProducerPlannerSurface);
+    const now = new Date().toISOString();
+    const previousProjectStates = previousState?.projectStates ?? {};
+    const previousProjectState = isCurrentProjectRestorable
+      ? previousProjectStates[currentProject.id] ?? null
+      : null;
+    const nextProjectStates = isCurrentProjectRestorable
+      ? {
+          ...previousProjectStates,
+          [currentProject.id]: {
+            projectId: currentProject.id,
+            activeTab: displayedActiveTab,
+            storyArcView: displayedActiveTab === STORY_ARC_TAB_INDEX
+              ? storyArcView
+              : previousProjectState?.storyArcView ?? 'main',
+            storyArcFocus: displayedActiveTab === STORY_ARC_TAB_INDEX
+              ? storyArcFocus
+              : previousProjectState?.storyArcFocus ?? null,
+            contentProducerPlannerSurface: isContentProducerMode
+              ? contentProducerPlannerSurface
+              : previousProjectState?.contentProducerPlannerSurface ?? 'overview',
+            producerMediaFocus: lastProducerMediaFocusRef.current ?? previousProjectState?.producerMediaFocus ?? null,
+            contentProducerResumeTarget: isContentProducerMode
+              ? contentProducerResumeTarget
+              : previousProjectState?.contentProducerResumeTarget ?? null,
+            scrollBySurface: previousProjectState?.scrollBySurface ?? {},
+            filtersBySurface: {
+              ...(previousProjectState?.filtersBySurface ?? {}),
+              [surfaceKey]: buildWorkspaceFiltersForCurrentSurface(),
+            },
+            sortingBySurface: {
+              ...(previousProjectState?.sortingBySurface ?? {}),
+              [surfaceKey]: buildWorkspaceSortingForCurrentSurface(surfaceKey),
+            },
+            updatedAt: now,
+          },
+        }
+      : previousProjectStates;
     const nextState: RoleRoomWorkspaceState = {
-      projectId: isRestorableWorkspaceProject(currentProject)
-        ? currentProject.id
-        : persistedRealProjectId,
+      projectId: lastRealProjectId,
+      lastRealProjectId,
       activeTab: displayedActiveTab,
       storyArcView: displayedActiveTab === STORY_ARC_TAB_INDEX ? storyArcView : 'main',
       storyArcFocus: displayedActiveTab === STORY_ARC_TAB_INDEX ? storyArcFocus : null,
       contentProducerPlannerSurface: isContentProducerMode ? contentProducerPlannerSurface : undefined,
       producerMediaFocus: lastProducerMediaFocusRef.current,
       contentProducerResumeTarget: isContentProducerMode ? contentProducerResumeTarget : undefined,
+      projectStates: nextProjectStates,
+      updatedAt: now,
     };
-    persistedWorkspaceStateRef.current = nextState;
 
-    void settingsService
-      .setSetting(roleRoomWorkspaceStateNamespace, nextState, { userId: getSettingsUserId() })
-      .catch((error) => {
-        console.warn('Failed to persist Role Room workspace state:', error);
-      });
+    scheduleWorkspaceStatePersist(nextState);
   }, [
     adminUser,
     authLoaded,
-    currentProject,
-    displayedActiveTab,
-    getSettingsUserId,
+    buildWorkspaceFiltersForCurrentSurface,
+    buildWorkspaceSortingForCurrentSurface,
     contentProducerPlannerSurface,
     contentProducerResumeTarget,
+    currentProject,
+    displayedActiveTab,
+    getWorkspaceSurfaceKey,
     isContentProducerMode,
     isRestorableWorkspaceProject,
-    roleRoomWorkspaceStateNamespace,
+    scheduleWorkspaceStatePersist,
     storyArcFocus,
+    storyArcView,
+  ]);
+
+  const persistWorkspaceScrollState = useCallback((top: number, left: number) => {
+    if (!authLoaded || !adminUser) {
+      return;
+    }
+
+    const project = currentProjectRef.current;
+    if (!isRestorableWorkspaceProject(project)) {
+      return;
+    }
+
+    const previousState = persistedWorkspaceStateRef.current;
+    const previousProjectStates = previousState?.projectStates ?? {};
+    const previousProjectState = previousProjectStates[project.id] ?? null;
+    const surfaceKey = getWorkspaceSurfaceKey(displayedActiveTab, storyArcView, contentProducerPlannerSurface);
+    const now = new Date().toISOString();
+    const lastRealProjectId = previousState?.lastRealProjectId ?? previousState?.projectId ?? project.id;
+    const nextProjectState: RoleRoomProjectWorkspaceState = {
+      projectId: project.id,
+      activeTab: displayedActiveTab,
+      storyArcView: displayedActiveTab === STORY_ARC_TAB_INDEX
+        ? storyArcView
+        : previousProjectState?.storyArcView ?? 'main',
+      storyArcFocus: displayedActiveTab === STORY_ARC_TAB_INDEX
+        ? storyArcFocus
+        : previousProjectState?.storyArcFocus ?? null,
+      contentProducerPlannerSurface: isContentProducerMode
+        ? contentProducerPlannerSurface
+        : previousProjectState?.contentProducerPlannerSurface ?? 'overview',
+      producerMediaFocus: lastProducerMediaFocusRef.current ?? previousProjectState?.producerMediaFocus ?? null,
+      contentProducerResumeTarget: isContentProducerMode
+        ? contentProducerResumeTarget
+        : previousProjectState?.contentProducerResumeTarget ?? null,
+      scrollBySurface: {
+        ...(previousProjectState?.scrollBySurface ?? {}),
+        [surfaceKey]: {
+          top: Math.max(0, top),
+          left: Math.max(0, left),
+          updatedAt: now,
+        },
+      },
+      filtersBySurface: previousProjectState?.filtersBySurface ?? {},
+      sortingBySurface: previousProjectState?.sortingBySurface ?? {},
+      updatedAt: now,
+    };
+    const nextState: RoleRoomWorkspaceState = {
+      projectId: lastRealProjectId,
+      lastRealProjectId,
+      activeTab: previousState?.activeTab ?? displayedActiveTab,
+      storyArcView: previousState?.storyArcView ?? storyArcView,
+      storyArcFocus: previousState?.storyArcFocus ?? storyArcFocus,
+      contentProducerPlannerSurface: previousState?.contentProducerPlannerSurface ?? contentProducerPlannerSurface,
+      producerMediaFocus: previousState?.producerMediaFocus ?? lastProducerMediaFocusRef.current,
+      contentProducerResumeTarget: previousState?.contentProducerResumeTarget ?? contentProducerResumeTarget,
+      projectStates: {
+        ...previousProjectStates,
+        [project.id]: nextProjectState,
+      },
+      updatedAt: now,
+    };
+
+    scheduleWorkspaceStatePersist(nextState);
+  }, [
+    adminUser,
+    authLoaded,
+    contentProducerPlannerSurface,
+    contentProducerResumeTarget,
+    displayedActiveTab,
+    getWorkspaceSurfaceKey,
+    isContentProducerMode,
+    isRestorableWorkspaceProject,
+    scheduleWorkspaceStatePersist,
+    storyArcFocus,
+    storyArcView,
+  ]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const handleWindowScroll = () => {
+      persistWorkspaceScrollState(window.scrollY, window.scrollX);
+    };
+    const handlePanelScroll = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+      persistWorkspaceScrollState(target.scrollTop, target.scrollLeft);
+    };
+    const workspaceRoot = workspaceRootRef.current;
+
+    window.addEventListener('scroll', handleWindowScroll, { passive: true });
+    workspaceRoot?.addEventListener('scroll', handlePanelScroll, { passive: true, capture: true });
+    return () => {
+      window.removeEventListener('scroll', handleWindowScroll);
+      workspaceRoot?.removeEventListener('scroll', handlePanelScroll, { capture: true });
+    };
+  }, [persistWorkspaceScrollState]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !currentProject?.id) {
+      return;
+    }
+
+    const projectWorkspaceState = persistedWorkspaceStateRef.current?.projectStates?.[currentProject.id] ?? null;
+    if (!projectWorkspaceState) {
+      return;
+    }
+
+    const surfaceKey = getWorkspaceSurfaceKey(displayedActiveTab, storyArcView, contentProducerPlannerSurface);
+    const scrollState = projectWorkspaceState.scrollBySurface?.[surfaceKey] ?? null;
+    if (!scrollState) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      window.scrollTo({
+        top: scrollState.top,
+        left: scrollState.left,
+        behavior: 'auto',
+      });
+      if (workspaceRootRef.current) {
+        workspaceRootRef.current.scrollTop = scrollState.top;
+        workspaceRootRef.current.scrollLeft = scrollState.left;
+      }
+    }, 80);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [
+    contentProducerPlannerSurface,
+    currentProject?.id,
+    displayedActiveTab,
+    getWorkspaceSurfaceKey,
     storyArcView,
   ]);
 
@@ -3223,9 +4024,8 @@ type ContentProducerResumeTarget = {
 
     let cancelled = false;
 
-    const enforceContentProducerProject = async () => {
+    const syncProducerWorkspaceProjects = async () => {
       try {
-        await castingService.initializeContentProducerDemoData();
         const loadedProjects = filterProjectsForSession(await castingService.getProjects());
         if (cancelled) return;
 
@@ -3242,10 +4042,11 @@ type ContentProducerResumeTarget = {
           persistedWorkspaceStateRef.current = persistedWorkspaceState;
         }
 
+        const persistedRealProjectId = persistedWorkspaceState?.lastRealProjectId ?? persistedWorkspaceState?.projectId ?? null;
         const preferredProject = (
-          persistedWorkspaceState?.projectId
+          persistedRealProjectId
             ? loadedProjects.find((project) => (
-              project.id === persistedWorkspaceState.projectId
+              project.id === persistedRealProjectId
               && isRestorableWorkspaceProject(project)
             ))
             : null
@@ -3258,11 +4059,11 @@ type ContentProducerResumeTarget = {
           return preferredProject;
         });
       } catch (error) {
-        console.error('Failed to enforce producer workspace demo project:', error);
+        console.error('Failed to sync producer workspace projects:', error);
       }
     };
 
-    void enforceContentProducerProject();
+    void syncProducerWorkspaceProjects();
 
     return () => {
       cancelled = true;
@@ -4012,18 +4813,15 @@ type ContentProducerResumeTarget = {
         setPublishedTemplates(loadedProjectsRaw.filter((project) => castingService.isTemplateProject(project)));
         const projects = filterProjectsForSession(loadedProjectsRaw);
         
-        const shouldInitializeMock = projects.length === 0
-          || (
-            !isProducerWorkspaceSession
-              ? !projects.some((project) => isTrollProject(project))
-              : !projects.some((project) => isContentProducerDemoProject(project))
+        const shouldInitializeMock = !isProducerWorkspaceSession
+          && (
+            projects.length === 0
+            || !projects.some((project) => isTrollProject(project))
           );
         
         if (shouldInitializeMock) {
           try {
-            if (isProducerWorkspaceSession) {
-              await castingService.initializeContentProducerDemoData();
-            } else {
+            if (!isProducerWorkspaceSession) {
               await castingService.initializeMockData();
 
               // Also initialize offers, contracts and consents for complete demo
@@ -4043,13 +4841,11 @@ type ContentProducerResumeTarget = {
             const mockProjects = filterProjectsForSession(await castingService.getProjects());
             if (mockProjects.length > 0) {
               setProjects(mockProjects);
-              if (!isProducerWorkspaceSession) {
-                const preferredProject = mockProjects.find((project) => isTrollProject(project)) ?? mockProjects[0];
-                const fullProject = preferredProject
-                  ? await castingService.getProject(preferredProject.id)
-                  : null;
-                setCurrentProject(fullProject ?? preferredProject ?? null);
-              }
+              const preferredProject = mockProjects.find((project) => isTrollProject(project)) ?? mockProjects[0];
+              const fullProject = preferredProject
+                ? await castingService.getProject(preferredProject.id)
+                : null;
+              setCurrentProject(fullProject ?? preferredProject ?? null);
             }
             loadAvailableScenes();
             loadUserRole();
@@ -4523,7 +5319,8 @@ type ContentProducerResumeTarget = {
       
       // If we have a current project already selected, refresh its data
       // Otherwise, DON'T auto-select - let user choose from the project selector
-      const projectIdToLoad = activeRestorableProjectId ?? persistedWorkspaceState?.projectId ?? null;
+      const persistedRealProjectId = persistedWorkspaceState?.lastRealProjectId ?? persistedWorkspaceState?.projectId ?? null;
+      const projectIdToLoad = activeRestorableProjectId ?? persistedRealProjectId;
       
       if (loadedProjects.length > 0 && projectIdToLoad) {
         // Only refresh data if user already selected a project
@@ -4607,7 +5404,8 @@ type ContentProducerResumeTarget = {
           const roleAwareFallback = isProducerWorkspaceSession
             ? loadedProjects.find((project) => isRestorableWorkspaceProject(project)) ?? null
             : loadedProjects.find((project) => isRestorableWorkspaceProject(project)) ?? loadedProjects[0];
-          const activeProjectId = activeRestorableProjectId ?? persistedWorkspaceState?.projectId ?? null;
+          const persistedRealProjectId = persistedWorkspaceState?.lastRealProjectId ?? persistedWorkspaceState?.projectId ?? null;
+          const activeProjectId = activeRestorableProjectId ?? persistedRealProjectId;
           const targetProject = activeProjectId
             ? loadedProjects.find((project) => (
               project.id === activeProjectId
@@ -6670,6 +7468,7 @@ type ContentProducerResumeTarget = {
         </Suspense>
       )}
       <Box
+        ref={workspaceRootRef}
         role="main"
         aria-label={branding.appName}
         sx={{
@@ -7380,7 +8179,7 @@ type ContentProducerResumeTarget = {
               <MenuItem
                 onClick={() => {
                   if (!projectQuickActionsProject) return;
-                  void handleCreateProjectCopy(projectQuickActionsProject, { closeSelector: true });
+                  handleOpenProjectCopyDialog(projectQuickActionsProject, { closeSelector: true });
                 }}
                 sx={{ minHeight: headerMenuItemMinHeight, fontSize: isMobile ? '0.94rem' : '0.86rem', gap: 1.2, py: isMobile ? 1 : 0.5 }}
               >
@@ -7432,6 +8231,26 @@ type ContentProducerResumeTarget = {
                   <EditIcon sx={{ fontSize: 18, color: '#7dd3fc' }} />
                   Rediger prosjekt
                 </MenuItem>
+                {projectQuickActionsProject && !isTemplateProject(projectQuickActionsProject) && !isProtectedDemoProject(projectQuickActionsProject) ? (
+                  <MenuItem
+                    onClick={() => {
+                      if (!projectQuickActionsProject) return;
+                      if (isArchivedWorkspaceProject(projectQuickActionsProject)) {
+                        void handleRestoreArchivedProject(projectQuickActionsProject);
+                        return;
+                      }
+                      void handleArchiveProject(projectQuickActionsProject);
+                    }}
+                    sx={{ minHeight: headerMenuItemMinHeight, fontSize: isMobile ? '0.94rem' : '0.86rem', gap: 1.2, py: isMobile ? 1 : 0.5 }}
+                  >
+                    {isArchivedWorkspaceProject(projectQuickActionsProject) ? (
+                      <UnarchiveIcon sx={{ fontSize: 18, color: '#86efac' }} />
+                    ) : (
+                      <ArchiveIcon sx={{ fontSize: 18, color: '#fbbf24' }} />
+                    )}
+                    {isArchivedWorkspaceProject(projectQuickActionsProject) ? 'Gjenopprett prosjekt' : 'Arkiver prosjekt'}
+                  </MenuItem>
+                ) : null}
                 <MenuItem
                   onClick={() => {
                     if (!projectQuickActionsProject) return;
@@ -10527,45 +11346,113 @@ type ContentProducerResumeTarget = {
                 </Box>
                 <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
                   {plannerAudience === 'content_producer' ? (
-                    <Box sx={{ width: '100%', overflowX: 'auto' }}>
-                      <Tabs
-                        value={contentProducerPlannerSurface}
-                        onChange={(_, nextValue: ContentProducerPlannerSurface) => {
-                          setContentProducerPlannerSurface(nextValue);
-                        }}
-                        variant="scrollable"
-                        allowScrollButtonsMobile
-                        sx={{
-                          minHeight: 0,
-                          '& .MuiTabs-flexContainer': {
-                            gap: 0.75,
-                            flexWrap: 'wrap',
-                          },
-                          '& .MuiTabs-indicator': {
-                            display: 'none',
-                          },
-                        }}
-                      >
-                        {contentProducerPlannerSurfaceItems.map((item) => (
-                          <Tab
-                            key={item.value}
-                            value={item.value}
-                            label={item.label}
-                            sx={{
-                              minHeight: 0,
-                              px: 1.6,
-                              py: 0.8,
-                              borderRadius: 999,
-                              textTransform: 'none',
-                              fontWeight: 700,
-                              color: contentProducerPlannerSurface === item.value ? '#0f172a' : '#e2e8f0',
-                              bgcolor: contentProducerPlannerSurface === item.value ? '#f8fafc' : 'rgba(15,23,42,0.42)',
-                              border: '1px solid rgba(148,163,184,0.22)',
-                              minWidth: 'fit-content',
-                            }}
-                          />
-                        ))}
-                      </Tabs>
+                    <Box sx={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 1, overflow: 'hidden' }}>
+                      <Box sx={{ width: '100%', overflowX: 'auto' }}>
+                        <Tabs
+                          value={contentProducerPlannerSurface}
+                          onChange={(_, nextValue: ContentProducerPlannerSurface) => {
+                            setContentProducerPlannerSurface(nextValue);
+                          }}
+                          variant="scrollable"
+                          allowScrollButtonsMobile
+                          sx={{
+                            minHeight: 0,
+                            '& .MuiTabs-flexContainer': {
+                              gap: 0.75,
+                              flexWrap: 'wrap',
+                            },
+                            '& .MuiTabs-indicator': {
+                              display: 'none',
+                            },
+                          }}
+                        >
+                          {contentProducerPlannerSurfaceItems.map((item) => (
+                            <Tab
+                              key={item.value}
+                              value={item.value}
+                              label={item.label}
+                              sx={{
+                                minHeight: 0,
+                                px: 1.6,
+                                py: 0.8,
+                                borderRadius: 999,
+                                textTransform: 'none',
+                                fontWeight: 700,
+                                color: contentProducerPlannerSurface === item.value ? '#0f172a' : '#e2e8f0',
+                                bgcolor: contentProducerPlannerSurface === item.value ? '#f8fafc' : 'rgba(15,23,42,0.42)',
+                                border: '1px solid rgba(148,163,184,0.22)',
+                                minWidth: 'fit-content',
+                              }}
+                            />
+                          ))}
+                        </Tabs>
+                      </Box>
+                      <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                        <Chip
+                          size="small"
+                          label="Storyboard"
+                          onClick={() => {
+                            openContentProducerCreativeTool('storyboard');
+                          }}
+                          sx={{
+                            bgcolor: contentProducerPlannerSurface === 'project_room' && producerMediaFocus?.workspace === 'storyboard'
+                              ? 'rgba(244,114,182,0.22)'
+                              : 'rgba(15,23,42,0.42)',
+                            color: '#fce7f3',
+                            border: '1px solid rgba(244,114,182,0.32)',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                          }}
+                        />
+                        <Chip
+                          size="small"
+                          label="Story Writer"
+                          onClick={() => {
+                            openContentProducerCreativeTool('story-writer');
+                          }}
+                          sx={{
+                            bgcolor: storyArcView === 'story-writer'
+                              ? 'rgba(129,140,248,0.22)'
+                              : 'rgba(15,23,42,0.42)',
+                            color: '#e0e7ff',
+                            border: '1px solid rgba(129,140,248,0.32)',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                          }}
+                        />
+                        <Chip
+                          size="small"
+                          label="Sceneliste"
+                          onClick={() => {
+                            openContentProducerCreativeTool('shot-list');
+                          }}
+                          sx={{
+                            bgcolor: storyArcView === 'shot-list'
+                              ? 'rgba(56,189,248,0.22)'
+                              : 'rgba(15,23,42,0.42)',
+                            color: '#bae6fd',
+                            border: '1px solid rgba(56,189,248,0.32)',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                          }}
+                        />
+                        <Chip
+                          size="small"
+                          label="Story Logic"
+                          onClick={() => {
+                            openContentProducerCreativeTool('story-logic');
+                          }}
+                          sx={{
+                            bgcolor: storyArcView === 'story-logic'
+                              ? 'rgba(167,139,250,0.22)'
+                              : 'rgba(15,23,42,0.42)',
+                            color: '#ede9fe',
+                            border: '1px solid rgba(167,139,250,0.32)',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                          }}
+                        />
+                      </Stack>
                     </Box>
                   ) : (
                     <>
@@ -13367,11 +14254,16 @@ type ContentProducerResumeTarget = {
                 background: 'linear-gradient(180deg, rgba(34,211,238,0.06) 0%, rgba(255,255,255,0) 100%)',
               }}
             >
-              {(() => {
-                const { roleLabel, accessLabel } = getProjectRoleDetails(headerActiveProject);
-                const creatorLabel = getProjectCreatorLabel(headerActiveProject);
-                return (
-                  <>
+	              {(() => {
+	                const { roleLabel, accessLabel } = getProjectRoleDetails(headerActiveProject);
+		                const creatorLabel = getProjectCreatorLabel(headerActiveProject);
+		                const ownerLabel = getProjectOwnerLabel(headerActiveProject);
+		                const showOwnerLabel = Boolean(ownerLabel && ownerLabel !== creatorLabel);
+		                const isArchived = isArchivedWorkspaceProject(headerActiveProject);
+		                const syncStatus = getProjectSyncStatus(headerActiveProject.id);
+	                const syncActionPending = projectSyncActionProjectId === headerActiveProject.id;
+	                return (
+	                  <>
                     <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.56)' }}>
                       Aktivt nå
                     </Typography>
@@ -13406,43 +14298,96 @@ type ContentProducerResumeTarget = {
                               fontWeight: 700,
                             }}
                           />
-                          <Chip
-                            size="small"
-                            label={`Tilgang: ${accessLabel}`}
-                            sx={{
-                              height: 22,
+	                          <Chip
+	                            size="small"
+	                            label={`Tilgang: ${accessLabel}`}
+	                            sx={{
+	                              height: 22,
                               bgcolor: 'rgba(16,185,129,0.14)',
                               color: '#bbf7d0',
                               border: '1px solid rgba(16,185,129,0.24)',
                               fontSize: '0.66rem',
-                              fontWeight: 700,
-                            }}
-                          />
-                        </Box>
+	                              fontWeight: 700,
+	                            }}
+	                          />
+	                          {isArchived ? (
+	                            <Chip
+	                              size="small"
+	                              label="Arkivert"
+	                              sx={{
+	                                height: 22,
+	                                bgcolor: 'rgba(251,191,36,0.12)',
+	                                color: '#fde68a',
+	                                border: '1px solid rgba(251,191,36,0.24)',
+	                                fontSize: '0.66rem',
+	                                fontWeight: 800,
+	                              }}
+	                            />
+	                          ) : null}
+	                        </Box>
                         <Typography sx={{ mt: 0.55, fontSize: '0.78rem', color: 'rgba(255,255,255,0.64)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {[
                             headerActiveProject.clientName,
                             headerActiveProject.producerWorkflowStatus ? PRODUCER_PROJECT_STATUS_LABELS[headerActiveProject.producerWorkflowStatus] : null,
                           ].filter(Boolean).join(' • ')}
                         </Typography>
-                        {creatorLabel ? (
-                          <Typography sx={{ mt: 0.45, fontSize: '0.74rem', color: 'rgba(255,255,255,0.54)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            Opprettet av {creatorLabel}
-                          </Typography>
-                        ) : null}
-                      </Box>
-                      <Chip
-                        size="small"
-                        label="Aktivt prosjekt"
-                        sx={{
-                          bgcolor: 'rgba(34,211,238,0.12)',
-                          color: '#67e8f9',
-                          border: '1px solid rgba(34,211,238,0.24)',
-                          fontWeight: 700,
-                        }}
-                      />
-                    </Box>
-                  </>
+	                        {creatorLabel ? (
+	                          <Typography sx={{ mt: 0.45, fontSize: '0.74rem', color: 'rgba(255,255,255,0.54)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+	                            Opprettet av {creatorLabel}
+	                          </Typography>
+	                        ) : null}
+	                        {showOwnerLabel ? (
+	                          <Typography sx={{ mt: 0.25, fontSize: '0.72rem', color: 'rgba(255,255,255,0.5)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+	                            Eier {ownerLabel}
+	                          </Typography>
+	                        ) : null}
+	                      </Box>
+	                      <Stack spacing={0.75} alignItems="flex-end">
+	                        <Chip
+	                          size="small"
+	                          label="Aktivt prosjekt"
+	                          sx={{
+	                            bgcolor: 'rgba(34,211,238,0.12)',
+	                            color: '#67e8f9',
+	                            border: '1px solid rgba(34,211,238,0.24)',
+	                            fontWeight: 700,
+	                          }}
+	                        />
+	                        <Tooltip title={syncStatus.helper}>
+	                          <Chip
+	                            size="small"
+	                            label={syncStatus.label}
+	                            sx={{
+	                              bgcolor: syncStatus.bgcolor,
+	                              color: syncStatus.color,
+	                              border: syncStatus.border,
+	                              fontWeight: 800,
+	                            }}
+	                          />
+	                        </Tooltip>
+	                        <Button
+	                          size="small"
+	                          startIcon={syncActionPending ? <CircularProgress size={12} color="inherit" /> : <RefreshIcon sx={{ fontSize: 15 }} />}
+	                          onClick={(event: MouseEvent) => {
+	                            event.stopPropagation();
+	                            void handleVerifyProjectStorage(headerActiveProject);
+	                          }}
+	                          disabled={syncActionPending}
+	                          sx={{
+	                            minHeight: 26,
+	                            px: 0.9,
+	                            textTransform: 'none',
+	                            fontSize: '0.68rem',
+	                            color: '#bae6fd',
+	                            border: '1px solid rgba(125,211,252,0.28)',
+	                            '&:hover': { bgcolor: 'rgba(56,189,248,0.12)' },
+	                          }}
+	                        >
+	                          Verifiser
+	                        </Button>
+	                      </Stack>
+	                    </Box>
+	                  </>
                 );
               })()}
             </Box>
@@ -13497,7 +14442,7 @@ type ContentProducerResumeTarget = {
                       </Box>
                       <Button
                         size="small"
-                        onClick={() => { void handleCreateProjectCopy(template, { closeSelector: true }); }}
+                        onClick={() => { handleOpenProjectCopyDialog(template, { closeSelector: true }); }}
                         startIcon={<ContentCopyIcon sx={{ fontSize: 16 }} />}
                         sx={{
                           textTransform: 'none',
@@ -13544,11 +14489,15 @@ type ContentProducerResumeTarget = {
                     const workflowStatusLabel = workflowStatus
                       ? PRODUCER_PROJECT_STATUS_LABELS[workflowStatus]
                       : 'Klar for arbeid';
-                    const { roleLabel, accessLabel } = getProjectRoleDetails(project);
-                    const creatorLabel = getProjectCreatorLabel(project);
-                    const isDragging = draggingPinnedProjectId === project.id;
+		                    const { roleLabel, accessLabel } = getProjectRoleDetails(project);
+		                    const creatorLabel = getProjectCreatorLabel(project);
+		                    const ownerLabel = getProjectOwnerLabel(project);
+		                    const showOwnerLabel = Boolean(ownerLabel && ownerLabel !== creatorLabel);
+		                    const isArchived = isArchivedWorkspaceProject(project);
+		                    const isDragging = draggingPinnedProjectId === project.id;
+	                    const syncStatus = getProjectSyncStatus(project.id);
 
-                    return (
+	                    return (
                       <Box
                         key={`pinned-hero-${project.id}`}
                         onClick={() => { void handleSelectProjectFromSelector(project); }}
@@ -13621,11 +14570,16 @@ type ContentProducerResumeTarget = {
                         <Typography sx={{ mt: 0.7, fontSize: '0.72rem', color: 'rgba(255,255,255,0.64)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {project.clientName || 'Uten klientnavn'}
                         </Typography>
-                        {creatorLabel ? (
-                          <Typography sx={{ mt: 0.45, fontSize: '0.7rem', color: 'rgba(255,255,255,0.54)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            Opprettet av {creatorLabel}
-                          </Typography>
-                        ) : null}
+		                        {creatorLabel ? (
+		                          <Typography sx={{ mt: 0.45, fontSize: '0.7rem', color: 'rgba(255,255,255,0.54)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+		                            Opprettet av {creatorLabel}
+		                          </Typography>
+		                        ) : null}
+		                        {showOwnerLabel ? (
+		                          <Typography sx={{ mt: 0.25, fontSize: '0.68rem', color: 'rgba(255,255,255,0.5)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+		                            Eier {ownerLabel}
+		                          </Typography>
+		                        ) : null}
                         <Box sx={{ mt: 0.8, display: 'flex', alignItems: 'center', gap: 0.55, flexWrap: 'wrap' }}>
                           <Chip
                             size="small"
@@ -13639,9 +14593,9 @@ type ContentProducerResumeTarget = {
                               fontWeight: 700,
                             }}
                           />
-                          <Chip
-                            size="small"
-                            label={`Tilgang: ${accessLabel}`}
+		                          <Chip
+		                            size="small"
+		                            label={`Tilgang: ${accessLabel}`}
                             sx={{
                               height: 20,
                               bgcolor: 'rgba(16,185,129,0.14)',
@@ -13649,9 +14603,37 @@ type ContentProducerResumeTarget = {
                               border: '1px solid rgba(16,185,129,0.22)',
                               fontSize: '0.62rem',
                               fontWeight: 700,
-                            }}
-                          />
-                        </Box>
+		                            }}
+		                          />
+		                          {isArchived ? (
+		                            <Chip
+		                              size="small"
+		                              label="Arkivert"
+		                              sx={{
+		                                height: 20,
+		                                bgcolor: 'rgba(251,191,36,0.12)',
+		                                color: '#fde68a',
+		                                border: '1px solid rgba(251,191,36,0.24)',
+		                                fontSize: '0.62rem',
+		                                fontWeight: 800,
+		                              }}
+		                            />
+		                          ) : null}
+		                          <Tooltip title={syncStatus.helper}>
+	                            <Chip
+	                              size="small"
+	                              label={syncStatus.label}
+	                              sx={{
+	                                height: 20,
+	                                bgcolor: syncStatus.bgcolor,
+	                                color: syncStatus.color,
+	                                border: syncStatus.border,
+	                                fontSize: '0.62rem',
+	                                fontWeight: 800,
+	                              }}
+	                            />
+	                          </Tooltip>
+	                        </Box>
                         <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
                           <Chip
                             size="small"
@@ -13745,10 +14727,15 @@ type ContentProducerResumeTarget = {
                             color: 'rgba(226, 232, 240, 0.9)',
                             border: '1px solid rgba(148, 163, 184, 0.18)',
                           };
-                      const { roleLabel, accessLabel } = getProjectRoleDetails(project);
-                      const creatorLabel = getProjectCreatorLabel(project);
-                      const updatedDate = project.updatedAt
-                        ? new Date(project.updatedAt).toLocaleDateString('nb-NO', {
+		                      const { roleLabel, accessLabel } = getProjectRoleDetails(project);
+		                      const creatorLabel = getProjectCreatorLabel(project);
+		                      const ownerLabel = getProjectOwnerLabel(project);
+		                      const showOwnerLabel = Boolean(ownerLabel && ownerLabel !== creatorLabel);
+		                      const isArchived = isArchivedWorkspaceProject(project);
+		                      const syncStatus = getProjectSyncStatus(project.id);
+	                      const syncActionPending = projectSyncActionProjectId === project.id;
+	                      const updatedDate = project.updatedAt
+	                        ? new Date(project.updatedAt).toLocaleDateString('nb-NO', {
                             day: '2-digit',
                             month: 'short',
                             year: 'numeric',
@@ -13759,7 +14746,7 @@ type ContentProducerResumeTarget = {
                       const primaryActionLabel = isProtectedDemo && !canMutateProtectedDemoData ? 'Lag kopi' : 'Åpne';
                       const handlePrimaryAction = () => {
                         if (isProtectedDemo && !canMutateProtectedDemoData) {
-                          void handleCreateProjectCopy(project, { closeSelector: true });
+                          handleOpenProjectCopyDialog(project, { closeSelector: true });
                           return;
                         }
                         void handleSelectProjectFromSelector(project);
@@ -13837,9 +14824,9 @@ type ContentProducerResumeTarget = {
                               {isPinned ? (
                                 <PushPinIcon sx={{ fontSize: 15, color: pinnedAccentColor, flexShrink: 0 }} />
                               ) : null}
-                              {isProtectedDemo ? (
-                                <Chip
-                                  size="small"
+	                              {isProtectedDemo ? (
+	                                <Chip
+	                                  size="small"
                                   label="Demo-mal"
                                   sx={{
                                     height: 20,
@@ -13849,10 +14836,25 @@ type ContentProducerResumeTarget = {
                                     fontSize: '0.62rem',
                                     fontWeight: 800,
                                     flexShrink: 0,
-                                  }}
-                                />
-                              ) : null}
-                            </Box>
+	                                  }}
+	                                />
+	                              ) : null}
+	                              {isArchived ? (
+	                                <Chip
+	                                  size="small"
+	                                  label="Arkivert"
+	                                  sx={{
+	                                    height: 20,
+	                                    bgcolor: 'rgba(251,191,36,0.12)',
+	                                    color: '#fde68a',
+	                                    border: '1px solid rgba(251,191,36,0.22)',
+	                                    fontSize: '0.62rem',
+	                                    fontWeight: 800,
+	                                    flexShrink: 0,
+	                                  }}
+	                                />
+	                              ) : null}
+	                            </Box>
 
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.7, minWidth: 0, flexWrap: 'wrap' }}>
                               <Chip
@@ -13873,10 +14875,15 @@ type ContentProducerResumeTarget = {
                             </Box>
                             {creatorLabel ? (
                               <Typography sx={{ mt: 0.55, fontSize: '0.72rem', color: 'rgba(255,255,255,0.52)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                Opprettet av {creatorLabel}
-                              </Typography>
-                            ) : null}
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.7, mt: 0.8, minWidth: 0, flexWrap: 'wrap' }}>
+	                                Opprettet av {creatorLabel}
+	                              </Typography>
+	                            ) : null}
+	                            {showOwnerLabel ? (
+	                              <Typography sx={{ mt: 0.25, fontSize: '0.7rem', color: 'rgba(255,255,255,0.5)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+	                                Eier {ownerLabel}
+	                              </Typography>
+	                            ) : null}
+	                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.7, mt: 0.8, minWidth: 0, flexWrap: 'wrap' }}>
                               <Chip
                                 size="small"
                                 label={`Rolle: ${roleLabel}`}
@@ -13889,9 +14896,9 @@ type ContentProducerResumeTarget = {
                                   fontWeight: 700,
                                 }}
                               />
-                              <Chip
-                                size="small"
-                                label={`Tilgang: ${accessLabel}`}
+	                              <Chip
+	                                size="small"
+	                                label={`Tilgang: ${accessLabel}`}
                                 sx={{
                                   height: 22,
                                   bgcolor: 'rgba(16,185,129,0.14)',
@@ -13899,12 +14906,26 @@ type ContentProducerResumeTarget = {
                                   border: '1px solid rgba(16,185,129,0.22)',
                                   fontSize: '0.66rem',
                                   fontWeight: 700,
-                                }}
-                              />
-                            </Box>
-                          </Box>
+	                                }}
+	                              />
+	                              <Tooltip title={syncStatus.helper}>
+	                                <Chip
+	                                  size="small"
+	                                  label={syncStatus.label}
+	                                  sx={{
+	                                    height: 22,
+	                                    bgcolor: syncStatus.bgcolor,
+	                                    color: syncStatus.color,
+	                                    border: syncStatus.border,
+	                                    fontSize: '0.66rem',
+	                                    fontWeight: 800,
+	                                  }}
+	                                />
+	                              </Tooltip>
+	                            </Box>
+	                          </Box>
 
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
+	                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
                             <Box
                               sx={{
                                 minWidth: 34,
@@ -13923,8 +14944,8 @@ type ContentProducerResumeTarget = {
                             >
                               {candidateCount}
                             </Box>
-                            <Button
-                              size="small"
+	                            <Button
+	                              size="small"
                               onClick={(e: MouseEvent) => {
                                 e.stopPropagation();
                                 handlePrimaryAction();
@@ -13949,11 +14970,32 @@ type ContentProducerResumeTarget = {
                                     : 'rgba(56,189,248,0.65)',
                                 },
                               }}
-                            >
-                              {primaryActionLabel}
-                            </Button>
-                            <IconButton
-                              size="small"
+	                            >
+	                              {primaryActionLabel}
+	                            </Button>
+	                            <Tooltip title={syncActionPending ? 'Verifiserer prosjektlagring...' : syncStatus.helper}>
+	                              <span>
+	                                <IconButton
+	                                  size="small"
+	                                  onClick={(e: MouseEvent) => {
+	                                    e.stopPropagation();
+	                                    void handleVerifyProjectStorage(project);
+	                                  }}
+	                                  disabled={syncActionPending || (isProtectedDemo && !canMutateProtectedDemoData)}
+	                                  sx={{
+	                                    color: syncStatus.color,
+	                                    '&:hover': { bgcolor: 'rgba(125,211,252,0.12)' },
+	                                    '&.Mui-disabled': { color: 'rgba(255,255,255,0.25)' },
+	                                  }}
+	                                >
+	                                  {syncActionPending
+	                                    ? <CircularProgress size={16} color="inherit" />
+	                                    : <RefreshIcon sx={{ fontSize: 18 }} />}
+	                                </IconButton>
+	                              </span>
+	                            </Tooltip>
+	                            <IconButton
+	                              size="small"
                               onClick={(e: MouseEvent) => {
                                 e.stopPropagation();
                                 void handleTogglePinnedProject(project.id);
@@ -14392,11 +15434,12 @@ type ContentProducerResumeTarget = {
                           } as CastingProject;
                           
                           // Save to database
-                          try {
-                            await castingService.saveProject(projectWithCrew);
-                          } catch (error) {
-                            console.error('Failed to save project to database:', error);
-                          }
+	                          try {
+	                            await castingService.saveProject(projectWithCrew);
+	                            await loadProjectSyncMeta([normalizedProjectId]);
+	                          } catch (error) {
+	                            console.error('Failed to save project to database:', error);
+	                          }
                           
                           // Invalidate query cache to force refresh
                           queryClient.invalidateQueries({ queryKey: ['/api/casting/projects'] });
@@ -14576,6 +15619,100 @@ type ContentProducerResumeTarget = {
         </DialogActions>
       </Dialog>
 
+      <Dialog
+        open={Boolean(projectCopyDialog)}
+        onClose={() => {
+          if (!projectCopySubmitting) {
+            setProjectCopyDialog(null);
+          }
+        }}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            bgcolor: '#111827',
+            color: '#fff',
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: 3,
+          },
+        }}
+      >
+        <DialogTitle sx={{ pb: 1.5 }}>
+          Lag prosjektkopi
+        </DialogTitle>
+        <DialogContent sx={{ pt: 1.5 }}>
+          <Stack spacing={2}>
+            <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.12)', color: '#dbeafe', border: '1px solid rgba(96,165,250,0.25)' }}>
+              Secrets og Client Access Vault kopieres aldri. Klientdata, reviewhistorikk og økonomi er av som standard.
+            </Alert>
+            <TextField
+              label="Navn på ny kopi"
+              value={projectCopyDialog?.name ?? ''}
+              onChange={(event) => {
+                const value = event.target.value;
+                setProjectCopyDialog((current) => current ? { ...current, name: value } : current);
+              }}
+              fullWidth
+              autoFocus
+              InputLabelProps={{ sx: { color: 'rgba(255,255,255,0.62)' } }}
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  color: '#fff',
+                  '& fieldset': { borderColor: 'rgba(255,255,255,0.16)' },
+                  '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.28)' },
+                  '&.Mui-focused fieldset': { borderColor: '#38bdf8' },
+                },
+              }}
+            />
+            <Stack spacing={0.75}>
+              <FormControlLabel
+                control={<Checkbox checked={projectCopyDialog?.includeClientData ?? false} />}
+                onChange={(_, checked) => setProjectCopyDialog((current) => current ? { ...current, includeClientData: checked } : current)}
+                label="Ta med klientdata"
+              />
+              <FormControlLabel
+                control={<Checkbox checked={projectCopyDialog?.includeReviewHistory ?? false} />}
+                onChange={(_, checked) => setProjectCopyDialog((current) => current ? { ...current, includeReviewHistory: checked } : current)}
+                label="Ta med reviewhistorikk og godkjenninger"
+              />
+              <FormControlLabel
+                control={<Checkbox checked={projectCopyDialog?.includeEconomy ?? false} />}
+                onChange={(_, checked) => setProjectCopyDialog((current) => current ? { ...current, includeEconomy: checked } : current)}
+                label="Ta med økonomi, avtaler og utlegg"
+              />
+              <FormControlLabel
+                control={<Checkbox checked={projectCopyDialog?.includeTeam ?? true} />}
+                onChange={(_, checked) => setProjectCopyDialog((current) => current ? { ...current, includeTeam: checked } : current)}
+                label="Ta med team og møteplan"
+              />
+              <FormControlLabel
+                control={<Checkbox checked={projectCopyDialog?.includeProductionData ?? true} />}
+                onChange={(_, checked) => setProjectCopyDialog((current) => current ? { ...current, includeProductionData: checked } : current)}
+                label="Ta med produksjonsdata, scener og shotlist"
+              />
+            </Stack>
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+          <Button
+            onClick={() => setProjectCopyDialog(null)}
+            disabled={projectCopySubmitting}
+            sx={{ color: 'rgba(255,255,255,0.72)', textTransform: 'none' }}
+          >
+            Avbryt
+          </Button>
+          <Button
+            onClick={() => { void handleSubmitProjectCopy(); }}
+            disabled={projectCopySubmitting || !projectCopyDialog?.name.trim()}
+            variant="contained"
+            startIcon={projectCopySubmitting ? <CircularProgress size={16} /> : <ContentCopyIcon />}
+            sx={{ bgcolor: '#38bdf8', color: '#07111f', fontWeight: 800, textTransform: 'none', '&:hover': { bgcolor: '#7dd3fc' } }}
+          >
+            Lag kopi
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Delete Project Confirmation Dialog */}
       <Dialog
         open={deleteProjectDialogOpen}
@@ -14745,6 +15882,12 @@ type ContentProducerResumeTarget = {
           onSelectMode: handleSelectAdminPreviewMode,
           onOpenClientPortal: handleOpenClientPortalPreview,
         } : null}
+        onProjectUpdated={async (updatedProject) => {
+          if (updatedProject) {
+            setCurrentProject(updatedProject);
+          }
+          await loadProjects();
+        }}
       />
 
       {loginDialogOpen && (

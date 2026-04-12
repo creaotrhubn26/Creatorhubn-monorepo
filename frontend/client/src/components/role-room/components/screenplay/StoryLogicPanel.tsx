@@ -60,11 +60,13 @@ import {
 } from '@mui/icons-material';
 import jsPDF from 'jspdf';
 import { useBrandingSettings } from '../../hooks/useBrandingSettings';
-import { storyLogicService } from '../../services/storyLogicService';
+import { storyLogicService, type StoryLogicSyncMeta } from '../../services/storyLogicService';
 import {
   CONTENT_PRODUCER_DEMO_PROJECT_ID,
+  TROLL_DEMO_PROJECT_ID,
   PRODUCER_DEMO_CLIENT_COMPANY,
   containsLegacyProducerDemoMarker,
+  isRoleRoomDemoSeedAllowed,
 } from '../../constants/producerDemo';
 
 // ============================================================================
@@ -1614,12 +1616,53 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
   const [_isLoading, setIsLoading] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved' | 'offline'>('saved');
+  const [syncMeta, setSyncMeta] = useState<StoryLogicSyncMeta | null>(null);
   const [highlightedField, setHighlightedField] = useState<string | null>(null);
   const [showVersionHistory, setShowVersionHistory] = useState(false);
   const [startMode, setStartMode] = useState<StartMode | null>(null);
   const [showTemplates, setShowTemplates] = useState(false);
   const [premiseChangeAlert, setPremiseChangeAlert] = useState<string | null>(null);
   const prevPremiseRef = useRef(state.concept.corePremise);
+
+  const refreshSyncMeta = useCallback(() => {
+    if (!projectId) {
+      setSyncMeta(null);
+      return;
+    }
+
+    try {
+      setSyncMeta(storyLogicService.getStoryLogicSyncMeta(projectId));
+    } catch (error) {
+      setSyncMeta({
+        projectId,
+        status: 'error',
+        source: 'server',
+        lastError: error instanceof Error ? error.message : 'Kunne ikke lese sync-status.',
+      });
+    }
+  }, [projectId]);
+
+  const syncStatusLabel = useMemo(() => {
+    const status = syncMeta?.status ?? 'idle';
+    const versionSuffix = syncMeta?.version ? ` v${syncMeta.version}` : '';
+    if (status === 'synced') return `Synket${versionSuffix}`;
+    if (status === 'saving') return 'Synker';
+    if (status === 'loading') return 'Henter';
+    if (status === 'conflict') return 'Konflikt';
+    if (status === 'local_only') return 'Kun lokalt';
+    if (status === 'error') return 'Sync-feil';
+    return 'Ikke synket';
+  }, [syncMeta]);
+
+  const syncStatusColor = useMemo(() => {
+    const status = syncMeta?.status ?? 'idle';
+    if (status === 'synced') return '#10b981';
+    if (status === 'saving' || status === 'loading') return '#60a5fa';
+    if (status === 'conflict') return '#f59e0b';
+    if (status === 'local_only') return '#a78bfa';
+    if (status === 'error') return '#ef4444';
+    return '#9ca3af';
+  }, [syncMeta]);
 
   useEffect(() => {
     onUnsavedStateChange?.(
@@ -1677,9 +1720,11 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
       setIsLoading(true);
       try {
         const normalizedProjectId = projectId.toLowerCase();
-        const isTrollDemoProject = normalizedProjectId.includes('troll');
-        const isContentProducerDemoProject = normalizedProjectId === CONTENT_PRODUCER_DEMO_PROJECT_ID;
+        const demoSeedAllowed = isRoleRoomDemoSeedAllowed();
+        const isTrollDemoProject = demoSeedAllowed && normalizedProjectId === TROLL_DEMO_PROJECT_ID;
+        const isContentProducerDemoProject = demoSeedAllowed && normalizedProjectId === CONTENT_PRODUCER_DEMO_PROJECT_ID;
         const savedData = await storyLogicService.getStoryLogic(projectId);
+        refreshSyncMeta();
         if (savedData) {
           // Migrate old isLocked → locks if needed
           const migrated = {
@@ -1699,6 +1744,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
             const normalizedProducerDemo = normalizeStoryLogicState(CONTENT_PRODUCER_DEMO_STATE);
             setState(normalizedProducerDemo);
             await storyLogicService.saveStoryLogic(projectId, normalizedProducerDemo);
+            refreshSyncMeta();
             lastSavedSnapshot.current = JSON.stringify(normalizedProducerDemo);
             setSaveStatus('saved');
             console.log('🧹 Replaced legacy producer demo story logic with business project data');
@@ -1712,17 +1758,20 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
           const normalizedProducerDemo = normalizeStoryLogicState(CONTENT_PRODUCER_DEMO_STATE);
           setState(normalizedProducerDemo);
           await storyLogicService.saveStoryLogic(projectId, normalizedProducerDemo);
+          refreshSyncMeta();
           lastSavedSnapshot.current = JSON.stringify(normalizedProducerDemo);
           console.log('🎬 Initialized producer story logic demo data');
         } else if (isTrollDemoProject) {
           const normalizedDemo = normalizeStoryLogicState(TROLL_DEMO_STATE);
           setState(normalizedDemo);
           await storyLogicService.saveStoryLogic(projectId, normalizedDemo);
+          refreshSyncMeta();
           lastSavedSnapshot.current = JSON.stringify(normalizedDemo);
           console.log('🎬 Initialized TROLL story logic demo data');
         }
       } catch (error) {
         console.error('Failed to load story logic data:', error);
+        refreshSyncMeta();
         setSaveStatus('offline');
       } finally {
         setIsLoading(false);
@@ -1730,7 +1779,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
     };
 
     loadData();
-  }, [projectId, initialData]);
+  }, [projectId, initialData, refreshSyncMeta]);
 
   // Autosave with debounce (#5)
   useEffect(() => {
@@ -1744,18 +1793,21 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
     autosaveTimer.current = setTimeout(async () => {
       if (!projectId) return;
       setSaveStatus('saving');
+      refreshSyncMeta();
       try {
         const dataToSave = { ...state, lastSaved: new Date().toISOString() };
         await storyLogicService.saveStoryLogic(projectId, dataToSave);
+        refreshSyncMeta();
         lastSavedSnapshot.current = JSON.stringify(dataToSave);
         setState(prev => ({ ...prev, lastSaved: dataToSave.lastSaved }));
         setSaveStatus('saved');
       } catch {
+        refreshSyncMeta();
         setSaveStatus('offline');
       }
     }, 1200);
     return () => { if (autosaveTimer.current) clearTimeout(autosaveTimer.current); };
-  }, [state, projectId]);
+  }, [state, projectId, refreshSyncMeta]);
 
   // Soft version history — detect significant premise changes (#5 Recovery Design)
   useEffect(() => {
@@ -1823,19 +1875,26 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
     if (!projectId) return;
     
     setIsSaving(true);
+    setSaveStatus('saving');
+    refreshSyncMeta();
     const dataToSave = { ...state, lastSaved: new Date().toISOString() };
     
     try {
       await storyLogicService.saveStoryLogic(projectId, dataToSave);
+      refreshSyncMeta();
       setState(dataToSave);
+      lastSavedSnapshot.current = JSON.stringify(dataToSave);
+      setSaveStatus('saved');
       onSave?.(dataToSave);
       console.log('✓ Story logic saved for project:', projectId);
     } catch (error) {
       console.error('Failed to save story logic:', error);
+      refreshSyncMeta();
+      setSaveStatus('offline');
     } finally {
       setIsSaving(false);
     }
-  }, [projectId, state, onSave]);
+  }, [projectId, state, onSave, refreshSyncMeta]);
 
   // Memoize all validation results — single source of truth (A: eliminates duplicate computation)
   const conceptValidation = useMemo(() => validateConcept(state.concept), [state.concept]);
@@ -2381,6 +2440,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
       setState(DEFAULT_STATE);
       if (projectId) {
         await storyLogicService.deleteStoryLogic(projectId);
+        refreshSyncMeta();
       }
     }
   };
@@ -2407,6 +2467,19 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                 color: saveStatus === 'saved' ? '#10b981' : saveStatus === 'saving' ? '#60a5fa' : saveStatus === 'unsaved' ? '#f59e0b' : '#ef4444',
               }}
             />
+            <Tooltip title={syncMeta?.lastError || 'Story Logic er bundet til server og prosjekt-session.'}>
+              <Chip
+                size="small"
+                label={syncStatusLabel}
+                sx={{
+                  height: 20,
+                  fontSize: '0.65rem',
+                  bgcolor: `${syncStatusColor}22`,
+                  color: syncStatusColor,
+                  border: `1px solid ${syncStatusColor}55`,
+                }}
+              />
+            </Tooltip>
           </Box>
         </Box>
         <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>

@@ -1,5 +1,6 @@
 import type { UserRole, UserRoleType } from '../models/casting';
 import { castingService } from './castingService';
+import authSessionService from './authSessionService';
 import { getCurrentUserId } from './settingsService';
 
 type PermissionKey = keyof NonNullable<UserRole['permissions']>;
@@ -10,10 +11,15 @@ type PermissionKey = keyof NonNullable<UserRole['permissions']>;
  */
 export const castingAuthService = {
   /**
-   * Get current user (placeholder - in real app would get from auth system)
+   * Get current user from the active Role Room session.
    */
   getCurrentUserId(): string {
-    // Placeholder - in real implementation would get from auth context
+    const session = authSessionService.getSessionSync();
+    const sessionUserId = session.currentUserId ?? session.adminUser?.id;
+    if (sessionUserId !== undefined && sessionUserId !== null && String(sessionUserId).trim()) {
+      return String(sessionUserId);
+    }
+
     return getCurrentUserId();
   },
 
@@ -176,7 +182,7 @@ export const castingAuthService = {
     
     // Director, producer, writer, and script_editor can edit script
     return ['director', 'producer', 'writer', 'script_editor'].includes(userRole.role) ||
-           userRole.permissions.canEditScript === true;
+           userRole.permissions?.canEditScript === true;
   },
 
   /**
@@ -188,7 +194,7 @@ export const castingAuthService = {
     
     // Only director, producer, and script_editor can lock script
     return ['director', 'producer', 'script_editor'].includes(userRole.role) ||
-           userRole.permissions.canLockScript === true;
+           userRole.permissions?.canLockScript === true;
   },
 
   /**
@@ -200,7 +206,7 @@ export const castingAuthService = {
     
     // Director, producer, writer, script_editor can run table reads
     return ['director', 'producer', 'writer', 'script_editor'].includes(userRole.role) ||
-           userRole.permissions.canRunTableRead === true;
+           userRole.permissions?.canRunTableRead === true;
   },
 
   /**
@@ -399,4 +405,3 @@ export const castingAuthService = {
     }
   },
 };
-

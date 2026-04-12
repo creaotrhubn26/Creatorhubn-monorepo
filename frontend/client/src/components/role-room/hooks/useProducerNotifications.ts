@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   producerWorkflowService,
   type ProducerProjectNotification,
+  type UpdateProducerNotificationInput,
 } from '../services/producerWorkflowService';
 import { onProducerWorkflowEvent } from '../services/producerWorkflowEvents';
 
@@ -93,6 +94,24 @@ export function useProducerNotifications(projectId?: string, pollIntervalMs = 30
     })));
   }, [projectId]);
 
+  const updateNotification = useCallback(async (
+    notificationId: string,
+    payload: UpdateProducerNotificationInput,
+  ) => {
+    if (!projectId) throw new Error('Mangler projectId');
+    const updated = await producerWorkflowService.updateNotification(projectId, notificationId, payload);
+    setItems((previous) => previous.map((item) => (item.id === notificationId ? updated : item)));
+    return updated;
+  }, [projectId]);
+
+  const archiveNotification = useCallback(async (notificationId: string, archived = true) => {
+    return updateNotification(notificationId, { archived });
+  }, [updateNotification]);
+
+  const resolveNotification = useCallback(async (notificationId: string, resolved = true) => {
+    return updateNotification(notificationId, { resolved });
+  }, [updateNotification]);
+
   return {
     items,
     loading,
@@ -101,6 +120,9 @@ export function useProducerNotifications(projectId?: string, pollIntervalMs = 30
     reload: load,
     markAsRead,
     markAllAsRead,
+    updateNotification,
+    archiveNotification,
+    resolveNotification,
   };
 }
 

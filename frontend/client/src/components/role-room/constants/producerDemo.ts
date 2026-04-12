@@ -1,4 +1,9 @@
 export const CONTENT_PRODUCER_DEMO_PROJECT_ID = 'content-producer-demo-2026';
+export const TROLL_DEMO_PROJECT_ID = 'troll-project-2026';
+export const ROLE_ROOM_DEMO_PROJECT_IDS = [
+  CONTENT_PRODUCER_DEMO_PROJECT_ID,
+  TROLL_DEMO_PROJECT_ID,
+] as const;
 
 export const PRODUCER_DEMO_PROJECT_NAME = 'Northwind Drilling - Sikker start';
 export const PRODUCER_DEMO_PROJECT_DESCRIPTION =
@@ -50,6 +55,25 @@ export function containsLegacyProducerDemoMarker(
   }
 
   return LEGACY_PRODUCER_DEMO_MARKERS.some((marker) => haystack.includes(marker));
+}
+
+export function isRoleRoomDemoProjectId(projectId: string | null | undefined): boolean {
+  const normalizedProjectId = String(projectId || '').trim().toLowerCase();
+  return ROLE_ROOM_DEMO_PROJECT_IDS.some((demoProjectId) => normalizedProjectId === demoProjectId);
+}
+
+export function isRoleRoomDemoSeedAllowed(): boolean {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  const hostname = window.location.hostname.trim().toLowerCase();
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    return true;
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  return params.get('roleRoomDemoSeed') === '1' || params.get('demoSeed') === '1';
 }
 
 export const PRODUCER_DEMO_TIMELINE_SEED = [

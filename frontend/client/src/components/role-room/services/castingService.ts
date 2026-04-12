@@ -33,7 +33,9 @@ import {
   PRODUCER_DEMO_PRIMARY_LOCATION,
   PRODUCER_DEMO_PROJECT_DESCRIPTION,
   PRODUCER_DEMO_PROJECT_NAME,
+  TROLL_DEMO_PROJECT_ID,
   containsLegacyProducerDemoMarker,
+  isRoleRoomDemoSeedAllowed,
 } from '../constants/producerDemo';
 import authSessionService from './authSessionService';
 import settingsService, { getCurrentUserId } from './settingsService';
@@ -48,19 +50,72 @@ let dbCheckPromise: Promise<boolean> | null = null;
 // Local storage fallback for projects
 const PROJECTS_STORAGE_KEY = 'casting-projects';
 const SHARED_TEMPLATE_PROJECTS_USER_ID = 'role-room-shared';
+const PROJECT_SYNC_META_NAMESPACE = 'role-room-project-sync-meta';
+const PROJECT_SYNC_QUEUE_NAMESPACE = 'role-room-project-sync-queue';
+const PROJECT_SNAPSHOTS_NAMESPACE = 'role-room-project-snapshots';
+const PROJECT_SNAPSHOT_LIMIT = 12;
 let cachedProjects: CastingProject[] = [];
 let cachedSharedTemplateProjects: CastingProject[] = [];
-const TROLL_DEMO_PROJECT_ID = 'troll-project-2026';
+let projectStorageMutationVersion = 0;
 const PROJECT_FETCH_CACHE_TTL_MS = 2000;
 const inFlightProjectRequests = new Map<string, Promise<CastingProject | null>>();
 const projectFetchCache = new Map<string, { project: CastingProject | null; cachedAt: number }>();
-const PROTECTED_DEMO_WRITE_BLOCKED_EVENT = 'role-room-protected-demo-write-blocked';
+const CROSS_PROJECT_AUDIT_STORAGE_KEY = 'role-room-cross-project-attempts';
+const PROJECT_VALIDATION_ERROR_NAME = 'RoleRoomProjectValidationError';
 
 type ProjectTemplateAudience = 'content_producer' | 'production_team';
 type ProjectTemplateStatus = 'draft' | 'published' | 'archived';
 type ProjectMutationOptions = {
   allowProtectedDemoWrite?: boolean;
 };
+
+class RoleRoomProjectValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = PROJECT_VALIDATION_ERROR_NAME;
+  }
+}
+
+export interface RoleRoomProjectSnapshot {
+  id: string;
+  projectId: string;
+  createdAt: string;
+  source: 'local_save' | 'queued_change' | 'server_resync' | 'restored';
+  label: string;
+  project: CastingProject;
+}
+
+export interface RoleRoomQueuedProjectChange {
+  id: string;
+  projectId: string;
+  queuedAt: string;
+  reason: 'save_failed' | 'offline';
+  errorMessage?: string;
+  project: CastingProject;
+}
+
+export interface RoleRoomProjectSyncMeta {
+  projectId: string;
+  lastLocalSaveAt?: string;
+  lastSyncedAt?: string;
+  lastResyncedAt?: string;
+  lastQueuedAt?: string;
+  lastRestoreAt?: string;
+  lastError?: string;
+  queuedChangeCount: number;
+}
+
+export interface RoleRoomProjectCopyOptions {
+  name?: string;
+  sourceTemplateId?: string | null;
+  sourceTemplateVersion?: number | null;
+  includeClientData?: boolean;
+  includeReviewHistory?: boolean;
+  includeEconomy?: boolean;
+  includeTeam?: boolean;
+  includeProductionData?: boolean;
+  includeSecrets?: boolean;
+}
 
 const invalidateProjectFetchCache = (projectId?: string): void => {
   if (projectId) {
@@ -74,10 +129,11 @@ const invalidateProjectFetchCache = (projectId?: string): void => {
 };
 
 const hydrateProjects = async (): Promise<void> => {
+  const startedAtMutationVersion = projectStorageMutationVersion;
   try {
     const userId = getCurrentUserId();
     const remote = await settingsService.getSetting<CastingProject[]>(PROJECTS_STORAGE_KEY, { userId });
-    if (remote) {
+    if (remote && projectStorageMutationVersion === startedAtMutationVersion) {
       cachedProjects = remote;
     }
   } catch (error) {
@@ -88,7 +144,7 @@ const hydrateProjects = async (): Promise<void> => {
     const sharedTemplates = await settingsService.getSetting<CastingProject[]>(PROJECTS_STORAGE_KEY, {
       userId: SHARED_TEMPLATE_PROJECTS_USER_ID,
     });
-    if (sharedTemplates) {
+    if (sharedTemplates && projectStorageMutationVersion === startedAtMutationVersion) {
       cachedSharedTemplateProjects = sharedTemplates.filter((project) => isTemplateProject(project));
     }
   } catch (error) {
@@ -102,6 +158,7 @@ function ensureHydrated(): void {
   if (!hydrationStarted) {
     hydrationStarted = true;
     void hydrateProjects();
+    ensureSyncListeners();
   }
 }
 
@@ -125,6 +182,7 @@ type AvailableSceneOption = { id: string; name: string; thumbnail?: string };
  * Save projects to local storage fallback
  */
 function saveProjectsToStorage(projects: CastingProject[]): void {
+  projectStorageMutationVersion += 1;
   const userScopedProjects = projects.filter((project) => !isTemplateProject(project));
   const sharedTemplateProjects = projects.filter((project) => isTemplateProject(project));
   cachedProjects = userScopedProjects;
@@ -188,23 +246,137 @@ const isProtectedDemoProject = (project: CastingProject | string | null | undefi
   return isProtectedDemoProjectId(project?.id) || normalizeProjectKind(project) === 'demo';
 };
 
+let protectedDemoSeedWriteDepth = 0;
+
+async function runProtectedDemoSeedWrite<T>(callback: () => Promise<T>): Promise<T> {
+  if (!isRoleRoomDemoSeedAllowed()) {
+    throw new RoleRoomProjectValidationError('Demo-seed er deaktivert i dette miljøet.');
+  }
+  protectedDemoSeedWriteDepth += 1;
+  try {
+    return await callback();
+  } finally {
+    protectedDemoSeedWriteDepth = Math.max(0, protectedDemoSeedWriteDepth - 1);
+  }
+}
+
+const isProtectedDemoSeedWriteActive = (): boolean =>
+  protectedDemoSeedWriteDepth > 0 && isRoleRoomDemoSeedAllowed();
+
 const canCurrentSessionMutateProtectedDemo = (): boolean => {
-  const session = authSessionService.getSessionSync();
-  const normalizedRole = String(session.adminUser?.role || '').trim().toLowerCase();
-  return normalizedRole === 'admin' || normalizedRole === 'owner';
+  return isProtectedDemoSeedWriteActive();
 };
 
-const emitProtectedDemoWriteBlocked = (projectId: string, mutation: 'save' | 'delete'): void => {
+const isProjectValidationError = (error: unknown): boolean =>
+  error instanceof RoleRoomProjectValidationError
+  || (error instanceof Error && error.name === PROJECT_VALIDATION_ERROR_NAME);
+
+const normalizeRequiredProjectId = (projectId: string | null | undefined, operation: string): string => {
+  const normalized = String(projectId || '').trim();
+  if (!normalized) {
+    throw new RoleRoomProjectValidationError(`Mangler prosjekt-ID for ${operation}.`);
+  }
+  const lowered = normalized.toLowerCase();
+  const invalidIds = new Set(['default', 'default-project', 'demo', 'undefined', 'null']);
+  if (invalidIds.has(lowered) || normalized.includes('/') || normalized.includes('\\') || normalized.includes('..')) {
+    throw new RoleRoomProjectValidationError(`Ugyldig prosjekt-ID for ${operation}: ${normalized}`);
+  }
+  return normalized;
+};
+
+const assertDemoProjectCanMutate = (
+  project: CastingProject | string | null | undefined,
+  mutation: 'save' | 'delete',
+  options?: ProjectMutationOptions,
+): void => {
+  if (!isProtectedDemoProject(project)) {
+    return;
+  }
+  if (isProtectedDemoSeedWriteActive()) {
+    return;
+  }
+  const projectId = typeof project === 'string' ? project : project?.id;
+  console.warn('[RoleRoom] Blocked protected demo mutation', {
+    projectId,
+    mutation,
+    userId: getCurrentUserId(),
+  });
+  throw new RoleRoomProjectValidationError('Demo-ID er låst i dette miljøet. Lag en kopi før du endrer prosjektdata.');
+};
+
+const readPayloadProjectId = (payload: unknown): string | undefined => {
+  const record = asRecord(payload);
+  if (!record) {
+    return undefined;
+  }
+  return readFirstNonEmptyString(record.projectId, record.project_id);
+};
+
+const appendCrossProjectAudit = (entry: {
+  operation: string;
+  routeProjectId: string;
+  payloadProjectId: string;
+}): void => {
+  console.warn('[RoleRoom] Blocked cross-project payload', entry);
   if (typeof window === 'undefined') {
     return;
   }
-  window.dispatchEvent(new CustomEvent(PROTECTED_DEMO_WRITE_BLOCKED_EVENT, {
-    detail: {
-      projectId,
-      mutation,
-      message: 'Dette er en låst demo-mal. Lag en kopi for å jobbe videre.',
-    },
-  }));
+  try {
+    const raw = window.localStorage.getItem(CROSS_PROJECT_AUDIT_STORAGE_KEY);
+    const current = raw ? JSON.parse(raw) : [];
+    const next = [
+      {
+        ...entry,
+        at: toIsoNow(),
+        userId: getCurrentUserId(),
+      },
+      ...(Array.isArray(current) ? current : []),
+    ].slice(0, 50);
+    window.localStorage.setItem(CROSS_PROJECT_AUDIT_STORAGE_KEY, JSON.stringify(next));
+  } catch (error) {
+    console.warn('[RoleRoom] Failed to write cross-project audit entry:', error);
+  }
+};
+
+const assertPayloadProjectScope = (projectId: string, payload: unknown, operation: string): void => {
+  const normalizedProjectId = normalizeRequiredProjectId(projectId, operation);
+  const payloadProjectId = readPayloadProjectId(payload);
+  if (!payloadProjectId || payloadProjectId === normalizedProjectId) {
+    return;
+  }
+  appendCrossProjectAudit({
+    operation,
+    routeProjectId: normalizedProjectId,
+    payloadProjectId,
+  });
+  throw new RoleRoomProjectValidationError(
+    `Payload for ${operation} tilhører et annet prosjekt (${payloadProjectId}) enn aktivt prosjekt (${normalizedProjectId}).`,
+  );
+};
+
+const assertProjectNestedPayloadScope = (project: CastingProject, operation: string): void => {
+  const projectId = normalizeRequiredProjectId(project.id, operation);
+  const scopedCollections: Array<keyof CastingProject> = [
+    'roles',
+    'candidates',
+    'schedules',
+    'crew',
+    'locations',
+    'props',
+    'productionDays',
+    'shotLists',
+    'sceneBreakdowns',
+    'userRoles',
+  ];
+  for (const key of scopedCollections) {
+    const value = project[key];
+    if (!Array.isArray(value)) {
+      continue;
+    }
+    value.forEach((entry, index) => {
+      assertPayloadProjectScope(projectId, entry, `${operation}.${String(key)}[${index}]`);
+    });
+  }
 };
 
 const deepCloneProject = <T>(value: T): T => {
@@ -213,6 +385,471 @@ const deepCloneProject = <T>(value: T): T => {
   }
   return JSON.parse(JSON.stringify(value)) as T;
 };
+
+const getProjectSyncMetaStorageKey = (projectId: string): string => `${PROJECT_SYNC_META_NAMESPACE}-${projectId}`;
+const getProjectSnapshotStorageKey = (projectId: string): string => `${PROJECT_SNAPSHOTS_NAMESPACE}-${projectId}`;
+
+const getSyncUserId = (): string => getCurrentUserId();
+
+const toIsoNow = (): string => new Date().toISOString();
+
+const getCurrentProjectActor = (): { id?: string; email?: string; label?: string } => {
+  const session = authSessionService.getSessionSync();
+  const sessionRecord = session as Record<string, unknown>;
+  const adminUser = session.adminUser;
+  const adminId = adminUser?.id !== undefined && adminUser?.id !== null ? String(adminUser.id) : undefined;
+  const id = readFirstNonEmptyString(
+    session.currentUserId,
+    adminId,
+    sessionRecord.userId,
+    sessionRecord.id,
+    getCurrentUserId(),
+  );
+  const email = readFirstNonEmptyString(
+    adminUser?.email,
+    sessionRecord.email,
+    sessionRecord.userEmail,
+  );
+  const label = readFirstNonEmptyString(
+    adminUser?.display_name,
+    adminUser?.name,
+    adminUser?.email,
+    sessionRecord.displayName,
+    sessionRecord.name,
+    email,
+    id,
+  );
+
+  return { id, email, label };
+};
+
+const applyProjectOwnershipDefaults = (
+  project: CastingProject,
+  options?: { forceNewActor?: boolean; createdAt?: string | null },
+): CastingProject => {
+  const actor = getCurrentProjectActor();
+  const projectRecord = project as Record<string, unknown>;
+  const ownerId = options?.forceNewActor
+    ? actor.id
+    : readFirstNonEmptyString(project.ownerId, projectRecord.owner_id, project.createdBy, projectRecord.created_by, actor.id);
+  const ownerEmail = options?.forceNewActor
+    ? actor.email
+    : readFirstNonEmptyString(project.ownerEmail, projectRecord.owner_email, project.createdByEmail, actor.email);
+  const ownerLabel = options?.forceNewActor
+    ? actor.label
+    : readFirstNonEmptyString(project.ownerLabel, projectRecord.owner_label, project.createdByLabel, projectRecord.created_by_label, actor.label);
+  const createdBy = options?.forceNewActor
+    ? actor.id
+    : readFirstNonEmptyString(project.createdBy, projectRecord.created_by, ownerId, actor.id);
+  const createdByEmail = options?.forceNewActor
+    ? actor.email
+    : readFirstNonEmptyString(project.createdByEmail, projectRecord.created_by_email, ownerEmail, actor.email);
+  const createdByLabel = options?.forceNewActor
+    ? actor.label
+    : readFirstNonEmptyString(project.createdByLabel, projectRecord.created_by_label, ownerLabel, actor.label);
+
+  return {
+    ...project,
+    ownerId,
+    ownerEmail,
+    ownerLabel,
+    createdBy,
+    createdByEmail,
+    createdByLabel,
+    createdAt: project.createdAt ?? options?.createdAt ?? toIsoNow(),
+  };
+};
+
+const copyClientDataKeys = [
+  'clientName',
+  'clientEmail',
+  'clientPhone',
+  'clientCompanyName',
+  'clientOrganizationNumber',
+  'clientCompanyAddress',
+  'clientContactName',
+  'clientContactEmail',
+  'clientPortal',
+  'clientPortalIntent',
+  'clientInvite',
+  'clientInvites',
+  'clientAccess',
+  'clientBrief',
+  'clientIntake',
+  'clientMaterials',
+  'clientReviewers',
+];
+
+const copyReviewHistoryKeys = [
+  'producerWorkflowMeta',
+  'reviewHistory',
+  'reviews',
+  'clientReviews',
+  'approvalHistory',
+  'approvalRequests',
+  'reviewRequests',
+  'reviewDecisions',
+  'deliverableReviews',
+];
+
+const copyEconomyKeys = [
+  'budget',
+  'currency',
+  'economy',
+  'billing',
+  'invoice',
+  'invoices',
+  'quote',
+  'quotes',
+  'payment',
+  'payments',
+  'commercialTerms',
+  'collaborationTerms',
+  'expenses',
+  'receipts',
+];
+
+const copySecretKeys = [
+  'accountAccess',
+  'accessVault',
+  'clientAccessVault',
+  'sharedCredentials',
+  'credentials',
+  'secrets',
+  'secretRecords',
+  'apiKeys',
+  'oauthTokens',
+  'recoveryCodes',
+  'backupCodes',
+];
+
+const sensitiveCopyKeyPattern = /(secret|password|credential|token|api[_-]?key|recovery[_-]?code|backup[_-]?code|private[_-]?key|vault)/i;
+
+const deleteRecordKeys = (record: Record<string, unknown>, keys: string[]): void => {
+  keys.forEach((key) => {
+    delete record[key];
+  });
+};
+
+const stripSensitiveCopyFields = (value: unknown): void => {
+  if (Array.isArray(value)) {
+    value.forEach(stripSensitiveCopyFields);
+    return;
+  }
+  const record = asRecord(value);
+  if (!record) {
+    return;
+  }
+
+  Object.keys(record).forEach((key) => {
+    if (copySecretKeys.includes(key) || sensitiveCopyKeyPattern.test(key)) {
+      delete record[key];
+      return;
+    }
+    stripSensitiveCopyFields(record[key]);
+  });
+};
+
+const sanitizeProducerPlanningForCopy = (
+  planning: CastingProject['producerPlanning'],
+  options?: RoleRoomProjectCopyOptions,
+): CastingProject['producerPlanning'] => {
+  if (!planning) {
+    return planning;
+  }
+
+  const nextPlanning = deepCloneProject(planning) as CastingProject['producerPlanning'] & Record<string, unknown>;
+  stripSensitiveCopyFields(nextPlanning);
+  if (options?.includeEconomy !== true) {
+    deleteRecordKeys(nextPlanning, copyEconomyKeys);
+  }
+  if (options?.includeReviewHistory !== true) {
+    deleteRecordKeys(nextPlanning, copyReviewHistoryKeys);
+  }
+  if (options?.includeClientData !== true) {
+    deleteRecordKeys(nextPlanning, copyClientDataKeys);
+  }
+  return nextPlanning as CastingProject['producerPlanning'];
+};
+
+const sanitizeProjectSnapshotForCopy = (
+  project: CastingProject,
+  options?: RoleRoomProjectCopyOptions,
+): CastingProject => {
+  const nextProject = deepCloneProject(project);
+  const nextRecord = nextProject as Record<string, unknown>;
+
+  deleteRecordKeys(nextRecord, [
+    'archivedAt',
+    'archivedBy',
+    'archivedByLabel',
+    'previousStatus',
+    'templatePublishedAt',
+  ]);
+
+  if (options?.includeClientData !== true) {
+    deleteRecordKeys(nextRecord, copyClientDataKeys);
+  }
+
+  if (options?.includeReviewHistory !== true) {
+    deleteRecordKeys(nextRecord, copyReviewHistoryKeys);
+    nextProject.producerWorkflowStatus = undefined;
+  }
+
+  if (options?.includeEconomy !== true) {
+    deleteRecordKeys(nextRecord, copyEconomyKeys);
+  }
+
+  if (options?.includeTeam === false) {
+    nextProject.crew = [];
+    nextProject.schedules = [];
+    nextProject.userRoles = [];
+  }
+
+  if (options?.includeProductionData === false) {
+    nextProject.productionDays = [];
+    nextProject.shotLists = [];
+    nextProject.sceneBreakdowns = [];
+  }
+
+  nextProject.producerPlanning = sanitizeProducerPlanningForCopy(nextProject.producerPlanning, options);
+  stripSensitiveCopyFields(nextProject);
+  nextProject.userRoles = [];
+
+  return nextProject;
+};
+
+const isArchivedProjectRecord = (project: CastingProject | null | undefined): boolean => {
+  if (!project) {
+    return false;
+  }
+  return String(project.status || '').trim().toLowerCase() === 'archived' || Boolean(project.archivedAt);
+};
+
+const buildProjectSnapshotLabel = (project: CastingProject, source: RoleRoomProjectSnapshot['source']): string => {
+  const sourceLabel = source === 'server_resync'
+    ? 'Hentet fra server'
+    : source === 'restored'
+      ? 'Gjenopprettet'
+      : source === 'queued_change'
+        ? 'Lagret lokalt'
+        : 'Lokal lagring';
+  const statusLabel = readFirstNonEmptyString(
+    project.producerWorkflowStatus,
+    project.status,
+  );
+  const deliverableLabel = readFirstNonEmptyString(project.producerPlanning?.deliveryWorkflow?.presetId);
+  return [
+    sourceLabel,
+    statusLabel ? `status ${statusLabel}` : '',
+    deliverableLabel ? `levering ${deliverableLabel}` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+};
+
+const buildProjectSignature = (project: CastingProject): string => JSON.stringify({
+  id: project.id,
+  updatedAt: project.updatedAt ?? null,
+  producerWorkflowStatus: project.producerWorkflowStatus ?? null,
+  producerWorkflowMeta: project.producerWorkflowMeta ?? null,
+  producerPlanning: project.producerPlanning ?? null,
+  roles: project.roles ?? [],
+  candidates: project.candidates ?? [],
+  crew: project.crew ?? [],
+  schedules: project.schedules ?? [],
+  locations: project.locations ?? [],
+  props: project.props ?? [],
+  productionDays: project.productionDays ?? [],
+  shotLists: project.shotLists ?? [],
+  sceneBreakdowns: project.sceneBreakdowns ?? [],
+});
+
+async function readProjectSyncMeta(projectId: string): Promise<RoleRoomProjectSyncMeta> {
+  projectId = normalizeRequiredProjectId(projectId, 'readProjectSyncMeta');
+  const userId = getSyncUserId();
+  const stored = await settingsService.getSetting<RoleRoomProjectSyncMeta>(getProjectSyncMetaStorageKey(projectId), { userId });
+  return {
+    projectId,
+    queuedChangeCount: typeof stored?.queuedChangeCount === 'number' ? stored.queuedChangeCount : 0,
+    lastLocalSaveAt: stored?.lastLocalSaveAt,
+    lastSyncedAt: stored?.lastSyncedAt,
+    lastResyncedAt: stored?.lastResyncedAt,
+    lastQueuedAt: stored?.lastQueuedAt,
+    lastRestoreAt: stored?.lastRestoreAt,
+    lastError: stored?.lastError,
+  };
+}
+
+async function writeProjectSyncMeta(projectId: string, next: Partial<RoleRoomProjectSyncMeta>): Promise<RoleRoomProjectSyncMeta> {
+  projectId = normalizeRequiredProjectId(projectId, 'writeProjectSyncMeta');
+  const userId = getSyncUserId();
+  const current = await readProjectSyncMeta(projectId);
+  const merged: RoleRoomProjectSyncMeta = {
+    ...current,
+    ...next,
+    projectId,
+    queuedChangeCount: typeof next.queuedChangeCount === 'number'
+      ? next.queuedChangeCount
+      : current.queuedChangeCount,
+  };
+  await settingsService.setSetting(getProjectSyncMetaStorageKey(projectId), merged, { userId });
+  return merged;
+}
+
+async function readQueuedProjectChanges(): Promise<RoleRoomQueuedProjectChange[]> {
+  const userId = getSyncUserId();
+  const stored = await settingsService.getSetting<RoleRoomQueuedProjectChange[]>(PROJECT_SYNC_QUEUE_NAMESPACE, { userId });
+  if (!Array.isArray(stored)) {
+    return [];
+  }
+  return stored
+    .filter((entry) => entry && typeof entry.projectId === 'string')
+    .sort((left, right) => String(right.queuedAt ?? '').localeCompare(String(left.queuedAt ?? ''), 'nb-NO'));
+}
+
+async function writeQueuedProjectChanges(entries: RoleRoomQueuedProjectChange[]): Promise<void> {
+  const userId = getSyncUserId();
+  await settingsService.setSetting(PROJECT_SYNC_QUEUE_NAMESPACE, entries, { userId });
+}
+
+async function queueProjectChange(
+  project: CastingProject,
+  reason: RoleRoomQueuedProjectChange['reason'],
+  errorMessage?: string,
+): Promise<void> {
+  project = { ...project, id: normalizeRequiredProjectId(project.id, 'queueProjectChange') };
+  const current = await readQueuedProjectChanges();
+  const nextEntry: RoleRoomQueuedProjectChange = {
+    id: `queued-project-change-${project.id}`,
+    projectId: project.id,
+    queuedAt: toIsoNow(),
+    reason,
+    errorMessage,
+    project: deepCloneProject(project),
+  };
+  const filtered = current.filter((entry) => entry.projectId !== project.id);
+  const nextQueue = [nextEntry, ...filtered];
+  await writeQueuedProjectChanges(nextQueue);
+  await writeProjectSyncMeta(project.id, {
+    queuedChangeCount: nextQueue.filter((entry) => entry.projectId === project.id).length,
+    lastQueuedAt: nextEntry.queuedAt,
+    lastError: errorMessage,
+  });
+}
+
+async function clearQueuedProjectChange(projectId: string): Promise<void> {
+  projectId = normalizeRequiredProjectId(projectId, 'clearQueuedProjectChange');
+  const current = await readQueuedProjectChanges();
+  const nextQueue = current.filter((entry) => entry.projectId !== projectId);
+  if (nextQueue.length !== current.length) {
+    await writeQueuedProjectChanges(nextQueue);
+  }
+  await writeProjectSyncMeta(projectId, {
+    queuedChangeCount: 0,
+    lastError: undefined,
+  });
+}
+
+async function readProjectSnapshots(projectId: string): Promise<RoleRoomProjectSnapshot[]> {
+  projectId = normalizeRequiredProjectId(projectId, 'readProjectSnapshots');
+  const userId = getSyncUserId();
+  const stored = await settingsService.getSetting<RoleRoomProjectSnapshot[]>(getProjectSnapshotStorageKey(projectId), { userId });
+  if (!Array.isArray(stored)) {
+    return [];
+  }
+  return stored.filter((entry) => entry && typeof entry.projectId === 'string');
+}
+
+async function writeProjectSnapshots(projectId: string, snapshots: RoleRoomProjectSnapshot[]): Promise<void> {
+  projectId = normalizeRequiredProjectId(projectId, 'writeProjectSnapshots');
+  const userId = getSyncUserId();
+  await settingsService.setSetting(getProjectSnapshotStorageKey(projectId), snapshots, { userId });
+}
+
+async function appendProjectSnapshot(
+  project: CastingProject,
+  source: RoleRoomProjectSnapshot['source'],
+): Promise<void> {
+  project = { ...project, id: normalizeRequiredProjectId(project.id, 'appendProjectSnapshot') };
+  const current = await readProjectSnapshots(project.id);
+  const nextProject = deepCloneProject(project);
+  const nextSignature = buildProjectSignature(nextProject);
+  const currentSignature = current[0] ? buildProjectSignature(current[0].project) : null;
+  if (currentSignature === nextSignature) {
+    return;
+  }
+  const snapshot: RoleRoomProjectSnapshot = {
+    id: globalThis.crypto?.randomUUID?.() ?? `project-snapshot-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    projectId: project.id,
+    createdAt: toIsoNow(),
+    source,
+    label: buildProjectSnapshotLabel(project, source),
+    project: nextProject,
+  };
+  await writeProjectSnapshots(project.id, [snapshot, ...current].slice(0, PROJECT_SNAPSHOT_LIMIT));
+}
+
+async function saveProjectToRemote(project: CastingProject, options?: ProjectMutationOptions): Promise<void> {
+  project = { ...project, id: normalizeRequiredProjectId(project.id, 'saveProjectToRemote') };
+  assertDemoProjectCanMutate(project, 'save', options);
+  assertProjectNestedPayloadScope(project, 'saveProjectToRemote');
+  const response = await fetch('/api/casting/projects', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(project),
+  });
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '');
+    throw new Error(`Failed to save project: ${response.status} ${detail || response.statusText}`.trim());
+  }
+
+  const persistedProject = await fetchProjectFromRemote(project.id);
+  if (!persistedProject?.id) {
+    throw new Error('Serveren bekreftet ikke prosjektlagringen etter save.');
+  }
+  if (persistedProject.id !== project.id) {
+    appendCrossProjectAudit({
+      operation: 'saveProjectToRemote.confirm',
+      routeProjectId: project.id,
+      payloadProjectId: persistedProject.id,
+    });
+    throw new RoleRoomProjectValidationError('Serveren bekreftet feil prosjekt-ID etter save.');
+  }
+}
+
+async function fetchProjectFromRemote(projectId: string): Promise<CastingProject | null> {
+  projectId = normalizeRequiredProjectId(projectId, 'fetchProjectFromRemote');
+  const response = await fetch(`/api/casting/projects/${projectId}?fresh=${Date.now()}`, {
+    cache: 'no-store',
+  });
+  if (!response.ok) {
+    if (response.status === 404) {
+      return null;
+    }
+    throw new Error(`Failed to fetch project: ${response.statusText}`);
+  }
+  const payload = await response.json();
+  const normalized = payload
+    ? normalizeProject(payload as CastingProject)
+    : { project: null as CastingProject | null, changed: false };
+  return normalized.project;
+}
+
+let syncListenersRegistered = false;
+
+function ensureSyncListeners(): void {
+  if (syncListenersRegistered || typeof window === 'undefined') {
+    return;
+  }
+  syncListenersRegistered = true;
+  window.addEventListener('online', () => {
+    void castingService.syncQueuedProjectChanges();
+  });
+}
 
 const buildDerivedProjectId = (sourceProjectId: string, prefix: 'project' | 'template'): string => {
   const normalizedSource = String(sourceProjectId || prefix)
@@ -338,6 +975,7 @@ const createProjectSnapshot = (
     sourceTemplateId?: string | null;
     sourceTemplateVersion?: number | null;
     createdAt?: string | null;
+    copyOptions?: RoleRoomProjectCopyOptions;
   },
 ): CastingProject => {
   const now = new Date().toISOString();
@@ -418,7 +1056,10 @@ const createProjectSnapshot = (
     },
   ) as ShotList[];
 
-  return nextProject;
+  return applyProjectOwnershipDefaults(
+    sanitizeProjectSnapshotForCopy(nextProject, options.copyOptions),
+    { forceNewActor: true, createdAt: options.createdAt ?? now },
+  );
 };
 
 const SCENE_FALLBACK_PREFIX = 'Scene';
@@ -975,11 +1616,10 @@ async function saveProjectToDb(project: CastingProject, options?: ProjectMutatio
   if (normalizedProject.changed) {
     project = normalizedProject.project;
   }
+  project = { ...project, id: normalizeRequiredProjectId(project.id, 'saveProject') };
 
-  if (isProtectedDemoProject(project) && !options?.allowProtectedDemoWrite && !canCurrentSessionMutateProtectedDemo()) {
-    emitProtectedDemoWriteBlocked(project.id, 'save');
-    return;
-  }
+  assertDemoProjectCanMutate(project, 'save', options);
+  assertProjectNestedPayloadScope(project, 'saveProject');
 
   invalidateProjectFetchCache(project.id);
 
@@ -993,6 +1633,10 @@ async function saveProjectToDb(project: CastingProject, options?: ProjectMutatio
     projects.push(project);
   }
   saveProjectsToStorage(projects);
+  await appendProjectSnapshot(project, 'local_save');
+  await writeProjectSyncMeta(project.id, {
+    lastLocalSaveAt: project.updatedAt ?? toIsoNow(),
+  });
 
   if (shouldUseRoleRoomLocalFallback()) {
     return;
@@ -1000,20 +1644,21 @@ async function saveProjectToDb(project: CastingProject, options?: ProjectMutatio
   
   // Try to sync with database
   try {
-    const response = await fetch('/api/casting/projects', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(project),
+    await saveProjectToRemote(project, options);
+    await clearQueuedProjectChange(project.id);
+    await writeProjectSyncMeta(project.id, {
+      lastSyncedAt: toIsoNow(),
+      lastError: undefined,
+      queuedChangeCount: 0,
     });
-    
-    if (!response.ok) {
-      throw new Error(`Failed to save project: ${response.statusText}`);
-    }
   } catch (error) {
     console.warn('Failed to save project to database, using local storage:', error);
-    // Not throwing - user can continue working offline
+    const message = error instanceof Error ? error.message : 'Ukjent synkfeil';
+    const reason: RoleRoomQueuedProjectChange['reason'] = typeof navigator !== 'undefined' && navigator.onLine === false
+      ? 'offline'
+      : 'save_failed';
+    await queueProjectChange(project, reason, message);
+    await appendProjectSnapshot(project, 'queued_change');
   }
 }
 
@@ -1021,10 +1666,8 @@ async function saveProjectToDb(project: CastingProject, options?: ProjectMutatio
  * Delete project from database with fallback to storage
  */
 async function deleteProjectFromDb(id: string, options?: ProjectMutationOptions): Promise<void> {
-  if (isProtectedDemoProject(id) && !options?.allowProtectedDemoWrite && !canCurrentSessionMutateProtectedDemo()) {
-    emitProtectedDemoWriteBlocked(id, 'delete');
-    return;
-  }
+  id = normalizeRequiredProjectId(id, 'deleteProject');
+  assertDemoProjectCanMutate(id, 'delete', options);
 
   invalidateProjectFetchCache(id);
 
@@ -1073,6 +1716,10 @@ export const castingService = {
     return isTemplateProject(project);
   },
 
+  isArchivedProject(project: CastingProject | null | undefined): boolean {
+    return isArchivedProjectRecord(project);
+  },
+
   getProjectTemplateAudience(project: CastingProject | null | undefined): ProjectTemplateAudience | null {
     return normalizeTemplateAudience(project);
   },
@@ -1103,6 +1750,7 @@ export const castingService = {
    * Get project by ID from database or storage
    */
   async getProject(id: string): Promise<CastingProject | null> {
+    id = normalizeRequiredProjectId(id, 'getProject');
     // Check local storage first
     const normalizedLocal = normalizeProjects(getProjectsFromStorage());
     const localProjects = normalizedLocal.projects;
@@ -1190,12 +1838,28 @@ export const castingService = {
    * Save project (create or update) to database or storage
    */
   async saveProject(project: CastingProject, options?: ProjectMutationOptions): Promise<void> {
+    const existingProject = getProjectsFromStorage().find((entry) => entry.id === project.id);
     // Update timestamp
-    project = { ...project, updatedAt: new Date().toISOString() };
+    project = {
+      ownerId: existingProject?.ownerId,
+      ownerEmail: existingProject?.ownerEmail,
+      ownerLabel: existingProject?.ownerLabel,
+      createdBy: existingProject?.createdBy,
+      createdByEmail: existingProject?.createdByEmail,
+      createdByLabel: existingProject?.createdByLabel,
+      createdAt: existingProject?.createdAt,
+      ...project,
+      id: normalizeRequiredProjectId(project.id, 'saveProject'),
+      updatedAt: new Date().toISOString(),
+    };
+    project = applyProjectOwnershipDefaults(project, { createdAt: existingProject?.createdAt });
     
     try {
       await saveProjectToDb(project, options);
     } catch (error) {
+      if (isProjectValidationError(error)) {
+        throw error;
+      }
       console.warn('Database save failed, using local storage:', error);
       // Still save to storage as fallback
       const projects = getProjectsFromStorage();
@@ -1206,16 +1870,150 @@ export const castingService = {
         projects.push(project);
       }
       saveProjectsToStorage(projects);
+      const message = error instanceof Error ? error.message : 'Ukjent synkfeil';
+      const reason: RoleRoomQueuedProjectChange['reason'] = typeof navigator !== 'undefined' && navigator.onLine === false
+        ? 'offline'
+        : 'save_failed';
+      await queueProjectChange(project, reason, message).catch((queueError) => {
+        console.warn('Failed to queue project after save fallback:', queueError);
+      });
     }
+  },
+
+  async getProjectSyncMeta(projectId: string): Promise<RoleRoomProjectSyncMeta> {
+    projectId = normalizeRequiredProjectId(projectId, 'getProjectSyncMeta');
+    return readProjectSyncMeta(projectId);
+  },
+
+  async getProjectSnapshots(projectId: string): Promise<RoleRoomProjectSnapshot[]> {
+    projectId = normalizeRequiredProjectId(projectId, 'getProjectSnapshots');
+    return readProjectSnapshots(projectId);
+  },
+
+  async getQueuedProjectChanges(projectId?: string): Promise<RoleRoomQueuedProjectChange[]> {
+    const items = await readQueuedProjectChanges();
+    if (!projectId) {
+      return items;
+    }
+    projectId = normalizeRequiredProjectId(projectId, 'getQueuedProjectChanges');
+    return items.filter((entry) => entry.projectId === projectId);
+  },
+
+  async syncQueuedProjectChanges(projectId?: string): Promise<{
+    synced: string[];
+    failed: Array<{ projectId: string; error: string }>;
+  }> {
+    if (projectId) {
+      projectId = normalizeRequiredProjectId(projectId, 'syncQueuedProjectChanges');
+    }
+    const queue = await readQueuedProjectChanges();
+    const targetEntries = projectId
+      ? queue.filter((entry) => entry.projectId === projectId)
+      : queue;
+
+    if (targetEntries.length === 0 || shouldUseRoleRoomLocalFallback()) {
+      return { synced: [], failed: [] };
+    }
+
+    const synced: string[] = [];
+    const failed: Array<{ projectId: string; error: string }> = [];
+    let nextQueue = [...queue];
+
+    for (const entry of targetEntries) {
+      try {
+        await saveProjectToRemote(entry.project);
+        synced.push(entry.projectId);
+        nextQueue = nextQueue.filter((queuedEntry) => queuedEntry.projectId !== entry.projectId);
+        await writeProjectSyncMeta(entry.projectId, {
+          lastSyncedAt: toIsoNow(),
+          lastError: undefined,
+          queuedChangeCount: 0,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Kunne ikke synkronisere lokale endringer.';
+        failed.push({ projectId: entry.projectId, error: message });
+        await writeProjectSyncMeta(entry.projectId, {
+          lastError: message,
+          lastQueuedAt: entry.queuedAt,
+          queuedChangeCount: 1,
+        });
+      }
+    }
+
+    if (nextQueue.length !== queue.length) {
+      await writeQueuedProjectChanges(nextQueue);
+    }
+
+    return { synced, failed };
+  },
+
+  async restoreProjectSnapshot(projectId: string, snapshotId: string): Promise<CastingProject> {
+    projectId = normalizeRequiredProjectId(projectId, 'restoreProjectSnapshot');
+    const snapshots = await readProjectSnapshots(projectId);
+    const snapshot = snapshots.find((entry) => entry.id === snapshotId);
+    if (!snapshot) {
+      throw new Error('Fant ikke endringspunktet du prøver å gjenopprette.');
+    }
+    const restoredProject: CastingProject = {
+      ...deepCloneProject(snapshot.project),
+      updatedAt: toIsoNow(),
+    };
+    await saveProjectToDb(restoredProject);
+    await appendProjectSnapshot(restoredProject, 'restored');
+    await writeProjectSyncMeta(projectId, {
+      lastRestoreAt: toIsoNow(),
+    });
+    return restoredProject;
+  },
+
+  async resyncProjectFromServer(projectId: string): Promise<CastingProject | null> {
+    projectId = normalizeRequiredProjectId(projectId, 'resyncProjectFromServer');
+    const queued = await readQueuedProjectChanges();
+    if (queued.some((entry) => entry.projectId === projectId)) {
+      throw new Error('Dette prosjektet har lokale endringer som ikke er synkronisert ennå. Synk dem først eller gjenopprett et lokalt endringspunkt.');
+    }
+
+    if (shouldUseRoleRoomLocalFallback()) {
+      return this.getProject(projectId);
+    }
+
+    const localProjects = getProjectsFromStorage();
+    const localProject = localProjects.find((entry) => entry.id === projectId);
+    const remoteProject = await fetchProjectFromRemote(projectId);
+    const mergedRemoteProject = remoteProject && localProject
+      ? mergeProjectTemplateMetadata(mergeProjectUserRoles(remoteProject, localProject).project, localProject)
+      : remoteProject;
+
+    if (!mergedRemoteProject) {
+      return null;
+    }
+
+    const nextProjects = localProjects
+      .filter((entry) => entry.id !== mergedRemoteProject.id)
+      .concat(mergedRemoteProject);
+    saveProjectsToStorage(nextProjects);
+    projectFetchCache.set(projectId, { project: mergedRemoteProject, cachedAt: Date.now() });
+    await appendProjectSnapshot(mergedRemoteProject, 'server_resync');
+    await writeProjectSyncMeta(projectId, {
+      lastResyncedAt: toIsoNow(),
+      lastSyncedAt: toIsoNow(),
+      lastError: undefined,
+      queuedChangeCount: 0,
+    });
+    return mergedRemoteProject;
   },
 
   /**
    * Delete project from database or storage
    */
   async deleteProject(id: string, options?: ProjectMutationOptions): Promise<void> {
+    id = normalizeRequiredProjectId(id, 'deleteProject');
     try {
       await deleteProjectFromDb(id, options);
     } catch (error) {
+      if (isProjectValidationError(error)) {
+        throw error;
+      }
       console.warn('Database delete failed, using local storage:', error);
       // Still delete from storage as fallback
       let projects = getProjectsFromStorage();
@@ -1224,10 +2022,66 @@ export const castingService = {
     }
   },
 
+  async archiveProject(id: string): Promise<CastingProject> {
+    id = normalizeRequiredProjectId(id, 'archiveProject');
+    assertDemoProjectCanMutate(id, 'save');
+    const project = await this.getProject(id);
+    if (!project) {
+      throw new Error('Fant ikke prosjektet som skal arkiveres.');
+    }
+    if (isTemplateProject(project)) {
+      throw new RoleRoomProjectValidationError('Maler kan ikke arkiveres som vanlige prosjekter.');
+    }
+
+    const actor = getCurrentProjectActor();
+    const archivedProject: CastingProject = {
+      ...project,
+      status: 'archived',
+      previousStatus: String(project.status || '').trim().toLowerCase() === 'archived'
+        ? (project.previousStatus || 'active')
+        : (project.status || 'active'),
+      archivedAt: toIsoNow(),
+      archivedBy: actor.id,
+      archivedByLabel: actor.label,
+      updatedAt: toIsoNow(),
+    };
+
+    await this.saveProject(archivedProject);
+    return archivedProject;
+  },
+
+  async restoreArchivedProject(id: string): Promise<CastingProject> {
+    id = normalizeRequiredProjectId(id, 'restoreArchivedProject');
+    assertDemoProjectCanMutate(id, 'save');
+    const project = await this.getProject(id);
+    if (!project) {
+      throw new Error('Fant ikke prosjektet som skal gjenopprettes.');
+    }
+    if (isTemplateProject(project)) {
+      throw new RoleRoomProjectValidationError('Maler kan ikke gjenopprettes som vanlige prosjekter.');
+    }
+
+    const restoredProject = {
+      ...project,
+      status: project.previousStatus && project.previousStatus !== 'archived'
+        ? project.previousStatus
+        : 'active',
+      previousStatus: null,
+      archivedAt: null,
+      archivedBy: null,
+      archivedByLabel: null,
+      updatedAt: toIsoNow(),
+    } as CastingProject;
+
+    await this.saveProject(restoredProject);
+    return restoredProject;
+  },
+
   /**
    * Get roles for a project
    */
   async getRoles(projectId: string): Promise<Role[]> {
+    projectId = normalizeRequiredProjectId(projectId, 'getRoles');
     const project = await this.getProject(projectId);
     return project?.roles || [];
   },
@@ -1236,6 +2090,9 @@ export const castingService = {
    * Save role to project
    */
   async saveRole(projectId: string, role: Role): Promise<void> {
+    projectId = normalizeRequiredProjectId(projectId, 'saveRole');
+    assertDemoProjectCanMutate(projectId, 'save');
+    assertPayloadProjectScope(projectId, role, 'saveRole');
     const project = await this.getProject(projectId);
     if (!project) {
       throw new Error(`Project ${projectId} not found`);
@@ -1255,6 +2112,8 @@ export const castingService = {
    * Delete role from project
    */
   async deleteRole(projectId: string, roleId: string): Promise<void> {
+    projectId = normalizeRequiredProjectId(projectId, 'deleteRole');
+    assertDemoProjectCanMutate(projectId, 'save');
     const project = await this.getProject(projectId);
     if (!project) {
       throw new Error(`Project ${projectId} not found`);
@@ -1268,6 +2127,7 @@ export const castingService = {
    * Get candidates for a project
    */
   async getCandidates(projectId: string): Promise<Candidate[]> {
+    projectId = normalizeRequiredProjectId(projectId, 'getCandidates');
     const project = await this.getProject(projectId);
     return project?.candidates || [];
   },
@@ -1276,6 +2136,9 @@ export const castingService = {
    * Save candidate to project
    */
   async saveCandidate(projectId: string, candidate: Candidate): Promise<void> {
+    projectId = normalizeRequiredProjectId(projectId, 'saveCandidate');
+    assertDemoProjectCanMutate(projectId, 'save');
+    assertPayloadProjectScope(projectId, candidate, 'saveCandidate');
     const project = await this.getProject(projectId);
     if (!project) {
       throw new Error(`Project ${projectId} not found`);
@@ -1295,6 +2158,8 @@ export const castingService = {
    * Delete candidate from project
    */
   async deleteCandidate(projectId: string, candidateId: string): Promise<void> {
+    projectId = normalizeRequiredProjectId(projectId, 'deleteCandidate');
+    assertDemoProjectCanMutate(projectId, 'save');
     const project = await this.getProject(projectId);
     if (!project) {
       throw new Error(`Project ${projectId} not found`);
@@ -1308,6 +2173,7 @@ export const castingService = {
    * Get schedules for a project
    */
   async getSchedules(projectId: string): Promise<Schedule[]> {
+    projectId = normalizeRequiredProjectId(projectId, 'getSchedules');
     const project = await this.getProject(projectId);
     return project?.schedules || [];
   },
@@ -1316,6 +2182,9 @@ export const castingService = {
    * Save schedule to project
    */
   async saveSchedule(projectId: string, schedule: Schedule): Promise<void> {
+    projectId = normalizeRequiredProjectId(projectId, 'saveSchedule');
+    assertDemoProjectCanMutate(projectId, 'save');
+    assertPayloadProjectScope(projectId, schedule, 'saveSchedule');
     const project = await this.getProject(projectId);
     if (!project) {
       throw new Error(`Project ${projectId} not found`);
@@ -1335,6 +2204,8 @@ export const castingService = {
    * Delete schedule from project
    */
   async deleteSchedule(projectId: string, scheduleId: string): Promise<void> {
+    projectId = normalizeRequiredProjectId(projectId, 'deleteSchedule');
+    assertDemoProjectCanMutate(projectId, 'save');
     const project = await this.getProject(projectId);
     if (!project) {
       throw new Error(`Project ${projectId} not found`);
@@ -1348,6 +2219,8 @@ export const castingService = {
    * Link role to a Role Room scene reference.
    */
   async linkRoleToScene(projectId: string, roleId: string, sceneId: string): Promise<void> {
+    projectId = normalizeRequiredProjectId(projectId, 'linkRoleToScene');
+    assertDemoProjectCanMutate(projectId, 'save');
     const project = await this.getProject(projectId);
     if (!project) {
       throw new Error(`Project ${projectId} not found`);
@@ -1369,6 +2242,7 @@ export const castingService = {
    * Get scenes for a role
    */
   async getScenesForRole(projectId: string, roleId: string): Promise<string[]> {
+    projectId = normalizeRequiredProjectId(projectId, 'getScenesForRole');
     const roles = await this.getRoles(projectId);
     const role = roles.find(r => r.id === roleId);
     return role?.sceneIds || [];
@@ -1384,6 +2258,7 @@ export const castingService = {
     const sceneMap = new Map<string, AvailableSceneOption>();
 
     if (typeof projectId === 'string' && projectId.trim().length > 0) {
+      projectId = normalizeRequiredProjectId(projectId, 'getAvailableScenes');
       const project = localProjects.find((entry) => entry.id === projectId);
       collectAvailableScenesFromProject(project, sceneMap);
       return Array.from(sceneMap.values());
@@ -1399,6 +2274,8 @@ export const castingService = {
    * Sync scene references against Role Room scene data.
    */
   async syncWithSceneComposer(projectId: string): Promise<void> {
+    projectId = normalizeRequiredProjectId(projectId, 'syncWithSceneComposer');
+    assertDemoProjectCanMutate(projectId, 'save');
     const project = await this.getProject(projectId);
     if (!project) {
       throw new Error(`Project ${projectId} not found`);
@@ -1459,6 +2336,7 @@ export const castingService = {
    * Get crew members for a project
    */
   async getCrew(projectId: string): Promise<CrewMember[]> {
+    projectId = normalizeRequiredProjectId(projectId, 'getCrew');
     const project = await this.getProject(projectId);
     // Ensure crew is always an array
     if (!project) return [];
@@ -1470,6 +2348,9 @@ export const castingService = {
    * Save crew member to project
    */
   async saveCrew(projectId: string, crew: CrewMember): Promise<void> {
+    projectId = normalizeRequiredProjectId(projectId, 'saveCrew');
+    assertDemoProjectCanMutate(projectId, 'save');
+    assertPayloadProjectScope(projectId, crew, 'saveCrew');
     const project = await this.getProject(projectId);
     if (!project) {
       throw new Error(`Project ${projectId} not found`);
@@ -1493,6 +2374,8 @@ export const castingService = {
    * Delete crew member from project
    */
   async deleteCrew(projectId: string, crewId: string): Promise<void> {
+    projectId = normalizeRequiredProjectId(projectId, 'deleteCrew');
+    assertDemoProjectCanMutate(projectId, 'save');
     const project = await this.getProject(projectId);
     if (!project) {
       throw new Error(`Project ${projectId} not found`);
@@ -1511,6 +2394,7 @@ export const castingService = {
    * Get all crew assignments for a project
    */
   async getCrewAssignments(projectId: string): Promise<CrewAssignment[]> {
+    projectId = normalizeRequiredProjectId(projectId, 'getCrewAssignments');
     try {
       const key = `crew-assignments-${projectId}`;
       const userId = getCurrentUserId();
@@ -1525,6 +2409,9 @@ export const castingService = {
    * Save (upsert) a single crew assignment
    */
   async saveCrewAssignment(projectId: string, assignment: CrewAssignment): Promise<void> {
+    projectId = normalizeRequiredProjectId(projectId, 'saveCrewAssignment');
+    assertDemoProjectCanMutate(projectId, 'save');
+    assertPayloadProjectScope(projectId, assignment, 'saveCrewAssignment');
     const key = `crew-assignments-${projectId}`;
     const userId = getCurrentUserId();
     const existing = await this.getCrewAssignments(projectId);
@@ -1541,6 +2428,8 @@ export const castingService = {
    * Delete a crew assignment for a specific member + day
    */
   async deleteCrewAssignment(projectId: string, crewMemberId: string, dayId: string): Promise<void> {
+    projectId = normalizeRequiredProjectId(projectId, 'deleteCrewAssignment');
+    assertDemoProjectCanMutate(projectId, 'save');
     const key = `crew-assignments-${projectId}`;
     const userId = getCurrentUserId();
     const existing = await this.getCrewAssignments(projectId);
@@ -1558,6 +2447,7 @@ export const castingService = {
    * Get locations for a project
    */
   async getLocations(projectId: string): Promise<Location[]> {
+    projectId = normalizeRequiredProjectId(projectId, 'getLocations');
     const project = await this.getProject(projectId);
     return project?.locations || [];
   },
@@ -1566,6 +2456,9 @@ export const castingService = {
    * Save location to project
    */
   async saveLocation(projectId: string, location: Location): Promise<void> {
+    projectId = normalizeRequiredProjectId(projectId, 'saveLocation');
+    assertDemoProjectCanMutate(projectId, 'save');
+    assertPayloadProjectScope(projectId, location, 'saveLocation');
     const project = await this.getProject(projectId);
     if (!project) {
       throw new Error(`Project ${projectId} not found`);
@@ -1589,6 +2482,8 @@ export const castingService = {
    * Delete location from project
    */
   async deleteLocation(projectId: string, locationId: string): Promise<void> {
+    projectId = normalizeRequiredProjectId(projectId, 'deleteLocation');
+    assertDemoProjectCanMutate(projectId, 'save');
     const project = await this.getProject(projectId);
     if (!project) {
       throw new Error(`Project ${projectId} not found`);
@@ -1606,6 +2501,7 @@ export const castingService = {
    * Get props for a project
    */
   async getProps(projectId: string): Promise<Prop[]> {
+    projectId = normalizeRequiredProjectId(projectId, 'getProps');
     const project = await this.getProject(projectId);
     return project?.props || [];
   },
@@ -1614,6 +2510,9 @@ export const castingService = {
    * Save prop to project
    */
   async saveProp(projectId: string, prop: Prop): Promise<void> {
+    projectId = normalizeRequiredProjectId(projectId, 'saveProp');
+    assertDemoProjectCanMutate(projectId, 'save');
+    assertPayloadProjectScope(projectId, prop, 'saveProp');
     const project = await this.getProject(projectId);
     if (!project) {
       throw new Error(`Project ${projectId} not found`);
@@ -1637,6 +2536,8 @@ export const castingService = {
    * Delete prop from project
    */
   async deleteProp(projectId: string, propId: string): Promise<void> {
+    projectId = normalizeRequiredProjectId(projectId, 'deleteProp');
+    assertDemoProjectCanMutate(projectId, 'save');
     const project = await this.getProject(projectId);
     if (!project) {
       throw new Error(`Project ${projectId} not found`);
@@ -1654,6 +2555,7 @@ export const castingService = {
    * Get production days for a project
    */
   async getProductionDays(projectId: string): Promise<ProductionDay[]> {
+    projectId = normalizeRequiredProjectId(projectId, 'getProductionDays');
     const project = await this.getProject(projectId);
     return project?.productionDays || [];
   },
@@ -1662,6 +2564,9 @@ export const castingService = {
    * Save production day to project
    */
   async saveProductionDay(projectId: string, productionDay: ProductionDay): Promise<void> {
+    projectId = normalizeRequiredProjectId(projectId, 'saveProductionDay');
+    assertDemoProjectCanMutate(projectId, 'save');
+    assertPayloadProjectScope(projectId, productionDay, 'saveProductionDay');
     const project = await this.getProject(projectId);
     if (!project) {
       throw new Error(`Project ${projectId} not found`);
@@ -1685,6 +2590,8 @@ export const castingService = {
    * Delete production day from project
    */
   async deleteProductionDay(projectId: string, productionDayId: string): Promise<void> {
+    projectId = normalizeRequiredProjectId(projectId, 'deleteProductionDay');
+    assertDemoProjectCanMutate(projectId, 'save');
     const project = await this.getProject(projectId);
     if (!project) {
       throw new Error(`Project ${projectId} not found`);
@@ -1702,6 +2609,7 @@ export const castingService = {
    * Get shot lists for a project from database
    */
   async getShotLists(projectId: string): Promise<ShotList[]> {
+    projectId = normalizeRequiredProjectId(projectId, 'getShotLists');
     const project = await this.getProject(projectId);
     const projectShotLists = Array.isArray(project?.shotLists) ? project.shotLists : [];
 
@@ -1728,6 +2636,7 @@ export const castingService = {
    * Get shot list by scene ID
    */
   async getShotListByScene(projectId: string, sceneId: string): Promise<ShotList | null> {
+    projectId = normalizeRequiredProjectId(projectId, 'getShotListByScene');
     const shotLists = await this.getShotLists(projectId);
     return shotLists.find(sl => sl.sceneId === sceneId) || null;
   },
@@ -1736,6 +2645,7 @@ export const castingService = {
    * Get scene breakdowns for a project.
    */
   async getSceneBreakdowns(projectId: string): Promise<SceneBreakdown[]> {
+    projectId = normalizeRequiredProjectId(projectId, 'getSceneBreakdowns');
     const project = await this.getProject(projectId);
     return Array.isArray(project?.sceneBreakdowns) ? project.sceneBreakdowns : [];
   },
@@ -1744,6 +2654,9 @@ export const castingService = {
    * Save shot list to project and database
    */
   async saveShotList(projectId: string, shotList: ShotList): Promise<void> {
+    projectId = normalizeRequiredProjectId(projectId, 'saveShotList');
+    assertDemoProjectCanMutate(projectId, 'save');
+    assertPayloadProjectScope(projectId, shotList, 'saveShotList');
     try {
       // Save to database API
       const response = await fetch(`/api/casting/projects/${projectId}/shot-lists`, {
@@ -1785,6 +2698,8 @@ export const castingService = {
    * Delete shot list from project and database
    */
   async deleteShotList(projectId: string, shotListId: string): Promise<void> {
+    projectId = normalizeRequiredProjectId(projectId, 'deleteShotList');
+    assertDemoProjectCanMutate(projectId, 'save');
     try {
       // Delete from database API
       const response = await fetch(`/api/casting/projects/${projectId}/shot-lists/${shotListId}`, {
@@ -1812,11 +2727,15 @@ export const castingService = {
 
   /** Alias: create a new shot list (delegates to saveShotList). */
   async addShotList(projectId: string, shotList: ShotList): Promise<void> {
+    projectId = normalizeRequiredProjectId(projectId, 'addShotList');
     return this.saveShotList(projectId, shotList);
   },
 
   /** Alias: update an existing shot list by merging a partial payload. */
   async updateShotList(projectId: string, shotListId: string, patch: Partial<ShotList>): Promise<void> {
+    projectId = normalizeRequiredProjectId(projectId, 'updateShotList');
+    assertDemoProjectCanMutate(projectId, 'save');
+    assertPayloadProjectScope(projectId, patch, 'updateShotList');
     const lists = await this.getShotLists(projectId);
     const existing = lists.find(l => l.id === shotListId);
     if (!existing) throw new Error(`Shot list ${shotListId} not found`);
@@ -1829,6 +2748,8 @@ export const castingService = {
    * If the API does not support this yet the call is a no-op (gracefully ignored).
    */
   async reorderShotLists(projectId: string, orderedIds: string[]): Promise<void> {
+    projectId = normalizeRequiredProjectId(projectId, 'reorderShotLists');
+    assertDemoProjectCanMutate(projectId, 'save');
     try {
       const response = await fetch(`/api/casting/projects/${projectId}/shot-lists/reorder`, {
         method: 'POST',
@@ -1863,6 +2784,8 @@ export const castingService = {
       metadata?: Record<string, unknown>;
     },
   ): Promise<LiveSetSession> {
+    projectId = normalizeRequiredProjectId(projectId, 'startLiveSetSession');
+    assertPayloadProjectScope(projectId, payload, 'startLiveSetSession');
     const response = await fetch(`/api/role-room/projects/${projectId}/live-set/sessions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1882,6 +2805,8 @@ export const castingService = {
     projectId: string,
     payload: LiveSetBatchIngestRequest,
   ): Promise<LiveSetBatchIngestResponse> {
+    projectId = normalizeRequiredProjectId(projectId, 'batchIngestLiveSetEvents');
+    assertPayloadProjectScope(projectId, payload, 'batchIngestLiveSetEvents');
     const response = await fetch(`/api/role-room/projects/${projectId}/live-set/events/batch`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1901,6 +2826,7 @@ export const castingService = {
   },
 
   async getLiveSetEventsSince(projectId: string, since?: string): Promise<LiveSetEventsSinceResponse> {
+    projectId = normalizeRequiredProjectId(projectId, 'getLiveSetEventsSince');
     const query = new URLSearchParams();
     if (since) query.set('since', since);
     const suffix = query.toString() ? `?${query.toString()}` : '';
@@ -1921,6 +2847,8 @@ export const castingService = {
     projectId: string,
     payload: { sessionId: string; eventIds: string[] },
   ): Promise<LiveSetAckResponse> {
+    projectId = normalizeRequiredProjectId(projectId, 'ackLiveSetEvents');
+    assertPayloadProjectScope(projectId, payload, 'ackLiveSetEvents');
     const response = await fetch(`/api/role-room/projects/${projectId}/live-set/sync/ack`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1938,6 +2866,7 @@ export const castingService = {
   },
 
   async getLiveSetHealth(projectId: string): Promise<LiveSetHealthResponse> {
+    projectId = normalizeRequiredProjectId(projectId, 'getLiveSetHealth');
     const response = await fetch(`/api/role-room/projects/${projectId}/live-set/health`);
     if (!response.ok) {
       throw new Error(`Failed to fetch live set health: ${response.status}`);
@@ -1972,6 +2901,8 @@ export const castingService = {
     };
     alerts: WeatherAlertNormalized[];
   }> {
+    projectId = normalizeRequiredProjectId(projectId, 'getLiveSetWeather');
+    assertPayloadProjectScope(projectId, payload, 'getLiveSetWeather');
     const query = new URLSearchParams();
     if (typeof payload.location === 'string' && payload.location.trim()) {
       query.set('location', payload.location.trim());
@@ -2059,6 +2990,7 @@ export const castingService = {
    * Falls back to user settings storage if API is unavailable.
    */
   async getTeamDashboardSnapshots<T extends object = Record<string, unknown>>(projectId: string): Promise<T[]> {
+    projectId = normalizeRequiredProjectId(projectId, 'getTeamDashboardSnapshots');
     const fallbackKey = `team-dashboard-snapshots-${projectId}`;
     const userId = getCurrentUserId();
 
@@ -2083,6 +3015,9 @@ export const castingService = {
    * Attempts API first, then writes to local user settings as fallback.
    */
   async saveTeamDashboardSnapshot<T extends object = Record<string, unknown>>(projectId: string, snapshot: T): Promise<T> {
+    projectId = normalizeRequiredProjectId(projectId, 'saveTeamDashboardSnapshot');
+    assertDemoProjectCanMutate(projectId, 'save');
+    assertPayloadProjectScope(projectId, snapshot, 'saveTeamDashboardSnapshot');
     const fallbackKey = `team-dashboard-snapshots-${projectId}`;
     const userId = getCurrentUserId();
     const payload = {
@@ -2133,6 +3068,7 @@ export const castingService = {
    * Get user roles for a project
    */
   async getUserRoles(projectId: string): Promise<UserRole[]> {
+    projectId = normalizeRequiredProjectId(projectId, 'getUserRoles');
     if (shouldUseRoleRoomLocalFallback()) {
       const project = await this.getProject(projectId);
       return (project?.userRoles || []).map((role) => ({
@@ -2193,6 +3129,9 @@ export const castingService = {
    * Save user role to project
    */
   async saveUserRole(projectId: string, userRole: UserRole): Promise<void> {
+    projectId = normalizeRequiredProjectId(projectId, 'saveUserRole');
+    assertDemoProjectCanMutate(projectId, 'save');
+    assertPayloadProjectScope(projectId, userRole, 'saveUserRole');
     const normalizedRole: UserRole = {
       ...userRole,
       projectId,
@@ -2235,6 +3174,8 @@ export const castingService = {
    * Delete user role from project
    */
   async deleteUserRole(projectId: string, userRoleId: string): Promise<void> {
+    projectId = normalizeRequiredProjectId(projectId, 'deleteUserRole');
+    assertDemoProjectCanMutate(projectId, 'save');
     const userRoles = await this.getUserRoles(projectId);
     const matchingRole = userRoles.find((role) => String(role.id ?? '') === String(userRoleId));
     const roleUserId = matchingRole?.userId ?? matchingRole?.user_id;
@@ -2270,6 +3211,7 @@ export const castingService = {
    * Get consents for a candidate
    */
   async getConsents(projectId: string, candidateId: string): Promise<Consent[]> {
+    projectId = normalizeRequiredProjectId(projectId, 'getConsents');
     const candidates = await this.getCandidates(projectId);
     const candidate = candidates.find(c => c.id === candidateId);
     return candidate?.consent || [];
@@ -2279,6 +3221,9 @@ export const castingService = {
    * Save consent for a candidate
    */
   async saveConsent(projectId: string, candidateId: string, consent: Consent): Promise<void> {
+    projectId = normalizeRequiredProjectId(projectId, 'saveConsent');
+    assertDemoProjectCanMutate(projectId, 'save');
+    assertPayloadProjectScope(projectId, consent, 'saveConsent');
     const project = await this.getProject(projectId);
     if (!project) {
       throw new Error(`Project ${projectId} not found`);
@@ -2307,6 +3252,8 @@ export const castingService = {
    * Delete consent from candidate
    */
   async deleteConsent(projectId: string, candidateId: string, consentId: string): Promise<void> {
+    projectId = normalizeRequiredProjectId(projectId, 'deleteConsent');
+    assertDemoProjectCanMutate(projectId, 'save');
     const project = await this.getProject(projectId);
     if (!project) {
       throw new Error(`Project ${projectId} not found`);
@@ -2343,6 +3290,9 @@ export const castingService = {
   },
 
   async _doInitializeContentProducerDemoData(): Promise<void> {
+    if (!isRoleRoomDemoSeedAllowed()) {
+      return;
+    }
     let existingProjects: CastingProject[] = [];
     let existingDemoProject: CastingProject | undefined;
     try {
@@ -2918,8 +3868,10 @@ export const castingService = {
     };
 
     try {
-      await this.saveProject(demoProject, { allowProtectedDemoWrite: true });
-      await Promise.all(producerShotLists.map((shotList) => this.saveShotList(demoProject.id, shotList)));
+      await runProtectedDemoSeedWrite(async () => {
+        await this.saveProject(demoProject, { allowProtectedDemoWrite: true });
+        await Promise.all(producerShotLists.map((shotList) => this.saveShotList(demoProject.id, shotList)));
+      });
       const saved = await this.getProject(demoProject.id);
       if (!saved) {
         console.error('❌ Failed to verify content producer demo project was saved!');
@@ -2935,6 +3887,9 @@ export const castingService = {
   },
 
   async _doInitializeMockData(): Promise<void> {
+    if (!isRoleRoomDemoSeedAllowed()) {
+      return;
+    }
     try {
       const existingProjects = await this.getProjects();
       const hasTrollDemo = existingProjects.some((project) => isTrollDemoProject(project));
@@ -3841,7 +4796,7 @@ export const castingService = {
       shotLists: [
         {
           id: 'shot-list-1',
-          projectId: 'troll',
+          projectId: TROLL_DEMO_PROJECT_ID,
           sceneId: 'scene-1',
           equipment: ['ARRI Alexa Mini LF', 'Zeiss Master Primes', 'Steadicam', 'Dolly'],
           createdAt: now,
@@ -3911,7 +4866,7 @@ export const castingService = {
         },
         {
           id: 'shot-list-2',
-          projectId: 'troll',
+          projectId: TROLL_DEMO_PROJECT_ID,
           sceneId: 'scene-2',
           equipment: ['RED Komodo', 'Sigma Cine Lenses', 'Gimbal', 'LED panels'],
           createdAt: now,
@@ -3981,7 +4936,7 @@ export const castingService = {
         },
         {
           id: 'shot-list-10',
-          projectId: 'troll',
+          projectId: TROLL_DEMO_PROJECT_ID,
           sceneId: 'scene-10',
           equipment: ['ARRI Alexa LF', 'Signature Primes', 'Crane', 'Drone'],
           createdAt: now,
@@ -4054,7 +5009,7 @@ export const castingService = {
         {
           id: 'userrole-1',
           userId: 'user-roar',
-          projectId: 'troll',
+          projectId: TROLL_DEMO_PROJECT_ID,
           role: 'director',
           permissions: {
             canViewAll: true,
@@ -4071,7 +5026,7 @@ export const castingService = {
         {
           id: 'userrole-2',
           userId: 'user-espen',
-          projectId: 'troll',
+          projectId: TROLL_DEMO_PROJECT_ID,
           role: 'producer',
           permissions: {
             canViewAll: true,
@@ -4092,7 +5047,9 @@ export const castingService = {
 
     // Save to database
     try {
-      await this.saveProject(mockProject, { allowProtectedDemoWrite: true });
+      await runProtectedDemoSeedWrite(async () => {
+        await this.saveProject(mockProject, { allowProtectedDemoWrite: true });
+      });
 
       
       // Verify it was saved
@@ -4128,11 +5085,7 @@ export const castingService = {
 
   async createProjectCopy(
     sourceProjectId: string,
-    options?: {
-      name?: string;
-      sourceTemplateId?: string | null;
-      sourceTemplateVersion?: number | null;
-    },
+    options?: RoleRoomProjectCopyOptions,
   ): Promise<CastingProject> {
     const sourceProject = await this.getProject(sourceProjectId);
     if (!sourceProject) {
@@ -4143,8 +5096,12 @@ export const castingService = {
       projectId: buildDerivedProjectId(sourceProject.id, 'project'),
       name: options?.name?.trim() || buildProjectCopyName(sourceProject, 'kopi'),
       projectKind: 'workspace',
-      sourceTemplateId: options?.sourceTemplateId ?? (isTemplateProject(sourceProject) || isProtectedDemoProject(sourceProject) ? sourceProject.id : null),
+      sourceTemplateId: options?.sourceTemplateId ?? sourceProject.id,
       sourceTemplateVersion: options?.sourceTemplateVersion ?? sourceProject.templateVersion ?? null,
+      copyOptions: {
+        ...options,
+        includeSecrets: false,
+      },
     });
 
     await this.saveProject(nextProject);
@@ -4194,6 +5151,12 @@ export const castingService = {
       templateSourceProjectId: sourceTemplateProjectId,
       templateSourceProjectName: sourceTemplateProjectName,
       createdAt: existingTemplate?.createdAt,
+      copyOptions: {
+        includeClientData: false,
+        includeReviewHistory: false,
+        includeEconomy: false,
+        includeSecrets: false,
+      },
     });
 
     await this.saveProject(template, { allowProtectedDemoWrite: true });

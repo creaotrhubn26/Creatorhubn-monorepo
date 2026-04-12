@@ -169,6 +169,17 @@ const COLLABORATION_REVIEW_TYPE_OPTIONS = PRODUCER_REVIEW_TYPE_OPTIONS.filter(
 const ECONOMY_REVIEW_TYPE_OPTIONS = PRODUCER_REVIEW_TYPE_OPTIONS.filter(
   (option) => ECONOMY_MANAGED_REVIEW_TYPES.has(option.value),
 );
+type ReviewStatusFilter = 'open' | 'changes' | 'pending' | 'approved' | 'all';
+const REVIEW_STATUS_FILTER_OPTIONS: Array<{
+  value: ReviewStatusFilter;
+  label: string;
+}> = [
+  { value: 'open', label: 'Åpne' },
+  { value: 'changes', label: 'Endringer' },
+  { value: 'pending', label: 'Venter' },
+  { value: 'approved', label: 'Godkjent' },
+  { value: 'all', label: 'Alle' },
+];
 const PROJECT_WORKFLOW_STATUS_LABELS: Record<ProducerWorkflowProjectStatus, string> = {
   planning: 'Planlegging',
   awaiting_client: 'Venter på klient',
@@ -483,6 +494,7 @@ export default function ProducerClientReviewPanel({
   const [pendingFocus, setPendingFocus] = useState<ProducerWorkflowFocusPayload | null>(null);
   const [highlightedReviewId, setHighlightedReviewId] = useState<string | null>(null);
   const [mobileReviewIndex, setMobileReviewIndex] = useState(0);
+  const [reviewStatusFilter, setReviewStatusFilter] = useState<ReviewStatusFilter>('open');
   const mobileReviewSwipeStartRef = useRef<number | null>(null);
   const useLocalFallback = shouldUseRoleRoomLocalFallback();
   const isEconomyManagedDraftType = ECONOMY_MANAGED_REVIEW_TYPES.has(newType);
@@ -786,9 +798,50 @@ export default function ProducerClientReviewPanel({
     getMediaFocusForContributionTask,
     getWorkspaceFocusForReview,
   ]);
-  const visibleReviewItems = useMemo(
+  const baseVisibleReviewItems = useMemo(
     () => sortedReviewItems.filter((review) => !isResolvedClientGroundingReview(review)),
     [sortedReviewItems],
+  );
+  const reviewOverviewCounts = useMemo(() => {
+    const counts = {
+      total: baseVisibleReviewItems.length,
+      pending: 0,
+      changes: 0,
+      approved: 0,
+      rejected: 0,
+      open: 0,
+    };
+    baseVisibleReviewItems.forEach((review) => {
+      if (review.status === 'pending') {
+        counts.pending += 1;
+      } else if (review.status === 'changes_requested') {
+        counts.changes += 1;
+      } else if (review.status === 'approved') {
+        counts.approved += 1;
+      } else if (review.status === 'rejected') {
+        counts.rejected += 1;
+      }
+    });
+    counts.open = counts.pending + counts.changes;
+    return counts;
+  }, [baseVisibleReviewItems]);
+  const visibleReviewItems = useMemo(
+    () => baseVisibleReviewItems.filter((review) => {
+      if (reviewStatusFilter === 'all') {
+        return true;
+      }
+      if (reviewStatusFilter === 'open') {
+        return review.status === 'pending' || review.status === 'changes_requested';
+      }
+      if (reviewStatusFilter === 'changes') {
+        return review.status === 'changes_requested' || review.status === 'rejected';
+      }
+      if (reviewStatusFilter === 'pending') {
+        return review.status === 'pending';
+      }
+      return review.status === 'approved';
+    }),
+    [baseVisibleReviewItems, reviewStatusFilter],
   );
   const mobileFocusedReview = useMemo(
     () => (isMobileReview ? visibleReviewItems[mobileReviewIndex] ?? null : null),
@@ -1650,6 +1703,66 @@ export default function ProducerClientReviewPanel({
             {statusDriverReview && statusDriverCopy ? statusDriverCopy : `Prosjektstatus styres av klientbeslutningene: ${projectStatusDetail}`}
           </Typography>
         </Box>
+
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', md: 'repeat(4, minmax(0, 1fr))' },
+            gap: 0.8,
+          }}
+        >
+          {[
+            { label: 'Åpne', value: reviewOverviewCounts.open, helper: 'Må følges opp', color: '#fcd34d' },
+            { label: 'Endringer', value: reviewOverviewCounts.changes + reviewOverviewCounts.rejected, helper: 'Krever ny runde', color: '#fb923c' },
+            { label: 'Godkjent', value: reviewOverviewCounts.approved, helper: 'Kan brukes videre', color: '#34d399' },
+            { label: 'Totalt', value: reviewOverviewCounts.total, helper: 'Alle saker', color: '#bfdbfe' },
+          ].map((card) => (
+            <Box
+              key={card.label}
+              sx={{
+                p: 1,
+                borderRadius: 1.4,
+                border: '1px solid rgba(148,163,184,0.18)',
+                bgcolor: 'rgba(15,23,42,0.58)',
+              }}
+            >
+              <Typography sx={{ color: card.color, fontSize: '1.25rem', fontWeight: 900, lineHeight: 1 }}>
+                {card.value}
+              </Typography>
+              <Typography sx={{ color: '#f8fafc', fontSize: '0.78rem', fontWeight: 800, mt: 0.35 }}>
+                {card.label}
+              </Typography>
+              <Typography sx={{ color: 'rgba(203,213,225,0.68)', fontSize: '0.72rem', mt: 0.15 }}>
+                {card.helper}
+              </Typography>
+            </Box>
+          ))}
+        </Box>
+
+        <Stack direction="row" spacing={0.65} flexWrap="wrap" useFlexGap>
+          {REVIEW_STATUS_FILTER_OPTIONS.map((option) => (
+            <Button
+              key={option.value}
+              size="small"
+              variant={reviewStatusFilter === option.value ? 'contained' : 'outlined'}
+              onClick={() => setReviewStatusFilter(option.value)}
+              sx={{
+                minHeight: 36,
+                textTransform: 'none',
+                fontWeight: 800,
+                borderColor: 'rgba(148,163,184,0.28)',
+                bgcolor: reviewStatusFilter === option.value ? 'rgba(96,165,250,0.24)' : 'rgba(15,23,42,0.42)',
+                color: reviewStatusFilter === option.value ? '#eff6ff' : 'rgba(226,232,240,0.88)',
+                '&:hover': {
+                  borderColor: 'rgba(96,165,250,0.5)',
+                  bgcolor: reviewStatusFilter === option.value ? 'rgba(96,165,250,0.32)' : 'rgba(30,41,59,0.72)',
+                },
+              }}
+            >
+              {option.label}
+            </Button>
+          ))}
+        </Stack>
       </Stack>
 
       <Box
@@ -2240,10 +2353,21 @@ export default function ProducerClientReviewPanel({
 
         {visibleReviewItems.length === 0 ? (
           <Typography sx={{ color: 'rgba(148,163,184,0.82)' }}>
-            Ingen åpne reviews opprettet enda.
+            Ingen godkjenninger matcher valgt filter.
           </Typography>
         ) : (
-          displayedReviewItems.map((review) => {
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: {
+                xs: '1fr',
+                xl: isMobileReview ? '1fr' : 'repeat(2, minmax(0, 1fr))',
+              },
+              gap: 1.1,
+              alignItems: 'start',
+            }}
+          >
+            {displayedReviewItems.map((review) => {
             const entityLabel = getEntityLabel(review.target_entity_type, review.target_entity_id);
             const linkedAgreement = review.target_entity_type === 'project_agreement' && review.target_entity_id
               ? agreementsById[review.target_entity_id]
@@ -2799,7 +2923,8 @@ export default function ProducerClientReviewPanel({
                 )}
               </Box>
             );
-          })
+          })}
+          </Box>
         )}
       </Stack>
     </Box>

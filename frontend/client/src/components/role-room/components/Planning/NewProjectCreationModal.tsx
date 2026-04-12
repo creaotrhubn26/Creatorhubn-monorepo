@@ -87,6 +87,7 @@ import {
 } from '../icons/CastingIcons';
 
 import { apiRequest } from '@/lib/queryClient';
+import authSessionService from '../../services/authSessionService';
 import settingsService, { getCurrentUserId } from '../../services/settingsService';
 import { castingService } from '../../services/castingService';
 import { clientInvitesApi } from '../../services/castingApiService';
@@ -123,6 +124,42 @@ const TROLL_AREA_CONFIG: Record<string, { Icon: any; color: string; label: strin
   offers: { Icon: HandshakeIcon, color: '#ffb800', label: 'Tilbud' },
   contracts: { Icon: ContractsIcon, color: '#7c3aed', label: 'Kontrakter' },
   consents: { Icon: ConsentIcon, color: '#00bcd4', label: 'Samtykker' },
+};
+
+const readFirstNonEmptyString = (...values: unknown[]): string | undefined => {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return undefined;
+};
+
+const buildProjectActorMetadata = () => {
+  const session = authSessionService.getSessionSync();
+  const sessionRecord = session as Record<string, unknown>;
+  const adminUser = session.adminUser;
+  const adminId = adminUser?.id !== undefined && adminUser?.id !== null ? String(adminUser.id) : undefined;
+  const ownerId = readFirstNonEmptyString(session.currentUserId, adminId, sessionRecord.userId, getCurrentUserId());
+  const ownerEmail = readFirstNonEmptyString(adminUser?.email, sessionRecord.email, sessionRecord.userEmail);
+  const ownerLabel = readFirstNonEmptyString(
+    adminUser?.display_name,
+    adminUser?.name,
+    adminUser?.email,
+    sessionRecord.displayName,
+    sessionRecord.name,
+    ownerEmail,
+    ownerId,
+  );
+
+  return {
+    ownerId,
+    ownerEmail,
+    ownerLabel,
+    createdBy: ownerId,
+    createdByEmail: ownerEmail,
+    createdByLabel: ownerLabel,
+  };
 };
 
 import { ContactProjectInfoSummary } from './ContactProjectInfoSummary';
@@ -1633,10 +1670,12 @@ export default function NewProjectCreationModal({
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       }));
+      const projectActorMetadata = buildProjectActorMetadata();
 
       const projectPayload = {
         id: projectId,
         name: projectData.projectName.trim(),
+        ...projectActorMetadata,
         clientName: projectData.clientName || '',
         clientEmail: projectData.clientEmail || '',
         clientPhone: projectData.clientPhone || '',
@@ -1849,10 +1888,12 @@ export default function NewProjectCreationModal({
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       }));
+      const projectActorMetadata = buildProjectActorMetadata();
 
       const projectPayload = {
         ...(isCastingPlanner && { id: projectId }), // Only include id for casting projects
         name: projectData.projectName.trim(),
+        ...projectActorMetadata,
         clientName: projectData.clientName || '',
         clientEmail: projectData.clientEmail || '',
         clientPhone: projectData.clientPhone || '',

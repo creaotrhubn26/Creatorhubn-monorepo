@@ -16728,47 +16728,36 @@ async function getLegacyStoryLogicEntry(
 }
 
 app.get("/api/projects/:projectId/story-logic", async (req, res) => {
-  const projectId = req.params.projectId;
-  const entry = await getLegacyStoryLogicEntry(projectId);
-  res.json({
-    success: true,
-    storyLogic: entry?.storyLogic ?? null,
-    createdAt: entry?.createdAt ?? null,
-    updatedAt: entry?.updatedAt ?? null,
+  console.warn("Deprecated unauthenticated Story Logic route blocked", {
+    projectId: req.params.projectId,
+    method: req.method,
+  });
+  res.status(410).json({
+    error: "story_logic_moved_to_role_room",
+    replacement: "/api/role-room/projects/:projectId/story-logic",
   });
 });
 
 app.post("/api/projects/:projectId/story-logic", async (req, res) => {
-  const projectId = req.params.projectId;
-  const existing = await getLegacyStoryLogicEntry(projectId);
-  const now = new Date().toISOString();
-  const updatedAt =
-    typeof req.body?.updatedAt === "string" && req.body.updatedAt.trim()
-      ? req.body.updatedAt
-      : now;
-
-  const entry: LegacyStoryLogicEntry = {
-    projectId,
-    storyLogic: req.body?.storyLogic ?? null,
-    createdAt: existing?.createdAt ?? now,
-    updatedAt,
-  };
-
-  legacyStoryLogicByProject.set(projectId, entry);
-  await compatStoreSet(dbLegacyStoryLogicKey(projectId), entry);
-  res.json({
-    success: true,
-    storyLogic: entry.storyLogic,
-    createdAt: entry.createdAt,
-    updatedAt: entry.updatedAt,
+  console.warn("Deprecated unauthenticated Story Logic route blocked", {
+    projectId: req.params.projectId,
+    method: req.method,
+  });
+  res.status(410).json({
+    error: "story_logic_moved_to_role_room",
+    replacement: "/api/role-room/projects/:projectId/story-logic",
   });
 });
 
 app.delete("/api/projects/:projectId/story-logic", async (req, res) => {
-  const projectId = req.params.projectId;
-  legacyStoryLogicByProject.delete(projectId);
-  await compatStoreDelete(dbLegacyStoryLogicKey(projectId));
-  res.json({ success: true });
+  console.warn("Deprecated unauthenticated Story Logic route blocked", {
+    projectId: req.params.projectId,
+    method: req.method,
+  });
+  res.status(410).json({
+    error: "story_logic_moved_to_role_room",
+    replacement: "/api/role-room/projects/:projectId/story-logic",
+  });
 });
 
 app.get("/api/casting/health", (_req, res) => {
@@ -17386,6 +17375,137 @@ app.delete("/api/casting/acts/:actId", async (req, res) => {
   res.json({ ok: true });
 });
 
+const ROLE_ROOM_PROTECTED_DEMO_PROJECT_IDS = new Set([
+  "content-producer-demo-2026",
+  "troll-project-2026",
+]);
+
+function normalizeLegacyCastingProjectId(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  if (!normalized) return null;
+  const lowered = normalized.toLowerCase();
+  if (
+    lowered === "default" ||
+    lowered === "default-project" ||
+    lowered === "demo" ||
+    lowered === "undefined" ||
+    lowered === "null" ||
+    normalized.includes("/") ||
+    normalized.includes("\\") ||
+    normalized.includes("..")
+  ) {
+    return null;
+  }
+  return normalized;
+}
+
+function canWriteLegacyCastingDemoSeed(): boolean {
+  return process.env.ROLE_ROOM_DEMO_SEED_ENABLED === "true";
+}
+
+function rejectLegacyCastingProjectId(
+  res: express.Response,
+  value: unknown,
+  operation: string,
+): string | null {
+  const projectId = normalizeLegacyCastingProjectId(value);
+  if (!projectId) {
+    res.status(400).json({ error: `Invalid project id for ${operation}` });
+    return null;
+  }
+  return projectId;
+}
+
+function rejectProtectedLegacyCastingDemoWrite(
+  res: express.Response,
+  projectId: string,
+  operation: string,
+): boolean {
+  if (!ROLE_ROOM_PROTECTED_DEMO_PROJECT_IDS.has(projectId)) {
+    return false;
+  }
+  if (canWriteLegacyCastingDemoSeed()) {
+    return false;
+  }
+  console.warn("[RoleRoom] Blocked protected demo write", {
+    projectId,
+    operation,
+  });
+  res.status(403).json({ error: "Protected demo projects are seed-only." });
+  return true;
+}
+
+function rejectLegacyCastingCrossProjectPayload(
+  res: express.Response,
+  routeProjectId: string,
+  payload: unknown,
+  operation: string,
+): boolean {
+  const record = payload && typeof payload === "object" ? payload as Record<string, unknown> : null;
+  const payloadProjectId = typeof record?.projectId === "string" && record.projectId.trim()
+    ? record.projectId.trim()
+    : typeof record?.project_id === "string" && record.project_id.trim()
+      ? record.project_id.trim()
+      : "";
+  if (!payloadProjectId || payloadProjectId === routeProjectId) {
+    return false;
+  }
+  console.warn("[RoleRoom] Blocked cross-project casting payload", {
+    operation,
+    routeProjectId,
+    payloadProjectId,
+  });
+  res.status(409).json({ error: "Cross-project payload rejected." });
+  return true;
+}
+
+function rejectLegacyCastingNestedProjectPayload(
+  res: express.Response,
+  routeProjectId: string,
+  payload: unknown,
+  operation: string,
+): boolean {
+  const record = payload && typeof payload === "object" ? payload as Record<string, unknown> : null;
+  if (!record) return false;
+  const scopedKeys = [
+    "roles",
+    "candidates",
+    "schedules",
+    "crew",
+    "locations",
+    "props",
+    "productionDays",
+    "shotLists",
+    "sceneBreakdowns",
+    "userRoles",
+  ];
+  return scopedKeys.some((key) => {
+    const value = record[key];
+    if (!Array.isArray(value)) return false;
+    return value.some((item, index) =>
+      rejectLegacyCastingCrossProjectPayload(
+        res,
+        routeProjectId,
+        item,
+        `${operation}.${key}[${index}]`,
+      ),
+    );
+  });
+}
+
+function readLegacyCastingString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return String(value);
+    }
+  }
+  return undefined;
+}
+
 app.get("/api/casting/projects", async (_req, res) => {
   const dbRows = await compatStoreListByPrefix<any>("casting:project:");
   if (dbRows.length > 0) {
@@ -17409,24 +17529,73 @@ app.post("/api/casting/projects", async (req, res) => {
   const payload = req.body || {};
   const id =
     typeof payload.id === "string" && payload.id.trim()
-      ? payload.id
+      ? normalizeLegacyCastingProjectId(payload.id)
       : crypto.randomUUID();
+  if (!id) {
+    res.status(400).json({ error: "Invalid project id for create project" });
+    return;
+  }
+  if (rejectProtectedLegacyCastingDemoWrite(res, id, "createProject")) {
+    return;
+  }
+  if (rejectLegacyCastingNestedProjectPayload(res, id, payload, "createProject")) {
+    return;
+  }
   const now = new Date().toISOString();
   const existing = legacyCastingProjects.get(id) || {};
+  const existingRecord = existing as Record<string, unknown>;
+  const payloadRecord = payload as Record<string, unknown>;
+  const ownerId = readLegacyCastingString(
+    payloadRecord.ownerId,
+    payloadRecord.owner_id,
+    existingRecord.ownerId,
+    existingRecord.owner_id,
+    payloadRecord.createdBy,
+    payloadRecord.created_by,
+    existingRecord.createdBy,
+    existingRecord.created_by,
+  );
+  const ownerEmail = readLegacyCastingString(payloadRecord.ownerEmail, payloadRecord.owner_email, existingRecord.ownerEmail, existingRecord.owner_email);
+  const ownerLabel = readLegacyCastingString(payloadRecord.ownerLabel, payloadRecord.owner_label, existingRecord.ownerLabel, existingRecord.owner_label, ownerEmail, ownerId);
+  const createdBy = readLegacyCastingString(payloadRecord.createdBy, payloadRecord.created_by, existingRecord.createdBy, existingRecord.created_by, ownerId);
+  const createdByEmail = readLegacyCastingString(payloadRecord.createdByEmail, payloadRecord.created_by_email, existingRecord.createdByEmail, existingRecord.created_by_email, ownerEmail);
+  const createdByLabel = readLegacyCastingString(payloadRecord.createdByLabel, payloadRecord.created_by_label, existingRecord.createdByLabel, existingRecord.created_by_label, ownerLabel);
   const project = {
     ...existing,
     ...payload,
     id,
+    ownerId,
+    ownerEmail,
+    ownerLabel,
+    createdBy,
+    createdByEmail,
+    createdByLabel,
     createdAt: existing.createdAt || now,
     updatedAt: now,
   };
-  legacyCastingProjects.set(id, project);
-  await compatStoreSet(dbLegacyCastingProjectKey(id), project);
-  res.json(project);
+  const hadExisting = legacyCastingProjects.has(id);
+  const previousProject = legacyCastingProjects.get(id);
+  try {
+    legacyCastingProjects.set(id, project);
+    await compatStoreSet(dbLegacyCastingProjectKey(id), project);
+    res.json(project);
+  } catch (error) {
+    if (hadExisting && previousProject) {
+      legacyCastingProjects.set(id, previousProject);
+      await compatStoreSet(dbLegacyCastingProjectKey(id), previousProject).catch(() => undefined);
+    } else {
+      legacyCastingProjects.delete(id);
+      await compatStoreDelete(dbLegacyCastingProjectKey(id)).catch(() => undefined);
+    }
+    console.error("[RoleRoom] Legacy casting project create rolled back", error);
+    res.status(500).json({ error: "Kunne ikke opprette prosjekt atomisk." });
+  }
 });
 
 app.get("/api/casting/projects/:projectId", async (req, res) => {
-  const project = await getLegacyCastingProject(req.params.projectId);
+  const projectId = rejectLegacyCastingProjectId(res, req.params.projectId, "getProject");
+  if (!projectId) return;
+  const project = await getLegacyCastingProject(projectId);
   if (!project) {
     res.json(null);
     return;
@@ -17435,22 +17604,73 @@ app.get("/api/casting/projects/:projectId", async (req, res) => {
 });
 
 app.put("/api/casting/projects/:projectId", async (req, res) => {
-  const id = req.params.projectId;
+  const id = rejectLegacyCastingProjectId(res, req.params.projectId, "updateProject");
+  if (!id) return;
+  if (rejectProtectedLegacyCastingDemoWrite(res, id, "updateProject")) {
+    return;
+  }
+  if (rejectLegacyCastingCrossProjectPayload(res, id, req.body, "updateProject")) {
+    return;
+  }
+  if (rejectLegacyCastingNestedProjectPayload(res, id, req.body, "updateProject")) {
+    return;
+  }
   const existing = (await getLegacyCastingProject(id)) || {};
+  const existingRecord = existing as Record<string, unknown>;
+  const payloadRecord = (req.body || {}) as Record<string, unknown>;
+  const ownerId = readLegacyCastingString(
+    payloadRecord.ownerId,
+    payloadRecord.owner_id,
+    existingRecord.ownerId,
+    existingRecord.owner_id,
+    payloadRecord.createdBy,
+    payloadRecord.created_by,
+    existingRecord.createdBy,
+    existingRecord.created_by,
+  );
+  const ownerEmail = readLegacyCastingString(payloadRecord.ownerEmail, payloadRecord.owner_email, existingRecord.ownerEmail, existingRecord.owner_email);
+  const ownerLabel = readLegacyCastingString(payloadRecord.ownerLabel, payloadRecord.owner_label, existingRecord.ownerLabel, existingRecord.owner_label, ownerEmail, ownerId);
+  const createdBy = readLegacyCastingString(payloadRecord.createdBy, payloadRecord.created_by, existingRecord.createdBy, existingRecord.created_by, ownerId);
+  const createdByEmail = readLegacyCastingString(payloadRecord.createdByEmail, payloadRecord.created_by_email, existingRecord.createdByEmail, existingRecord.created_by_email, ownerEmail);
+  const createdByLabel = readLegacyCastingString(payloadRecord.createdByLabel, payloadRecord.created_by_label, existingRecord.createdByLabel, existingRecord.created_by_label, ownerLabel);
   const updated = {
     ...existing,
     ...req.body,
     id,
+    ownerId,
+    ownerEmail,
+    ownerLabel,
+    createdBy,
+    createdByEmail,
+    createdByLabel,
     createdAt: existing.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
-  legacyCastingProjects.set(id, updated);
-  await compatStoreSet(dbLegacyCastingProjectKey(id), updated);
-  res.json(updated);
+  const hadExisting = legacyCastingProjects.has(id);
+  const previousProject = legacyCastingProjects.get(id);
+  try {
+    legacyCastingProjects.set(id, updated);
+    await compatStoreSet(dbLegacyCastingProjectKey(id), updated);
+    res.json(updated);
+  } catch (error) {
+    if (hadExisting && previousProject) {
+      legacyCastingProjects.set(id, previousProject);
+      await compatStoreSet(dbLegacyCastingProjectKey(id), previousProject).catch(() => undefined);
+    } else {
+      legacyCastingProjects.delete(id);
+      await compatStoreDelete(dbLegacyCastingProjectKey(id)).catch(() => undefined);
+    }
+    console.error("[RoleRoom] Legacy casting project update rolled back", error);
+    res.status(500).json({ error: "Kunne ikke oppdatere prosjekt atomisk." });
+  }
 });
 
 app.delete("/api/casting/projects/:projectId", async (req, res) => {
-  const projectId = req.params.projectId;
+  const projectId = rejectLegacyCastingProjectId(res, req.params.projectId, "deleteProject");
+  if (!projectId) return;
+  if (rejectProtectedLegacyCastingDemoWrite(res, projectId, "deleteProject")) {
+    return;
+  }
   const manuscriptsForProject = await listLegacyManuscripts(projectId);
 
   for (const manuscript of manuscriptsForProject) {
@@ -17503,12 +17723,21 @@ app.delete("/api/casting/projects/:projectId", async (req, res) => {
 });
 
 app.get("/api/casting/projects/:projectId/shot-lists", async (req, res) => {
-  const shotLists = await getLegacyShotLists(req.params.projectId);
+  const projectId = rejectLegacyCastingProjectId(res, req.params.projectId, "getShotLists");
+  if (!projectId) return;
+  const shotLists = await getLegacyShotLists(projectId);
   res.json(shotLists);
 });
 
 app.post("/api/casting/projects/:projectId/shot-lists", async (req, res) => {
-  const projectId = req.params.projectId;
+  const projectId = rejectLegacyCastingProjectId(res, req.params.projectId, "saveShotList");
+  if (!projectId) return;
+  if (rejectProtectedLegacyCastingDemoWrite(res, projectId, "saveShotList")) {
+    return;
+  }
+  if (rejectLegacyCastingCrossProjectPayload(res, projectId, req.body, "saveShotList")) {
+    return;
+  }
   const current = await getLegacyShotLists(projectId);
   const payload = req.body || {};
   const id =
@@ -17533,7 +17762,14 @@ app.post("/api/casting/projects/:projectId/shot-lists", async (req, res) => {
 app.put(
   "/api/casting/projects/:projectId/shot-lists/:shotListId",
   async (req, res) => {
-    const projectId = req.params.projectId;
+    const projectId = rejectLegacyCastingProjectId(res, req.params.projectId, "updateShotList");
+    if (!projectId) return;
+    if (rejectProtectedLegacyCastingDemoWrite(res, projectId, "updateShotList")) {
+      return;
+    }
+    if (rejectLegacyCastingCrossProjectPayload(res, projectId, req.body, "updateShotList")) {
+      return;
+    }
     const shotListId = req.params.shotListId;
     const current = await getLegacyShotLists(projectId);
     const idx = current.findIndex((item) => item.id === shotListId);
@@ -17557,10 +17793,17 @@ app.put(
 app.post(
   "/api/casting/projects/:projectId/shot-lists/reorder",
   async (req, res) => {
-    const projectId = req.params.projectId;
+    const projectId = rejectLegacyCastingProjectId(res, req.params.projectId, "reorderShotLists");
+    if (!projectId) return;
+    if (rejectProtectedLegacyCastingDemoWrite(res, projectId, "reorderShotLists")) {
+      return;
+    }
     const incoming = Array.isArray(req.body?.shotLists)
       ? req.body.shotLists
       : null;
+    if (incoming?.some((item: any) => rejectLegacyCastingCrossProjectPayload(res, projectId, item, "reorderShotLists"))) {
+      return;
+    }
     if (incoming) {
       const next = incoming.map((item: any) => ({ ...item, projectId }));
       legacyShotListsByProject.set(projectId, next);
@@ -17573,7 +17816,8 @@ app.post(
 app.get(
   "/api/casting/projects/:projectId/calendar-events",
   async (req, res) => {
-    const projectId = req.params.projectId;
+    const projectId = rejectLegacyCastingProjectId(res, req.params.projectId, "getCalendarEvents");
+    if (!projectId) return;
     const events = await getLegacyCalendarEvents(projectId);
     res.json({ events });
   },
@@ -17581,15 +17825,22 @@ app.get(
 
 app.post("/api/casting/calendar-events", async (req, res) => {
   const payload = req.body || {};
-  const projectId =
-    typeof payload.projectId === "string" ? payload.projectId : "";
+  const projectId = rejectLegacyCastingProjectId(
+    res,
+    typeof payload.projectId === "string" ? payload.projectId : "",
+    "createCalendarEvent",
+  );
+  if (!projectId) return;
+  if (rejectProtectedLegacyCastingDemoWrite(res, projectId, "createCalendarEvent")) {
+    return;
+  }
   const startTime =
     typeof payload.startTime === "string"
       ? payload.startTime
       : typeof payload.start_time === "string"
         ? payload.start_time
         : "";
-  if (!projectId || !startTime) {
+  if (!startTime) {
     res.status(400).json({ error: "projectId and startTime are required" });
     return;
   }
@@ -17735,7 +17986,8 @@ app.delete("/api/casting/calendar-events/:eventId", async (req, res) => {
 app.get(
   "/api/casting/projects/:projectId/team-dashboard/snapshots",
   async (req, res) => {
-    const projectId = req.params.projectId;
+    const projectId = rejectLegacyCastingProjectId(res, req.params.projectId, "getTeamSnapshots");
+    if (!projectId) return;
     const snapshots = await getLegacyTeamSnapshots(projectId);
     res.json({ success: true, snapshots });
   },
@@ -17744,7 +17996,14 @@ app.get(
 app.post(
   "/api/casting/projects/:projectId/team-dashboard/snapshots",
   async (req, res) => {
-    const projectId = req.params.projectId;
+    const projectId = rejectLegacyCastingProjectId(res, req.params.projectId, "saveTeamSnapshot");
+    if (!projectId) return;
+    if (rejectProtectedLegacyCastingDemoWrite(res, projectId, "saveTeamSnapshot")) {
+      return;
+    }
+    if (rejectLegacyCastingCrossProjectPayload(res, projectId, req.body, "saveTeamSnapshot")) {
+      return;
+    }
     const payload = req.body || {};
     const current = await getLegacyTeamSnapshots(projectId);
     const id =

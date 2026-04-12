@@ -181,6 +181,10 @@ interface ProducerInboxItem {
   id: string;
   source: 'notification' | 'approval';
   category: ProducerInboxCategory;
+  projectId: string;
+  projectName: string;
+  clientLabel?: string;
+  type: string;
   title: string;
   detail: string;
   statusLabel: string;
@@ -188,6 +192,10 @@ interface ProducerInboxItem {
   tone: 'info' | 'warning' | 'error' | 'success';
   updatedAt: string;
   dueAt?: string;
+  assignedToLabel?: string;
+  mentionLabels: string[];
+  resolved: boolean;
+  archived: boolean;
   unread: boolean;
   needsFollowUp: boolean;
   notification?: ProducerProjectNotification;
@@ -651,6 +659,10 @@ export default function ProducerPlannerStudio({
   const [calendarRoleFilter, setCalendarRoleFilter] = useState<(typeof ROLE_FILTER_OPTIONS)[number]>('all');
   const [coordinationMeetingType, setCoordinationMeetingType] = useState<ProducerPlannerMeetingType>('production');
   const [inboxFilter, setInboxFilter] = useState<ProducerInboxFilter>('all');
+  const [inboxClientFilter, setInboxClientFilter] = useState('all');
+  const [inboxTypeFilter, setInboxTypeFilter] = useState('all');
+  const [inboxStatusFilter, setInboxStatusFilter] = useState<'all' | 'open' | 'resolved' | 'unread'>('open');
+  const [inboxSearch, setInboxSearch] = useState('');
   const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
   const [planningDraft, setPlanningDraft] = useState<ProducerProjectPlanning>(() => normalizeProducerProjectPlanning(project));
   const [savingPlanning, setSavingPlanning] = useState(false);
@@ -691,6 +703,9 @@ export default function ProducerPlannerStudio({
     unreadCount: notificationsUnreadCount,
     markAsRead,
     markAllAsRead,
+    updateNotification,
+    archiveNotification,
+    resolveNotification,
   } = useProducerNotifications(project.id);
   const {
     project: estimatedProject,
@@ -750,6 +765,10 @@ export default function ProducerPlannerStudio({
     notificationBaselineReadyRef.current = false;
     seenNotificationStateRef.current = new Map();
     setInboxFilter('all');
+    setInboxClientFilter('all');
+    setInboxTypeFilter('all');
+    setInboxStatusFilter('open');
+    setInboxSearch('');
   }, [project.id]);
 
   useEffect(() => {
@@ -1043,6 +1062,10 @@ export default function ProducerPlannerStudio({
         id: `approval:${review.id}`,
         source: 'approval' as const,
         category: 'approval' as const,
+        projectId: project.id,
+        projectName: project.name,
+        clientLabel: clientIntake.contactName || clientIntake.contactEmail || undefined,
+        type: 'approval',
         title: review.title || getReviewTypeLabel(review),
         detail: latestRelatedNotification?.message?.trim()
           || review.description?.trim()
@@ -1052,6 +1075,13 @@ export default function ProducerPlannerStudio({
         tone,
         updatedAt: latestRelatedNotification?.updated_at ?? review.updated_at,
         dueAt: review.due_at ?? undefined,
+        assignedToLabel: latestRelatedNotification?.assigned_to_label ?? undefined,
+        mentionLabels: [
+          ...(latestRelatedNotification?.mention_user_ids ?? []),
+          ...(latestRelatedNotification?.mention_emails ?? []),
+        ],
+        resolved: false,
+        archived: false,
         unread: hasUnreadRelatedNotification,
         needsFollowUp: hasUnreadRelatedNotification
           || normalizedStatus === 'pending'
@@ -1075,18 +1105,34 @@ export default function ProducerPlannerStudio({
       .map((notification) => {
       const category = getNotificationInboxCategory(notification);
       const severity = getNotificationSeverity(notification);
+      const resolved = Boolean(notification.resolved_at);
+      const archived = Boolean(notification.archived_at);
+      const assignedToLabel = notification.assigned_to_label || notification.assigned_to_user_id || undefined;
+      const mentionLabels = [
+        ...(notification.mention_user_ids ?? []),
+        ...(notification.mention_emails ?? []),
+      ];
       return {
         id: `notification:${notification.id}`,
         source: 'notification' as const,
         category,
+        projectId: notification.project_id || project.id,
+        projectName: project.name,
+        clientLabel: notification.client_name || notification.client_email || undefined,
+        type: notification.inbox_type || category,
         title: notification.title,
         detail: notification.message?.trim() || 'Varslet mangler beskrivelse.',
-        statusLabel: notification.read ? 'Lest' : 'Ny',
+        statusLabel: resolved ? 'Løst' : notification.read ? 'Lest' : 'Ny',
         actionLabel: getNotificationActionLabel(category),
-        tone: severity === 'warning' ? 'warning' : 'info',
+        tone: resolved ? 'success' : severity === 'warning' ? 'warning' : 'info',
         updatedAt: notification.updated_at,
+        dueAt: notification.due_at ?? undefined,
+        assignedToLabel,
+        mentionLabels,
+        resolved,
+        archived,
         unread: !notification.read,
-        needsFollowUp: !notification.read || category === 'approval',
+        needsFollowUp: !resolved && !archived && (!notification.read || category === 'approval'),
         notification,
       } satisfies ProducerInboxItem;
       });
@@ -1111,28 +1157,80 @@ export default function ProducerPlannerStudio({
       }
       return compareDatesAsc(right.updatedAt, left.updatedAt);
     });
-  }, [notifications, outstandingClientApprovals]);
+  }, [clientIntake.contactEmail, clientIntake.contactName, notifications, outstandingClientApprovals, project.id, project.name]);
 
   const filteredContentProducerInboxItems = useMemo(() => {
+    const normalizedSearch = inboxSearch.trim().toLowerCase();
     return contentProducerInboxItems.filter((item) => {
       if (inboxFilter === 'all') {
-        return true;
+        // Continue with secondary filters below.
+      } else if (inboxFilter === 'follow_up') {
+        if (!item.needsFollowUp) return false;
+      } else if (inboxFilter === 'workspace') {
+        if (item.category !== 'workspace') return false;
+      } else if (inboxFilter === 'approval') {
+        if (item.category !== 'approval') return false;
+      } else if (inboxFilter === 'delivery') {
+        if (item.category !== 'delivery') return false;
       }
-      if (inboxFilter === 'follow_up') {
-        return item.needsFollowUp;
+
+      if (inboxClientFilter !== 'all' && (item.clientLabel ?? 'Uten klient') !== inboxClientFilter) {
+        return false;
       }
-      if (inboxFilter === 'workspace') {
-        return item.category === 'workspace';
+      if (inboxTypeFilter !== 'all' && item.type !== inboxTypeFilter) {
+        return false;
       }
-      if (inboxFilter === 'approval') {
-        return item.category === 'approval';
+      if (inboxStatusFilter === 'open' && item.resolved) {
+        return false;
       }
-      if (inboxFilter === 'delivery') {
-        return item.category === 'delivery';
+      if (inboxStatusFilter === 'resolved' && !item.resolved) {
+        return false;
       }
-      return true;
+      if (inboxStatusFilter === 'unread' && !item.unread) {
+        return false;
+      }
+      if (normalizedSearch) {
+        const haystack = [
+          item.projectName,
+          item.clientLabel,
+          item.type,
+          item.title,
+          item.detail,
+          item.statusLabel,
+          item.assignedToLabel,
+          ...item.mentionLabels,
+        ].filter(Boolean).join(' ').toLowerCase();
+        if (!haystack.includes(normalizedSearch)) {
+          return false;
+        }
+      }
+
+      return !item.archived;
     });
-  }, [contentProducerInboxItems, inboxFilter]);
+  }, [
+    contentProducerInboxItems,
+    inboxClientFilter,
+    inboxFilter,
+    inboxSearch,
+    inboxStatusFilter,
+    inboxTypeFilter,
+  ]);
+
+  const inboxClientOptions = useMemo(() => {
+    const labels = new Set<string>();
+    for (const item of contentProducerInboxItems) {
+      labels.add(item.clientLabel ?? 'Uten klient');
+    }
+    return Array.from(labels).sort((left, right) => left.localeCompare(right, 'nb-NO'));
+  }, [contentProducerInboxItems]);
+
+  const inboxTypeOptions = useMemo(() => {
+    const labels = new Set<string>();
+    for (const item of contentProducerInboxItems) {
+      labels.add(item.type);
+    }
+    return Array.from(labels).sort((left, right) => left.localeCompare(right, 'nb-NO'));
+  }, [contentProducerInboxItems]);
 
   const contentProducerInboxSummary = useMemo(() => ({
     followUp: contentProducerInboxItems.filter((item) => item.needsFollowUp).length,
@@ -1151,6 +1249,56 @@ export default function ProducerPlannerStudio({
       });
     }
   }, [enqueueSnackbar, markAsRead]);
+
+  const handleResolveNotification = useCallback(async (notificationId: string, resolved: boolean) => {
+    try {
+      await resolveNotification(notificationId, resolved);
+      enqueueSnackbar(resolved ? 'Innbokselementet er løst.' : 'Innbokselementet er åpnet igjen.', {
+        variant: resolved ? 'success' : 'info',
+      });
+    } catch (error) {
+      enqueueSnackbar(error instanceof Error ? error.message : 'Kunne ikke oppdatere status.', {
+        variant: 'error',
+      });
+    }
+  }, [enqueueSnackbar, resolveNotification]);
+
+  const handleArchiveNotification = useCallback(async (notificationId: string) => {
+    try {
+      await archiveNotification(notificationId, true);
+      enqueueSnackbar('Innbokselementet er arkivert.', { variant: 'success' });
+    } catch (error) {
+      enqueueSnackbar(error instanceof Error ? error.message : 'Kunne ikke arkivere innbokselementet.', {
+        variant: 'error',
+      });
+    }
+  }, [archiveNotification, enqueueSnackbar]);
+
+  const handleAssignNotification = useCallback(async (notificationId: string, assignedToLabel: string) => {
+    try {
+      const selectedOwner = ownerOptions.find((owner) => owner.label === assignedToLabel);
+      await updateNotification(notificationId, {
+        assignedToUserId: selectedOwner?.value ?? null,
+        assignedToLabel: assignedToLabel.trim() || null,
+      });
+    } catch (error) {
+      enqueueSnackbar(error instanceof Error ? error.message : 'Kunne ikke tildele innbokselementet.', {
+        variant: 'error',
+      });
+    }
+  }, [enqueueSnackbar, ownerOptions, updateNotification]);
+
+  const handleSetNotificationDueDate = useCallback(async (notificationId: string, dueDate: string) => {
+    try {
+      await updateNotification(notificationId, {
+        dueAt: dueDate ? `${dueDate}T23:59:59.999Z` : null,
+      });
+    } catch (error) {
+      enqueueSnackbar(error instanceof Error ? error.message : 'Kunne ikke sette frist.', {
+        variant: 'error',
+      });
+    }
+  }, [enqueueSnackbar, updateNotification]);
 
   const handleOpenNotification = useCallback(async (notification: ProducerProjectNotification) => {
     if (!notification.read) {
@@ -1547,7 +1695,7 @@ export default function ProducerPlannerStudio({
           type: 'shoot',
           title: `Shoot day · ${locationName}`,
           detail: `${(day.scenes ?? []).length} scener · ${(day.crew ?? []).length} crew`,
-          date: day.date,
+          date: day.date ?? '',
           phase: 'production',
           roleTags: ['producer', 'director', 'dop', 'crew'],
         });
@@ -2057,6 +2205,78 @@ export default function ProducerPlannerStudio({
             })}
           </Stack>
 
+          <Stack
+            direction={{ xs: 'column', md: 'row' }}
+            spacing={0.8}
+            sx={{
+              mb: 1,
+              '& .MuiInputBase-root': {
+                color: '#e5edf7',
+                bgcolor: 'rgba(2,6,23,0.46)',
+              },
+              '& .MuiInputLabel-root': { color: 'rgba(226,232,240,0.7)' },
+              '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.24)' },
+            }}
+          >
+            <TextField
+              size="small"
+              label="Søk"
+              value={inboxSearch}
+              onChange={(event) => setInboxSearch(event.target.value)}
+              placeholder="Søk i tittel, klient, ansvarlig eller @mentions"
+              sx={{ minWidth: { md: 260 }, flex: 1 }}
+            />
+            <TextField
+              select
+              size="small"
+              label="Prosjekt"
+              value={project.id}
+              sx={{ minWidth: { md: 190 } }}
+              disabled
+            >
+              <MenuItem value={project.id}>{project.name}</MenuItem>
+            </TextField>
+            <TextField
+              select
+              size="small"
+              label="Klient"
+              value={inboxClientFilter}
+              onChange={(event) => setInboxClientFilter(event.target.value)}
+              sx={{ minWidth: { md: 170 } }}
+            >
+              <MenuItem value="all">Alle klienter</MenuItem>
+              {inboxClientOptions.map((clientLabel) => (
+                <MenuItem key={clientLabel} value={clientLabel}>{clientLabel}</MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              select
+              size="small"
+              label="Type"
+              value={inboxTypeFilter}
+              onChange={(event) => setInboxTypeFilter(event.target.value)}
+              sx={{ minWidth: { md: 150 } }}
+            >
+              <MenuItem value="all">Alle typer</MenuItem>
+              {inboxTypeOptions.map((typeLabel) => (
+                <MenuItem key={typeLabel} value={typeLabel}>{typeLabel}</MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              select
+              size="small"
+              label="Status"
+              value={inboxStatusFilter}
+              onChange={(event) => setInboxStatusFilter(event.target.value as typeof inboxStatusFilter)}
+              sx={{ minWidth: { md: 140 } }}
+            >
+              <MenuItem value="open">Åpne</MenuItem>
+              <MenuItem value="unread">Uleste</MenuItem>
+              <MenuItem value="resolved">Løste</MenuItem>
+              <MenuItem value="all">Alle</MenuItem>
+            </TextField>
+          </Stack>
+
           {filteredContentProducerInboxItems.length === 0 ? (
             <Alert severity="success">
               Innboksen er tom. Når klienten oppdaterer briefen, legger inn materiale eller sender noe til godkjenning, dukker det opp her.
@@ -2097,6 +2317,25 @@ export default function ProducerPlannerStudio({
                         />
                         <Chip
                           size="small"
+                          label={item.projectName}
+                          sx={{ bgcolor: 'rgba(14,165,233,0.12)', color: '#bae6fd' }}
+                        />
+                        {hasText(item.clientLabel) ? (
+                          <Chip
+                            size="small"
+                            label={`Klient: ${item.clientLabel}`}
+                            sx={{ bgcolor: 'rgba(16,185,129,0.12)', color: '#bbf7d0' }}
+                          />
+                        ) : null}
+                        {hasText(item.assignedToLabel) ? (
+                          <Chip
+                            size="small"
+                            label={`Ansvarlig: ${item.assignedToLabel}`}
+                            sx={{ bgcolor: 'rgba(168,85,247,0.12)', color: '#e9d5ff' }}
+                          />
+                        ) : null}
+                        <Chip
+                          size="small"
                           label={toDisplayDateTime(item.updatedAt)}
                           sx={{ bgcolor: 'rgba(148,163,184,0.16)', color: '#cbd5e1' }}
                         />
@@ -2107,6 +2346,14 @@ export default function ProducerPlannerStudio({
                             sx={{ bgcolor: 'rgba(244,63,94,0.14)', color: '#fecdd3' }}
                           />
                         ) : null}
+                        {item.mentionLabels.slice(0, 3).map((mention) => (
+                          <Chip
+                            key={mention}
+                            size="small"
+                            label={`@${mention}`}
+                            sx={{ bgcolor: 'rgba(251,191,36,0.12)', color: '#fde68a' }}
+                          />
+                        ))}
                       </Stack>
                       <Typography sx={{ color: '#fff', fontWeight: 700 }}>
                         {item.title}
@@ -2125,6 +2372,68 @@ export default function ProducerPlannerStudio({
                       >
                         {item.actionLabel}
                       </Button>
+                      {item.source === 'notification' && item.notification ? (
+                        <Stack
+                          direction={{ xs: 'column', sm: 'row', md: 'column' }}
+                          spacing={0.6}
+                          sx={{
+                            minWidth: { xs: '100%', sm: 220, md: 190 },
+                            '& .MuiInputBase-root': {
+                              color: '#e5edf7',
+                              bgcolor: 'rgba(2,6,23,0.5)',
+                            },
+                            '& .MuiInputLabel-root': { color: 'rgba(226,232,240,0.7)' },
+                            '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.24)' },
+                          }}
+                        >
+                          <TextField
+                            select
+                            size="small"
+                            label="Ansvarlig"
+                            value={item.assignedToLabel ?? ''}
+                            onChange={(event) => {
+                              void handleAssignNotification(item.notification!.id, event.target.value);
+                            }}
+                          >
+                            <MenuItem value="">Ingen ansvarlig</MenuItem>
+                            {ownerOptions.map((owner) => (
+                              <MenuItem key={owner.value} value={owner.label}>{owner.label}</MenuItem>
+                            ))}
+                          </TextField>
+                          <TextField
+                            size="small"
+                            label="Frist"
+                            type="date"
+                            value={item.dueAt ? item.dueAt.slice(0, 10) : ''}
+                            onChange={(event) => {
+                              void handleSetNotificationDueDate(item.notification!.id, event.target.value);
+                            }}
+                            InputLabelProps={{ shrink: true }}
+                          />
+                          <Stack direction="row" spacing={0.6}>
+                            <Button
+                              size="small"
+                              variant={item.resolved ? 'outlined' : 'contained'}
+                              color={item.resolved ? 'inherit' : 'success'}
+                              onClick={() => {
+                                void handleResolveNotification(item.notification!.id, !item.resolved);
+                              }}
+                              sx={{ flex: 1, textTransform: 'none', fontWeight: 700 }}
+                            >
+                              {item.resolved ? 'Gjenåpne' : 'Løs'}
+                            </Button>
+                            <Button
+                              size="small"
+                              variant="text"
+                              color="inherit"
+                              onClick={() => { void handleArchiveNotification(item.notification!.id); }}
+                              sx={{ flex: 1, textTransform: 'none', fontWeight: 700 }}
+                            >
+                              Arkiver
+                            </Button>
+                          </Stack>
+                        </Stack>
+                      ) : null}
                       {item.source === 'notification' && item.notification && !item.notification.read ? (
                         <Button
                           size="small"
@@ -2538,7 +2847,9 @@ export default function ProducerPlannerStudio({
                 setPlanningDraft((previous) => updater(previous));
               }}
               onSavePlanning={() => savePlanning(planningDraft)}
-              onRefreshGoogleAssets={refreshGoogleArtifacts}
+              onRefreshGoogleAssets={async () => {
+                await refreshGoogleArtifacts();
+              }}
             />
 
             <Box
@@ -3332,14 +3643,14 @@ export default function ProducerPlannerStudio({
         <DialogActions>
           <Button onClick={closeMeetingDialog}>Avbryt</Button>
           {meetingStep > 0 ? (
-            <Button onClick={() => setMeetingStep((previous) => Math.max(0, (previous - 1) as MeetingDraftStep))}>
+            <Button onClick={() => setMeetingStep((previous) => Math.max(0, previous - 1) as MeetingDraftStep)}>
               Tilbake
             </Button>
           ) : null}
           {meetingStep < 3 ? (
             <Button
               variant="contained"
-              onClick={() => setMeetingStep((previous) => Math.min(3, (previous + 1) as MeetingDraftStep))}
+              onClick={() => setMeetingStep((previous) => Math.min(3, previous + 1) as MeetingDraftStep)}
             >
               Neste
             </Button>

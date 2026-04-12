@@ -1687,6 +1687,16 @@ export interface CastingProject {
   sourceTemplateVersion?: number;
   lockedTemplate?: boolean;
   status?: string;
+  ownerId?: string;
+  ownerEmail?: string;
+  ownerLabel?: string;
+  createdBy?: string;
+  createdByEmail?: string;
+  createdByLabel?: string;
+  archivedAt?: string;
+  archivedBy?: string;
+  archivedByLabel?: string;
+  previousStatus?: string;
   genre?: string;
   projectType?: string;
   startDate?: string;

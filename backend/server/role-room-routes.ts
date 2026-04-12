@@ -70,6 +70,16 @@ interface CastingProjectRow {
   updated_at: string;
 }
 
+interface RoleRoomStoryLogicRow {
+  project_id: string;
+  story_logic: Record<string, unknown> | null;
+  version: number;
+  updated_by_user_id: string | null;
+  updated_by_role: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 type SyncDirection = 'creatorhub_to_roleroom' | 'roleroom_to_creatorhub';
 
 interface ProjectSyncPayload {
@@ -89,6 +99,21 @@ type ProducerReviewDecision = 'approved' | 'rejected' | 'changes_requested';
 type RoleRoomGoogleConnectionState = 'disconnected' | 'connected' | 'expired' | 'error';
 type RoleRoomGoogleOauthMode = 'login' | 'link';
 type RoleRoomLinkedInConnectionState = 'disconnected' | 'connected' | 'expired' | 'error';
+type ProducerAccountAccessPlatform =
+  | 'google'
+  | 'meta'
+  | 'linkedin'
+  | 'youtube'
+  | 'tiktok';
+type RoleRoomAccessVaultSecretStatus =
+  | 'not_shared'
+  | 'requested'
+  | 'stored_externally'
+  | 'revoked';
+type RoleRoomAccessVaultRevealPolicy =
+  | 'approval_required'
+  | 'one_time'
+  | 'manual_only';
 
 interface RoleRoomGoogleConnectionRow {
   id: string;
@@ -530,7 +555,16 @@ function hashRoleRoomClientInviteToken(token: string): string {
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const PROJECT_FILE_STORAGE_ROOT = path.join(REPO_ROOT, 'uploads', 'project-files');
 const ROLE_ROOM_TALENT_UPLOAD_ROOT = path.join(REPO_ROOT, 'uploads', 'role-room-talent');
+const ROLE_ROOM_RECEIPT_UPLOAD_ROOT = path.join(REPO_ROOT, 'uploads', 'role-room-receipts');
+const ROLE_ROOM_RECEIPT_OCR_CACHE_ROOT = path.join(REPO_ROOT, 'uploads', 'role-room-ocr-cache');
 const ROLE_ROOM_TALENT_UPLOAD_MAX_BYTES = 512 * 1024 * 1024;
+const ROLE_ROOM_RECEIPT_UPLOAD_MAX_BYTES = 35 * 1024 * 1024;
+const ROLE_ROOM_RECEIPT_OCR_ENABLED = process.env.ROLE_ROOM_RECEIPT_OCR_ENABLED !== 'false';
+const ROLE_ROOM_RECEIPT_OCR_LANGUAGES = process.env.ROLE_ROOM_RECEIPT_OCR_LANGUAGES || 'nor+eng';
+const ROLE_ROOM_RECEIPT_OCR_TIMEOUT_MS = Math.max(15_000, Number.parseInt(process.env.ROLE_ROOM_RECEIPT_OCR_TIMEOUT_MS ?? '', 10) || 90_000);
+const ROLE_ROOM_RECEIPT_OCR_MAX_PDF_PAGES = Math.max(1, Number.parseInt(process.env.ROLE_ROOM_RECEIPT_OCR_MAX_PDF_PAGES ?? '', 10) || 4);
+const ROLE_ROOM_RECEIPT_OCR_IMAGE_WIDTH = Math.max(900, Number.parseInt(process.env.ROLE_ROOM_RECEIPT_OCR_IMAGE_WIDTH ?? '', 10) || 1800);
+const ROLE_ROOM_RECEIPT_OCR_MIN_TEXT_CHARS = 24;
 const DEFAULT_ROLE_ROOM_TALENT_PUBLIC_ORIGIN = 'https://theroleroom.com';
 const roleRoomTalentUpload = multer({
   storage: multer.memoryStorage(),
@@ -558,6 +592,33 @@ const roleRoomTalentUpload = multer({
     }
 
     cb(new Error('Ugyldig self tape-format. Bruk MP4, MOV, WebM eller lignende videofil.'));
+  },
+});
+const roleRoomReceiptUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: ROLE_ROOM_RECEIPT_UPLOAD_MAX_BYTES,
+  },
+  fileFilter: (_req, file, cb) => {
+    const mimetype = String(file.mimetype || '').toLowerCase();
+    const extension = path.extname(file.originalname || '').toLowerCase();
+    const allowedMimetypes = [
+      'application/pdf',
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+      'image/heic',
+      'image/heif',
+      'image/tiff',
+    ];
+    const allowedExtensions = ['.pdf', '.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif', '.tif', '.tiff'];
+
+    if (allowedMimetypes.includes(mimetype) || allowedExtensions.includes(extension)) {
+      cb(null, true);
+      return;
+    }
+
+    cb(new Error('Ugyldig kvitteringsformat. Bruk PDF, JPG, PNG, WebP, HEIC eller TIFF.'));
   },
 });
 const ROLE_ROOM_GOOGLE_SCOPES = [
@@ -3729,13 +3790,42 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         missing: config.missing,
         state: 'disconnected' as const,
         connection: null,
+        oauthRefreshAlert: config.configured ? null : {
+          severity: 'warning',
+          message: 'Google Workspace mangler serverkonfigurasjon.',
+        },
       };
     }
+    const expiryTimestamp = connection.expiry_date ? Date.parse(connection.expiry_date) : null;
+    const derivedState = connection.connection_state === 'connected'
+      && typeof expiryTimestamp === 'number'
+      && Number.isFinite(expiryTimestamp)
+      && expiryTimestamp <= Date.now() + 5 * 60 * 1000
+        ? 'expired'
+        : (connection.connection_state ?? 'disconnected');
+    const hasRefreshToken = Boolean(readStringValue(connection.refresh_token_encrypted));
+    const oauthRefreshAlert = derivedState === 'expired'
+      ? {
+        severity: 'warning',
+        message: 'Google Workspace-tilgangen er utløpt eller utløper straks. Logg inn med Google på nytt.',
+      }
+      : connection.connection_state === 'error'
+        ? {
+          severity: 'error',
+          message: readStringValue(connection.last_error) ?? 'Google Workspace svarte med feil. Forny koblingen.',
+        }
+        : !hasRefreshToken
+          ? {
+            severity: 'info',
+            message: 'Google Workspace mangler refresh token. Forny SSO hvis Drive eller kalender stopper.',
+          }
+          : null;
 
     return {
       configured: config.configured,
       missing: config.missing,
-      state: connection.connection_state ?? 'disconnected',
+      state: derivedState,
+      oauthRefreshAlert,
       connection: {
         id: connection.id,
         userId: connection.user_id,
@@ -3743,7 +3833,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         googleEmail: readStringValue(connection.google_email),
         googleSubject: readStringValue(connection.google_subject),
         scopes: readStringArray(connection.scopes),
-        state: connection.connection_state ?? 'disconnected',
+        state: derivedState,
         lastError: readStringValue(connection.last_error),
         profile: readJsonObject(connection.profile),
         expiryDate: connection.expiry_date,
@@ -4378,6 +4468,24 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     return effectiveRoleRecord.permissions.canEditProduction === true;
   }
 
+  function canReadStoryLogic(req: Request, roleRecord: ProjectRoleRecord | null): boolean {
+    if (canReadProducerData(req, roleRecord)) return true;
+    const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
+    if (!effectiveRoleRecord) return false;
+    return effectiveRoleRecord.permissions.canEditScript === true
+      || effectiveRoleRecord.permissions.canRunTableRead === true;
+  }
+
+  function canWriteStoryLogic(req: Request, roleRecord: ProjectRoleRecord | null): boolean {
+    if (requireScope(req, 'admin')) return true;
+    const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
+    if (!effectiveRoleRecord) return false;
+    if (['director', 'producer', 'content_producer', 'writer', 'script_editor'].includes(effectiveRoleRecord.role)) {
+      return true;
+    }
+    return effectiveRoleRecord.permissions.canEditScript === true;
+  }
+
   function canCommentProducerReview(req: Request, roleRecord: ProjectRoleRecord | null): boolean {
     if (requireScope(req, 'admin')) return true;
     const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
@@ -4484,10 +4592,22 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     project_id: string;
     audience?: string | null;
     event_type?: string | null;
+    inbox_type?: string | null;
     title?: string | null;
     message?: string | null;
+    client_name?: string | null;
+    client_email?: string | null;
     linked_entity_type?: string | null;
     linked_entity_id?: string | null;
+    assigned_to_user_id?: string | null;
+    assigned_to_label?: string | null;
+    due_at?: string | null;
+    resolved_at?: string | null;
+    resolved_by_user_id?: string | null;
+    archived_at?: string | null;
+    archived_by_user_id?: string | null;
+    mention_user_ids?: unknown;
+    mention_emails?: unknown;
     metadata?: Record<string, unknown> | null;
     created_by_user_id?: string | null;
     created_by_role?: string | null;
@@ -4498,6 +4618,84 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
   };
 
   type RoleRoomPushScope = 'producer_team';
+
+  type RoleRoomExpenseRow = {
+    id: string;
+    project_id: string;
+    title?: string | null;
+    description?: string | null;
+    merchant_name?: string | null;
+    expense_date?: string | null;
+    amount?: string | number | null;
+    vat_amount?: string | number | null;
+    currency?: string | null;
+    category?: string | null;
+    paid_by_user_id?: string | null;
+    paid_by_label?: string | null;
+    cost_owner?: string | null;
+    refund_status?: string | null;
+    client_approval_status?: string | null;
+    duplicate_of_expense_id?: string | null;
+    ocr_status?: string | null;
+    ocr_confidence?: string | number | null;
+    ocr_review_required?: boolean | null;
+    amount_validation_status?: string | null;
+    vat_validation_status?: string | null;
+    privacy_notice_acknowledged_at?: string | null;
+    metadata?: Record<string, unknown> | null;
+    created_by_user_id?: string | null;
+    created_by_role?: string | null;
+    created_at?: string | null;
+    updated_at?: string | null;
+  };
+
+  type RoleRoomExpenseReceiptFileRow = {
+    id: string;
+    expense_id: string;
+    project_id: string;
+    file_name?: string | null;
+    original_name?: string | null;
+    mime_type?: string | null;
+    file_size?: string | number | null;
+    storage_path?: string | null;
+    sha256?: string | null;
+    page_count?: number | null;
+    metadata?: Record<string, unknown> | null;
+    uploaded_by_user_id?: string | null;
+    uploaded_by_role?: string | null;
+    created_at?: string | null;
+  };
+
+  type RoleRoomReceiptOcrJobRow = {
+    id: string;
+    expense_id: string;
+    receipt_file_id?: string | null;
+    project_id: string;
+    status?: string | null;
+    attempts?: number | null;
+    confidence?: string | number | null;
+    extracted_text?: string | null;
+    extracted_data?: Record<string, unknown> | null;
+    engine?: string | null;
+    last_error?: string | null;
+    queued_at?: string | null;
+    started_at?: string | null;
+    completed_at?: string | null;
+    updated_at?: string | null;
+  };
+
+  type RoleRoomReceiptOcrAuditRow = {
+    id: string;
+    expense_id: string;
+    receipt_file_id?: string | null;
+    ocr_job_id?: string | null;
+    project_id: string;
+    action?: string | null;
+    actor_user_id?: string | null;
+    actor_role?: string | null;
+    metadata?: Record<string, unknown> | null;
+    created_at?: string | null;
+  };
 
   type RoleRoomPushSubscriptionRow = {
     id: string;
@@ -4798,6 +4996,1019 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     return getProducerNotificationAudiences(req, roleRecord).includes('producer_team');
   }
 
+  function readDateValue(value: unknown): string | null {
+    const rawValue = readStringValue(value);
+    if (!rawValue) {
+      return null;
+    }
+
+    const parsed = Date.parse(rawValue);
+    if (!Number.isFinite(parsed)) {
+      return null;
+    }
+
+    return new Date(parsed).toISOString();
+  }
+
+  function normalizeProducerInboxType(value: unknown, fallback = 'general'): string {
+    const normalized = readStringValue(value)?.toLowerCase().replace(/[^a-z0-9_-]+/g, '_');
+    return normalized && normalized.length <= 80 ? normalized : fallback;
+  }
+
+  function inferProducerInboxType(
+    eventType: string,
+    linkedEntityType?: string | null,
+    metadata?: Record<string, unknown> | null,
+  ): string {
+    const explicitType = normalizeProducerInboxType(metadata?.inboxType ?? metadata?.inbox_type, '');
+    if (explicitType) {
+      return explicitType;
+    }
+
+    const normalizedEventType = eventType.trim().toLowerCase();
+    const normalizedEntityType = String(linkedEntityType ?? '').trim().toLowerCase();
+    if (normalizedEventType.includes('brief') || normalizedEntityType.includes('intake')) {
+      return 'brief';
+    }
+    if (normalizedEventType.includes('review') || normalizedEventType.includes('approval')) {
+      return 'approval';
+    }
+    if (normalizedEventType.includes('material') || normalizedEntityType.includes('material')) {
+      return 'material';
+    }
+    if (normalizedEventType.includes('delivery') || normalizedEntityType.includes('delivery')) {
+      return 'delivery';
+    }
+    if (normalizedEventType.includes('workspace') || normalizedEventType.includes('google')) {
+      return 'workspace';
+    }
+    return 'general';
+  }
+
+  function extractProducerNotificationClient(metadata?: Record<string, unknown> | null) {
+    return {
+      clientName: readStringValue(
+        metadata?.clientName
+        ?? metadata?.client_name
+        ?? metadata?.contactName
+        ?? metadata?.contact_name,
+      ),
+      clientEmail: normalizeEmailValue(
+        metadata?.clientEmail
+        ?? metadata?.client_email
+        ?? metadata?.contactEmail
+        ?? metadata?.contact_email,
+      ),
+    };
+  }
+
+  function buildProducerProjectNotificationResponse(row: ProducerProjectNotificationRow) {
+    const mentionUserIds = readStringArray(row.mention_user_ids);
+    const mentionEmails = readStringArray(row.mention_emails).map((email) => email.toLowerCase());
+    return {
+      id: row.id,
+      project_id: row.project_id,
+      projectId: row.project_id,
+      audience: row.audience ?? 'producer_team',
+      event_type: row.event_type ?? 'unknown',
+      eventType: row.event_type ?? 'unknown',
+      inbox_type: row.inbox_type ?? 'general',
+      inboxType: row.inbox_type ?? 'general',
+      title: row.title ?? 'Nytt varsel',
+      message: row.message ?? null,
+      client_name: row.client_name ?? null,
+      clientName: row.client_name ?? null,
+      client_email: row.client_email ?? null,
+      clientEmail: row.client_email ?? null,
+      linked_entity_type: row.linked_entity_type ?? null,
+      linkedEntityType: row.linked_entity_type ?? null,
+      linked_entity_id: row.linked_entity_id ?? null,
+      linkedEntityId: row.linked_entity_id ?? null,
+      assigned_to_user_id: row.assigned_to_user_id ?? null,
+      assignedToUserId: row.assigned_to_user_id ?? null,
+      assigned_to_label: row.assigned_to_label ?? null,
+      assignedToLabel: row.assigned_to_label ?? null,
+      due_at: row.due_at ?? null,
+      dueAt: row.due_at ?? null,
+      resolved_at: row.resolved_at ?? null,
+      resolvedAt: row.resolved_at ?? null,
+      resolved_by_user_id: row.resolved_by_user_id ?? null,
+      resolvedByUserId: row.resolved_by_user_id ?? null,
+      archived_at: row.archived_at ?? null,
+      archivedAt: row.archived_at ?? null,
+      archived_by_user_id: row.archived_by_user_id ?? null,
+      archivedByUserId: row.archived_by_user_id ?? null,
+      mention_user_ids: mentionUserIds,
+      mentionUserIds,
+      mention_emails: mentionEmails,
+      mentionEmails,
+      metadata: readJsonObject(row.metadata),
+      created_by_user_id: row.created_by_user_id ?? null,
+      createdByUserId: row.created_by_user_id ?? null,
+      created_by_role: row.created_by_role ?? null,
+      createdByRole: row.created_by_role ?? null,
+      created_at: row.created_at ?? null,
+      createdAt: row.created_at ?? null,
+      updated_at: row.updated_at ?? null,
+      updatedAt: row.updated_at ?? null,
+      read: Boolean(row.read),
+      read_at: row.read_at ?? null,
+      readAt: row.read_at ?? null,
+    };
+  }
+
+  function readNumberValue(value: unknown): number | null {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === 'string' && value.trim().length > 0) {
+      const normalized = value.replace(/\s+/g, '').replace(',', '.');
+      const parsed = Number(normalized);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    return null;
+  }
+
+  function normalizeReceiptExpenseDate(value: unknown): string | null {
+    const rawValue = readStringValue(value);
+    if (!rawValue) {
+      return null;
+    }
+
+    const isoMatch = rawValue.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) {
+      return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+    }
+
+    const norwegianMatch = rawValue.match(/\b(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})\b/);
+    if (norwegianMatch) {
+      const day = norwegianMatch[1].padStart(2, '0');
+      const month = norwegianMatch[2].padStart(2, '0');
+      const rawYear = norwegianMatch[3];
+      const year = rawYear.length === 2 ? `20${rawYear}` : rawYear;
+      return `${year}-${month}-${day}`;
+    }
+
+    const parsed = Date.parse(rawValue);
+    if (!Number.isFinite(parsed)) {
+      return null;
+    }
+    return new Date(parsed).toISOString().slice(0, 10);
+  }
+
+  function normalizeExpenseStatus(value: unknown, allowed: string[], fallback: string): string {
+    const normalized = readStringValue(value)?.toLowerCase().replace(/[^a-z0-9_-]+/g, '_');
+    return normalized && allowed.includes(normalized) ? normalized : fallback;
+  }
+
+  function normalizeMerchantName(value: unknown): string | null {
+    const merchant = readStringValue(value);
+    return merchant ? merchant.replace(/\s+/g, ' ').slice(0, 255) : null;
+  }
+
+  type ReceiptOcrExtractionResult = {
+    text: string;
+    engine: string;
+    confidence: number;
+    pageCount: number | null;
+    pagesProcessed: number;
+    warnings: string[];
+    metadata: Record<string, unknown>;
+  };
+
+  type PdfParseConstructor = new (options: { data: Buffer | Uint8Array }) => {
+    getText(params?: Record<string, unknown>): Promise<{ text?: string; total?: number; pages?: unknown[] }>;
+    getScreenshot(params?: Record<string, unknown>): Promise<{
+      total?: number;
+      pages?: Array<{
+        data?: Uint8Array | Buffer;
+        pageNumber?: number;
+        width?: number;
+        height?: number;
+      }>;
+    }>;
+    destroy(): Promise<void>;
+  };
+
+  type TesseractWorkerLike = {
+    recognize(input: Buffer): Promise<unknown>;
+    terminate(): Promise<void>;
+  };
+
+  function normalizeReceiptOcrText(value: unknown): string {
+    return (readStringValue(value) ?? '')
+      .replace(/\u0000/g, '')
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n{4,}/g, '\n\n\n')
+      .trim();
+  }
+
+  function isPdfReceiptFile(mimeType?: string | null, fileName?: string | null): boolean {
+    const normalizedMimeType = String(mimeType || '').toLowerCase();
+    const extension = path.extname(fileName || '').toLowerCase();
+    return normalizedMimeType === 'application/pdf' || extension === '.pdf';
+  }
+
+  function isImageReceiptFile(mimeType?: string | null, fileName?: string | null): boolean {
+    const normalizedMimeType = String(mimeType || '').toLowerCase();
+    const extension = path.extname(fileName || '').toLowerCase();
+    return normalizedMimeType.startsWith('image/')
+      || ['.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif', '.tif', '.tiff'].includes(extension);
+  }
+
+  function buildReceiptOcrFallbackResult(text: string, engine = 'manual-text'): ReceiptOcrExtractionResult {
+    const normalizedText = normalizeReceiptOcrText(text);
+    return {
+      text: normalizedText,
+      engine,
+      confidence: normalizedText.length >= ROLE_ROOM_RECEIPT_OCR_MIN_TEXT_CHARS ? 0.55 : 0,
+      pageCount: null,
+      pagesProcessed: normalizedText ? 1 : 0,
+      warnings: normalizedText ? [] : ['Ingen tekst tilgjengelig for OCR'],
+      metadata: {
+        source: engine,
+        languages: ROLE_ROOM_RECEIPT_OCR_LANGUAGES,
+      },
+    };
+  }
+
+  async function runWithReceiptOcrTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+    let timeoutId: NodeJS.Timeout | null = null;
+    const timeout = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        reject(new Error(`${label} tidsavbrutt etter ${timeoutMs}ms`));
+      }, timeoutMs);
+    });
+
+    try {
+      return await Promise.race([promise, timeout]);
+    } finally {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    }
+  }
+
+  async function preprocessReceiptImageForOcr(buffer: Buffer): Promise<{
+    buffer: Buffer;
+    metadata: Record<string, unknown>;
+  }> {
+    const sharpModule = await import('sharp');
+    const sharp = sharpModule.default;
+    const image = sharp(buffer, {
+      failOn: 'none',
+      limitInputPixels: 120_000_000,
+    }).rotate();
+    const metadata = await image.metadata();
+    const processed = image
+      .resize({
+        width: ROLE_ROOM_RECEIPT_OCR_IMAGE_WIDTH,
+        withoutEnlargement: true,
+      })
+      .flatten({ background: '#ffffff' })
+      .grayscale()
+      .normalize()
+      .sharpen({ sigma: 0.8 })
+      .png({ compressionLevel: 6 });
+
+    return {
+      buffer: await processed.toBuffer(),
+      metadata: {
+        originalFormat: metadata.format ?? null,
+        originalWidth: metadata.width ?? null,
+        originalHeight: metadata.height ?? null,
+        targetWidth: ROLE_ROOM_RECEIPT_OCR_IMAGE_WIDTH,
+      },
+    };
+  }
+
+  async function recognizeReceiptImageWithTesseract(buffer: Buffer, label: string): Promise<{
+    text: string;
+    confidence: number;
+    metadata: Record<string, unknown>;
+  }> {
+    await fs.mkdir(ROLE_ROOM_RECEIPT_OCR_CACHE_ROOT, { recursive: true });
+    const tesseractModule = await import('tesseract.js') as unknown as {
+      createWorker: (
+        langs?: string,
+        oem?: number,
+        options?: Record<string, unknown>,
+        config?: Record<string, unknown>,
+      ) => Promise<TesseractWorkerLike>;
+      OEM?: { LSTM_ONLY?: number };
+      PSM?: { AUTO?: number };
+    };
+    const worker = await runWithReceiptOcrTimeout(
+      tesseractModule.createWorker(
+        ROLE_ROOM_RECEIPT_OCR_LANGUAGES,
+        tesseractModule.OEM?.LSTM_ONLY ?? 1,
+        {
+          cachePath: ROLE_ROOM_RECEIPT_OCR_CACHE_ROOT,
+          logger: () => undefined,
+        },
+        {
+          tessedit_pageseg_mode: tesseractModule.PSM?.AUTO ?? 3,
+          preserve_interword_spaces: '1',
+          user_defined_dpi: '300',
+        },
+      ),
+      ROLE_ROOM_RECEIPT_OCR_TIMEOUT_MS,
+      `OCR worker (${label})`,
+    );
+
+    try {
+      const result = await runWithReceiptOcrTimeout(
+        worker.recognize(buffer),
+        ROLE_ROOM_RECEIPT_OCR_TIMEOUT_MS,
+        `OCR analyse (${label})`,
+      );
+      const data = readRecordValue((result as { data?: unknown }).data) ?? {};
+      const rawConfidence = readNumberValue(data.confidence) ?? 0;
+      return {
+        text: normalizeReceiptOcrText(data.text),
+        confidence: Math.max(0, Math.min(1, rawConfidence / 100)),
+        metadata: {
+          label,
+          rawConfidence,
+          languages: ROLE_ROOM_RECEIPT_OCR_LANGUAGES,
+        },
+      };
+    } finally {
+      await worker.terminate().catch(() => undefined);
+    }
+  }
+
+  async function extractReceiptOcrFromImageBuffer(buffer: Buffer, input: {
+    label: string;
+    engine: string;
+  }): Promise<ReceiptOcrExtractionResult> {
+    const preprocessed = await preprocessReceiptImageForOcr(buffer);
+    const recognized = await recognizeReceiptImageWithTesseract(preprocessed.buffer, input.label);
+    return {
+      text: recognized.text,
+      engine: input.engine,
+      confidence: recognized.confidence,
+      pageCount: 1,
+      pagesProcessed: 1,
+      warnings: recognized.text.length >= ROLE_ROOM_RECEIPT_OCR_MIN_TEXT_CHARS ? [] : ['OCR fant lite eller ingen tekst i bildet'],
+      metadata: {
+        ...preprocessed.metadata,
+        ...recognized.metadata,
+      },
+    };
+  }
+
+  async function extractReceiptOcrFromPdfBuffer(buffer: Buffer, label: string): Promise<ReceiptOcrExtractionResult> {
+    const pdfParseModule = await import('pdf-parse') as unknown as { PDFParse: PdfParseConstructor };
+    const parser = new pdfParseModule.PDFParse({ data: buffer });
+    const warnings: string[] = [];
+    try {
+      const textResult = await parser.getText({
+        first: ROLE_ROOM_RECEIPT_OCR_MAX_PDF_PAGES,
+        pageJoiner: '\n-- page_number of total_number --',
+      });
+      const extractedText = normalizeReceiptOcrText(textResult.text);
+      const pageCount = readNumberValue(textResult.total) ?? textResult.pages?.length ?? null;
+      const textInference = inferReceiptOcrFromText(extractedText);
+
+      if (
+        extractedText.length >= ROLE_ROOM_RECEIPT_OCR_MIN_TEXT_CHARS
+        && textInference.confidence >= 0.45
+      ) {
+        return {
+          text: extractedText,
+          engine: 'pdf-parse-text',
+          confidence: Math.max(0.58, textInference.confidence),
+          pageCount,
+          pagesProcessed: textResult.pages?.length ?? Math.min(pageCount ?? 1, ROLE_ROOM_RECEIPT_OCR_MAX_PDF_PAGES),
+          warnings,
+          metadata: {
+            source: 'embedded-pdf-text',
+            maxPdfPages: ROLE_ROOM_RECEIPT_OCR_MAX_PDF_PAGES,
+          },
+        };
+      }
+
+      warnings.push('PDF hadde lite tekst, bruker sidebilder med Tesseract');
+      const screenshots = await parser.getScreenshot({
+        first: ROLE_ROOM_RECEIPT_OCR_MAX_PDF_PAGES,
+        imageBuffer: true,
+        imageDataUrl: false,
+        desiredWidth: ROLE_ROOM_RECEIPT_OCR_IMAGE_WIDTH,
+      });
+      const pageTexts: string[] = [];
+      const pageConfidences: number[] = [];
+
+      for (const page of screenshots.pages ?? []) {
+        if (!page.data || page.data.length === 0) {
+          continue;
+        }
+        const pageBuffer = Buffer.from(page.data);
+        const recognized = await recognizeReceiptImageWithTesseract(pageBuffer, `${label} side ${page.pageNumber ?? pageTexts.length + 1}`);
+        if (recognized.text) {
+          pageTexts.push(recognized.text);
+        }
+        pageConfidences.push(recognized.confidence);
+      }
+
+      const renderedText = normalizeReceiptOcrText(pageTexts.join('\n\n'));
+      const averageConfidence = pageConfidences.length > 0
+        ? pageConfidences.reduce((sum, value) => sum + value, 0) / pageConfidences.length
+        : 0;
+
+      return {
+        text: renderedText || extractedText,
+        engine: renderedText ? 'pdf-render+tesseract.js' : 'pdf-parse-text-low-confidence',
+        confidence: renderedText ? averageConfidence : Math.max(0.1, textInference.confidence),
+        pageCount: readNumberValue(screenshots.total) ?? pageCount,
+        pagesProcessed: screenshots.pages?.length ?? 0,
+        warnings: renderedText ? warnings : [...warnings, 'Tesseract fant ikke lesbar tekst i PDF-sidebilder'],
+        metadata: {
+          source: renderedText ? 'rendered-pdf-pages' : 'embedded-pdf-text-low-confidence',
+          embeddedTextLength: extractedText.length,
+          maxPdfPages: ROLE_ROOM_RECEIPT_OCR_MAX_PDF_PAGES,
+          renderedPages: screenshots.pages?.length ?? 0,
+        },
+      };
+    } finally {
+      await parser.destroy().catch(() => undefined);
+    }
+  }
+
+  async function loadReceiptFileForOcr(input: {
+    projectId: string;
+    expenseId: string;
+    receiptFileId?: string | null;
+  }): Promise<RoleRoomExpenseReceiptFileRow | null> {
+    const values: unknown[] = [input.projectId, input.expenseId];
+    const conditions = ['project_id = $1', 'expense_id = $2'];
+    const receiptFileId = readStringValue(input.receiptFileId);
+    if (receiptFileId) {
+      values.push(receiptFileId);
+      conditions.push(`id = $${values.length}`);
+    }
+    const result = await pool.query(
+      `SELECT *
+       FROM role_room_expense_receipt_files
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      values,
+    );
+    return (result.rows[0] as RoleRoomExpenseReceiptFileRow | undefined) ?? null;
+  }
+
+  async function extractReceiptOcrText(input: {
+    receiptFile?: RoleRoomExpenseReceiptFileRow | null;
+    fallbackText?: string | null;
+    requestedEngine?: string | null;
+  }): Promise<ReceiptOcrExtractionResult> {
+    const fallbackText = normalizeReceiptOcrText(input.fallbackText);
+    if (!ROLE_ROOM_RECEIPT_OCR_ENABLED) {
+      return buildReceiptOcrFallbackResult(fallbackText, 'ocr-disabled');
+    }
+
+    const receiptFile = input.receiptFile ?? null;
+    const storagePath = readStringValue(receiptFile?.storage_path);
+    if (!storagePath) {
+      return buildReceiptOcrFallbackResult(fallbackText, fallbackText ? 'manual-text' : 'missing-receipt-file');
+    }
+    if (!existsSync(storagePath)) {
+      if (fallbackText) {
+        return buildReceiptOcrFallbackResult(fallbackText, 'manual-text-missing-file');
+      }
+      throw new Error('Kvitteringsfilen finnes ikke på disk');
+    }
+
+    const buffer = await fs.readFile(storagePath);
+    const label = receiptFile?.original_name ?? receiptFile?.file_name ?? 'receipt';
+    const requestedEngine = readStringValue(input.requestedEngine);
+
+    try {
+      if (isPdfReceiptFile(receiptFile?.mime_type, receiptFile?.original_name ?? receiptFile?.file_name)) {
+        return await extractReceiptOcrFromPdfBuffer(buffer, label);
+      }
+
+      if (isImageReceiptFile(receiptFile?.mime_type, receiptFile?.original_name ?? receiptFile?.file_name)) {
+        return await extractReceiptOcrFromImageBuffer(buffer, {
+          label,
+          engine: requestedEngine?.includes('heic') || String(receiptFile?.mime_type || '').toLowerCase().includes('heic')
+            ? 'sharp-heic+tesseract.js'
+            : 'sharp-image+tesseract.js',
+        });
+      }
+    } catch (error) {
+      if (fallbackText) {
+        return {
+          ...buildReceiptOcrFallbackResult(fallbackText, 'manual-text-after-ocr-error'),
+          warnings: [
+            `Filbasert OCR feilet: ${error instanceof Error ? error.message : String(error)}`,
+          ],
+        };
+      }
+      throw error;
+    }
+
+    if (fallbackText) {
+      return buildReceiptOcrFallbackResult(fallbackText, 'manual-text-unsupported-file');
+    }
+    throw new Error('Kvitteringsformatet støttes ikke av OCR-motoren');
+  }
+
+  function inferReceiptOcrFromText(text: string): {
+    merchantName: string | null;
+    expenseDate: string | null;
+    amount: number | null;
+    vatAmount: number | null;
+    lineItems: Array<Record<string, unknown>>;
+    confidence: number;
+  } {
+    const lines = text
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const merchantName = lines.find((line) => /[A-Za-zÆØÅæøå]{3,}/.test(line))?.slice(0, 120) ?? null;
+    const expenseDate = normalizeReceiptExpenseDate(text);
+    const amountMatches = Array.from(text.matchAll(/(?:total|sum|beløp|amount|nok|kr)\D{0,12}(\d{1,7}(?:[.,]\d{2})?)/gi))
+      .map((match) => readNumberValue(match[1]))
+      .filter((amount): amount is number => typeof amount === 'number' && amount > 0);
+    const fallbackAmounts = Array.from(text.matchAll(/\b(\d{1,7}[.,]\d{2})\b/g))
+      .map((match) => readNumberValue(match[1]))
+      .filter((amount): amount is number => typeof amount === 'number' && amount > 0);
+    const amount = amountMatches.at(-1) ?? fallbackAmounts.at(-1) ?? null;
+    const vatMatch = text.match(/(?:mva|vat|tax)\D{0,12}(\d{1,7}(?:[.,]\d{2})?)/i);
+    const vatAmount = vatMatch ? readNumberValue(vatMatch[1]) : null;
+    const lineItems = lines
+      .filter((line) => /\d{1,7}[.,]\d{2}/.test(line))
+      .slice(0, 30)
+      .map((line) => ({ raw: line }));
+    const confidence = [
+      merchantName ? 0.25 : 0,
+      expenseDate ? 0.25 : 0,
+      amount ? 0.35 : 0,
+      vatAmount !== null ? 0.15 : 0,
+    ].reduce((sum, value) => sum + value, 0);
+
+    return {
+      merchantName,
+      expenseDate,
+      amount,
+      vatAmount,
+      lineItems,
+      confidence: Math.min(1, confidence),
+    };
+  }
+
+  function validateExpenseAmount(amount: number | null): string {
+    if (amount === null) {
+      return 'missing';
+    }
+    return amount > 0 ? 'valid' : 'invalid';
+  }
+
+  function validateExpenseVat(amount: number | null, vatAmount: number | null): string {
+    if (vatAmount === null) {
+      return 'missing';
+    }
+    if (amount === null || amount <= 0 || vatAmount < 0 || vatAmount > amount) {
+      return 'invalid';
+    }
+    const expectedNorwegianVat = Number((amount * 0.2).toFixed(2));
+    return Math.abs(vatAmount - expectedNorwegianVat) <= 1 ? 'valid' : 'review';
+  }
+
+  async function appendReceiptOcrAuditEvent(input: {
+    req: Request;
+    projectId: string;
+    expenseId: string;
+    receiptFileId?: string | null;
+    ocrJobId?: string | null;
+    action: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<void> {
+    const actor = getOptionalRequestUser(input.req);
+    await pool.query(
+      `INSERT INTO role_room_receipt_ocr_audit_events (
+        id, expense_id, receipt_file_id, ocr_job_id, project_id,
+        action, actor_user_id, actor_role, metadata, created_at
+      ) VALUES (
+        $1, $2, $3, $4, $5,
+        $6, $7, $8, $9::jsonb, NOW()
+      )`,
+      [
+        crypto.randomUUID(),
+        input.expenseId,
+        input.receiptFileId ?? null,
+        input.ocrJobId ?? null,
+        input.projectId,
+        input.action,
+        actor?.userId ?? null,
+        actor?.role ?? null,
+        JSON.stringify({
+          ...(input.metadata ?? {}),
+          ip: input.req.ip ?? null,
+          userAgent: readOptionalHeaderValue(input.req, 'user-agent') ?? null,
+        }),
+      ],
+    );
+  }
+
+  function buildRoleRoomExpenseResponse(row: RoleRoomExpenseRow, receipts: RoleRoomExpenseReceiptFileRow[] = [], jobs: RoleRoomReceiptOcrJobRow[] = []) {
+    return {
+      id: row.id,
+      projectId: row.project_id,
+      title: row.title ?? 'Utlegg',
+      description: row.description ?? null,
+      merchantName: row.merchant_name ?? null,
+      expenseDate: row.expense_date ?? null,
+      amount: row.amount === null || row.amount === undefined ? null : Number(row.amount),
+      vatAmount: row.vat_amount === null || row.vat_amount === undefined ? null : Number(row.vat_amount),
+      currency: row.currency ?? 'NOK',
+      category: row.category ?? null,
+      paidByUserId: row.paid_by_user_id ?? null,
+      paidByLabel: row.paid_by_label ?? null,
+      costOwner: row.cost_owner ?? 'client',
+      refundStatus: row.refund_status ?? 'not_requested',
+      clientApprovalStatus: row.client_approval_status ?? 'pending',
+      duplicateOfExpenseId: row.duplicate_of_expense_id ?? null,
+      ocrStatus: row.ocr_status ?? 'pending',
+      ocrConfidence: row.ocr_confidence === null || row.ocr_confidence === undefined ? null : Number(row.ocr_confidence),
+      ocrReviewRequired: Boolean(row.ocr_review_required),
+      amountValidationStatus: row.amount_validation_status ?? 'pending',
+      vatValidationStatus: row.vat_validation_status ?? 'pending',
+      privacyNoticeAcknowledgedAt: row.privacy_notice_acknowledged_at ?? null,
+      metadata: readJsonObject(row.metadata),
+      createdByUserId: row.created_by_user_id ?? null,
+      createdByRole: row.created_by_role ?? null,
+      createdAt: row.created_at ?? null,
+      updatedAt: row.updated_at ?? null,
+      receipts: receipts.map((receipt) => ({
+        id: receipt.id,
+        expenseId: receipt.expense_id,
+        projectId: receipt.project_id,
+        fileName: receipt.file_name ?? null,
+        originalName: receipt.original_name ?? null,
+        mimeType: receipt.mime_type ?? null,
+        fileSize: receipt.file_size === null || receipt.file_size === undefined ? null : Number(receipt.file_size),
+        sha256: receipt.sha256 ?? null,
+        pageCount: receipt.page_count ?? null,
+        metadata: readJsonObject(receipt.metadata),
+        createdAt: receipt.created_at ?? null,
+      })),
+      ocrJobs: jobs.map((job) => ({
+        id: job.id,
+        expenseId: job.expense_id,
+        receiptFileId: job.receipt_file_id ?? null,
+        projectId: job.project_id,
+        status: job.status ?? 'queued',
+        attempts: Number(job.attempts ?? 0),
+        confidence: job.confidence === null || job.confidence === undefined ? null : Number(job.confidence),
+        extractedText: job.extracted_text ?? null,
+        extractedData: readJsonObject(job.extracted_data),
+        engine: job.engine ?? 'server-heuristic',
+        lastError: job.last_error ?? null,
+        queuedAt: job.queued_at ?? null,
+        startedAt: job.started_at ?? null,
+        completedAt: job.completed_at ?? null,
+        updatedAt: job.updated_at ?? null,
+      })),
+    };
+  }
+
+  async function runReceiptOcrJob(input: {
+    req: Request;
+    projectId: string;
+    expenseId: string;
+    receiptFileId?: string | null;
+    extractedText?: string | null;
+    engine?: string;
+  }): Promise<RoleRoomReceiptOcrJobRow> {
+    const ocrJobId = crypto.randomUUID();
+    const fallbackText = normalizeReceiptOcrText(input.extractedText);
+    const receiptFile = await loadReceiptFileForOcr({
+      projectId: input.projectId,
+      expenseId: input.expenseId,
+      receiptFileId: input.receiptFileId,
+    });
+    const receiptFileId = input.receiptFileId ?? receiptFile?.id ?? null;
+    await pool.query(
+      `INSERT INTO role_room_receipt_ocr_jobs (
+        id, expense_id, receipt_file_id, project_id, status, attempts,
+        extracted_text, extracted_data, engine, queued_at, updated_at
+      ) VALUES (
+        $1, $2, $3, $4, 'queued', 0,
+        $5, '{}'::jsonb, $6, NOW(), NOW()
+      )`,
+      [
+        ocrJobId,
+        input.expenseId,
+        receiptFileId,
+        input.projectId,
+        fallbackText || null,
+        input.engine ?? 'server-ocr',
+      ],
+    );
+
+    await appendReceiptOcrAuditEvent({
+      req: input.req,
+      projectId: input.projectId,
+      expenseId: input.expenseId,
+      receiptFileId,
+      ocrJobId,
+      action: 'queued',
+      metadata: {
+        privacyNotice: 'Kvitteringer kan inneholde persondata. Systemet lagrer OCR-resultat, filmetadata og audit for kontroll og refusjon.',
+        requestedEngine: input.engine ?? null,
+        hasReceiptFile: Boolean(receiptFile),
+        hasFallbackText: Boolean(fallbackText),
+      },
+    });
+
+    await pool.query(
+      `UPDATE role_room_receipt_ocr_jobs
+       SET status = 'processing',
+           attempts = attempts + 1,
+           started_at = NOW(),
+           updated_at = NOW()
+       WHERE id = $1`,
+      [ocrJobId],
+    );
+
+    let extraction: ReceiptOcrExtractionResult;
+    try {
+      extraction = await extractReceiptOcrText({
+        receiptFile,
+        fallbackText,
+        requestedEngine: input.engine,
+      });
+    } catch (error) {
+      const lastError = error instanceof Error ? error.message : String(error);
+      const failedData = {
+        error: lastError,
+        requestedEngine: input.engine ?? null,
+        receiptFileId,
+        supportedFormats: ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'heic', 'heif', 'tiff'],
+        confidenceReviewRequired: true,
+      };
+      await pool.query(
+        `UPDATE role_room_receipt_ocr_jobs
+         SET status = 'failed',
+             last_error = $2,
+             extracted_data = $3::jsonb,
+             completed_at = NOW(),
+             updated_at = NOW()
+         WHERE id = $1`,
+        [ocrJobId, lastError, JSON.stringify(failedData)],
+      );
+      await pool.query(
+        `UPDATE role_room_expenses
+         SET ocr_status = 'failed',
+             ocr_confidence = 0,
+             ocr_review_required = TRUE,
+             amount_validation_status = CASE WHEN amount IS NULL THEN 'missing' ELSE amount_validation_status END,
+             vat_validation_status = CASE WHEN vat_amount IS NULL THEN 'missing' ELSE vat_validation_status END,
+             privacy_notice_acknowledged_at = COALESCE(privacy_notice_acknowledged_at, NOW()),
+             updated_at = NOW()
+         WHERE id = $1 AND project_id = $2`,
+        [input.expenseId, input.projectId],
+      );
+      await appendReceiptOcrAuditEvent({
+        req: input.req,
+        projectId: input.projectId,
+        expenseId: input.expenseId,
+        receiptFileId,
+        ocrJobId,
+        action: 'failed',
+        metadata: failedData,
+      });
+      const failedResult = await pool.query(
+        `SELECT *
+         FROM role_room_receipt_ocr_jobs
+         WHERE id = $1`,
+        [ocrJobId],
+      );
+      return failedResult.rows[0] as RoleRoomReceiptOcrJobRow;
+    }
+
+    if (receiptFileId) {
+      await pool.query(
+        `UPDATE role_room_expense_receipt_files
+         SET page_count = COALESCE(page_count, $2),
+             metadata = COALESCE(metadata, '{}'::jsonb)
+               || $3::jsonb
+         WHERE id = $1 AND project_id = $4`,
+        [
+          receiptFileId,
+          extraction.pageCount,
+          JSON.stringify({
+            ocrEngine: extraction.engine,
+            ocrPagesProcessed: extraction.pagesProcessed,
+            ocrWarnings: extraction.warnings,
+            ocrMetadata: extraction.metadata,
+          }),
+          input.projectId,
+        ],
+      );
+    }
+
+    const extractedText = extraction.text;
+    const inferred = inferReceiptOcrFromText(extractedText);
+    const amountValidationStatus = validateExpenseAmount(inferred.amount);
+    const vatValidationStatus = validateExpenseVat(inferred.amount, inferred.vatAmount);
+    const combinedConfidence = Math.min(
+      1,
+      Math.max(
+        inferred.confidence,
+        (inferred.confidence * 0.75) + (extraction.confidence * 0.25),
+      ),
+    );
+    const reviewRequired = combinedConfidence < 0.82
+      || amountValidationStatus !== 'valid'
+      || vatValidationStatus === 'invalid';
+    const ocrStatus = reviewRequired ? 'needs_review' : 'completed';
+    const extractedData = {
+      merchantName: inferred.merchantName,
+      expenseDate: inferred.expenseDate,
+      amount: inferred.amount,
+      vatAmount: inferred.vatAmount,
+      currency: 'NOK',
+      lineItems: inferred.lineItems,
+      amountValidationStatus,
+      vatValidationStatus,
+      sourceEngine: extraction.engine,
+      rawOcrConfidence: extraction.confidence,
+      pagesProcessed: extraction.pagesProcessed,
+      pageCount: extraction.pageCount,
+      warnings: extraction.warnings,
+      extractionMetadata: extraction.metadata,
+      supportedFormats: ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'heic', 'heif', 'tiff'],
+      confidenceReviewRequired: reviewRequired,
+    };
+
+    await pool.query(
+      `UPDATE role_room_receipt_ocr_jobs
+       SET status = $2,
+           confidence = $3,
+           extracted_text = $4,
+           extracted_data = $5::jsonb,
+           engine = $6,
+           completed_at = NOW(),
+           updated_at = NOW()
+       WHERE id = $1`,
+      [
+        ocrJobId,
+        ocrStatus,
+        combinedConfidence,
+        extractedText || null,
+        JSON.stringify(extractedData),
+        extraction.engine,
+      ],
+    );
+
+    const currentExpenseResult = await pool.query(
+      `SELECT *
+       FROM role_room_expenses
+       WHERE id = $1 AND project_id = $2
+       LIMIT 1`,
+      [input.expenseId, input.projectId],
+    );
+    const currentExpense = currentExpenseResult.rows[0] as RoleRoomExpenseRow | undefined;
+    const nextMerchantName = currentExpense?.merchant_name ?? inferred.merchantName;
+    const nextExpenseDate = currentExpense?.expense_date ?? inferred.expenseDate;
+    const nextAmount = currentExpense?.amount !== null && currentExpense?.amount !== undefined
+      ? Number(currentExpense.amount)
+      : inferred.amount;
+    const nextVatAmount = currentExpense?.vat_amount !== null && currentExpense?.vat_amount !== undefined
+      ? Number(currentExpense.vat_amount)
+      : inferred.vatAmount;
+
+    let duplicateOfExpenseId: string | null = null;
+    if (nextMerchantName && nextExpenseDate && nextAmount !== null) {
+      const duplicateResult = await pool.query(
+        `SELECT id
+         FROM role_room_expenses
+         WHERE project_id = $1
+           AND id <> $2
+           AND LOWER(COALESCE(merchant_name, '')) = LOWER($3)
+           AND expense_date = $4::date
+           AND amount = $5
+         ORDER BY created_at ASC
+         LIMIT 1`,
+        [input.projectId, input.expenseId, nextMerchantName, nextExpenseDate, nextAmount],
+      );
+      duplicateOfExpenseId = readStringValue(duplicateResult.rows[0]?.id);
+    }
+
+    await pool.query(
+      `UPDATE role_room_expenses
+       SET merchant_name = COALESCE(merchant_name, $2),
+           expense_date = COALESCE(expense_date, $3::date),
+           amount = COALESCE(amount, $4),
+           vat_amount = COALESCE(vat_amount, $5),
+           duplicate_of_expense_id = COALESCE(duplicate_of_expense_id, $6::uuid),
+           ocr_status = $7,
+           ocr_confidence = $8,
+           ocr_review_required = $9,
+           amount_validation_status = $10,
+           vat_validation_status = $11,
+           privacy_notice_acknowledged_at = COALESCE(privacy_notice_acknowledged_at, NOW()),
+           updated_at = NOW()
+       WHERE id = $1 AND project_id = $12`,
+      [
+        input.expenseId,
+        nextMerchantName,
+        nextExpenseDate,
+        nextAmount,
+        nextVatAmount,
+        duplicateOfExpenseId,
+        ocrStatus,
+        combinedConfidence,
+        reviewRequired,
+        validateExpenseAmount(nextAmount),
+        validateExpenseVat(nextAmount, nextVatAmount),
+        input.projectId,
+      ],
+    );
+
+    if (nextMerchantName) {
+      await pool.query(
+        `INSERT INTO role_room_receipt_merchant_registry (
+          id, project_id, merchant_name, normalized_name, default_category, metadata, created_at, updated_at
+        ) VALUES (
+          $1, $2, $3, LOWER($3), $4, '{}'::jsonb, NOW(), NOW()
+        )
+        ON CONFLICT (project_id, normalized_name)
+        DO UPDATE SET merchant_name = EXCLUDED.merchant_name,
+                      default_category = COALESCE(role_room_receipt_merchant_registry.default_category, EXCLUDED.default_category),
+                      updated_at = NOW()`,
+        [crypto.randomUUID(), input.projectId, nextMerchantName, currentExpense?.category ?? null],
+      );
+    }
+
+    await appendReceiptOcrAuditEvent({
+      req: input.req,
+      projectId: input.projectId,
+      expenseId: input.expenseId,
+      receiptFileId,
+      ocrJobId,
+      action: ocrStatus,
+      metadata: {
+        confidence: combinedConfidence,
+        rawOcrConfidence: extraction.confidence,
+        engine: extraction.engine,
+        pagesProcessed: extraction.pagesProcessed,
+        amountValidationStatus: validateExpenseAmount(nextAmount),
+        vatValidationStatus: validateExpenseVat(nextAmount, nextVatAmount),
+        duplicateOfExpenseId,
+      },
+    });
+
+    const result = await pool.query(
+      `SELECT *
+       FROM role_room_receipt_ocr_jobs
+       WHERE id = $1`,
+      [ocrJobId],
+    );
+    return result.rows[0] as RoleRoomReceiptOcrJobRow;
+  }
+
+  async function loadRoleRoomExpenseBundle(projectId: string, expenseId: string) {
+    const expenseResult = await pool.query(
+      `SELECT *
+       FROM role_room_expenses
+       WHERE id = $1 AND project_id = $2
+       LIMIT 1`,
+      [expenseId, projectId],
+    );
+    const expense = expenseResult.rows[0] as RoleRoomExpenseRow | undefined;
+    if (!expense) {
+      return null;
+    }
+
+    const [receiptResult, jobResult] = await Promise.all([
+      pool.query(
+        `SELECT *
+         FROM role_room_expense_receipt_files
+         WHERE expense_id = $1 AND project_id = $2
+         ORDER BY created_at DESC`,
+        [expenseId, projectId],
+      ),
+      pool.query(
+        `SELECT *
+         FROM role_room_receipt_ocr_jobs
+         WHERE expense_id = $1 AND project_id = $2
+         ORDER BY queued_at DESC`,
+        [expenseId, projectId],
+      ),
+    ]);
+
+    return buildRoleRoomExpenseResponse(
+      expense,
+      receiptResult.rows as RoleRoomExpenseReceiptFileRow[],
+      jobResult.rows as RoleRoomReceiptOcrJobRow[],
+    );
+  }
+
   async function upsertProducerProjectNotification(input: {
     projectId: string;
     audience: ProducerNotificationAudience;
@@ -4822,6 +6033,18 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       createdByUserId,
       createdByRole,
     } = input;
+    const notificationMetadata = metadata ?? {};
+    const inboxType = inferProducerInboxType(eventType, linkedEntityType, notificationMetadata);
+    const { clientName, clientEmail } = extractProducerNotificationClient(notificationMetadata);
+    const mentionUserIds = readStringArray(
+      notificationMetadata.mentionUserIds
+      ?? notificationMetadata.mention_user_ids
+      ?? notificationMetadata.mentions,
+    );
+    const mentionEmails = readStringArray(
+      notificationMetadata.mentionEmails
+      ?? notificationMetadata.mention_emails,
+    ).map((email) => email.toLowerCase());
 
     const existingResult = await pool.query(
       `SELECT id
@@ -4836,7 +6059,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       [projectId, audience, eventType, linkedEntityType ?? null, linkedEntityId ?? null],
     );
 
-    const serializedMetadata = JSON.stringify(metadata ?? {});
+    const serializedMetadata = JSON.stringify(notificationMetadata);
 
     const deliverPushNotification = async () => {
       if (audience !== 'producer_team') {
@@ -4874,8 +6097,17 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
              metadata = $3::jsonb,
              created_by_user_id = $4,
              created_by_role = $5,
+             inbox_type = $6,
+             client_name = $7,
+             client_email = $8,
+             mention_user_ids = $9::jsonb,
+             mention_emails = $10::jsonb,
+             resolved_at = NULL,
+             resolved_by_user_id = NULL,
+             archived_at = NULL,
+             archived_by_user_id = NULL,
              updated_at = NOW()
-         WHERE id = $6
+         WHERE id = $11
          RETURNING *`,
         [
           title.trim(),
@@ -4883,6 +6115,11 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           serializedMetadata,
           createdByUserId ?? null,
           createdByRole ?? null,
+          inboxType,
+          clientName,
+          clientEmail,
+          JSON.stringify(mentionUserIds),
+          JSON.stringify(mentionEmails),
           notificationId,
         ],
       );
@@ -4900,10 +6137,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     const insertedResult = await pool.query(
       `INSERT INTO role_room_project_notifications (
         id, project_id, audience, event_type, title, message,
-        linked_entity_type, linked_entity_id, metadata, created_by_user_id, created_by_role, created_at, updated_at
+        linked_entity_type, linked_entity_id, inbox_type, client_name, client_email,
+        mention_user_ids, mention_emails, metadata, created_by_user_id, created_by_role, created_at, updated_at
       ) VALUES (
         $1, $2, $3, $4, $5, $6,
-        $7, $8, $9::jsonb, $10, $11, NOW(), NOW()
+        $7, $8, $9, $10, $11,
+        $12::jsonb, $13::jsonb, $14::jsonb, $15, $16, NOW(), NOW()
       )
       RETURNING *`,
       [
@@ -4915,6 +6154,11 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         typeof message === 'string' && message.trim().length > 0 ? message.trim() : null,
         linkedEntityType ?? null,
         linkedEntityId ?? null,
+        inboxType,
+        clientName,
+        clientEmail,
+        JSON.stringify(mentionUserIds),
+        JSON.stringify(mentionEmails),
         serializedMetadata,
         createdByUserId ?? null,
         createdByRole ?? null,
@@ -5138,6 +6382,53 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         input.actorUserId ?? null,
         input.actorRole ?? null,
         JSON.stringify(buildRoleRoomVaultAuditMetadata(input.req, input.metadata)),
+      ],
+    );
+  }
+
+  function buildRoleRoomStoryLogicResponse(row: RoleRoomStoryLogicRow) {
+    return {
+      success: true,
+      projectId: row.project_id,
+      storyLogic: readJsonObject(row.story_logic),
+      version: Number(row.version) || 1,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      updatedByUserId: row.updated_by_user_id,
+      updatedByRole: row.updated_by_role,
+    };
+  }
+
+  async function appendRoleRoomStoryLogicAuditEvent(input: {
+    req: Request;
+    projectId: string;
+    action: string;
+    previousVersion?: number | null;
+    nextVersion?: number | null;
+    metadata?: Record<string, unknown>;
+  }): Promise<void> {
+    const actor = getOptionalRequestUser(input.req);
+    await pool.query(
+      `INSERT INTO role_room_story_logic_audit_events (
+        id, project_id, action, actor_user_id, actor_role,
+        previous_version, next_version, metadata, created_at
+      ) VALUES (
+        $1, $2, $3, $4, $5,
+        $6, $7, $8::jsonb, NOW()
+      )`,
+      [
+        crypto.randomUUID(),
+        input.projectId,
+        input.action,
+        actor?.userId ?? null,
+        actor?.role ?? null,
+        input.previousVersion ?? null,
+        input.nextVersion ?? null,
+        JSON.stringify({
+          ...(input.metadata ?? {}),
+          ip: input.req.ip ?? null,
+          userAgent: readOptionalHeaderValue(input.req, 'user-agent') ?? null,
+        }),
       ],
     );
   }
@@ -5532,6 +6823,30 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           CREATE INDEX IF NOT EXISTS idx_rr_client_materials_project ON role_room_client_materials(project_id);
           CREATE INDEX IF NOT EXISTS idx_rr_client_materials_phase ON role_room_client_materials(phase);
 
+          CREATE TABLE IF NOT EXISTS role_room_story_logic (
+            project_id VARCHAR(255) PRIMARY KEY REFERENCES casting_projects(id) ON DELETE CASCADE,
+            story_logic JSONB NOT NULL DEFAULT '{}'::jsonb,
+            version INTEGER NOT NULL DEFAULT 1,
+            updated_by_user_id VARCHAR(255),
+            updated_by_role VARCHAR(80),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+
+          CREATE TABLE IF NOT EXISTS role_room_story_logic_audit_events (
+            id UUID PRIMARY KEY,
+            project_id VARCHAR(255) NOT NULL REFERENCES casting_projects(id) ON DELETE CASCADE,
+            action VARCHAR(80) NOT NULL,
+            actor_user_id VARCHAR(255),
+            actor_role VARCHAR(80),
+            previous_version INTEGER,
+            next_version INTEGER,
+            metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+          CREATE INDEX IF NOT EXISTS idx_rr_story_logic_audit_project
+            ON role_room_story_logic_audit_events(project_id, created_at DESC);
+
           CREATE TABLE IF NOT EXISTS role_room_project_notifications (
             id UUID PRIMARY KEY,
             project_id VARCHAR(255) NOT NULL REFERENCES casting_projects(id) ON DELETE CASCADE,
@@ -5550,6 +6865,29 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           CREATE INDEX IF NOT EXISTS idx_rr_project_notifications_project ON role_room_project_notifications(project_id);
           CREATE INDEX IF NOT EXISTS idx_rr_project_notifications_audience ON role_room_project_notifications(audience);
           CREATE INDEX IF NOT EXISTS idx_rr_project_notifications_updated ON role_room_project_notifications(updated_at DESC);
+          ALTER TABLE role_room_project_notifications
+            ADD COLUMN IF NOT EXISTS inbox_type VARCHAR(80) NOT NULL DEFAULT 'general',
+            ADD COLUMN IF NOT EXISTS client_name VARCHAR(255),
+            ADD COLUMN IF NOT EXISTS client_email VARCHAR(255),
+            ADD COLUMN IF NOT EXISTS assigned_to_user_id VARCHAR(255),
+            ADD COLUMN IF NOT EXISTS assigned_to_label VARCHAR(255),
+            ADD COLUMN IF NOT EXISTS due_at TIMESTAMPTZ,
+            ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMPTZ,
+            ADD COLUMN IF NOT EXISTS resolved_by_user_id VARCHAR(255),
+            ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ,
+            ADD COLUMN IF NOT EXISTS archived_by_user_id VARCHAR(255),
+            ADD COLUMN IF NOT EXISTS mention_user_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+            ADD COLUMN IF NOT EXISTS mention_emails JSONB NOT NULL DEFAULT '[]'::jsonb;
+          CREATE INDEX IF NOT EXISTS idx_rr_project_notifications_inbox_type
+            ON role_room_project_notifications(project_id, inbox_type, updated_at DESC);
+          CREATE INDEX IF NOT EXISTS idx_rr_project_notifications_client
+            ON role_room_project_notifications(project_id, client_email, updated_at DESC);
+          CREATE INDEX IF NOT EXISTS idx_rr_project_notifications_due
+            ON role_room_project_notifications(project_id, due_at)
+            WHERE due_at IS NOT NULL AND resolved_at IS NULL AND archived_at IS NULL;
+          CREATE INDEX IF NOT EXISTS idx_rr_project_notifications_open
+            ON role_room_project_notifications(project_id, updated_at DESC)
+            WHERE archived_at IS NULL;
 
           CREATE TABLE IF NOT EXISTS role_room_project_notification_reads (
             notification_id UUID NOT NULL REFERENCES role_room_project_notifications(id) ON DELETE CASCADE,
@@ -5558,6 +6896,119 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
             PRIMARY KEY (notification_id, user_id)
           );
           CREATE INDEX IF NOT EXISTS idx_rr_notification_reads_user ON role_room_project_notification_reads(user_id, read_at DESC);
+
+          CREATE TABLE IF NOT EXISTS role_room_expenses (
+            id UUID PRIMARY KEY,
+            project_id VARCHAR(255) NOT NULL REFERENCES casting_projects(id) ON DELETE CASCADE,
+            title VARCHAR(255) NOT NULL,
+            description TEXT,
+            merchant_name VARCHAR(255),
+            expense_date DATE,
+            amount NUMERIC(12,2),
+            vat_amount NUMERIC(12,2),
+            currency VARCHAR(12) NOT NULL DEFAULT 'NOK',
+            category VARCHAR(120),
+            paid_by_user_id VARCHAR(255),
+            paid_by_label VARCHAR(255),
+            cost_owner VARCHAR(120) NOT NULL DEFAULT 'client',
+            refund_status VARCHAR(80) NOT NULL DEFAULT 'not_requested',
+            client_approval_status VARCHAR(80) NOT NULL DEFAULT 'pending',
+            duplicate_of_expense_id UUID REFERENCES role_room_expenses(id) ON DELETE SET NULL,
+            ocr_status VARCHAR(80) NOT NULL DEFAULT 'pending',
+            ocr_confidence NUMERIC(5,4),
+            ocr_review_required BOOLEAN NOT NULL DEFAULT TRUE,
+            amount_validation_status VARCHAR(80) NOT NULL DEFAULT 'pending',
+            vat_validation_status VARCHAR(80) NOT NULL DEFAULT 'pending',
+            privacy_notice_acknowledged_at TIMESTAMPTZ,
+            metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_by_user_id VARCHAR(255),
+            created_by_role VARCHAR(80),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+          CREATE INDEX IF NOT EXISTS idx_rr_expenses_project
+            ON role_room_expenses(project_id, updated_at DESC);
+          CREATE INDEX IF NOT EXISTS idx_rr_expenses_refund
+            ON role_room_expenses(project_id, refund_status, updated_at DESC);
+          CREATE INDEX IF NOT EXISTS idx_rr_expenses_client_approval
+            ON role_room_expenses(project_id, client_approval_status, updated_at DESC);
+          CREATE INDEX IF NOT EXISTS idx_rr_expenses_duplicate_lookup
+            ON role_room_expenses(project_id, merchant_name, expense_date, amount);
+
+          CREATE TABLE IF NOT EXISTS role_room_expense_receipt_files (
+            id UUID PRIMARY KEY,
+            expense_id UUID NOT NULL REFERENCES role_room_expenses(id) ON DELETE CASCADE,
+            project_id VARCHAR(255) NOT NULL REFERENCES casting_projects(id) ON DELETE CASCADE,
+            file_name VARCHAR(255) NOT NULL,
+            original_name VARCHAR(255),
+            mime_type VARCHAR(160),
+            file_size BIGINT,
+            storage_path TEXT NOT NULL,
+            sha256 VARCHAR(128),
+            page_count INTEGER,
+            metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+            uploaded_by_user_id VARCHAR(255),
+            uploaded_by_role VARCHAR(80),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+          CREATE INDEX IF NOT EXISTS idx_rr_expense_receipts_expense
+            ON role_room_expense_receipt_files(expense_id, created_at DESC);
+          DROP INDEX IF EXISTS idx_rr_expense_receipts_hash;
+          CREATE INDEX IF NOT EXISTS idx_rr_expense_receipts_hash
+            ON role_room_expense_receipt_files(project_id, sha256)
+            WHERE sha256 IS NOT NULL;
+
+          CREATE TABLE IF NOT EXISTS role_room_receipt_ocr_jobs (
+            id UUID PRIMARY KEY,
+            expense_id UUID NOT NULL REFERENCES role_room_expenses(id) ON DELETE CASCADE,
+            receipt_file_id UUID REFERENCES role_room_expense_receipt_files(id) ON DELETE SET NULL,
+            project_id VARCHAR(255) NOT NULL REFERENCES casting_projects(id) ON DELETE CASCADE,
+            status VARCHAR(80) NOT NULL DEFAULT 'queued',
+            attempts INTEGER NOT NULL DEFAULT 0,
+            confidence NUMERIC(5,4),
+            extracted_text TEXT,
+            extracted_data JSONB NOT NULL DEFAULT '{}'::jsonb,
+            engine VARCHAR(120) NOT NULL DEFAULT 'server-heuristic',
+            last_error TEXT,
+            queued_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            started_at TIMESTAMPTZ,
+            completed_at TIMESTAMPTZ,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+          CREATE INDEX IF NOT EXISTS idx_rr_receipt_ocr_jobs_project
+            ON role_room_receipt_ocr_jobs(project_id, updated_at DESC);
+          CREATE INDEX IF NOT EXISTS idx_rr_receipt_ocr_jobs_status
+            ON role_room_receipt_ocr_jobs(status, queued_at);
+
+          CREATE TABLE IF NOT EXISTS role_room_receipt_ocr_audit_events (
+            id UUID PRIMARY KEY,
+            expense_id UUID NOT NULL REFERENCES role_room_expenses(id) ON DELETE CASCADE,
+            receipt_file_id UUID REFERENCES role_room_expense_receipt_files(id) ON DELETE SET NULL,
+            ocr_job_id UUID REFERENCES role_room_receipt_ocr_jobs(id) ON DELETE SET NULL,
+            project_id VARCHAR(255) NOT NULL REFERENCES casting_projects(id) ON DELETE CASCADE,
+            action VARCHAR(100) NOT NULL,
+            actor_user_id VARCHAR(255),
+            actor_role VARCHAR(80),
+            metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+          CREATE INDEX IF NOT EXISTS idx_rr_receipt_ocr_audit_project
+            ON role_room_receipt_ocr_audit_events(project_id, created_at DESC);
+
+          CREATE TABLE IF NOT EXISTS role_room_receipt_merchant_registry (
+            id UUID PRIMARY KEY,
+            project_id VARCHAR(255) NOT NULL REFERENCES casting_projects(id) ON DELETE CASCADE,
+            merchant_name VARCHAR(255) NOT NULL,
+            normalized_name VARCHAR(255) NOT NULL,
+            default_category VARCHAR(120),
+            organization_number VARCHAR(64),
+            vat_registered BOOLEAN,
+            metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_rr_receipt_merchants_unique
+            ON role_room_receipt_merchant_registry(project_id, normalized_name);
 
           CREATE TABLE IF NOT EXISTS role_room_push_subscriptions (
             id UUID PRIMARY KEY,
@@ -7717,6 +9168,85 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     }
   });
 
+  router.post('/projects/:projectId/google/provision', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const { projectId } = req.params;
+      if (!(await ensureProjectAccess(projectId))) {
+        res.status(404).json({ error: 'Prosjekt ikke funnet' });
+        return;
+      }
+
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å provisionere Google Workspace' });
+        return;
+      }
+
+      const userId = getUserId(req);
+      const googleClient = await buildAuthorizedRoleRoomGoogleClient(req, userId);
+      if (!googleClient) {
+        res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
+        return;
+      }
+
+      const binding = await ensureRoleRoomGoogleProjectBindingReady(projectId, userId, googleClient.oauthClient, {
+        contactsContext: readJsonObject(req.body?.contactsContext),
+        meetCreationEnabled: true,
+        auditSignatureStorageEnabled: true,
+        createDriveLayout: true,
+        createCalendar: true,
+      });
+
+      const provisionedBinding = await updateRoleRoomGoogleProjectBinding(projectId, {
+        connectedUserId: userId,
+        syncStatus: {
+          ...readJsonObject(binding.sync_status),
+          drive: {
+            state: readStringValue(binding.drive_root_folder_id) ? 'ready' : 'pending',
+            folderId: readStringValue(binding.drive_root_folder_id),
+            provisionedAt: nowISO(),
+          },
+          calendar: {
+            state: readStringValue(binding.calendar_id) ? 'ready' : 'pending',
+            calendarId: readStringValue(binding.calendar_id),
+            provisionedAt: nowISO(),
+          },
+          meet: {
+            state: binding.meet_creation_enabled ? 'ready' : 'disabled',
+            provisionedAt: nowISO(),
+          },
+          docsAgreement: {
+            state: binding.audit_signature_storage_enabled ? 'ready' : 'disabled',
+            provisionedAt: nowISO(),
+          },
+          chat: {
+            state: 'available',
+            note: 'Google Chat scopes are linked. Dedicated space creation can run from the collaboration workspace when enabled.',
+            provisionedAt: nowISO(),
+          },
+          people: {
+            state: 'ready',
+            fallback: 'local_contacts',
+            provisionedAt: nowISO(),
+          },
+          oauth: {
+            state: 'auto_linked',
+            connectedUserId: userId,
+            provisionedAt: nowISO(),
+          },
+        },
+      });
+
+      const artifacts = await getRoleRoomGoogleArtifactsByProject(projectId);
+      res.json({
+        success: true,
+        ...buildRoleRoomGoogleProjectBindingResponse(provisionedBinding, artifacts),
+      });
+    } catch (error) {
+      sendRoleRoomGoogleError(res, error, 'Kunne ikke provisionere Google Workspace');
+    }
+  });
+
   router.get('/projects/:projectId/google/calendars', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const { projectId } = req.params;
@@ -8944,7 +10474,65 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       const userId = getUserId(req);
       const googleClient = await buildAuthorizedRoleRoomGoogleClient(req, userId);
       if (!googleClient) {
-        res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
+        const project = await readCastingProjectRow(projectId);
+        const projectMetadata = readJsonObject(project?.metadata);
+        const projectSettings = readJsonObject(project?.settings);
+        const localRoleResult = await pool.query(
+          `SELECT user_id, email, role
+           FROM casting_user_roles
+           WHERE project_id = $1
+             AND (
+               LOWER(COALESCE(email, '')) LIKE $2
+               OR LOWER(COALESCE(user_id, '')) LIKE $2
+               OR LOWER(COALESCE(role, '')) LIKE $2
+             )
+           ORDER BY updated_at DESC
+           LIMIT 10`,
+          [projectId, `%${query.toLowerCase()}%`],
+        );
+        const localContacts = [
+          {
+            resourceName: `project:${projectId}:client`,
+            name: readStringValue(projectMetadata.clientName)
+              ?? readStringValue(projectSettings.clientName)
+              ?? readStringValue(projectMetadata.contactName)
+              ?? null,
+            email: normalizeEmailValue(projectMetadata.clientEmail)
+              ?? normalizeEmailValue(projectSettings.clientEmail)
+              ?? normalizeEmailValue(projectMetadata.contactEmail)
+              ?? null,
+            phone: readStringValue(projectMetadata.clientPhone)
+              ?? readStringValue(projectSettings.clientPhone)
+              ?? readStringValue(projectMetadata.contactPhone)
+              ?? null,
+            organization: readStringValue(projectMetadata.clientCompany)
+              ?? readStringValue(projectSettings.clientCompany)
+              ?? null,
+            source: 'local_project',
+          },
+          ...localRoleResult.rows.map((row) => ({
+            resourceName: `project:${projectId}:role:${readStringValue(row.user_id) ?? crypto.randomUUID()}`,
+            name: readStringValue(row.user_id),
+            email: normalizeEmailValue(row.email),
+            phone: null,
+            organization: readStringValue(row.role),
+            source: 'local_role',
+          })),
+        ].filter((entry) => {
+          const haystack = [entry.name, entry.email, entry.phone, entry.organization].filter(Boolean).join(' ').toLowerCase();
+          return haystack.includes(query.toLowerCase());
+        });
+
+        res.json({
+          contacts: localContacts,
+          contactsContext: {
+            lastQuery: query,
+            lastResultCount: localContacts.length,
+            lastQueriedAt: nowISO(),
+            source: 'local_fallback',
+            reason: 'google_workspace_not_connected',
+          },
+        });
         return;
       }
 
@@ -9067,6 +10655,43 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
   // ═══════════════════════════════════════════════════════════
   // Casting Projects CRUD
   // ═══════════════════════════════════════════════════════════
+
+  async function resolveStoryLogicProjectContext(req: Request, projectId: string): Promise<{
+    project: CastingProjectRow;
+    roleRecord: ProjectRoleRecord | null;
+  } | null> {
+    const normalizedProjectId = readStringValue(projectId);
+    if (!normalizedProjectId) {
+      return null;
+    }
+
+    const projectsReady = await ensureCastingProjectsTable();
+    const storyLogicTablesReady = await ensureProducerWorkflowTables();
+    if (!projectsReady || !storyLogicTablesReady) {
+      throw new Error('story_logic_tables_unavailable');
+    }
+
+    const projectResult = await pool.query<CastingProjectRow>(
+      `SELECT * FROM casting_projects WHERE id = $1 LIMIT 1`,
+      [normalizedProjectId],
+    );
+    const project = projectResult.rows[0];
+    if (!project) {
+      return null;
+    }
+
+    const identifiers = getUserIdentifiers(req);
+    let roleRecord = await getProjectRoleRecord(normalizedProjectId, identifiers);
+    const ownsProject = identifiers.some((identifier) => identifier === project.created_by);
+    if (!roleRecord && ownsProject) {
+      roleRecord = {
+        role: 'director',
+        permissions: getDefaultProjectRolePermissions('director'),
+      };
+    }
+
+    return { project, roleRecord };
+  }
 
   router.get('/projects', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     const userId = getUserId(req);
@@ -9195,6 +10820,206 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     }
   });
 
+  router.get('/projects/:projectId/story-logic', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    const projectId = readStringValue(req.params.projectId);
+    if (!projectId) {
+      res.status(400).json({ error: 'project_id_required' });
+      return;
+    }
+
+    try {
+      const context = await resolveStoryLogicProjectContext(req, projectId);
+      if (!context) {
+        res.status(404).json({ error: 'project_not_found' });
+        return;
+      }
+      if (!canReadStoryLogic(req, context.roleRecord)) {
+        res.status(403).json({ error: 'story_logic_read_access_denied' });
+        return;
+      }
+
+      const result = await pool.query<RoleRoomStoryLogicRow>(
+        `SELECT * FROM role_room_story_logic WHERE project_id = $1 LIMIT 1`,
+        [projectId],
+      );
+      const row = result.rows[0];
+      if (!row) {
+        res.status(404).json({ error: 'story_logic_not_found', projectId });
+        return;
+      }
+
+      await appendRoleRoomStoryLogicAuditEvent({
+        req,
+        projectId,
+        action: 'story_logic_read',
+        nextVersion: Number(row.version) || 1,
+      });
+      res.json(buildRoleRoomStoryLogicResponse(row));
+    } catch (err) {
+      console.error('Fetch story logic error:', err);
+      res.status(500).json({ error: 'story_logic_fetch_failed' });
+    }
+  });
+
+  router.post('/projects/:projectId/story-logic', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!requireScope(req, 'write')) {
+      res.status(403).json({ error: 'write_scope_required' });
+      return;
+    }
+
+    const projectId = readStringValue(req.params.projectId);
+    if (!projectId) {
+      res.status(400).json({ error: 'project_id_required' });
+      return;
+    }
+
+    try {
+      const context = await resolveStoryLogicProjectContext(req, projectId);
+      if (!context) {
+        res.status(404).json({ error: 'project_not_found' });
+        return;
+      }
+      if (!canWriteStoryLogic(req, context.roleRecord)) {
+        res.status(403).json({ error: 'story_logic_write_access_denied' });
+        return;
+      }
+
+      const body = readRecordValue(req.body) ?? {};
+      const payloadProjectId = readStringValue(body.projectId) ?? readStringValue(body.project_id);
+      if (payloadProjectId && payloadProjectId !== projectId) {
+        await appendRoleRoomStoryLogicAuditEvent({
+          req,
+          projectId,
+          action: 'story_logic_cross_project_rejected',
+          metadata: {
+            payloadProjectId,
+            routeProjectId: projectId,
+          },
+        });
+        res.status(409).json({ error: 'cross_project_payload_rejected', projectId });
+        return;
+      }
+
+      const storyLogic = readRecordValue(body.storyLogic);
+      if (!storyLogic) {
+        res.status(400).json({ error: 'story_logic_payload_required' });
+        return;
+      }
+
+      const expectedVersionRaw = body.expectedVersion;
+      const expectedVersion = typeof expectedVersionRaw === 'number' && Number.isFinite(expectedVersionRaw)
+        ? Math.trunc(expectedVersionRaw)
+        : null;
+      const actor = getOptionalRequestUser(req);
+
+      const existingResult = await pool.query<RoleRoomStoryLogicRow>(
+        `SELECT * FROM role_room_story_logic WHERE project_id = $1 LIMIT 1`,
+        [projectId],
+      );
+      const existing = existingResult.rows[0] ?? null;
+      const currentVersion = existing ? Number(existing.version) || 1 : 0;
+      if (existing && expectedVersion !== null && expectedVersion !== currentVersion) {
+        await appendRoleRoomStoryLogicAuditEvent({
+          req,
+          projectId,
+          action: 'story_logic_conflict',
+          previousVersion: currentVersion,
+          metadata: {
+            expectedVersion,
+            currentVersion,
+          },
+        });
+        res.status(409).json({
+          error: 'story_logic_conflict',
+          projectId,
+          current: buildRoleRoomStoryLogicResponse(existing),
+        });
+        return;
+      }
+
+      const nextVersion = existing ? currentVersion + 1 : 1;
+      const savedResult = existing
+        ? await pool.query<RoleRoomStoryLogicRow>(
+          `UPDATE role_room_story_logic
+              SET story_logic = $2::jsonb,
+                  version = version + 1,
+                  updated_by_user_id = $3,
+                  updated_by_role = $4,
+                  updated_at = NOW()
+            WHERE project_id = $1
+            RETURNING *`,
+          [projectId, JSON.stringify(storyLogic), actor?.userId ?? null, actor?.role ?? null],
+        )
+        : await pool.query<RoleRoomStoryLogicRow>(
+          `INSERT INTO role_room_story_logic (
+             project_id, story_logic, version, updated_by_user_id, updated_by_role, created_at, updated_at
+           ) VALUES (
+             $1, $2::jsonb, 1, $3, $4, NOW(), NOW()
+           )
+           RETURNING *`,
+          [projectId, JSON.stringify(storyLogic), actor?.userId ?? null, actor?.role ?? null],
+      );
+      const saved = savedResult.rows[0];
+      if (!saved) {
+        throw new Error('story_logic_save_returned_no_row');
+      }
+
+      await appendRoleRoomStoryLogicAuditEvent({
+        req,
+        projectId,
+        action: existing ? 'story_logic_updated' : 'story_logic_created',
+        previousVersion: existing ? currentVersion : null,
+        nextVersion,
+      });
+
+      res.json(buildRoleRoomStoryLogicResponse(saved));
+    } catch (err) {
+      console.error('Save story logic error:', err);
+      res.status(500).json({ error: 'story_logic_save_failed' });
+    }
+  });
+
+  router.delete('/projects/:projectId/story-logic', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!requireScope(req, 'write')) {
+      res.status(403).json({ error: 'write_scope_required' });
+      return;
+    }
+
+    const projectId = readStringValue(req.params.projectId);
+    if (!projectId) {
+      res.status(400).json({ error: 'project_id_required' });
+      return;
+    }
+
+    try {
+      const context = await resolveStoryLogicProjectContext(req, projectId);
+      if (!context) {
+        res.status(404).json({ error: 'project_not_found' });
+        return;
+      }
+      if (!canWriteStoryLogic(req, context.roleRecord)) {
+        res.status(403).json({ error: 'story_logic_write_access_denied' });
+        return;
+      }
+
+      const existingResult = await pool.query<RoleRoomStoryLogicRow>(
+        `DELETE FROM role_room_story_logic WHERE project_id = $1 RETURNING *`,
+        [projectId],
+      );
+      const existing = existingResult.rows[0] ?? null;
+      await appendRoleRoomStoryLogicAuditEvent({
+        req,
+        projectId,
+        action: 'story_logic_deleted',
+        previousVersion: existing ? Number(existing.version) || 1 : null,
+      });
+      res.json({ success: true, projectId });
+    } catch (err) {
+      console.error('Delete story logic error:', err);
+      res.status(500).json({ error: 'story_logic_delete_failed' });
+    }
+  });
+
   router.post('/projects', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     if (!requireScope(req, 'write')) {
       res.status(403).json({ error: 'Skrive-tilgang kreves' });
@@ -9219,25 +11044,40 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     }
 
     const id = makeId();
+    const client = await pool.connect();
     try {
-      await pool.query(
+      await client.query('BEGIN');
+      await client.query(
         `INSERT INTO casting_projects (id, name, description, status, created_by, genre, project_type, start_date, end_date, budget, currency, creatorhub_project_id)
          VALUES ($1, $2, $3, 'active', $4, $5, $6, $7, $8, $9, $10, $11)`,
         [id, name, description ?? null, userId, genre ?? null, projectType ?? null, startDate ?? null, endDate ?? null, budget ?? null, currency ?? 'NOK', creatorhubProjectId ?? null]
       );
 
       // Auto-assign creator as director
-      await pool.query(
+      await client.query(
         `INSERT INTO casting_user_roles (id, project_id, user_id, role, permissions)
          VALUES ($1, $2, $3, 'director', $4)
          ON CONFLICT (project_id, user_id) DO NOTHING`,
         [makeId(), id, userId, JSON.stringify(buildProjectRolePermissions('director'))]
       );
 
-      res.status(201).json({ id, name, status: 'active', created_by: userId });
+      await client.query('COMMIT');
+      res.status(201).json({
+        id,
+        name,
+        status: 'active',
+        created_by: userId,
+        ownerId: userId,
+        createdBy: userId,
+      });
     } catch (err) {
+      await client.query('ROLLBACK').catch((rollbackError) => {
+        console.error('Create project rollback error:', rollbackError);
+      });
       console.error('Create project error:', err);
       res.status(500).json({ error: 'Kunne ikke opprette prosjekt' });
+    } finally {
+      client.release();
     }
   });
 
@@ -9594,6 +11434,75 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       }
 
       const audiences = getProducerNotificationAudiences(req, roleRecord);
+      const values: unknown[] = [projectId, userId, audiences];
+      const conditions = [
+        'notification.project_id = $1',
+        'notification.audience = ANY($3::text[])',
+      ];
+      const includeArchived = readBooleanValue(req.query.includeArchived)
+        ?? readStringValue(req.query.includeArchived)?.toLowerCase() === 'true';
+      if (!includeArchived) {
+        conditions.push('notification.archived_at IS NULL');
+      }
+
+      const clientFilter = readStringValue(req.query.client);
+      if (clientFilter) {
+        values.push(`%${clientFilter.toLowerCase()}%`);
+        conditions.push(`(
+          LOWER(COALESCE(notification.client_name, '')) LIKE $${values.length}
+          OR LOWER(COALESCE(notification.client_email, '')) LIKE $${values.length}
+        )`);
+      }
+
+      const typeFilter = readStringValue(req.query.type);
+      if (typeFilter && typeFilter !== 'all') {
+        values.push(normalizeProducerInboxType(typeFilter));
+        conditions.push(`notification.inbox_type = $${values.length}`);
+      }
+
+      const statusFilter = readStringValue(req.query.status)?.toLowerCase();
+      if (statusFilter === 'resolved') {
+        conditions.push('notification.resolved_at IS NOT NULL');
+      } else if (statusFilter === 'open') {
+        conditions.push('notification.resolved_at IS NULL');
+      } else if (statusFilter === 'unread') {
+        conditions.push('reads.read_at IS NULL');
+      } else if (statusFilter === 'due') {
+        conditions.push('notification.due_at IS NOT NULL AND notification.resolved_at IS NULL');
+      } else if (statusFilter === 'archived') {
+        conditions.push('notification.archived_at IS NOT NULL');
+      }
+
+      const assignedTo = readStringValue(req.query.assignedTo);
+      if (assignedTo) {
+        values.push(assignedTo);
+        conditions.push(`(
+          notification.assigned_to_user_id = $${values.length}
+          OR notification.assigned_to_label = $${values.length}
+        )`);
+      }
+
+      const mentions = readStringValue(req.query.mentions);
+      if (mentions) {
+        values.push(mentions.toLowerCase());
+        conditions.push(`(
+          notification.mention_user_ids ? $${values.length}
+          OR notification.mention_emails ? $${values.length}
+        )`);
+      }
+
+      const search = readStringValue(req.query.search);
+      if (search) {
+        values.push(`%${search.toLowerCase()}%`);
+        conditions.push(`(
+          LOWER(notification.title) LIKE $${values.length}
+          OR LOWER(COALESCE(notification.message, '')) LIKE $${values.length}
+          OR LOWER(COALESCE(notification.client_name, '')) LIKE $${values.length}
+          OR LOWER(COALESCE(notification.client_email, '')) LIKE $${values.length}
+          OR LOWER(COALESCE(notification.event_type, '')) LIKE $${values.length}
+        )`);
+      }
+
       const result = await pool.query(
         `SELECT notification.*,
                 reads.read_at,
@@ -9602,17 +11511,145 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          LEFT JOIN role_room_project_notification_reads reads
            ON reads.notification_id = notification.id
           AND reads.user_id = $2
-         WHERE notification.project_id = $1
-           AND notification.audience = ANY($3::text[])
+         WHERE ${conditions.join(' AND ')}
          ORDER BY notification.updated_at DESC, notification.created_at DESC
          LIMIT 100`,
-        [projectId, userId, audiences],
+        values,
       );
 
-      res.json({ items: result.rows });
+      res.json({ items: result.rows.map((row) => buildProducerProjectNotificationResponse(row as ProducerProjectNotificationRow)) });
     } catch (error) {
       console.error('Producer notifications fetch error:', error);
       res.status(500).json({ error: 'Kunne ikke hente varsler' });
+    }
+  });
+
+  router.patch('/projects/:projectId/producer/notifications/:notificationId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!(await ensureProducerWorkflowTables())) {
+      res.status(500).json({ error: 'Producer-tabeller er ikke tilgjengelige' });
+      return;
+    }
+
+    const projectId = req.params.projectId;
+    const notificationId = req.params.notificationId;
+    const userId = getUserId(req);
+    const body = readRecordValue(req.body) ?? {};
+
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å styre innboksen' });
+        return;
+      }
+
+      const existingResult = await pool.query(
+        `SELECT *
+         FROM role_room_project_notifications
+         WHERE id = $1 AND project_id = $2
+         LIMIT 1`,
+        [notificationId, projectId],
+      );
+      if (existingResult.rowCount === 0) {
+        res.status(404).json({ error: 'Fant ikke innbokselementet' });
+        return;
+      }
+
+      const archived = readBooleanValue(body.archived);
+      const resolved = readBooleanValue(body.resolved);
+      const assignedToUserId = readStringValue(body.assignedToUserId ?? body.assigned_to_user_id);
+      const assignedToLabel = readStringValue(body.assignedToLabel ?? body.assigned_to_label);
+      const dueAt = body.dueAt === null || body.due_at === null
+        ? null
+        : readDateValue(body.dueAt ?? body.due_at);
+      const dueAtProvided = Object.prototype.hasOwnProperty.call(body, 'dueAt')
+        || Object.prototype.hasOwnProperty.call(body, 'due_at');
+      const inboxType = Object.prototype.hasOwnProperty.call(body, 'inboxType')
+        || Object.prototype.hasOwnProperty.call(body, 'inbox_type')
+        ? normalizeProducerInboxType(body.inboxType ?? body.inbox_type)
+        : null;
+      const clientName = Object.prototype.hasOwnProperty.call(body, 'clientName')
+        || Object.prototype.hasOwnProperty.call(body, 'client_name')
+        ? readStringValue(body.clientName ?? body.client_name)
+        : undefined;
+      const clientEmail = Object.prototype.hasOwnProperty.call(body, 'clientEmail')
+        || Object.prototype.hasOwnProperty.call(body, 'client_email')
+        ? normalizeEmailValue(body.clientEmail ?? body.client_email)
+        : undefined;
+      const mentionUserIds = Object.prototype.hasOwnProperty.call(body, 'mentionUserIds')
+        || Object.prototype.hasOwnProperty.call(body, 'mention_user_ids')
+        ? readStringArray(body.mentionUserIds ?? body.mention_user_ids)
+        : undefined;
+      const mentionEmails = Object.prototype.hasOwnProperty.call(body, 'mentionEmails')
+        || Object.prototype.hasOwnProperty.call(body, 'mention_emails')
+        ? readStringArray(body.mentionEmails ?? body.mention_emails).map((email) => email.toLowerCase())
+        : undefined;
+
+      const updatedResult = await pool.query(
+        `UPDATE role_room_project_notifications
+         SET inbox_type = COALESCE($3, inbox_type),
+             client_name = CASE WHEN $4 THEN $5 ELSE client_name END,
+             client_email = CASE WHEN $6 THEN $7 ELSE client_email END,
+             assigned_to_user_id = CASE WHEN $8 THEN $9 ELSE assigned_to_user_id END,
+             assigned_to_label = CASE WHEN $8 THEN $10 ELSE assigned_to_label END,
+             due_at = CASE WHEN $11 THEN $12::timestamptz ELSE due_at END,
+             resolved_at = CASE
+               WHEN $13::boolean IS TRUE THEN COALESCE(resolved_at, NOW())
+               WHEN $13::boolean IS FALSE THEN NULL
+               ELSE resolved_at
+             END,
+             resolved_by_user_id = CASE
+               WHEN $13::boolean IS TRUE THEN $14
+               WHEN $13::boolean IS FALSE THEN NULL
+               ELSE resolved_by_user_id
+             END,
+             archived_at = CASE
+               WHEN $15::boolean IS TRUE THEN COALESCE(archived_at, NOW())
+               WHEN $15::boolean IS FALSE THEN NULL
+               ELSE archived_at
+             END,
+             archived_by_user_id = CASE
+               WHEN $15::boolean IS TRUE THEN $14
+               WHEN $15::boolean IS FALSE THEN NULL
+               ELSE archived_by_user_id
+             END,
+             mention_user_ids = CASE WHEN $16 THEN $17::jsonb ELSE mention_user_ids END,
+             mention_emails = CASE WHEN $18 THEN $19::jsonb ELSE mention_emails END,
+             updated_at = NOW()
+         WHERE id = $1 AND project_id = $2
+         RETURNING *`,
+        [
+          notificationId,
+          projectId,
+          inboxType,
+          clientName !== undefined,
+          clientName ?? null,
+          clientEmail !== undefined,
+          clientEmail ?? null,
+          Object.prototype.hasOwnProperty.call(body, 'assignedToUserId')
+            || Object.prototype.hasOwnProperty.call(body, 'assigned_to_user_id')
+            || Object.prototype.hasOwnProperty.call(body, 'assignedToLabel')
+            || Object.prototype.hasOwnProperty.call(body, 'assigned_to_label'),
+          assignedToUserId,
+          assignedToLabel,
+          dueAtProvided,
+          dueAt,
+          resolved,
+          userId,
+          archived,
+          mentionUserIds !== undefined,
+          JSON.stringify(mentionUserIds ?? []),
+          mentionEmails !== undefined,
+          JSON.stringify(mentionEmails ?? []),
+        ],
+      );
+
+      res.json({
+        success: true,
+        item: buildProducerProjectNotificationResponse(updatedResult.rows[0] as ProducerProjectNotificationRow),
+      });
+    } catch (error) {
+      console.error('Producer notification update error:', error);
+      res.status(500).json({ error: 'Kunne ikke oppdatere innbokselementet' });
     }
   });
 
@@ -9692,6 +11729,573 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     } catch (error) {
       console.error('Producer notification mark-all-read error:', error);
       res.status(500).json({ error: 'Kunne ikke markere varsler som lest' });
+    }
+  });
+
+  router.get('/projects/:projectId/producer/expenses', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!(await ensureProducerWorkflowTables())) {
+      res.status(500).json({ error: 'Producer-tabeller er ikke tilgjengelige' });
+      return;
+    }
+
+    const projectId = req.params.projectId;
+
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canReadProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til utlegg' });
+        return;
+      }
+
+      const values: unknown[] = [projectId];
+      const conditions = ['project_id = $1'];
+      const refundStatus = readStringValue(req.query.refundStatus);
+      if (refundStatus && refundStatus !== 'all') {
+        values.push(refundStatus);
+        conditions.push(`refund_status = $${values.length}`);
+      }
+      const approvalStatus = readStringValue(req.query.clientApprovalStatus);
+      if (approvalStatus && approvalStatus !== 'all') {
+        values.push(approvalStatus);
+        conditions.push(`client_approval_status = $${values.length}`);
+      }
+      const search = readStringValue(req.query.search);
+      if (search) {
+        values.push(`%${search.toLowerCase()}%`);
+        conditions.push(`(
+          LOWER(title) LIKE $${values.length}
+          OR LOWER(COALESCE(description, '')) LIKE $${values.length}
+          OR LOWER(COALESCE(merchant_name, '')) LIKE $${values.length}
+          OR LOWER(COALESCE(category, '')) LIKE $${values.length}
+        )`);
+      }
+
+      const expenseResult = await pool.query(
+        `SELECT *
+         FROM role_room_expenses
+         WHERE ${conditions.join(' AND ')}
+         ORDER BY updated_at DESC
+         LIMIT 250`,
+        values,
+      );
+      const expenseIds = expenseResult.rows.map((row) => String(row.id));
+      const receiptResult = expenseIds.length > 0
+        ? await pool.query(
+          `SELECT *
+           FROM role_room_expense_receipt_files
+           WHERE project_id = $1 AND expense_id = ANY($2::uuid[])
+           ORDER BY created_at DESC`,
+          [projectId, expenseIds],
+        )
+        : { rows: [] };
+      const jobResult = expenseIds.length > 0
+        ? await pool.query(
+          `SELECT *
+           FROM role_room_receipt_ocr_jobs
+           WHERE project_id = $1 AND expense_id = ANY($2::uuid[])
+           ORDER BY queued_at DESC`,
+          [projectId, expenseIds],
+        )
+        : { rows: [] };
+
+      const receiptsByExpense = new Map<string, RoleRoomExpenseReceiptFileRow[]>();
+      for (const receipt of receiptResult.rows as RoleRoomExpenseReceiptFileRow[]) {
+        receiptsByExpense.set(receipt.expense_id, [...(receiptsByExpense.get(receipt.expense_id) ?? []), receipt]);
+      }
+      const jobsByExpense = new Map<string, RoleRoomReceiptOcrJobRow[]>();
+      for (const job of jobResult.rows as RoleRoomReceiptOcrJobRow[]) {
+        jobsByExpense.set(job.expense_id, [...(jobsByExpense.get(job.expense_id) ?? []), job]);
+      }
+
+      res.json({
+        items: (expenseResult.rows as RoleRoomExpenseRow[]).map((expense) => buildRoleRoomExpenseResponse(
+          expense,
+          receiptsByExpense.get(expense.id) ?? [],
+          jobsByExpense.get(expense.id) ?? [],
+        )),
+      });
+    } catch (error) {
+      console.error('Role Room expenses fetch error:', error);
+      res.status(500).json({ error: 'Kunne ikke hente utlegg' });
+    }
+  });
+
+  router.post('/projects/:projectId/producer/expenses', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!(await ensureProducerWorkflowTables())) {
+      res.status(500).json({ error: 'Producer-tabeller er ikke tilgjengelige' });
+      return;
+    }
+
+    const projectId = req.params.projectId;
+    const body = readRecordValue(req.body) ?? {};
+    const actor = getOptionalRequestUser(req);
+
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å opprette utlegg' });
+        return;
+      }
+
+      const expenseId = crypto.randomUUID();
+      const amount = readNumberValue(body.amount);
+      const vatAmount = readNumberValue(body.vatAmount ?? body.vat_amount);
+      const expenseDate = normalizeReceiptExpenseDate(body.expenseDate ?? body.expense_date);
+      const merchantName = normalizeMerchantName(body.merchantName ?? body.merchant_name);
+      const refundStatus = normalizeExpenseStatus(
+        body.refundStatus ?? body.refund_status,
+        ['not_requested', 'requested', 'approved', 'paid', 'rejected'],
+        'not_requested',
+      );
+      const clientApprovalStatus = normalizeExpenseStatus(
+        body.clientApprovalStatus ?? body.client_approval_status,
+        ['pending', 'approved', 'changes_requested', 'rejected', 'not_required'],
+        'pending',
+      );
+      const costOwner = normalizeExpenseStatus(
+        body.costOwner ?? body.cost_owner,
+        ['client', 'producer', 'shared', 'project_company', 'holding_company'],
+        'client',
+      );
+
+      await pool.query(
+        `INSERT INTO role_room_expenses (
+          id, project_id, title, description, merchant_name, expense_date,
+          amount, vat_amount, currency, category, paid_by_user_id, paid_by_label,
+          cost_owner, refund_status, client_approval_status,
+          amount_validation_status, vat_validation_status,
+          privacy_notice_acknowledged_at, metadata, created_by_user_id, created_by_role,
+          created_at, updated_at
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6::date,
+          $7, $8, $9, $10, $11, $12,
+          $13, $14, $15,
+          $16, $17,
+          CASE WHEN $18::boolean THEN NOW() ELSE NULL END, $19::jsonb, $20, $21,
+          NOW(), NOW()
+        )`,
+        [
+          expenseId,
+          projectId,
+          readStringValue(body.title) ?? 'Utlegg',
+          readStringValue(body.description),
+          merchantName,
+          expenseDate,
+          amount,
+          vatAmount,
+          readStringValue(body.currency) ?? 'NOK',
+          readStringValue(body.category),
+          readStringValue(body.paidByUserId ?? body.paid_by_user_id) ?? actor?.userId ?? null,
+          readStringValue(body.paidByLabel ?? body.paid_by_label) ?? actor?.email ?? null,
+          costOwner,
+          refundStatus,
+          clientApprovalStatus,
+          validateExpenseAmount(amount),
+          validateExpenseVat(amount, vatAmount),
+          Boolean(readBooleanValue(body.privacyNoticeAcknowledged ?? body.privacy_notice_acknowledged) ?? false),
+          JSON.stringify(readJsonObject(body.metadata)),
+          actor?.userId ?? null,
+          actor?.role ?? null,
+        ],
+      );
+
+      const ocrText = readStringValue(body.ocrText ?? body.extractedText ?? body.receiptText);
+      if (ocrText || readBooleanValue(body.queueOcr) === true) {
+        await runReceiptOcrJob({
+          req,
+          projectId,
+          expenseId,
+          extractedText: ocrText,
+        });
+      }
+
+      await appendReceiptOcrAuditEvent({
+        req,
+        projectId,
+        expenseId,
+        action: 'expense_created',
+        metadata: {
+          refundStatus,
+          clientApprovalStatus,
+          costOwner,
+          privacyNoticeAcknowledged: Boolean(readBooleanValue(body.privacyNoticeAcknowledged ?? body.privacy_notice_acknowledged) ?? false),
+        },
+      });
+
+      const item = await loadRoleRoomExpenseBundle(projectId, expenseId);
+      res.status(201).json({ success: true, item });
+    } catch (error) {
+      console.error('Role Room expense create error:', error);
+      res.status(500).json({ error: 'Kunne ikke opprette utlegg' });
+    }
+  });
+
+  router.post('/projects/:projectId/producer/expenses/:expenseId/receipts', apiKeyAuth(pool, activeSessions), roleRoomReceiptUpload.single('file'), async (req: Request, res: Response) => {
+    if (!(await ensureProducerWorkflowTables())) {
+      res.status(500).json({ error: 'Producer-tabeller er ikke tilgjengelige' });
+      return;
+    }
+
+    const projectId = req.params.projectId;
+    const expenseId = req.params.expenseId;
+    const uploadedFile = (req as Request & { file?: Express.Multer.File }).file;
+    const actor = getOptionalRequestUser(req);
+
+    if (!uploadedFile) {
+      res.status(400).json({ error: 'Mangler kvitteringsfil' });
+      return;
+    }
+
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å laste opp kvittering' });
+        return;
+      }
+
+      const expenseCheck = await pool.query(
+        `SELECT id
+         FROM role_room_expenses
+         WHERE id = $1 AND project_id = $2
+         LIMIT 1`,
+        [expenseId, projectId],
+      );
+      if (expenseCheck.rowCount === 0) {
+        res.status(404).json({ error: 'Fant ikke utlegget' });
+        return;
+      }
+
+      const sha256 = crypto.createHash('sha256').update(uploadedFile.buffer).digest('hex');
+      const existingReceipt = await pool.query(
+        `SELECT expense_id
+         FROM role_room_expense_receipt_files
+         WHERE project_id = $1 AND sha256 = $2
+         LIMIT 1`,
+        [projectId, sha256],
+      );
+      const duplicateExpenseId = readStringValue(existingReceipt.rows[0]?.expense_id);
+
+      const receiptFileId = crypto.randomUUID();
+      const safeOriginalName = sanitizeRoleRoomTalentFileSegment(uploadedFile.originalname || 'receipt');
+      const extension = path.extname(safeOriginalName) || '.bin';
+      const fileName = `${receiptFileId}${extension}`;
+      const storageDirectory = path.join(ROLE_ROOM_RECEIPT_UPLOAD_ROOT, sanitizeRoleRoomTalentFileSegment(projectId), sanitizeRoleRoomTalentFileSegment(expenseId));
+      await fs.mkdir(storageDirectory, { recursive: true });
+      const storagePath = path.join(storageDirectory, fileName);
+      await fs.writeFile(storagePath, uploadedFile.buffer);
+
+      await pool.query(
+        `INSERT INTO role_room_expense_receipt_files (
+          id, expense_id, project_id, file_name, original_name, mime_type,
+          file_size, storage_path, sha256, metadata, uploaded_by_user_id,
+          uploaded_by_role, created_at
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6,
+          $7, $8, $9, $10::jsonb, $11,
+          $12, NOW()
+        )`,
+        [
+          receiptFileId,
+          expenseId,
+          projectId,
+          fileName,
+          uploadedFile.originalname ?? fileName,
+          uploadedFile.mimetype ?? null,
+          uploadedFile.size,
+          storagePath,
+          sha256,
+          JSON.stringify({
+            duplicateExpenseId,
+            privacyNotice: 'Kvitteringen lagres i prosjektets utleggsarkiv og OCR-kø for refusjon og klientgodkjenning.',
+          }),
+          actor?.userId ?? null,
+          actor?.role ?? null,
+        ],
+      );
+
+      if (duplicateExpenseId) {
+        await pool.query(
+          `UPDATE role_room_expenses
+           SET duplicate_of_expense_id = COALESCE(duplicate_of_expense_id, $2::uuid),
+               updated_at = NOW()
+           WHERE id = $1 AND project_id = $3`,
+          [expenseId, duplicateExpenseId, projectId],
+        );
+      }
+
+      const ocrText = readStringValue(req.body?.ocrText ?? req.body?.extractedText ?? req.body?.receiptText);
+      await runReceiptOcrJob({
+        req,
+        projectId,
+        expenseId,
+        receiptFileId,
+        extractedText: ocrText,
+        engine: uploadedFile.mimetype === 'application/pdf'
+          ? 'server-heuristic-pdf'
+          : uploadedFile.mimetype === 'image/heic' || uploadedFile.mimetype === 'image/heif'
+            ? 'server-heuristic-heic'
+            : 'server-heuristic-image',
+      });
+
+      await appendReceiptOcrAuditEvent({
+        req,
+        projectId,
+        expenseId,
+        receiptFileId,
+        action: 'receipt_uploaded',
+        metadata: {
+          mimeType: uploadedFile.mimetype ?? null,
+          fileSize: uploadedFile.size,
+          duplicateExpenseId,
+        },
+      });
+
+      const item = await loadRoleRoomExpenseBundle(projectId, expenseId);
+      res.status(201).json({ success: true, item });
+    } catch (error) {
+      console.error('Role Room receipt upload error:', error);
+      res.status(500).json({ error: 'Kunne ikke laste opp kvittering' });
+    }
+  });
+
+  router.post('/projects/:projectId/producer/expenses/:expenseId/ocr/retry', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!(await ensureProducerWorkflowTables())) {
+      res.status(500).json({ error: 'Producer-tabeller er ikke tilgjengelige' });
+      return;
+    }
+
+    const projectId = req.params.projectId;
+    const expenseId = req.params.expenseId;
+    const body = readRecordValue(req.body) ?? {};
+
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å kjøre OCR på nytt' });
+        return;
+      }
+
+      const expenseCheck = await pool.query(
+        `SELECT id
+         FROM role_room_expenses
+         WHERE id = $1 AND project_id = $2
+         LIMIT 1`,
+        [expenseId, projectId],
+      );
+      if (expenseCheck.rowCount === 0) {
+        res.status(404).json({ error: 'Fant ikke utlegget' });
+        return;
+      }
+
+      const receiptFileId = readStringValue(body.receiptFileId ?? body.receipt_file_id);
+      const ocrText = readStringValue(body.ocrText ?? body.extractedText ?? body.receiptText);
+      await runReceiptOcrJob({
+        req,
+        projectId,
+        expenseId,
+        receiptFileId,
+        extractedText: ocrText,
+        engine: 'server-heuristic-retry',
+      });
+
+      const item = await loadRoleRoomExpenseBundle(projectId, expenseId);
+      res.json({ success: true, item });
+    } catch (error) {
+      console.error('Role Room receipt OCR retry error:', error);
+      res.status(500).json({ error: 'Kunne ikke kjøre OCR på nytt' });
+    }
+  });
+
+  router.patch('/projects/:projectId/producer/expenses/:expenseId/ocr/correction', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!(await ensureProducerWorkflowTables())) {
+      res.status(500).json({ error: 'Producer-tabeller er ikke tilgjengelige' });
+      return;
+    }
+
+    const projectId = req.params.projectId;
+    const expenseId = req.params.expenseId;
+    const body = readRecordValue(req.body) ?? {};
+
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å korrigere OCR' });
+        return;
+      }
+
+      const merchantName = normalizeMerchantName(body.merchantName ?? body.merchant_name);
+      const expenseDate = normalizeReceiptExpenseDate(body.expenseDate ?? body.expense_date);
+      const amount = readNumberValue(body.amount);
+      const vatAmount = readNumberValue(body.vatAmount ?? body.vat_amount);
+      const existingExpenseResult = await pool.query(
+        `SELECT *
+         FROM role_room_expenses
+         WHERE id = $1 AND project_id = $2
+         LIMIT 1`,
+        [expenseId, projectId],
+      );
+      const existingExpense = existingExpenseResult.rows[0] as RoleRoomExpenseRow | undefined;
+      if (!existingExpense) {
+        res.status(404).json({ error: 'Fant ikke utlegget' });
+        return;
+      }
+      const nextAmount = amount ?? (
+        existingExpense.amount === null || existingExpense.amount === undefined ? null : Number(existingExpense.amount)
+      );
+      const nextVatAmount = vatAmount ?? (
+        existingExpense.vat_amount === null || existingExpense.vat_amount === undefined ? null : Number(existingExpense.vat_amount)
+      );
+
+      const updateResult = await pool.query(
+        `UPDATE role_room_expenses
+         SET merchant_name = COALESCE($3, merchant_name),
+             expense_date = COALESCE($4::date, expense_date),
+             amount = COALESCE($5, amount),
+             vat_amount = COALESCE($6, vat_amount),
+             category = COALESCE($7, category),
+             ocr_status = 'corrected',
+             ocr_review_required = FALSE,
+             amount_validation_status = $8,
+             vat_validation_status = $9,
+             metadata = metadata || $10::jsonb,
+             updated_at = NOW()
+         WHERE id = $1 AND project_id = $2
+         RETURNING *`,
+        [
+          expenseId,
+          projectId,
+          merchantName,
+          expenseDate,
+          amount,
+          vatAmount,
+          readStringValue(body.category),
+          validateExpenseAmount(nextAmount),
+          validateExpenseVat(nextAmount, nextVatAmount),
+          JSON.stringify({
+            manualCorrection: {
+              correctedAt: nowISO(),
+              correctedFields: Object.keys(body),
+            },
+          }),
+        ],
+      );
+      if (updateResult.rowCount === 0) {
+        res.status(404).json({ error: 'Fant ikke utlegget' });
+        return;
+      }
+
+      await appendReceiptOcrAuditEvent({
+        req,
+        projectId,
+        expenseId,
+        action: 'manual_correction',
+        metadata: {
+          correctedFields: Object.keys(body),
+          amountValidationStatus: validateExpenseAmount(nextAmount),
+          vatValidationStatus: validateExpenseVat(nextAmount, nextVatAmount),
+        },
+      });
+
+      const item = await loadRoleRoomExpenseBundle(projectId, expenseId);
+      res.json({ success: true, item });
+    } catch (error) {
+      console.error('Role Room receipt OCR correction error:', error);
+      res.status(500).json({ error: 'Kunne ikke korrigere OCR' });
+    }
+  });
+
+  router.patch('/projects/:projectId/producer/expenses/:expenseId/status', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!(await ensureProducerWorkflowTables())) {
+      res.status(500).json({ error: 'Producer-tabeller er ikke tilgjengelige' });
+      return;
+    }
+
+    const projectId = req.params.projectId;
+    const expenseId = req.params.expenseId;
+    const body = readRecordValue(req.body) ?? {};
+
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å oppdatere utleggstatus' });
+        return;
+      }
+
+      const refundStatus = Object.prototype.hasOwnProperty.call(body, 'refundStatus')
+        || Object.prototype.hasOwnProperty.call(body, 'refund_status')
+        ? normalizeExpenseStatus(body.refundStatus ?? body.refund_status, ['not_requested', 'requested', 'approved', 'paid', 'rejected'], 'not_requested')
+        : null;
+      const clientApprovalStatus = Object.prototype.hasOwnProperty.call(body, 'clientApprovalStatus')
+        || Object.prototype.hasOwnProperty.call(body, 'client_approval_status')
+        ? normalizeExpenseStatus(body.clientApprovalStatus ?? body.client_approval_status, ['pending', 'approved', 'changes_requested', 'rejected', 'not_required'], 'pending')
+        : null;
+
+      const updateResult = await pool.query(
+        `UPDATE role_room_expenses
+         SET refund_status = COALESCE($3, refund_status),
+             client_approval_status = COALESCE($4, client_approval_status),
+             updated_at = NOW()
+         WHERE id = $1 AND project_id = $2
+         RETURNING *`,
+        [expenseId, projectId, refundStatus, clientApprovalStatus],
+      );
+      if (updateResult.rowCount === 0) {
+        res.status(404).json({ error: 'Fant ikke utlegget' });
+        return;
+      }
+
+      await appendReceiptOcrAuditEvent({
+        req,
+        projectId,
+        expenseId,
+        action: 'status_updated',
+        metadata: { refundStatus, clientApprovalStatus },
+      });
+
+      const item = await loadRoleRoomExpenseBundle(projectId, expenseId);
+      res.json({ success: true, item });
+    } catch (error) {
+      console.error('Role Room expense status update error:', error);
+      res.status(500).json({ error: 'Kunne ikke oppdatere utleggstatus' });
+    }
+  });
+
+  router.get('/projects/:projectId/producer/expenses/export', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!(await ensureProducerWorkflowTables())) {
+      res.status(500).json({ error: 'Producer-tabeller er ikke tilgjengelige' });
+      return;
+    }
+
+    const projectId = req.params.projectId;
+
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canReadProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til eksport av utlegg' });
+        return;
+      }
+
+      const expenseResult = await pool.query(
+        `SELECT id, title, merchant_name, expense_date, amount, vat_amount, currency,
+                category, paid_by_label, cost_owner, refund_status,
+                client_approval_status, duplicate_of_expense_id,
+                ocr_status, ocr_confidence, amount_validation_status, vat_validation_status,
+                created_at, updated_at
+         FROM role_room_expenses
+         WHERE project_id = $1
+         ORDER BY expense_date DESC NULLS LAST, updated_at DESC`,
+        [projectId],
+      );
+
+      res.json({
+        projectId,
+        exportedAt: nowISO(),
+        privacyNotice: 'Eksporten kan inneholde persondata fra kvitteringer og skal bare deles med autoriserte prosjekt-/kundeansvarlige.',
+        items: expenseResult.rows,
+      });
+    } catch (error) {
+      console.error('Role Room expenses export error:', error);
+      res.status(500).json({ error: 'Kunne ikke eksportere utlegg' });
     }
   });
 

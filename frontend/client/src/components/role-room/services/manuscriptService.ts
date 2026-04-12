@@ -13,6 +13,7 @@ import {
   PRODUCER_DEMO_PRIMARY_LOCATION,
   PRODUCER_DEMO_PROJECT_NAME,
   containsLegacyProducerDemoMarker,
+  isRoleRoomDemoSeedAllowed,
 } from '../constants/producerDemo';
 import { shouldUseRoleRoomLocalFallback } from '../utils/runtime';
 
@@ -96,6 +97,27 @@ const SETTINGS_NAMESPACES = {
 const TROLL_DEMO_PROJECT_ID = 'troll-project-2026';
 const normalizeDemoProjectId = (value: string | null | undefined): string => String(value || '').trim().toLowerCase();
 
+function normalizeRequiredProjectId(projectId: string | null | undefined, operation: string): string {
+  const normalized = String(projectId || '').trim();
+  if (!normalized) {
+    throw new Error(`Mangler prosjekt-ID for ${operation}.`);
+  }
+  const lowered = normalized.toLowerCase();
+  if (
+    lowered === 'default' ||
+    lowered === 'default-project' ||
+    lowered === 'demo' ||
+    lowered === 'undefined' ||
+    lowered === 'null' ||
+    normalized.includes('/') ||
+    normalized.includes('\\') ||
+    normalized.includes('..')
+  ) {
+    throw new Error(`Ugyldig prosjekt-ID for ${operation}: ${normalized}`);
+  }
+  return normalized;
+}
+
 function isLegacyTrollDemoManuscriptForProducerProject(manuscript: Manuscript): boolean {
   const projectId = normalizeDemoProjectId(manuscript.projectId);
   const manuscriptId = normalizeDemoProjectId(manuscript.id);
@@ -136,13 +158,14 @@ function mergeById<T extends { id: string }>(primary: T[], fallback: T[]): T[] {
 }
 
 async function getManuscriptsFromStorage(projectId: string): Promise<Manuscript[]> {
+  projectId = normalizeRequiredProjectId(projectId, 'getManuscriptsFromStorage');
   const cached = await settingsService.getSetting<Manuscript[]>(SETTINGS_NAMESPACES.MANUSCRIPTS, { projectId });
   if (cached) return cached;
   return [];
 }
 
 async function saveManuscriptToStorage(manuscript: Manuscript): Promise<void> {
-  const projectId = manuscript.projectId;
+  const projectId = normalizeRequiredProjectId(manuscript.projectId, 'saveManuscriptToStorage');
   const cached = (await settingsService.getSetting<Manuscript[]>(SETTINGS_NAMESPACES.MANUSCRIPTS, { projectId })) || [];
   const index = cached.findIndex(m => m.id === manuscript.id);
   if (index >= 0) {
@@ -285,12 +308,14 @@ async function saveActsToStorage(manuscriptId: string, acts: Act[]): Promise<voi
 }
 
 async function hasDemoInit(projectId: string): Promise<boolean> {
+  projectId = normalizeRequiredProjectId(projectId, 'hasDemoInit');
   const cached = await settingsService.getSetting<boolean>(SETTINGS_NAMESPACES.DEMO_INIT, { projectId });
   if (cached) return true;
   return false;
 }
 
 async function markDemoInit(projectId: string): Promise<void> {
+  projectId = normalizeRequiredProjectId(projectId, 'markDemoInit');
   await settingsService.setSetting(SETTINGS_NAMESPACES.DEMO_INIT, true, { projectId });
 }
 
@@ -1709,12 +1734,17 @@ Godkjent. Bytt siste kontrollromsbilde med droneetablering fra opplæringssenter
  * Initialize demo data for a project if no manuscripts exist
  */
 async function initializeDemoDataIfNeeded(projectId: string): Promise<void> {
+  projectId = normalizeRequiredProjectId(projectId, 'initializeDemoDataIfNeeded');
   const normalizedProjectId = normalizeDemoProjectId(projectId);
   const isTrollDemoProject = normalizedProjectId === TROLL_DEMO_PROJECT_ID;
   const isContentProducerDemoProject = normalizedProjectId === CONTENT_PRODUCER_DEMO_PROJECT_ID;
   const isKnownDemoProject = isTrollDemoProject || isContentProducerDemoProject;
 
   if (!isKnownDemoProject) {
+    return;
+  }
+
+  if (!isRoleRoomDemoSeedAllowed()) {
     return;
   }
 
@@ -1816,6 +1846,7 @@ class ManuscriptService {
    * Get all manuscripts for a project
    */
   async getManuscripts(projectId: string): Promise<Manuscript[]> {
+    projectId = normalizeRequiredProjectId(projectId, 'getManuscripts');
     // Initialize demo data if needed
     await initializeDemoDataIfNeeded(projectId);
     const cachedManuscripts = await getManuscriptsFromStorage(projectId);
@@ -1824,7 +1855,7 @@ class ManuscriptService {
     
     if (isDbAvailable) {
       try {
-        const response = await fetch(`/api/casting/manuscripts?projectId=${projectId}`);
+        const response = await fetch(`/api/casting/manuscripts?projectId=${encodeURIComponent(projectId)}`);
         if (!response.ok) {
           if (response.status === 404) {
             markManuscriptApiUnavailable('GET /api/casting/manuscripts');
@@ -2809,6 +2840,7 @@ class ManuscriptService {
     projectId: string,
     characters: Set<string>
   ): Promise<Map<string, string>> {
+    projectId = normalizeRequiredProjectId(projectId, 'linkCharactersToRoles');
     const characterToRoleMap = new Map<string, string>();
     
     const isDbAvailable = await checkDatabaseAvailability();
@@ -2888,6 +2920,7 @@ class ManuscriptService {
     projectId: string,
     scenes: SceneBreakdown[]
   ): Promise<Map<string, string>> {
+    projectId = normalizeRequiredProjectId(projectId, 'linkLocationsToDatabase');
     const sceneToLocationMap = new Map<string, string>();
     
     const isDbAvailable = await checkDatabaseAvailability();
@@ -2995,6 +3028,7 @@ class ManuscriptService {
       propsFound: number;
     };
   }> {
+    projectId = normalizeRequiredProjectId(projectId, 'applyAutoLinking');
     // Link characters to roles
     const characterToRoleMap = await this.linkCharactersToRoles(projectId, characters);
     

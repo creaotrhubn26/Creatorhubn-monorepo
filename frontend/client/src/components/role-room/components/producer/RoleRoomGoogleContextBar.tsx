@@ -300,7 +300,7 @@ export default function RoleRoomGoogleContextBar({
   const handleCreateBinding = useCallback(async () => {
     try {
       setActionKey('binding');
-      await googleWorkspaceApi.ensureProjectBindingReady(projectId, binding);
+      await googleWorkspaceApi.provisionProjectWorkspace(projectId, binding?.contactsContext ?? {});
       enqueueSnackbar('Google Workspace er klart for prosjektet.', { variant: 'success' });
       await refreshAll();
     } catch (error) {
@@ -510,7 +510,7 @@ export default function RoleRoomGoogleContextBar({
     let cancelled = false;
     setActionKey('binding');
 
-    void googleWorkspaceApi.ensureProjectBindingReady(projectId, binding)
+    void googleWorkspaceApi.provisionProjectWorkspace(projectId, binding?.contactsContext ?? {})
       .then((response) => {
         if (cancelled || !response) {
           return;

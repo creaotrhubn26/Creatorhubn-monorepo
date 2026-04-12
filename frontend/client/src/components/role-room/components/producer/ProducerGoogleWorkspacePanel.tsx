@@ -258,7 +258,7 @@ export default function ProducerGoogleWorkspacePanel({
     let cancelled = false;
     setActionKey('binding');
 
-    void googleWorkspaceApi.ensureProjectBindingReady(projectId, binding)
+    void googleWorkspaceApi.provisionProjectWorkspace(projectId, binding?.contactsContext ?? {})
       .then((response) => {
         if (cancelled || !response) {
           return;
@@ -351,8 +351,8 @@ export default function ProducerGoogleWorkspacePanel({
   const handleCreateBinding = useCallback(async () => {
     await runAction(
       'binding',
-      async () => {
-        await googleWorkspaceApi.ensureProjectBindingReady(projectId, binding);
+        async () => {
+        await googleWorkspaceApi.provisionProjectWorkspace(projectId, binding?.contactsContext ?? {});
       },
       'Google Workspace er klart for prosjektet.',
     );

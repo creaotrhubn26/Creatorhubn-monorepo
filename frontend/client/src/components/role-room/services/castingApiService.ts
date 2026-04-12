@@ -236,6 +236,10 @@ export interface RoleRoomGoogleStatusResponse {
   missing: string[];
   state: 'disconnected' | 'connected' | 'expired' | 'error';
   connection: RoleRoomGoogleConnection | null;
+  oauthRefreshAlert?: {
+    severity?: 'info' | 'warning' | 'error';
+    message?: string;
+  } | null;
   projectBinding?: RoleRoomGoogleProjectBinding | null;
   artifacts?: RoleRoomGoogleArtifactRef[];
 }
@@ -513,6 +517,67 @@ export interface RoleRoomLinkedInStatusResponse {
   state: 'disconnected' | 'connected' | 'expired' | 'error';
   connection: RoleRoomLinkedInConnection | null;
 }
+
+type RoleRoomStatusCacheEntry<T> = {
+  value: T | null;
+  promise: Promise<T> | null;
+  expiresAt: number;
+};
+
+const ROLE_ROOM_STATUS_SUCCESS_CACHE_TTL_MS = 30_000;
+const ROLE_ROOM_STATUS_FAILURE_CACHE_TTL_MS = 10_000;
+
+const googleStatusCache = new Map<string, RoleRoomStatusCacheEntry<RoleRoomGoogleStatusResponse>>();
+const linkedInStatusCache: RoleRoomStatusCacheEntry<RoleRoomLinkedInStatusResponse> = {
+  value: null,
+  promise: null,
+  expiresAt: 0,
+};
+
+const describeStatusFetchError = (error: unknown): string => {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message.trim();
+  }
+  return 'Kunne ikke hente status akkurat nå.';
+};
+
+const buildGoogleStatusFallback = (error: unknown): RoleRoomGoogleStatusResponse => ({
+  configured: false,
+  missing: ['network'],
+  state: 'error',
+  connection: null,
+  oauthRefreshAlert: {
+    severity: 'warning',
+    message: `Google Workspace-status er midlertidig utilgjengelig: ${describeStatusFetchError(error)}`,
+  },
+  projectBinding: null,
+  artifacts: [],
+});
+
+const buildLinkedInStatusFallback = (error: unknown): RoleRoomLinkedInStatusResponse => ({
+  configured: false,
+  missing: ['network'],
+  state: 'error',
+  connection: null,
+});
+
+const getGoogleStatusCacheEntry = (projectId?: string): {
+  key: string;
+  entry: RoleRoomStatusCacheEntry<RoleRoomGoogleStatusResponse>;
+} => {
+  const key = projectId?.trim() || 'global';
+  const existing = googleStatusCache.get(key);
+  if (existing) {
+    return { key, entry: existing };
+  }
+  const entry: RoleRoomStatusCacheEntry<RoleRoomGoogleStatusResponse> = {
+    value: null,
+    promise: null,
+    expiresAt: 0,
+  };
+  googleStatusCache.set(key, entry);
+  return { key, entry };
+};
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
   value !== null && typeof value === 'object' ? (value as Record<string, unknown>) : null;
@@ -2179,13 +2244,41 @@ export const shotDetailsApi = {
 };
 
 export const googleWorkspaceApi = {
-  getStatus: async (projectId?: string): Promise<RoleRoomGoogleStatusResponse> => {
+  getStatus: async (
+    projectId?: string,
+    options: { force?: boolean } = {},
+  ): Promise<RoleRoomGoogleStatusResponse> => {
     const params = new URLSearchParams();
     if (projectId) {
       params.set('projectId', projectId);
     }
     const query = params.toString();
-    return apiRequest<RoleRoomGoogleStatusResponse>(`/google/status${query ? `?${query}` : ''}`);
+    const { entry } = getGoogleStatusCacheEntry(projectId);
+    const now = Date.now();
+    if (!options.force && entry.value && entry.expiresAt > now) {
+      return entry.value;
+    }
+    if (!options.force && entry.promise) {
+      return entry.promise;
+    }
+
+    entry.promise = apiRequest<RoleRoomGoogleStatusResponse>(`/google/status${query ? `?${query}` : ''}`)
+      .then((status) => {
+        entry.value = status;
+        entry.expiresAt = Date.now() + ROLE_ROOM_STATUS_SUCCESS_CACHE_TTL_MS;
+        return status;
+      })
+      .catch((error) => {
+        const fallback = buildGoogleStatusFallback(error);
+        entry.value = fallback;
+        entry.expiresAt = Date.now() + ROLE_ROOM_STATUS_FAILURE_CACHE_TTL_MS;
+        return fallback;
+      })
+      .finally(() => {
+        entry.promise = null;
+      });
+
+    return entry.promise;
   },
 
   startOauth: async (
@@ -2257,6 +2350,16 @@ export const googleWorkspaceApi = {
     googleBindingBootstrapRequests.set(projectId, request);
     return request;
   },
+
+  provisionProjectWorkspace: async (
+    projectId: string,
+    contactsContext?: Record<string, unknown>,
+  ): Promise<RoleRoomGoogleBindingResponse & { success?: boolean }> => (
+    apiRequest<RoleRoomGoogleBindingResponse & { success?: boolean }>(`/projects/${projectId}/google/provision`, {
+      method: 'POST',
+      body: JSON.stringify({ contactsContext: contactsContext ?? {} }),
+    })
+  ),
 
   syncDrive: async (
     projectId: string,
@@ -2364,9 +2467,33 @@ export const googleWorkspaceApi = {
 };
 
 export const linkedInWorkspaceApi = {
-  getStatus: async (): Promise<RoleRoomLinkedInStatusResponse> => (
-    apiRequest<RoleRoomLinkedInStatusResponse>('/linkedin/status')
-  ),
+  getStatus: async (options: { force?: boolean } = {}): Promise<RoleRoomLinkedInStatusResponse> => {
+    const now = Date.now();
+    if (!options.force && linkedInStatusCache.value && linkedInStatusCache.expiresAt > now) {
+      return linkedInStatusCache.value;
+    }
+    if (!options.force && linkedInStatusCache.promise) {
+      return linkedInStatusCache.promise;
+    }
+
+    linkedInStatusCache.promise = apiRequest<RoleRoomLinkedInStatusResponse>('/linkedin/status')
+      .then((status) => {
+        linkedInStatusCache.value = status;
+        linkedInStatusCache.expiresAt = Date.now() + ROLE_ROOM_STATUS_SUCCESS_CACHE_TTL_MS;
+        return status;
+      })
+      .catch((error) => {
+        const fallback = buildLinkedInStatusFallback(error);
+        linkedInStatusCache.value = fallback;
+        linkedInStatusCache.expiresAt = Date.now() + ROLE_ROOM_STATUS_FAILURE_CACHE_TTL_MS;
+        return fallback;
+      })
+      .finally(() => {
+        linkedInStatusCache.promise = null;
+      });
+
+    return linkedInStatusCache.promise;
+  },
 
   startOauth: async (
     payload: RoleRoomLinkedInOauthStartInput,

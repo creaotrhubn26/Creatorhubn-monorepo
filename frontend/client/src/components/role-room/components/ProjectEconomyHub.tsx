@@ -2772,6 +2772,7 @@ export default function ProjectEconomyHub({
                     <ProjectAgreementsPanel
                       project={project}
                       readOnly={readOnly}
+                      onProjectUpdated={onProjectUpdated}
                       onCandidateStatusChange={(candidateId, status) => {
                         void handleCandidateStatusChange(candidateId, status);
                       }}

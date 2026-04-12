@@ -3,6 +3,7 @@ import {
   PRODUCER_DEMO_ECONOMY_SEED,
   PRODUCER_DEMO_REVIEW_SEED,
   PRODUCER_DEMO_TIMELINE_SEED,
+  isRoleRoomDemoSeedAllowed,
 } from '../constants/producerDemo';
 import type {
   CastingProject,
@@ -132,10 +133,22 @@ export interface ProducerProjectNotification {
   project_id: string;
   audience: string;
   event_type: string;
+  inbox_type: string;
   title: string;
   message?: string | null;
+  client_name?: string | null;
+  client_email?: string | null;
   linked_entity_type?: string | null;
   linked_entity_id?: string | null;
+  assigned_to_user_id?: string | null;
+  assigned_to_label?: string | null;
+  due_at?: string | null;
+  resolved_at?: string | null;
+  resolved_by_user_id?: string | null;
+  archived_at?: string | null;
+  archived_by_user_id?: string | null;
+  mention_user_ids: string[];
+  mention_emails: string[];
   metadata?: Record<string, unknown>;
   created_by_user_id?: string | null;
   created_by_role?: string | null;
@@ -143,6 +156,114 @@ export interface ProducerProjectNotification {
   updated_at: string;
   read: boolean;
   read_at?: string | null;
+}
+
+export interface UpdateProducerNotificationInput {
+  inboxType?: string;
+  clientName?: string | null;
+  clientEmail?: string | null;
+  assignedToUserId?: string | null;
+  assignedToLabel?: string | null;
+  dueAt?: string | null;
+  resolved?: boolean;
+  archived?: boolean;
+  mentionUserIds?: string[];
+  mentionEmails?: string[];
+}
+
+export interface ProducerExpenseReceiptFile {
+  id: string;
+  expenseId: string;
+  projectId: string;
+  fileName?: string | null;
+  originalName?: string | null;
+  mimeType?: string | null;
+  fileSize?: number | null;
+  sha256?: string | null;
+  pageCount?: number | null;
+  metadata?: Record<string, unknown>;
+  createdAt?: string | null;
+}
+
+export interface ProducerReceiptOcrJob {
+  id: string;
+  expenseId: string;
+  receiptFileId?: string | null;
+  projectId: string;
+  status: string;
+  attempts: number;
+  confidence?: number | null;
+  extractedText?: string | null;
+  extractedData?: Record<string, unknown>;
+  engine?: string | null;
+  lastError?: string | null;
+  queuedAt?: string | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface ProducerExpense {
+  id: string;
+  projectId: string;
+  title: string;
+  description?: string | null;
+  merchantName?: string | null;
+  expenseDate?: string | null;
+  amount?: number | null;
+  vatAmount?: number | null;
+  currency: string;
+  category?: string | null;
+  paidByUserId?: string | null;
+  paidByLabel?: string | null;
+  costOwner: string;
+  refundStatus: string;
+  clientApprovalStatus: string;
+  duplicateOfExpenseId?: string | null;
+  ocrStatus: string;
+  ocrConfidence?: number | null;
+  ocrReviewRequired: boolean;
+  amountValidationStatus: string;
+  vatValidationStatus: string;
+  privacyNoticeAcknowledgedAt?: string | null;
+  metadata?: Record<string, unknown>;
+  receipts: ProducerExpenseReceiptFile[];
+  ocrJobs: ProducerReceiptOcrJob[];
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface CreateProducerExpenseInput {
+  title: string;
+  description?: string | null;
+  merchantName?: string | null;
+  expenseDate?: string | null;
+  amount?: number | null;
+  vatAmount?: number | null;
+  currency?: string;
+  category?: string | null;
+  paidByUserId?: string | null;
+  paidByLabel?: string | null;
+  costOwner?: string;
+  refundStatus?: string;
+  clientApprovalStatus?: string;
+  ocrText?: string | null;
+  queueOcr?: boolean;
+  privacyNoticeAcknowledged?: boolean;
+  metadata?: Record<string, unknown>;
+}
+
+export interface UpdateProducerExpenseStatusInput {
+  refundStatus?: string;
+  clientApprovalStatus?: string;
+}
+
+export interface CorrectProducerExpenseOcrInput {
+  merchantName?: string | null;
+  expenseDate?: string | null;
+  amount?: number | null;
+  vatAmount?: number | null;
+  category?: string | null;
 }
 
 export interface CreateProducerTimelineItemInput {
@@ -752,6 +873,35 @@ async function producerWorkflowRequest<T>(endpoint: string, options: RequestInit
   return JSON.parse(responseText) as T;
 }
 
+async function producerWorkflowFormDataRequest<T>(endpoint: string, formData: FormData): Promise<T> {
+  const response = await fetch(`${API_BASE}${endpoint}`, {
+    method: 'POST',
+    headers: buildAuthHeaders(),
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const rawBody = await response.text().catch(() => '');
+    let parsedBody: unknown = null;
+    if (rawBody) {
+      try {
+        parsedBody = JSON.parse(rawBody);
+      } catch {
+        parsedBody = rawBody;
+      }
+    }
+    const errorRecord = asRecord(parsedBody);
+    const detail =
+      readFirstNonEmptyString(errorRecord.error, errorRecord.message, errorRecord.detail)
+      ?? (typeof parsedBody === 'string' && parsedBody.trim().length > 0 ? parsedBody.trim() : undefined)
+      ?? `Producer workflow upload failed (${response.status})`;
+    throw new Error(detail);
+  }
+
+  const responseText = await response.text();
+  return responseText.trim() ? JSON.parse(responseText) as T : undefined as T;
+}
+
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -782,6 +932,15 @@ function normalizeMetadata(metadata: unknown): Record<string, unknown> | undefin
     return undefined;
   }
   return { ...(metadata as Record<string, unknown>) };
+}
+
+function normalizeStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+    .map((entry) => entry.trim());
 }
 
 function normalizePhase(value: unknown): ProducerPhase {
@@ -1050,10 +1209,22 @@ function normalizeNotification(value: unknown, projectId: string): ProducerProje
     project_id: readFirstNonEmptyString(record.project_id, record.projectId) ?? projectId,
     audience: readFirstNonEmptyString(record.audience) ?? 'producer_team',
     event_type: readFirstNonEmptyString(record.event_type, record.eventType) ?? 'unknown',
+    inbox_type: readFirstNonEmptyString(record.inbox_type, record.inboxType) ?? 'general',
     title: readFirstNonEmptyString(record.title) ?? 'Nytt varsel',
     message: readFirstNonEmptyString(record.message) ?? null,
+    client_name: readFirstNonEmptyString(record.client_name, record.clientName) ?? null,
+    client_email: readFirstNonEmptyString(record.client_email, record.clientEmail) ?? null,
     linked_entity_type: readFirstNonEmptyString(record.linked_entity_type, record.linkedEntityType) ?? null,
     linked_entity_id: readFirstNonEmptyString(record.linked_entity_id, record.linkedEntityId) ?? null,
+    assigned_to_user_id: readFirstNonEmptyString(record.assigned_to_user_id, record.assignedToUserId) ?? null,
+    assigned_to_label: readFirstNonEmptyString(record.assigned_to_label, record.assignedToLabel) ?? null,
+    due_at: readFirstNonEmptyString(record.due_at, record.dueAt) ?? null,
+    resolved_at: readFirstNonEmptyString(record.resolved_at, record.resolvedAt) ?? null,
+    resolved_by_user_id: readFirstNonEmptyString(record.resolved_by_user_id, record.resolvedByUserId) ?? null,
+    archived_at: readFirstNonEmptyString(record.archived_at, record.archivedAt) ?? null,
+    archived_by_user_id: readFirstNonEmptyString(record.archived_by_user_id, record.archivedByUserId) ?? null,
+    mention_user_ids: normalizeStringArray(record.mention_user_ids ?? record.mentionUserIds),
+    mention_emails: normalizeStringArray(record.mention_emails ?? record.mentionEmails).map((email) => email.toLowerCase()),
     metadata: normalizeMetadata(record.metadata),
     created_by_user_id: readFirstNonEmptyString(record.created_by_user_id, record.createdByUserId) ?? null,
     created_by_role: readFirstNonEmptyString(record.created_by_role, record.createdByRole) ?? null,
@@ -1061,6 +1232,88 @@ function normalizeNotification(value: unknown, projectId: string): ProducerProje
     updated_at: updatedAt,
     read: normalizeBoolean(record.read, false),
     read_at: readFirstNonEmptyString(record.read_at, record.readAt) ?? null,
+  };
+}
+
+function normalizeExpenseReceiptFile(value: unknown, projectId: string, expenseId: string): ProducerExpenseReceiptFile {
+  const record = asRecord(value);
+  return {
+    id: readFirstNonEmptyString(record.id) ?? generateId('producer-receipt'),
+    expenseId: readFirstNonEmptyString(record.expenseId, record.expense_id) ?? expenseId,
+    projectId: readFirstNonEmptyString(record.projectId, record.project_id) ?? projectId,
+    fileName: readFirstNonEmptyString(record.fileName, record.file_name) ?? null,
+    originalName: readFirstNonEmptyString(record.originalName, record.original_name) ?? null,
+    mimeType: readFirstNonEmptyString(record.mimeType, record.mime_type) ?? null,
+    fileSize: record.fileSize === null || record.file_size === null
+      ? null
+      : normalizeNumber(record.fileSize ?? record.file_size, Number.NaN),
+    sha256: readFirstNonEmptyString(record.sha256) ?? null,
+    pageCount: record.pageCount === null || record.page_count === null
+      ? null
+      : normalizeNumber(record.pageCount ?? record.page_count, Number.NaN),
+    metadata: normalizeMetadata(record.metadata),
+    createdAt: readFirstNonEmptyString(record.createdAt, record.created_at) ?? null,
+  };
+}
+
+function normalizeReceiptOcrJob(value: unknown, projectId: string, expenseId: string): ProducerReceiptOcrJob {
+  const record = asRecord(value);
+  return {
+    id: readFirstNonEmptyString(record.id) ?? generateId('producer-ocr-job'),
+    expenseId: readFirstNonEmptyString(record.expenseId, record.expense_id) ?? expenseId,
+    receiptFileId: readFirstNonEmptyString(record.receiptFileId, record.receipt_file_id) ?? null,
+    projectId: readFirstNonEmptyString(record.projectId, record.project_id) ?? projectId,
+    status: readFirstNonEmptyString(record.status) ?? 'queued',
+    attempts: normalizeNumber(record.attempts, 0),
+    confidence: record.confidence === null ? null : normalizeNumber(record.confidence, Number.NaN),
+    extractedText: readFirstNonEmptyString(record.extractedText, record.extracted_text) ?? null,
+    extractedData: normalizeMetadata(record.extractedData ?? record.extracted_data),
+    engine: readFirstNonEmptyString(record.engine) ?? null,
+    lastError: readFirstNonEmptyString(record.lastError, record.last_error) ?? null,
+    queuedAt: readFirstNonEmptyString(record.queuedAt, record.queued_at) ?? null,
+    startedAt: readFirstNonEmptyString(record.startedAt, record.started_at) ?? null,
+    completedAt: readFirstNonEmptyString(record.completedAt, record.completed_at) ?? null,
+    updatedAt: readFirstNonEmptyString(record.updatedAt, record.updated_at) ?? null,
+  };
+}
+
+function normalizeExpense(value: unknown, projectId: string): ProducerExpense {
+  const record = asRecord(value);
+  const id = readFirstNonEmptyString(record.id) ?? generateId('producer-expense');
+  const receipts = Array.isArray(record.receipts) ? record.receipts : [];
+  const ocrJobs = Array.isArray(record.ocrJobs ?? record.ocr_jobs) ? (record.ocrJobs ?? record.ocr_jobs) as unknown[] : [];
+  return {
+    id,
+    projectId: readFirstNonEmptyString(record.projectId, record.project_id) ?? projectId,
+    title: readFirstNonEmptyString(record.title) ?? 'Utlegg',
+    description: readFirstNonEmptyString(record.description) ?? null,
+    merchantName: readFirstNonEmptyString(record.merchantName, record.merchant_name) ?? null,
+    expenseDate: readFirstNonEmptyString(record.expenseDate, record.expense_date) ?? null,
+    amount: record.amount === null ? null : normalizeNumber(record.amount, Number.NaN),
+    vatAmount: record.vatAmount === null || record.vat_amount === null
+      ? null
+      : normalizeNumber(record.vatAmount ?? record.vat_amount, Number.NaN),
+    currency: readFirstNonEmptyString(record.currency) ?? 'NOK',
+    category: readFirstNonEmptyString(record.category) ?? null,
+    paidByUserId: readFirstNonEmptyString(record.paidByUserId, record.paid_by_user_id) ?? null,
+    paidByLabel: readFirstNonEmptyString(record.paidByLabel, record.paid_by_label) ?? null,
+    costOwner: readFirstNonEmptyString(record.costOwner, record.cost_owner) ?? 'client',
+    refundStatus: readFirstNonEmptyString(record.refundStatus, record.refund_status) ?? 'not_requested',
+    clientApprovalStatus: readFirstNonEmptyString(record.clientApprovalStatus, record.client_approval_status) ?? 'pending',
+    duplicateOfExpenseId: readFirstNonEmptyString(record.duplicateOfExpenseId, record.duplicate_of_expense_id) ?? null,
+    ocrStatus: readFirstNonEmptyString(record.ocrStatus, record.ocr_status) ?? 'pending',
+    ocrConfidence: record.ocrConfidence === null || record.ocr_confidence === null
+      ? null
+      : normalizeNumber(record.ocrConfidence ?? record.ocr_confidence, Number.NaN),
+    ocrReviewRequired: normalizeBoolean(record.ocrReviewRequired ?? record.ocr_review_required, true),
+    amountValidationStatus: readFirstNonEmptyString(record.amountValidationStatus, record.amount_validation_status) ?? 'pending',
+    vatValidationStatus: readFirstNonEmptyString(record.vatValidationStatus, record.vat_validation_status) ?? 'pending',
+    privacyNoticeAcknowledgedAt: readFirstNonEmptyString(record.privacyNoticeAcknowledgedAt, record.privacy_notice_acknowledged_at) ?? null,
+    metadata: normalizeMetadata(record.metadata),
+    receipts: receipts.map((receipt) => normalizeExpenseReceiptFile(receipt, projectId, id)),
+    ocrJobs: ocrJobs.map((job) => normalizeReceiptOcrJob(job, projectId, id)),
+    createdAt: readFirstNonEmptyString(record.createdAt, record.created_at) ?? null,
+    updatedAt: readFirstNonEmptyString(record.updatedAt, record.updated_at) ?? null,
   };
 }
 
@@ -1134,6 +1387,14 @@ async function fetchNotifications(projectId: string): Promise<ProducerProjectNot
   return items
     .map((item) => normalizeNotification(item, projectId))
     .sort((left, right) => compareIso(right.updated_at, left.updated_at));
+}
+
+async function fetchExpenses(projectId: string): Promise<ProducerExpense[]> {
+  const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/expenses`);
+  const items = Array.isArray(response.items) ? response.items : [];
+  return items
+    .map((item) => normalizeExpense(item, projectId))
+    .sort((left, right) => compareIso(right.updatedAt, left.updatedAt));
 }
 
 async function fetchClientIntake(projectId: string): Promise<ProducerClientIntake> {
@@ -1473,7 +1734,8 @@ function buildPlanningReviewPayload(
       planningMomentId: moment.id,
       planningMomentType: moment.type,
       deliveryItemIds: moment.type === 'content_delivery'
-        ? [readFirstNonEmptyString(moment.id.replace(/^content:/, ''))].filter((value) => value.length > 0)
+        ? [readFirstNonEmptyString(moment.id.replace(/^content:/, ''))]
+          .filter((value): value is string => typeof value === 'string' && value.length > 0)
         : [],
       accountAccessPlatform: accountPlatform,
       accountAccessPlatforms: accountPlatform ? [accountPlatform] : [],
@@ -2553,6 +2815,112 @@ export const producerWorkflowService = {
     return fetchNotifications(projectId);
   },
 
+  async getExpenses(projectId: string): Promise<ProducerExpense[]> {
+    return fetchExpenses(projectId);
+  },
+
+  async createExpense(projectId: string, payload: CreateProducerExpenseInput): Promise<ProducerExpense> {
+    const response = await producerWorkflowRequest<{ item?: unknown }>(`/projects/${projectId}/producer/expenses`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    const created = normalizeExpense(response.item, projectId);
+    emitProducerWorkflowEvent({
+      projectId,
+      domain: 'economy',
+      mutation: 'created',
+      entityId: created.id,
+    });
+    return created;
+  },
+
+  async uploadExpenseReceipt(
+    projectId: string,
+    expenseId: string,
+    file: File,
+    ocrText?: string,
+  ): Promise<ProducerExpense> {
+    const formData = new FormData();
+    formData.set('file', file);
+    if (ocrText && ocrText.trim().length > 0) {
+      formData.set('ocrText', ocrText.trim());
+    }
+    const response = await producerWorkflowFormDataRequest<{ item?: unknown }>(
+      `/projects/${projectId}/producer/expenses/${expenseId}/receipts`,
+      formData,
+    );
+    const updated = normalizeExpense(response.item, projectId);
+    emitProducerWorkflowEvent({
+      projectId,
+      domain: 'economy',
+      mutation: 'updated',
+      entityId: expenseId,
+    });
+    return updated;
+  },
+
+  async retryExpenseOcr(projectId: string, expenseId: string, ocrText?: string): Promise<ProducerExpense> {
+    const response = await producerWorkflowRequest<{ item?: unknown }>(
+      `/projects/${projectId}/producer/expenses/${expenseId}/ocr/retry`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ ocrText: ocrText ?? null }),
+      },
+    );
+    const updated = normalizeExpense(response.item, projectId);
+    emitProducerWorkflowEvent({
+      projectId,
+      domain: 'economy',
+      mutation: 'updated',
+      entityId: expenseId,
+    });
+    return updated;
+  },
+
+  async correctExpenseOcr(
+    projectId: string,
+    expenseId: string,
+    payload: CorrectProducerExpenseOcrInput,
+  ): Promise<ProducerExpense> {
+    const response = await producerWorkflowRequest<{ item?: unknown }>(
+      `/projects/${projectId}/producer/expenses/${expenseId}/ocr/correction`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      },
+    );
+    const updated = normalizeExpense(response.item, projectId);
+    emitProducerWorkflowEvent({
+      projectId,
+      domain: 'economy',
+      mutation: 'updated',
+      entityId: expenseId,
+    });
+    return updated;
+  },
+
+  async updateExpenseStatus(
+    projectId: string,
+    expenseId: string,
+    payload: UpdateProducerExpenseStatusInput,
+  ): Promise<ProducerExpense> {
+    const response = await producerWorkflowRequest<{ item?: unknown }>(
+      `/projects/${projectId}/producer/expenses/${expenseId}/status`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      },
+    );
+    const updated = normalizeExpense(response.item, projectId);
+    emitProducerWorkflowEvent({
+      projectId,
+      domain: 'economy',
+      mutation: 'updated',
+      entityId: expenseId,
+    });
+    return updated;
+  },
+
   async markNotificationRead(projectId: string, notificationId: string): Promise<void> {
     await producerWorkflowRequest<{ success?: boolean }>(`/projects/${projectId}/producer/notifications/${notificationId}/read`, {
       method: 'POST',
@@ -2563,6 +2931,28 @@ export const producerWorkflowService = {
       mutation: 'updated',
       entityId: notificationId,
     });
+  },
+
+  async updateNotification(
+    projectId: string,
+    notificationId: string,
+    payload: UpdateProducerNotificationInput,
+  ): Promise<ProducerProjectNotification> {
+    const response = await producerWorkflowRequest<{ item?: unknown }>(
+      `/projects/${projectId}/producer/notifications/${notificationId}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      },
+    );
+    const updated = normalizeNotification(response.item, projectId);
+    emitProducerWorkflowEvent({
+      projectId,
+      domain: 'notifications',
+      mutation: 'updated',
+      entityId: notificationId,
+    });
+    return updated;
   },
 
   async markAllNotificationsRead(projectId: string): Promise<void> {
@@ -3094,6 +3484,10 @@ export const producerWorkflowService = {
 
   async initializeContentProducerDemoWorkflow(projectId: string): Promise<void> {
     if (projectId !== CONTENT_PRODUCER_DEMO_PROJECT_ID) {
+      return;
+    }
+
+    if (!isRoleRoomDemoSeedAllowed()) {
       return;
     }
 

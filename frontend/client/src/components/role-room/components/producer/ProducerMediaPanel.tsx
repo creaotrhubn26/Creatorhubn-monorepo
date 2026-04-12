@@ -2472,12 +2472,13 @@ export default function ProducerMediaPanel({
   }, []);
 
   useEffect(() => {
-    if (!showWorkspaceOperations && activeWorkspace !== 'accounts' && !(isClientPortalView || isClientReviewerMode)) {
+    const shouldLoadIntegrationAccessStatus = showWorkspaceOperations || activeWorkspace === 'accounts';
+    if (!shouldLoadIntegrationAccessStatus) {
       return;
     }
     void loadGoogleAccessStatus();
     void loadLinkedInAccessStatus();
-  }, [activeWorkspace, isClientPortalView, isClientReviewerMode, loadGoogleAccessStatus, loadLinkedInAccessStatus, showWorkspaceOperations]);
+  }, [activeWorkspace, loadGoogleAccessStatus, loadLinkedInAccessStatus, showWorkspaceOperations]);
 
   useEffect(() => () => {
     googleAccessRequestRef.current += 1;

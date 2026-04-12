@@ -106,6 +106,89 @@ const deleteCache = (userId: string, namespace: string, projectId?: string) => {
   deleteStorage(key);
 };
 
+const fetchRemoteSetting = async <T>(
+  userId: string,
+  namespace: string,
+  projectId?: string,
+): Promise<T | null> => {
+  if (typeof fetch !== 'function') {
+    return null;
+  }
+  const params = new URLSearchParams({
+    user_id: userId,
+    namespace,
+  });
+  if (projectId) {
+    params.set('project_id', projectId);
+  }
+
+  try {
+    const response = await fetch(`/api/settings?${params.toString()}`, {
+      cache: 'no-store',
+    });
+    if (!response.ok) {
+      return null;
+    }
+    const payload = await response.json() as { data?: T | null };
+    if (payload.data === undefined || payload.data === null) {
+      return null;
+    }
+    writeCache(userId, namespace, payload.data, projectId);
+    return payload.data;
+  } catch {
+    return null;
+  }
+};
+
+const writeRemoteSetting = async (
+  userId: string,
+  namespace: string,
+  data: unknown,
+  projectId?: string,
+): Promise<void> => {
+  if (typeof fetch !== 'function') {
+    return;
+  }
+  try {
+    await fetch('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId,
+        namespace,
+        projectId,
+        data,
+      }),
+    });
+  } catch {
+    // Local cache is authoritative while offline; next save will retry.
+  }
+};
+
+const deleteRemoteSetting = async (
+  userId: string,
+  namespace: string,
+  projectId?: string,
+): Promise<void> => {
+  if (typeof fetch !== 'function') {
+    return;
+  }
+  const params = new URLSearchParams({
+    user_id: userId,
+    namespace,
+  });
+  if (projectId) {
+    params.set('project_id', projectId);
+  }
+  try {
+    await fetch(`/api/settings?${params.toString()}`, {
+      method: 'DELETE',
+    });
+  } catch {
+    // Ignore network failures; local cache is already cleared.
+  }
+};
+
 const listCacheEntries = (
   userId: string,
   namespacePrefix: string,
@@ -167,13 +250,22 @@ export const settingsService = {
   async getSetting<T>(namespace: string, options?: { userId?: string; projectId?: string }): Promise<T | null> {
     const userId = options?.userId || getCurrentUserId();
     const projectId = options?.projectId;
-    return readCache<T>(userId, namespace, projectId);
+    const remote = await fetchRemoteSetting<T>(userId, namespace, projectId);
+    if (remote !== null) {
+      return remote;
+    }
+    const cached = readCache<T>(userId, namespace, projectId);
+    if (cached !== null) {
+      return cached;
+    }
+    return null;
   },
 
   async setSetting<T>(namespace: string, data: T, options?: { userId?: string; projectId?: string }): Promise<T> {
     const userId = options?.userId || getCurrentUserId();
     const projectId = options?.projectId;
     writeCache(userId, namespace, data, projectId);
+    await writeRemoteSetting(userId, namespace, data, projectId);
     return data;
   },
 
@@ -187,6 +279,7 @@ export const settingsService = {
     const userId = options?.userId || getCurrentUserId();
     const projectId = options?.projectId;
     deleteCache(userId, namespace, projectId);
+    await deleteRemoteSetting(userId, namespace, projectId);
     return true;
   },
 };
