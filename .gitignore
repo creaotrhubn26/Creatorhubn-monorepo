@@ -62,6 +62,7 @@ Frameworks/
 frontend/.playwright-cli/
 frontend/playwright-report/
 frontend/test-results/
+backend/*.traineddata
 output_*.png
 .tmp-*
 frontend/.tmp-*
