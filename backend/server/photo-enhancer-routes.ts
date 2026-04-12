@@ -41,10 +41,16 @@ const PHOTO_ENHANCER_MODEL_TIMEOUT_MS = Number(
   process.env.PHOTO_ENHANCER_MODEL_TIMEOUT_MS || 45_000,
 );
 const PHOTO_ENHANCER_FACE_API_TIMEOUT_MS = Number(
-  process.env.PHOTO_ENHANCER_FACE_API_TIMEOUT_MS || 12_000,
+  process.env.PHOTO_ENHANCER_FACE_API_TIMEOUT_MS || 25_000,
 );
 const PHOTO_ENHANCER_FACE_API_MAX_DIMENSION = Number(
   process.env.PHOTO_ENHANCER_FACE_API_MAX_DIMENSION || 1280,
+);
+const PHOTO_ENHANCER_FACE_API_INPUT_SIZE = Number(
+  process.env.PHOTO_ENHANCER_FACE_API_INPUT_SIZE || 416,
+);
+const PHOTO_ENHANCER_FACE_API_SCORE_THRESHOLD = Number(
+  process.env.PHOTO_ENHANCER_FACE_API_SCORE_THRESHOLD || 0.35,
 );
 
 const repoRoot = path.resolve(
@@ -926,6 +932,19 @@ async function loadFaceApiRuntime(): Promise<PhotoEnhancerFaceApiRuntime> {
       faceApi.nets.faceLandmark68TinyNet.loadFromDisk(photoEnhancerFaceApiModelsDir),
     ]);
 
+    if (process.env.PHOTO_ENHANCER_FACE_API_WARMUP !== "false") {
+      const warmupCanvas = canvas.createCanvas(160, 160);
+      const warmupOptions = new faceApi.TinyFaceDetectorOptions({
+        inputSize: 160,
+        scoreThreshold: 0.9,
+      });
+      try {
+        await faceApi.detectAllFaces(warmupCanvas, warmupOptions);
+      } catch {
+        // Warmup only initializes tfjs/canvas kernels; detection failures should not disable runtime.
+      }
+    }
+
     const backend =
       typeof faceApi.tf?.getBackend === "function"
         ? String(faceApi.tf.getBackend())
@@ -1162,8 +1181,8 @@ async function analyzeFaceQuality(
         const faceInput = await prepareFaceApiInput(file);
         const image = await runtime.canvas.loadImage(faceInput.buffer);
         const options = new runtime.faceApi.TinyFaceDetectorOptions({
-          inputSize: 416,
-          scoreThreshold: Number(process.env.PHOTO_ENHANCER_FACE_API_SCORE_THRESHOLD || 0.35),
+          inputSize: PHOTO_ENHANCER_FACE_API_INPUT_SIZE,
+          scoreThreshold: PHOTO_ENHANCER_FACE_API_SCORE_THRESHOLD,
         });
         const detections = await runtime.faceApi
           .detectAllFaces(image, options)
