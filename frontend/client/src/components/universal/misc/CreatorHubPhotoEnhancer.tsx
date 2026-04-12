@@ -101,6 +101,13 @@ interface PhotoEnhancerStatus {
     maxPartUrlsPerRequest?: number;
     signedUrlTtlSeconds?: number;
     reason?: string | null;
+    proxyUpload?: {
+      enabled?: boolean;
+      partSizeBytes?: number;
+      maxPartBytes?: number;
+      strategy?: string;
+      reason?: string;
+    };
     cors?: {
       requiresBrowserPut?: boolean;
       exposeHeaders?: string[];
@@ -418,11 +425,12 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
 
     let uploadRef: { bucket: string; key: string; uploadId: string } | null = null;
     try {
+      const useServerProxyUpload = Boolean(directUploadConfig?.proxyUpload?.enabled);
       setDirectUploadProgress({
         active: true,
         phase: 'Starter sikker storfil-opplasting',
         percent: 0,
-        detail: `${file.name} · ${formatBytes(file.size)}`,
+        detail: `${file.name} · ${formatBytes(file.size)}${useServerProxyUpload ? ' · server-assistert R2' : ''}`,
       });
       const createResponse = await apiRequest('/api/photo-enhancer/uploads/multipart', {
         method: 'POST',
@@ -431,6 +439,7 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
           contentType: file.type || 'application/octet-stream',
           size: file.size,
           projectId: selectedProjectId || undefined,
+          preferredPartSizeBytes: useServerProxyUpload ? directUploadConfig?.proxyUpload?.partSizeBytes : undefined,
         },
       });
       const upload = toRecord(toRecord(createResponse).upload);
@@ -449,60 +458,99 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
       const completedParts: Array<{ partNumber: number; etag: string }> = [];
       let uploadedBytes = 0;
 
-      for (let firstPart = 1; firstPart <= partCount; firstPart += maxPartUrlsPerRequest) {
-        const partNumbers = Array.from(
-          { length: Math.min(maxPartUrlsPerRequest, partCount - firstPart + 1) },
-          (_, index) => firstPart + index,
-        );
-        const partsResponse = await apiRequest('/api/photo-enhancer/uploads/multipart/parts', {
-          method: 'POST',
-          body: {
-            bucket,
-            key,
-            uploadId,
-            partNumbers,
-          },
-        });
-        const signedParts = Array.isArray(toRecord(partsResponse).parts) ? toRecord(partsResponse).parts as unknown[] : [];
-
-        for (const signedPart of signedParts) {
-          const part = toRecord(signedPart);
-          const partNumber = toNumber(part.partNumber);
-          const url = typeof part.url === 'string' ? part.url : '';
-          if (!partNumber || !url) {
-            throw new Error('Serveren returnerte en ugyldig signert R2-del.');
-          }
-
+      if (useServerProxyUpload) {
+        for (let partNumber = 1; partNumber <= partCount; partNumber += 1) {
           const start = (partNumber - 1) * partSize;
           const end = Math.min(file.size, start + partSize);
           const chunk = file.slice(start, end);
           setDirectUploadProgress({
             active: true,
-            phase: 'Laster opp direkte til R2',
+            phase: 'Laster opp trygt i deler',
             percent: Math.max(1, Math.round((uploadedBytes / file.size) * 100)),
-            detail: `Del ${partNumber}/${partCount} · ${formatBytes(uploadedBytes)} av ${formatBytes(file.size)}`,
+            detail: `Del ${partNumber}/${partCount} via backend til R2 · ${formatBytes(uploadedBytes)} av ${formatBytes(file.size)}`,
           });
 
-          const response = await fetch(url, {
-            method: 'PUT',
-            body: chunk,
+          const formData = new FormData();
+          formData.append('bucket', bucket);
+          formData.append('key', key);
+          formData.append('uploadId', uploadId);
+          formData.append('partNumber', String(partNumber));
+          formData.append('part', chunk, `${file.name}.part-${partNumber}`);
+          const proxyResponse = await apiRequest('/api/photo-enhancer/uploads/multipart/proxy-part', {
+            method: 'POST',
+            body: formData,
           });
-          if (!response.ok) {
-            throw new Error(`R2-opplasting feilet på del ${partNumber} (${response.status}).`);
-          }
-          const etag = response.headers.get('ETag') || response.headers.get('etag');
+          const proxyPart = toRecord(toRecord(proxyResponse).part);
+          const etag = typeof proxyPart.etag === 'string' ? proxyPart.etag : '';
           if (!etag) {
-            throw new Error('R2-opplastingen mangler ETag-header. Cloudflare R2 CORS må eksponere ETag for nettleseropplasting.');
+            throw new Error(`Server-assistert R2-opplasting manglet ETag for del ${partNumber}.`);
           }
 
           uploadedBytes += chunk.size;
           completedParts.push({ partNumber, etag });
           setDirectUploadProgress({
             active: true,
-            phase: 'Laster opp direkte til R2',
+            phase: 'Laster opp trygt i deler',
             percent: Math.min(99, Math.round((uploadedBytes / file.size) * 100)),
             detail: `Del ${partNumber}/${partCount} ferdig · ${formatBytes(uploadedBytes)} av ${formatBytes(file.size)}`,
           });
+        }
+      } else {
+        for (let firstPart = 1; firstPart <= partCount; firstPart += maxPartUrlsPerRequest) {
+          const partNumbers = Array.from(
+            { length: Math.min(maxPartUrlsPerRequest, partCount - firstPart + 1) },
+            (_, index) => firstPart + index,
+          );
+          const partsResponse = await apiRequest('/api/photo-enhancer/uploads/multipart/parts', {
+            method: 'POST',
+            body: {
+              bucket,
+              key,
+              uploadId,
+              partNumbers,
+            },
+          });
+          const signedParts = Array.isArray(toRecord(partsResponse).parts) ? toRecord(partsResponse).parts as unknown[] : [];
+
+          for (const signedPart of signedParts) {
+            const part = toRecord(signedPart);
+            const partNumber = toNumber(part.partNumber);
+            const url = typeof part.url === 'string' ? part.url : '';
+            if (!partNumber || !url) {
+              throw new Error('Serveren returnerte en ugyldig signert R2-del.');
+            }
+
+            const start = (partNumber - 1) * partSize;
+            const end = Math.min(file.size, start + partSize);
+            const chunk = file.slice(start, end);
+            setDirectUploadProgress({
+              active: true,
+              phase: 'Laster opp direkte til R2',
+              percent: Math.max(1, Math.round((uploadedBytes / file.size) * 100)),
+              detail: `Del ${partNumber}/${partCount} · ${formatBytes(uploadedBytes)} av ${formatBytes(file.size)}`,
+            });
+
+            const response = await fetch(url, {
+              method: 'PUT',
+              body: chunk,
+            });
+            if (!response.ok) {
+              throw new Error(`R2-opplasting feilet på del ${partNumber} (${response.status}).`);
+            }
+            const etag = response.headers.get('ETag') || response.headers.get('etag');
+            if (!etag) {
+              throw new Error('R2-opplastingen mangler ETag-header. Cloudflare R2 CORS må eksponere ETag for nettleseropplasting.');
+            }
+
+            uploadedBytes += chunk.size;
+            completedParts.push({ partNumber, etag });
+            setDirectUploadProgress({
+              active: true,
+              phase: 'Laster opp direkte til R2',
+              percent: Math.min(99, Math.round((uploadedBytes / file.size) * 100)),
+              detail: `Del ${partNumber}/${partCount} ferdig · ${formatBytes(uploadedBytes)} av ${formatBytes(file.size)}`,
+            });
+          }
         }
       }
 
@@ -542,7 +590,16 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
       setDirectUploadProgress(null);
       throw error;
     }
-  }, [directUploadConfig?.maxPartUrlsPerRequest, directUploadConfig?.partSizeBytes, directUploadConfig?.reason, directUploadEnabled, directUploadMaxBytes, selectedProjectId]);
+  }, [
+    directUploadConfig?.maxPartUrlsPerRequest,
+    directUploadConfig?.partSizeBytes,
+    directUploadConfig?.proxyUpload?.enabled,
+    directUploadConfig?.proxyUpload?.partSizeBytes,
+    directUploadConfig?.reason,
+    directUploadEnabled,
+    directUploadMaxBytes,
+    selectedProjectId,
+  ]);
 
   const getDirectUploadSource = useCallback(async (file: File): Promise<DirectUploadSource> => {
     const fileSignature = getFileSignature(file);

@@ -62,6 +62,14 @@ const PHOTO_ENHANCER_R2_PART_SIZE_BYTES = Math.max(
   5 * 1024 * 1024,
   Number(process.env.PHOTO_ENHANCER_R2_PART_SIZE_BYTES || 32 * 1024 * 1024),
 );
+const PHOTO_ENHANCER_R2_PROXY_PART_SIZE_BYTES = Math.max(
+  5 * 1024 * 1024,
+  Number(process.env.PHOTO_ENHANCER_R2_PROXY_PART_SIZE_BYTES || 8 * 1024 * 1024),
+);
+const PHOTO_ENHANCER_R2_PROXY_PART_MAX_BYTES = Math.max(
+  PHOTO_ENHANCER_R2_PROXY_PART_SIZE_BYTES,
+  Number(process.env.PHOTO_ENHANCER_R2_PROXY_PART_MAX_BYTES || 16 * 1024 * 1024),
+);
 const PHOTO_ENHANCER_R2_PART_BATCH_MAX = Math.max(
   1,
   Number(process.env.PHOTO_ENHANCER_R2_PART_BATCH_MAX || 64),
@@ -546,6 +554,13 @@ const photoEnhancerUpload = multer({
   },
 });
 
+const photoEnhancerR2PartUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: PHOTO_ENHANCER_R2_PROXY_PART_MAX_BYTES,
+  },
+});
+
 function readString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
@@ -636,9 +651,9 @@ function getPhotoEnhancerUploadR2Client(config: PhotoEnhancerR2UploadConfig): S3
   return photoEnhancerR2UploadClient;
 }
 
-function calculatePhotoEnhancerR2PartSize(size: number): number {
+function calculatePhotoEnhancerR2PartSize(size: number, preferredPartSize?: number | null): number {
   const minPartSize = 5 * 1024 * 1024;
-  const requested = Math.max(minPartSize, PHOTO_ENHANCER_R2_PART_SIZE_BYTES);
+  const requested = Math.max(minPartSize, preferredPartSize || PHOTO_ENHANCER_R2_PART_SIZE_BYTES);
   if (!Number.isFinite(size) || size <= 0) return requested;
   const partSizeForMaxParts = Math.ceil(size / 10_000 / minPartSize) * minPartSize;
   return Math.max(requested, partSizeForMaxParts);
@@ -3079,6 +3094,13 @@ export function createPhotoEnhancerRouter() {
         signedUrlTtlSeconds: PHOTO_ENHANCER_R2_SIGNED_URL_TTL_SECONDS,
         analyzeBufferMaxBytes: PHOTO_ENHANCER_R2_ANALYZE_BUFFER_MAX_BYTES,
         analyzeDownloadMaxBytes: PHOTO_ENHANCER_R2_ANALYZE_DOWNLOAD_MAX_BYTES,
+        proxyUpload: {
+          enabled: true,
+          partSizeBytes: PHOTO_ENHANCER_R2_PROXY_PART_SIZE_BYTES,
+          maxPartBytes: PHOTO_ENHANCER_R2_PROXY_PART_MAX_BYTES,
+          strategy: "server-assisted-r2-multipart",
+          reason: "Use this fallback when the browser cannot PUT directly to R2 because bucket CORS is unavailable.",
+        },
         cors: {
           requiresBrowserPut: true,
           exposeHeaders: ["ETag"],
@@ -3278,6 +3300,7 @@ export function createPhotoEnhancerRouter() {
       const size = readNumber(body.size);
       const projectId = readString(body.projectId);
       const contentHash = readString(body.contentHash);
+      const preferredPartSizeBytes = readNumber(body.preferredPartSizeBytes);
       if (!size || size <= 0) {
         return res.status(400).json({ success: false, error: "file_size_required" });
       }
@@ -3306,7 +3329,7 @@ export function createPhotoEnhancerRouter() {
       }
 
       const key = buildPhotoEnhancerUploadKey({ fileName, projectId, contentHash });
-      const partSize = calculatePhotoEnhancerR2PartSize(size);
+      const partSize = calculatePhotoEnhancerR2PartSize(size, preferredPartSizeBytes);
       const partCount = Math.ceil(size / partSize);
       const created = await client.send(
         new CreateMultipartUploadCommand({
@@ -3398,6 +3421,69 @@ export function createPhotoEnhancerRouter() {
       res.status(500).json({ success: false, error: "photo_enhancer_multipart_part_signing_failed" });
     }
   });
+
+  router.post(
+    "/uploads/multipart/proxy-part",
+    photoEnhancerR2PartUpload.single("part"),
+    async (req, res) => {
+      try {
+        const bucket = readString(req.body?.bucket);
+        const key = readString(req.body?.key);
+        const uploadId = readString(req.body?.uploadId);
+        const partNumber = readNumber(req.body?.partNumber);
+
+        if (!req.file) {
+          return res.status(400).json({ success: false, error: "multipart_proxy_part_file_required" });
+        }
+        if (!bucket || !key || !uploadId || !partNumber || partNumber <= 0 || partNumber > 10_000) {
+          return res.status(400).json({ success: false, error: "multipart_proxy_part_request_invalid" });
+        }
+        if (req.file.size > PHOTO_ENHANCER_R2_PROXY_PART_MAX_BYTES) {
+          return res.status(413).json({
+            success: false,
+            error: "multipart_proxy_part_too_large",
+            maxBytes: PHOTO_ENHANCER_R2_PROXY_PART_MAX_BYTES,
+          });
+        }
+        if (!isAllowedPhotoEnhancerR2Object(bucket, key)) {
+          return res.status(403).json({ success: false, error: "photo_enhancer_r2_object_not_allowed" });
+        }
+
+        const config = buildPhotoEnhancerUploadR2Config();
+        const client = getPhotoEnhancerUploadR2Client(config);
+        if (!client) {
+          return res.status(503).json({ success: false, error: "photo_enhancer_r2_upload_not_configured" });
+        }
+
+        const uploaded = await client.send(
+          new UploadPartCommand({
+            Bucket: bucket,
+            Key: key,
+            UploadId: uploadId,
+            PartNumber: partNumber,
+            Body: req.file.buffer,
+            ContentLength: req.file.size,
+          }),
+        );
+
+        if (!uploaded.ETag) {
+          return res.status(502).json({ success: false, error: "photo_enhancer_r2_part_etag_missing" });
+        }
+
+        res.json({
+          success: true,
+          part: {
+            partNumber,
+            etag: uploaded.ETag,
+            size: req.file.size,
+          },
+        });
+      } catch (error) {
+        console.error("[photo-enhancer] multipart proxy part upload failed:", error);
+        res.status(500).json({ success: false, error: "photo_enhancer_multipart_proxy_part_failed" });
+      }
+    },
+  );
 
   router.post("/uploads/multipart/complete", async (req, res) => {
     try {
