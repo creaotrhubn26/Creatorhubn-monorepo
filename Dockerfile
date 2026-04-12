@@ -47,7 +47,8 @@ RUN npm config set fetch-retries 5 \
     npm ci --include=dev --legacy-peer-deps && break; \
     if [ "$attempt" = "3" ]; then exit 1; fi; \
     sleep $((attempt * 15)); \
-  done
+  done \
+  && ln -s /app/backend/node_modules /app/node_modules
 
 COPY frontend /app/frontend
 COPY backend ./

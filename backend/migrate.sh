@@ -26,6 +26,14 @@ fi
 
 echo "✅ DATABASE_URL is configured"
 
+# Drizzle loads the shared schema from ../frontend/shared. In production Docker the
+# installed packages live in /app/backend/node_modules, so expose that path to
+# Node's resolver before drizzle-kit imports files outside the backend folder.
+BACKEND_NODE_MODULES="$(pwd)/node_modules"
+APP_BACKEND_NODE_MODULES="/app/backend/node_modules"
+APP_NODE_MODULES="/app/node_modules"
+export NODE_PATH="${NODE_PATH:+$NODE_PATH:}$BACKEND_NODE_MODULES:$APP_BACKEND_NODE_MODULES:$APP_NODE_MODULES"
+
 # Create migrations tracking table
 if command -v psql &> /dev/null; then
   echo "📊 Setting up migration tracking..."
@@ -98,18 +106,25 @@ if [ "${SKIP_DRIZZLE_PUSH}" = "1" ]; then
 else
   echo "📦 Syncing database schema with Drizzle..."
   if command -v npx &> /dev/null; then
-    # Prefer invoking drizzle-kit via npx so it works even when devDependencies aren't installed
-    if npx --yes drizzle-kit push; then
+    # Prefer the installed drizzle-kit version. Falling back to remote npx can
+    # change schema behavior between deploys, so only use it when explicitly needed.
+    if npx --no-install drizzle-kit push; then
       echo "✅ Database schema synchronized"
     else
-      echo "⚠️  Schema sync warning: This might be expected if schema is up to date"
+      echo "⚠️  Drizzle schema sync failed; SQL migrations remain authoritative"
+      if [ "${DRIZZLE_PUSH_REQUIRED:-0}" = "1" ]; then
+        exit 1
+      fi
     fi
   else
     # Fallback to npm script if npx is unavailable in the environment
     if npm run db:push; then
       echo "✅ Database schema synchronized"
     else
-      echo "⚠️  Schema sync warning: This might be expected if schema is up to date"
+      echo "⚠️  Drizzle schema sync failed; SQL migrations remain authoritative"
+      if [ "${DRIZZLE_PUSH_REQUIRED:-0}" = "1" ]; then
+        exit 1
+      fi
     fi
   fi
 fi

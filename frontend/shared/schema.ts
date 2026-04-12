@@ -88,10 +88,12 @@ export { z } from 'zod';
 
 // Resolve overlapping star-exports by choosing one canonical public export per symbol.
 export {
-  InsertBusinessProfile,
-  InsertUserFile,
   insertBusinessProfileSchema,
   insertUserFileSchema,
+} from './business-profiles-schema';
+export type {
+  InsertBusinessProfile,
+  InsertUserFile,
 } from './business-profiles-schema';
 
 export {
@@ -102,10 +104,12 @@ export {
 } from './additional-features-schema';
 
 export {
-  InsertProduct,
-  Product,
   insertProductSchema,
   products,
+} from './admin-schema';
+export type {
+  InsertProduct,
+  Product,
 } from './admin-schema';
 
 export {
@@ -118,16 +122,18 @@ export {
 } from './analytics-reporting-schema';
 
 export {
-  ChatConversation,
-  ChatMessage,
-  InsertChatConversation,
-  InsertChatMessage,
   chatConversations,
   chatMessages,
   createConversationSchema,
   insertChatConversationSchema,
   insertChatMessageSchema,
   sendMessageSchema,
+} from './chat-schema';
+export type {
+  ChatConversation,
+  ChatMessage,
+  InsertChatConversation,
+  InsertChatMessage,
 } from './chat-schema';
 
 export {
@@ -148,10 +154,12 @@ export {
 } from './cms-history-schema';
 
 export {
-  CmsPage,
-  InsertCmsPage,
   cmsPages,
   insertCmsPageSchema,
+} from './cms-schema';
+export type {
+  CmsPage,
+  InsertCmsPage,
 } from './cms-schema';
 
 export {
@@ -181,27 +189,27 @@ export {
 } from './creatorhub-visual-editor-schema';
 
 export {
-  CrmEmailTemplate,
-  InsertCrmEmailTemplate,
   crmContacts,
   crmEmailTemplates,
   crmPipelineStages,
   insertCrmEmailTemplateSchema,
 } from './crm-schema';
+export type {
+  CrmEmailTemplate,
+  InsertCrmEmailTemplate,
+} from './crm-schema';
 
 export {
-  CustomerJourneyTemplate,
-  InsertCustomerJourneyTemplate,
   customerJourneyTemplates,
   customerJourneyTemplatesRelations,
   insertCustomerJourneyTemplateSchema,
 } from './customer-journey-schema';
+export type {
+  CustomerJourneyTemplate,
+  InsertCustomerJourneyTemplate,
+} from './customer-journey-schema';
 
 export {
-  CrmDeal,
-  InsertCrmDeal,
-  InsertUserRole,
-  UserRole,
   crmDeals,
   crmDealsRelations,
   insertCrmDealSchema,
@@ -211,6 +219,12 @@ export {
   userRoles,
   userRolesRelations,
   userSubscriptionsRelations,
+} from './enterprise-schema';
+export type {
+  CrmDeal,
+  InsertCrmDeal,
+  InsertUserRole,
+  UserRole,
 } from './enterprise-schema';
 
 export {
@@ -223,32 +237,38 @@ export {
 } from './feedback-deployment-schema';
 
 export {
-  InsertUserConsent,
-  UserConsent,
   insertUserConsentSchema,
   userConsents,
 } from './gdpr-schema';
+export type {
+  InsertUserConsent,
+  UserConsent,
+} from './gdpr-schema';
 
 export {
-  GoogleWalletLoyaltyCard,
-  GoogleWalletMembershipCard,
-  GoogleWalletPass,
-  GoogleWalletTicket,
   googleWalletLoyaltyCards,
   googleWalletMembershipCards,
   googleWalletPasses,
   googleWalletTickets,
 } from './google-wallet-schema';
+export type {
+  GoogleWalletLoyaltyCard,
+  GoogleWalletMembershipCard,
+  GoogleWalletPass,
+  GoogleWalletTicket,
+} from './google-wallet-schema';
 
 export {
-  InsertMeetingNote,
-  InsertMeetingWorkspace,
-  MeetingNote,
-  MeetingWorkspace,
   insertMeetingNoteSchema,
   insertMeetingWorkspaceSchema,
   meetingNotes,
   meetingWorkspaces,
+} from './meeting-schema';
+export type {
+  InsertMeetingNote,
+  InsertMeetingWorkspace,
+  MeetingNote,
+  MeetingWorkspace,
 } from './meeting-schema';
 
 export {
@@ -265,23 +285,15 @@ export {
 } from './notification-schema';
 
 export {
-  InsertOnboardingProfile,
-  OnboardingProfile,
   insertOnboardingProfileSchema,
   onboardingProfiles,
 } from './onboarding-schema';
+export type {
+  InsertOnboardingProfile,
+  OnboardingProfile,
+} from './onboarding-schema';
 
 export {
-  ClientGalleryImage,
-  ClientImageComment,
-  ClientImagePayment,
-  ClientImageSelection,
-  InsertClientGalleryImage,
-  InsertClientImageComment,
-  InsertClientImagePayment,
-  InsertClientImageSelection,
-  InsertPhotographerClientGallery,
-  PhotographerClientGallery,
   clientGalleryImages,
   clientImageComments,
   clientImagePayments,
@@ -292,6 +304,18 @@ export {
   insertClientImageSelectionSchema,
   insertPhotographerClientGallerySchema,
   photographerClientGalleries,
+} from './photographer-client-schema';
+export type {
+  ClientGalleryImage,
+  ClientImageComment,
+  ClientImagePayment,
+  ClientImageSelection,
+  InsertClientGalleryImage,
+  InsertClientImageComment,
+  InsertClientImagePayment,
+  InsertClientImageSelection,
+  InsertPhotographerClientGallery,
+  PhotographerClientGallery,
 } from './photographer-client-schema';
 
 export {
@@ -313,29 +337,19 @@ export {
 } from './price-administration-schema';
 
 export {
-  InsertSubscriptionPlan,
-  InsertUserSubscription,
-  SubscriptionPlan,
-  UserSubscription,
   insertSubscriptionPlanSchema,
   insertUserSubscriptionSchema,
   subscriptionPlans,
   userSubscriptions,
 } from './price-management-schema';
+export type {
+  InsertSubscriptionPlan,
+  InsertUserSubscription,
+  SubscriptionPlan,
+  UserSubscription,
+} from './price-management-schema';
 
 export {
-  AdditionalCost,
-  CustomPackage,
-  Discount,
-  InsertAdditionalCost,
-  InsertCustomPackage,
-  InsertDiscount,
-  InsertPricingStructure,
-  InsertQuote,
-  InsertStandardPackage,
-  PricingStructure,
-  Quote,
-  StandardPackage,
   additionalCosts,
   customPackages,
   discounts,
@@ -349,6 +363,20 @@ export {
   quotes,
   standardPackages,
 } from './pricing-schema';
+export type {
+  AdditionalCost,
+  CustomPackage,
+  Discount,
+  InsertAdditionalCost,
+  InsertCustomPackage,
+  InsertDiscount,
+  InsertPricingStructure,
+  InsertQuote,
+  InsertStandardPackage,
+  PricingStructure,
+  Quote,
+  StandardPackage,
+} from './pricing-schema';
 
 export {
   priceFeatures,
@@ -357,28 +385,24 @@ export {
 } from './pricing-system-schema';
 
 export {
+  professionConfigurations,
+} from './profession-cms-schema';
+export type {
   InsertProfessionConfiguration,
   ProfessionConfiguration,
-  professionConfigurations,
 } from './profession-cms-schema';
 
 export {
-  HourOverage,
-  InsertHourOverage,
   hourOverages,
   hourOveragesRelations,
   insertHourOverageSchema,
 } from './project-integration-schema';
+export type {
+  HourOverage,
+  InsertHourOverage,
+} from './project-integration-schema';
 
 export {
-  Client,
-  Contract,
-  InsertClient,
-  InsertContract,
-  InsertPayment,
-  InsertProject,
-  Payment,
-  Project,
   clients,
   contracts,
   insertClientSchema,
@@ -388,10 +412,18 @@ export {
   payments,
   projects,
 } from './project-management-schema';
+export type {
+  Client,
+  Contract,
+  InsertClient,
+  InsertContract,
+  InsertPayment,
+  InsertProject,
+  Payment,
+  Project,
+} from './project-management-schema';
 
 export {
-  UserProvisioningRequest,
-  UserProvisioningStatus,
   adminProvisioningActions,
   integrationStatus,
   provisioningMetrics,
@@ -400,14 +432,12 @@ export {
   userProvisioningRequests,
   userProvisioningStatus,
 } from './provisioning-schema';
+export type {
+  UserProvisioningRequest,
+  UserProvisioningStatus,
+} from './provisioning-schema';
 
 export {
-  InsertSalesActivity,
-  InsertSalesConversation,
-  InsertSalesLead,
-  SalesActivity,
-  SalesConversation,
-  SalesLead,
   insertSalesActivitySchema,
   insertSalesConversationSchema,
   insertSalesLeadSchema,
@@ -419,12 +449,16 @@ export {
   salesLeads,
   salesLeadsRelations,
 } from './sales-schema';
+export type {
+  InsertSalesActivity,
+  InsertSalesConversation,
+  InsertSalesLead,
+  SalesActivity,
+  SalesConversation,
+  SalesLead,
+} from './sales-schema';
 
 export {
-  InsertSeoBacklink,
-  InsertSeoKeyword,
-  SeoBacklink,
-  SeoKeyword,
   googleAnalyticsIntegration,
   insertSeoBacklinkSchema,
   insertSeoKeywordSchema,
@@ -434,6 +468,12 @@ export {
   seoContentAnalysis,
   seoLocalBusiness,
   seoProjects,
+} from './seo-schema';
+export type {
+  InsertSeoBacklink,
+  InsertSeoKeyword,
+  SeoBacklink,
+  SeoKeyword,
 } from './seo-schema';
 
 export {
