@@ -12,6 +12,7 @@ import {
   PHOTO_ENHANCER_DRIVE_STRUCTURE,
   PHOTO_ENHANCER_MODEL_REGISTRY_POLICY,
   PHOTO_ENHANCER_RASTER_FORMATS,
+  PHOTO_ENHANCER_RAW_FORMAT_MATRIX,
   PHOTO_ENHANCER_RAW_FORMATS,
   buildPhotoEnhancerImprovementBacklog,
   buildPhotoEnhancerR2Config,
@@ -20,6 +21,7 @@ import {
   photoEnhancerModelRegistry,
   resolvePhotoEnhancerModelStatuses,
   resolvePhotoEnhancerRunnerEndpoint,
+  type PhotoEnhancerRawFormatMatrixEntry,
   type PhotoEnhancerModelStatus,
 } from "./photo-enhancer-capabilities.js";
 
@@ -96,6 +98,38 @@ type PhotoEnhancerTelemetryEvent = {
   error?: string | null;
 };
 
+type PhotoEnhancerRawFormatRuntimeStatus =
+  | "verified"
+  | "supported-untested"
+  | "unsupported-external"
+  | "failed"
+  | "unavailable";
+
+type PhotoEnhancerRawFormatVerification = {
+  extension: string;
+  status: "verified" | "failed";
+  converter: string | null;
+  verifiedAt: string;
+  source: "upload" | "self-test" | "analyze" | "enhance";
+  outputMimeType?: string | null;
+  width?: number | null;
+  height?: number | null;
+  resolutionMode?: string | null;
+  error?: string | null;
+};
+
+type PhotoEnhancerRawFormatRuntimeEntry = PhotoEnhancerRawFormatMatrixEntry & {
+  status: PhotoEnhancerRawFormatRuntimeStatus;
+  statusLabel: string;
+  converter: string | null;
+  verifiedAt: string | null;
+  width: number | null;
+  height: number | null;
+  outputMimeType: string | null;
+  resolutionMode: string | null;
+  error: string | null;
+};
+
 const photoEnhancerTelemetry = {
   serviceStartedAt: new Date().toISOString(),
   requestsTotal: 0,
@@ -111,6 +145,8 @@ const photoEnhancerTelemetry = {
   recentEvents: [] as PhotoEnhancerTelemetryEvent[],
   lastErrors: [] as PhotoEnhancerTelemetryEvent[],
 };
+
+const photoEnhancerRawFormatVerifications = new Map<string, PhotoEnhancerRawFormatVerification>();
 
 function incrementCounter(map: Map<string, number>, key: string | null | undefined) {
   if (!key) return;
@@ -199,6 +235,87 @@ function summarizePhotoEnhancerTelemetry() {
     rawConverters: Object.fromEntries(photoEnhancerTelemetry.rawConverters),
     lastErrors: photoEnhancerTelemetry.lastErrors.slice(0, 10),
     recentEvents: photoEnhancerTelemetry.recentEvents.slice(0, 25),
+  };
+}
+
+function normalizeRawExtension(value: string | null | undefined): string {
+  if (!value) return "";
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return "";
+  return normalized.startsWith(".") ? normalized : `.${normalized}`;
+}
+
+function rawFormatStatusLabel(status: PhotoEnhancerRawFormatRuntimeStatus): string {
+  switch (status) {
+    case "verified":
+      return "Verified";
+    case "supported-untested":
+      return "Supported but untested";
+    case "unsupported-external":
+      return "Unsupported / external converter";
+    case "failed":
+      return "Failed latest verification";
+    case "unavailable":
+      return "Converter runtime unavailable";
+    default:
+      return "Supported but untested";
+  }
+}
+
+function recordRawFormatVerification(verification: PhotoEnhancerRawFormatVerification) {
+  const extension = normalizeRawExtension(verification.extension);
+  if (!extension) return;
+  photoEnhancerRawFormatVerifications.set(extension, {
+    ...verification,
+    extension,
+    verifiedAt: verification.verifiedAt || new Date().toISOString(),
+  });
+}
+
+function buildPhotoEnhancerRawFormatMatrix(
+  runtimeSupport: Awaited<ReturnType<typeof resolveRuntimeSupport>>,
+) {
+  const entries: PhotoEnhancerRawFormatRuntimeEntry[] = PHOTO_ENHANCER_RAW_FORMAT_MATRIX.map((entry) => {
+    const verification = photoEnhancerRawFormatVerifications.get(entry.extension);
+    const supportedByConfiguredList = PHOTO_ENHANCER_RAW_FORMATS.includes(entry.extension);
+    const converterRuntimeAvailable = runtimeSupport.raw.available && supportedByConfiguredList;
+    let status: PhotoEnhancerRawFormatRuntimeStatus = entry.defaultStatus;
+
+    if (entry.requiresExternalConverter) {
+      status = "unsupported-external";
+    } else if (verification?.status === "verified") {
+      status = "verified";
+    } else if (verification?.status === "failed") {
+      status = "failed";
+    } else if (!converterRuntimeAvailable) {
+      status = "unavailable";
+    }
+
+    return {
+      ...entry,
+      status,
+      statusLabel: rawFormatStatusLabel(status),
+      converter: verification?.converter ?? null,
+      verifiedAt: verification?.status === "verified" ? verification.verifiedAt : null,
+      width: verification?.width ?? null,
+      height: verification?.height ?? null,
+      outputMimeType: verification?.outputMimeType ?? null,
+      resolutionMode: verification?.resolutionMode ?? null,
+      error: verification?.status === "failed" ? verification.error ?? null : null,
+    };
+  });
+
+  return {
+    generatedAt: new Date().toISOString(),
+    entries,
+    summary: {
+      total: entries.length,
+      verified: entries.filter((entry) => entry.status === "verified").length,
+      supportedUntested: entries.filter((entry) => entry.status === "supported-untested").length,
+      unsupportedExternal: entries.filter((entry) => entry.status === "unsupported-external").length,
+      failed: entries.filter((entry) => entry.status === "failed").length,
+      unavailable: entries.filter((entry) => entry.status === "unavailable").length,
+    },
   };
 }
 
@@ -654,6 +771,7 @@ async function convertRawWithExternalTool(file: Express.Multer.File): Promise<{
     outputPath: string;
     outputMimeType: string;
     streamStdout?: boolean;
+    resolutionMode: "full" | "half" | "converter-default";
   }> = [
     {
       id: "dcraw",
@@ -661,6 +779,15 @@ async function convertRawWithExternalTool(file: Express.Multer.File): Promise<{
       args: ["-w", "-T", inputPath],
       outputPath: outputTiffPath,
       outputMimeType: "image/tiff",
+      resolutionMode: "full",
+    },
+    {
+      id: "dcraw-half",
+      binaries: ["dcraw", "dcraw_emu"],
+      args: ["-w", "-h", "-T", inputPath],
+      outputPath: outputTiffPath,
+      outputMimeType: "image/tiff",
+      resolutionMode: "half",
     },
     {
       id: "imagemagick",
@@ -668,6 +795,7 @@ async function convertRawWithExternalTool(file: Express.Multer.File): Promise<{
       args: [inputPath, "-auto-orient", "-colorspace", "sRGB", outputPath],
       outputPath,
       outputMimeType: "image/png",
+      resolutionMode: "converter-default",
     },
     {
       id: "rawtherapee",
@@ -675,6 +803,7 @@ async function convertRawWithExternalTool(file: Express.Multer.File): Promise<{
       args: ["-o", outputPath, "-c", inputPath],
       outputPath,
       outputMimeType: "image/png",
+      resolutionMode: "converter-default",
     },
     {
       id: "darktable",
@@ -682,6 +811,7 @@ async function convertRawWithExternalTool(file: Express.Multer.File): Promise<{
       args: [inputPath, outputPath],
       outputPath,
       outputMimeType: "image/png",
+      resolutionMode: "converter-default",
     },
   ];
   const configuredOrder = (process.env.PHOTO_ENHANCER_RAW_CONVERTER_ORDER || "")
@@ -704,6 +834,7 @@ async function convertRawWithExternalTool(file: Express.Multer.File): Promise<{
       const resolved = await commandPath(...attempt.binaries);
       if (!resolved) continue;
       try {
+        await fs.rm(attempt.outputPath, { force: true }).catch(() => undefined);
         const timeout = Number(process.env.PHOTO_ENHANCER_RAW_TIMEOUT_MS || 60_000);
         if (attempt.streamStdout) {
           await execFileToFile(resolved, attempt.args, attempt.outputPath, {
@@ -728,30 +859,34 @@ async function convertRawWithExternalTool(file: Express.Multer.File): Promise<{
           if (!metadata.width || !metadata.height) {
             throw new Error("converted image has no dimensions");
           }
+          return {
+            file: {
+              ...file,
+              buffer,
+              size: buffer.byteLength,
+              mimetype: attempt.outputMimeType,
+              originalname: file.originalname.replace(
+                /\.[^.]+$/u,
+                attempt.outputMimeType === "image/png" ? ".png" : ".tiff",
+              ),
+            },
+            conversion: {
+              raw: true,
+              sourceExtension: extension,
+              converter: attempt.id,
+              outputMimeType: attempt.outputMimeType,
+              width: metadata.width ?? null,
+              height: metadata.height ?? null,
+              format: metadata.format ?? null,
+              resolutionMode: attempt.resolutionMode,
+            },
+          };
         } catch (validationError) {
           errors.push(
             `${attempt.id}: unreadable output (${validationError instanceof Error ? validationError.message : String(validationError)})`,
           );
           continue;
         }
-        return {
-          file: {
-            ...file,
-            buffer,
-            size: buffer.byteLength,
-            mimetype: attempt.outputMimeType,
-            originalname: file.originalname.replace(
-              /\.[^.]+$/u,
-              attempt.outputMimeType === "image/png" ? ".png" : ".tiff",
-            ),
-          },
-          conversion: {
-            raw: true,
-            sourceExtension: extension,
-            converter: attempt.id,
-            outputMimeType: attempt.outputMimeType,
-          },
-        };
       } catch (error) {
         errors.push(`${attempt.id}: ${error instanceof Error ? error.message : String(error)}`);
       }
@@ -895,16 +1030,44 @@ async function prepareProcessableImage(file: Express.Multer.File): Promise<{
 
   const converted = await convertRawWithExternalTool(file);
   if (!converted || converted.file === file) {
+    const conversion = converted?.conversion || {
+      raw: true,
+      sourceExtension: getUploadExtension(file),
+      converter: null,
+      error: "No RAW converter available",
+    };
+    recordRawFormatVerification({
+      extension: String(conversion.sourceExtension || getUploadExtension(file) || ""),
+      status: "failed",
+      converter: null,
+      verifiedAt: new Date().toISOString(),
+      source: "upload",
+      outputMimeType: null,
+      width: null,
+      height: null,
+      resolutionMode: null,
+      error: typeof conversion.error === "string" ? conversion.error : "No RAW converter available",
+    });
     return {
       file,
-      raw: converted?.conversion || {
-        raw: true,
-        sourceExtension: getUploadExtension(file),
-        converter: null,
-        error: "No RAW converter available",
-      },
+      raw: conversion,
     };
   }
+
+  recordRawFormatVerification({
+    extension: String(converted.conversion.sourceExtension || getUploadExtension(file) || ""),
+    status: "verified",
+    converter: typeof converted.conversion.converter === "string" ? converted.conversion.converter : null,
+    verifiedAt: new Date().toISOString(),
+    source: "upload",
+    outputMimeType:
+      typeof converted.conversion.outputMimeType === "string" ? converted.conversion.outputMimeType : converted.file.mimetype,
+    width: typeof converted.conversion.width === "number" ? converted.conversion.width : null,
+    height: typeof converted.conversion.height === "number" ? converted.conversion.height : null,
+    resolutionMode:
+      typeof converted.conversion.resolutionMode === "string" ? converted.conversion.resolutionMode : null,
+    error: null,
+  });
 
   return {
     file: converted.file,
@@ -1430,6 +1593,7 @@ export function createPhotoEnhancerRouter() {
       isFaceApiAvailable(),
       resolveRuntimeSupport(),
     ]);
+    const rawFormatMatrix = buildPhotoEnhancerRawFormatMatrix(runtimeSupport);
     const improvementBacklog = buildPhotoEnhancerImprovementBacklog();
     const weightsAvailable = modelStatuses.filter((model) => model.weights?.found || model.available).length;
     const inferenceAvailable = modelStatuses.filter((model) => model.inferenceAvailable).length;
@@ -1456,7 +1620,12 @@ export function createPhotoEnhancerRouter() {
           role: "duplicate and perceptual hash support",
         },
       },
-      rawSupport: runtimeSupport.raw,
+      rawSupport: {
+        ...runtimeSupport.raw,
+        formatMatrix: rawFormatMatrix.entries,
+        formatMatrixSummary: rawFormatMatrix.summary,
+      },
+      rawFormatMatrix,
       metadataSupport: runtimeSupport.metadata,
       googleDrive: {
         folderStructure: PHOTO_ENHANCER_DRIVE_STRUCTURE,
@@ -1527,12 +1696,67 @@ export function createPhotoEnhancerRouter() {
 
   router.get("/raw-support", async (_req, res) => {
     const runtimeSupport = await resolveRuntimeSupport();
+    const rawFormatMatrix = buildPhotoEnhancerRawFormatMatrix(runtimeSupport);
     res.json({
       success: true,
       ...runtimeSupport.raw,
+      formatMatrix: rawFormatMatrix.entries,
+      formatMatrixSummary: rawFormatMatrix.summary,
+      rawFormatMatrix,
       metadata: runtimeSupport.metadata,
     });
   });
+
+  router.get("/raw-format-matrix", async (_req, res) => {
+    const runtimeSupport = await resolveRuntimeSupport();
+    const rawFormatMatrix = buildPhotoEnhancerRawFormatMatrix(runtimeSupport);
+    res.json({
+      success: true,
+      rawSupport: runtimeSupport.raw,
+      metadata: runtimeSupport.metadata,
+      ...rawFormatMatrix,
+    });
+  });
+
+  router.post(
+    "/raw-format-matrix/test",
+    photoEnhancerUpload.single("image"),
+    async (req, res) => {
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          error: "image_required",
+        });
+      }
+      if (!isCameraRawFile(req.file)) {
+        return res.status(400).json({
+          success: false,
+          error: "raw_image_required",
+          extension: getUploadExtension(req.file),
+          mimetype: req.file.mimetype,
+        });
+      }
+
+      const startedAt = Date.now();
+      const prepared = await prepareProcessableImage(req.file);
+      const raw = prepared.raw;
+      const success = !(raw.raw && raw.converter === null);
+      const runtimeSupport = await resolveRuntimeSupport();
+      const rawFormatMatrix = buildPhotoEnhancerRawFormatMatrix(runtimeSupport);
+      res.status(success ? 200 : 422).json({
+        success,
+        durationMs: Date.now() - startedAt,
+        input: {
+          filename: req.file.originalname,
+          bytes: req.file.size,
+          mimetype: req.file.mimetype,
+          extension: getUploadExtension(req.file),
+        },
+        raw,
+        matrix: rawFormatMatrix,
+      });
+    },
+  );
 
   router.get("/improvements", (_req, res) => {
     const improvements = buildPhotoEnhancerImprovementBacklog();

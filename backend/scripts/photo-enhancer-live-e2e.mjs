@@ -14,6 +14,27 @@ const baseUrl = (process.env.PHOTO_ENHANCER_E2E_BASE_URL || DEFAULT_BASE_URL).re
 const passes = Math.max(1, Number(process.env.PHOTO_ENHANCER_E2E_PASSES || 15));
 const timeoutMs = Math.max(10_000, Number(process.env.PHOTO_ENHANCER_E2E_TIMEOUT_MS || 180_000));
 const gfpganEvery = Math.max(0, Number(process.env.PHOTO_ENHANCER_E2E_GFPGAN_EVERY || 5));
+const localRawPath = process.env.PHOTO_ENHANCER_E2E_LOCAL_RAW_PATH || "";
+const runRawMatrixTest = process.env.PHOTO_ENHANCER_E2E_RAW_MATRIX === "1";
+
+function inferRawMimeType(filename) {
+  const extension = path.extname(filename).toLowerCase();
+  const mimeTypes = {
+    ".cr2": "image/x-canon-cr2",
+    ".cr3": "image/x-canon-cr3",
+    ".nef": "image/x-nikon-nef",
+    ".arw": "image/x-sony-arw",
+    ".dng": "image/x-adobe-dng",
+    ".orf": "image/x-olympus-orf",
+    ".raf": "image/x-fuji-raf",
+    ".rw2": "image/x-panasonic-rw2",
+    ".pef": "image/x-pentax-pef",
+    ".x3f": "image/x-sigma-x3f",
+    ".r3d": "application/octet-stream",
+    ".braw": "application/octet-stream",
+  };
+  return mimeTypes[extension] || "application/octet-stream";
+}
 
 async function fetchBuffer(url, label) {
   const response = await fetch(url, {
@@ -49,6 +70,34 @@ async function postImage(route, sample, settings) {
     body = { raw: text.slice(0, 500) };
   }
 
+  return {
+    ok: response.ok,
+    status: response.status,
+    durationMs: Date.now() - startedAt,
+    body,
+  };
+}
+
+async function postRawMatrixTest(sample) {
+  const form = new FormData();
+  form.append(
+    "image",
+    new File([sample.buffer], sample.filename, { type: sample.mimeType }),
+  );
+
+  const startedAt = Date.now();
+  const response = await fetch(`${baseUrl}/api/photo-enhancer/raw-format-matrix/test`, {
+    method: "POST",
+    body: form,
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  const text = await response.text();
+  let body = null;
+  try {
+    body = text ? JSON.parse(text) : null;
+  } catch {
+    body = { raw: text.slice(0, 500) };
+  }
   return {
     ok: response.ok,
     status: response.status,
@@ -93,15 +142,19 @@ async function buildSamples(tempDir) {
   const heicPath = path.join(tempDir, "sample.heic");
   await writeFile(heicPath, heicBuffer);
 
-  const rawBuffer = await fetchBuffer(process.env.PHOTO_ENHANCER_E2E_RAW_URL || DEFAULT_RAW_URL, "RAW sample");
-  const rawPath = path.join(tempDir, "sample.CR2");
+  const rawBuffer = localRawPath
+    ? await readFile(localRawPath)
+    : await fetchBuffer(process.env.PHOTO_ENHANCER_E2E_RAW_URL || DEFAULT_RAW_URL, "RAW sample");
+  const rawExtension = path.extname(localRawPath || process.env.PHOTO_ENHANCER_E2E_RAW_URL || DEFAULT_RAW_URL) || ".CR2";
+  const rawPath = path.join(tempDir, `sample${rawExtension}`);
   await writeFile(rawPath, rawBuffer);
+  const rawFilename = `photo-enhancer-e2e${rawExtension}`;
 
   return [
     { kind: "jpeg", filename: "photo-enhancer-e2e.jpg", mimeType: "image/jpeg", buffer: await readFile(jpegPath) },
     { kind: "png", filename: "photo-enhancer-e2e.png", mimeType: "image/png", buffer: await readFile(pngPath) },
     { kind: "heic", filename: "photo-enhancer-e2e.heic", mimeType: "image/heic", buffer: await readFile(heicPath) },
-    { kind: "raw", filename: "photo-enhancer-e2e.CR2", mimeType: "image/x-canon-cr2", buffer: await readFile(rawPath) },
+    { kind: "raw", filename: rawFilename, mimeType: inferRawMimeType(rawFilename), buffer: await readFile(rawPath) },
   ];
 }
 
@@ -112,6 +165,8 @@ async function main() {
 
   try {
     const samples = await buildSamples(tempDir);
+    const rawSample = samples.find((sample) => sample.kind === "raw");
+    const rawMatrixTest = runRawMatrixTest && rawSample ? await postRawMatrixTest(rawSample) : null;
 
     for (let index = 0; index < passes; index += 1) {
       const sample = samples[index % samples.length];
@@ -181,11 +236,22 @@ async function main() {
         jpeg: process.env.PHOTO_ENHANCER_E2E_JPEG_URL || DEFAULT_JPEG_URL,
         png: "generated from jpeg sample through sharp",
         heic: process.env.PHOTO_ENHANCER_E2E_HEIC_URL || DEFAULT_HEIC_URL,
-        raw: process.env.PHOTO_ENHANCER_E2E_RAW_URL || DEFAULT_RAW_URL,
+        raw: localRawPath || process.env.PHOTO_ENHANCER_E2E_RAW_URL || DEFAULT_RAW_URL,
       },
+      rawMatrixTest: rawMatrixTest
+        ? {
+            ok: rawMatrixTest.ok,
+            status: rawMatrixTest.status,
+            durationMs: rawMatrixTest.durationMs,
+            raw: rawMatrixTest.body?.raw ?? null,
+            summary: rawMatrixTest.body?.matrix?.summary ?? null,
+            error: rawMatrixTest.ok ? null : rawMatrixTest.body,
+          }
+        : null,
       results,
     };
 
+    summary.success = summary.success && (!rawMatrixTest || rawMatrixTest.ok);
     console.log(JSON.stringify(summary, null, 2));
     if (!summary.success) process.exitCode = 1;
   } finally {

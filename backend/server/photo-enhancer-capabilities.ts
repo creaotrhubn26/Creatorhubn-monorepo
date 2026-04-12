@@ -81,6 +81,18 @@ export type PhotoEnhancerDriveFolderDefinition = {
   aliases: string[];
 };
 
+export type PhotoEnhancerRawFormatMatrixEntry = {
+  id: string;
+  extension: string;
+  displayName: string;
+  vendor: string;
+  captureType: "photo-raw" | "cinema-raw";
+  defaultStatus: "supported-untested" | "unsupported-external";
+  preferredConverters: string[];
+  requiresExternalConverter: boolean;
+  notes: string;
+};
+
 export const PHOTO_ENHANCER_MODEL_REGISTRY_POLICY = {
   source: "backend/server/photo-enhancer-capabilities.ts",
   storage: "cloudflare-r2",
@@ -300,6 +312,141 @@ export const PHOTO_ENHANCER_RAW_FORMATS = [
   ".srf",
   ".srw",
   ".x3f",
+];
+
+export const PHOTO_ENHANCER_RAW_FORMAT_MATRIX: PhotoEnhancerRawFormatMatrixEntry[] = [
+  {
+    id: "cr2",
+    extension: ".cr2",
+    displayName: "Canon CR2",
+    vendor: "Canon",
+    captureType: "photo-raw",
+    defaultStatus: "supported-untested",
+    preferredConverters: ["dcraw", "dcraw_emu", "rawtherapee", "darktable", "imagemagick"],
+    requiresExternalConverter: false,
+    notes: "Canon DSLR RAW. Verified through the built-in live CR2 self-test when ?raw=1 is used.",
+  },
+  {
+    id: "cr3",
+    extension: ".cr3",
+    displayName: "Canon CR3",
+    vendor: "Canon",
+    captureType: "photo-raw",
+    defaultStatus: "supported-untested",
+    preferredConverters: ["dcraw", "dcraw-half", "dcraw_emu", "rawtherapee", "darktable"],
+    requiresExternalConverter: false,
+    notes: "Canon R-series RAW. Large files may fall back to half-resolution dcraw conversion on constrained Render instances.",
+  },
+  {
+    id: "nef",
+    extension: ".nef",
+    displayName: "Nikon NEF",
+    vendor: "Nikon",
+    captureType: "photo-raw",
+    defaultStatus: "supported-untested",
+    preferredConverters: ["dcraw", "dcraw_emu", "rawtherapee", "darktable"],
+    requiresExternalConverter: false,
+    notes: "Nikon RAW supported through LibRaw/dcraw-compatible converters.",
+  },
+  {
+    id: "arw",
+    extension: ".arw",
+    displayName: "Sony ARW",
+    vendor: "Sony",
+    captureType: "photo-raw",
+    defaultStatus: "supported-untested",
+    preferredConverters: ["dcraw", "dcraw_emu", "rawtherapee", "darktable"],
+    requiresExternalConverter: false,
+    notes: "Sony Alpha RAW supported through LibRaw/dcraw-compatible converters.",
+  },
+  {
+    id: "dng",
+    extension: ".dng",
+    displayName: "Adobe DNG",
+    vendor: "Adobe / Leica / mobile",
+    captureType: "photo-raw",
+    defaultStatus: "supported-untested",
+    preferredConverters: ["dcraw", "dcraw_emu", "rawtherapee", "darktable", "imagemagick"],
+    requiresExternalConverter: false,
+    notes: "Open RAW container used by several cameras and mobile workflows.",
+  },
+  {
+    id: "orf",
+    extension: ".orf",
+    displayName: "Olympus / OM ORF",
+    vendor: "Olympus / OM System",
+    captureType: "photo-raw",
+    defaultStatus: "supported-untested",
+    preferredConverters: ["dcraw", "dcraw_emu", "rawtherapee", "darktable"],
+    requiresExternalConverter: false,
+    notes: "Olympus and OM System RAW supported through LibRaw/dcraw-compatible converters.",
+  },
+  {
+    id: "raf",
+    extension: ".raf",
+    displayName: "Fujifilm RAF",
+    vendor: "Fujifilm",
+    captureType: "photo-raw",
+    defaultStatus: "supported-untested",
+    preferredConverters: ["dcraw", "dcraw_emu", "rawtherapee", "darktable"],
+    requiresExternalConverter: false,
+    notes: "Fujifilm RAW. X-Trans files should be verified per camera body before high-volume work.",
+  },
+  {
+    id: "rw2",
+    extension: ".rw2",
+    displayName: "Panasonic RW2",
+    vendor: "Panasonic",
+    captureType: "photo-raw",
+    defaultStatus: "supported-untested",
+    preferredConverters: ["dcraw", "dcraw_emu", "rawtherapee", "darktable"],
+    requiresExternalConverter: false,
+    notes: "Panasonic Lumix RAW supported through LibRaw/dcraw-compatible converters.",
+  },
+  {
+    id: "pef",
+    extension: ".pef",
+    displayName: "Pentax PEF",
+    vendor: "Pentax",
+    captureType: "photo-raw",
+    defaultStatus: "supported-untested",
+    preferredConverters: ["dcraw", "dcraw_emu", "rawtherapee", "darktable"],
+    requiresExternalConverter: false,
+    notes: "Pentax RAW supported through LibRaw/dcraw-compatible converters.",
+  },
+  {
+    id: "x3f",
+    extension: ".x3f",
+    displayName: "Sigma X3F",
+    vendor: "Sigma",
+    captureType: "photo-raw",
+    defaultStatus: "supported-untested",
+    preferredConverters: ["dcraw", "dcraw_emu", "rawtherapee", "darktable"],
+    requiresExternalConverter: false,
+    notes: "Sigma Foveon RAW support varies by model and must be verified with real files.",
+  },
+  {
+    id: "r3d",
+    extension: ".r3d",
+    displayName: "RED R3D",
+    vendor: "RED",
+    captureType: "cinema-raw",
+    defaultStatus: "unsupported-external",
+    preferredConverters: ["redline", "redcine-x", "ffmpeg-redsdk"],
+    requiresExternalConverter: true,
+    notes: "Cinema RAW. Requires RED SDK/REDline or an approved external transcode service before Photo Enhancer processing.",
+  },
+  {
+    id: "braw",
+    extension: ".braw",
+    displayName: "Blackmagic BRAW",
+    vendor: "Blackmagic Design",
+    captureType: "cinema-raw",
+    defaultStatus: "unsupported-external",
+    preferredConverters: ["blackmagic-raw-sdk", "davinci-resolve-cli"],
+    requiresExternalConverter: true,
+    notes: "Cinema RAW. Requires Blackmagic RAW SDK, DaVinci Resolve pipeline, or external transcode service.",
+  },
 ];
 
 export const PHOTO_ENHANCER_DRIVE_STRUCTURE: PhotoEnhancerDriveFolderDefinition[] = [

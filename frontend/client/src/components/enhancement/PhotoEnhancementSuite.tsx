@@ -205,10 +205,45 @@ interface PhotoEnhancerRawSupport {
   supportedExtensions?: string[];
   rasterExtensions?: string[];
   converters?: Record<string, boolean>;
+  formatMatrix?: PhotoEnhancerRawFormatMatrixEntry[];
+  formatMatrixSummary?: PhotoEnhancerRawFormatMatrixSummary;
   heic?: {
     available: boolean;
     converters?: Record<string, boolean>;
   };
+}
+
+type PhotoEnhancerRawFormatStatus =
+  | 'verified'
+  | 'supported-untested'
+  | 'unsupported-external'
+  | 'failed'
+  | 'unavailable';
+
+interface PhotoEnhancerRawFormatMatrixEntry {
+  id: string;
+  extension: string;
+  displayName: string;
+  vendor: string;
+  captureType: 'photo-raw' | 'cinema-raw';
+  status: PhotoEnhancerRawFormatStatus;
+  statusLabel: string;
+  converter?: string | null;
+  verifiedAt?: string | null;
+  width?: number | null;
+  height?: number | null;
+  outputMimeType?: string | null;
+  resolutionMode?: string | null;
+  notes?: string;
+}
+
+interface PhotoEnhancerRawFormatMatrixSummary {
+  total: number;
+  verified: number;
+  supportedUntested: number;
+  unsupportedExternal: number;
+  failed: number;
+  unavailable: number;
 }
 
 interface PhotoEnhancerModelStatus {
@@ -280,6 +315,11 @@ interface PhotoEnhancerStatusResponse {
     };
   };
   rawSupport: PhotoEnhancerRawSupport;
+  rawFormatMatrix?: {
+    generatedAt: string;
+    entries: PhotoEnhancerRawFormatMatrixEntry[];
+    summary: PhotoEnhancerRawFormatMatrixSummary;
+  };
   metadataSupport?: {
     exiftool?: boolean;
   };
@@ -289,6 +329,23 @@ interface PhotoEnhancerStatusResponse {
     requiredFolders?: string[];
   };
   observability?: PhotoEnhancerObservabilitySummary;
+}
+
+function getRawFormatChipProps(status: PhotoEnhancerRawFormatStatus) {
+  switch (status) {
+    case 'verified':
+      return { label: 'Verified', color: 'success' as const };
+    case 'supported-untested':
+      return { label: 'Supported but untested', color: 'warning' as const };
+    case 'unsupported-external':
+      return { label: 'Unsupported / external converter', color: 'default' as const };
+    case 'failed':
+      return { label: 'Failed latest test', color: 'error' as const };
+    case 'unavailable':
+      return { label: 'Runtime unavailable', color: 'error' as const };
+    default:
+      return { label: 'Supported but untested', color: 'warning' as const };
+  }
 }
 
 const PhotoEnhancementSuite: React.FC<PhotoEnhancementSuiteProps> = ({
@@ -1516,6 +1573,13 @@ const PhotoEnhancementSuite: React.FC<PhotoEnhancementSuiteProps> = ({
       systemTelemetry?.raw?.heic?.available,
   );
   const observability = photoEnhancerStatus?.observability || systemTelemetry?.observability;
+  const rawFormatMatrix =
+    photoEnhancerStatus?.rawFormatMatrix?.entries ||
+    photoEnhancerStatus?.rawSupport?.formatMatrix ||
+    [];
+  const rawFormatSummary =
+    photoEnhancerStatus?.rawFormatMatrix?.summary ||
+    photoEnhancerStatus?.rawSupport?.formatMatrixSummary;
   const formatRate = (rate?: number) => `${Math.round((rate || 0) * 100)}%`;
 
   return (
@@ -1727,6 +1791,87 @@ const PhotoEnhancementSuite: React.FC<PhotoEnhancementSuiteProps> = ({
             </Stack>
           </Paper>
         </Box>
+
+        {rawFormatMatrix.length > 0 && (
+          <Paper variant="outlined" sx={{ mt: 2, p: 2, borderRadius: 2 }}>
+            <Stack
+              direction={{ xs: 'column', md: 'row' }}
+              spacing={1}
+              alignItems={{ xs: 'flex-start', md: 'center' }}
+              justifyContent="space-between"
+              sx={{ mb: 1.5 }}
+            >
+              <Box>
+                <Typography variant="body2" fontWeight={800}>
+                  RAW-format matrix
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Status per kameraformat basert på runtime, verifiserte opplastinger og eksterne converter-krav.
+                </Typography>
+              </Box>
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                <Chip size="small" color="success" label={`Verified ${rawFormatSummary?.verified ?? 0}`} />
+                <Chip size="small" color="warning" label={`Untested ${rawFormatSummary?.supportedUntested ?? 0}`} />
+                <Chip size="small" variant="outlined" label={`External ${rawFormatSummary?.unsupportedExternal ?? 0}`} />
+              </Stack>
+            </Stack>
+            <TableContainer sx={{ maxHeight: 280 }}>
+              <Table size="small" stickyHeader>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Format</TableCell>
+                    <TableCell>Status</TableCell>
+                    <TableCell>Converter</TableCell>
+                    <TableCell>Verifisert output</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {rawFormatMatrix.map((entry) => {
+                    const chip = getRawFormatChipProps(entry.status);
+                    return (
+                      <TableRow key={entry.id} hover>
+                        <TableCell>
+                          <Typography variant="body2" fontWeight={700}>
+                            {entry.displayName}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {entry.extension.toUpperCase()} · {entry.vendor}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Tooltip title={entry.notes || entry.statusLabel}>
+                            <Chip size="small" color={chip.color} label={chip.label} />
+                          </Tooltip>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2">
+                            {entry.converter || (entry.status === 'unsupported-external' ? 'External SDK' : 'Ikke testet')}
+                          </Typography>
+                          {entry.resolutionMode && (
+                            <Typography variant="caption" color="text.secondary">
+                              {entry.resolutionMode === 'half' ? 'Half-resolution fallback' : entry.resolutionMode}
+                            </Typography>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {entry.width && entry.height ? (
+                            <Typography variant="body2">
+                              {entry.width} x {entry.height}
+                            </Typography>
+                          ) : (
+                            <Typography variant="caption" color="text.secondary">
+                              Ingen verifisert fil ennå
+                            </Typography>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Paper>
+        )}
 
         <Alert
           severity="info"
