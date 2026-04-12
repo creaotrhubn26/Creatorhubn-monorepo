@@ -388,6 +388,24 @@ async function execFileToFile(
   });
 }
 
+async function execRawConverter(
+  binary: string,
+  args: string[],
+  options: { cwd: string; timeout: number; maxBuffer?: number },
+) {
+  const memoryMb = Number(process.env.PHOTO_ENHANCER_RAW_CHILD_MAX_MEMORY_MB || 0);
+  if (memoryMb > 0 && process.platform !== "win32") {
+    const memoryKb = Math.max(64, Math.floor(memoryMb)) * 1024;
+    return execFileAsync(
+      "bash",
+      ["-lc", `ulimit -v ${memoryKb}; exec "$0" "$@"`, binary, ...args],
+      options,
+    );
+  }
+
+  return execFileAsync(binary, args, options);
+}
+
 async function resolveRuntimeSupport() {
   const [imageMagick, darktable, rawtherapee, dcraw, dcrawEmu, simpleDcraw, exiftool] = await Promise.all([
     commandPath("magick", "convert"),
@@ -530,7 +548,7 @@ async function convertRawWithExternalTool(file: Express.Multer.File): Promise<{
             timeout,
           });
         } else {
-          await execFileAsync(resolved, attempt.args, {
+          await execRawConverter(resolved, attempt.args, {
             cwd: tempDir,
             timeout,
             maxBuffer: 10 * 1024 * 1024,

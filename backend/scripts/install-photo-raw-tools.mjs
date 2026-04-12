@@ -13,6 +13,9 @@ const sourcePath = path.join(binDir, "dcraw.c");
 const dcrawSourceUrl =
   process.env.PHOTO_ENHANCER_DCRAW_SOURCE_URL ||
   "https://dechifro.org/dcraw/dcraw.c";
+const forceLocalDcraw =
+  process.env.PHOTO_ENHANCER_FORCE_LOCAL_DCRAW === "1" ||
+  process.env.PHOTO_ENHANCER_FORCE_LOCAL_DCRAW === "true";
 
 function run(command, args, options = {}) {
   return new Promise((resolve, reject) => {
@@ -84,7 +87,7 @@ async function main() {
     return;
   }
 
-  const systemDcraw = await existingSystemDcraw();
+  const systemDcraw = forceLocalDcraw ? null : await existingSystemDcraw();
   if (systemDcraw) {
     console.log(`[photo-raw-tools] system ${systemDcraw} available`);
     return;
