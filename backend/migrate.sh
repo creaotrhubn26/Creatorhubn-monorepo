@@ -8,6 +8,7 @@ set -e  # Exit on error
 IS_RENDER_RUNTIME=$(printf '%s' "${RENDER:-}" | tr '[:upper:]' '[:lower:]')
 RUN_RENDER_BOOT_SEEDING_NORMALIZED=$(printf '%s' "${RUN_RENDER_BOOT_SEEDING:-}" | tr '[:upper:]' '[:lower:]')
 RUN_RENDER_BOOT_INTEGRITY_NORMALIZED=$(printf '%s' "${RUN_RENDER_BOOT_INTEGRITY:-}" | tr '[:upper:]' '[:lower:]')
+RUN_RENDER_DRIZZLE_PUSH_NORMALIZED=$(printf '%s' "${RUN_RENDER_DRIZZLE_PUSH:-}" | tr '[:upper:]' '[:lower:]')
 
 echo "🔄 Starting database migrations..."
 
@@ -100,8 +101,10 @@ else
   echo "⚠️  No migrations directory found"
 fi
 
-# Run Drizzle schema push (for schema sync)
-if [ "${SKIP_DRIZZLE_PUSH}" = "1" ]; then
+# Run Drizzle schema push (for local/schema sync)
+if [ "$IS_RENDER_RUNTIME" = "true" ] && [ "$RUN_RENDER_DRIZZLE_PUSH_NORMALIZED" != "1" ] && [ "$RUN_RENDER_DRIZZLE_PUSH_NORMALIZED" != "true" ]; then
+  echo "⏭️  Skipping Drizzle schema push on Render startup; SQL migrations are authoritative"
+elif [ "${SKIP_DRIZZLE_PUSH}" = "1" ]; then
   echo "⏭️  Skipping Drizzle schema push (SKIP_DRIZZLE_PUSH=1)"
 else
   echo "📦 Syncing database schema with Drizzle..."
