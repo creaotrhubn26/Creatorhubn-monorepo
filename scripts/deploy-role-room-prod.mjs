@@ -67,27 +67,26 @@ const commandExists = (command) => {
 };
 
 const getRenderApiKey = () => {
-  if (process.env.RENDER_API_KEY) {
-    return process.env.RENDER_API_KEY;
-  }
-  if (process.platform !== 'darwin' || !commandExists('security')) {
-    return '';
-  }
+  let keychainApiKey = '';
   try {
-    return execFileSync('security', [
-      'find-generic-password',
-      '-s',
-      renderApiKeyService,
-      '-a',
-      renderApiKeyAccount,
-      '-w',
-    ], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim();
+    if (process.platform === 'darwin' && commandExists('security')) {
+      keychainApiKey = execFileSync('security', [
+        'find-generic-password',
+        '-s',
+        renderApiKeyService,
+        '-a',
+        renderApiKeyAccount,
+        '-w',
+      ], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim();
+    }
   } catch {
-    return '';
+    keychainApiKey = '';
   }
+  // Prefer Keychain when present: stale shell env keys have caused 401 deploy failures.
+  return keychainApiKey || process.env.RENDER_API_KEY || '';
 };
 
 const parseJson = (raw, label) => {
