@@ -40,6 +40,12 @@ const PHOTO_ENHANCER_MAX_FILE_BYTES = Number(
 const PHOTO_ENHANCER_MODEL_TIMEOUT_MS = Number(
   process.env.PHOTO_ENHANCER_MODEL_TIMEOUT_MS || 45_000,
 );
+const PHOTO_ENHANCER_FACE_API_TIMEOUT_MS = Number(
+  process.env.PHOTO_ENHANCER_FACE_API_TIMEOUT_MS || 12_000,
+);
+const PHOTO_ENHANCER_FACE_API_MAX_DIMENSION = Number(
+  process.env.PHOTO_ENHANCER_FACE_API_MAX_DIMENSION || 1280,
+);
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -56,6 +62,9 @@ const photoEnhancerStorageRoot = path.join(repoRoot, "uploads", "photo-enhancer"
 const photoEnhancerManifestPath = path.join(
   photoEnhancerStorageRoot,
   "manifest.json",
+);
+const photoEnhancerFaceApiModelsDir = path.resolve(
+  process.env.PHOTO_ENHANCER_FACE_API_MODELS_DIR || path.join(repoRoot, "backend", "models", "face-api"),
 );
 
 const gfpganCandidateKeys =
@@ -128,11 +137,40 @@ type PhotoEnhancerSharpStats = {
   dominant?: Record<string, number>;
 };
 
+type PhotoEnhancerFaceApiRuntime = {
+  faceApi: Record<string, any>;
+  canvas: Record<string, any>;
+  loadedAt: string;
+  backend: string | null;
+};
+
+type PhotoEnhancerFaceApiStatus = {
+  available: boolean;
+  packageAvailable: boolean;
+  modelsLoaded: boolean;
+  modelsDirectory: string;
+  requiredFiles: Array<{ name: string; found: boolean }>;
+  detectionModel: string;
+  landmarkModel: string;
+  backend: string | null;
+  loadedAt: string | null;
+  reason: string | null;
+};
+
 const photoEnhancerOriginalHashIndex = new Map<string, PhotoEnhancerDuplicateIndexEntry>();
 const photoEnhancerPerceptualHashIndex = new Map<string, PhotoEnhancerDuplicateIndexEntry>();
 const PHOTO_ENHANCER_DUPLICATE_INDEX_LIMIT = Number(
   process.env.PHOTO_ENHANCER_DUPLICATE_INDEX_LIMIT || 5_000,
 );
+const photoEnhancerFaceApiRequiredFiles = [
+  "tiny_face_detector_model-weights_manifest.json",
+  "tiny_face_detector_model-shard1",
+  "face_landmark_68_tiny_model-weights_manifest.json",
+  "face_landmark_68_tiny_model-shard1",
+];
+let photoEnhancerFaceApiRuntimePromise: Promise<PhotoEnhancerFaceApiRuntime> | null = null;
+let photoEnhancerFaceApiLastStatus: PhotoEnhancerFaceApiStatus | null = null;
+let photoEnhancerFaceApiQueue: Promise<unknown> = Promise.resolve();
 
 type PhotoEnhancerRawFormatRuntimeStatus =
   | "verified"
@@ -835,24 +873,356 @@ function analyzeCompressionQuality(file: Express.Multer.File, metadata: Record<s
   };
 }
 
-async function analyzeFaceQuality(faceApiAvailable: boolean) {
+async function faceApiRequiredFileStatus() {
+  return Promise.all(
+    photoEnhancerFaceApiRequiredFiles.map(async (name) => {
+      try {
+        await fs.access(path.join(photoEnhancerFaceApiModelsDir, name), fsConstants.R_OK);
+        return { name, found: true };
+      } catch {
+        return { name, found: false };
+      }
+    }),
+  );
+}
+
+function unavailableFaceApiStatus(reason: string, packageAvailable = false): PhotoEnhancerFaceApiStatus {
   return {
     available: false,
-    packageAvailable: faceApiAvailable,
-    faceCount: null,
-    eyeSharpness: null,
-    reason: faceApiAvailable
-      ? "face-api.js package is installed, but Photo Enhancer server-side model loading is not configured yet."
-      : "face-api.js package is unavailable in this runtime.",
+    packageAvailable,
+    modelsLoaded: false,
+    modelsDirectory: photoEnhancerFaceApiModelsDir,
+    requiredFiles: photoEnhancerFaceApiRequiredFiles.map((name) => ({ name, found: false })),
+    detectionModel: "tiny_face_detector",
+    landmarkModel: "face_landmark_68_tiny",
+    backend: null,
+    loadedAt: null,
+    reason,
   };
 }
 
-async function isFaceApiAvailable(): Promise<boolean> {
+async function loadFaceApiRuntime(): Promise<PhotoEnhancerFaceApiRuntime> {
+  if (photoEnhancerFaceApiRuntimePromise) return photoEnhancerFaceApiRuntimePromise;
+
+  photoEnhancerFaceApiRuntimePromise = (async () => {
+    const requiredFiles = await faceApiRequiredFileStatus();
+    const missing = requiredFiles.filter((file) => !file.found).map((file) => file.name);
+    if (missing.length > 0) {
+      throw new Error(`Missing face-api.js model files: ${missing.join(", ")}`);
+    }
+
+    const [faceApi, canvas] = await Promise.all([
+      import("face-api.js") as Promise<Record<string, any>>,
+      import("canvas") as Promise<Record<string, any>>,
+    ]);
+    faceApi.env.monkeyPatch({
+      Canvas: canvas.Canvas,
+      Image: canvas.Image,
+      ImageData: canvas.ImageData,
+    });
+
+    await Promise.all([
+      faceApi.nets.tinyFaceDetector.loadFromDisk(photoEnhancerFaceApiModelsDir),
+      faceApi.nets.faceLandmark68TinyNet.loadFromDisk(photoEnhancerFaceApiModelsDir),
+    ]);
+
+    const backend =
+      typeof faceApi.tf?.getBackend === "function"
+        ? String(faceApi.tf.getBackend())
+        : null;
+
+    return {
+      faceApi,
+      canvas,
+      loadedAt: new Date().toISOString(),
+      backend,
+    };
+  })();
+
+  return photoEnhancerFaceApiRuntimePromise;
+}
+
+async function resolveFaceApiStatus(): Promise<PhotoEnhancerFaceApiStatus> {
+  const requiredFiles = await faceApiRequiredFileStatus();
   try {
-    const faceApi = await import("face-api.js");
-    return Boolean(faceApi);
-  } catch {
-    return false;
+    const runtime = await loadFaceApiRuntime();
+    const status: PhotoEnhancerFaceApiStatus = {
+      available: true,
+      packageAvailable: true,
+      modelsLoaded: true,
+      modelsDirectory: photoEnhancerFaceApiModelsDir,
+      requiredFiles,
+      detectionModel: "tiny_face_detector",
+      landmarkModel: "face_landmark_68_tiny",
+      backend: runtime.backend,
+      loadedAt: runtime.loadedAt,
+      reason: null,
+    };
+    photoEnhancerFaceApiLastStatus = status;
+    return status;
+  } catch (error) {
+    const packageAvailable = await import("face-api.js")
+      .then(() => true)
+      .catch(() => false);
+    const status: PhotoEnhancerFaceApiStatus = {
+      ...unavailableFaceApiStatus(error instanceof Error ? error.message : "face_api_runtime_unavailable", packageAvailable),
+      requiredFiles,
+    };
+    photoEnhancerFaceApiLastStatus = status;
+    photoEnhancerFaceApiRuntimePromise = null;
+    return status;
+  }
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let timeout: NodeJS.Timeout | null = null;
+  const timeoutPromise = new Promise<T>((_resolve, reject) => {
+    timeout = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timeout) clearTimeout(timeout);
+  });
+}
+
+function runFaceApiExclusive<T>(task: () => Promise<T>): Promise<T> {
+  const run = photoEnhancerFaceApiQueue.then(task, task);
+  photoEnhancerFaceApiQueue = run.catch(() => undefined);
+  return run;
+}
+
+function computeLaplacianVariance(values: Buffer | Uint8Array, width: number, height: number): number | null {
+  if (width < 3 || height < 3 || values.length < width * height) return null;
+  let count = 0;
+  let sum = 0;
+  let sumSquares = 0;
+
+  for (let y = 1; y < height - 1; y += 1) {
+    for (let x = 1; x < width - 1; x += 1) {
+      const idx = y * width + x;
+      const laplacian =
+        values[idx - width] +
+        values[idx - 1] -
+        values[idx] * 4 +
+        values[idx + 1] +
+        values[idx + width];
+      sum += laplacian;
+      sumSquares += laplacian * laplacian;
+      count += 1;
+    }
+  }
+
+  if (count === 0) return null;
+  const mean = sum / count;
+  return sumSquares / count - mean * mean;
+}
+
+function cropAroundPoints(
+  points: Array<{ x: number; y: number }>,
+  imageWidth: number,
+  imageHeight: number,
+) {
+  if (points.length === 0 || imageWidth < 8 || imageHeight < 8) return null;
+  const xs = points.map((point) => point.x).filter(Number.isFinite);
+  const ys = points.map((point) => point.y).filter(Number.isFinite);
+  if (xs.length === 0 || ys.length === 0) return null;
+
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const eyeWidth = Math.max(8, maxX - minX);
+  const eyeHeight = Math.max(8, maxY - minY);
+  const padding = Math.max(6, Math.round(Math.max(eyeWidth, eyeHeight) * 0.75));
+  const left = Math.max(0, Math.floor(minX - padding));
+  const top = Math.max(0, Math.floor(minY - padding));
+  const right = Math.min(imageWidth, Math.ceil(maxX + padding));
+  const bottom = Math.min(imageHeight, Math.ceil(maxY + padding));
+  const width = right - left;
+  const height = bottom - top;
+  if (width < 8 || height < 8) return null;
+  return { left, top, width, height };
+}
+
+async function computeEyeSharpness(faceInput: {
+  buffer: Buffer;
+  width: number;
+  height: number;
+}, detections: Array<Record<string, any>>) {
+  const sharpModule = await import("sharp");
+  const sharp = sharpModule.default;
+  const perEye: Array<{
+    faceIndex: number;
+    eye: "left" | "right";
+    variance: number;
+    score: number;
+    status: string;
+  }> = [];
+
+  for (const [faceIndex, detection] of detections.entries()) {
+    const landmarks = detection.landmarks;
+    const eyes = [
+      { eye: "left" as const, points: landmarks?.getLeftEye?.() || [] },
+      { eye: "right" as const, points: landmarks?.getRightEye?.() || [] },
+    ];
+
+    for (const item of eyes) {
+      const crop = cropAroundPoints(item.points, faceInput.width, faceInput.height);
+      if (!crop) continue;
+      try {
+        const result = await sharp(faceInput.buffer, { failOn: "none" })
+          .extract(crop)
+          .greyscale()
+          .raw()
+          .toBuffer({ resolveWithObject: true });
+        const variance = computeLaplacianVariance(result.data, result.info.width, result.info.height);
+        if (variance === null) continue;
+        const score = clampNumber((variance / 500) * 100, 0, 100);
+        perEye.push({
+          faceIndex,
+          eye: item.eye,
+          variance: Number(variance.toFixed(2)),
+          score: Math.round(score),
+          status: qualityStatus(score, 35, 15),
+        });
+      } catch {
+        // Eye sharpness is best-effort; face detection remains useful if a single crop fails.
+      }
+    }
+  }
+
+  if (perEye.length === 0) {
+    return {
+      status: detections.length > 0 ? "unknown" : "not-applicable",
+      score: null,
+      averageVariance: null,
+      eyesAnalyzed: 0,
+      facesWithEyes: 0,
+      reason: detections.length > 0 ? "Face landmarks were detected, but eye crops could not be analyzed." : "No faces detected.",
+      perEye: [],
+    };
+  }
+
+  const averageScore = perEye.reduce((sum, eye) => sum + eye.score, 0) / perEye.length;
+  const averageVariance = perEye.reduce((sum, eye) => sum + eye.variance, 0) / perEye.length;
+  const facesWithEyes = new Set(perEye.map((eye) => eye.faceIndex)).size;
+
+  return {
+    status: qualityStatus(averageScore, 35, 15),
+    score: Math.round(averageScore),
+    averageVariance: Number(averageVariance.toFixed(2)),
+    eyesAnalyzed: perEye.length,
+    facesWithEyes,
+    reason: null,
+    perEye,
+  };
+}
+
+async function prepareFaceApiInput(file: Express.Multer.File) {
+  const sharpModule = await import("sharp");
+  const sharp = sharpModule.default;
+  const result = await sharp(file.buffer, { failOn: "none" })
+    .rotate()
+    .resize({
+      width: PHOTO_ENHANCER_FACE_API_MAX_DIMENSION,
+      height: PHOTO_ENHANCER_FACE_API_MAX_DIMENSION,
+      fit: "inside",
+      withoutEnlargement: true,
+    })
+    .jpeg({ quality: 90, mozjpeg: true })
+    .toBuffer({ resolveWithObject: true });
+
+  return {
+    buffer: result.data,
+    width: result.info.width,
+    height: result.info.height,
+  };
+}
+
+async function analyzeFaceQuality(
+  file: Express.Multer.File,
+  faceApiStatus: PhotoEnhancerFaceApiStatus,
+) {
+  const startedAt = Date.now();
+  if (!faceApiStatus.available) {
+    return {
+      available: false,
+      packageAvailable: faceApiStatus.packageAvailable,
+      modelsLoaded: faceApiStatus.modelsLoaded,
+      faceCount: null,
+      eyeSharpness: null,
+      reason: faceApiStatus.reason || "face-api.js runtime is unavailable.",
+      runtime: faceApiStatus,
+    };
+  }
+
+  try {
+    return await withTimeout(
+      runFaceApiExclusive(async () => {
+        const runtime = await loadFaceApiRuntime();
+        const faceInput = await prepareFaceApiInput(file);
+        const image = await runtime.canvas.loadImage(faceInput.buffer);
+        const options = new runtime.faceApi.TinyFaceDetectorOptions({
+          inputSize: 416,
+          scoreThreshold: Number(process.env.PHOTO_ENHANCER_FACE_API_SCORE_THRESHOLD || 0.35),
+        });
+        const detections = await runtime.faceApi
+          .detectAllFaces(image, options)
+          .withFaceLandmarks(true);
+        const eyeSharpness = await computeEyeSharpness(faceInput, detections);
+        const faces = detections.map((detection: Record<string, any>, index: number) => {
+          const box = detection.detection?.box;
+          return {
+            index,
+            score:
+              typeof detection.detection?.score === "number"
+                ? Number(detection.detection.score.toFixed(4))
+                : null,
+            box: box
+              ? {
+                  x: Math.round(box.x),
+                  y: Math.round(box.y),
+                  width: Math.round(box.width),
+                  height: Math.round(box.height),
+                }
+              : null,
+          };
+        });
+
+        return {
+          available: true,
+          packageAvailable: true,
+          modelsLoaded: true,
+          faceCount: detections.length,
+          eyeSharpness,
+          reason: null,
+          detectionModel: faceApiStatus.detectionModel,
+          landmarkModel: faceApiStatus.landmarkModel,
+          image: {
+            width: faceInput.width,
+            height: faceInput.height,
+            maxDimension: PHOTO_ENHANCER_FACE_API_MAX_DIMENSION,
+          },
+          faces,
+          processingMs: Date.now() - startedAt,
+          runtime: faceApiStatus,
+        };
+      }),
+      PHOTO_ENHANCER_FACE_API_TIMEOUT_MS,
+      "face-api.js analysis",
+    );
+  } catch (error) {
+    return {
+      available: false,
+      packageAvailable: faceApiStatus.packageAvailable,
+      modelsLoaded: faceApiStatus.modelsLoaded,
+      faceCount: null,
+      eyeSharpness: null,
+      reason: error instanceof Error ? error.message : "face_api_analysis_failed",
+      detectionModel: faceApiStatus.detectionModel,
+      landmarkModel: faceApiStatus.landmarkModel,
+      processingMs: Date.now() - startedAt,
+      runtime: faceApiStatus,
+    };
   }
 }
 
@@ -1956,10 +2326,10 @@ export function createPhotoEnhancerRouter() {
   const router = express.Router();
 
   router.get("/status", async (_req, res) => {
-    const [modelStatuses, gfpgan, faceApiAvailable, runtimeSupport] = await Promise.all([
+    const [modelStatuses, gfpgan, faceApiStatus, runtimeSupport] = await Promise.all([
       resolvePhotoEnhancerModelStatuses(),
       resolveGfpganModelStatus(),
-      isFaceApiAvailable(),
+      resolveFaceApiStatus(),
       resolveRuntimeSupport(),
     ]);
     const rawFormatMatrix = buildPhotoEnhancerRawFormatMatrix(runtimeSupport);
@@ -1980,7 +2350,16 @@ export function createPhotoEnhancerRouter() {
         },
         faceApi: {
           id: "face-api.js",
-          available: faceApiAvailable,
+          available: faceApiStatus.available,
+          packageAvailable: faceApiStatus.packageAvailable,
+          modelsLoaded: faceApiStatus.modelsLoaded,
+          modelsDirectory: faceApiStatus.modelsDirectory,
+          requiredFiles: faceApiStatus.requiredFiles,
+          detectionModel: faceApiStatus.detectionModel,
+          landmarkModel: faceApiStatus.landmarkModel,
+          backend: faceApiStatus.backend,
+          loadedAt: faceApiStatus.loadedAt,
+          reason: faceApiStatus.reason,
           role: "face analysis support",
         },
         imageHash: {
@@ -2184,18 +2563,18 @@ export function createPhotoEnhancerRouter() {
         const sharpModule = await import("sharp");
         const sharp = sharpModule.default;
         const originalHash = computeOriginalFileHash(req.file);
-        const [metadata, analysisMetadata, stats, perceptualHash, gfpgan, faceApiAvailable, exif, lumaQuality] =
+        const [metadata, analysisMetadata, stats, perceptualHash, gfpgan, faceApiStatus, exif, lumaQuality] =
           await Promise.all([
             sharp(processFile.buffer, { failOn: "none" }).metadata(),
             sharp(analysisFile.buffer, { failOn: "none" }).metadata(),
             sharp(analysisFile.buffer, { failOn: "none" }).stats().catch(() => null),
             computeImageHash(analysisFile),
             resolveGfpganModelStatus(),
-            isFaceApiAvailable(),
+            resolveFaceApiStatus(),
             readExifMetadata(req.file),
             analyzeLumaQuality(analysisFile),
           ]);
-        const faceQuality = await analyzeFaceQuality(faceApiAvailable);
+        const faceQuality = await analyzeFaceQuality(analysisFile, faceApiStatus);
         const normalizedExif = normalizePhotoEnhancerExif(exif);
         const sidecar = parsePhotoEnhancerXmpSidecar(
           readString(req.body?.xmpSidecar) || readString(req.body?.sidecarXmp) || readString(req.body?.xmp),
@@ -2287,7 +2666,9 @@ export function createPhotoEnhancerRouter() {
             gfpgan,
             faceApi: {
               id: "face-api.js",
-              available: faceApiAvailable,
+              available: faceApiStatus.available,
+              modelsLoaded: faceApiStatus.modelsLoaded,
+              reason: faceApiStatus.reason,
             },
             imageHash: {
               id: "image-hash",

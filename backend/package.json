@@ -15,7 +15,7 @@
     "ml:start": "concurrently -n \"pyannote,whisperx\" -c \"yellow,magenta\" \"npm run pyannote:start\" \"npm run whisperx:start\"",
     "ml:install": "python3 -m pip install -r python-services/requirements.txt",
     "ml:install:venv": "python-services/venv_py310/bin/pip install -r python-services/requirements.txt",
-    "build": "node scripts/install-photo-raw-tools.mjs && esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist --splitting --chunk-names=chunks/[name]-[hash] --target=node20",
+    "build": "node scripts/install-photo-raw-tools.mjs && node scripts/install-face-api-models.mjs && esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist --splitting --chunk-names=chunks/[name]-[hash] --target=node20",
     "start": "node server.js",
     "start:all": "concurrently -n \"node,python\" -c \"cyan,yellow\" \"npm start\" \"npm run ml:start\"",
     "migrate": "./migrate.sh",

@@ -249,8 +249,9 @@ export const photoEnhancerModelRegistry: PhotoEnhancerModelDefinition[] = [
     recommendedFor: ["analysis", "face-detection", "quality-control"],
     candidateKeys: [
       "models/face-api/tiny_face_detector_model-weights_manifest.json",
-      "models/face-api/ssd_mobilenetv1_model-weights_manifest.json",
-      "models/face-api/face_landmark_68_model-weights_manifest.json",
+      "models/face-api/tiny_face_detector_model-shard1",
+      "models/face-api/face_landmark_68_tiny_model-weights_manifest.json",
+      "models/face-api/face_landmark_68_tiny_model-shard1",
     ],
     runnerEnvKeys: [],
   },
