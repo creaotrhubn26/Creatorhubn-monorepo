@@ -475,20 +475,6 @@ async function convertRawWithExternalTool(file: Express.Multer.File): Promise<{
     streamStdout?: boolean;
   }> = [
     {
-      id: "darktable",
-      binaries: ["darktable-cli"],
-      args: [inputPath, outputPath],
-      outputPath,
-      outputMimeType: "image/png",
-    },
-    {
-      id: "rawtherapee",
-      binaries: ["rawtherapee-cli"],
-      args: ["-o", outputPath, "-c", inputPath],
-      outputPath,
-      outputMimeType: "image/png",
-    },
-    {
       id: "dcraw",
       binaries: ["dcraw", "dcraw_emu"],
       args: ["-w", "-T", inputPath],
@@ -502,11 +488,38 @@ async function convertRawWithExternalTool(file: Express.Multer.File): Promise<{
       outputPath,
       outputMimeType: "image/png",
     },
+    {
+      id: "rawtherapee",
+      binaries: ["rawtherapee-cli"],
+      args: ["-o", outputPath, "-c", inputPath],
+      outputPath,
+      outputMimeType: "image/png",
+    },
+    {
+      id: "darktable",
+      binaries: ["darktable-cli"],
+      args: [inputPath, outputPath],
+      outputPath,
+      outputMimeType: "image/png",
+    },
   ];
+  const configuredOrder = (process.env.PHOTO_ENHANCER_RAW_CONVERTER_ORDER || "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+  const orderedAttempts =
+    configuredOrder.length > 0
+      ? [
+          ...configuredOrder
+            .map((id) => attempts.find((attempt) => attempt.id === id))
+            .filter((attempt): attempt is (typeof attempts)[number] => Boolean(attempt)),
+          ...attempts.filter((attempt) => !configuredOrder.includes(attempt.id)),
+        ]
+      : attempts;
 
   const errors: string[] = [];
   try {
-    for (const attempt of attempts) {
+    for (const attempt of orderedAttempts) {
       const resolved = await commandPath(...attempt.binaries);
       if (!resolved) continue;
       try {
