@@ -64,6 +64,17 @@ interface EnhancementSettings {
   sharpness: number;
   denoising: number;
   faceEnhancement: number;
+  modelPreference: string;
+  gfpganQuality: number;
+  codeformerFidelity: number;
+  realesrganScale: number;
+  swinir: boolean;
+  bsrgan: boolean;
+  diffbir: boolean;
+  lamaInpaint: boolean;
+  faceOnlyCrop: boolean;
+  preserveBackground: boolean;
+  skinTextureGuard: number;
 }
 
 interface PhotoEnhancerModelStatus {
@@ -118,6 +129,17 @@ interface PhotoEnhancerStatus {
     total?: number;
     tracked?: Array<{ id: string; category: string; title: string; status: string }>;
   };
+  queue?: {
+    paused?: boolean;
+    counts?: Record<string, number>;
+    concurrency?: { global?: number; perUser?: number; perProject?: number };
+    memory?: { freeMb?: number; minFreeMb?: number; canStart?: boolean; policy?: string };
+    capabilities?: string[];
+  };
+  processingOptions?: {
+    modelPreference?: string[];
+    executionNote?: string;
+  };
 }
 
 interface DirectUploadSource {
@@ -144,6 +166,24 @@ interface DirectUploadProgress {
   detail?: string;
 }
 
+interface PhotoEnhancerJob {
+  id: string;
+  status: 'queued' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
+  progress: number;
+  priority?: number;
+  projectId?: string;
+  owner?: string;
+  failureReason?: string | null;
+  result?: Record<string, unknown> | null;
+  artifacts?: Array<{ id: string; type: string; mimeType?: string | null; size?: number | null; url?: string | null; checksum?: string | null }>;
+  timeline?: Array<{ id: string; timestamp: string; type: string; message: string; details?: Record<string, unknown> }>;
+  outputManifest?: Record<string, unknown> | null;
+  checksum?: string | null;
+  attempts?: number;
+  maxAttempts?: number;
+  updatedAt?: string;
+}
+
 const PRESETS = [
   { id: 'auto', name: 'Auto Enhancer', description: 'Automatisk optimalisering', icon: <AutoFixHighIcon /> },
   { id: 'portrait', name: 'Portrait Pro', description: 'Ansiktsforbedring', icon: <FaceIcon /> },
@@ -158,6 +198,17 @@ const DEFAULT_SETTINGS: EnhancementSettings = {
   sharpness: 0,
   denoising: 50,
   faceEnhancement: 75,
+  modelPreference: 'auto',
+  gfpganQuality: 75,
+  codeformerFidelity: 65,
+  realesrganScale: 2,
+  swinir: false,
+  bsrgan: false,
+  diffbir: false,
+  lamaInpaint: false,
+  faceOnlyCrop: false,
+  preserveBackground: true,
+  skinTextureGuard: 70,
 };
 
 const RAW_UPLOAD_EXTENSIONS = [
@@ -279,6 +330,36 @@ function normalizeDirectUploadSource(value: unknown): DirectUploadSource {
   };
 }
 
+function normalizePhotoEnhancerJob(value: unknown): PhotoEnhancerJob | null {
+  const record = toRecord(value);
+  const id = typeof record.id === 'string' ? record.id : '';
+  const status = typeof record.status === 'string' ? record.status : '';
+  if (!id || !['queued', 'running', 'paused', 'completed', 'failed', 'cancelled'].includes(status)) return null;
+  return {
+    id,
+    status: status as PhotoEnhancerJob['status'],
+    progress: toNumber(record.progress) ?? 0,
+    priority: toNumber(record.priority) ?? undefined,
+    projectId: typeof record.projectId === 'string' ? record.projectId : undefined,
+    owner: typeof record.owner === 'string' ? record.owner : undefined,
+    failureReason: typeof record.failureReason === 'string' ? record.failureReason : null,
+    result: record.result && typeof record.result === 'object' ? (record.result as Record<string, unknown>) : null,
+    artifacts: Array.isArray(record.artifacts) ? (record.artifacts as PhotoEnhancerJob['artifacts']) : [],
+    timeline: Array.isArray(record.timeline) ? (record.timeline as PhotoEnhancerJob['timeline']) : [],
+    outputManifest: record.outputManifest && typeof record.outputManifest === 'object'
+      ? (record.outputManifest as Record<string, unknown>)
+      : null,
+    checksum: typeof record.checksum === 'string' ? record.checksum : null,
+    attempts: toNumber(record.attempts) ?? undefined,
+    maxAttempts: toNumber(record.maxAttempts) ?? undefined,
+    updatedAt: typeof record.updatedAt === 'string' ? record.updatedAt : undefined,
+  };
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
 function normalizeProjects(payload: unknown): EnhancerProject[] {
   if (!Array.isArray(payload)) return [];
   return payload
@@ -350,6 +431,8 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
   const [showRatingDialog, setShowRatingDialog] = useState(false);
   const [directUploadCache, setDirectUploadCache] = useState<DirectUploadCache | null>(null);
   const [directUploadProgress, setDirectUploadProgress] = useState<DirectUploadProgress | null>(null);
+  const [queueJob, setQueueJob] = useState<PhotoEnhancerJob | null>(null);
+  const [queueActionPending, setQueueActionPending] = useState(false);
 
   const professionConfig = getProfessionConfig(profession);
   const accentColor = professionConfig?.iconColor || '#ff8c00';
@@ -367,6 +450,9 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
   const directUploadConfig = statusQuery.data?.directUpload;
   const directUploadEnabled = Boolean(directUploadConfig?.enabled);
   const directUploadMaxBytes = directUploadConfig?.maxBytes || 0;
+  const queueRuntime = statusQuery.data?.queue;
+  const queueCounts = queueRuntime?.counts || {};
+  const processingOptions = statusQuery.data?.processingOptions;
 
   const folders = useMemo(() => {
     const driveStructure = statusQuery.data?.googleDrive?.folderStructure || [];
@@ -611,6 +697,54 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
     return source;
   }, [directUploadCache, uploadFileDirectlyToR2]);
 
+  const startQueuedEnhancement = useCallback(async (source: DirectUploadSource) => {
+    setDirectUploadProgress({
+      active: true,
+      phase: 'Legger jobb i server-kø',
+      percent: 100,
+      detail: 'Backend styrer prioritet, minne og retry.',
+    });
+    const createResponse = await apiRequest('/api/photo-enhancer/jobs', {
+      method: 'POST',
+      body: {
+        source,
+        preset: activePreset,
+        settings,
+        projectId: selectedProjectId || 'photo-enhancer',
+        folderId: selectedFolderId || undefined,
+        priority: source.size >= 250 * 1024 * 1024 ? 10 : 25,
+      },
+    });
+    const createdJob = normalizePhotoEnhancerJob(toRecord(createResponse).job);
+    if (!createdJob) throw new Error('Serveren opprettet ikke en gyldig Photo Enhancer-jobb.');
+    setQueueJob(createdJob);
+
+    let currentJob = createdJob;
+    for (let attempt = 0; attempt < 240; attempt += 1) {
+      if (['completed', 'failed', 'cancelled'].includes(currentJob.status)) break;
+      await delay(1500);
+      const response = await apiRequest(`/api/photo-enhancer/jobs/${encodeURIComponent(currentJob.id)}`);
+      const nextJob = normalizePhotoEnhancerJob(toRecord(response).job);
+      if (!nextJob) throw new Error('Serveren returnerte ugyldig job-status.');
+      currentJob = nextJob;
+      setQueueJob(nextJob);
+      setDirectUploadProgress({
+        active: true,
+        phase: nextJob.status === 'running' ? 'Forbedrer i server-kø' : 'Venter i server-kø',
+        percent: Math.max(1, Math.min(100, nextJob.progress || 1)),
+        detail: `Jobb ${nextJob.id.slice(0, 8)} · ${nextJob.status} · forsøk ${nextJob.attempts || 0}/${nextJob.maxAttempts || 1}`,
+      });
+    }
+
+    if (currentJob.status === 'completed' && currentJob.result) {
+      return {
+        ...currentJob.result,
+        job: currentJob,
+      };
+    }
+    throw new Error(currentJob.failureReason || `Photo Enhancer-jobb stoppet med status ${currentJob.status}.`);
+  }, [activePreset, selectedFolderId, selectedProjectId, settings]);
+
   const analyzeMutation = useMutation({
     mutationFn: async (file: File) => {
       if (shouldUseDirectUpload(file)) {
@@ -649,20 +783,7 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
     mutationFn: async (file: File) => {
       if (shouldUseDirectUpload(file)) {
         const source = await getDirectUploadSource(file);
-        setDirectUploadProgress({
-          active: true,
-          phase: 'Forbedrer fra R2',
-          percent: 100,
-          detail: 'Serveren bruker R2-kilden, ikke en stor nettleser-til-Render request.',
-        });
-        return apiRequest('/api/photo-enhancer/enhance-r2', {
-          method: 'POST',
-          body: {
-            source,
-            preset: activePreset,
-            settings,
-          },
-        });
+        return startQueuedEnhancement(source);
       }
 
       const formData = new FormData();
@@ -677,6 +798,8 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
     },
     onSuccess: (response) => {
       const imageUrl = toImageUrl(response);
+      const job = normalizePhotoEnhancerJob(toRecord(response).job);
+      if (job) setQueueJob(job);
       if (imageUrl) {
         setEnhancedImageUrl(imageUrl);
         setViewMode('side-by-side');
@@ -719,6 +842,7 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
     setCompositionAnalysis(null);
     setDirectUploadCache(null);
     setDirectUploadProgress(null);
+    setQueueJob(null);
     setViewMode('single');
     setCompareSlider(50);
   };
@@ -762,6 +886,21 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
       },
     });
     setShowRatingDialog(false);
+  };
+
+  const runQueueJobAction = async (action: 'cancel' | 'pause' | 'resume' | 'retry') => {
+    if (!queueJob) return;
+    setQueueActionPending(true);
+    try {
+      const response = await apiRequest(`/api/photo-enhancer/jobs/${encodeURIComponent(queueJob.id)}/${action}`, {
+        method: 'POST',
+      });
+      const nextJob = normalizePhotoEnhancerJob(toRecord(response).job);
+      if (nextJob) setQueueJob(nextJob);
+      void statusQuery.refetch();
+    } finally {
+      setQueueActionPending(false);
+    }
   };
 
   const canSave = Boolean(enhancedImageUrl && selectedProjectId && selectedFolderId);
@@ -876,7 +1015,7 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                   { key: 'denoising', label: 'Denoising' },
                   { key: 'faceEnhancement', label: 'Face Enhancement' },
                 ].map((slider) => {
-                  const key = slider.key as keyof EnhancementSettings;
+                  const key = slider.key as 'brightness' | 'contrast' | 'saturation' | 'sharpness' | 'denoising' | 'faceEnhancement';
                   return (
                     <Box key={slider.key}>
                       <Stack direction="row" justifyContent="space-between">
@@ -895,6 +1034,103 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                     </Box>
                   );
                 })}
+
+                <Divider />
+
+                <Typography variant="subtitle2">AI-modell og kø</Typography>
+                <FormControl fullWidth size="small">
+                  <InputLabel id="enhancer-model-label">Modellstrategi</InputLabel>
+                  <Select
+                    labelId="enhancer-model-label"
+                    label="Modellstrategi"
+                    value={settings.modelPreference}
+                    onChange={(event) => setSettings((previous) => ({ ...previous, modelPreference: event.target.value }))}
+                  >
+                    {(processingOptions?.modelPreference || ['auto', 'sharp', 'gfpgan', 'codeformer', 'realesrgan', 'swinir', 'bsrgan', 'diffbir', 'lama']).map((model) => (
+                      <MenuItem key={model} value={model}>
+                        {model === 'auto' ? 'Auto pipeline' : model.toUpperCase()}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+
+                {[
+                  { key: 'gfpganQuality', label: 'GFPGAN quality' },
+                  { key: 'codeformerFidelity', label: 'CodeFormer fidelity' },
+                  { key: 'skinTextureGuard', label: 'Skin texture guard' },
+                ].map((slider) => {
+                  const key = slider.key as 'gfpganQuality' | 'codeformerFidelity' | 'skinTextureGuard';
+                  return (
+                    <Box key={slider.key}>
+                      <Stack direction="row" justifyContent="space-between">
+                        <Typography variant="caption">{slider.label}</Typography>
+                        <Typography variant="caption">{settings[key]}</Typography>
+                      </Stack>
+                      <Slider
+                        value={typeof settings[key] === 'number' ? settings[key] : 0}
+                        min={0}
+                        max={100}
+                        onChange={(_, value) => {
+                          const numericValue = Array.isArray(value) ? value[0] : value;
+                          setSettings((previous) => ({ ...previous, [key]: numericValue }));
+                        }}
+                      />
+                    </Box>
+                  );
+                })}
+
+                <FormControl fullWidth size="small">
+                  <InputLabel id="enhancer-scale-label">Real-ESRGAN scale</InputLabel>
+                  <Select
+                    labelId="enhancer-scale-label"
+                    label="Real-ESRGAN scale"
+                    value={settings.realesrganScale}
+                    onChange={(event) => setSettings((previous) => ({ ...previous, realesrganScale: Number(event.target.value) }))}
+                  >
+                    {[2, 3, 4].map((scale) => (
+                      <MenuItem key={scale} value={scale}>
+                        {scale}x
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+
+                <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                  {[
+                    { key: 'swinir', label: 'SwinIR' },
+                    { key: 'bsrgan', label: 'BSRGAN' },
+                    { key: 'diffbir', label: 'DiffBIR' },
+                    { key: 'lamaInpaint', label: 'LaMa inpaint' },
+                    { key: 'faceOnlyCrop', label: 'Face-only crop' },
+                    { key: 'preserveBackground', label: 'Preserve background' },
+                  ].map((toggle) => {
+                    const key = toggle.key as 'swinir' | 'bsrgan' | 'diffbir' | 'lamaInpaint' | 'faceOnlyCrop' | 'preserveBackground';
+                    return (
+                      <Chip
+                        key={toggle.key}
+                        clickable
+                        size="small"
+                        label={toggle.label}
+                        color={settings[key] ? 'primary' : 'default'}
+                        variant={settings[key] ? 'filled' : 'outlined'}
+                        onClick={() => setSettings((previous) => ({ ...previous, [key]: !previous[key] }))}
+                      />
+                    );
+                  })}
+                </Stack>
+
+                <Paper variant="outlined" sx={{ p: 1.25 }}>
+                  <Stack spacing={0.5}>
+                    <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                      <Chip size="small" label={`Kø: ${queueCounts.queued || 0} venter`} />
+                      <Chip size="small" label={`Kjører: ${queueCounts.running || 0}`} color={(queueCounts.running || 0) > 0 ? 'info' : 'default'} />
+                      <Chip size="small" label={queueRuntime?.paused ? 'Kø pauset' : 'Kø aktiv'} color={queueRuntime?.paused ? 'warning' : 'success'} />
+                    </Stack>
+                    <Typography variant="caption" color="text.secondary">
+                      {processingOptions?.executionNote || 'Store filer behandles server-side med audit, retry og jobbmanifest.'}
+                    </Typography>
+                  </Stack>
+                </Paper>
 
                 <Stack direction="row" spacing={1}>
                   <Button variant="outlined" onClick={() => void runAnalysis()} disabled={!uploadedImage || analyzeMutation.isPending}>
@@ -925,6 +1161,73 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                       Prosesserer bilde...
                     </Typography>
                   </Box>
+                ) : null}
+
+                {queueJob ? (
+                  <Paper variant="outlined" sx={{ p: 1.25 }}>
+                    <Stack spacing={1}>
+                      <Stack direction="row" justifyContent="space-between" spacing={1} alignItems="center">
+                        <Box>
+                          <Typography variant="subtitle2">Server-jobb</Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {queueJob.id.slice(0, 8)} · {queueJob.status} · {queueJob.attempts || 0}/{queueJob.maxAttempts || 1} forsøk
+                          </Typography>
+                        </Box>
+                        <Chip
+                          size="small"
+                          label={`${Math.round(queueJob.progress || 0)}%`}
+                          color={queueJob.status === 'completed' ? 'success' : queueJob.status === 'failed' ? 'error' : 'info'}
+                        />
+                      </Stack>
+                      <LinearProgress
+                        variant="determinate"
+                        value={Math.max(0, Math.min(100, queueJob.progress || 0))}
+                        color={queueJob.status === 'failed' ? 'error' : queueJob.status === 'completed' ? 'success' : 'primary'}
+                      />
+                      {queueJob.failureReason ? (
+                        <Alert severity="warning">{queueJob.failureReason}</Alert>
+                      ) : null}
+                      <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          disabled={queueActionPending || !['queued', 'running', 'paused'].includes(queueJob.status)}
+                          onClick={() => void runQueueJobAction('cancel')}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          disabled={queueActionPending || queueJob.status !== 'queued'}
+                          onClick={() => void runQueueJobAction('pause')}
+                        >
+                          Pause
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          disabled={queueActionPending || queueJob.status !== 'paused'}
+                          onClick={() => void runQueueJobAction('resume')}
+                        >
+                          Resume
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          disabled={queueActionPending || !['failed', 'cancelled'].includes(queueJob.status)}
+                          onClick={() => void runQueueJobAction('retry')}
+                        >
+                          Retry
+                        </Button>
+                      </Stack>
+                      {queueJob.timeline?.[0] ? (
+                        <Typography variant="caption" color="text.secondary">
+                          Siste hendelse: {queueJob.timeline[0].message}
+                        </Typography>
+                      ) : null}
+                    </Stack>
+                  </Paper>
                 ) : null}
 
                 {analyzeMutation.isError ? (

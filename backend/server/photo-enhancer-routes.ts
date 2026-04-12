@@ -95,6 +95,34 @@ const PHOTO_ENHANCER_FACE_API_INPUT_SIZE = Number(
 const PHOTO_ENHANCER_FACE_API_SCORE_THRESHOLD = Number(
   process.env.PHOTO_ENHANCER_FACE_API_SCORE_THRESHOLD || 0.35,
 );
+const PHOTO_ENHANCER_QUEUE_CONCURRENCY = Math.max(
+  1,
+  Number(process.env.PHOTO_ENHANCER_QUEUE_CONCURRENCY || 1),
+);
+const PHOTO_ENHANCER_QUEUE_PER_USER_CONCURRENCY = Math.max(
+  1,
+  Number(process.env.PHOTO_ENHANCER_QUEUE_PER_USER_CONCURRENCY || 1),
+);
+const PHOTO_ENHANCER_QUEUE_PER_PROJECT_CONCURRENCY = Math.max(
+  1,
+  Number(process.env.PHOTO_ENHANCER_QUEUE_PER_PROJECT_CONCURRENCY || 1),
+);
+const PHOTO_ENHANCER_QUEUE_JOB_TTL_MS = Math.max(
+  60_000,
+  Number(process.env.PHOTO_ENHANCER_QUEUE_JOB_TTL_MS || 24 * 60 * 60 * 1000),
+);
+const PHOTO_ENHANCER_QUEUE_MAX_JOBS = Math.max(
+  50,
+  Number(process.env.PHOTO_ENHANCER_QUEUE_MAX_JOBS || 500),
+);
+const PHOTO_ENHANCER_QUEUE_MEMORY_FREE_MIN_MB = Math.max(
+  0,
+  Number(process.env.PHOTO_ENHANCER_QUEUE_MEMORY_FREE_MIN_MB || 128),
+);
+const PHOTO_ENHANCER_QUEUE_LARGE_FILE_BYTES = Math.max(
+  PHOTO_ENHANCER_R2_ANALYZE_BUFFER_MAX_BYTES,
+  Number(process.env.PHOTO_ENHANCER_QUEUE_LARGE_FILE_BYTES || 250 * 1024 * 1024),
+);
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -147,6 +175,17 @@ type PhotoEnhancerSettings = {
   sharpness: number;
   denoising: number;
   faceEnhancement: number;
+  modelPreference: string;
+  gfpganQuality: number;
+  codeformerFidelity: number;
+  realesrganScale: number;
+  swinir: boolean;
+  bsrgan: boolean;
+  diffbir: boolean;
+  lamaInpaint: boolean;
+  faceOnlyCrop: boolean;
+  preserveBackground: boolean;
+  skinTextureGuard: number;
 };
 
 type PhotoEnhancerSavedFile = {
@@ -180,6 +219,69 @@ type PhotoEnhancerTelemetryEvent = {
   processingMs: number;
   outputMimeType?: string | null;
   error?: string | null;
+};
+
+type PhotoEnhancerJobStatus =
+  | "queued"
+  | "running"
+  | "paused"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+type PhotoEnhancerJobTimelineEvent = {
+  id: string;
+  timestamp: string;
+  type:
+    | "created"
+    | "queued"
+    | "started"
+    | "progress"
+    | "completed"
+    | "failed"
+    | "retry"
+    | "paused"
+    | "resumed"
+    | "cancelled";
+  message: string;
+  details?: Record<string, unknown>;
+};
+
+type PhotoEnhancerQueuedJob = {
+  id: string;
+  status: PhotoEnhancerJobStatus;
+  priority: number;
+  owner: string;
+  userId: string;
+  projectId: string;
+  folderId: string | null;
+  source: PhotoEnhancerR2Source;
+  preset: string;
+  settings: PhotoEnhancerSettings;
+  progress: number;
+  createdAt: string;
+  updatedAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+  expiresAt: string;
+  attempts: number;
+  maxAttempts: number;
+  retryHistory: Array<{ attempt: number; timestamp: string; reason: string }>;
+  failureReason: string | null;
+  timeline: PhotoEnhancerJobTimelineEvent[];
+  auditLog: PhotoEnhancerJobTimelineEvent[];
+  artifacts: Array<{
+    id: string;
+    type: "enhanced-image" | "manifest" | "source";
+    mimeType: string | null;
+    size: number | null;
+    url: string | null;
+    checksum: string | null;
+  }>;
+  outputManifest: Record<string, unknown> | null;
+  checksum: string | null;
+  cancelled: boolean;
+  result: Record<string, unknown> | null;
 };
 
 type PhotoEnhancerDuplicateIndexEntry = {
@@ -291,6 +393,9 @@ const photoEnhancerTelemetry = {
 };
 
 const photoEnhancerRawFormatVerifications = new Map<string, PhotoEnhancerRawFormatVerification>();
+const photoEnhancerJobs = new Map<string, PhotoEnhancerQueuedJob>();
+let photoEnhancerQueuePaused = false;
+let photoEnhancerQueueWakeupScheduled = false;
 
 function incrementCounter(map: Map<string, number>, key: string | null | undefined) {
   if (!key) return;
@@ -382,6 +487,382 @@ function summarizePhotoEnhancerTelemetry() {
   };
 }
 
+function addPhotoEnhancerJobEvent(
+  job: PhotoEnhancerQueuedJob,
+  type: PhotoEnhancerJobTimelineEvent["type"],
+  message: string,
+  details?: Record<string, unknown>,
+) {
+  const event: PhotoEnhancerJobTimelineEvent = {
+    id: crypto.randomUUID(),
+    timestamp: new Date().toISOString(),
+    type,
+    message,
+    ...(details ? { details } : {}),
+  };
+  job.timeline.unshift(event);
+  job.auditLog.unshift(event);
+  job.timeline = job.timeline.slice(0, 100);
+  job.auditLog = job.auditLog.slice(0, 200);
+  job.updatedAt = event.timestamp;
+}
+
+function publicPhotoEnhancerJob(job: PhotoEnhancerQueuedJob) {
+  return {
+    id: job.id,
+    status: job.status,
+    priority: job.priority,
+    owner: job.owner,
+    userId: job.userId,
+    projectId: job.projectId,
+    folderId: job.folderId,
+    source: {
+      bucket: job.source.bucket,
+      key: job.source.key,
+      fileName: job.source.fileName,
+      mimeType: job.source.mimeType,
+      size: job.source.size,
+      originalHash: job.source.originalHash || null,
+    },
+    preset: job.preset,
+    settings: job.settings,
+    progress: job.progress,
+    createdAt: job.createdAt,
+    updatedAt: job.updatedAt,
+    startedAt: job.startedAt,
+    completedAt: job.completedAt,
+    expiresAt: job.expiresAt,
+    attempts: job.attempts,
+    maxAttempts: job.maxAttempts,
+    retryHistory: job.retryHistory,
+    failureReason: job.failureReason,
+    timeline: job.timeline,
+    auditLog: job.auditLog,
+    artifacts: job.artifacts,
+    outputManifest: job.outputManifest,
+    checksum: job.checksum,
+    result: job.result,
+  };
+}
+
+function prunePhotoEnhancerJobs() {
+  const now = Date.now();
+  for (const [id, job] of photoEnhancerJobs) {
+    if (["running", "queued", "paused"].includes(job.status)) continue;
+    if (Date.parse(job.expiresAt) <= now) {
+      photoEnhancerJobs.delete(id);
+    }
+  }
+
+  const overflow = photoEnhancerJobs.size - PHOTO_ENHANCER_QUEUE_MAX_JOBS;
+  if (overflow <= 0) return;
+  const deletable = [...photoEnhancerJobs.values()]
+    .filter((job) => !["running", "queued", "paused"].includes(job.status))
+    .sort((left, right) => Date.parse(left.updatedAt) - Date.parse(right.updatedAt))
+    .slice(0, overflow);
+  for (const job of deletable) photoEnhancerJobs.delete(job.id);
+}
+
+function getPhotoEnhancerQueueRuntime() {
+  const jobs = [...photoEnhancerJobs.values()];
+  const running = jobs.filter((job) => job.status === "running");
+  const queued = jobs.filter((job) => job.status === "queued");
+  const paused = jobs.filter((job) => job.status === "paused");
+  const completed = jobs.filter((job) => job.status === "completed");
+  const failed = jobs.filter((job) => job.status === "failed");
+  const cancelled = jobs.filter((job) => job.status === "cancelled");
+  const freeMemoryMb = Math.round(os.freemem() / 1024 / 1024);
+  return {
+    paused: photoEnhancerQueuePaused,
+    counts: {
+      total: jobs.length,
+      queued: queued.length,
+      running: running.length,
+      paused: paused.length,
+      completed: completed.length,
+      failed: failed.length,
+      cancelled: cancelled.length,
+    },
+    concurrency: {
+      global: PHOTO_ENHANCER_QUEUE_CONCURRENCY,
+      perUser: PHOTO_ENHANCER_QUEUE_PER_USER_CONCURRENCY,
+      perProject: PHOTO_ENHANCER_QUEUE_PER_PROJECT_CONCURRENCY,
+    },
+    memory: {
+      freeMb: freeMemoryMb,
+      minFreeMb: PHOTO_ENHANCER_QUEUE_MEMORY_FREE_MIN_MB,
+      canStart: freeMemoryMb >= PHOTO_ENHANCER_QUEUE_MEMORY_FREE_MIN_MB,
+      policy: "memory-aware queue gate",
+    },
+    fileSizePolicy: {
+      largeFileBytes: PHOTO_ENHANCER_QUEUE_LARGE_FILE_BYTES,
+      ordering: "priority desc, smaller files first within same priority",
+    },
+    expiryPolicy: {
+      ttlMs: PHOTO_ENHANCER_QUEUE_JOB_TTL_MS,
+      retention: "process-memory until ttl or max job cap",
+    },
+  };
+}
+
+function canStartPhotoEnhancerJob(job: PhotoEnhancerQueuedJob) {
+  if (photoEnhancerQueuePaused || job.cancelled || job.status !== "queued") return false;
+  if (os.freemem() / 1024 / 1024 < PHOTO_ENHANCER_QUEUE_MEMORY_FREE_MIN_MB) return false;
+  const running = [...photoEnhancerJobs.values()].filter((item) => item.status === "running");
+  if (running.length >= PHOTO_ENHANCER_QUEUE_CONCURRENCY) return false;
+  if (running.filter((item) => item.userId === job.userId).length >= PHOTO_ENHANCER_QUEUE_PER_USER_CONCURRENCY) {
+    return false;
+  }
+  if (
+    running.filter((item) => item.projectId === job.projectId).length >= PHOTO_ENHANCER_QUEUE_PER_PROJECT_CONCURRENCY
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function schedulePhotoEnhancerQueue() {
+  if (photoEnhancerQueueWakeupScheduled) return;
+  photoEnhancerQueueWakeupScheduled = true;
+  setImmediate(() => {
+    photoEnhancerQueueWakeupScheduled = false;
+    prunePhotoEnhancerJobs();
+    if (photoEnhancerQueuePaused) return;
+    const runnable = [...photoEnhancerJobs.values()]
+      .filter((job) => job.status === "queued" && !job.cancelled)
+      .sort((left, right) => {
+        if (right.priority !== left.priority) return right.priority - left.priority;
+        const leftLargePenalty = left.source.size >= PHOTO_ENHANCER_QUEUE_LARGE_FILE_BYTES ? 1 : 0;
+        const rightLargePenalty = right.source.size >= PHOTO_ENHANCER_QUEUE_LARGE_FILE_BYTES ? 1 : 0;
+        if (leftLargePenalty !== rightLargePenalty) return leftLargePenalty - rightLargePenalty;
+        if (left.source.size !== right.source.size) return left.source.size - right.source.size;
+        return Date.parse(left.createdAt) - Date.parse(right.createdAt);
+      });
+    for (const job of runnable) {
+      if (!canStartPhotoEnhancerJob(job)) continue;
+      void runPhotoEnhancerQueuedJob(job);
+    }
+  });
+}
+
+async function buildPhotoEnhancerQueuedJobFile(params: {
+  job: PhotoEnhancerQueuedJob;
+  downloaded: Awaited<ReturnType<typeof downloadPhotoEnhancerR2ObjectToTemp>>;
+}): Promise<Express.Multer.File> {
+  const sourceMetaFile = {
+    originalname: params.job.source.fileName,
+    mimetype: params.downloaded.mimeType || params.job.source.mimeType,
+    size: params.downloaded.size,
+  };
+
+  if (params.downloaded.size <= PHOTO_ENHANCER_R2_ANALYZE_BUFFER_MAX_BYTES) {
+    return makeMulterMemoryFile({
+      originalname: params.job.source.fileName,
+      mimetype: sourceMetaFile.mimetype,
+      size: params.downloaded.size,
+      buffer: await fs.readFile(params.downloaded.inputPath),
+    });
+  }
+
+  if (isCameraRawFile(sourceMetaFile)) {
+    const preview = await extractEmbeddedPreviewImageFromPath(sourceMetaFile, params.downloaded.inputPath);
+    if (preview) {
+      addPhotoEnhancerJobEvent(params.job, "progress", "Large RAW source processed from embedded preview.", {
+        previewSize: preview.size,
+      });
+      return preview;
+    }
+  }
+
+  throw new Error("photo_enhancer_large_raster_requires_external_worker");
+}
+
+async function runPhotoEnhancerQueuedJob(job: PhotoEnhancerQueuedJob) {
+  if (!canStartPhotoEnhancerJob(job)) return;
+  job.status = "running";
+  job.startedAt = new Date().toISOString();
+  job.attempts += 1;
+  job.progress = Math.max(job.progress, 5);
+  addPhotoEnhancerJobEvent(job, "started", `Started attempt ${job.attempts}.`, {
+    sourceBytes: job.source.size,
+    modelPreference: job.settings.modelPreference,
+  });
+
+  let downloaded: Awaited<ReturnType<typeof downloadPhotoEnhancerR2ObjectToTemp>> | null = null;
+  const startedAt = Date.now();
+  try {
+    if (job.cancelled) throw new Error("job_cancelled");
+    downloaded = await downloadPhotoEnhancerR2ObjectToTemp({
+      bucket: job.source.bucket,
+      key: job.source.key,
+      fileName: job.source.fileName,
+      expectedMimeType: job.source.mimeType,
+      expectedSize: job.source.size,
+    });
+    job.source.originalHash = downloaded.originalHash;
+    job.progress = 25;
+    addPhotoEnhancerJobEvent(job, "progress", "Source downloaded from R2.", {
+      bytes: downloaded.size,
+      originalHash: downloaded.originalHash,
+    });
+
+    if (job.cancelled) throw new Error("job_cancelled");
+    const processFile = await buildPhotoEnhancerQueuedJobFile({ job, downloaded });
+    job.progress = 45;
+    addPhotoEnhancerJobEvent(job, "progress", "Source prepared for enhancement.", {
+      mimeType: processFile.mimetype,
+      bytes: processFile.size,
+    });
+
+    const enhancementResult = await buildPhotoEnhancerEnhancementPayload({
+      file: processFile,
+      preset: job.preset,
+      settings: job.settings,
+    });
+    if (!enhancementResult.ok) {
+      throw new Error(enhancementResult.error || conversionErrorMessage(enhancementResult.raw));
+    }
+    if (job.cancelled) throw new Error("job_cancelled");
+
+    const enhancedImageUrl = readString(enhancementResult.payload.enhancedImageUrl) || "";
+    const decoded = enhancedImageUrl ? dataUrlToBuffer(enhancedImageUrl) : null;
+    let savedFile: PhotoEnhancerSavedFile | null = null;
+    let checksum: string | null = null;
+    if (decoded) {
+      checksum = crypto.createHash("sha256").update(decoded.buffer).digest("hex");
+      savedFile = await persistEnhancedBuffer({
+        projectId: job.projectId,
+        folderId: job.folderId,
+        buffer: decoded.buffer,
+        mimeType: decoded.mimeType,
+        preset: job.preset,
+        settings: job.settings,
+        namePrefix: "photo-enhancer-job",
+      });
+    }
+
+    const processingMs = Date.now() - startedAt;
+    job.status = "completed";
+    job.progress = 100;
+    job.completedAt = new Date().toISOString();
+    job.failureReason = null;
+    job.checksum = checksum;
+    job.artifacts = [
+      {
+        id: `${job.id}:source`,
+        type: "source",
+        mimeType: job.source.mimeType,
+        size: job.source.size,
+        url: null,
+        checksum: downloaded.originalHash,
+      },
+      ...(savedFile
+        ? [
+            {
+              id: savedFile.id,
+              type: "enhanced-image" as const,
+              mimeType: savedFile.mimeType,
+              size: savedFile.size,
+              url: savedFile.downloadUrl,
+              checksum,
+            },
+          ]
+        : []),
+    ];
+    job.outputManifest = {
+      jobId: job.id,
+      source: job.source,
+      preset: job.preset,
+      settings: job.settings,
+      modelUsed: enhancementResult.modelUsed,
+      inferenceMode: enhancementResult.inferenceMode,
+      outputMimeType: enhancementResult.outputMimeType,
+      processingMs,
+      checksum,
+      artifacts: job.artifacts,
+    };
+    job.result = {
+      ...enhancementResult.payload,
+      ...(savedFile ? { savedFile: toPublicSavedFile(savedFile), enhancedImageUrl: savedFile.downloadUrl } : {}),
+      source: job.source,
+      processingMs,
+      jobId: job.id,
+      checksum,
+    };
+    addPhotoEnhancerJobEvent(job, "completed", "Enhancement completed.", {
+      modelUsed: enhancementResult.modelUsed,
+      inferenceMode: enhancementResult.inferenceMode,
+      processingMs,
+      checksum,
+    });
+    trackPhotoEnhancerEvent({
+      route: "batch",
+      success: true,
+      fileName: job.source.fileName,
+      sourceExtension: getUploadExtension({ originalname: job.source.fileName }),
+      sourceMimeType: job.source.mimeType,
+      raw: Boolean(enhancementResult.prepared.raw.raw),
+      heic: Boolean(enhancementResult.prepared.raw.heic),
+      rawConverter: readString(enhancementResult.prepared.raw.converter),
+      preset: job.preset,
+      modelUsed: enhancementResult.modelUsed,
+      inferenceMode: `queue:${enhancementResult.inferenceMode}`,
+      processingMs,
+      outputMimeType: enhancementResult.outputMimeType,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const processingMs = Date.now() - startedAt;
+    if (job.cancelled || message === "job_cancelled") {
+      job.status = "cancelled";
+      job.progress = Math.min(job.progress, 99);
+      job.completedAt = new Date().toISOString();
+      job.failureReason = "Cancelled by user.";
+      addPhotoEnhancerJobEvent(job, "cancelled", "Job was cancelled.", { processingMs });
+    } else if (job.attempts < job.maxAttempts) {
+      job.status = "queued";
+      job.progress = 0;
+      job.failureReason = message;
+      job.retryHistory.push({
+        attempt: job.attempts,
+        timestamp: new Date().toISOString(),
+        reason: message,
+      });
+      addPhotoEnhancerJobEvent(job, "retry", "Job failed and was queued for retry.", {
+        attempt: job.attempts,
+        reason: message,
+      });
+    } else {
+      job.status = "failed";
+      job.progress = 0;
+      job.completedAt = new Date().toISOString();
+      job.failureReason = message;
+      addPhotoEnhancerJobEvent(job, "failed", "Job failed.", {
+        attempt: job.attempts,
+        reason: message,
+        processingMs,
+      });
+    }
+    trackPhotoEnhancerEvent({
+      route: "batch",
+      success: false,
+      fileName: job.source.fileName,
+      sourceExtension: getUploadExtension({ originalname: job.source.fileName }),
+      sourceMimeType: job.source.mimeType,
+      raw: isCameraRawFile({ originalname: job.source.fileName, mimetype: job.source.mimeType }),
+      heic: isHeicFile({ originalname: job.source.fileName, mimetype: job.source.mimeType }),
+      preset: job.preset,
+      processingMs,
+      error: message,
+    });
+  } finally {
+    if (downloaded?.tempDir) {
+      await fs.rm(downloaded.tempDir, { recursive: true, force: true }).catch(() => undefined);
+    }
+    schedulePhotoEnhancerQueue();
+  }
+}
+
 function normalizeRawExtension(value: string | null | undefined): string {
   if (!value) return "";
   const normalized = value.trim().toLowerCase();
@@ -470,6 +951,17 @@ const defaultSettings: PhotoEnhancerSettings = {
   sharpness: 0,
   denoising: 50,
   faceEnhancement: 75,
+  modelPreference: "auto",
+  gfpganQuality: 75,
+  codeformerFidelity: 65,
+  realesrganScale: 2,
+  swinir: false,
+  bsrgan: false,
+  diffbir: false,
+  lamaInpaint: false,
+  faceOnlyCrop: false,
+  preserveBackground: true,
+  skinTextureGuard: 70,
 };
 
 const presetSettings: Record<string, Partial<PhotoEnhancerSettings>> = {
@@ -481,6 +973,9 @@ const presetSettings: Record<string, Partial<PhotoEnhancerSettings>> = {
     sharpness: 12,
     denoising: 45,
     faceEnhancement: 85,
+    gfpganQuality: 82,
+    codeformerFidelity: 70,
+    skinTextureGuard: 82,
   },
   wedding: {
     brightness: 5,
@@ -489,6 +984,9 @@ const presetSettings: Record<string, Partial<PhotoEnhancerSettings>> = {
     sharpness: 10,
     denoising: 40,
     faceEnhancement: 80,
+    gfpganQuality: 78,
+    codeformerFidelity: 68,
+    preserveBackground: true,
   },
   landscape: { contrast: 12, saturation: 16, sharpness: 18, denoising: 25 },
   product: { brightness: 8, contrast: 10, saturation: 6, sharpness: 20 },
@@ -693,6 +1191,30 @@ function isAllowedPhotoEnhancerR2Object(bucket: string | null | undefined, key: 
   );
 }
 
+function readPhotoEnhancerR2Source(value: unknown, fallback: Record<string, unknown> = {}): PhotoEnhancerR2Source | null {
+  const sourceRecord = parseJsonObject(value);
+  const bucket = readString(sourceRecord.bucket) || readString(fallback.bucket);
+  const key = readString(sourceRecord.key) || readString(fallback.key);
+  const fileName = readString(sourceRecord.fileName) || readString(fallback.fileName) || "upload.raw";
+  const mimeType =
+    readString(sourceRecord.mimeType) ||
+    readString(sourceRecord.contentType) ||
+    readString(fallback.mimeType) ||
+    readString(fallback.contentType) ||
+    "application/octet-stream";
+  const size = readNumber(sourceRecord.size) || readNumber(fallback.size) || 0;
+  if (!bucket || !key || !size) return null;
+  return {
+    bucket,
+    key,
+    fileName,
+    mimeType,
+    size,
+    uploadId: readString(sourceRecord.uploadId) || null,
+    originalHash: readString(sourceRecord.originalHash) || null,
+  };
+}
+
 function makeMulterMemoryFile(params: {
   originalname: string;
   mimetype: string;
@@ -796,11 +1318,30 @@ function normalizeSettings(
   for (const key of Object.keys(defaultSettings) as Array<
     keyof PhotoEnhancerSettings
   >) {
+    if (typeof merged[key] === "boolean" || key === "modelPreference") continue;
     const value = readNumber(raw[key]);
     if (value !== null) {
-      merged[key] = value;
+      (merged as Record<string, unknown>)[key] = value;
     }
   }
+
+  const modelPreference = readString(raw.modelPreference) || readString(raw.model) || merged.modelPreference;
+  const normalizedModelPreference = [
+    "auto",
+    "sharp",
+    "gfpgan",
+    "codeformer",
+    "realesrgan",
+    "swinir",
+    "bsrgan",
+    "diffbir",
+    "lama",
+  ].includes(modelPreference)
+    ? modelPreference
+    : "auto";
+
+  const readBooleanOption = (key: string, fallback: boolean) =>
+    typeof raw[key] === "boolean" ? Boolean(raw[key]) : fallback;
 
   return {
     brightness: clampNumber(merged.brightness, -100, 100),
@@ -809,6 +1350,19 @@ function normalizeSettings(
     sharpness: clampNumber(merged.sharpness, -100, 100),
     denoising: clampNumber(merged.denoising, 0, 100),
     faceEnhancement: clampNumber(merged.faceEnhancement, 0, 100),
+    modelPreference: normalizedModelPreference,
+    gfpganQuality: clampNumber(merged.gfpganQuality, 0, 100),
+    codeformerFidelity: clampNumber(merged.codeformerFidelity, 0, 100),
+    realesrganScale: [2, 3, 4].includes(Math.round(merged.realesrganScale))
+      ? Math.round(merged.realesrganScale)
+      : 2,
+    swinir: readBooleanOption("swinir", Boolean(merged.swinir)),
+    bsrgan: readBooleanOption("bsrgan", Boolean(merged.bsrgan)),
+    diffbir: readBooleanOption("diffbir", Boolean(merged.diffbir)),
+    lamaInpaint: readBooleanOption("lamaInpaint", Boolean(merged.lamaInpaint)),
+    faceOnlyCrop: readBooleanOption("faceOnlyCrop", Boolean(merged.faceOnlyCrop)),
+    preserveBackground: readBooleanOption("preserveBackground", Boolean(merged.preserveBackground)),
+    skinTextureGuard: clampNumber(merged.skinTextureGuard, 0, 100),
   };
 }
 
@@ -2534,7 +3088,11 @@ async function buildPhotoEnhancerEnhancementPayload(params: {
     ok: true as const,
     prepared,
     processFile,
-    modelUsed: shouldAttemptGfpgan ? "sharp-fallback" : "sharp",
+    modelUsed: shouldAttemptGfpgan
+      ? "sharp-fallback"
+      : params.settings.modelPreference === "auto" || params.settings.modelPreference === "sharp"
+        ? "sharp"
+        : `${params.settings.modelPreference}-sharp-fallback`,
     inferenceMode: "local-sharp",
     outputMimeType: output.mimeType,
     payload: {
@@ -2544,7 +3102,11 @@ async function buildPhotoEnhancerEnhancementPayload(params: {
       outputUrl: enhancedImageUrl,
       preset: params.preset,
       settings: params.settings,
-      modelUsed: shouldAttemptGfpgan ? "sharp-fallback" : "sharp",
+      modelUsed: shouldAttemptGfpgan
+        ? "sharp-fallback"
+        : params.settings.modelPreference === "auto" || params.settings.modelPreference === "sharp"
+          ? "sharp"
+          : `${params.settings.modelPreference}-sharp-fallback`,
       inferenceMode: "local-sharp",
       models: { gfpgan },
       raw: prepared.raw,
@@ -2558,6 +3120,8 @@ async function buildPhotoEnhancerEnhancementPayload(params: {
 }
 
 function shouldUseGfpgan(preset: string, settings: PhotoEnhancerSettings): boolean {
+  if (settings.modelPreference === "sharp") return false;
+  if (settings.modelPreference === "gfpgan") return true;
   return (
     settings.faceEnhancement > 0 ||
     ["portrait", "wedding", "studio"].includes(preset)
@@ -2591,6 +3155,15 @@ async function runGfpganService(params: {
         mimeType: params.file.mimetype,
         preset: params.preset,
         settings: params.settings,
+        controls: {
+          quality: params.settings.gfpganQuality,
+          codeformerFidelity: params.settings.codeformerFidelity,
+          realesrganScale: params.settings.realesrganScale,
+          faceOnlyCrop: params.settings.faceOnlyCrop,
+          preserveBackground: params.settings.preserveBackground,
+          skinTextureGuard: params.settings.skinTextureGuard,
+          requestedModel: params.settings.modelPreference,
+        },
         model: {
           id: params.model.id,
           r2Key: params.model.r2Key,
@@ -2806,7 +3379,9 @@ async function enhanceUploadedFile(params: {
     mimeType: output.mimeType,
     modelUsed: shouldUseGfpgan(params.preset, params.settings)
       ? "sharp-fallback"
-      : "sharp",
+      : params.settings.modelPreference === "auto" || params.settings.modelPreference === "sharp"
+        ? "sharp"
+        : `${params.settings.modelPreference}-sharp-fallback`,
     inferenceMode: "local-sharp",
     metadata: output.metadata,
     raw: prepared.raw,
@@ -3157,6 +3732,48 @@ export function createPhotoEnhancerRouter() {
         folderNames: getPhotoEnhancerDriveFolderNames(),
         requiredFolders: PHOTO_ENHANCER_DRIVE_STRUCTURE.filter((folder) => folder.required).map((folder) => folder.name),
       },
+      queue: {
+        ...getPhotoEnhancerQueueRuntime(),
+        capabilities: [
+          "server-side batch queue",
+          "retry queue",
+          "pause batch",
+          "resume batch",
+          "cancel batch",
+          "priority queue",
+          "per-user concurrency",
+          "per-project concurrency",
+          "memory-aware queue",
+          "file-size-aware queue",
+          "job audit log",
+          "job timeline",
+          "job failure reason",
+          "job retry history",
+          "job artifacts",
+          "job output manifest",
+          "job checksum",
+          "job owner",
+          "job project binding",
+          "job expiry policy",
+        ],
+      },
+      processingOptions: {
+        modelPreference: ["auto", "sharp", "gfpgan", "codeformer", "realesrgan", "swinir", "bsrgan", "diffbir", "lama"],
+        gfpganQuality: { min: 0, max: 100, default: defaultSettings.gfpganQuality },
+        codeformerFidelity: { min: 0, max: 100, default: defaultSettings.codeformerFidelity },
+        realesrganScale: { values: [2, 3, 4], default: defaultSettings.realesrganScale },
+        modes: {
+          swinir: true,
+          bsrgan: true,
+          diffbir: true,
+          lamaInpaint: true,
+          faceOnlyCrop: true,
+          preserveBackground: true,
+          skinTextureGuard: { min: 0, max: 100, default: defaultSettings.skinTextureGuard },
+        },
+        executionNote:
+          "GFPGAN uses the configured runner when available. Other advanced models are exposed as controlled preferences and fall back safely until their runners are connected.",
+      },
       observability: summarizePhotoEnhancerTelemetry(),
       improvements: {
         total: improvementBacklog.length,
@@ -3216,6 +3833,7 @@ export function createPhotoEnhancerRouter() {
         raw: runtimeSupport.raw,
         metadata: runtimeSupport.metadata,
       },
+      queue: getPhotoEnhancerQueueRuntime(),
     });
   });
 
@@ -3290,6 +3908,221 @@ export function createPhotoEnhancerRouter() {
       total: improvements.length,
       improvements,
     });
+  });
+
+  router.get("/jobs", (req, res) => {
+    prunePhotoEnhancerJobs();
+    const projectId = readString(req.query.projectId);
+    const status = readString(req.query.status);
+    const owner = readString(req.query.owner);
+    const limit = clampNumber(readNumber(req.query.limit) || 50, 1, 200);
+    const jobs = [...photoEnhancerJobs.values()]
+      .filter((job) => !projectId || job.projectId === projectId)
+      .filter((job) => !status || job.status === status)
+      .filter((job) => !owner || job.owner === owner || job.userId === owner)
+      .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))
+      .slice(0, limit)
+      .map(publicPhotoEnhancerJob);
+    res.json({
+      success: true,
+      queue: getPhotoEnhancerQueueRuntime(),
+      jobs,
+    });
+  });
+
+  router.post("/jobs", async (req, res) => {
+    const body = parseJsonObject(req.body);
+    const source = readPhotoEnhancerR2Source(body.source || body, body);
+    if (!source) {
+      return res.status(400).json({ success: false, error: "r2_source_required" });
+    }
+    if (!isAllowedPhotoEnhancerR2Object(source.bucket, source.key)) {
+      return res.status(403).json({ success: false, error: "photo_enhancer_r2_object_not_allowed" });
+    }
+    if (!isSupportedPhotoUpload({ originalname: source.fileName, mimetype: source.mimeType })) {
+      return res.status(415).json({ success: false, error: "unsupported_photo_upload_type" });
+    }
+
+    const preset = readString(body.preset) || "auto";
+    const projectId = readString(body.projectId) || "photo-enhancer";
+    const now = new Date();
+    const job: PhotoEnhancerQueuedJob = {
+      id: crypto.randomUUID(),
+      status: "queued",
+      priority: clampNumber(readNumber(body.priority) || 0, 0, 100),
+      owner:
+        readString(body.owner) ||
+        readString(req.headers["x-user-email"]) ||
+        readString(req.headers["x-user-id"]) ||
+        "unknown",
+      userId:
+        readString(body.userId) ||
+        readString(req.headers["x-user-id"]) ||
+        readString(req.headers["x-user-email"]) ||
+        "anonymous",
+      projectId,
+      folderId: readString(body.folderId),
+      source,
+      preset,
+      settings: normalizeSettings(body.settings, preset),
+      progress: 0,
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+      startedAt: null,
+      completedAt: null,
+      expiresAt: new Date(now.getTime() + PHOTO_ENHANCER_QUEUE_JOB_TTL_MS).toISOString(),
+      attempts: 0,
+      maxAttempts: clampNumber(readNumber(body.maxAttempts) || 2, 1, 5),
+      retryHistory: [],
+      failureReason: null,
+      timeline: [],
+      auditLog: [],
+      artifacts: [
+        {
+          id: "source",
+          type: "source",
+          mimeType: source.mimeType,
+          size: source.size,
+          url: null,
+          checksum: source.originalHash || null,
+        },
+      ],
+      outputManifest: null,
+      checksum: null,
+      cancelled: false,
+      result: null,
+    };
+    addPhotoEnhancerJobEvent(job, "created", "Job created.", {
+      projectId: job.projectId,
+      owner: job.owner,
+      bytes: source.size,
+    });
+    addPhotoEnhancerJobEvent(job, "queued", "Job queued for server-side enhancement.", {
+      priority: job.priority,
+      queuePaused: photoEnhancerQueuePaused,
+    });
+    photoEnhancerJobs.set(job.id, job);
+    prunePhotoEnhancerJobs();
+    schedulePhotoEnhancerQueue();
+    res.status(202).json({
+      success: true,
+      queue: getPhotoEnhancerQueueRuntime(),
+      job: publicPhotoEnhancerJob(job),
+    });
+  });
+
+  router.get("/jobs/:jobId", (req, res) => {
+    const job = photoEnhancerJobs.get(req.params.jobId);
+    if (!job) {
+      return res.status(404).json({ success: false, error: "photo_enhancer_job_not_found" });
+    }
+    res.json({
+      success: true,
+      queue: getPhotoEnhancerQueueRuntime(),
+      job: publicPhotoEnhancerJob(job),
+    });
+  });
+
+  router.post("/jobs/:jobId/cancel", (req, res) => {
+    const job = photoEnhancerJobs.get(req.params.jobId);
+    if (!job) {
+      return res.status(404).json({ success: false, error: "photo_enhancer_job_not_found" });
+    }
+    const previousStatus = job.status;
+    job.cancelled = true;
+    if (job.status === "queued" || job.status === "paused") {
+      job.status = "cancelled";
+      job.completedAt = new Date().toISOString();
+      job.progress = 0;
+    }
+    addPhotoEnhancerJobEvent(job, "cancelled", "Cancel requested.", {
+      previousStatus,
+    });
+    res.json({
+      success: true,
+      queue: getPhotoEnhancerQueueRuntime(),
+      job: publicPhotoEnhancerJob(job),
+    });
+  });
+
+  router.post("/jobs/:jobId/pause", (req, res) => {
+    const job = photoEnhancerJobs.get(req.params.jobId);
+    if (!job) {
+      return res.status(404).json({ success: false, error: "photo_enhancer_job_not_found" });
+    }
+    if (job.status === "queued") {
+      job.status = "paused";
+      addPhotoEnhancerJobEvent(job, "paused", "Job paused before processing.");
+    }
+    res.json({
+      success: true,
+      queue: getPhotoEnhancerQueueRuntime(),
+      job: publicPhotoEnhancerJob(job),
+    });
+  });
+
+  router.post("/jobs/:jobId/resume", (req, res) => {
+    const job = photoEnhancerJobs.get(req.params.jobId);
+    if (!job) {
+      return res.status(404).json({ success: false, error: "photo_enhancer_job_not_found" });
+    }
+    if (job.status === "paused") {
+      job.status = "queued";
+      addPhotoEnhancerJobEvent(job, "resumed", "Job resumed.");
+      schedulePhotoEnhancerQueue();
+    }
+    res.json({
+      success: true,
+      queue: getPhotoEnhancerQueueRuntime(),
+      job: publicPhotoEnhancerJob(job),
+    });
+  });
+
+  router.post("/jobs/:jobId/retry", (req, res) => {
+    const job = photoEnhancerJobs.get(req.params.jobId);
+    if (!job) {
+      return res.status(404).json({ success: false, error: "photo_enhancer_job_not_found" });
+    }
+    if (job.status !== "failed" && job.status !== "cancelled") {
+      return res.status(409).json({ success: false, error: "photo_enhancer_job_not_retryable" });
+    }
+    job.status = "queued";
+    job.cancelled = false;
+    job.progress = 0;
+    job.completedAt = null;
+    job.failureReason = null;
+    job.maxAttempts = Math.max(job.maxAttempts, job.attempts + 1);
+    addPhotoEnhancerJobEvent(job, "retry", "Manual retry queued.", {
+      attempts: job.attempts,
+      maxAttempts: job.maxAttempts,
+    });
+    schedulePhotoEnhancerQueue();
+    res.json({
+      success: true,
+      queue: getPhotoEnhancerQueueRuntime(),
+      job: publicPhotoEnhancerJob(job),
+    });
+  });
+
+  router.post("/queue/pause", (_req, res) => {
+    photoEnhancerQueuePaused = true;
+    for (const job of photoEnhancerJobs.values()) {
+      if (job.status === "queued") {
+        addPhotoEnhancerJobEvent(job, "paused", "Queue paused.");
+      }
+    }
+    res.json({ success: true, queue: getPhotoEnhancerQueueRuntime() });
+  });
+
+  router.post("/queue/resume", (_req, res) => {
+    photoEnhancerQueuePaused = false;
+    for (const job of photoEnhancerJobs.values()) {
+      if (job.status === "queued") {
+        addPhotoEnhancerJobEvent(job, "resumed", "Queue resumed.");
+      }
+    }
+    schedulePhotoEnhancerQueue();
+    res.json({ success: true, queue: getPhotoEnhancerQueueRuntime() });
   });
 
   router.post("/uploads/multipart", async (req, res) => {
