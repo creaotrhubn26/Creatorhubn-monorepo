@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync, statSync } from 'fs';
 import { Buffer } from 'buffer';
+import { execSync } from 'node:child_process';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,6 +18,53 @@ const backendProxyTarget =
   process.env.VITE_API_PROXY_TARGET ||
   process.env.API_PROXY_TARGET ||
   'http://localhost:3003';
+
+const readGitValue = (command: string): string | null => {
+  try {
+    return execSync(command, {
+      cwd: __dirname,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim() || null;
+  } catch {
+    return null;
+  }
+};
+
+const buildInfoPlugin = (): Plugin => ({
+  name: 'creatorhub-build-info',
+  generateBundle() {
+    const gitSha =
+      process.env.VITE_BUILD_GIT_SHA ||
+      process.env.VERCEL_GIT_COMMIT_SHA ||
+      process.env.RENDER_GIT_COMMIT ||
+      readGitValue('git rev-parse HEAD');
+    const branch =
+      process.env.VITE_BUILD_BRANCH ||
+      process.env.VERCEL_GIT_COMMIT_REF ||
+      process.env.RENDER_GIT_BRANCH ||
+      readGitValue('git rev-parse --abbrev-ref HEAD');
+    const buildInfo = {
+      app: 'creatorhub-frontend',
+      surface: 'the-role-room',
+      gitSha,
+      shortSha: gitSha ? gitSha.slice(0, 7) : null,
+      branch,
+      builtAt: new Date().toISOString(),
+      source: process.env.VITE_BUILD_SOURCE || (process.env.VERCEL ? 'vercel' : 'local'),
+      vercel: {
+        env: process.env.VERCEL_ENV || null,
+        url: process.env.VERCEL_URL || null,
+      },
+    };
+
+    this.emitFile({
+      type: 'asset',
+      fileName: 'build-info.json',
+      source: `${JSON.stringify(buildInfo, null, 2)}\n`,
+    });
+  },
+});
 
 // Custom plugin to resolve @/* paths with fallback (matches tsconfig.json behavior)
 const customPathResolver = (): Plugin => {
@@ -102,6 +150,7 @@ export default defineConfig({
     global: 'globalThis',
   },
   plugins: [
+    buildInfoPlugin(),
     customPathResolver(), // Custom path resolver for @/* with fallback
     react({
       babel: {

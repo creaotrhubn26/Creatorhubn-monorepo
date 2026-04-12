@@ -10,6 +10,9 @@ e2e
 creatorhub-frontend
 output
 .playwright-cli
+.tmp-*
+client/public/creatorhub-wordmark-amber.svg
+client/public/creatorhub-wordmark-dark.png
 
 academy-dashboard*.png
 prototype-login-guest-option.png

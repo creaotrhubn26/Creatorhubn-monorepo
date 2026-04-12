@@ -58,6 +58,15 @@ Frameworks/
 *.framework/
 .wrangler/
 .npm-cache/
+.playwright-cli/
+frontend/.playwright-cli/
+frontend/playwright-report/
+frontend/test-results/
+output_*.png
+.tmp-*
+frontend/.tmp-*
+frontend/client/public/creatorhub-wordmark-amber.svg
+frontend/client/public/creatorhub-wordmark-dark.png
 *.pyc
 *.pyo
 *.pyd

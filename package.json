@@ -14,7 +14,11 @@
     "dev:frontend": "cd frontend && npm run dev",
     "dev:backend": "cd backend && npm run dev",
     "dev:all": "concurrently -n \"frontend,backend\" \"npm run dev:frontend\" \"npm run dev:backend\"",
-    "install:all": "npm install && cd frontend && npm install && cd ../backend && npm install"
+    "install:all": "npm install && cd frontend && npm install && cd ../backend && npm install",
+    "build:frontend": "npm --prefix frontend run build",
+    "build:backend": "npm --prefix backend run build",
+    "smoke:role-room:live": "node scripts/role-room-live-smoke.mjs",
+    "deploy:role-room:prod": "node scripts/deploy-role-room-prod.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"
