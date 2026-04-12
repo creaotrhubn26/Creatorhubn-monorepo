@@ -14,6 +14,7 @@ export type PhotoEnhancerModelDefinition = {
   recommendedFor: string[];
   candidateKeys: string[];
   runnerEnvKeys: string[];
+  defaultRunnerUrl?: string | null;
 };
 
 export type PhotoEnhancerModelStatus = PhotoEnhancerModelDefinition & {
@@ -63,6 +64,18 @@ export type PublicPhotoEnhancerR2Config = Omit<
   credentialsConfigured: boolean;
 };
 
+function resolveDefaultGfpganRunnerUrl(): string | null {
+  const disabled = process.env.PHOTO_ENHANCER_DISABLE_DEFAULT_GFPGAN_RUNNER === "true";
+  if (disabled) return null;
+
+  return firstNonEmpty(
+    process.env.PHOTO_ENHANCER_DEFAULT_GFPGAN_URL,
+    process.env.RENDER === "true"
+      ? "https://creatorhub-gfpgan-runner.onrender.com/enhance"
+      : undefined,
+  );
+}
+
 export const photoEnhancerModelRegistry: PhotoEnhancerModelDefinition[] = [
   {
     id: "gfpgan",
@@ -76,6 +89,7 @@ export const photoEnhancerModelRegistry: PhotoEnhancerModelDefinition[] = [
       "models/gfpgan/weights/GFPGANv1.2.pth",
     ],
     runnerEnvKeys: ["PHOTO_ENHANCER_GFPGAN_URL", "GFPGAN_SERVICE_URL"],
+    defaultRunnerUrl: resolveDefaultGfpganRunnerUrl(),
   },
   {
     id: "codeformer",
@@ -321,6 +335,15 @@ function uniqueBuckets(...values: Array<string | null | undefined>): string[] {
   );
 }
 
+export function resolvePhotoEnhancerRunnerEndpoint(
+  model: Pick<PhotoEnhancerModelDefinition, "runnerEnvKeys" | "defaultRunnerUrl">,
+): string | null {
+  return firstNonEmpty(
+    ...model.runnerEnvKeys.map((key) => process.env[key]),
+    model.defaultRunnerUrl || undefined,
+  );
+}
+
 async function probeModelRunner(endpoint: string | null): Promise<{
   healthy: boolean | null;
   reason: string | null;
@@ -334,7 +357,14 @@ async function probeModelRunner(endpoint: string | null): Promise<{
 
   const timeoutMs = Number(process.env.PHOTO_ENHANCER_RUNNER_HEALTH_TIMEOUT_MS || 1_500);
   const normalizedEndpoint = endpoint.replace(/\/+$/u, "");
-  const candidateUrls = [`${normalizedEndpoint}/health`, normalizedEndpoint];
+  const candidateUrls = new Set<string>([`${normalizedEndpoint}/health`]);
+  try {
+    const parsed = new URL(normalizedEndpoint);
+    candidateUrls.add(`${parsed.origin}/health`);
+  } catch {
+    // Keep the endpoint-local health URL for non-URL values.
+  }
+  candidateUrls.add(normalizedEndpoint);
 
   for (const url of candidateUrls) {
     const controller = new AbortController();
@@ -345,6 +375,22 @@ async function probeModelRunner(endpoint: string | null): Promise<{
         signal: controller.signal,
       });
       if (response.ok) {
+        const text = await response.text().catch(() => "");
+        if (text) {
+          try {
+            const payload = JSON.parse(text) as Record<string, unknown>;
+            const status =
+              typeof payload.status === "string" ? payload.status.toLowerCase() : null;
+            if (status && ["error", "failed", "unavailable", "unhealthy"].includes(status)) {
+              return {
+                healthy: false,
+                reason: `Runner health reported ${status}`,
+              };
+            }
+          } catch {
+            // Non-JSON 2xx health responses are accepted.
+          }
+        }
         return {
           healthy: true,
           reason: null,
@@ -373,7 +419,7 @@ async function probeModelRunner(endpoint: string | null): Promise<{
 }
 
 async function resolveRunnerStatus(model: PhotoEnhancerModelDefinition): Promise<PhotoEnhancerModelStatus["runner"]> {
-  const endpoint = firstNonEmpty(...model.runnerEnvKeys.map((key) => process.env[key]));
+  const endpoint = resolvePhotoEnhancerRunnerEndpoint(model);
   if (model.runnerEnvKeys.length === 0) {
     return {
       configured: true,

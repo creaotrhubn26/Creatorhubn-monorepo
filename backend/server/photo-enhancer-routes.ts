@@ -17,6 +17,7 @@ import {
   buildPublicPhotoEnhancerR2Config,
   photoEnhancerModelRegistry,
   resolvePhotoEnhancerModelStatuses,
+  resolvePhotoEnhancerRunnerEndpoint,
   type PhotoEnhancerModelStatus,
 } from "./photo-enhancer-capabilities.js";
 
@@ -209,13 +210,6 @@ function normalizeSettings(
   };
 }
 
-function firstNonEmpty(...values: Array<string | undefined>): string | null {
-  for (const value of values) {
-    if (typeof value === "string" && value.trim()) return value.trim();
-  }
-  return null;
-}
-
 async function resolveGfpganModelStatus(): Promise<PhotoEnhancerModelStatus> {
   const statuses = await resolvePhotoEnhancerModelStatuses();
   const gfpgan = statuses.find((model) => model.id === "gfpgan");
@@ -248,9 +242,23 @@ async function resolveGfpganModelStatus(): Promise<PhotoEnhancerModelStatus> {
         : "R2 model credentials are not configured",
     },
     runner: {
-      configured: Boolean(firstNonEmpty(process.env.PHOTO_ENHANCER_GFPGAN_URL, process.env.GFPGAN_SERVICE_URL)),
+      configured: Boolean(
+        resolvePhotoEnhancerRunnerEndpoint({
+          runnerEnvKeys: ["PHOTO_ENHANCER_GFPGAN_URL", "GFPGAN_SERVICE_URL"],
+          defaultRunnerUrl:
+            process.env.RENDER === "true"
+              ? "https://creatorhub-gfpgan-runner.onrender.com/enhance"
+              : null,
+        }),
+      ),
       healthy: null,
-      endpoint: firstNonEmpty(process.env.PHOTO_ENHANCER_GFPGAN_URL, process.env.GFPGAN_SERVICE_URL),
+      endpoint: resolvePhotoEnhancerRunnerEndpoint({
+        runnerEnvKeys: ["PHOTO_ENHANCER_GFPGAN_URL", "GFPGAN_SERVICE_URL"],
+        defaultRunnerUrl:
+          process.env.RENDER === "true"
+            ? "https://creatorhub-gfpgan-runner.onrender.com/enhance"
+            : null,
+      }),
       envKeys: ["PHOTO_ENHANCER_GFPGAN_URL", "GFPGAN_SERVICE_URL"],
       reason: "Runner health is not checked in fallback status",
     },
@@ -654,11 +662,8 @@ async function runGfpganService(params: {
   settings: PhotoEnhancerSettings;
   model: Awaited<ReturnType<typeof resolveGfpganModelStatus>>;
 }): Promise<{ enhancedImageUrl: string; modelUsed: string } | null> {
-  const endpoint = firstNonEmpty(
-    process.env.PHOTO_ENHANCER_GFPGAN_URL,
-    process.env.GFPGAN_SERVICE_URL,
-  );
-  if (!endpoint || !params.model.available) return null;
+  const endpoint = resolvePhotoEnhancerRunnerEndpoint(params.model);
+  if (!endpoint || !params.model.available || !params.model.inferenceAvailable) return null;
 
   const controller = new AbortController();
   const timeout = setTimeout(
@@ -682,6 +687,8 @@ async function runGfpganService(params: {
           id: params.model.id,
           r2Key: params.model.r2Key,
           storageType: params.model.storageType,
+          r2Bucket: params.model.weights?.bucket || params.model.r2.bucket,
+          weightsKey: params.model.weights?.key || params.model.r2Key,
         },
         imageBase64: params.file.buffer.toString("base64"),
       }),

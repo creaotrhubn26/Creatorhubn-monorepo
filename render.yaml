@@ -77,3 +77,30 @@ services:
         value: production
       - key: EVENDI_API_URL
         sync: false
+      - key: PHOTO_ENHANCER_GFPGAN_URL
+        value: https://creatorhub-gfpgan-runner.onrender.com/enhance
+  - type: web
+    name: creatorhub-gfpgan-runner
+    runtime: docker
+    repo: https://github.com/creaotrhubn26/Creatorhubn-monorepo
+    dockerfilePath: ./backend/gfpgan-runner/Dockerfile
+    dockerContext: ./backend/gfpgan-runner
+    plan: standard
+    branch: main
+    autoDeploy: true
+    healthCheckPath: /health
+    envVars:
+      - key: CLOUDFLARE_R2_ACCOUNT_ID
+        sync: false
+      - key: CLOUDFLARE_R2_ACCESS_KEY_ID
+        sync: false
+      - key: CLOUDFLARE_R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: CLOUDFLARE_R2_MODELS_BUCKETS
+        sync: false
+      - key: GFPGAN_MAX_INPUT_EDGE
+        value: "1600"
+      - key: GFPGAN_UPSCALE
+        value: "1"
+      - key: GFPGAN_JPEG_QUALITY
+        value: "95"
