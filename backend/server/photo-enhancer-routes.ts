@@ -8,6 +8,18 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { execFile, spawn } from "child_process";
 import { promisify } from "util";
+import { Readable, Transform } from "stream";
+import { pipeline } from "stream/promises";
+import {
+  AbortMultipartUploadCommand,
+  CompleteMultipartUploadCommand,
+  CreateMultipartUploadCommand,
+  GetObjectCommand,
+  HeadObjectCommand,
+  S3Client,
+  UploadPartCommand,
+} from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import {
   PHOTO_ENHANCER_DRIVE_STRUCTURE,
   PHOTO_ENHANCER_MODEL_REGISTRY_POLICY,
@@ -37,6 +49,29 @@ const execFileAsync = promisify(execFile);
 const PHOTO_ENHANCER_MAX_FILE_BYTES = Number(
   process.env.PHOTO_ENHANCER_MAX_FILE_BYTES || 150 * 1024 * 1024,
 );
+const PHOTO_ENHANCER_DIRECT_UPLOAD_MAX_BYTES = Number(
+  process.env.PHOTO_ENHANCER_DIRECT_UPLOAD_MAX_BYTES || 20 * 1024 * 1024 * 1024,
+);
+const PHOTO_ENHANCER_R2_ANALYZE_BUFFER_MAX_BYTES = Number(
+  process.env.PHOTO_ENHANCER_R2_ANALYZE_BUFFER_MAX_BYTES || PHOTO_ENHANCER_MAX_FILE_BYTES,
+);
+const PHOTO_ENHANCER_R2_ANALYZE_DOWNLOAD_MAX_BYTES = Number(
+  process.env.PHOTO_ENHANCER_R2_ANALYZE_DOWNLOAD_MAX_BYTES || 2 * 1024 * 1024 * 1024,
+);
+const PHOTO_ENHANCER_R2_PART_SIZE_BYTES = Math.max(
+  5 * 1024 * 1024,
+  Number(process.env.PHOTO_ENHANCER_R2_PART_SIZE_BYTES || 32 * 1024 * 1024),
+);
+const PHOTO_ENHANCER_R2_PART_BATCH_MAX = Math.max(
+  1,
+  Number(process.env.PHOTO_ENHANCER_R2_PART_BATCH_MAX || 64),
+);
+const PHOTO_ENHANCER_R2_SIGNED_URL_TTL_SECONDS = Number(
+  process.env.PHOTO_ENHANCER_R2_SIGNED_URL_TTL_SECONDS || 60 * 60,
+);
+const PHOTO_ENHANCER_R2_UPLOAD_PREFIX = (
+  process.env.PHOTO_ENHANCER_R2_UPLOAD_PREFIX || "photo-enhancer/uploads"
+).replace(/^\/+|\/+$/gu, "");
 const PHOTO_ENHANCER_MODEL_TIMEOUT_MS = Number(
   process.env.PHOTO_ENHANCER_MODEL_TIMEOUT_MS || 45_000,
 );
@@ -77,6 +112,25 @@ const gfpganCandidateKeys =
   photoEnhancerModelRegistry.find((model) => model.id === "gfpgan")?.candidateKeys || [
     "models/gfpgan/weights/GFPGANv1.4.pth",
   ];
+
+type PhotoEnhancerR2UploadConfig = {
+  enabled: boolean;
+  endpoint: string | null;
+  bucket: string | null;
+  accessKeyId: string | null;
+  secretAccessKey: string | null;
+  prefix: string;
+};
+
+type PhotoEnhancerR2Source = {
+  bucket: string;
+  key: string;
+  fileName: string;
+  mimeType: string;
+  size: number;
+  uploadId?: string | null;
+  originalHash?: string | null;
+};
 
 type PhotoEnhancerSettings = {
   brightness: number;
@@ -177,6 +231,8 @@ const photoEnhancerFaceApiRequiredFiles = [
 let photoEnhancerFaceApiRuntimePromise: Promise<PhotoEnhancerFaceApiRuntime> | null = null;
 let photoEnhancerFaceApiLastStatus: PhotoEnhancerFaceApiStatus | null = null;
 let photoEnhancerFaceApiQueue: Promise<unknown> = Promise.resolve();
+let photoEnhancerR2UploadClient: S3Client | null = null;
+let photoEnhancerR2UploadClientCacheKey = "";
 
 type PhotoEnhancerRawFormatRuntimeStatus =
   | "verified"
@@ -522,6 +578,194 @@ function parseJsonObject(value: unknown): Record<string, unknown> {
     }
   }
   return {};
+}
+
+function firstNonEmpty(...values: Array<string | null | undefined>): string | null {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
+}
+
+function sanitizeR2KeySegment(value: string, fallback = "file"): string {
+  const sanitized = value
+    .normalize("NFKD")
+    .replace(/[^\w.\-]+/gu, "-")
+    .replace(/-+/gu, "-")
+    .replace(/^-+|-+$/gu, "")
+    .slice(0, 160);
+  return sanitized || fallback;
+}
+
+function buildPhotoEnhancerUploadR2Config(): PhotoEnhancerR2UploadConfig {
+  const base = buildPhotoEnhancerR2Config();
+  const bucket = firstNonEmpty(
+    process.env.PHOTO_ENHANCER_R2_UPLOAD_BUCKET,
+    process.env.CLOUDFLARE_R2_UPLOAD_BUCKET,
+    process.env.R2_UPLOAD_BUCKET,
+    process.env.CLOUDFLARE_R2_BUCKET,
+    process.env.R2_BUCKET,
+    base.bucket,
+  );
+  return {
+    enabled: Boolean(base.endpoint && bucket && base.accessKeyId && base.secretAccessKey),
+    endpoint: base.endpoint,
+    bucket,
+    accessKeyId: base.accessKeyId,
+    secretAccessKey: base.secretAccessKey,
+    prefix: PHOTO_ENHANCER_R2_UPLOAD_PREFIX,
+  };
+}
+
+function getPhotoEnhancerUploadR2Client(config: PhotoEnhancerR2UploadConfig): S3Client | null {
+  if (!config.enabled || !config.endpoint || !config.accessKeyId || !config.secretAccessKey) return null;
+  const cacheKey = [config.endpoint, config.accessKeyId].join("|");
+  if (photoEnhancerR2UploadClient && photoEnhancerR2UploadClientCacheKey === cacheKey) {
+    return photoEnhancerR2UploadClient;
+  }
+
+  photoEnhancerR2UploadClient = new S3Client({
+    region: "auto",
+    endpoint: config.endpoint,
+    credentials: {
+      accessKeyId: config.accessKeyId,
+      secretAccessKey: config.secretAccessKey,
+    },
+  });
+  photoEnhancerR2UploadClientCacheKey = cacheKey;
+  return photoEnhancerR2UploadClient;
+}
+
+function calculatePhotoEnhancerR2PartSize(size: number): number {
+  const minPartSize = 5 * 1024 * 1024;
+  const requested = Math.max(minPartSize, PHOTO_ENHANCER_R2_PART_SIZE_BYTES);
+  if (!Number.isFinite(size) || size <= 0) return requested;
+  const partSizeForMaxParts = Math.ceil(size / 10_000 / minPartSize) * minPartSize;
+  return Math.max(requested, partSizeForMaxParts);
+}
+
+function buildPhotoEnhancerUploadKey(params: {
+  fileName: string;
+  projectId?: string | null;
+  contentHash?: string | null;
+}) {
+  const now = new Date();
+  const datePrefix = now.toISOString().slice(0, 10);
+  const projectSegment = sanitizeR2KeySegment(params.projectId || "unassigned", "unassigned");
+  const id = crypto.randomUUID();
+  const baseName = sanitizeR2KeySegment(path.basename(params.fileName || "upload.raw"), "upload.raw");
+  const hashSegment = params.contentHash ? sanitizeR2KeySegment(params.contentHash.slice(0, 24), "hash") : null;
+  return [
+    PHOTO_ENHANCER_R2_UPLOAD_PREFIX,
+    projectSegment,
+    datePrefix,
+    hashSegment ? `${id}-${hashSegment}` : id,
+    baseName,
+  ]
+    .filter(Boolean)
+    .join("/");
+}
+
+function isAllowedPhotoEnhancerR2Object(bucket: string | null | undefined, key: string | null | undefined) {
+  const config = buildPhotoEnhancerUploadR2Config();
+  return Boolean(
+    config.enabled &&
+      config.bucket &&
+      bucket === config.bucket &&
+      typeof key === "string" &&
+      key.startsWith(`${PHOTO_ENHANCER_R2_UPLOAD_PREFIX}/`) &&
+      !key.includes(".."),
+  );
+}
+
+function makeMulterMemoryFile(params: {
+  originalname: string;
+  mimetype: string;
+  buffer: Buffer;
+  size?: number;
+}): Express.Multer.File {
+  return {
+    fieldname: "image",
+    originalname: params.originalname,
+    encoding: "7bit",
+    mimetype: params.mimetype || "application/octet-stream",
+    size: params.size ?? params.buffer.byteLength,
+    buffer: params.buffer,
+  } as Express.Multer.File;
+}
+
+function r2BodyToReadable(body: unknown): Readable {
+  if (body instanceof Readable) return body;
+  if (body && typeof (body as { transformToWebStream?: unknown }).transformToWebStream === "function") {
+    return Readable.fromWeb((body as { transformToWebStream: () => ReadableStream }).transformToWebStream());
+  }
+  if (body && typeof (body as AsyncIterable<unknown>)[Symbol.asyncIterator] === "function") {
+    return Readable.from(body as AsyncIterable<unknown>);
+  }
+  throw new Error("r2_body_stream_unavailable");
+}
+
+async function downloadPhotoEnhancerR2ObjectToTemp(params: {
+  bucket: string;
+  key: string;
+  fileName: string;
+  expectedSize?: number | null;
+  expectedMimeType?: string | null;
+}) {
+  const config = buildPhotoEnhancerUploadR2Config();
+  const client = getPhotoEnhancerUploadR2Client(config);
+  if (!client || !config.bucket) throw new Error("photo_enhancer_r2_upload_not_configured");
+  if (!isAllowedPhotoEnhancerR2Object(params.bucket, params.key)) {
+    throw new Error("photo_enhancer_r2_object_not_allowed");
+  }
+
+  const head = await client.send(
+    new HeadObjectCommand({
+      Bucket: params.bucket,
+      Key: params.key,
+    }),
+  );
+  const contentLength = Number(head.ContentLength ?? params.expectedSize ?? 0);
+  if (Number.isFinite(contentLength) && contentLength > PHOTO_ENHANCER_R2_ANALYZE_DOWNLOAD_MAX_BYTES) {
+    throw new Error("photo_enhancer_r2_object_too_large_for_sync_analysis");
+  }
+
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "creatorhub-photo-r2-"));
+  const inputPath = path.join(tempDir, sanitizeR2KeySegment(path.basename(params.fileName), "source.img"));
+  const hash = crypto.createHash("sha256");
+  let bytes = 0;
+  const response = await client.send(
+    new GetObjectCommand({
+      Bucket: params.bucket,
+      Key: params.key,
+    }),
+  );
+  const meter = new Transform({
+    transform(chunk: Buffer, _encoding, callback) {
+      bytes += chunk.byteLength;
+      if (bytes > PHOTO_ENHANCER_R2_ANALYZE_DOWNLOAD_MAX_BYTES) {
+        callback(new Error("photo_enhancer_r2_object_too_large_for_sync_analysis"));
+        return;
+      }
+      hash.update(chunk);
+      callback(null, chunk);
+    },
+  });
+
+  try {
+    await pipeline(r2BodyToReadable(response.Body), meter, createWriteStream(inputPath));
+    return {
+      tempDir,
+      inputPath,
+      size: bytes,
+      originalHash: hash.digest("hex"),
+      mimeType: response.ContentType || head.ContentType || params.expectedMimeType || "application/octet-stream",
+      lastModified: response.LastModified || head.LastModified || null,
+    };
+  } catch (error) {
+    await fs.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
+    throw error;
+  }
 }
 
 function normalizeSettings(
@@ -1390,14 +1634,11 @@ async function resolveRuntimeSupport() {
   };
 }
 
-async function readExifMetadata(file: Express.Multer.File): Promise<Record<string, unknown> | null> {
+async function readExifMetadataFromPath(inputPath: string): Promise<Record<string, unknown> | null> {
   const exiftool = await commandPath("exiftool");
   if (!exiftool) return null;
 
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "creatorhub-photo-exif-"));
-  const inputPath = path.join(tempDir, `source${getUploadExtension(file) || ".img"}`);
   try {
-    await fs.writeFile(inputPath, file.buffer);
     const { stdout } = await execFileAsync(
       exiftool,
       [
@@ -1460,21 +1701,31 @@ async function readExifMetadata(file: Express.Multer.File): Promise<Record<strin
     return Array.isArray(parsed) && parsed[0] ? parsed[0] : null;
   } catch {
     return null;
+  }
+}
+
+async function readExifMetadata(file: Express.Multer.File): Promise<Record<string, unknown> | null> {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "creatorhub-photo-exif-"));
+  const inputPath = path.join(tempDir, `source${getUploadExtension(file) || ".img"}`);
+  try {
+    await fs.writeFile(inputPath, file.buffer);
+    return await readExifMetadataFromPath(inputPath);
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
   }
 }
 
-async function extractEmbeddedPreviewImage(file: Express.Multer.File): Promise<Express.Multer.File | null> {
+async function extractEmbeddedPreviewImageFromPath(
+  file: Pick<Express.Multer.File, "originalname" | "mimetype" | "size">,
+  inputPath: string,
+): Promise<Express.Multer.File | null> {
   if (!isCameraRawFile(file)) return null;
   const exiftool = await commandPath("exiftool");
   if (!exiftool) return null;
 
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "creatorhub-photo-preview-"));
-  const inputPath = path.join(tempDir, `source${getUploadExtension(file) || ".raw"}`);
   const outputPath = path.join(tempDir, "preview.jpg");
   try {
-    await fs.writeFile(inputPath, file.buffer);
     for (const tag of ["-PreviewImage", "-JpgFromRaw", "-ThumbnailImage"]) {
       await execFileAsync(exiftool, ["-b", tag, inputPath], {
         timeout: 15_000,
@@ -1494,16 +1745,28 @@ async function extractEmbeddedPreviewImage(file: Express.Multer.File): Promise<E
         .catch(() => undefined);
       const buffer = await fs.readFile(outputPath).catch(() => null);
       if (buffer && buffer.byteLength > 1024) {
-        return {
+        return makeMulterMemoryFile({
           ...file,
           buffer,
           size: buffer.byteLength,
           originalname: `${path.basename(file.originalname, path.extname(file.originalname))}-preview.jpg`,
           mimetype: "image/jpeg",
-        };
+        });
       }
     }
     return null;
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
+async function extractEmbeddedPreviewImage(file: Express.Multer.File): Promise<Express.Multer.File | null> {
+  if (!isCameraRawFile(file)) return null;
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "creatorhub-photo-preview-source-"));
+  const inputPath = path.join(tempDir, `source${getUploadExtension(file) || ".raw"}`);
+  try {
+    await fs.writeFile(inputPath, file.buffer);
+    return await extractEmbeddedPreviewImageFromPath(file, inputPath);
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
   }
@@ -1830,6 +2093,452 @@ async function prepareProcessableImage(file: Express.Multer.File): Promise<{
   return {
     file: converted.file,
     raw: converted.conversion,
+  };
+}
+
+async function buildPhotoEnhancerAnalysisPayload(params: {
+  file: Express.Multer.File;
+  preset: string;
+  body?: Record<string, unknown>;
+  source?: Record<string, unknown> | null;
+}) {
+  const prepared = await prepareProcessableImage(params.file);
+  if (hasUnavailableSourceConversion(prepared.raw)) {
+    return {
+      ok: false as const,
+      status: 422,
+      error: conversionErrorCode(prepared.raw),
+      raw: prepared.raw,
+      rawSupport: await resolveRuntimeSupport(),
+      prepared,
+    };
+  }
+
+  const processFile = prepared.file;
+  const embeddedPreviewFile = await extractEmbeddedPreviewImage(params.file);
+  const analysisFile = embeddedPreviewFile || processFile;
+  const analysisSource = embeddedPreviewFile ? "embedded-preview" : "processed-image";
+  const sharpModule = await import("sharp");
+  const sharp = sharpModule.default;
+  const originalHash = computeOriginalFileHash(params.file);
+  const [metadata, analysisMetadata, stats, perceptualHash, gfpgan, faceApiStatus, exif, lumaQuality] =
+    await Promise.all([
+      sharp(processFile.buffer, { failOn: "none" }).metadata(),
+      sharp(analysisFile.buffer, { failOn: "none" }).metadata(),
+      sharp(analysisFile.buffer, { failOn: "none" }).stats().catch(() => null),
+      computeImageHash(analysisFile),
+      resolveGfpganModelStatus(),
+      resolveFaceApiStatus(),
+      readExifMetadata(params.file),
+      analyzeLumaQuality(analysisFile),
+    ]);
+  const faceQuality = await analyzeFaceQuality(analysisFile, faceApiStatus);
+  const normalizedExif = normalizePhotoEnhancerExif(exif);
+  const sidecar = parsePhotoEnhancerXmpSidecar(
+    readString(params.body?.xmpSidecar) || readString(params.body?.sidecarXmp) || readString(params.body?.xmp),
+  );
+  const clientName = readString(params.body?.clientName) || sidecar.clientName || normalizedExif.credit;
+  const cameraProfile = matchPhotoEnhancerCameraProfile(normalizedExif.make, normalizedExif.model);
+  const lensProfile = matchPhotoEnhancerLensProfile(normalizedExif.lensModel, cameraProfile?.mount);
+  const duplicateDetection = detectAndRecordDuplicate(params.file, originalHash, perceptualHash);
+  const compression = analyzeCompressionQuality(analysisFile, analysisMetadata as unknown as Record<string, unknown>);
+  const hasEmbeddedProfile = Boolean((metadata as { hasProfile?: boolean }).hasProfile || normalizedExif.iccProfile);
+
+  const meanBrightness = stats
+    ? (() => {
+        const channels = (stats as PhotoEnhancerSharpStats).channels || [];
+        const totalMean = channels.reduce((sum, channel) => sum + (channel.mean || 0), 0);
+        return Math.round(totalMean / Math.max(1, channels.length));
+      })()
+    : null;
+
+  return {
+    ok: true as const,
+    prepared,
+    processFile,
+    payload: {
+      success: true,
+      preset: params.preset,
+      analysis: {
+        fileName: params.file.originalname,
+        mimeType: params.file.mimetype,
+        size: params.file.size,
+        processedMimeType: processFile.mimetype,
+        analysisSource,
+        analysisMimeType: analysisFile.mimetype,
+        source: params.source || undefined,
+        width: metadata.width || null,
+        height: metadata.height || null,
+        analysisWidth: analysisMetadata.width || null,
+        analysisHeight: analysisMetadata.height || null,
+        format: metadata.format || null,
+        hasAlpha: Boolean(metadata.hasAlpha),
+        orientation: metadata.orientation || null,
+        meanBrightness,
+        dominantColor: stats?.dominant || null,
+        fileHash: {
+          algorithm: "sha256",
+          value: originalHash,
+        },
+        perceptualHash,
+        duplicateDetection,
+        quality: {
+          blur: lumaQuality.blur,
+          face: faceQuality,
+          eyeSharpness: faceQuality.eyeSharpness,
+          exposure: lumaQuality.exposure,
+          clipping: lumaQuality.clipping,
+          noise: lumaQuality.noise,
+          compression,
+        },
+        raw: prepared.raw,
+        metadata: {
+          exifNormalized: normalizedExif,
+          iptc: {
+            copyright: normalizedExif.copyright,
+            creator: normalizedExif.creator || normalizedExif.artist,
+            credit: normalizedExif.credit,
+            title: normalizedExif.title,
+            description: normalizedExif.description,
+          },
+          sidecar,
+          copyright: {
+            value: sidecar.rights || normalizedExif.copyright,
+            creator: sidecar.creators[0] || normalizedExif.creator || normalizedExif.artist,
+            usageTerms: sidecar.usageTerms || normalizedExif.usageTerms,
+          },
+          clientName,
+          lensProfile,
+          cameraProfile,
+          whiteBalancePolicy: {
+            source: normalizedExif.whiteBalance ? "exif" : "missing",
+            value: normalizedExif.whiteBalance,
+            action: normalizedExif.whiteBalance ? "preserve-camera-white-balance-as-baseline" : "require-manual-or-auto-neutral-baseline",
+          },
+          colorProfilePolicy: {
+            embeddedProfile: hasEmbeddedProfile,
+            inputColorSpace: normalizedExif.colorSpace || readString((metadata as { space?: string }).space),
+            iccProfile: normalizedExif.iccProfile,
+            action: hasEmbeddedProfile ? "preserve-embedded-icc-through-export" : "convert-export-to-srgb-and-mark-missing-input-profile",
+          },
+          iccPreserved: hasEmbeddedProfile,
+        },
+        exif,
+      },
+      models: {
+        gfpgan,
+        faceApi: {
+          id: "face-api.js",
+          available: faceApiStatus.available,
+          modelsLoaded: faceApiStatus.modelsLoaded,
+          reason: faceApiStatus.reason,
+        },
+        imageHash: {
+          id: "image-hash",
+          available: Boolean(perceptualHash),
+        },
+        profiles: {
+          lensMatched: Boolean(lensProfile),
+          cameraMatched: Boolean(cameraProfile),
+        },
+      },
+      recommendations: [
+        gfpgan.available
+          ? "GFPGAN face restoration model is available from R2."
+          : "GFPGAN is not available; Photo Enhancer will use safe Sharp fallback.",
+        perceptualHash
+          ? "Perceptual hash generated for duplicate detection."
+          : "Perceptual hash could not be generated for this image type.",
+        lensProfile
+          ? `Lens profile matched: ${lensProfile.name}.`
+          : "No lens profile matched; preserve original EXIF and warn before applying lens correction.",
+        hasEmbeddedProfile
+          ? "Embedded color profile detected and marked for preservation."
+          : "No embedded ICC profile detected; export should normalize to sRGB.",
+      ],
+    },
+  };
+}
+
+async function buildPhotoEnhancerPreviewOnlyAnalysisPayload(params: {
+  sourceFile: Pick<Express.Multer.File, "originalname" | "mimetype" | "size">;
+  inputPath: string;
+  originalHash: string;
+  preset: string;
+  body?: Record<string, unknown>;
+  source?: Record<string, unknown> | null;
+}) {
+  const previewFile = await extractEmbeddedPreviewImageFromPath(params.sourceFile, params.inputPath);
+  if (!previewFile) {
+    return {
+      ok: false as const,
+      status: 413,
+      error: "photo_enhancer_large_sync_analysis_requires_embedded_preview",
+      reason: "The source file is too large for in-memory synchronous analysis and no embedded RAW preview was available.",
+    };
+  }
+
+  const sharpModule = await import("sharp");
+  const sharp = sharpModule.default;
+  const [previewMetadata, stats, perceptualHash, gfpgan, faceApiStatus, exif, lumaQuality] = await Promise.all([
+    sharp(previewFile.buffer, { failOn: "none" }).metadata(),
+    sharp(previewFile.buffer, { failOn: "none" }).stats().catch(() => null),
+    computeImageHash(previewFile),
+    resolveGfpganModelStatus(),
+    resolveFaceApiStatus(),
+    readExifMetadataFromPath(params.inputPath),
+    analyzeLumaQuality(previewFile),
+  ]);
+  const faceQuality = await analyzeFaceQuality(previewFile, faceApiStatus);
+  const normalizedExif = normalizePhotoEnhancerExif(exif);
+  const sidecar = parsePhotoEnhancerXmpSidecar(
+    readString(params.body?.xmpSidecar) || readString(params.body?.sidecarXmp) || readString(params.body?.xmp),
+  );
+  const clientName = readString(params.body?.clientName) || sidecar.clientName || normalizedExif.credit;
+  const cameraProfile = matchPhotoEnhancerCameraProfile(normalizedExif.make, normalizedExif.model);
+  const lensProfile = matchPhotoEnhancerLensProfile(normalizedExif.lensModel, cameraProfile?.mount);
+  const originalFileForDuplicate = makeMulterMemoryFile({
+    originalname: params.sourceFile.originalname,
+    mimetype: params.sourceFile.mimetype,
+    size: params.sourceFile.size,
+    buffer: Buffer.alloc(0),
+  });
+  const duplicateDetection = detectAndRecordDuplicate(originalFileForDuplicate, params.originalHash, perceptualHash);
+  const compression = analyzeCompressionQuality(previewFile, previewMetadata as unknown as Record<string, unknown>);
+  const hasEmbeddedProfile = Boolean(normalizedExif.iccProfile);
+  const originalWidth =
+    readNumber((exif as Record<string, unknown> | null)?.ImageWidth) ||
+    readNumber((exif as Record<string, unknown> | null)?.ExifImageWidth) ||
+    previewMetadata.width ||
+    null;
+  const originalHeight =
+    readNumber((exif as Record<string, unknown> | null)?.ImageHeight) ||
+    readNumber((exif as Record<string, unknown> | null)?.ExifImageHeight) ||
+    previewMetadata.height ||
+    null;
+  const meanBrightness = stats
+    ? (() => {
+        const channels = (stats as PhotoEnhancerSharpStats).channels || [];
+        const totalMean = channels.reduce((sum, channel) => sum + (channel.mean || 0), 0);
+        return Math.round(totalMean / Math.max(1, channels.length));
+      })()
+    : null;
+
+  return {
+    ok: true as const,
+    prepared: {
+      file: previewFile,
+      raw: {
+        raw: true,
+        sourceExtension: getUploadExtension(params.sourceFile),
+        converter: "embedded-preview",
+        outputMimeType: "image/jpeg",
+        width: previewMetadata.width || null,
+        height: previewMetadata.height || null,
+        format: previewMetadata.format || null,
+        resolutionMode: "preview-only",
+        originalTooLargeForSyncConversion: true,
+      },
+    },
+    processFile: previewFile,
+    payload: {
+      success: true,
+      preset: params.preset,
+      analysis: {
+        fileName: params.sourceFile.originalname,
+        mimeType: params.sourceFile.mimetype,
+        size: params.sourceFile.size,
+        processedMimeType: previewFile.mimetype,
+        analysisSource: "embedded-preview",
+        analysisMimeType: previewFile.mimetype,
+        source: {
+          ...(params.source || {}),
+          analysisMode: "r2-preview-only",
+          originalTooLargeForBufferAnalysis: true,
+        },
+        width: originalWidth,
+        height: originalHeight,
+        analysisWidth: previewMetadata.width || null,
+        analysisHeight: previewMetadata.height || null,
+        format: readString((exif as Record<string, unknown> | null)?.FileType) || "raw",
+        hasAlpha: false,
+        orientation: previewMetadata.orientation || null,
+        meanBrightness,
+        dominantColor: stats?.dominant || null,
+        fileHash: {
+          algorithm: "sha256",
+          value: params.originalHash,
+        },
+        perceptualHash,
+        duplicateDetection,
+        quality: {
+          blur: lumaQuality.blur,
+          face: faceQuality,
+          eyeSharpness: faceQuality.eyeSharpness,
+          exposure: lumaQuality.exposure,
+          clipping: lumaQuality.clipping,
+          noise: lumaQuality.noise,
+          compression,
+        },
+        raw: {
+          raw: true,
+          sourceExtension: getUploadExtension(params.sourceFile),
+          converter: "embedded-preview",
+          outputMimeType: "image/jpeg",
+          width: previewMetadata.width || null,
+          height: previewMetadata.height || null,
+          format: previewMetadata.format || null,
+          resolutionMode: "preview-only",
+          originalTooLargeForSyncConversion: true,
+        },
+        metadata: {
+          exifNormalized: normalizedExif,
+          iptc: {
+            copyright: normalizedExif.copyright,
+            creator: normalizedExif.creator || normalizedExif.artist,
+            credit: normalizedExif.credit,
+            title: normalizedExif.title,
+            description: normalizedExif.description,
+          },
+          sidecar,
+          copyright: {
+            value: sidecar.rights || normalizedExif.copyright,
+            creator: sidecar.creators[0] || normalizedExif.creator || normalizedExif.artist,
+            usageTerms: sidecar.usageTerms || normalizedExif.usageTerms,
+          },
+          clientName,
+          lensProfile,
+          cameraProfile,
+          whiteBalancePolicy: {
+            source: normalizedExif.whiteBalance ? "exif" : "missing",
+            value: normalizedExif.whiteBalance,
+            action: normalizedExif.whiteBalance ? "preserve-camera-white-balance-as-baseline" : "require-manual-or-auto-neutral-baseline",
+          },
+          colorProfilePolicy: {
+            embeddedProfile: hasEmbeddedProfile,
+            inputColorSpace: normalizedExif.colorSpace,
+            iccProfile: normalizedExif.iccProfile,
+            action: hasEmbeddedProfile ? "preserve-embedded-icc-through-export" : "convert-export-to-srgb-and-mark-missing-input-profile",
+          },
+          iccPreserved: hasEmbeddedProfile,
+        },
+        exif,
+      },
+      models: {
+        gfpgan,
+        faceApi: {
+          id: "face-api.js",
+          available: faceApiStatus.available,
+          modelsLoaded: faceApiStatus.modelsLoaded,
+          reason: faceApiStatus.reason,
+        },
+        imageHash: {
+          id: "image-hash",
+          available: Boolean(perceptualHash),
+        },
+        profiles: {
+          lensMatched: Boolean(lensProfile),
+          cameraMatched: Boolean(cameraProfile),
+        },
+      },
+      recommendations: [
+        "Large source file was uploaded directly to R2 and analyzed from its embedded RAW preview.",
+        gfpgan.available
+          ? "GFPGAN face restoration model is available from R2."
+          : "GFPGAN is not available; Photo Enhancer will use safe Sharp fallback.",
+        perceptualHash
+          ? "Perceptual hash generated from embedded preview for duplicate detection."
+          : "Perceptual hash could not be generated for the embedded preview.",
+      ],
+    },
+  };
+}
+
+async function buildPhotoEnhancerEnhancementPayload(params: {
+  file: Express.Multer.File;
+  preset: string;
+  settings: PhotoEnhancerSettings;
+}) {
+  const prepared = await prepareProcessableImage(params.file);
+  if (hasUnavailableSourceConversion(prepared.raw)) {
+    return {
+      ok: false as const,
+      status: 422,
+      error: conversionErrorCode(prepared.raw),
+      raw: prepared.raw,
+      rawSupport: await resolveRuntimeSupport(),
+      prepared,
+    };
+  }
+
+  const processFile = prepared.file;
+  const gfpgan = await resolveGfpganModelStatus();
+  const shouldAttemptGfpgan = shouldUseGfpgan(params.preset, params.settings);
+
+  if (shouldAttemptGfpgan) {
+    const modelResult = await runGfpganService({
+      file: processFile,
+      preset: params.preset,
+      settings: params.settings,
+      model: gfpgan,
+    });
+    if (modelResult) {
+      return {
+        ok: true as const,
+        prepared,
+        processFile,
+        modelUsed: modelResult.modelUsed,
+        inferenceMode: "gfpgan-service",
+        outputMimeType: processFile.mimetype,
+        payload: {
+          success: true,
+          enhancedImageUrl: modelResult.enhancedImageUrl,
+          imageUrl: modelResult.enhancedImageUrl,
+          outputUrl: modelResult.enhancedImageUrl,
+          preset: params.preset,
+          settings: params.settings,
+          modelUsed: modelResult.modelUsed,
+          inferenceMode: "gfpgan-service",
+          models: { gfpgan },
+          raw: prepared.raw,
+        },
+      };
+    }
+  }
+
+  const output = await enhanceWithSharp(processFile, params.settings);
+  const outputHash = await computeImageHash({
+    ...processFile,
+    buffer: output.buffer,
+    size: output.buffer.byteLength,
+    mimetype: output.mimeType,
+  });
+  const enhancedImageUrl = `data:${output.mimeType};base64,${output.buffer.toString("base64")}`;
+
+  return {
+    ok: true as const,
+    prepared,
+    processFile,
+    modelUsed: shouldAttemptGfpgan ? "sharp-fallback" : "sharp",
+    inferenceMode: "local-sharp",
+    outputMimeType: output.mimeType,
+    payload: {
+      success: true,
+      enhancedImageUrl,
+      imageUrl: enhancedImageUrl,
+      outputUrl: enhancedImageUrl,
+      preset: params.preset,
+      settings: params.settings,
+      modelUsed: shouldAttemptGfpgan ? "sharp-fallback" : "sharp",
+      inferenceMode: "local-sharp",
+      models: { gfpgan },
+      raw: prepared.raw,
+      output: {
+        ...output.metadata,
+        mimeType: output.mimeType,
+        perceptualHash: outputHash,
+      },
+    },
   };
 }
 
@@ -2355,9 +3064,28 @@ export function createPhotoEnhancerRouter() {
     const improvementBacklog = buildPhotoEnhancerImprovementBacklog();
     const weightsAvailable = modelStatuses.filter((model) => model.weights?.found || model.available).length;
     const inferenceAvailable = modelStatuses.filter((model) => model.inferenceAvailable).length;
+    const directUpload = buildPhotoEnhancerUploadR2Config();
     res.json({
       success: true,
       r2: buildPublicPhotoEnhancerR2Config(),
+      directUpload: {
+        enabled: directUpload.enabled,
+        strategy: "r2-multipart",
+        bucket: directUpload.bucket,
+        prefix: directUpload.prefix,
+        maxBytes: PHOTO_ENHANCER_DIRECT_UPLOAD_MAX_BYTES,
+        partSizeBytes: PHOTO_ENHANCER_R2_PART_SIZE_BYTES,
+        maxPartUrlsPerRequest: PHOTO_ENHANCER_R2_PART_BATCH_MAX,
+        signedUrlTtlSeconds: PHOTO_ENHANCER_R2_SIGNED_URL_TTL_SECONDS,
+        analyzeBufferMaxBytes: PHOTO_ENHANCER_R2_ANALYZE_BUFFER_MAX_BYTES,
+        analyzeDownloadMaxBytes: PHOTO_ENHANCER_R2_ANALYZE_DOWNLOAD_MAX_BYTES,
+        cors: {
+          requiresBrowserPut: true,
+          exposeHeaders: ["ETag"],
+          allowedMethods: ["PUT"],
+        },
+        reason: directUpload.enabled ? null : "R2 upload bucket or credentials are not configured",
+      },
       models: {
         gfpgan,
         registry: modelStatuses,
@@ -2542,6 +3270,534 @@ export function createPhotoEnhancerRouter() {
     });
   });
 
+  router.post("/uploads/multipart", async (req, res) => {
+    try {
+      const body = parseJsonObject(req.body);
+      const fileName = readString(body.fileName) || "upload.raw";
+      const contentType = readString(body.contentType) || "application/octet-stream";
+      const size = readNumber(body.size);
+      const projectId = readString(body.projectId);
+      const contentHash = readString(body.contentHash);
+      if (!size || size <= 0) {
+        return res.status(400).json({ success: false, error: "file_size_required" });
+      }
+      if (size > PHOTO_ENHANCER_DIRECT_UPLOAD_MAX_BYTES) {
+        return res.status(413).json({
+          success: false,
+          error: "photo_enhancer_direct_upload_too_large",
+          maxBytes: PHOTO_ENHANCER_DIRECT_UPLOAD_MAX_BYTES,
+        });
+      }
+      if (!isSupportedPhotoUpload({ originalname: fileName, mimetype: contentType })) {
+        return res.status(415).json({ success: false, error: "unsupported_photo_upload_type" });
+      }
+
+      const config = buildPhotoEnhancerUploadR2Config();
+      const client = getPhotoEnhancerUploadR2Client(config);
+      if (!client || !config.bucket) {
+        return res.status(503).json({
+          success: false,
+          error: "photo_enhancer_r2_upload_not_configured",
+          directUpload: {
+            enabled: false,
+            reason: "R2 upload bucket or credentials are not configured",
+          },
+        });
+      }
+
+      const key = buildPhotoEnhancerUploadKey({ fileName, projectId, contentHash });
+      const partSize = calculatePhotoEnhancerR2PartSize(size);
+      const partCount = Math.ceil(size / partSize);
+      const created = await client.send(
+        new CreateMultipartUploadCommand({
+          Bucket: config.bucket,
+          Key: key,
+          ContentType: contentType,
+          Metadata: {
+            originalName: fileName.slice(0, 1024),
+            projectId: projectId || "unassigned",
+            source: "creatorhub-photo-enhancer",
+          },
+        }),
+      );
+
+      res.json({
+        success: true,
+        upload: {
+          strategy: "r2-multipart",
+          bucket: config.bucket,
+          key,
+          uploadId: created.UploadId,
+          fileName,
+          contentType,
+          size,
+          partSize,
+          partCount,
+          expiresInSeconds: PHOTO_ENHANCER_R2_SIGNED_URL_TTL_SECONDS,
+          maxPartUrlsPerRequest: PHOTO_ENHANCER_R2_PART_BATCH_MAX,
+          cors: {
+            exposeHeaders: ["ETag"],
+            allowedMethods: ["PUT"],
+          },
+        },
+      });
+    } catch (error) {
+      console.error("[photo-enhancer] multipart create failed:", error);
+      res.status(500).json({ success: false, error: "photo_enhancer_multipart_create_failed" });
+    }
+  });
+
+  router.post("/uploads/multipart/parts", async (req, res) => {
+    try {
+      const body = parseJsonObject(req.body);
+      const bucket = readString(body.bucket);
+      const key = readString(body.key);
+      const uploadId = readString(body.uploadId);
+      const rawPartNumbers = Array.isArray(body.partNumbers) ? body.partNumbers : [];
+      const partNumbers = rawPartNumbers
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value) && value > 0 && value <= 10_000)
+        .slice(0, PHOTO_ENHANCER_R2_PART_BATCH_MAX);
+
+      if (!bucket || !key || !uploadId || partNumbers.length === 0) {
+        return res.status(400).json({ success: false, error: "multipart_part_request_invalid" });
+      }
+      if (!isAllowedPhotoEnhancerR2Object(bucket, key)) {
+        return res.status(403).json({ success: false, error: "photo_enhancer_r2_object_not_allowed" });
+      }
+
+      const config = buildPhotoEnhancerUploadR2Config();
+      const client = getPhotoEnhancerUploadR2Client(config);
+      if (!client) {
+        return res.status(503).json({ success: false, error: "photo_enhancer_r2_upload_not_configured" });
+      }
+
+      const parts = await Promise.all(
+        partNumbers.map(async (partNumber) => ({
+          partNumber,
+          url: await getSignedUrl(
+            client,
+            new UploadPartCommand({
+              Bucket: bucket,
+              Key: key,
+              UploadId: uploadId,
+              PartNumber: partNumber,
+            }),
+            { expiresIn: PHOTO_ENHANCER_R2_SIGNED_URL_TTL_SECONDS },
+          ),
+        })),
+      );
+
+      res.json({
+        success: true,
+        parts,
+        expiresInSeconds: PHOTO_ENHANCER_R2_SIGNED_URL_TTL_SECONDS,
+      });
+    } catch (error) {
+      console.error("[photo-enhancer] multipart part signing failed:", error);
+      res.status(500).json({ success: false, error: "photo_enhancer_multipart_part_signing_failed" });
+    }
+  });
+
+  router.post("/uploads/multipart/complete", async (req, res) => {
+    try {
+      const body = parseJsonObject(req.body);
+      const bucket = readString(body.bucket);
+      const key = readString(body.key);
+      const uploadId = readString(body.uploadId);
+      const fileName = readString(body.fileName) || "upload.raw";
+      const contentType = readString(body.contentType) || "application/octet-stream";
+      const size = readNumber(body.size) || 0;
+      const parts = Array.isArray(body.parts)
+        ? body.parts
+            .map((part) => {
+              const record = parseJsonObject(part);
+              const partNumber = readNumber(record.partNumber);
+              const etag = readString(record.etag) || readString(record.ETag);
+              return partNumber && etag ? { PartNumber: partNumber, ETag: etag } : null;
+            })
+            .filter((part): part is { PartNumber: number; ETag: string } => Boolean(part))
+            .sort((left, right) => left.PartNumber - right.PartNumber)
+        : [];
+
+      if (!bucket || !key || !uploadId || parts.length === 0) {
+        return res.status(400).json({ success: false, error: "multipart_complete_request_invalid" });
+      }
+      if (!isAllowedPhotoEnhancerR2Object(bucket, key)) {
+        return res.status(403).json({ success: false, error: "photo_enhancer_r2_object_not_allowed" });
+      }
+
+      const config = buildPhotoEnhancerUploadR2Config();
+      const client = getPhotoEnhancerUploadR2Client(config);
+      if (!client) {
+        return res.status(503).json({ success: false, error: "photo_enhancer_r2_upload_not_configured" });
+      }
+
+      await client.send(
+        new CompleteMultipartUploadCommand({
+          Bucket: bucket,
+          Key: key,
+          UploadId: uploadId,
+          MultipartUpload: {
+            Parts: parts,
+          },
+        }),
+      );
+      const head = await client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
+
+      res.json({
+        success: true,
+        source: {
+          storageType: "r2",
+          bucket,
+          key,
+          uploadId,
+          fileName,
+          mimeType: head.ContentType || contentType,
+          size: Number(head.ContentLength ?? size),
+          etag: head.ETag || null,
+          lastModified: head.LastModified || null,
+        },
+      });
+    } catch (error) {
+      console.error("[photo-enhancer] multipart complete failed:", error);
+      res.status(500).json({ success: false, error: "photo_enhancer_multipart_complete_failed" });
+    }
+  });
+
+  router.post("/uploads/multipart/abort", async (req, res) => {
+    try {
+      const body = parseJsonObject(req.body);
+      const bucket = readString(body.bucket);
+      const key = readString(body.key);
+      const uploadId = readString(body.uploadId);
+      if (!bucket || !key || !uploadId) {
+        return res.status(400).json({ success: false, error: "multipart_abort_request_invalid" });
+      }
+      if (!isAllowedPhotoEnhancerR2Object(bucket, key)) {
+        return res.status(403).json({ success: false, error: "photo_enhancer_r2_object_not_allowed" });
+      }
+
+      const config = buildPhotoEnhancerUploadR2Config();
+      const client = getPhotoEnhancerUploadR2Client(config);
+      if (!client) {
+        return res.status(503).json({ success: false, error: "photo_enhancer_r2_upload_not_configured" });
+      }
+
+      await client.send(new AbortMultipartUploadCommand({ Bucket: bucket, Key: key, UploadId: uploadId }));
+      res.json({ success: true });
+    } catch (error) {
+      console.error("[photo-enhancer] multipart abort failed:", error);
+      res.status(500).json({ success: false, error: "photo_enhancer_multipart_abort_failed" });
+    }
+  });
+
+  router.post("/analyze-r2", async (req, res) => {
+    const body = parseJsonObject(req.body);
+    const sourceRecord = parseJsonObject(body.source || body);
+    const bucket = readString(sourceRecord.bucket);
+    const key = readString(sourceRecord.key);
+    const fileName = readString(sourceRecord.fileName) || readString(body.fileName) || "upload.raw";
+    const mimeType =
+      readString(sourceRecord.mimeType) ||
+      readString(sourceRecord.contentType) ||
+      readString(body.contentType) ||
+      "application/octet-stream";
+    const size = readNumber(sourceRecord.size) || readNumber(body.size) || 0;
+    const preset = readString(body.preset) || "auto";
+    const startedAt = Date.now();
+
+    if (!bucket || !key) {
+      return res.status(400).json({ success: false, error: "r2_source_required" });
+    }
+    if (!isAllowedPhotoEnhancerR2Object(bucket, key)) {
+      return res.status(403).json({ success: false, error: "photo_enhancer_r2_object_not_allowed" });
+    }
+
+    let downloaded: Awaited<ReturnType<typeof downloadPhotoEnhancerR2ObjectToTemp>> | null = null;
+    try {
+      downloaded = await downloadPhotoEnhancerR2ObjectToTemp({
+        bucket,
+        key,
+        fileName,
+        expectedMimeType: mimeType,
+        expectedSize: size,
+      });
+      const source: PhotoEnhancerR2Source = {
+        bucket,
+        key,
+        fileName,
+        mimeType: downloaded.mimeType || mimeType,
+        size: downloaded.size,
+        uploadId: readString(sourceRecord.uploadId),
+        originalHash: downloaded.originalHash,
+      };
+      const sourceMetaFile = {
+        originalname: fileName,
+        mimetype: source.mimeType,
+        size: source.size,
+      };
+      const sourcePayload = {
+        storageType: "r2",
+        bucket,
+        key,
+        fileName,
+        mimeType: source.mimeType,
+        size: source.size,
+        uploadId: source.uploadId || null,
+        originalHash: source.originalHash,
+        uploadMode: "direct-r2-multipart",
+      };
+
+      const analysisResult =
+        downloaded.size <= PHOTO_ENHANCER_R2_ANALYZE_BUFFER_MAX_BYTES
+          ? await buildPhotoEnhancerAnalysisPayload({
+              file: makeMulterMemoryFile({
+                originalname: fileName,
+                mimetype: source.mimeType,
+                size: source.size,
+                buffer: await fs.readFile(downloaded.inputPath),
+              }),
+              preset,
+              body,
+              source: sourcePayload,
+            })
+          : isCameraRawFile(sourceMetaFile)
+            ? await buildPhotoEnhancerPreviewOnlyAnalysisPayload({
+                sourceFile: sourceMetaFile,
+                inputPath: downloaded.inputPath,
+                originalHash: downloaded.originalHash,
+                preset,
+                body,
+                source: sourcePayload,
+              })
+            : {
+                ok: false as const,
+                status: 413,
+                error: "photo_enhancer_large_sync_analysis_requires_smaller_raster",
+                reason: "The uploaded raster file is too large for synchronous buffer analysis.",
+              };
+
+      if (!analysisResult.ok) {
+        trackPhotoEnhancerEvent({
+          route: "analyze",
+          success: false,
+          fileName,
+          sourceExtension: getUploadExtension({ originalname: fileName }),
+          sourceMimeType: source.mimeType,
+          raw: isCameraRawFile(sourceMetaFile),
+          heic: isHeicFile(sourceMetaFile),
+          rawConverter: null,
+          preset,
+          processingMs: Date.now() - startedAt,
+          error: analysisResult.reason || analysisResult.error,
+        });
+        return res.status(analysisResult.status).json({
+          success: false,
+          error: analysisResult.error,
+          reason: analysisResult.reason,
+          source: sourcePayload,
+        });
+      }
+
+      res.json(analysisResult.payload);
+      trackPhotoEnhancerEvent({
+        route: "analyze",
+        success: true,
+        fileName,
+        sourceExtension: getUploadExtension({ originalname: fileName }),
+        sourceMimeType: source.mimeType,
+        raw: Boolean(analysisResult.prepared.raw.raw),
+        heic: Boolean(analysisResult.prepared.raw.heic),
+        rawConverter: readString(analysisResult.prepared.raw.converter),
+        preset,
+        modelUsed: null,
+        inferenceMode: downloaded.size <= PHOTO_ENHANCER_R2_ANALYZE_BUFFER_MAX_BYTES ? "r2-buffer-analysis" : "r2-preview-analysis",
+        processingMs: Date.now() - startedAt,
+        outputMimeType: analysisResult.processFile.mimetype,
+      });
+    } catch (error) {
+      console.error("[photo-enhancer] r2 analyze failed:", error);
+      const message = error instanceof Error ? error.message : String(error);
+      const status = message.includes("too_large") ? 413 : message.includes("not_configured") ? 503 : 500;
+      trackPhotoEnhancerEvent({
+        route: "analyze",
+        success: false,
+        fileName,
+        sourceExtension: getUploadExtension({ originalname: fileName }),
+        sourceMimeType: mimeType,
+        raw: isCameraRawFile({ originalname: fileName, mimetype: mimeType }),
+        heic: isHeicFile({ originalname: fileName, mimetype: mimeType }),
+        preset,
+        processingMs: Date.now() - startedAt,
+        error: message,
+      });
+      res.status(status).json({
+        success: false,
+        error: status === 413 ? "photo_enhancer_r2_object_too_large_for_sync_analysis" : "photo_enhancer_r2_analyze_failed",
+        reason: message,
+      });
+    } finally {
+      if (downloaded?.tempDir) {
+        await fs.rm(downloaded.tempDir, { recursive: true, force: true }).catch(() => undefined);
+      }
+    }
+  });
+
+  router.post("/enhance-r2", async (req, res) => {
+    const body = parseJsonObject(req.body);
+    const sourceRecord = parseJsonObject(body.source || body);
+    const bucket = readString(sourceRecord.bucket);
+    const key = readString(sourceRecord.key);
+    const fileName = readString(sourceRecord.fileName) || readString(body.fileName) || "upload.raw";
+    const mimeType =
+      readString(sourceRecord.mimeType) ||
+      readString(sourceRecord.contentType) ||
+      readString(body.contentType) ||
+      "application/octet-stream";
+    const size = readNumber(sourceRecord.size) || readNumber(body.size) || 0;
+    const preset = readString(body.preset) || "auto";
+    const settings = normalizeSettings(body.settings, preset);
+    const startedAt = Date.now();
+
+    if (!bucket || !key) {
+      return res.status(400).json({ success: false, error: "r2_source_required" });
+    }
+    if (!isAllowedPhotoEnhancerR2Object(bucket, key)) {
+      return res.status(403).json({ success: false, error: "photo_enhancer_r2_object_not_allowed" });
+    }
+
+    let downloaded: Awaited<ReturnType<typeof downloadPhotoEnhancerR2ObjectToTemp>> | null = null;
+    try {
+      downloaded = await downloadPhotoEnhancerR2ObjectToTemp({
+        bucket,
+        key,
+        fileName,
+        expectedMimeType: mimeType,
+        expectedSize: size,
+      });
+      const sourceMetaFile = {
+        originalname: fileName,
+        mimetype: downloaded.mimeType || mimeType,
+        size: downloaded.size,
+      };
+      const sourcePayload = {
+        storageType: "r2",
+        bucket,
+        key,
+        fileName,
+        mimeType: downloaded.mimeType || mimeType,
+        size: downloaded.size,
+        uploadId: readString(sourceRecord.uploadId) || null,
+        originalHash: downloaded.originalHash,
+        uploadMode: "direct-r2-multipart",
+      };
+
+      if (downloaded.size > PHOTO_ENHANCER_R2_ANALYZE_BUFFER_MAX_BYTES) {
+        trackPhotoEnhancerEvent({
+          route: "enhance",
+          success: false,
+          fileName,
+          sourceExtension: getUploadExtension({ originalname: fileName }),
+          sourceMimeType: sourcePayload.mimeType,
+          raw: isCameraRawFile(sourceMetaFile),
+          heic: isHeicFile(sourceMetaFile),
+          preset,
+          processingMs: Date.now() - startedAt,
+          error: "photo_enhancer_large_r2_enhance_requires_async_queue",
+        });
+        return res.status(413).json({
+          success: false,
+          error: "photo_enhancer_large_r2_enhance_requires_async_queue",
+          reason: "The file is safely stored in R2, but synchronous enhancement is limited to the configured in-memory processing size. Use the async Photo Enhancer queue for this source.",
+          source: sourcePayload,
+          maxSyncBytes: PHOTO_ENHANCER_R2_ANALYZE_BUFFER_MAX_BYTES,
+        });
+      }
+
+      const enhancementResult = await buildPhotoEnhancerEnhancementPayload({
+        file: makeMulterMemoryFile({
+          originalname: fileName,
+          mimetype: sourcePayload.mimeType,
+          size: sourcePayload.size,
+          buffer: await fs.readFile(downloaded.inputPath),
+        }),
+        preset,
+        settings,
+      });
+
+      if (!enhancementResult.ok) {
+        trackPhotoEnhancerEvent({
+          route: "enhance",
+          success: false,
+          fileName,
+          sourceExtension: getUploadExtension({ originalname: fileName }),
+          sourceMimeType: sourcePayload.mimeType,
+          raw: Boolean(enhancementResult.prepared.raw.raw),
+          heic: Boolean(enhancementResult.prepared.raw.heic),
+          rawConverter: null,
+          preset,
+          processingMs: Date.now() - startedAt,
+          error: conversionErrorMessage(enhancementResult.raw),
+        });
+        return res.status(enhancementResult.status).json({
+          success: false,
+          error: enhancementResult.error,
+          raw: enhancementResult.raw,
+          rawSupport: enhancementResult.rawSupport,
+          source: sourcePayload,
+        });
+      }
+
+      const processingMs = Date.now() - startedAt;
+      res.json({
+        ...enhancementResult.payload,
+        source: sourcePayload,
+        processingMs,
+      });
+      trackPhotoEnhancerEvent({
+        route: "enhance",
+        success: true,
+        fileName,
+        sourceExtension: getUploadExtension({ originalname: fileName }),
+        sourceMimeType: sourcePayload.mimeType,
+        raw: Boolean(enhancementResult.prepared.raw.raw),
+        heic: Boolean(enhancementResult.prepared.raw.heic),
+        rawConverter: readString(enhancementResult.prepared.raw.converter),
+        preset,
+        modelUsed: enhancementResult.modelUsed,
+        inferenceMode: "r2-buffer-enhance",
+        processingMs,
+        outputMimeType: enhancementResult.outputMimeType,
+      });
+    } catch (error) {
+      console.error("[photo-enhancer] r2 enhance failed:", error);
+      const message = error instanceof Error ? error.message : String(error);
+      const status = message.includes("too_large") ? 413 : message.includes("not_configured") ? 503 : 500;
+      trackPhotoEnhancerEvent({
+        route: "enhance",
+        success: false,
+        fileName,
+        sourceExtension: getUploadExtension({ originalname: fileName }),
+        sourceMimeType: mimeType,
+        raw: isCameraRawFile({ originalname: fileName, mimetype: mimeType }),
+        heic: isHeicFile({ originalname: fileName, mimetype: mimeType }),
+        preset,
+        processingMs: Date.now() - startedAt,
+        error: message,
+      });
+      res.status(status).json({
+        success: false,
+        error: status === 413 ? "photo_enhancer_r2_object_too_large_for_sync_enhance" : "photo_enhancer_r2_enhance_failed",
+        reason: message,
+      });
+    } finally {
+      if (downloaded?.tempDir) {
+        await fs.rm(downloaded.tempDir, { recursive: true, force: true }).catch(() => undefined);
+      }
+    }
+  });
+
   router.post(
     "/analyze",
     photoEnhancerUpload.single("image"),
@@ -2553,180 +3809,47 @@ export function createPhotoEnhancerRouter() {
       try {
         const startedAt = Date.now();
         const preset = readString(req.body?.preset) || "auto";
-        const prepared = await prepareProcessableImage(req.file);
-        if (hasUnavailableSourceConversion(prepared.raw)) {
+        const analysisResult = await buildPhotoEnhancerAnalysisPayload({
+          file: req.file,
+          preset,
+          body: req.body as Record<string, unknown>,
+        });
+        if (!analysisResult.ok) {
           trackPhotoEnhancerEvent({
             route: "analyze",
             success: false,
             fileName: req.file.originalname,
             sourceExtension: getUploadExtension(req.file),
             sourceMimeType: req.file.mimetype,
-            raw: Boolean(prepared.raw.raw),
-            heic: Boolean(prepared.raw.heic),
+            raw: Boolean(analysisResult.prepared.raw.raw),
+            heic: Boolean(analysisResult.prepared.raw.heic),
             rawConverter: null,
             preset,
             processingMs: Date.now() - startedAt,
-            error: conversionErrorMessage(prepared.raw),
+            error: conversionErrorMessage(analysisResult.prepared.raw),
           });
-          return res.status(422).json({
+          return res.status(analysisResult.status).json({
             success: false,
-            error: conversionErrorCode(prepared.raw),
-            raw: prepared.raw,
-            rawSupport: await resolveRuntimeSupport(),
+            error: analysisResult.error,
+            raw: analysisResult.raw,
+            rawSupport: analysisResult.rawSupport,
           });
         }
-        const processFile = prepared.file;
-        const embeddedPreviewFile = await extractEmbeddedPreviewImage(req.file);
-        const analysisFile = embeddedPreviewFile || processFile;
-        const analysisSource = embeddedPreviewFile ? "embedded-preview" : "processed-image";
-        const sharpModule = await import("sharp");
-        const sharp = sharpModule.default;
-        const originalHash = computeOriginalFileHash(req.file);
-        const [metadata, analysisMetadata, stats, perceptualHash, gfpgan, faceApiStatus, exif, lumaQuality] =
-          await Promise.all([
-            sharp(processFile.buffer, { failOn: "none" }).metadata(),
-            sharp(analysisFile.buffer, { failOn: "none" }).metadata(),
-            sharp(analysisFile.buffer, { failOn: "none" }).stats().catch(() => null),
-            computeImageHash(analysisFile),
-            resolveGfpganModelStatus(),
-            resolveFaceApiStatus(),
-            readExifMetadata(req.file),
-            analyzeLumaQuality(analysisFile),
-          ]);
-        const faceQuality = await analyzeFaceQuality(analysisFile, faceApiStatus);
-        const normalizedExif = normalizePhotoEnhancerExif(exif);
-        const sidecar = parsePhotoEnhancerXmpSidecar(
-          readString(req.body?.xmpSidecar) || readString(req.body?.sidecarXmp) || readString(req.body?.xmp),
-        );
-        const clientName = readString(req.body?.clientName) || sidecar.clientName || normalizedExif.credit;
-        const cameraProfile = matchPhotoEnhancerCameraProfile(normalizedExif.make, normalizedExif.model);
-        const lensProfile = matchPhotoEnhancerLensProfile(normalizedExif.lensModel, cameraProfile?.mount);
-        const duplicateDetection = detectAndRecordDuplicate(req.file, originalHash, perceptualHash);
-        const compression = analyzeCompressionQuality(analysisFile, analysisMetadata as unknown as Record<string, unknown>);
-        const hasEmbeddedProfile = Boolean((metadata as { hasProfile?: boolean }).hasProfile || normalizedExif.iccProfile);
-
-        const meanBrightness = stats
-          ? (() => {
-              const channels = (stats as PhotoEnhancerSharpStats).channels || [];
-              const totalMean = channels.reduce((sum, channel) => sum + (channel.mean || 0), 0);
-              return Math.round(totalMean / Math.max(1, channels.length));
-            })()
-          : null;
-
-        res.json({
-          success: true,
-          preset,
-          analysis: {
-            fileName: req.file.originalname,
-            mimeType: req.file.mimetype,
-            size: req.file.size,
-            processedMimeType: processFile.mimetype,
-            analysisSource,
-            analysisMimeType: analysisFile.mimetype,
-            width: metadata.width || null,
-            height: metadata.height || null,
-            analysisWidth: analysisMetadata.width || null,
-            analysisHeight: analysisMetadata.height || null,
-            format: metadata.format || null,
-            hasAlpha: Boolean(metadata.hasAlpha),
-            orientation: metadata.orientation || null,
-            meanBrightness,
-            dominantColor: stats?.dominant || null,
-            fileHash: {
-              algorithm: "sha256",
-              value: originalHash,
-            },
-            perceptualHash,
-            duplicateDetection,
-            quality: {
-              blur: lumaQuality.blur,
-              face: faceQuality,
-              eyeSharpness: faceQuality.eyeSharpness,
-              exposure: lumaQuality.exposure,
-              clipping: lumaQuality.clipping,
-              noise: lumaQuality.noise,
-              compression,
-            },
-            raw: prepared.raw,
-            metadata: {
-              exifNormalized: normalizedExif,
-              iptc: {
-                copyright: normalizedExif.copyright,
-                creator: normalizedExif.creator || normalizedExif.artist,
-                credit: normalizedExif.credit,
-                title: normalizedExif.title,
-                description: normalizedExif.description,
-              },
-              sidecar,
-              copyright: {
-                value: sidecar.rights || normalizedExif.copyright,
-                creator: sidecar.creators[0] || normalizedExif.creator || normalizedExif.artist,
-                usageTerms: sidecar.usageTerms || normalizedExif.usageTerms,
-              },
-              clientName,
-              lensProfile,
-              cameraProfile,
-              whiteBalancePolicy: {
-                source: normalizedExif.whiteBalance ? "exif" : "missing",
-                value: normalizedExif.whiteBalance,
-                action: normalizedExif.whiteBalance ? "preserve-camera-white-balance-as-baseline" : "require-manual-or-auto-neutral-baseline",
-              },
-              colorProfilePolicy: {
-                embeddedProfile: hasEmbeddedProfile,
-                inputColorSpace: normalizedExif.colorSpace || readString((metadata as { space?: string }).space),
-                iccProfile: normalizedExif.iccProfile,
-                action: hasEmbeddedProfile ? "preserve-embedded-icc-through-export" : "convert-export-to-srgb-and-mark-missing-input-profile",
-              },
-              iccPreserved: hasEmbeddedProfile,
-            },
-            exif,
-          },
-          models: {
-            gfpgan,
-            faceApi: {
-              id: "face-api.js",
-              available: faceApiStatus.available,
-              modelsLoaded: faceApiStatus.modelsLoaded,
-              reason: faceApiStatus.reason,
-            },
-            imageHash: {
-              id: "image-hash",
-              available: Boolean(perceptualHash),
-            },
-            profiles: {
-              lensMatched: Boolean(lensProfile),
-              cameraMatched: Boolean(cameraProfile),
-            },
-          },
-          recommendations: [
-            gfpgan.available
-              ? "GFPGAN face restoration model is available from R2."
-              : "GFPGAN is not available; Photo Enhancer will use safe Sharp fallback.",
-            perceptualHash
-              ? "Perceptual hash generated for duplicate detection."
-              : "Perceptual hash could not be generated for this image type.",
-            lensProfile
-              ? `Lens profile matched: ${lensProfile.name}.`
-              : "No lens profile matched; preserve original EXIF and warn before applying lens correction.",
-            hasEmbeddedProfile
-              ? "Embedded color profile detected and marked for preservation."
-              : "No embedded ICC profile detected; export should normalize to sRGB.",
-          ],
-        });
+        res.json(analysisResult.payload);
         trackPhotoEnhancerEvent({
           route: "analyze",
           success: true,
           fileName: req.file.originalname,
           sourceExtension: getUploadExtension(req.file),
           sourceMimeType: req.file.mimetype,
-          raw: Boolean(prepared.raw.raw),
-          heic: Boolean(prepared.raw.heic),
-          rawConverter: readString(prepared.raw.converter),
+          raw: Boolean(analysisResult.prepared.raw.raw),
+          heic: Boolean(analysisResult.prepared.raw.heic),
+          rawConverter: readString(analysisResult.prepared.raw.converter),
           preset,
           modelUsed: null,
           inferenceMode: "analysis",
           processingMs: Date.now() - startedAt,
-          outputMimeType: processFile.mimetype,
+          outputMimeType: analysisResult.processFile.mimetype,
         });
       } catch (error) {
         console.error("[photo-enhancer] analyze failed:", error);
@@ -2759,97 +3882,38 @@ export function createPhotoEnhancerRouter() {
         const startedAt = Date.now();
         const preset = readString(req.body?.preset) || "auto";
         const settings = normalizeSettings(req.body?.settings, preset);
-        const prepared = await prepareProcessableImage(req.file);
-        if (hasUnavailableSourceConversion(prepared.raw)) {
+        const enhancementResult = await buildPhotoEnhancerEnhancementPayload({
+          file: req.file,
+          preset,
+          settings,
+        });
+
+        if (!enhancementResult.ok) {
           trackPhotoEnhancerEvent({
             route: "enhance",
             success: false,
             fileName: req.file.originalname,
             sourceExtension: getUploadExtension(req.file),
             sourceMimeType: req.file.mimetype,
-            raw: Boolean(prepared.raw.raw),
-            heic: Boolean(prepared.raw.heic),
+            raw: Boolean(enhancementResult.prepared.raw.raw),
+            heic: Boolean(enhancementResult.prepared.raw.heic),
             rawConverter: null,
             preset,
             processingMs: Date.now() - startedAt,
-            error: conversionErrorMessage(prepared.raw),
+            error: conversionErrorMessage(enhancementResult.raw),
           });
-          return res.status(422).json({
+          return res.status(enhancementResult.status).json({
             success: false,
-            error: conversionErrorCode(prepared.raw),
-            raw: prepared.raw,
-            rawSupport: await resolveRuntimeSupport(),
+            error: enhancementResult.error,
+            raw: enhancementResult.raw,
+            rawSupport: enhancementResult.rawSupport,
           });
         }
-        const processFile = prepared.file;
-        const gfpgan = await resolveGfpganModelStatus();
 
-        if (shouldUseGfpgan(preset, settings)) {
-          const modelResult = await runGfpganService({
-            file: processFile,
-            preset,
-            settings,
-            model: gfpgan,
-          });
-          if (modelResult) {
-            const processingMs = Date.now() - startedAt;
-            trackPhotoEnhancerEvent({
-              route: "enhance",
-              success: true,
-              fileName: req.file.originalname,
-              sourceExtension: getUploadExtension(req.file),
-              sourceMimeType: req.file.mimetype,
-              raw: Boolean(prepared.raw.raw),
-              heic: Boolean(prepared.raw.heic),
-              rawConverter: readString(prepared.raw.converter),
-              preset,
-              modelUsed: modelResult.modelUsed,
-              inferenceMode: "gfpgan-service",
-              processingMs,
-              outputMimeType: processFile.mimetype,
-            });
-            return res.json({
-              success: true,
-              enhancedImageUrl: modelResult.enhancedImageUrl,
-              imageUrl: modelResult.enhancedImageUrl,
-              outputUrl: modelResult.enhancedImageUrl,
-              preset,
-              settings,
-              modelUsed: modelResult.modelUsed,
-              inferenceMode: "gfpgan-service",
-              models: { gfpgan },
-              raw: prepared.raw,
-              processingMs,
-            });
-          }
-        }
-
-        const output = await enhanceWithSharp(processFile, settings);
-        const outputHash = await computeImageHash({
-          ...processFile,
-          buffer: output.buffer,
-          size: output.buffer.byteLength,
-          mimetype: output.mimeType,
-        });
-        const enhancedImageUrl = `data:${output.mimeType};base64,${output.buffer.toString("base64")}`;
-
+        const processingMs = Date.now() - startedAt;
         res.json({
-          success: true,
-          enhancedImageUrl,
-          imageUrl: enhancedImageUrl,
-          outputUrl: enhancedImageUrl,
-          preset,
-          settings,
-          modelUsed: shouldUseGfpgan(preset, settings) ? "sharp-fallback" : "sharp",
-          inferenceMode: "local-sharp",
-          models: { gfpgan },
-          raw: prepared.raw,
-          output: {
-            ...output.metadata,
-            mimeType: output.mimeType,
-            perceptualHash: outputHash,
-          },
-          processingMs: Date.now() - startedAt,
+          ...enhancementResult.payload,
+          processingMs,
         });
         trackPhotoEnhancerEvent({
           route: "enhance",
@@ -2857,14 +3921,14 @@ export function createPhotoEnhancerRouter() {
           fileName: req.file.originalname,
           sourceExtension: getUploadExtension(req.file),
           sourceMimeType: req.file.mimetype,
-          raw: Boolean(prepared.raw.raw),
-          heic: Boolean(prepared.raw.heic),
-          rawConverter: readString(prepared.raw.converter),
+          raw: Boolean(enhancementResult.prepared.raw.raw),
+          heic: Boolean(enhancementResult.prepared.raw.heic),
+          rawConverter: readString(enhancementResult.prepared.raw.converter),
           preset,
-          modelUsed: shouldUseGfpgan(preset, settings) ? "sharp-fallback" : "sharp",
-          inferenceMode: "local-sharp",
-          processingMs: Date.now() - startedAt,
-          outputMimeType: output.mimeType,
+          modelUsed: enhancementResult.modelUsed,
+          inferenceMode: enhancementResult.inferenceMode,
+          processingMs,
+          outputMimeType: enhancementResult.outputMimeType,
         });
       } catch (error) {
         console.error("[photo-enhancer] enhance failed:", error);

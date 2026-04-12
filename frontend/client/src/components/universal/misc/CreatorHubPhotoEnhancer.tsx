@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
@@ -93,10 +93,48 @@ interface PhotoEnhancerStatus {
   googleDrive?: {
     folderStructure?: Array<{ id: string; name: string; description?: string }>;
   };
+  directUpload?: {
+    enabled?: boolean;
+    strategy?: string;
+    maxBytes?: number;
+    partSizeBytes?: number;
+    maxPartUrlsPerRequest?: number;
+    signedUrlTtlSeconds?: number;
+    reason?: string | null;
+    cors?: {
+      requiresBrowserPut?: boolean;
+      exposeHeaders?: string[];
+      allowedMethods?: string[];
+    };
+  };
   improvements?: {
     total?: number;
     tracked?: Array<{ id: string; category: string; title: string; status: string }>;
   };
+}
+
+interface DirectUploadSource {
+  storageType: 'r2';
+  bucket: string;
+  key: string;
+  uploadId?: string | null;
+  fileName: string;
+  mimeType: string;
+  size: number;
+  etag?: string | null;
+  lastModified?: string | null;
+}
+
+interface DirectUploadCache {
+  fileSignature: string;
+  source: DirectUploadSource;
+}
+
+interface DirectUploadProgress {
+  active: boolean;
+  phase: string;
+  percent: number;
+  detail?: string;
 }
 
 const PRESETS = [
@@ -159,6 +197,8 @@ const PHOTO_UPLOAD_ACCEPT = [
   ...RAW_UPLOAD_EXTENSIONS,
 ].join(',');
 
+const DIRECT_UPLOAD_THRESHOLD_BYTES = 20 * 1024 * 1024;
+
 function normalizeProfession(value: SupportedProfession | undefined): 'photographer' | 'videographer' | 'music_producer' | 'vendor' {
   if (value === 'photographer' || value === 'videographer' || value === 'vendor') return value;
   if (value === 'musicproducer' || value === 'music_producer') return 'music_producer';
@@ -186,6 +226,50 @@ function toImageUrl(payload: unknown): string {
   }
 
   return '';
+}
+
+function toNumber(value: unknown): number | null {
+  const numeric = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : Number.NaN;
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function formatBytes(value: number | null | undefined): string {
+  if (!value || !Number.isFinite(value) || value <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let amount = value;
+  let unitIndex = 0;
+  while (amount >= 1024 && unitIndex < units.length - 1) {
+    amount /= 1024;
+    unitIndex += 1;
+  }
+  return `${amount >= 10 || unitIndex === 0 ? amount.toFixed(0) : amount.toFixed(1)} ${units[unitIndex]}`;
+}
+
+function getFileSignature(file: File): string {
+  return [file.name, file.size, file.lastModified, file.type || 'application/octet-stream'].join(':');
+}
+
+function normalizeDirectUploadSource(value: unknown): DirectUploadSource {
+  const source = toRecord(value);
+  const bucket = typeof source.bucket === 'string' ? source.bucket : '';
+  const key = typeof source.key === 'string' ? source.key : '';
+  const fileName = typeof source.fileName === 'string' ? source.fileName : 'upload.raw';
+  const mimeType = typeof source.mimeType === 'string' ? source.mimeType : 'application/octet-stream';
+  const size = toNumber(source.size) || 0;
+  if (!bucket || !key || !size) {
+    throw new Error('Ugyldig R2-opplastingskilde fra server.');
+  }
+  return {
+    storageType: 'r2',
+    bucket,
+    key,
+    uploadId: typeof source.uploadId === 'string' ? source.uploadId : null,
+    fileName,
+    mimeType,
+    size,
+    etag: typeof source.etag === 'string' ? source.etag : null,
+    lastModified: typeof source.lastModified === 'string' ? source.lastModified : null,
+  };
 }
 
 function normalizeProjects(payload: unknown): EnhancerProject[] {
@@ -257,6 +341,8 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [selectedFolderId, setSelectedFolderId] = useState('');
   const [showRatingDialog, setShowRatingDialog] = useState(false);
+  const [directUploadCache, setDirectUploadCache] = useState<DirectUploadCache | null>(null);
+  const [directUploadProgress, setDirectUploadProgress] = useState<DirectUploadProgress | null>(null);
 
   const professionConfig = getProfessionConfig(profession);
   const accentColor = professionConfig?.iconColor || '#ff8c00';
@@ -271,6 +357,9 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
   const modelRegistry = statusQuery.data?.models?.registry || [];
   const availableModels = modelRegistry.filter((model) => model.available).length;
   const rawConverters = statusQuery.data?.rawSupport?.converters || {};
+  const directUploadConfig = statusQuery.data?.directUpload;
+  const directUploadEnabled = Boolean(directUploadConfig?.enabled);
+  const directUploadMaxBytes = directUploadConfig?.maxBytes || 0;
 
   const folders = useMemo(() => {
     const driveStructure = statusQuery.data?.googleDrive?.folderStructure || [];
@@ -311,8 +400,179 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
     };
   }, [originalImageUrl]);
 
+  const shouldUseDirectUpload = useCallback((file: File) => {
+    if (!directUploadEnabled) return false;
+    if (directUploadMaxBytes > 0 && file.size > directUploadMaxBytes) {
+      return true;
+    }
+    return file.size >= DIRECT_UPLOAD_THRESHOLD_BYTES;
+  }, [directUploadEnabled, directUploadMaxBytes]);
+
+  const uploadFileDirectlyToR2 = useCallback(async (file: File): Promise<DirectUploadSource> => {
+    if (!directUploadEnabled) {
+      throw new Error(directUploadConfig?.reason || 'Direkte R2-opplasting er ikke konfigurert.');
+    }
+    if (directUploadMaxBytes > 0 && file.size > directUploadMaxBytes) {
+      throw new Error(`Filen er større enn storfilgrensen på ${formatBytes(directUploadMaxBytes)}.`);
+    }
+
+    let uploadRef: { bucket: string; key: string; uploadId: string } | null = null;
+    try {
+      setDirectUploadProgress({
+        active: true,
+        phase: 'Starter sikker storfil-opplasting',
+        percent: 0,
+        detail: `${file.name} · ${formatBytes(file.size)}`,
+      });
+      const createResponse = await apiRequest('/api/photo-enhancer/uploads/multipart', {
+        method: 'POST',
+        body: {
+          fileName: file.name,
+          contentType: file.type || 'application/octet-stream',
+          size: file.size,
+          projectId: selectedProjectId || undefined,
+        },
+      });
+      const upload = toRecord(toRecord(createResponse).upload);
+      const bucket = typeof upload.bucket === 'string' ? upload.bucket : '';
+      const key = typeof upload.key === 'string' ? upload.key : '';
+      const uploadId = typeof upload.uploadId === 'string' ? upload.uploadId : '';
+      const partSize = toNumber(upload.partSize) || directUploadConfig?.partSizeBytes || 32 * 1024 * 1024;
+      const partCount = toNumber(upload.partCount) || Math.ceil(file.size / partSize);
+      const maxPartUrlsPerRequest = Math.max(1, toNumber(upload.maxPartUrlsPerRequest) || directUploadConfig?.maxPartUrlsPerRequest || 32);
+
+      if (!bucket || !key || !uploadId || !partSize || !partCount) {
+        throw new Error('Serveren returnerte ikke en komplett R2 multipart-opplasting.');
+      }
+
+      uploadRef = { bucket, key, uploadId };
+      const completedParts: Array<{ partNumber: number; etag: string }> = [];
+      let uploadedBytes = 0;
+
+      for (let firstPart = 1; firstPart <= partCount; firstPart += maxPartUrlsPerRequest) {
+        const partNumbers = Array.from(
+          { length: Math.min(maxPartUrlsPerRequest, partCount - firstPart + 1) },
+          (_, index) => firstPart + index,
+        );
+        const partsResponse = await apiRequest('/api/photo-enhancer/uploads/multipart/parts', {
+          method: 'POST',
+          body: {
+            bucket,
+            key,
+            uploadId,
+            partNumbers,
+          },
+        });
+        const signedParts = Array.isArray(toRecord(partsResponse).parts) ? toRecord(partsResponse).parts as unknown[] : [];
+
+        for (const signedPart of signedParts) {
+          const part = toRecord(signedPart);
+          const partNumber = toNumber(part.partNumber);
+          const url = typeof part.url === 'string' ? part.url : '';
+          if (!partNumber || !url) {
+            throw new Error('Serveren returnerte en ugyldig signert R2-del.');
+          }
+
+          const start = (partNumber - 1) * partSize;
+          const end = Math.min(file.size, start + partSize);
+          const chunk = file.slice(start, end);
+          setDirectUploadProgress({
+            active: true,
+            phase: 'Laster opp direkte til R2',
+            percent: Math.max(1, Math.round((uploadedBytes / file.size) * 100)),
+            detail: `Del ${partNumber}/${partCount} · ${formatBytes(uploadedBytes)} av ${formatBytes(file.size)}`,
+          });
+
+          const response = await fetch(url, {
+            method: 'PUT',
+            body: chunk,
+          });
+          if (!response.ok) {
+            throw new Error(`R2-opplasting feilet på del ${partNumber} (${response.status}).`);
+          }
+          const etag = response.headers.get('ETag') || response.headers.get('etag');
+          if (!etag) {
+            throw new Error('R2-opplastingen mangler ETag-header. Cloudflare R2 CORS må eksponere ETag for nettleseropplasting.');
+          }
+
+          uploadedBytes += chunk.size;
+          completedParts.push({ partNumber, etag });
+          setDirectUploadProgress({
+            active: true,
+            phase: 'Laster opp direkte til R2',
+            percent: Math.min(99, Math.round((uploadedBytes / file.size) * 100)),
+            detail: `Del ${partNumber}/${partCount} ferdig · ${formatBytes(uploadedBytes)} av ${formatBytes(file.size)}`,
+          });
+        }
+      }
+
+      setDirectUploadProgress({
+        active: true,
+        phase: 'Fullfører R2-opplasting',
+        percent: 99,
+        detail: 'Setter sammen delene og låser kilden for analyse.',
+      });
+      const completeResponse = await apiRequest('/api/photo-enhancer/uploads/multipart/complete', {
+        method: 'POST',
+        body: {
+          bucket,
+          key,
+          uploadId,
+          fileName: file.name,
+          contentType: file.type || 'application/octet-stream',
+          size: file.size,
+          parts: completedParts.sort((left, right) => left.partNumber - right.partNumber),
+        },
+      });
+      const source = normalizeDirectUploadSource(toRecord(completeResponse).source);
+      setDirectUploadProgress({
+        active: true,
+        phase: 'Storfil lagret i R2',
+        percent: 100,
+        detail: 'Klar for serveranalyse uten stor request mot Render.',
+      });
+      return source;
+    } catch (error) {
+      if (uploadRef) {
+        await apiRequest('/api/photo-enhancer/uploads/multipart/abort', {
+          method: 'POST',
+          body: uploadRef,
+        }).catch(() => undefined);
+      }
+      setDirectUploadProgress(null);
+      throw error;
+    }
+  }, [directUploadConfig?.maxPartUrlsPerRequest, directUploadConfig?.partSizeBytes, directUploadConfig?.reason, directUploadEnabled, directUploadMaxBytes, selectedProjectId]);
+
+  const getDirectUploadSource = useCallback(async (file: File): Promise<DirectUploadSource> => {
+    const fileSignature = getFileSignature(file);
+    if (directUploadCache?.fileSignature === fileSignature) {
+      return directUploadCache.source;
+    }
+    const source = await uploadFileDirectlyToR2(file);
+    setDirectUploadCache({ fileSignature, source });
+    return source;
+  }, [directUploadCache, uploadFileDirectlyToR2]);
+
   const analyzeMutation = useMutation({
     mutationFn: async (file: File) => {
+      if (shouldUseDirectUpload(file)) {
+        const source = await getDirectUploadSource(file);
+        setDirectUploadProgress({
+          active: true,
+          phase: 'Analyserer fra R2',
+          percent: 100,
+          detail: 'Serveren henter objektet internt fra R2.',
+        });
+        return apiRequest('/api/photo-enhancer/analyze-r2', {
+          method: 'POST',
+          body: {
+            source,
+            preset: activePreset,
+          },
+        });
+      }
+
       const formData = new FormData();
       formData.append('image', file);
       formData.append('preset', activePreset);
@@ -324,11 +584,30 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
     onSuccess: (response) => {
       const record = toRecord(response);
       setAnalysisResult(record);
+      setDirectUploadProgress((previous) => previous?.active ? { ...previous, phase: 'Analyse fullført', percent: 100 } : previous);
     },
   });
 
   const enhanceMutation = useMutation({
     mutationFn: async (file: File) => {
+      if (shouldUseDirectUpload(file)) {
+        const source = await getDirectUploadSource(file);
+        setDirectUploadProgress({
+          active: true,
+          phase: 'Forbedrer fra R2',
+          percent: 100,
+          detail: 'Serveren bruker R2-kilden, ikke en stor nettleser-til-Render request.',
+        });
+        return apiRequest('/api/photo-enhancer/enhance-r2', {
+          method: 'POST',
+          body: {
+            source,
+            preset: activePreset,
+            settings,
+          },
+        });
+      }
+
       const formData = new FormData();
       formData.append('image', file);
       formData.append('preset', activePreset);
@@ -345,6 +624,7 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
         setEnhancedImageUrl(imageUrl);
         setViewMode('side-by-side');
       }
+      setDirectUploadProgress((previous) => previous?.active ? { ...previous, phase: 'Forbedring fullført', percent: 100 } : previous);
     },
   });
 
@@ -380,6 +660,8 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
     setEnhancedImageUrl('');
     setAnalysisResult(null);
     setCompositionAnalysis(null);
+    setDirectUploadCache(null);
+    setDirectUploadProgress(null);
     setViewMode('single');
     setCompareSlider(50);
   };
@@ -426,6 +708,8 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
   };
 
   const canSave = Boolean(enhancedImageUrl && selectedProjectId && selectedFolderId);
+  const selectedIsLargeUpload = Boolean(uploadedImage && uploadedImage.size >= DIRECT_UPLOAD_THRESHOLD_BYTES);
+  const selectedUsesDirectUpload = uploadedImage ? shouldUseDirectUpload(uploadedImage) : false;
 
   return (
     <Box>
@@ -469,13 +753,20 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                         label={statusQuery.data?.models?.imageHash?.available ? 'image-hash aktiv' : 'hash fallback'}
                         variant="outlined"
                       />
+                      <Chip
+                        size="small"
+                        icon={<CloudUploadIcon />}
+                        label={directUploadEnabled ? 'R2 storfil aktiv' : 'R2 storfil av'}
+                        color={directUploadEnabled ? 'success' : 'default'}
+                        variant={directUploadEnabled ? 'filled' : 'outlined'}
+                      />
                     </Stack>
                     <Typography variant="caption" color="text.secondary">
                       RAW-støtte: {statusQuery.data?.rawSupport?.available ? 'aktiv' : 'krever konverter på server'} ·
                       {' '}Konvertere: {Object.entries(rawConverters).filter(([, enabled]) => enabled).map(([name]) => name).join(', ') || 'ingen funnet'}
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
-                      Drive-struktur: {folders.length} mapper · Forbedringskatalog: {statusQuery.data?.improvements?.total || 0} punkter
+                      Drive-struktur: {folders.length} mapper · Storfilgrense: {directUploadMaxBytes ? formatBytes(directUploadMaxBytes) : 'ikke konfigurert'}
                     </Typography>
                   </Stack>
                 </Paper>
@@ -486,6 +777,14 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                 </Button>
 
                 {uploadedImage ? <Chip label={uploadedImage.name} size="small" /> : null}
+
+                {uploadedImage && selectedIsLargeUpload ? (
+                  <Alert severity={selectedUsesDirectUpload ? 'info' : 'warning'}>
+                    {selectedUsesDirectUpload
+                      ? `Stor fil oppdaget (${formatBytes(uploadedImage.size)}). Den lastes direkte til R2 i deler før analyse/forbedring.`
+                      : `Filen er stor (${formatBytes(uploadedImage.size)}), men R2 storfil-opplasting er ikke aktiv på backend.`}
+                  </Alert>
+                ) : null}
 
                 <FormControl fullWidth size="small">
                   <InputLabel id="enhancer-preset-label">Preset</InputLabel>
@@ -554,13 +853,33 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                   </Button>
                 </Stack>
 
-                {analyzeMutation.isPending || enhanceMutation.isPending ? (
+                {directUploadProgress?.active ? (
+                  <Box>
+                    <LinearProgress variant="determinate" value={directUploadProgress.percent} />
+                    <Typography variant="caption" color="text.secondary">
+                      {directUploadProgress.phase}
+                      {directUploadProgress.detail ? ` · ${directUploadProgress.detail}` : ''}
+                    </Typography>
+                  </Box>
+                ) : analyzeMutation.isPending || enhanceMutation.isPending ? (
                   <Box>
                     <LinearProgress />
                     <Typography variant="caption" color="text.secondary">
                       Prosesserer bilde...
                     </Typography>
                   </Box>
+                ) : null}
+
+                {analyzeMutation.isError ? (
+                  <Alert severity="error">
+                    {analyzeMutation.error instanceof Error ? analyzeMutation.error.message : 'Analyse feilet.'}
+                  </Alert>
+                ) : null}
+
+                {enhanceMutation.isError ? (
+                  <Alert severity="error">
+                    {enhanceMutation.error instanceof Error ? enhanceMutation.error.message : 'Forbedring feilet.'}
+                  </Alert>
                 ) : null}
 
                 {analysisResult ? (
