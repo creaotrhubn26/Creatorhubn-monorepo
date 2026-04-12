@@ -333,6 +333,15 @@ interface PhotoEnhancerStatusResponse {
         total?: number;
         byCoverage?: Record<string, number>;
       };
+      nativeMirrorless?: {
+        total?: number;
+        byBrand?: Record<string, number>;
+        byMount?: Record<string, number>;
+      };
+      sonyE?: { total?: number };
+      nikonZ?: { total?: number };
+      fujifilmXGfx?: { total?: number };
+      sigmaMirrorless?: { total?: number };
       mirrorlessFamilies?: Array<{
         id: string;
         brand: string;
@@ -1942,13 +1951,13 @@ const PhotoEnhancementSuite: React.FC<PhotoEnhancementSuiteProps> = ({
 
               <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(255, 193, 7, 0.07)' }}>
                 <Typography variant="caption" color="text.secondary">
-                  Nye mirrorless-familier
+                  Native mirrorless-profiler
                 </Typography>
                 <Typography variant="h6" fontWeight={900}>
-                  {mirrorlessFamilies.length}
+                  {profileRegistry.nativeMirrorless?.total ?? 0}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
-                  {mirrorlessFamilies.map((family) => family.mount).join(' / ') || 'Ikke lastet'}
+                  Sony {profileRegistry.sonyE?.total ?? 0} · Nikon {profileRegistry.nikonZ?.total ?? 0} · Fuji {profileRegistry.fujifilmXGfx?.total ?? 0} · Sigma {profileRegistry.sigmaMirrorless?.total ?? 0}
                 </Typography>
               </Paper>
             </Box>

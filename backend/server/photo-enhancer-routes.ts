@@ -2201,8 +2201,8 @@ export function createPhotoEnhancerRouter() {
           readString(req.body?.xmpSidecar) || readString(req.body?.sidecarXmp) || readString(req.body?.xmp),
         );
         const clientName = readString(req.body?.clientName) || sidecar.clientName || normalizedExif.credit;
-        const lensProfile = matchPhotoEnhancerLensProfile(normalizedExif.lensModel);
         const cameraProfile = matchPhotoEnhancerCameraProfile(normalizedExif.make, normalizedExif.model);
+        const lensProfile = matchPhotoEnhancerLensProfile(normalizedExif.lensModel, cameraProfile?.mount);
         const duplicateDetection = detectAndRecordDuplicate(req.file, originalHash, perceptualHash);
         const compression = analyzeCompressionQuality(analysisFile, analysisMetadata as unknown as Record<string, unknown>);
         const hasEmbeddedProfile = Boolean((metadata as { hasProfile?: boolean }).hasProfile || normalizedExif.iccProfile);
