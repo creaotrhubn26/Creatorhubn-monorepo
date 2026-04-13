@@ -4480,8 +4480,8 @@ type RoleRoomProjectWorkspaceState = {
             setLoginDialogOpen(false);
             toast.showSuccess(
               transfer.autoConfiguredProjectBinding
-                ? `Google-konto koblet for ${transfer.google.email}, og prosjektet er klargjort.`
-                : `Google-konto koblet for ${transfer.google.email}`,
+                ? 'Kontoen er oppdatert, og prosjektet er klargjort.'
+                : 'Kontoen er oppdatert.',
             );
           } else {
             toast.showError('Google-innlogging manglet Role Room-sesjon');
@@ -4491,7 +4491,7 @@ type RoleRoomProjectWorkspaceState = {
         }
 
         if (!adminUser) {
-          toast.showError('Du må være innlogget i Role Room før du kan koble Google Workspace');
+        toast.showError('Du må være innlogget i Role Room før kontoprofilen kan oppdateres');
           clearGoogleIntentFromUrl();
           return;
         }
@@ -4502,8 +4502,8 @@ type RoleRoomProjectWorkspaceState = {
         );
         toast.showSuccess(
           linkedProjectReady
-            ? `Google-SSO er aktivt for ${transfer.google.email}, og prosjektet er klargjort.`
-            : `Google-SSO er aktivt for ${transfer.google.email}`,
+            ? 'Kontoprofilen er oppdatert, og prosjektet er klargjort.'
+            : 'Kontoprofilen er oppdatert.',
         );
         clearGoogleIntentFromUrl();
       } catch (googleError) {
@@ -6800,40 +6800,6 @@ type RoleRoomProjectWorkspaceState = {
     selectedSelectionPrimarySchedule,
   ]);
 
-  const handleStartSelectionGoogleSso = useCallback(async () => {
-    if (!currentProject?.id) {
-      toast.showError('Velg et prosjekt før Google Workspace kan brukes i utvelgelsen.');
-      return;
-    }
-
-    try {
-      const response = await googleWorkspaceApi.startOauth({
-        mode: adminUser ? 'link' : 'login',
-        projectId: currentProject.id,
-        browserOrigin: typeof window !== 'undefined' ? window.location.origin : undefined,
-        returnPath: typeof window !== 'undefined'
-          ? `${window.location.pathname}${window.location.search}`
-          : '/',
-        loginAs: adminUser?.loginAs,
-        requestedRole: adminUser?.requestedRole ?? null,
-        email: selectedSelectionCandidateContactInfo.email ?? undefined,
-      });
-
-      if (!response.authorizationUrl) {
-        throw new Error('Google Workspace svarte uten en autorisasjonslenke.');
-      }
-
-      window.location.assign(response.authorizationUrl);
-    } catch (error) {
-      toast.showError(error instanceof Error ? error.message : 'Kunne ikke starte Google Workspace SSO.');
-    }
-  }, [
-    adminUser,
-    currentProject?.id,
-    selectedSelectionCandidateContactInfo.email,
-    toast,
-  ]);
-
   const handleCreateSelectionMeet = useCallback(async () => {
     if (!currentProject?.id || !selectedSelectionCandidate) {
       return;
@@ -6920,7 +6886,7 @@ type RoleRoomProjectWorkspaceState = {
   }, [selectedSelectionMeetArtifact?.meetUrl, toast]);
 
   const renderSelectionMeetPlannerCard = useCallback((compact = false) => {
-    if (!selectedSelectionCandidate || !canManageSelectionMeet) {
+    if (!selectedSelectionCandidate || !canManageSelectionMeet || selectionMeetConnectionState !== 'connected') {
       return null;
     }
 
@@ -6931,11 +6897,6 @@ type RoleRoomProjectWorkspaceState = {
         candidateEmail={selectedSelectionCandidateContactInfo.email}
         scheduleHint={selectionMeetScheduleHint}
         connectionState={selectionMeetConnectionState}
-        connectLabel={adminUser ? 'Forny Google Workspace SSO' : 'Logg inn med Google Workspace'}
-        canConnect={Boolean(currentProject?.id)}
-        onConnect={() => {
-          void handleStartSelectionGoogleSso();
-        }}
         title={selectionMeetDraft.title}
         onTitleChange={(value) => setSelectionMeetDraft((previous) => ({ ...previous, title: value }))}
         date={selectionMeetDraft.date}
@@ -6965,7 +6926,6 @@ type RoleRoomProjectWorkspaceState = {
     handleCopySelectionMeet,
     handleCreateSelectionMeet,
     handleOpenSelectionMeet,
-    handleStartSelectionGoogleSso,
     selectedSelectionCandidate,
     selectedSelectionCandidateContactInfo.email,
     selectedSelectionMeetArtifact?.createdAt,

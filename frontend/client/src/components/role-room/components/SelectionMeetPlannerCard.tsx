@@ -1,5 +1,4 @@
 import {
-  Alert,
   Box,
   Button,
   Chip,
@@ -21,9 +20,6 @@ interface SelectionMeetPlannerCardProps {
   candidateEmail?: string | null;
   scheduleHint?: string | null;
   connectionState: SelectionMeetConnectionState;
-  connectLabel?: string;
-  canConnect?: boolean;
-  onConnect?: () => void;
   title: string;
   onTitleChange: (value: string) => void;
   date: string;
@@ -71,9 +67,6 @@ export default function SelectionMeetPlannerCard({
   candidateEmail,
   scheduleHint,
   connectionState,
-  connectLabel = 'Fortsett med Google SSO',
-  canConnect = false,
-  onConnect,
   title,
   onTitleChange,
   date,
@@ -148,28 +141,6 @@ export default function SelectionMeetPlannerCard({
             </Typography>
           </Box>
         </Stack>
-        <Chip
-          size="small"
-          label={
-            connectionState === 'loading'
-              ? 'Laster'
-              : isConnected
-                ? 'Klar'
-                : connectionState === 'expired'
-                  ? 'Utløpt'
-                  : connectionState === 'error'
-                    ? 'Feil'
-                    : 'Ikke koblet'
-          }
-          sx={{
-            height: 20,
-            fontSize: '0.62rem',
-            fontWeight: 700,
-            bgcolor: isConnected ? 'rgba(34,197,94,0.18)' : 'rgba(148,163,184,0.16)',
-            color: isConnected ? '#bbf7d0' : '#e2e8f0',
-            border: '1px solid rgba(148,163,184,0.22)',
-          }}
-        />
       </Stack>
 
       <Stack direction="row" spacing={0.45} flexWrap="wrap" useFlexGap>
@@ -194,23 +165,6 @@ export default function SelectionMeetPlannerCard({
           />
         ) : null}
       </Stack>
-
-      {!isConnected ? (
-        <Alert
-          severity={connectionState === 'error' ? 'error' : connectionState === 'expired' ? 'warning' : 'info'}
-          sx={{
-            '& .MuiAlert-message': {
-              fontSize: compact ? '0.72rem' : '0.76rem',
-            },
-          }}
-        >
-          {connectionState === 'expired'
-            ? 'Google Workspace-SSO må fornyes før møtet kan planlegges.'
-            : connectionState === 'error'
-              ? 'Google Workspace-SSO svarte med feil. Forny innloggingen og prøv igjen.'
-              : 'Meet-planleggingen bruker samme Google-SSO som resten av plattformen. Åpne kontoprofilen for å se eller aktivere Google-statusen for prosjektmøter.'}
-        </Alert>
-      ) : null}
 
       <Stack spacing={compact ? 0.55 : 0.7}>
         <TextField

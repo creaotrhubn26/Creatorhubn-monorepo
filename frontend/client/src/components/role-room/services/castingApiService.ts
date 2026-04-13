@@ -524,15 +524,11 @@ type RoleRoomStatusCacheEntry<T> = {
   expiresAt: number;
 };
 
-const ROLE_ROOM_STATUS_SUCCESS_CACHE_TTL_MS = 30_000;
-const ROLE_ROOM_STATUS_FAILURE_CACHE_TTL_MS = 10_000;
+const ROLE_ROOM_STATUS_SUCCESS_CACHE_TTL_MS = 120_000;
+const ROLE_ROOM_STATUS_FAILURE_CACHE_TTL_MS = 60_000;
 
 const googleStatusCache = new Map<string, RoleRoomStatusCacheEntry<RoleRoomGoogleStatusResponse>>();
-const linkedInStatusCache: RoleRoomStatusCacheEntry<RoleRoomLinkedInStatusResponse> = {
-  value: null,
-  promise: null,
-  expiresAt: 0,
-};
+const linkedInStatusCache = new Map<string, RoleRoomStatusCacheEntry<RoleRoomLinkedInStatusResponse>>();
 
 const describeStatusFetchError = (error: unknown): string => {
   if (error instanceof Error && error.message.trim()) {
@@ -561,22 +557,37 @@ const buildLinkedInStatusFallback = (error: unknown): RoleRoomLinkedInStatusResp
   connection: null,
 });
 
-const getGoogleStatusCacheEntry = (projectId?: string): {
-  key: string;
-  entry: RoleRoomStatusCacheEntry<RoleRoomGoogleStatusResponse>;
-} => {
-  const key = projectId?.trim() || 'global';
-  const existing = googleStatusCache.get(key);
+const getStatusCacheActorKey = (): string => {
+  const session = authSessionService.getSessionSync();
+  const keyParts = [
+    session.currentUserId,
+    session.adminUser?.email,
+    session.adminUser?.loginAs,
+    session.adminUser?.requestedRole,
+    session.adminUser?.role,
+  ]
+    .map((value) => (typeof value === 'string' ? value.trim().toLowerCase() : ''))
+    .filter(Boolean);
+
+  return keyParts.length > 0 ? keyParts.join('|') : 'anonymous';
+};
+
+const getStatusCacheEntry = <T>(
+  cache: Map<string, RoleRoomStatusCacheEntry<T>>,
+  scope: string,
+): RoleRoomStatusCacheEntry<T> => {
+  const key = `${getStatusCacheActorKey()}::${scope}`;
+  const existing = cache.get(key);
   if (existing) {
-    return { key, entry: existing };
+    return existing;
   }
-  const entry: RoleRoomStatusCacheEntry<RoleRoomGoogleStatusResponse> = {
+  const entry: RoleRoomStatusCacheEntry<T> = {
     value: null,
     promise: null,
     expiresAt: 0,
   };
-  googleStatusCache.set(key, entry);
-  return { key, entry };
+  cache.set(key, entry);
+  return entry;
 };
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
@@ -2253,7 +2264,10 @@ export const googleWorkspaceApi = {
       params.set('projectId', projectId);
     }
     const query = params.toString();
-    const { entry } = getGoogleStatusCacheEntry(projectId);
+    const entry = getStatusCacheEntry(
+      googleStatusCache,
+      `google:${projectId?.trim() || 'global'}`,
+    );
     const now = Date.now();
     if (!options.force && entry.value && entry.expiresAt > now) {
       return entry.value;
@@ -2468,31 +2482,32 @@ export const googleWorkspaceApi = {
 
 export const linkedInWorkspaceApi = {
   getStatus: async (options: { force?: boolean } = {}): Promise<RoleRoomLinkedInStatusResponse> => {
+    const entry = getStatusCacheEntry(linkedInStatusCache, 'linkedin:global');
     const now = Date.now();
-    if (!options.force && linkedInStatusCache.value && linkedInStatusCache.expiresAt > now) {
-      return linkedInStatusCache.value;
+    if (!options.force && entry.value && entry.expiresAt > now) {
+      return entry.value;
     }
-    if (!options.force && linkedInStatusCache.promise) {
-      return linkedInStatusCache.promise;
+    if (!options.force && entry.promise) {
+      return entry.promise;
     }
 
-    linkedInStatusCache.promise = apiRequest<RoleRoomLinkedInStatusResponse>('/linkedin/status')
+    entry.promise = apiRequest<RoleRoomLinkedInStatusResponse>('/linkedin/status')
       .then((status) => {
-        linkedInStatusCache.value = status;
-        linkedInStatusCache.expiresAt = Date.now() + ROLE_ROOM_STATUS_SUCCESS_CACHE_TTL_MS;
+        entry.value = status;
+        entry.expiresAt = Date.now() + ROLE_ROOM_STATUS_SUCCESS_CACHE_TTL_MS;
         return status;
       })
       .catch((error) => {
         const fallback = buildLinkedInStatusFallback(error);
-        linkedInStatusCache.value = fallback;
-        linkedInStatusCache.expiresAt = Date.now() + ROLE_ROOM_STATUS_FAILURE_CACHE_TTL_MS;
+        entry.value = fallback;
+        entry.expiresAt = Date.now() + ROLE_ROOM_STATUS_FAILURE_CACHE_TTL_MS;
         return fallback;
       })
       .finally(() => {
-        linkedInStatusCache.promise = null;
+        entry.promise = null;
       });
 
-    return linkedInStatusCache.promise;
+    return entry.promise;
   },
 
   startOauth: async (

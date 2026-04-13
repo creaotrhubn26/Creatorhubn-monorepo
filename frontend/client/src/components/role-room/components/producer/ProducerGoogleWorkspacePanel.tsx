@@ -168,8 +168,8 @@ export default function ProducerGoogleWorkspacePanel({
       if (requestId !== statusRequestRef.current) {
         return;
       }
-      console.error('[ProducerGoogleWorkspacePanel] Failed to load Google Workspace status', statusError);
-      setLocalError(statusError instanceof Error ? statusError.message : 'Kunne ikke hente Google Workspace-status.');
+      console.error('[ProducerGoogleWorkspacePanel] Failed to load Workspace state', statusError);
+      setLocalError(statusError instanceof Error ? statusError.message : 'Kunne ikke hente Workspace-informasjon.');
     } finally {
       if (requestId === statusRequestRef.current) {
         setLoadingStatus(false);
@@ -484,6 +484,14 @@ export default function ProducerGoogleWorkspacePanel({
     );
   }, [binding?.contactsContext, onGoogleContactImported, projectId, runAction]);
 
+  const googleWorkspaceVisible = Boolean(
+    googleStatus?.configured && connection?.state === 'connected' && projectWorkspaceReady,
+  );
+
+  if (!googleWorkspaceVisible) {
+    return null;
+  }
+
   return (
     <Box
       sx={{
@@ -499,22 +507,14 @@ export default function ProducerGoogleWorkspacePanel({
             <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.45 }}>
               <HubOutlinedIcon sx={{ color: '#93c5fd' }} />
               <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                Google Workspace-lag
+                Workspace-filer og kalender
               </Typography>
             </Stack>
               <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.9rem', maxWidth: 980 }}>
-              Role Room er fortsatt systemet som styrer prosjektet. Google er et valgfritt underlag for innlogging, Drive, kalender, møter og delte artefakter rundt {projectName}.
+              Role Room styrer prosjektet. Filer, plan, møter og delte artefakter synkes direkte fra prosjektet uten ekstra koblingssteg.
               </Typography>
           </Box>
           <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
-            <Chip
-              size="small"
-              label={connection ? CONNECTION_STATE_LABELS[connection.state] ?? connection.state : 'Ikke koblet'}
-              sx={{
-                bgcolor: connection?.state === 'connected' ? 'rgba(34,197,94,0.16)' : 'rgba(148,163,184,0.12)',
-                color: connection?.state === 'connected' ? '#bbf7d0' : '#e2e8f0',
-              }}
-            />
             <Chip size="small" label={`Drive ${artifacts.filter((artifact) => artifact.artifactType === 'drive_file').length}`} />
             <Chip size="small" label={`Kalender ${artifacts.filter((artifact) => artifact.artifactType === 'calendar_event').length}`} />
             <Chip size="small" label={`Planhendelser ${calendarEvents.length}`} />
@@ -522,13 +522,6 @@ export default function ProducerGoogleWorkspacePanel({
         </Stack>
 
         {localError ? <Alert severity="error">{localError}</Alert> : null}
-        {loadingStatus ? <Alert severity="info">Laster Google Workspace-status...</Alert> : null}
-        {googleStatus && !googleStatus.configured ? (
-          <Alert severity="warning">
-            Google Workspace er ikke konfigurert på serveren. Mangler: {(googleStatus.missing ?? []).join(', ')}
-          </Alert>
-        ) : null}
-
         <Box
           sx={{
             display: 'grid',
@@ -547,45 +540,16 @@ export default function ProducerGoogleWorkspacePanel({
             <Stack spacing={1}>
               <Box>
                 <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                  Tilkobling og arbeidsområde
+                  Arbeidsområde
                 </Typography>
                 <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.82rem', mt: 0.35 }}>
-                  {connection?.googleEmail
-                    ? projectWorkspaceReady
-                      ? `Koblet som ${connection.googleEmail}.`
-                      : autoBootstrapFailed
-                        ? `Aktivert som ${connection.googleEmail}. Automatisk prosjektoppsett feilet, så du kan prøve igjen manuelt.`
-                        : `Aktivert som ${connection.googleEmail}. Drive og kalender settes opp automatisk for prosjektet.`
-                    : 'Google Workspace følger Google-SSO på tvers av CreatorHub og Role Room. Hvis brukeren kom inn uten Google, kan du fornye SSO her som fallback.'}
+                  Prosjektets Drive-mapper, kalender og møteartefakter holdes klare i bakgrunnen og styres fra Role Room.
                 </Typography>
               </Box>
 
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.8} flexWrap="wrap" useFlexGap>
-                {canManageGoogleWorkspace && !connection ? (
-                  <Button
-                    variant="contained"
-                    onClick={() => {
-                      void handleStartGoogleLink();
-                    }}
-                    disabled={!googleStatus?.configured || actionKey === 'connect'}
-                  >
-                    {actionKey === 'connect' ? 'Starter SSO...' : 'Fortsett med Google SSO'}
-                  </Button>
-                ) : null}
-                {canManageGoogleWorkspace && connection ? (
+                {canManageGoogleWorkspace ? (
                   <>
-                    {!projectWorkspaceReady && autoBootstrapFailed ? (
-                      <Button
-                        variant="outlined"
-                        startIcon={<CloudDoneOutlinedIcon />}
-                        onClick={() => {
-                          void handleCreateBinding();
-                        }}
-                        disabled={actionKey === 'binding'}
-                      >
-                        {actionKey === 'binding' ? 'Setter opp...' : 'Prøv oppsett igjen'}
-                      </Button>
-                    ) : null}
                     <Button
                       variant="outlined"
                       startIcon={<CloudSyncOutlinedIcon />}
@@ -616,21 +580,6 @@ export default function ProducerGoogleWorkspacePanel({
                     >
                       {actionKey === 'meet-session' ? 'Oppretter...' : 'Opprett klientsync'}
                     </Button>
-                    <Tooltip title="Fjern brukerens Google-kobling. Role Room-data beholdes.">
-                      <span>
-                        <Button
-                          variant="text"
-                          color="inherit"
-                          startIcon={<LinkOffOutlinedIcon />}
-                          onClick={() => {
-                            void handleDisconnect();
-                          }}
-                          disabled={actionKey === 'disconnect'}
-                        >
-                          Koble fra
-                        </Button>
-                      </span>
-                    </Tooltip>
                   </>
                 ) : null}
               </Stack>

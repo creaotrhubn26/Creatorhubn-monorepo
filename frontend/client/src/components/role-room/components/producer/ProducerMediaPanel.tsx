@@ -773,9 +773,9 @@ interface AccountAccessPlatformFlowConfig {
 
 const ACCOUNT_ACCESS_PLATFORM_FLOW_CONFIG: Record<ProducerAccountAccessPlatform, AccountAccessPlatformFlowConfig> = {
   google: {
-    primaryLabel: 'Aktiver Google',
+    primaryLabel: 'Google Workspace',
     primaryHref: '',
-    primaryDescription: 'En Google-godkjenning gir vedvarende tilgang til Drive, Kalender og Meet for denne brukeren.',
+    primaryDescription: 'Drive, Kalender og Meet brukes automatisk som del av prosjektflyten.',
   },
   meta: {
     primaryLabel: 'Åpne Meta Business',
@@ -1879,9 +1879,6 @@ export default function ProducerMediaPanel({
     legalAgreements: [],
     googleArtifacts: [],
   });
-  const [googleAccessStatus, setGoogleAccessStatus] = useState<Awaited<ReturnType<typeof googleWorkspaceApi.getStatus>> | null>(null);
-  const [loadingGoogleAccessStatus, setLoadingGoogleAccessStatus] = useState(false);
-  const [googleAccessActionKey, setGoogleAccessActionKey] = useState<string | null>(null);
   const [linkedInAccessStatus, setLinkedInAccessStatus] = useState<Awaited<ReturnType<typeof linkedInWorkspaceApi.getStatus>> | null>(null);
   const [loadingLinkedInAccessStatus, setLoadingLinkedInAccessStatus] = useState(false);
   const [linkedInAccessActionKey, setLinkedInAccessActionKey] = useState<string | null>(null);
@@ -1911,7 +1908,6 @@ export default function ProducerMediaPanel({
   const brandPreviewFrameRef = useRef<HTMLDivElement | null>(null);
   const materialFileInputRef = useRef<HTMLInputElement | null>(null);
   const materialCameraInputRef = useRef<HTMLInputElement | null>(null);
-  const googleAccessRequestRef = useRef(0);
   const linkedInAccessRequestRef = useRef(0);
   const savedIntakeSnapshotRef = useRef<string>(JSON.stringify(EMPTY_INTAKE));
   const savedPlanningSnapshotRef = useRef<string>('');
@@ -2429,27 +2425,6 @@ export default function ProducerMediaPanel({
     };
   }, [projectId]);
 
-  const loadGoogleAccessStatus = useCallback(async () => {
-    const requestId = ++googleAccessRequestRef.current;
-    setLoadingGoogleAccessStatus(true);
-    try {
-      const nextStatus = await googleWorkspaceApi.getStatus(projectId);
-      if (requestId !== googleAccessRequestRef.current) {
-        return;
-      }
-      setGoogleAccessStatus(nextStatus);
-    } catch (statusError) {
-      if (requestId !== googleAccessRequestRef.current) {
-        return;
-      }
-      console.error('[ProducerMediaPanel] Failed to load Google access status', statusError);
-    } finally {
-      if (requestId === googleAccessRequestRef.current) {
-        setLoadingGoogleAccessStatus(false);
-      }
-    }
-  }, [projectId]);
-
   const loadLinkedInAccessStatus = useCallback(async () => {
     const requestId = ++linkedInAccessRequestRef.current;
     setLoadingLinkedInAccessStatus(true);
@@ -2476,12 +2451,10 @@ export default function ProducerMediaPanel({
     if (!shouldLoadIntegrationAccessStatus) {
       return;
     }
-    void loadGoogleAccessStatus();
     void loadLinkedInAccessStatus();
-  }, [activeWorkspace, loadGoogleAccessStatus, loadLinkedInAccessStatus, showWorkspaceOperations]);
+  }, [activeWorkspace, loadLinkedInAccessStatus, showWorkspaceOperations]);
 
   useEffect(() => () => {
-    googleAccessRequestRef.current += 1;
     linkedInAccessRequestRef.current += 1;
   }, []);
 
@@ -3210,28 +3183,6 @@ export default function ProducerMediaPanel({
       },
     }));
   }, []);
-
-  const handleStartGoogleAccountLink = useCallback(async () => {
-    try {
-      setGoogleAccessActionKey('connect');
-      const response = await googleWorkspaceApi.startOauth({
-        mode: 'link',
-        projectId,
-        returnPath: `${window.location.pathname}${window.location.search}${window.location.hash}`,
-        browserOrigin: window.location.origin,
-        email: project.clientEmail ?? intakeDraft.contactEmail ?? undefined,
-      });
-      if (!hasText(response.authorizationUrl)) {
-        throw new Error('Mangler autorisasjonslenke fra Google Workspace.');
-      }
-      window.location.assign(response.authorizationUrl);
-    } catch (linkError) {
-      console.error('[ProducerMediaPanel] Failed to start Google account link', linkError);
-      setError(linkError instanceof Error ? linkError.message : 'Kunne ikke starte Google Workspace-koblingen.');
-    } finally {
-      setGoogleAccessActionKey(null);
-    }
-  }, [intakeDraft.contactEmail, project.clientEmail, projectId]);
 
   const handleStartLinkedInAccountLink = useCallback(async () => {
     try {
@@ -4058,7 +4009,7 @@ export default function ProducerMediaPanel({
       .map((item) => `${item.channel ?? ''} ${item.format ?? ''}`)
       .join(' ')
       .toLowerCase();
-    const required = new Set<ProducerAccountAccessPlatform>(['google']);
+    const required = new Set<ProducerAccountAccessPlatform>();
     if (signature.includes('meta') || signature.includes('reels') || signature.includes('stories') || signature.includes('instagram') || signature.includes('facebook')) {
       required.add('meta');
     }
@@ -4073,18 +4024,9 @@ export default function ProducerMediaPanel({
     }
     return required;
   }, [planningDraft.contentCalendar]);
-  const effectiveGoogleAccountStatus = googleAccessStatus?.state === 'connected'
-    ? 'connected'
-    : googleAccessStatus?.state === 'expired' || googleAccessStatus?.state === 'error'
-      ? 'client_action'
-      : accountAccessEntries.find((entry) => entry.platform === 'google')?.status ?? 'not_started';
   const effectiveAccountEntries = useMemo(
-    () => accountAccessEntries.map((entry) => (
-      entry.platform === 'google'
-        ? { ...entry, status: effectiveGoogleAccountStatus }
-        : entry
-    )),
-    [accountAccessEntries, effectiveGoogleAccountStatus],
+    () => accountAccessEntries,
+    [accountAccessEntries],
   );
   const requiredAccountEntries = useMemo(
     () => effectiveAccountEntries.filter((entry) => requiredAccountPlatforms.has(entry.platform)),
@@ -6396,8 +6338,8 @@ export default function ProducerMediaPanel({
             items: [
               {
                 id: 'security-oauth',
-                title: 'Godkjenn én gang, bruk videre',
-                detail: 'Google aktiveres med OAuth. Meta, LinkedIn og YouTube bør bruke invite eller rollebasert tilgang som kan beholdes gjennom prosjektet.',
+                title: 'Bruk rollebasert tilgang',
+                detail: 'Meta, LinkedIn og YouTube bør bruke invite eller rollebasert tilgang som kan beholdes gjennom prosjektet.',
               },
               {
                 id: 'security-two-factor',
@@ -6413,16 +6355,7 @@ export default function ProducerMediaPanel({
                 ),
               },
             ],
-            actions: googleAccessStatus?.state !== 'connected' && canEditClientInput ? [
-              {
-                id: 'connect-google-account',
-                label: googleAccessActionKey === 'connect' ? 'Starter Google...' : 'Aktiver Google',
-                variant: 'outlined',
-                onClick: () => {
-                  void handleStartGoogleAccountLink();
-                },
-              },
-            ] : [],
+            actions: [],
           },
         ],
       };
@@ -6598,9 +6531,6 @@ export default function ProducerMediaPanel({
     deliveryWorkspaceAssets.latestPackage,
     deliveryWorkspaceAssets.legalAgreements,
     deliveryWorkspaceAssets.workspaceFiles.length,
-    googleAccessActionKey,
-    googleAccessStatus?.state,
-    handleStartGoogleAccountLink,
     isClientReviewerMode,
     legalAgreementPendingCount,
     linkedCalendarMaterialCount,
@@ -11928,14 +11858,7 @@ export default function ProducerMediaPanel({
                   const isLinkedInEntry = entry.platform === 'linkedin';
                   const linkedAccountReview = accountAccessReviewByPlatform.get(entry.platform) ?? null;
                   const platformFlow = ACCOUNT_ACCESS_PLATFORM_FLOW_CONFIG[entry.platform];
-                  const googleConnectionDetail = isGoogleEntry
-                    ? readFirstNonEmptyString(
-                      googleAccessStatus?.projectBinding?.driveRootFolderId ? 'Drive er koblet til prosjektet.' : '',
-                      googleAccessStatus?.projectBinding?.calendarId ? 'Kalender er koblet til prosjektet.' : '',
-                      googleAccessStatus?.missing?.length ? `Mangler: ${googleAccessStatus.missing.join(', ')}` : '',
-                      'Google er ikke aktivert på denne brukeren ennå.',
-                    )
-                    : '';
+                  const googleConnectionDetail = '';
                   const linkedInConnectionDetail = isLinkedInEntry
                     ? readFirstNonEmptyString(
                       linkedInAccessStatus?.connection?.linkedInName && linkedInAccessStatus?.connection?.linkedInEmail
@@ -11976,26 +11899,28 @@ export default function ProducerMediaPanel({
                               label={PRODUCER_ACCOUNT_ACCESS_METHOD_LABELS[entry.method]}
                               sx={{ bgcolor: 'rgba(248,250,252,0.08)', color: '#e2e8f0' }}
                             />
-                            <Chip
-                              size="small"
-                              label={PRODUCER_ACCOUNT_ACCESS_STATUS_LABELS[entry.status]}
-                              sx={{
-                                bgcolor: entry.status === 'connected'
-                                  ? 'rgba(34,197,94,0.16)'
-                                  : entry.status === 'invite_sent'
-                                    ? 'rgba(56,189,248,0.16)'
-                                    : entry.status === 'client_action'
-                                      ? 'rgba(245,158,11,0.18)'
-                                      : 'rgba(148,163,184,0.16)',
-                                color: entry.status === 'connected'
-                                  ? '#bbf7d0'
-                                  : entry.status === 'invite_sent'
-                                    ? '#dbeafe'
-                                    : entry.status === 'client_action'
-                                      ? '#fde68a'
-                                      : '#e2e8f0',
-                              }}
-                            />
+                            {!isGoogleEntry ? (
+                              <Chip
+                                size="small"
+                                label={PRODUCER_ACCOUNT_ACCESS_STATUS_LABELS[entry.status]}
+                                sx={{
+                                  bgcolor: entry.status === 'connected'
+                                    ? 'rgba(34,197,94,0.16)'
+                                    : entry.status === 'invite_sent'
+                                      ? 'rgba(56,189,248,0.16)'
+                                      : entry.status === 'client_action'
+                                        ? 'rgba(245,158,11,0.18)'
+                                        : 'rgba(148,163,184,0.16)',
+                                  color: entry.status === 'connected'
+                                    ? '#bbf7d0'
+                                    : entry.status === 'invite_sent'
+                                      ? '#dbeafe'
+                                      : entry.status === 'client_action'
+                                        ? '#fde68a'
+                                        : '#e2e8f0',
+                                }}
+                              />
+                            ) : null}
                             <Chip
                               size="small"
                               label={isRequired ? 'Nødvendig i dette prosjektet' : 'Valgfri plattform'}
@@ -12031,48 +11956,7 @@ export default function ProducerMediaPanel({
                             )}
                           </Typography>
                         </Box>
-                        {isGoogleEntry ? (
-                          <Stack direction="row" spacing={0.55}>
-                            <Tooltip title="Oppdater Google-status">
-                              <span>
-                                <IconButton
-                                  onClick={() => {
-                                    void loadGoogleAccessStatus();
-                                  }}
-                                  disabled={loadingGoogleAccessStatus}
-                                  sx={{
-                                    width: 38,
-                                    height: 38,
-                                    borderRadius: 999,
-                                    border: '1px solid rgba(96,165,250,0.16)',
-                                    color: '#bfdbfe',
-                                  }}
-                                >
-                                  <CloudSyncOutlinedIcon fontSize="small" />
-                                </IconButton>
-                              </span>
-                            </Tooltip>
-                            {canEditClientInput ? (
-                              <Button
-                                size="small"
-                                variant={entry.status === 'connected' ? 'outlined' : 'contained'}
-                                onClick={() => {
-                                  if (entry.status !== 'connected') {
-                                    void handleStartGoogleAccountLink();
-                                  }
-                                }}
-                                disabled={googleAccessActionKey === 'connect' || entry.status === 'connected'}
-                                sx={{ textTransform: 'none', fontWeight: 700, minHeight: 38 }}
-                              >
-                                {entry.status === 'connected'
-                                  ? 'Google aktivert'
-                                  : googleAccessActionKey === 'connect'
-                                    ? 'Starter...'
-                                    : 'Aktiver Google'}
-                              </Button>
-                            ) : null}
-                          </Stack>
-                        ) : isLinkedInEntry ? (
+                        {isLinkedInEntry ? (
                           <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap>
                             <Tooltip title="Oppdater LinkedIn-status">
                               <span>

@@ -796,7 +796,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
       setGoogleStatus(await googleWorkspaceApi.getStatus(project.id));
     } catch (error) {
       enqueueSnackbar(
-        error instanceof Error ? error.message : 'Kunne ikke laste Google Workspace-status',
+        error instanceof Error ? error.message : 'Kunne ikke laste signeringsgrunnlag',
         { variant: 'warning' },
       );
     } finally {
@@ -2485,11 +2485,6 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
           <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.1)', color: '#93c5fd' }}>
             Klientsporet samler NDA, samarbeidsavtaler, endringsordrer og formelle godkjenninger i én sammenhengende flyt.
           </Alert>
-          {!useLocalFallback && googleStatus?.state !== 'connected' ? (
-            <Alert severity="warning" sx={{ bgcolor: 'rgba(245,158,11,0.12)', color: '#fde68a' }}>
-              Klientavtaler bruker samme Google-SSO som resten av Role Room. Sørg for at Google-statusen i kontoprofilen er aktiv før juridisk signering.
-            </Alert>
-          ) : null}
           <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
             <Chip
               size="small"
@@ -2584,11 +2579,6 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
           <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.1)', color: '#93c5fd' }}>
             Medvirkende-sporet samler konfidensialitet, oppmøte, praktiske vilkår og bruk av opptak i én avtalestrøm.
           </Alert>
-          {!useLocalFallback && googleStatus?.state !== 'connected' ? (
-            <Alert severity="warning" sx={{ bgcolor: 'rgba(245,158,11,0.12)', color: '#fde68a' }}>
-              Medvirkendeavtaler bruker samme Google-SSO som resten av Role Room. Sørg for at Google-statusen i kontoprofilen er aktiv før juridisk signering.
-            </Alert>
-          ) : null}
           {loading ? (
             <Typography sx={{ color: 'rgba(203,213,225,0.74)' }}>Laster medvirkendeavtaler…</Typography>
           ) : renderAgreementCards(extraAgreements)}

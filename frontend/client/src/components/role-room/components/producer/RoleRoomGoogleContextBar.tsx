@@ -161,7 +161,7 @@ export default function RoleRoomGoogleContextBar({
         return;
       }
       enqueueSnackbar(
-        error instanceof Error ? error.message : 'Kunne ikke hente Google Workspace-status.',
+        error instanceof Error ? error.message : 'Kunne ikke hente Workspace-informasjon.',
         { variant: 'error' },
       );
     } finally {
@@ -631,7 +631,7 @@ export default function RoleRoomGoogleContextBar({
 
   const compactDescription = useMemo(() => {
     if (status?.configured && connectionState === 'connected' && projectIsBound) {
-      return `${projectName} er koblet til samme Workspace-grunnlag som resten av Role Room.`;
+      return `${projectName} bruker samme Workspace-grunnlag som resten av Role Room.`;
     }
     return isMobile
       ? `${projectName} bruker samme Google-lag som resten av workspacet.`
@@ -640,14 +640,14 @@ export default function RoleRoomGoogleContextBar({
 
   const statusStripText = useMemo(() => {
     if (!status) {
-      return 'Henter Google Workspace-status for prosjektet.';
+      return '';
     }
     if (!status.configured) {
       const missingCount = status.missing?.length ?? 0;
       return `Google Workspace er ikke konfigurert på serveren ennå.${missingCount > 0 ? ` Mangler ${missingCount} miljøvariabler.` : ''}`;
     }
     if (connectionState !== 'connected') {
-      return 'Aktiver Google én gang for å bruke samme Drive-, kalender- og Meet-lag videre på tvers av workspacet.';
+      return '';
     }
     if (!projectIsFullyReady && actionKey === 'binding') {
       return 'Setter opp Drive og kalender automatisk for prosjektet.';
@@ -666,30 +666,6 @@ export default function RoleRoomGoogleContextBar({
       return null;
     }
 
-    if (connectionState !== 'connected') {
-      return {
-        key: 'connect',
-        label: actionKey === 'connect' ? 'Aktiverer...' : 'Aktiver Google',
-        icon: <HubOutlinedIcon />,
-        onClick: () => {
-          void handleConnect();
-        },
-        disabled: !status?.configured || actionKey === 'connect',
-      };
-    }
-
-    if (!projectIsBound && autoBootstrapFailed) {
-      return {
-        key: 'binding',
-        label: actionKey === 'binding' ? 'Setter opp...' : 'Prøv oppsett igjen',
-        icon: <CloudSyncOutlinedIcon />,
-        onClick: () => {
-          void handleCreateBinding();
-        },
-        disabled: actionKey === 'binding',
-      };
-    }
-
     if (!projectIsBound) {
       return null;
     }
@@ -706,15 +682,10 @@ export default function RoleRoomGoogleContextBar({
   }, [
     actionKey,
     canManage,
-    connectionState,
-    handleConnect,
     handleContextAction,
-    handleCreateBinding,
     loadingProjectData,
     primaryAction,
     projectIsBound,
-    autoBootstrapFailed,
-    status?.configured,
   ]);
 
   const secondaryButtonConfig = useMemo(() => {
@@ -758,6 +729,10 @@ export default function RoleRoomGoogleContextBar({
 
   const overflowOpen = Boolean(overflowAnchorEl);
 
+  if (!status?.configured || connectionState !== 'connected' || !projectIsBound) {
+    return null;
+  }
+
   return (
     <Box
       sx={{
@@ -779,21 +754,6 @@ export default function RoleRoomGoogleContextBar({
                 Google Workspace · {contextLabel}
               </Typography>
             </Stack>
-            <Box
-              sx={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                px: 1.05,
-                py: 0.38,
-                borderRadius: 999,
-                border: `1px solid ${connectionTone.border}`,
-                bgcolor: connectionTone.background,
-              }}
-            >
-              <Typography sx={{ color: connectionTone.color, fontSize: '0.73rem', fontWeight: 700 }}>
-                {connectionTone.label}
-              </Typography>
-            </Box>
           </Stack>
 
           {!isMobile ? (
@@ -823,9 +783,6 @@ export default function RoleRoomGoogleContextBar({
                 ))}
               </Stack>
             ) : null}
-            <Typography sx={{ color: 'rgba(191,219,254,0.9)', fontSize: '0.76rem' }}>
-              {workspaceStateTokens.join(' · ')}
-            </Typography>
           </Stack>
         </Stack>
 
@@ -874,38 +831,6 @@ export default function RoleRoomGoogleContextBar({
           </Button>
         </Stack>
       </Stack>
-
-      <Box
-        sx={{
-          display: 'flex',
-          flexDirection: { xs: 'column', lg: 'row' },
-          alignItems: { xs: 'flex-start', lg: 'center' },
-          justifyContent: 'space-between',
-          gap: 1,
-          px: 1.25,
-          py: 0.95,
-          borderRadius: 2.5,
-          border: status?.configured ? '1px solid rgba(59,130,246,0.2)' : '1px solid rgba(245,158,11,0.28)',
-          bgcolor: status?.configured ? 'rgba(15,23,42,0.54)' : 'rgba(120,53,15,0.22)',
-        }}
-      >
-        <Stack direction="row" spacing={0.9} alignItems="center">
-          <CloudSyncOutlinedIcon
-            sx={{
-              fontSize: 18,
-              color: status?.configured ? '#93c5fd' : '#fbbf24',
-            }}
-          />
-          <Typography sx={{ color: status?.configured ? '#eff6ff' : '#fef3c7', fontSize: '0.82rem', fontWeight: 600 }}>
-            {statusStripText}
-          </Typography>
-        </Stack>
-        {!isMobile ? (
-          <Typography sx={{ color: 'rgba(226,232,240,0.84)', fontSize: '0.76rem' }}>
-            {workspaceStateTokens.join(' · ')}
-          </Typography>
-        ) : null}
-      </Box>
 
       <Menu
         anchorEl={overflowAnchorEl}
