@@ -1712,13 +1712,14 @@ export default function ProducerClientReviewPanel({
           }}
         >
           {[
-            { label: 'Åpne', value: reviewOverviewCounts.open, helper: 'Må følges opp', color: '#fcd34d' },
-            { label: 'Endringer', value: reviewOverviewCounts.changes + reviewOverviewCounts.rejected, helper: 'Krever ny runde', color: '#fb923c' },
-            { label: 'Godkjent', value: reviewOverviewCounts.approved, helper: 'Kan brukes videre', color: '#34d399' },
-            { label: 'Totalt', value: reviewOverviewCounts.total, helper: 'Alle saker', color: '#bfdbfe' },
+            { key: 'open', label: 'Åpne', value: reviewOverviewCounts.open, helper: 'Må følges opp', color: '#fcd34d' },
+            { key: 'changes', label: 'Endringer', value: reviewOverviewCounts.changes + reviewOverviewCounts.rejected, helper: 'Krever ny runde', color: '#fb923c' },
+            { key: 'approved', label: 'Godkjent', value: reviewOverviewCounts.approved, helper: 'Kan brukes videre', color: '#34d399' },
+            { key: 'total', label: 'Totalt', value: reviewOverviewCounts.total, helper: 'Alle saker', color: '#bfdbfe' },
           ].map((card) => (
             <Box
-              key={card.label}
+              key={card.key}
+              data-testid={`producer-review-summary-${card.key}`}
               sx={{
                 p: 1,
                 borderRadius: 1.4,
@@ -1743,6 +1744,7 @@ export default function ProducerClientReviewPanel({
           {REVIEW_STATUS_FILTER_OPTIONS.map((option) => (
             <Button
               key={option.value}
+              data-testid={`producer-review-filter-${option.value}`}
               size="small"
               variant={reviewStatusFilter === option.value ? 'contained' : 'outlined'}
               onClick={() => setReviewStatusFilter(option.value)}
@@ -2437,6 +2439,8 @@ export default function ProducerClientReviewPanel({
             return (
               <Box
                 key={review.id}
+                data-testid="producer-review-card"
+                data-review-status={review.status}
                 ref={(node: HTMLDivElement | null) => { reviewRefs.current[review.id] = node; }}
                 onTouchStart={isMobileReview ? handleMobileReviewTouchStart : undefined}
                 onTouchEnd={isMobileReview ? handleMobileReviewTouchEnd : undefined}
