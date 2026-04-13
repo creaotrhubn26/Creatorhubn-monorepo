@@ -3796,14 +3796,16 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         },
       };
     }
+    const hasRefreshToken = Boolean(readStringValue(connection.refresh_token_encrypted));
     const expiryTimestamp = connection.expiry_date ? Date.parse(connection.expiry_date) : null;
-    const derivedState = connection.connection_state === 'connected'
-      && typeof expiryTimestamp === 'number'
+    const accessTokenExpiresSoon = typeof expiryTimestamp === 'number'
       && Number.isFinite(expiryTimestamp)
-      && expiryTimestamp <= Date.now() + 5 * 60 * 1000
+      && expiryTimestamp <= Date.now() + 5 * 60 * 1000;
+    const derivedState = connection.connection_state === 'connected'
+      && accessTokenExpiresSoon
+      && !hasRefreshToken
         ? 'expired'
         : (connection.connection_state ?? 'disconnected');
-    const hasRefreshToken = Boolean(readStringValue(connection.refresh_token_encrypted));
     const oauthRefreshAlert = derivedState === 'expired'
       ? {
         severity: 'warning',
