@@ -49,6 +49,7 @@ import {
 import {
   getAbsoluteProjectFileUrl,
   getProjectFileMetadataString,
+  normalizeProjectFileRecord,
   normalizeProjectFileRecords,
 } from '../../utils/projectFiles';
 import {
@@ -916,6 +917,7 @@ export default function ProducerExportHandoffPanel({
 
   return (
     <Box
+      data-testid="producer-export-handoff-panel"
       sx={{
         display: 'flex',
         flexDirection: 'column',
@@ -957,6 +959,7 @@ export default function ProducerExportHandoffPanel({
           <Button
             variant="outlined"
             startIcon={<ContentCopyIcon />}
+            data-testid="producer-export-copy-portal"
             onClick={() => {
               void handleCopyClientPortalUrl();
             }}
@@ -967,6 +970,7 @@ export default function ProducerExportHandoffPanel({
           <Button
             variant="outlined"
             startIcon={<TaskAltIcon />}
+            data-testid="producer-export-write-package"
             onClick={() => {
               void handleBuildAndUploadPackage();
             }}
@@ -978,6 +982,7 @@ export default function ProducerExportHandoffPanel({
           <Button
             variant="outlined"
             startIcon={<ViewListIcon />}
+            data-testid="producer-export-write-workspace"
             onClick={() => {
               void handleWriteDeliveryWorkspace();
             }}
@@ -990,6 +995,7 @@ export default function ProducerExportHandoffPanel({
             <Button
               variant="outlined"
               startIcon={<LaunchIcon />}
+              data-testid="producer-export-share-package"
               onClick={() => {
                 void handleShareLatestPackage();
               }}
@@ -1002,6 +1008,7 @@ export default function ProducerExportHandoffPanel({
             <Button
               variant="contained"
               startIcon={<SendIcon />}
+              data-testid="producer-export-send-package"
               onClick={() => { void handleSendToClient(); }}
               disabled={sendingToClient || uploadingPackage || writingWorkspace}
               sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#fbbf24', color: '#111827', '&:hover': { bgcolor: '#f59e0b' } }}
@@ -1020,6 +1027,7 @@ export default function ProducerExportHandoffPanel({
       {latestPackage ? (
         <Alert
           severity="success"
+          data-testid="producer-export-latest-package-alert"
           action={hasText(latestPackage.downloadUrl) ? (
             <Button
               color="inherit"
@@ -1039,6 +1047,7 @@ export default function ProducerExportHandoffPanel({
       {latestPackageShareUrl ? (
         <Alert
           severity="info"
+          data-testid="producer-export-share-alert"
           action={(
             <Button
               color="inherit"
@@ -1149,6 +1158,7 @@ export default function ProducerExportHandoffPanel({
         ].map((card) => (
           <Box
             key={card.label}
+            data-testid={`producer-export-summary-${normalizeFileToken(card.label)}`}
             sx={{
               p: 1.3,
               borderRadius: 1.5,
@@ -1452,6 +1462,7 @@ export default function ProducerExportHandoffPanel({
               {deliveryWorkspaceFiles.length > 0 ? deliveryWorkspaceFiles.slice(0, 8).map((file) => (
                 <Box
                   key={file.id}
+                  data-testid="producer-export-workspace-file"
                   sx={{
                     p: 1,
                     borderRadius: 1.25,
@@ -2147,16 +2158,17 @@ export default function ProducerExportHandoffPanel({
           <Button
             variant="contained"
             startIcon={<DownloadIcon />}
+            data-testid="producer-export-download-pdf"
             onClick={() => { void handleDownloadPdf(); }}
             disabled={downloadingPdf}
             sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#38bdf8', color: '#082f49', '&:hover': { bgcolor: '#0ea5e9' } }}
           >
             {downloadingPdf ? 'Genererer PDF…' : 'Last ned PDF'}
           </Button>
-          <Button variant="outlined" startIcon={<ContentCopyIcon />} onClick={() => { void handleCopyBrief(); }} sx={{ textTransform: 'none', fontWeight: 700 }}>
+          <Button variant="outlined" startIcon={<ContentCopyIcon />} data-testid="producer-export-copy-brief" onClick={() => { void handleCopyBrief(); }} sx={{ textTransform: 'none', fontWeight: 700 }}>
             Kopier overleveringsbrief
           </Button>
-          <Button variant="outlined" startIcon={<DownloadIcon />} onClick={handleDownloadManifest} sx={{ textTransform: 'none', fontWeight: 700 }}>
+          <Button variant="outlined" startIcon={<DownloadIcon />} data-testid="producer-export-download-manifest" onClick={handleDownloadManifest} sx={{ textTransform: 'none', fontWeight: 700 }}>
             Last ned manifest
           </Button>
         </Stack>
