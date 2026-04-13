@@ -66,6 +66,63 @@ type RoleRoomAgentBusinessSignals = {
   serviceSignals: string[];
 };
 
+type RoleRoomAgentBrregLookupStatus =
+  | "verified"
+  | "not_found"
+  | "invalid"
+  | "unavailable"
+  | "skipped";
+
+type RoleRoomAgentBrregCompany = {
+  source: "brreg";
+  lookupStatus: RoleRoomAgentBrregLookupStatus;
+  lookupInput?: string | null;
+  matchedBy?: "organization_number" | "company_name" | null;
+  organizationNumber?: string | null;
+  name?: string | null;
+  organizationForm?: {
+    code?: string | null;
+    description?: string | null;
+  } | null;
+  industryCode?: {
+    code?: string | null;
+    description?: string | null;
+  } | null;
+  registrationDate?: string | null;
+  foundationDate?: string | null;
+  vatRegistered?: boolean | null;
+  businessRegisterRegistered?: boolean | null;
+  employeeCount?: number | null;
+  businessAddress?: string | null;
+  postalAddress?: string | null;
+  municipality?: string | null;
+  website?: string | null;
+  statusFlags: {
+    bankrupt?: boolean;
+    underLiquidation?: boolean;
+    forcedDissolution?: boolean;
+    deleted?: boolean;
+  };
+  statusMessage?: string | null;
+};
+
+type RoleRoomAgentCompanyAge = {
+  status: "unknown" | "new" | "young" | "established" | "mature";
+  label: string;
+  registrationDate?: string | null;
+  years?: number | null;
+  months?: number | null;
+  daysSinceRegistration?: number | null;
+  isNewCompany: boolean;
+};
+
+type RoleRoomAgentAgreementSuggestion = {
+  id: string;
+  title: string;
+  detail: string;
+  priority: "critical" | "recommended" | "standard";
+};
+
 type RoleRoomAgentRetrievalMeta = {
   cohereRerankUsed: boolean;
   rerankerModel?: string;
@@ -73,6 +130,8 @@ type RoleRoomAgentRetrievalMeta = {
   websitePagesSelected: number;
   reviewsReviewed: number;
   reviewsSelected: number;
+  brregLookupStatus?: RoleRoomAgentBrregLookupStatus;
+  brregMatchedBy?: RoleRoomAgentBrregCompany["matchedBy"];
 };
 
 type RoleRoomAgentRerankResult<T> = {
@@ -86,6 +145,9 @@ type RoleRoomAgentNormalizedPayload = {
   provider: "openai" | "fallback";
   model: string;
   businessSignals?: RoleRoomAgentBusinessSignals | null;
+  brregCompany?: RoleRoomAgentBrregCompany | null;
+  companyAge?: RoleRoomAgentCompanyAge | null;
+  agreementSuggestions: RoleRoomAgentAgreementSuggestion[];
   retrievalMeta?: RoleRoomAgentRetrievalMeta;
   companyProfile: {
     companyName: string;
@@ -118,6 +180,17 @@ type RoleRoomAgentNormalizedPayload = {
     };
   };
   storyLogicDraft: Record<string, unknown>;
+  projectCreationDraft: {
+    projectName: string;
+    description: string;
+    projectType: string;
+    clientCompanyName: string;
+    clientOrganizationNumber: string;
+    clientCompanyAddress: string;
+    location: string;
+    websiteUrl: string;
+    suggestedAgreementNotes: string;
+  };
   nextRecommendedSteps: string[];
 };
 
@@ -136,6 +209,7 @@ export function getRoleRoomAgentRuntimeConfig() {
     googlePlacesConfigured: hasText(process.env.GOOGLE_PLACES_API_KEY),
     cohereConfigured: hasText(process.env.COHERE_API_KEY),
     cohereRerankModel: DEFAULT_ROLE_ROOM_AGENT_COHERE_RERANK_MODEL,
+    brregConfigured: true,
   };
 }
 
@@ -189,7 +263,7 @@ const normalizeBrandColors = (value: unknown): RoleRoomAgentBrandColor[] => {
   }
 
   return value
-    .map((entry) => {
+    .map((entry): RoleRoomAgentBrandColor | null => {
       if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
         return null;
       }
@@ -281,6 +355,338 @@ function extractMetaContent(html: string, key: string): string | null {
 
 function asNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+const BRREG_API_BASE_URL = "https://data.brreg.no/enhetsregisteret/api";
+
+function normalizeOrganizationNumber(value: unknown): string | null {
+  if (!hasText(value)) {
+    return null;
+  }
+  const digits = value.replace(/\D/g, "");
+  return digits.length === 9 ? digits : null;
+}
+
+function formatBrregAddress(value: unknown): string | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const addressLines = Array.isArray(record.adresse)
+    ? record.adresse
+        .map((entry) => (hasText(entry) ? normalizeWhitespace(entry) : ""))
+        .filter(Boolean)
+    : [];
+  const postalCode = hasText(record.postnummer) ? normalizeWhitespace(record.postnummer) : "";
+  const city = hasText(record.poststed) ? normalizeWhitespace(record.poststed) : "";
+  const country = hasText(record.land) ? normalizeWhitespace(record.land) : "";
+  const parts = [
+    addressLines.join(", "),
+    [postalCode, city].filter(Boolean).join(" "),
+    country && country.toLowerCase() !== "norge" ? country : "",
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(", ") : null;
+}
+
+function readBrregNestedText(value: unknown, key: string): string | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  return hasText(record[key]) ? normalizeWhitespace(record[key]) : null;
+}
+
+function mapBrregUnit(
+  unit: Record<string, unknown>,
+  lookupStatus: RoleRoomAgentBrregLookupStatus,
+  input: string | null,
+  matchedBy: RoleRoomAgentBrregCompany["matchedBy"],
+): RoleRoomAgentBrregCompany {
+  const organizationForm = unit.organisasjonsform && typeof unit.organisasjonsform === "object" && !Array.isArray(unit.organisasjonsform)
+    ? (unit.organisasjonsform as Record<string, unknown>)
+    : {};
+  const industryCode = unit.naeringskode1 && typeof unit.naeringskode1 === "object" && !Array.isArray(unit.naeringskode1)
+    ? (unit.naeringskode1 as Record<string, unknown>)
+    : {};
+  const businessAddress = unit.forretningsadresse && typeof unit.forretningsadresse === "object" && !Array.isArray(unit.forretningsadresse)
+    ? (unit.forretningsadresse as Record<string, unknown>)
+    : {};
+
+  return {
+    source: "brreg",
+    lookupStatus,
+    lookupInput: input,
+    matchedBy,
+    organizationNumber: hasText(unit.organisasjonsnummer) ? normalizeWhitespace(unit.organisasjonsnummer) : null,
+    name: hasText(unit.navn) ? normalizeWhitespace(unit.navn) : null,
+    organizationForm: {
+      code: readBrregNestedText(organizationForm, "kode"),
+      description: readBrregNestedText(organizationForm, "beskrivelse"),
+    },
+    industryCode: {
+      code: readBrregNestedText(industryCode, "kode"),
+      description: readBrregNestedText(industryCode, "beskrivelse"),
+    },
+    registrationDate: hasText(unit.registreringsdatoEnhetsregisteret)
+      ? normalizeWhitespace(unit.registreringsdatoEnhetsregisteret)
+      : null,
+    foundationDate: hasText(unit.stiftelsesdato) ? normalizeWhitespace(unit.stiftelsesdato) : null,
+    vatRegistered: typeof unit.registrertIMvaregisteret === "boolean" ? unit.registrertIMvaregisteret : null,
+    businessRegisterRegistered: typeof unit.registrertIForetaksregisteret === "boolean"
+      ? unit.registrertIForetaksregisteret
+      : null,
+    employeeCount: asNumber(unit.antallAnsatte),
+    businessAddress: formatBrregAddress(unit.forretningsadresse),
+    postalAddress: formatBrregAddress(unit.postadresse),
+    municipality: readBrregNestedText(businessAddress, "kommune"),
+    website: hasText(unit.hjemmeside) ? normalizeWebsiteUrl(unit.hjemmeside) : null,
+    statusFlags: {
+      bankrupt: unit.konkurs === true,
+      underLiquidation: unit.underAvvikling === true,
+      forcedDissolution: unit.underTvangsavviklingEllerTvangsopplosning === true,
+      deleted: hasText(unit.slettedato),
+    },
+    statusMessage: null,
+  };
+}
+
+function buildBrregUnavailable(status: RoleRoomAgentBrregLookupStatus, input: string | null, statusMessage: string): RoleRoomAgentBrregCompany {
+  return {
+    source: "brreg",
+    lookupStatus: status,
+    lookupInput: input,
+    matchedBy: null,
+    organizationNumber: null,
+    name: null,
+    organizationForm: null,
+    industryCode: null,
+    registrationDate: null,
+    foundationDate: null,
+    vatRegistered: null,
+    businessRegisterRegistered: null,
+    employeeCount: null,
+    businessAddress: null,
+    postalAddress: null,
+    municipality: null,
+    website: null,
+    statusFlags: {},
+    statusMessage,
+  };
+}
+
+async function fetchBrregCompany(input: RoleRoomAgentProducerBootstrapInput): Promise<RoleRoomAgentBrregCompany | null> {
+  const rawOrgNumber = hasText(input.organizationNumber) ? normalizeWhitespace(input.organizationNumber) : null;
+  const organizationNumber = normalizeOrganizationNumber(input.organizationNumber);
+  const companyName = hasText(input.companyName) ? normalizeWhitespace(input.companyName) : "";
+
+  if (rawOrgNumber && !organizationNumber) {
+    return buildBrregUnavailable("invalid", rawOrgNumber, "Organisasjonsnummeret må ha 9 siffer.");
+  }
+
+  if (!organizationNumber && companyName.length < 3) {
+    return null;
+  }
+
+  try {
+    if (organizationNumber) {
+      const response = await fetch(`${BRREG_API_BASE_URL}/enheter/${organizationNumber}`, {
+        headers: {
+          "User-Agent": "CreatorHub Role Room Agent/1.0 (+https://theroleroom.com)",
+          Accept: "application/json",
+        },
+        signal: AbortSignal.timeout(8_000),
+      });
+      if (response.status === 404) {
+        return buildBrregUnavailable("not_found", organizationNumber, "Fant ikke bedrift med dette organisasjonsnummeret i Enhetsregisteret.");
+      }
+      if (!response.ok) {
+        return buildBrregUnavailable("unavailable", organizationNumber, `Brreg svarte med status ${response.status}.`);
+      }
+      const payload = (await response.json().catch(() => null)) as Record<string, unknown> | null;
+      if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+        return buildBrregUnavailable("unavailable", organizationNumber, "Brreg svarte uten gyldig enhetsdata.");
+      }
+      return mapBrregUnit(payload, "verified", organizationNumber, "organization_number");
+    }
+
+    const params = new URLSearchParams({
+      navn: companyName,
+      size: "5",
+    });
+    const response = await fetch(`${BRREG_API_BASE_URL}/enheter?${params.toString()}`, {
+      headers: {
+        "User-Agent": "CreatorHub Role Room Agent/1.0 (+https://theroleroom.com)",
+        Accept: "application/json",
+      },
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!response.ok) {
+      return buildBrregUnavailable("unavailable", companyName, `Brreg-søk svarte med status ${response.status}.`);
+    }
+    const payload = (await response.json().catch(() => null)) as Record<string, unknown> | null;
+    const embedded = payload?._embedded && typeof payload._embedded === "object" && !Array.isArray(payload._embedded)
+      ? (payload._embedded as Record<string, unknown>)
+      : {};
+    const units = Array.isArray(embedded.enheter)
+      ? embedded.enheter.filter((entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === "object" && !Array.isArray(entry)))
+      : [];
+    if (units.length === 0) {
+      return buildBrregUnavailable("not_found", companyName, "Fant ingen treff i Enhetsregisteret.");
+    }
+
+    const normalizedQuery = companyName.toLowerCase();
+    const selected = [...units].sort((left, right) => {
+      const leftName = hasText(left.navn) ? normalizeWhitespace(left.navn).toLowerCase() : "";
+      const rightName = hasText(right.navn) ? normalizeWhitespace(right.navn).toLowerCase() : "";
+      const score = (name: string, unit: Record<string, unknown>) => {
+        let value = 0;
+        if (name === normalizedQuery) value += 100;
+        if (name.includes(normalizedQuery) || normalizedQuery.includes(name)) value += 45;
+        if (unit.slettedato) value -= 30;
+        if (unit.konkurs === true || unit.underAvvikling === true || unit.underTvangsavviklingEllerTvangsopplosning === true) value -= 25;
+        return value;
+      };
+      return score(rightName, right) - score(leftName, left);
+    })[0];
+
+    return mapBrregUnit(selected, "verified", companyName, "company_name");
+  } catch (error) {
+    return buildBrregUnavailable(
+      "unavailable",
+      organizationNumber || companyName,
+      error instanceof Error ? error.message : "Kunne ikke hente data fra Brreg.",
+    );
+  }
+}
+
+function calculateCompanyAge(brregCompany: RoleRoomAgentBrregCompany | null): RoleRoomAgentCompanyAge | null {
+  const registrationDate = brregCompany?.registrationDate || brregCompany?.foundationDate || null;
+  if (!registrationDate) {
+    return brregCompany
+      ? {
+          status: "unknown",
+          label: "Alder ukjent",
+          registrationDate: null,
+          years: null,
+          months: null,
+          daysSinceRegistration: null,
+          isNewCompany: false,
+        }
+      : null;
+  }
+
+  const registeredAt = new Date(`${registrationDate}T00:00:00.000Z`);
+  if (Number.isNaN(registeredAt.getTime())) {
+    return {
+      status: "unknown",
+      label: "Alder ukjent",
+      registrationDate,
+      years: null,
+      months: null,
+      daysSinceRegistration: null,
+      isNewCompany: false,
+    };
+  }
+
+  const daysSinceRegistration = Math.max(0, Math.floor((Date.now() - registeredAt.getTime()) / 86_400_000));
+  const years = Math.floor(daysSinceRegistration / 365.25);
+  const months = Math.floor((daysSinceRegistration % 365.25) / 30.44);
+  const status: RoleRoomAgentCompanyAge["status"] =
+    daysSinceRegistration < 365
+      ? "new"
+      : daysSinceRegistration < 365 * 3
+        ? "young"
+        : daysSinceRegistration < 365 * 10
+          ? "established"
+          : "mature";
+  const label =
+    status === "new"
+      ? `Ny bedrift · ca. ${Math.max(1, months)} mnd`
+      : status === "young"
+        ? `Ung bedrift · ca. ${years} år ${months} mnd`
+        : status === "established"
+          ? `Etablert bedrift · ca. ${years} år`
+          : `Moden bedrift · ca. ${years} år`;
+
+  return {
+    status,
+    label,
+    registrationDate,
+    years,
+    months,
+    daysSinceRegistration,
+    isNewCompany: daysSinceRegistration < 365 * 3,
+  };
+}
+
+function buildAgreementSuggestions(
+  brregCompany: RoleRoomAgentBrregCompany | null,
+  companyAge: RoleRoomAgentCompanyAge | null,
+): RoleRoomAgentAgreementSuggestion[] {
+  const suggestions: RoleRoomAgentAgreementSuggestion[] = [];
+  const flags = brregCompany?.statusFlags ?? {};
+
+  if (flags.bankrupt || flags.underLiquidation || flags.forcedDissolution || flags.deleted) {
+    suggestions.push({
+      id: "manual-risk-review",
+      title: "Manuell risikosjekk før avtale",
+      detail: "Brreg indikerer konkurs, avvikling, tvangsoppløsning eller slettet enhet. Ikke send standardavtale før eier, betalingsevne og signaturrett er kontrollert.",
+      priority: "critical",
+    });
+  }
+
+  if (companyAge?.isNewCompany) {
+    suggestions.push({
+      id: "new-company-payment-terms",
+      title: "Ny kunde: delbetaling og kort godkjenningsløp",
+      detail: "Bedriften er relativt ny. Bruk tydelig scope, forskudd/delbetaling, korte milepæler og skriftlig godkjenning før større produksjonskostnader.",
+      priority: "recommended",
+    });
+  }
+
+  if (brregCompany?.vatRegistered === false) {
+    suggestions.push({
+      id: "vat-clarification",
+      title: "Avklar MVA og fakturagrunnlag",
+      detail: "Enheten står ikke som MVA-registrert i Brreg. Avklar fakturamottaker, MVA-håndtering og om avtalen skal inngås med annen juridisk enhet.",
+      priority: "recommended",
+    });
+  }
+
+  const orgFormCode = brregCompany?.organizationForm?.code?.toUpperCase() || "";
+  if (orgFormCode === "ENK") {
+    suggestions.push({
+      id: "sole-proprietor-approval",
+      title: "ENK: tydelig rettighets- og betalingsansvar",
+      detail: "For enkeltpersonforetak bør avtalen være ekstra tydelig på leveranser, betalingsfrist, bruksrettigheter, kansellering og hvem som godkjenner publisering.",
+      priority: "recommended",
+    });
+  } else if (orgFormCode === "AS") {
+    suggestions.push({
+      id: "company-signatory",
+      title: "AS: bekreft signaturrett og bestiller",
+      detail: "For aksjeselskap bør bestiller, fakturamottaker og person med fullmakt/signaturrett fremgå før produksjonen låses.",
+      priority: "standard",
+    });
+  }
+
+  if ((brregCompany?.employeeCount ?? 0) === 0) {
+    suggestions.push({
+      id: "small-company-scope",
+      title: "Lite team: enkel scope og lav friksjon",
+      detail: "Brreg viser ingen ansatte registrert. Hold avtalen lett å forstå, med tydelig ansvar, leveranseliste og én godkjenningsansvarlig.",
+      priority: "standard",
+    });
+  }
+
+  suggestions.push({
+    id: "standard-production-rights",
+    title: "Standard produksjonsavtale med bruksrettigheter",
+    detail: "Legg inn leveranser, kanaler, rettigheter, revisjonsrunder, godkjenningsfrist, publiseringsansvar og betalingsplan før prosjektet går til opptak/produksjon.",
+    priority: "standard",
+  });
+
+  return suggestions.slice(0, 6);
 }
 
 function buildSearchQueries(
@@ -445,7 +851,7 @@ async function rerankWithCohere<T extends { snippet: string }>(
               : null,
         };
       })
-      .filter((entry): entry is T & { relevanceScore?: number | null } => entry !== null);
+      .filter((entry): entry is T & { relevanceScore: number | null } => entry !== null);
 
     if (ranked.length > 0) {
       return {
@@ -493,10 +899,15 @@ function detectBusinessClassification(
   input: RoleRoomAgentProducerBootstrapInput,
   websiteInsights: RoleRoomAgentWebsiteInsights,
   businessSignals?: RoleRoomAgentBusinessSignals | null,
+  brregCompany?: RoleRoomAgentBrregCompany | null,
 ): RoleRoomAgentBusinessClassification {
   const corpus = normalizeWhitespace(
     [
       input.companyName,
+      brregCompany?.name,
+      brregCompany?.organizationForm?.description,
+      brregCompany?.industryCode?.description,
+      brregCompany?.businessAddress,
       input.extraContext,
       websiteInsights.siteName,
       websiteInsights.pageTitle,
@@ -873,7 +1284,7 @@ async function fetchGooglePlacesBusinessSignals(
   const reviews = Array.isArray(placeRecord.reviews) ? placeRecord.reviews : [];
 
   const reviewCandidates: RoleRoomAgentReviewQuote[] = reviews
-    .map((review) => {
+    .map((review): RoleRoomAgentReviewQuote | null => {
       if (!review || typeof review !== "object" || Array.isArray(review)) {
         return null;
       }
@@ -958,14 +1369,25 @@ function buildFallbackBootstrap(
   input: RoleRoomAgentProducerBootstrapInput,
   websiteInsights: RoleRoomAgentWebsiteInsights,
   businessSignals: RoleRoomAgentBusinessSignals | null,
+  brregCompany: RoleRoomAgentBrregCompany | null,
+  companyAge: RoleRoomAgentCompanyAge | null,
+  agreementSuggestions: RoleRoomAgentAgreementSuggestion[],
 ): RoleRoomAgentNormalizedPayload {
-  const websiteUrl = normalizeWebsiteUrl(input.websiteUrl) || websiteInsights.finalUrl || null;
+  const websiteUrl = normalizeWebsiteUrl(input.websiteUrl)
+    || websiteInsights.finalUrl
+    || brregCompany?.website
+    || null;
   const companyName = hasText(input.companyName)
     ? normalizeWhitespace(input.companyName)
-    : websiteInsights.siteName || websiteInsights.pageTitle || "Kunden";
-  const classification = detectBusinessClassification(input, websiteInsights, businessSignals);
+    : brregCompany?.name || websiteInsights.siteName || websiteInsights.pageTitle || "Kunden";
+  const classification = detectBusinessClassification(input, websiteInsights, businessSignals, brregCompany);
   const summary = toSentenceCase(
     websiteInsights.metaDescription ||
+      (
+        brregCompany?.lookupStatus === "verified" && brregCompany.industryCode?.description
+          ? `${companyName} er registrert i Enhetsregisteret som ${brregCompany.organizationForm?.description || "norsk virksomhet"} innen ${brregCompany.industryCode.description}.`
+          : ""
+      ) ||
       input.extraContext ||
       `${companyName} trenger en tydelig produksjonsplan med brief, budskap og leveranser.`,
   );
@@ -1000,21 +1422,29 @@ function buildFallbackBootstrap(
       websitePagesSelected: websiteInsights.selectedPageSnippets.length,
       reviewsReviewed: businessSignals?.topReviews.length || 0,
       reviewsSelected: businessSignals?.topReviews.length || 0,
+      brregLookupStatus: brregCompany?.lookupStatus,
+      brregMatchedBy: brregCompany?.matchedBy,
     },
+    brregCompany,
+    companyAge,
+    agreementSuggestions,
     companyProfile: {
       companyName,
       websiteUrl,
-      organizationNumber: hasText(input.organizationNumber) ? normalizeWhitespace(input.organizationNumber) : null,
+      organizationNumber: brregCompany?.organizationNumber || normalizeOrganizationNumber(input.organizationNumber),
       summary,
-      offerings: proofPoints.length > 0 ? proofPoints : ["Tjenester og leveranser må verifiseres manuelt"],
+      offerings: normalizeStringArray([
+        brregCompany?.industryCode?.description || "",
+        ...proofPoints,
+      ], proofPoints.length > 0 ? proofPoints : ["Tjenester og leveranser må verifiseres manuelt"]),
       targetAudience: audience,
       toneAndBrandSignals,
-      industry: classification.industry,
+      industry: brregCompany?.industryCode?.description || classification.industry,
       subIndustry: classification.subIndustry,
       businessModel: classification.businessModel,
       contentCategory: classification.contentCategory,
       productionApproach: classification.productionApproach,
-      probableLocationAddress: businessSignals?.formattedAddress || null,
+      probableLocationAddress: businessSignals?.formattedAddress || brregCompany?.businessAddress || null,
       logoUrl: websiteInsights.probableLogoUrl || null,
     },
     intakeDraft: {
@@ -1029,7 +1459,14 @@ function buildFallbackBootstrap(
       contactName: "",
       contactEmail: "",
       contactPhone: "",
-      additionalNotes: hasText(input.extraContext) ? normalizeWhitespace(input.extraContext) : "",
+      additionalNotes: normalizeWhitespace(
+        [
+          hasText(input.extraContext) ? input.extraContext : "",
+          brregCompany?.lookupStatus === "verified"
+            ? `Brreg: ${brregCompany.name || companyName}, org.nr ${brregCompany.organizationNumber || "ukjent"}, ${brregCompany.organizationForm?.description || "organisasjonsform ukjent"}. ${companyAge?.label || ""}`
+            : "",
+        ].filter(Boolean).join(" "),
+      ),
     },
     planningDraft: {
       activationPlan: {
@@ -1050,7 +1487,7 @@ function buildFallbackBootstrap(
         audience: audience.join(", "),
         hook: `Hvorfor skal målgruppen bry seg om ${companyName} akkurat nå?`,
         coreMessage: summary,
-        industry: classification.industry,
+        industry: brregCompany?.industryCode?.description || classification.industry,
         subIndustry: classification.subIndustry,
         businessModel: classification.businessModel,
         contentCategory: classification.contentCategory,
@@ -1065,6 +1502,7 @@ function buildFallbackBootstrap(
             ? "Primært nettside, Meta og korte SoMe-utdrag med tydelig CTA."
             : "Primært nettside og salgsstøtte, sekundært SoMe-utdrag.",
         successSignals: ["Kunden kjenner seg igjen i budskapet", "Godkjenning uten større omarbeid"],
+        agreementSignals: agreementSuggestions.map((entry) => entry.title),
       },
       brandGuide: {
         logoUrl: websiteInsights.probableLogoUrl || null,
@@ -1126,7 +1564,7 @@ function buildFallbackBootstrap(
         moralArgument: "Klar kommunikasjon gir bedre beslutninger.",
       },
       contentStoryLogic: {
-        industry: classification.industry,
+        industry: brregCompany?.industryCode?.description || classification.industry,
         subIndustry: classification.subIndustry,
         businessModel: classification.businessModel,
         contentCategory: classification.contentCategory,
@@ -1159,9 +1597,13 @@ function buildFallbackBootstrap(
           "Hvilke kanaler og formater som er viktigst",
           "Hvilket budskap som er viktigst å få frem",
           "Hvilken CTA som skal brukes",
+          "Hvem hos kunden har avtale-, faktura- og publiseringsansvar",
         ],
       },
-      classification,
+      classification: {
+        ...classification,
+        industry: brregCompany?.industryCode?.description || classification.industry,
+      },
       currentPhase: 1,
       phaseStatus: {
         concept: "ready",
@@ -1179,12 +1621,38 @@ function buildFallbackBootstrap(
     },
     nextRecommendedSteps: [
       "Verifiser kundeprofil og målgruppe med klienten",
+      brregCompany?.lookupStatus === "verified"
+        ? `Vi har nå hentet all tilgjengelig offentlig Brreg-informasjon om kunden. Spør om du skal opprette prosjekt på ${companyName}.`
+        : "Brreg-data ble ikke verifisert. Be kunden bekrefte juridisk navn, org.nr og fakturamottaker.",
       "Godkjenn story logikk før manus og storyboard fylles videre ut",
       "Samle brandfiler, logo og eksisterende referansemateriale",
+      ...agreementSuggestions.slice(0, 2).map((entry) => `Avtale: ${entry.title}`),
       ...(businessSignals?.rating && businessSignals?.userRatingCount
         ? [`Bruk kundesignaler fra ${businessSignals.userRatingCount} Google-anmeldelser som bevispunkter i brief og CTA.`]
         : []),
     ],
+    projectCreationDraft: {
+      projectName: `${companyName} · Innholdsproduksjon`,
+      description: normalizeWhitespace(
+        [
+          summary,
+          brregCompany?.lookupStatus === "verified"
+            ? `Kunde verifisert i Brreg med org.nr ${brregCompany.organizationNumber}.`
+            : "",
+          companyAge?.label || "",
+          agreementSuggestions.length > 0
+            ? `Avtaleforslag: ${agreementSuggestions.map((entry) => entry.title).join("; ")}.`
+            : "",
+        ].filter(Boolean).join(" "),
+      ),
+      projectType: "content_production",
+      clientCompanyName: companyName,
+      clientOrganizationNumber: brregCompany?.organizationNumber || normalizeOrganizationNumber(input.organizationNumber) || "",
+      clientCompanyAddress: businessSignals?.formattedAddress || brregCompany?.businessAddress || "",
+      location: businessSignals?.formattedAddress || brregCompany?.businessAddress || "",
+      websiteUrl: websiteUrl || "",
+      suggestedAgreementNotes: agreementSuggestions.map((entry) => `${entry.title}: ${entry.detail}`).join("\n"),
+    },
   };
 }
 
@@ -1192,6 +1660,9 @@ async function requestOpenAiBootstrap(
   input: RoleRoomAgentProducerBootstrapInput,
   websiteInsights: RoleRoomAgentWebsiteInsights,
   businessSignals: RoleRoomAgentBusinessSignals | null,
+  brregCompany: RoleRoomAgentBrregCompany | null,
+  companyAge: RoleRoomAgentCompanyAge | null,
+  agreementSuggestions: RoleRoomAgentAgreementSuggestion[],
   retrievalMeta: RoleRoomAgentRetrievalMeta | null,
 ): Promise<unknown | null> {
   const runtimeConfig = getRoleRoomAgentRuntimeConfig();
@@ -1207,7 +1678,7 @@ async function requestOpenAiBootstrap(
       {
         role: "system",
         content:
-          "Du er The Role Room Agent for The Role Room. Lag norske JSON-utkast for innholdsproduksjon. Returner kun gyldig JSON med feltene companyProfile, intakeDraft, planningDraft, storyLogicDraft og nextRecommendedSteps. Svar kun med JSON. Vær konkret, kommersiell og nyttig for en innholdsprodusent som bygger brief, story logikk og produksjonsgrunnlag for en kunde.",
+          "Du er The Role Room Agent for The Role Room. Lag norske JSON-utkast for innholdsproduksjon. Returner kun gyldig JSON med feltene companyProfile, intakeDraft, planningDraft, storyLogicDraft og nextRecommendedSteps. Svar kun med JSON. Vær konkret, kommersiell og nyttig for en innholdsprodusent som bygger brief, story logikk og produksjonsgrunnlag for en kunde. Bruk Brreg-data som juridisk kilde når den finnes, og ikke finn på organisasjonsnummer eller selskapsstatus.",
       },
       {
         role: "user",
@@ -1226,6 +1697,8 @@ async function requestOpenAiBootstrap(
               "For restaurant og matkonsepter skal story logic handle om meny, fristelse, bestilling, lokasjon og konvertering, ikke generell bedriftsprofil.",
               "Legg inn en contentStoryLogic-del som er lett for klienten å fylle ut og godkjenne i et innholdsproduksjonsprosjekt.",
               "Hvis businessSignals finnes, bruk reviews, rating, lokasjon og tjenestesignalene aktivt i brief, bevispunkter, CTA og story logic.",
+              "Hvis brregCompany.lookupStatus er verified, bruk juridisk navn, organisasjonsnummer, bransjekode, adresse, MVA-status og alder i kundeprofilen.",
+              "Hvis agreementSuggestions finnes, bruk dem som avtalerisiko og praktiske anbefalinger, men formuler det som produksjonsråd, ikke juridisk rådgivning.",
             ],
           },
           outputSchemaHints: {
@@ -1267,6 +1740,9 @@ async function requestOpenAiBootstrap(
           input,
           websiteInsights,
           businessSignals,
+          brregCompany,
+          companyAge,
+          agreementSuggestions,
           retrievalMeta,
         }),
       },
@@ -1349,6 +1825,9 @@ function normalizeBootstrapPayload(
     provider: "openai",
     model: getRoleRoomAgentRuntimeConfig().defaultModel,
     businessSignals,
+    brregCompany: fallback.brregCompany,
+    companyAge: fallback.companyAge,
+    agreementSuggestions: fallback.agreementSuggestions,
     retrievalMeta: fallback.retrievalMeta,
     companyProfile: {
       companyName: hasText(companyProfile.companyName)
@@ -1481,32 +1960,56 @@ function normalizeBootstrapPayload(
           }
         : fallback.storyLogicDraft,
     nextRecommendedSteps: normalizeStringArray(record.nextRecommendedSteps, fallback.nextRecommendedSteps),
+    projectCreationDraft: fallback.projectCreationDraft,
   };
 }
 
 export async function generateRoleRoomAgentProducerBootstrap(
   input: RoleRoomAgentProducerBootstrapInput,
 ): Promise<RoleRoomAgentNormalizedPayload> {
-  const websiteUrl = normalizeWebsiteUrl(input.websiteUrl);
-  const websiteInsights = await fetchWebsiteInsights(websiteUrl, input);
-  const businessSignals = await fetchGooglePlacesBusinessSignals(input, websiteInsights);
+  const initialBrregCompany = await fetchBrregCompany(input);
+  const companyAge = calculateCompanyAge(initialBrregCompany);
+  const agreementSuggestions = buildAgreementSuggestions(initialBrregCompany, companyAge);
+  const enrichedInput: RoleRoomAgentProducerBootstrapInput = {
+    ...input,
+    companyName: hasText(input.companyName)
+      ? input.companyName
+      : initialBrregCompany?.name || input.companyName || null,
+    organizationNumber: initialBrregCompany?.organizationNumber
+      || normalizeOrganizationNumber(input.organizationNumber)
+      || input.organizationNumber
+      || null,
+    websiteUrl: normalizeWebsiteUrl(input.websiteUrl)
+      || initialBrregCompany?.website
+      || input.websiteUrl
+      || null,
+  };
+  const websiteUrl = normalizeWebsiteUrl(enrichedInput.websiteUrl);
+  const websiteInsights = await fetchWebsiteInsights(websiteUrl, enrichedInput);
+  const businessSignals = await fetchGooglePlacesBusinessSignals(enrichedInput, websiteInsights);
   const fallback = buildFallbackBootstrap(
     {
-      ...input,
-      websiteUrl: websiteUrl || input.websiteUrl || null,
+      ...enrichedInput,
+      websiteUrl: websiteUrl || enrichedInput.websiteUrl || null,
     },
     websiteInsights,
     businessSignals,
+    initialBrregCompany,
+    companyAge,
+    agreementSuggestions,
   );
   const openAiPayload = await requestOpenAiBootstrap(
-    input,
+    enrichedInput,
     websiteInsights,
     businessSignals,
+    initialBrregCompany,
+    companyAge,
+    agreementSuggestions,
     fallback.retrievalMeta ?? null,
   );
   if (!openAiPayload) {
     return fallback;
   }
 
-  return normalizeBootstrapPayload(openAiPayload, input, websiteInsights, fallback, businessSignals);
+  return normalizeBootstrapPayload(openAiPayload, enrichedInput, websiteInsights, fallback, businessSignals);
 }

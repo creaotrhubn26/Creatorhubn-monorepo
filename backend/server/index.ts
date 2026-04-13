@@ -28625,6 +28625,7 @@ app.get("/api/role-room/agent/access", (req, res) => {
     googlePlacesConfigured: runtimeConfig.googlePlacesConfigured,
     cohereConfigured: runtimeConfig.cohereConfigured,
     cohereRerankModel: runtimeConfig.cohereRerankModel,
+    brregConfigured: runtimeConfig.brregConfigured,
   });
 });
 

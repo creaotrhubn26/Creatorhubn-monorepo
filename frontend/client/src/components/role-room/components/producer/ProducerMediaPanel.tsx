@@ -196,6 +196,7 @@ interface ProducerMediaPanelProps {
   onPrepareManuscriptReview?: () => void;
   onPrepareShotListReview?: () => void;
   onProjectUpdated?: (project: CastingProject) => Promise<void> | void;
+  onCreateProjectFromAgent?: (draft: Partial<CastingProject>) => Promise<void> | void;
   onUnsavedStateChange?: (hasUnsaved: boolean, reason?: string) => void;
 }
 
@@ -1811,6 +1812,7 @@ export default function ProducerMediaPanel({
   onPrepareManuscriptReview: _onPrepareManuscriptReview,
   onPrepareShotListReview,
   onProjectUpdated,
+  onCreateProjectFromAgent,
   onUnsavedStateChange,
 }: ProducerMediaPanelProps) {
   const { uploadProjectFile, deleteProjectFile, getProjectFiles } = useProject();
@@ -2939,6 +2941,60 @@ export default function ProducerMediaPanel({
       setRoleRoomAgentApplying(false);
     }
   }, [intakeDraft, isBriefLockedByApproval, persistPlanningDraft, planningDraft, project, projectId, serializeIntakeSnapshot]);
+
+  const handleCreateProjectFromRoleRoomAgent = useCallback(async (result: RoleRoomAgentProducerBootstrapResult) => {
+    if (!onCreateProjectFromAgent) {
+      return;
+    }
+
+    const draft = result.projectCreationDraft;
+    const companyName = draft?.clientCompanyName || result.companyProfile.companyName || result.brregCompany?.name || 'Kunde';
+    const agreementNotes = draft?.suggestedAgreementNotes
+      || (result.agreementSuggestions ?? []).map((entry) => `${entry.title}: ${entry.detail}`).join('\n');
+    const description = [
+      draft?.description || result.companyProfile.summary || '',
+      result.brregCompany?.lookupStatus === 'verified' && result.brregCompany.organizationNumber
+        ? `Brreg-verifisert org.nr: ${result.brregCompany.organizationNumber}.`
+        : '',
+      result.companyAge?.label ? `Selskapsalder: ${result.companyAge.label}.` : '',
+      agreementNotes ? `Avtalenotater:\n${agreementNotes}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n\n')
+      .trim();
+
+    await onCreateProjectFromAgent({
+      name: draft?.projectName || `${companyName} · Innholdsproduksjon`,
+      projectName: draft?.projectName || `${companyName} · Innholdsproduksjon`,
+      description,
+      projectType: draft?.projectType || 'content_production',
+      genre: 'content_production',
+      clientName: result.intakeDraft.contactName || companyName,
+      clientEmail: result.intakeDraft.contactEmail || '',
+      clientPhone: result.intakeDraft.contactPhone || '',
+      clientCompanyName: companyName,
+      clientOrganizationNumber: draft?.clientOrganizationNumber || result.companyProfile.organizationNumber || result.brregCompany?.organizationNumber || '',
+      clientCompanyAddress: draft?.clientCompanyAddress || result.companyProfile.probableLocationAddress || result.brregCompany?.businessAddress || '',
+      location: draft?.location || result.companyProfile.probableLocationAddress || result.brregCompany?.businessAddress || '',
+      currency: 'NOK',
+      status: 'draft',
+      roles: [],
+      candidates: [],
+      crew: [],
+      schedules: [],
+      locations: [],
+      props: [],
+      roleRoomAgentPrefill: {
+        generatedAt: result.generatedAt,
+        brregCompany: result.brregCompany ?? null,
+        companyAge: result.companyAge ?? null,
+        agreementSuggestions: result.agreementSuggestions ?? [],
+        websiteUrl: draft?.websiteUrl || result.companyProfile.websiteUrl || '',
+      },
+    });
+    setRoleRoomAgentDialogOpen(false);
+    setRoleRoomAgentNotice('Prosjektmodalen er forhåndsutfylt med Brreg-data og agentens avtaleforslag. Kontroller kontaktfelt og lagre prosjektet.');
+  }, [onCreateProjectFromAgent]);
 
   const handleImportGoogleContact = useCallback(async (contact: {
     name?: string | null;
@@ -16016,6 +16072,7 @@ export default function ProducerMediaPanel({
         notice={roleRoomAgentNotice}
         onGenerate={handleGenerateRoleRoomAgent}
         onApply={handleApplyRoleRoomAgent}
+        onCreateProject={handleCreateProjectFromRoleRoomAgent}
       />
     </Box>
   );

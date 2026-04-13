@@ -1187,6 +1187,7 @@ type RoleRoomProjectWorkspaceState = {
   const [projectCreationModalOpen, setProjectCreationModalOpen] = useState(false);
   const [projectCreationModalKey, setProjectCreationModalKey] = useState(0);
   const [projectToEdit, setProjectToEdit] = useState<CastingProject | null>(null);
+  const [projectCreationPrefill, setProjectCreationPrefill] = useState<Partial<CastingProject> | null>(null);
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const clientPortalIntent = useMemo(
     () => parseClientPortalIntentFromWindow(),
@@ -1834,6 +1835,14 @@ type RoleRoomProjectWorkspaceState = {
 
   const openNewProjectCreationModal = useCallback(() => {
     setProjectToEdit(null);
+    setProjectCreationPrefill(null);
+    setCurrentProjectId(null);
+    openProjectCreationModal();
+  }, [openProjectCreationModal]);
+
+  const openProjectCreationModalWithPrefill = useCallback((draft: Partial<CastingProject>) => {
+    setProjectToEdit(null);
+    setProjectCreationPrefill(draft);
     setCurrentProjectId(null);
     openProjectCreationModal();
   }, [openProjectCreationModal]);
@@ -1846,6 +1855,7 @@ type RoleRoomProjectWorkspaceState = {
   }, [blurActiveElement]);
 
   const openProjectEditModal = useCallback((project: CastingProject) => {
+    setProjectCreationPrefill(null);
     setProjectToEdit(project);
     setCurrentProjectId(project.id);
     openProjectCreationModal();
@@ -2226,6 +2236,7 @@ type RoleRoomProjectWorkspaceState = {
     setProjectSelectorOpen(false);
     setProjectCreationModalOpen(false);
     setProjectToEdit(null);
+    setProjectCreationPrefill(null);
     setCurrentProjectId(null);
     setActiveTab(0);
     window.location.assign(getRoleRoomCanonicalPath(window.location));
@@ -4628,6 +4639,7 @@ type RoleRoomProjectWorkspaceState = {
     setProjectSelectorOpen(false);
     setProjectCreationModalOpen(false);
     setProjectToEdit(null);
+    setProjectCreationPrefill(null);
     setCurrentProjectId(null);
     setActiveTab(0);
   }, [adminUser, authLoaded]);
@@ -11561,6 +11573,7 @@ type RoleRoomProjectWorkspaceState = {
                           setCurrentProject(updatedProject);
                           await loadProjects();
                         }}
+                        onCreateProjectFromAgent={openProjectCreationModalWithPrefill}
                         onOpenStoryboard={(focus) => {
                           navigateToTab(STORY_ARC_TAB_INDEX, {
                             storyArcView: 'main',
@@ -12023,6 +12036,7 @@ type RoleRoomProjectWorkspaceState = {
                   setCurrentProject(updatedProject);
                   await loadProjects();
                 }}
+                onCreateProjectFromAgent={openProjectCreationModalWithPrefill}
                 onOpenStoryboard={(focus) => {
                   navigateToTab(STORY_ARC_TAB_INDEX, {
                     storyArcView: 'main',
@@ -15315,6 +15329,7 @@ type RoleRoomProjectWorkspaceState = {
             onClick={() => {
               setProjectCreationModalOpen(false);
               setProjectToEdit(null);
+              setProjectCreationPrefill(null);
               setCurrentProjectId(null);
             }}
             aria-label={branding.tokens.labels.closeLabel}
@@ -15350,7 +15365,7 @@ type RoleRoomProjectWorkspaceState = {
                       isCastingPlanner={true}
                       isContentProducerSession={isProducerWorkspaceSession}
                       getTerm={getTerm}
-                      initialData={projectToEdit || undefined}
+                      initialData={projectToEdit || projectCreationPrefill || undefined}
                       onProjectIdChange={handleProjectIdChange}
                       onOpenEconomy={(projectId) => {
                         const targetProjectId = projectId ?? currentProjectId ?? projectToEdit?.id ?? null;
@@ -15367,6 +15382,7 @@ type RoleRoomProjectWorkspaceState = {
                       onClose={() => {
                         setProjectCreationModalOpen(false);
                         setProjectToEdit(null);
+                        setProjectCreationPrefill(null);
                         setCurrentProjectId(null);
                       }}
                       onProjectCreated={async (projectData) => {
@@ -15380,6 +15396,7 @@ type RoleRoomProjectWorkspaceState = {
                         if (!deferCloseForInvite) {
                           setProjectCreationModalOpen(false);
                           setProjectToEdit(null);
+                          setProjectCreationPrefill(null);
                         }
                         
                         // Use the project data returned from backend directly

@@ -17,6 +17,7 @@ export interface RoleRoomAgentAccess {
   googlePlacesConfigured?: boolean;
   cohereConfigured?: boolean;
   cohereRerankModel?: string;
+  brregConfigured?: boolean;
 }
 
 export interface RoleRoomAgentBrandColor {
@@ -48,11 +49,64 @@ export interface RoleRoomAgentBusinessSignals {
   serviceSignals: string[];
 }
 
+export interface RoleRoomAgentBrregCompany {
+  source: 'brreg';
+  lookupStatus: 'verified' | 'not_found' | 'invalid' | 'unavailable' | 'skipped';
+  lookupInput?: string | null;
+  matchedBy?: 'organization_number' | 'company_name' | null;
+  organizationNumber?: string | null;
+  name?: string | null;
+  organizationForm?: {
+    code?: string | null;
+    description?: string | null;
+  } | null;
+  industryCode?: {
+    code?: string | null;
+    description?: string | null;
+  } | null;
+  registrationDate?: string | null;
+  foundationDate?: string | null;
+  vatRegistered?: boolean | null;
+  businessRegisterRegistered?: boolean | null;
+  employeeCount?: number | null;
+  businessAddress?: string | null;
+  postalAddress?: string | null;
+  municipality?: string | null;
+  website?: string | null;
+  statusFlags: {
+    bankrupt?: boolean;
+    underLiquidation?: boolean;
+    forcedDissolution?: boolean;
+    deleted?: boolean;
+  };
+  statusMessage?: string | null;
+}
+
+export interface RoleRoomAgentCompanyAge {
+  status: 'unknown' | 'new' | 'young' | 'established' | 'mature';
+  label: string;
+  registrationDate?: string | null;
+  years?: number | null;
+  months?: number | null;
+  daysSinceRegistration?: number | null;
+  isNewCompany: boolean;
+}
+
+export interface RoleRoomAgentAgreementSuggestion {
+  id: string;
+  title: string;
+  detail: string;
+  priority: 'critical' | 'recommended' | 'standard';
+}
+
 export interface RoleRoomAgentProducerBootstrapResult {
   generatedAt: string;
   provider: 'openai' | 'fallback';
   model: string;
   businessSignals?: RoleRoomAgentBusinessSignals | null;
+  brregCompany?: RoleRoomAgentBrregCompany | null;
+  companyAge?: RoleRoomAgentCompanyAge | null;
+  agreementSuggestions: RoleRoomAgentAgreementSuggestion[];
   retrievalMeta?: {
     cohereRerankUsed: boolean;
     rerankerModel?: string;
@@ -60,6 +114,8 @@ export interface RoleRoomAgentProducerBootstrapResult {
     websitePagesSelected: number;
     reviewsReviewed: number;
     reviewsSelected: number;
+    brregLookupStatus?: RoleRoomAgentBrregCompany['lookupStatus'];
+    brregMatchedBy?: RoleRoomAgentBrregCompany['matchedBy'];
   };
   companyProfile: {
     companyName: string;
@@ -127,6 +183,17 @@ export interface RoleRoomAgentProducerBootstrapResult {
     };
   };
   storyLogicDraft: Record<string, unknown>;
+  projectCreationDraft: {
+    projectName: string;
+    description: string;
+    projectType: string;
+    clientCompanyName: string;
+    clientOrganizationNumber: string;
+    clientCompanyAddress: string;
+    location: string;
+    websiteUrl: string;
+    suggestedAgreementNotes: string;
+  };
   nextRecommendedSteps: string[];
 }
 
@@ -218,6 +285,20 @@ export const roleRoomAgentService = {
 
     const normalizedResult: RoleRoomAgentProducerBootstrapResult = {
       ...payload.result,
+      agreementSuggestions: Array.isArray(payload.result.agreementSuggestions)
+        ? payload.result.agreementSuggestions
+        : [],
+      projectCreationDraft: payload.result.projectCreationDraft ?? {
+        projectName: `${payload.result.companyProfile?.companyName || input.projectName || 'Kunde'} · Innholdsproduksjon`,
+        description: payload.result.companyProfile?.summary || '',
+        projectType: 'content_production',
+        clientCompanyName: payload.result.companyProfile?.companyName || '',
+        clientOrganizationNumber: payload.result.companyProfile?.organizationNumber || '',
+        clientCompanyAddress: payload.result.companyProfile?.probableLocationAddress || '',
+        location: payload.result.companyProfile?.probableLocationAddress || '',
+        websiteUrl: payload.result.companyProfile?.websiteUrl || '',
+        suggestedAgreementNotes: '',
+      },
       storyLogicDraft: normalizeStoryLogicDraft(payload.result.storyLogicDraft ?? {}),
     };
 

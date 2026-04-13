@@ -44,6 +44,7 @@ type RoleRoomAgentDialogProps = {
     extraContext: string;
   }) => Promise<void> | void;
   onApply: (result: RoleRoomAgentProducerBootstrapResult) => Promise<void> | void;
+  onCreateProject?: (result: RoleRoomAgentProducerBootstrapResult) => Promise<void> | void;
 };
 
 function renderList(items: string[]) {
@@ -91,6 +92,17 @@ function renderClassificationChips(items: Array<string | null | undefined>) {
   );
 }
 
+function formatNorwegianDate(value?: string | null) {
+  if (!value) {
+    return null;
+  }
+  const parsed = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+  return parsed.toLocaleDateString('nb-NO', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
 export default function RoleRoomAgentDialog({
   open,
   onClose,
@@ -108,6 +120,7 @@ export default function RoleRoomAgentDialog({
   notice,
   onGenerate,
   onApply,
+  onCreateProject,
 }: RoleRoomAgentDialogProps) {
   const [websiteUrl, setWebsiteUrl] = useState(initialWebsiteUrl ?? '');
   const [organizationNumber, setOrganizationNumber] = useState(initialOrganizationNumber ?? '');
@@ -166,6 +179,25 @@ export default function RoleRoomAgentDialog({
     const meta = result.retrievalMeta;
     return `${meta.websitePagesSelected}/${meta.websitePagesReviewed} sider · ${meta.reviewsSelected}/${meta.reviewsReviewed} reviews`;
   }, [result]);
+  const brregCompany = result?.brregCompany ?? null;
+  const brregVerified = brregCompany?.lookupStatus === 'verified';
+  const brregStatusLabel = useMemo(() => {
+    if (!brregCompany) return null;
+    if (brregCompany.lookupStatus === 'verified') {
+      return brregCompany.matchedBy === 'organization_number'
+        ? 'Brreg verifisert på org.nr'
+        : 'Brreg verifisert på navn';
+    }
+    if (brregCompany.lookupStatus === 'invalid') return 'Ugyldig org.nr';
+    if (brregCompany.lookupStatus === 'not_found') return 'Ikke funnet i Brreg';
+    if (brregCompany.lookupStatus === 'unavailable') return 'Brreg utilgjengelig';
+    return null;
+  }, [brregCompany]);
+  const criticalAgreementCount = useMemo(
+    () => (result?.agreementSuggestions ?? []).filter((entry) => entry.priority === 'critical').length,
+    [result],
+  );
+  const agreementSuggestions = result?.agreementSuggestions ?? [];
 
   return (
     <Dialog
@@ -260,6 +292,11 @@ export default function RoleRoomAgentDialog({
               Cohere retrieval/rerank er aktiv med <strong>{access.cohereRerankModel || 'rerank-v3.5'}</strong>. Agenten bruker dette til å velge de mest relevante nettsidene og anmeldelsene før OpenAI genererer forslag.
             </Alert>
           ) : null}
+          {access?.brregConfigured ? (
+            <Alert severity="success">
+              Brreg-oppslag er aktivt. Agenten sjekker organisasjonsnummer eller firmanavn mot Enhetsregisteret før den lager prosjektgrunnlag.
+            </Alert>
+          ) : null}
 
           <Box
             sx={{
@@ -314,6 +351,11 @@ export default function RoleRoomAgentDialog({
 
           {result ? (
             <Stack spacing={1.2}>
+              <Alert severity={brregVerified ? 'success' : 'info'}>
+                {brregVerified
+                  ? `Vi har nå hentet all tilgjengelig offentlig informasjon om kunden fra Brønnøysundregistrene. Ønsker du å opprette et prosjekt på ${result.companyProfile.companyName}?`
+                  : brregCompany?.statusMessage || 'Agenten har laget et kundeutkast. Brreg-data er ikke verifisert for denne analysen.'}
+              </Alert>
               <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.2}>
                 <Box
                   sx={{
@@ -348,6 +390,9 @@ export default function RoleRoomAgentDialog({
                       ) : null}
                       {result.companyProfile.organizationNumber ? (
                         <Chip label={`Org.nr ${result.companyProfile.organizationNumber}`} size="small" />
+                      ) : null}
+                      {brregStatusLabel ? (
+                        <Chip label={brregStatusLabel} size="small" sx={{ bgcolor: brregVerified ? 'rgba(16,185,129,0.14)' : 'rgba(250,204,21,0.14)', color: brregVerified ? '#a7f3d0' : '#fde68a' }} />
                       ) : null}
                     </Stack>
                     {renderClassificationChips([
@@ -393,6 +438,84 @@ export default function RoleRoomAgentDialog({
                   </Stack>
                 </Box>
               </Stack>
+
+              {brregCompany || result.companyAge || agreementSuggestions.length > 0 ? (
+                <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.2}>
+                  <Box
+                    sx={{
+                      flex: 1,
+                      p: 1.2,
+                      borderRadius: 3,
+                      border: '1px solid rgba(16,185,129,0.18)',
+                      bgcolor: 'rgba(6,78,59,0.14)',
+                    }}
+                  >
+                    <Stack spacing={0.85}>
+                      <Stack direction="row" spacing={0.8} alignItems="center" justifyContent="space-between">
+                        <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>Brreg og selskapsstatus</Typography>
+                        {result.companyAge?.label ? (
+                          <Chip size="small" label={result.companyAge.label} sx={{ bgcolor: 'rgba(16,185,129,0.16)', color: '#bbf7d0' }} />
+                        ) : null}
+                      </Stack>
+                      {renderClassificationChips([
+                        brregCompany?.organizationForm?.description ? `Form: ${brregCompany.organizationForm.description}` : null,
+                        brregCompany?.industryCode?.description ? `Næring: ${brregCompany.industryCode.description}` : null,
+                        brregCompany?.vatRegistered === true ? 'MVA-registrert' : brregCompany?.vatRegistered === false ? 'Ikke MVA-registrert' : null,
+                        typeof brregCompany?.employeeCount === 'number' ? `${brregCompany.employeeCount} ansatte` : null,
+                        brregCompany?.registrationDate ? `Registrert: ${formatNorwegianDate(brregCompany.registrationDate)}` : null,
+                      ])}
+                      {brregCompany?.businessAddress ? (
+                        <Typography sx={{ color: 'rgba(226,232,240,0.82)', fontSize: '0.9rem' }}>
+                          Adresse: {brregCompany.businessAddress}
+                        </Typography>
+                      ) : null}
+                      {brregCompany?.statusFlags && Object.values(brregCompany.statusFlags).some(Boolean) ? (
+                        <Alert severity="warning">
+                          Brreg viser statusflagg på kunden. Kontroller dette manuelt før avtale sendes.
+                        </Alert>
+                      ) : null}
+                    </Stack>
+                  </Box>
+
+                  <Box
+                    sx={{
+                      flex: 1,
+                      p: 1.2,
+                      borderRadius: 3,
+                      border: criticalAgreementCount > 0 ? '1px solid rgba(248,113,113,0.32)' : '1px solid rgba(250,204,21,0.18)',
+                      bgcolor: criticalAgreementCount > 0 ? 'rgba(127,29,29,0.2)' : 'rgba(71,36,0,0.18)',
+                    }}
+                  >
+                    <Stack spacing={0.85}>
+                      <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>Avtaleforslag</Typography>
+                      {agreementSuggestions.length > 0 ? (
+                        <Stack spacing={0.8}>
+                          {agreementSuggestions.map((suggestion) => (
+                            <Box key={suggestion.id} sx={{ p: 0.9, borderRadius: 2.2, bgcolor: 'rgba(15,23,42,0.42)', border: '1px solid rgba(148,163,184,0.12)' }}>
+                              <Stack direction="row" spacing={0.7} alignItems="center" sx={{ mb: 0.4 }}>
+                                <Chip
+                                  size="small"
+                                  label={suggestion.priority === 'critical' ? 'Kritisk' : suggestion.priority === 'recommended' ? 'Anbefalt' : 'Standard'}
+                                  sx={{
+                                    bgcolor: suggestion.priority === 'critical' ? 'rgba(248,113,113,0.18)' : suggestion.priority === 'recommended' ? 'rgba(250,204,21,0.16)' : 'rgba(59,130,246,0.14)',
+                                    color: suggestion.priority === 'critical' ? '#fecaca' : suggestion.priority === 'recommended' ? '#fde68a' : '#bfdbfe',
+                                  }}
+                                />
+                                <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.9rem' }}>{suggestion.title}</Typography>
+                              </Stack>
+                              <Typography sx={{ color: 'rgba(226,232,240,0.78)', fontSize: '0.86rem', lineHeight: 1.55 }}>{suggestion.detail}</Typography>
+                            </Box>
+                          ))}
+                        </Stack>
+                      ) : (
+                        <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.9rem' }}>
+                          Ingen egne avtaleforslag for denne analysen.
+                        </Typography>
+                      )}
+                    </Stack>
+                  </Box>
+                </Stack>
+              ) : null}
 
               {result.businessSignals ? (
                 <Box
@@ -538,6 +661,18 @@ export default function RoleRoomAgentDialog({
           Lukk
         </Button>
         <Stack direction="row" spacing={1}>
+          {result && onCreateProject ? (
+            <Button
+              variant="outlined"
+              disabled={generating || applying}
+              onClick={() => {
+                void onCreateProject(result);
+              }}
+              sx={{ textTransform: 'none', fontWeight: 800 }}
+            >
+              Ja, opprett prosjekt på kunden
+            </Button>
+          ) : null}
           <Button
             variant="outlined"
             disabled={!canGenerate || generating || applying}
