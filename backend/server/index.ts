@@ -556,6 +556,10 @@ const PROJECT_FILE_STORAGE_ROOT = path.join(
   "uploads",
   "project-files",
 );
+const PROJECT_FILE_DB_INLINE_MAX_BYTES = Math.max(
+  0,
+  Number(process.env.PROJECT_FILE_DB_INLINE_MAX_BYTES || 10 * 1024 * 1024),
+);
 
 const tableColumnsCache = new Map<string, Set<string>>();
 const tableExistsCache = new Map<string, boolean>();
@@ -14514,6 +14518,69 @@ function ensureCompatProjectState(projectId: string) {
   compatProjectStateStore.set(projectId, next);
   void compatStoreSet(dbCompatProjectStateKey(projectId), next);
   return next;
+}
+
+type CompatProjectState = ReturnType<typeof ensureCompatProjectState>;
+
+function normalizeCompatProjectState(value: unknown): CompatProjectState | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  return {
+    collaborators: Array.isArray(value.collaborators)
+      ? (value.collaborators as Array<Record<string, unknown>>)
+      : [],
+    files: Array.isArray(value.files)
+      ? (value.files as Array<Record<string, unknown>>)
+      : [],
+    comments: Array.isArray(value.comments)
+      ? (value.comments as Array<Record<string, unknown>>)
+      : [],
+    integrations: isRecord(value.integrations)
+      ? (value.integrations as Record<string, Record<string, unknown>>)
+      : {},
+    permissions: isRecord(value.permissions)
+      ? (value.permissions as Record<string, unknown>)
+      : {
+          visibility: "private",
+          roles: [],
+          updatedAt: new Date().toISOString(),
+        },
+    compliance: isRecord(value.compliance)
+      ? (value.compliance as Record<string, unknown>)
+      : {
+          standards: ["gdpr"],
+          score: 100,
+          issues: [],
+          updatedAt: new Date().toISOString(),
+        },
+    auditTrail: Array.isArray(value.auditTrail)
+      ? (value.auditTrail as Array<Record<string, unknown>>)
+      : [],
+  };
+}
+
+async function loadCompatProjectState(projectId: string): Promise<CompatProjectState> {
+  const existing = compatProjectStateStore.get(projectId);
+  if (existing) return existing;
+
+  const stored = await compatStoreGet<unknown>(dbCompatProjectStateKey(projectId));
+  const normalized = normalizeCompatProjectState(stored);
+  if (normalized) {
+    compatProjectStateStore.set(projectId, normalized);
+    return normalized;
+  }
+
+  return ensureCompatProjectState(projectId);
+}
+
+async function persistCompatProjectState(
+  projectId: string,
+  state: CompatProjectState,
+): Promise<void> {
+  compatProjectStateStore.set(projectId, state);
+  await compatStoreSet(dbCompatProjectStateKey(projectId), state);
 }
 
 function ensureCompatSalesLeads(userId: string) {
@@ -55077,6 +55144,40 @@ const parseProjectFileMetadataInput = (
   }
 };
 
+async function compatProjectExistsForFiles(projectId: string): Promise<boolean> {
+  const normalizedProjectId = projectId.trim();
+  if (!normalizedProjectId) {
+    return false;
+  }
+
+  const legacyResult = await pool
+    .query("SELECT id FROM legacy.projects WHERE id = $1 LIMIT 1", [
+      normalizedProjectId,
+    ])
+    .catch(() => ({ rowCount: 0 }));
+  if ((legacyResult.rowCount || 0) > 0) {
+    return true;
+  }
+
+  const castingResult = await pool
+    .query("SELECT id FROM casting_projects WHERE id = $1 LIMIT 1", [
+      normalizedProjectId,
+    ])
+    .catch(() => ({ rowCount: 0 }));
+  return (castingResult.rowCount || 0) > 0;
+}
+
+async function requireProjectFileProject(
+  res: express.Response,
+  projectId: string,
+): Promise<boolean> {
+  if (!(await compatProjectExistsForFiles(projectId))) {
+    res.status(404).json({ error: "project_not_found" });
+    return false;
+  }
+  return true;
+}
+
 const ensureProjectFileStorageDirectory = async (
   projectId: string,
 ): Promise<string> => {
@@ -55089,6 +55190,8 @@ const toPublicProjectFileRecord = (
   fileRecord: Record<string, unknown>,
 ): Record<string, unknown> => {
   const {
+    contentBase64: _contentBase64,
+    contentEncoding: _contentEncoding,
     storagePath: _storagePath,
     storedName: _storedName,
     ...publicRecord
@@ -55101,6 +55204,9 @@ app.post(
   projectFileUpload.single("file"),
   async (req, res) => {
     const { projectId } = req.params;
+    if (!(await requireProjectFileProject(res, projectId))) {
+      return;
+    }
     if (!req.file) {
       return res.status(400).json({ error: "file is required" });
     }
@@ -55114,8 +55220,11 @@ app.post(
     const storagePath = path.join(projectDirectory, storedName);
     await fs.writeFile(storagePath, req.file.buffer);
 
-    const state = ensureCompatProjectState(projectId);
+    const state = await loadCompatProjectState(projectId);
     const fileId = crypto.randomUUID();
+    const shouldInlineContent =
+      PROJECT_FILE_DB_INLINE_MAX_BYTES > 0 &&
+      req.file.size <= PROJECT_FILE_DB_INLINE_MAX_BYTES;
     const fileRecord = {
       id: fileId,
       projectId,
@@ -55126,11 +55235,19 @@ app.post(
       size: req.file.size,
       mimeType: req.file.mimetype,
       metadata,
+      storageBackend: shouldInlineContent ? "disk+db-inline" : "disk",
+      ...(shouldInlineContent
+        ? {
+            contentEncoding: "base64",
+            contentBase64: req.file.buffer.toString("base64"),
+            contentInlineBytes: req.file.size,
+          }
+        : {}),
       uploadedAt: new Date().toISOString(),
       downloadUrl: `/api/projects/${projectId}/files/${fileId}/download`,
     };
     state.files = [...state.files, fileRecord];
-    compatProjectStateStore.set(projectId, state);
+    await persistCompatProjectState(projectId, state);
     await compatMergeProjectMetadata(projectId, { files: state.files });
     compatPushProjectAudit(projectId, "file_uploaded", {
       fileId,
@@ -55142,10 +55259,14 @@ app.post(
 
 app.get("/api/projects/:projectId/files", async (req, res) => {
   const { projectId } = req.params;
+  if (!(await requireProjectFileProject(res, projectId))) {
+    return;
+  }
   const metadata = await compatReadProjectMetadata(projectId);
-  const state = ensureCompatProjectState(projectId);
+  const state = await loadCompatProjectState(projectId);
   if (metadata && Array.isArray(metadata.files) && state.files.length === 0) {
     state.files = metadata.files as Array<Record<string, unknown>>;
+    await persistCompatProjectState(projectId, state);
   }
   res.json(
     state.files.map((fileRecord) =>
@@ -55156,10 +55277,14 @@ app.get("/api/projects/:projectId/files", async (req, res) => {
 
 app.get("/api/projects/:projectId/files/:fileId/download", async (req, res) => {
   const { projectId, fileId } = req.params;
+  if (!(await requireProjectFileProject(res, projectId))) {
+    return;
+  }
   const metadata = await compatReadProjectMetadata(projectId);
-  const state = ensureCompatProjectState(projectId);
+  const state = await loadCompatProjectState(projectId);
   if (metadata && Array.isArray(metadata.files) && state.files.length === 0) {
     state.files = metadata.files as Array<Record<string, unknown>>;
+    await persistCompatProjectState(projectId, state);
   }
 
   const fileRecord = state.files.find((file) => file.id === fileId);
@@ -55167,17 +55292,31 @@ app.get("/api/projects/:projectId/files/:fileId/download", async (req, res) => {
     return res.status(404).json({ error: "project_file_not_found" });
   }
 
-  const storagePath = readString(
-    (fileRecord as Record<string, unknown>).storagePath,
-  );
-  if (!storagePath || !existsSync(storagePath)) {
-    return res.status(404).json({ error: "project_file_content_not_found" });
-  }
-
   const downloadName =
     readString((fileRecord as Record<string, unknown>).originalName) ||
     readString((fileRecord as Record<string, unknown>).name) ||
     `project-file-${fileId}`;
+
+  const storagePath = readString(
+    (fileRecord as Record<string, unknown>).storagePath,
+  );
+  if (!storagePath || !existsSync(storagePath)) {
+    const inlineContent = readString(
+      (fileRecord as Record<string, unknown>).contentBase64,
+    );
+    if (!inlineContent) {
+      return res.status(404).json({ error: "project_file_content_not_found" });
+    }
+    const buffer = Buffer.from(inlineContent, "base64");
+    res.setHeader(
+      "Content-Type",
+      readString((fileRecord as Record<string, unknown>).mimeType) ||
+        "application/octet-stream",
+    );
+    res.attachment(downloadName);
+    res.send(buffer);
+    return;
+  }
 
   res.setHeader(
     "Content-Type",
@@ -55189,13 +55328,19 @@ app.get("/api/projects/:projectId/files/:fileId/download", async (req, res) => {
 
 app.put("/api/projects/:projectId/files/:fileId", async (req, res) => {
   const { projectId, fileId } = req.params;
-  const state = ensureCompatProjectState(projectId);
+  if (!(await requireProjectFileProject(res, projectId))) {
+    return;
+  }
+  const state = await loadCompatProjectState(projectId);
+  if (!state.files.some((file) => file.id === fileId)) {
+    return res.status(404).json({ error: "project_file_not_found" });
+  }
   state.files = state.files.map((file) =>
     file.id === fileId
       ? { ...file, ...(req.body || {}), updatedAt: new Date().toISOString() }
       : file,
   );
-  compatProjectStateStore.set(projectId, state);
+  await persistCompatProjectState(projectId, state);
   await compatMergeProjectMetadata(projectId, { files: state.files });
   compatPushProjectAudit(projectId, "file_updated", { fileId });
   res.json({ success: true });
@@ -55203,13 +55348,19 @@ app.put("/api/projects/:projectId/files/:fileId", async (req, res) => {
 
 app.delete("/api/projects/:projectId/files/:fileId", async (req, res) => {
   const { projectId, fileId } = req.params;
-  const state = ensureCompatProjectState(projectId);
+  if (!(await requireProjectFileProject(res, projectId))) {
+    return;
+  }
+  const state = await loadCompatProjectState(projectId);
   const fileRecord = state.files.find((file) => file.id === fileId);
+  if (!fileRecord) {
+    return res.status(404).json({ error: "project_file_not_found" });
+  }
   const storagePath = fileRecord
     ? readString((fileRecord as Record<string, unknown>).storagePath)
     : "";
   state.files = state.files.filter((file) => file.id !== fileId);
-  compatProjectStateStore.set(projectId, state);
+  await persistCompatProjectState(projectId, state);
   await compatMergeProjectMetadata(projectId, { files: state.files });
   compatPushProjectAudit(projectId, "file_deleted", { fileId });
   if (storagePath && existsSync(storagePath)) {
@@ -55220,6 +55371,13 @@ app.delete("/api/projects/:projectId/files/:fileId", async (req, res) => {
 
 app.post("/api/projects/:projectId/files/:fileId/share", async (req, res) => {
   const { projectId, fileId } = req.params;
+  if (!(await requireProjectFileProject(res, projectId))) {
+    return;
+  }
+  const state = await loadCompatProjectState(projectId);
+  if (!state.files.some((file) => file.id === fileId)) {
+    return res.status(404).json({ error: "project_file_not_found" });
+  }
   const expiresInHours = Number(req.body?.expiresInHours || 24);
   const expiresAt = new Date(
     Date.now() + Math.max(1, expiresInHours) * 60 * 60 * 1000,
