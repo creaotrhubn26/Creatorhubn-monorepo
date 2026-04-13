@@ -10658,6 +10658,140 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
   // Casting Projects CRUD
   // ═══════════════════════════════════════════════════════════
 
+  async function bootstrapMissingCastingProjectForRoleRoomSession(
+    req: Request,
+    projectId: string,
+  ): Promise<CastingProjectRow | null> {
+    const normalizedProjectId = readStringValue(projectId);
+    if (!normalizedProjectId || !requireScope(req, 'write')) {
+      return null;
+    }
+
+    const userId = getUserId(req);
+    const requestUser = getOptionalRequestUser(req);
+    const legacyCompatProject = await compatStoreGet<Record<string, unknown>>(
+      `casting:project:${normalizedProjectId}`,
+    );
+    const legacyProjectResult = await pool.query(
+      `SELECT name, title, description, status, profession, category, budget, metadata
+         FROM legacy.projects
+        WHERE id = $1
+        LIMIT 1`,
+      [normalizedProjectId],
+    ).catch(() => ({ rows: [], rowCount: 0 }));
+    const legacyProject = readRecordValue(legacyProjectResult.rows[0]) ?? {};
+    const sourceProject = legacyCompatProject && Object.keys(legacyCompatProject).length > 0
+      ? legacyCompatProject
+      : legacyProject;
+    const sourceMetadata = readJsonObject(sourceProject.metadata);
+    const name =
+      readStringValue(sourceProject.name) ||
+      readStringValue(sourceProject.title) ||
+      readStringValue(sourceProject.projectName) ||
+      normalizeRoleRoomProjectName(normalizedProjectId);
+    const description =
+      readStringValue(sourceProject.description) ||
+      readStringValue(sourceMetadata.description);
+    const genre =
+      readStringValue(sourceProject.genre) ||
+      readStringValue(sourceProject.profession) ||
+      readStringValue(sourceMetadata.genre);
+    const projectType =
+      readStringValue(sourceProject.projectType) ||
+      readStringValue(sourceProject.project_type) ||
+      readStringValue(sourceProject.category) ||
+      readStringValue(sourceMetadata.projectType) ||
+      readStringValue(sourceMetadata.project_type) ||
+      'content_production';
+    const currency =
+      readStringValue(sourceProject.currency) ||
+      readStringValue(sourceMetadata.currency) ||
+      'NOK';
+    const rawBudget = sourceProject.budget ?? sourceMetadata.budget;
+    const parsedBudget = typeof rawBudget === 'number'
+      ? rawBudget
+      : typeof rawBudget === 'string' && rawBudget.trim().length > 0
+        ? Number(rawBudget)
+        : null;
+    const budget = parsedBudget !== null && Number.isFinite(parsedBudget)
+      ? parsedBudget
+      : null;
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const insertedProject = await client.query<CastingProjectRow>(
+        `INSERT INTO casting_projects (
+           id, name, description, status, created_by, genre, project_type,
+           budget, currency, metadata, created_at, updated_at
+         ) VALUES (
+           $1, $2, $3, 'active', $4, $5, $6,
+           $7, $8, $9::jsonb, NOW(), NOW()
+         )
+         ON CONFLICT (id) DO UPDATE SET
+           name = COALESCE(NULLIF(casting_projects.name, ''), EXCLUDED.name),
+           description = COALESCE(casting_projects.description, EXCLUDED.description),
+           created_by = COALESCE(casting_projects.created_by, EXCLUDED.created_by),
+           genre = COALESCE(casting_projects.genre, EXCLUDED.genre),
+           project_type = COALESCE(casting_projects.project_type, EXCLUDED.project_type),
+           budget = COALESCE(casting_projects.budget, EXCLUDED.budget),
+           currency = COALESCE(casting_projects.currency, EXCLUDED.currency),
+           metadata = COALESCE(casting_projects.metadata, '{}'::jsonb) || EXCLUDED.metadata,
+           updated_at = NOW()
+         RETURNING *`,
+        [
+          normalizedProjectId,
+          name,
+          description ?? null,
+          userId,
+          genre ?? null,
+          projectType,
+          budget,
+          currency,
+          JSON.stringify({
+            ...sourceMetadata,
+            bootstrappedFromRoleRoomSession: true,
+            bootstrappedFromLegacyCastingProject: Boolean(legacyCompatProject || legacyProjectResult.rowCount),
+            bootstrappedAt: new Date().toISOString(),
+            bootstrappedByUserId: userId,
+            bootstrappedByEmail: requestUser?.email ?? null,
+          }),
+        ],
+      );
+
+      await client.query(
+        `INSERT INTO casting_user_roles (id, project_id, user_id, email, role, permissions, added_by)
+         VALUES ($1, $2, $3, $4, 'director', $5::jsonb, $6)
+         ON CONFLICT (project_id, user_id) DO UPDATE SET
+           role = COALESCE(casting_user_roles.role, EXCLUDED.role),
+           permissions = COALESCE(casting_user_roles.permissions, EXCLUDED.permissions),
+           email = COALESCE(casting_user_roles.email, EXCLUDED.email),
+           updated_at = NOW()`,
+        [
+          makeId(),
+          normalizedProjectId,
+          userId,
+          requestUser?.email ?? null,
+          JSON.stringify(buildProjectRolePermissions('director')),
+          userId,
+        ],
+      );
+
+      await client.query('COMMIT');
+      roleRoomProjectAccessCache.add(normalizedProjectId);
+      return insertedProject.rows[0] ?? null;
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      console.warn('Role Room project bootstrap failed:', {
+        projectId: normalizedProjectId,
+        error,
+      });
+      return null;
+    } finally {
+      client.release();
+    }
+  }
+
   async function resolveStoryLogicProjectContext(req: Request, projectId: string): Promise<{
     project: CastingProjectRow;
     roleRecord: ProjectRoleRecord | null;
@@ -10677,7 +10811,8 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       `SELECT * FROM casting_projects WHERE id = $1 LIMIT 1`,
       [normalizedProjectId],
     );
-    const project = projectResult.rows[0];
+    const project = projectResult.rows[0]
+      ?? await bootstrapMissingCastingProjectForRoleRoomSession(req, normalizedProjectId);
     if (!project) {
       return null;
     }
