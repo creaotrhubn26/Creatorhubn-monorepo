@@ -48,6 +48,58 @@ type RoleRoomAgentSocialProfileCandidate = {
   requiresManualConfirmation: boolean;
 };
 
+type RoleRoomAgentCompetitorEvidence = {
+  type:
+    | "google_places_result"
+    | "same_category"
+    | "location_overlap"
+    | "website_available"
+    | "review_signal"
+    | "manual_review_needed";
+  label: string;
+  weight: number;
+};
+
+type RoleRoomAgentCompetitorCandidate = {
+  source: "google_places";
+  placeId?: string | null;
+  name: string;
+  websiteUrl?: string | null;
+  googleMapsUri?: string | null;
+  formattedAddress?: string | null;
+  primaryType?: string | null;
+  primaryTypeDisplayName?: string | null;
+  rating?: number | null;
+  userRatingCount?: number | null;
+  confidence: number;
+  status: "verified" | "likely" | "needs_review" | "rejected";
+  evidence: RoleRoomAgentCompetitorEvidence[];
+  relevanceReason: string;
+  marketingSignals: {
+    positionHint: string;
+    contentAngles: string[];
+    ctaOpportunities: string[];
+    riskNotes: string[];
+  };
+  requiresManualConfirmation: boolean;
+};
+
+type RoleRoomAgentCompetitorAnalysis = {
+  status: "ready" | "limited" | "unavailable";
+  source: "google_places" | "fallback";
+  generatedAt: string;
+  marketContext: string;
+  competitors: RoleRoomAgentCompetitorCandidate[];
+  verifiedCompetitorCount: number;
+  averageRating?: number | null;
+  averageReviewCount?: number | null;
+  marketingOpportunities: string[];
+  positioningRecommendations: string[];
+  contentGapSuggestions: string[];
+  producerQuestions: string[];
+  limitations: string[];
+};
+
 type RoleRoomAgentWebsiteInsights = {
   finalUrl?: string | null;
   pageTitle?: string | null;
@@ -169,6 +221,8 @@ type RoleRoomAgentRetrievalMeta = {
   websitePagesSelected: number;
   reviewsReviewed: number;
   reviewsSelected: number;
+  competitorsReviewed: number;
+  competitorsSelected: number;
   brregLookupStatus?: RoleRoomAgentBrregLookupStatus;
   brregMatchedBy?: RoleRoomAgentBrregCompany["matchedBy"];
 };
@@ -188,6 +242,7 @@ type RoleRoomAgentNormalizedPayload = {
   companyAge?: RoleRoomAgentCompanyAge | null;
   agreementSuggestions: RoleRoomAgentAgreementSuggestion[];
   socialProfileCandidates: RoleRoomAgentSocialProfileCandidate[];
+  competitorAnalysis: RoleRoomAgentCompetitorAnalysis;
   retrievalMeta?: RoleRoomAgentRetrievalMeta;
   companyProfile: {
     companyName: string;
@@ -798,6 +853,228 @@ function scoreGooglePlaceCandidate(
   }
 
   return score;
+}
+
+function readGooglePlaceTextRecord(value: unknown): string | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  return hasText(record.text) ? normalizeWhitespace(record.text) : null;
+}
+
+function readGooglePlaceDisplayName(candidate: Record<string, unknown>): string {
+  return readGooglePlaceTextRecord(candidate.displayName) || "";
+}
+
+function readGooglePlacePrimaryTypeDisplayName(candidate: Record<string, unknown>): string | null {
+  return readGooglePlaceTextRecord(candidate.primaryTypeDisplayName);
+}
+
+function extractMarketLocation(value: string | null | undefined): string {
+  if (!hasText(value)) {
+    return "";
+  }
+  const normalized = normalizeWhitespace(value);
+  const postalCityMatch = normalized.match(/\b\d{4}\s+([A-ZÆØÅ][A-ZÆØÅa-zæøå .-]+)/);
+  if (postalCityMatch?.[1]) {
+    return normalizeWhitespace(postalCityMatch[1].split(",")[0] || "");
+  }
+  const parts = normalized
+    .split(",")
+    .map((part) => normalizeWhitespace(part))
+    .filter(Boolean);
+  return parts.length >= 2 ? parts[parts.length - 2] : parts[0] || "";
+}
+
+function isSameCompanyPlace(
+  candidate: Record<string, unknown>,
+  companyName: string,
+  websiteHost: string | null,
+): boolean {
+  const displayName = readGooglePlaceDisplayName(candidate);
+  const normalizedCandidateName = normalizeIdentity(displayName);
+  const normalizedCompanyName = normalizeIdentity(companyName);
+  const candidateHost = normalizeHost(hasText(candidate.websiteUri) ? candidate.websiteUri : null);
+
+  if (websiteHost && candidateHost && websiteHost === candidateHost) {
+    return true;
+  }
+  if (normalizedCandidateName && normalizedCompanyName && normalizedCandidateName === normalizedCompanyName) {
+    return true;
+  }
+  return Boolean(
+    normalizedCandidateName &&
+      normalizedCompanyName &&
+      normalizedCandidateName.length > 6 &&
+      normalizedCompanyName.length > 6 &&
+      (normalizedCandidateName.includes(normalizedCompanyName) || normalizedCompanyName.includes(normalizedCandidateName)),
+  );
+}
+
+function buildCompetitorSearchQueries(
+  input: RoleRoomAgentProducerBootstrapInput,
+  websiteInsights: RoleRoomAgentWebsiteInsights,
+  businessSignals: RoleRoomAgentBusinessSignals | null,
+  brregCompany: RoleRoomAgentBrregCompany | null,
+): string[] {
+  const companyName = hasText(input.companyName)
+    ? normalizeWhitespace(input.companyName)
+    : brregCompany?.name || websiteInsights.siteName || "";
+  const category = businessSignals?.primaryTypeDisplayName
+    || brregCompany?.industryCode?.description
+    || websiteInsights.siteName
+    || "";
+  const location = extractMarketLocation(businessSignals?.formattedAddress || brregCompany?.businessAddress || "");
+  const municipality = brregCompany?.municipality || "";
+
+  return Array.from(
+    new Set(
+      [
+        category && location ? `${category} ${location}` : "",
+        category && municipality && municipality !== location ? `${category} ${municipality}` : "",
+        brregCompany?.industryCode?.description && location ? `${brregCompany.industryCode.description} ${location}` : "",
+        companyName && location ? `${companyName} alternativer ${location}` : "",
+        category,
+      ]
+        .map((entry) => normalizeWhitespace(entry))
+        .filter((entry) => entry.length >= 3),
+    ),
+  ).slice(0, 4);
+}
+
+function scoreCompetitorCandidate(
+  candidate: Record<string, unknown>,
+  businessSignals: RoleRoomAgentBusinessSignals | null,
+  marketLocation: string,
+): RoleRoomAgentCompetitorEvidence[] {
+  const evidence: RoleRoomAgentCompetitorEvidence[] = [
+    {
+      type: "google_places_result",
+      label: "Funnet som offentlig Google Places-resultat",
+      weight: 30,
+    },
+  ];
+  const candidatePrimaryType = hasText(candidate.primaryType) ? normalizeWhitespace(candidate.primaryType) : "";
+  const candidatePrimaryTypeLabel = readGooglePlacePrimaryTypeDisplayName(candidate) || "";
+  const customerPrimaryType = businessSignals?.primaryType || "";
+  const customerPrimaryTypeLabel = businessSignals?.primaryTypeDisplayName || "";
+  const formattedAddress = hasText(candidate.formattedAddress) ? normalizeWhitespace(candidate.formattedAddress) : "";
+  const rating = asNumber(candidate.rating);
+  const userRatingCount = asNumber(candidate.userRatingCount);
+
+  if (
+    (candidatePrimaryType && customerPrimaryType && candidatePrimaryType === customerPrimaryType) ||
+    (candidatePrimaryTypeLabel && customerPrimaryTypeLabel && normalizeIdentity(candidatePrimaryTypeLabel) === normalizeIdentity(customerPrimaryTypeLabel))
+  ) {
+    evidence.push({
+      type: "same_category",
+      label: "Matcher kundens Google-kategori",
+      weight: 25,
+    });
+  }
+
+  if (marketLocation && formattedAddress.toLowerCase().includes(marketLocation.toLowerCase())) {
+    evidence.push({
+      type: "location_overlap",
+      label: `Samme geografiske marked: ${marketLocation}`,
+      weight: 20,
+    });
+  }
+
+  if (hasText(candidate.websiteUri)) {
+    evidence.push({
+      type: "website_available",
+      label: "Har egen nettside for manuell posisjonering-/CTA-sjekk",
+      weight: 10,
+    });
+  }
+
+  if ((rating && rating >= 4) || (userRatingCount && userRatingCount >= 20)) {
+    evidence.push({
+      type: "review_signal",
+      label: "Har Google-rating eller anmeldelsesvolum som markedsføringssignal",
+      weight: 10,
+    });
+  }
+
+  if (evidence.length <= 2) {
+    evidence.push({
+      type: "manual_review_needed",
+      label: "Må bekreftes manuelt før den brukes som konkurrent i pitch",
+      weight: 0,
+    });
+  }
+
+  return evidence;
+}
+
+function buildCompetitorMarketingSignals(
+  candidate: RoleRoomAgentCompetitorCandidate,
+  customerBusinessSignals: RoleRoomAgentBusinessSignals | null,
+): RoleRoomAgentCompetitorCandidate["marketingSignals"] {
+  const contentAngles = [
+    candidate.primaryTypeDisplayName ? `Sammenlign budskap mot kategori: ${candidate.primaryTypeDisplayName}` : "",
+    candidate.websiteUrl ? "Sjekk landingsside, hero-budskap og CTA før kreativ retning låses" : "",
+    candidate.rating && candidate.rating >= 4.4 ? "Kundebevis og tillit bør løftes tydelig i kundens innhold" : "",
+  ].filter(Boolean);
+  const ctaOpportunities = [
+    candidate.websiteUrl ? "Finn om konkurrenten driver mot booking, kontakt, kjøp eller befaring" : "Avklar CTA manuelt siden nettside mangler i Google-resultatet",
+    customerBusinessSignals?.rating && candidate.rating && candidate.rating > customerBusinessSignals.rating
+      ? "Kunden bør ikke konkurrere kun på rating; bruk differensierende bevispunkter og spesifikke fordeler"
+      : "",
+  ].filter(Boolean);
+  const riskNotes = [
+    "Ikke bruk konkurrentnavn i kundemateriell uten eksplisitt godkjenning",
+    candidate.status === "needs_review" ? "Kandidaten er ikke sikker nok til salgsargument før manuell sjekk" : "",
+  ].filter(Boolean);
+
+  return {
+    positionHint:
+      candidate.rating && candidate.userRatingCount
+        ? `${candidate.name} har ${candidate.rating.toFixed(1)} stjerner basert på ${candidate.userRatingCount} anmeldelser.`
+        : `${candidate.name} bør vurderes som synlig konkurrent i samme marked.`,
+    contentAngles: contentAngles.length > 0 ? contentAngles : ["Sammenlign tone, tilbud og landingsside manuelt før konseptvalg"],
+    ctaOpportunities,
+    riskNotes,
+  };
+}
+
+function buildLimitedCompetitorAnalysis(
+  reason: string,
+  input: RoleRoomAgentProducerBootstrapInput,
+  brregCompany: RoleRoomAgentBrregCompany | null,
+): RoleRoomAgentCompetitorAnalysis {
+  const companyName = hasText(input.companyName) ? normalizeWhitespace(input.companyName) : brregCompany?.name || "kunden";
+  return {
+    status: "limited",
+    source: "fallback",
+    generatedAt: new Date().toISOString(),
+    marketContext: `Konkurrentanalyse for ${companyName} krever verifiserbare markedskilder før den kan brukes kommersielt.`,
+    competitors: [],
+    verifiedCompetitorCount: 0,
+    averageRating: null,
+    averageReviewCount: null,
+    marketingOpportunities: [
+      "Be kunden oppgi 3-5 konkurrenter de selv sammenlignes med.",
+      "Kjør Google/Maps-søk manuelt på kategori og lokasjon før pitch låses.",
+      "Sammenlign hero-budskap, CTA, reviews, sosiale kanaler og caser før produksjonsvinkel velges.",
+    ],
+    positioningRecommendations: [
+      "Ikke presenter navngitte konkurrenter før de er verifisert med kilde.",
+      "Bruk kundens egne bevispunkter, reviews og konkrete fordeler som første differensiering.",
+    ],
+    contentGapSuggestions: [
+      "Lag en enkel matrise: konkurrent, budskap, CTA, kanaler, bevispunkter og gap.",
+      "Avklar hvilke produkter/tjenester kunden faktisk vil vinne på før innholdsformat velges.",
+    ],
+    producerQuestions: [
+      "Hvilke konkurrenter nevner kunden oftest i salgsmøter?",
+      "Hva taper kunden vanligvis på: pris, tillit, synlighet, hastighet eller kvalitet?",
+      "Hvilke kanaler gir kunden best leads i dag?",
+    ],
+    limitations: [reason],
+  };
 }
 
 function extractTextSnippet(html: string): string {
@@ -1700,6 +1977,201 @@ async function fetchGooglePlacesBusinessSignals(
   };
 }
 
+async function fetchGooglePlacesCompetitorAnalysis(
+  input: RoleRoomAgentProducerBootstrapInput,
+  websiteInsights: RoleRoomAgentWebsiteInsights,
+  businessSignals: RoleRoomAgentBusinessSignals | null,
+  brregCompany: RoleRoomAgentBrregCompany | null,
+): Promise<RoleRoomAgentCompetitorAnalysis> {
+  const apiKey = process.env.GOOGLE_PLACES_API_KEY;
+  const companyName = hasText(input.companyName)
+    ? normalizeWhitespace(input.companyName)
+    : brregCompany?.name || websiteInsights.siteName || websiteInsights.pageTitle || "";
+  const websiteUrl = normalizeWebsiteUrl(input.websiteUrl) || websiteInsights.finalUrl || brregCompany?.website || null;
+  const websiteHost = normalizeHost(websiteUrl);
+  const marketLocation = extractMarketLocation(businessSignals?.formattedAddress || brregCompany?.businessAddress || "");
+  const searchQueries = buildCompetitorSearchQueries(input, websiteInsights, businessSignals, brregCompany);
+
+  if (!hasText(apiKey)) {
+    return buildLimitedCompetitorAnalysis("Google Places API er ikke konfigurert, så konkurrenter kan ikke verifiseres automatisk.", input, brregCompany);
+  }
+  if (!companyName || searchQueries.length === 0) {
+    return buildLimitedCompetitorAnalysis("Mangler nok firmanavn, kategori eller lokasjon til å finne relevante konkurrenter.", input, brregCompany);
+  }
+
+  const fieldMask =
+    "places.id,places.displayName,places.formattedAddress,places.websiteUri,places.rating,places.userRatingCount,places.primaryType,places.primaryTypeDisplayName,places.googleMapsUri";
+  const rawCandidates: Array<Record<string, unknown>> = [];
+
+  for (const query of searchQueries) {
+    try {
+      const response = await fetch("https://places.googleapis.com/v1/places:searchText", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": apiKey,
+          "X-Goog-FieldMask": fieldMask,
+        },
+        body: JSON.stringify({
+          textQuery: query,
+          pageSize: 10,
+          languageCode: "nb",
+          regionCode: "NO",
+        }),
+        signal: AbortSignal.timeout(12_000),
+      });
+
+      if (!response.ok) {
+        continue;
+      }
+
+      const payload = (await response.json().catch(() => null)) as
+        | { places?: Array<Record<string, unknown>> }
+        | null;
+      const places = Array.isArray(payload?.places) ? payload.places : [];
+      rawCandidates.push(...places);
+    } catch {
+      continue;
+    }
+  }
+
+  const seenKeys = new Set<string>();
+  const competitors = rawCandidates
+    .map((candidate): RoleRoomAgentCompetitorCandidate | null => {
+      const name = readGooglePlaceDisplayName(candidate);
+      if (!name || isSameCompanyPlace(candidate, companyName, websiteHost)) {
+        return null;
+      }
+      const websiteUri = hasText(candidate.websiteUri) ? normalizeWebsiteUrl(candidate.websiteUri) : null;
+      const candidateHost = normalizeHost(websiteUri);
+      const key = hasText(candidate.id)
+        ? normalizeWhitespace(candidate.id)
+        : candidateHost || `${normalizeIdentity(name)}:${normalizeIdentity(hasText(candidate.formattedAddress) ? candidate.formattedAddress : "")}`;
+      if (!key || seenKeys.has(key)) {
+        return null;
+      }
+      seenKeys.add(key);
+
+      const evidence = scoreCompetitorCandidate(candidate, businessSignals, marketLocation);
+      const confidence = Math.min(100, evidence.reduce((total, entry) => total + entry.weight, 0));
+      const status: RoleRoomAgentCompetitorCandidate["status"] =
+        confidence >= 80 ? "verified" : confidence >= 55 ? "likely" : confidence >= 35 ? "needs_review" : "rejected";
+      const primaryTypeDisplayName = readGooglePlacePrimaryTypeDisplayName(candidate);
+      const competitor: RoleRoomAgentCompetitorCandidate = {
+        source: "google_places",
+        placeId: hasText(candidate.id) ? normalizeWhitespace(candidate.id) : null,
+        name,
+        websiteUrl: websiteUri,
+        googleMapsUri: hasText(candidate.googleMapsUri) ? normalizeWhitespace(candidate.googleMapsUri) : null,
+        formattedAddress: hasText(candidate.formattedAddress) ? normalizeWhitespace(candidate.formattedAddress) : null,
+        primaryType: hasText(candidate.primaryType) ? normalizeWhitespace(candidate.primaryType) : null,
+        primaryTypeDisplayName,
+        rating: asNumber(candidate.rating),
+        userRatingCount: asNumber(candidate.userRatingCount),
+        confidence,
+        status,
+        evidence,
+        relevanceReason: normalizeWhitespace(
+          [
+            primaryTypeDisplayName ? `Samme eller nærliggende kategori: ${primaryTypeDisplayName}.` : "",
+            marketLocation ? `Søkt i markedet ${marketLocation}.` : "",
+            "Må bekreftes av produsent/kunde før den brukes i pitch eller strategi.",
+          ].filter(Boolean).join(" "),
+        ),
+        marketingSignals: {
+          positionHint: "",
+          contentAngles: [],
+          ctaOpportunities: [],
+          riskNotes: [],
+        },
+        requiresManualConfirmation: true,
+      };
+      return {
+        ...competitor,
+        marketingSignals: buildCompetitorMarketingSignals(competitor, businessSignals),
+      };
+    })
+    .filter((entry): entry is RoleRoomAgentCompetitorCandidate => entry !== null)
+    .filter((entry) => entry.status !== "rejected")
+    .sort((left, right) => right.confidence - left.confidence || (right.userRatingCount || 0) - (left.userRatingCount || 0))
+    .slice(0, 8);
+
+  if (competitors.length === 0) {
+    return buildLimitedCompetitorAnalysis("Google Places ga ingen trygge konkurrentkandidater etter at kunden selv ble ekskludert.", input, brregCompany);
+  }
+
+  const usableCompetitors = competitors.filter((entry) => entry.status === "verified" || entry.status === "likely");
+  const ratingValues = usableCompetitors
+    .map((entry) => entry.rating)
+    .filter((entry): entry is number => typeof entry === "number" && Number.isFinite(entry));
+  const reviewValues = usableCompetitors
+    .map((entry) => entry.userRatingCount)
+    .filter((entry): entry is number => typeof entry === "number" && Number.isFinite(entry));
+  const averageRating = ratingValues.length > 0
+    ? Number((ratingValues.reduce((total, entry) => total + entry, 0) / ratingValues.length).toFixed(2))
+    : null;
+  const averageReviewCount = reviewValues.length > 0
+    ? Math.round(reviewValues.reduce((total, entry) => total + entry, 0) / reviewValues.length)
+    : null;
+  const customerRating = businessSignals?.rating || null;
+  const hasCustomerWebsite = Boolean(websiteUrl);
+  const hasCustomerSocials = (websiteInsights.socialProfileCandidates ?? []).some((entry) => entry.status === "verified" || entry.status === "likely");
+
+  return {
+    status: usableCompetitors.length > 0 ? "ready" : "limited",
+    source: "google_places",
+    generatedAt: new Date().toISOString(),
+    marketContext: normalizeWhitespace(
+      [
+        marketLocation ? `Marked: ${marketLocation}.` : "Marked: lokasjon må bekreftes.",
+        businessSignals?.primaryTypeDisplayName ? `Kategori: ${businessSignals.primaryTypeDisplayName}.` : "",
+        `${usableCompetitors.length} konkurrentkandidater er klare for manuell vurdering.`,
+      ].filter(Boolean).join(" "),
+    ),
+    competitors,
+    verifiedCompetitorCount: usableCompetitors.length,
+    averageRating,
+    averageReviewCount,
+    marketingOpportunities: normalizeStringArray([
+      averageRating && customerRating && averageRating > customerRating + 0.2
+        ? "Konkurrentene har høyere Google-rating. Løft kundebevis, reviews og konkrete trygghetssignaler tydeligere i innholdet."
+        : "",
+      averageReviewCount && averageReviewCount > 30
+        ? "Markedet har synlig anmeldelsesvolum. Bruk ekte kundesitater og caser som bevis, ikke bare generisk brandfilm."
+        : "",
+      !hasCustomerSocials
+        ? "Kundens offisielle sosiale kanaler ble ikke sikkert funnet. Avklar kanaleierskap før distribusjonsplan og publisering."
+        : "",
+      hasCustomerWebsite
+        ? "Sammenlign kundens hero-budskap og CTA mot konkurrentenes nettsider før pitch låses."
+        : "Kunden mangler verifisert nettside i analysen. Prioriter landingsside/CTA før annonsering.",
+    ], [
+      "Bruk konkurrentmatrisen til å finne én tydelig differensierende vinkel før manus/storyboard.",
+    ]),
+    positioningRecommendations: normalizeStringArray([
+      `Posisjoner ${companyName} rundt konkrete bevispunkter, ikke bare bransjeord konkurrentene også bruker.`,
+      "Velg én hovedfordel kunden kan eie visuelt: hastighet, kvalitet, lokal nærhet, prosess, folk eller resultat.",
+      "Lag en kanalplan der nettside og Google-profil fungerer som konverteringsflate, og SoMe brukes til oppmerksomhet og repetisjon.",
+    ]),
+    contentGapSuggestions: normalizeStringArray([
+      "Lag korte sammenlignbare CTA-varianter: kontakt, booking, befaring, bestilling eller demo.",
+      "Finn hvilke konkurrenter som bruker kundecaser, før/etter, reviews eller team/prosess, og bygg kundens gap rundt det de mangler.",
+      "Bruk 3-5 konkrete proof points fra kunde, reviews eller leveranser som kan filmes.",
+    ]),
+    producerQuestions: [
+      "Hvilke av disse konkurrentene opplever kunden faktisk som relevante?",
+      "Hva taper eller vinner kunden vanligvis på mot disse aktørene?",
+      "Hvilket tilbud skal kunden helst selge mer av de neste 90 dagene?",
+      "Hvilken kanal skal måles først: Google, nettside, LinkedIn, Instagram, Meta eller direkte salg?",
+    ],
+    limitations: [
+      "Konkurrentene er kandidater fra Google Places og må bekreftes manuelt.",
+      "Analysen bruker ikke betalte annonsebibliotek eller private salgsdata.",
+      "Nettsider og sosiale kanaler for konkurrenter bør åpnes manuelt før endelig strategi.",
+    ],
+  };
+}
+
 function buildFallbackBootstrap(
   input: RoleRoomAgentProducerBootstrapInput,
   websiteInsights: RoleRoomAgentWebsiteInsights,
@@ -1707,6 +2179,7 @@ function buildFallbackBootstrap(
   brregCompany: RoleRoomAgentBrregCompany | null,
   companyAge: RoleRoomAgentCompanyAge | null,
   agreementSuggestions: RoleRoomAgentAgreementSuggestion[],
+  competitorAnalysis: RoleRoomAgentCompetitorAnalysis,
 ): RoleRoomAgentNormalizedPayload {
   const websiteUrl = normalizeWebsiteUrl(input.websiteUrl)
     || websiteInsights.finalUrl
@@ -1759,6 +2232,8 @@ function buildFallbackBootstrap(
       websitePagesSelected: websiteInsights.selectedPageSnippets.length,
       reviewsReviewed: businessSignals?.topReviews.length || 0,
       reviewsSelected: businessSignals?.topReviews.length || 0,
+      competitorsReviewed: competitorAnalysis.competitors.length,
+      competitorsSelected: competitorAnalysis.verifiedCompetitorCount,
       brregLookupStatus: brregCompany?.lookupStatus,
       brregMatchedBy: brregCompany?.matchedBy,
     },
@@ -1766,6 +2241,7 @@ function buildFallbackBootstrap(
     companyAge,
     agreementSuggestions,
     socialProfileCandidates,
+    competitorAnalysis,
     companyProfile: {
       companyName,
       websiteUrl,
@@ -1842,6 +2318,11 @@ function buildFallbackBootstrap(
         successSignals: ["Kunden kjenner seg igjen i budskapet", "Godkjenning uten større omarbeid"],
         agreementSignals: agreementSuggestions.map((entry) => entry.title),
         socialProfileSignals: verifiedSocialProfiles.map((candidate) => `${candidate.platform}: ${candidate.url}`),
+        competitorSignals: competitorAnalysis.competitors
+          .filter((candidate) => candidate.status === "verified" || candidate.status === "likely")
+          .slice(0, 5)
+          .map((candidate) => `${candidate.name}: ${candidate.relevanceReason}`),
+        marketingOpportunities: competitorAnalysis.marketingOpportunities,
       },
       brandGuide: {
         logoUrl: websiteInsights.probableLogoUrl || null,
@@ -1966,6 +2447,9 @@ function buildFallbackBootstrap(
       verifiedSocialProfiles.length > 0
         ? `Bekreft ${verifiedSocialProfiles.length} foreslåtte sosiale kontoer før de brukes i brief, kanalplan eller klienttilgang.`
         : "Spør kunden om offisielle sosiale kanaler hvis nettsiden ikke oppgir dem.",
+      competitorAnalysis.verifiedCompetitorCount > 0
+        ? `Gå gjennom ${competitorAnalysis.verifiedCompetitorCount} konkurrentkandidater med kunden før markedsføringsvinkelen låses.`
+        : "Konkurrentanalyse er begrenset. Be kunden oppgi de viktigste konkurrentene manuelt.",
       "Godkjenn story logikk før manus og storyboard fylles videre ut",
       "Samle brandfiler, logo og eksisterende referansemateriale",
       ...agreementSuggestions.slice(0, 2).map((entry) => `Avtale: ${entry.title}`),
@@ -1988,6 +2472,13 @@ function buildFallbackBootstrap(
           verifiedSocialProfiles.length > 0
             ? `Sosiale kontoer funnet: ${verifiedSocialProfiles.map((entry) => `${entry.platform} ${entry.url}`).join("; ")}.`
             : "",
+          competitorAnalysis.verifiedCompetitorCount > 0
+            ? `Konkurrentanalyse: ${competitorAnalysis.competitors
+                .filter((entry) => entry.status === "verified" || entry.status === "likely")
+                .slice(0, 5)
+                .map((entry) => `${entry.name} (${entry.confidence}%)`)
+                .join("; ")}.`
+            : "",
         ].filter(Boolean).join(" "),
       ),
       projectType: "content_production",
@@ -2008,6 +2499,7 @@ async function requestOpenAiBootstrap(
   brregCompany: RoleRoomAgentBrregCompany | null,
   companyAge: RoleRoomAgentCompanyAge | null,
   agreementSuggestions: RoleRoomAgentAgreementSuggestion[],
+  competitorAnalysis: RoleRoomAgentCompetitorAnalysis,
   retrievalMeta: RoleRoomAgentRetrievalMeta | null,
 ): Promise<unknown | null> {
   const runtimeConfig = getRoleRoomAgentRuntimeConfig();
@@ -2045,6 +2537,8 @@ async function requestOpenAiBootstrap(
               "Hvis brregCompany.lookupStatus er verified, bruk juridisk navn, organisasjonsnummer, bransjekode, adresse, MVA-status og alder i kundeprofilen.",
               "Hvis agreementSuggestions finnes, bruk dem som avtalerisiko og praktiske anbefalinger, men formuler det som produksjonsråd, ikke juridisk rådgivning.",
               "Hvis socialProfileCandidates finnes, bruk kun kontoer med verified eller likely som kanalinnsikt, og marker kontoer som må bekreftes av produsent eller kunde før publisering.",
+              "Hvis competitorAnalysis finnes, bruk kun konkurrenter med verified eller likely som markedsføringsinnsikt. Ikke påstå at en kandidat er konkurrent uten manuell bekreftelse fra kunden.",
+              "Bruk konkurrentanalysen til posisjonering, content gaps, CTA og kanalprioritering, men ikke finn på annonsetall, markedsandeler eller private konkurrentdata.",
             ],
           },
           outputSchemaHints: {
@@ -2090,6 +2584,7 @@ async function requestOpenAiBootstrap(
           companyAge,
           agreementSuggestions,
           socialProfileCandidates: websiteInsights.socialProfileCandidates ?? [],
+          competitorAnalysis,
           retrievalMeta,
         }),
       },
@@ -2176,6 +2671,7 @@ function normalizeBootstrapPayload(
     companyAge: fallback.companyAge,
     agreementSuggestions: fallback.agreementSuggestions,
     socialProfileCandidates: fallback.socialProfileCandidates,
+    competitorAnalysis: fallback.competitorAnalysis,
     retrievalMeta: fallback.retrievalMeta,
     companyProfile: {
       companyName: hasText(companyProfile.companyName)
@@ -2335,6 +2831,12 @@ export async function generateRoleRoomAgentProducerBootstrap(
   const websiteUrl = normalizeWebsiteUrl(enrichedInput.websiteUrl);
   const websiteInsights = await fetchWebsiteInsights(websiteUrl, enrichedInput, initialBrregCompany);
   const businessSignals = await fetchGooglePlacesBusinessSignals(enrichedInput, websiteInsights);
+  const competitorAnalysis = await fetchGooglePlacesCompetitorAnalysis(
+    enrichedInput,
+    websiteInsights,
+    businessSignals,
+    initialBrregCompany,
+  );
   const fallback = buildFallbackBootstrap(
     {
       ...enrichedInput,
@@ -2345,6 +2847,7 @@ export async function generateRoleRoomAgentProducerBootstrap(
     initialBrregCompany,
     companyAge,
     agreementSuggestions,
+    competitorAnalysis,
   );
   const openAiPayload = await requestOpenAiBootstrap(
     enrichedInput,
@@ -2353,6 +2856,7 @@ export async function generateRoleRoomAgentProducerBootstrap(
     initialBrregCompany,
     companyAge,
     agreementSuggestions,
+    competitorAnalysis,
     fallback.retrievalMeta ?? null,
   );
   if (!openAiPayload) {

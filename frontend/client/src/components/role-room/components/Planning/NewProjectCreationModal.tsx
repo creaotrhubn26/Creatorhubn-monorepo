@@ -183,6 +183,7 @@ interface ProjectData {
   guestCount: string;
   description: string;
   socialProfiles?: unknown[];
+  competitorAnalysis?: unknown;
   roleRoomAgentPrefill?: unknown;
   collaborators: Array<{
     id: string;
@@ -382,6 +383,7 @@ export default function NewProjectCreationModal({
       guestCount: '',
       description: '',
       socialProfiles: [],
+      competitorAnalysis: null,
       roleRoomAgentPrefill: null,
       collaborators: [],
       enableSplitSheet: false,
@@ -419,6 +421,7 @@ export default function NewProjectCreationModal({
       guestCount: initialData.guestCount || '',
       description: initialData.description || '',
       socialProfiles: Array.isArray(initialData.socialProfiles) ? initialData.socialProfiles : [],
+      competitorAnalysis: initialData.competitorAnalysis || null,
       roleRoomAgentPrefill: initialData.roleRoomAgentPrefill || null,
       collaborators: collaborators,
       enableSplitSheet: initialData.enableSplitSheet || false,
@@ -1694,6 +1697,7 @@ export default function NewProjectCreationModal({
         guestCount: projectData.guestCount || '',
         description: projectData.description || '',
         socialProfiles: Array.isArray(projectData.socialProfiles) ? projectData.socialProfiles : [],
+        competitorAnalysis: projectData.competitorAnalysis || null,
         roleRoomAgentPrefill: projectData.roleRoomAgentPrefill || null,
         collaborators: projectData.collaborators || [],
         crew: crew,
@@ -1914,6 +1918,7 @@ export default function NewProjectCreationModal({
         guestCount: projectData.guestCount || '',
         description: projectData.description || '',
         socialProfiles: Array.isArray(projectData.socialProfiles) ? projectData.socialProfiles : [],
+        competitorAnalysis: projectData.competitorAnalysis || null,
         roleRoomAgentPrefill: projectData.roleRoomAgentPrefill || null,
         collaborators: projectData.collaborators || [], // Keep for split sheet
         crew: crew, // Add crew for CastingPlanner

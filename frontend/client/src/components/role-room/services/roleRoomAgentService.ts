@@ -126,6 +126,58 @@ export interface RoleRoomAgentSocialProfileCandidate {
   requiresManualConfirmation: boolean;
 }
 
+export interface RoleRoomAgentCompetitorEvidence {
+  type:
+    | 'google_places_result'
+    | 'same_category'
+    | 'location_overlap'
+    | 'website_available'
+    | 'review_signal'
+    | 'manual_review_needed';
+  label: string;
+  weight: number;
+}
+
+export interface RoleRoomAgentCompetitorCandidate {
+  source: 'google_places';
+  placeId?: string | null;
+  name: string;
+  websiteUrl?: string | null;
+  googleMapsUri?: string | null;
+  formattedAddress?: string | null;
+  primaryType?: string | null;
+  primaryTypeDisplayName?: string | null;
+  rating?: number | null;
+  userRatingCount?: number | null;
+  confidence: number;
+  status: 'verified' | 'likely' | 'needs_review' | 'rejected';
+  evidence: RoleRoomAgentCompetitorEvidence[];
+  relevanceReason: string;
+  marketingSignals: {
+    positionHint: string;
+    contentAngles: string[];
+    ctaOpportunities: string[];
+    riskNotes: string[];
+  };
+  requiresManualConfirmation: boolean;
+}
+
+export interface RoleRoomAgentCompetitorAnalysis {
+  status: 'ready' | 'limited' | 'unavailable';
+  source: 'google_places' | 'fallback';
+  generatedAt: string;
+  marketContext: string;
+  competitors: RoleRoomAgentCompetitorCandidate[];
+  verifiedCompetitorCount: number;
+  averageRating?: number | null;
+  averageReviewCount?: number | null;
+  marketingOpportunities: string[];
+  positioningRecommendations: string[];
+  contentGapSuggestions: string[];
+  producerQuestions: string[];
+  limitations: string[];
+}
+
 export interface RoleRoomAgentProducerBootstrapResult {
   generatedAt: string;
   provider: 'openai' | 'fallback';
@@ -135,6 +187,7 @@ export interface RoleRoomAgentProducerBootstrapResult {
   companyAge?: RoleRoomAgentCompanyAge | null;
   agreementSuggestions: RoleRoomAgentAgreementSuggestion[];
   socialProfileCandidates: RoleRoomAgentSocialProfileCandidate[];
+  competitorAnalysis: RoleRoomAgentCompetitorAnalysis;
   retrievalMeta?: {
     cohereRerankUsed: boolean;
     rerankerModel?: string;
@@ -142,6 +195,8 @@ export interface RoleRoomAgentProducerBootstrapResult {
     websitePagesSelected: number;
     reviewsReviewed: number;
     reviewsSelected: number;
+    competitorsReviewed?: number;
+    competitorsSelected?: number;
     brregLookupStatus?: RoleRoomAgentBrregCompany['lookupStatus'];
     brregMatchedBy?: RoleRoomAgentBrregCompany['matchedBy'];
   };
@@ -319,6 +374,21 @@ export const roleRoomAgentService = {
       socialProfileCandidates: Array.isArray(payload.result.socialProfileCandidates)
         ? payload.result.socialProfileCandidates
         : [],
+      competitorAnalysis: payload.result.competitorAnalysis ?? {
+        status: 'limited',
+        source: 'fallback',
+        generatedAt: new Date().toISOString(),
+        marketContext: 'Konkurrentanalyse er ikke tilgjengelig for denne responsen.',
+        competitors: [],
+        verifiedCompetitorCount: 0,
+        averageRating: null,
+        averageReviewCount: null,
+        marketingOpportunities: [],
+        positioningRecommendations: [],
+        contentGapSuggestions: [],
+        producerQuestions: [],
+        limitations: ['Backend returnerte ikke competitorAnalysis.'],
+      },
       projectCreationDraft: payload.result.projectCreationDraft ?? {
         projectName: `${payload.result.companyProfile?.companyName || input.projectName || 'Kunde'} · Innholdsproduksjon`,
         description: payload.result.companyProfile?.summary || '',

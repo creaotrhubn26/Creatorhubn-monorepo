@@ -215,6 +215,23 @@ export default function RoleRoomAgentDialog({
     () => socialProfileCandidates.filter((candidate) => candidate.status === 'verified' || candidate.status === 'likely'),
     [socialProfileCandidates],
   );
+  const competitorAnalysis = result?.competitorAnalysis ?? null;
+  const usableCompetitors = useMemo(
+    () => (competitorAnalysis?.competitors ?? []).filter((candidate) => candidate.status === 'verified' || candidate.status === 'likely'),
+    [competitorAnalysis],
+  );
+  const competitorSummaryLabel = useMemo(() => {
+    if (!competitorAnalysis) {
+      return null;
+    }
+    const rating = typeof competitorAnalysis.averageRating === 'number'
+      ? `${competitorAnalysis.averageRating.toFixed(1)} snitt-rating`
+      : null;
+    const reviews = typeof competitorAnalysis.averageReviewCount === 'number'
+      ? `${competitorAnalysis.averageReviewCount} snitt-anmeldelser`
+      : null;
+    return [rating, reviews].filter(Boolean).join(' · ') || null;
+  }, [competitorAnalysis]);
 
   return (
     <Dialog
@@ -614,6 +631,132 @@ export default function RoleRoomAgentDialog({
                 <Alert severity="info">
                   Ingen offisielle sosiale kontoer ble funnet på kundens nettside. Be kunden bekrefte riktige kanaler før de legges inn i prosjektet.
                 </Alert>
+              ) : null}
+
+              {competitorAnalysis ? (
+                <Box
+                  sx={{
+                    p: 1.2,
+                    borderRadius: 3,
+                    border: competitorAnalysis.status === 'ready'
+                      ? '1px solid rgba(34,197,94,0.22)'
+                      : '1px solid rgba(250,204,21,0.2)',
+                    bgcolor: competitorAnalysis.status === 'ready' ? 'rgba(6,78,59,0.14)' : 'rgba(71,36,0,0.16)',
+                  }}
+                >
+                  <Stack spacing={1}>
+                    <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.8} alignItems={{ md: 'center' }} justifyContent="space-between">
+                      <Box>
+                        <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>Konkurrentanalyse og markedsføring</Typography>
+                        <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.86rem', lineHeight: 1.5 }}>
+                          {competitorAnalysis.marketContext}
+                        </Typography>
+                      </Box>
+                      <Stack direction="row" spacing={0.7} flexWrap="wrap" useFlexGap>
+                        <Chip
+                          size="small"
+                          label={`${usableCompetitors.length}/${competitorAnalysis.competitors.length} klare for vurdering`}
+                          sx={{ bgcolor: 'rgba(34,197,94,0.14)', color: '#bbf7d0' }}
+                        />
+                        {competitorSummaryLabel ? (
+                          <Chip size="small" label={competitorSummaryLabel} sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }} />
+                        ) : null}
+                      </Stack>
+                    </Stack>
+
+                    {competitorAnalysis.competitors.length > 0 ? (
+                      <Stack direction={{ xs: 'column', lg: 'row' }} spacing={0.9} flexWrap="wrap" useFlexGap>
+                        {competitorAnalysis.competitors.slice(0, 6).map((competitor) => (
+                          <Box
+                            key={competitor.placeId || competitor.name}
+                            sx={{
+                              flex: '1 1 250px',
+                              minWidth: 0,
+                              p: 1,
+                              borderRadius: 2.4,
+                              border: competitor.status === 'verified'
+                                ? '1px solid rgba(16,185,129,0.26)'
+                                : '1px solid rgba(148,163,184,0.16)',
+                              bgcolor: 'rgba(15,23,42,0.48)',
+                            }}
+                          >
+                            <Stack spacing={0.7}>
+                              <Stack direction="row" spacing={0.7} alignItems="center" justifyContent="space-between">
+                                <Typography sx={{ color: '#f8fafc', fontWeight: 800, fontSize: '0.92rem' }}>
+                                  {competitor.name}
+                                </Typography>
+                                <Chip
+                                  size="small"
+                                  label={`${competitor.confidence}%`}
+                                  sx={{
+                                    bgcolor: competitor.status === 'verified' ? 'rgba(16,185,129,0.18)' : 'rgba(250,204,21,0.14)',
+                                    color: competitor.status === 'verified' ? '#bbf7d0' : '#fde68a',
+                                  }}
+                                />
+                              </Stack>
+                              <Typography sx={{ color: 'rgba(226,232,240,0.74)', fontSize: '0.84rem', lineHeight: 1.45 }}>
+                                {competitor.relevanceReason}
+                              </Typography>
+                              {renderClassificationChips([
+                                competitor.primaryTypeDisplayName ? `Kategori: ${competitor.primaryTypeDisplayName}` : null,
+                                typeof competitor.rating === 'number' ? `${competitor.rating.toFixed(1)} stjerner` : null,
+                                typeof competitor.userRatingCount === 'number' ? `${competitor.userRatingCount} reviews` : null,
+                              ])}
+                              <Typography sx={{ color: 'rgba(226,232,240,0.62)', fontSize: '0.78rem', lineHeight: 1.45 }}>
+                                {competitor.evidence.slice(0, 2).map((entry) => entry.label).join(' · ')}
+                              </Typography>
+                              <Typography sx={{ color: '#cbd5e1', fontSize: '0.82rem', lineHeight: 1.45 }}>
+                                {competitor.marketingSignals.positionHint}
+                              </Typography>
+                              <Stack direction="row" spacing={0.7} flexWrap="wrap" useFlexGap>
+                                {competitor.websiteUrl ? (
+                                  <Button href={competitor.websiteUrl} target="_blank" rel="noreferrer" size="small" variant="outlined" sx={{ textTransform: 'none', fontWeight: 700 }}>
+                                    Nettside
+                                  </Button>
+                                ) : null}
+                                {competitor.googleMapsUri ? (
+                                  <Button href={competitor.googleMapsUri} target="_blank" rel="noreferrer" size="small" variant="outlined" sx={{ textTransform: 'none', fontWeight: 700 }}>
+                                    Google
+                                  </Button>
+                                ) : null}
+                              </Stack>
+                            </Stack>
+                          </Box>
+                        ))}
+                      </Stack>
+                    ) : (
+                      <Alert severity="info">
+                        Ingen verifiserbare konkurrenter ble funnet automatisk. Be kunden oppgi konkurrenter manuelt før markedsføringsvinkel låses.
+                      </Alert>
+                    )}
+
+                    <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1}>
+                      <Box sx={{ flex: 1 }}>
+                        <Typography sx={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.84rem', textTransform: 'uppercase', letterSpacing: '0.12em', mb: 0.8 }}>
+                          Muligheter
+                        </Typography>
+                        {renderList(competitorAnalysis.marketingOpportunities)}
+                      </Box>
+                      <Box sx={{ flex: 1 }}>
+                        <Typography sx={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.84rem', textTransform: 'uppercase', letterSpacing: '0.12em', mb: 0.8 }}>
+                          Posisjonering
+                        </Typography>
+                        {renderList(competitorAnalysis.positioningRecommendations)}
+                      </Box>
+                      <Box sx={{ flex: 1 }}>
+                        <Typography sx={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.84rem', textTransform: 'uppercase', letterSpacing: '0.12em', mb: 0.8 }}>
+                          Spør kunden
+                        </Typography>
+                        {renderList(competitorAnalysis.producerQuestions)}
+                      </Box>
+                    </Stack>
+                    {competitorAnalysis.limitations.length > 0 ? (
+                      <Typography sx={{ color: 'rgba(226,232,240,0.56)', fontSize: '0.78rem', lineHeight: 1.5 }}>
+                        Begrensning: {competitorAnalysis.limitations[0]}
+                      </Typography>
+                    ) : null}
+                  </Stack>
+                </Box>
               ) : null}
 
               {result.businessSignals ? (
