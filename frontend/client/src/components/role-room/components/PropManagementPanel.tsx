@@ -598,11 +598,9 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
     const inferredType = inferItemTypeFromName(prop.name);
     if (inferredType) return inferredType;
 
-    const explicitType =
-      typeof prop.itemType === 'string' && (prop.itemType === 'equipment' || prop.itemType === 'prop')
-        ? prop.itemType
-        : null;
-    if (explicitType) return explicitType;
+    const explicitType = typeof prop.itemType === 'string' ? prop.itemType : '';
+    if (explicitType === 'equipment') return 'equipment';
+    if (explicitType === 'prop') return 'prop';
     return resolveItemTypeFromCategory(prop.category);
   }
 

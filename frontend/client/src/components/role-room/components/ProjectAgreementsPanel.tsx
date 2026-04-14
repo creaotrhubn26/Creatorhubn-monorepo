@@ -13,7 +13,6 @@ import {
   DialogTitle,
   Divider,
   FormControl,
-  Grid,
   InputLabel,
   ListSubheader,
   MenuItem,
@@ -24,6 +23,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import Grid from '@mui/material/Grid2';
 import {
   Add as AddIcon,
   Description as DescriptionIcon,
@@ -256,7 +256,7 @@ const buildAgreementSectionsForDraft = (
   project: CastingProject,
   counterpartyType: 'client' | 'extra',
   draft: ProjectAgreementDraft,
-): ProjectAgreement['sections'] => buildAgreementSections({
+): NonNullable<ProjectAgreement['sections']> => buildAgreementSections({
   projectName: project.name,
   agreementType: draft.agreementType,
   counterpartyType,
@@ -2327,12 +2327,12 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                                 }}
                               />
                             </Button>
-                            {item.receiptFileId ? (
+                            {item.receiptFileId && item.receiptUrl ? (
                               <Button
                                 variant="text"
                                 color="inherit"
                                 startIcon={<OpenInNewIcon />}
-                                href={item.receiptUrl || undefined}
+                                href={item.receiptUrl}
                                 target="_blank"
                                 rel="noreferrer"
                                 sx={{ textTransform: 'none', fontWeight: 700 }}
