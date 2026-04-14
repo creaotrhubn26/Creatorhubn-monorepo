@@ -165,7 +165,7 @@ import {
   normalizeProjectFileRecords,
   type ProjectFileRecord,
 } from '../../utils/projectFiles';
-import { buildClientPortalUrl } from '../../utils/clientPortal';
+import { buildClientPortalUrl, type ClientPortalWorkspaceFocus } from '../../utils/clientPortal';
 import type { StoryArcNavigationFocus } from '../../utils/storyArcFocus';
 import { shouldUseRoleRoomLocalFallback } from '../../utils/runtime';
 import ProducerGoogleWorkspacePanel from './ProducerGoogleWorkspacePanel';
@@ -313,6 +313,7 @@ interface VaultSecretDraft {
 type BriefStepKey = 'goal' | 'audience' | 'logic' | 'foundation' | 'references' | 'contact';
 type MaterialWizardStepKey = 'source' | 'details' | 'linking' | 'review';
 type MaterialsMode = 'capture' | 'library';
+type BrandPreviewFormat = '16:9' | '4:5' | '9:16' | '1:1';
 
 const MOBILE_WORKSPACE_DRAFT_NAMESPACE = 'role-room-mobile-workspace-draft';
 
@@ -744,6 +745,10 @@ const getWorkspaceSurfaceDescription = (
 };
 
 const hasText = (value: string | null | undefined): value is string => typeof value === 'string' && value.trim().length > 0;
+
+const isBrandPreviewFormat = (value: unknown): value is BrandPreviewFormat => (
+  value === '16:9' || value === '4:5' || value === '9:16' || value === '1:1'
+);
 
 const asRecord = (value: unknown): Record<string, unknown> => (
   value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -1841,7 +1846,7 @@ export default function ProducerMediaPanel({
   const [brandColorsDraft, setBrandColorsDraft] = useState(() => stringifyBrandColors(normalizeProducerProjectPlanning(project).brandGuide.colors));
   const [brandDosDraft, setBrandDosDraft] = useState(() => stringifyLineSeparatedValues(normalizeProducerProjectPlanning(project).brandGuide.dos));
   const [brandDontsDraft, setBrandDontsDraft] = useState(() => stringifyLineSeparatedValues(normalizeProducerProjectPlanning(project).brandGuide.donts));
-  const [brandPreviewFormat, setBrandPreviewFormat] = useState<'16:9' | '4:5' | '9:16' | '1:1'>('16:9');
+  const [brandPreviewFormat, setBrandPreviewFormat] = useState<BrandPreviewFormat>('16:9');
   const [brandPreviewDeliveryId, setBrandPreviewDeliveryId] = useState<string | null>(null);
   const [uploadingBrandLogo, setUploadingBrandLogo] = useState(false);
   const [brandLogoUploadVariantType, setBrandLogoUploadVariantType] = useState<ProducerBrandLogoVariantType>('primary');
@@ -2921,40 +2926,45 @@ export default function ProducerMediaPanel({
       await persistPlanningDraft(nextPlanning, nextProject);
 
       const existingStoryLogic = await storyLogicService.getStoryLogic(projectId);
+      const existingStoryLogicRecord = asRecord(existingStoryLogic);
+      const storyLogicDraftRecord = asRecord(result.storyLogicDraft);
+      const existingLocks = asRecord(existingStoryLogicRecord.locks);
       const nextStoryLogic = {
-        ...(existingStoryLogic ?? {}),
-        ...(result.storyLogicDraft ?? {}),
+        ...existingStoryLogicRecord,
+        ...storyLogicDraftRecord,
         concept: {
-          ...((existingStoryLogic as Record<string, unknown> | null)?.concept as Record<string, unknown> | undefined),
+          ...asRecord(existingStoryLogicRecord.concept),
           ...((result.storyLogicDraft.concept as Record<string, unknown> | undefined) ?? {}),
         },
         logline: {
-          ...((existingStoryLogic as Record<string, unknown> | null)?.logline as Record<string, unknown> | undefined),
+          ...asRecord(existingStoryLogicRecord.logline),
           ...((result.storyLogicDraft.logline as Record<string, unknown> | undefined) ?? {}),
         },
         theme: {
-          ...((existingStoryLogic as Record<string, unknown> | null)?.theme as Record<string, unknown> | undefined),
+          ...asRecord(existingStoryLogicRecord.theme),
           ...((result.storyLogicDraft.theme as Record<string, unknown> | undefined) ?? {}),
         },
         phaseStatus: {
-          ...((existingStoryLogic as Record<string, unknown> | null)?.phaseStatus as Record<string, unknown> | undefined),
+          ...asRecord(existingStoryLogicRecord.phaseStatus),
           ...((result.storyLogicDraft.phaseStatus as Record<string, unknown> | undefined) ?? {}),
         },
         locks:
           result.storyLogicDraft.locks && typeof result.storyLogicDraft.locks === 'object'
             ? result.storyLogicDraft.locks
-            : ((existingStoryLogic as Record<string, unknown> | null)?.locks as Record<string, unknown> | undefined) ?? { concept: false, logline: false, theme: false },
+            : Object.keys(existingLocks).length > 0
+              ? existingLocks
+              : { concept: false, logline: false, theme: false },
         versions: Array.isArray(result.storyLogicDraft.versions)
           ? result.storyLogicDraft.versions
-          : Array.isArray((existingStoryLogic as Record<string, unknown> | null)?.versions)
-            ? (existingStoryLogic as Record<string, unknown>).versions
+          : Array.isArray(existingStoryLogicRecord.versions)
+            ? existingStoryLogicRecord.versions
             : [],
         lastSaved: now,
         isLocked: false,
       };
       await storyLogicService.saveStoryLogic(
         projectId,
-        nextStoryLogic as Parameters<typeof storyLogicService.saveStoryLogic>[1],
+        nextStoryLogic as unknown as Parameters<typeof storyLogicService.saveStoryLogic>[1],
       );
 
       const nextDraft = {
@@ -5787,14 +5797,12 @@ export default function ProducerMediaPanel({
       planningDraft.brandGuide.logoTiming,
     ],
   );
-  const availableBrandPreviewFormats = useMemo<Array<'16:9' | '4:5' | '9:16' | '1:1'>>(() => {
+  const availableBrandPreviewFormats = useMemo<BrandPreviewFormat[]>(() => {
     const formats = Array.from(
       new Set(
         planningDraft.contentCalendar
           .map((item) => item.format?.trim())
-          .filter((value): value is '16:9' | '4:5' | '9:16' | '1:1' => (
-            value === '16:9' || value === '4:5' || value === '9:16' || value === '1:1'
-          )),
+          .filter(isBrandPreviewFormat),
       ),
     );
     return formats.length > 0 ? formats : ['16:9', '4:5', '9:16'];
@@ -5807,10 +5815,7 @@ export default function ProducerMediaPanel({
   const brandPreviewDeliveries = useMemo(() => (
     planningDraft.contentCalendar.map((item) => {
       const normalizedFormat = item.format?.trim();
-      const formatValue = normalizedFormat === '16:9'
-        || normalizedFormat === '4:5'
-        || normalizedFormat === '9:16'
-        || normalizedFormat === '1:1'
+      const formatValue: BrandPreviewFormat | null = isBrandPreviewFormat(normalizedFormat)
         ? normalizedFormat
         : null;
       return {
@@ -5995,12 +6000,12 @@ export default function ProducerMediaPanel({
       ...planningDraft.brandGuide,
       logoVariants: nextLogoVariants,
     };
-    const nextBrandGuide = (planningDraft.brandGuide.activeLogoVariantType ?? 'primary') === variantType
+    const nextBrandGuide: ProducerProjectPlanning['brandGuide'] = (planningDraft.brandGuide.activeLogoVariantType ?? 'primary') === variantType
       ? (fallbackVariant
         ? syncBrandGuideWithLogoVariant(nextBrandGuideBase, fallbackVariant)
         : {
           ...nextBrandGuideBase,
-          activeLogoVariantType: 'primary',
+          activeLogoVariantType: 'primary' as ProducerBrandLogoVariantType,
           logoUrl: undefined,
           logoDetection: undefined,
         })
@@ -6619,12 +6624,21 @@ export default function ProducerMediaPanel({
           title: 'Juridisk status',
           description: 'Dette kan fortsatt blokkere overlevering eller sign-off.',
           items: (deliveryWorkspaceAssets.legalAgreements.length > 0
-            ? deliveryWorkspaceAssets.legalAgreements.slice(0, 2).map((agreement) => ({
-              id: agreement.id,
-              eyebrow: PROJECT_AGREEMENT_STATUS_LABELS[agreement.status],
-              title: agreement.title,
-              detail: `${getAgreementClientFacingStatusSummary(agreement)} · ${getAgreementSignatureProgress(agreement).label}`,
-            }))
+            ? deliveryWorkspaceAssets.legalAgreements.slice(0, 2).map((agreement) => {
+              const signatureProgress = getAgreementSignatureProgress(agreement);
+              const currentSignatureStep = signatureProgress.steps.find((step) => step.state === 'current')
+                ?? signatureProgress.steps.at(-1)
+                ?? null;
+              const signatureLabel = signatureProgress.issueLabel
+                ?? currentSignatureStep?.label
+                ?? 'Ikke startet';
+              return {
+                id: agreement.id,
+                eyebrow: PROJECT_AGREEMENT_STATUS_LABELS[agreement.status],
+                title: agreement.title,
+                detail: `${getAgreementClientFacingStatusSummary(agreement)} · ${signatureLabel}`,
+              };
+            })
             : [
               {
                 id: 'delivery-legal-empty',
@@ -11175,7 +11189,7 @@ export default function ProducerMediaPanel({
                               size="small"
                               exclusive
                               value={brandPreviewFormat}
-                              onChange={(_, nextValue: '16:9' | '4:5' | '9:16' | '1:1' | null) => {
+                              onChange={(_, nextValue: BrandPreviewFormat | null) => {
                                 if (!nextValue) {
                                   return;
                                 }
