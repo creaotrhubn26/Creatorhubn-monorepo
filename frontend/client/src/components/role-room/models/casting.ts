@@ -1756,6 +1756,22 @@ export interface SceneBreakdown {
   specialEffects?: string | boolean;
   stuntsNotes?: string;
   storyboardFrames?: StoryboardFrame[];
+  metadata?: {
+    camera?: string;
+    lens?: string;
+    rig?: string;
+    shotType?: string;
+    keyLight?: string;
+    sideLight?: string;
+    gel?: string;
+    mic?: string;
+    atmos?: string;
+    lighting?: string;
+    audio?: string;
+    equipment?: string[];
+    references?: string[];
+    [key: string]: unknown;
+  };
   createdAt?: string;
   updatedAt?: string;
   [key: string]: unknown;

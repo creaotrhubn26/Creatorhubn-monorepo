@@ -17,7 +17,7 @@ import LiveSetMode from "./production/LiveSetMode";
 import StripboardPanel from "./production/StripboardPanel";
 import ShootingDayPlanner from "./production/ShootingDayPlanner";
 import CallSheetGenerator from "./CallSheetGenerator";
-import { productionWorkflowService, generateCallSheetHTML, downloadCallSheetPDF, DEFAULT_CALL_SHEET_OPTIONS, type ShootingDay, type LiveSetStatus } from "./production";
+import { productionWorkflowService, generateCallSheetHTML, downloadCallSheetPDF, DEFAULT_CALL_SHEET_OPTIONS, type CallSheet, type ShootingDay, type LiveSetStatus } from "./production";
 import AddShotDialog, { type AddShotDialogCreatePayload } from "./production/AddShotDialog";
 import SceneStoryboardDialog from "./production/SceneStoryboardDialog";
 import ProductionNotesPanel from "./production/ProductionNotesPanel";
@@ -107,6 +107,37 @@ const getResponsiveValues = (tier: ScreenTier) => {
     },
   };
   return values[tier];
+};
+
+const toDisplayString = (value: unknown, fallback = ''): string => {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return fallback;
+};
+
+const toOptionalNumber = (value: unknown): number | undefined => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
+};
+
+const toSceneNumber = (value: unknown): number | undefined => {
+  const parsed = toOptionalNumber(value);
+  return parsed === undefined ? undefined : Math.trunc(parsed);
+};
+
+const toTimestamp = (value: unknown): number => {
+  const raw = toDisplayString(value);
+  const timestamp = raw ? new Date(raw).getTime() : 0;
+  return Number.isFinite(timestamp) ? timestamp : 0;
+};
+
+const toFontNumber = (value: unknown, fallback = 13): number => {
+  const parsed = toOptionalNumber(value);
+  return parsed ?? fallback;
 };
 
 interface ProductionManuscriptViewProps {
@@ -436,6 +467,7 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   // 7-Tier Responsive
   const { tier, isMobile, isTablet, isDesktop, is4K } = useScreenTier();
   const responsive = getResponsiveValues(tier);
+  const responsiveBodyFontSize = toFontNumber(responsive.bodyFontSize);
   
   // Desktop/4K-specific layout adjustments — used for responsive container sizing
   const panelMaxWidth = is4K ? 2560 : isDesktop ? 1400 : undefined;
@@ -1192,6 +1224,7 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   const getSceneMetadata = (scene: SceneBreakdown) => {
     const shots = getShotsForScene(scene.id);
     return {
+      camera: toDisplayString(shots[0]?.camera?.resolution, toDisplayString(shots[0]?.cameraAngle, 'Camera')),
       cameraMovement: shots[0]?.cameraMovement || '',
       lighting: shots[0]?.lightingSetup || 'Mykt sidelys, varm tone',
       audio: 'Dempet romlyd',
@@ -1208,6 +1241,7 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
     // Build a scene-id → lines map for O(1) lookup per scene
     const byScene = new Map<string, typeof dialogueLines>();
     for (const d of dialogueLines) {
+      if (!d.sceneId) continue;
       const arr = byScene.get(d.sceneId) ?? [];
       arr.push(d);
       byScene.set(d.sceneId, arr);
@@ -1270,7 +1304,7 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
     if (readThroughMode && manuscriptRef.current) {
       const currentLine = allDialogue[readThroughCurrentLine];
       
-      if (currentLine) {
+      if (currentLine?.sceneId) {
         const selectedSceneDialog = getSceneDialogue(currentLine.sceneId);
         const localIndex = selectedSceneDialog.findIndex(d => d.id === currentLine.id);
         if (localIndex >= 0) {
@@ -1593,7 +1627,7 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   const handleCreateScene = () => {
     // Compute next scene number: max existing + 1 (handles gaps from deletion)
     const nextSceneNumber = String(
-      Math.max(0, ...scenes.map(s => parseInt(s.sceneNumber, 10)).filter(Number.isFinite)) + 1
+      Math.max(0, ...scenes.map(s => toSceneNumber(s.sceneNumber) ?? 0).filter(Number.isFinite)) + 1
     );
     const validationError = validateSceneNumber(nextSceneNumber);
     if (validationError) {
@@ -2629,7 +2663,7 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
         scene.locationName?.toLowerCase().includes(query) ||
         scene.description?.toLowerCase().includes(query) ||
         scene.characters?.some(char => char.toLowerCase().includes(query)) ||
-        scene.sceneNumber?.toLowerCase().includes(query)
+        toDisplayString(scene.sceneNumber).toLowerCase().includes(query)
       );
     }
 
@@ -2656,7 +2690,7 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
       let comparison = 0;
       switch (sortBy) {
         case 'number':
-          comparison = parseInt(a.sceneNumber) - parseInt(b.sceneNumber);
+          comparison = (toSceneNumber(a.sceneNumber) ?? 0) - (toSceneNumber(b.sceneNumber) ?? 0);
           break;
         case 'duration': {
           const aDuration = shotLists.find(l => l.sceneId === a.id)?.shots.reduce((sum, shot) => sum + (shot.duration || 5), 0) || 0;
@@ -2665,7 +2699,7 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
           break;
         }
         case 'date':
-          comparison = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+          comparison = toTimestamp(a.createdAt) - toTimestamp(b.createdAt);
           break;
         case 'name':
           comparison = (a.sceneHeading || '').localeCompare(b.sceneHeading || '');
@@ -2682,7 +2716,7 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
     const newScene: SceneBreakdown = {
       ...scene,
       id: `scene-${Date.now()}`,
-      sceneNumber: `${parseInt(scene.sceneNumber) + 1}`,
+      sceneNumber: `${(toSceneNumber(scene.sceneNumber) ?? 0) + 1}`,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -2775,6 +2809,71 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
     link.click();
     URL.revokeObjectURL(url);
   };
+
+  const buildCallSheetForDay = useCallback((dayId?: string): CallSheet => {
+    const day = shootingDays.find((entry) => entry.id === dayId) ?? shootingDays[0];
+    const dayScenes = day?.scenes?.length
+      ? scenes.filter((scene) => day.scenes.includes(scene.id))
+      : scenes;
+    const daySceneIds = new Set(dayScenes.map((scene) => scene.id));
+    const dayShotLists = shotLists.filter((list) => daySceneIds.has(list.sceneId));
+    const sceneEquipment = dayScenes.flatMap((scene) => scene.metadata?.equipment ?? []);
+
+    return {
+      id: `call-sheet-${day?.id ?? 'draft'}-${Date.now()}`,
+      shootingDayId: day?.id ?? dayId ?? 'draft',
+      projectTitle: manuscript.title || 'Produksjon',
+      productionCompany: '',
+      director: '',
+      producer: '',
+      date: day?.date ?? new Date().toISOString().split('T')[0],
+      dayNumber: day?.dayNumber ?? Math.max(1, shootingDays.findIndex((entry) => entry.id === day?.id) + 1),
+      totalDays: Math.max(shootingDays.length, 1),
+      generalCallTime: day?.callTime ?? '08:00',
+      crewCallTimes: Object.entries(day?.crewCallTimes ?? {}).map(([id, callTime]) => ({
+        id,
+        name: id,
+        role: id,
+        department: 'Crew',
+        callTime,
+      })),
+      castCallTimes: Object.entries(day?.castCallTimes ?? {}).map(([id, callTime]) => ({
+        id,
+        name: id,
+        character: id,
+        callTime,
+        scenes: dayScenes.filter((scene) => scene.characters?.includes(id)).map((scene) => toDisplayString(scene.sceneNumber, scene.id)),
+      })),
+      scenes: dayScenes.map((scene) => {
+        const shots = dayShotLists.find((list) => list.sceneId === scene.id)?.shots ?? [];
+        const duration = shots.reduce((sum, shot) => sum + (shot.duration ?? 5), 0);
+        return {
+          sceneNumber: toDisplayString(scene.sceneNumber, scene.id),
+          description: scene.sceneHeading || scene.heading || scene.description || '',
+          location: scene.locationName || day?.location || '',
+          intExt: scene.intExt || '',
+          timeOfDay: scene.timeOfDay || '',
+          pages: scene.pageLength ?? 0,
+          cast: scene.characters ?? [],
+          estimatedTime: `${duration} min`,
+          notes: quickNotes[scene.id] || scene.description || undefined,
+        };
+      }),
+      locations: day
+        ? [{
+            name: day.location || 'Location',
+            address: day.locationAddress ?? '',
+          }]
+        : [],
+      equipment: Array.from(new Set([...(day?.equipmentNeeded ?? []), ...sceneEquipment])),
+      meals: day?.meals ?? [],
+      contacts: [],
+      notes: [day?.notes].filter((note): note is string => Boolean(note)),
+      weather: day?.weather,
+      createdAt: new Date().toISOString(),
+      version: 1,
+    };
+  }, [manuscript.title, quickNotes, scenes, shootingDays, shotLists]);
 
   // Call sheet generation
   const handleGenerateCallSheet = () => {
@@ -3926,7 +4025,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
             </Tooltip>
             <Tooltip title="Last ned Call Sheet som PDF">
               <IconButton
-                onClick={() => downloadCallSheetPDF(manuscript.title || 'call-sheet')}
+                onClick={() => { void downloadCallSheetPDF(buildCallSheetForDay(selectedShootingDayId ?? undefined), DEFAULT_CALL_SHEET_OPTIONS); }}
                 sx={{
                   color: '#6b7280',
                   bgcolor: '#1a2230',
@@ -3980,7 +4079,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                 bgcolor: readThroughMode ? 'rgba(16,185,129,0.15)' : 'rgba(59,130,246,0.15)',
                 border: readThroughMode ? '1px solid rgba(16,185,129,0.3)' : '1px solid rgba(59,130,246,0.3)',
               }}>
-                <Typography sx={{ fontSize: responsive.bodyFontSize - 1, fontWeight: 700, color: readThroughMode ? '#10b981' : '#60a5fa', letterSpacing: 1 }}>
+                <Typography sx={{ fontSize: responsiveBodyFontSize - 1, fontWeight: 700, color: readThroughMode ? '#10b981' : '#60a5fa', letterSpacing: 1 }}>
                   {readThroughMode ? (isMobile ? 'READ' : 'READ THROUGH') : (isMobile ? 'MANUS' : 'MANUSKRIPT')}
                 </Typography>
               </Box>
@@ -4060,7 +4159,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                             displayEmpty
                             sx={{
                               color: ttsLanguage ? '#3b82f6' : '#9ca3af',
-                              fontSize: responsive.bodyFontSize - 2,
+                              fontSize: responsiveBodyFontSize - 2,
                               minWidth: 52,
                               '& .MuiSelect-select': { py: 0, px: 0.5 },
                               '& .MuiSelect-icon': { color: '#6b7280', fontSize: 16 },
@@ -4083,7 +4182,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                             disableUnderline
                             sx={{
                               color: '#9ca3af',
-                              fontSize: responsive.bodyFontSize - 2,
+                              fontSize: responsiveBodyFontSize - 2,
                               minWidth: 70,
                               '& .MuiSelect-select': { py: 0, px: 0.5 },
                               '& .MuiSelect-icon': { color: '#6b7280', fontSize: 16 },
@@ -4105,7 +4204,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                               })}
                               sx={{
                                 color: ttsSpeed !== 1.0 ? '#f59e0b' : '#6b7280',
-                                fontSize: responsive.bodyFontSize - 2,
+                                fontSize: responsiveBodyFontSize - 2,
                                 p: 0.5,
                                 minWidth: 28,
                               }}
@@ -4156,7 +4255,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
             </Stack>
             <Stack direction="row" spacing={isMobile ? 0.5 : 1} alignItems="center">
               {!isMobile && (
-                <Typography sx={{ fontSize: responsive.bodyFontSize - 2, color: '#4b5563' }}>
+                <Typography sx={{ fontSize: responsiveBodyFontSize - 2, color: '#4b5563' }}>
                   {Math.round(manuscriptZoom * 100)}%
                 </Typography>
               )}
@@ -4431,7 +4530,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                       startIcon={<RefreshIcon sx={{ fontSize: 14 }} />}
                       onClick={() => {
                         const currentStatus = getSceneStatus(selectedScene);
-                        const stripStatus = currentStatus === 'complete' ? 'completed' : currentStatus === 'partial' ? 'shot' : 'not-scheduled';
+                        const stripStatus = currentStatus === 'complete' ? 'completed' : currentStatus === 'in-progress' ? 'shot' : 'not-scheduled';
                         handleSyncStatusWithStripboard(selectedScene.id, stripStatus as 'not-scheduled' | 'scheduled' | 'shot' | 'in-post' | 'completed');
                       }}
                       sx={{
@@ -4642,7 +4741,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                   /* Extracted: per-scene draft/saved autosave with all 4 note types */
                   <ProductionNotesPanel
                     sceneId={selectedScene.id}
-                    sceneNumber={selectedScene.sceneNumber}
+                    sceneNumber={toSceneNumber(selectedScene.sceneNumber)}
                     savedNotes={productionNotes[selectedScene.id] ?? {}}
                     onSaveNote={handleSaveProductionNote}
                     readThroughMode={false}
@@ -4896,7 +4995,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               bgcolor: 'rgba(139,92,246,0.15)',
               border: '1px solid rgba(139,92,246,0.3)',
             }}>
-              <Typography sx={{ fontSize: responsive.bodyFontSize - 2, fontWeight: 700, color: '#a78bfa', letterSpacing: 1 }}>
+              <Typography sx={{ fontSize: responsiveBodyFontSize - 2, fontWeight: 700, color: '#a78bfa', letterSpacing: 1 }}>
                 TIMELINE
               </Typography>
             </Box>
@@ -4948,7 +5047,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                 </IconButton>
               </Tooltip>
               {!isTablet && (
-                <Typography sx={{ fontSize: responsive.bodyFontSize - 2, color: '#6b7280', px: 1, display: 'flex', alignItems: 'center' }}>
+                <Typography sx={{ fontSize: responsiveBodyFontSize - 2, color: '#6b7280', px: 1, display: 'flex', alignItems: 'center' }}>
                   {timelineZoom}x
                 </Typography>
               )}
@@ -4973,12 +5072,12 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                 gap: 1,
               }}>
                 <WarningIcon sx={{ fontSize: 14, color: '#fbbf24' }} />
-                <Typography sx={{ fontSize: responsive.bodyFontSize - 2, fontWeight: 600, color: '#fcd34d' }}>
+                <Typography sx={{ fontSize: responsiveBodyFontSize - 2, fontWeight: 600, color: '#fcd34d' }}>
                   Overtid: +{getOvertimeDuration()}
                 </Typography>
               </Box>
             )}
-            <Typography sx={{ fontSize: responsive.bodyFontSize + 1, fontWeight: 700, color: '#fff' }}>
+            <Typography sx={{ fontSize: responsiveBodyFontSize + 1, fontWeight: 700, color: '#fff' }}>
               {formatTime(getTotalDuration())}
             </Typography>
             <Tooltip title={timelineViewMode === 'grid' ? "Grid view aktiv" : "Grid view"}>
@@ -5385,15 +5484,15 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
           <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
             {liveSetStatus && (
               <Chip
-                icon={<LiveIcon sx={{ fontSize: 10, color: liveSetStatus.isRecording ? '#ef4444' : '#6b7280' }} />}
-                label={liveSetStatus.isRecording ? 'LIVE' : 'Standby'}
+                icon={<LiveIcon sx={{ fontSize: 10, color: liveSetStatus.isRolling ? '#ef4444' : '#6b7280' }} />}
+                label={liveSetStatus.isRolling ? 'LIVE' : 'Standby'}
                 size="small"
                 sx={{
                   height: 20,
                   fontSize: 10,
-                  bgcolor: liveSetStatus.isRecording ? 'rgba(239,68,68,0.15)' : 'rgba(107,114,128,0.15)',
-                  color: liveSetStatus.isRecording ? '#ef4444' : '#9ca3af',
-                  border: `1px solid ${liveSetStatus.isRecording ? '#ef4444' : '#374151'}`,
+                  bgcolor: liveSetStatus.isRolling ? 'rgba(239,68,68,0.15)' : 'rgba(107,114,128,0.15)',
+                  color: liveSetStatus.isRolling ? '#ef4444' : '#9ca3af',
+                  border: `1px solid ${liveSetStatus.isRolling ? '#ef4444' : '#374151'}`,
                 }}
               />
             )}
@@ -7244,7 +7343,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               }}
               onGenerateCallSheet={(dayId) => {
                 // Generate call sheet HTML for the specific day and store it
-                const html = generateCallSheetHTML(dayId, DEFAULT_CALL_SHEET_OPTIONS);
+                const html = generateCallSheetHTML(buildCallSheetForDay(dayId), DEFAULT_CALL_SHEET_OPTIONS);
                 const callSheetRef: CallSheetRef = {
                   id: `cs-${dayId}-${Date.now()}`,
                   shootingDayId: dayId,
@@ -7298,7 +7397,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               }}
               onGenerateCallSheet={(dayId) => {
                 // Generate call sheet for the specific shooting day
-                const html = generateCallSheetHTML(dayId, DEFAULT_CALL_SHEET_OPTIONS);
+                const html = generateCallSheetHTML(buildCallSheetForDay(dayId), DEFAULT_CALL_SHEET_OPTIONS);
                 const callSheetRef: CallSheetRef = {
                   id: `cs-${dayId}-${Date.now()}`,
                   shootingDayId: dayId,
@@ -7573,6 +7672,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
             {sceneCandidates.map((candidate) => {
               const assignedRole = projectRoles.find(r => (candidate.assignedRoles || []).includes(r.id));
               const isInSelectedScene = selectedScene?.characters?.includes(assignedRole?.name || '') || false;
+              const candidatePhoto = candidate.photos?.[0];
 
               return (
                 <Box
@@ -7601,9 +7701,9 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                         border: '2px solid #2a3142',
                       }}
                     >
-                      {candidate.photos[0] ? (
+                      {candidatePhoto ? (
                         <img
-                          src={candidate.photos[0]}
+                          src={candidatePhoto}
                           alt={candidate.name}
                           style={{
                             width: '100%',
@@ -8105,7 +8205,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
       <AddShotDialog
         open={addShotState.open}
         onClose={() => addShotDispatch({ type: 'CLOSE' })}
-        sceneNumber={selectedScene?.sceneNumber}
+        sceneNumber={toSceneNumber(selectedScene?.sceneNumber)}
         onCreateShot={handleCreateShot}
         onSearch={handleSearchReferenceShots}
         storyboardCandidates={selectedSceneStoryboardCandidates}
