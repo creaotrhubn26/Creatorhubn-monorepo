@@ -2951,12 +2951,26 @@ export default function ProducerMediaPanel({
     const companyName = draft?.clientCompanyName || result.companyProfile.companyName || result.brregCompany?.name || 'Kunde';
     const agreementNotes = draft?.suggestedAgreementNotes
       || (result.agreementSuggestions ?? []).map((entry) => `${entry.title}: ${entry.detail}`).join('\n');
+    const socialProfiles = (result.socialProfileCandidates ?? [])
+      .filter((entry) => entry.status === 'verified' || entry.status === 'likely')
+      .map((entry) => ({
+        platform: entry.platform,
+        url: entry.url,
+        handle: entry.handle ?? '',
+        confidence: entry.confidence,
+        status: entry.status,
+        source: entry.source,
+        evidence: entry.evidence,
+      }));
     const description = [
       draft?.description || result.companyProfile.summary || '',
       result.brregCompany?.lookupStatus === 'verified' && result.brregCompany.organizationNumber
         ? `Brreg-verifisert org.nr: ${result.brregCompany.organizationNumber}.`
         : '',
       result.companyAge?.label ? `Selskapsalder: ${result.companyAge.label}.` : '',
+      socialProfiles.length > 0
+        ? `Sosiale kontoer foreslått:\n${socialProfiles.map((entry) => `${entry.platform}: ${entry.url} (${entry.confidence}%)`).join('\n')}`
+        : '',
       agreementNotes ? `Avtalenotater:\n${agreementNotes}` : '',
     ]
       .filter(Boolean)
@@ -2984,11 +2998,13 @@ export default function ProducerMediaPanel({
       schedules: [],
       locations: [],
       props: [],
+      socialProfiles,
       roleRoomAgentPrefill: {
         generatedAt: result.generatedAt,
         brregCompany: result.brregCompany ?? null,
         companyAge: result.companyAge ?? null,
         agreementSuggestions: result.agreementSuggestions ?? [],
+        socialProfileCandidates: result.socialProfileCandidates ?? [],
         websiteUrl: draft?.websiteUrl || result.companyProfile.websiteUrl || '',
       },
     });

@@ -99,6 +99,33 @@ export interface RoleRoomAgentAgreementSuggestion {
   priority: 'critical' | 'recommended' | 'standard';
 }
 
+export interface RoleRoomAgentSocialProfileEvidence {
+  type:
+    | 'website_link'
+    | 'schema_same_as'
+    | 'name_match'
+    | 'handle_match'
+    | 'domain_match'
+    | 'company_context'
+    | 'manual_review_needed';
+  label: string;
+  weight: number;
+}
+
+export interface RoleRoomAgentSocialProfileCandidate {
+  platform: 'instagram' | 'facebook' | 'linkedin' | 'youtube' | 'tiktok' | 'x' | 'threads' | 'vimeo' | 'pinterest';
+  url: string;
+  canonicalUrl: string;
+  handle?: string | null;
+  displayName?: string | null;
+  confidence: number;
+  status: 'verified' | 'likely' | 'needs_review' | 'rejected';
+  evidence: RoleRoomAgentSocialProfileEvidence[];
+  source: 'company_website' | 'schema_same_as' | 'manual';
+  foundOnUrls: string[];
+  requiresManualConfirmation: boolean;
+}
+
 export interface RoleRoomAgentProducerBootstrapResult {
   generatedAt: string;
   provider: 'openai' | 'fallback';
@@ -107,6 +134,7 @@ export interface RoleRoomAgentProducerBootstrapResult {
   brregCompany?: RoleRoomAgentBrregCompany | null;
   companyAge?: RoleRoomAgentCompanyAge | null;
   agreementSuggestions: RoleRoomAgentAgreementSuggestion[];
+  socialProfileCandidates: RoleRoomAgentSocialProfileCandidate[];
   retrievalMeta?: {
     cohereRerankUsed: boolean;
     rerankerModel?: string;
@@ -287,6 +315,9 @@ export const roleRoomAgentService = {
       ...payload.result,
       agreementSuggestions: Array.isArray(payload.result.agreementSuggestions)
         ? payload.result.agreementSuggestions
+        : [],
+      socialProfileCandidates: Array.isArray(payload.result.socialProfileCandidates)
+        ? payload.result.socialProfileCandidates
         : [],
       projectCreationDraft: payload.result.projectCreationDraft ?? {
         projectName: `${payload.result.companyProfile?.companyName || input.projectName || 'Kunde'} · Innholdsproduksjon`,

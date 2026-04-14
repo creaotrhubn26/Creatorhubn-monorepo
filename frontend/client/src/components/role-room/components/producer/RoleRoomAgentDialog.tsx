@@ -103,6 +103,18 @@ function formatNorwegianDate(value?: string | null) {
   return parsed.toLocaleDateString('nb-NO', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+const SOCIAL_PLATFORM_LABELS: Record<string, string> = {
+  instagram: 'Instagram',
+  facebook: 'Facebook',
+  linkedin: 'LinkedIn',
+  youtube: 'YouTube',
+  tiktok: 'TikTok',
+  x: 'X',
+  threads: 'Threads',
+  vimeo: 'Vimeo',
+  pinterest: 'Pinterest',
+};
+
 export default function RoleRoomAgentDialog({
   open,
   onClose,
@@ -198,6 +210,11 @@ export default function RoleRoomAgentDialog({
     [result],
   );
   const agreementSuggestions = result?.agreementSuggestions ?? [];
+  const socialProfileCandidates = result?.socialProfileCandidates ?? [];
+  const usableSocialProfileCandidates = useMemo(
+    () => socialProfileCandidates.filter((candidate) => candidate.status === 'verified' || candidate.status === 'likely'),
+    [socialProfileCandidates],
+  );
 
   return (
     <Dialog
@@ -515,6 +532,88 @@ export default function RoleRoomAgentDialog({
                     </Stack>
                   </Box>
                 </Stack>
+              ) : null}
+
+              {socialProfileCandidates.length > 0 ? (
+                <Box
+                  sx={{
+                    p: 1.2,
+                    borderRadius: 3,
+                    border: '1px solid rgba(59,130,246,0.2)',
+                    bgcolor: 'rgba(15,23,42,0.46)',
+                  }}
+                >
+                  <Stack spacing={1}>
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.8} alignItems={{ xs: 'flex-start', sm: 'center' }} justifyContent="space-between">
+                      <Box>
+                        <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>Sosiale kontoer funnet</Typography>
+                        <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.86rem' }}>
+                          Kontoene er forslag basert på kundens nettside og strukturert data. Bekreft før publisering eller tilgangsforespørsel.
+                        </Typography>
+                      </Box>
+                      <Chip
+                        size="small"
+                        label={`${usableSocialProfileCandidates.length}/${socialProfileCandidates.length} klare for bruk`}
+                        sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
+                      />
+                    </Stack>
+                    <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.9} flexWrap="wrap" useFlexGap>
+                      {socialProfileCandidates.map((profile) => (
+                        <Box
+                          key={profile.canonicalUrl}
+                          sx={{
+                            flex: '1 1 220px',
+                            minWidth: 0,
+                            p: 1,
+                            borderRadius: 2.4,
+                            border: profile.status === 'verified'
+                              ? '1px solid rgba(16,185,129,0.26)'
+                              : '1px solid rgba(148,163,184,0.16)',
+                            bgcolor: profile.status === 'verified' ? 'rgba(6,78,59,0.16)' : 'rgba(15,23,42,0.52)',
+                          }}
+                        >
+                          <Stack spacing={0.7}>
+                            <Stack direction="row" spacing={0.7} alignItems="center" justifyContent="space-between">
+                              <Typography sx={{ color: '#f8fafc', fontWeight: 800, fontSize: '0.92rem' }}>
+                                {SOCIAL_PLATFORM_LABELS[profile.platform] || profile.platform}
+                              </Typography>
+                              <Chip
+                                size="small"
+                                label={`${profile.confidence}%`}
+                                sx={{
+                                  bgcolor: profile.status === 'verified' ? 'rgba(16,185,129,0.18)' : 'rgba(250,204,21,0.14)',
+                                  color: profile.status === 'verified' ? '#bbf7d0' : '#fde68a',
+                                }}
+                              />
+                            </Stack>
+                            <Typography sx={{ color: 'rgba(226,232,240,0.78)', fontSize: '0.84rem', wordBreak: 'break-word' }}>
+                              {profile.handle ? `@${profile.handle}` : profile.displayName || profile.url}
+                            </Typography>
+                            {profile.evidence.length > 0 ? (
+                              <Typography sx={{ color: 'rgba(226,232,240,0.62)', fontSize: '0.78rem', lineHeight: 1.45 }}>
+                                {profile.evidence.slice(0, 2).map((entry) => entry.label).join(' · ')}
+                              </Typography>
+                            ) : null}
+                            <Button
+                              href={profile.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              size="small"
+                              variant="outlined"
+                              sx={{ alignSelf: 'flex-start', textTransform: 'none', fontWeight: 700 }}
+                            >
+                              Åpne konto
+                            </Button>
+                          </Stack>
+                        </Box>
+                      ))}
+                    </Stack>
+                  </Stack>
+                </Box>
+              ) : result ? (
+                <Alert severity="info">
+                  Ingen offisielle sosiale kontoer ble funnet på kundens nettside. Be kunden bekrefte riktige kanaler før de legges inn i prosjektet.
+                </Alert>
               ) : null}
 
               {result.businessSignals ? (

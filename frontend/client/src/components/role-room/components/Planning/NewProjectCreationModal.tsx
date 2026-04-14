@@ -182,6 +182,8 @@ interface ProjectData {
   projectType: string;
   guestCount: string;
   description: string;
+  socialProfiles?: unknown[];
+  roleRoomAgentPrefill?: unknown;
   collaborators: Array<{
     id: string;
     name: string;
@@ -379,6 +381,8 @@ export default function NewProjectCreationModal({
       projectType: '',
       guestCount: '',
       description: '',
+      socialProfiles: [],
+      roleRoomAgentPrefill: null,
       collaborators: [],
       enableSplitSheet: false,
       splitSheetData: null,
@@ -414,6 +418,8 @@ export default function NewProjectCreationModal({
       projectType: initialData.projectType || '',
       guestCount: initialData.guestCount || '',
       description: initialData.description || '',
+      socialProfiles: Array.isArray(initialData.socialProfiles) ? initialData.socialProfiles : [],
+      roleRoomAgentPrefill: initialData.roleRoomAgentPrefill || null,
       collaborators: collaborators,
       enableSplitSheet: initialData.enableSplitSheet || false,
       splitSheetData: initialData.splitSheetData ? {
@@ -1687,6 +1693,8 @@ export default function NewProjectCreationModal({
         projectType: projectData.projectType || '',
         guestCount: projectData.guestCount || '',
         description: projectData.description || '',
+        socialProfiles: Array.isArray(projectData.socialProfiles) ? projectData.socialProfiles : [],
+        roleRoomAgentPrefill: projectData.roleRoomAgentPrefill || null,
         collaborators: projectData.collaborators || [],
         crew: crew,
         enableSplitSheet: projectData.enableSplitSheet || false,
@@ -1905,6 +1913,8 @@ export default function NewProjectCreationModal({
         projectType: projectData.projectType || '',
         guestCount: projectData.guestCount || '',
         description: projectData.description || '',
+        socialProfiles: Array.isArray(projectData.socialProfiles) ? projectData.socialProfiles : [],
+        roleRoomAgentPrefill: projectData.roleRoomAgentPrefill || null,
         collaborators: projectData.collaborators || [], // Keep for split sheet
         crew: crew, // Add crew for CastingPlanner
         enableSplitSheet: projectData.enableSplitSheet || false,

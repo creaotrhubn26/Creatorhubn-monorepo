@@ -10,6 +10,44 @@ type RoleRoomAgentProducerBootstrapInput = {
   extraContext?: string | null;
 };
 
+type RoleRoomAgentSocialPlatform =
+  | "instagram"
+  | "facebook"
+  | "linkedin"
+  | "youtube"
+  | "tiktok"
+  | "x"
+  | "threads"
+  | "vimeo"
+  | "pinterest";
+
+type RoleRoomAgentSocialProfileEvidence = {
+  type:
+    | "website_link"
+    | "schema_same_as"
+    | "name_match"
+    | "handle_match"
+    | "domain_match"
+    | "company_context"
+    | "manual_review_needed";
+  label: string;
+  weight: number;
+};
+
+type RoleRoomAgentSocialProfileCandidate = {
+  platform: RoleRoomAgentSocialPlatform;
+  url: string;
+  canonicalUrl: string;
+  handle?: string | null;
+  displayName?: string | null;
+  confidence: number;
+  status: "verified" | "likely" | "needs_review" | "rejected";
+  evidence: RoleRoomAgentSocialProfileEvidence[];
+  source: "company_website" | "schema_same_as" | "manual";
+  foundOnUrls: string[];
+  requiresManualConfirmation: boolean;
+};
+
 type RoleRoomAgentWebsiteInsights = {
   finalUrl?: string | null;
   pageTitle?: string | null;
@@ -17,6 +55,7 @@ type RoleRoomAgentWebsiteInsights = {
   metaDescription?: string | null;
   textSnippet?: string | null;
   probableLogoUrl?: string | null;
+  socialProfileCandidates?: RoleRoomAgentSocialProfileCandidate[];
   selectedPageSnippets: RoleRoomAgentWebsitePageSnippet[];
 };
 
@@ -148,6 +187,7 @@ type RoleRoomAgentNormalizedPayload = {
   brregCompany?: RoleRoomAgentBrregCompany | null;
   companyAge?: RoleRoomAgentCompanyAge | null;
   agreementSuggestions: RoleRoomAgentAgreementSuggestion[];
+  socialProfileCandidates: RoleRoomAgentSocialProfileCandidate[];
   retrievalMeta?: RoleRoomAgentRetrievalMeta;
   companyProfile: {
     companyName: string;
@@ -307,6 +347,13 @@ function resolveUrl(baseUrl: string, maybeRelative: string | null | undefined): 
   } catch {
     return null;
   }
+}
+
+function normalizeIdentity(value: string | null | undefined): string {
+  return normalizeWhitespace(value || "")
+    .toLowerCase()
+    .replace(/&/g, "og")
+    .replace(/[^a-z0-9æøå]+/gi, "");
 }
 
 function normalizeHost(value: string | null | undefined): string | null {
@@ -793,6 +840,278 @@ function scoreWebsiteLink(url: URL, label: string): number {
   return score + Math.min(Math.round(normalizedLabel.length / 12), 8);
 }
 
+function inferSocialPlatformFromUrl(url: URL): RoleRoomAgentSocialPlatform | null {
+  const host = url.hostname.replace(/^www\./i, "").replace(/^m\./i, "").toLowerCase();
+  if (host === "instagram.com" || host.endsWith(".instagram.com")) return "instagram";
+  if (host === "facebook.com" || host.endsWith(".facebook.com") || host === "fb.com") return "facebook";
+  if (host === "linkedin.com" || host.endsWith(".linkedin.com")) return "linkedin";
+  if (host === "youtube.com" || host.endsWith(".youtube.com") || host === "youtu.be") return "youtube";
+  if (host === "tiktok.com" || host.endsWith(".tiktok.com")) return "tiktok";
+  if (host === "x.com" || host === "twitter.com") return "x";
+  if (host === "threads.net" || host.endsWith(".threads.net")) return "threads";
+  if (host === "vimeo.com" || host.endsWith(".vimeo.com")) return "vimeo";
+  if (host === "pinterest.com" || host === "pinterest.no" || host.endsWith(".pinterest.com")) return "pinterest";
+  return null;
+}
+
+function extractSocialHandle(platform: RoleRoomAgentSocialPlatform, url: URL): string | null {
+  const segments = url.pathname.split("/").map((entry) => entry.trim()).filter(Boolean);
+  if (segments.length === 0) {
+    return null;
+  }
+
+  if (platform === "instagram" || platform === "tiktok" || platform === "threads") {
+    const first = segments[0].replace(/^@/, "");
+    return /^(p|reel|reels|stories|explore|accounts|about|developer)$/i.test(first) ? null : first;
+  }
+
+  if (platform === "facebook") {
+    if (segments[0] === "profile.php") {
+      return url.searchParams.get("id");
+    }
+    return /^(share|sharer|events|groups|watch|reel|photo|pages|login|plugins)$/i.test(segments[0]) ? null : segments[0];
+  }
+
+  if (platform === "linkedin") {
+    if (["company", "school", "showcase"].includes(segments[0]) && segments[1]) {
+      return segments[1];
+    }
+    return segments[0] === "in" && segments[1] ? segments[1] : null;
+  }
+
+  if (platform === "youtube") {
+    if (segments[0]?.startsWith("@")) return segments[0].replace(/^@/, "");
+    if (["channel", "c", "user"].includes(segments[0]) && segments[1]) return segments[1];
+    return null;
+  }
+
+  if (platform === "x") {
+    return /^(intent|share|search|hashtag|i|home|explore)$/i.test(segments[0]) ? null : segments[0].replace(/^@/, "");
+  }
+
+  if (platform === "vimeo" || platform === "pinterest") {
+    return /^(watch|pin|settings|login|oauth)$/i.test(segments[0]) ? null : segments[0];
+  }
+
+  return null;
+}
+
+function canonicalizeSocialUrl(rawUrl: string): {
+  platform: RoleRoomAgentSocialPlatform;
+  canonicalUrl: string;
+  handle: string | null;
+} | null {
+  try {
+    const url = new URL(rawUrl);
+    const platform = inferSocialPlatformFromUrl(url);
+    if (!platform) {
+      return null;
+    }
+    const handle = extractSocialHandle(platform, url);
+    if (!handle && platform !== "facebook") {
+      return null;
+    }
+    url.protocol = "https:";
+    url.hash = "";
+    ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "fbclid", "igshid"].forEach((param) => {
+      url.searchParams.delete(param);
+    });
+    if (platform !== "facebook" || url.pathname !== "/profile.php") {
+      url.search = "";
+    }
+    url.hostname = url.hostname.replace(/^www\./i, "").replace(/^m\./i, "").toLowerCase();
+    const canonicalUrl = url.toString().replace(/\/$/, "");
+    return { platform, canonicalUrl, handle };
+  } catch {
+    return null;
+  }
+}
+
+function collectJsonLdSameAs(value: unknown, output: string[] = []): string[] {
+  if (typeof value === "string") {
+    return output;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((entry) => collectJsonLdSameAs(entry, output));
+    return output;
+  }
+  if (!value || typeof value !== "object") {
+    return output;
+  }
+  const record = value as Record<string, unknown>;
+  const sameAs = record.sameAs;
+  if (typeof sameAs === "string") {
+    output.push(sameAs);
+  } else if (Array.isArray(sameAs)) {
+    sameAs.forEach((entry) => {
+      if (hasText(entry)) {
+        output.push(entry);
+      }
+    });
+  }
+  if (Array.isArray(record["@graph"])) {
+    collectJsonLdSameAs(record["@graph"], output);
+  }
+  return output;
+}
+
+function addSocialCandidateEvidence(
+  candidateMap: Map<string, RoleRoomAgentSocialProfileCandidate>,
+  rawUrl: string,
+  foundOnUrl: string,
+  source: RoleRoomAgentSocialProfileCandidate["source"],
+  evidence: RoleRoomAgentSocialProfileEvidence,
+  label?: string | null,
+) {
+  const parsed = canonicalizeSocialUrl(rawUrl);
+  if (!parsed) {
+    return;
+  }
+  const existing = candidateMap.get(parsed.canonicalUrl);
+  if (existing) {
+    existing.foundOnUrls = Array.from(new Set([...existing.foundOnUrls, foundOnUrl]));
+    if (!existing.evidence.some((entry) => entry.type === evidence.type && entry.label === evidence.label)) {
+      existing.evidence.push(evidence);
+    }
+    existing.confidence = Math.min(100, existing.evidence.reduce((sum, entry) => sum + entry.weight, 0));
+    return;
+  }
+
+  candidateMap.set(parsed.canonicalUrl, {
+    platform: parsed.platform,
+    url: parsed.canonicalUrl,
+    canonicalUrl: parsed.canonicalUrl,
+    handle: parsed.handle,
+    displayName: hasText(label) ? normalizeWhitespace(label) : parsed.handle,
+    confidence: Math.min(100, evidence.weight),
+    status: "needs_review",
+    evidence: [evidence],
+    source,
+    foundOnUrls: [foundOnUrl],
+    requiresManualConfirmation: true,
+  });
+}
+
+function collectSocialCandidatesFromHtml(
+  html: string,
+  pageUrl: string,
+  pageLabel: string | null,
+  candidateMap: Map<string, RoleRoomAgentSocialProfileCandidate>,
+) {
+  const $ = load(html);
+  $("a[href]").each((_, element) => {
+    const href = $(element).attr("href");
+    const label = normalizeWhitespace($(element).text() || "");
+    const resolved = resolveUrl(pageUrl, href);
+    if (!resolved) {
+      return;
+    }
+    addSocialCandidateEvidence(
+      candidateMap,
+      resolved,
+      pageUrl,
+      "company_website",
+      {
+        type: "website_link",
+        label: pageLabel ? `Lenket fra ${pageLabel}` : "Lenket fra kundens nettside",
+        weight: 65,
+      },
+      label,
+    );
+  });
+
+  $('script[type="application/ld+json"]').each((_, element) => {
+    const raw = $(element).contents().text();
+    if (!hasText(raw)) {
+      return;
+    }
+    try {
+      const parsed = JSON.parse(raw);
+      collectJsonLdSameAs(parsed).forEach((sameAsUrl) => {
+        addSocialCandidateEvidence(
+          candidateMap,
+          sameAsUrl,
+          pageUrl,
+          "schema_same_as",
+          {
+            type: "schema_same_as",
+            label: "Oppført som sameAs i strukturert nettsidedata",
+            weight: 70,
+          },
+        );
+      });
+    } catch {
+      // Ignore invalid JSON-LD and continue with visible links.
+    }
+  });
+}
+
+function finalizeSocialProfileCandidates(
+  candidateMap: Map<string, RoleRoomAgentSocialProfileCandidate>,
+  input: RoleRoomAgentProducerBootstrapInput,
+  websiteInsights: RoleRoomAgentWebsiteInsights,
+  brregCompany?: RoleRoomAgentBrregCompany | null,
+): RoleRoomAgentSocialProfileCandidate[] {
+  const companyIdentities = [
+    input.companyName,
+    brregCompany?.name,
+    websiteInsights.siteName,
+    websiteInsights.pageTitle,
+    normalizeHost(websiteInsights.finalUrl)?.split(".")[0],
+  ]
+    .filter((entry): entry is string => hasText(entry))
+    .map((entry) => normalizeIdentity(entry))
+    .filter(Boolean);
+
+  return Array.from(candidateMap.values())
+    .map((candidate) => {
+      const evidence = [...candidate.evidence];
+      const handleIdentity = normalizeIdentity(candidate.handle || candidate.displayName || "");
+      if (handleIdentity && companyIdentities.some((identity) => identity && (handleIdentity.includes(identity) || identity.includes(handleIdentity)))) {
+        evidence.push({
+          type: "handle_match",
+          label: "Handle/navn matcher kundenavn eller domenenavn",
+          weight: 20,
+        });
+      }
+      if (candidate.source === "schema_same_as") {
+        evidence.push({
+          type: "company_context",
+          label: "Kontoen ligger i kundens strukturerte brand-data",
+          weight: 10,
+        });
+      }
+      if (evidence.length === 1) {
+        evidence.push({
+          type: "manual_review_needed",
+          label: "Kun ett bevis funnet. Må bekreftes før bruk.",
+          weight: 0,
+        });
+      }
+
+      const confidence = Math.max(0, Math.min(100, evidence.reduce((sum, entry) => sum + entry.weight, 0)));
+      const status: RoleRoomAgentSocialProfileCandidate["status"] =
+        confidence >= 80
+          ? "verified"
+          : confidence >= 60
+            ? "likely"
+            : confidence >= 35
+              ? "needs_review"
+              : "rejected";
+
+      return {
+        ...candidate,
+        evidence,
+        confidence,
+        status,
+        requiresManualConfirmation: status !== "verified",
+      };
+    })
+    .filter((candidate) => candidate.status !== "rejected")
+    .sort((left, right) => right.confidence - left.confidence)
+    .slice(0, 12);
+}
+
 function buildWebsiteRerankQuery(input: RoleRoomAgentProducerBootstrapInput): string {
   const companyName = hasText(input.companyName) ? normalizeWhitespace(input.companyName) : "kunden";
   return normalizeWhitespace(
@@ -1015,9 +1334,10 @@ function deriveToneFromClassification(
 async function fetchWebsiteInsights(
   websiteUrl: string | null,
   input: RoleRoomAgentProducerBootstrapInput,
+  brregCompany: RoleRoomAgentBrregCompany | null = null,
 ): Promise<RoleRoomAgentWebsiteInsights> {
   if (!websiteUrl) {
-    return { selectedPageSnippets: [] };
+    return { selectedPageSnippets: [], socialProfileCandidates: [] };
   }
 
   try {
@@ -1030,13 +1350,15 @@ async function fetchWebsiteInsights(
     });
 
     if (!response.ok) {
-      return { finalUrl: websiteUrl, selectedPageSnippets: [] };
+      return { finalUrl: websiteUrl, selectedPageSnippets: [], socialProfileCandidates: [] };
     }
 
     const html = await response.text();
     const finalUrl = response.url || websiteUrl;
     const parsedBase = new URL(finalUrl);
     const $ = load(html);
+    const socialCandidateMap = new Map<string, RoleRoomAgentSocialProfileCandidate>();
+    collectSocialCandidatesFromHtml(html, finalUrl, "Forside", socialCandidateMap);
     const discoveredLinks = Array.from(
       new Map(
         $("a[href]")
@@ -1105,12 +1427,14 @@ async function fetchWebsiteInsights(
           continue;
         }
         const pageHtml = await pageResponse.text();
+        const resolvedPageUrl = pageResponse.url || link.url;
+        collectSocialCandidatesFromHtml(pageHtml, resolvedPageUrl, link.sourceLabel || extractTitle(pageHtml), socialCandidateMap);
         const snippet = extractTextSnippet(pageHtml);
         if (!snippet) {
           continue;
         }
         pageCandidates.push({
-          url: pageResponse.url || link.url,
+          url: resolvedPageUrl,
           title: extractTitle(pageHtml),
           snippet,
           sourceLabel: link.sourceLabel,
@@ -1149,10 +1473,21 @@ async function fetchWebsiteInsights(
       metaDescription: extractMetaContent(html, "description") || extractMetaContent(html, "og:description"),
       textSnippet: mergedSnippet || extractTextSnippet(html),
       probableLogoUrl: extractProbableLogoUrl(html, finalUrl),
+      socialProfileCandidates: finalizeSocialProfileCandidates(
+        socialCandidateMap,
+        input,
+        {
+          finalUrl,
+          pageTitle: extractTitle(html),
+          siteName: extractMetaContent(html, "og:site_name"),
+          selectedPageSnippets,
+        },
+        brregCompany,
+      ),
       selectedPageSnippets,
     };
   } catch {
-    return { finalUrl: websiteUrl, selectedPageSnippets: [] };
+    return { finalUrl: websiteUrl, selectedPageSnippets: [], socialProfileCandidates: [] };
   }
 }
 
@@ -1381,6 +1716,8 @@ function buildFallbackBootstrap(
     ? normalizeWhitespace(input.companyName)
     : brregCompany?.name || websiteInsights.siteName || websiteInsights.pageTitle || "Kunden";
   const classification = detectBusinessClassification(input, websiteInsights, businessSignals, brregCompany);
+  const socialProfileCandidates = websiteInsights.socialProfileCandidates ?? [];
+  const verifiedSocialProfiles = socialProfileCandidates.filter((candidate) => candidate.status === "verified" || candidate.status === "likely");
   const summary = toSentenceCase(
     websiteInsights.metaDescription ||
       (
@@ -1428,6 +1765,7 @@ function buildFallbackBootstrap(
     brregCompany,
     companyAge,
     agreementSuggestions,
+    socialProfileCandidates,
     companyProfile: {
       companyName,
       websiteUrl,
@@ -1503,6 +1841,7 @@ function buildFallbackBootstrap(
             : "Primært nettside og salgsstøtte, sekundært SoMe-utdrag.",
         successSignals: ["Kunden kjenner seg igjen i budskapet", "Godkjenning uten større omarbeid"],
         agreementSignals: agreementSuggestions.map((entry) => entry.title),
+        socialProfileSignals: verifiedSocialProfiles.map((candidate) => `${candidate.platform}: ${candidate.url}`),
       },
       brandGuide: {
         logoUrl: websiteInsights.probableLogoUrl || null,
@@ -1624,6 +1963,9 @@ function buildFallbackBootstrap(
       brregCompany?.lookupStatus === "verified"
         ? `Vi har nå hentet all tilgjengelig offentlig Brreg-informasjon om kunden. Spør om du skal opprette prosjekt på ${companyName}.`
         : "Brreg-data ble ikke verifisert. Be kunden bekrefte juridisk navn, org.nr og fakturamottaker.",
+      verifiedSocialProfiles.length > 0
+        ? `Bekreft ${verifiedSocialProfiles.length} foreslåtte sosiale kontoer før de brukes i brief, kanalplan eller klienttilgang.`
+        : "Spør kunden om offisielle sosiale kanaler hvis nettsiden ikke oppgir dem.",
       "Godkjenn story logikk før manus og storyboard fylles videre ut",
       "Samle brandfiler, logo og eksisterende referansemateriale",
       ...agreementSuggestions.slice(0, 2).map((entry) => `Avtale: ${entry.title}`),
@@ -1642,6 +1984,9 @@ function buildFallbackBootstrap(
           companyAge?.label || "",
           agreementSuggestions.length > 0
             ? `Avtaleforslag: ${agreementSuggestions.map((entry) => entry.title).join("; ")}.`
+            : "",
+          verifiedSocialProfiles.length > 0
+            ? `Sosiale kontoer funnet: ${verifiedSocialProfiles.map((entry) => `${entry.platform} ${entry.url}`).join("; ")}.`
             : "",
         ].filter(Boolean).join(" "),
       ),
@@ -1699,6 +2044,7 @@ async function requestOpenAiBootstrap(
               "Hvis businessSignals finnes, bruk reviews, rating, lokasjon og tjenestesignalene aktivt i brief, bevispunkter, CTA og story logic.",
               "Hvis brregCompany.lookupStatus er verified, bruk juridisk navn, organisasjonsnummer, bransjekode, adresse, MVA-status og alder i kundeprofilen.",
               "Hvis agreementSuggestions finnes, bruk dem som avtalerisiko og praktiske anbefalinger, men formuler det som produksjonsråd, ikke juridisk rådgivning.",
+              "Hvis socialProfileCandidates finnes, bruk kun kontoer med verified eller likely som kanalinnsikt, og marker kontoer som må bekreftes av produsent eller kunde før publisering.",
             ],
           },
           outputSchemaHints: {
@@ -1743,6 +2089,7 @@ async function requestOpenAiBootstrap(
           brregCompany,
           companyAge,
           agreementSuggestions,
+          socialProfileCandidates: websiteInsights.socialProfileCandidates ?? [],
           retrievalMeta,
         }),
       },
@@ -1828,6 +2175,7 @@ function normalizeBootstrapPayload(
     brregCompany: fallback.brregCompany,
     companyAge: fallback.companyAge,
     agreementSuggestions: fallback.agreementSuggestions,
+    socialProfileCandidates: fallback.socialProfileCandidates,
     retrievalMeta: fallback.retrievalMeta,
     companyProfile: {
       companyName: hasText(companyProfile.companyName)
@@ -1985,7 +2333,7 @@ export async function generateRoleRoomAgentProducerBootstrap(
       || null,
   };
   const websiteUrl = normalizeWebsiteUrl(enrichedInput.websiteUrl);
-  const websiteInsights = await fetchWebsiteInsights(websiteUrl, enrichedInput);
+  const websiteInsights = await fetchWebsiteInsights(websiteUrl, enrichedInput, initialBrregCompany);
   const businessSignals = await fetchGooglePlacesBusinessSignals(enrichedInput, websiteInsights);
   const fallback = buildFallbackBootstrap(
     {
