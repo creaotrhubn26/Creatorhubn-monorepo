@@ -314,6 +314,16 @@ type BriefStepKey = 'goal' | 'audience' | 'logic' | 'foundation' | 'references' 
 type MaterialWizardStepKey = 'source' | 'details' | 'linking' | 'review';
 type MaterialsMode = 'capture' | 'library';
 
+const MOBILE_WORKSPACE_DRAFT_NAMESPACE = 'role-room-mobile-workspace-draft';
+
+type MobileWorkspaceDraft = {
+  intakeDraft?: ProducerClientIntake;
+  activeBriefStep?: BriefStepKey;
+  materialDraft?: ClientMaterialDraft;
+  materialsMode?: MaterialsMode;
+  updatedAt?: string;
+};
+
 const EMPTY_INTAKE: ProducerClientIntake = {
   projectGoal: '',
   deliverables: '',
@@ -2336,21 +2346,16 @@ export default function ProducerMediaPanel({
   }, [selectedMaterialFile]);
 
   useEffect(() => {
-    if (!isMobileWorkspace || loading || mobileWorkspaceDraftHydratedRef.current || typeof window === 'undefined') {
-      return;
+    if (!isMobileWorkspace || loading || mobileWorkspaceDraftHydratedRef.current) {
+      return undefined;
     }
     mobileWorkspaceDraftHydratedRef.current = true;
-    try {
-      const rawDraft = window.localStorage.getItem(mobileWorkspaceDraftStorageKey);
-      if (!rawDraft) {
+    let cancelled = false;
+
+    const applyMobileWorkspaceDraft = (parsed: MobileWorkspaceDraft | null) => {
+      if (cancelled || !parsed) {
         return;
       }
-      const parsed = JSON.parse(rawDraft) as {
-        intakeDraft?: ProducerClientIntake;
-        activeBriefStep?: BriefStepKey;
-        materialDraft?: ClientMaterialDraft;
-        materialsMode?: MaterialsMode;
-      };
       if (parsed.intakeDraft && serializeIntakeSnapshot(parsed.intakeDraft) !== savedIntakeSnapshotRef.current) {
         setIntakeDraft({
           ...EMPTY_INTAKE,
@@ -2367,10 +2372,33 @@ export default function ProducerMediaPanel({
         });
         setMaterialsMode(parsed.materialsMode === 'library' ? 'library' : 'capture');
       }
-    } catch (storageError) {
-      console.warn('[ProducerMediaPanel] Failed to restore mobile draft', storageError);
-    }
-  }, [isMobileWorkspace, loading, mobileWorkspaceDraftStorageKey, serializeIntakeSnapshot]);
+    };
+
+    const loadMobileWorkspaceDraft = async () => {
+      try {
+        let parsed = await settingsService.getSetting<MobileWorkspaceDraft>(MOBILE_WORKSPACE_DRAFT_NAMESPACE, {
+          projectId,
+        });
+
+        if (!parsed && typeof window !== 'undefined') {
+          const rawDraft = window.localStorage.getItem(mobileWorkspaceDraftStorageKey);
+          if (rawDraft) {
+            parsed = JSON.parse(rawDraft) as MobileWorkspaceDraft;
+          }
+        }
+
+        applyMobileWorkspaceDraft(parsed);
+      } catch (storageError) {
+        console.warn('[ProducerMediaPanel] Failed to restore mobile draft', storageError);
+      }
+    };
+
+    void loadMobileWorkspaceDraft();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isMobileWorkspace, loading, mobileWorkspaceDraftStorageKey, projectId, serializeIntakeSnapshot]);
 
   useEffect(() => {
     if (!isMobileWorkspace || loading || typeof window === 'undefined') {
@@ -2381,15 +2409,22 @@ export default function ProducerMediaPanel({
       const materialDraftDirty = JSON.stringify(materialDraft) !== JSON.stringify(EMPTY_MATERIAL_DRAFT);
       if (!intakeDirty && !materialDraftDirty) {
         window.localStorage.removeItem(mobileWorkspaceDraftStorageKey);
+        void settingsService.deleteSetting(MOBILE_WORKSPACE_DRAFT_NAMESPACE, {
+          projectId,
+        });
         return;
       }
-      window.localStorage.setItem(mobileWorkspaceDraftStorageKey, JSON.stringify({
+      const nextDraft: MobileWorkspaceDraft = {
         intakeDraft,
         activeBriefStep,
         materialDraft: materialDraftDirty ? materialDraft : undefined,
         materialsMode,
         updatedAt: new Date().toISOString(),
-      }));
+      };
+      window.localStorage.setItem(mobileWorkspaceDraftStorageKey, JSON.stringify(nextDraft));
+      void settingsService.setSetting(MOBILE_WORKSPACE_DRAFT_NAMESPACE, nextDraft, {
+        projectId,
+      });
     }, 280);
     return () => window.clearTimeout(timeoutId);
   }, [
@@ -2400,6 +2435,7 @@ export default function ProducerMediaPanel({
     materialDraft,
     materialsMode,
     mobileWorkspaceDraftStorageKey,
+    projectId,
     serializeIntakeSnapshot,
   ]);
 

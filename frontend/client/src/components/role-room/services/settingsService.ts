@@ -6,6 +6,14 @@ type SettingsEntry = {
 
 const STORAGE_PREFIX = 'app_settings_cache';
 
+type RemoteSettingsListResponse = {
+  entries?: Array<{
+    projectId?: string | null;
+    namespace?: string | null;
+    data?: unknown;
+  }>;
+};
+
 type SessionWindow = Window & { __currentUserId?: string };
 
 export const getCurrentUserId = (): string => {
@@ -135,6 +143,51 @@ const fetchRemoteSetting = async <T>(
     }
     writeCache(userId, namespace, payload.data, projectId);
     return payload.data;
+  } catch {
+    return null;
+  }
+};
+
+const fetchRemoteSettingsList = async (
+  userId: string,
+  namespacePrefix: string,
+  projectId?: string,
+): Promise<SettingsEntry[] | null> => {
+  if (typeof fetch !== 'function') {
+    return null;
+  }
+  const params = new URLSearchParams({
+    user_id: userId,
+    namespace_prefix: namespacePrefix,
+  });
+  if (projectId !== undefined) {
+    params.set('project_id', projectId);
+  }
+
+  try {
+    const response = await fetch(`/api/settings/list?${params.toString()}`, {
+      cache: 'no-store',
+    });
+    if (!response.ok) {
+      return null;
+    }
+    const payload = await response.json() as RemoteSettingsListResponse;
+    if (!Array.isArray(payload.entries)) {
+      return [];
+    }
+
+    return payload.entries
+      .filter((entry) => typeof entry?.namespace === 'string' && entry.namespace.startsWith(namespacePrefix))
+      .map((entry) => {
+        const normalizedProjectId = typeof entry.projectId === 'string' ? entry.projectId : '';
+        const normalizedEntry: SettingsEntry = {
+          projectId: normalizedProjectId,
+          namespace: entry.namespace as string,
+          data: entry.data,
+        };
+        writeCache(userId, normalizedEntry.namespace, normalizedEntry.data, normalizedProjectId || undefined);
+        return normalizedEntry;
+      });
   } catch {
     return null;
   }
@@ -272,7 +325,26 @@ export const settingsService = {
   async listSettings(namespacePrefix: string, options?: { userId?: string; projectId?: string }): Promise<SettingsEntry[]> {
     const userId = options?.userId || getCurrentUserId();
     const projectId = options?.projectId;
-    return listCacheEntries(userId, namespacePrefix, projectId);
+    const remoteEntries = await fetchRemoteSettingsList(userId, namespacePrefix, projectId);
+    const cachedEntries = listCacheEntries(userId, namespacePrefix, projectId);
+    if (remoteEntries === null) {
+      return cachedEntries;
+    }
+
+    const merged = new Map<string, SettingsEntry>();
+    for (const entry of cachedEntries) {
+      merged.set(`${entry.projectId}:${entry.namespace}`, entry);
+    }
+    for (const entry of remoteEntries) {
+      merged.set(`${entry.projectId}:${entry.namespace}`, entry);
+    }
+
+    return Array.from(merged.values()).sort((left, right) => {
+      if (left.projectId === right.projectId) {
+        return left.namespace.localeCompare(right.namespace, 'nb-NO');
+      }
+      return left.projectId.localeCompare(right.projectId, 'nb-NO');
+    });
   },
 
   async deleteSetting(namespace: string, options?: { userId?: string; projectId?: string }): Promise<boolean> {

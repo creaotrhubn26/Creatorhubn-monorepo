@@ -15926,8 +15926,9 @@ app.delete("/api/settings", async (req, res) => {
 app.get("/api/settings/list", async (req, res) => {
   const userId = readQueryString(req.query.user_id, "default-user");
   const namespacePrefix = readQueryString(req.query.namespace_prefix, "");
+  const hasProjectIdFilter = typeof req.query.project_id === "string";
   const projectId =
-    typeof req.query.project_id === "string" ? req.query.project_id : undefined;
+    hasProjectIdFilter ? req.query.project_id : undefined;
 
   const dbRows = await compatStoreListByPrefix<LegacySettingEntry>("settings:");
   for (const row of dbRows) {
@@ -15945,7 +15946,11 @@ app.get("/api/settings/list", async (req, res) => {
 
   const entries = Array.from(legacySettingsStore.values()).filter((entry) => {
     if (entry.userId !== userId) return false;
-    if ((entry.projectId || "") !== (projectId || "")) return false;
+    if (
+      hasProjectIdFilter &&
+      (entry.projectId || "") !== (projectId || "")
+    )
+      return false;
     return !namespacePrefix || entry.namespace.startsWith(namespacePrefix);
   });
 
