@@ -113,6 +113,7 @@ import {
 import globalTagService from '../../services/globalTagService';
 import settingsService from '../../services/settingsService';
 import GlobalMentionHelper from '../shared/GlobalMentionHelper';
+import { buildLiveSetNotesKey, buildLiveSetNotesNamespace } from './storageKeys';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -176,12 +177,11 @@ const TAKE_STATUS_COLORS: Record<Take['status'], string> = {
 
 const POLL_INTERVAL_MS = 5_000;
 const RETRY_MAX        = 4;
-const CONTINUITY_NOTES_NAMESPACE = 'live-set-continuity-notes';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const notesKey = (pid: string, did: string) => `liveset:notes:${pid}:${did}`;
-const notesNamespace = (did: string) => `${CONTINUITY_NOTES_NAMESPACE}:${did}`;
+const notesKey = (pid: string, did: string) => buildLiveSetNotesKey(pid, did);
+const notesNamespace = (did: string) => buildLiveSetNotesNamespace(did);
 
 function formatTime(seconds: number): string {
   const mins = Math.floor(seconds / 60);

@@ -2,22 +2,22 @@ import type { ReactNode } from 'react';
 import { Box, Drawer, IconButton } from '@mui/material';
 import { Close as CloseIcon } from '@mui/icons-material';
 
+import { useProductionManuscriptContext } from './ProductionManuscriptContext';
+
 interface SceneNavigatorProps {
-  isMobile: boolean;
   mobileOpen: boolean;
   onMobileClose: () => void;
-  width: number;
   children: ReactNode;
 }
 
 export const SceneNavigator = ({
-  isMobile,
   mobileOpen,
   onMobileClose,
-  width,
   children,
 }: SceneNavigatorProps) => {
-  if (isMobile) {
+  const { screen, responsive } = useProductionManuscriptContext();
+
+  if (screen.isMobile) {
     return (
       <Drawer
         anchor="left"
@@ -48,7 +48,7 @@ export const SceneNavigator = ({
   return (
     <Box
       sx={{
-        width,
+        width: responsive.sidebarWidth,
         display: 'flex',
         bgcolor: '#0f1318',
         borderRight: '1px solid #1e2536',

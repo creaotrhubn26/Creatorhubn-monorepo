@@ -1,28 +1,213 @@
-import { useState, useEffect, useRef, useMemo, useCallback, useReducer, memo, type FC, type ReactNode } from "react";
-import { Box, Typography, Stack, IconButton, Select, MenuItem, FormControl, Tooltip, Collapse, Menu, TextField, InputAdornment, Divider, Dialog, DialogTitle, DialogContent, DialogActions, Button, Badge, Chip, Checkbox, CircularProgress, Alert, Skeleton } from "@mui/material";
-import { Theaters as SceneIcon, Videocam as CameraIcon, Lightbulb as LightIcon, Mic as MicIcon, ExpandMore as ExpandMoreIcon, ExpandLess as ExpandLessIcon, Movie as MovieIcon, Add as AddIcon, Close as CloseIcon, Image as ImageIcon, GridView as GridViewIcon, ViewList as ViewListIcon, PlayArrow as PlayIcon, Warning as WarningIcon, Print as PrintIcon, Check as CheckIcon, Edit as EditIcon, ZoomIn as ZoomInIcon, ZoomOut as ZoomOutIcon, Fullscreen as FullscreenIcon, Search as SearchIcon, DragIndicator as DragIcon, Download as DownloadIcon, FileDownload as ExportIcon, Pause as PauseIcon, Timer as TimerIcon, RecordVoiceOver as ReadThroughIcon, People as PeopleIcon, ChevronLeft as ChevronLeftIcon, ChevronRight as ChevronRightIcon, Person as PersonIcon, Notes as NoteIcon, FileCopy as FileCopyIcon, Bookmark as BookmarkIcon, Assignment as AssignmentIcon, Phone as PhoneIcon, Email as EmailIcon, VideoLibrary as VideoLibraryIcon, FiberManualRecord as LiveIcon, ViewWeek as StripboardIcon, CalendarMonth as CalendarIcon, Description as CallSheetIcon, Refresh as RefreshIcon, Settings as SettingsIcon, WbSunny as SunIcon, NightsStay as MoonIcon, WbTwilight as TwilightIcon, Home as HomeIcon, Park as ParkIcon, PushPin as PinIcon, FormatQuote as QuoteIcon, PhotoCamera as PhotoIcon, CameraAlt as CameraAltIcon, Inventory as InventoryIcon, TheaterComedy as TheaterIcon, Cancel as CancelIcon, CheckCircle as CheckCircleIcon, Chat as ChatIcon, CameraRoll as CameraRollIcon } from "@mui/icons-material";
-import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
-import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+  type FC,
+  type ReactNode,
+} from "react";
+
+import {
+  Alert,
+  Badge,
+  Box,
+  Button,
+  Checkbox,
+  Chip,
+  CircularProgress,
+  Collapse,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
+  FormControl,
+  IconButton,
+  InputAdornment,
+  Menu,
+  MenuItem,
+  Select,
+  Skeleton,
+  Stack,
+  TextField,
+  Tooltip,
+  Typography,
+} from "@mui/material";
+import {
+  Add as AddIcon,
+  Assignment as AssignmentIcon,
+  Bookmark as BookmarkIcon,
+  CalendarMonth as CalendarIcon,
+  CameraAlt as CameraAltIcon,
+  CameraRoll as CameraRollIcon,
+  Cancel as CancelIcon,
+  Chat as ChatIcon,
+  Check as CheckIcon,
+  CheckCircle as CheckCircleIcon,
+  ChevronLeft as ChevronLeftIcon,
+  ChevronRight as ChevronRightIcon,
+  Close as CloseIcon,
+  Description as CallSheetIcon,
+  Download as DownloadIcon,
+  DragIndicator as DragIcon,
+  Edit as EditIcon,
+  Email as EmailIcon,
+  ExpandLess as ExpandLessIcon,
+  ExpandMore as ExpandMoreIcon,
+  FiberManualRecord as LiveIcon,
+  FileCopy as FileCopyIcon,
+  FileDownload as ExportIcon,
+  FormatQuote as QuoteIcon,
+  Fullscreen as FullscreenIcon,
+  GridView as GridViewIcon,
+  Home as HomeIcon,
+  Image as ImageIcon,
+  Inventory as InventoryIcon,
+  Lightbulb as LightIcon,
+  Mic as MicIcon,
+  Movie as MovieIcon,
+  NightsStay as MoonIcon,
+  Notes as NoteIcon,
+  Park as ParkIcon,
+  Pause as PauseIcon,
+  People as PeopleIcon,
+  Person as PersonIcon,
+  Phone as PhoneIcon,
+  PhotoCamera as PhotoIcon,
+  PlayArrow as PlayIcon,
+  Print as PrintIcon,
+  PushPin as PinIcon,
+  RecordVoiceOver as ReadThroughIcon,
+  Refresh as RefreshIcon,
+  Search as SearchIcon,
+  Settings as SettingsIcon,
+  TheaterComedy as TheaterIcon,
+  Theaters as SceneIcon,
+  Timer as TimerIcon,
+  Videocam as CameraIcon,
+  VideoLibrary as VideoLibraryIcon,
+  ViewList as ViewListIcon,
+  ViewWeek as StripboardIcon,
+  Warning as WarningIcon,
+  WbSunny as SunIcon,
+  WbTwilight as TwilightIcon,
+  ZoomIn as ZoomInIcon,
+  ZoomOut as ZoomOutIcon,
+} from "@mui/icons-material";
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { SceneBreakdown, DialogueLine, Act, Manuscript, CastingShot, ShotList, Candidate, Role, ShotType } from "../models/casting";
+
+import type {
+  Act,
+  Candidate,
+  CastingShot,
+  DialogueLine,
+  Manuscript,
+  Role,
+  SceneBreakdown,
+  ShotList,
+  ShotType,
+} from "../models/casting";
 import type { StoryLogicState } from "../services/storyLogicService";
-import { ProductionEstimateDialog } from "./ProductionEstimateDialog";
+
 import { castingService } from "../services/castingService";
 import { manuscriptService } from "../services/manuscriptService";
+import {
+  TTS_LANGUAGES,
+  TTS_VOICES,
+  assignCharacterVoices,
+  clearTTSCache,
+  isTTSPlaying,
+  pauseTTS,
+  preloadTTS,
+  resumeTTS,
+  speak as ttsSpeak,
+  stopTTS,
+  type TTSLanguage,
+  type TTSVoice,
+} from "../services/ttsService";
 import { getCandidatePhotoObjectPosition } from "../utils/candidatePhotoFocalPoint";
-import { speak as ttsSpeak, stopTTS, pauseTTS, resumeTTS, isTTSPlaying, assignCharacterVoices, preloadTTS, clearTTSCache, TTS_VOICES, TTS_LANGUAGES, type TTSVoice, type TTSLanguage } from "../services/ttsService";
+
+import { ProductionEstimateDialog } from "./ProductionEstimateDialog";
+import CallSheetGenerator from "./CallSheetGenerator";
+import GlobalMentionHelper from "./shared/GlobalMentionHelper";
 import LiveSetMode from "./production/LiveSetMode";
 import StripboardPanel from "./production/StripboardPanel";
 import ShootingDayPlanner from "./production/ShootingDayPlanner";
-import CallSheetGenerator from "./CallSheetGenerator";
-import { productionWorkflowService, generateCallSheetHTML, downloadCallSheetPDF, DEFAULT_CALL_SHEET_OPTIONS, type ShootingDay } from "./production";
+import {
+  DEFAULT_CALL_SHEET_OPTIONS,
+  downloadCallSheetPDF,
+  generateCallSheetHTML,
+  productionWorkflowService,
+  type ShootingDay,
+} from "./production";
 import AddShotDialog, { type AddShotDialogCreatePayload } from "./production/AddShotDialog";
 import SceneStoryboardDialog from "./production/SceneStoryboardDialog";
 import ProductionNotesPanel from "./production/ProductionNotesPanel";
-import { addShotReducer, deriveSceneStatus, loadZoomPreference, saveZoomPreference, loadFullscreenPreference, saveFullscreenPreference, selectedMapSize, selectedMapHas, selectedMapIds, EMPTY_SELECTION, DEFAULT_FILTERS, workflowReducer, INITIAL_WORKFLOW_STATE, loadWorkflowPreference, saveWorkflowPreference, EMPTY_CHECKLIST, deriveReadinessScore, inspectorReducer, INITIAL_INSPECTOR_STATE, loadExpandedSections, saveExpandedSections, buildDefaultShotMeta, metaToShotProperties, shotPropertiesToMeta, DEFAULT_SHOT_PROPERTIES, type NoteType, type ProductionNotes, type ShotSearchResult, type DerivedSceneStatus, type SceneFilters, type WorkflowUIState, type CallSheetRef, type BulkShotTemplate, type ChecklistKey, type SceneChecklist, type SearchSource, type ShotMeta as _ShotMeta, type ShotMetadataMap } from "./production/types";
+import {
+  DEFAULT_FILTERS,
+  DEFAULT_SHOT_PROPERTIES,
+  EMPTY_CHECKLIST,
+  EMPTY_SELECTION,
+  INITIAL_INSPECTOR_STATE,
+  INITIAL_WORKFLOW_STATE,
+  addShotReducer,
+  buildDefaultShotMeta,
+  deriveReadinessScore,
+  deriveSceneStatus,
+  inspectorReducer,
+  loadExpandedSections,
+  loadFullscreenPreference,
+  loadWorkflowPreference,
+  loadZoomPreference,
+  metaToShotProperties,
+  saveExpandedSections,
+  saveFullscreenPreference,
+  saveWorkflowPreference,
+  saveZoomPreference,
+  selectedMapHas,
+  selectedMapIds,
+  selectedMapSize,
+  shotPropertiesToMeta,
+  workflowReducer,
+  type BulkShotTemplate,
+  type CallSheetRef,
+  type ChecklistKey,
+  type DerivedSceneStatus,
+  type NoteType,
+  type ProductionNotes,
+  type SceneChecklist,
+  type SceneFilters,
+  type SceneId,
+  type SearchSource,
+  type ShotMeta as _ShotMeta,
+  type ShotId,
+  type ShotMetadataMap,
+  type ShotSearchResult,
+  type ShootingDayId,
+  type WorkflowUIState,
+} from "./production/types";
 import { useSceneHistory } from "./production/useSceneHistory";
 import { useEquipmentInventory } from "./production/useEquipmentInventory";
-import GlobalMentionHelper from "./shared/GlobalMentionHelper";
+import { useScreenTier } from "./production/useScreenTier";
 import {
   applyStoryboardCandidateToShot,
   buildSceneStoryboardCandidates,
@@ -32,13 +217,16 @@ import {
   type StoryboardSeedCandidate,
 } from "../services/storyboardLibraryService";
 import {
-  getProductionManuscriptResponsiveValues,
+  PRODUCTION_MANUSCRIPT_RESPONSIVE_VALUES,
   toDisplayString,
   toFontNumber,
   toSceneNumber,
-  useProductionManuscriptScreenTier,
 } from "./production/manuscript/productionManuscriptUi";
 import { buildProductionCallSheet } from "./production/manuscript/callSheetBuilder";
+import {
+  ProductionManuscriptProvider,
+  type ProductionManuscriptContextValue,
+} from "./production/manuscript/ProductionManuscriptContext";
 import { useLiveSetSync } from "./production/manuscript/useLiveSetSync";
 import { useProductionManuscriptShortcuts } from "./production/manuscript/useProductionManuscriptShortcuts";
 import { useReadThroughController } from "./production/manuscript/useReadThroughController";
@@ -66,7 +254,7 @@ interface ProductionManuscriptViewProps {
   projectId: string;
   storyLogicData?: StoryLogicState | null;
   onSceneUpdate?: (scene: SceneBreakdown) => void;
-  onSceneDelete?: (sceneId: string) => void;
+  onSceneDelete?: (sceneId: SceneId) => void;
   onSceneCreate?: (scene: SceneBreakdown) => void;
   onScenesReorder?: (scenes: SceneBreakdown[]) => void;
   onManuscriptUpdate?: (manuscript: Manuscript) => void;
@@ -383,8 +571,8 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   onClose,
 }) => {
   // 7-Tier Responsive
-  const { tier, isMobile, isTablet, isDesktop, is4K } = useProductionManuscriptScreenTier();
-  const responsive = getProductionManuscriptResponsiveValues(tier);
+  const { tier, isMobile, isTablet, isDesktop, is4K } = useScreenTier();
+  const responsive = PRODUCTION_MANUSCRIPT_RESPONSIVE_VALUES[tier];
   const responsiveBodyFontSize = toFontNumber(responsive.bodyFontSize);
   
   // Desktop/4K-specific layout adjustments — used for responsive container sizing
@@ -403,18 +591,18 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   const [selectedShot, setSelectedShot] = useState<CastingShot | null>(null);
   const { shotLists, setShotLists, getShotsForScene } = useShotLists(projectId);
   const [sceneStoryboardDialog, setSceneStoryboardDialog] = useState<{
-    sceneId: string;
+    sceneId: SceneId;
     activeFrameIndex?: number;
   } | null>(null);
   const [shotStoryboardDialog, setShotStoryboardDialog] = useState<{
-    shotId: string;
+    shotId: ShotId;
     selectedCandidateId: string | null;
   } | null>(null);
   const [expandedActs, setExpandedActs] = useState<Set<string>>(new Set(acts.map(a => a.id)));
   const [showEstimateDialog, setShowEstimateDialog] = useState(false);
   const [showNewSceneDialog, setShowNewSceneDialog] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [sceneToDelete, setSceneToDelete] = useState<string | null>(null);
+  const [sceneToDelete, setSceneToDelete] = useState<SceneId | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showExportDialog, setShowExportDialog] = useState(false);
   const {
@@ -524,7 +712,7 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   const showCallSheetPreview = workflowUI.modal.type === 'callSheetPreview';
   const currentCallSheet: CallSheetRef | null = workflowUI.modal.type === 'callSheetPreview' ? workflowUI.modal.callSheet : null;
   const productionWorkflowTab = workflowUI.view.tab;
-  const selectedShootingDayId = workflowUI.selectedDayId;
+  const selectedShootingDayId: ShootingDayId = workflowUI.selectedDayId;
   const showSceneNeedsDialog = workflowUI.modal.type === 'sceneNeeds';
   const editingSceneNeedsId: string | null = workflowUI.modal.type === 'sceneNeeds' ? workflowUI.modal.sceneId : null;
   const showScheduleSceneDialog = workflowUI.modal.type === 'scheduleScene';
@@ -536,7 +724,7 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
 
   // ---- Data state (stays as useState — not UI routing) ----
   const [shootingDays, setShootingDays] = useState<ShootingDay[]>([]);
-  const [sceneChecklists, setSceneChecklists] = useState<Record<string, SceneChecklist>>({});
+  const [sceneChecklists, setSceneChecklists] = useState<Record<SceneId, SceneChecklist>>({});
 
   // 5. Timeline ↔ Live Set Connection
   const [isLiveSetConnected, setIsLiveSetConnected] = useState(false);
@@ -962,7 +1150,7 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   // SHOT DRAFT — populate inspector from metadata when shot changes
   // Uses narrow deps: selectedShotId + individual metadata entry
   // ============================================
-  const selectedShotId = selectedShot?.id ?? null;
+  const selectedShotId: ShotId | null = selectedShot?.id ?? null;
   const selectedShotMeta = selectedShotId ? shotMetadata[selectedShotId] : undefined;
 
   useEffect(() => {
@@ -1000,7 +1188,7 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   // WRITE DRAFT BACK — flush inspector edits to shotMetadata
   // Runs when dirty flag is set and shot changes or explicitly saved
   // ============================================
-  const prevShotIdRef = useRef<string | null>(null);
+  const prevShotIdRef = useRef<ShotId | null>(null);
 
   useEffect(() => {
     // When changing shots, save the previous shot's draft back to metadata
@@ -2345,8 +2533,43 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
     canDeleteScene: Boolean(onSceneDelete),
   });
 
+  const productionManuscriptContextValue = useMemo<ProductionManuscriptContextValue>(() => ({
+    projectId,
+    screen: {
+      tier,
+      isMobile,
+      isTablet,
+      isDesktop,
+      is4K,
+    },
+    responsive,
+    selection: {
+      sceneId: selectedScene?.id ?? null,
+      shotId: selectedShotId,
+      shootingDayId: selectedShootingDayId,
+    },
+    layout: {
+      panelMaxWidth: containerStyle.maxWidth,
+      sidebarWidth: containerStyle.sidebarWidth,
+    },
+  }), [
+    containerStyle.maxWidth,
+    containerStyle.sidebarWidth,
+    is4K,
+    isDesktop,
+    isMobile,
+    isTablet,
+    projectId,
+    responsive,
+    selectedScene?.id,
+    selectedShootingDayId,
+    selectedShotId,
+    tier,
+  ]);
+
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', bgcolor: '#1a1f2e' }}>
+    <ProductionManuscriptProvider value={productionManuscriptContextValue}>
+      <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', bgcolor: '#1a1f2e' }}>
       {/* Header with close button */}
       <Box
         sx={{
@@ -2789,10 +3012,8 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
       <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         
         <SceneNavigator
-          isMobile={isMobile}
           mobileOpen={mobileSidebarOpen}
           onMobileClose={() => setMobileSidebarOpen(false)}
-          width={responsive.sidebarWidth}
         >
           {/* Search & Filter Header */}
           <Box sx={{ 
@@ -4724,10 +4945,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
       </ManuscriptCenter>
 
       {/* RIGHT SIDEBAR - Shot Details */}
-      <ShotInspector
-        width={containerStyle.sidebarWidth || 280}
-        maxWidth={containerStyle.maxWidth ? containerStyle.sidebarWidth : undefined}
-      >
+      <ShotInspector>
         {/* Scene Header - synced with center panel */}
         <Box
           sx={{
@@ -6891,8 +7109,6 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
 
       <TalentDrawer
         open={showTalentPanel || (isMobile && mobileRightPanelOpen)}
-        isMobile={isMobile}
-        width={responsive.rightPanelWidth}
         onClose={() => {
           setShowTalentPanel(false);
           setMobileRightPanelOpen(false);
@@ -8170,7 +8386,8 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
           </Button>
         </DialogActions>
       </Dialog>
-    </Box>
+      </Box>
+    </ProductionManuscriptProvider>
   );
 };
 

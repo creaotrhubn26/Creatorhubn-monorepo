@@ -1,15 +1,6 @@
-import { useMediaQuery, useTheme } from '@mui/material';
+import type { ScreenTier } from '../stripboard.types';
 
-export type ProductionManuscriptScreenTier = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '4k';
-
-export interface ProductionManuscriptScreenTierInfo {
-  tier: ProductionManuscriptScreenTier;
-  isMobile: boolean;
-  isTablet: boolean;
-  isDesktop: boolean;
-  is4K: boolean;
-  breakpointSpacing: number;
-}
+export type ProductionManuscriptScreenTier = ScreenTier;
 
 export interface ProductionManuscriptResponsiveValues {
   titleFontSize: string;
@@ -31,39 +22,7 @@ export interface ProductionManuscriptResponsiveValues {
   filterChipPy: number;
 }
 
-export const useProductionManuscriptScreenTier = (): ProductionManuscriptScreenTierInfo => {
-  const theme = useTheme();
-  const isXs = useMediaQuery('(max-width:599px)');
-  const isSm = useMediaQuery('(min-width:600px) and (max-width:899px)');
-  const isMd = useMediaQuery('(min-width:900px) and (max-width:1199px)');
-  const isLg = useMediaQuery('(min-width:1200px) and (max-width:1535px)');
-  const isXl = useMediaQuery('(min-width:1536px) and (max-width:1919px)');
-  const isXxl = useMediaQuery('(min-width:1920px) and (max-width:2559px)');
-  const is4K = useMediaQuery('(min-width:2560px)');
-
-  const tier: ProductionManuscriptScreenTier = is4K
-    ? '4k'
-    : isXxl
-      ? 'xxl'
-      : isXl
-        ? 'xl'
-        : isLg
-          ? 'lg'
-          : isMd
-            ? 'md'
-            : isSm
-              ? 'sm'
-              : 'xs';
-  const isMobile = tier === 'xs' || tier === 'sm';
-  const isTablet = tier === 'md';
-  const isDesktop = tier === 'lg' || tier === 'xl' || tier === 'xxl' || tier === '4k';
-  const spacing = theme.spacing(isXs ? 0.5 : 1);
-  const breakpointSpacing = typeof spacing === 'number' ? spacing : Number(spacing.replace('px', ''));
-
-  return { tier, isMobile, isTablet, isDesktop, is4K, breakpointSpacing };
-};
-
-const RESPONSIVE_VALUES: Record<ProductionManuscriptScreenTier, ProductionManuscriptResponsiveValues> = {
+export const PRODUCTION_MANUSCRIPT_RESPONSIVE_VALUES = {
   xs: {
     titleFontSize: '10px',
     bodyFontSize: '11px',
@@ -197,11 +156,7 @@ const RESPONSIVE_VALUES: Record<ProductionManuscriptScreenTier, ProductionManusc
     filterChipPx: 2,
     filterChipPy: 0.75,
   },
-};
-
-export const getProductionManuscriptResponsiveValues = (
-  tier: ProductionManuscriptScreenTier,
-): ProductionManuscriptResponsiveValues => RESPONSIVE_VALUES[tier];
+} satisfies Record<ProductionManuscriptScreenTier, ProductionManuscriptResponsiveValues>;
 
 export const toDisplayString = (value: unknown, fallback = ''): string => {
   if (typeof value === 'string') return value;

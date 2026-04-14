@@ -70,6 +70,7 @@ import {
 import { useVisualEditor } from '../admin/visual-editor/VisualEditorContext';
 import { GuideAnnotatedScreenshot } from '../shared/guide/GuideAnnotationOverlay';
 import type { GuideStepAnnotation } from '../admin/visual-editor/guideTypes';
+import { PRODUCTION_STORAGE_KEYS } from './storageKeys';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -279,7 +280,7 @@ function StatusPill({ status }: { status: string }) {
 // ─── Steps ────────────────────────────────────────────────────────────────────
 
 const ACCENT = '#ffb800';
-const LANGUAGE_STORAGE_KEY = 'audition_guide_language';
+const LANGUAGE_STORAGE_KEY = PRODUCTION_STORAGE_KEYS.auditionGuideLanguage;
 
 function ann(
   id: string,
@@ -1552,7 +1553,7 @@ export function AuditionGuide({ open, onClose }: AuditionGuideProps) {
   const stepsWithOverrides: Step[] = localizedBaseSteps.map(s => {
     const override = getStepOverride(GUIDE_ID, s.id);
     if (!override) return s;
-    return { ...s, label: override.label ?? s.label };
+    return { ...s, label: override.labelOverride ?? s.label };
   });
 
   // Then filter by active ids from visual editor; if this becomes empty,
@@ -1592,7 +1593,7 @@ export function AuditionGuide({ open, onClose }: AuditionGuideProps) {
   const isFirst = activeStepIndex === 0;
   const isLast  = activeStepIndex === resolvedVisibleSteps.length - 1;
 
-  const ACCENT_COLOR = guideConfig?.accentColor ?? ACCENT;
+  const ACCENT_COLOR = guideConfig?.accentColorOverride ?? ACCENT;
 
   return (
     <GuideLanguageContext.Provider value={language}>
@@ -1633,7 +1634,7 @@ export function AuditionGuide({ open, onClose }: AuditionGuideProps) {
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
           <HelpIcon sx={{ color: ACCENT_COLOR, fontSize: 22 }} />
           <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff', fontSize: '1.05rem' }}>
-            {guideConfig?.title ?? copy.title}
+            {copy.title}
           </Typography>
           <Chip
             label={`${activeStepIndex + 1} / ${resolvedVisibleSteps.length}`}

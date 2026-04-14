@@ -1,12 +1,24 @@
+import { z } from 'zod';
+
+import {
+  buildProductionScopedPreferenceKey,
+  buildProductionWorkflowPreferenceKey,
+  PRODUCTION_STORAGE_KEYS,
+} from './storageKeys';
+
 // ============================================
 // Production Manuscript — shared types
 // ============================================
+
+export type SceneId = string;
+export type ShotId = string;
+export type ShootingDayId = string;
 
 /** Harmonized note type: camera + director + sound + vfx */
 export type NoteType = 'camera' | 'director' | 'sound' | 'vfx';
 
 /** Per-scene production notes — supports all 4 types */
-export type ProductionNotes = Record<string, Partial<Record<NoteType, string>>>;
+export type ProductionNotes = Record<SceneId, Partial<Record<NoteType, string>>>;
 
 /** Draft vs saved layer for per-scene autosave */
 export interface NotesDraftState {
@@ -111,9 +123,9 @@ export function addShotReducer(state: AddShotState, action: AddShotAction): AddS
 // Selected scenes — Record map (replaces Set)
 // ============================================
 
-export type SelectedMap = Record<string, true>;
+export type SelectedMap = Record<SceneId, true>;
 
-export const selectedMapToggle = (prev: SelectedMap, id: string): SelectedMap => {
+export const selectedMapToggle = (prev: SelectedMap, id: SceneId): SelectedMap => {
   if (prev[id]) {
     const next = { ...prev };
     delete next[id];
@@ -122,14 +134,14 @@ export const selectedMapToggle = (prev: SelectedMap, id: string): SelectedMap =>
   return { ...prev, [id]: true };
 };
 
-export const selectedMapFromIds = (ids: string[]): SelectedMap =>
+export const selectedMapFromIds = (ids: SceneId[]): SelectedMap =>
   Object.fromEntries(ids.map(id => [id, true as const]));
 
 export const selectedMapSize = (m: SelectedMap): number => Object.keys(m).length;
 
-export const selectedMapHas = (m: SelectedMap, id: string): boolean => !!m[id];
+export const selectedMapHas = (m: SelectedMap, id: SceneId): boolean => !!m[id];
 
-export const selectedMapIds = (m: SelectedMap): string[] => Object.keys(m);
+export const selectedMapIds = (m: SelectedMap): SceneId[] => Object.keys(m);
 
 export const EMPTY_SELECTION: SelectedMap = {};
 
@@ -142,6 +154,23 @@ export interface SceneNeed {
   light: boolean;
   sound: boolean;
 }
+
+const stringArraySchema = z.array(z.string());
+
+export const sceneMetadataSchema = z.object({
+  audio: z.string().optional(),
+  camera: z.string().optional(),
+  equipment: stringArraySchema.optional(),
+  lens: z.union([z.string(), z.number()]).optional(),
+  lighting: z.string().optional(),
+  makeup: stringArraySchema.optional(),
+  notes: z.string().optional(),
+  props: stringArraySchema.optional(),
+  shotType: z.string().optional(),
+  wardrobe: stringArraySchema.optional(),
+}).passthrough();
+
+export type SceneMetadata = z.infer<typeof sceneMetadataSchema>;
 
 // ============================================
 // Filters — compressed into single object
@@ -181,16 +210,12 @@ export function deriveSceneStatus(
 // Zoom/fullscreen — localStorage persistence
 // ============================================
 
-const ZOOM_KEY = 'pmv:manuscriptZoom';
-const FULLSCREEN_KEY = 'pmv:isFullscreen';
-
-function buildScopedPreferenceKey(baseKey: string, projectId?: string): string {
-  return `${baseKey}:${projectId || 'global'}`;
-}
+const ZOOM_KEY = PRODUCTION_STORAGE_KEYS.manuscriptZoom;
+const FULLSCREEN_KEY = PRODUCTION_STORAGE_KEYS.manuscriptFullscreen;
 
 export function loadZoomPreference(projectId?: string): number {
   try {
-    const v = localStorage.getItem(buildScopedPreferenceKey(ZOOM_KEY, projectId))
+    const v = localStorage.getItem(buildProductionScopedPreferenceKey(ZOOM_KEY, projectId))
       ?? localStorage.getItem(ZOOM_KEY);
     if (v) {
       const n = parseFloat(v);
@@ -201,12 +226,12 @@ export function loadZoomPreference(projectId?: string): number {
 }
 
 export function saveZoomPreference(zoom: number, projectId?: string): void {
-  try { localStorage.setItem(buildScopedPreferenceKey(ZOOM_KEY, projectId), String(zoom)); } catch { /* noop */ }
+  try { localStorage.setItem(buildProductionScopedPreferenceKey(ZOOM_KEY, projectId), String(zoom)); } catch { /* noop */ }
 }
 
 export function loadFullscreenPreference(projectId?: string): boolean {
   try {
-    const value = localStorage.getItem(buildScopedPreferenceKey(FULLSCREEN_KEY, projectId))
+    const value = localStorage.getItem(buildProductionScopedPreferenceKey(FULLSCREEN_KEY, projectId))
       ?? localStorage.getItem(FULLSCREEN_KEY);
     return value === 'true';
   } catch {
@@ -215,7 +240,7 @@ export function loadFullscreenPreference(projectId?: string): boolean {
 }
 
 export function saveFullscreenPreference(fs: boolean, projectId?: string): void {
-  try { localStorage.setItem(buildScopedPreferenceKey(FULLSCREEN_KEY, projectId), String(fs)); } catch { /* noop */ }
+  try { localStorage.setItem(buildProductionScopedPreferenceKey(FULLSCREEN_KEY, projectId), String(fs)); } catch { /* noop */ }
 }
 
 // ============================================
@@ -248,7 +273,7 @@ export type WorkflowModal =
 /** Minimal reference stored in modal state (avoids stale full objects) */
 export interface CallSheetRef {
   id: string;
-  shootingDayId: string;
+  shootingDayId: ShootingDayId;
   html: string;
   generatedAt: string;
 }
@@ -260,7 +285,7 @@ export interface WorkflowUIState {
   view: WorkflowView;
   modal: WorkflowModal;
   /** Currently selected shooting day across all workflow panels */
-  selectedDayId: string;
+  selectedDayId: ShootingDayId;
   /** When true, live set polling auto-selects the current scene */
   followLiveScene: boolean;
 }
@@ -273,11 +298,11 @@ export type WorkflowAction =
   | { type: 'OPEN_LIVE'; showDaySelector?: boolean }
   | { type: 'CLOSE_VIEW' }
   | { type: 'TOGGLE_DAY_SELECTOR' }
-  | { type: 'SELECT_DAY'; dayId: string }
-  | { type: 'SELECT_DAY_AND_GO_LIVE'; dayId: string }
+  | { type: 'SELECT_DAY'; dayId: ShootingDayId }
+  | { type: 'SELECT_DAY_AND_GO_LIVE'; dayId: ShootingDayId }
   | { type: 'OPEN_CALL_SHEET'; callSheet: CallSheetRef }
-  | { type: 'OPEN_SCENE_NEEDS'; sceneId: string }
-  | { type: 'OPEN_SCHEDULE_SCENE'; sceneId: string }
+  | { type: 'OPEN_SCENE_NEEDS'; sceneId: SceneId }
+  | { type: 'OPEN_SCHEDULE_SCENE'; sceneId: SceneId }
   | { type: 'OPEN_CHECKLIST' }
   | { type: 'OPEN_LINE_COVERAGE' }
   | { type: 'OPEN_BULK_SHOT' }
@@ -424,19 +449,38 @@ export function deriveReadinessScore(checklist: SceneChecklist): {
 // Workflow persistence — localStorage per project
 // ============================================
 
-const WORKFLOW_KEY_PREFIX = 'pmv:workflow:';
-
 /** Serializable subset of WorkflowUIState for localStorage */
 interface WorkflowPersistence {
   viewTab: WorkflowView['tab'];
-  selectedDayId: string;
+  selectedDayId: ShootingDayId;
 }
+
+export const workflowPersistenceSchema = z.object({
+  viewTab: z.enum(['none', 'stripboard', 'schedule', 'live']),
+  selectedDayId: z.string().min(1),
+});
+
+export const persistedUiPreferencesSchema = z.object({
+  expandedSections: z.object({
+    audio: z.boolean().optional(),
+    camera: z.boolean().optional(),
+    lighting: z.boolean().optional(),
+    references: z.boolean().optional(),
+  }).optional(),
+  isFullscreen: z.boolean().optional(),
+  manuscriptZoom: z.number().min(0.5).max(2).optional(),
+  workflow: workflowPersistenceSchema.partial().optional(),
+});
+
+export type PersistedUiPreferences = z.infer<typeof persistedUiPreferencesSchema>;
 
 export function loadWorkflowPreference(projectId: string): Partial<WorkflowUIState> | null {
   try {
-    const raw = localStorage.getItem(`${WORKFLOW_KEY_PREFIX}${projectId}`);
+    const raw = localStorage.getItem(buildProductionWorkflowPreferenceKey(projectId));
     if (!raw) return null;
-    const parsed: WorkflowPersistence = JSON.parse(raw);
+    const parsedResult = workflowPersistenceSchema.safeParse(JSON.parse(raw));
+    if (!parsedResult.success) return null;
+    const parsed: WorkflowPersistence = parsedResult.data;
     const view: WorkflowView =
       parsed.viewTab === 'stripboard' ? { tab: 'stripboard' } :
       parsed.viewTab === 'schedule' ? { tab: 'schedule' } :
@@ -457,7 +501,7 @@ export function saveWorkflowPreference(projectId: string, state: WorkflowUIState
       viewTab: state.view.tab,
       selectedDayId: state.selectedDayId,
     };
-    localStorage.setItem(`${WORKFLOW_KEY_PREFIX}${projectId}`, JSON.stringify(data));
+    localStorage.setItem(buildProductionWorkflowPreferenceKey(projectId), JSON.stringify(data));
   } catch { /* noop */ }
 }
 
@@ -650,7 +694,36 @@ export interface ShotMeta {
   thumbnailUrl?: string;
 }
 
-export type ShotMetadataMap = Record<string, ShotMeta>;
+export const shotCameraMetaSchema = z.object({
+  lens: z.string(),
+  movement: z.string(),
+  framing: z.string(),
+});
+
+export const shotLightingMetaSchema = z.object({
+  key: z.string(),
+  temp: z.string(),
+  ratio: z.string(),
+});
+
+export const shotSoundMetaSchema = z.object({
+  mic: z.string(),
+  ambience: z.string(),
+  notes: z.string(),
+});
+
+export const shotMetadataSchema = z.object({
+  camera: shotCameraMetaSchema,
+  lighting: shotLightingMetaSchema,
+  sound: shotSoundMetaSchema,
+  references: z.array(z.string()),
+  durationSec: z.number().nonnegative(),
+  status: z.enum(['done', 'inProgress', 'missing']),
+  thumbnailUrl: z.string().optional(),
+});
+
+export type ShotMetadata = z.infer<typeof shotMetadataSchema>;
+export type ShotMetadataMap = Record<ShotId, ShotMeta>;
 
 /** Preset = camera + lighting + sound slice of ShotMeta */
 export type ShotPreset = {
@@ -754,7 +827,7 @@ export type InspectorEditing =
 
 export interface InspectorUIState {
   /** The shot currently being edited (null = scene-level defaults) */
-  activeShotId: string | null;
+  activeShotId: ShotId | null;
   /** Editable draft of the active shot's properties */
   properties: ShotProperties;
   editing: InspectorEditing;
@@ -781,7 +854,7 @@ export type InspectorAction =
   | { type: 'SET_PROPERTIES'; properties: ShotProperties }
   | { type: 'UPDATE_PROPERTY'; field: ShotPropertyKey; value: string }
   | { type: 'MERGE_PROPERTIES'; partial: Partial<ShotProperties> }
-  | { type: 'SELECT_SHOT'; shotId: string | null; properties: ShotProperties }
+  | { type: 'SELECT_SHOT'; shotId: ShotId | null; properties: ShotProperties }
   | { type: 'START_EDIT'; field: ShotPropertyKey; currentValue: string }
   | { type: 'SET_EDIT_DRAFT'; draft: string }
   | { type: 'SAVE_EDIT' }
@@ -855,20 +928,29 @@ export const INITIAL_INSPECTOR_STATE: InspectorUIState = {
 // Expanded sections — localStorage persistence
 // ============================================
 
-const SECTIONS_KEY = 'pmv:expandedSections';
+const SECTIONS_KEY = PRODUCTION_STORAGE_KEYS.manuscriptExpandedSections;
+
+export const expandedSectionsSchema = z.object({
+  audio: z.boolean().optional(),
+  camera: z.boolean().optional(),
+  lighting: z.boolean().optional(),
+  references: z.boolean().optional(),
+});
 
 export function loadExpandedSections(projectId?: string): ExpandedSections {
   try {
-    const raw = localStorage.getItem(buildScopedPreferenceKey(SECTIONS_KEY, projectId))
+    const raw = localStorage.getItem(buildProductionScopedPreferenceKey(SECTIONS_KEY, projectId))
       ?? localStorage.getItem(SECTIONS_KEY);
     if (raw) {
-      const parsed = JSON.parse(raw);
-      return { ...DEFAULT_EXPANDED_SECTIONS, ...parsed };
+      const parsedResult = expandedSectionsSchema.safeParse(JSON.parse(raw));
+      if (parsedResult.success) {
+        return { ...DEFAULT_EXPANDED_SECTIONS, ...parsedResult.data };
+      }
     }
   } catch { /* SSR / incognito */ }
   return DEFAULT_EXPANDED_SECTIONS;
 }
 
 export function saveExpandedSections(sections: ExpandedSections, projectId?: string): void {
-  try { localStorage.setItem(buildScopedPreferenceKey(SECTIONS_KEY, projectId), JSON.stringify(sections)); } catch { /* noop */ }
+  try { localStorage.setItem(buildProductionScopedPreferenceKey(SECTIONS_KEY, projectId), JSON.stringify(sections)); } catch { /* noop */ }
 }
