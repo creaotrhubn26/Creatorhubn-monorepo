@@ -157,6 +157,7 @@ import {
   downloadCallSheetPDF,
   generateCallSheetHTML,
   productionWorkflowService,
+  type CallSheet,
   type ShootingDay,
 } from "./production";
 import AddShotDialog, { type AddShotDialogCreatePayload } from "./production/AddShotDialog";
@@ -223,6 +224,16 @@ import {
   toSceneNumber,
 } from "./production/manuscript/productionManuscriptUi";
 import { buildProductionCallSheet } from "./production/manuscript/callSheetBuilder";
+import {
+  CALL_SHEET_EXPORT_SCHEMA_VERSION,
+  PRODUCTION_EXPORT_SOURCE_VERSION,
+  buildStableExportId,
+  createProductionExportAuditEntry,
+  downloadExportBlob,
+  recordProductionExportAudit,
+  type ProductionExportKind,
+  type ProductionExportTrigger,
+} from "./production/manuscript/exportAudit";
 import {
   ProductionManuscriptProvider,
   type ProductionManuscriptContextValue,
@@ -1513,14 +1524,15 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   // Handle export production data
   const handleExportProduction = () => {
     const totalShots = shotLists.reduce((acc, list) => acc + list.shots.length, 0);
-    const productionData = {
-      exportVersion: 1,
-      exportedAt: new Date().toISOString(),
+    const exportedAt = new Date().toISOString();
+    const fileName = `${manuscript.title.replace(/\s+/g, '_')}_production_data.json`;
+    const exportFingerprint = {
       manuscript: {
         title: manuscript.title,
         author: manuscript.author,
       },
       scenes: scenes.map(scene => ({
+        id: scene.id,
         sceneNumber: scene.sceneNumber,
         sceneHeading: scene.sceneHeading,
         locationName: scene.locationName,
@@ -1540,16 +1552,36 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
       totalScenes: scenes.length,
       totalShots,
     };
+    const exportId = buildStableExportId({
+      kind: 'production-data',
+      payload: exportFingerprint,
+      projectId,
+      sourceVersion: PRODUCTION_EXPORT_SOURCE_VERSION,
+    });
+    const auditEntry = createProductionExportAuditEntry({
+      exportId,
+      kind: 'production-data',
+      projectId,
+      fileName,
+      createdAt: exportedAt,
+      sceneCount: scenes.length,
+      shotCount: totalShots,
+      trigger: 'dialog',
+      payload: exportFingerprint,
+    });
+    const productionData = {
+      exportVersion: 2,
+      sourceVersion: PRODUCTION_EXPORT_SOURCE_VERSION,
+      exportId,
+      exportedAt,
+      auditTrail: [auditEntry],
+      ...exportFingerprint,
+    };
     
     const dataStr = JSON.stringify(productionData, null, 2);
     const dataBlob = new Blob([dataStr], { type: 'application/json' });
-    const url = URL.createObjectURL(dataBlob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${manuscript.title.replace(/\s+/g, '_')}_production_data.json`;
-    link.click();
-    // Delay revoking to ensure download completes in all browsers
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    recordProductionExportAudit(auditEntry, projectId);
+    downloadExportBlob(dataBlob, fileName);
     setShowExportDialog(false);
   };
 
@@ -2307,19 +2339,49 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   const handleBatchExport = useCallback(() => {
     const ids = selectedMapIds(selectedScenes);
     const selectedScenesList = scenes.filter(s => selectedMapHas(selectedScenes, s.id));
+    const exportedAt = new Date().toISOString();
+    const fileName = `selected_scenes_${ids.length}.json`;
+    const exportFingerprint = {
+      scenes: selectedScenesList.map(scene => ({
+        id: scene.id,
+        sceneNumber: scene.sceneNumber,
+        sceneHeading: scene.sceneHeading,
+        locationName: scene.locationName,
+        timeOfDay: scene.timeOfDay,
+        characters: scene.characters,
+      })),
+      count: selectedScenesList.length,
+    };
+    const exportId = buildStableExportId({
+      kind: 'selected-scenes',
+      payload: exportFingerprint,
+      projectId,
+      sourceVersion: PRODUCTION_EXPORT_SOURCE_VERSION,
+      targetId: ids.join(',') || 'none',
+    });
+    const auditEntry = createProductionExportAuditEntry({
+      exportId,
+      kind: 'selected-scenes',
+      projectId,
+      targetId: ids.join(',') || 'none',
+      fileName,
+      createdAt: exportedAt,
+      sceneCount: selectedScenesList.length,
+      trigger: 'button',
+      payload: exportFingerprint,
+    });
     const data = {
+      sourceVersion: PRODUCTION_EXPORT_SOURCE_VERSION,
+      exportId,
+      exportedAt,
+      auditTrail: [auditEntry],
       scenes: selectedScenesList,
       count: selectedScenesList.length,
-      exportDate: new Date().toISOString(),
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `selected_scenes_${ids.length}.json`;
-    link.click();
-    URL.revokeObjectURL(url);
-  }, [selectedScenes, scenes]);
+    recordProductionExportAudit(auditEntry, projectId);
+    downloadExportBlob(blob, fileName);
+  }, [projectId, selectedScenes, scenes]);
 
   const validateSceneNumber = (sceneNumber: string): string | null => {
     const duplicate = scenes.find(s => s.sceneNumber === sceneNumber && s.id !== selectedScene?.id);
@@ -2430,7 +2492,39 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
 
   // PDF Export
   const handlePDFExport = () => {
-    const scriptContent = scenes.map((scene, sceneIndex) => {
+    const exportedAt = new Date().toISOString();
+    const fileName = `${manuscript.title}_script.txt`;
+    const totalShots = shotLists.reduce((acc, list) => acc + list.shots.length, 0);
+    const exportFingerprint = {
+      manuscriptTitle: manuscript.title,
+      scenes: scenes.map(scene => ({
+        id: scene.id,
+        sceneNumber: scene.sceneNumber,
+        sceneHeading: scene.sceneHeading,
+        shotIds: shotLists.find(l => l.sceneId === scene.id)?.shots.map(shot => ({
+          id: shot.id,
+          duration: shotDurationValues[shot.id] || 5,
+        })) ?? [],
+      })),
+    };
+    const exportId = buildStableExportId({
+      kind: 'script-text',
+      payload: exportFingerprint,
+      projectId,
+      sourceVersion: PRODUCTION_EXPORT_SOURCE_VERSION,
+    });
+    const auditEntry = createProductionExportAuditEntry({
+      exportId,
+      kind: 'script-text',
+      projectId,
+      fileName,
+      createdAt: exportedAt,
+      sceneCount: scenes.length,
+      shotCount: totalShots,
+      trigger: 'button',
+      payload: exportFingerprint,
+    });
+    const scriptBody = scenes.map((scene, sceneIndex) => {
       const shots = shotLists.find(l => l.sceneId === scene.id)?.shots || [];
       return `
 [${sceneIndex + 1}] SCENE ${scene.sceneNumber}
@@ -2449,14 +2543,17 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
 ---
 `;
     }).join('\n');
+    const scriptContent = [
+      `EXPORT ID: ${exportId}`,
+      `SOURCE VERSION: ${PRODUCTION_EXPORT_SOURCE_VERSION}`,
+      `EXPORTED AT: ${exportedAt}`,
+      '',
+      scriptBody,
+    ].join('\n');
 
     const blob = new Blob([scriptContent], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${manuscript.title}_script.txt`;
-    link.click();
-    URL.revokeObjectURL(url);
+    recordProductionExportAudit(auditEntry, projectId);
+    downloadExportBlob(blob, fileName);
   };
 
   const buildCallSheetForDay = useCallback((dayId?: string) => buildProductionCallSheet({
@@ -2468,9 +2565,55 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
     dayId,
   }), [manuscript, quickNotes, scenes, shootingDays, shotLists]);
 
+  const createCallSheetExportAudit = useCallback((
+    kind: Extract<ProductionExportKind, 'call-sheet-json' | 'call-sheet-pdf' | 'call-sheet-preview'>,
+    callSheet: CallSheet,
+    trigger: ProductionExportTrigger,
+    fileName?: string,
+  ) => {
+    const exportedAt = new Date().toISOString();
+    const fingerprint = {
+      shootingDayId: callSheet.shootingDayId,
+      projectTitle: callSheet.projectTitle,
+      date: callSheet.date,
+      dayNumber: callSheet.dayNumber,
+      scenes: callSheet.scenes.map(scene => ({
+        sceneNumber: scene.sceneNumber,
+        description: scene.description,
+        location: scene.location,
+        estimatedTime: scene.estimatedTime,
+      })),
+      equipment: callSheet.equipment,
+      version: callSheet.version,
+    };
+    const exportId = buildStableExportId({
+      kind,
+      payload: fingerprint,
+      projectId,
+      schemaVersion: CALL_SHEET_EXPORT_SCHEMA_VERSION,
+      sourceVersion: PRODUCTION_EXPORT_SOURCE_VERSION,
+      targetId: callSheet.shootingDayId,
+    });
+    const auditEntry = createProductionExportAuditEntry({
+      exportId,
+      kind,
+      projectId,
+      targetId: callSheet.shootingDayId,
+      fileName,
+      createdAt: exportedAt,
+      schemaVersion: CALL_SHEET_EXPORT_SCHEMA_VERSION,
+      sceneCount: callSheet.scenes.length,
+      trigger,
+      payload: fingerprint,
+    });
+    return { auditEntry, exportedAt, exportId };
+  }, [projectId]);
+
   // Call sheet generation
   const handleGenerateCallSheet = () => {
-    const callSheet = {
+    const exportedAt = new Date().toISOString();
+    const fileName = `call_sheet_${exportedAt.split('T')[0]}.json`;
+    const callSheetContent = {
       title: manuscript.title,
       date: new Date().toLocaleDateString(),
       scenes: scenes.map(scene => {
@@ -2491,14 +2634,76 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
         return sum + shots.reduce((s, shot) => s + (shotDurationValues[shot.id] || 5), 0);
       }, 0),
     };
+    const exportFingerprint = {
+      title: callSheetContent.title,
+      scenes: callSheetContent.scenes,
+      totalDuration: callSheetContent.totalDuration,
+    };
+    const exportId = buildStableExportId({
+      kind: 'call-sheet-json',
+      payload: exportFingerprint,
+      projectId,
+      schemaVersion: CALL_SHEET_EXPORT_SCHEMA_VERSION,
+      sourceVersion: PRODUCTION_EXPORT_SOURCE_VERSION,
+    });
+    const auditEntry = createProductionExportAuditEntry({
+      exportId,
+      kind: 'call-sheet-json',
+      projectId,
+      fileName,
+      createdAt: exportedAt,
+      schemaVersion: CALL_SHEET_EXPORT_SCHEMA_VERSION,
+      sceneCount: scenes.length,
+      trigger: 'button',
+      payload: exportFingerprint,
+    });
+    const callSheet = {
+      schemaVersion: CALL_SHEET_EXPORT_SCHEMA_VERSION,
+      sourceVersion: PRODUCTION_EXPORT_SOURCE_VERSION,
+      exportId,
+      exportedAt,
+      auditTrail: [auditEntry],
+      ...callSheetContent,
+    };
 
     const blob = new Blob([JSON.stringify(callSheet, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `call_sheet_${new Date().toISOString().split('T')[0]}.json`;
-    link.click();
-    URL.revokeObjectURL(url);
+    recordProductionExportAudit(auditEntry, projectId);
+    downloadExportBlob(blob, fileName);
+  };
+
+  const handlePrintManuscript = () => {
+    const exportedAt = new Date().toISOString();
+    const printFingerprint = {
+      manuscriptTitle: manuscript.title,
+      sceneIds: scenes.map(scene => scene.id),
+      shotListIds: shotLists.map(list => list.id),
+    };
+    const auditEntry = createProductionExportAuditEntry({
+      kind: 'print',
+      projectId,
+      createdAt: exportedAt,
+      sceneCount: scenes.length,
+      shotCount: shotLists.reduce((acc, list) => acc + list.shots.length, 0),
+      trigger: 'button',
+      payload: printFingerprint,
+    });
+    recordProductionExportAudit(auditEntry, projectId);
+    window.print();
+  };
+
+  const handleDownloadCallSheetPdf = () => {
+    const callSheet = buildCallSheetForDay(selectedShootingDayId ?? undefined);
+    const fileName = `call_sheet_${callSheet.shootingDayId}.pdf`;
+    const { auditEntry } = createCallSheetExportAudit('call-sheet-pdf', callSheet, 'button', fileName);
+    recordProductionExportAudit(auditEntry, projectId);
+    void downloadCallSheetPDF(
+      {
+        ...callSheet,
+        id: auditEntry.exportId,
+        version: CALL_SHEET_EXPORT_SCHEMA_VERSION,
+      },
+      DEFAULT_CALL_SHEET_OPTIONS,
+    );
   };
 
   useProductionManuscriptShortcuts({
@@ -3511,7 +3716,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
             </Tooltip>
             <Tooltip title="Skriv ut manus">
               <IconButton
-                onClick={() => window.print()}
+                onClick={handlePrintManuscript}
                 sx={{
                   color: '#6b7280',
                   bgcolor: '#1a2230',
@@ -3539,7 +3744,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
             </Tooltip>
             <Tooltip title="Last ned Call Sheet som PDF">
               <IconButton
-                onClick={() => { void downloadCallSheetPDF(buildCallSheetForDay(selectedShootingDayId ?? undefined), DEFAULT_CALL_SHEET_OPTIONS); }}
+                onClick={handleDownloadCallSheetPdf}
                 sx={{
                   color: '#6b7280',
                   bgcolor: '#1a2230',
@@ -6832,12 +7037,25 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               }}
               onGenerateCallSheet={(dayId) => {
                 // Generate call sheet HTML for the specific day and store it
-                const html = generateCallSheetHTML(buildCallSheetForDay(dayId), DEFAULT_CALL_SHEET_OPTIONS);
+                const callSheet = buildCallSheetForDay(dayId);
+                const { auditEntry, exportedAt, exportId } = createCallSheetExportAudit(
+                  'call-sheet-preview',
+                  callSheet,
+                  'workflow',
+                );
+                recordProductionExportAudit(auditEntry, projectId);
+                const html = generateCallSheetHTML(
+                  { ...callSheet, id: exportId, version: CALL_SHEET_EXPORT_SCHEMA_VERSION },
+                  DEFAULT_CALL_SHEET_OPTIONS,
+                );
                 const callSheetRef: CallSheetRef = {
-                  id: `cs-${dayId}-${Date.now()}`,
+                  id: exportId,
+                  exportId,
+                  schemaVersion: CALL_SHEET_EXPORT_SCHEMA_VERSION,
                   shootingDayId: dayId,
                   html,
-                  generatedAt: new Date().toISOString(),
+                  generatedAt: exportedAt,
+                  auditTrail: [auditEntry],
                 };
                 dispatchWorkflow({ type: 'OPEN_CALL_SHEET', callSheet: callSheetRef });
               }}
@@ -6886,12 +7104,25 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               }}
               onGenerateCallSheet={(dayId) => {
                 // Generate call sheet for the specific shooting day
-                const html = generateCallSheetHTML(buildCallSheetForDay(dayId), DEFAULT_CALL_SHEET_OPTIONS);
+                const callSheet = buildCallSheetForDay(dayId);
+                const { auditEntry, exportedAt, exportId } = createCallSheetExportAudit(
+                  'call-sheet-preview',
+                  callSheet,
+                  'workflow',
+                );
+                recordProductionExportAudit(auditEntry, projectId);
+                const html = generateCallSheetHTML(
+                  { ...callSheet, id: exportId, version: CALL_SHEET_EXPORT_SCHEMA_VERSION },
+                  DEFAULT_CALL_SHEET_OPTIONS,
+                );
                 const callSheetRef: CallSheetRef = {
-                  id: `cs-${dayId}-${Date.now()}`,
+                  id: exportId,
+                  exportId,
+                  schemaVersion: CALL_SHEET_EXPORT_SCHEMA_VERSION,
                   shootingDayId: dayId,
                   html,
-                  generatedAt: new Date().toISOString(),
+                  generatedAt: exportedAt,
+                  auditTrail: [auditEntry],
                 };
                 dispatchWorkflow({ type: 'OPEN_CALL_SHEET', callSheet: callSheetRef });
               }}

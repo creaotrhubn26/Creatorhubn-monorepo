@@ -213,34 +213,126 @@ export function deriveSceneStatus(
 const ZOOM_KEY = PRODUCTION_STORAGE_KEYS.manuscriptZoom;
 const FULLSCREEN_KEY = PRODUCTION_STORAGE_KEYS.manuscriptFullscreen;
 
+export const PRODUCTION_PREFERENCE_SCHEMA_VERSION = 2;
+
+const preferenceEnvelopeMetaSchema = z.object({
+  version: z.literal(PRODUCTION_PREFERENCE_SCHEMA_VERSION),
+  updatedAt: z.string().optional(),
+  migratedFromVersion: z.number().int().positive().optional(),
+});
+
+const zoomPreferenceEnvelopeSchema = preferenceEnvelopeMetaSchema.extend({
+  value: z.number().min(0.5).max(2),
+});
+
+const fullscreenPreferenceEnvelopeSchema = preferenceEnvelopeMetaSchema.extend({
+  value: z.boolean(),
+});
+
+const parseStoredValue = (raw: string): unknown => {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+};
+
+const buildPreferenceEnvelope = <T,>(
+  value: T,
+  migratedFromVersion?: number,
+): { version: typeof PRODUCTION_PREFERENCE_SCHEMA_VERSION; value: T; updatedAt: string; migratedFromVersion?: number } => ({
+  version: PRODUCTION_PREFERENCE_SCHEMA_VERSION,
+  value,
+  updatedAt: new Date().toISOString(),
+  ...(migratedFromVersion ? { migratedFromVersion } : {}),
+});
+
+const migratePreference = <T,>(key: string, value: T): T => {
+  try {
+    localStorage.setItem(key, JSON.stringify(buildPreferenceEnvelope(value, 1)));
+  } catch { /* noop */ }
+  return value;
+};
+
+const parseLegacyZoomPreference = (raw: string): number | null => {
+  const value = parseStoredValue(raw);
+  const numeric = typeof value === 'number'
+    ? value
+    : typeof value === 'string'
+      ? Number(value)
+      : Number.NaN;
+  return Number.isFinite(numeric) && numeric >= 0.5 && numeric <= 2 ? numeric : null;
+};
+
+const parseLegacyFullscreenPreference = (raw: string): boolean | null => {
+  const value = parseStoredValue(raw);
+  if (typeof value === 'boolean') return value;
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  return null;
+};
+
 export function loadZoomPreference(projectId?: string): number {
   try {
-    const v = localStorage.getItem(buildProductionScopedPreferenceKey(ZOOM_KEY, projectId))
-      ?? localStorage.getItem(ZOOM_KEY);
-    if (v) {
-      const n = parseFloat(v);
-      if (n >= 0.5 && n <= 2) return n;
+    const scopedKey = buildProductionScopedPreferenceKey(ZOOM_KEY, projectId);
+    const scopedRaw = localStorage.getItem(scopedKey);
+    if (scopedRaw !== null) {
+      const versionedResult = zoomPreferenceEnvelopeSchema.safeParse(parseStoredValue(scopedRaw));
+      if (versionedResult.success) return versionedResult.data.value;
+
+      const legacyZoom = parseLegacyZoomPreference(scopedRaw);
+      if (legacyZoom !== null) return migratePreference(scopedKey, legacyZoom);
+    }
+
+    const legacyRaw = localStorage.getItem(ZOOM_KEY);
+    if (legacyRaw !== null) {
+      const legacyZoom = parseLegacyZoomPreference(legacyRaw);
+      if (legacyZoom !== null) return migratePreference(scopedKey, legacyZoom);
     }
   } catch { /* SSR / incognito */ }
   return 1;
 }
 
 export function saveZoomPreference(zoom: number, projectId?: string): void {
-  try { localStorage.setItem(buildProductionScopedPreferenceKey(ZOOM_KEY, projectId), String(zoom)); } catch { /* noop */ }
+  try {
+    if (!Number.isFinite(zoom) || zoom < 0.5 || zoom > 2) return;
+    localStorage.setItem(
+      buildProductionScopedPreferenceKey(ZOOM_KEY, projectId),
+      JSON.stringify(buildPreferenceEnvelope(zoom)),
+    );
+  } catch { /* noop */ }
 }
 
 export function loadFullscreenPreference(projectId?: string): boolean {
   try {
-    const value = localStorage.getItem(buildProductionScopedPreferenceKey(FULLSCREEN_KEY, projectId))
-      ?? localStorage.getItem(FULLSCREEN_KEY);
-    return value === 'true';
+    const scopedKey = buildProductionScopedPreferenceKey(FULLSCREEN_KEY, projectId);
+    const scopedRaw = localStorage.getItem(scopedKey);
+    if (scopedRaw !== null) {
+      const versionedResult = fullscreenPreferenceEnvelopeSchema.safeParse(parseStoredValue(scopedRaw));
+      if (versionedResult.success) return versionedResult.data.value;
+
+      const legacyFullscreen = parseLegacyFullscreenPreference(scopedRaw);
+      if (legacyFullscreen !== null) return migratePreference(scopedKey, legacyFullscreen);
+    }
+
+    const legacyRaw = localStorage.getItem(FULLSCREEN_KEY);
+    if (legacyRaw !== null) {
+      const legacyFullscreen = parseLegacyFullscreenPreference(legacyRaw);
+      if (legacyFullscreen !== null) return migratePreference(scopedKey, legacyFullscreen);
+    }
   } catch {
-    return false;
+    // noop
   }
+  return false;
 }
 
 export function saveFullscreenPreference(fs: boolean, projectId?: string): void {
-  try { localStorage.setItem(buildProductionScopedPreferenceKey(FULLSCREEN_KEY, projectId), String(fs)); } catch { /* noop */ }
+  try {
+    localStorage.setItem(
+      buildProductionScopedPreferenceKey(FULLSCREEN_KEY, projectId),
+      JSON.stringify(buildPreferenceEnvelope(fs)),
+    );
+  } catch { /* noop */ }
 }
 
 // ============================================
@@ -273,9 +365,19 @@ export type WorkflowModal =
 /** Minimal reference stored in modal state (avoids stale full objects) */
 export interface CallSheetRef {
   id: string;
+  exportId?: string;
+  schemaVersion?: number;
   shootingDayId: ShootingDayId;
   html: string;
   generatedAt: string;
+  auditTrail?: Array<{
+    exportId: string;
+    kind: string;
+    createdAt: string;
+    sourceVersion: string;
+    schemaVersion?: number;
+    trigger?: string;
+  }>;
 }
 
 export type BulkShotTemplate = 'standard' | 'dialogue' | 'action' | 'custom';
@@ -460,7 +562,12 @@ export const workflowPersistenceSchema = z.object({
   selectedDayId: z.string().min(1),
 });
 
+const workflowPreferenceEnvelopeSchema = preferenceEnvelopeMetaSchema.extend({
+  value: workflowPersistenceSchema,
+});
+
 export const persistedUiPreferencesSchema = z.object({
+  version: z.literal(PRODUCTION_PREFERENCE_SCHEMA_VERSION).optional(),
   expandedSections: z.object({
     audio: z.boolean().optional(),
     camera: z.boolean().optional(),
@@ -474,22 +581,34 @@ export const persistedUiPreferencesSchema = z.object({
 
 export type PersistedUiPreferences = z.infer<typeof persistedUiPreferencesSchema>;
 
+const workflowPersistenceToState = (parsed: WorkflowPersistence): Partial<WorkflowUIState> => {
+  const view: WorkflowView =
+    parsed.viewTab === 'stripboard' ? { tab: 'stripboard' } :
+    parsed.viewTab === 'schedule' ? { tab: 'schedule' } :
+    parsed.viewTab === 'live' ? { tab: 'live', showDaySelector: false } :
+    { tab: 'none' };
+  return {
+    view,
+    selectedDayId: parsed.selectedDayId || 'day-3',
+  };
+};
+
 export function loadWorkflowPreference(projectId: string): Partial<WorkflowUIState> | null {
   try {
-    const raw = localStorage.getItem(buildProductionWorkflowPreferenceKey(projectId));
+    const key = buildProductionWorkflowPreferenceKey(projectId);
+    const raw = localStorage.getItem(key);
     if (!raw) return null;
-    const parsedResult = workflowPersistenceSchema.safeParse(JSON.parse(raw));
-    if (!parsedResult.success) return null;
-    const parsed: WorkflowPersistence = parsedResult.data;
-    const view: WorkflowView =
-      parsed.viewTab === 'stripboard' ? { tab: 'stripboard' } :
-      parsed.viewTab === 'schedule' ? { tab: 'schedule' } :
-      parsed.viewTab === 'live' ? { tab: 'live', showDaySelector: false } :
-      { tab: 'none' };
-    return {
-      view,
-      selectedDayId: parsed.selectedDayId || 'day-3',
-    };
+
+    const stored = parseStoredValue(raw);
+    const versionedResult = workflowPreferenceEnvelopeSchema.safeParse(stored);
+    if (versionedResult.success) {
+      return workflowPersistenceToState(versionedResult.data.value);
+    }
+
+    const legacyResult = workflowPersistenceSchema.safeParse(stored);
+    if (!legacyResult.success) return null;
+    localStorage.setItem(key, JSON.stringify(buildPreferenceEnvelope(legacyResult.data, 1)));
+    return workflowPersistenceToState(legacyResult.data);
   } catch {
     return null;
   }
@@ -501,7 +620,10 @@ export function saveWorkflowPreference(projectId: string, state: WorkflowUIState
       viewTab: state.view.tab,
       selectedDayId: state.selectedDayId,
     };
-    localStorage.setItem(buildProductionWorkflowPreferenceKey(projectId), JSON.stringify(data));
+    localStorage.setItem(
+      buildProductionWorkflowPreferenceKey(projectId),
+      JSON.stringify(buildPreferenceEnvelope(data)),
+    );
   } catch { /* noop */ }
 }
 
@@ -937,14 +1059,34 @@ export const expandedSectionsSchema = z.object({
   references: z.boolean().optional(),
 });
 
+const expandedSectionsPreferenceEnvelopeSchema = preferenceEnvelopeMetaSchema.extend({
+  value: expandedSectionsSchema,
+});
+
 export function loadExpandedSections(projectId?: string): ExpandedSections {
   try {
-    const raw = localStorage.getItem(buildProductionScopedPreferenceKey(SECTIONS_KEY, projectId))
-      ?? localStorage.getItem(SECTIONS_KEY);
-    if (raw) {
-      const parsedResult = expandedSectionsSchema.safeParse(JSON.parse(raw));
-      if (parsedResult.success) {
-        return { ...DEFAULT_EXPANDED_SECTIONS, ...parsedResult.data };
+    const scopedKey = buildProductionScopedPreferenceKey(SECTIONS_KEY, projectId);
+    const scopedRaw = localStorage.getItem(scopedKey);
+    if (scopedRaw !== null) {
+      const stored = parseStoredValue(scopedRaw);
+      const versionedResult = expandedSectionsPreferenceEnvelopeSchema.safeParse(stored);
+      if (versionedResult.success) {
+        return { ...DEFAULT_EXPANDED_SECTIONS, ...versionedResult.data.value };
+      }
+
+      const legacyResult = expandedSectionsSchema.safeParse(stored);
+      if (legacyResult.success) {
+        const migrated = { ...DEFAULT_EXPANDED_SECTIONS, ...legacyResult.data };
+        return migratePreference(scopedKey, migrated);
+      }
+    }
+
+    const legacyRaw = localStorage.getItem(SECTIONS_KEY);
+    if (legacyRaw !== null) {
+      const legacyResult = expandedSectionsSchema.safeParse(parseStoredValue(legacyRaw));
+      if (legacyResult.success) {
+        const migrated = { ...DEFAULT_EXPANDED_SECTIONS, ...legacyResult.data };
+        return migratePreference(scopedKey, migrated);
       }
     }
   } catch { /* SSR / incognito */ }
@@ -952,5 +1094,12 @@ export function loadExpandedSections(projectId?: string): ExpandedSections {
 }
 
 export function saveExpandedSections(sections: ExpandedSections, projectId?: string): void {
-  try { localStorage.setItem(buildProductionScopedPreferenceKey(SECTIONS_KEY, projectId), JSON.stringify(sections)); } catch { /* noop */ }
+  try {
+    const parsedResult = expandedSectionsSchema.safeParse(sections);
+    if (!parsedResult.success) return;
+    localStorage.setItem(
+      buildProductionScopedPreferenceKey(SECTIONS_KEY, projectId),
+      JSON.stringify(buildPreferenceEnvelope(parsedResult.data)),
+    );
+  } catch { /* noop */ }
 }

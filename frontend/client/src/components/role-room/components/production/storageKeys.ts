@@ -6,6 +6,7 @@ export const PRODUCTION_STORAGE_KEYS = {
   manuscriptZoom: 'pmv:manuscriptZoom',
   manuscriptWorkflowPrefix: 'pmv:workflow:',
   manuscriptExpandedSections: 'pmv:expandedSections',
+  manuscriptExportAudit: 'pmv:exportAudit',
 } as const;
 
 export const buildProductionScopedPreferenceKey = (
