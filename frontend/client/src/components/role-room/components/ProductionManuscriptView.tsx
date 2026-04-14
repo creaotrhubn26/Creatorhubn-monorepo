@@ -1,27 +1,25 @@
-import { useState, useEffect, useRef, useMemo, useCallback, useReducer, memo, type FC, type ReactNode, type ChangeEvent, type MouseEvent } from "react";
-import { Box, Typography, Stack, IconButton, Select, MenuItem, FormControl, Tooltip, Collapse, Menu, TextField, InputAdornment, Divider, Dialog, DialogTitle, DialogContent, DialogActions, Button, Badge, Drawer, Chip, Checkbox, CircularProgress, Alert, useMediaQuery, useTheme, Skeleton } from "@mui/material";
+import { useState, useEffect, useRef, useMemo, useCallback, useReducer, memo, type FC, type ReactNode } from "react";
+import { Box, Typography, Stack, IconButton, Select, MenuItem, FormControl, Tooltip, Collapse, Menu, TextField, InputAdornment, Divider, Dialog, DialogTitle, DialogContent, DialogActions, Button, Badge, Drawer, Chip, Checkbox, CircularProgress, Alert, Skeleton } from "@mui/material";
 import { Theaters as SceneIcon, Videocam as CameraIcon, Lightbulb as LightIcon, Mic as MicIcon, ExpandMore as ExpandMoreIcon, ExpandLess as ExpandLessIcon, Movie as MovieIcon, Add as AddIcon, Close as CloseIcon, Image as ImageIcon, GridView as GridViewIcon, ViewList as ViewListIcon, PlayArrow as PlayIcon, Warning as WarningIcon, Print as PrintIcon, Check as CheckIcon, Edit as EditIcon, ZoomIn as ZoomInIcon, ZoomOut as ZoomOutIcon, Fullscreen as FullscreenIcon, Search as SearchIcon, DragIndicator as DragIcon, Download as DownloadIcon, FileDownload as ExportIcon, Pause as PauseIcon, Timer as TimerIcon, RecordVoiceOver as ReadThroughIcon, People as PeopleIcon, ChevronLeft as ChevronLeftIcon, ChevronRight as ChevronRightIcon, Person as PersonIcon, Notes as NoteIcon, FileCopy as FileCopyIcon, Bookmark as BookmarkIcon, Assignment as AssignmentIcon, Phone as PhoneIcon, Email as EmailIcon, VideoLibrary as VideoLibraryIcon, FiberManualRecord as LiveIcon, ViewWeek as StripboardIcon, CalendarMonth as CalendarIcon, Description as CallSheetIcon, Refresh as RefreshIcon, Settings as SettingsIcon, WbSunny as SunIcon, NightsStay as MoonIcon, WbTwilight as TwilightIcon, Home as HomeIcon, Park as ParkIcon, PushPin as PinIcon, FormatQuote as QuoteIcon, PhotoCamera as PhotoIcon, CameraAlt as CameraAltIcon, Inventory as InventoryIcon, TheaterComedy as TheaterIcon, Cancel as CancelIcon, CheckCircle as CheckCircleIcon, Chat as ChatIcon, CameraRoll as CameraRollIcon } from "@mui/icons-material";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { SceneBreakdown, DialogueLine, Act, Manuscript, CastingShot, ShotList, Candidate, Role, ShotType } from "../models/casting";
-import { computeStoryboardCoverageSummary } from "../models/derivedState";
 import type { StoryLogicState } from "../services/storyLogicService";
 import { ProductionEstimateDialog } from "./ProductionEstimateDialog";
 import { castingService } from "../services/castingService";
 import { manuscriptService } from "../services/manuscriptService";
-import { sceneNeedsService } from "../services/sceneNeedsService";
 import { getCandidatePhotoObjectPosition } from "../utils/candidatePhotoFocalPoint";
 import { speak as ttsSpeak, stopTTS, pauseTTS, resumeTTS, isTTSPlaying, assignCharacterVoices, preloadTTS, clearTTSCache, TTS_VOICES, TTS_LANGUAGES, type TTSVoice, type TTSLanguage } from "../services/ttsService";
 import LiveSetMode from "./production/LiveSetMode";
 import StripboardPanel from "./production/StripboardPanel";
 import ShootingDayPlanner from "./production/ShootingDayPlanner";
 import CallSheetGenerator from "./CallSheetGenerator";
-import { productionWorkflowService, generateCallSheetHTML, downloadCallSheetPDF, DEFAULT_CALL_SHEET_OPTIONS, type CallSheet, type ShootingDay, type LiveSetStatus } from "./production";
+import { productionWorkflowService, generateCallSheetHTML, downloadCallSheetPDF, DEFAULT_CALL_SHEET_OPTIONS, type ShootingDay } from "./production";
 import AddShotDialog, { type AddShotDialogCreatePayload } from "./production/AddShotDialog";
 import SceneStoryboardDialog from "./production/SceneStoryboardDialog";
 import ProductionNotesPanel from "./production/ProductionNotesPanel";
-import { addShotReducer, deriveSceneStatus, loadZoomPreference, saveZoomPreference, loadFullscreenPreference, saveFullscreenPreference, selectedMapToggle, selectedMapFromIds, selectedMapSize, selectedMapHas, selectedMapIds, EMPTY_SELECTION, DEFAULT_FILTERS, workflowReducer, INITIAL_WORKFLOW_STATE, loadWorkflowPreference, saveWorkflowPreference, EMPTY_CHECKLIST, deriveReadinessScore, searchReducer, INITIAL_SEARCH_STATE, inspectorReducer, INITIAL_INSPECTOR_STATE, loadExpandedSections, saveExpandedSections, buildDefaultShotMeta, metaToShotProperties, shotPropertiesToMeta, DEFAULT_SHOT_PROPERTIES, type NoteType, type ProductionNotes, type ShotSearchResult, type DerivedSceneStatus, type SelectedMap, type SceneFilters, type WorkflowUIState, type CallSheetRef, type BulkShotTemplate, type ChecklistKey, type SceneChecklist, type SearchSource, type ShotCafeFilm, type ReferenceImageResult, type ShotMeta as _ShotMeta, type ShotMetadataMap, type ShotPreset } from "./production/types";
+import { addShotReducer, deriveSceneStatus, loadZoomPreference, saveZoomPreference, loadFullscreenPreference, saveFullscreenPreference, selectedMapSize, selectedMapHas, selectedMapIds, EMPTY_SELECTION, DEFAULT_FILTERS, workflowReducer, INITIAL_WORKFLOW_STATE, loadWorkflowPreference, saveWorkflowPreference, EMPTY_CHECKLIST, deriveReadinessScore, inspectorReducer, INITIAL_INSPECTOR_STATE, loadExpandedSections, saveExpandedSections, buildDefaultShotMeta, metaToShotProperties, shotPropertiesToMeta, DEFAULT_SHOT_PROPERTIES, type NoteType, type ProductionNotes, type ShotSearchResult, type DerivedSceneStatus, type SceneFilters, type WorkflowUIState, type CallSheetRef, type BulkShotTemplate, type ChecklistKey, type SceneChecklist, type SearchSource, type ShotMeta as _ShotMeta, type ShotMetadataMap } from "./production/types";
 import { useSceneHistory } from "./production/useSceneHistory";
 import { useEquipmentInventory } from "./production/useEquipmentInventory";
 import GlobalMentionHelper from "./shared/GlobalMentionHelper";
@@ -30,115 +28,30 @@ import {
   buildSceneStoryboardCandidates,
   clearStoryboardLinkFromShot,
   createSceneStoryboardFrameFromShot,
-  loadStoryboardLibraryItemsForProject,
-  resolveStoryboardShotLink,
   syncShotListWithSceneStoryboard,
   type StoryboardSeedCandidate,
 } from "../services/storyboardLibraryService";
-
-// ============================================
-// 7-TIER RESPONSIVE SYSTEM
-// ============================================
-type ScreenTier = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '4k';
-
-const useScreenTier = (): { tier: ScreenTier; isMobile: boolean; isTablet: boolean; isDesktop: boolean; is4K: boolean; breakpointSpacing: number } => {
-  const theme = useTheme();
-  const isXs = useMediaQuery('(max-width:599px)');
-  const isSm = useMediaQuery('(min-width:600px) and (max-width:899px)');
-  const isMd = useMediaQuery('(min-width:900px) and (max-width:1199px)');
-  const isLg = useMediaQuery('(min-width:1200px) and (max-width:1535px)');
-  const isXl = useMediaQuery('(min-width:1536px) and (max-width:1919px)');
-  const isXxl = useMediaQuery('(min-width:1920px) and (max-width:2559px)');
-  const is4K = useMediaQuery('(min-width:2560px)');
-
-  const tier: ScreenTier = is4K ? '4k' : isXxl ? 'xxl' : isXl ? 'xl' : isLg ? 'lg' : isMd ? 'md' : isSm ? 'sm' : 'xs';
-  const isMobile = tier === 'xs' || tier === 'sm';
-  const isTablet = tier === 'md';
-  const isDesktop = tier === 'lg' || tier === 'xl' || tier === 'xxl' || tier === '4k';
-  // Use theme spacing and isXs for fine-grained responsive control
-  const breakpointSpacing = isXs ? theme.spacing(0.5) as unknown as number : theme.spacing(1) as unknown as number;
-
-  return { tier, isMobile, isTablet, isDesktop, is4K, breakpointSpacing };
-};
-
-const getResponsiveValues = (tier: ScreenTier) => {
-  const values = {
-    xs: { 
-      titleFontSize: '10px', bodyFontSize: '11px', captionFontSize: '9px',
-      buttonSize: 'small' as const, iconSize: 14, spacing: 1, padding: 1, chipSize: 'small' as const,
-      sidebarWidth: 0, rightPanelWidth: 0, headerPx: 1.5, headerPy: 1, sceneThumbnailSize: 36,
-      sceneInfoFontSize: 11, searchInputFontSize: 12, filterChipPx: 1, filterChipPy: 0.25,
-    },
-    sm: { 
-      titleFontSize: '11px', bodyFontSize: '12px', captionFontSize: '10px',
-      buttonSize: 'small' as const, iconSize: 16, spacing: 1, padding: 1.5, chipSize: 'small' as const,
-      sidebarWidth: 220, rightPanelWidth: 260, headerPx: 2, headerPy: 1.5, sceneThumbnailSize: 40,
-      sceneInfoFontSize: 11, searchInputFontSize: 12, filterChipPx: 1.25, filterChipPy: 0.5,
-    },
-    md: { 
-      titleFontSize: '12px', bodyFontSize: '12px', captionFontSize: '10px',
-      buttonSize: 'small' as const, iconSize: 18, spacing: 1.5, padding: 1.5, chipSize: 'small' as const,
-      sidebarWidth: 260, rightPanelWidth: 300, headerPx: 2.5, headerPy: 1.5, sceneThumbnailSize: 40,
-      sceneInfoFontSize: 12, searchInputFontSize: 12, filterChipPx: 1.5, filterChipPy: 0.5,
-    },
-    lg: { 
-      titleFontSize: '14px', bodyFontSize: '13px', captionFontSize: '11px',
-      buttonSize: 'small' as const, iconSize: 20, spacing: 2, padding: 2, chipSize: 'small' as const,
-      sidebarWidth: 300, rightPanelWidth: 380, headerPx: 3, headerPy: 2, sceneThumbnailSize: 44,
-      sceneInfoFontSize: 12, searchInputFontSize: 13, filterChipPx: 1.5, filterChipPy: 0.5,
-    },
-    xl: { 
-      titleFontSize: '14px', bodyFontSize: '13px', captionFontSize: '11px',
-      buttonSize: 'medium' as const, iconSize: 20, spacing: 2, padding: 2, chipSize: 'small' as const,
-      sidebarWidth: 320, rightPanelWidth: 400, headerPx: 3, headerPy: 2, sceneThumbnailSize: 48,
-      sceneInfoFontSize: 13, searchInputFontSize: 13, filterChipPx: 1.5, filterChipPy: 0.5,
-    },
-    xxl: { 
-      titleFontSize: '15px', bodyFontSize: '14px', captionFontSize: '12px',
-      buttonSize: 'medium' as const, iconSize: 22, spacing: 2, padding: 2, chipSize: 'medium' as const,
-      sidebarWidth: 340, rightPanelWidth: 420, headerPx: 3, headerPy: 2, sceneThumbnailSize: 52,
-      sceneInfoFontSize: 13, searchInputFontSize: 14, filterChipPx: 1.5, filterChipPy: 0.5,
-    },
-    '4k': { 
-      titleFontSize: '18px', bodyFontSize: '16px', captionFontSize: '14px',
-      buttonSize: 'large' as const, iconSize: 26, spacing: 3, padding: 3, chipSize: 'medium' as const,
-      sidebarWidth: 400, rightPanelWidth: 500, headerPx: 4, headerPy: 3, sceneThumbnailSize: 60,
-      sceneInfoFontSize: 15, searchInputFontSize: 16, filterChipPx: 2, filterChipPy: 0.75,
-    },
-  };
-  return values[tier];
-};
-
-const toDisplayString = (value: unknown, fallback = ''): string => {
-  if (typeof value === 'string') return value;
-  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
-  return fallback;
-};
-
-const toOptionalNumber = (value: unknown): number | undefined => {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'string') {
-    const parsed = Number.parseFloat(value);
-    return Number.isFinite(parsed) ? parsed : undefined;
-  }
-  return undefined;
-};
-
-const toSceneNumber = (value: unknown): number | undefined => {
-  const parsed = toOptionalNumber(value);
-  return parsed === undefined ? undefined : Math.trunc(parsed);
-};
-
-const toTimestamp = (value: unknown): number => {
-  const raw = toDisplayString(value);
-  const timestamp = raw ? new Date(raw).getTime() : 0;
-  return Number.isFinite(timestamp) ? timestamp : 0;
-};
-
-const toFontNumber = (value: unknown, fallback = 13): number => {
-  const parsed = toOptionalNumber(value);
-  return parsed ?? fallback;
-};
+import {
+  getProductionManuscriptResponsiveValues,
+  toDisplayString,
+  toFontNumber,
+  toSceneNumber,
+  useProductionManuscriptScreenTier,
+} from "./production/manuscript/productionManuscriptUi";
+import { buildProductionCallSheet } from "./production/manuscript/callSheetBuilder";
+import { useLiveSetSync } from "./production/manuscript/useLiveSetSync";
+import { useProductionManuscriptShortcuts } from "./production/manuscript/useProductionManuscriptShortcuts";
+import { useReadThroughController } from "./production/manuscript/useReadThroughController";
+import { useReferenceSearch } from "./production/manuscript/useReferenceSearch";
+import { useSceneListQuery } from "./production/manuscript/useSceneListQuery";
+import { useSceneNeeds } from "./production/manuscript/useSceneNeeds";
+import { useSceneSelection } from "./production/manuscript/useSceneSelection";
+import { useSceneTemplates } from "./production/manuscript/useSceneTemplates";
+import { useShotLists } from "./production/manuscript/useShotLists";
+import { useShotPresets } from "./production/manuscript/useShotPresets";
+import { useStoryboardShotLinks } from "./production/manuscript/useStoryboardShotLinks";
+import { useTimelinePlayback } from "./production/manuscript/useTimelinePlayback";
+import { useTtsReadThrough } from "./production/manuscript/useTtsReadThrough";
 
 interface ProductionManuscriptViewProps {
   manuscript: Manuscript;
@@ -465,8 +378,8 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   onClose,
 }) => {
   // 7-Tier Responsive
-  const { tier, isMobile, isTablet, isDesktop, is4K } = useScreenTier();
-  const responsive = getResponsiveValues(tier);
+  const { tier, isMobile, isTablet, isDesktop, is4K } = useProductionManuscriptScreenTier();
+  const responsive = getProductionManuscriptResponsiveValues(tier);
   const responsiveBodyFontSize = toFontNumber(responsive.bodyFontSize);
   
   // Desktop/4K-specific layout adjustments — used for responsive container sizing
@@ -483,7 +396,7 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   
   const [selectedScene, setSelectedScene] = useState<SceneBreakdown | null>(scenes[0] || null);
   const [selectedShot, setSelectedShot] = useState<CastingShot | null>(null);
-  const [shotLists, setShotLists] = useState<ShotList[]>([]);
+  const { shotLists, setShotLists, getShotsForScene } = useShotLists(projectId);
   const [sceneStoryboardDialog, setSceneStoryboardDialog] = useState<{
     sceneId: string;
     activeFrameIndex?: number;
@@ -499,20 +412,35 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   const [sceneToDelete, setSceneToDelete] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showExportDialog, setShowExportDialog] = useState(false);
-  const [readThroughMode, setReadThroughMode] = useState(false);
-  const [readThroughPlaying, setReadThroughPlaying] = useState(false);
-  const [readThroughCurrentLine, setReadThroughCurrentLine] = useState(0);
-  const [readThroughStartTime, setReadThroughStartTime] = useState<number | null>(null);
-  const [readThroughNotes, setReadThroughNotes] = useState<Record<number, string>>({});
+  const {
+    readThroughMode,
+    setReadThroughMode,
+    readThroughPlaying,
+    setReadThroughPlaying,
+    readThroughCurrentLine,
+    setReadThroughCurrentLine,
+    readThroughStartTime,
+    setReadThroughStartTime,
+    readThroughNotes,
+    setReadThroughNotes,
+  } = useReadThroughController();
 
   // TTS (Text-to-Speech) state — multilingual voice integration
-  const [ttsEnabled, setTtsEnabled] = useState(true);
-  const [ttsVoice, setTtsVoice] = useState<TTSVoice>('nova');
-  const [ttsLanguage, setTtsLanguage] = useState<TTSLanguage | ''>('');
-  const [ttsSpeed, setTtsSpeed] = useState(1.0);
-  const [ttsCharacterVoices, setTtsCharacterVoices] = useState<Record<string, TTSVoice>>({});
-  const [ttsUseCharacterVoices, setTtsUseCharacterVoices] = useState(true);
-  const ttsPlayingRef = useRef(false);
+  const {
+    ttsEnabled,
+    setTtsEnabled,
+    ttsVoice,
+    setTtsVoice,
+    ttsLanguage,
+    setTtsLanguage,
+    ttsSpeed,
+    setTtsSpeed,
+    ttsCharacterVoices,
+    setTtsCharacterVoices,
+    ttsUseCharacterVoices,
+    setTtsUseCharacterVoices,
+    ttsPlayingRef,
+  } = useTtsReadThrough();
   const [showTalentPanel, setShowTalentPanel] = useState(false);
   const [sceneCandidates, setSceneCandidates] = useState<Candidate[]>([]);
   const [projectRoles, setProjectRoles] = useState<Role[]>([]);
@@ -531,23 +459,15 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   // Add Shot Dialog — FSM via useReducer (all dialog state in one place)
   const [addShotState, addShotDispatch] = useReducer(addShotReducer, { open: false });
 
-  // Timeline state — timelineCurrentTime is the single source of truth
-  const [timelineCurrentTime, setTimelineCurrentTime] = useState(0); // in seconds (throttled for UI)
-  const [timelineIsPlaying, setTimelineIsPlaying] = useState(false);
-  const [timelineZoom, setTimelineZoom] = useState(1); // 1 = normal, 2 = 2x zoom
-  const [timelineViewMode, setTimelineViewMode] = useState<'timeline' | 'grid' | 'list'>('timeline');
-
-  // Playhead perf refs — DOM-direct updates, no re-render per frame
-  const timelineRef = useRef<HTMLDivElement | null>(null);
-  const playheadRef = useRef<HTMLDivElement | null>(null);
-  const rafIdRef = useRef<number | null>(null);
-  const lastTsRef = useRef<number | null>(null);
-  const currentTimeRef = useRef(0);
-
   // Undo/Redo — patch-based command pattern (replaces full-snapshot history)
   const { pushPatch, undo: undoPatch, redo: redoPatch, canUndo: _canUndo, canRedo: _canRedo, lastPatchLabel: _lastPatchLabel, reset: resetHistory } = useSceneHistory();
-  const [selectedScenes, setSelectedScenes] = useState<SelectedMap>(EMPTY_SELECTION);
-  const [batchMode, setBatchMode] = useState(false);
+  const {
+    selectedScenes,
+    setSelectedScenes,
+    batchMode,
+    setBatchMode,
+    toggleSceneSelection,
+  } = useSceneSelection();
 
   // Drag-and-drop sensors
   const sensors = useSensors(
@@ -564,7 +484,7 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   const [filters, setFilters] = useState<SceneFilters>(DEFAULT_FILTERS);
   
   // Scene needs tracking (loaded from DB, synced with scenes)
-  const [sceneNeeds, setSceneNeeds] = useState<Record<string, { cam: boolean; light: boolean; sound: boolean }>>({});
+  const { sceneNeeds, setSceneNeeds, flushSceneNeeds } = useSceneNeeds(projectId, scenes);
 
   // Scene tagging system (synced with scenes — auto-adds/removes keys)
   const [sceneTags, setSceneTags] = useState<Record<string, string[]>>({});
@@ -614,7 +534,6 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   const [sceneChecklists, setSceneChecklists] = useState<Record<string, SceneChecklist>>({});
 
   // 5. Timeline ↔ Live Set Connection
-  const [liveSetStatus, setLiveSetStatus] = useState<LiveSetStatus | null>(null);
   const [isLiveSetConnected, setIsLiveSetConnected] = useState(false);
   
   // 6. Shot Line Coverage Tracking (data, not UI)
@@ -648,9 +567,14 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   );
 
   // Scene templates & duplication
-  const [sceneTemplates, setSceneTemplates] = useState<Record<string, SceneBreakdown>>({});
-  const [showSceneTemplate, setShowSceneTemplate] = useState(false);
-  const [templateName, setTemplateName] = useState('');
+  const {
+    sceneTemplates,
+    setSceneTemplates,
+    showSceneTemplate,
+    setShowSceneTemplate,
+    templateName,
+    setTemplateName,
+  } = useSceneTemplates();
 
   // Search query filtering is now integrated into getSortedAndFilteredScenes
   
@@ -661,30 +585,23 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   const [shotSelectorOpen, setShotSelectorOpen] = useState(false);
   const [shotSelectorAnchor, setShotSelectorAnchor] = useState<HTMLElement | null>(null);
   
-  // ============================================
-  // REFERENCE SEARCH UI — single reducer (replaces ~9 useState)
-  // ============================================
-  const [searchUI, dispatchSearch] = useReducer(searchReducer, INITIAL_SEARCH_STATE);
-
-  // Auto-trigger search when reference panel opens
-  useEffect(() => {
-    if (searchUI.open && selectedScene) {
-      const initialQuery = `${selectedScene.locationName || 'scene'} ${selectedScene.timeOfDay?.toLowerCase() || 'day'} cinematic`;
-      dispatchSearch({ type: 'SET_QUERY', query: initialQuery });
-      searchReferenceImages(initialQuery);
-    }
-  }, [searchUI.open, selectedScene]);
-
-  // ---- Derived convenience aliases (backward-compatible reads) ----
-  const referenceSearchOpen = searchUI.open;
-  const referenceSearchQuery = searchUI.query;
-  const referenceSearchResults = searchUI.imageResults;
-  const referenceSearchLoading = searchUI.loading;
-  const uploadedReferences = searchUI.uploadedRefs;
-  const searchSource = searchUI.source;
-  const shotCafeResults = searchUI.filmResults;
-  const selectedFilm = searchUI.selectedFilm;
-  const centerPanelReference = searchUI.centerReference;
+  const {
+    dispatchSearch,
+    referenceSearchOpen,
+    referenceSearchQuery,
+    referenceSearchResults,
+    referenceSearchLoading,
+    uploadedReferences,
+    searchSource,
+    shotCafeResults,
+    selectedFilm,
+    centerPanelReference,
+    searchShotCafe,
+    searchByCinematographer,
+    loadFilmFrames,
+    searchReferenceImages,
+    handleReferenceUpload,
+  } = useReferenceSearch(selectedScene);
   
   // ============================================
   // INSPECTOR/EDITING UI — single reducer (replaces 4 useState)
@@ -717,263 +634,19 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   const sceneRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Get shots for a scene — memoized to avoid stale closure bugs
-  const getShotsForScene = useCallback((sceneId: string): CastingShot[] => {
-    const shotList = shotLists.find(sl => sl.sceneId === sceneId);
-    return shotList?.shots || [];
-  }, [shotLists]);
-
   // Get selected scene shots with metadata
   const selectedSceneShots = useMemo(() => {
     if (!selectedScene) return [];
     return getShotsForScene(selectedScene.id);
   }, [selectedScene, getShotsForScene]);
-  const [projectStoryboardLibraryItems, setProjectStoryboardLibraryItems] = useState<
-    Awaited<ReturnType<typeof loadStoryboardLibraryItemsForProject>>
-  >([]);
-  useEffect(() => {
-    let cancelled = false;
-    const loadLibraryItems = () => {
-      void loadStoryboardLibraryItemsForProject(projectId, String(projectId || 'global')).then((items) => {
-        if (!cancelled) {
-          setProjectStoryboardLibraryItems(items);
-        }
-      });
-    };
-    loadLibraryItems();
-    window.addEventListener('role-room:storyboard-library-updated', loadLibraryItems);
-    return () => {
-      cancelled = true;
-      window.removeEventListener('role-room:storyboard-library-updated', loadLibraryItems);
-    };
-  }, [projectId]);
-  const selectedSceneStoryboardCandidates = useMemo(
-    () => (selectedScene ? buildSceneStoryboardCandidates(selectedScene, projectStoryboardLibraryItems) : []),
-    [projectStoryboardLibraryItems, selectedScene],
-  );
-  const selectedShotStoryboardLink = useMemo(
-    () => (selectedShot && selectedScene
-      ? resolveStoryboardShotLink(selectedShot, selectedScene, projectStoryboardLibraryItems)
-      : null),
-    [projectStoryboardLibraryItems, selectedScene, selectedShot],
-  );
-  const selectedSceneStoryboardCoverage = useMemo(
-    () => (selectedScene ? computeStoryboardCoverageSummary(selectedSceneShots, selectedScene) : null),
-    [selectedScene, selectedSceneShots],
-  );
-  const selectedSceneStoryboardFirstLinkedFrameIndex = useMemo(() => {
-    if (!selectedScene) {
-      return undefined;
-    }
-    const sceneFrames = Array.isArray(selectedScene.storyboardFrames) ? selectedScene.storyboardFrames : [];
-    const linkedFrameId = selectedSceneShots.find((shot) => (
-      typeof shot.storyboardFrameId === 'string'
-      && sceneFrames.some((frame) => frame.id === shot.storyboardFrameId)
-    ))?.storyboardFrameId;
-    if (!linkedFrameId) {
-      return undefined;
-    }
-    const frameIndex = sceneFrames.findIndex((frame) => frame.id === linkedFrameId);
-    return frameIndex >= 0 ? frameIndex : undefined;
-  }, [selectedScene, selectedSceneShots]);
-  const selectedSceneStoryboardFirstMissingFrameIndex = useMemo(() => {
-    if (!selectedScene || !selectedSceneStoryboardCoverage?.missingFrameIds.length) {
-      return undefined;
-    }
-    const sceneFrames = Array.isArray(selectedScene.storyboardFrames) ? selectedScene.storyboardFrames : [];
-    const frameIndex = sceneFrames.findIndex((frame) => frame.id === selectedSceneStoryboardCoverage.missingFrameIds[0]);
-    return frameIndex >= 0 ? frameIndex : undefined;
-  }, [selectedScene, selectedSceneStoryboardCoverage]);
-
-  // ============================================
-  // REFERENCE SEARCH — race-safe, backend-proxied
-  // ============================================
-
-  /** Monotonic counter to detect stale search results */
-  const searchQueryIdRef = useRef(0);
-
-  /** Max uploaded references to prevent memory bloat */
-  const MAX_UPLOADED_REFS = 20;
-
-  // Search shot.cafe for film references (via backend proxy)
-  const searchShotCafe = useCallback(async (query: string): Promise<ShotCafeFilm[]> => {
-    try {
-      const response = await fetch(
-        `/api/shotcafe/search?z=nav&q=${encodeURIComponent(query)}`
-      );
-      if (!response.ok) throw new Error('shot.cafe search failed');
-      const data = await response.json();
-      return Array.isArray(data) ? data.map((film: any) => ({
-        id: `shotcafe-${film.project || film.pslug}`,
-        title: film.title,
-        year: film.year,
-        slug: film.pslug || film.slug,
-        imageCount: film.icount || 0,
-        thumbnail: `/api/shotcafe/image-proxy?url=${encodeURIComponent(`https://shot.cafe/images/t/${film.slug}`)}`,
-        url: `https://shot.cafe/movie/${film.pslug}`,
-        cinematographer: film.dp,
-      })) : [];
-    } catch (error) {
-      console.error('shot.cafe search error:', error);
-      return [];
-    }
-  }, []);
-
-  // Search by cinematographer on shot.cafe (via backend proxy)
-  const searchByCinematographer = useCallback(async (name: string) => {
-    try {
-      const response = await fetch(
-        `/api/shotcafe/search?z=cinematographers&q=${encodeURIComponent(name)}`
-      );
-      if (!response.ok) throw new Error('Cinematographer search failed');
-      const data = await response.json();
-      return Array.isArray(data) ? data : [];
-    } catch (error) {
-      console.error('Cinematographer search error:', error);
-      return [];
-    }
-  }, []);
-
-  // Load film frames from shot.cafe (via backend proxy)
-  const loadFilmFrames = useCallback(async (slug: string, title: string) => {
-    try {
-      const response = await fetch(`/api/shotcafe/movie/${slug}`);
-      if (response.ok) {
-        const data = await response.json();
-        const frames = data.frames ? data.frames.map((frame: any) => ({
-          id: frame.id,
-          url: frame.proxyUrl || frame.url,
-          thumbnailUrl: frame.proxyUrl || frame.thumbnailUrl,
-        })) : [];
-        
-        dispatchSearch({ type: 'SELECT_FILM', film: {
-          title,
-          slug,
-          frames: frames.length > 0 ? frames : Array.from({ length: 12 }, (_, i) => ({
-            id: `frame-${slug}-${i + 1}`,
-            url: `/api/shotcafe/image-proxy?url=${encodeURIComponent(`https://shot.cafe/images/${slug}/${i + 1}.jpg`)}`,
-            thumbnailUrl: `/api/shotcafe/image-proxy?url=${encodeURIComponent(`https://shot.cafe/images/${slug}/${i + 1}.jpg`)}`,
-          })),
-        }});
-      } else {
-        const frameUrls = Array.from({ length: 12 }, (_, i) => ({
-          id: `frame-${slug}-${i + 1}`,
-          url: `/api/shotcafe/image-proxy?url=${encodeURIComponent(`https://shot.cafe/images/${slug}/${i + 1}.jpg`)}`,
-          thumbnailUrl: `/api/shotcafe/image-proxy?url=${encodeURIComponent(`https://shot.cafe/images/${slug}/${i + 1}.jpg`)}`,
-        }));
-        dispatchSearch({ type: 'SELECT_FILM', film: { title, slug, frames: frameUrls }});
-      }
-    } catch (error) {
-      console.error('Failed to load film frames:', error);
-    }
-  }, []);
-
-  // Search Unsplash/picsum via backend proxy (no API key in frontend)
-  const searchImages = useCallback(async (query: string): Promise<ReferenceImageResult[]> => {
-    try {
-      const response = await fetch(
-        `/api/unsplash/search?q=${encodeURIComponent(query)}&per_page=12`
-      );
-      if (!response.ok) throw new Error('Image search failed');
-      const data = await response.json();
-      return Array.isArray(data.results) ? data.results : [];
-    } catch (error) {
-      console.error('Image search error:', error);
-      // Last-resort client-side placeholders
-      return Array.from({ length: 6 }, (_, i) => ({
-        id: `picsum-${i}`,
-        url: `https://picsum.photos/seed/${encodeURIComponent(query)}${i}/400/225`,
-        thumbnailUrl: `https://picsum.photos/seed/${encodeURIComponent(query)}${i}/150/100`,
-        source: 'picsum' as const,
-        attribution: 'Placeholder Image',
-      }));
-    }
-  }, []);
-
-  // Race-safe combined search — stale results are discarded
-  const searchSourceRef = useRef(searchSource);
-  searchSourceRef.current = searchSource;
-
-  const searchReferenceImages = useCallback(async (query: string) => {
-    const q = query.trim();
-    if (!q) return;
-
-    const queryId = ++searchQueryIdRef.current;
-    dispatchSearch({ type: 'SEARCH_START' });
-
-    const src = searchSourceRef.current;
-
-    const filmPromise = (src === 'all' || src === 'shotcafe')
-      ? searchShotCafe(q).catch(() => [] as ShotCafeFilm[])
-      : Promise.resolve([] as ShotCafeFilm[]);
-
-    const imgPromise = (src === 'all' || src === 'unsplash')
-      ? searchImages(q).catch(() => [] as ReferenceImageResult[])
-      : Promise.resolve([] as ReferenceImageResult[]);
-
-    const [filmResults, imageResults] = await Promise.all([filmPromise, imgPromise]);
-
-    // Stale guard: discard if a newer search was started
-    if (queryId !== searchQueryIdRef.current) return;
-
-    dispatchSearch({ type: 'SEARCH_DONE', imageResults, filmResults });
-  }, [searchShotCafe, searchImages]);
-
-  // Handle file upload for references (ObjectURL + size/type/dedupe guard)
-  const objectUrlsRef = useRef<string[]>([]);
-
-  // Revoke blob URLs on unmount to prevent memory leaks
-  useEffect(() => {
-    return () => {
-      objectUrlsRef.current.forEach(url => URL.revokeObjectURL(url));
-    };
-  }, []);
-
-  const handleReferenceUpload = useCallback((event: ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files;
-    if (!files) return;
-
-    const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
-    const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
-
-    Array.from(files).forEach(file => {
-      // Validate type
-      if (!ALLOWED_TYPES.includes(file.type)) {
-        console.warn(`Skipped "${file.name}": unsupported type ${file.type}`);
-        return;
-      }
-      // Validate size
-      if (file.size > MAX_FILE_SIZE) {
-        console.warn(`Skipped "${file.name}": exceeds ${MAX_FILE_SIZE / 1024 / 1024}MB limit`);
-        return;
-      }
-      // Limit total uploads
-      if (searchUI.uploadedRefs.length >= MAX_UPLOADED_REFS) {
-        console.warn(`Upload limit (${MAX_UPLOADED_REFS}) reached`);
-        return;
-      }
-      // Use ObjectURL instead of DataURL to avoid huge strings in state
-      const url = URL.createObjectURL(file);
-      objectUrlsRef.current.push(url);
-      dispatchSearch({ type: 'ADD_UPLOADED_REF', url });
-    });
-  }, [searchUI.uploadedRefs.length]);
-
-  // Load shot lists
-  useEffect(() => {
-    const loadShotLists = async () => {
-      try {
-        // initializeMockData is singleton-safe — multiple callers share one in-flight promise
-        await castingService.initializeMockData();
-        const lists = await castingService.getShotLists(projectId);
-        setShotLists(Array.isArray(lists) ? lists : []);
-      } catch (error) {
-        console.error('Error loading shot lists:', error);
-        setShotLists([]);
-      }
-    };
-    if (projectId) loadShotLists();
-  }, [projectId]);
+  const {
+    projectStoryboardLibraryItems,
+    selectedSceneStoryboardCandidates,
+    selectedShotStoryboardLink,
+    selectedSceneStoryboardCoverage,
+    selectedSceneStoryboardFirstLinkedFrameIndex,
+    selectedSceneStoryboardFirstMissingFrameIndex,
+  } = useStoryboardShotLinks(projectId, selectedScene, selectedShot, selectedSceneShots);
 
   // ============================================
   // WORKFLOW GAP FIX #1: Load Shooting Days for dynamic Live Set selection
@@ -1004,45 +677,15 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
     if (projectId) loadShootingDays();
   }, [projectId]);
 
-  // ============================================
-  // WORKFLOW GAP FIX #5: Sync Timeline with Live Set Status
-  // Non-overlapping polling loop — uses refs to avoid dep-churn restarts
-  // ============================================
-  const scenesRef = useRef(scenes);
-  scenesRef.current = scenes;
-  const selectedSceneRef = useRef(selectedScene);
-  selectedSceneRef.current = selectedScene;
   const followLiveScene = workflowUI.followLiveScene;
-
-  useEffect(() => {
-    if (!isLiveSetConnected || !projectId) return;
-    let cancelled = false;
-
-    const loop = async () => {
-      while (!cancelled) {
-        try {
-          const status = await productionWorkflowService.getLiveSetStatus(projectId);
-          if (cancelled) break;
-          setLiveSetStatus(status);
-
-          // Only auto-follow when the user has opted in
-          if (followLiveScene && status.currentScene) {
-            const cs = scenesRef.current.find(s => s.id === status.currentScene);
-            if (cs && cs.id !== selectedSceneRef.current?.id) {
-              setSelectedScene(cs);
-            }
-          }
-        } catch (error) {
-          console.error('Error syncing live set status:', error);
-        }
-        // Wait before next poll — non-overlapping (next request starts after previous completes)
-        await new Promise(r => setTimeout(r, 5000));
-      }
-    };
-
-    loop();
-    return () => { cancelled = true; };
-  }, [isLiveSetConnected, projectId, followLiveScene]);
+  const liveSetStatus = useLiveSetSync({
+    projectId,
+    isConnected: isLiveSetConnected,
+    followLiveScene,
+    scenes,
+    selectedSceneId: selectedScene?.id,
+    onSceneFollow: setSelectedScene,
+  });
 
   // ============================================
   // WORKFLOW GAP FIX #4: Initialize scene checklists — add + prune
@@ -1085,28 +728,6 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
         }
       }
       // Remove keys for deleted scenes
-      for (const id of Object.keys(next)) {
-        if (!sceneIds.has(id)) {
-          delete next[id];
-          changed = true;
-        }
-      }
-      return changed ? next : prev;
-    });
-  }, [scenes]);
-
-  // Sync sceneNeeds with scenes (add defaults for new, remove deleted)
-  useEffect(() => {
-    setSceneNeeds(prev => {
-      const sceneIds = new Set(scenes.map(s => s.id));
-      let changed = false;
-      const next = { ...prev };
-      for (const s of scenes) {
-        if (!next[s.id]) {
-          next[s.id] = { cam: false, light: false, sound: false };
-          changed = true;
-        }
-      }
       for (const id of Object.keys(next)) {
         if (!sceneIds.has(id)) {
           delete next[id];
@@ -1454,24 +1075,6 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
     debouncedSaveShotProps(shotProperties);
   }, [shotProperties, debouncedSaveShotProps]);
 
-  // Scene needs autosave (debounced callback)
-  const { debounced: debouncedSaveNeeds, flush: flushSceneNeeds } = useDebouncedCallback(
-    async (needs: typeof sceneNeeds) => {
-      if (Object.keys(needs).length === 0) return;
-      try {
-        await sceneNeedsService.saveSceneNeeds(projectId, needs);
-      } catch (e) {
-        console.error('Could not save scene needs:', e);
-      }
-    },
-    1500
-  );
-
-  // Trigger debounced save whenever sceneNeeds change
-  useEffect(() => {
-    debouncedSaveNeeds(sceneNeeds);
-  }, [sceneNeeds, debouncedSaveNeeds]);
-
   // Flush pending saves on unmount — data safety
   useEffect(() => {
     return () => {
@@ -1479,22 +1082,6 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
       flushSceneNeeds();
     };
   }, [flushShotProps, flushSceneNeeds]);
-  
-  // Load scene needs from database on mount
-  useEffect(() => {
-    const loadNeeds = async () => {
-      try {
-        const saved = await sceneNeedsService.getSceneNeeds(projectId);
-        if (saved && Object.keys(saved).length > 0) {
-          setSceneNeeds(saved);
-        }
-      } catch (e) {
-        console.error('Could not load scene needs:', e);
-      }
-    };
-    
-    loadNeeds();
-  }, [projectId]);
 
   // Manuscript zoom handlers — function declarations avoid TDZ issues during HMR
   function handleManuscriptZoomIn() {
@@ -1600,6 +1187,26 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
 
     return { blocks, totalDuration };
   }, [scenes, shotLists]);
+
+  const {
+    timelineRef,
+    playheadRef,
+    timelineCurrentTime,
+    timelineIsPlaying,
+    timelineZoom,
+    timelineViewMode,
+    handleTimelinePlay,
+    handleTimelineSeek,
+    handleTimelineZoomIn,
+    handleTimelineZoomOut,
+    handleTimelineViewChange,
+    formatTime,
+    getTotalDuration,
+    getOvertimeDuration,
+  } = useTimelinePlayback({
+    totalDuration: timelineData.totalDuration,
+    liveSetStatus,
+  });
 
   const selectedSceneMetadata = selectedScene ? getSceneMetadata(selectedScene) : null;
   const selectedSceneDialogue = selectedScene ? getSceneDialogue(selectedScene.id) : [];
@@ -1820,115 +1427,6 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
     setReadThroughCurrentLine(i => Math.max(i - 1, 0));
   }, []);
 
-  // ============================================
-  // PERF: GPU-accelerated playhead — DOM-direct via ref
-  // ============================================
-  const updatePlayheadDOM = useCallback((timeSec: number) => {
-    const el = playheadRef.current;
-    const container = timelineRef.current;
-    if (!el || !container) return;
-    const duration = Math.max(timelineData.totalDuration, 0.001);
-    const pct = Math.max(0, Math.min(1, timeSec / duration));
-    const x = pct * container.clientWidth;
-    el.style.transform = `translate3d(${x}px, 0, 0)`;
-  }, [timelineData.totalDuration]);
-
-  // Timeline handlers
-  const handleTimelinePlay = useCallback(() => {
-    setTimelineIsPlaying(p => !p);
-  }, []);
-
-  const handleTimelineSeek = useCallback((event: MouseEvent<HTMLDivElement>) => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    const clickX = event.clientX - rect.left;
-    const pct = Math.max(0, Math.min(1, clickX / rect.width));
-    const nextTime = pct * timelineData.totalDuration;
-    currentTimeRef.current = nextTime;
-    updatePlayheadDOM(nextTime);
-    setTimelineCurrentTime(nextTime);
-  }, [timelineData.totalDuration, updatePlayheadDOM]);
-
-  const handleTimelineZoomIn = () => {
-    setTimelineZoom(prev => Math.min(prev + 0.5, 4));
-  };
-
-  const handleTimelineZoomOut = () => {
-    setTimelineZoom(prev => Math.max(prev - 0.5, 0.5));
-  };
-
-  const handleTimelineViewChange = (mode: 'timeline' | 'grid' | 'list') => {
-    setTimelineViewMode(mode);
-  };
-
-  const formatTime = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-  };
-
-  const getTotalDuration = (): number => {
-    return timelineData.totalDuration;
-  };
-
-  const getOvertimeDuration = (): string => {
-    const standardDay = 8 * 60 * 60; // 8 hours in seconds
-    const overtime = timelineData.totalDuration - standardDay;
-    if (overtime <= 0) return '0:00';
-    const hours = Math.floor(overtime / 3600);
-    const mins = Math.floor((overtime % 3600) / 60);
-    return `${hours}:${String(mins).padStart(2, '0')}`;
-  };
-
-  // Auto-play timeline — rAF loop, DOM-direct playhead, throttled state for UI text
-  useEffect(() => {
-    if (!timelineIsPlaying) return;
-
-    const tick = (ts: number) => {
-      if (lastTsRef.current == null) lastTsRef.current = ts;
-      const dt = (ts - lastTsRef.current) / 1000;
-      lastTsRef.current = ts;
-
-      const duration = Math.max(timelineData.totalDuration, 0.001);
-      let nextTime = currentTimeRef.current + dt;
-
-      if (nextTime >= duration) {
-        nextTime = duration;
-        currentTimeRef.current = nextTime;
-        updatePlayheadDOM(nextTime);
-        setTimelineCurrentTime(nextTime);
-        setTimelineIsPlaying(false);
-        return; // stop loop
-      }
-
-      currentTimeRef.current = nextTime;
-      updatePlayheadDOM(nextTime);
-
-      // Throttle React state updates to ~4x/sec for time display
-      const quant = Math.round(nextTime * 4) / 4;
-      setTimelineCurrentTime(prev => (prev === quant ? prev : quant));
-
-      rafIdRef.current = requestAnimationFrame(tick);
-    };
-
-    rafIdRef.current = requestAnimationFrame(tick);
-    return () => {
-      if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
-      rafIdRef.current = null;
-      lastTsRef.current = null;
-    };
-  }, [timelineIsPlaying, timelineData.totalDuration, updatePlayheadDOM]);
-
-  // Live progress → playhead sync (only when NOT playing) — conflict-free
-  useEffect(() => {
-    if (timelineIsPlaying) return;
-    if (!liveSetStatus?.todayProgress) return;
-    const pct = liveSetStatus.todayProgress.completedSetups / Math.max(liveSetStatus.todayProgress.totalSetups, 1);
-    const nextTime = pct * timelineData.totalDuration;
-    currentTimeRef.current = nextTime;
-    updatePlayheadDOM(nextTime);
-    setTimelineCurrentTime(nextTime);
-  }, [liveSetStatus?.todayProgress, timelineIsPlaying, timelineData.totalDuration, updatePlayheadDOM]);
-
   // Production notes — save handler for <ProductionNotesPanel>
   const handleSaveProductionNote = useCallback((sceneId: string, noteType: NoteType, value: string) => {
     setProductionNotes(prev => ({
@@ -2003,9 +1501,14 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   };
 
   // Save shot settings as preset — ShotPreset model (camera + lighting + sound)
-  const [savedPresets, setSavedPresets] = useState<Record<string, ShotPreset>>({});
-  const [showSavePresetDialog, setShowSavePresetDialog] = useState(false);
-  const [presetName, setPresetName] = useState('');
+  const {
+    savedPresets,
+    setSavedPresets,
+    showSavePresetDialog,
+    setShowSavePresetDialog,
+    presetName,
+    setPresetName,
+  } = useShotPresets();
 
   const handleSaveAsPreset = () => {
     if (!presetName.trim() || !selectedShot?.id) return;
@@ -2324,9 +1827,10 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   }, [selectedScene, projectId, debouncedPersistShotList]);
 
   // Reference shot search — passed to <AddShotDialog>
-  // Race-safe: uses searchQueryIdRef to discard stale results
+  // Race-safe: uses a local monotonic counter to discard stale results
   // Results cache avoids redundant network calls for repeated queries
   const refSearchCacheRef = useRef<Map<string, ShotSearchResult[]>>(new Map());
+  const refSearchQueryIdRef = useRef(0);
 
   const handleSearchReferenceShots = useCallback(async (query: string): Promise<ShotSearchResult[]> => {
     const q = query.trim();
@@ -2337,13 +1841,13 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
     if (cached) return cached;
 
     // Race guard
-    const queryId = ++searchQueryIdRef.current;
+    const queryId = ++refSearchQueryIdRef.current;
 
     try {
       const shotCafeResults = await searchShotCafe(q);
 
       // Stale guard: discard if a newer search was started
-      if (queryId !== searchQueryIdRef.current) return [];
+      if (queryId !== refSearchQueryIdRef.current) return [];
 
       const results: ShotSearchResult[] = shotCafeResults.map((film: any) => ({
         id: film.id || `film-${film.slug}`,
@@ -2582,9 +2086,9 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
       setBatchMode(true);
       setSelectedScenes({ [sceneId]: true });
     } else {
-      setSelectedScenes(prev => selectedMapToggle(prev, sceneId));
+      toggleSceneSelection(sceneId);
     }
-  }, [batchMode]);
+  }, [batchMode, setBatchMode, setSelectedScenes, toggleSceneSelection]);
 
   const handleBatchDelete = useCallback(() => {
     const size = selectedMapSize(selectedScenes);
@@ -2651,65 +2155,17 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
     }));
   };
 
-  // Sorting and filtering — combines search, tag, needs, and sort
-  const getSortedAndFilteredScenes = (): SceneBreakdown[] => {
-    let result = [...scenes];
-
-    // Search filter
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      result = result.filter(scene =>
-        scene.sceneHeading?.toLowerCase().includes(query) ||
-        scene.locationName?.toLowerCase().includes(query) ||
-        scene.description?.toLowerCase().includes(query) ||
-        scene.characters?.some(char => char.toLowerCase().includes(query)) ||
-        toDisplayString(scene.sceneNumber).toLowerCase().includes(query)
-      );
-    }
-
-    // Filter by tags
-    if (selectedTags.size > 0) {
-      result = result.filter(scene => 
-        (sceneTags[scene.id] || []).some(tag => selectedTags.has(tag))
-      );
-    }
-
-    // Filter by scene needs
-    if (filters.missing.cam) {
-      result = result.filter(s => sceneNeeds[s.id]?.cam);
-    }
-    if (filters.missing.light) {
-      result = result.filter(s => sceneNeeds[s.id]?.light);
-    }
-    if (filters.missing.sound) {
-      result = result.filter(s => sceneNeeds[s.id]?.sound);
-    }
-
-    // Sort
-    result.sort((a, b) => {
-      let comparison = 0;
-      switch (sortBy) {
-        case 'number':
-          comparison = (toSceneNumber(a.sceneNumber) ?? 0) - (toSceneNumber(b.sceneNumber) ?? 0);
-          break;
-        case 'duration': {
-          const aDuration = shotLists.find(l => l.sceneId === a.id)?.shots.reduce((sum, shot) => sum + (shot.duration || 5), 0) || 0;
-          const bDuration = shotLists.find(l => l.sceneId === b.id)?.shots.reduce((sum, shot) => sum + (shot.duration || 5), 0) || 0;
-          comparison = aDuration - bDuration;
-          break;
-        }
-        case 'date':
-          comparison = toTimestamp(a.createdAt) - toTimestamp(b.createdAt);
-          break;
-        case 'name':
-          comparison = (a.sceneHeading || '').localeCompare(b.sceneHeading || '');
-          break;
-      }
-      return sortOrder === 'asc' ? comparison : -comparison;
-    });
-
-    return result;
-  };
+  const { getSortedAndFilteredScenes } = useSceneListQuery({
+    scenes,
+    searchQuery,
+    selectedTags,
+    sceneTags,
+    sceneNeeds,
+    filters,
+    sortBy,
+    sortOrder,
+    shotLists,
+  });
 
   // Scene duplication
   const handleDuplicateScene = (scene: SceneBreakdown) => {
@@ -2810,70 +2266,14 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
     URL.revokeObjectURL(url);
   };
 
-  const buildCallSheetForDay = useCallback((dayId?: string): CallSheet => {
-    const day = shootingDays.find((entry) => entry.id === dayId) ?? shootingDays[0];
-    const dayScenes = day?.scenes?.length
-      ? scenes.filter((scene) => day.scenes.includes(scene.id))
-      : scenes;
-    const daySceneIds = new Set(dayScenes.map((scene) => scene.id));
-    const dayShotLists = shotLists.filter((list) => daySceneIds.has(list.sceneId));
-    const sceneEquipment = dayScenes.flatMap((scene) => scene.metadata?.equipment ?? []);
-
-    return {
-      id: `call-sheet-${day?.id ?? 'draft'}-${Date.now()}`,
-      shootingDayId: day?.id ?? dayId ?? 'draft',
-      projectTitle: manuscript.title || 'Produksjon',
-      productionCompany: '',
-      director: '',
-      producer: '',
-      date: day?.date ?? new Date().toISOString().split('T')[0],
-      dayNumber: day?.dayNumber ?? Math.max(1, shootingDays.findIndex((entry) => entry.id === day?.id) + 1),
-      totalDays: Math.max(shootingDays.length, 1),
-      generalCallTime: day?.callTime ?? '08:00',
-      crewCallTimes: Object.entries(day?.crewCallTimes ?? {}).map(([id, callTime]) => ({
-        id,
-        name: id,
-        role: id,
-        department: 'Crew',
-        callTime,
-      })),
-      castCallTimes: Object.entries(day?.castCallTimes ?? {}).map(([id, callTime]) => ({
-        id,
-        name: id,
-        character: id,
-        callTime,
-        scenes: dayScenes.filter((scene) => scene.characters?.includes(id)).map((scene) => toDisplayString(scene.sceneNumber, scene.id)),
-      })),
-      scenes: dayScenes.map((scene) => {
-        const shots = dayShotLists.find((list) => list.sceneId === scene.id)?.shots ?? [];
-        const duration = shots.reduce((sum, shot) => sum + (shot.duration ?? 5), 0);
-        return {
-          sceneNumber: toDisplayString(scene.sceneNumber, scene.id),
-          description: scene.sceneHeading || scene.heading || scene.description || '',
-          location: scene.locationName || day?.location || '',
-          intExt: scene.intExt || '',
-          timeOfDay: scene.timeOfDay || '',
-          pages: scene.pageLength ?? 0,
-          cast: scene.characters ?? [],
-          estimatedTime: `${duration} min`,
-          notes: quickNotes[scene.id] || scene.description || undefined,
-        };
-      }),
-      locations: day
-        ? [{
-            name: day.location || 'Location',
-            address: day.locationAddress ?? '',
-          }]
-        : [],
-      equipment: Array.from(new Set([...(day?.equipmentNeeded ?? []), ...sceneEquipment])),
-      meals: day?.meals ?? [],
-      contacts: [],
-      notes: [day?.notes].filter((note): note is string => Boolean(note)),
-      weather: day?.weather,
-      createdAt: new Date().toISOString(),
-      version: 1,
-    };
-  }, [manuscript.title, quickNotes, scenes, shootingDays, shotLists]);
+  const buildCallSheetForDay = useCallback((dayId?: string) => buildProductionCallSheet({
+    manuscript,
+    scenes,
+    shotLists,
+    shootingDays,
+    quickNotes,
+    dayId,
+  }), [manuscript, quickNotes, scenes, shootingDays, shotLists]);
 
   // Call sheet generation
   const handleGenerateCallSheet = () => {
@@ -2908,123 +2308,37 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
     URL.revokeObjectURL(url);
   };
 
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if typing in input
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-
-      // ── Read-through mode shortcuts (override defaults when active) ──
-      if (readThroughMode) {
-        if (e.code === 'Space') {
-          e.preventDefault();
-          handleReadThroughPlay();
-          return;
-        }
-        if (e.code === 'ArrowRight') {
-          e.preventDefault();
-          handleReadThroughNext();
-          return;
-        }
-        if (e.code === 'ArrowLeft') {
-          e.preventDefault();
-          handleReadThroughPrevious();
-          return;
-        }
-        // Escape exits read-through mode
-        if (e.code === 'Escape') {
-          e.preventDefault();
-          handleReadThroughToggle();
-          return;
-        }
-      }
-
-      // Space: Play/Pause timeline
-      if (e.code === 'Space') {
-        e.preventDefault();
-        handleTimelinePlay();
-      }
-      // Arrow keys: Navigate scenes
-      else if (e.code === 'ArrowUp' && selectedScene) {
-        e.preventDefault();
-        const currentIndex = scenes.findIndex(s => s.id === selectedScene.id);
-        if (currentIndex > 0) scrollToScene(scenes[currentIndex - 1]);
-      }
-      else if (e.code === 'ArrowDown' && selectedScene) {
-        e.preventDefault();
-        const currentIndex = scenes.findIndex(s => s.id === selectedScene.id);
-        if (currentIndex < scenes.length - 1) scrollToScene(scenes[currentIndex + 1]);
-      }
-      // Ctrl/Cmd + Z: Undo
-      else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ' && !e.shiftKey) {
-        e.preventDefault();
-        handleUndo();
-      }
-      // Ctrl/Cmd + Shift + Z or Ctrl/Cmd + Y: Redo
-      else if ((e.ctrlKey || e.metaKey) && (e.shiftKey && e.code === 'KeyZ' || e.code === 'KeyY')) {
-        e.preventDefault();
-        handleRedo();
-      }
-      // Delete: Delete selected scene(s)
-      else if (e.code === 'Delete' && (batchMode ? selectedMapSize(selectedScenes) > 0 : selectedScene)) {
-        e.preventDefault();
-        if (batchMode) {
-          handleBatchDelete();
-        } else if (selectedScene && onSceneDelete) {
-          setSceneToDelete(selectedScene.id);
-          setShowDeleteConfirm(true);
-        }
-      }
-      // Ctrl/Cmd + A: Select all scenes (batch mode)
-      else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyA') {
-        e.preventDefault();
-        setBatchMode(true);
-        setSelectedScenes(selectedMapFromIds(scenes.map(s => s.id)));
-      }
-      // Ctrl/Cmd + D: Duplicate selected scene
-      else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyD' && selectedScene) {
-        e.preventDefault();
-        handleDuplicateScene(selectedScene);
-      }
-      // Ctrl/Cmd + T: Toggle quick notes
-      else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyT') {
-        e.preventDefault();
-        setShowQuickNotes(!showQuickNotes);
-      }
-      // Ctrl/Cmd + S: Save scene as template
-      else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyS' && selectedScene) {
-        e.preventDefault();
-        setShowSceneTemplate(true);
-      }
-      // Ctrl/Cmd + E: Export as PDF
-      else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyE' && !e.shiftKey) {
-        e.preventDefault();
-        handlePDFExport();
-      }
-      // Ctrl/Cmd + Shift + E: Export call sheet
-      else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.code === 'KeyE') {
-        e.preventDefault();
-        handleGenerateCallSheet();
-      }
-      // Escape: Clear selection / exit batch mode / close panels
-      else if (e.code === 'Escape') {
-        if (batchMode) {
-          setBatchMode(false);
-          setSelectedScenes(EMPTY_SELECTION);
-        }
-        if (showQuickNotes) {
-          setShowQuickNotes(false);
-        }
-        if (showSceneTemplate) {
-          setShowSceneTemplate(false);
-          setTemplateName('');
-        }
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedScene, scenes, batchMode, selectedScenes, timelineIsPlaying, showQuickNotes, showSceneTemplate, readThroughMode, handleReadThroughNext, handleReadThroughPrevious]);
+  useProductionManuscriptShortcuts({
+    selectedScene,
+    scenes,
+    batchMode,
+    selectedScenes,
+    showQuickNotes,
+    showSceneTemplate,
+    readThroughMode,
+    onReadThroughPlay: handleReadThroughPlay,
+    onReadThroughNext: handleReadThroughNext,
+    onReadThroughPrevious: handleReadThroughPrevious,
+    onReadThroughToggle: handleReadThroughToggle,
+    onTimelinePlay: handleTimelinePlay,
+    onScrollToScene: scrollToScene,
+    onUndo: handleUndo,
+    onRedo: handleRedo,
+    onBatchDelete: handleBatchDelete,
+    onDuplicateScene: handleDuplicateScene,
+    onPdfExport: handlePDFExport,
+    onGenerateCallSheet: handleGenerateCallSheet,
+    onSceneDeleteRequest: (sceneId) => {
+      setSceneToDelete(sceneId);
+      setShowDeleteConfirm(true);
+    },
+    setBatchMode,
+    setSelectedScenes,
+    setShowQuickNotes,
+    setShowSceneTemplate,
+    setTemplateName,
+    canDeleteScene: Boolean(onSceneDelete),
+  });
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', bgcolor: '#1a1f2e' }}>
