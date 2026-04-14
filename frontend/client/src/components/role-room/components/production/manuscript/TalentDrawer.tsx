@@ -22,6 +22,7 @@ export const TalentDrawer = ({
       open={open}
       onClose={onClose}
       PaperProps={{
+        'data-testid': 'pmv-talent-drawer',
         sx: {
           width: screen.isMobile ? '85vw' : Math.min(400, responsive.rightPanelWidth),
           maxWidth: screen.isMobile ? '100vw' : responsive.rightPanelWidth,

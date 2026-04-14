@@ -182,7 +182,7 @@ const ProductionNotesPanel: FC<ProductionNotesPanelProps> = memo(function Produc
   );
 
   return (
-    <Box sx={{ p: 3, borderBottom: '1px solid #252d3d' }}>
+    <Box data-testid="pmv-production-notes-panel" sx={{ p: 3, borderBottom: '1px solid #252d3d' }}>
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
         <Typography sx={{ fontSize: 12, fontWeight: 600, color: '#9ca3af', letterSpacing: 0.5 }}>
           {readThroughMode ? 'READ THROUGH NOTES' : 'PRODUCTION NOTES'}
@@ -190,6 +190,7 @@ const ProductionNotesPanel: FC<ProductionNotesPanelProps> = memo(function Produc
         <Tooltip title="Legg til note">
           <IconButton
             size="small"
+            data-testid="pmv-production-notes-add"
             onClick={() => {
               setAddNoteType(inactiveTypes[0] ?? 'camera');
               setAddNoteValue('');
@@ -326,7 +327,7 @@ const ProductionNotesPanel: FC<ProductionNotesPanelProps> = memo(function Produc
       <Dialog
         open={showAddDialog}
         onClose={() => setShowAddDialog(false)}
-        PaperProps={{ sx: { bgcolor: '#1a1f2e', border: '1px solid #3b82f6', minWidth: 400 } }}
+        PaperProps={{ 'data-testid': 'pmv-production-notes-dialog', sx: { bgcolor: '#1a1f2e', border: '1px solid #3b82f6', minWidth: 400 } }}
       >
         <DialogTitle sx={{ color: '#fff', borderBottom: '1px solid #2a3142' }}>
           <Stack direction="row" spacing={1} alignItems="center">
@@ -373,6 +374,7 @@ const ProductionNotesPanel: FC<ProductionNotesPanelProps> = memo(function Produc
               placeholder="Skriv notis..."
               value={addNoteValue}
               onChange={(e) => setAddNoteValue(e.target.value)}
+              inputProps={{ 'data-testid': 'pmv-production-notes-input' }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleAddNote();
               }}
@@ -403,6 +405,7 @@ const ProductionNotesPanel: FC<ProductionNotesPanelProps> = memo(function Produc
             onClick={handleAddNote}
             variant="contained"
             disabled={!addNoteValue.trim()}
+            data-testid="pmv-production-notes-confirm"
             sx={{ bgcolor: '#3b82f6', '&:hover': { bgcolor: '#2563eb' }, '&.Mui-disabled': { bgcolor: '#374151', color: '#6b7280' } }}
           >
             Legg til

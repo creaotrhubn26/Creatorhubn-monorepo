@@ -368,6 +368,9 @@ const SortableSceneItem: FC<SortableSceneItemProps> = memo(({
     <Box
       ref={setNodeRef}
       style={style}
+      data-testid="pmv-scene-item"
+      data-scene-id={scene.id}
+      aria-selected={isSelected}
       sx={{
         display: 'flex',
         alignItems: 'center',
@@ -405,6 +408,8 @@ const SortableSceneItem: FC<SortableSceneItemProps> = memo(({
       {/* Select zone — thumbnail + info (#1) */}
       <Box
         onClick={() => onSceneClick(scene)}
+        data-testid="pmv-scene-select-zone"
+        data-scene-id={scene.id}
         sx={{
           display: 'flex',
           alignItems: 'center',
@@ -2492,41 +2497,42 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
 
   // PDF Export
   const handlePDFExport = () => {
-    const exportedAt = new Date().toISOString();
-    const fileName = `${manuscript.title}_script.txt`;
-    const totalShots = shotLists.reduce((acc, list) => acc + list.shots.length, 0);
-    const exportFingerprint = {
-      manuscriptTitle: manuscript.title,
-      scenes: scenes.map(scene => ({
-        id: scene.id,
-        sceneNumber: scene.sceneNumber,
-        sceneHeading: scene.sceneHeading,
-        shotIds: shotLists.find(l => l.sceneId === scene.id)?.shots.map(shot => ({
-          id: shot.id,
-          duration: shotDurationValues[shot.id] || 5,
-        })) ?? [],
-      })),
-    };
-    const exportId = buildStableExportId({
-      kind: 'script-text',
-      payload: exportFingerprint,
-      projectId,
-      sourceVersion: PRODUCTION_EXPORT_SOURCE_VERSION,
-    });
-    const auditEntry = createProductionExportAuditEntry({
-      exportId,
-      kind: 'script-text',
-      projectId,
-      fileName,
-      createdAt: exportedAt,
-      sceneCount: scenes.length,
-      shotCount: totalShots,
-      trigger: 'button',
-      payload: exportFingerprint,
-    });
-    const scriptBody = scenes.map((scene, sceneIndex) => {
-      const shots = shotLists.find(l => l.sceneId === scene.id)?.shots || [];
-      return `
+    try {
+      const exportedAt = new Date().toISOString();
+      const fileName = `${manuscript.title}_script.txt`;
+      const totalShots = shotLists.reduce((acc, list) => acc + list.shots.length, 0);
+      const exportFingerprint = {
+        manuscriptTitle: manuscript.title,
+        scenes: scenes.map(scene => ({
+          id: scene.id,
+          sceneNumber: scene.sceneNumber,
+          sceneHeading: scene.sceneHeading,
+          shotIds: shotLists.find(l => l.sceneId === scene.id)?.shots.map(shot => ({
+            id: shot.id,
+            duration: shotDurationValues[shot.id] || 5,
+          })) ?? [],
+        })),
+      };
+      const exportId = buildStableExportId({
+        kind: 'script-text',
+        payload: exportFingerprint,
+        projectId,
+        sourceVersion: PRODUCTION_EXPORT_SOURCE_VERSION,
+      });
+      const auditEntry = createProductionExportAuditEntry({
+        exportId,
+        kind: 'script-text',
+        projectId,
+        fileName,
+        createdAt: exportedAt,
+        sceneCount: scenes.length,
+        shotCount: totalShots,
+        trigger: 'button',
+        payload: exportFingerprint,
+      });
+      const scriptBody = scenes.map((scene, sceneIndex) => {
+        const shots = shotLists.find(l => l.sceneId === scene.id)?.shots || [];
+        return `
 [${sceneIndex + 1}] SCENE ${scene.sceneNumber}
 ${scene.sceneHeading}
 ${scene.intExt} - ${scene.locationName} - ${scene.timeOfDay}
@@ -2542,18 +2548,21 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
 
 ---
 `;
-    }).join('\n');
-    const scriptContent = [
-      `EXPORT ID: ${exportId}`,
-      `SOURCE VERSION: ${PRODUCTION_EXPORT_SOURCE_VERSION}`,
-      `EXPORTED AT: ${exportedAt}`,
-      '',
-      scriptBody,
-    ].join('\n');
+      }).join('\n');
+      const scriptContent = [
+        `EXPORT ID: ${exportId}`,
+        `SOURCE VERSION: ${PRODUCTION_EXPORT_SOURCE_VERSION}`,
+        `EXPORTED AT: ${exportedAt}`,
+        '',
+        scriptBody,
+      ].join('\n');
 
-    const blob = new Blob([scriptContent], { type: 'text/plain' });
-    recordProductionExportAudit(auditEntry, projectId);
-    downloadExportBlob(blob, fileName);
+      const blob = new Blob([scriptContent], { type: 'text/plain' });
+      recordProductionExportAudit(auditEntry, projectId);
+      downloadExportBlob(blob, fileName);
+    } catch (error) {
+      console.error('[ProductionManuscriptView] Failed to export script text:', error);
+    }
   };
 
   const buildCallSheetForDay = useCallback((dayId?: string) => buildProductionCallSheet({
@@ -2610,65 +2619,69 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
   }, [projectId]);
 
   // Call sheet generation
-  const handleGenerateCallSheet = () => {
-    const exportedAt = new Date().toISOString();
-    const fileName = `call_sheet_${exportedAt.split('T')[0]}.json`;
-    const callSheetContent = {
-      title: manuscript.title,
-      date: new Date().toLocaleDateString(),
-      scenes: scenes.map(scene => {
-        const shots = shotLists.find(l => l.sceneId === scene.id)?.shots || [];
-        return {
-          sceneNumber: scene.sceneNumber,
-          heading: scene.sceneHeading,
-          location: scene.locationName,
-          time: scene.timeOfDay,
-          duration: shots.reduce((sum, shot) => sum + (shotDurationValues[shot.id] || 5), 0),
-          cast: scene.characters || [],
-          equipment: scene.metadata?.equipment || [],
-          notes: quickNotes[scene.id] || '',
-        };
-      }),
-      totalDuration: scenes.reduce((sum, scene) => {
-        const shots = shotLists.find(l => l.sceneId === scene.id)?.shots || [];
-        return sum + shots.reduce((s, shot) => s + (shotDurationValues[shot.id] || 5), 0);
-      }, 0),
-    };
-    const exportFingerprint = {
-      title: callSheetContent.title,
-      scenes: callSheetContent.scenes,
-      totalDuration: callSheetContent.totalDuration,
-    };
-    const exportId = buildStableExportId({
-      kind: 'call-sheet-json',
-      payload: exportFingerprint,
-      projectId,
-      schemaVersion: CALL_SHEET_EXPORT_SCHEMA_VERSION,
-      sourceVersion: PRODUCTION_EXPORT_SOURCE_VERSION,
-    });
-    const auditEntry = createProductionExportAuditEntry({
-      exportId,
-      kind: 'call-sheet-json',
-      projectId,
-      fileName,
-      createdAt: exportedAt,
-      schemaVersion: CALL_SHEET_EXPORT_SCHEMA_VERSION,
-      sceneCount: scenes.length,
-      trigger: 'button',
-      payload: exportFingerprint,
-    });
-    const callSheet = {
-      schemaVersion: CALL_SHEET_EXPORT_SCHEMA_VERSION,
-      sourceVersion: PRODUCTION_EXPORT_SOURCE_VERSION,
-      exportId,
-      exportedAt,
-      auditTrail: [auditEntry],
-      ...callSheetContent,
-    };
+  const handleGenerateCallSheet = async () => {
+    try {
+      const exportedAt = new Date().toISOString();
+      const fileName = `call_sheet_${exportedAt.split('T')[0]}.json`;
+      const callSheetContent = {
+        title: manuscript.title,
+        date: new Date().toLocaleDateString(),
+        scenes: scenes.map(scene => {
+          const shots = shotLists.find(l => l.sceneId === scene.id)?.shots || [];
+          return {
+            sceneNumber: scene.sceneNumber,
+            heading: scene.sceneHeading,
+            location: scene.locationName,
+            time: scene.timeOfDay,
+            duration: shots.reduce((sum, shot) => sum + (shotDurationValues[shot.id] || 5), 0),
+            cast: scene.characters || [],
+            equipment: scene.metadata?.equipment || [],
+            notes: quickNotes[scene.id] || '',
+          };
+        }),
+        totalDuration: scenes.reduce((sum, scene) => {
+          const shots = shotLists.find(l => l.sceneId === scene.id)?.shots || [];
+          return sum + shots.reduce((s, shot) => s + (shotDurationValues[shot.id] || 5), 0);
+        }, 0),
+      };
+      const exportFingerprint = {
+        title: callSheetContent.title,
+        scenes: callSheetContent.scenes,
+        totalDuration: callSheetContent.totalDuration,
+      };
+      const exportId = buildStableExportId({
+        kind: 'call-sheet-json',
+        payload: exportFingerprint,
+        projectId,
+        schemaVersion: CALL_SHEET_EXPORT_SCHEMA_VERSION,
+        sourceVersion: PRODUCTION_EXPORT_SOURCE_VERSION,
+      });
+      const auditEntry = createProductionExportAuditEntry({
+        exportId,
+        kind: 'call-sheet-json',
+        projectId,
+        fileName,
+        createdAt: exportedAt,
+        schemaVersion: CALL_SHEET_EXPORT_SCHEMA_VERSION,
+        sceneCount: scenes.length,
+        trigger: 'button',
+        payload: exportFingerprint,
+      });
+      const callSheet = {
+        schemaVersion: CALL_SHEET_EXPORT_SCHEMA_VERSION,
+        sourceVersion: PRODUCTION_EXPORT_SOURCE_VERSION,
+        exportId,
+        exportedAt,
+        auditTrail: [auditEntry],
+        ...callSheetContent,
+      };
 
-    const blob = new Blob([JSON.stringify(callSheet, null, 2)], { type: 'application/json' });
-    recordProductionExportAudit(auditEntry, projectId);
-    downloadExportBlob(blob, fileName);
+      const blob = new Blob([JSON.stringify(callSheet, null, 2)], { type: 'application/json' });
+      recordProductionExportAudit(auditEntry, projectId);
+      downloadExportBlob(blob, fileName);
+    } catch (error) {
+      console.error('[ProductionManuscriptView] Failed to generate call sheet JSON:', error);
+    }
   };
 
   const handlePrintManuscript = () => {
@@ -2691,19 +2704,23 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
     window.print();
   };
 
-  const handleDownloadCallSheetPdf = () => {
-    const callSheet = buildCallSheetForDay(selectedShootingDayId ?? undefined);
-    const fileName = `call_sheet_${callSheet.shootingDayId}.pdf`;
-    const { auditEntry } = createCallSheetExportAudit('call-sheet-pdf', callSheet, 'button', fileName);
-    recordProductionExportAudit(auditEntry, projectId);
-    void downloadCallSheetPDF(
-      {
-        ...callSheet,
-        id: auditEntry.exportId,
-        version: CALL_SHEET_EXPORT_SCHEMA_VERSION,
-      },
-      DEFAULT_CALL_SHEET_OPTIONS,
-    );
+  const handleDownloadCallSheetPdf = async () => {
+    try {
+      const callSheet = buildCallSheetForDay(selectedShootingDayId ?? undefined);
+      const fileName = `call_sheet_${callSheet.shootingDayId}.pdf`;
+      const { auditEntry } = createCallSheetExportAudit('call-sheet-pdf', callSheet, 'button', fileName);
+      recordProductionExportAudit(auditEntry, projectId);
+      await downloadCallSheetPDF(
+        {
+          ...callSheet,
+          id: auditEntry.exportId,
+          version: CALL_SHEET_EXPORT_SCHEMA_VERSION,
+        },
+        DEFAULT_CALL_SHEET_OPTIONS,
+      );
+    } catch (error) {
+      console.error('[ProductionManuscriptView] Failed to download call sheet PDF:', error);
+    }
   };
 
   useProductionManuscriptShortcuts({
@@ -2725,7 +2742,9 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
     onBatchDelete: handleBatchDelete,
     onDuplicateScene: handleDuplicateScene,
     onPdfExport: handlePDFExport,
-    onGenerateCallSheet: handleGenerateCallSheet,
+    onGenerateCallSheet: () => {
+      void handleGenerateCallSheet();
+    },
     onSceneDeleteRequest: (sceneId) => {
       setSceneToDelete(sceneId);
       setShowDeleteConfirm(true);
@@ -2774,7 +2793,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
 
   return (
     <ProductionManuscriptProvider value={productionManuscriptContextValue}>
-      <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', bgcolor: '#1a1f2e' }}>
+      <Box data-testid="pmv-root" sx={{ display: 'flex', flexDirection: 'column', height: '100%', bgcolor: '#1a1f2e' }}>
       {/* Header with close button */}
       <Box
         sx={{
@@ -2794,6 +2813,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
           {isMobile && (
             <IconButton
               onClick={() => setMobileSidebarOpen(true)}
+              data-testid="pmv-mobile-scene-drawer-toggle"
               sx={{ color: '#9ca3af', p: 0.5 }}
             >
               <SceneIcon sx={{ fontSize: responsive.iconSize }} />
@@ -2837,6 +2857,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
           <Tooltip title={readThroughMode ? "Avslutt Read Through" : "Start Read Through"}>
             <IconButton
               onClick={handleReadThroughToggle}
+              data-testid="pmv-read-through-toggle"
               size={responsive.buttonSize}
               sx={{
                 color: readThroughMode ? '#10b981' : '#6b7280',
@@ -2857,6 +2878,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
             <Badge badgeContent={isMobile ? 0 : sceneCandidates.length} color="primary">
               <IconButton
                 onClick={() => isMobile ? setMobileRightPanelOpen(true) : setShowTalentPanel(!showTalentPanel)}
+                data-testid="pmv-talent-toggle"
                 size={responsive.buttonSize}
                 sx={{
                   color: showTalentPanel ? '#3b82f6' : '#6b7280',
@@ -2936,6 +2958,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
           <Tooltip title="Export as PDF (Ctrl+E)">
             <IconButton
               onClick={handlePDFExport}
+              data-testid="pmv-script-export"
               size={responsive.buttonSize}
               sx={{
                 color: '#6b7280',
@@ -2951,7 +2974,10 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
           {!isMobile && (
             <Tooltip title="Call Sheet (Ctrl+Shift+E)">
               <IconButton
-                onClick={handleGenerateCallSheet}
+                onClick={() => {
+                  void handleGenerateCallSheet();
+                }}
+                data-testid="pmv-call-sheet-json"
                 size={responsive.buttonSize}
                 sx={{
                   color: '#6b7280',
@@ -2975,6 +3001,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
             <Tooltip title="Stripboard - Shooting Schedule">
               <IconButton
                 onClick={() => dispatchWorkflow({ type: 'OPEN_STRIPBOARD' })}
+                data-testid="pmv-open-stripboard"
                 size={responsive.buttonSize}
                 sx={{
                   color: productionWorkflowTab === 'stripboard' ? '#fbbf24' : '#6b7280',
@@ -2993,6 +3020,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
             <Tooltip title="Opptaksplan - Day Planner">
               <IconButton
                 onClick={() => dispatchWorkflow({ type: 'OPEN_SCHEDULE' })}
+                data-testid="pmv-open-shooting-day-planner"
                 size={responsive.buttonSize}
                 sx={{
                   color: productionWorkflowTab === 'schedule' ? '#34d399' : '#6b7280',
@@ -3010,6 +3038,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
           <Tooltip title="Live Set Mode - On-Set Tracking">
             <IconButton
               onClick={() => dispatchWorkflow({ type: 'OPEN_LIVE', showDaySelector: true })}
+              data-testid="pmv-open-live-set"
               size={responsive.buttonSize}
               sx={{
                 color: isLiveSetConnected ? '#ef4444' : '#6b7280',
@@ -3041,6 +3070,8 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
             <Tooltip title={isLiveSetConnected ? "Koble fra Live Set" : "Koble til Live Set (synkroniser timeline)"}>
               <IconButton
                 onClick={() => setIsLiveSetConnected(!isLiveSetConnected)}
+                data-testid="pmv-live-set-connect-toggle"
+                aria-pressed={isLiveSetConnected}
                 size={responsive.buttonSize}
                 sx={{
                   color: isLiveSetConnected ? '#10b981' : '#6b7280',
@@ -3548,6 +3579,8 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                           return (
                             <Box
                               key={scene.id}
+                              data-testid="pmv-scene-row"
+                              data-scene-id={scene.id}
                               sx={{
                                 position: 'relative',
                                 bgcolor: isBatchSelected ? 'rgba(59,130,246,0.08)' : 'transparent',
@@ -3562,6 +3595,8 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                             >
                               {batchMode && (
                                 <Box
+                                  data-testid="pmv-batch-scene-toggle"
+                                  data-scene-id={scene.id}
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleToggleSceneSelection(scene.id);
@@ -3612,6 +3647,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
           {/* Batch Operations Bar */}
           {batchMode && selectedMapSize(selectedScenes) > 0 && (
             <Box
+              data-testid="pmv-batch-bar"
               sx={{
                 p: 1.5,
                 borderTop: '1px solid #1e2536',
@@ -3628,6 +3664,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                     <IconButton 
                       size="small" 
                       onClick={handleBatchExport}
+                      data-testid="pmv-batch-export"
                       sx={{ color: '#10b981', '&:hover': { bgcolor: 'rgba(16,185,129,0.15)' } }}
                     >
                       <DownloadIcon sx={{ fontSize: 16 }} />
@@ -3637,6 +3674,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                     <IconButton 
                       size="small" 
                       onClick={handleBatchDelete}
+                      data-testid="pmv-batch-delete"
                       sx={{ color: '#ef4444', '&:hover': { bgcolor: 'rgba(239,68,68,0.15)' } }}
                     >
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -3648,6 +3686,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                     <IconButton 
                       size="small" 
                       onClick={() => { setBatchMode(false); setSelectedScenes(EMPTY_SELECTION); }}
+                      data-testid="pmv-batch-clear"
                       sx={{ color: '#6b7280' }}
                     >
                       <CloseIcon sx={{ fontSize: 16 }} />
@@ -3703,6 +3742,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
             <Tooltip title="Eksporter produksjonsdata">
               <IconButton 
                 onClick={() => setShowExportDialog(true)}
+                data-testid="pmv-production-data-dialog-button"
                 sx={{ 
                   color: '#6b7280', 
                   bgcolor: '#1a2230', 
@@ -3731,6 +3771,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
             <Tooltip title="Eksporter som fil">
               <IconButton
                 onClick={handlePDFExport}
+                data-testid="pmv-sidebar-script-export"
                 sx={{
                   color: '#6b7280',
                   bgcolor: '#1a2230',
@@ -3744,7 +3785,10 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
             </Tooltip>
             <Tooltip title="Last ned Call Sheet som PDF">
               <IconButton
-                onClick={handleDownloadCallSheetPdf}
+                onClick={() => {
+                  void handleDownloadCallSheetPdf();
+                }}
+                data-testid="pmv-call-sheet-pdf"
                 sx={{
                   color: '#6b7280',
                   bgcolor: '#1a2230',
@@ -3797,6 +3841,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                   <Stack direction="row" spacing={isMobile ? 0.5 : 1}>
                     <IconButton
                       onClick={handleReadThroughPrevious}
+                      data-testid="pmv-read-through-prev"
                       disabled={readThroughCurrentLine === 0}
                       size={responsive.buttonSize}
                       sx={{ color: '#6b7280', '&:hover': { color: '#fff' }, p: isMobile ? 0.5 : 1 }}
@@ -3805,6 +3850,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                     </IconButton>
                     <IconButton
                       onClick={handleReadThroughPlay}
+                      data-testid="pmv-read-through-play"
                       size={responsive.buttonSize}
                       sx={{ 
                         color: readThroughPlaying ? '#10b981' : '#6b7280',
@@ -3816,13 +3862,14 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                     </IconButton>
                     <IconButton
                       onClick={handleReadThroughNext}
+                      data-testid="pmv-read-through-next"
                       size={responsive.buttonSize}
                       sx={{ color: '#6b7280', '&:hover': { color: '#fff' }, p: isMobile ? 0.5 : 1 }}
                     >
                       <ChevronRightIcon sx={{ fontSize: responsive.iconSize }} />
                     </IconButton>
                   </Stack>
-                  <Typography sx={{ fontSize: responsive.bodyFontSize, color: '#6b7280' }}>
+                  <Typography data-testid="pmv-read-through-line-counter" sx={{ fontSize: responsive.bodyFontSize, color: '#6b7280' }}>
                     Linje {readThroughCurrentLine + 1} av {dialogueLines.length}
                   </Typography>
                   {readThroughStartTime && !isMobile && (
@@ -3842,6 +3889,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                         <IconButton
                           size="small"
                           onClick={() => setTtsEnabled(!ttsEnabled)}
+                          data-testid="pmv-tts-toggle"
                           sx={{
                             color: ttsEnabled ? '#8b5cf6' : '#4b5563',
                             bgcolor: ttsEnabled ? 'rgba(139,92,246,0.1)' : 'transparent',
@@ -4111,6 +4159,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                       size="small"
                       startIcon={<SettingsIcon sx={{ fontSize: 14 }} />}
                       onClick={() => handleOpenSceneNeedsDialog(selectedScene.id)}
+                      data-testid="pmv-open-scene-needs"
                       sx={{
                         minWidth: 'auto',
                         px: 1.5,
@@ -4322,6 +4371,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                       return (
                         <Box 
                           key={line.id}
+                          data-testid={isCurrentLine ? 'pmv-current-dialogue-line' : 'pmv-dialogue-line'}
                           data-line-index={lineIdx} 
                           sx={{ 
                             mb: 3, 
@@ -4515,6 +4565,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                         <IconButton 
                           size="small" 
                           onClick={handleAddNewShot}
+                          data-testid="pmv-add-shot-button"
                           sx={{ 
                             color: '#6b7280',
                             bgcolor: 'rgba(59,130,246,0.1)',
@@ -4533,6 +4584,8 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                         <Box
                           key={shot.id}
                           onClick={() => setSelectedShot(shot)}
+                          data-testid="pmv-scene-shot-card"
+                          data-shot-id={shot.id}
                           sx={{
                             borderRadius: '10px',
                             overflow: 'hidden',
@@ -6008,6 +6061,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                           <IconButton 
                             size="small" 
                             onClick={() => setShowSavePresetDialog(true)}
+                            data-testid="pmv-save-preset-open"
                             sx={{ p: 0.5, color: '#6b7280', '&:hover': { color: '#10b981' } }}
                           >
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -6024,6 +6078,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                               size="small"
                               value=""
                               displayEmpty
+                              data-testid="pmv-presets-select"
                               onChange={(e) => { if (e.target.value) handleLoadPreset(e.target.value as string); }}
                               sx={{ height: 24, fontSize: 10, color: '#9ca3af', minWidth: 80, '& .MuiSelect-select': { py: 0.25 }, '& .MuiOutlinedInput-notchedOutline': { borderColor: '#374151' } }}
                               renderValue={() => 'Presets'}
@@ -6389,10 +6444,12 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                       onChange={handleReferenceUpload}
                       accept="image/*"
                       multiple
+                      data-testid="pmv-reference-upload-input"
                       style={{ display: 'none' }}
                     />
                     <Box
                       onClick={() => fileInputRef.current?.click()}
+                      data-testid="pmv-reference-upload-button"
                       sx={{
                         flex: 1,
                         display: 'flex',
@@ -6423,6 +6480,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                     {/* Search Button */}
                     <Box
                       onClick={() => dispatchSearch({ type: 'OPEN' })}
+                      data-testid="pmv-reference-search-open"
                       sx={{
                         flex: 1,
                         display: 'flex',
@@ -6450,6 +6508,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                   {/* Reference Search Dialog */}
                   {referenceSearchOpen && (
                     <Box
+                      data-testid="pmv-reference-search-overlay"
                       sx={{
                         position: 'fixed',
                         top: 0,
@@ -6465,6 +6524,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                       onClick={() => dispatchSearch({ type: 'CLOSE' })}
                     >
                       <Box
+                        data-testid="pmv-reference-search-dialog"
                         onClick={(e) => e.stopPropagation()}
                         sx={{
                           width: 800,
@@ -6516,6 +6576,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                                   if (e.key === 'Enter') searchReferenceImages(referenceSearchQuery);
                                 }}
                                 InputProps={{
+                                  inputProps: { 'data-testid': 'pmv-reference-search-input' },
                                   startAdornment: (
                                     <InputAdornment position="start">
                                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2">
@@ -6528,6 +6589,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                                     <InputAdornment position="end">
                                       <Box
                                         onClick={() => searchReferenceImages(referenceSearchQuery)}
+                                        data-testid="pmv-reference-search-submit"
                                         sx={{
                                           px: 2,
                                           py: 0.5,
@@ -6934,7 +6996,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
 
                               {/* Empty State */}
                               {shotCafeResults.length === 0 && referenceSearchResults.length === 0 && (
-                                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 8 }}>
+                                <Box data-testid="pmv-reference-search-empty-state" sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 8 }}>
                                   <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#4b5563" strokeWidth="1.5">
                                     <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/>
                                     <line x1="7" y1="2" x2="7" y2="22"/>
@@ -7001,6 +7063,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
         onClose={() => dispatchWorkflow({ type: 'CLOSE_VIEW' })}
         fullScreen
         PaperProps={{
+          'data-testid': 'pmv-stripboard-dialog',
           sx: {
             bgcolor: '#0f1318',
           },
@@ -7070,6 +7133,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
         onClose={() => dispatchWorkflow({ type: 'CLOSE_VIEW' })}
         fullScreen
         PaperProps={{
+          'data-testid': 'pmv-shooting-day-planner-dialog',
           sx: {
             bgcolor: '#0f1318',
           },
@@ -7148,6 +7212,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
         open={showLiveSetDaySelector}
         onClose={() => dispatchWorkflow({ type: 'CLOSE_VIEW' })}
         PaperProps={{
+          'data-testid': 'pmv-live-set-day-selector',
           sx: {
             bgcolor: '#1a1f2e',
             borderRadius: '16px',
@@ -7168,6 +7233,8 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
             {shootingDays.map((day) => (
               <Box
                 key={day.id}
+                data-testid="pmv-live-set-day-option"
+                data-day-id={day.id}
                 onClick={() => {
                   dispatchWorkflow({ type: 'SELECT_DAY_AND_GO_LIVE', dayId: day.id });
                   setIsLiveSetConnected(true);
@@ -7222,6 +7289,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
         maxWidth="xl"
         fullWidth
         PaperProps={{
+          'data-testid': 'pmv-call-sheet-preview-dialog',
           sx: {
             bgcolor: '#f8fafc',
             minHeight: '90vh',
@@ -7278,6 +7346,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
         open={showExportDialog}
         onClose={() => setShowExportDialog(false)}
         PaperProps={{
+          'data-testid': 'pmv-export-dialog',
           sx: {
             bgcolor: '#1a1f2e',
             borderRadius: '16px',
@@ -7326,6 +7395,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
             onClick={handleExportProduction}
             variant="contained"
             startIcon={<DownloadIcon />}
+            data-testid="pmv-export-production-json"
             sx={{
               bgcolor: '#3b82f6',
               '&:hover': { bgcolor: '#2563eb' },
@@ -7680,6 +7750,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
         maxWidth="md"
         fullWidth
         PaperProps={{
+          'data-testid': 'pmv-batch-dialog',
           sx: {
             bgcolor: '#1a1f2e',
             border: '1px solid #2a3142',
@@ -7817,6 +7888,15 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
           </Stack>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button
+            onClick={handleBatchExport}
+            variant="contained"
+            startIcon={<DownloadIcon />}
+            data-testid="pmv-batch-dialog-export"
+            sx={{ bgcolor: '#10b981', '&:hover': { bgcolor: '#059669' } }}
+          >
+            Export selected
+          </Button>
           <Button onClick={() => { setBatchMode(false); setSelectedScenes(EMPTY_SELECTION); }} sx={{ color: '#9ca3af' }}>
             Close
           </Button>
@@ -7828,6 +7908,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
         open={showSavePresetDialog}
         onClose={() => setShowSavePresetDialog(false)}
         PaperProps={{
+          'data-testid': 'pmv-save-preset-dialog',
           sx: {
             bgcolor: '#1a1f2e',
             border: '1px solid #3b82f6',
@@ -7857,6 +7938,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
             value={presetName}
             onChange={(e) => setPresetName(e.target.value)}
             autoFocus
+            inputProps={{ 'data-testid': 'pmv-preset-name-input' }}
             sx={{
               '& .MuiOutlinedInput-root': {
                 bgcolor: '#0d1117',
@@ -7900,6 +7982,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
             onClick={() => { handleSaveAsPreset(); setShowSavePresetDialog(false); }}
             variant="contained"
             disabled={!presetName.trim()}
+            data-testid="pmv-save-preset-confirm"
             sx={{
               bgcolor: '#10b981',
               '&:hover': { bgcolor: '#059669' },
@@ -7944,6 +8027,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
         maxWidth="md"
         fullWidth
         PaperProps={{
+          'data-testid': 'pmv-shot-storyboard-dialog',
           sx: {
             bgcolor: '#111827',
             border: '1px solid #1f2937',
@@ -8043,6 +8127,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
           dispatchWorkflow({ type: 'CLOSE_MODAL' });
         }}
         PaperProps={{
+          'data-testid': 'pmv-scene-needs-dialog',
           sx: {
             bgcolor: '#1a1f2e',
             borderRadius: '16px',
@@ -8062,6 +8147,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
           {editingSceneNeedsId && (
             <Stack spacing={2}>
               <Box
+                data-testid="pmv-scene-needs-camera"
                 onClick={() => handleUpdateSceneNeeds(editingSceneNeedsId, {
                   ...sceneNeeds[editingSceneNeedsId],
                   cam: !sceneNeeds[editingSceneNeedsId]?.cam,
@@ -8092,6 +8178,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               </Box>
 
               <Box
+                data-testid="pmv-scene-needs-light"
                 onClick={() => handleUpdateSceneNeeds(editingSceneNeedsId, {
                   ...sceneNeeds[editingSceneNeedsId],
                   light: !sceneNeeds[editingSceneNeedsId]?.light,
@@ -8122,6 +8209,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               </Box>
 
               <Box
+                data-testid="pmv-scene-needs-sound"
                 onClick={() => handleUpdateSceneNeeds(editingSceneNeedsId, {
                   ...sceneNeeds[editingSceneNeedsId],
                   sound: !sceneNeeds[editingSceneNeedsId]?.sound,
@@ -8154,7 +8242,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
           )}
         </DialogContent>
         <DialogActions sx={{ p: 2, borderTop: '1px solid #2a3142' }}>
-          <Button onClick={() => dispatchWorkflow({ type: 'CLOSE_MODAL' })} sx={{ color: '#9ca3af' }}>
+          <Button data-testid="pmv-scene-needs-close" onClick={() => dispatchWorkflow({ type: 'CLOSE_MODAL' })} sx={{ color: '#9ca3af' }}>
             Lukk
           </Button>
         </DialogActions>

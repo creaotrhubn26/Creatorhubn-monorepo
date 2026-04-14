@@ -129,6 +129,7 @@ const AddShotDialog: FC<AddShotDialogProps> = memo(function AddShotDialog({
       maxWidth="md"
       fullWidth
       PaperProps={{
+        'data-testid': 'pmv-add-shot-dialog',
         sx: {
           bgcolor: '#1a1f2e',
           border: '1px solid #3b82f6',
@@ -164,6 +165,7 @@ const AddShotDialog: FC<AddShotDialogProps> = memo(function AddShotDialog({
             <Stack direction="row" spacing={2}>
               {/* Upload */}
               <Box
+                data-testid="pmv-add-shot-upload-mode"
                 onClick={() => dispatch({ type: 'CHOOSE_UPLOAD' })}
                 sx={{
                   flex: 1, p: 4, borderRadius: '12px',
@@ -186,6 +188,7 @@ const AddShotDialog: FC<AddShotDialogProps> = memo(function AddShotDialog({
               {/* Storyboard */}
               {storyboardCandidates.length > 0 && (
                 <Box
+                  data-testid="pmv-add-shot-storyboard-mode"
                   onClick={() => dispatch({ type: 'CHOOSE_STORYBOARD' })}
                   sx={{
                     flex: 1, p: 4, borderRadius: '12px',
@@ -209,6 +212,7 @@ const AddShotDialog: FC<AddShotDialogProps> = memo(function AddShotDialog({
 
               {/* Reference */}
               <Box
+                data-testid="pmv-add-shot-search-mode"
                 onClick={() => dispatch({ type: 'CHOOSE_SEARCH' })}
                 sx={{
                   flex: 1, p: 4, borderRadius: '12px',
@@ -247,7 +251,7 @@ const AddShotDialog: FC<AddShotDialogProps> = memo(function AddShotDialog({
                   '&:hover': { borderColor: '#3b82f6', bgcolor: 'rgba(59,130,246,0.1)' },
                 }}
               >
-                <input type="file" accept="image/*" onChange={handleImageUpload} style={{ display: 'none' }} />
+                <input data-testid="pmv-add-shot-upload-input" type="file" accept="image/*" onChange={handleImageUpload} style={{ display: 'none' }} />
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="1.5">
                   <rect x="3" y="3" width="18" height="18" rx="2"/>
                   <circle cx="8.5" cy="8.5" r="1.5"/>
@@ -321,6 +325,7 @@ const AddShotDialog: FC<AddShotDialogProps> = memo(function AddShotDialog({
                 value={query}
                 onChange={(e) => dispatch({ type: 'SET_QUERY', query: e.target.value })}
                 onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                inputProps={{ 'data-testid': 'pmv-add-shot-search-input' }}
                 sx={{
                   '& .MuiOutlinedInput-root': {
                     bgcolor: '#0d1117', color: '#fff',
@@ -334,6 +339,7 @@ const AddShotDialog: FC<AddShotDialogProps> = memo(function AddShotDialog({
                 variant="contained"
                 onClick={handleSearch}
                 disabled={loading || !query.trim()}
+                data-testid="pmv-add-shot-search-submit"
                 sx={{ bgcolor: '#8b5cf6', px: 3, '&:hover': { bgcolor: '#7c3aed' } }}
               >
                 {loading ? <CircularProgress size={20} sx={{ color: '#fff' }} /> : 'Søk'}
@@ -360,6 +366,7 @@ const AddShotDialog: FC<AddShotDialogProps> = memo(function AddShotDialog({
                   <Box
                     key={r.id}
                     onClick={() => dispatch({ type: 'SET_IMAGE', url: r.url })}
+                    data-testid="pmv-add-shot-search-result"
                     sx={{
                       position: 'relative', aspectRatio: '16/9', borderRadius: '8px', overflow: 'hidden',
                       cursor: 'pointer', border: selectedImage === r.url ? '3px solid #8b5cf6' : '2px solid transparent',
@@ -398,6 +405,7 @@ const AddShotDialog: FC<AddShotDialogProps> = memo(function AddShotDialog({
           <Button
             onClick={handleCreate}
             variant="contained"
+            data-testid="pmv-add-shot-create"
             disabled={
               (step === 'upload' && !selectedImage)
               || (step === 'storyboard' && !selectedStoryboardCandidate)

@@ -306,6 +306,7 @@ const StripboardPanel: FC<StripboardPanelProps> = ({
             {!isUnassigned && onGenerateCallSheet && responsive.showCallSheetButton && (
               <Button size="small" variant="outlined"
                 onClick={e => { e.stopPropagation(); onGenerateCallSheet(dayData.dayId!); }}
+                data-testid="stripboard-call-sheet-preview"
                 sx={{ color: 'inherit', borderColor: 'rgba(255,255,255,0.5)', fontSize: responsive.fontSize.caption, '&:hover': { borderColor: 'inherit', bgcolor: 'rgba(255,255,255,0.1)' } }}
               >
                 {isMobile ? <DescriptionIcon sx={{ fontSize: 18 }} /> : 'Call Sheet'}

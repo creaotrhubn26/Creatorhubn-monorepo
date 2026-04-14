@@ -323,6 +323,7 @@ const ShootingDayPlanner: React.FC<ShootingDayPlannerProps> = ({
               size="small"
               variant="outlined"
               startIcon={<PrintIcon />}
+              data-testid="shooting-day-call-sheet-preview"
               onClick={(e) => {
                 e.stopPropagation();
                 onGenerateCallSheet?.(day.id);
@@ -797,6 +798,7 @@ const ShootingDayPlanner: React.FC<ShootingDayPlannerProps> = ({
               <Button
                 variant="outlined"
                 startIcon={<PrintIcon />}
+                data-testid="shooting-day-details-call-sheet-preview"
                 onClick={() => {
                   onGenerateCallSheet?.(selectedDay.id);
                   setShowDetailsDialog(false);

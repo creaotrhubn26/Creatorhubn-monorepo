@@ -168,6 +168,21 @@ export const recordProductionExportAudit = (
   }
 };
 
+export const sanitizeDownloadFileName = (
+  fileName: string,
+  fallbackFileName = 'production-export.json',
+): string => {
+  const trimmed = fileName.trim();
+  const source = trimmed || fallbackFileName;
+  const sanitized = source
+    .replace(/[\u0000-\u001f\u007f<>:"/\\|?*]+/g, '_')
+    .replace(/\s+/g, ' ')
+    .replace(/^\.+/, '')
+    .trim();
+
+  return sanitized || fallbackFileName;
+};
+
 export const downloadExportBlob = (
   blob: Blob,
   fileName: string,
@@ -175,8 +190,12 @@ export const downloadExportBlob = (
 ): void => {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
-  link.href = url;
-  link.download = fileName;
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(url), revokeDelayMs);
+  try {
+    link.href = url;
+    link.download = sanitizeDownloadFileName(fileName);
+    link.rel = 'noopener';
+    link.click();
+  } finally {
+    setTimeout(() => URL.revokeObjectURL(url), revokeDelayMs);
+  }
 };
