@@ -3300,6 +3300,133 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     return fallbackName ?? normalizeRoleRoomProjectName(projectId);
   }
 
+  function normalizeRequestedCastingProjectId(value: unknown): string | null {
+    const requestedId = readStringValue(value);
+    if (!requestedId) {
+      return null;
+    }
+
+    const normalized = requestedId.slice(0, 255);
+    return /^[A-Za-z0-9][A-Za-z0-9._:-]{1,254}$/.test(normalized) ? normalized : null;
+  }
+
+  function readRoleRoomArrayMetadata(value: unknown): unknown[] | null {
+    return Array.isArray(value) ? value : null;
+  }
+
+  function readRoleRoomObjectMetadata(value: unknown): Record<string, unknown> | null {
+    return readRecordValue(value);
+  }
+
+  function buildCastingProjectMetadataFromPayload(
+    payload: Record<string, unknown>,
+    existingMetadata: Record<string, unknown> = {},
+  ): Record<string, unknown> {
+    const explicitMetadata = readJsonObject(payload.metadata);
+    const metadata: Record<string, unknown> = {
+      ...existingMetadata,
+      ...explicitMetadata,
+    };
+
+    const stringFields = [
+      'clientName',
+      'clientEmail',
+      'clientPhone',
+      'clientCompanyName',
+      'clientOrganizationNumber',
+      'clientCompanyAddress',
+      'eventDate',
+      'location',
+      'projectType',
+      'guestCount',
+      'projectOwnerName',
+      'projectOwnerEmail',
+      'projectOwnerPhone',
+      'projectOwnerRole',
+    ];
+
+    for (const field of stringFields) {
+      const value = readStringValue(payload[field]);
+      if (value !== null) {
+        metadata[field] = value;
+      }
+    }
+
+    const socialProfiles = readRoleRoomArrayMetadata(payload.socialProfiles);
+    if (socialProfiles) {
+      metadata.socialProfiles = socialProfiles;
+    }
+
+    const collaborators = readRoleRoomArrayMetadata(payload.collaborators);
+    if (collaborators) {
+      metadata.collaborators = collaborators;
+    }
+
+    const competitorAnalysis = readRoleRoomObjectMetadata(payload.competitorAnalysis);
+    if (competitorAnalysis) {
+      metadata.competitorAnalysis = competitorAnalysis;
+    }
+
+    const localPresencePlan = readRoleRoomObjectMetadata(payload.localPresencePlan);
+    if (localPresencePlan) {
+      metadata.localPresencePlan = localPresencePlan;
+    }
+
+    const roleRoomAgentPrefill = readRoleRoomObjectMetadata(payload.roleRoomAgentPrefill);
+    if (roleRoomAgentPrefill) {
+      metadata.roleRoomAgentPrefill = roleRoomAgentPrefill;
+    }
+
+    const splitSheetData = readRoleRoomObjectMetadata(payload.splitSheetData);
+    if (splitSheetData) {
+      metadata.splitSheetData = splitSheetData;
+    }
+
+    const enableSplitSheet = readBooleanValue(payload.enableSplitSheet);
+    if (enableSplitSheet !== null) {
+      metadata.enableSplitSheet = enableSplitSheet;
+    }
+
+    metadata.roleRoomPersistence = {
+      ...(readRoleRoomObjectMetadata(metadata.roleRoomPersistence) ?? {}),
+      source: 'casting_projects.metadata',
+      lastPersistedAt: new Date().toISOString(),
+    };
+
+    return metadata;
+  }
+
+  function buildCastingProjectResponse(
+    row: CastingProjectRow,
+    extra: Record<string, unknown> = {},
+  ): Record<string, unknown> {
+    const metadata = readJsonObject(row.metadata);
+    return {
+      ...row,
+      ...extra,
+      metadata,
+      projectId: row.id,
+      projectName: row.name,
+      projectType: readStringValue(metadata.projectType) ?? row.project_type,
+      clientName: readStringValue(metadata.clientName) ?? '',
+      clientEmail: readStringValue(metadata.clientEmail) ?? '',
+      clientPhone: readStringValue(metadata.clientPhone) ?? '',
+      clientCompanyName: readStringValue(metadata.clientCompanyName) ?? '',
+      clientOrganizationNumber: readStringValue(metadata.clientOrganizationNumber) ?? '',
+      clientCompanyAddress: readStringValue(metadata.clientCompanyAddress) ?? '',
+      eventDate: readStringValue(metadata.eventDate) ?? '',
+      location: readStringValue(metadata.location) ?? '',
+      guestCount: readStringValue(metadata.guestCount) ?? '',
+      socialProfiles: readRoleRoomArrayMetadata(metadata.socialProfiles) ?? [],
+      collaborators: readRoleRoomArrayMetadata(metadata.collaborators) ?? [],
+      competitorAnalysis: readRoleRoomObjectMetadata(metadata.competitorAnalysis),
+      localPresencePlan: readRoleRoomObjectMetadata(metadata.localPresencePlan),
+      roleRoomAgentPrefill: readRoleRoomObjectMetadata(metadata.roleRoomAgentPrefill),
+      splitSheetData: readRoleRoomObjectMetadata(metadata.splitSheetData),
+      enableSplitSheet: readBooleanValue(metadata.enableSplitSheet) ?? false,
+    };
+  }
+
   function canAutoConfigureRoleRoomGoogleWorkspaceForRole(role: string | null | undefined): boolean {
     const normalizedRole = typeof role === 'string' ? role.trim().toLowerCase() : '';
     return ['director', 'producer', 'production_manager', 'content_producer'].includes(normalizedRole);
@@ -10869,7 +10996,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          ORDER BY cp.updated_at DESC`,
         [userId]
       );
-      res.json(result.rows);
+      res.json(result.rows.map((row) => buildCastingProjectResponse(row)));
     } catch (err) {
       console.error('Fetch projects error:', err);
       res.status(500).json({ error: 'Kunne ikke hente prosjekter' });
@@ -10940,8 +11067,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         pool.query('SELECT * FROM casting_user_roles WHERE project_id = $1', [req.params.id]),
       ]);
 
-      res.json({
-        ...result.rows[0],
+      res.json(buildCastingProjectResponse(result.rows[0], {
         roles: roles.rows,
         candidates: candidates.rows,
         crew: crew.rows,
@@ -10950,7 +11076,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         props: props.rows,
         shotLists: shotLists.rows,
         userRoles: userRoles.rows,
-      });
+      }));
     } catch (err) {
       console.error('Fetch project error:', err);
       res.status(500).json({ error: 'Kunne ikke hente prosjekt' });
@@ -11163,49 +11289,116 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       return;
     }
     const userId = getUserId(req);
-    const { name, description, genre, projectType, startDate, endDate, budget, currency, creatorhubProjectId } = req.body as {
-      name: string;
-      description?: string;
-      genre?: string;
-      projectType?: string;
-      startDate?: string;
-      endDate?: string;
-      budget?: number;
-      currency?: string;
-      creatorhubProjectId?: string;
-    };
+    const body = readRecordValue(req.body) ?? {};
+    const name = readStringValue(body.name) ?? readStringValue(body.projectName);
+    const description = readStringValue(body.description);
+    const genre = readStringValue(body.genre);
+    const projectType = readStringValue(body.projectType) ?? readStringValue(body.project_type);
+    const startDate = readStringValue(body.startDate) ?? readStringValue(body.start_date);
+    const endDate = readStringValue(body.endDate) ?? readStringValue(body.end_date);
+    const budget = readNumberValue(body.budget);
+    const currency = readStringValue(body.currency) ?? 'NOK';
+    const creatorhubProjectId = readStringValue(body.creatorhubProjectId) ?? readStringValue(body.creatorhub_project_id);
 
     if (!name) {
       res.status(400).json({ error: 'Prosjektnavn er påkrevd' });
       return;
     }
 
-    const id = makeId();
+    const requestedProjectIdRaw = readStringValue(body.id) ?? readStringValue(body.projectId);
+    const requestedProjectId = normalizeRequestedCastingProjectId(requestedProjectIdRaw);
+    if (requestedProjectIdRaw && !requestedProjectId) {
+      res.status(400).json({ error: 'invalid_project_id' });
+      return;
+    }
+    const id = requestedProjectId ?? makeId();
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      await client.query(
-        `INSERT INTO casting_projects (id, name, description, status, created_by, genre, project_type, start_date, end_date, budget, currency, creatorhub_project_id)
-         VALUES ($1, $2, $3, 'active', $4, $5, $6, $7, $8, $9, $10, $11)`,
-        [id, name, description ?? null, userId, genre ?? null, projectType ?? null, startDate ?? null, endDate ?? null, budget ?? null, currency ?? 'NOK', creatorhubProjectId ?? null]
+
+      const existingProjectResult = await client.query<CastingProjectRow>(
+        'SELECT * FROM casting_projects WHERE id = $1 LIMIT 1',
+        [id],
       );
+      const existingProject = existingProjectResult.rows[0] ?? null;
+      if (existingProject?.created_by && existingProject.created_by !== userId) {
+        const roleAccessResult = await client.query(
+          'SELECT 1 FROM casting_user_roles WHERE project_id = $1 AND user_id = $2 LIMIT 1',
+          [id, userId],
+        );
+        if ((roleAccessResult.rowCount ?? 0) === 0) {
+          await client.query('ROLLBACK');
+          res.status(409).json({ error: 'project_id_already_exists', projectId: id });
+          return;
+        }
+      }
+
+      const metadata = buildCastingProjectMetadataFromPayload(body, readJsonObject(existingProject?.metadata));
+      const savedProjectResult = await client.query<CastingProjectRow>(
+        `INSERT INTO casting_projects (
+           id, name, description, status, created_by, genre, project_type,
+           start_date, end_date, budget, currency, creatorhub_project_id, metadata
+         ) VALUES (
+           $1, $2, $3, 'active', $4, $5, $6,
+           $7, $8, $9, $10, $11, $12::jsonb
+         )
+         ON CONFLICT (id) DO UPDATE SET
+           name = EXCLUDED.name,
+           description = COALESCE(EXCLUDED.description, casting_projects.description),
+           status = COALESCE(casting_projects.status, EXCLUDED.status),
+           created_by = COALESCE(casting_projects.created_by, EXCLUDED.created_by),
+           genre = COALESCE(EXCLUDED.genre, casting_projects.genre),
+           project_type = COALESCE(EXCLUDED.project_type, casting_projects.project_type),
+           start_date = COALESCE(EXCLUDED.start_date, casting_projects.start_date),
+           end_date = COALESCE(EXCLUDED.end_date, casting_projects.end_date),
+           budget = COALESCE(EXCLUDED.budget, casting_projects.budget),
+           currency = COALESCE(EXCLUDED.currency, casting_projects.currency),
+           creatorhub_project_id = COALESCE(EXCLUDED.creatorhub_project_id, casting_projects.creatorhub_project_id),
+           metadata = COALESCE(casting_projects.metadata, '{}'::jsonb) || EXCLUDED.metadata,
+           updated_at = NOW()
+         RETURNING *`,
+        [
+          id,
+          name,
+          description ?? null,
+          userId,
+          genre ?? null,
+          projectType ?? null,
+          startDate ?? null,
+          endDate ?? null,
+          budget,
+          currency,
+          creatorhubProjectId ?? null,
+          JSON.stringify(metadata),
+        ],
+      );
+      const savedProject = savedProjectResult.rows[0];
+      if (!savedProject) {
+        throw new Error('role_room_project_save_returned_no_row');
+      }
 
       // Auto-assign creator as director
+      const requestUser = getOptionalRequestUser(req);
       await client.query(
-        `INSERT INTO casting_user_roles (id, project_id, user_id, role, permissions)
-         VALUES ($1, $2, $3, 'director', $4)
+        `INSERT INTO casting_user_roles (id, project_id, user_id, email, role, permissions, added_by)
+         VALUES ($1, $2, $3, $4, 'director', $5, $6)
          ON CONFLICT (project_id, user_id) DO NOTHING`,
-        [makeId(), id, userId, JSON.stringify(buildProjectRolePermissions('director'))]
+        [
+          makeId(),
+          id,
+          userId,
+          requestUser?.email ?? null,
+          JSON.stringify(buildProjectRolePermissions('director')),
+          userId,
+        ]
       );
 
       await client.query('COMMIT');
-      res.status(201).json({
-        id,
-        name,
-        status: 'active',
-        created_by: userId,
-        ownerId: userId,
-        createdBy: userId,
+      roleRoomProjectAccessCache.add(id);
+      res.status(existingProject ? 200 : 201).json({
+        ...buildCastingProjectResponse(savedProject),
+        ownerId: savedProject.created_by ?? userId,
+        createdBy: savedProject.created_by ?? userId,
       });
     } catch (err) {
       await client.query('ROLLBACK').catch((rollbackError) => {
@@ -11223,7 +11416,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       res.status(403).json({ error: 'Skrive-tilgang kreves' });
       return;
     }
-    const { name, description, status, genre, projectType, budget } = req.body as Record<string, unknown>;
+    const body = readRecordValue(req.body) ?? {};
+    const { name, description, status, genre, projectType } = body;
+    const budget = readNumberValue(body.budget);
     try {
       const sets: string[] = [];
       const vals: unknown[] = [];
@@ -11234,7 +11429,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       if (status !== undefined) { sets.push(`status = $${idx++}`); vals.push(status); }
       if (genre !== undefined) { sets.push(`genre = $${idx++}`); vals.push(genre); }
       if (projectType !== undefined) { sets.push(`project_type = $${idx++}`); vals.push(projectType); }
-      if (budget !== undefined) { sets.push(`budget = $${idx++}`); vals.push(budget); }
+      if (body.budget !== undefined) { sets.push(`budget = $${idx++}`); vals.push(budget); }
+
+      const metadataPatch = buildCastingProjectMetadataFromPayload(body);
+      if (Object.keys(metadataPatch).length > 1 || !readRoleRoomObjectMetadata(metadataPatch.roleRoomPersistence)) {
+        sets.push(`metadata = COALESCE(metadata, '{}'::jsonb) || $${idx++}::jsonb`);
+        vals.push(JSON.stringify(metadataPatch));
+      }
 
       if (sets.length === 0) {
         res.status(400).json({ error: 'Ingen felter å oppdatere' });
@@ -17071,6 +17272,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
             created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
             updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
           );
+          ALTER TABLE casting_projects ADD COLUMN IF NOT EXISTS settings JSONB DEFAULT '{}'::jsonb;
+          ALTER TABLE casting_projects ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb;
+          ALTER TABLE casting_projects ADD COLUMN IF NOT EXISTS creatorhub_project_id VARCHAR(255);
           CREATE INDEX IF NOT EXISTS casting_projects_created_by_idx ON casting_projects (created_by);
           CREATE INDEX IF NOT EXISTS casting_projects_status_idx ON casting_projects (status);
           CREATE INDEX IF NOT EXISTS casting_projects_creatorhub_project_id_idx ON casting_projects (creatorhub_project_id);
