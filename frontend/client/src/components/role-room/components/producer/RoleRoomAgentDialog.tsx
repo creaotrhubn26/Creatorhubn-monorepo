@@ -115,6 +115,19 @@ const SOCIAL_PLATFORM_LABELS: Record<string, string> = {
   pinterest: 'Pinterest',
 };
 
+const LOCAL_OPPORTUNITY_LABELS: Record<string, string> = {
+  school: 'Skole',
+  sports_club: 'Idrettslag',
+  workplace: 'Arbeidsplass',
+  hotel: 'Hotell',
+  culture: 'Kulturarena',
+  retail: 'Handel',
+  fitness: 'Trening',
+  community: 'Nærmiljø',
+  venue: 'Venue',
+  tourism: 'Turisme',
+};
+
 export default function RoleRoomAgentDialog({
   open,
   onClose,
@@ -232,6 +245,11 @@ export default function RoleRoomAgentDialog({
       : null;
     return [rating, reviews].filter(Boolean).join(' · ') || null;
   }, [competitorAnalysis]);
+  const localPresencePlan = result?.localPresencePlan ?? null;
+  const usableLocalOpportunities = useMemo(
+    () => (localPresencePlan?.nearbyOpportunities ?? []).filter((opportunity) => opportunity.status === 'verified' || opportunity.status === 'likely'),
+    [localPresencePlan],
+  );
 
   return (
     <Dialog
@@ -755,6 +773,141 @@ export default function RoleRoomAgentDialog({
                         Begrensning: {competitorAnalysis.limitations[0]}
                       </Typography>
                     ) : null}
+                  </Stack>
+                </Box>
+              ) : null}
+
+              {localPresencePlan ? (
+                <Box
+                  sx={{
+                    p: 1.2,
+                    borderRadius: 3,
+                    border: localPresencePlan.status === 'ready'
+                      ? '1px solid rgba(45,212,191,0.24)'
+                      : '1px solid rgba(250,204,21,0.2)',
+                    bgcolor: localPresencePlan.status === 'ready' ? 'rgba(15,118,110,0.14)' : 'rgba(71,36,0,0.16)',
+                  }}
+                >
+                  <Stack spacing={1}>
+                    <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.8} alignItems={{ md: 'center' }} justifyContent="space-between">
+                      <Box>
+                        <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>Lokal synlighet og event</Typography>
+                        <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.86rem', lineHeight: 1.5 }}>
+                          {localPresencePlan.industryContext} · {localPresencePlan.marketArea}
+                        </Typography>
+                      </Box>
+                      <Chip
+                        size="small"
+                        label={`${usableLocalOpportunities.length}/${localPresencePlan.nearbyOpportunities.length} lokale muligheter`}
+                        sx={{ bgcolor: 'rgba(45,212,191,0.16)', color: '#99f6e4' }}
+                      />
+                    </Stack>
+
+                    {localPresencePlan.radiusStrategy.length > 0 ? (
+                      <Stack direction="row" spacing={0.7} flexWrap="wrap" useFlexGap>
+                        {localPresencePlan.radiusStrategy.map((ring) => (
+                          <Chip
+                            key={`${ring.radiusKm}-${ring.label}`}
+                            size="small"
+                            label={`${ring.label}: ${ring.radiusKm} km`}
+                            variant="outlined"
+                            sx={{ color: '#ccfbf1', borderColor: 'rgba(45,212,191,0.24)' }}
+                          />
+                        ))}
+                      </Stack>
+                    ) : null}
+
+                    {localPresencePlan.nearbyOpportunities.length > 0 ? (
+                      <Stack direction={{ xs: 'column', lg: 'row' }} spacing={0.9} flexWrap="wrap" useFlexGap>
+                        {localPresencePlan.nearbyOpportunities.slice(0, 6).map((opportunity) => (
+                          <Box
+                            key={opportunity.placeId || `${opportunity.type}-${opportunity.name}`}
+                            sx={{
+                              flex: '1 1 260px',
+                              minWidth: 0,
+                              p: 1,
+                              borderRadius: 2.4,
+                              border: opportunity.status === 'verified'
+                                ? '1px solid rgba(45,212,191,0.3)'
+                                : '1px solid rgba(148,163,184,0.16)',
+                              bgcolor: 'rgba(15,23,42,0.5)',
+                            }}
+                          >
+                            <Stack spacing={0.7}>
+                              <Stack direction="row" spacing={0.7} alignItems="center" justifyContent="space-between">
+                                <Box sx={{ minWidth: 0 }}>
+                                  <Typography sx={{ color: '#f8fafc', fontWeight: 800, fontSize: '0.92rem' }}>
+                                    {opportunity.name}
+                                  </Typography>
+                                  <Typography sx={{ color: 'rgba(226,232,240,0.62)', fontSize: '0.78rem' }}>
+                                    {LOCAL_OPPORTUNITY_LABELS[opportunity.type] || opportunity.type} · {opportunity.radiusKm} km radius
+                                  </Typography>
+                                </Box>
+                                <Chip
+                                  size="small"
+                                  label={`${opportunity.confidence}%`}
+                                  sx={{
+                                    bgcolor: opportunity.status === 'verified' ? 'rgba(45,212,191,0.18)' : 'rgba(250,204,21,0.14)',
+                                    color: opportunity.status === 'verified' ? '#99f6e4' : '#fde68a',
+                                  }}
+                                />
+                              </Stack>
+                              <Typography sx={{ color: 'rgba(226,232,240,0.84)', fontSize: '0.84rem', lineHeight: 1.5 }}>
+                                {opportunity.eventIdea}
+                              </Typography>
+                              <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.8rem', lineHeight: 1.45 }}>
+                                Partnerverdi: {opportunity.partnerValue}
+                              </Typography>
+                              {renderClassificationChips([
+                                opportunity.primaryTypeDisplayName ? `Kategori: ${opportunity.primaryTypeDisplayName}` : null,
+                                typeof opportunity.rating === 'number' ? `${opportunity.rating.toFixed(1)} stjerner` : null,
+                                opportunity.formattedAddress ? `Adresse: ${opportunity.formattedAddress}` : null,
+                              ])}
+                              <Typography sx={{ color: 'rgba(226,232,240,0.58)', fontSize: '0.76rem', lineHeight: 1.45 }}>
+                                {opportunity.evidence.slice(0, 2).map((entry) => entry.label).join(' · ')}
+                              </Typography>
+                              <Stack direction="row" spacing={0.7} flexWrap="wrap" useFlexGap>
+                                {opportunity.websiteUrl ? (
+                                  <Button href={opportunity.websiteUrl} target="_blank" rel="noreferrer" size="small" variant="outlined" sx={{ textTransform: 'none', fontWeight: 700 }}>
+                                    Nettside
+                                  </Button>
+                                ) : null}
+                                {opportunity.googleMapsUri ? (
+                                  <Button href={opportunity.googleMapsUri} target="_blank" rel="noreferrer" size="small" variant="outlined" sx={{ textTransform: 'none', fontWeight: 700 }}>
+                                    Kart
+                                  </Button>
+                                ) : null}
+                              </Stack>
+                            </Stack>
+                          </Box>
+                        ))}
+                      </Stack>
+                    ) : (
+                      <Alert severity="info">
+                        Agenten har laget eventretninger, men fant ikke verifiserbare lokale steder automatisk. Bekreft adresse eller øk radius i manuell kartgjennomgang.
+                      </Alert>
+                    )}
+
+                    <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1}>
+                      <Box sx={{ flex: 1 }}>
+                        <Typography sx={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.84rem', textTransform: 'uppercase', letterSpacing: '0.12em', mb: 0.8 }}>
+                          Eventkonsepter
+                        </Typography>
+                        {renderList(localPresencePlan.recommendedEventConcepts.slice(0, 5))}
+                      </Box>
+                      <Box sx={{ flex: 1 }}>
+                        <Typography sx={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.84rem', textTransform: 'uppercase', letterSpacing: '0.12em', mb: 0.8 }}>
+                          Innholdsplan
+                        </Typography>
+                        {renderList(localPresencePlan.contentActivationPlan.slice(0, 5))}
+                      </Box>
+                      <Box sx={{ flex: 1 }}>
+                        <Typography sx={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.84rem', textTransform: 'uppercase', letterSpacing: '0.12em', mb: 0.8 }}>
+                          Outreach
+                        </Typography>
+                        {renderList(localPresencePlan.outreachSequence.slice(0, 5))}
+                      </Box>
+                    </Stack>
                   </Stack>
                 </Box>
               ) : null}

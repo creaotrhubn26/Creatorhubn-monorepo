@@ -100,6 +100,80 @@ type RoleRoomAgentCompetitorAnalysis = {
   limitations: string[];
 };
 
+type RoleRoomAgentGeoPoint = {
+  latitude: number;
+  longitude: number;
+};
+
+type RoleRoomAgentLocalOpportunityType =
+  | "school"
+  | "sports_club"
+  | "workplace"
+  | "hotel"
+  | "culture"
+  | "retail"
+  | "fitness"
+  | "community"
+  | "venue"
+  | "tourism";
+
+type RoleRoomAgentLocalOpportunityEvidence = {
+  type:
+    | "google_places_result"
+    | "same_area"
+    | "industry_fit"
+    | "audience_fit"
+    | "website_available"
+    | "review_signal"
+    | "manual_review_needed";
+  label: string;
+  weight: number;
+};
+
+type RoleRoomAgentLocalPresenceOpportunity = {
+  type: RoleRoomAgentLocalOpportunityType;
+  source: "google_places" | "manual_strategy";
+  placeId?: string | null;
+  name: string;
+  websiteUrl?: string | null;
+  googleMapsUri?: string | null;
+  formattedAddress?: string | null;
+  primaryType?: string | null;
+  primaryTypeDisplayName?: string | null;
+  rating?: number | null;
+  userRatingCount?: number | null;
+  radiusKm: number;
+  confidence: number;
+  status: "verified" | "likely" | "needs_review";
+  evidence: RoleRoomAgentLocalOpportunityEvidence[];
+  eventIdea: string;
+  partnerValue: string;
+  customerValue: string;
+  contentPlan: string[];
+  outreachMessage: string;
+  kpis: string[];
+  requiresManualConfirmation: boolean;
+};
+
+type RoleRoomAgentLocalPresencePlan = {
+  status: "ready" | "limited" | "unavailable";
+  source: "google_places" | "fallback";
+  generatedAt: string;
+  industryContext: string;
+  marketArea: string;
+  radiusStrategy: Array<{
+    radiusKm: number;
+    label: string;
+    reason: string;
+  }>;
+  nearbyOpportunities: RoleRoomAgentLocalPresenceOpportunity[];
+  recommendedEventConcepts: string[];
+  contentActivationPlan: string[];
+  outreachSequence: string[];
+  kpis: string[];
+  limitations: string[];
+};
+
 type RoleRoomAgentWebsiteInsights = {
   finalUrl?: string | null;
   pageTitle?: string | null;
@@ -146,6 +220,7 @@ type RoleRoomAgentBusinessSignals = {
   source: "google_places";
   displayName?: string;
   formattedAddress?: string | null;
+  location?: RoleRoomAgentGeoPoint | null;
   googleMapsUri?: string | null;
   websiteUri?: string | null;
   primaryType?: string | null;
@@ -223,6 +298,8 @@ type RoleRoomAgentRetrievalMeta = {
   reviewsSelected: number;
   competitorsReviewed: number;
   competitorsSelected: number;
+  localOpportunitiesReviewed: number;
+  localOpportunitiesSelected: number;
   brregLookupStatus?: RoleRoomAgentBrregLookupStatus;
   brregMatchedBy?: RoleRoomAgentBrregCompany["matchedBy"];
 };
@@ -243,6 +320,7 @@ type RoleRoomAgentNormalizedPayload = {
   agreementSuggestions: RoleRoomAgentAgreementSuggestion[];
   socialProfileCandidates: RoleRoomAgentSocialProfileCandidate[];
   competitorAnalysis: RoleRoomAgentCompetitorAnalysis;
+  localPresencePlan: RoleRoomAgentLocalPresencePlan;
   retrievalMeta?: RoleRoomAgentRetrievalMeta;
   companyProfile: {
     companyName: string;
@@ -871,6 +949,16 @@ function readGooglePlacePrimaryTypeDisplayName(candidate: Record<string, unknown
   return readGooglePlaceTextRecord(candidate.primaryTypeDisplayName);
 }
 
+function readGooglePlaceLocation(candidate: Record<string, unknown>): RoleRoomAgentGeoPoint | null {
+  if (!candidate.location || typeof candidate.location !== "object" || Array.isArray(candidate.location)) {
+    return null;
+  }
+  const location = candidate.location as Record<string, unknown>;
+  const latitude = asNumber(location.latitude);
+  const longitude = asNumber(location.longitude);
+  return latitude !== null && longitude !== null ? { latitude, longitude } : null;
+}
+
 function extractMarketLocation(value: string | null | undefined): string {
   if (!hasText(value)) {
     return "";
@@ -1073,6 +1161,211 @@ function buildLimitedCompetitorAnalysis(
       "Hva taper kunden vanligvis på: pris, tillit, synlighet, hastighet eller kvalitet?",
       "Hvilke kanaler gir kunden best leads i dag?",
     ],
+    limitations: [reason],
+  };
+}
+
+type RoleRoomAgentLocalOpportunityDefinition = {
+  type: RoleRoomAgentLocalOpportunityType;
+  searchTerms: string[];
+  radiusKm: number;
+  eventIdea: string;
+  partnerValue: string;
+  customerValue: string;
+  contentPlan: string[];
+  outreachMessage: string;
+  kpis: string[];
+};
+
+function buildRadiusStrategy(classification: RoleRoomAgentBusinessClassification): RoleRoomAgentLocalPresencePlan["radiusStrategy"] {
+  const localFirst = classification.businessModel === "B2C" || classification.industry === "Restaurant og servering";
+  return [
+    {
+      radiusKm: 1,
+      label: "Nærmiljø",
+      reason: localFirst
+        ? "Start med skoler, idrett, nabolag og arbeidsplasser som faktisk kan bruke tilbudet ofte."
+        : "Start med aktører som gjør et fysisk møte enkelt å gjennomføre.",
+    },
+    {
+      radiusKm: 3,
+      label: "Bydel / nærområde",
+      reason: "Utvid når nærmeste treff ikke gir nok partnere eller publikumsgrunnlag.",
+    },
+    {
+      radiusKm: 8,
+      label: "By / kommune",
+      reason: "Bruk for større arrangementer, co-hosting, kulturhus, hoteller og lokale pressevinkler.",
+    },
+    {
+      radiusKm: 15,
+      label: "Regionalt",
+      reason: "Bruk bare når målgruppen er spesialisert eller eventet trenger større nedslagsfelt.",
+    },
+  ];
+}
+
+function buildRestaurantLocalOpportunityDefinitions(companyName: string): RoleRoomAgentLocalOpportunityDefinition[] {
+  return [
+    {
+      type: "school",
+      searchTerms: ["skole", "barneskole", "ungdomsskole"],
+      radiusKm: 3,
+      eventIdea: "Familiekveld med skole-/klassekasse: egen meny, forhåndsbestilling og en avtalt andel tilbake til klasse eller FAU.",
+      partnerValue: "Skolen eller klassen får en enkel dugnadsmodell uten å arrangere mat selv.",
+      customerValue: `${companyName} får lokal synlighet hos familier som bor i leveringsområdet.`,
+      contentPlan: ["Teaser for familiekveld", "Kort video av meny/tilberedning", "Bilder av tilbudspakke", "Oppsummering med takk til nærmiljøet"],
+      outreachMessage: `Hei, vi ser på en lokal familiekveld der ${companyName} kan lage en enkel meny som støtter klassekasse/FAU. Er dette relevant å drøfte med riktig kontaktperson?`,
+      kpis: ["Antall forhåndsbestillinger", "Omsetning på eventmeny", "Nye lokale følgere", "Antall familier som bruker rabattkode"],
+    },
+    {
+      type: "sports_club",
+      searchTerms: ["idrettslag", "fotballklubb", "idrettshall", "sportsklubb"],
+      radiusKm: 5,
+      eventIdea: "Kampdag-/treningsmeny med klubbkode, lagpakker og synlig sponsorinnhold rundt trening eller hjemmekamp.",
+      partnerValue: "Klubben får sosialt samlingspunkt, sponsorverdi og mulig inntekt per solgte meny.",
+      customerValue: `${companyName} blir en praktisk lokal matpartner for lag, foreldre og supportere.`,
+      contentPlan: ["Klubbmeny-grafikk", "Reel fra kjøkken til lag", "Lagbilde med matleveranse", "Ukespost med rabattkode"],
+      outreachMessage: `Hei, ${companyName} ønsker å teste en klubbmeny for trenings-/kampdager med enkel bestilling og klubbkode. Hvem kan vi snakke med om et pilotopplegg?`,
+      kpis: ["Antall klubbkode-bestillinger", "Repeterende lagbestillinger", "Reach i lokale SoMe-kanaler", "Partneravtale signert"],
+    },
+    {
+      type: "workplace",
+      searchTerms: ["kontorfellesskap", "kontor", "næringspark", "coworking"],
+      radiusKm: 3,
+      eventIdea: "Lunsjpop-up eller afterwork-smaking for nærliggende arbeidsplasser med bedriftsavtale og fast møtematpakke.",
+      partnerValue: "Arbeidsplassen får enkel matløsning og sosial aktivitet uten intern planlegging.",
+      customerValue: `${companyName} får B2B-lunsj, møtemat og repeterende ordre som kan måles.`,
+      contentPlan: ["LinkedIn-post om lokal lunsjløsning", "Foto av bedriftsmeny", "Kort testimonial fra kontor", "CTA til bedriftsavtale"],
+      outreachMessage: `Hei, ${companyName} setter opp en lokal lunsj-/møtematpilot for bedrifter i nærheten. Kan vi sende en enkel meny og et forslag til smaking?`,
+      kpis: ["Antall bedriftsleads", "Møtematbestillinger", "Gjennomsnittlig ordreverdi", "Bedriftsavtaler"],
+    },
+    {
+      type: "hotel",
+      searchTerms: ["hotell", "overnatting", "gjestehus"],
+      radiusKm: 8,
+      eventIdea: "Hotell-/resepsjonsavtale med QR-kode til lokal meny, takeaway og anbefalt matopplevelse for gjester.",
+      partnerValue: "Hotellet får en trygg lokal anbefaling uten å bygge egen restaurantløsning.",
+      customerValue: `${companyName} får synlighet mot reisende og gjester som allerede er i området.`,
+      contentPlan: ["QR-flyer", "Kort video: lokal mat nær hotellet", "Story-mal for hotellresepsjon", "Google Business Profile-post"],
+      outreachMessage: `Hei, vi ønsker å tilby hotellets gjester en enkel lokal matanbefaling med QR-meny og rask bestilling fra ${companyName}. Hvem håndterer lokale partneravtaler hos dere?`,
+      kpis: ["QR-skanninger", "Bestillinger fra hotellkode", "Nye Google-anmeldelser", "Partnersteder aktivert"],
+    },
+    {
+      type: "culture",
+      searchTerms: ["kulturhus", "kino", "scene", "arrangementslokale"],
+      radiusKm: 8,
+      eventIdea: "Pre-show meny eller kulturkveld-deal knyttet til kino, konsert eller lokalt arrangement.",
+      partnerValue: "Kulturarenaen får bedre publikumsopplevelse før/etter arrangement.",
+      customerValue: `${companyName} kan eie matøyeblikket rundt lokale kulturopplevelser.`,
+      contentPlan: ["Eventmeny", "Reel før forestilling", "Felles SoMe-post", "Recap fra publikumsflyt"],
+      outreachMessage: `Hei, ${companyName} ønsker å teste en pre-show/eventmeny for publikum hos dere. Kan vi se på en enkel felles kampanje rundt kommende arrangement?`,
+      kpis: ["Bruk av eventkode", "Salg før/etter arrangement", "Felles SoMe-reach", "Gjentatt samarbeid"],
+    },
+    {
+      type: "community",
+      searchTerms: ["borettslag", "frivilligsentral", "grendehus", "nærmiljøsenter"],
+      radiusKm: 5,
+      eventIdea: "Nabolagskveld med lokal rabatt, smaksprøver og en enkel bestillingsflyt for beboere i området.",
+      partnerValue: "Nabolaget får en lavterskel møteplass og et konkret lokalt tilbud.",
+      customerValue: `${companyName} får lokal tilstedeværelse og kan bygge vaner i nærområdet.`,
+      contentPlan: ["Nabolagsinvitasjon", "Flyer med QR", "Bildepakke fra event", "Oppfølgingspost med fast nabolagsdeal"],
+      outreachMessage: `Hei, ${companyName} ønsker å lage en enkel nabolagskveld for beboere i området. Kan dette være relevant for deres styre/arrangementsgruppe?`,
+      kpis: ["Oppmøte", "QR-skanninger", "Førstegangskunder", "Gjenkjøp innen 30 dager"],
+    },
+  ];
+}
+
+function buildGenericLocalOpportunityDefinitions(
+  companyName: string,
+  classification: RoleRoomAgentBusinessClassification,
+): RoleRoomAgentLocalOpportunityDefinition[] {
+  if (classification.industry === "Restaurant og servering") {
+    return buildRestaurantLocalOpportunityDefinitions(companyName);
+  }
+
+  if (classification.businessModel === "B2B") {
+    return [
+      {
+        type: "workplace",
+        searchTerms: ["næringsforening", "kontorfellesskap", "coworking", "næringspark"],
+        radiusKm: 8,
+        eventIdea: "Frokostseminar eller demo-lunsj med konkret fagtema og påmelding.",
+        partnerValue: "Partneren får relevant innhold for medlemmer/leietakere uten å produsere alt selv.",
+        customerValue: `${companyName} får fysisk tillit, leads og innhold som kan brukes i salg etterpå.`,
+        contentPlan: ["Invitasjonsvideo", "Faglig teaser", "Eventfoto", "Kort ekspertklipp", "Oppfølgingsmail"],
+        outreachMessage: `Hei, ${companyName} ønsker å holde et kort fagarrangement for lokale bedrifter. Kan dette passe som frokostseminar eller medlemsaktivitet hos dere?`,
+        kpis: ["Påmeldinger", "Møter booket", "Nye leads", "LinkedIn-engasjement"],
+      },
+      {
+        type: "hotel",
+        searchTerms: ["konferansehotell", "hotell", "møterom"],
+        radiusKm: 8,
+        eventIdea: "Mini-konferanse eller kundekveld med faglig innlegg, networking og casepresentasjon.",
+        partnerValue: "Venue får aktivitet og mulig møte-/serveringsomsetning.",
+        customerValue: `${companyName} får profesjonell ramme og troverdig innholdsproduksjon.`,
+        contentPlan: ["Speaker-klipp", "Panelbilder", "Casefilm", "Recap-artikkel"],
+        outreachMessage: `Hei, ${companyName} vurderer en liten fagkveld og ser etter lokal venue/partner. Kan vi få forslag til egnet oppsett?`,
+        kpis: ["Deltakere", "Kvalifiserte leads", "Møter etter event", "Content assets produsert"],
+      },
+      {
+        type: "culture",
+        searchTerms: ["kulturhus", "bibliotek", "arrangementslokale"],
+        radiusKm: 10,
+        eventIdea: "Åpent lokalt kunnskapsarrangement med lav terskel og tydelig samfunnsnytte.",
+        partnerValue: "Arenaen får relevant programinnhold for lokalmiljøet.",
+        customerValue: `${companyName} bygger tillit og synlighet uten å virke salgsdrevet.`,
+        contentPlan: ["Eventside", "Kort Q&A", "Publikumsreaksjoner", "Oppsummeringspost"],
+        outreachMessage: `Hei, vi ser på et lokalt kunnskapsarrangement med ${companyName}. Hvem bør vi kontakte for program eller lokale?`,
+        kpis: ["Oppmøte", "Spørsmål fra publikum", "Nyhetsbrev-signups", "PR/omtale"],
+      },
+    ];
+  }
+
+  return [
+    ...buildRestaurantLocalOpportunityDefinitions(companyName).slice(0, 3),
+    {
+      type: "retail",
+      searchTerms: ["kjøpesenter", "butikk", "handel"],
+      radiusKm: 5,
+      eventIdea: "Lokal pop-up eller krysskampanje med butikk/handel der publikum allerede beveger seg.",
+      partnerValue: "Partneren får aktivitet og mer trafikk.",
+      customerValue: `${companyName} får synlighet der målgruppen allerede er fysisk til stede.`,
+      contentPlan: ["Pop-up teaser", "Produktdemo", "Kundeintervju", "Felles kampanjepost"],
+      outreachMessage: `Hei, ${companyName} ønsker å teste en lokal pop-up/krysskampanje. Er dette relevant hos dere?`,
+      kpis: ["Fottrafikk", "QR-skanninger", "Leads", "Salg/booking"],
+    },
+  ];
+}
+
+function buildLimitedLocalPresencePlan(
+  reason: string,
+  input: RoleRoomAgentProducerBootstrapInput,
+  classification: RoleRoomAgentBusinessClassification,
+  marketArea: string,
+): RoleRoomAgentLocalPresencePlan {
+  const companyName = hasText(input.companyName) ? normalizeWhitespace(input.companyName) : "kunden";
+  const definitions = buildGenericLocalOpportunityDefinitions(companyName, classification);
+  return {
+    status: "limited",
+    source: "fallback",
+    generatedAt: new Date().toISOString(),
+    industryContext: `${classification.industry} · ${classification.businessModel}`,
+    marketArea: marketArea || "Må avklares",
+    radiusStrategy: buildRadiusStrategy(classification),
+    nearbyOpportunities: [],
+    recommendedEventConcepts: definitions.slice(0, 4).map((entry) => entry.eventIdea),
+    contentActivationPlan: [
+      "Lag pre-event teaser med tydelig lokal partner og enkel CTA.",
+      "Dokumenter selve eventet med foto, korte intervjuer og behind-the-scenes.",
+      "Publiser recap, kunde-/partnerreaksjoner og tilbud innen 24 timer.",
+    ],
+    outreachSequence: [
+      "Bekreft riktig kontaktperson hos lokal partner.",
+      "Send kort forslag med hva partneren får igjen, ikke bare hva kunden vil selge.",
+      "Foreslå pilot med lav risiko og tydelig måling.",
+    ],
+    kpis: ["Påmeldinger/oppmøte", "QR-skanninger", "Leads", "Salg/booking", "Innhold produsert", "Gjenkjøp/oppfølging"],
     limitations: [reason],
   };
 }
@@ -1787,7 +2080,7 @@ async function fetchGooglePlacesBusinessSignals(
   const websiteHost = normalizeHost(websiteUrl);
   const searchQueries = buildSearchQueries(input, websiteInsights);
   const fieldMask =
-    "places.id,places.displayName,places.formattedAddress,places.websiteUri,places.rating,places.userRatingCount,places.primaryType,places.primaryTypeDisplayName,places.googleMapsUri";
+    "places.id,places.displayName,places.formattedAddress,places.location,places.websiteUri,places.rating,places.userRatingCount,places.primaryType,places.primaryTypeDisplayName,places.googleMapsUri";
 
   const candidates: Array<Record<string, unknown>> = [];
 
@@ -1843,6 +2136,7 @@ async function fetchGooglePlacesBusinessSignals(
     "id",
     "displayName",
     "formattedAddress",
+    "location",
     "googleMapsUri",
     "websiteUri",
     "primaryType",
@@ -1963,6 +2257,7 @@ async function fetchGooglePlacesBusinessSignals(
     source: "google_places",
     displayName: hasText(displayNameRecord.text) ? normalizeWhitespace(displayNameRecord.text) : companyName,
     formattedAddress: hasText(placeRecord.formattedAddress) ? normalizeWhitespace(placeRecord.formattedAddress) : null,
+    location: readGooglePlaceLocation(placeRecord),
     googleMapsUri: hasText(placeRecord.googleMapsUri) ? normalizeWhitespace(placeRecord.googleMapsUri) : null,
     websiteUri: hasText(placeRecord.websiteUri) ? normalizeWhitespace(placeRecord.websiteUri) : websiteUrl,
     primaryType: hasText(placeRecord.primaryType) ? normalizeWhitespace(placeRecord.primaryType) : null,
@@ -2172,6 +2467,238 @@ async function fetchGooglePlacesCompetitorAnalysis(
   };
 }
 
+async function fetchGooglePlacesLocalPresencePlan(
+  input: RoleRoomAgentProducerBootstrapInput,
+  websiteInsights: RoleRoomAgentWebsiteInsights,
+  businessSignals: RoleRoomAgentBusinessSignals | null,
+  brregCompany: RoleRoomAgentBrregCompany | null,
+): Promise<RoleRoomAgentLocalPresencePlan> {
+  const classification = detectBusinessClassification(input, websiteInsights, businessSignals, brregCompany);
+  const companyName = hasText(input.companyName)
+    ? normalizeWhitespace(input.companyName)
+    : brregCompany?.name || websiteInsights.siteName || websiteInsights.pageTitle || "kunden";
+  const marketArea =
+    extractMarketLocation(businessSignals?.formattedAddress || brregCompany?.businessAddress || "") ||
+    brregCompany?.municipality ||
+    "";
+  const definitions = buildGenericLocalOpportunityDefinitions(companyName, classification);
+  const apiKey = process.env.GOOGLE_PLACES_API_KEY;
+
+  if (!hasText(apiKey)) {
+    return buildLimitedLocalPresencePlan(
+      "Google Places API er ikke konfigurert, så lokale partnere kan ikke verifiseres automatisk.",
+      input,
+      classification,
+      marketArea,
+    );
+  }
+
+  if (!marketArea && !businessSignals?.location) {
+    return buildLimitedLocalPresencePlan(
+      "Mangler nok adresse/lokasjon til å foreslå nærliggende lokale løsninger.",
+      input,
+      classification,
+      marketArea,
+    );
+  }
+
+  const fieldMask =
+    "places.id,places.displayName,places.formattedAddress,places.websiteUri,places.rating,places.userRatingCount,places.primaryType,places.primaryTypeDisplayName,places.googleMapsUri,places.location";
+  const customerWebsiteHost = normalizeHost(normalizeWebsiteUrl(input.websiteUrl) || websiteInsights.finalUrl || brregCompany?.website || null);
+  const seenKeys = new Set<string>();
+  const opportunities: RoleRoomAgentLocalPresenceOpportunity[] = [];
+
+  for (const definition of definitions.slice(0, 7)) {
+    for (const searchTerm of definition.searchTerms.slice(0, 2)) {
+      const query = normalizeWhitespace([searchTerm, marketArea].filter(Boolean).join(" "));
+      if (!query) {
+        continue;
+      }
+
+      try {
+        const requestBody: Record<string, unknown> = {
+          textQuery: query,
+          pageSize: 5,
+          languageCode: "nb",
+          regionCode: "NO",
+        };
+        if (businessSignals?.location) {
+          requestBody.locationBias = {
+            circle: {
+              center: businessSignals.location,
+              radius: definition.radiusKm * 1000,
+            },
+          };
+        }
+
+        const response = await fetch("https://places.googleapis.com/v1/places:searchText", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": apiKey,
+            "X-Goog-FieldMask": fieldMask,
+          },
+          body: JSON.stringify(requestBody),
+          signal: AbortSignal.timeout(12_000),
+        });
+
+        if (!response.ok) {
+          continue;
+        }
+
+        const payload = (await response.json().catch(() => null)) as
+          | { places?: Array<Record<string, unknown>> }
+          | null;
+        const places = Array.isArray(payload?.places) ? payload.places : [];
+
+        for (const place of places) {
+          const name = readGooglePlaceDisplayName(place);
+          if (!name || isSameCompanyPlace(place, companyName, customerWebsiteHost)) {
+            continue;
+          }
+          const websiteUrl = hasText(place.websiteUri) ? normalizeWebsiteUrl(place.websiteUri) : null;
+          const placeHost = normalizeHost(websiteUrl);
+          const key = hasText(place.id)
+            ? normalizeWhitespace(place.id)
+            : placeHost || `${definition.type}:${normalizeIdentity(name)}:${normalizeIdentity(hasText(place.formattedAddress) ? place.formattedAddress : "")}`;
+          if (!key || seenKeys.has(key)) {
+            continue;
+          }
+          seenKeys.add(key);
+
+          const formattedAddress = hasText(place.formattedAddress) ? normalizeWhitespace(place.formattedAddress) : null;
+          const evidence: RoleRoomAgentLocalOpportunityEvidence[] = [
+            {
+              type: "google_places_result",
+              label: "Funnet som offentlig Google Places-resultat",
+              weight: 25,
+            },
+            {
+              type: "industry_fit",
+              label: `Passer eventmodell for ${classification.industry}`,
+              weight: 25,
+            },
+            {
+              type: "audience_fit",
+              label: "Har lokal målgruppe eller partnerrolle som kan aktiveres",
+              weight: 15,
+            },
+          ];
+
+          if (marketArea && formattedAddress?.toLowerCase().includes(marketArea.toLowerCase())) {
+            evidence.push({
+              type: "same_area",
+              label: `Samme lokale marked: ${marketArea}`,
+              weight: 20,
+            });
+          }
+          if (websiteUrl) {
+            evidence.push({
+              type: "website_available",
+              label: "Har nettside som bør åpnes før outreach",
+              weight: 5,
+            });
+          }
+          const rating = asNumber(place.rating);
+          const userRatingCount = asNumber(place.userRatingCount);
+          if ((rating && rating >= 4) || (userRatingCount && userRatingCount >= 20)) {
+            evidence.push({
+              type: "review_signal",
+              label: "Har rating/reviews som indikerer aktiv lokal tilstedeværelse",
+              weight: 5,
+            });
+          }
+          if (evidence.length <= 3) {
+            evidence.push({
+              type: "manual_review_needed",
+              label: "Må bekreftes manuelt før kontakt eller pitch",
+              weight: 0,
+            });
+          }
+
+          const confidence = Math.min(100, evidence.reduce((total, entry) => total + entry.weight, 0));
+          opportunities.push({
+            type: definition.type,
+            source: "google_places",
+            placeId: hasText(place.id) ? normalizeWhitespace(place.id) : null,
+            name,
+            websiteUrl,
+            googleMapsUri: hasText(place.googleMapsUri) ? normalizeWhitespace(place.googleMapsUri) : null,
+            formattedAddress,
+            primaryType: hasText(place.primaryType) ? normalizeWhitespace(place.primaryType) : null,
+            primaryTypeDisplayName: readGooglePlacePrimaryTypeDisplayName(place),
+            rating,
+            userRatingCount,
+            radiusKm: definition.radiusKm,
+            confidence,
+            status: confidence >= 80 ? "verified" : confidence >= 55 ? "likely" : "needs_review",
+            evidence,
+            eventIdea: definition.eventIdea,
+            partnerValue: definition.partnerValue,
+            customerValue: definition.customerValue,
+            contentPlan: definition.contentPlan,
+            outreachMessage: definition.outreachMessage,
+            kpis: definition.kpis,
+            requiresManualConfirmation: true,
+          });
+        }
+      } catch {
+        continue;
+      }
+    }
+  }
+
+  const selected = opportunities
+    .sort((left, right) => right.confidence - left.confidence || left.radiusKm - right.radiusKm)
+    .slice(0, 10);
+  const usable = selected.filter((entry) => entry.status === "verified" || entry.status === "likely");
+
+  if (selected.length === 0) {
+    return buildLimitedLocalPresencePlan(
+      "Fant ingen trygge lokale partnerkandidater i Google Places etter søk på bransje, lokasjon og eventtyper.",
+      input,
+      classification,
+      marketArea,
+    );
+  }
+
+  const recommendedEventConcepts = normalizeStringArray([
+    ...usable.slice(0, 5).map((entry) => `${entry.name}: ${entry.eventIdea}`),
+    ...definitions.slice(0, 3).map((entry) => entry.eventIdea),
+  ]);
+
+  return {
+    status: usable.length > 0 ? "ready" : "limited",
+    source: "google_places",
+    generatedAt: new Date().toISOString(),
+    industryContext: `${classification.industry} · ${classification.businessModel} · ${classification.contentCategory}`,
+    marketArea: marketArea || businessSignals?.formattedAddress || brregCompany?.businessAddress || "Må bekreftes",
+    radiusStrategy: buildRadiusStrategy(classification),
+    nearbyOpportunities: selected,
+    recommendedEventConcepts,
+    contentActivationPlan: [
+      "Pre-event: teaser, invitasjon, lokal partnerpost og tydelig QR/CTA.",
+      "Under event: foto, korte intervjuer, behind-the-scenes og publikumsreaksjoner.",
+      "Etter event: recap-film, 5-10 short-form klipp, partner-takk og oppfølgingskampanje.",
+      classification.industry === "Restaurant og servering"
+        ? "For restaurant: knytt hvert klipp til konkret meny, bestillingsflyt og lokal rabattkode."
+        : "For B2B: knytt hvert klipp til faglig problem, proof point og møtebooking.",
+    ],
+    outreachSequence: [
+      "Velg 3 lokale partnere med høyest confidence og relevant målgruppe.",
+      "Åpne nettside/Google-profil og bekreft riktig kontaktperson manuelt.",
+      "Send kort pilotforslag med partnerverdi, kundegevinst, eventformat og enkel måling.",
+      "Sett opp prosjektmappe, invitasjon, kjøreplan og innholdsleveranser før partner bekreftes.",
+    ],
+    kpis: Array.from(new Set(selected.flatMap((entry) => entry.kpis))).slice(0, 10),
+    limitations: [
+      "Lokale steder er Google Places-kandidater og må bekreftes manuelt før kontakt.",
+      "Radius er basert på tilgjengelig adresse/lokasjon og kan utvides i kartvisning fra 1 km til 15 km.",
+      "Agenten booker ikke partner eller event automatisk.",
+    ],
+  };
+}
+
 function buildFallbackBootstrap(
   input: RoleRoomAgentProducerBootstrapInput,
   websiteInsights: RoleRoomAgentWebsiteInsights,
@@ -2180,6 +2707,7 @@ function buildFallbackBootstrap(
   companyAge: RoleRoomAgentCompanyAge | null,
   agreementSuggestions: RoleRoomAgentAgreementSuggestion[],
   competitorAnalysis: RoleRoomAgentCompetitorAnalysis,
+  localPresencePlan: RoleRoomAgentLocalPresencePlan,
 ): RoleRoomAgentNormalizedPayload {
   const websiteUrl = normalizeWebsiteUrl(input.websiteUrl)
     || websiteInsights.finalUrl
@@ -2234,6 +2762,8 @@ function buildFallbackBootstrap(
       reviewsSelected: businessSignals?.topReviews.length || 0,
       competitorsReviewed: competitorAnalysis.competitors.length,
       competitorsSelected: competitorAnalysis.verifiedCompetitorCount,
+      localOpportunitiesReviewed: localPresencePlan.nearbyOpportunities.length,
+      localOpportunitiesSelected: localPresencePlan.nearbyOpportunities.filter((entry) => entry.status === "verified" || entry.status === "likely").length,
       brregLookupStatus: brregCompany?.lookupStatus,
       brregMatchedBy: brregCompany?.matchedBy,
     },
@@ -2242,6 +2772,7 @@ function buildFallbackBootstrap(
     agreementSuggestions,
     socialProfileCandidates,
     competitorAnalysis,
+    localPresencePlan,
     companyProfile: {
       companyName,
       websiteUrl,
@@ -2323,6 +2854,11 @@ function buildFallbackBootstrap(
           .slice(0, 5)
           .map((candidate) => `${candidate.name}: ${candidate.relevanceReason}`),
         marketingOpportunities: competitorAnalysis.marketingOpportunities,
+        localPresenceSignals: localPresencePlan.nearbyOpportunities
+          .filter((opportunity) => opportunity.status === "verified" || opportunity.status === "likely")
+          .slice(0, 5)
+          .map((opportunity) => `${opportunity.name}: ${opportunity.eventIdea}`),
+        localEventConcepts: localPresencePlan.recommendedEventConcepts,
       },
       brandGuide: {
         logoUrl: websiteInsights.probableLogoUrl || null,
@@ -2450,6 +2986,9 @@ function buildFallbackBootstrap(
       competitorAnalysis.verifiedCompetitorCount > 0
         ? `Gå gjennom ${competitorAnalysis.verifiedCompetitorCount} konkurrentkandidater med kunden før markedsføringsvinkelen låses.`
         : "Konkurrentanalyse er begrenset. Be kunden oppgi de viktigste konkurrentene manuelt.",
+      localPresencePlan.nearbyOpportunities.length > 0
+        ? `Vurder ${localPresencePlan.nearbyOpportunities.length} lokale event-/partnerforslag i ${localPresencePlan.marketArea}. Start med høyest confidence.`
+        : "Lokal eventplan er begrenset. Bekreft adresse og lokale partnerkategorier manuelt.",
       "Godkjenn story logikk før manus og storyboard fylles videre ut",
       "Samle brandfiler, logo og eksisterende referansemateriale",
       ...agreementSuggestions.slice(0, 2).map((entry) => `Avtale: ${entry.title}`),
@@ -2479,6 +3018,16 @@ function buildFallbackBootstrap(
                 .map((entry) => `${entry.name} (${entry.confidence}%)`)
                 .join("; ")}.`
             : "",
+          localPresencePlan.nearbyOpportunities.length > 0
+            ? `Lokal synlighet/event: ${localPresencePlan.nearbyOpportunities
+                .slice(0, 5)
+                .map((entry) => `${entry.name} (${entry.type}, ${entry.radiusKm} km)`)
+                .join("; ")}.`
+            : localPresencePlan.recommendedEventConcepts.length > 0
+              ? `Lokal synlighet/event: Strategiforslag før partnerverifisering: ${localPresencePlan.recommendedEventConcepts
+                  .slice(0, 3)
+                  .join("; ")}.`
+              : "",
         ].filter(Boolean).join(" "),
       ),
       projectType: "content_production",
@@ -2500,6 +3049,7 @@ async function requestOpenAiBootstrap(
   companyAge: RoleRoomAgentCompanyAge | null,
   agreementSuggestions: RoleRoomAgentAgreementSuggestion[],
   competitorAnalysis: RoleRoomAgentCompetitorAnalysis,
+  localPresencePlan: RoleRoomAgentLocalPresencePlan,
   retrievalMeta: RoleRoomAgentRetrievalMeta | null,
 ): Promise<unknown | null> {
   const runtimeConfig = getRoleRoomAgentRuntimeConfig();
@@ -2539,6 +3089,8 @@ async function requestOpenAiBootstrap(
               "Hvis socialProfileCandidates finnes, bruk kun kontoer med verified eller likely som kanalinnsikt, og marker kontoer som må bekreftes av produsent eller kunde før publisering.",
               "Hvis competitorAnalysis finnes, bruk kun konkurrenter med verified eller likely som markedsføringsinnsikt. Ikke påstå at en kandidat er konkurrent uten manuell bekreftelse fra kunden.",
               "Bruk konkurrentanalysen til posisjonering, content gaps, CTA og kanalprioritering, men ikke finn på annonsetall, markedsandeler eller private konkurrentdata.",
+              "Hvis localPresencePlan finnes, bruk den til lokale eventforslag basert på bransje, adresse, nærliggende partnere og radius. Ikke påstå at partnere er kontaktet eller bekreftet.",
+              "For restaurant/servering skal lokale forslag prioritere skole/klassekasse, idrettslag, arbeidsplasser, hotell, kulturarena og nabolag når slike finnes.",
             ],
           },
           outputSchemaHints: {
@@ -2585,6 +3137,7 @@ async function requestOpenAiBootstrap(
           agreementSuggestions,
           socialProfileCandidates: websiteInsights.socialProfileCandidates ?? [],
           competitorAnalysis,
+          localPresencePlan,
           retrievalMeta,
         }),
       },
@@ -2672,6 +3225,7 @@ function normalizeBootstrapPayload(
     agreementSuggestions: fallback.agreementSuggestions,
     socialProfileCandidates: fallback.socialProfileCandidates,
     competitorAnalysis: fallback.competitorAnalysis,
+    localPresencePlan: fallback.localPresencePlan,
     retrievalMeta: fallback.retrievalMeta,
     companyProfile: {
       companyName: hasText(companyProfile.companyName)
@@ -2837,6 +3391,12 @@ export async function generateRoleRoomAgentProducerBootstrap(
     businessSignals,
     initialBrregCompany,
   );
+  const localPresencePlan = await fetchGooglePlacesLocalPresencePlan(
+    enrichedInput,
+    websiteInsights,
+    businessSignals,
+    initialBrregCompany,
+  );
   const fallback = buildFallbackBootstrap(
     {
       ...enrichedInput,
@@ -2848,6 +3408,7 @@ export async function generateRoleRoomAgentProducerBootstrap(
     companyAge,
     agreementSuggestions,
     competitorAnalysis,
+    localPresencePlan,
   );
   const openAiPayload = await requestOpenAiBootstrap(
     enrichedInput,
@@ -2857,6 +3418,7 @@ export async function generateRoleRoomAgentProducerBootstrap(
     companyAge,
     agreementSuggestions,
     competitorAnalysis,
+    localPresencePlan,
     fallback.retrievalMeta ?? null,
   );
   if (!openAiPayload) {

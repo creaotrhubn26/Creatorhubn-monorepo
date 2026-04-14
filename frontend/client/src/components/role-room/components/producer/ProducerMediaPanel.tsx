@@ -2967,6 +2967,11 @@ export default function ProducerMediaPanel({
       .slice(0, 5)
       .map((entry) => `${entry.name}: ${entry.relevanceReason} (${entry.confidence}%)`)
       .join('\n') || '';
+    const localPresenceSummary = result.localPresencePlan?.nearbyOpportunities
+      ?.filter((entry) => entry.status === 'verified' || entry.status === 'likely')
+      .slice(0, 5)
+      .map((entry) => `${entry.name}: ${entry.eventIdea} (${entry.radiusKm} km, ${entry.confidence}%)`)
+      .join('\n') || '';
     const description = [
       draft?.description || result.companyProfile.summary || '',
       result.brregCompany?.lookupStatus === 'verified' && result.brregCompany.organizationNumber
@@ -2981,6 +2986,12 @@ export default function ProducerMediaPanel({
         : '',
       result.competitorAnalysis?.marketingOpportunities?.length
         ? `Markedsføringsmuligheter:\n${result.competitorAnalysis.marketingOpportunities.slice(0, 4).join('\n')}`
+        : '',
+      localPresenceSummary
+        ? `Lokal synlighet/event:\n${localPresenceSummary}`
+        : '',
+      result.localPresencePlan?.recommendedEventConcepts?.length
+        ? `Lokale eventkonsepter:\n${result.localPresencePlan.recommendedEventConcepts.slice(0, 4).join('\n')}`
         : '',
       agreementNotes ? `Avtalenotater:\n${agreementNotes}` : '',
     ]
@@ -3011,6 +3022,7 @@ export default function ProducerMediaPanel({
       props: [],
       socialProfiles,
       competitorAnalysis: result.competitorAnalysis ?? null,
+      localPresencePlan: result.localPresencePlan ?? null,
       roleRoomAgentPrefill: {
         generatedAt: result.generatedAt,
         brregCompany: result.brregCompany ?? null,
@@ -3018,6 +3030,7 @@ export default function ProducerMediaPanel({
         agreementSuggestions: result.agreementSuggestions ?? [],
         socialProfileCandidates: result.socialProfileCandidates ?? [],
         competitorAnalysis: result.competitorAnalysis ?? null,
+        localPresencePlan: result.localPresencePlan ?? null,
         websiteUrl: draft?.websiteUrl || result.companyProfile.websiteUrl || '',
       },
     });

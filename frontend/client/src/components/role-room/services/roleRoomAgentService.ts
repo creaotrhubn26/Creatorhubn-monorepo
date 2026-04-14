@@ -38,6 +38,10 @@ export interface RoleRoomAgentBusinessSignals {
   source: 'google_places';
   displayName?: string;
   formattedAddress?: string | null;
+  location?: {
+    latitude: number;
+    longitude: number;
+  } | null;
   googleMapsUri?: string | null;
   websiteUri?: string | null;
   primaryType?: string | null;
@@ -178,6 +182,61 @@ export interface RoleRoomAgentCompetitorAnalysis {
   limitations: string[];
 }
 
+export interface RoleRoomAgentLocalPresenceOpportunity {
+  type: 'school' | 'sports_club' | 'workplace' | 'hotel' | 'culture' | 'retail' | 'fitness' | 'community' | 'venue' | 'tourism';
+  source: 'google_places' | 'manual_strategy';
+  placeId?: string | null;
+  name: string;
+  websiteUrl?: string | null;
+  googleMapsUri?: string | null;
+  formattedAddress?: string | null;
+  primaryType?: string | null;
+  primaryTypeDisplayName?: string | null;
+  rating?: number | null;
+  userRatingCount?: number | null;
+  radiusKm: number;
+  confidence: number;
+  status: 'verified' | 'likely' | 'needs_review';
+  evidence: Array<{
+    type:
+      | 'google_places_result'
+      | 'same_area'
+      | 'industry_fit'
+      | 'audience_fit'
+      | 'website_available'
+      | 'review_signal'
+      | 'manual_review_needed';
+    label: string;
+    weight: number;
+  }>;
+  eventIdea: string;
+  partnerValue: string;
+  customerValue: string;
+  contentPlan: string[];
+  outreachMessage: string;
+  kpis: string[];
+  requiresManualConfirmation: boolean;
+}
+
+export interface RoleRoomAgentLocalPresencePlan {
+  status: 'ready' | 'limited' | 'unavailable';
+  source: 'google_places' | 'fallback';
+  generatedAt: string;
+  industryContext: string;
+  marketArea: string;
+  radiusStrategy: Array<{
+    radiusKm: number;
+    label: string;
+    reason: string;
+  }>;
+  nearbyOpportunities: RoleRoomAgentLocalPresenceOpportunity[];
+  recommendedEventConcepts: string[];
+  contentActivationPlan: string[];
+  outreachSequence: string[];
+  kpis: string[];
+  limitations: string[];
+}
+
 export interface RoleRoomAgentProducerBootstrapResult {
   generatedAt: string;
   provider: 'openai' | 'fallback';
@@ -188,6 +247,7 @@ export interface RoleRoomAgentProducerBootstrapResult {
   agreementSuggestions: RoleRoomAgentAgreementSuggestion[];
   socialProfileCandidates: RoleRoomAgentSocialProfileCandidate[];
   competitorAnalysis: RoleRoomAgentCompetitorAnalysis;
+  localPresencePlan: RoleRoomAgentLocalPresencePlan;
   retrievalMeta?: {
     cohereRerankUsed: boolean;
     rerankerModel?: string;
@@ -197,6 +257,8 @@ export interface RoleRoomAgentProducerBootstrapResult {
     reviewsSelected: number;
     competitorsReviewed?: number;
     competitorsSelected?: number;
+    localOpportunitiesReviewed?: number;
+    localOpportunitiesSelected?: number;
     brregLookupStatus?: RoleRoomAgentBrregCompany['lookupStatus'];
     brregMatchedBy?: RoleRoomAgentBrregCompany['matchedBy'];
   };
@@ -388,6 +450,20 @@ export const roleRoomAgentService = {
         contentGapSuggestions: [],
         producerQuestions: [],
         limitations: ['Backend returnerte ikke competitorAnalysis.'],
+      },
+      localPresencePlan: payload.result.localPresencePlan ?? {
+        status: 'limited',
+        source: 'fallback',
+        generatedAt: new Date().toISOString(),
+        industryContext: 'Ukjent bransje',
+        marketArea: 'Må avklares',
+        radiusStrategy: [],
+        nearbyOpportunities: [],
+        recommendedEventConcepts: [],
+        contentActivationPlan: [],
+        outreachSequence: [],
+        kpis: [],
+        limitations: ['Backend returnerte ikke localPresencePlan.'],
       },
       projectCreationDraft: payload.result.projectCreationDraft ?? {
         projectName: `${payload.result.companyProfile?.companyName || input.projectName || 'Kunde'} · Innholdsproduksjon`,

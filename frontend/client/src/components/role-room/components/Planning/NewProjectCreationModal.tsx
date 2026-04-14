@@ -184,6 +184,7 @@ interface ProjectData {
   description: string;
   socialProfiles?: unknown[];
   competitorAnalysis?: unknown;
+  localPresencePlan?: unknown;
   roleRoomAgentPrefill?: unknown;
   collaborators: Array<{
     id: string;
@@ -384,6 +385,7 @@ export default function NewProjectCreationModal({
       description: '',
       socialProfiles: [],
       competitorAnalysis: null,
+      localPresencePlan: null,
       roleRoomAgentPrefill: null,
       collaborators: [],
       enableSplitSheet: false,
@@ -422,6 +424,7 @@ export default function NewProjectCreationModal({
       description: initialData.description || '',
       socialProfiles: Array.isArray(initialData.socialProfiles) ? initialData.socialProfiles : [],
       competitorAnalysis: initialData.competitorAnalysis || null,
+      localPresencePlan: initialData.localPresencePlan || null,
       roleRoomAgentPrefill: initialData.roleRoomAgentPrefill || null,
       collaborators: collaborators,
       enableSplitSheet: initialData.enableSplitSheet || false,
@@ -1698,6 +1701,7 @@ export default function NewProjectCreationModal({
         description: projectData.description || '',
         socialProfiles: Array.isArray(projectData.socialProfiles) ? projectData.socialProfiles : [],
         competitorAnalysis: projectData.competitorAnalysis || null,
+        localPresencePlan: projectData.localPresencePlan || null,
         roleRoomAgentPrefill: projectData.roleRoomAgentPrefill || null,
         collaborators: projectData.collaborators || [],
         crew: crew,
@@ -1919,6 +1923,7 @@ export default function NewProjectCreationModal({
         description: projectData.description || '',
         socialProfiles: Array.isArray(projectData.socialProfiles) ? projectData.socialProfiles : [],
         competitorAnalysis: projectData.competitorAnalysis || null,
+        localPresencePlan: projectData.localPresencePlan || null,
         roleRoomAgentPrefill: projectData.roleRoomAgentPrefill || null,
         collaborators: projectData.collaborators || [], // Keep for split sheet
         crew: crew, // Add crew for CastingPlanner
