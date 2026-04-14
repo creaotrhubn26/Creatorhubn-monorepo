@@ -66,6 +66,7 @@ import { apiRequest } from '../../../lib/queryClient';
 import { useBrandingSettings } from '../hooks/useBrandingSettings';
 import netflixWordmark from '../../../assets/brands/netflix-wordmark.svg';
 import globalTagService from '../services/globalTagService';
+import settingsService from '../services/settingsService';
 import {
   memoryCardControlApi,
   type MemoryCardControlEntry,
@@ -146,6 +147,7 @@ const lifecycleStageLabels: Record<MemoryCardLifecycleStage, string> = {
 };
 
 const getStorageKey = (projectId: string) => `role-room-memory-card-control:${projectId}`;
+const MEMORY_CARD_CONTROL_FALLBACK_NAMESPACE = 'memory-card-control-fallback';
 
 const createDefaultState = (): MemoryCardControlState => ({
   shootDayLabel: '',
@@ -257,6 +259,25 @@ const readLocalState = (projectId: string): MemoryCardControlState => {
 
 const writeLocalState = (projectId: string, state: MemoryCardControlState) => {
   localStorage.setItem(getStorageKey(projectId), JSON.stringify(state));
+};
+
+const readFallbackState = async (projectId: string): Promise<MemoryCardControlState> => {
+  const localState = readLocalState(projectId);
+  try {
+    const remoteState = await settingsService.getSetting<MemoryCardControlState>(
+      MEMORY_CARD_CONTROL_FALLBACK_NAMESPACE,
+      { projectId },
+    );
+    return remoteState ? normalizeControlState(remoteState) : localState;
+  } catch {
+    return localState;
+  }
+};
+
+const writeFallbackState = async (projectId: string, state: MemoryCardControlState): Promise<void> => {
+  const normalized = normalizeControlState(state);
+  writeLocalState(projectId, normalized);
+  await settingsService.setSetting(MEMORY_CARD_CONTROL_FALLBACK_NAMESPACE, normalized, { projectId });
 };
 
 const resolveCameraRecords = (payload: unknown): CameraRecord[] => {
@@ -866,9 +887,9 @@ export function MemoryCardBackupControlDialog({
         console.warn('memory-card-control API save failed, switching to local fallback', error);
       }
 
-      writeLocalState(projectId, nextState);
+      await writeFallbackState(projectId, nextState);
       setFallbackMode(true);
-      setPersistError('Lagrer lokalt fordi API ikke svarer i dette miljøet.');
+      setPersistError('Lagrer i DB-backed fallback fordi memory-card API ikke svarer i dette miljøet.');
     },
     [fallbackMode, projectId]
   );
@@ -977,11 +998,11 @@ export function MemoryCardBackupControlDialog({
       } catch (error) {
         if (cancelled) return;
         console.warn('memory-card-control API unavailable, using local fallback', error);
-        const localState = readLocalState(projectId);
-        setControlState(localState);
+        const fallbackState = await readFallbackState(projectId);
+        setControlState(fallbackState);
         setRemoteReport(null);
         setFallbackMode(true);
-        setPersistError('API utilgjengelig. Logg lagres lokalt i nettleseren.');
+        setPersistError('API utilgjengelig. Logg lagres i DB-backed fallback med lokal nød-cache.');
       } finally {
         if (!cancelled) {
           setLoading(false);

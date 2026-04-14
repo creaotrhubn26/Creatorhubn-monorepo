@@ -228,7 +228,8 @@ export const BreakdownReviewPanel: FC<BreakdownReviewPanelProps> = ({
       <Stack spacing={2} sx={{ mb: 3 }}>
         {reviewedScenes.map(scene => {
           const isApproved = sceneApprovals.get(scene.id) || false;
-          const hasIssues = !scene.locationId || scene.characters.length === 0;
+          const sceneCharacters = scene.characters ?? [];
+          const hasIssues = !scene.locationId || sceneCharacters.length === 0;
 
           return (
             <Accordion key={scene.id}>
@@ -270,21 +271,21 @@ export const BreakdownReviewPanel: FC<BreakdownReviewPanelProps> = ({
                         color={scene.locationId ? 'success' : 'warning'}
                       />
                       <Chip
-                        label={`${scene.characters.length} karakterer`}
+                        label={`${sceneCharacters.length} karakterer`}
                         size="small"
-                        color={scene.characters.length > 0 ? 'info' : 'warning'}
+                        color={sceneCharacters.length > 0 ? 'info' : 'warning'}
                       />
                     </Stack>
                   </Box>
 
                   {/* Characters */}
-                  {scene.characters.length > 0 && (
+                  {sceneCharacters.length > 0 && (
                     <Box>
                       <Typography variant="subtitle2" gutterBottom>
                         Karakterer
                       </Typography>
                       <Stack direction="row" spacing={1} flexWrap="wrap">
-                        {scene.characters.map(char => (
+                        {sceneCharacters.map(char => (
                           <Chip key={char} label={char} size="small" variant="outlined" />
                         ))}
                       </Stack>

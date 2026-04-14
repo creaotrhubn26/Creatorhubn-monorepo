@@ -10,7 +10,7 @@
  *  6.  loading / error / retry-with-exponential-backoff on data fetch
  *  7.  Fullscreen sync via fullscreenchange event listener (ESC safe)
  *  8.  userId from props — no more hard-coded 'current-user'
- *  9.  ContinuityNotes persisted to localStorage per projectId+dayId
+ *  9.  ContinuityNotes persisted through settingsService with localStorage fallback per projectId+dayId
  * 10.  Polling fallback every 5 s (placeholder for WS/SSE subscription)
  * 11.  Unused imports removed (Badge, Card, Pause, Next, Prev, VolumeUp…)
  * 12.  "Neste setup" + "Marker ferdig" added; manual take ±1 controls
@@ -52,7 +52,6 @@ import {
   Snackbar,
   Menu,
   Avatar,
-  AvatarGroup,
   ToggleButtonGroup,
   ToggleButton,
   useMediaQuery,
@@ -112,6 +111,7 @@ import {
   type ExportContext,
 } from '../../services/liveSetExportService';
 import globalTagService from '../../services/globalTagService';
+import settingsService from '../../services/settingsService';
 import GlobalMentionHelper from '../shared/GlobalMentionHelper';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -176,10 +176,12 @@ const TAKE_STATUS_COLORS: Record<Take['status'], string> = {
 
 const POLL_INTERVAL_MS = 5_000;
 const RETRY_MAX        = 4;
+const CONTINUITY_NOTES_NAMESPACE = 'live-set-continuity-notes';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const notesKey = (pid: string, did: string) => `liveset:notes:${pid}:${did}`;
+const notesNamespace = (did: string) => `${CONTINUITY_NOTES_NAMESPACE}:${did}`;
 
 function formatTime(seconds: number): string {
   const mins = Math.floor(seconds / 60);
@@ -196,6 +198,37 @@ function loadLocalNotes(pid: string, did: string): ContinuityNote[] {
 
 function saveLocalNotes(pid: string, did: string, notes: ContinuityNote[]) {
   try { localStorage.setItem(notesKey(pid, did), JSON.stringify(notes)); } catch { /* quota */ }
+}
+
+function mergeContinuityNotes(...sources: ContinuityNote[][]): ContinuityNote[] {
+  const byId = new Map<string, ContinuityNote>();
+  for (const notes of sources) {
+    for (const note of notes) {
+      byId.set(note.id, { ...byId.get(note.id), ...note });
+    }
+  }
+  return Array.from(byId.values()).sort((left, right) => (
+    new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime()
+  ));
+}
+
+async function loadPersistedNotes(pid: string, did: string): Promise<ContinuityNote[]> {
+  const localNotes = loadLocalNotes(pid, did);
+  const remoteNotes = await settingsService.getSetting<ContinuityNote[]>(notesNamespace(did), { projectId: pid });
+  if (!Array.isArray(remoteNotes)) {
+    return localNotes;
+  }
+  const merged = mergeContinuityNotes(remoteNotes, localNotes);
+  saveLocalNotes(pid, did, merged);
+  if (merged.length !== remoteNotes.length) {
+    void settingsService.setSetting(notesNamespace(did), merged, { projectId: pid });
+  }
+  return merged;
+}
+
+async function savePersistedNotes(pid: string, did: string, notes: ContinuityNote[]): Promise<void> {
+  saveLocalNotes(pid, did, notes);
+  await settingsService.setSetting(notesNamespace(did), notes, { projectId: pid });
 }
 
 function timeAgo(iso: string): string {
@@ -447,9 +480,29 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
   // Notes persistence (fix #9)
   // ─────────────────────────────────────────────────────────────────────────
 
+  useEffect(() => {
+    let cancelled = false;
+    const localNotes = loadLocalNotes(projectId, shootingDayId);
+    setContinuityNotes(localNotes);
+    void loadPersistedNotes(projectId, shootingDayId)
+      .then((notes) => {
+        if (!cancelled) {
+          setContinuityNotes(notes);
+        }
+      })
+      .catch((error) => {
+        console.warn('Kunne ikke laste DB-backed live-set-notater, bruker lokal cache.', error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, shootingDayId]);
+
   const persistNotes = useCallback((notes: ContinuityNote[]) => {
     setContinuityNotes(notes);
-    saveLocalNotes(projectId, shootingDayId, notes);
+    void savePersistedNotes(projectId, shootingDayId, notes).catch((error) => {
+      console.warn('Kunne ikke lagre live-set-notater via settingsService, lokal cache er beholdt.', error);
+    });
   }, [projectId, shootingDayId]);
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -837,13 +890,23 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
             <Tooltip title={activeUsers.map(u => `${u.userId} (${u.role})`).join(', ')}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                 <PeopleIcon sx={{ fontSize: 15, color: muted }} />
-                <AvatarGroup max={4} sx={{ '& .MuiAvatar-root': { width: 24, height: 24, fontSize: '0.65rem' } }}>
-                {activeUsers.map((u: PresenceEntry) => (
-                  <Avatar key={u.userId} sx={{ bgcolor: '#1565c0' }}>
-                    {u.userId.slice(0, 2).toUpperCase()}
-                  </Avatar>
-                ))}
-              </AvatarGroup>
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  {activeUsers.slice(0, 4).map((u: PresenceEntry, index) => (
+                    <Avatar
+                      key={u.userId}
+                      sx={{
+                        bgcolor: '#1565c0',
+                        border: '1px solid rgba(255,255,255,0.35)',
+                        fontSize: '0.65rem',
+                        height: 24,
+                        ml: index === 0 ? 0 : -0.75,
+                        width: 24,
+                      }}
+                    >
+                      {u.userId.slice(0, 2).toUpperCase()}
+                    </Avatar>
+                  ))}
+                </Box>
               </Box>
             </Tooltip>
           )}
@@ -1412,15 +1475,24 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
             {activeUsers.length > 0 && (
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
                 <PeopleIcon sx={{ fontSize: 14, color: muted }} />
-                <AvatarGroup max={4} sx={{ '& .MuiAvatar-root': { width: 22, height: 22, fontSize: '0.62rem' } }}>
-                  {activeUsers.map((u: PresenceEntry) => (
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  {activeUsers.slice(0, 4).map((u: PresenceEntry, index) => (
                     <Tooltip key={u.userId} title={`${u.userId} (${u.role})`}>
-                      <Avatar sx={{ bgcolor: '#1565c0' }}>
+                      <Avatar
+                        sx={{
+                          bgcolor: '#1565c0',
+                          border: '1px solid rgba(255,255,255,0.35)',
+                          fontSize: '0.62rem',
+                          height: 22,
+                          ml: index === 0 ? 0 : -0.75,
+                          width: 22,
+                        }}
+                      >
                         {u.userId.slice(0, 2).toUpperCase()}
                       </Avatar>
                     </Tooltip>
                   ))}
-                </AvatarGroup>
+                </Box>
               </Box>
             )}
 

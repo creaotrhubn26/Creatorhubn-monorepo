@@ -287,6 +287,13 @@ interface BeatBoardProps {
   darkMode?: boolean;
 }
 
+type GroupedBeatSection = {
+  label: string;
+  subtitle?: string;
+  beats: ExtendedBeatCard[];
+  tensionValues: number[];
+};
+
 // ─── BeatCardItem ─────────────────────────────────────────────────────────────
 
 interface BeatCardItemProps {
@@ -944,8 +951,8 @@ export const BeatBoard: FC<BeatBoardProps> = ({
     return result;
   }, [beats, characterFilter, activeThread]);
 
-  const groupedBeats = useMemo(() => {
-    if (!actsView) return [{ label: '', beats: filteredBeats, tensionValues: filteredBeats.map(b => b.tension ?? 5) }];
+  const groupedBeats = useMemo<GroupedBeatSection[]>(() => {
+    if (!actsView) return [{ label: '', subtitle: '', beats: filteredBeats, tensionValues: filteredBeats.map(b => b.tension ?? 5) }];
     const total = beats.length; // use unfiltered for act boundaries
     const act1End = Math.floor(total * 0.25);
     const act2End = Math.floor(total * 0.75);

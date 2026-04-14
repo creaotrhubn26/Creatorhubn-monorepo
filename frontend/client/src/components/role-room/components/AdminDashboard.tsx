@@ -788,12 +788,15 @@ export default function AdminDashboard({ open, onClose, projectName = 'Mitt Pros
     }));
   };
 
-  const updateBrandingToken = (key: keyof BrandingSettings['tokens']['labels'], value: string) => {
+  const updateBrandingToken = (key: string, value: string) => {
     setBrandingForm((prev) => ({
       ...prev,
       tokens: {
         ...prev.tokens,
-        labels: { ...prev.tokens.labels, [key]: value },
+        labels: {
+          ...(prev.tokens.labels as Record<string, string>),
+          [key]: value,
+        } as BrandingSettings['tokens']['labels'],
       },
     }));
   };
@@ -927,7 +930,7 @@ export default function AdminDashboard({ open, onClose, projectName = 'Mitt Pros
     { key: 'cardRadius', label: 'Card Radius', type: 'number' },
   ];
 
-  const tokenFields: Array<{ key: keyof BrandingSettings['tokens']['labels']; label: string }> = [
+  const tokenFields: Array<{ key: string; label: string }> = [
     { key: 'casting', label: 'Casting' },
     { key: 'roles', label: 'Roles' },
     { key: 'candidates', label: 'Candidates' },
@@ -2172,6 +2175,7 @@ export default function AdminDashboard({ open, onClose, projectName = 'Mitt Pros
     { key: 'storyLogicHeader', label: 'Story Logic Header' },
     { key: 'storyWriterHeader', label: 'Story Writer Header' },
   ];
+  const brandingTokenLabels = brandingForm.tokens.labels as Record<string, string>;
 
   const logoOptions = [
     { label: 'The Role Room Mark (Anbefalt)', value: ROLE_ROOM_BRAND_ASSETS.mark },
@@ -2199,7 +2203,7 @@ export default function AdminDashboard({ open, onClose, projectName = 'Mitt Pros
     { label: 'Grid', value: 'viewModule' },
   ];
 
-  const emptyStateIconKeys = new Set<keyof BrandingSettings['tokens']['labels']>([
+  const emptyStateIconKeys = new Set<string>([
     'manuscriptEmptyIcon',
     'manuscriptActsEmptyIcon',
     'manuscriptScenesEmptyIcon',
@@ -2872,7 +2876,7 @@ export default function AdminDashboard({ open, onClose, projectName = 'Mitt Pros
                       <InputLabel sx={{ fontSize: fontSize.body }}>{field.label}</InputLabel>
                       <Select
                         label={field.label}
-                        value={brandingForm.tokens.labels[field.key]}
+                        value={brandingTokenLabels[field.key] ?? ''}
                         onChange={(e) => updateBrandingToken(field.key, String(e.target.value))}
                       >
                         {fabIconOptions.map((option) => (
@@ -2887,7 +2891,7 @@ export default function AdminDashboard({ open, onClose, projectName = 'Mitt Pros
                       <InputLabel sx={{ fontSize: fontSize.body }}>{field.label}</InputLabel>
                       <Select
                         label={field.label}
-                        value={brandingForm.tokens.labels[field.key]}
+                        value={brandingTokenLabels[field.key] ?? ''}
                         onChange={(e) => updateBrandingToken(field.key, String(e.target.value))}
                       >
                         {emptyStateIconOptions.map((option) => (
@@ -2901,7 +2905,7 @@ export default function AdminDashboard({ open, onClose, projectName = 'Mitt Pros
                     <TextField
                       key={field.key}
                       label={field.label}
-                      value={brandingForm.tokens.labels[field.key]}
+                      value={brandingTokenLabels[field.key] ?? ''}
                       onChange={(e) => updateBrandingToken(field.key, e.target.value)}
                       fullWidth
                       size={isMobile ? 'medium' : 'small'}
@@ -2997,7 +3001,7 @@ export default function AdminDashboard({ open, onClose, projectName = 'Mitt Pros
                       {tokenFields.slice(0, 4).map((field) => (
                         <Chip
                           key={field.key}
-                          label={brandingForm.tokens.labels[field.key]}
+                          label={brandingTokenLabels[field.key] ?? field.label}
                           sx={{
                             bgcolor: `${brandingForm.colors.surface}cc`,
                             color: brandingForm.colors.textPrimary,
