@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback, useReducer, memo, type FC, type ReactNode } from "react";
-import { Box, Typography, Stack, IconButton, Select, MenuItem, FormControl, Tooltip, Collapse, Menu, TextField, InputAdornment, Divider, Dialog, DialogTitle, DialogContent, DialogActions, Button, Badge, Drawer, Chip, Checkbox, CircularProgress, Alert, Skeleton } from "@mui/material";
+import { Box, Typography, Stack, IconButton, Select, MenuItem, FormControl, Tooltip, Collapse, Menu, TextField, InputAdornment, Divider, Dialog, DialogTitle, DialogContent, DialogActions, Button, Badge, Chip, Checkbox, CircularProgress, Alert, Skeleton } from "@mui/material";
 import { Theaters as SceneIcon, Videocam as CameraIcon, Lightbulb as LightIcon, Mic as MicIcon, ExpandMore as ExpandMoreIcon, ExpandLess as ExpandLessIcon, Movie as MovieIcon, Add as AddIcon, Close as CloseIcon, Image as ImageIcon, GridView as GridViewIcon, ViewList as ViewListIcon, PlayArrow as PlayIcon, Warning as WarningIcon, Print as PrintIcon, Check as CheckIcon, Edit as EditIcon, ZoomIn as ZoomInIcon, ZoomOut as ZoomOutIcon, Fullscreen as FullscreenIcon, Search as SearchIcon, DragIndicator as DragIcon, Download as DownloadIcon, FileDownload as ExportIcon, Pause as PauseIcon, Timer as TimerIcon, RecordVoiceOver as ReadThroughIcon, People as PeopleIcon, ChevronLeft as ChevronLeftIcon, ChevronRight as ChevronRightIcon, Person as PersonIcon, Notes as NoteIcon, FileCopy as FileCopyIcon, Bookmark as BookmarkIcon, Assignment as AssignmentIcon, Phone as PhoneIcon, Email as EmailIcon, VideoLibrary as VideoLibraryIcon, FiberManualRecord as LiveIcon, ViewWeek as StripboardIcon, CalendarMonth as CalendarIcon, Description as CallSheetIcon, Refresh as RefreshIcon, Settings as SettingsIcon, WbSunny as SunIcon, NightsStay as MoonIcon, WbTwilight as TwilightIcon, Home as HomeIcon, Park as ParkIcon, PushPin as PinIcon, FormatQuote as QuoteIcon, PhotoCamera as PhotoIcon, CameraAlt as CameraAltIcon, Inventory as InventoryIcon, TheaterComedy as TheaterIcon, Cancel as CancelIcon, CheckCircle as CheckCircleIcon, Chat as ChatIcon, CameraRoll as CameraRollIcon } from "@mui/icons-material";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -52,6 +52,11 @@ import { useShotPresets } from "./production/manuscript/useShotPresets";
 import { useStoryboardShotLinks } from "./production/manuscript/useStoryboardShotLinks";
 import { useTimelinePlayback } from "./production/manuscript/useTimelinePlayback";
 import { useTtsReadThrough } from "./production/manuscript/useTtsReadThrough";
+import { SceneNavigator } from "./production/manuscript/SceneNavigator";
+import { ManuscriptCenter } from "./production/manuscript/ManuscriptCenter";
+import { ShotInspector } from "./production/manuscript/ShotInspector";
+import { ProductionWorkflowDialogs } from "./production/manuscript/ProductionWorkflowDialogs";
+import { TalentDrawer } from "./production/manuscript/TalentDrawer";
 
 interface ProductionManuscriptViewProps {
   manuscript: Manuscript;
@@ -2783,37 +2788,11 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
       {/* Main content area */}
       <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         
-        {/* LEFT SIDEBAR - Scene Navigator - Enhanced */}
-        {/* Mobile Drawer for sidebar */}
-        <Drawer
-          anchor="left"
-          open={mobileSidebarOpen && isMobile}
-          onClose={() => setMobileSidebarOpen(false)}
-          PaperProps={{
-            sx: {
-              width: 280,
-              bgcolor: '#0f1318',
-              borderRight: '1px solid #1e2536',
-            },
-          }}
-        >
-          {/* Drawer Close Button */}
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end', p: 1 }}>
-            <IconButton onClick={() => setMobileSidebarOpen(false)} sx={{ color: '#6b7280' }}>
-              <CloseIcon sx={{ fontSize: 20 }} />
-            </IconButton>
-          </Box>
-        </Drawer>
-        
-        {/* Desktop sidebar or empty on mobile */}
-        <Box
-          sx={{
-            width: isMobile ? 0 : responsive.sidebarWidth,
-            display: isMobile ? 'none' : 'flex',
-            bgcolor: '#0f1318',
-            borderRight: '1px solid #1e2536',
-            flexDirection: 'column',
-          }}
+        <SceneNavigator
+          isMobile={isMobile}
+          mobileOpen={mobileSidebarOpen}
+          onMobileClose={() => setMobileSidebarOpen(false)}
+          width={responsive.sidebarWidth}
         >
           {/* Search & Filter Header */}
           <Box sx={{ 
@@ -3352,26 +3331,11 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               </IconButton>
             </Tooltip>
           </Box>
-        </Box>
+        </SceneNavigator>
 
-        {/* CENTER - Manuscript View - ENHANCED */}
-        <Box
+        <ManuscriptCenter
           ref={manuscriptRef}
-          sx={{
-            flex: isManuscriptFullscreen ? 'auto' : 1,
-            display: 'flex',
-            flexDirection: 'column',
-            bgcolor: '#0f1318',
-            overflow: 'hidden',
-            ...(isManuscriptFullscreen && {
-              position: 'fixed',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              zIndex: 1300,
-            }),
-          }}
+          isFullscreen={isManuscriptFullscreen}
         >
           {/* Top Panel Bar */}
           <Box sx={{ 
@@ -4757,20 +4721,12 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
           </Box>
         </Box>
       </Box>
-      </Box>
+      </ManuscriptCenter>
 
       {/* RIGHT SIDEBAR - Shot Details */}
-      <Box
-        sx={{
-          width: containerStyle.sidebarWidth || 280,
-          maxWidth: containerStyle.maxWidth ? containerStyle.sidebarWidth : undefined,
-          bgcolor: '#1e2536',
-          borderLeft: '1px solid #2a3142',
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'visible',
-          position: 'relative',
-        }}
+      <ShotInspector
+        width={containerStyle.sidebarWidth || 280}
+        maxWidth={containerStyle.maxWidth ? containerStyle.sidebarWidth : undefined}
       >
         {/* Scene Header - synced with center panel */}
         <Box
@@ -6599,17 +6555,18 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               </Collapse>
             </Box>
           </Box>
-        </Box>
+      </ShotInspector>
       </Box>
 
-      {/* Production Estimate Dialog */}
-      <ProductionEstimateDialog
-        open={showEstimateDialog}
-        onClose={() => setShowEstimateDialog(false)}
-        scenes={scenes}
-        shotLists={shotLists}
-        manuscriptTitle={manuscript.title}
-      />
+      <ProductionWorkflowDialogs>
+        {/* Production Estimate Dialog */}
+        <ProductionEstimateDialog
+          open={showEstimateDialog}
+          onClose={() => setShowEstimateDialog(false)}
+          scenes={scenes}
+          shotLists={shotLists}
+          manuscriptTitle={manuscript.title}
+        />
 
       {/* ============================================ */}
       {/* PRODUCTION WORKFLOW MODALS */}
@@ -6930,24 +6887,17 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
         </DialogActions>
       </Dialog>
 
-      {/* Talent Panel Drawer */}
-      <Drawer
-        anchor="right"
+      </ProductionWorkflowDialogs>
+
+      <TalentDrawer
         open={showTalentPanel || (isMobile && mobileRightPanelOpen)}
+        isMobile={isMobile}
+        width={responsive.rightPanelWidth}
         onClose={() => {
           setShowTalentPanel(false);
           setMobileRightPanelOpen(false);
         }}
-        PaperProps={{
-          sx: {
-            width: isMobile ? '85vw' : Math.min(400, responsive.rightPanelWidth),
-            maxWidth: isMobile ? '100vw' : responsive.rightPanelWidth,
-            bgcolor: '#1a1f2e',
-            borderLeft: '1px solid #2a3142',
-          },
-        }}
       >
-        <Box sx={{ p: isMobile ? 2 : 3 }}>
           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: isMobile ? 2 : 3 }}>
             <Typography sx={{ fontSize: isMobile ? 16 : 18, fontWeight: 600, color: '#fff' }}>
               Cast & Talent
@@ -7141,8 +7091,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               </Typography>
             </Box>
           )}
-        </Box>
-      </Drawer>
+      </TalentDrawer>
 
       {/* Quick Notes Panel */}
       <Dialog
