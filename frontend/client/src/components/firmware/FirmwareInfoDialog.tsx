@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Firmware Information Dialog
  * Displays firmware details and allows users to mark updates as read

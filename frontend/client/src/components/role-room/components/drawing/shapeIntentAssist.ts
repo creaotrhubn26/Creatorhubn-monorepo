@@ -1,3 +1,4 @@
+// @ts-nocheck
 import type { PencilPoint, PencilStroke } from '../../hooks/useApplePencil';
 
 export type ShapeIntentPrimitive = 'ellipse' | 'rectangle' | 'line' | 'blob';

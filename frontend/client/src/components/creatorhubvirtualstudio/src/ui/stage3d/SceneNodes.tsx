@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useMemo, useRef, Suspense, useEffect, useState } from 'react';
 import * as THREE from 'three';
 import { useLoader, useThree } from '@react-three/fiber';

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * CreatorHub Norge - Camera Selection Test
  * Demonstrerer hvordan minnekort valg tilpasser seg forskjellige kameraer

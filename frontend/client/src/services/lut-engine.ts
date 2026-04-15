@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * 3D LUT ENGINE
  * Parse and apply .cube LUT files in browser

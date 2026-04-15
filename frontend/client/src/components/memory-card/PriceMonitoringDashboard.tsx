@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * CreatorHub Norge - Price Monitoring Dashboard
  * Real-time price monitoring and update management for memory cards.

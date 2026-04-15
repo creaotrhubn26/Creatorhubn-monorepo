@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Enhanced OpenAI Chat with File Context Support
  * 

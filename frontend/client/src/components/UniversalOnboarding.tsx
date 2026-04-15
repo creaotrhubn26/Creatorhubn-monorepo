@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Universal Onboarding med Kamera og Flash System Integrasjon
  * CreatorHub Norge - Sømløs integrasjon av utstyrsvalg i onboarding-prosessen

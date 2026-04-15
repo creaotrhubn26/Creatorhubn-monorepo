@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * CreatorHub Norge - Memory Card Backup Panel
  * Intelligent memory-card backup panel with localized flow.

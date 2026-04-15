@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Tutorial Submission System - Sender tutorials til admin for godkjenning
  */

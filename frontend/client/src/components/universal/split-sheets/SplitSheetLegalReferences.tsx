@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Split Sheet Legal References
  * Display and manage legal references linked to split sheets

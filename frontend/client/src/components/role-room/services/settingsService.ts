@@ -108,6 +108,18 @@ const writeCache = (userId: string, namespace: string, data: unknown, projectId?
   writeStorage(key, data);
 };
 
+const stableSerialize = (value: unknown): string => JSON.stringify(value, (_key, nestedValue) => {
+  if (nestedValue && typeof nestedValue === 'object' && !Array.isArray(nestedValue)) {
+    return Object.keys(nestedValue as Record<string, unknown>)
+      .sort()
+      .reduce<Record<string, unknown>>((sorted, key) => {
+        sorted[key] = (nestedValue as Record<string, unknown>)[key];
+        return sorted;
+      }, {});
+  }
+  return nestedValue;
+}) ?? 'undefined';
+
 const deleteCache = (userId: string, namespace: string, projectId?: string) => {
   const key = cacheKey(userId, namespace, projectId);
   settingsCache.delete(key);
@@ -317,6 +329,10 @@ export const settingsService = {
   async setSetting<T>(namespace: string, data: T, options?: { userId?: string; projectId?: string }): Promise<T> {
     const userId = options?.userId || getCurrentUserId();
     const projectId = options?.projectId;
+    const cached = readCache<unknown>(userId, namespace, projectId);
+    if (cached !== null && stableSerialize(cached) === stableSerialize(data)) {
+      return data;
+    }
     writeCache(userId, namespace, data, projectId);
     await writeRemoteSetting(userId, namespace, data, projectId);
     return data;

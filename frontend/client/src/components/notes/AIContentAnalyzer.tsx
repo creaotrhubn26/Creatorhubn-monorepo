@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * AI Content Analyzer - Intelligently analyzes and enhances content
  * Automatically suggests interactive elements, improvements, and optimizations

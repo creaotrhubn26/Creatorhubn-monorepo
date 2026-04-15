@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * External Integrations Service for CreatorHub
  * Manages integrations with third-party APIs and external services

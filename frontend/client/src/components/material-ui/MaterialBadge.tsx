@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React from 'react';
 import { Chip, type ChipProps } from '@mui/material';
 

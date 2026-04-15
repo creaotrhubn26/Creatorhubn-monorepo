@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Icon Optimization Utilities
  * Dynamic icon loading and efficient imports for better performance

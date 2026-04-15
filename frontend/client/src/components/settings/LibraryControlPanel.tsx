@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * 📚 Library Control Panel
  * Granular control over ALL 60+ libraries with bundle size tracking

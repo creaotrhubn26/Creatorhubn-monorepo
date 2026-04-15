@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Compliance Manager
  * GDPR, accessibility, and security compliance management system

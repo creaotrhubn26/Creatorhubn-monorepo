@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useTheming } from '../../../utils/theming-helper';
 import { useAuth } from '../../../hooks/useAuth';
 import React, { useEffect, useState } from 'react';

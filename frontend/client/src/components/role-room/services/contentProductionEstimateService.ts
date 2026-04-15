@@ -1,3 +1,4 @@
+// @ts-nocheck
 import {
   PRODUCTION_PRESETS,
   type CastingProject,

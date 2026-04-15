@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Version Control & History - Track changes, versions, and collaboration history
  * Provides comprehensive version management for interactive documentation

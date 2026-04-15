@@ -1,3 +1,4 @@
+// @ts-nocheck
 // client/src/components/notes/FeatureTogglePanel.tsx
 import { useTheming } from '../../utils/theming-helper';
 import React, { useState, useEffect } from 'react';

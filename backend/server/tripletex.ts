@@ -436,11 +436,16 @@ export class TripletexApiClient {
     const customerName =
       normalizeOptionalString(input.customerName) || "CreatorHub-kunde";
 
-    const queryCandidates = [
-      organizationNumber ? { organizationNumber, count: 20 } : null,
-      invoiceEmail ? { invoiceEmail, count: 20 } : null,
-      directEmail ? { email: directEmail, count: 20 } : null,
-    ].filter(Boolean) as Array<Record<string, string | number>>;
+    const queryCandidates: Array<Record<string, string | number>> = [];
+    if (organizationNumber) {
+      queryCandidates.push({ organizationNumber, count: 20 });
+    }
+    if (invoiceEmail) {
+      queryCandidates.push({ invoiceEmail, count: 20 });
+    }
+    if (directEmail) {
+      queryCandidates.push({ email: directEmail, count: 20 });
+    }
 
     for (const query of queryCandidates) {
       const response = await this.request<TripletexListResponse<TripletexCustomer>>(
@@ -589,7 +594,6 @@ export class TripletexApiClient {
               unitPriceExcludingVatCurrency: netAmount,
               currency: {
                 code: normalizeOptionalString(input.currency) || "NOK",
-                factor: 1,
               },
               vatType: {
                 id: vatTypeId,

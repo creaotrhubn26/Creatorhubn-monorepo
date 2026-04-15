@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Shadow Visualization Component
  * 

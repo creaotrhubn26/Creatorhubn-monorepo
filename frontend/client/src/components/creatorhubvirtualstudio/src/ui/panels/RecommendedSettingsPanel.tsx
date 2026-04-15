@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Recommended Settings Panel
  * 

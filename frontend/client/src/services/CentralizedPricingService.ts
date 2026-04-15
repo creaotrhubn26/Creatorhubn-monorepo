@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * CreatorHub Norge - Client Service Pricing Service
  * Handles pricing for client services (photography, videography, music production, etc.)

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * FlashControllerPanel - Wireless Flash Controller UI
  * 

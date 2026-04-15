@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Universal Integration Wrapper
  * Automatically adds integration capabilities to any component

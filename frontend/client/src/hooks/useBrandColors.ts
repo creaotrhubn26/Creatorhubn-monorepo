@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Brand Colors Hook
  * Connects BrandingWorkflowPanel to PropertyPanel

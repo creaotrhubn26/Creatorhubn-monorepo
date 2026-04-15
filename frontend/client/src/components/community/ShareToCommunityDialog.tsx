@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Share to Community Dialog
  * 

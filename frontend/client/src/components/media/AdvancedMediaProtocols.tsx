@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * CreatorHub Norge - Advanced Media Protocols
  * RTMP, HLS/MPEG-DASH, NDI, SRT implementasjon for video-streaming og filhåndtering

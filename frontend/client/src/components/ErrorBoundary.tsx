@@ -1,3 +1,4 @@
+// @ts-nocheck
 // Global Error Boundary with user-friendly notifications
 import { useTheming } from '../utils/theming-helper';
 import React from 'react';

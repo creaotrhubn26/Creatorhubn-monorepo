@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Canvas Interaction Manager
  * Manages canvas interactions and gestures

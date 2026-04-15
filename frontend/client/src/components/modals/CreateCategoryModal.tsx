@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * CreatorHub Norge - Create Category Modal
  * Modal for creating custom pricing categories

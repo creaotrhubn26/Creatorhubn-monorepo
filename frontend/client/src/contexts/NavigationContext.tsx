@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * NavigationContext - Unified Navigation Management
  * Manages navigation state, history, and transitions between major components

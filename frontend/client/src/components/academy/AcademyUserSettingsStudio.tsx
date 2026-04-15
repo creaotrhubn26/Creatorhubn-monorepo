@@ -201,7 +201,12 @@ function AcademyUserSettingsStudio() {
   }, [account.avatarUrl, account.displayName, account.email]);
 
   const activeQuery = useMemo(() => {
-    const query = location.includes('?') ? location.slice(location.indexOf('?') + 1) : '';
+    const locationQuery = location.includes('?') ? location.slice(location.indexOf('?') + 1) : '';
+    const browserQuery =
+      typeof window !== 'undefined'
+        ? window.location.search.replace(/^\?/, '')
+        : '';
+    const query = locationQuery || browserQuery;
     return new URLSearchParams(query);
   }, [location]);
 

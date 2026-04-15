@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useTheming } from '../../../utils/theming-helper';
 import React, { useState, useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';

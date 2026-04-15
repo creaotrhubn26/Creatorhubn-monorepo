@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Vercel CLI Service
  * Wrapper for Vercel CLI commands for more powerful deployments

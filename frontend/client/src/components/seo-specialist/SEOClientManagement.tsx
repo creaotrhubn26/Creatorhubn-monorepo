@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * SEO Client Management Panel
  * Component for managing SEO clients

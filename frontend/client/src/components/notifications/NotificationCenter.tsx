@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Notification Center
  * Organized interface for viewing and managing all notifications

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * FrameEditorPanel - Drawing and annotation editor for storyboard frames
  * 

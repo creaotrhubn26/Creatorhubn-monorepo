@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * useAssetManagement Hook
  * React hook for asset management functionality

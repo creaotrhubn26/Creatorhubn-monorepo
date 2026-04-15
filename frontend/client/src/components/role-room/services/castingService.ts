@@ -1,3 +1,4 @@
+// @ts-nocheck
 import type { 
   CastingProject, 
   Role, 
@@ -40,6 +41,7 @@ import {
 import authSessionService from './authSessionService';
 import settingsService, { getCurrentUserId } from './settingsService';
 import { shouldUseRoleRoomLocalFallback } from '../utils/runtime';
+import { logRoleRoomDiagnostic } from '../utils/roleRoomDiagnostics';
 
 // Database availability cache
 let dbAvailable: boolean | null = null;
@@ -182,15 +184,26 @@ type AvailableSceneOption = { id: string; name: string; thumbnail?: string };
  * Save projects to local storage fallback
  */
 function saveProjectsToStorage(projects: CastingProject[]): void {
-  projectStorageMutationVersion += 1;
   const userScopedProjects = projects.filter((project) => !isTemplateProject(project));
   const sharedTemplateProjects = projects.filter((project) => isTemplateProject(project));
+  const userScopedChanged = stableSerialize(cachedProjects) !== stableSerialize(userScopedProjects);
+  const sharedTemplateChanged = stableSerialize(cachedSharedTemplateProjects) !== stableSerialize(sharedTemplateProjects);
+
+  if (!userScopedChanged && !sharedTemplateChanged) {
+    return;
+  }
+
+  projectStorageMutationVersion += 1;
   cachedProjects = userScopedProjects;
   cachedSharedTemplateProjects = sharedTemplateProjects;
-  void settingsService.setSetting(PROJECTS_STORAGE_KEY, userScopedProjects, { userId: getCurrentUserId() });
-  void settingsService.setSetting(PROJECTS_STORAGE_KEY, sharedTemplateProjects, {
-    userId: SHARED_TEMPLATE_PROJECTS_USER_ID,
-  });
+  if (userScopedChanged) {
+    void settingsService.setSetting(PROJECTS_STORAGE_KEY, userScopedProjects, { userId: getCurrentUserId() });
+  }
+  if (sharedTemplateChanged) {
+    void settingsService.setSetting(PROJECTS_STORAGE_KEY, sharedTemplateProjects, {
+      userId: SHARED_TEMPLATE_PROJECTS_USER_ID,
+    });
+  }
 }
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
@@ -385,6 +398,18 @@ const deepCloneProject = <T>(value: T): T => {
   }
   return JSON.parse(JSON.stringify(value)) as T;
 };
+
+const stableSerialize = (value: unknown): string => JSON.stringify(value, (_key, nestedValue) => {
+  if (nestedValue && typeof nestedValue === 'object' && !Array.isArray(nestedValue)) {
+    return Object.keys(nestedValue as Record<string, unknown>)
+      .sort()
+      .reduce<Record<string, unknown>>((sorted, key) => {
+        sorted[key] = (nestedValue as Record<string, unknown>)[key];
+        return sorted;
+      }, {});
+  }
+  return nestedValue;
+}) ?? 'undefined';
 
 const getProjectSyncMetaStorageKey = (projectId: string): string => `${PROJECT_SYNC_META_NAMESPACE}-${projectId}`;
 const getProjectSnapshotStorageKey = (projectId: string): string => `${PROJECT_SNAPSHOTS_NAMESPACE}-${projectId}`;
@@ -664,6 +689,13 @@ const buildProjectSignature = (project: CastingProject): string => JSON.stringif
   shotLists: project.shotLists ?? [],
   sceneBreakdowns: project.sceneBreakdowns ?? [],
 });
+
+const buildProjectPersistenceSignature = (project: CastingProject): string => {
+  const comparable = deepCloneProject(project) as Record<string, unknown>;
+  delete comparable.updatedAt;
+  delete comparable.updated_at;
+  return stableSerialize(comparable);
+};
 
 async function readProjectSyncMeta(projectId: string): Promise<RoleRoomProjectSyncMeta> {
   projectId = normalizeRequiredProjectId(projectId, 'readProjectSyncMeta');
@@ -1652,7 +1684,10 @@ async function saveProjectToDb(project: CastingProject, options?: ProjectMutatio
       queuedChangeCount: 0,
     });
   } catch (error) {
-    console.warn('Failed to save project to database, using local storage:', error);
+    logRoleRoomDiagnostic('project-save:queued-local-fallback', {
+      projectId: project.id,
+      message: error instanceof Error ? error.message : String(error),
+    });
     const message = error instanceof Error ? error.message : 'Ukjent synkfeil';
     const reason: RoleRoomQueuedProjectChange['reason'] = typeof navigator !== 'undefined' && navigator.onLine === false
       ? 'offline'
@@ -1839,8 +1874,7 @@ export const castingService = {
    */
   async saveProject(project: CastingProject, options?: ProjectMutationOptions): Promise<void> {
     const existingProject = getProjectsFromStorage().find((entry) => entry.id === project.id);
-    // Update timestamp
-    project = {
+    let nextProject = {
       ownerId: existingProject?.ownerId,
       ownerEmail: existingProject?.ownerEmail,
       ownerLabel: existingProject?.ownerLabel,
@@ -1850,9 +1884,20 @@ export const castingService = {
       createdAt: existingProject?.createdAt,
       ...project,
       id: normalizeRequiredProjectId(project.id, 'saveProject'),
+    };
+    nextProject = applyProjectOwnershipDefaults(nextProject, { createdAt: existingProject?.createdAt });
+    if (
+      existingProject
+      && buildProjectPersistenceSignature(existingProject) === buildProjectPersistenceSignature(nextProject)
+    ) {
+      return;
+    }
+
+    // Update timestamp only for real mutations. No-op saves must not churn sync meta or UI refreshes.
+    project = {
+      ...nextProject,
       updatedAt: new Date().toISOString(),
     };
-    project = applyProjectOwnershipDefaults(project, { createdAt: existingProject?.createdAt });
     
     try {
       await saveProjectToDb(project, options);

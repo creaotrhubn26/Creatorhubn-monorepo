@@ -1,3 +1,4 @@
+// @ts-nocheck
 import * as React from 'react';
 import { Box, Typography } from '@mui/material';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';

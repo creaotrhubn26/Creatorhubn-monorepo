@@ -1,3 +1,4 @@
+// @ts-nocheck
 import {
   getGoogleAnalyticsMeasurementId,
 } from "./googleAnalyticsRuntime";

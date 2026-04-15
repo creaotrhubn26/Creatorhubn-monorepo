@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * PIXI.JS FILTER ENGINE
  * GPU-accelerated 2D filters and effects

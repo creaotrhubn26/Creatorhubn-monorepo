@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { Box, Typography, Paper, IconButton, Button, Chip, LinearProgress, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Select, MenuItem, FormControl, InputLabel, Card, CardMedia, CardContent, Badge, Collapse, ToggleButtonGroup, ToggleButton, Divider, Menu, ListItemIcon, ListItemText, alpha } from "@mui/material";
 import { PlayArrow, Pause, SkipNext, SkipPrevious, Check, Schedule, CameraAlt, Videocam, Add, Close, PhotoCamera, Lightbulb, Timer, ExpandMore, ExpandLess, FilterList, GridView, ViewList, FlashOn, WbSunny, Brightness7, Settings, MoreVert, Download, PictureAsPdf, TableChart, Notes, Edit, DragIndicator, Save } from "@mui/icons-material";

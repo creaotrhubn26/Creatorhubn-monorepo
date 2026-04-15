@@ -1,10 +1,51 @@
 import { expect, test } from '@playwright/test';
 
+const DEV_ACADEMY_SESSION = {
+  token: 'dev-admin-local-session',
+  user: {
+    id: 'local-admin',
+    email: 'admin@local.dev',
+    name: 'Local Admin',
+    displayName: 'Local Admin',
+    role: 'admin',
+    roleLabel: 'Admin',
+    profession: 'photographer',
+    userType: 'photographer',
+    permissions: [
+      'users:read',
+      'users:write',
+      'roles:write',
+      'academy:admin',
+      'billing:admin',
+      'impersonate',
+    ],
+    isAdmin: true,
+    verified_email: true,
+  },
+};
+
 test.describe('Academy Presentation Overlay E2E', () => {
   test('semantic search and design plan endpoints are wired in UI flow', async ({ page }) => {
     test.setTimeout(240_000);
+    await page.addInitScript((session) => {
+      window.localStorage.setItem('creatorhub_auth_token', session.token);
+      window.localStorage.setItem('creatorhub_auth_user', JSON.stringify(session.user));
+      window.localStorage.setItem('userId', session.user.id);
+      window.localStorage.setItem('userEmail', session.user.email);
+      window.localStorage.setItem('academy_user_settings_v1', JSON.stringify({
+        academyPreferredMode: 'pro',
+        academyShowQuickStart: false,
+        academyShowNextAction: true,
+        academyMicroHintsEnabled: true,
+        academyDefaultIntent: 'quality-first',
+      }));
+    }, DEV_ACADEMY_SESSION);
 
     await page.goto('/academy/presentation-overlay', { waitUntil: 'domcontentloaded' });
+    const proModeButton = page.getByRole('button', { name: /Pro mode/i });
+    if ((await proModeButton.count()) > 0 && (await proModeButton.isVisible().catch(() => false))) {
+      await proModeButton.click();
+    }
 
     const newDeckButton = page.getByRole('button', { name: /Ny presentasjon|New deck/i });
     await expect(newDeckButton).toBeVisible({ timeout: 30_000 });
@@ -28,7 +69,9 @@ test.describe('Academy Presentation Overlay E2E', () => {
     expect(semanticPayload?.success).toBeTruthy();
     expect(Array.isArray(semanticPayload?.data?.ranking)).toBeTruthy();
 
-    const generatePlanButton = page.getByRole('button', { name: /Generer plan|Generate plan/i });
+    const generatePlanButton = page.getByRole('button', {
+      name: /Generer plan|Generate plan|Generate design structure|Generer designstruktur/i,
+    });
     await expect(generatePlanButton).toBeVisible({ timeout: 30_000 });
 
     // Ensure at least one deck exists and button can be used.

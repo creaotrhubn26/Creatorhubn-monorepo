@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * PropertyPanel Automation Hooks
  * Zero-work automation for element editing

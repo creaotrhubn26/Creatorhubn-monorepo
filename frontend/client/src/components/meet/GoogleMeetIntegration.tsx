@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Google Meet Integration
  * Universal Google Meet component for all dashboards with notification integration

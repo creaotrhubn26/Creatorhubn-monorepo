@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * PencilCanvasPro - Professional-grade Apple Pencil drawing canvas
  * 

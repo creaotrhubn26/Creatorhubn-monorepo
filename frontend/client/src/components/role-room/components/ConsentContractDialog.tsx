@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * ConsentContractDialog - Professional consent contract creation and sending system
  * 

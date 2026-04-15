@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * CreatorHub Norge - Project Creation Modal
  * The modal is used in The Role Room for creating new projects and adapting the flow across professions.

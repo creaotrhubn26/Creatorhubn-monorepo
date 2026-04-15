@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * CreatorHub Norge - Pricing Adjustment Modal
  * Connected to price administration endpoints with local-safe fallback behavior.

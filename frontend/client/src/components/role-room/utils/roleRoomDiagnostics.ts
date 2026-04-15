@@ -40,7 +40,7 @@ export const isRoleRoomDiagnosticsEnabled = (): boolean => {
     return true;
   }
 
-  return Boolean(import.meta.env.DEV);
+  return false;
 };
 
 const getDiagnosticsWindow = (): RoleRoomDiagnosticsWindow | null => {

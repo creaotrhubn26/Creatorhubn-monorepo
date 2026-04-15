@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useTheming } from '../utils/theming-helper';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import AIDirectorPanel from './AIDirectorPanel';

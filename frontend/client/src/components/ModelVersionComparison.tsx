@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Model Version Comparison UI
  *

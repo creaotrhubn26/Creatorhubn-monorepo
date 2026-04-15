@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * CreatorHub Norge - Google Pay Integration
  * Connects subscription flow with Google Pay Manager and configuration

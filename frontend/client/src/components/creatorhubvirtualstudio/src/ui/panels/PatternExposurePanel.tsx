@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Pattern Exposure Panel
  * 

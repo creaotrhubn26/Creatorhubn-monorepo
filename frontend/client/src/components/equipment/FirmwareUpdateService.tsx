@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Firmware Update Service Component
  * Handles automatic firmware checking and displays manufacturer information

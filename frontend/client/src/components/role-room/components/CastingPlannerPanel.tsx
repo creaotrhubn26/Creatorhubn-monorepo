@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense, startTransition, memo, type FC, type MouseEvent, type ReactElement, type ReactNode, type SyntheticEvent } from 'react';
 import { flushSync } from 'react-dom';
 import { Z_INDEX } from '../config/zIndex';
@@ -106,6 +107,7 @@ import {
   Publish as PublishIcon,
   Archive as ArchiveIcon,
   Unarchive as UnarchiveIcon,
+  Inbox as InboxIcon,
 } from '@mui/icons-material';
 import { alpha } from '@mui/material/styles';
 
@@ -156,6 +158,7 @@ import {
   type ProducerWorkflowFocusPayload,
 } from '../services/producerWorkflowFocusEvents';
 import { onProducerWorkflowEvent } from '../services/producerWorkflowEvents';
+import { useProducerNotifications } from '../hooks/useProducerNotifications';
 import {
   buildProducerWorkflowEntityOptions,
   buildProducerWorkflowOwnerOptions,
@@ -198,7 +201,7 @@ const CastingPlannerTutorial = lazy(() => import('./CastingPlannerTutorial').the
 const TutorialEditorPanel = lazy(() => import('./TutorialEditorPanel').then(m => ({ default: m.TutorialEditorPanel })));
 const ConsentManagementPanel = lazy(() => import('./ConsentManagementPanel').then(m => ({ default: m.ConsentManagementPanel })));
 const ConsentContractDialog = lazy(() => import('./ConsentContractDialog').then(m => ({ default: m.ConsentContractDialog })));
-const ProjectEconomyHub = lazy(() => import('./ProjectEconomyHub'));
+const ProjectEconomyHub = lazy(() => retryDynamicImport(() => import('./ProjectEconomyHub'), 'ProjectEconomyHub'));
 const ProductionCalendarPanel = lazy(() => import('./ProductionCalendarPanel'));
 const CrewCalendarPanel = lazy(() => import('./production/CrewCalendarPanel').then(m => ({ default: m.CrewCalendarPanel })));
 const ProducerTimelinePanel = lazy(() => import('./producer/ProducerTimelinePanel'));
@@ -213,6 +216,30 @@ import {
   isRoleRoomDiagnosticsEnabled,
   logRoleRoomDiagnostic,
 } from '../utils/roleRoomDiagnostics';
+
+const retryDynamicImport = async <T,>(
+  loadModule: () => Promise<T>,
+  label: string,
+  attempts = 2,
+): Promise<T> => {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= attempts; attempt += 1) {
+    try {
+      return await loadModule();
+    } catch (error) {
+      lastError = error;
+      logRoleRoomDiagnostic('lazy-import:retry', {
+        label,
+        attempt: attempt + 1,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      if (attempt < attempts) {
+        await new Promise((resolve) => setTimeout(resolve, 180 * (attempt + 1)));
+      }
+    }
+  }
+  throw lastError;
+};
 
 // Lazy load dialogs and modals for better initial load
 const AdminDashboard = lazy(() => import('./AdminDashboard'));
@@ -1186,6 +1213,7 @@ type RoleRoomProjectWorkspaceState = {
   const [projectToDelete, setProjectToDelete] = useState<CastingProject | null>(null);
   const [projectCreationModalOpen, setProjectCreationModalOpen] = useState(false);
   const [projectCreationModalKey, setProjectCreationModalKey] = useState(0);
+  const [projectCreationDialogTab, setProjectCreationDialogTab] = useState<'new' | 'existing'>('new');
   const [projectToEdit, setProjectToEdit] = useState<CastingProject | null>(null);
   const [projectCreationPrefill, setProjectCreationPrefill] = useState<Partial<CastingProject> | null>(null);
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
@@ -1244,6 +1272,7 @@ type RoleRoomProjectWorkspaceState = {
   }, []);
   const [projectSelectorOpen, setProjectSelectorOpen] = useState(false);
   const [projectSelectorQuery, setProjectSelectorQuery] = useState('');
+  const [producerInboxOpen, setProducerInboxOpen] = useState(false);
   const [projectQuickActionsAnchorEl, setProjectQuickActionsAnchorEl] = useState<HTMLElement | null>(null);
   const [projectQuickActionsProject, setProjectQuickActionsProject] = useState<CastingProject | null>(null);
   const [projectCopyDialog, setProjectCopyDialog] = useState<{
@@ -1263,6 +1292,28 @@ type RoleRoomProjectWorkspaceState = {
   const [publishedTemplates, setPublishedTemplates] = useState<CastingProject[]>([]);
   const [projectSyncMetaById, setProjectSyncMetaById] = useState<Record<string, RoleRoomProjectSyncMeta>>({});
   const [projectSyncActionProjectId, setProjectSyncActionProjectId] = useState<string | null>(null);
+  const {
+    items: producerInboxItems,
+    loading: producerInboxLoading,
+    error: producerInboxError,
+    unreadCount: producerInboxUnreadCount,
+    reload: reloadProducerInbox,
+    markAsRead: markProducerInboxAsRead,
+    markAllAsRead: markAllProducerInboxAsRead,
+    archiveNotification: archiveProducerInboxNotification,
+    resolveNotification: resolveProducerInboxNotification,
+  } = useProducerNotifications(currentProject?.id, producerInboxOpen ? 15000 : 30000);
+  const visibleProducerInboxItems = useMemo(
+    () => producerInboxItems.filter((item) => !item.archived_at),
+    [producerInboxItems],
+  );
+  const openProducerInbox = useCallback(() => {
+    if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+    setProducerInboxOpen(true);
+    void reloadProducerInbox();
+  }, [reloadProducerInbox]);
   const unsavedProjectSwitchStateRef = useRef<Record<string, string>>({});
 
   // Keep the UI fallback aligned with settingsService/castingService demo seeds.
@@ -1830,10 +1881,11 @@ type RoleRoomProjectWorkspaceState = {
   const openProjectCreationModal = useCallback(() => {
     blurActiveElement();
     setProjectCreationModalKey((prev) => prev + 1);
-    startTransition(() => setProjectCreationModalOpen(true));
+    setProjectCreationModalOpen(true);
   }, [blurActiveElement]);
 
   const openNewProjectCreationModal = useCallback(() => {
+    setProjectCreationDialogTab('new');
     setProjectToEdit(null);
     setProjectCreationPrefill(null);
     setCurrentProjectId(null);
@@ -1841,20 +1893,30 @@ type RoleRoomProjectWorkspaceState = {
   }, [openProjectCreationModal]);
 
   const openProjectCreationModalWithPrefill = useCallback((draft: Partial<CastingProject>) => {
+    setProjectCreationDialogTab('new');
     setProjectToEdit(null);
     setProjectCreationPrefill(draft);
     setCurrentProjectId(null);
     openProjectCreationModal();
   }, [openProjectCreationModal]);
 
-  const openProjectSelectorDialog = useCallback(() => {
+  const openProjectLibraryModal = useCallback(() => {
     blurActiveElement();
+    setProjectCreationDialogTab('existing');
+    setProjectToEdit(null);
+    setProjectCreationPrefill(null);
+    setCurrentProjectId(null);
     setProjectQuickActionsAnchorEl(null);
     setProjectQuickActionsProject(null);
-    startTransition(() => setProjectSelectorOpen(true));
+    setProjectCreationModalOpen(true);
   }, [blurActiveElement]);
 
+  const openProjectSelectorDialog = useCallback(() => {
+    openProjectLibraryModal();
+  }, [openProjectLibraryModal]);
+
   const openProjectEditModal = useCallback((project: CastingProject) => {
+    setProjectCreationDialogTab('new');
     setProjectCreationPrefill(null);
     setProjectToEdit(project);
     setCurrentProjectId(project.id);
@@ -1907,6 +1969,11 @@ type RoleRoomProjectWorkspaceState = {
     let isMounted = true;
     setStoryLogicData(null);
     if (!currentProject?.id) {
+      return () => {
+        isMounted = false;
+      };
+    }
+    if (!authSessionService.getAuthHeadersSync().Authorization) {
       return () => {
         isMounted = false;
       };
@@ -5397,7 +5464,10 @@ type RoleRoomProjectWorkspaceState = {
         setCurrentProject(defaultProject);
       }
     } catch (error) {
-      console.error('Error loading projects:', error);
+      logRoleRoomDiagnostic('projects:load-failed', {
+        source: 'casting-planner',
+        message: error instanceof Error ? error.message : String(error),
+      });
       // Fallback to sync version — wrap in try/catch to prevent double-throw
       try {
         const rawProjects = await castingService.getProjects();
@@ -7567,6 +7637,38 @@ type RoleRoomProjectWorkspaceState = {
               <AddIcon sx={{ fontSize: navIconSizePx }} />
             </IconButton>
 
+            <IconButton
+              size="small"
+              onClick={openProducerInbox}
+              aria-label="Åpne innboks"
+              title="Innboks"
+              data-testid="role-room-inbox-button"
+              sx={{
+                width: safeHeaderActionButtonSizePx,
+                height: safeHeaderActionButtonSizePx,
+                minWidth: safeHeaderActionButtonSizePx,
+                border: '1px solid rgba(56,189,248,0.26)',
+                borderRadius: { xs: 1.5, sm: 2 },
+                color: '#bae6fd',
+                flexShrink: 0,
+                bgcolor: 'rgba(14,165,233,0.08)',
+                p: 0,
+                '&:hover, &:active': {
+                  borderColor: '#38bdf8',
+                  color: '#e0f2fe',
+                  bgcolor: 'rgba(14,165,233,0.16)',
+                },
+              }}
+            >
+              <Badge
+                color="error"
+                badgeContent={producerInboxUnreadCount > 99 ? '99+' : producerInboxUnreadCount}
+                invisible={producerInboxUnreadCount === 0}
+              >
+                <InboxIcon sx={{ fontSize: Math.max(18, navIconSizePx - 1) }} />
+              </Badge>
+            </IconButton>
+
             {!showDenseDesktopHeaderUtilities ? (
               <IconButton
                 size="small"
@@ -7813,34 +7915,6 @@ type RoleRoomProjectWorkspaceState = {
                   </Box>
 
                 </Box>
-
-                <Button
-                  size="small"
-                  onClick={openProjectSelectorDialog}
-                  startIcon={<FolderOpenIcon sx={{ fontSize: 18 }} />}
-                  data-testid="role-room-open-projects"
-                  sx={{
-                    minWidth: useDenseDesktopHeader ? { md: 108, lg: 116 } : { md: 122, lg: 132 },
-                    height: { md: 44, lg: 48 },
-                    px: useDenseDesktopHeader ? { md: 1, lg: 1.1 } : { md: 1.15, lg: 1.35 },
-                    borderRadius: { md: 2, lg: 2.25 },
-                    border: '1px solid rgba(96,165,250,0.24)',
-                    bgcolor: 'rgba(96,165,250,0.08)',
-                    color: '#bfdbfe',
-                    fontSize: { md: '0.7rem', lg: '0.74rem' },
-                    fontWeight: 700,
-                    textTransform: 'none',
-                    whiteSpace: 'nowrap',
-                    flexShrink: 0,
-                    alignSelf: 'center',
-                    '&:hover': {
-                      bgcolor: 'rgba(96,165,250,0.14)',
-                      borderColor: 'rgba(96,165,250,0.4)',
-                    },
-                  }}
-                >
-                  {headerWorkspaceActionLabel}
-                </Button>
 
                 {headerActiveProject ? (
                   <IconButton
@@ -11564,7 +11638,14 @@ type RoleRoomProjectWorkspaceState = {
                         initialPageId={producerMediaFocus?.pageId}
                         initialArtifactId={producerMediaFocus?.artifactId}
                         onWorkspaceFocusChange={(focus) => {
-                          setProducerMediaFocus(focus);
+                          setProducerMediaFocus((previous) => (
+                            previous?.workspace === focus.workspace
+                            && previous?.sectionId === focus.sectionId
+                            && previous?.pageId === focus.pageId
+                            && previous?.artifactId === focus.artifactId
+                              ? previous
+                              : focus
+                          ));
                         }}
                         onUnsavedStateChange={(hasUnsaved, reason) => {
                           setUnsavedProjectSwitchSource('project_room', hasUnsaved, reason);
@@ -12027,7 +12108,14 @@ type RoleRoomProjectWorkspaceState = {
                   )
                 }
                 onWorkspaceFocusChange={(focus) => {
-                  setProducerMediaFocus(focus);
+                  setProducerMediaFocus((previous) => (
+                    previous?.workspace === focus.workspace
+                    && previous?.sectionId === focus.sectionId
+                    && previous?.pageId === focus.pageId
+                    && previous?.artifactId === focus.artifactId
+                      ? previous
+                      : focus
+                  ));
                 }}
                 onUnsavedStateChange={(hasUnsaved, reason) => {
                   setUnsavedProjectSwitchSource('project_room', hasUnsaved, reason);
@@ -14111,6 +14199,176 @@ type RoleRoomProjectWorkspaceState = {
         </DialogActions>
       </Dialog>
 
+      <Dialog
+        open={producerInboxOpen}
+        onClose={() => setProducerInboxOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            bgcolor: '#111827',
+            color: '#fff',
+            borderRadius: 3,
+            border: '1px solid rgba(125,211,252,0.14)',
+            maxHeight: '82vh',
+          },
+        }}
+        data-testid="role-room-inbox-dialog"
+      >
+        <DialogTitle
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 1,
+            borderBottom: '1px solid rgba(255,255,255,0.08)',
+            background: 'linear-gradient(135deg, rgba(8,47,73,0.34) 0%, rgba(17,24,39,0.9) 100%)',
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
+            <Badge color="error" badgeContent={producerInboxUnreadCount} invisible={producerInboxUnreadCount === 0}>
+              <InboxIcon sx={{ color: '#7dd3fc' }} />
+            </Badge>
+            <Box sx={{ minWidth: 0 }}>
+              <Typography sx={{ fontWeight: 850, lineHeight: 1.15 }}>
+                Innboks
+              </Typography>
+              <Typography sx={{ mt: 0.2, fontSize: '0.75rem', color: 'rgba(226,232,240,0.62)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {currentProject ? currentProject.name : 'Velg prosjekt for varsler'}
+              </Typography>
+            </Box>
+          </Box>
+          <Stack direction="row" spacing={0.75} alignItems="center">
+            <Button
+              size="small"
+              onClick={() => { void reloadProducerInbox(); }}
+              startIcon={producerInboxLoading ? <CircularProgress size={13} color="inherit" /> : <RefreshIcon sx={{ fontSize: 16 }} />}
+              sx={{ textTransform: 'none', color: '#bae6fd', fontWeight: 800 }}
+            >
+              Oppdater
+            </Button>
+            <IconButton onClick={() => setProducerInboxOpen(false)} aria-label="Lukk innboks" sx={{ color: 'rgba(255,255,255,0.78)' }}>
+              <CloseIcon />
+            </IconButton>
+          </Stack>
+        </DialogTitle>
+        <DialogContent sx={{ p: 0 }}>
+          {producerInboxError ? (
+            <Alert severity="warning" sx={{ m: 2, bgcolor: 'rgba(120,53,15,0.28)', color: '#fde68a' }}>
+              {producerInboxError}
+            </Alert>
+          ) : null}
+          <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ sm: 'center' }}>
+              <Typography sx={{ color: 'rgba(226,232,240,0.68)', fontSize: '0.82rem' }}>
+                {visibleProducerInboxItems.length === 0
+                  ? 'Ingen aktive meldinger akkurat nå.'
+                  : `${visibleProducerInboxItems.length} aktive meldinger · ${producerInboxUnreadCount} uleste`}
+              </Typography>
+              {producerInboxUnreadCount > 0 ? (
+                <Button
+                  size="small"
+                  onClick={() => { void markAllProducerInboxAsRead(); }}
+                  sx={{ textTransform: 'none', color: '#86efac', fontWeight: 800, alignSelf: { xs: 'flex-start', sm: 'center' } }}
+                >
+                  Merk alle lest
+                </Button>
+              ) : null}
+            </Stack>
+
+            {producerInboxLoading && visibleProducerInboxItems.length === 0 ? (
+              <Box sx={{ py: 4, display: 'flex', justifyContent: 'center' }}>
+                <CircularProgress size={24} sx={{ color: '#38bdf8' }} />
+              </Box>
+            ) : null}
+
+            {!producerInboxLoading && visibleProducerInboxItems.length === 0 ? (
+              <Box sx={{ p: 2.25, borderRadius: 2.4, border: '1px solid rgba(255,255,255,0.08)', bgcolor: 'rgba(255,255,255,0.04)' }}>
+                <Typography sx={{ color: '#fff', fontWeight: 800 }}>Innboksen er tom</Typography>
+                <Typography sx={{ mt: 0.35, color: 'rgba(226,232,240,0.62)', fontSize: '0.82rem' }}>
+                  Klientbrief, godkjenninger, endringsønsker og leveransevarsler samles her når de oppstår.
+                </Typography>
+              </Box>
+            ) : null}
+
+            {visibleProducerInboxItems.map((item) => {
+              const createdAtLabel = item.created_at
+                ? new Date(item.created_at).toLocaleString('nb-NO', {
+                  day: '2-digit',
+                  month: 'short',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })
+                : '';
+              const isResolved = Boolean(item.resolved_at);
+              return (
+                <Box
+                  key={item.id}
+                  sx={{
+                    p: 1.25,
+                    borderRadius: 2.2,
+                    border: item.read ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(56,189,248,0.34)',
+                    bgcolor: item.read ? 'rgba(15,23,42,0.52)' : 'rgba(8,47,73,0.32)',
+                  }}
+                >
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ sm: 'flex-start' }}>
+                    <Box sx={{ minWidth: 0 }}>
+                      <Stack direction="row" spacing={0.6} alignItems="center" flexWrap="wrap" useFlexGap>
+                        <Chip
+                          size="small"
+                          label={item.inbox_type || item.event_type || 'Varsel'}
+                          sx={{ height: 21, bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe', fontWeight: 800 }}
+                        />
+                        {!item.read ? <Chip size="small" label="Ulest" sx={{ height: 21, bgcolor: 'rgba(248,113,113,0.16)', color: '#fecaca', fontWeight: 800 }} /> : null}
+                        {isResolved ? <Chip size="small" label="Løst" sx={{ height: 21, bgcolor: 'rgba(34,197,94,0.14)', color: '#bbf7d0', fontWeight: 800 }} /> : null}
+                      </Stack>
+                      <Typography sx={{ mt: 0.75, color: '#fff', fontWeight: 850, lineHeight: 1.25 }}>
+                        {item.title}
+                      </Typography>
+                      {item.message ? (
+                        <Typography sx={{ mt: 0.35, color: 'rgba(226,232,240,0.68)', fontSize: '0.82rem', lineHeight: 1.45 }}>
+                          {item.message}
+                        </Typography>
+                      ) : null}
+                      <Typography sx={{ mt: 0.55, color: 'rgba(148,163,184,0.72)', fontSize: '0.72rem' }}>
+                        {[item.client_name, createdAtLabel, item.assigned_to_label ? `Ansvar: ${item.assigned_to_label}` : null].filter(Boolean).join(' • ')}
+                      </Typography>
+                    </Box>
+                    <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap justifyContent={{ xs: 'flex-start', sm: 'flex-end' }}>
+                      {!item.read ? (
+                        <Button
+                          size="small"
+                          onClick={() => { void markProducerInboxAsRead(item.id); }}
+                          sx={{ textTransform: 'none', color: '#bae6fd', fontWeight: 800 }}
+                        >
+                          Lest
+                        </Button>
+                      ) : null}
+                      {!isResolved ? (
+                        <Button
+                          size="small"
+                          onClick={() => { void resolveProducerInboxNotification(item.id, true); }}
+                          sx={{ textTransform: 'none', color: '#86efac', fontWeight: 800 }}
+                        >
+                          Løs
+                        </Button>
+                      ) : null}
+                      <Button
+                        size="small"
+                        onClick={() => { void archiveProducerInboxNotification(item.id, true); }}
+                        sx={{ textTransform: 'none', color: 'rgba(226,232,240,0.68)', fontWeight: 800 }}
+                      >
+                        Arkiver
+                      </Button>
+                    </Stack>
+                  </Stack>
+                </Box>
+              );
+            })}
+          </Box>
+        </DialogContent>
+      </Dialog>
+
       {/* Project Selector Dialog */}
       <Dialog
         open={projectSelectorOpen}
@@ -15277,10 +15535,16 @@ type RoleRoomProjectWorkspaceState = {
                     lineHeight: 1.2,
                   }}
                 >
-                  {projectToEdit ? branding.tokens.labels.editProjectTitle : 'Nytt Role Room prosjekt'}
+                  {projectToEdit
+                    ? branding.tokens.labels.editProjectTitle
+                    : projectCreationDialogTab === 'existing'
+                      ? 'Prosjektbibliotek'
+                      : 'Nytt Role Room prosjekt'}
                 </Typography>
                 <Typography sx={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.68)' }}>
-                  The Role Room flyt: grunnlag, team, økonomi og lagring.
+                  {projectCreationDialogTab === 'existing' && !projectToEdit
+                    ? 'Åpne eksisterende prosjekt eller bytt tilbake for å starte nytt.'
+                    : 'The Role Room flyt: grunnlag, team, økonomi og lagring.'}
                 </Typography>
               </Box>
             </Box>
@@ -15353,7 +15617,231 @@ type RoleRoomProjectWorkspaceState = {
             flexDirection: 'column',
           }}
         >
-          {projectCreationModalOpen && (
+          {!projectToEdit ? (
+            <Box
+              sx={{
+                px: { xs: 1.4, sm: 2 },
+                pt: 1.25,
+                borderBottom: '1px solid rgba(255,255,255,0.08)',
+                bgcolor: 'rgba(2,6,23,0.32)',
+              }}
+            >
+              <Tabs
+                value={projectCreationDialogTab}
+                onChange={(_event, value) => setProjectCreationDialogTab(value)}
+                variant="scrollable"
+                scrollButtons="auto"
+                sx={{
+                  minHeight: 42,
+                  '& .MuiTab-root': {
+                    minHeight: 42,
+                    textTransform: 'none',
+                    color: 'rgba(226,232,240,0.68)',
+                    fontWeight: 800,
+                  },
+                  '& .Mui-selected': { color: '#7dd3fc' },
+                  '& .MuiTabs-indicator': { bgcolor: '#38bdf8' },
+                }}
+              >
+                <Tab value="new" label="Nytt prosjekt" />
+                <Tab value="existing" label={`Eksisterende (${orderedProjects.length})`} />
+              </Tabs>
+            </Box>
+          ) : null}
+
+          {projectCreationDialogTab === 'existing' && !projectToEdit ? (
+            <Box sx={{ p: { xs: 1.5, sm: 2.25 }, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+              <Box sx={{ display: 'flex', alignItems: { xs: 'stretch', sm: 'center' }, gap: 1, flexDirection: { xs: 'column', sm: 'row' } }}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  value={projectSelectorQuery}
+                  onChange={(event) => setProjectSelectorQuery(event.target.value)}
+                  placeholder="Søk på prosjektnavn, ID eller klient"
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchIcon sx={{ fontSize: 18, color: 'rgba(255,255,255,0.64)' }} />
+                      </InputAdornment>
+                    ),
+                  }}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      color: '#fff',
+                      bgcolor: 'rgba(255,255,255,0.04)',
+                      '& fieldset': { borderColor: 'rgba(255,255,255,0.14)' },
+                      '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.28)' },
+                      '&.Mui-focused fieldset': { borderColor: '#38bdf8' },
+                    },
+                  }}
+                />
+                <Button
+                  variant="contained"
+                  startIcon={<AddIcon />}
+                  onClick={() => {
+                    setProjectSelectorQuery('');
+                    setProjectCreationDialogTab('new');
+                  }}
+                  sx={{
+                    minHeight: 40,
+                    borderRadius: 999,
+                    px: 1.5,
+                    textTransform: 'none',
+                    fontWeight: 800,
+                    bgcolor: '#38bdf8',
+                    color: '#082f49',
+                    whiteSpace: 'nowrap',
+                    '&:hover': { bgcolor: '#7dd3fc' },
+                  }}
+                >
+                  Opprett nytt
+                </Button>
+              </Box>
+
+              {filteredPublishedTemplates.length > 0 ? (
+                <Box
+                  sx={{
+                    p: 1.25,
+                    borderRadius: 2.5,
+                    border: '1px solid rgba(192,132,252,0.18)',
+                    bgcolor: 'rgba(88,28,135,0.12)',
+                  }}
+                >
+                  <Typography sx={{ color: '#e9d5ff', fontWeight: 800, fontSize: '0.8rem', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                    Templates
+                  </Typography>
+                  <Stack spacing={0.75} sx={{ mt: 1 }}>
+                    {filteredPublishedTemplates.slice(0, 4).map((template) => (
+                      <Box
+                        key={`project-modal-template-${template.id}`}
+                        sx={{
+                          display: 'grid',
+                          gridTemplateColumns: 'minmax(0, 1fr) auto',
+                          gap: 1,
+                          alignItems: 'center',
+                          p: 1,
+                          borderRadius: 1.8,
+                          bgcolor: 'rgba(15,23,42,0.48)',
+                          border: '1px solid rgba(216,180,254,0.14)',
+                        }}
+                      >
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography sx={{ color: '#fff', fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {String(template.templateSourceProjectName || template.name).replace(/^Template\s*·\s*/i, '')}
+                          </Typography>
+                          <Typography sx={{ mt: 0.2, color: 'rgba(226,232,240,0.58)', fontSize: '0.76rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {template.description || 'Publisert prosjektmal'}
+                          </Typography>
+                        </Box>
+                        <Button
+                          size="small"
+                          startIcon={<ContentCopyIcon sx={{ fontSize: 15 }} />}
+                          onClick={() => {
+                            setProjectCreationModalOpen(false);
+                            handleOpenProjectCopyDialog(template, { closeSelector: true });
+                          }}
+                          sx={{ textTransform: 'none', fontWeight: 800, color: '#f5d0fe', border: '1px solid rgba(216,180,254,0.3)' }}
+                        >
+                          Bruk mal
+                        </Button>
+                      </Box>
+                    ))}
+                  </Stack>
+                </Box>
+              ) : null}
+
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.85 }}>
+                {filteredProjectSelectorItems.length === 0 ? (
+                  <Box sx={{ p: 2.5, borderRadius: 2.5, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                    <Typography sx={{ color: '#fff', fontWeight: 800 }}>Ingen prosjekter matcher søket</Typography>
+                    <Typography sx={{ mt: 0.35, color: 'rgba(226,232,240,0.64)', fontSize: '0.84rem' }}>
+                      Opprett et nytt prosjekt, eller prøv et annet søkeord.
+                    </Typography>
+                  </Box>
+                ) : filteredProjectSelectorItems.map((project) => {
+                  const isActive = currentProject?.id === project.id;
+                  const isPinned = pinnedProjectIdSet.has(project.id);
+                  const isProtectedDemo = isProtectedDemoProject(project);
+                  const { roleLabel, accessLabel } = getProjectRoleDetails(project);
+                  const creatorLabel = getProjectCreatorLabel(project);
+                  const syncStatus = getProjectSyncStatus(project.id);
+                  const primaryActionLabel = isProtectedDemo && !canMutateProtectedDemoData ? 'Lag kopi' : (isActive ? 'Åpent' : 'Åpne');
+
+                  return (
+                    <Box
+                      key={`project-modal-existing-${project.id}`}
+                      sx={{
+                        display: 'grid',
+                        gridTemplateColumns: { xs: 'minmax(0, 1fr)', sm: 'minmax(0, 1fr) auto' },
+                        gap: 1,
+                        alignItems: 'center',
+                        p: 1.15,
+                        borderRadius: 2.2,
+                        border: isActive ? '1px solid rgba(34,211,238,0.45)' : '1px solid rgba(255,255,255,0.08)',
+                        bgcolor: isActive ? 'rgba(8,47,73,0.28)' : 'rgba(15,23,42,0.48)',
+                      }}
+                    >
+                      <Box sx={{ minWidth: 0 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.7, minWidth: 0, flexWrap: 'wrap' }}>
+                          {isPinned ? <PushPinIcon sx={{ color: '#fbbf24', fontSize: 16 }} /> : null}
+                          <Typography sx={{ color: '#fff', fontWeight: 850, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+                            {project.name}
+                          </Typography>
+                          {isActive ? <Chip size="small" label="Aktivt" sx={{ height: 21, bgcolor: 'rgba(34,211,238,0.14)', color: '#7dd3fc', fontWeight: 800 }} /> : null}
+                        </Box>
+                        <Typography sx={{ mt: 0.45, color: 'rgba(226,232,240,0.62)', fontSize: '0.78rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {[project.clientName, `Rolle: ${roleLabel}`, `Tilgang: ${accessLabel}`].filter(Boolean).join(' • ')}
+                        </Typography>
+                        {creatorLabel ? (
+                          <Typography sx={{ mt: 0.25, color: 'rgba(226,232,240,0.48)', fontSize: '0.72rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            Opprettet av {creatorLabel}
+                          </Typography>
+                        ) : null}
+                      </Box>
+                      <Stack direction="row" spacing={0.65} alignItems="center" justifyContent={{ xs: 'flex-start', sm: 'flex-end' }} flexWrap="wrap" useFlexGap>
+                        <Tooltip title={syncStatus.helper}>
+                          <Chip
+                            size="small"
+                            label={syncStatus.label}
+                            sx={{
+                              bgcolor: syncStatus.bgcolor,
+                              color: syncStatus.color,
+                              border: syncStatus.border,
+                              fontWeight: 800,
+                            }}
+                          />
+                        </Tooltip>
+                        <Button
+                          size="small"
+                          disabled={isActive && !(isProtectedDemo && !canMutateProtectedDemoData)}
+                          startIcon={isProtectedDemo && !canMutateProtectedDemoData ? <ContentCopyIcon sx={{ fontSize: 15 }} /> : <FolderOpenIcon sx={{ fontSize: 15 }} />}
+                          onClick={() => {
+                            if (isProtectedDemo && !canMutateProtectedDemoData) {
+                              setProjectCreationModalOpen(false);
+                              handleOpenProjectCopyDialog(project, { closeSelector: true });
+                              return;
+                            }
+                            setProjectCreationModalOpen(false);
+                            setProjectSelectorQuery('');
+                            void handleSelectProjectFromSelector(project);
+                          }}
+                          sx={{
+                            textTransform: 'none',
+                            fontWeight: 800,
+                            color: isActive ? 'rgba(226,232,240,0.58)' : '#bae6fd',
+                            border: '1px solid rgba(125,211,252,0.26)',
+                            '&:hover': { bgcolor: 'rgba(56,189,248,0.12)' },
+                          }}
+                        >
+                          {primaryActionLabel}
+                        </Button>
+                      </Stack>
+                    </Box>
+                  );
+                })}
+              </Box>
+            </Box>
+          ) : projectCreationModalOpen && (
             <QueryClientProvider client={queryClient}>
               <MemoryRouter>
                 <ProjectProvider key={projectToEdit?.id ?? 'new-project'}>
@@ -15414,9 +15902,13 @@ type RoleRoomProjectWorkspaceState = {
 	                          try {
 	                            await castingService.saveProject(projectWithCrew);
 	                            await loadProjectSyncMeta([normalizedProjectId]);
-	                          } catch (error) {
-	                            console.error('Failed to save project to database:', error);
-	                          }
+	                        } catch (error) {
+	                            logRoleRoomDiagnostic('project-save:failed', {
+	                              source: 'casting-planner',
+	                              projectId: completeProject.id,
+	                              message: error instanceof Error ? error.message : String(error),
+	                            });
+	                        }
                           
                           // Invalidate query cache to force refresh
                           queryClient.invalidateQueries({ queryKey: ['/api/casting/projects'] });

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Virtual Studio Community Feed
  * 

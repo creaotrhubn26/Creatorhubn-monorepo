@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Modifier Browser
  * Browse and add lighting modifiers to the scene

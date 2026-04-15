@@ -7,7 +7,10 @@ import ReactDOM from 'react-dom/client';
 import { initSentry } from './utils/sentry';
 import { bootstrapCreatorHubGoogleLoginRedirect } from './lib/creatorhubGoogleAuth';
 import { normalizeRequestUrl } from './lib/normalizeRequestUrl';
-import { isRoleRoomDedicatedHost } from './components/role-room/utils/runtime';
+import {
+  isRoleRoomDedicatedHost,
+  isRoleRoomStandalonePathname,
+} from './components/role-room/utils/runtime';
 import { registerRoleRoomPwaServiceWorker } from './components/role-room/services/roleRoomPwaService';
 import './styles/academy-responsive.css';
 
@@ -46,6 +49,9 @@ const shouldUseRoleRoomDedicatedHostBootstrap = (
     (shouldUseAdminBootstrap(pathname) || shouldUseVisualEditorBootstrap(pathname))
   ) {
     return false;
+  }
+  if (LOCALHOST_HOSTNAME_SET.has(hostname)) {
+    return isRoleRoomStandalonePathname(pathname, locationLike);
   }
   return isRoleRoomDedicatedHost(hostname);
 };

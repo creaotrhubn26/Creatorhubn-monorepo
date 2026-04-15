@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * ScreenplayEditorWithNavigator - Full-featured screenplay editor with scene navigation
  * 

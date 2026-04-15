@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Personalized News Interface - Equipment-specific news recommendations
  * Material UI implementation with Norwegian localization

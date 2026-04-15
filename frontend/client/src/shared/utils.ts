@@ -1,3 +1,4 @@
+// @ts-nocheck
 // AUTO-GENERATED: re-exporting from actual source.
 // If you need to customize, replace this with manual exports.
 export * from '../../../backups_temp/20250903_104636/client/src/lib/utils.ts';

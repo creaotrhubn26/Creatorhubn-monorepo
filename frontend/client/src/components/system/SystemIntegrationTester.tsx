@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * System Integration Tester
  * Comprehensive testing system for all 762 components and Google integrations

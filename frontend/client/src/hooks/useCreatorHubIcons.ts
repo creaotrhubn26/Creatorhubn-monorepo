@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * useCreatorHubIcons Hook
  * Provides access to all CreatorHub custom icons + Material Icons

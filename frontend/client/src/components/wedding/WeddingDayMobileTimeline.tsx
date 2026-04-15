@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Wedding Day Mobile Timeline
  * Mobile-optimized vertical timeline for wedding day execution

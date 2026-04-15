@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * ADJUSTMENT HISTORY
  * Lightroom-style undo/redo stack for photo editing

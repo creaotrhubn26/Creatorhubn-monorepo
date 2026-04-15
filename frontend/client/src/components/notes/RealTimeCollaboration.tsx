@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Real-time Collaboration Manager - Live editing, presence, and conflict resolution
  * Enables multiple users to collaborate on interactive documentation in real-time

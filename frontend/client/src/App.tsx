@@ -615,7 +615,6 @@ function App() {
                     path="/equipment-rental"
                     component={() => <SmartDashboardRoute profession="photographer" />}
                   />
-                  <Route path="/academy" component={AcademyLandingRouteWrapper as React.ComponentType<any>} />
                   <Route path="/academy-dashboard" component={AcademyDashboardRouteWrapper as React.ComponentType<any>} />
                   <Route path="/academy/course-creator" component={AcademyCourseCreatorRouteWrapper as React.ComponentType<any>} />
                   <Route path="/academy/module-manager" component={AcademyCurriculumRouteWrapper as React.ComponentType<any>} />
@@ -653,6 +652,7 @@ function App() {
                   <Route path="/academy/messages" component={AcademyStudentDashboardRouteWrapper as React.ComponentType<any>} />
                   <Route path="/academy/settings" component={AcademyUserSettingsRouteWrapper as React.ComponentType<any>} />
                   <Route path="/academy/tools" component={AcademyToolsOverviewRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/academy" component={AcademyLandingRouteWrapper as React.ComponentType<any>} />
                   <Route path="/community" component={CommunityLandingPageWrapper} />
                   <Route path="/help" component={() => <SmartDashboardRoute />} />
                   <Route

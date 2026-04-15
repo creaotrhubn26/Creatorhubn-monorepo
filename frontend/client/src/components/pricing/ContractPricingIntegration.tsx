@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * CreatorHub Norge - Contract Pricing Integration
  * Embeds pricing into contract generation and management

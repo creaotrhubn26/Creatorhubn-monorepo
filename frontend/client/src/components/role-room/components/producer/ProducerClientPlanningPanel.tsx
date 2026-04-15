@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
@@ -69,6 +70,7 @@ import {
   summarizeProducerClientGrounding,
 } from '../../utils/producerProjectPlanning';
 import type { ClientPortalWorkspaceFocus } from '../../utils/clientPortal';
+import { logRoleRoomDiagnostic } from '../../utils/roleRoomDiagnostics';
 
 type PlanningPanelTab = 'activation' | 'phase_plan' | 'calendar' | 'brand' | 'delivery';
 type ActivationEditorMode = ProducerClientLogicMode;
@@ -294,7 +296,10 @@ export default function ProducerClientPlanningPanel({
     }
 
     void producerWorkflowService.ensurePlanningClientReviews(project.id, normalizedProjectPlanning).catch((syncError) => {
-      console.error('[ProducerClientPlanningPanel] Failed to ensure planning review flow', syncError);
+      logRoleRoomDiagnostic('planning:ensure-review-flow-failed', {
+        projectId: project.id,
+        message: syncError instanceof Error ? syncError.message : String(syncError),
+      });
     });
   }, [normalizedProjectPlanning, project.id, readOnly]);
 

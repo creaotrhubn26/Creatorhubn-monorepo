@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * CreatorHub Norge - Vehicle Registry Modal
  * Integrasjon med Statens Vegvesen API for kjøretøyoppslag

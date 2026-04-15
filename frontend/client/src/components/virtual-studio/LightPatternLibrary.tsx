@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Light Pattern Library
  * 

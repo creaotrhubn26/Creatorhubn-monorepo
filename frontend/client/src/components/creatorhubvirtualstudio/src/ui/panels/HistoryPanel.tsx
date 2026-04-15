@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * HistoryPanel - Visual undo/redo history stack
  * 

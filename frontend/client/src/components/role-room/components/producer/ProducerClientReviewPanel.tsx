@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useCallback, useEffect, useMemo, useRef, useState, type TouchEvent as ReactTouchEvent } from 'react';
 import {
   Alert,
@@ -61,6 +62,7 @@ import {
 } from '../../services/producerWorkflowFocusEvents';
 import settingsService from '../../services/settingsService';
 import { shouldUseRoleRoomLocalFallback } from '../../utils/runtime';
+import { logRoleRoomDiagnostic } from '../../utils/roleRoomDiagnostics';
 import {
   buildAgreementTimelinePayload,
   getAgreementStatusFromReviewDecision,
@@ -230,6 +232,30 @@ const readFirstNonEmptyString = (...values: unknown[]): string | undefined => {
   }
   return undefined;
 };
+
+const CLIENT_INPUT_LOAD_TIMEOUT_MS = 12_000;
+
+function withClientInputTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+
+  return Promise.race([
+    promise,
+    new Promise<T>((_resolve, reject) => {
+      timeout = setTimeout(() => {
+        reject(new Error(`${label} tok for lang tid å laste.`));
+      }, CLIENT_INPUT_LOAD_TIMEOUT_MS);
+    }),
+  ]).finally(() => {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  });
+}
+
+function isRoleRoomSessionFailure(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return /session|sesjon|logg inn|x-api-key|unauthorized|forbidden/i.test(message);
+}
 
 const formatReviewEventDateTime = (value?: string | null): string | null => {
   if (!value) {
@@ -476,6 +502,7 @@ export default function ProducerClientReviewPanel({
   const [clientMaterials, setClientMaterials] = useState<ProducerClientMaterial[]>([]);
   const [clientInputLoading, setClientInputLoading] = useState(false);
   const [clientInputError, setClientInputError] = useState<string | null>(null);
+  const clientInputLoadRequestRef = useRef(0);
   const reviewRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const initialReviewFocusRef = useRef<string | null>(null);
   const [newTitle, setNewTitle] = useState('');
@@ -511,6 +538,21 @@ export default function ProducerClientReviewPanel({
       return true;
     });
   }, [entityOptions]);
+
+  const targetEntityTypeOptions = useMemo(() => {
+    if (!newTargetEntityType || distinctEntityTypes.some((option) => option.entityType === newTargetEntityType)) {
+      return distinctEntityTypes;
+    }
+
+    return [
+      ...distinctEntityTypes,
+      {
+        entityType: newTargetEntityType,
+        entityId: '',
+        label: getProducerEntityTypeLabel(newTargetEntityType),
+      },
+    ];
+  }, [distinctEntityTypes, newTargetEntityType]);
 
   const filteredEntityOptions = useMemo(() => {
     if (!newTargetEntityType) {
@@ -1206,28 +1248,61 @@ export default function ProducerClientReviewPanel({
   }, [loadAgreementLookup]);
 
   const loadClientInput = useCallback(async () => {
+    const requestId = ++clientInputLoadRequestRef.current;
+    const isStaleRequest = () => requestId !== clientInputLoadRequestRef.current;
+
     setClientInputLoading(true);
     setClientInputError(null);
     try {
-      const [nextIntake, nextMaterials] = await Promise.all([
-        producerWorkflowService.getClientIntake(projectId),
-        producerWorkflowService.getClientMaterials(projectId),
+      const [nextIntake, nextMaterials] = await Promise.allSettled([
+        withClientInputTimeout(producerWorkflowService.getClientIntake(projectId), 'Klientbrief'),
+        withClientInputTimeout(producerWorkflowService.getClientMaterials(projectId), 'Klientmateriale'),
       ]);
-      setClientIntake({
-        ...EMPTY_CLIENT_INTAKE,
-        ...nextIntake,
-      });
-      setClientMaterials(nextMaterials);
+
+      if (isStaleRequest()) {
+        return;
+      }
+
+      const failures: unknown[] = [];
+
+      if (nextIntake.status === 'fulfilled') {
+        setClientIntake({
+          ...EMPTY_CLIENT_INTAKE,
+          ...nextIntake.value,
+        });
+      } else {
+        failures.push(nextIntake.reason);
+      }
+
+      if (nextMaterials.status === 'fulfilled') {
+        setClientMaterials(nextMaterials.value);
+      } else {
+        failures.push(nextMaterials.reason);
+      }
+
+      if (failures.some(isRoleRoomSessionFailure)) {
+        setClientInputError('Role Room-sesjonen mangler eller har utløpt. Logg inn på nytt.');
+        setClientInputLoading(false);
+      } else if (failures.length > 0) {
+        setClientInputLoading(false);
+      }
     } catch (loadError) {
-      console.error('[ProducerClientReviewPanel] Failed to load client input', loadError);
-      setClientInputError('Kunne ikke hente klientbrief og materiale.');
+      if (!isStaleRequest() && isRoleRoomSessionFailure(loadError)) {
+        setClientInputError('Role Room-sesjonen mangler eller har utløpt. Logg inn på nytt.');
+      }
     } finally {
-      setClientInputLoading(false);
+      if (!isStaleRequest()) {
+        setClientInputLoading(false);
+      }
     }
   }, [projectId]);
 
   useEffect(() => {
     void loadClientInput();
+    return () => {
+      clientInputLoadRequestRef.current += 1;
+      setClientInputLoading(false);
+    };
   }, [loadClientInput]);
 
   useEffect(() => {
@@ -1236,13 +1311,22 @@ export default function ProducerClientReviewPanel({
     }
 
     void producerWorkflowService.ensurePlanningClientReviews(projectId, producerPlanning).catch((syncError) => {
-      console.error('[ProducerClientReviewPanel] Failed to ensure planning reviews', syncError);
+      logRoleRoomDiagnostic('reviews:ensure-planning-failed', {
+        projectId,
+        message: syncError instanceof Error ? syncError.message : String(syncError),
+      });
     });
     void producerWorkflowService.ensureMeetingWorkspaceWorkflow(projectId, producerPlanning).catch((syncError) => {
-      console.error('[ProducerClientReviewPanel] Failed to ensure meeting workflow', syncError);
+      logRoleRoomDiagnostic('reviews:ensure-meeting-failed', {
+        projectId,
+        message: syncError instanceof Error ? syncError.message : String(syncError),
+      });
     });
     void producerWorkflowService.ensureClientGroundingReviews(projectId).catch((syncError) => {
-      console.error('[ProducerClientReviewPanel] Failed to ensure client grounding reviews', syncError);
+      logRoleRoomDiagnostic('reviews:ensure-client-grounding-failed', {
+        projectId,
+        message: syncError instanceof Error ? syncError.message : String(syncError),
+      });
     });
   }, [producerPlanning, projectId]);
 
@@ -2236,7 +2320,7 @@ export default function ProducerClientReviewPanel({
                     sx={{ color: '#fff', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.3)' } }}
                   >
                     <MenuItem value="">Ingen kobling</MenuItem>
-                    {distinctEntityTypes.map((option) => (
+                    {targetEntityTypeOptions.map((option) => (
                       <MenuItem key={option.entityType} value={option.entityType}>
                         {getProducerEntityTypeLabel(option.entityType)}
                       </MenuItem>

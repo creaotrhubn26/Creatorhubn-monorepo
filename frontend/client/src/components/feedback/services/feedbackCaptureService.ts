@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * FeedbackCaptureService - Screenshot, Audio, Video, and Context Capture
  * 

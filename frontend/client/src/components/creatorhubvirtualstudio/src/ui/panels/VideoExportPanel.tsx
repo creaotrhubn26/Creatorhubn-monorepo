@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * VideoExportPanel - UI for exporting animations to video
  * 

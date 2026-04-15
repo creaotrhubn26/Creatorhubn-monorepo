@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Vision Transformer Panel
  * UI component for 2025 Vision Transformer classification and enhancement

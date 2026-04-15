@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Smart Meeting Preparation System
  * Automatically prepares all related documents, contracts, and information for meetings

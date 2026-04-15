@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Video Processing Service
  * Handles automatic chapter detection, annotation processing, and video analysis

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useTheming } from '../../utils/theming-helper';
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import {

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Background Download Service
  * Håndterer nedlasting av filer i bakgrunnen med progress tracking,

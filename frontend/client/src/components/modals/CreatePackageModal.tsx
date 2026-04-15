@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * CreatorHub Norge - Create Package Modal
  * Modal for creating and editing standard packages

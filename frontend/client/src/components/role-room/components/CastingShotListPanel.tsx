@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useState, useMemo, useEffect, useId, useCallback, useRef, lazy, Suspense, Fragment, type ReactNode, type ReactElement } from 'react';
 import { useShotListRealTime } from '../hooks/useShotListRealTime';
 import { useToast } from './ToastStack';

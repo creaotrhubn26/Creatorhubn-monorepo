@@ -10,6 +10,22 @@ import { test, expect, type Page, type BrowserContext } from '@playwright/test';
 const DASHBOARD_URL = 'http://localhost:5001/photographer-dashboard-material';
 const ADMIN_URL = 'http://localhost:5001/admin';
 const LOAD_TIMEOUT = 60_000;
+const AUTH_TOKEN = 'dev-admin-local-session';
+const AUTH_USER = {
+  id: 'local-admin',
+  email: 'admin@local.dev',
+  firstName: 'Local',
+  lastName: 'Admin',
+  name: 'Local Admin',
+  displayName: 'Local Admin',
+  role: 'admin',
+  roleLabel: 'Admin',
+  profession: 'photographer',
+  userType: 'photographer',
+  permissions: ['users:read', 'users:write', 'roles:write', 'academy:admin', 'billing:admin', 'impersonate'],
+  isAdmin: true,
+  verified_email: true,
+};
 
 // ── Helpers ────────────────────────────────────────────────
 
@@ -59,6 +75,32 @@ test.describe('Admin ↔ Bruker Chat E2E', () => {
 
   test.beforeAll(async ({ browser }) => {
     context = await browser.newContext();
+    await context.addInitScript(
+      ({ token, user }) => {
+        window.localStorage.setItem('creatorhub_auth_token', token);
+        window.localStorage.setItem('creatorhub_auth_user', JSON.stringify(user));
+        window.localStorage.setItem('userId', user.id);
+        window.localStorage.setItem('userEmail', user.email);
+      },
+      { token: AUTH_TOKEN, user: AUTH_USER },
+    );
+    await context.route('**/api/auth/user', async (route) => {
+      const authorization = route.request().headers().authorization;
+
+      if (authorization === `Bearer ${AUTH_TOKEN}` || !authorization) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            authenticated: true,
+            user: AUTH_USER,
+          }),
+        });
+        return;
+      }
+
+      await route.fallback();
+    });
     page = await context.newPage();
     page.on('pageerror', (err) => pageErrors.push(err.message));
   });
@@ -170,18 +212,17 @@ test.describe('Admin ↔ Bruker Chat E2E', () => {
   });
 
   test('8. FullscreenChatWidget has search field for contacts', async () => {
-    const searchField = page.locator('[role="dialog"] input[placeholder*="Søk"]');
+    const searchField = page.locator('[role="dialog"] input[placeholder*="Søk"]').first();
     const visible = await searchField.isVisible().catch(() => false);
     expect(visible).toBe(true);
     console.log('Search field visible ✓');
   });
 
   test('9. Search field accepts text input', async () => {
-    const searchField = page.locator('[role="dialog"] input[placeholder*="Søk"]');
+    const searchField = page.locator('[role="dialog"] input[placeholder*="Søk"]').first();
     await searchField.fill('test-bruker');
     const value = await searchField.inputValue();
     expect(value).toBe('test-bruker');
-    await searchField.fill('');
     console.log('Search field accepts input ✓');
   });
 
@@ -236,30 +277,15 @@ test.describe('Admin ↔ Bruker Chat E2E', () => {
     console.log('Admin dashboard loaded ✓');
   });
 
-  test('15. Admin has floating chat FAB', async () => {
-    const fabInfo = await page.evaluate(() => {
-      const fabs = document.querySelectorAll('.MuiFab-root');
-      for (const fab of fabs) {
-        const chatIcon = fab.querySelector('[data-testid="ChatIcon"]');
-        if (chatIcon) return { found: true };
-      }
-      return null;
-    });
-    expect(fabInfo).toBeTruthy();
-    console.log('Admin chat FAB found ✓');
+  test('15. Admin has chat support entry point', async () => {
+    const adminSupportButton = page.getByRole('button', { name: /Adminstøtte/i });
+    await expect(adminSupportButton).toBeVisible();
+    console.log('Admin chat support entry point found ✓');
   });
 
   test('16. Admin chat FAB opens FullscreenChatWidget', async () => {
-    const clicked = await page.evaluate(() => {
-      const fabs = document.querySelectorAll('.MuiFab-root');
-      for (const fab of fabs) {
-        const chatIcon = fab.querySelector('[data-testid="ChatIcon"]');
-        if (chatIcon) { (fab as HTMLElement).click(); return true; }
-      }
-      return false;
-    });
-    expect(clicked).toBe(true);
-    await page.waitForTimeout(2000);
+    await page.getByRole('button', { name: /Adminstøtte/i }).click();
+    await page.waitForSelector('[role="dialog"]', { state: 'visible', timeout: LOAD_TIMEOUT });
 
     const rendered = await page.evaluate(() => {
       const dialogs = document.querySelectorAll('[role="dialog"]');
@@ -272,10 +298,6 @@ test.describe('Admin ↔ Bruker Chat E2E', () => {
             hasChatContent: text.includes('Velg en samtale') || text.includes('Skriv'),
           };
         }
-      }
-      const body = document.body.textContent || '';
-      if (body.includes('Google Chat Professional') || body.includes('Google Chat')) {
-        return { type: 'inline', hasGoogleChat: true, hasChatContent: true };
       }
       return null;
     });

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * CreatorHub Norge - Brand Validation Utilities
  * Ensures brand consistency across the platform

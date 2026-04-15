@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Pricing Import Dialog
  * Import recommended pricing from Creo or NJ

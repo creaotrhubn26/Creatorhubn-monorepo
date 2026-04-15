@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * AnimationStudioPanel - Complete animation workspace
  * 

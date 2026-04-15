@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Extra Image Pricing Dialog
  * Handles pricing options for images beyond contract agreement

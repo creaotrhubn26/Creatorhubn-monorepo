@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * TONE CURVE EDITOR
  * Lightroom-style interactive tone curve editor

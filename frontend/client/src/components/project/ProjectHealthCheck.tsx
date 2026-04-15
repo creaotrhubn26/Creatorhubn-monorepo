@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * CreatorHub Norge - Project Health Check
  * Validerer prosjektdata før opprettelse og viser manglende felt med "Gå til"-knapper

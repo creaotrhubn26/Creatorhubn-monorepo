@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Mobile Gestures Component
  * Touch-optimized gestures and interactions

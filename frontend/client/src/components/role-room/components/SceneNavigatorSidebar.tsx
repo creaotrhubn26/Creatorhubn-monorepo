@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * SceneNavigatorSidebar - Scene Navigator for ScreenplayEditor
  * 

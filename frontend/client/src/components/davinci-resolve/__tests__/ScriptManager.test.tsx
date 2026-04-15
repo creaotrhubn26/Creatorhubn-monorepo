@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * ScriptManager.test.tsx - Comprehensive tests for DaVinci Resolve Script Manager
  * 

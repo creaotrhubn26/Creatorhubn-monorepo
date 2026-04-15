@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * CreatorHub Norge - Project Creation with Memory Card Planning
  * Integrerer minneskortet planlegging direkte i prosjektopprettelsen

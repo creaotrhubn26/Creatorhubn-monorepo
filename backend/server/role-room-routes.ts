@@ -80,6 +80,17 @@ interface RoleRoomStoryLogicRow {
   updated_at: string;
 }
 
+interface RoleRoomCoverageReviewRow {
+  project_id: string;
+  take_reviews: Record<string, unknown> | null;
+  shot_line_coverage: Record<string, unknown> | null;
+  version: number;
+  updated_by_user_id: string | null;
+  updated_by_role: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 type SyncDirection = 'creatorhub_to_roleroom' | 'roleroom_to_creatorhub';
 
 interface ProjectSyncPayload {
@@ -4615,6 +4626,42 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     return effectiveRoleRecord.permissions.canEditScript === true;
   }
 
+  function canReadCoverageReview(req: Request, roleRecord: ProjectRoleRecord | null): boolean {
+    if (canReadProducerData(req, roleRecord)) return true;
+    const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
+    if (!effectiveRoleRecord) return false;
+    if (['script_supervisor', 'video_assist', 'editor', 'assistant_editor'].includes(effectiveRoleRecord.role)) {
+      return true;
+    }
+    return effectiveRoleRecord.permissions.canEditScript === true
+      || effectiveRoleRecord.permissions.canEditShots === true
+      || effectiveRoleRecord.permissions.canEditShotLists === true
+      || effectiveRoleRecord.permissions.canComment === true;
+  }
+
+  function canWriteCoverageReview(req: Request, roleRecord: ProjectRoleRecord | null): boolean {
+    if (requireScope(req, 'admin')) return true;
+    const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
+    if (!effectiveRoleRecord) return false;
+    if ([
+      'director',
+      'producer',
+      'content_producer',
+      'production_manager',
+      'camera_team',
+      'script_supervisor',
+      'video_assist',
+      'editor',
+      'assistant_editor',
+    ].includes(effectiveRoleRecord.role)) {
+      return true;
+    }
+    return effectiveRoleRecord.permissions.canEditProduction === true
+      || effectiveRoleRecord.permissions.canEditScript === true
+      || effectiveRoleRecord.permissions.canEditShots === true
+      || effectiveRoleRecord.permissions.canEditShotLists === true;
+  }
+
   function canCommentProducerReview(req: Request, roleRecord: ProjectRoleRecord | null): boolean {
     if (requireScope(req, 'admin')) return true;
     const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
@@ -6528,6 +6575,124 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     };
   }
 
+  function normalizeCoverageReviewDecision(value: unknown): Record<string, unknown> | null {
+    const record = readRecordValue(value);
+    if (!record) return null;
+
+    const next: Record<string, unknown> = {};
+    for (const key of ['performance', 'framing', 'continuity', 'selected', 'sentToPost']) {
+      const boolValue = readBooleanValue(record[key]);
+      if (boolValue !== null) {
+        next[key] = boolValue;
+      }
+    }
+
+    for (const key of ['directorNote', 'editorNote', 'updatedAt']) {
+      if (Object.prototype.hasOwnProperty.call(record, key)) {
+        const rawValue = record[key];
+        next[key] = typeof rawValue === 'string' ? rawValue.slice(0, 10000) : '';
+      }
+    }
+
+    return next;
+  }
+
+  function normalizeCoverageReviewTakeReviews(value: unknown): Record<string, unknown> {
+    const record = readRecordValue(value);
+    if (!record) return {};
+
+    return Object.entries(record).reduce<Record<string, unknown>>((acc, [takeId, decision]) => {
+      const normalizedTakeId = readStringValue(takeId);
+      const normalizedDecision = normalizeCoverageReviewDecision(decision);
+      if (normalizedTakeId && normalizedDecision) {
+        acc[normalizedTakeId] = normalizedDecision;
+      }
+      return acc;
+    }, {});
+  }
+
+  function normalizeCoverageLineIndex(value: unknown): number {
+    const numberValue = typeof value === 'number'
+      ? value
+      : typeof value === 'string' && value.trim().length > 0
+        ? Number(value)
+        : 0;
+    return Number.isFinite(numberValue) ? Math.max(0, Math.trunc(numberValue)) : 0;
+  }
+
+  function normalizeCoverageReviewShotLineCoverage(value: unknown): Record<string, unknown> {
+    const record = readRecordValue(value);
+    if (!record) return {};
+
+    return Object.entries(record).reduce<Record<string, unknown>>((acc, [shotId, coverage]) => {
+      const normalizedShotId = readStringValue(shotId);
+      const coverageRecord = readRecordValue(coverage);
+      if (!normalizedShotId || !coverageRecord) return acc;
+
+      const dialogueIds = Array.isArray(coverageRecord.dialogueIds)
+        ? coverageRecord.dialogueIds
+            .map((dialogueId) => readStringValue(dialogueId))
+            .filter((dialogueId): dialogueId is string => Boolean(dialogueId))
+            .slice(0, 500)
+        : [];
+
+      acc[normalizedShotId] = {
+        startLine: normalizeCoverageLineIndex(coverageRecord.startLine),
+        endLine: normalizeCoverageLineIndex(coverageRecord.endLine),
+        dialogueIds,
+      };
+      return acc;
+    }, {});
+  }
+
+  function buildRoleRoomCoverageReviewResponse(row: RoleRoomCoverageReviewRow | null, projectId: string) {
+    return {
+      success: true,
+      projectId,
+      takeReviews: row ? normalizeCoverageReviewTakeReviews(row.take_reviews) : {},
+      shotLineCoverage: row ? normalizeCoverageReviewShotLineCoverage(row.shot_line_coverage) : {},
+      version: row ? Number(row.version) || 1 : 0,
+      createdAt: row?.created_at ?? null,
+      updatedAt: row?.updated_at ?? null,
+      updatedByUserId: row?.updated_by_user_id ?? null,
+      updatedByRole: row?.updated_by_role ?? null,
+    };
+  }
+
+  async function appendRoleRoomCoverageReviewAuditEvent(input: {
+    req: Request;
+    projectId: string;
+    action: string;
+    previousVersion?: number | null;
+    nextVersion?: number | null;
+    metadata?: Record<string, unknown>;
+  }): Promise<void> {
+    const actor = getOptionalRequestUser(input.req);
+    await pool.query(
+      `INSERT INTO role_room_coverage_review_audit_events (
+        id, project_id, action, actor_user_id, actor_role,
+        previous_version, next_version, metadata, created_at
+      ) VALUES (
+        $1, $2, $3, $4, $5,
+        $6, $7, $8::jsonb, NOW()
+      )`,
+      [
+        crypto.randomUUID(),
+        input.projectId,
+        input.action,
+        actor?.userId ?? null,
+        actor?.role ?? null,
+        input.previousVersion ?? null,
+        input.nextVersion ?? null,
+        JSON.stringify({
+          ...(input.metadata ?? {}),
+          ip: input.req.ip ?? null,
+          userAgent: readOptionalHeaderValue(input.req, 'user-agent') ?? null,
+        }),
+      ],
+    );
+  }
+
   async function appendRoleRoomStoryLogicAuditEvent(input: {
     req: Request;
     projectId: string;
@@ -6975,6 +7140,31 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           );
           CREATE INDEX IF NOT EXISTS idx_rr_story_logic_audit_project
             ON role_room_story_logic_audit_events(project_id, created_at DESC);
+
+          CREATE TABLE IF NOT EXISTS role_room_coverage_reviews (
+            project_id VARCHAR(255) PRIMARY KEY REFERENCES casting_projects(id) ON DELETE CASCADE,
+            take_reviews JSONB NOT NULL DEFAULT '{}'::jsonb,
+            shot_line_coverage JSONB NOT NULL DEFAULT '{}'::jsonb,
+            version INTEGER NOT NULL DEFAULT 1,
+            updated_by_user_id VARCHAR(255),
+            updated_by_role VARCHAR(80),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+
+          CREATE TABLE IF NOT EXISTS role_room_coverage_review_audit_events (
+            id UUID PRIMARY KEY,
+            project_id VARCHAR(255) NOT NULL REFERENCES casting_projects(id) ON DELETE CASCADE,
+            action VARCHAR(80) NOT NULL,
+            actor_user_id VARCHAR(255),
+            actor_role VARCHAR(80),
+            previous_version INTEGER,
+            next_version INTEGER,
+            metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+          CREATE INDEX IF NOT EXISTS idx_rr_coverage_review_audit_project
+            ON role_room_coverage_review_audit_events(project_id, created_at DESC);
 
           CREATE TABLE IF NOT EXISTS role_room_project_notifications (
             id UUID PRIMARY KEY,
@@ -11280,6 +11470,184 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     } catch (err) {
       console.error('Delete story logic error:', err);
       res.status(500).json({ error: 'story_logic_delete_failed' });
+    }
+  });
+
+  router.get('/projects/:projectId/coverage-review', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    const projectId = readStringValue(req.params.projectId);
+    if (!projectId) {
+      res.status(400).json({ error: 'project_id_required' });
+      return;
+    }
+
+    try {
+      const context = await resolveStoryLogicProjectContext(req, projectId);
+      if (!context) {
+        res.status(404).json({ error: 'project_not_found' });
+        return;
+      }
+      if (!canReadCoverageReview(req, context.roleRecord)) {
+        res.status(403).json({ error: 'coverage_review_read_access_denied' });
+        return;
+      }
+
+      const result = await pool.query<RoleRoomCoverageReviewRow>(
+        `SELECT * FROM role_room_coverage_reviews WHERE project_id = $1 LIMIT 1`,
+        [projectId],
+      );
+      const row = result.rows[0] ?? null;
+      await appendRoleRoomCoverageReviewAuditEvent({
+        req,
+        projectId,
+        action: 'coverage_review_read',
+        nextVersion: row ? Number(row.version) || 1 : 0,
+      });
+      res.json(buildRoleRoomCoverageReviewResponse(row, projectId));
+    } catch (err) {
+      console.error('Fetch coverage review error:', err);
+      res.status(500).json({ error: 'coverage_review_fetch_failed' });
+    }
+  });
+
+  router.put('/projects/:projectId/coverage-review', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!requireScope(req, 'write')) {
+      res.status(403).json({ error: 'write_scope_required' });
+      return;
+    }
+
+    const projectId = readStringValue(req.params.projectId);
+    if (!projectId) {
+      res.status(400).json({ error: 'project_id_required' });
+      return;
+    }
+
+    try {
+      const context = await resolveStoryLogicProjectContext(req, projectId);
+      if (!context) {
+        res.status(404).json({ error: 'project_not_found' });
+        return;
+      }
+      if (!canWriteCoverageReview(req, context.roleRecord)) {
+        res.status(403).json({ error: 'coverage_review_write_access_denied' });
+        return;
+      }
+
+      const body = readRecordValue(req.body) ?? {};
+      const payloadProjectId = readStringValue(body.projectId) ?? readStringValue(body.project_id);
+      if (payloadProjectId && payloadProjectId !== projectId) {
+        await appendRoleRoomCoverageReviewAuditEvent({
+          req,
+          projectId,
+          action: 'coverage_review_cross_project_rejected',
+          metadata: {
+            payloadProjectId,
+            routeProjectId: projectId,
+          },
+        });
+        res.status(409).json({ error: 'cross_project_payload_rejected', projectId });
+        return;
+      }
+
+      const takeReviews = normalizeCoverageReviewTakeReviews(body.takeReviews ?? body.take_reviews);
+      const shotLineCoverage = normalizeCoverageReviewShotLineCoverage(body.shotLineCoverage ?? body.shot_line_coverage);
+      const expectedVersionRaw = body.expectedVersion ?? body.expected_version;
+      const expectedVersion = typeof expectedVersionRaw === 'number' && Number.isFinite(expectedVersionRaw)
+        ? Math.trunc(expectedVersionRaw)
+        : typeof expectedVersionRaw === 'string' && expectedVersionRaw.trim().length > 0 && Number.isFinite(Number(expectedVersionRaw))
+          ? Math.trunc(Number(expectedVersionRaw))
+          : null;
+      const eventType = readStringValue(body.eventType) ?? readStringValue(body.event_type) ?? 'coverage_review_updated';
+      const actor = getOptionalRequestUser(req);
+
+      const existingResult = await pool.query<RoleRoomCoverageReviewRow>(
+        `SELECT * FROM role_room_coverage_reviews WHERE project_id = $1 LIMIT 1`,
+        [projectId],
+      );
+      const existing = existingResult.rows[0] ?? null;
+      const currentVersion = existing ? Number(existing.version) || 1 : 0;
+      if (existing && expectedVersion !== null && expectedVersion !== currentVersion) {
+        await appendRoleRoomCoverageReviewAuditEvent({
+          req,
+          projectId,
+          action: 'coverage_review_conflict',
+          previousVersion: currentVersion,
+          metadata: {
+            expectedVersion,
+            currentVersion,
+            eventType,
+            changedTakeId: readStringValue(body.changedTakeId) ?? null,
+            changedShotId: readStringValue(body.changedShotId) ?? null,
+          },
+        });
+        res.status(409).json({
+          error: 'coverage_review_conflict',
+          projectId,
+          current: buildRoleRoomCoverageReviewResponse(existing, projectId),
+        });
+        return;
+      }
+
+      const nextVersion = existing ? currentVersion + 1 : 1;
+      const savedResult = existing
+        ? await pool.query<RoleRoomCoverageReviewRow>(
+          `UPDATE role_room_coverage_reviews
+              SET take_reviews = $2::jsonb,
+                  shot_line_coverage = $3::jsonb,
+                  version = version + 1,
+                  updated_by_user_id = $4,
+                  updated_by_role = $5,
+                  updated_at = NOW()
+            WHERE project_id = $1
+            RETURNING *`,
+          [
+            projectId,
+            JSON.stringify(takeReviews),
+            JSON.stringify(shotLineCoverage),
+            actor?.userId ?? null,
+            actor?.role ?? null,
+          ],
+        )
+        : await pool.query<RoleRoomCoverageReviewRow>(
+          `INSERT INTO role_room_coverage_reviews (
+             project_id, take_reviews, shot_line_coverage, version,
+             updated_by_user_id, updated_by_role, created_at, updated_at
+           ) VALUES (
+             $1, $2::jsonb, $3::jsonb, 1,
+             $4, $5, NOW(), NOW()
+           )
+           RETURNING *`,
+          [
+            projectId,
+            JSON.stringify(takeReviews),
+            JSON.stringify(shotLineCoverage),
+            actor?.userId ?? null,
+            actor?.role ?? null,
+          ],
+        );
+      const saved = savedResult.rows[0];
+      if (!saved) {
+        throw new Error('coverage_review_save_returned_no_row');
+      }
+
+      await appendRoleRoomCoverageReviewAuditEvent({
+        req,
+        projectId,
+        action: existing ? eventType : 'coverage_review_created',
+        previousVersion: existing ? currentVersion : null,
+        nextVersion,
+        metadata: {
+          eventType,
+          changedTakeId: readStringValue(body.changedTakeId) ?? null,
+          changedShotId: readStringValue(body.changedShotId) ?? null,
+          takeReviewCount: Object.keys(takeReviews).length,
+          shotCoverageCount: Object.keys(shotLineCoverage).length,
+        },
+      });
+
+      res.json(buildRoleRoomCoverageReviewResponse(saved, projectId));
+    } catch (err) {
+      console.error('Save coverage review error:', err);
+      res.status(500).json({ error: 'coverage_review_save_failed' });
     }
   });
 

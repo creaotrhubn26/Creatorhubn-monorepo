@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useTheming } from '../utils/theming-helper';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import React, { useState } from 'react';

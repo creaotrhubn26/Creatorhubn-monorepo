@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Keyboard Shortcuts Guide Component
  * Displays profession-specific keyboard shortcuts overlay

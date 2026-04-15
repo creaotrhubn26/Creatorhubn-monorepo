@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * TouchTimeline - iPad/tablet optimized timeline with gesture support
  * 

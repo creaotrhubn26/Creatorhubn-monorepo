@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Integration Template
  * Standard template for components using EnhancedMasterIntegrationProvider

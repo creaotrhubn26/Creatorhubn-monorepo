@@ -2,6 +2,9 @@ import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react
 import type { LiveSetStatus } from '..';
 
 export type ProductionTimelineViewMode = 'timeline' | 'grid' | 'list';
+export const TIMELINE_ZOOM_PRESETS = [0.5, 1, 1.5, 2, 3, 4] as const;
+
+const clampTimelineZoom = (zoom: number): number => Math.max(0.5, Math.min(4, zoom));
 
 export const formatTimelineTime = (seconds: number): string => {
   const mins = Math.floor(seconds / 60);
@@ -50,12 +53,28 @@ export const useTimelinePlayback = ({ totalDuration, liveSetStatus }: UseTimelin
     setTimelineCurrentTime(nextTime);
   }, [totalDuration, updatePlayheadDOM]);
 
+  const seekTimelineTo = useCallback((timeSec: number) => {
+    const duration = Math.max(totalDuration, 0.001);
+    const nextTime = Math.max(0, Math.min(duration, timeSec));
+    currentTimeRef.current = nextTime;
+    updatePlayheadDOM(nextTime);
+    setTimelineCurrentTime(nextTime);
+  }, [totalDuration, updatePlayheadDOM]);
+
   const handleTimelineZoomIn = useCallback(() => {
-    setTimelineZoom((zoom) => Math.min(zoom + 0.5, 4));
+    setTimelineZoom((zoom) => clampTimelineZoom(zoom + 0.5));
   }, []);
 
   const handleTimelineZoomOut = useCallback(() => {
-    setTimelineZoom((zoom) => Math.max(zoom - 0.5, 0.5));
+    setTimelineZoom((zoom) => clampTimelineZoom(zoom - 0.5));
+  }, []);
+
+  const handleTimelineZoomPreset = useCallback((zoom: number) => {
+    setTimelineZoom(clampTimelineZoom(zoom));
+  }, []);
+
+  const handleTimelineFitToScreen = useCallback(() => {
+    setTimelineZoom(1);
   }, []);
 
   const handleTimelineViewChange = useCallback((mode: ProductionTimelineViewMode) => {
@@ -120,6 +139,10 @@ export const useTimelinePlayback = ({ totalDuration, liveSetStatus }: UseTimelin
     setTimelineCurrentTime(nextTime);
   }, [liveSetStatus?.todayProgress, timelineIsPlaying, totalDuration, updatePlayheadDOM]);
 
+  useEffect(() => {
+    updatePlayheadDOM(currentTimeRef.current);
+  }, [timelineZoom, updatePlayheadDOM]);
+
   return {
     timelineRef,
     playheadRef,
@@ -129,8 +152,11 @@ export const useTimelinePlayback = ({ totalDuration, liveSetStatus }: UseTimelin
     timelineViewMode,
     handleTimelinePlay,
     handleTimelineSeek,
+    seekTimelineTo,
     handleTimelineZoomIn,
     handleTimelineZoomOut,
+    handleTimelineZoomPreset,
+    handleTimelineFitToScreen,
     handleTimelineViewChange,
     formatTime: formatTimelineTime,
     getTotalDuration,

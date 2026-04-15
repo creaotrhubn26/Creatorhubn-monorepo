@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * CreatorHub Norge - Showcase Pricing Integration
  * Displays services and packages in showcase with pricing

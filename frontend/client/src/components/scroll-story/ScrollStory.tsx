@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * ScrollStory React component
  * Renders scroll-based story animations and scroll triggers

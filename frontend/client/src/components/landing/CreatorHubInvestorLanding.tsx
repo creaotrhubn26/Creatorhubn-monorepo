@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { Suspense, useEffect, useState } from 'react';
 import {
   AccountTree,

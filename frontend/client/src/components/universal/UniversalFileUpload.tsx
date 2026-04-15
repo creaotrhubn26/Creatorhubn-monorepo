@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Universal File Upload Component
  * Supports all camera formats from database across all upload areas

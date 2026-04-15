@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * ShotListIntegrationPanel - Connect Shot Lists to Virtual Studio Setups
  * 

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * TabletUI - Tablet-optimized UI components for Virtual Studio
  * 

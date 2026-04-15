@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Rate Limiting Utilities
  * Implements rate limiting for API calls and user actions

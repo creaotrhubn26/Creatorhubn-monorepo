@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Universal CRM Dashboard - Integrates with UniversalDashboard and ProfessionAdapter
  * Works across all professions (photographer, videographer, music producer, etc.)

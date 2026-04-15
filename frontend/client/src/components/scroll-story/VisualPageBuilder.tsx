@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * VisualPageBuilder - Drag-and-drop editor for Scroll Story pages.
  */

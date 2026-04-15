@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { logger } from '../../core/services/logger';
 

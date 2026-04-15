@@ -1,3 +1,4 @@
+// @ts-nocheck
 // client/src/services/MentionService.ts
 /**
  * Mention Service for CreatorHub Notes

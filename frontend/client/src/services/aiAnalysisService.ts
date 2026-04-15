@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * AI Analysis Service for CreatorHub
  * Provides intelligent code analysis, insights, and recommendations

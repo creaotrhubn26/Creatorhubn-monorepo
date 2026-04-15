@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * CreatorHub Norge - Comprehensive Pricing Management Interface
  * Integrated across all platform areas

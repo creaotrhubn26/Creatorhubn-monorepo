@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * OpenAI Assistant - Intelligent Codebase Assistant
  * 

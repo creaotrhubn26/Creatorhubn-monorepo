@@ -165,7 +165,13 @@ async function resolveUserId(pool: Pool, req: Request): Promise<string | null> {
     return null;
   }
 
-  const session = await loadPersistedAuthSession<{ userId: string }>(pool, bearer);
+  const session = await loadPersistedAuthSession<{
+    userId: string;
+    email: string;
+    name: string;
+    role: string;
+    loginAt: string;
+  }>(pool, bearer);
   return readStringValue(session?.userId);
 }
 

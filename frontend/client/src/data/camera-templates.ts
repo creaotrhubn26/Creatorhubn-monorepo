@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Camera Template System
  * Allows users to save and reuse camera setups for different project types

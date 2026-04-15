@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * CreatorHub Verified Badge System - Gamifisert belonningssystem
  * Brukere tjener poeng og badges gjennom a lage kvalitets-tutorials

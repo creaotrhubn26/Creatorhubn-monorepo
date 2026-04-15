@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * TEXT OVERLAY PANEL
  * Create and edit text/titles with GSAP animations

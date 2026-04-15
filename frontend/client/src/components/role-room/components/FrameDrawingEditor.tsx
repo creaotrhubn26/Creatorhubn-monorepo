@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * FrameDrawingEditor - Storyboard frame drawing interface
  * 

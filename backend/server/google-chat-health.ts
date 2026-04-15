@@ -457,10 +457,14 @@ async function runUncachedGoogleChatLiveHealthCheck(
       };
     }
 
+    const redirectUri =
+      'redirectUri' in credentialSource
+        ? credentialSource.redirectUri
+        : null;
     const oauthClient = new google.auth.OAuth2(
       credentialSource.clientId,
       credentialSource.clientSecret,
-      credentialSource.redirectUri ?? 'http://localhost:3000/oauth2callback',
+      redirectUri ?? 'http://localhost:3000/oauth2callback',
     );
     const tokenSeed: {
       refresh_token?: string;

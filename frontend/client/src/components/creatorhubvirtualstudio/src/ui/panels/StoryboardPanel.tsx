@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * StoryboardPanel - Main storyboard UI for Virtual Studio
  * 

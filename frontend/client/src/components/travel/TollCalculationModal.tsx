@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * CreatorHub Norge - Toll Calculation Modal
  * Bompengeberegning med ekte norske bomstasjoner

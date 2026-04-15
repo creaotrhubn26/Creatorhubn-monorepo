@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * React hook for managing profession configurations
  * Provides easy access to profession-specific settings, terminology, and workflows

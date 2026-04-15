@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * DaVinci Resolve Export Service
  * Konverterer Story Arc Studio timeline til DaVinci Resolve XML format

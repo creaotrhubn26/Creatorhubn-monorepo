@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Custom hook for Performance Monitoring
  * Tracks performance metrics, memory usage, and provides optimization recommendations

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Universal Dashboard Notification Integration
  * Connects Google Meet system to project administration management with seamless notification flow

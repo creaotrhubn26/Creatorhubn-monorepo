@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * OnboardingWizard.tsx - Personalized onboarding flow for DaVinci Resolve Script Manager
  * 

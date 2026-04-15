@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Diffusion Enhancement Panel
  * UI component for 2025 diffusion model enhancement

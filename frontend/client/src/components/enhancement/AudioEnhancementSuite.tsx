@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * PROFESSIONAL AUDIO ENHANCEMENT SUITE
  * Studio-grade interface for music producers

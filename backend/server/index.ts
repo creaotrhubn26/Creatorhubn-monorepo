@@ -1110,6 +1110,21 @@ app.use((req, res, next) => {
   next();
 });
 
+type CompatCatalogSpecificationValue = string | number | boolean;
+
+const normalizeCompatCatalogSpecifications = (
+  specifications: Record<string, CompatCatalogSpecificationValue | undefined>,
+): Record<string, CompatCatalogSpecificationValue> =>
+  Object.entries(specifications).reduce<Record<string, CompatCatalogSpecificationValue>>(
+    (normalized, [key, value]) => {
+      if (value !== undefined) {
+        normalized[key] = value;
+      }
+      return normalized;
+    },
+    {},
+  );
+
 type CompatCatalogItem = {
   id: string;
   brand: string;
@@ -1124,7 +1139,7 @@ type CompatCatalogItem = {
   productUrl?: string;
   availability: "available" | "limited" | "preorder";
   imageUrl: string;
-  specifications: Record<string, string | number | boolean>;
+  specifications: Record<string, CompatCatalogSpecificationValue>;
 };
 
 const COMPAT_EQUIPMENT_CATALOG: CompatCatalogItem[] = [
@@ -1460,7 +1475,7 @@ type CompatAccessorySeed = {
   availability?: CompatCatalogItem["availability"];
   imageUrl?: string;
   productUrl?: string;
-  specifications: Record<string, string | number | boolean>;
+  specifications: Record<string, CompatCatalogSpecificationValue | undefined>;
 };
 
 const createCompatAccessoryCatalogItem = (
@@ -1480,10 +1495,10 @@ const createCompatAccessoryCatalogItem = (
     createFotoNoSearchProductUrl(`${seed.brand} ${seed.model}`),
   availability: seed.availability || "available",
   imageUrl: seed.imageUrl || "",
-  specifications: {
+  specifications: normalizeCompatCatalogSpecifications({
     accessoryType: seed.type,
     ...seed.specifications,
-  },
+  }),
 });
 
 const slugifyCompatCatalogId = (value: string): string =>
@@ -8097,7 +8112,7 @@ const extractHtmlMetaContent = (html: string, key: string): string | null => {
 };
 
 const extractHtmlTitle = (html: string): string | null => {
-  const match = html.match(/<title>(.*?)<\/title>/isu);
+  const match = html.match(/<title>([\s\S]*?)<\/title>/iu);
   const rawValue = readString(match?.[1]?.replace(/\s+/gu, " ") || "");
   return rawValue ? readString(decodeHtmlEntities(rawValue)) : null;
 };
@@ -12129,7 +12144,7 @@ type InventoryRecommendedMemoryCardSummary = {
   id: string;
   name: string;
   fullName: string;
-  category: string;
+  category: (typeof MEMORY_CARD_TYPES_DB)[number]["category"];
   commonCapacities: string[];
   videoClass?: string;
   uhsClass?: string;
@@ -12190,12 +12205,12 @@ const buildInventoryRecommendedMemoryCards = (
 ): InventoryRecommendedMemoryCardSummary[] => {
   const supportedCardIds = getSupportedMemoryCardIdsFromCatalogItem(item);
 
-  return supportedCardIds
-    .map((cardTypeId) => {
+  return supportedCardIds.reduce<InventoryRecommendedMemoryCardSummary[]>(
+    (summaries, cardTypeId) => {
       const card = getMemoryCardTypeByIdFromDatabase(cardTypeId);
-      if (!card) return null;
+      if (!card) return summaries;
 
-      return {
+      summaries.push({
         id: card.id,
         name: card.name,
         fullName: card.fullName,
@@ -12205,9 +12220,11 @@ const buildInventoryRecommendedMemoryCards = (
         uhsClass: card.uhsClass,
         description: card.description,
         color: card.color,
-      };
-    })
-    .filter((card): card is InventoryRecommendedMemoryCardSummary => Boolean(card));
+      });
+      return summaries;
+    },
+    [],
+  );
 };
 
 const matchInventoryEquipmentCatalogItem = (
@@ -13429,7 +13446,9 @@ app.get("/api/equipment/rentals", async (req, res) => {
         `${row.brand} ${row.model}`.trim(),
       ]),
     );
-    const equipmentIds = equipmentRows.map((row) => String(row.id));
+    const equipmentIds = equipmentRows
+      .map((row) => row.id)
+      .filter((id): id is number => typeof id === "number" && Number.isFinite(id));
 
     if (profession && equipmentIds.length === 0) {
       res.json([]);
@@ -19833,7 +19852,7 @@ function applyCompatPlatformSubscriptionPlanOverride(
     description:
       override.description !== undefined ? override.description || plan.description : plan.description,
     features:
-      override.features !== undefined ? override.features : plan.features,
+      override.features !== undefined ? override.features ?? plan.features : plan.features,
     price: nextMonthlyPrice,
     monthlyPrice: nextMonthlyPrice,
     yearlyPrice: nextYearlyPrice,
@@ -19880,7 +19899,7 @@ void ensureCompatPlatformSubscriptionPlanOverridesLoaded();
 
 function buildCompatPlatformSubscriptionPlans(): CompatPlatformSubscriptionPlan[] {
   const nowIso = new Date().toISOString();
-  return [
+  const plans: CompatPlatformSubscriptionPlan[] = [
     {
       id: "prototype",
       name: "prototype",
@@ -20058,7 +20077,9 @@ function buildCompatPlatformSubscriptionPlans(): CompatPlatformSubscriptionPlan[
       createdAt: nowIso,
       updatedAt: nowIso,
     },
-  ].map((plan) => applyCompatPlatformSubscriptionPlanOverride(plan));
+  ];
+
+  return plans.map((plan) => applyCompatPlatformSubscriptionPlanOverride(plan));
 }
 
 function getCompatPlatformSubscriptionPlan(
@@ -20720,7 +20741,7 @@ function getCompatPaymentStripeSessionId(
   }
 
   const recordId = readString(record?.id);
-  if (recordId.startsWith("pay_cs_")) {
+  if (recordId?.startsWith("pay_cs_")) {
     return recordId.slice(4);
   }
 
@@ -26894,8 +26915,12 @@ app.get("/api/admin/users/:id/accounting-integration", async (req, res) => {
     if (!userView) {
       return res.status(404).json({ error: "Fant ikke brukeren" });
     }
+    const userViewId = readString(userView.id);
+    if (!userViewId) {
+      return res.status(404).json({ error: "Fant ikke bruker-ID for brukeren" });
+    }
 
-    res.json(await buildCompatAccountingIntegrationStatusResponse(userView.id));
+    res.json(await buildCompatAccountingIntegrationStatusResponse(userViewId));
   } catch (error) {
     console.error("Error fetching admin accounting integration status:", error);
     res.status(500).json({ error: "Kunne ikke hente regnskapsstatus for brukeren" });
@@ -26913,10 +26938,14 @@ app.put("/api/admin/users/:id/accounting-integration", async (req, res) => {
     if (!userView) {
       return res.status(404).json({ error: "Fant ikke brukeren" });
     }
+    const userViewId = readString(userView.id);
+    if (!userViewId) {
+      return res.status(404).json({ error: "Fant ikke bruker-ID for brukeren" });
+    }
 
     const body = isRecord(req.body) ? req.body : {};
     const existing =
-      (await readCompatAccountingIntegrationStatus(userView.id)) ||
+      (await readCompatAccountingIntegrationStatus(userViewId)) ||
       buildDefaultCompatAccountingIntegrationStatus();
     const activationEnabled = readBoolean(body.activationEnabled) ?? false;
     const now = new Date().toISOString();
@@ -26935,12 +26964,12 @@ app.put("/api/admin/users/:id/accounting-integration", async (req, res) => {
       lastError: activationEnabled ? existing.lastError : null,
       organizationNumber:
         readString(body.organizationNumber) ||
-        userView.organizationNumber ||
+        readString(userView.organizationNumber) ||
         existing.organizationNumber,
       businessName:
         readString(body.businessName) ||
-        userView.businessName ||
-        userView.companyName ||
+        readString(userView.businessName) ||
+        readString(userView.companyName) ||
         existing.businessName,
       contactName:
         readString(body.contactName) ||
@@ -26948,7 +26977,7 @@ app.put("/api/admin/users/:id/accounting-integration", async (req, res) => {
         existing.contactName,
       contactEmail:
         readString(body.contactEmail) ||
-        userView.email ||
+        readString(userView.email) ||
         existing.contactEmail,
       contactPhone:
         readString(body.contactPhone) || existing.contactPhone,
@@ -26959,8 +26988,8 @@ app.put("/api/admin/users/:id/accounting-integration", async (req, res) => {
       city: readString(body.city) || existing.city,
     };
 
-    await writeCompatAccountingIntegrationStatus(userView.id, nextStatus);
-    res.json(await buildCompatAccountingIntegrationStatusResponse(userView.id));
+    await writeCompatAccountingIntegrationStatus(userViewId, nextStatus);
+    res.json(await buildCompatAccountingIntegrationStatusResponse(userViewId));
   } catch (error) {
     console.error("Error updating admin accounting integration status:", error);
     res.status(500).json({ error: "Kunne ikke oppdatere regnskapsløsningen for brukeren" });
@@ -27827,8 +27856,8 @@ app.post("/api/google-wallet/create-membership-card", async (req, res) => {
             .filter((entry): entry is string => Boolean(entry))
         : undefined,
       renewalDate: readString(body.renewalDate),
-      autoRenew: readBoolean(body.autoRenew),
-      tier: (readString(body.tier) as CompatMembershipCardTier | null) || null,
+      autoRenew: readBoolean(body.autoRenew) ?? undefined,
+      tier: (readString(body.tier) as CompatMembershipCardTier | null) || undefined,
     });
 
     res.status(201).json(card);
@@ -28663,11 +28692,11 @@ app.post("/api/role-room/agent/producer-bootstrap", async (req, res) => {
   try {
     const result = await generateRoleRoomAgentProducerBootstrap({
       projectId,
-      projectName: readString(body.projectName),
-      websiteUrl: readString(body.websiteUrl),
-      organizationNumber: readString(body.organizationNumber),
-      companyName: readString(body.companyName),
-      extraContext: readString(body.extraContext),
+      projectName: readString(body.projectName) ?? undefined,
+      websiteUrl: readString(body.websiteUrl) ?? undefined,
+      organizationNumber: readString(body.organizationNumber) ?? undefined,
+      companyName: readString(body.companyName) ?? undefined,
+      extraContext: readString(body.extraContext) ?? undefined,
     });
 
     return res.json({
@@ -31206,7 +31235,7 @@ async function resolveCreatorHubStripeRefundTarget(input: {
       }) || null;
 
     if (matchingPaidInvoice) {
-      const paymentIntent = matchingPaidInvoice.payment_intent;
+      const paymentIntent = getStripeInvoicePaymentIntent(matchingPaidInvoice);
       if (typeof paymentIntent === "string" && paymentIntent) {
         return {
           paymentIntentId: paymentIntent,
@@ -31792,13 +31821,22 @@ async function syncCreatorHubStripeCheckoutSession(
   });
 }
 
+function getStripeInvoicePaymentIntent(
+  invoice: Stripe.Invoice,
+): string | Stripe.PaymentIntent | null {
+  const paymentIntent = (invoice as Stripe.Invoice & {
+    payment_intent?: string | Stripe.PaymentIntent | null;
+  }).payment_intent;
+  return paymentIntent || null;
+}
+
 function getCreatorHubStripeInvoiceTransactionId(invoice: Stripe.Invoice) {
   const subscriptionId = getStripeInvoiceSubscriptionId(invoice);
   if (subscriptionId) {
     return subscriptionId;
   }
 
-  const paymentIntent = invoice.payment_intent;
+  const paymentIntent = getStripeInvoicePaymentIntent(invoice);
   if (typeof paymentIntent === "string") {
     return paymentIntent;
   }
@@ -31808,7 +31846,7 @@ function getCreatorHubStripeInvoiceTransactionId(invoice: Stripe.Invoice) {
   return invoice.id;
 }
 
-function getCreatorHubStripeInvoiceFailureMessage(invoice: Stripe.Invoice) {
+function getCreatorHubStripeInvoiceFailureMessage(invoice: unknown) {
   const paymentError = normalizeMailConfigValue(
     (invoice as { last_payment_error?: { message?: string | null } | null })
       .last_payment_error?.message,
@@ -33152,8 +33190,8 @@ async function readRoleRoomEducationInquirySpamState(input: {
     id: string | null;
     email: string | null;
     organization_number: string | null;
-    created_at: string | null;
-    updated_at: string | null;
+    created_at: Date | string | null;
+    updated_at: Date | string | null;
   }>(
     `SELECT id, email, organization_number, created_at, updated_at
      FROM invite_requests
@@ -35390,58 +35428,70 @@ function deriveRoleRoomCommercialPaymentStatus(input: {
   return "pending_payment" as const;
 }
 
-function getStripeInvoiceSubscriptionId(invoice: Stripe.Invoice) {
-  if (typeof invoice.subscription === "string" && invoice.subscription.trim()) {
-    return invoice.subscription;
+function getStripeInvoiceSubscriptionId(invoice: unknown) {
+  const invoiceRecord = isRecord(invoice) ? invoice : {};
+  const subscription = invoiceRecord.subscription;
+  if (typeof subscription === "string" && subscription.trim()) {
+    return subscription;
   }
 
   if (
-    invoice.subscription &&
-    typeof invoice.subscription === "object" &&
-    typeof invoice.subscription.id === "string" &&
-    invoice.subscription.id.trim()
+    subscription &&
+    typeof subscription === "object" &&
+    "id" in subscription &&
+    typeof subscription.id === "string" &&
+    subscription.id.trim()
   ) {
-    return invoice.subscription.id;
+    return subscription.id;
   }
 
+  const parent = invoiceRecord.parent;
   const parentSubscription =
-    invoice.parent &&
-    typeof invoice.parent === "object" &&
-    "subscription_details" in invoice.parent &&
-    invoice.parent.subscription_details &&
-    typeof invoice.parent.subscription_details === "object" &&
-    "subscription" in invoice.parent.subscription_details
-      ? invoice.parent.subscription_details.subscription
+    parent &&
+    typeof parent === "object" &&
+    "subscription_details" in parent &&
+    parent.subscription_details &&
+    typeof parent.subscription_details === "object" &&
+    "subscription" in parent.subscription_details
+      ? parent.subscription_details.subscription
       : null;
   if (typeof parentSubscription === "string" && parentSubscription.trim()) {
     return parentSubscription;
   }
 
-  const lines = invoice.lines?.data || [];
+  const linesRecord = invoiceRecord.lines;
+  const lines =
+    linesRecord &&
+    typeof linesRecord === "object" &&
+    "data" in linesRecord &&
+    Array.isArray(linesRecord.data)
+      ? linesRecord.data
+      : [];
   for (const line of lines) {
-    const parent = line.parent;
-    if (!parent || typeof parent !== "object") {
+    const lineParent =
+      line && typeof line === "object" && "parent" in line ? line.parent : null;
+    if (!lineParent || typeof lineParent !== "object") {
       continue;
     }
 
     if (
-      "subscription_item_details" in parent &&
-      parent.subscription_item_details &&
-      typeof parent.subscription_item_details === "object" &&
-      typeof parent.subscription_item_details.subscription === "string" &&
-      parent.subscription_item_details.subscription.trim()
+      "subscription_item_details" in lineParent &&
+      lineParent.subscription_item_details &&
+      typeof lineParent.subscription_item_details === "object" &&
+      typeof lineParent.subscription_item_details.subscription === "string" &&
+      lineParent.subscription_item_details.subscription.trim()
     ) {
-      return parent.subscription_item_details.subscription;
+      return lineParent.subscription_item_details.subscription;
     }
 
     if (
-      "license_fee_subscription_details" in parent &&
-      parent.license_fee_subscription_details &&
-      typeof parent.license_fee_subscription_details === "object" &&
-      typeof parent.license_fee_subscription_details.subscription === "string" &&
-      parent.license_fee_subscription_details.subscription.trim()
+      "license_fee_subscription_details" in lineParent &&
+      lineParent.license_fee_subscription_details &&
+      typeof lineParent.license_fee_subscription_details === "object" &&
+      typeof lineParent.license_fee_subscription_details.subscription === "string" &&
+      lineParent.license_fee_subscription_details.subscription.trim()
     ) {
-      return parent.license_fee_subscription_details.subscription;
+      return lineParent.license_fee_subscription_details.subscription;
     }
   }
 
@@ -36668,6 +36718,7 @@ app.post("/api/role-room/billing/retry-payment", async (req, res) => {
 
     try {
       const paidInvoice = await stripe.invoices.pay(invoice.id);
+      const paidInvoiceRecord = paidInvoice as Stripe.Invoice & { paid?: boolean | null };
       const synced = await syncRoleRoomCommercialStripeInvoice(
         paidInvoice,
         new Date().toISOString(),
@@ -36675,7 +36726,7 @@ app.post("/api/role-room/billing/retry-payment", async (req, res) => {
       return res.json({
         success: true,
         paymentCompleted:
-          paidInvoice.status === "paid" || paidInvoice.paid === true,
+          paidInvoice.status === "paid" || paidInvoiceRecord.paid === true,
         invoiceId: paidInvoice.id,
         invoiceStatus: paidInvoice.status,
         transactionId: synced?.transactionId || account.record?.transactionId || null,
@@ -36804,14 +36855,15 @@ app.get("/api/role-room/billing/activate", async (req, res) => {
     }
 
     const plan = getRoleRoomCommercialPlan(persona);
-    const member =
+    const member: RoleRoomCommercialAccessMemberSnapshot | null =
       snapshot.members.find(
         (entry) =>
           entry.email ===
           (snapshot.memberEmail ||
             toAdminString(inviteRequest.email)?.trim().toLowerCase()),
       ) ||
-      snapshot.members[0];
+      snapshot.members[0] ||
+      null;
     const provisioned = await ensureInviteRequestAccessProvisioning(
       inviteRequest,
       {
@@ -36844,15 +36896,13 @@ app.get("/api/role-room/billing/activate", async (req, res) => {
         member || {
           name:
             snapshot.teamLeadName ||
-            member?.name ||
             "Role Room-leder",
           email:
             snapshot.teamLeadEmail ||
-            member?.email ||
             toAdminString(refreshedInvite.email) ||
             "",
-          roleId: member?.roleId || "team_lead",
-          roleLabel: member?.roleLabel || "Teamleder",
+          roleId: "team_lead",
+          roleLabel: "Teamleder",
           isLeader: true,
         },
       members:
@@ -37232,7 +37282,13 @@ app.post("/api/role-room/education-inquiries", async (req, res) => {
       );
     }
 
-    let notification = {
+    let notification: {
+      sent: boolean;
+      reason: string | null;
+      accepted: string[];
+      provider?: string;
+      messageId?: string;
+    } = {
       sent: false,
       reason: spamState.suppressAdminNotification
         ? "duplicate_suppressed"
@@ -56165,7 +56221,7 @@ function readMeetingTimelineStructuredNotes(raw: unknown) {
               Boolean(item) && typeof item === "object" && !Array.isArray(item),
           )
           .map((item) => ({
-            text: readString(item.text),
+            text: readString(item.text) || "",
             visibility:
               readString(item.visibility) === "client" ? "client" : "personal",
           }))
@@ -56180,9 +56236,9 @@ function readMeetingTimelineStructuredNotes(raw: unknown) {
               Boolean(item) && typeof item === "object" && !Array.isArray(item),
           )
           .map((item) => ({
-            task: readString(item.task),
-            assignedTo: readString(item.assignedTo),
-            dueDate: readString(item.dueDate),
+            task: readString(item.task) || "",
+            assignedTo: readString(item.assignedTo) || "",
+            dueDate: readString(item.dueDate) || "",
             visibility:
               readString(item.visibility) === "client" ? "client" : "personal",
           }))
@@ -56197,9 +56253,9 @@ function readMeetingTimelineStructuredNotes(raw: unknown) {
               Boolean(item) && typeof item === "object" && !Array.isArray(item),
           )
           .map((item) => ({
-            event: readString(item.event),
-            date: readString(item.date),
-            notes: readString(item.notes),
+            event: readString(item.event) || "",
+            date: readString(item.date) || "",
+            notes: readString(item.notes) || "",
             visibility:
               readString(item.visibility) === "client" ? "client" : "personal",
           }))
@@ -56210,7 +56266,7 @@ function readMeetingTimelineStructuredNotes(raw: unknown) {
     Array.isArray(value[field])
       ? value[field]
           .map((item) => readString(item))
-          .filter(Boolean)
+          .filter((item): item is string => Boolean(item))
       : [];
 
   return {
@@ -81400,7 +81456,7 @@ app.post(
           // @ts-ignore: Buffer satisfies BlobPart at runtime
           whisperForm.append(
             "file",
-            new Blob([file.buffer], { type: file.mimetype }),
+            new Blob([new Uint8Array(file.buffer)], { type: file.mimetype }),
             file.originalname,
           );
           if (languageHint) whisperForm.append("language", languageHint);
@@ -81455,7 +81511,7 @@ app.post(
       // @ts-ignore: Buffer satisfies BlobPart at runtime
       formData.append(
         "file",
-        new Blob([file.buffer], { type: file.mimetype }),
+        new Blob([new Uint8Array(file.buffer)], { type: file.mimetype }),
         file.originalname,
       );
       formData.append("model", "whisper-1");
@@ -101316,7 +101372,7 @@ async function resolveMeetingNotesProjectContext(projectId?: string | null) {
       specialRequests,
       readString(submissionContext?.location) || readString(projectRow.location),
       readString(submissionContext?.timeframe),
-    ].filter(Boolean),
+    ].filter((entry): entry is string => Boolean(entry)),
     5,
   ).join(" ");
 
@@ -102163,6 +102219,10 @@ async function syncMeetingNotesLifecycleArtifacts(
 
 type MeetingNotesAiVisibility = "personal" | "client";
 
+function readMeetingNotesAiVisibility(value: unknown): MeetingNotesAiVisibility {
+  return readString(value) === "client" ? "client" : "personal";
+}
+
 type MeetingNotesAiTextItem = {
   text: string;
   visibility: MeetingNotesAiVisibility;
@@ -102631,8 +102691,7 @@ function normalizeMeetingNotesAiResult(
       )
       .map((item) => ({
         text: readString(item.text) || "",
-        visibility:
-          readString(item.visibility) === "client" ? "client" : "personal",
+        visibility: readMeetingNotesAiVisibility(item.visibility),
       }))
       .slice(0, 8);
   }
@@ -102646,8 +102705,7 @@ function normalizeMeetingNotesAiResult(
         task: readString(item.task) || "",
         assignedTo: readString(item.assignedTo) || "Internt",
         dueDate: readString(item.dueDate) || "",
-        visibility:
-          readString(item.visibility) === "client" ? "client" : "personal",
+        visibility: readMeetingNotesAiVisibility(item.visibility),
       }))
       .slice(0, 8);
   }
@@ -102659,8 +102717,7 @@ function normalizeMeetingNotesAiResult(
       )
       .map((item) => ({
         text: readString(item.text) || "",
-        visibility:
-          readString(item.visibility) === "client" ? "client" : "personal",
+        visibility: readMeetingNotesAiVisibility(item.visibility),
       }))
       .slice(0, 8);
   }
@@ -102672,8 +102729,7 @@ function normalizeMeetingNotesAiResult(
       )
       .map((item) => ({
         text: readString(item.text) || "",
-        visibility:
-          readString(item.visibility) === "client" ? "client" : "personal",
+        visibility: readMeetingNotesAiVisibility(item.visibility),
       }))
       .slice(0, 8);
   }
@@ -102695,8 +102751,7 @@ function normalizeMeetingNotesAiResult(
         event: readString(item.event) || "",
         date: readString(item.date) || "",
         notes: readString(item.notes) || "",
-        visibility:
-          readString(item.visibility) === "client" ? "client" : "personal",
+        visibility: readMeetingNotesAiVisibility(item.visibility),
       }))
       .slice(0, 8);
   }
@@ -102873,7 +102928,7 @@ function buildMeetingInlineCompletion(params: {
   const lowerLine = lastLine.toLowerCase();
   const sentenceReadyLine = /[.!?]$/u.test(lastLine) ? lastLine : `${lastLine}.`;
   const contextName = readString(params.projectTitle) || readString(params.clientName) || "prosjektet";
-  const brief = readString(params.projectBrief).toLowerCase();
+  const brief = (readString(params.projectBrief) || "").toLowerCase();
 
   if (/backup|regn|vær/iu.test(lowerLine)) {
     return `${sentenceReadyLine} Avklar reserveplan, innendørslokasjon og ansvar for omrigg ved dårlig vær.`;

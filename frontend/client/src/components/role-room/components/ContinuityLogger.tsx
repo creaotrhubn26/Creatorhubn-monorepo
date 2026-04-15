@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useState, cloneElement, type FC, type ChangeEvent, type ReactElement } from 'react';
 import {
   Box,

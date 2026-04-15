@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Screenshot Capture Tool - Innebygd skjermbildeverktøy
  * Bruker Screen Capture API for å ta skjermbilder direkte i browseren

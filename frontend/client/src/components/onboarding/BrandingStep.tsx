@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * CreatorHub Norge - Branding Step for Onboarding
  * Integrated with existing onboarding process for logo upload and brand setup

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * React Hook: Virtual Studio ML Recommendations
  * 

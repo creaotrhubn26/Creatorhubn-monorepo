@@ -119,6 +119,29 @@ const MATERIAL_PRIORITY_LABELS: Record<'critical' | 'important' | 'reference', s
 };
 
 const hasText = (value: string | undefined | null): value is string => typeof value === 'string' && value.trim().length > 0;
+const CLIENT_PACKAGE_INPUT_LOAD_TIMEOUT_MS = 12_000;
+
+function withClientPackageInputTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+
+  return Promise.race([
+    promise,
+    new Promise<T>((_resolve, reject) => {
+      timeout = setTimeout(() => {
+        reject(new Error(`${label} tok for lang tid å laste.`));
+      }, CLIENT_PACKAGE_INPUT_LOAD_TIMEOUT_MS);
+    }),
+  ]).finally(() => {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  });
+}
+
+function isRoleRoomSessionFailure(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return /session|sesjon|logg inn|x-api-key|unauthorized|forbidden/i.test(message);
+}
 
 const asRecord = (value: unknown): Record<string, unknown> => (
   value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -416,24 +439,40 @@ export default function ProducerExportHandoffPanel({
     setLoadingClientInput(true);
     setClientInputError(null);
     try {
-      const [nextIntake, nextMaterials] = await Promise.all([
-        producerWorkflowService.getClientIntake(project.id),
-        producerWorkflowService.getClientMaterials(project.id),
+      const [nextIntake, nextMaterials] = await Promise.allSettled([
+        withClientPackageInputTimeout(producerWorkflowService.getClientIntake(project.id), 'Klientbrief'),
+        withClientPackageInputTimeout(producerWorkflowService.getClientMaterials(project.id), 'Klientmateriale'),
       ]);
       if (requestId !== clientInputsRequestRef.current) {
         return;
       }
-      setClientIntake({
-        ...EMPTY_INTAKE,
-        ...nextIntake,
-      });
-      setClientMaterials(nextMaterials);
+      const failures: unknown[] = [];
+
+      if (nextIntake.status === 'fulfilled') {
+        setClientIntake({
+          ...EMPTY_INTAKE,
+          ...nextIntake.value,
+        });
+      } else {
+        failures.push(nextIntake.reason);
+      }
+
+      if (nextMaterials.status === 'fulfilled') {
+        setClientMaterials(nextMaterials.value);
+      } else {
+        failures.push(nextMaterials.reason);
+      }
+
+      if (failures.some(isRoleRoomSessionFailure)) {
+        setClientInputError('Role Room-sesjonen mangler eller har utløpt. Logg inn på nytt.');
+      }
     } catch (loadError) {
       if (requestId !== clientInputsRequestRef.current) {
         return;
       }
-      console.error('[ProducerExportHandoffPanel] Failed to load client handoff inputs', loadError);
-      setClientInputError('Kunne ikke hente klientbrief og materiale til klientpakken.');
+      if (isRoleRoomSessionFailure(loadError)) {
+        setClientInputError('Role Room-sesjonen mangler eller har utløpt. Logg inn på nytt.');
+      }
     } finally {
       if (requestId === clientInputsRequestRef.current) {
         setLoadingClientInput(false);

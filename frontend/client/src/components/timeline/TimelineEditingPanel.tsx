@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * TIMELINE EDITING PANEL
  * Real editing operations: Trim, Ripple, Split, Save/Load

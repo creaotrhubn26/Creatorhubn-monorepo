@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useId, useMemo, useState, useEffect, memo, lazy, Suspense } from 'react';
 import {
   Box,

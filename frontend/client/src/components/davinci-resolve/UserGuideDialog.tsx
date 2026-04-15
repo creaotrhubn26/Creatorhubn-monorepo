@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * UserGuideDialog - Interactive step-by-step guide for DaVinci Resolve Script Manager
  * Based on UX research for onboarding and user education

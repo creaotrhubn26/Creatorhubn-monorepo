@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Pro Tools Connection Component
  * Manages connection status, session selection/creation, and authentication

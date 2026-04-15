@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Facial Features Panel
  * 

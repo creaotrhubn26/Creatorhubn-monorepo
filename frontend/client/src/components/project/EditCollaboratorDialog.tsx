@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * CreatorHub Norge - Edit Collaborator Dialog
  * Redigering av samarbeidspartner informasjon

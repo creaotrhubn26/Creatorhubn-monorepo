@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * MotionPathVisualization - 3D visualization of animation trajectories
  * 

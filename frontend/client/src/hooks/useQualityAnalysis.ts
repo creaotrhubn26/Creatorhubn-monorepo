@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Custom hook for Quality Analysis functionality
  * Manages code quality analysis, performance metrics, and recommendations

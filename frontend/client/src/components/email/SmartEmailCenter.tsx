@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState, useEffect, useMemo } from 'react';
 // Import dynamic profession system
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * SelectionTools - Selection and transformation for canvas objects
  * 

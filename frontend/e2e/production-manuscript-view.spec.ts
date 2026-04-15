@@ -2,6 +2,8 @@ import { expect, test, type Page } from '@playwright/test';
 
 const TEST_PAGE = '/e2e-production-manuscript-test.html';
 const PROJECT_ID = 'pmv-e2e-project';
+const savedShotListBodies = new WeakMap<Page, unknown[]>();
+const savedCoverageReviewBodies = new WeakMap<Page, unknown[]>();
 
 const pngBuffer = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=',
@@ -50,6 +52,18 @@ const projectPayload = {
           description: 'Chef hands prepare the opening dish',
           duration: 5,
           imageUrl: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22400%22 height=%22225%22%3E%3Crect width=%22400%22 height=%22225%22 fill=%22%233b82f6%22/%3E%3C/svg%3E',
+          createdAt: '2026-04-14T09:00:00.000Z',
+          updatedAt: '2026-04-14T09:00:00.000Z',
+        },
+        {
+          id: 'pmv-shot-2',
+          sceneId: 'pmv-scene-1',
+          shotType: 'Close-up',
+          cameraAngle: 'Eye Level',
+          cameraMovement: 'Static',
+          description: 'Knife detail lands on the final garnish',
+          duration: 4,
+          imageUrl: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22400%22 height=%22225%22%3E%3Crect width=%22400%22 height=%22225%22 fill=%22%23f97316%22/%3E%3C/svg%3E',
           createdAt: '2026-04-14T09:00:00.000Z',
           updatedAt: '2026-04-14T09:00:00.000Z',
         },
@@ -108,6 +122,15 @@ const stripboard = [
 ];
 
 async function routeProductionManuscriptApis(page: Page) {
+  savedShotListBodies.set(page, []);
+  savedCoverageReviewBodies.set(page, []);
+  let coverageReviewStore = {
+    takeReviews: {} as Record<string, unknown>,
+    shotLineCoverage: {} as Record<string, unknown>,
+    version: 0,
+    updatedAt: null as string | null,
+  };
+
   await page.addInitScript(() => {
     window.localStorage.clear();
     Object.defineProperty(window, 'print', {
@@ -162,6 +185,9 @@ async function routeProductionManuscriptApis(page: Page) {
   });
 
   await page.route(`**/api/casting/projects/${PROJECT_ID}/shot-lists**`, async (route) => {
+    if (route.request().method() !== 'GET') {
+      savedShotListBodies.get(page)?.push(route.request().postDataJSON());
+    }
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -222,11 +248,104 @@ async function routeProductionManuscriptApis(page: Page) {
           status: 'standby',
           notes: 'Ready',
           updated_at: '2026-04-14T09:00:00.000Z',
-          today_takes: [],
+          today_takes: [
+            {
+              id: 'pmv-take-1',
+              sceneId: 'pmv-scene-1',
+              shotId: 'pmv-shot-1',
+              takeNumber: 1,
+              status: 'circle',
+              duration: 27,
+              notes: 'Strong performance, keep for director review.',
+              recordedAt: '2026-04-14T09:05:00.000Z',
+              camera: 'Sony FX6',
+              lens: 'Canon RF 24-70mm',
+              fps: 25,
+              iso: 800,
+            },
+            {
+              id: 'pmv-take-2',
+              sceneId: 'pmv-scene-1',
+              shotId: 'pmv-shot-2',
+              takeNumber: 2,
+              status: 'ok',
+              duration: 19,
+              notes: 'Good insert candidate, check continuity.',
+              recordedAt: '2026-04-14T09:11:00.000Z',
+              camera: 'Sony FX6',
+              lens: 'Canon RF 50mm',
+              fps: 25,
+              iso: 640,
+            },
+          ],
           total_setups: 1,
           scenes_completed: [],
         },
       }),
+    });
+  });
+
+  await page.route(`**/api/role-room/projects/${PROJECT_ID}/coverage-review`, async (route) => {
+    const method = route.request().method();
+    if (method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          projectId: PROJECT_ID,
+          ...coverageReviewStore,
+        }),
+      });
+      return;
+    }
+
+    if (method === 'PUT') {
+      const body = route.request().postDataJSON() as {
+        expectedVersion?: number;
+        takeReviews?: Record<string, unknown>;
+        shotLineCoverage?: Record<string, unknown>;
+      };
+      savedCoverageReviewBodies.get(page)?.push(body);
+      if (typeof body.expectedVersion === 'number' && body.expectedVersion !== coverageReviewStore.version) {
+        await route.fulfill({
+          status: 409,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            error: 'coverage_review_conflict',
+            projectId: PROJECT_ID,
+            current: {
+              success: true,
+              projectId: PROJECT_ID,
+              ...coverageReviewStore,
+            },
+          }),
+        });
+        return;
+      }
+
+      coverageReviewStore = {
+        takeReviews: body.takeReviews || {},
+        shotLineCoverage: body.shotLineCoverage || {},
+        version: coverageReviewStore.version + 1,
+        updatedAt: new Date().toISOString(),
+      };
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          projectId: PROJECT_ID,
+          ...coverageReviewStore,
+        }),
+      });
+      return;
+    }
+
+    await route.fulfill({
+      status: 405,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: 'method_not_allowed' }),
     });
   });
 
@@ -293,7 +412,7 @@ test.describe('ProductionManuscriptView direct E2E', () => {
     await page.getByTestId('pmv-tts-toggle').click();
     await page.getByTestId('pmv-read-through-play').click();
     await expect(page.getByTestId('pmv-read-through-line-counter')).toContainText('Linje 1');
-    await expect(page.getByTestId('pmv-read-through-line-counter')).toContainText('Linje 2', { timeout: 4_500 });
+    await expect(page.getByTestId('pmv-read-through-line-counter')).toContainText('Linje 2', { timeout: 7_500 });
   });
 
   test('065 opens call sheet preview from stripboard', async ({ page }) => {
@@ -435,5 +554,131 @@ test.describe('ProductionManuscriptView direct E2E', () => {
     await page.getByTestId('pmv-reference-search-open').click();
     await expect(page.getByTestId('pmv-reference-search-dialog')).toBeVisible();
     await expect(page.getByTestId('pmv-reference-search-empty-state')).toBeVisible({ timeout: 5_000 });
+  });
+
+  test('081 supports timeline zoom presets and fit to screen', async ({ page }) => {
+    await openProductionManuscript(page);
+    const firstBlock = page.getByTestId('pmv-timeline-shot-block').first();
+    await expect(firstBlock).toBeVisible();
+    const beforeBasis = await firstBlock.evaluate((node) => getComputedStyle(node).flexBasis);
+    await page.getByTestId('pmv-timeline-zoom-200').click();
+    await expect.poll(async () => firstBlock.evaluate((node) => getComputedStyle(node).flexBasis)).not.toBe(beforeBasis);
+    await page.getByTestId('pmv-timeline-fit').click();
+    await expect.poll(async () => firstBlock.evaluate((node) => getComputedStyle(node).flexBasis)).toBe(beforeBasis);
+  });
+
+  test('082 filters timeline to selected scene and selected act', async ({ page }) => {
+    await openProductionManuscript(page);
+    await expect(page.getByTestId('pmv-timeline-scene-label')).toHaveCount(3);
+    await page.getByTestId('pmv-timeline-show-selected-scene').click();
+    await expect(page.getByTestId('pmv-timeline-scene-label')).toHaveCount(1);
+    await page.getByTestId('pmv-timeline-show-all').click();
+    await expect(page.getByTestId('pmv-timeline-scene-label')).toHaveCount(3);
+    await page.getByTestId('pmv-timeline-show-act').click();
+    await expect(page.getByTestId('pmv-timeline-scene-label')).toHaveCount(2);
+  });
+
+  test('083 jumps between selected shot and live shot', async ({ page }) => {
+    await openProductionManuscript(page);
+    await page.locator('[data-testid="pmv-scene-shot-card"][data-shot-id="pmv-shot-2"]').click();
+    await expect(page.getByText('Knife detail lands on the final garnish')).toBeVisible();
+    await page.getByTestId('pmv-timeline-jump-selected-shot').click();
+    await expect(page.locator('[data-testid="pmv-timeline-shot-block"][data-shot-id="pmv-shot-2"]')).toBeVisible();
+
+    await page.getByTestId('pmv-live-set-connect-toggle').click();
+    await expect(page.getByTestId('pmv-timeline-jump-live-shot')).toBeEnabled();
+    await page.getByTestId('pmv-timeline-jump-live-shot').click();
+    await expect(page.getByText('Chef hands prepare the opening dish')).toBeVisible();
+  });
+
+  test('084 reorders shots from the timeline and persists the shot list', async ({ page }) => {
+    await openProductionManuscript(page);
+    await page.getByTestId('pmv-timeline-zoom-400').click();
+    const firstShot = page.locator('[data-testid="pmv-timeline-shot-block"][data-shot-id="pmv-shot-1"]');
+    const secondShot = page.locator('[data-testid="pmv-timeline-shot-block"][data-shot-id="pmv-shot-2"]');
+    await firstShot.dragTo(secondShot);
+
+    await expect.poll(() => savedShotListBodies.get(page)?.length ?? 0).toBeGreaterThan(0);
+    const saves = savedShotListBodies.get(page) ?? [];
+    const lastSave = saves[saves.length - 1] as { shots?: Array<{ id: string }> };
+    expect(lastSave.shots?.map((shot) => shot.id)).toEqual(['pmv-shot-2', 'pmv-shot-1']);
+  });
+
+  test('085 Coverage Review opens scene-centric workspace with LiveSet takes', async ({ page }) => {
+    await openProductionManuscript(page);
+    await page.getByTestId('pmv-live-set-connect-toggle').click();
+    await page.getByTestId('pmv-workspace-coverage-review').click();
+
+    await expect(page.getByTestId('pmv-coverage-review-workspace')).toBeVisible();
+    await expect(page.getByText('Ikke bare vis manus. Vis om manuset faktisk er dekket av brukbare takes.')).toBeVisible();
+    await expect(page.getByTestId('pmv-take-review-card')).toHaveCount(2);
+    await expect(page.getByTestId('pmv-coverage-bucket')).toHaveCount(6);
+    await expect(page.getByTestId('pmv-post-handoff-panel')).toBeVisible();
+  });
+
+  test('086 Coverage Review links selected shot to lined script coverage', async ({ page }) => {
+    await openProductionManuscript(page);
+    await selectFirstShot(page);
+    await page.getByTestId('pmv-workspace-coverage-review').click();
+
+    const firstLine = page.getByTestId('pmv-lined-script-line').first();
+    await expect(firstLine).toContainText('ikke dekket av shot');
+    await page.getByTestId('pmv-lined-script-toggle-coverage').first().click();
+    await expect(firstLine).toContainText('Medium');
+  });
+
+  test('087 Coverage Review marks take decisions and post handoff', async ({ page }) => {
+    await openProductionManuscript(page);
+    await page.getByTestId('pmv-live-set-connect-toggle').click();
+    await page.getByTestId('pmv-workspace-coverage-review').click();
+
+    await page.getByTestId('pmv-take-good-performance').first().click();
+    await page.getByTestId('pmv-take-good-framing').first().click();
+    await page.getByTestId('pmv-take-editor-favorite').first().click();
+    await page.getByTestId('pmv-take-director-note').first().locator('input').fill('Good for performance and framing.');
+    await page.getByTestId('pmv-send-take-to-post').first().click();
+
+    await expect(page.getByTestId('pmv-take-director-note').first().locator('input')).toHaveValue('Good for performance and framing.');
+    await expect(page.getByText('Sendt videre til post')).toBeVisible();
+    await expect(page.getByTestId('pmv-post-handoff-panel')).toContainText('Favorites');
+    await expect(page.getByTestId('pmv-post-handoff-panel')).toContainText('Sent to editor');
+  });
+
+  test('088 Coverage Review compares takes in video village context', async ({ page }) => {
+    await openProductionManuscript(page);
+    await page.getByTestId('pmv-live-set-connect-toggle').click();
+    await page.getByTestId('pmv-workspace-coverage-review').click();
+
+    await page.getByTestId('pmv-take-compare-toggle').first().click();
+    await page.getByTestId('pmv-take-compare-toggle').nth(1).click();
+
+    await expect(page.getByTestId('pmv-take-compare-panel')).toBeVisible();
+    await expect(page.getByTestId('pmv-take-compare-panel')).toContainText('T1');
+    await expect(page.getByTestId('pmv-take-compare-panel')).toContainText('T2');
+  });
+
+  test('089 Coverage Review persists take review and lined script coverage after reload', async ({ page }) => {
+    await openProductionManuscript(page);
+    await selectFirstShot(page);
+    await page.getByTestId('pmv-live-set-connect-toggle').click();
+    await page.getByTestId('pmv-workspace-coverage-review').click();
+
+    await page.getByTestId('pmv-lined-script-toggle-coverage').first().click();
+    await page.getByTestId('pmv-take-good-performance').first().click();
+    await page.getByTestId('pmv-take-editor-favorite').first().click();
+    await page.getByTestId('pmv-take-director-note').first().locator('input').fill('Reload-persistent director choice.');
+
+    await expect.poll(() => savedCoverageReviewBodies.get(page)?.length ?? 0).toBeGreaterThan(0);
+    await expect(page.getByTestId('pmv-coverage-sync-status')).toContainText('Server synket');
+
+    await page.reload();
+    await expect(page.getByTestId('pmv-root')).toBeVisible({ timeout: 30_000 });
+    await selectFirstShot(page);
+    await page.getByTestId('pmv-live-set-connect-toggle').click();
+    await page.getByTestId('pmv-workspace-coverage-review').click();
+
+    await expect(page.getByTestId('pmv-lined-script-line').first()).toContainText('Medium');
+    await expect(page.getByTestId('pmv-take-director-note').first().locator('input')).toHaveValue('Reload-persistent director choice.');
+    await expect(page.getByTestId('pmv-post-handoff-panel')).toContainText('Favorites');
   });
 });

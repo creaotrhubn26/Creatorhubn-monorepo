@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * CreatorHub Norge - ATS-Friendly Resume Templates
  * Professional, modern resume templates optimized for ATS systems

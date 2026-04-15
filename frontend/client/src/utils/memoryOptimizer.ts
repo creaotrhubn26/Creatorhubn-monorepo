@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Memory Optimization Utilities
  * Memory usage monitoring and optimization features

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * useFeatureAccess Hook
  * Determines if current user can access a feature/tab

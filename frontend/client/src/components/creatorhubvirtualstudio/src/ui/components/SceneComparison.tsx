@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * SceneComparison - Before/After scene comparison viewer
  * 

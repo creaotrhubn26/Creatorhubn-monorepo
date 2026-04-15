@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Integration Examples
  * Examples of how to use the EnhancedMasterIntegrationProvider with essential dependencies

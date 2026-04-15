@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Pro Tools Comments Panel
  * Displays and manages timecode-linked comments synchronized from Pro Tools

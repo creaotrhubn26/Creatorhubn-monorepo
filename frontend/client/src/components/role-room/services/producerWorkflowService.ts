@@ -25,6 +25,7 @@ import {
   normalizeProducerProjectPlanning,
   summarizeProducerClientGrounding,
 } from '../utils/producerProjectPlanning';
+import { logRoleRoomDiagnostic } from '../utils/roleRoomDiagnostics';
 
 export type ProducerPhase = 'preproduction' | 'production' | 'postproduction';
 export type ProducerReviewDecision = 'approved' | 'rejected' | 'changes_requested';
@@ -54,6 +55,18 @@ type LooseRecord = Record<string, unknown>;
 const hasText = (value: unknown): value is string => (
   typeof value === 'string' && value.trim().length > 0
 );
+
+const stableSerialize = (value: unknown): string => JSON.stringify(value, (_key, nestedValue) => {
+  if (nestedValue && typeof nestedValue === 'object' && !Array.isArray(nestedValue)) {
+    return Object.keys(nestedValue as Record<string, unknown>)
+      .sort()
+      .reduce<Record<string, unknown>>((sorted, key) => {
+        sorted[key] = (nestedValue as Record<string, unknown>)[key];
+        return sorted;
+      }, {});
+  }
+  return nestedValue;
+}) ?? 'undefined';
 
 export interface ProducerTimelineItem {
   id: string;
@@ -649,7 +662,7 @@ function matchesTimelinePayload(
     && (item.status ?? 'planned') === (payload.status ?? 'planned')
     && (item.linked_entity_type ?? null) === (payload.linkedEntityType ?? null)
     && (item.linked_entity_id ?? null) === (payload.linkedEntityId ?? null)
-    && JSON.stringify(item.metadata ?? {}) === JSON.stringify(payloadMetadata);
+    && stableSerialize(item.metadata ?? {}) === stableSerialize(payloadMetadata);
 }
 
 async function syncClientGroundingTimeline(projectId: string): Promise<void> {
@@ -790,7 +803,10 @@ function queueClientGroundingResync(projectId: string): void {
         entityId: projectId,
       });
     } catch (error) {
-      console.error('[producerWorkflowService] Failed to resync client grounding state', error);
+      logRoleRoomDiagnostic('producer-workflow:client-grounding-resync-failed', {
+        projectId,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   })();
 }
@@ -1410,6 +1426,48 @@ async function fetchClientMaterials(projectId: string): Promise<ProducerClientMa
     .sort((left, right) => compareIso(right.updated_at, left.updated_at));
 }
 
+const CLIENT_INPUT_READ_CACHE_TTL_MS = 3_000;
+const WORKFLOW_READ_CACHE_TTL_MS = 2_500;
+const clientIntakeReadCache = new Map<string, { expiresAt: number; promise: Promise<ProducerClientIntake> }>();
+const clientMaterialsReadCache = new Map<string, { expiresAt: number; promise: Promise<ProducerClientMaterial[]> }>();
+const timelineReadCache = new Map<string, { expiresAt: number; promise: Promise<ProducerTimelineItem[]> }>();
+const reviewsReadCache = new Map<string, { expiresAt: number; promise: Promise<ProducerClientReview[]> }>();
+
+function getCachedClientIntake(projectId: string): Promise<ProducerClientIntake> {
+  const now = Date.now();
+  const cached = clientIntakeReadCache.get(projectId);
+  if (cached && cached.expiresAt > now) {
+    return cached.promise;
+  }
+
+  const promise = fetchClientIntake(projectId);
+  clientIntakeReadCache.set(projectId, {
+    expiresAt: now + CLIENT_INPUT_READ_CACHE_TTL_MS,
+    promise,
+  });
+  return promise;
+}
+
+function getCachedClientMaterials(projectId: string): Promise<ProducerClientMaterial[]> {
+  const now = Date.now();
+  const cached = clientMaterialsReadCache.get(projectId);
+  if (cached && cached.expiresAt > now) {
+    return cached.promise;
+  }
+
+  const promise = fetchClientMaterials(projectId);
+  clientMaterialsReadCache.set(projectId, {
+    expiresAt: now + CLIENT_INPUT_READ_CACHE_TTL_MS,
+    promise,
+  });
+  return promise;
+}
+
+function clearClientInputReadCache(projectId: string): void {
+  clientIntakeReadCache.delete(projectId);
+  clientMaterialsReadCache.delete(projectId);
+}
+
 async function migrateLegacyTimelineIfNeeded(projectId: string, currentItems: ProducerTimelineItem[]): Promise<ProducerTimelineItem[]> {
   if (currentItems.length > 0) {
     return currentItems;
@@ -1545,6 +1603,62 @@ async function migrateLegacyReviewsIfNeeded(projectId: string, currentItems: Pro
 
   await clearLegacyReviewStore(projectId);
   return fetchReviews(projectId);
+}
+
+type ProducerWorkflowReadDomain = 'timeline' | 'reviews';
+
+function clearProducerWorkflowReadCache(
+  projectId: string,
+  domains: ProducerWorkflowReadDomain[] = ['timeline', 'reviews'],
+): void {
+  if (domains.includes('timeline')) {
+    timelineReadCache.delete(projectId);
+  }
+  if (domains.includes('reviews')) {
+    reviewsReadCache.delete(projectId);
+  }
+}
+
+function getCachedTimeline(projectId: string): Promise<ProducerTimelineItem[]> {
+  const now = Date.now();
+  const cached = timelineReadCache.get(projectId);
+  if (cached && cached.expiresAt > now) {
+    return cached.promise;
+  }
+
+  const promise = fetchTimeline(projectId)
+    .then((remoteItems) => migrateLegacyTimelineIfNeeded(projectId, remoteItems));
+  timelineReadCache.set(projectId, {
+    expiresAt: now + WORKFLOW_READ_CACHE_TTL_MS,
+    promise,
+  });
+  void promise.catch(() => {
+    timelineReadCache.delete(projectId);
+  });
+  return promise;
+}
+
+function getCachedReviews(projectId: string): Promise<ProducerClientReview[]> {
+  const now = Date.now();
+  const cached = reviewsReadCache.get(projectId);
+  if (cached && cached.expiresAt > now) {
+    return cached.promise;
+  }
+
+  const promise = fetchReviews(projectId)
+    .then((remoteItems) => migrateLegacyReviewsIfNeeded(projectId, remoteItems))
+    .then(async (reviews) => {
+      await syncProjectWorkflowStatusSnapshot(projectId, reviews);
+      return reviews;
+    });
+  reviewsReadCache.set(projectId, {
+    expiresAt: now + WORKFLOW_READ_CACHE_TTL_MS,
+    promise,
+  });
+  void promise.catch(() => {
+    reviewsReadCache.delete(projectId);
+  });
+  return promise;
 }
 
 function getReviewTimelinePhase(
@@ -1932,7 +2046,7 @@ function isTimelineEquivalentToPayload(
     && (item.linked_entity_type ?? null) === (payload.linkedEntityType ?? null)
     && (item.linked_entity_id ?? null) === (payload.linkedEntityId ?? null)
     && item.sort_order === (payload.sortOrder ?? item.sort_order)
-    && JSON.stringify(item.metadata ?? {}) === JSON.stringify(payload.metadata ?? {});
+    && stableSerialize(item.metadata ?? {}) === stableSerialize(payload.metadata ?? {});
 }
 
 function isReviewEquivalentToPayload(
@@ -1945,7 +2059,7 @@ function isReviewEquivalentToPayload(
     && (review.target_entity_type ?? null) === (payload.targetEntityType ?? null)
     && (review.target_entity_id ?? null) === (payload.targetEntityId ?? null)
     && (review.due_at ?? null) === (payload.dueAt ?? null)
-    && JSON.stringify(review.metadata ?? {}) === JSON.stringify(payload.metadata ?? {});
+    && stableSerialize(review.metadata ?? {}) === stableSerialize(payload.metadata ?? {});
 }
 
 function readFocusedPhaseFromReview(review: Pick<ProducerClientReview, 'metadata'>): ProducerPhase | 'all' {
@@ -1961,7 +2075,7 @@ function compareProjectWorkflowMeta(
   left?: ProducerWorkflowProjectMeta,
   right?: ProducerWorkflowProjectMeta,
 ): boolean {
-  return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
+  return stableSerialize(left ?? null) === stableSerialize(right ?? null);
 }
 
 function isPendingReviewStatus(reviewStatus?: string | null): boolean {
@@ -2276,6 +2390,7 @@ async function syncProjectWorkflowStatusTimelineSnapshot(
         method: 'DELETE',
       });
     }));
+    clearProducerWorkflowReadCache(project.id, ['timeline']);
     emitProducerWorkflowEvent({
       projectId: project.id,
       domain: 'timeline',
@@ -2337,20 +2452,35 @@ async function syncProjectWorkflowStatusTimelineSnapshot(
   };
 
   if (existingStatusItems[0]) {
-    await producerWorkflowRequest<{ item?: unknown }>(`/projects/${project.id}/producer/timeline/${existingStatusItems[0].id}`, {
-      method: 'PATCH',
-      body: JSON.stringify(buildDefinedBody([
-        ['phase', payload.phase],
-        ['title', payload.title],
-        ['description', payload.description],
-        ['dueAt', payload.dueAt],
-        ['status', payload.status],
-        ['linkedEntityType', payload.linkedEntityType],
-        ['linkedEntityId', payload.linkedEntityId],
-        ['sortOrder', payload.sortOrder],
-        ['metadata', payload.metadata],
-      ])),
-    });
+    const primaryStatusItem = existingStatusItems[0];
+    const primaryStatusItemUnchanged = primaryStatusItem.phase === payload.phase
+      && primaryStatusItem.title === payload.title
+      && (primaryStatusItem.description ?? null) === (payload.description ?? null)
+      && (primaryStatusItem.due_at ?? null) === (payload.dueAt ?? null)
+      && primaryStatusItem.status === payload.status
+      && (primaryStatusItem.linked_entity_type ?? null) === payload.linkedEntityType
+      && (primaryStatusItem.linked_entity_id ?? null) === payload.linkedEntityId
+      && primaryStatusItem.sort_order === payload.sortOrder
+      && stableSerialize(primaryStatusItem.metadata ?? {}) === stableSerialize(payload.metadata);
+    let mutated = false;
+
+    if (!primaryStatusItemUnchanged) {
+      await producerWorkflowRequest<{ item?: unknown }>(`/projects/${project.id}/producer/timeline/${primaryStatusItem.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(buildDefinedBody([
+          ['phase', payload.phase],
+          ['title', payload.title],
+          ['description', payload.description],
+          ['dueAt', payload.dueAt],
+          ['status', payload.status],
+          ['linkedEntityType', payload.linkedEntityType],
+          ['linkedEntityId', payload.linkedEntityId],
+          ['sortOrder', payload.sortOrder],
+          ['metadata', payload.metadata],
+        ])),
+      });
+      mutated = true;
+    }
 
     if (existingStatusItems.length > 1) {
       await Promise.all(existingStatusItems.slice(1).map(async (item) => {
@@ -2358,13 +2488,19 @@ async function syncProjectWorkflowStatusTimelineSnapshot(
           method: 'DELETE',
         });
       }));
+      mutated = true;
     }
 
+    if (!mutated) {
+      return;
+    }
+
+    clearProducerWorkflowReadCache(project.id, ['timeline']);
     emitProducerWorkflowEvent({
       projectId: project.id,
       domain: 'timeline',
-      mutation: 'updated',
-      entityId: existingStatusItems[0].id,
+      mutation: primaryStatusItemUnchanged ? 'deleted' : 'updated',
+      entityId: primaryStatusItem.id,
     });
     return;
   }
@@ -2385,6 +2521,7 @@ async function syncProjectWorkflowStatusTimelineSnapshot(
     }),
   });
 
+  clearProducerWorkflowReadCache(project.id, ['timeline']);
   emitProducerWorkflowEvent({
     projectId: project.id,
     domain: 'timeline',
@@ -2495,8 +2632,7 @@ function getEconomyStatusFromBudgetReview(
 
 export const producerWorkflowService = {
   async getTimeline(projectId: string): Promise<ProducerTimelineItem[]> {
-    const remoteItems = await fetchTimeline(projectId);
-    return migrateLegacyTimelineIfNeeded(projectId, remoteItems);
+    return getCachedTimeline(projectId);
   },
 
   async createTimelineItem(projectId: string, payload: CreateProducerTimelineItemInput): Promise<ProducerTimelineItem> {
@@ -2517,6 +2653,7 @@ export const producerWorkflowService = {
       }),
     });
     const created = normalizeTimelineItem(response.item, projectId, items.length);
+    clearProducerWorkflowReadCache(projectId, ['timeline']);
     emitProducerWorkflowEvent({
       projectId,
       domain: 'timeline',
@@ -2547,6 +2684,7 @@ export const producerWorkflowService = {
       ])),
     });
     const persisted = normalizeTimelineItem(response.item, projectId);
+    clearProducerWorkflowReadCache(projectId, ['timeline']);
     emitProducerWorkflowEvent({
       projectId,
       domain: 'timeline',
@@ -2566,6 +2704,7 @@ export const producerWorkflowService = {
         throw error;
       }
     }
+    clearProducerWorkflowReadCache(projectId, ['timeline']);
     emitProducerWorkflowEvent({
       projectId,
       domain: 'timeline',
@@ -2580,6 +2719,7 @@ export const producerWorkflowService = {
     }
 
     await syncClientGroundingTimeline(projectId);
+    clearProducerWorkflowReadCache(projectId, ['timeline']);
     emitProducerWorkflowEvent({
       projectId,
       domain: 'timeline',
@@ -2594,6 +2734,7 @@ export const producerWorkflowService = {
     }
 
     await syncClientGroundingReviews(projectId);
+    clearProducerWorkflowReadCache(projectId, ['reviews']);
     emitProducerWorkflowEvent({
       projectId,
       domain: 'reviews',
@@ -2609,7 +2750,7 @@ export const producerWorkflowService = {
   },
 
   async getClientIntake(projectId: string): Promise<ProducerClientIntake> {
-    return fetchClientIntake(projectId);
+    return getCachedClientIntake(projectId);
   },
 
   async updateClientIntake(
@@ -2634,9 +2775,12 @@ export const producerWorkflowService = {
       }),
     });
     const normalized = normalizeClientIntake(response.intake ?? {});
+    clearClientInputReadCache(projectId);
+    clearProducerWorkflowReadCache(projectId);
     if (canCurrentSessionMutateProducerWorkflow()) {
       await syncClientGroundingTimeline(projectId);
       await syncClientGroundingReviews(projectId);
+      clearProducerWorkflowReadCache(projectId);
     }
     emitProducerWorkflowEvent({
       projectId,
@@ -2648,7 +2792,7 @@ export const producerWorkflowService = {
   },
 
   async getClientMaterials(projectId: string): Promise<ProducerClientMaterial[]> {
-    return fetchClientMaterials(projectId);
+    return getCachedClientMaterials(projectId);
   },
 
   async createClientMaterial(
@@ -2669,6 +2813,8 @@ export const producerWorkflowService = {
       }),
     });
     const item = normalizeClientMaterial(response.item, projectId);
+    clearClientInputReadCache(projectId);
+    clearProducerWorkflowReadCache(projectId);
     emitProducerWorkflowEvent({
       projectId,
       domain: 'project',
@@ -2700,6 +2846,8 @@ export const producerWorkflowService = {
       ])),
     });
     const item = normalizeClientMaterial(response.item, projectId);
+    clearClientInputReadCache(projectId);
+    clearProducerWorkflowReadCache(projectId);
     emitProducerWorkflowEvent({
       projectId,
       domain: 'project',
@@ -2716,6 +2864,8 @@ export const producerWorkflowService = {
     await producerWorkflowRequest<{ success?: boolean }>(`/projects/${projectId}/producer/client-materials/${materialId}`, {
       method: 'DELETE',
     });
+    clearClientInputReadCache(projectId);
+    clearProducerWorkflowReadCache(projectId);
     emitProducerWorkflowEvent({
       projectId,
       domain: 'project',
@@ -2805,10 +2955,7 @@ export const producerWorkflowService = {
   },
 
   async getReviews(projectId: string): Promise<ProducerClientReview[]> {
-    const remoteItems = await fetchReviews(projectId);
-    const reviews = await migrateLegacyReviewsIfNeeded(projectId, remoteItems);
-    await syncProjectWorkflowStatusSnapshot(projectId, reviews);
-    return reviews;
+    return getCachedReviews(projectId);
   },
 
   async getNotifications(projectId: string): Promise<ProducerProjectNotification[]> {
@@ -2981,6 +3128,7 @@ export const producerWorkflowService = {
       }),
     });
     const created = normalizeReview(response.review, projectId);
+    clearProducerWorkflowReadCache(projectId, ['reviews']);
     emitProducerWorkflowEvent({
       projectId,
       domain: 'reviews',
@@ -3008,6 +3156,7 @@ export const producerWorkflowService = {
       ])),
     });
     const updated = normalizeReview(response.review, projectId);
+    clearProducerWorkflowReadCache(projectId, ['reviews']);
     emitProducerWorkflowEvent({
       projectId,
       domain: 'reviews',
@@ -3040,6 +3189,7 @@ export const producerWorkflowService = {
     await producerWorkflowRequest<undefined>(`/projects/${projectId}/producer/reviews/${reviewId}`, {
       method: 'DELETE',
     });
+    clearProducerWorkflowReadCache(projectId, ['reviews']);
     const linkedTimelineItems = timelineItems.filter((item) => isReviewTimelineItem(item, reviewId));
     await Promise.all(linkedTimelineItems.map(async (item) => {
       await this.deleteTimelineItem(projectId, item.id);
@@ -3419,6 +3569,7 @@ export const producerWorkflowService = {
       }),
     });
     const comment = normalizeReviewComment(response.comment, projectId, reviewId);
+    clearProducerWorkflowReadCache(projectId, ['reviews']);
 
     const reviews = await this.getReviews(projectId);
     const updatedReview = reviews.find((review) => review.id === reviewId);
@@ -3455,6 +3606,7 @@ export const producerWorkflowService = {
       }),
     });
     const persisted = normalizeReview(response.review, projectId);
+    clearProducerWorkflowReadCache(projectId, ['reviews']);
     emitProducerWorkflowEvent({
       projectId,
       domain: 'reviews',

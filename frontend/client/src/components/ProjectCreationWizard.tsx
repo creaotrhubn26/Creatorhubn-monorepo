@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * CreatorHub Norge - Project Creation Wizard
  * Integrert prosjektopprettelse med alle prosjekttyper

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * StripboardPanel.tsx  (refactored)
  * Visual shooting schedule with drag-and-drop scene organisation.

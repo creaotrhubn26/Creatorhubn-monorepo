@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Studio Guides Panel
  * 

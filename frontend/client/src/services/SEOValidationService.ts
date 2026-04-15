@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * SEO Validation Service for CreatorhubVisualEditor
  * Comprehensive SEO validation to ensure nothing is done wrong

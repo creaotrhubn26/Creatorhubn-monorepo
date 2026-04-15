@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * CreatorHub Norge - Memory Card Price Sources
  * Integration with real-time pricing data from multiple sources

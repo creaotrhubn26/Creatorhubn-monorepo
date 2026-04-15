@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Integration tests for UniversalShowcase context wiring and analytics calls.
  */

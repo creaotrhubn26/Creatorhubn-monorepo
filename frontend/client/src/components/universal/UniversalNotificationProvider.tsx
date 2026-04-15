@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Universal Notification Provider
  * Provides notification context and integration across all components

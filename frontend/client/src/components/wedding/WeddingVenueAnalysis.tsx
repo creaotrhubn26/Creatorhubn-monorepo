@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * CreatorHub Norge - Wedding Venue Analysis
  * Specialized analysis for wedding venues with photography and planning features

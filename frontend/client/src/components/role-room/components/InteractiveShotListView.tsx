@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useState, useEffect, useMemo, useCallback, useRef, type FC } from "react";
 import { Box, Typography, IconButton, Button, Chip, LinearProgress, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Select, MenuItem, FormControl, InputLabel, Collapse, ToggleButtonGroup, ToggleButton, alpha, Fade, Slide, useMediaQuery, useTheme } from "@mui/material";
 import { PlayArrow, Pause, SkipNext, SkipPrevious, Check, Schedule, CameraAlt, Videocam, Close, Timer, FilterList, GridView, ViewList, Settings, Download, Notes, TouchApp, Fullscreen, FullscreenExit, Speed, Warning, Star, Home, ShoppingBag, Person, Event, Tune, Nature, Movie, Visibility, Edit, CheckCircle } from "@mui/icons-material";

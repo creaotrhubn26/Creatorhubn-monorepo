@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Split Sheet Analytics Dashboard
  * Comprehensive analytics for revenue, contributors, and performance

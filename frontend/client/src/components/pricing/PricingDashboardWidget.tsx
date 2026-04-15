@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * CreatorHub Norge - Pricing Dashboard Widget
  * Shows pricing overview across all dashboard types

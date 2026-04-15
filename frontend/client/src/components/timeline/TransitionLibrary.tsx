@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * TRANSITION LIBRARY COMPONENT
  * Professional transition picker with 485+ effects

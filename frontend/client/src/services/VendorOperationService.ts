@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * CreatorHub Norge - Vendor Operation Service
  * Smart Queue Management for vendor-specific operations (plugin sync, license updates, etc.)

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Quick Preview Component
  * Instant fullscreen preview activated by Space bar

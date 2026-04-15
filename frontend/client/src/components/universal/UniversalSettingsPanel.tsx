@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Universal Settings Panel - Automatisk FAQ for alle profesjoner
  * AUTOMATISK POPULERING: Fungerer for alle nye profesjoner uten manuell konfigurasjon

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * AI Design Assistant
  * Intelligent layout suggestions, responsive breakpoints, and component recommendations

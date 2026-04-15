@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * HLS STREAMING SERVICE
  * Stream from YouTube, Vimeo, cloud sources

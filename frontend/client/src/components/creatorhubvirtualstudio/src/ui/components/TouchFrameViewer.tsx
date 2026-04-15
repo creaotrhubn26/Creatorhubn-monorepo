@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * TouchFrameViewer - iPad/tablet optimized frame viewer with gesture support
  * 

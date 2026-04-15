@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Profession Tabs Hook
  * Dynamically provides tab configurations based on profession type

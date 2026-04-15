@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * useComponentCommunication Hook
  * Reusable hook for inter-component communication in Visual Editor

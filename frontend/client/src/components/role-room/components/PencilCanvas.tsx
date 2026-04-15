@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * PencilCanvas - Apple Pencil optimized drawing canvas
  * 

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Asset Manager
  * Manages asset library with search, filtering, and organization

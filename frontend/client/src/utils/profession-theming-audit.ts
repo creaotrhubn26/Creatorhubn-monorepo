@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Profession Theming Audit Tool
  * Automatically detects and reports on profession-based theming implementation

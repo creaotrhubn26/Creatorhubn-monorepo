@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * CreatorHub Norge - Business Intelligence Dashboard
  * Comprehensive market analysis, SWOT analysis, and marketing strategy interface

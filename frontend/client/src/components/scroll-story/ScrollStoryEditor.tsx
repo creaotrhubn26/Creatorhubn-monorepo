@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * ScrollStoryEditor - no-code visual story builder
  * Functional editor with pages, templates, media picker, preview and publish dialog

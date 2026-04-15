@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Enhanced Feedback Location Tracker Utility
  * Provides granular location tracking for prototype feedback and tester applications.

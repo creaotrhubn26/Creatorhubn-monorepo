@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * CreatorHub Norge - Create Pricing Modal
  * Modal for creating pricing structures

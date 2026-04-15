@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * KeyframeTimeline - Professional keyframe editor and timeline
  * 

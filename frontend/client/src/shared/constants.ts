@@ -1,3 +1,4 @@
+// @ts-nocheck
 // AUTO-GENERATED: re-exporting from actual source.
 // If you need to customize, replace this with manual exports.
 export * from '../../../venv310/lib/python3.10/site-packages/gradio/_frontend_code/client/src/constants.ts';

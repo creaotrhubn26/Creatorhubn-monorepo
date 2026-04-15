@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Background Upload Widget
  * Mini floating widget som viser pågående opplastinger

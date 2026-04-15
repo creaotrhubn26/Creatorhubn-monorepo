@@ -1,0 +1,997 @@
+openapi: 3.0.3
+info:
+  title: The Role Room Integrations API
+  version: v1
+  description: Stable external integration surface for The Role Room.
+servers:
+  - url: /api/integrations/v1/role-room
+security:
+  - ApiKeyAuth: []
+paths:
+  /health:
+    get:
+      summary: Health check
+      security: []
+      responses:
+        '200':
+          description: Service health
+  /projects:
+    get:
+      summary: List projects
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            minimum: 0
+        - in: query
+          name: status
+          schema:
+            type: string
+        - in: query
+          name: updatedAfter
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Project list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectListResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+    post:
+      summary: Create project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectCreateRequest'
+      responses:
+        '201':
+          description: Project created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+  /projects/{projectId}:
+    get:
+      summary: Get one project
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: Project
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectDetailResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+    patch:
+      summary: Update project
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectPatchRequest'
+      responses:
+        '200':
+          description: Updated project
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+  /projects/{projectId}/roles:
+    get:
+      summary: List roles
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Roles
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoleListResponse'
+  /projects/{projectId}/candidates:
+    get:
+      summary: List candidates
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Candidates
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CandidateListResponse'
+  /projects/{projectId}/crew:
+    get:
+      summary: List crew members
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Crew
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrewListResponse'
+  /projects/{projectId}/schedules:
+    get:
+      summary: List schedule entries
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Schedule
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduleListResponse'
+  /projects/{projectId}/client-intake:
+    get:
+      summary: Get client intake
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: Client intake
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientIntakeResponse'
+    put:
+      summary: Upsert client intake
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClientIntakeUpsertRequest'
+      responses:
+        '200':
+          description: Client intake saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientIntakeResponse'
+  /projects/{projectId}/client-materials:
+    get:
+      summary: List client materials
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Client materials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientMaterialListResponse'
+    post:
+      summary: Create client material
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClientMaterialCreateRequest'
+      responses:
+        '201':
+          description: Client material created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientMaterialResponse'
+  /projects/{projectId}/mappings:
+    get:
+      summary: List mappings for the active integration account
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+        - in: query
+          name: localObjectType
+          schema:
+            type: string
+        - in: query
+          name: localObjectId
+          schema:
+            type: string
+        - in: query
+          name: externalObjectType
+          schema:
+            type: string
+        - in: query
+          name: externalObjectId
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Integration mappings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MappingListResponse'
+    put:
+      summary: Upsert mapping for the active integration account
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MappingUpsertRequest'
+      responses:
+        '200':
+          description: Mapping saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MappingResponse'
+  /admin/accounts:
+    get:
+      summary: List integration accounts
+      responses:
+        '200':
+          description: Integration accounts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntegrationAccountListResponse'
+    post:
+      summary: Create integration account
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IntegrationAccountCreateRequest'
+      responses:
+        '201':
+          description: Integration account created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntegrationAccountResponse'
+  /admin/accounts/{accountId}/api-keys:
+    get:
+      summary: List integration account API keys
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+      responses:
+        '200':
+          description: Integration API keys
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntegrationApiKeyListResponse'
+    post:
+      summary: Create integration account API key
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IntegrationApiKeyCreateRequest'
+      responses:
+        '201':
+          description: Integration API key created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntegrationApiKeyResponse'
+  /admin/accounts/{accountId}/webhooks:
+    get:
+      summary: List account webhooks
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+      responses:
+        '200':
+          description: Account webhooks
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookListResponse'
+    post:
+      summary: Create webhook subscription
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookCreateRequest'
+      responses:
+        '201':
+          description: Webhook created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookResponse'
+  /admin/accounts/{accountId}/webhooks/{webhookId}:
+    patch:
+      summary: Update webhook subscription
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+        - $ref: '#/components/parameters/WebhookId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookPatchRequest'
+      responses:
+        '200':
+          description: Webhook updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookResponse'
+  /admin/webhooks/dispatch:
+    post:
+      summary: Dispatch pending webhook outbox events
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookDispatchRequest'
+      responses:
+        '200':
+          description: Dispatch summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookDispatchResponse'
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: x-api-key
+  parameters:
+    ProjectId:
+      in: path
+      name: projectId
+      required: true
+      schema:
+        type: string
+    AccountId:
+      in: path
+      name: accountId
+      required: true
+      schema:
+        type: string
+        format: uuid
+    WebhookId:
+      in: path
+      name: webhookId
+      required: true
+      schema:
+        type: string
+        format: uuid
+    Limit:
+      in: query
+      name: limit
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+    Offset:
+      in: query
+      name: offset
+      schema:
+        type: integer
+        minimum: 0
+    IdempotencyKey:
+      in: header
+      name: Idempotency-Key
+      required: true
+      schema:
+        type: string
+  responses:
+    ErrorResponse:
+      description: Error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+  schemas:
+    ResponseMeta:
+      type: object
+      required: [requestId]
+      properties:
+        requestId:
+          type: string
+        limit:
+          type: integer
+        offset:
+          type: integer
+        count:
+          type: integer
+        hasMore:
+          type: boolean
+    ErrorEnvelope:
+      type: object
+      properties:
+        error:
+          type: object
+          required: [code, message, requestId]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            requestId:
+              type: string
+    Project:
+      type: object
+      required: [id, name, status, currency, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        status: { type: string }
+        genre: { type: string, nullable: true }
+        projectType: { type: string, nullable: true }
+        startDate: { type: string, nullable: true }
+        endDate: { type: string, nullable: true }
+        budget: { type: string, nullable: true }
+        currency: { type: string }
+        settings: { type: object, additionalProperties: true }
+        metadata: { type: object, additionalProperties: true }
+        creatorhubProjectId: { type: string, nullable: true }
+        createdBy: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ProjectWithCounts:
+      allOf:
+        - $ref: '#/components/schemas/Project'
+        - type: object
+          properties:
+            counts:
+              type: object
+              properties:
+                roles: { type: integer }
+                candidates: { type: integer }
+                crew: { type: integer }
+                schedules: { type: integer }
+    Role:
+      type: object
+      properties:
+        id: { type: string }
+        projectId: { type: string }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        ageRange: { type: string, nullable: true }
+        gender: { type: string, nullable: true }
+        ethnicity: { type: string, nullable: true }
+        roleType: { type: string, nullable: true }
+        sceneIds:
+          type: array
+          items: {}
+        requirements:
+          type: object
+          additionalProperties: true
+        status: { type: string }
+        assignedCandidateId: { type: string, nullable: true }
+        candidateIds:
+          type: array
+          items: {}
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    Candidate:
+      type: object
+      properties:
+        id: { type: string }
+        projectId: { type: string }
+        name: { type: string }
+        email: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+        agency: { type: string, nullable: true }
+        photos:
+          type: array
+          items: {}
+        videos:
+          type: array
+          items: {}
+        notes: { type: string, nullable: true }
+        status: { type: string }
+        assignedRoles:
+          type: array
+          items: {}
+        rating: { type: integer, nullable: true }
+        metadata:
+          type: object
+          additionalProperties: true
+        emergencyContact:
+          type: object
+          additionalProperties: true
+        consentStatus: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    Crew:
+      type: object
+      properties:
+        id: { type: string }
+        projectId: { type: string }
+        name: { type: string }
+        role: { type: string }
+        email: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+        department: { type: string, nullable: true }
+        rate: { type: string, nullable: true }
+        availability:
+          type: object
+          additionalProperties: true
+        notes: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    Schedule:
+      type: object
+      properties:
+        id: { type: string }
+        projectId: { type: string }
+        candidateId: { type: string, nullable: true }
+        roleId: { type: string, nullable: true }
+        sceneId: { type: string, nullable: true }
+        locationId: { type: string, nullable: true }
+        date: { type: string, nullable: true }
+        startTime: { type: string, nullable: true }
+        endTime: { type: string, nullable: true }
+        type: { type: string, nullable: true }
+        status: { type: string }
+        notes: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ClientIntake:
+      type: object
+      properties:
+        projectId: { type: string }
+        projectGoal: { type: string, nullable: true }
+        deliverables: { type: string, nullable: true }
+        targetAudience: { type: string, nullable: true }
+        keyMessage: { type: string, nullable: true }
+        timingConstraints: { type: string, nullable: true }
+        brandNotes: { type: string, nullable: true }
+        materialOverview: { type: string, nullable: true }
+        referenceLinks: { type: string, nullable: true }
+        contactName: { type: string, nullable: true }
+        contactEmail: { type: string, nullable: true }
+        contactPhone: { type: string, nullable: true }
+        additionalNotes: { type: string, nullable: true }
+        metadata:
+          type: object
+          additionalProperties: true
+        updatedByUserId: { type: string, nullable: true }
+        updatedByRole: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ClientMaterial:
+      type: object
+      properties:
+        id: { type: string }
+        projectId: { type: string }
+        entryType: { type: string }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        externalUrl: { type: string, nullable: true }
+        phase: { type: string, nullable: true }
+        linkedShotListId: { type: string, nullable: true }
+        status: { type: string }
+        metadata:
+          type: object
+          additionalProperties: true
+        createdByUserId: { type: string, nullable: true }
+        createdByRole: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    IntegrationAccount:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        slug: { type: string }
+        name: { type: string }
+        ownerUserId: { type: string }
+        status: { type: string }
+        allowedScopes:
+          type: array
+          items: { type: string }
+        rateLimitPerMinute: { type: integer }
+        metadata:
+          type: object
+          additionalProperties: true
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    IntegrationApiKey:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        accountId: { type: string, format: uuid }
+        label: { type: string }
+        createdForUserId: { type: string }
+        scopes:
+          type: array
+          items: { type: string }
+        isActive: { type: boolean }
+        lastUsedAt: { type: string, nullable: true, format: date-time }
+        expiresAt: { type: string, nullable: true, format: date-time }
+        createdAt: { type: string, format: date-time }
+        apiKey: { type: string }
+    IntegrationMapping:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        accountId: { type: string, format: uuid }
+        projectId: { type: string }
+        localObjectType: { type: string }
+        localObjectId: { type: string }
+        externalObjectType: { type: string }
+        externalObjectId: { type: string }
+        direction: { type: string }
+        metadata:
+          type: object
+          additionalProperties: true
+        lastSyncedAt: { type: string, nullable: true, format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    Webhook:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        accountId: { type: string, format: uuid }
+        label: { type: string, nullable: true }
+        endpointUrl: { type: string, format: uri }
+        eventTypes:
+          type: array
+          items: { type: string }
+        status: { type: string }
+        lastDeliveredAt: { type: string, nullable: true, format: date-time }
+        lastFailureAt: { type: string, nullable: true, format: date-time }
+        lastError: { type: string, nullable: true }
+        metadata:
+          type: object
+          additionalProperties: true
+        createdByUserId: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        signingSecret: { type: string }
+    ProjectCreateRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        description: { type: string, nullable: true }
+        status: { type: string }
+        genre: { type: string, nullable: true }
+        projectType: { type: string, nullable: true }
+        startDate: { type: string, nullable: true }
+        endDate: { type: string, nullable: true }
+        budget:
+          oneOf:
+            - type: string
+            - type: number
+        currency: { type: string, nullable: true }
+        settings:
+          type: object
+          additionalProperties: true
+        metadata:
+          type: object
+          additionalProperties: true
+        creatorhubProjectId: { type: string, nullable: true }
+    ProjectPatchRequest:
+      allOf:
+        - $ref: '#/components/schemas/ProjectCreateRequest'
+    ClientIntakeUpsertRequest:
+      type: object
+      properties:
+        projectGoal: { type: string, nullable: true }
+        deliverables: { type: string, nullable: true }
+        targetAudience: { type: string, nullable: true }
+        keyMessage: { type: string, nullable: true }
+        timingConstraints: { type: string, nullable: true }
+        brandNotes: { type: string, nullable: true }
+        materialOverview: { type: string, nullable: true }
+        referenceLinks: { type: string, nullable: true }
+        contactName: { type: string, nullable: true }
+        contactEmail: { type: string, nullable: true }
+        contactPhone: { type: string, nullable: true }
+        additionalNotes: { type: string, nullable: true }
+        metadata:
+          type: object
+          additionalProperties: true
+        updatedByRole: { type: string, nullable: true }
+    ClientMaterialCreateRequest:
+      type: object
+      required: [entryType, title]
+      properties:
+        entryType: { type: string }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        externalUrl: { type: string, format: uri, nullable: true }
+        phase: { type: string, nullable: true }
+        linkedShotListId: { type: string, nullable: true }
+        status: { type: string, nullable: true }
+        metadata:
+          type: object
+          additionalProperties: true
+        createdByRole: { type: string, nullable: true }
+    IntegrationAccountCreateRequest:
+      type: object
+      required: [name, ownerUserId]
+      properties:
+        name: { type: string }
+        slug: { type: string }
+        ownerUserId: { type: string }
+        allowedScopes:
+          type: array
+          items: { type: string }
+        rateLimitPerMinute: { type: integer }
+        metadata:
+          type: object
+          additionalProperties: true
+    IntegrationApiKeyCreateRequest:
+      type: object
+      required: [label, createdForUserId]
+      properties:
+        label: { type: string }
+        createdForUserId: { type: string }
+        scopes:
+          type: array
+          items: { type: string }
+        expiresInDays: { type: integer }
+    MappingUpsertRequest:
+      type: object
+      required: [localObjectType, localObjectId, externalObjectType, externalObjectId]
+      properties:
+        localObjectType: { type: string }
+        localObjectId: { type: string }
+        externalObjectType: { type: string }
+        externalObjectId: { type: string }
+        direction: { type: string }
+        metadata:
+          type: object
+          additionalProperties: true
+        lastSyncedAt: { type: string, format: date-time }
+    WebhookCreateRequest:
+      type: object
+      required: [endpointUrl]
+      properties:
+        label: { type: string, nullable: true }
+        endpointUrl: { type: string, format: uri }
+        eventTypes:
+          type: array
+          items: { type: string }
+        signingSecret: { type: string }
+        metadata:
+          type: object
+          additionalProperties: true
+    WebhookPatchRequest:
+      type: object
+      properties:
+        label: { type: string, nullable: true }
+        endpointUrl: { type: string, format: uri }
+        eventTypes:
+          type: array
+          items: { type: string }
+        status: { type: string }
+        rotateSigningSecret: { type: boolean }
+        signingSecret: { type: string }
+        metadata:
+          type: object
+          additionalProperties: true
+    WebhookDispatchRequest:
+      type: object
+      properties:
+        accountId: { type: string, format: uuid }
+        limit: { type: integer }
+    ProjectResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Project'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+    ProjectDetailResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/ProjectWithCounts'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+    ProjectListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Project'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+    RoleListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Role'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+    CandidateListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Candidate'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+    CrewListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Crew'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+    ScheduleListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Schedule'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+    ClientIntakeResponse:
+      type: object
+      properties:
+        data:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/ClientIntake'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+    ClientMaterialResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/ClientMaterial'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+    ClientMaterialListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClientMaterial'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+    IntegrationAccountResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/IntegrationAccount'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+    IntegrationAccountListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/IntegrationAccount'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+    IntegrationApiKeyResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/IntegrationApiKey'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+    IntegrationApiKeyListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/IntegrationApiKey'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+    MappingResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/IntegrationMapping'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+    MappingListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/IntegrationMapping'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+    WebhookResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Webhook'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+    WebhookListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Webhook'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+    WebhookDispatchResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            processed: { type: integer }
+            delivered: { type: integer }
+            retried: { type: integer }
+            deadLettered: { type: integer }
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'

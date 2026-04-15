@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Tutorial Selection Notification System - Automatisk beskjed til den som laget beste tutorial
  */

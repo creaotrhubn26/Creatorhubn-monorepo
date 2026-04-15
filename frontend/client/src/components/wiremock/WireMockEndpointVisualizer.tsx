@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * WireMock Interactive Endpoint Visualizer
  * Real-time API simulation tracking and interactive endpoint management

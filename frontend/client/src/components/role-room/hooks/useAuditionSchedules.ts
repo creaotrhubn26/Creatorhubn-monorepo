@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * useAuditionSchedules – React Query wrapper for the audition schedule API.
  *

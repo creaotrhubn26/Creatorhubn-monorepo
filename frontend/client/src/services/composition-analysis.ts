@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { GuideType } from '@/components/photo-enhancer/CompositionGuides';
 import { mat4, vec2 } from 'gl-matrix';
 

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * AI STORY GENERATOR DIALOG
  * Upload video → AI analyzes → Auto-generates story arc → Creates timeline

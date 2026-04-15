@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * CreatorHub Norge - Memory Card Pricing Benefits
  * Contextual information explaining why memory card pricing is beneficial

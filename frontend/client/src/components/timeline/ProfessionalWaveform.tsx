@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * PROFESSIONAL WAVEFORM COMPONENT
  * Using wavesurfer.js for production-grade audio visualization

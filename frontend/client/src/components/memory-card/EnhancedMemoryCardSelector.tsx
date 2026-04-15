@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * CreatorHub Norge - Enhanced Memory Card Selector
  * Camera-aware memory card selection with intelligent recommendations

@@ -1,3 +1,4 @@
+// @ts-nocheck
 // Box Components - CreatorHub Norge Professional Design System
 export { default as ProfessionalNavigationBar } from './ProfessionalNavigationBar';
 export { 

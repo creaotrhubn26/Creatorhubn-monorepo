@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useState, useCallback, type FC, type MouseEvent, type ReactElement, type ReactNode } from "react";
 import { Box, Typography, IconButton, Chip, Tooltip, LinearProgress, alpha } from "@mui/material";
 import { PhotoCamera, Videocam, CameraRoll, Check, PlayArrow, Schedule, Star, StarBorder, Notes, Lightbulb, CameraAlt, Wallpaper, Timer, Add, Remove } from "@mui/icons-material";

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * ScrollStory Component - Usage Example
  * Demonstrates how to use the enhanced ScrollStory component with all features

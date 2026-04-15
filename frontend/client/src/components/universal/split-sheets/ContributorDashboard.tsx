@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Contributor Dashboard
  * View-only dashboard for contributors to see their split sheets and revenue

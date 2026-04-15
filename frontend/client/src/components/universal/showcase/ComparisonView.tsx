@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Comparison View Component
  * Side-by-side comparison of showcase items

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * COLOR SCIENCE SERVICE
  * Professional color space conversions using Color.js

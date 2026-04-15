@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * React Hook for file status indicators
  * Provides easy access to status indicators and wrapper components

@@ -1863,111 +1863,112 @@ export default function AdminDashboard({
 
   if (!isMobile) {
     return (
-      <Box
-        sx={{
-          minHeight: '100vh',
-          bgcolor: '#f4f1ec',
-          px: { md: 2.5, xl: 4 },
-          py: { md: 2.5, xl: 4 },
-        }}
-      >
+      <>
         <Box
           sx={{
-            maxWidth: '1480px',
-            mx: 'auto',
-            minHeight: 'calc(100vh - 40px)',
-            display: 'grid',
-            gridTemplateColumns: '260px minmax(0, 1fr)',
-            bgcolor: '#ffffff',
-            borderRadius: '28px',
-            border: '1px solid #ebe3d8',
-            boxShadow: '0 24px 80px rgba(27, 21, 12, 0.08)',
-            overflow: 'hidden',
+            minHeight: '100vh',
+            bgcolor: '#f4f1ec',
+            px: { md: 2.5, xl: 4 },
+            py: { md: 2.5, xl: 4 },
           }}
         >
           <Box
             sx={{
-              display: 'flex',
-              flexDirection: 'column',
-              bgcolor: '#faf8f4',
-              borderRight: '1px solid #eee6db',
-              p: 2.5,
-              minHeight: 0,
+              maxWidth: '1480px',
+              mx: 'auto',
+              minHeight: 'calc(100vh - 40px)',
+              display: 'grid',
+              gridTemplateColumns: '260px minmax(0, 1fr)',
+              bgcolor: '#ffffff',
+              borderRadius: '28px',
+              border: '1px solid #ebe3d8',
+              boxShadow: '0 24px 80px rgba(27, 21, 12, 0.08)',
+              overflow: 'hidden',
             }}
           >
             <Box
               sx={{
                 display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 1,
+                flexDirection: 'column',
+                bgcolor: '#faf8f4',
+                borderRight: '1px solid #eee6db',
+                p: 2.5,
+                minHeight: 0,
               }}
             >
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
-                <Box
-                  sx={{
-                    width: 34,
-                    height: 34,
-                    borderRadius: '12px',
-                    bgcolor: '#181512',
-                    display: 'grid',
-                    placeItems: 'center',
-                    overflow: 'hidden',
-                  }}
-                >
-                  <img
-                    src="/creatorhub-icon.png"
-                    alt="CreatorHub"
-                    style={{ width: 22, height: 22, objectFit: 'contain' }}
-                  />
-                </Box>
-                <Box>
-                  <Typography sx={{ fontSize: '0.95rem', fontWeight: 700, color: '#1a1713' }}>
-                    CreatorHub
-                  </Typography>
-                  <Typography sx={{ fontSize: '0.72rem', color: '#8b8378' }}>
-                    Admin workspace
-                  </Typography>
-                </Box>
-              </Box>
-              <Typography sx={{ fontSize: '0.72rem', color: '#8b8378', fontWeight: 600 }}>
-                v4.0
-              </Typography>
-            </Box>
-
-            <Box sx={{ mt: 3, mb: 2 }}>
-              <TextField
-                fullWidth
-                size="small"
-                placeholder="Finn adminområde"
-                value={adminNavQuery}
-                onChange={(event) => setAdminNavQuery(event.target.value)}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <Search sx={{ fontSize: 18, color: '#9a9185' }} />
-                    </InputAdornment>
-                  ),
-                }}
+              <Box
                 sx={{
-                  '& .MuiOutlinedInput-root': {
-                    borderRadius: '14px',
-                    bgcolor: '#ffffff',
-                    '& fieldset': {
-                      borderColor: '#e6dccd',
-                    },
-                  },
-                  '& .MuiInputBase-input': {
-                    fontSize: '0.88rem',
-                  },
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 1,
                 }}
-              />
-              <Typography sx={{ mt: 0.75, px: 0.5, fontSize: '0.72rem', color: '#9a9185' }}>
-                {normalizedAdminNavQuery
-                  ? `${visibleAdminTabCount} treff i adminen`
-                  : `${adminTabs.length} adminflater tilgjengelig`}
-              </Typography>
-            </Box>
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+                  <Box
+                    sx={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: '12px',
+                      bgcolor: '#181512',
+                      display: 'grid',
+                      placeItems: 'center',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <img
+                      src="/creatorhub-icon.png"
+                      alt="CreatorHub"
+                      style={{ width: 22, height: 22, objectFit: 'contain' }}
+                    />
+                  </Box>
+                  <Box>
+                    <Typography sx={{ fontSize: '0.95rem', fontWeight: 700, color: '#1a1713' }}>
+                      CreatorHub
+                    </Typography>
+                    <Typography sx={{ fontSize: '0.72rem', color: '#8b8378' }}>
+                      Admin workspace
+                    </Typography>
+                  </Box>
+                </Box>
+                <Typography sx={{ fontSize: '0.72rem', color: '#8b8378', fontWeight: 600 }}>
+                  v4.0
+                </Typography>
+              </Box>
+
+              <Box sx={{ mt: 3, mb: 2 }}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  placeholder="Finn adminområde"
+                  value={adminNavQuery}
+                  onChange={(event) => setAdminNavQuery(event.target.value)}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <Search sx={{ fontSize: 18, color: '#9a9185' }} />
+                      </InputAdornment>
+                    ),
+                  }}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: '14px',
+                      bgcolor: '#ffffff',
+                      '& fieldset': {
+                        borderColor: '#e6dccd',
+                      },
+                    },
+                    '& .MuiInputBase-input': {
+                      fontSize: '0.88rem',
+                    },
+                  }}
+                />
+                <Typography sx={{ mt: 0.75, px: 0.5, fontSize: '0.72rem', color: '#9a9185' }}>
+                  {normalizedAdminNavQuery
+                    ? `${visibleAdminTabCount} treff i adminen`
+                    : `${adminTabs.length} adminflater tilgjengelig`}
+                </Typography>
+              </Box>
 
             <Box sx={{ mt: 1.5, flex: 1, overflowY: 'auto', pr: 0.5 }}>
               {filteredAdminShellGroups.map((group) => (
@@ -2092,6 +2093,7 @@ export default function AdminDashboard({
               <Button
                 fullWidth
                 onClick={() => setFullscreenChatOpen(true)}
+                onPointerDown={() => setFullscreenChatOpen(true)}
                 startIcon={<Chat sx={{ fontSize: 18 }} />}
                 sx={{
                   justifyContent: 'flex-start',
@@ -2248,7 +2250,15 @@ export default function AdminDashboard({
             </Box>
           </Box>
         </Box>
-      </Box>
+        </Box>
+        <CommunicationStatusProvider>
+          <FullscreenChatWidget
+            open={fullscreenChatOpen}
+            onClose={() => setFullscreenChatOpen(false)}
+            profession="admin"
+          />
+        </CommunicationStatusProvider>
+      </>
     );
   }
 
@@ -2436,6 +2446,7 @@ export default function AdminDashboard({
       {/* Floating Chat Button */}
       <Tooltip title="Admin Support Chat">
         <Fab
+          aria-label="Admin Support Chat"
           size={isMobile ? 'medium' : 'large'}
           sx={{
             position: 'fixed',
@@ -2448,6 +2459,7 @@ export default function AdminDashboard({
             zIndex: 1000,
             boxShadow: '0 4px 20px rgba(255, 140, 0, 0.3)',
           }}
+          onPointerDown={() => setFullscreenChatOpen(true)}
           onClick={() => setFullscreenChatOpen(true)}
         >
           <Chat />

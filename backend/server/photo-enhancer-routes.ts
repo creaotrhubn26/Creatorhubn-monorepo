@@ -9,6 +9,7 @@ import { fileURLToPath } from "url";
 import { execFile, spawn } from "child_process";
 import { promisify } from "util";
 import { Readable, Transform } from "stream";
+import { ReadableStream as NodeReadableStream } from "stream/web";
 import { pipeline } from "stream/promises";
 import {
   AbortMultipartUploadCommand,
@@ -1234,7 +1235,7 @@ function makeMulterMemoryFile(params: {
 function r2BodyToReadable(body: unknown): Readable {
   if (body instanceof Readable) return body;
   if (body && typeof (body as { transformToWebStream?: unknown }).transformToWebStream === "function") {
-    return Readable.fromWeb((body as { transformToWebStream: () => ReadableStream }).transformToWebStream());
+    return Readable.fromWeb((body as { transformToWebStream: () => NodeReadableStream<Uint8Array> }).transformToWebStream());
   }
   if (body && typeof (body as AsyncIterable<unknown>)[Symbol.asyncIterator] === "function") {
     return Readable.from(body as AsyncIterable<unknown>);
@@ -4498,6 +4499,10 @@ export function createPhotoEnhancerRouter() {
               };
 
       if (!analysisResult.ok) {
+        const analysisReason =
+          "reason" in analysisResult && typeof analysisResult.reason === "string"
+            ? analysisResult.reason
+            : null;
         trackPhotoEnhancerEvent({
           route: "analyze",
           success: false,
@@ -4509,12 +4514,12 @@ export function createPhotoEnhancerRouter() {
           rawConverter: null,
           preset,
           processingMs: Date.now() - startedAt,
-          error: analysisResult.reason || analysisResult.error,
+          error: analysisReason || analysisResult.error,
         });
         return res.status(analysisResult.status).json({
           success: false,
           error: analysisResult.error,
-          reason: analysisResult.reason,
+          reason: analysisReason,
           source: sourcePayload,
         });
       }
@@ -4527,7 +4532,12 @@ export function createPhotoEnhancerRouter() {
         sourceExtension: getUploadExtension({ originalname: fileName }),
         sourceMimeType: source.mimeType,
         raw: Boolean(analysisResult.prepared.raw.raw),
-        heic: Boolean(analysisResult.prepared.raw.heic),
+        heic:
+          analysisResult.prepared.raw &&
+          typeof analysisResult.prepared.raw === "object" &&
+          "heic" in analysisResult.prepared.raw
+            ? Boolean(analysisResult.prepared.raw.heic)
+            : false,
         rawConverter: readString(analysisResult.prepared.raw.converter),
         preset,
         modelUsed: null,

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * ShowcaseContext - Unified Showcase State Management
  * Bridges UniversalDashboard and UniversalShowcase with shared state

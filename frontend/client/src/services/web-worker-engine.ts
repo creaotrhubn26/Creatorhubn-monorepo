@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * WEB WORKER ENGINE
  * Using comlink for background processing

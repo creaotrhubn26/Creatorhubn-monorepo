@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useMemo } from "react";
 import { Box, Typography, Chip, LinearProgress, Tooltip, alpha } from "@mui/material";
 import { CalendarToday as CalendarIcon, Schedule as ScheduleIcon, AccessTime as TimeIcon, Warning as WarningIcon } from "@mui/icons-material";

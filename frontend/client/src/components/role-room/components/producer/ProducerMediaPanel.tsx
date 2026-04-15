@@ -168,6 +168,7 @@ import {
 import { buildClientPortalUrl, type ClientPortalWorkspaceFocus } from '../../utils/clientPortal';
 import type { StoryArcNavigationFocus } from '../../utils/storyArcFocus';
 import { shouldUseRoleRoomLocalFallback } from '../../utils/runtime';
+import { logRoleRoomDiagnostic } from '../../utils/roleRoomDiagnostics';
 import ProducerGoogleWorkspacePanel from './ProducerGoogleWorkspacePanel';
 import ProducerMeetingWorkspace from './ProducerMeetingWorkspace';
 import RoleRoomAgentDialog from './RoleRoomAgentDialog';
@@ -745,6 +746,34 @@ const getWorkspaceSurfaceDescription = (
 };
 
 const hasText = (value: string | null | undefined): value is string => typeof value === 'string' && value.trim().length > 0;
+const CLIENT_WORKSPACE_LOAD_TIMEOUT_MS = 12_000;
+
+function withClientWorkspaceTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+
+  return Promise.race([
+    promise,
+    new Promise<T>((_resolve, reject) => {
+      timeout = setTimeout(() => {
+        reject(new Error(`${label} tok for lang tid å laste.`));
+      }, CLIENT_WORKSPACE_LOAD_TIMEOUT_MS);
+    }),
+  ]).finally(() => {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  });
+}
+
+function isRoleRoomSessionFailure(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return /session|sesjon|logg inn|x-api-key|unauthorized|forbidden/i.test(message);
+}
+
+interface ClientWorkspaceLoadOptions {
+  foreground?: boolean;
+  syncManagedWorkflows?: boolean;
+}
 
 const isBrandPreviewFormat = (value: unknown): value is BrandPreviewFormat => (
   value === '16:9' || value === '4:5' || value === '9:16' || value === '1:1'
@@ -1926,11 +1955,20 @@ export default function ProducerMediaPanel({
   const materialFileInputRef = useRef<HTMLInputElement | null>(null);
   const materialCameraInputRef = useRef<HTMLInputElement | null>(null);
   const linkedInAccessRequestRef = useRef(0);
+  const clientWorkspaceLoadRequestRef = useRef(0);
+  const clientWorkspaceRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const managedWorkflowSyncProjectRef = useRef<string | null>(null);
+  const latestProjectRef = useRef(project);
   const savedIntakeSnapshotRef = useRef<string>(JSON.stringify(EMPTY_INTAKE));
   const savedPlanningSnapshotRef = useRef<string>('');
   const mobileWorkspaceDraftHydratedRef = useRef(false);
+  const appliedInitialWorkspaceFocusKeyRef = useRef<string>('');
 
   const canEditClientInput = canContributeClientInput && !readOnly;
+
+  useEffect(() => {
+    latestProjectRef.current = project;
+  }, [project]);
   const sessionRoleForVault = useMemo(
     () => String(roleRoomSession.adminUser?.role || '').trim().toLowerCase(),
     [roleRoomSession.adminUser?.role],
@@ -2102,7 +2140,7 @@ export default function ProducerMediaPanel({
     [manuscripts],
   );
   const totalShotCount = useMemo(
-    () => shotLists.reduce((total, shotList) => total + shotList.shots.length, 0),
+    () => shotLists.reduce((total, shotList) => total + (Array.isArray(shotList.shots) ? shotList.shots.length : 0), 0),
     [shotLists],
   );
   const uncoveredStoryboardSceneCount = useMemo(() => {
@@ -2113,12 +2151,12 @@ export default function ProducerMediaPanel({
     ))).length;
   }, [shotLists, storyboardScenes]);
   const shotListRows = useMemo(() => {
-    const roleNameById = new Map(project.roles.map((role) => [role.id, role.name]));
-    const locationNameById = new Map(project.locations.map((location) => [location.id, location.name]));
+    const roleNameById = new Map((Array.isArray(project.roles) ? project.roles : []).map((role) => [role.id, role.name]));
+    const locationNameById = new Map((Array.isArray(project.locations) ? project.locations : []).map((location) => [location.id, location.name]));
     const sceneById = new Map(storyboardScenes.map((scene) => [scene.id, scene]));
 
     return shotLists.flatMap((shotList) => (
-      shotList.shots.map((shot, index) => {
+      (Array.isArray(shotList.shots) ? shotList.shots : []).map((shot, index) => {
         const linkedScene = shot.sceneId ? sceneById.get(shot.sceneId) : null;
         const planLabel = typeof shot.estimatedTime === 'number' && shot.estimatedTime > 0
           ? `${shot.estimatedTime} min`
@@ -2219,6 +2257,10 @@ export default function ProducerMediaPanel({
 
   useEffect(() => {
     const normalizedPlanning = normalizeProducerProjectPlanning(project);
+    const nextPlanningSnapshot = serializePlanningSnapshot(normalizedPlanning);
+    if (savedPlanningSnapshotRef.current === nextPlanningSnapshot) {
+      return;
+    }
     setPlanningDraft(normalizedPlanning);
     setBrandFontsDraft(stringifyLineSeparatedValues(normalizedPlanning.brandGuide.fonts));
     setBrandColorsDraft(stringifyBrandColors(normalizedPlanning.brandGuide.colors));
@@ -2250,21 +2292,29 @@ export default function ProducerMediaPanel({
         : '';
     setActiveSectionId(nextSectionId);
     setActivePageId(nextPageId);
-    savedPlanningSnapshotRef.current = serializePlanningSnapshot(normalizedPlanning);
+    savedPlanningSnapshotRef.current = nextPlanningSnapshot;
   }, [project, serializePlanningSnapshot]);
 
-  const loadClientWorkspace = useCallback(async () => {
-    setLoading(true);
+  const loadClientWorkspace = useCallback(async (options: ClientWorkspaceLoadOptions = {}) => {
+    const { foreground = true, syncManagedWorkflows = foreground } = options;
+    const requestId = ++clientWorkspaceLoadRequestRef.current;
+    const isStaleRequest = () => requestId !== clientWorkspaceLoadRequestRef.current;
+
+    if (foreground) {
+      setLoading(true);
+    }
     setError(null);
     try {
-      const [nextIntake, nextMaterials, nextReviews, nextTimelineItems] = await Promise.allSettled([
-        producerWorkflowService.getClientIntake(projectId),
-        producerWorkflowService.getClientMaterials(projectId),
-        producerWorkflowService.getReviews(projectId),
-        producerWorkflowService.getTimeline(projectId),
+      const [nextIntake, nextMaterials] = await Promise.allSettled([
+        withClientWorkspaceTimeout(producerWorkflowService.getClientIntake(projectId), 'Klientbrief'),
+        withClientWorkspaceTimeout(producerWorkflowService.getClientMaterials(projectId), 'Klientmateriale'),
       ]);
 
-      const clientInputFailures: Array<'intake' | 'materials'> = [];
+      if (isStaleRequest()) {
+        return;
+      }
+
+      const clientInputFailures: unknown[] = [];
 
       if (nextIntake.status === 'fulfilled') {
         const nextDraft = {
@@ -2274,68 +2324,106 @@ export default function ProducerMediaPanel({
         setIntakeDraft(nextDraft);
         savedIntakeSnapshotRef.current = serializeIntakeSnapshot(nextDraft);
       } else {
-        console.error('[ProducerMediaPanel] Failed to load client intake', nextIntake.reason);
-        clientInputFailures.push('intake');
+        clientInputFailures.push(nextIntake.reason);
       }
 
       if (nextMaterials.status === 'fulfilled') {
         setMaterials(nextMaterials.value);
       } else {
-        console.error('[ProducerMediaPanel] Failed to load client materials', nextMaterials.reason);
-        clientInputFailures.push('materials');
+        clientInputFailures.push(nextMaterials.reason);
+      }
+
+      if (clientInputFailures.some(isRoleRoomSessionFailure)) {
+        setError('Role Room-sesjonen mangler eller har utløpt. Logg inn på nytt.');
+        if (foreground) {
+          setLoading(false);
+        }
+        return;
+      }
+
+      if (clientInputFailures.length > 0) {
+        if (foreground) {
+          setLoading(false);
+        }
+        return;
+      }
+
+      if (foreground) {
+        setLoading(false);
+      }
+
+      const [nextReviews, nextTimelineItems] = await Promise.allSettled([
+        withClientWorkspaceTimeout(producerWorkflowService.getReviews(projectId), 'Godkjenninger'),
+        withClientWorkspaceTimeout(producerWorkflowService.getTimeline(projectId), 'Tidslinje'),
+      ]);
+
+      if (isStaleRequest()) {
+        return;
       }
 
       if (nextReviews.status === 'fulfilled') {
         setReviews(nextReviews.value);
-      } else {
-        console.warn('[ProducerMediaPanel] Failed to load reviews', nextReviews.reason);
-        setReviews([]);
       }
 
       if (nextTimelineItems.status === 'fulfilled') {
         setTimelineItems(nextTimelineItems.value);
-      } else {
-        console.warn('[ProducerMediaPanel] Failed to load timeline items', nextTimelineItems.reason);
-        setTimelineItems([]);
       }
 
-      if (clientInputFailures.length === 2) {
-        setError('Kunne ikke hente klientbrief og materiale.');
-      } else if (clientInputFailures[0] === 'intake') {
-        setError('Kunne ikke hente klientbrief.');
-      } else if (clientInputFailures[0] === 'materials') {
-        setError('Kunne ikke hente klientmateriale.');
+      if (!syncManagedWorkflows || managedWorkflowSyncProjectRef.current === projectId) {
+        return;
       }
+
+      managedWorkflowSyncProjectRef.current = projectId;
 
       await Promise.allSettled([
-        producerWorkflowService.ensureClientGroundingTimeline(projectId),
-        producerWorkflowService.ensureClientGroundingReviews(projectId),
+        withClientWorkspaceTimeout(producerWorkflowService.ensureClientGroundingTimeline(projectId), 'Klientgrunnlag tidslinje'),
+        withClientWorkspaceTimeout(producerWorkflowService.ensureClientGroundingReviews(projectId), 'Klientgrunnlag godkjenninger'),
       ]);
 
+      if (isStaleRequest()) {
+        return;
+      }
+
       const meetingWorkflowResult = await Promise.allSettled([
-        producerWorkflowService.ensureMeetingWorkspaceWorkflow(
-          projectId,
-          normalizeProducerProjectPlanning(project),
+        withClientWorkspaceTimeout(
+          producerWorkflowService.ensureMeetingWorkspaceWorkflow(
+            projectId,
+            normalizeProducerProjectPlanning(latestProjectRef.current),
+          ),
+          'Møteworkspace',
         ),
       ]);
+
+      if (isStaleRequest()) {
+        return;
+      }
 
       const meetingWorkflow = meetingWorkflowResult[0];
       if (meetingWorkflow.status === 'fulfilled') {
         setReviews(meetingWorkflow.value.reviews);
         setTimelineItems(meetingWorkflow.value.timelineItems);
-      } else {
-        console.warn('[ProducerMediaPanel] Failed to ensure meeting workflow', meetingWorkflow.reason);
       }
     } catch (loadError) {
-      console.error('[ProducerMediaPanel] Failed to load client workspace', loadError);
-      setError('Kunne ikke hente klientbrief og materiale.');
+      if (!isStaleRequest() && isRoleRoomSessionFailure(loadError)) {
+        setError('Role Room-sesjonen mangler eller har utløpt. Logg inn på nytt.');
+      }
     } finally {
-      setLoading(false);
+      if (foreground && !isStaleRequest()) {
+        setLoading(false);
+      }
     }
-  }, [project, projectId, serializeIntakeSnapshot]);
+  }, [projectId, serializeIntakeSnapshot]);
 
   useEffect(() => {
-    void loadClientWorkspace();
+    void loadClientWorkspace({ foreground: true, syncManagedWorkflows: true });
+    return () => {
+      clientWorkspaceLoadRequestRef.current += 1;
+      if (clientWorkspaceRefreshTimerRef.current) {
+        clearTimeout(clientWorkspaceRefreshTimerRef.current);
+        clientWorkspaceRefreshTimerRef.current = null;
+      }
+      setLoading(false);
+    };
   }, [loadClientWorkspace]);
 
   useEffect(() => {
@@ -2506,6 +2594,22 @@ export default function ProducerMediaPanel({
   }, [initialArtifactId]);
 
   useEffect(() => {
+    const requestedFocusKey = JSON.stringify([
+      projectId,
+      initialSectionId ?? '',
+      initialPageId ?? '',
+      initialWorkspace ?? '',
+    ]);
+
+    if (!initialSectionId && !initialPageId && !initialWorkspace) {
+      appliedInitialWorkspaceFocusKeyRef.current = '';
+      return;
+    }
+
+    if (appliedInitialWorkspaceFocusKeyRef.current === requestedFocusKey) {
+      return;
+    }
+
     if (initialSectionId || initialPageId) {
       const matchingSection = initialSectionId
         ? workspaceSections.find((section) => section.id === initialSectionId)
@@ -2514,6 +2618,7 @@ export default function ProducerMediaPanel({
         const matchingPage = initialPageId
           ? flattenProducerWorkspacePages(matchingSection).find((page) => page.id === initialPageId)
           : flattenProducerWorkspacePages(matchingSection)[0];
+        appliedInitialWorkspaceFocusKeyRef.current = requestedFocusKey;
         setActiveSectionId(matchingSection.id);
         setActivePageId(matchingPage?.id ?? '');
         return;
@@ -2528,11 +2633,12 @@ export default function ProducerMediaPanel({
       return;
     }
     const pageForWorkspace = flattenProducerWorkspacePages(sectionWithWorkspace).find((page) => page.surface === initialWorkspace);
+    appliedInitialWorkspaceFocusKeyRef.current = requestedFocusKey;
     setActiveSectionId(sectionWithWorkspace.id);
     if (pageForWorkspace) {
       setActivePageId(pageForWorkspace.id);
     }
-  }, [initialPageId, initialSectionId, initialWorkspace, workspaceSections]);
+  }, [initialPageId, initialSectionId, initialWorkspace, projectId, workspaceSections]);
 
   useEffect(() => {
     if (!isClientPortalView || typeof window === 'undefined' || !activeSection || !activePage) {
@@ -2594,7 +2700,10 @@ export default function ProducerMediaPanel({
         googleArtifacts: googleStatus?.artifacts ?? [],
       });
     } catch (loadError) {
-      console.warn('[ProducerMediaPanel] Failed to load delivery workspace assets', loadError);
+      logRoleRoomDiagnostic('delivery-workspace-assets:load-failed', {
+        projectId,
+        message: loadError instanceof Error ? loadError.message : String(loadError),
+      });
     }
   }, [getProjectFiles, projectId, readLocalAgreements, useLocalAgreementFallback]);
 
@@ -2605,12 +2714,28 @@ export default function ProducerMediaPanel({
       setAccessVaultState(nextVault);
       setAccessVaultError(null);
     } catch (vaultError) {
-      console.error('[ProducerMediaPanel] Failed to load Client Access Vault', vaultError);
+      logRoleRoomDiagnostic('access-vault:load-failed', {
+        projectId,
+        message: vaultError instanceof Error ? vaultError.message : String(vaultError),
+      });
       setAccessVaultError(vaultError instanceof Error ? vaultError.message : 'Kunne ikke hente Client Access Vault.');
     } finally {
       setLoadingAccessVault(false);
     }
   }, [projectId]);
+
+  const scheduleBackgroundWorkspaceRefresh = useCallback(() => {
+    if (clientWorkspaceRefreshTimerRef.current) {
+      clearTimeout(clientWorkspaceRefreshTimerRef.current);
+    }
+
+    clientWorkspaceRefreshTimerRef.current = setTimeout(() => {
+      clientWorkspaceRefreshTimerRef.current = null;
+      void loadClientWorkspace({ foreground: false, syncManagedWorkflows: false });
+      void loadDeliveryWorkspaceAssets();
+      void loadAccessVault();
+    }, 450);
+  }, [loadAccessVault, loadClientWorkspace, loadDeliveryWorkspaceAssets]);
 
   const updateAccessVaultDraft = useCallback((
     platform: ProducerAccountAccessPlatform,
@@ -2712,11 +2837,9 @@ export default function ProducerMediaPanel({
       if (payload.projectId !== projectId || payload.domain !== 'project') {
         return;
       }
-      void loadClientWorkspace();
-      void loadDeliveryWorkspaceAssets();
-      void loadAccessVault();
+      scheduleBackgroundWorkspaceRefresh();
     });
-  }, [loadAccessVault, loadClientWorkspace, loadDeliveryWorkspaceAssets, projectId]);
+  }, [projectId, scheduleBackgroundWorkspaceRefresh]);
 
   useEffect(() => onProjectAgreementEvent((payload) => {
     if (payload.projectId !== projectId) {

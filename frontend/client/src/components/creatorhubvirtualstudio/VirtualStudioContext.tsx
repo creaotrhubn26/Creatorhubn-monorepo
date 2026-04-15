@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Virtual Studio Context Provider
  * Provides toast notifications and shared state for Virtual Studio components

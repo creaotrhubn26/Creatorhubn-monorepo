@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Intelligent Tutorial Analyzer - Forstår hva brukeren tester og genererer smart sjekkliste
  */

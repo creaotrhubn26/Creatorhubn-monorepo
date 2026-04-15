@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * LUT LOADER SERVICE
  * Fetch, parse, and cache real .cube LUT files

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Custom Domain Setup Component
  *

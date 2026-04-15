@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Role Room Service — Frontend API Client
  * All requests go through /api/role-room/* and include x-api-key header

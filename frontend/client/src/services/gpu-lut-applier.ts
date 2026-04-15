@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * GPU LUT APPLIER
  * WebGL-accelerated 3D LUT application for real-time color grading

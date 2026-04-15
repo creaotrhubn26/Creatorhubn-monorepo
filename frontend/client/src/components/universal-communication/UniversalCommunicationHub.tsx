@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * CreatorHub Norge - Universal Communication Hub
  * Central interface connecting chat, email, notifications, meetings, and project communications

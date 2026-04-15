@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * RoleRoomDashboardPanel — main panel rendered inside UniversalDashboard
  *

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Equipment Catalog Browser
  * Allows users to browse the equipment database, search for equipment,

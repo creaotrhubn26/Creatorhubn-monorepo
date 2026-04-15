@@ -1,15 +1,29 @@
 import { expect, test } from '@playwright/test';
 
 const CREATORHUB_ORIGIN = 'http://localhost:5001';
-const AUTH_TOKEN = 'academy-user-center-token';
+const ACADEMY_HEADER_ROUTE = `${CREATORHUB_ORIGIN}/academy-dashboard`;
+const ACADEMY_HEADER_TIMEOUT = 40_000;
+const AUTH_TOKEN = 'dev-admin-local-session';
 const AUTH_USER = {
-  id: 'academy-user-center',
-  email: 'student@creatorhubn.com',
-  firstName: 'Ada',
-  lastName: 'Creator',
-  name: 'Ada Creator',
-  role: 'student',
-  isAdmin: false,
+  id: 'local-admin',
+  email: 'admin@local.dev',
+  firstName: 'Local',
+  lastName: 'Admin',
+  name: 'Local Admin',
+  displayName: 'Local Admin',
+  role: 'admin',
+  roleLabel: 'Admin',
+  profession: 'photographer',
+  userType: 'photographer',
+  permissions: [
+    'users:read',
+    'users:write',
+    'roles:write',
+    'academy:admin',
+    'billing:admin',
+    'impersonate',
+  ],
+  isAdmin: true,
   verified_email: true,
 };
 
@@ -52,13 +66,13 @@ test.beforeEach(async ({ page }) => {
 test('academy header actions open real notifications, messages, and profile panels', async ({
   page,
 }) => {
-  await page.goto(`${CREATORHUB_ORIGIN}/academy`, {
+  await page.goto(ACADEMY_HEADER_ROUTE, {
     waitUntil: 'domcontentloaded',
   });
 
   await expect(
     page.getByRole('button', { name: /^(Varsler|Notifications)$/ }),
-  ).toBeVisible();
+  ).toBeVisible({ timeout: ACADEMY_HEADER_TIMEOUT });
 
   await Promise.all([
     page.waitForURL(/\/academy\/settings\?tab=notifications/),
@@ -66,13 +80,13 @@ test('academy header actions open real notifications, messages, and profile pane
   ]);
 
   await expect(
-    page.getByRole('heading', { name: /^(Varslingssenter|Notification Center)$/ }),
-  ).toBeVisible();
+    page.getByRole('heading', { name: /^(Varslingssenter|Notification Center)$/ }).first(),
+  ).toBeVisible({ timeout: ACADEMY_HEADER_TIMEOUT });
   await expect(
     page.getByRole('button', { name: /^(Marker alle som lest|Mark all as read)$/ }),
-  ).toBeVisible();
+  ).toBeVisible({ timeout: ACADEMY_HEADER_TIMEOUT });
 
-  await page.goto(`${CREATORHUB_ORIGIN}/academy`, {
+  await page.goto(ACADEMY_HEADER_ROUTE, {
     waitUntil: 'domcontentloaded',
   });
 
@@ -82,10 +96,10 @@ test('academy header actions open real notifications, messages, and profile pane
   ]);
 
   await expect(
-    page.getByRole('heading', { name: /^(Meldingssenter|Message Center)$/ }),
-  ).toBeVisible();
+    page.getByRole('heading', { name: /^(Meldingssenter|Message Center)$/ }).first(),
+  ).toBeVisible({ timeout: ACADEMY_HEADER_TIMEOUT });
 
-  await page.goto(`${CREATORHUB_ORIGIN}/academy`, {
+  await page.goto(ACADEMY_HEADER_ROUTE, {
     waitUntil: 'domcontentloaded',
   });
 
@@ -95,9 +109,9 @@ test('academy header actions open real notifications, messages, and profile pane
   ]);
 
   await expect(
-    page.getByRole('heading', { name: /^(Brukerinnstillinger|User Settings)$/ }),
-  ).toBeVisible();
+    page.getByRole('heading', { name: /^(Brukerinnstillinger|User Settings)$/ }).first(),
+  ).toBeVisible({ timeout: ACADEMY_HEADER_TIMEOUT });
   await expect(
     page.getByRole('button', { name: /^(Logg ut|Log out)$/ }),
-  ).toBeVisible();
+  ).toBeVisible({ timeout: ACADEMY_HEADER_TIMEOUT });
 });

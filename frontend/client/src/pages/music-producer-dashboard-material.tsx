@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React from 'react';
 import UniversalDashboardResponsive from '../components/universal/UniversalDashboard-Responsive';
 

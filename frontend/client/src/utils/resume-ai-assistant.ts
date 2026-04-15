@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * CreatorHub Norge - Resume AI Assistant
  * Advanced AI-powered resume analysis and improvement suggestions

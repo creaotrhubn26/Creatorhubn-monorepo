@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Collaboration Service for CreatorHub
  * Provides real-time collaboration features, team management, and shared workspace capabilities

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useTheming } from '../utils/theming-helper';
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import {

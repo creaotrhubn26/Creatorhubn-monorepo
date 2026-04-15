@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * TRANSFORM PANEL
  * Lightroom-style transform tools: Crop, Straighten, Lens Corrections

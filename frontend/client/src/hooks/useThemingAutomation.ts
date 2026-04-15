@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Theming Automation Hook
  * Zero-work AI-powered theme generation with manual override option

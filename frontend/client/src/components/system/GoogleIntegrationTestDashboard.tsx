@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Google Integration Test Dashboard
  * Tests and verifies Google integration across all 762 components

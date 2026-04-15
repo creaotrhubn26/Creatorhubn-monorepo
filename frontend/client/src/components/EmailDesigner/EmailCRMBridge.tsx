@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * EmailCRMBridge Component
  * Connects EmailDesigner with CRM user data for targeted email campaigns

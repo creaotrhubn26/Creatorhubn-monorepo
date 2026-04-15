@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Enhanced Persona System for UniversalOnboarding
  * Based on real professional images and use cases

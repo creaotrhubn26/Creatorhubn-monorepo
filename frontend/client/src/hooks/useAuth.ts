@@ -56,6 +56,19 @@ const DEFAULT_DEV_USER: User = {
   displayName: 'Local Admin',
 };
 
+function dispatchAuthChanged() {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const notify = () => window.dispatchEvent(new Event('auth-changed'));
+  if (typeof window.queueMicrotask === 'function') {
+    window.queueMicrotask(notify);
+    return;
+  }
+  window.setTimeout(notify, 0);
+}
+
 function buildDevFallbackUser(storedUser?: User | null): User | null {
   if (!isDev) {
     return null;
@@ -90,7 +103,7 @@ function storeAuth(token: string, user: User) {
     localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
     localStorage.setItem(USER_ID_KEY, user.id);
     localStorage.setItem(USER_EMAIL_KEY, user.email);
-    window.dispatchEvent(new Event('auth-changed'));
+    dispatchAuthChanged();
   } catch { /* ignore */ }
 }
 
@@ -99,7 +112,7 @@ function storeUserIdentity(user: User) {
     localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
     localStorage.setItem(USER_ID_KEY, user.id);
     localStorage.setItem(USER_EMAIL_KEY, user.email);
-    window.dispatchEvent(new Event('auth-changed'));
+    dispatchAuthChanged();
   } catch { /* ignore */ }
 }
 
@@ -109,7 +122,7 @@ function clearStoredAuth() {
     localStorage.removeItem(AUTH_USER_KEY);
     localStorage.removeItem(USER_ID_KEY);
     localStorage.removeItem(USER_EMAIL_KEY);
-    window.dispatchEvent(new Event('auth-changed'));
+    dispatchAuthChanged();
   } catch { /* ignore */ }
 }
 

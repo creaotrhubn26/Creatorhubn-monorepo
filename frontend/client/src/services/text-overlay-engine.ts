@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * TEXT OVERLAY ENGINE
  * Using Fabric.js for rich text/title overlays

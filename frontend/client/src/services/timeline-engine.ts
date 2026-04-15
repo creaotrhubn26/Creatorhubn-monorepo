@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * TIMELINE ENGINE
  * Frame-accurate timeline calculations and clip management

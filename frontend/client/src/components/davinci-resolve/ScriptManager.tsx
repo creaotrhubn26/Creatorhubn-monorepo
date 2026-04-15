@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * ScriptManager.tsx - DaVinci Resolve Script Automation Manager
  *

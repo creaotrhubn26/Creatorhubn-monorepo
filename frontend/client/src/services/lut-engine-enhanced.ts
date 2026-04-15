@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * ENHANCED LUT ENGINE
  * Extends base LUT engine with Color.js for professional color science

@@ -60,6 +60,7 @@ import {
   FiberManualRecord as LiveIcon,
   FileCopy as FileCopyIcon,
   FileDownload as ExportIcon,
+  FactCheck as CoverageIcon,
   FormatQuote as QuoteIcon,
   Fullscreen as FullscreenIcon,
   GridView as GridViewIcon,
@@ -109,6 +110,7 @@ import {
 import {
   SortableContext,
   arrayMove,
+  horizontalListSortingStrategy,
   sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
@@ -129,6 +131,10 @@ import type {
 import type { StoryLogicState } from "../services/storyLogicService";
 
 import { castingService } from "../services/castingService";
+import {
+  CoverageReviewConflictError,
+  coverageReviewService,
+} from "../services/coverageReviewService";
 import { manuscriptService } from "../services/manuscriptService";
 import {
   TTS_LANGUAGES,
@@ -249,13 +255,20 @@ import { useSceneTemplates } from "./production/manuscript/useSceneTemplates";
 import { useShotLists } from "./production/manuscript/useShotLists";
 import { useShotPresets } from "./production/manuscript/useShotPresets";
 import { useStoryboardShotLinks } from "./production/manuscript/useStoryboardShotLinks";
-import { useTimelinePlayback } from "./production/manuscript/useTimelinePlayback";
+import { TIMELINE_ZOOM_PRESETS, useTimelinePlayback } from "./production/manuscript/useTimelinePlayback";
 import { useTtsReadThrough } from "./production/manuscript/useTtsReadThrough";
 import { SceneNavigator } from "./production/manuscript/SceneNavigator";
 import { ManuscriptCenter } from "./production/manuscript/ManuscriptCenter";
 import { ShotInspector } from "./production/manuscript/ShotInspector";
 import { ProductionWorkflowDialogs } from "./production/manuscript/ProductionWorkflowDialogs";
 import { TalentDrawer } from "./production/manuscript/TalentDrawer";
+import {
+  CoverageReviewWorkspace,
+  type CoverageReviewSyncStatus,
+  type ShotLineCoverageMap,
+  type TakeReviewDecision,
+  type TakeReviewFlag,
+} from "./production/manuscript/CoverageReviewWorkspace";
 
 interface ProductionManuscriptViewProps {
   manuscript: Manuscript;
@@ -299,6 +312,158 @@ const SHOT_COLORS: Record<string, string> = {
   'Two Shot': '#2ecc71',
   'Over Shoulder': '#3498db',
 };
+
+type TimelineScope = 'all' | 'selected-scene' | 'selected-act';
+
+interface TimelineBlock {
+  id: string;
+  shot: CastingShot | null;
+  scene: SceneBreakdown;
+  color: string;
+  width: number;
+  label: string;
+  start: number;
+  end: number;
+  duration: number;
+  sceneIndex: number;
+  shotIndex: number;
+  isSceneStart: boolean;
+  isPlaceholder: boolean;
+}
+
+interface TimelineSceneSegment {
+  scene: SceneBreakdown;
+  start: number;
+  end: number;
+  duration: number;
+  width: number;
+  sceneIndex: number;
+}
+
+interface SortableTimelineShotBlockProps {
+  block: TimelineBlock;
+  selectedShotId?: string | null;
+  timelineZoom: number;
+  registerBlockRef: (shotId: string, node: HTMLDivElement | null) => void;
+  onSelect: (block: TimelineBlock) => void;
+}
+
+const getTimelineZoomTestId = (zoom: number): string =>
+  `pmv-timeline-zoom-${String(Math.round(zoom * 100)).padStart(3, '0')}`;
+
+const getSceneActId = (scene?: SceneBreakdown | null): string | null => {
+  const actId = scene?.actId;
+  return typeof actId === 'string' && actId.trim().length > 0 ? actId : null;
+};
+
+const SortableTimelineShotBlock: FC<SortableTimelineShotBlockProps> = memo(({
+  block,
+  selectedShotId,
+  timelineZoom,
+  registerBlockRef,
+  onSelect,
+}) => {
+  const shotId = block.shot?.id ?? block.id;
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: shotId,
+    disabled: block.isPlaceholder || !block.shot,
+  });
+
+  const setCombinedRef = useCallback((node: HTMLDivElement | null) => {
+    setNodeRef(node);
+    if (block.shot?.id) {
+      registerBlockRef(block.shot.id, node);
+    }
+  }, [block.shot?.id, registerBlockRef, setNodeRef]);
+
+  const isSelected = Boolean(block.shot?.id && selectedShotId === block.shot.id);
+  const basis = Math.max(block.width * timelineZoom, block.isPlaceholder ? 3 : 4);
+
+  return (
+    <Tooltip
+      title={`${block.label || 'Scene gap'} • Scene ${block.scene.sceneNumber ?? block.sceneIndex + 1} • ${Math.round(block.duration)}s`}
+      placement="top"
+    >
+      <Box
+        ref={setCombinedRef}
+        data-testid={block.shot ? 'pmv-timeline-shot-block' : 'pmv-timeline-scene-placeholder'}
+        data-shot-id={block.shot?.id}
+        data-scene-id={block.scene.id}
+        onClick={() => onSelect(block)}
+        {...attributes}
+        {...listeners}
+        sx={{
+          flex: `0 0 ${basis}%`,
+          minWidth: `${basis}%`,
+          height: '100%',
+          bgcolor: block.color,
+          borderRadius: block.isSceneStart ? '8px 6px 6px 8px' : '6px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          cursor: block.shot ? 'grab' : 'pointer',
+          position: 'relative',
+          transition: isDragging ? 'none' : 'all 0.2s',
+          transform: CSS.Transform.toString(transform),
+          opacity: isDragging ? 0.72 : 1,
+          zIndex: isDragging ? 30 : isSelected ? 12 : 1,
+          border: isSelected ? '2px solid #fff' : '1px solid rgba(0,0,0,0.2)',
+          boxShadow: isSelected
+            ? '0 0 10px rgba(255,255,255,0.3)'
+            : isDragging
+              ? '0 8px 18px rgba(0,0,0,0.35)'
+              : '0 2px 4px rgba(0,0,0,0.2)',
+          '&:active': { cursor: block.shot ? 'grabbing' : 'pointer' },
+          '&:hover': {
+            transform: transform ? CSS.Transform.toString(transform) : 'scaleY(1.15)',
+            zIndex: 10,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+          },
+        }}
+        style={{ transition }}
+      >
+        {block.isSceneStart && (
+          <Box
+            data-testid="pmv-timeline-scene-separator"
+            sx={{
+              position: 'absolute',
+              left: -4,
+              top: -5,
+              bottom: -5,
+              width: 2,
+              borderRadius: 2,
+              bgcolor: '#60a5fa',
+              boxShadow: '0 0 10px rgba(96,165,250,0.4)',
+            }}
+          />
+        )}
+        {block.width > 6 && (
+          <Typography
+            sx={{
+              fontSize: 9,
+              fontWeight: 700,
+              color: '#fff',
+              textShadow: '0 1px 3px rgba(0,0,0,0.5)',
+              letterSpacing: 0.5,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {block.label}
+          </Typography>
+        )}
+      </Box>
+    </Tooltip>
+  );
+});
+
+SortableTimelineShotBlock.displayName = 'SortableTimelineShotBlock';
 
 // Sortable Scene Item Component
 interface SortableSceneItemProps {
@@ -572,6 +737,60 @@ const applyMentionSuggestion = (sourceText: string | undefined, name: string): s
   return replaced !== current ? replaced : `${current.trimEnd()} ${name}`;
 };
 
+type CenterWorkspace = 'script' | 'coverage-review';
+
+const buildTakeReviewStorageKey = (projectId: string): string =>
+  `role-room:production-manuscript:take-review:${projectId}`;
+
+const buildShotLineCoverageStorageKey = (projectId: string): string =>
+  `role-room:production-manuscript:shot-line-coverage:${projectId}`;
+
+const loadTakeReviewMap = (projectId: string): Record<string, TakeReviewDecision> => {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem(buildTakeReviewStorageKey(projectId));
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, TakeReviewDecision>
+      : {};
+  } catch {
+    return {};
+  }
+};
+
+const loadShotLineCoverageMap = (projectId: string): ShotLineCoverageMap => {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem(buildShotLineCoverageStorageKey(projectId));
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as ShotLineCoverageMap
+      : {};
+  } catch {
+    return {};
+  }
+};
+
+const saveTakeReviewMap = (projectId: string, value: Record<string, TakeReviewDecision>) => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(buildTakeReviewStorageKey(projectId), JSON.stringify(value));
+  } catch {
+    // Non-critical project-local review state. Avoid blocking production workflow.
+  }
+};
+
+const saveShotLineCoverageMap = (projectId: string, value: ShotLineCoverageMap) => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(buildShotLineCoverageStorageKey(projectId), JSON.stringify(value));
+  } catch {
+    // Non-critical local backup only; server sync remains source of truth.
+  }
+};
+
 export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   manuscript,
   scenes,
@@ -606,6 +825,14 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   const [selectedScene, setSelectedScene] = useState<SceneBreakdown | null>(scenes[0] || null);
   const [selectedShot, setSelectedShot] = useState<CastingShot | null>(null);
   const { shotLists, setShotLists, getShotsForScene } = useShotLists(projectId);
+  const [timelineScope, setTimelineScope] = useState<TimelineScope>('all');
+  const [timelineActId, setTimelineActId] = useState<string>(() => getSceneActId(scenes[0]) || acts[0]?.id || 'no-act');
+  const [centerWorkspace, setCenterWorkspace] = useState<CenterWorkspace>('script');
+  const [takeReviewMap, setTakeReviewMap] = useState<Record<string, TakeReviewDecision>>(() => loadTakeReviewMap(projectId));
+  const [coverageReviewSyncStatus, setCoverageReviewSyncStatus] = useState<CoverageReviewSyncStatus>('idle');
+  const [coverageReviewSyncError, setCoverageReviewSyncError] = useState<string | null>(null);
+  const [coverageReviewVersion, setCoverageReviewVersion] = useState<number>(0);
+  const selectedSceneActId = getSceneActId(selectedScene);
   const [sceneStoryboardDialog, setSceneStoryboardDialog] = useState<{
     sceneId: SceneId;
     activeFrameIndex?: number;
@@ -746,7 +973,7 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   const [isLiveSetConnected, setIsLiveSetConnected] = useState(false);
   
   // 6. Shot Line Coverage Tracking (data, not UI)
-  const [shotLineCoverage, setShotLineCoverage] = useState<Record<string, { startLine: number; endLine: number; dialogueIds: string[] }>>({});
+  const [shotLineCoverage, setShotLineCoverage] = useState<ShotLineCoverageMap>(() => loadShotLineCoverageMap(projectId));
   
   const allTags = useMemo(() => {
     const tags = new Set<string>();
@@ -831,6 +1058,36 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
     setManuscriptZoom(loadZoomPreference(projectId));
     setIsManuscriptFullscreen(loadFullscreenPreference(projectId));
     dispatchInspector({ type: 'LOAD_SECTIONS', sections: loadExpandedSections(projectId) });
+    const localTakeReviews = loadTakeReviewMap(projectId);
+    const localShotLineCoverage = loadShotLineCoverageMap(projectId);
+    setTakeReviewMap(localTakeReviews);
+    setShotLineCoverage(localShotLineCoverage);
+    setCoverageReviewVersion(0);
+    setCoverageReviewSyncError(null);
+    setCoverageReviewSyncStatus('loading');
+
+    let cancelled = false;
+    void coverageReviewService.loadCoverageReview(projectId)
+      .then((record) => {
+        if (cancelled || activeProjectIdRef.current !== projectId) return;
+        setTakeReviewMap(record.takeReviews);
+        setShotLineCoverage(record.shotLineCoverage);
+        setCoverageReviewVersion(record.version);
+        setCoverageReviewSyncStatus('synced');
+        setCoverageReviewSyncError(null);
+        saveTakeReviewMap(projectId, record.takeReviews);
+        saveShotLineCoverageMap(projectId, record.shotLineCoverage);
+      })
+      .catch((error) => {
+        if (cancelled || activeProjectIdRef.current !== projectId) return;
+        const message = error instanceof Error ? error.message : 'Kunne ikke hente Coverage Review fra server.';
+        setCoverageReviewSyncStatus('local_only');
+        setCoverageReviewSyncError(message);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [projectId]);
 
   // ---- Derived convenience aliases ----
@@ -841,7 +1098,30 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   
   const manuscriptRef = useRef<HTMLDivElement>(null);
   const sceneRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const timelineTrackRef = useRef<HTMLDivElement | null>(null);
+  const timelineBlockRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const activeProjectIdRef = useRef(projectId);
+  const takeReviewMapRef = useRef(takeReviewMap);
+  const shotLineCoverageRef = useRef(shotLineCoverage);
+  const coverageReviewVersionRef = useRef(coverageReviewVersion);
+  const coverageReviewSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
+
+  useEffect(() => {
+    activeProjectIdRef.current = projectId;
+  }, [projectId]);
+
+  useEffect(() => {
+    takeReviewMapRef.current = takeReviewMap;
+  }, [takeReviewMap]);
+
+  useEffect(() => {
+    shotLineCoverageRef.current = shotLineCoverage;
+  }, [shotLineCoverage]);
+
+  useEffect(() => {
+    coverageReviewVersionRef.current = coverageReviewVersion;
+  }, [coverageReviewVersion]);
 
   // Get selected scene shots with metadata
   const selectedSceneShots = useMemo(() => {
@@ -1030,12 +1310,18 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   const scenesByAct = useMemo(() => {
     const grouped = new Map<string, SceneBreakdown[]>();
     acts.forEach(act => {
-      grouped.set(act.id, scenes.filter(s => s.actId === act.id));
+      grouped.set(act.id, scenes.filter(s => getSceneActId(s) === act.id));
     });
-    const scenesWithoutAct = scenes.filter(s => !s.actId);
+    const scenesWithoutAct = scenes.filter(s => !getSceneActId(s));
     if (scenesWithoutAct.length > 0) grouped.set('no-act', scenesWithoutAct);
     return grouped;
   }, [scenes, acts]);
+
+  useEffect(() => {
+    const validActIds = new Set([...acts.map((act) => act.id), 'no-act']);
+    if (validActIds.has(timelineActId)) return;
+    setTimelineActId(selectedSceneActId || acts[0]?.id || 'no-act');
+  }, [acts, selectedSceneActId, timelineActId]);
 
   // Navigate to scene
   const scrollToScene = useCallback((scene: SceneBreakdown) => {
@@ -1354,48 +1640,86 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
 
   // Build timeline data
   const timelineData = useMemo(() => {
-    const blocks: Array<{
-      shot: CastingShot;
-      scene: SceneBreakdown;
-      color: string;
-      width: number;
-      label: string;
-    }> = [];
-    
-    let totalDuration = 0;
-    scenes.forEach(scene => {
-      const shots = getShotsForScene(scene.id);
-      shots.forEach((shot) => {
-        totalDuration += shot.duration || 10;
-      });
-      if (shots.length === 0) totalDuration += 60;
+    const activeActId = timelineScope === 'selected-act'
+      ? (timelineActId || selectedSceneActId || acts[0]?.id || 'no-act')
+      : null;
+    const timelineScenes = scenes.filter((scene) => {
+      if (timelineScope === 'selected-scene') {
+        return Boolean(selectedScene?.id && scene.id === selectedScene.id);
+      }
+      if (timelineScope === 'selected-act') {
+        return (getSceneActId(scene) || 'no-act') === activeActId;
+      }
+      return true;
     });
 
-    scenes.forEach(scene => {
+    const rawBlocks: Array<Omit<TimelineBlock, 'width'> & { width?: number }> = [];
+    const sceneSegments: Array<Omit<TimelineSceneSegment, 'width'> & { width?: number }> = [];
+    let totalDuration = 0;
+
+    timelineScenes.forEach((scene, sceneIndex) => {
       const shots = getShotsForScene(scene.id);
+      const sceneStart = totalDuration;
+
       if (shots.length === 0) {
-        blocks.push({
-          shot: {} as CastingShot,
+        const duration = 60;
+        rawBlocks.push({
+          id: `placeholder-${scene.id}`,
+          shot: null,
           scene,
           color: 'rgba(100,100,100,0.3)',
-          width: (60 / totalDuration) * 100,
-          label: '',
+          label: 'Mangler shots',
+          start: sceneStart,
+          end: sceneStart + duration,
+          duration,
+          sceneIndex,
+          shotIndex: 0,
+          isSceneStart: true,
+          isPlaceholder: true,
         });
+        totalDuration += duration;
       } else {
         shots.forEach((shot, idx) => {
-          blocks.push({
+          const duration = Math.max(Number(shot.duration || 10), 1);
+          rawBlocks.push({
+            id: shot.id,
             shot,
             scene,
             color: SHOT_COLORS[shot.shotType] || '#666',
-            width: ((shot.duration || 10) / totalDuration) * 100,
             label: `SHOT ${idx + 1}`,
+            start: totalDuration,
+            end: totalDuration + duration,
+            duration,
+            sceneIndex,
+            shotIndex: idx,
+            isSceneStart: idx === 0,
+            isPlaceholder: false,
           });
+          totalDuration += duration;
         });
       }
+
+      sceneSegments.push({
+        scene,
+        start: sceneStart,
+        end: totalDuration,
+        duration: Math.max(totalDuration - sceneStart, 1),
+        sceneIndex,
+      });
     });
 
-    return { blocks, totalDuration };
-  }, [scenes, shotLists]);
+    const safeTotal = Math.max(totalDuration, 1);
+    const blocks: TimelineBlock[] = rawBlocks.map((block) => ({
+      ...block,
+      width: (block.duration / safeTotal) * 100,
+    }));
+    const segments: TimelineSceneSegment[] = sceneSegments.map((segment) => ({
+      ...segment,
+      width: (segment.duration / safeTotal) * 100,
+    }));
+
+    return { blocks, segments, scenes: timelineScenes, totalDuration: safeTotal };
+  }, [acts, getShotsForScene, scenes, selectedScene?.id, selectedSceneActId, shotLists, timelineActId, timelineScope]);
 
   const {
     timelineRef,
@@ -1406,8 +1730,11 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
     timelineViewMode,
     handleTimelinePlay,
     handleTimelineSeek,
+    seekTimelineTo,
     handleTimelineZoomIn,
     handleTimelineZoomOut,
+    handleTimelineZoomPreset,
+    handleTimelineFitToScreen,
     handleTimelineViewChange,
     formatTime,
     getTotalDuration,
@@ -1416,6 +1743,153 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
     totalDuration: timelineData.totalDuration,
     liveSetStatus,
   });
+
+  const registerTimelineBlockRef = useCallback((shotId: string, node: HTMLDivElement | null) => {
+    if (node) {
+      timelineBlockRefs.current.set(shotId, node);
+    } else {
+      timelineBlockRefs.current.delete(shotId);
+    }
+  }, []);
+
+  const focusTimelineBlock = useCallback((block: TimelineBlock) => {
+    scrollToScene(block.scene);
+    if (block.shot) {
+      setSelectedShot(block.shot);
+      seekTimelineTo(block.start);
+      window.requestAnimationFrame(() => {
+        timelineBlockRefs.current.get(block.shot!.id)?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest',
+          inline: 'center',
+        });
+      });
+    } else {
+      setSelectedShot(null);
+      seekTimelineTo(block.start);
+    }
+  }, [scrollToScene, seekTimelineTo]);
+
+  const focusTimelineShotById = useCallback((shotId?: string | null, sceneId?: string | null): boolean => {
+    if (!shotId && !sceneId) return false;
+    const block = timelineData.blocks.find((entry) => (
+      (shotId && entry.shot?.id === shotId)
+      || (!shotId && sceneId && entry.scene.id === sceneId)
+    ));
+    if (!block) return false;
+    focusTimelineBlock(block);
+    return true;
+  }, [focusTimelineBlock, timelineData.blocks]);
+
+  const handleTimelineFitToScreenClick = useCallback(() => {
+    handleTimelineFitToScreen();
+    window.requestAnimationFrame(() => {
+      if (timelineTrackRef.current) {
+        timelineTrackRef.current.scrollLeft = 0;
+      }
+    });
+  }, [handleTimelineFitToScreen]);
+
+  const handleJumpToSelectedShot = useCallback(() => {
+    if (selectedShot?.id) {
+      focusTimelineShotById(selectedShot.id, selectedScene?.id);
+    } else if (selectedScene) {
+      const sceneBlock = timelineData.blocks.find((block) => block.scene.id === selectedScene.id);
+      if (sceneBlock) {
+        focusTimelineBlock(sceneBlock);
+      }
+    }
+  }, [focusTimelineBlock, focusTimelineShotById, selectedScene, selectedShot?.id, timelineData.blocks]);
+
+  const handleJumpToLiveShot = useCallback(() => {
+    if (focusTimelineShotById(liveSetStatus?.currentShot, liveSetStatus?.currentScene)) return;
+    const liveScene = scenes.find((scene) => scene.id === liveSetStatus?.currentScene);
+    if (liveScene) {
+      scrollToScene(liveScene);
+    }
+  }, [focusTimelineShotById, liveSetStatus?.currentScene, liveSetStatus?.currentShot, scenes, scrollToScene]);
+
+  const handleShowSelectedSceneTimeline = useCallback(() => {
+    if (!selectedScene) return;
+    setTimelineScope((current) => (current === 'selected-scene' ? 'all' : 'selected-scene'));
+  }, [selectedScene]);
+
+  const handleShowSelectedActTimeline = useCallback(() => {
+    const nextActId = selectedSceneActId || timelineActId || acts[0]?.id || 'no-act';
+    setTimelineActId(nextActId);
+    setTimelineScope((current) => (current === 'selected-act' ? 'all' : 'selected-act'));
+  }, [acts, selectedSceneActId, timelineActId]);
+
+  const handleTimelineActChange = useCallback((value: string) => {
+    setTimelineActId(value);
+    setTimelineScope('selected-act');
+  }, []);
+
+  const handleTimelineShotReorder = useCallback(async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const activeShotId = String(active.id);
+    const overShotId = String(over.id);
+    const sourceList = shotLists.find((list) => list.shots.some((shot) => shot.id === activeShotId));
+    const targetList = shotLists.find((list) => list.shots.some((shot) => shot.id === overShotId));
+    if (!sourceList || !targetList) return;
+
+    const sourceIndex = sourceList.shots.findIndex((shot) => shot.id === activeShotId);
+    const targetIndex = targetList.shots.findIndex((shot) => shot.id === overShotId);
+    if (sourceIndex < 0 || targetIndex < 0) return;
+
+    const now = new Date().toISOString();
+    const movingShot = sourceList.shots[sourceIndex];
+    const sourceSceneId = sourceList.sceneId;
+    const targetSceneId = targetList.sceneId;
+    const listsToPersist: ShotList[] = [];
+    let nextSelectedShot: CastingShot = movingShot;
+
+    const nextLists = shotLists.map((list) => {
+      if (sourceList.id === targetList.id || sourceSceneId === targetSceneId) {
+        if (list.id !== sourceList.id) return list;
+        const reorderedShots = arrayMove(list.shots, sourceIndex, targetIndex).map((shot) =>
+          shot.id === activeShotId ? { ...shot, updatedAt: now } : shot,
+        );
+        nextSelectedShot = reorderedShots.find((shot) => shot.id === activeShotId) ?? movingShot;
+        const updatedList: ShotList = { ...list, shots: reorderedShots, updatedAt: now };
+        listsToPersist.push(updatedList);
+        return updatedList;
+      }
+
+      if (list.id === sourceList.id) {
+        const updatedList: ShotList = {
+          ...list,
+          shots: list.shots.filter((shot) => shot.id !== activeShotId),
+          updatedAt: now,
+        };
+        listsToPersist.push(updatedList);
+        return updatedList;
+      }
+
+      if (list.id === targetList.id) {
+        const movedShot: CastingShot = { ...movingShot, sceneId: targetSceneId, updatedAt: now };
+        const targetShots = [...list.shots];
+        targetShots.splice(targetIndex, 0, movedShot);
+        nextSelectedShot = movedShot;
+        const updatedList: ShotList = { ...list, shots: targetShots, updatedAt: now };
+        listsToPersist.push(updatedList);
+        return updatedList;
+      }
+
+      return list;
+    });
+
+    setShotLists(nextLists);
+    setSelectedShot(nextSelectedShot);
+    const targetScene = scenes.find((scene) => scene.id === targetSceneId);
+    if (targetScene) {
+      setSelectedScene(targetScene);
+    }
+
+    await Promise.all(listsToPersist.map((list) => castingService.saveShotList(projectId, list)));
+  }, [projectId, scenes, setShotLists, shotLists]);
 
   const selectedSceneMetadata = selectedScene ? getSceneMetadata(selectedScene) : null;
   const selectedSceneDialogue = selectedScene ? getSceneDialogue(selectedScene.id) : [];
@@ -1438,6 +1912,185 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
     }
     return Array.from(deduped).sort((left, right) => left.localeCompare(right, 'no-NO'));
   }, [projectRoles, sceneCandidates, selectedScene?.characters]);
+
+  const persistCoverageReviewSnapshot = useCallback((
+    takeReviews: Record<string, TakeReviewDecision>,
+    nextShotLineCoverage: ShotLineCoverageMap,
+    meta: { eventType: string; changedTakeId?: string; changedShotId?: string },
+  ) => {
+    saveTakeReviewMap(projectId, takeReviews);
+    saveShotLineCoverageMap(projectId, nextShotLineCoverage);
+    setCoverageReviewSyncStatus('saving');
+    setCoverageReviewSyncError(null);
+
+    coverageReviewSaveQueueRef.current = coverageReviewSaveQueueRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        const expectedVersion = coverageReviewVersionRef.current || undefined;
+        try {
+          const saved = await coverageReviewService.saveCoverageReview(projectId, {
+            takeReviews,
+            shotLineCoverage: nextShotLineCoverage,
+            expectedVersion,
+            ...meta,
+          });
+          if (activeProjectIdRef.current !== projectId) return;
+          setTakeReviewMap(saved.takeReviews);
+          setShotLineCoverage(saved.shotLineCoverage);
+          setCoverageReviewVersion(saved.version);
+          setCoverageReviewSyncStatus('synced');
+          setCoverageReviewSyncError(null);
+          saveTakeReviewMap(projectId, saved.takeReviews);
+          saveShotLineCoverageMap(projectId, saved.shotLineCoverage);
+        } catch (error) {
+          if (error instanceof CoverageReviewConflictError) {
+            if (activeProjectIdRef.current !== projectId) return;
+            setCoverageReviewSyncStatus('conflict');
+
+            const mergedTakeReviews = { ...error.current.takeReviews };
+            const mergedShotLineCoverage = { ...error.current.shotLineCoverage };
+            if (meta.changedTakeId && takeReviews[meta.changedTakeId]) {
+              mergedTakeReviews[meta.changedTakeId] = takeReviews[meta.changedTakeId];
+            } else {
+              Object.assign(mergedTakeReviews, takeReviews);
+            }
+            if (meta.changedShotId && nextShotLineCoverage[meta.changedShotId]) {
+              mergedShotLineCoverage[meta.changedShotId] = nextShotLineCoverage[meta.changedShotId];
+            } else {
+              Object.assign(mergedShotLineCoverage, nextShotLineCoverage);
+            }
+
+            try {
+              const resolved = await coverageReviewService.saveCoverageReview(projectId, {
+                takeReviews: mergedTakeReviews,
+                shotLineCoverage: mergedShotLineCoverage,
+                expectedVersion: error.current.version,
+                eventType: `${meta.eventType}_conflict_resolved`,
+                changedTakeId: meta.changedTakeId,
+                changedShotId: meta.changedShotId,
+              });
+              if (activeProjectIdRef.current !== projectId) return;
+              setTakeReviewMap(resolved.takeReviews);
+              setShotLineCoverage(resolved.shotLineCoverage);
+              setCoverageReviewVersion(resolved.version);
+              setCoverageReviewSyncStatus('synced');
+              setCoverageReviewSyncError(null);
+              saveTakeReviewMap(projectId, resolved.takeReviews);
+              saveShotLineCoverageMap(projectId, resolved.shotLineCoverage);
+            } catch (retryError) {
+              if (activeProjectIdRef.current !== projectId) return;
+              const message = retryError instanceof Error ? retryError.message : 'Kunne ikke løse Coverage Review-konflikt.';
+              setCoverageReviewSyncStatus('error');
+              setCoverageReviewSyncError(message);
+            }
+            return;
+          }
+
+          if (activeProjectIdRef.current !== projectId) return;
+          const message = error instanceof Error ? error.message : 'Kunne ikke lagre Coverage Review.';
+          setCoverageReviewSyncStatus('error');
+          setCoverageReviewSyncError(message);
+        }
+      });
+  }, [projectId]);
+
+  const updateTakeReviewMap = useCallback((
+    meta: { eventType: string; changedTakeId?: string },
+    updater: (current: Record<string, TakeReviewDecision>) => Record<string, TakeReviewDecision>,
+  ) => {
+    setTakeReviewMap((current) => {
+      const next = updater(current);
+      takeReviewMapRef.current = next;
+      persistCoverageReviewSnapshot(next, shotLineCoverageRef.current, meta);
+      return next;
+    });
+  }, [persistCoverageReviewSnapshot]);
+
+  const handleToggleTakeReview = useCallback((takeId: string, flag: TakeReviewFlag) => {
+    updateTakeReviewMap({ eventType: `take_${flag}_toggled`, changedTakeId: takeId }, (current) => {
+      const review = current[takeId] || {};
+      return {
+        ...current,
+        [takeId]: {
+          ...review,
+          [flag]: !review[flag],
+          updatedAt: new Date().toISOString(),
+        },
+      };
+    });
+  }, [updateTakeReviewMap]);
+
+  const handleToggleTakeSelected = useCallback((takeId: string) => {
+    updateTakeReviewMap({ eventType: 'take_selected_toggled', changedTakeId: takeId }, (current) => {
+      const review = current[takeId] || {};
+      return {
+        ...current,
+        [takeId]: {
+          ...review,
+          selected: !review.selected,
+          updatedAt: new Date().toISOString(),
+        },
+      };
+    });
+  }, [updateTakeReviewMap]);
+
+  const handleUpdateTakeNote = useCallback((
+    takeId: string,
+    field: 'directorNote' | 'editorNote',
+    value: string,
+  ) => {
+    updateTakeReviewMap({ eventType: `take_${field}_updated`, changedTakeId: takeId }, (current) => {
+      const review = current[takeId] || {};
+      return {
+        ...current,
+        [takeId]: {
+          ...review,
+          [field]: value,
+          updatedAt: new Date().toISOString(),
+        },
+      };
+    });
+  }, [updateTakeReviewMap]);
+
+  const handleSendTakeToPost = useCallback((takeId: string) => {
+    updateTakeReviewMap({ eventType: 'take_sent_to_post', changedTakeId: takeId }, (current) => {
+      const review = current[takeId] || {};
+      return {
+        ...current,
+        [takeId]: {
+          ...review,
+          selected: true,
+          sentToPost: true,
+          updatedAt: new Date().toISOString(),
+        },
+      };
+    });
+  }, [updateTakeReviewMap]);
+
+  const handleToggleReviewLineCoverage = useCallback((shotId: string, dialogueId: string) => {
+    setShotLineCoverage((current) => {
+      const previousCoverage = current[shotId] || { startLine: 0, endLine: 0, dialogueIds: [] };
+      const dialogueIds = previousCoverage.dialogueIds.includes(dialogueId)
+        ? previousCoverage.dialogueIds.filter((id) => id !== dialogueId)
+        : [...previousCoverage.dialogueIds, dialogueId];
+      const coveredLineIndexes = dialogueIds
+        .map((id) => selectedSceneDialogue.findIndex((line) => line.id === id))
+        .filter((index) => index >= 0);
+      const startLine = coveredLineIndexes.length ? Math.min(...coveredLineIndexes) : 0;
+      const endLine = coveredLineIndexes.length ? Math.max(...coveredLineIndexes) : 0;
+
+      const next = {
+        ...current,
+        [shotId]: { startLine, endLine, dialogueIds },
+      };
+      shotLineCoverageRef.current = next;
+      persistCoverageReviewSnapshot(takeReviewMapRef.current, next, {
+        eventType: 'lined_script_coverage_updated',
+        changedShotId: shotId,
+      });
+      return next;
+    });
+  }, [persistCoverageReviewSnapshot, selectedSceneDialogue]);
 
   // Scene creation handler
   const handleCreateScene = () => {
@@ -2275,10 +2928,18 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   // WORKFLOW GAP FIX #8: Shot Line Coverage
   // ============================================
   const handleUpdateShotLineCoverage = (shotId: string, startLine: number, endLine: number, dialogueIds: string[]) => {
-    setShotLineCoverage(prev => ({
-      ...prev,
-      [shotId]: { startLine, endLine, dialogueIds },
-    }));
+    setShotLineCoverage(prev => {
+      const next = {
+        ...prev,
+        [shotId]: { startLine, endLine, dialogueIds },
+      };
+      shotLineCoverageRef.current = next;
+      persistCoverageReviewSnapshot(takeReviewMapRef.current, next, {
+        eventType: 'shot_line_coverage_updated',
+        changedShotId: shotId,
+      });
+      return next;
+    });
   };
 
   const getShotCoverageForDialogue = (dialogueId: string): string[] => {
@@ -3836,6 +4497,45 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                   Scene {selectedScene.sceneNumber} av {scenes.length}
                 </Typography>
               )}
+              {!readThroughMode && (
+                <Stack direction="row" spacing={0.75} alignItems="center">
+                  <Button
+                    size="small"
+                    data-testid="pmv-workspace-script"
+                    onClick={() => setCenterWorkspace('script')}
+                    sx={{
+                      minWidth: isMobile ? 54 : 72,
+                      height: 28,
+                      px: 1,
+                      fontSize: 10,
+                      fontWeight: 800,
+                      color: centerWorkspace === 'script' ? '#fff' : '#9ca3af',
+                      bgcolor: centerWorkspace === 'script' ? 'rgba(59,130,246,0.2)' : 'rgba(255,255,255,0.035)',
+                      border: centerWorkspace === 'script' ? '1px solid rgba(96,165,250,0.5)' : '1px solid #252d3d',
+                    }}
+                  >
+                    Manus
+                  </Button>
+                  <Button
+                    size="small"
+                    data-testid="pmv-workspace-coverage-review"
+                    onClick={() => setCenterWorkspace('coverage-review')}
+                    startIcon={!isMobile ? <CoverageIcon sx={{ fontSize: 14 }} /> : undefined}
+                    sx={{
+                      minWidth: isMobile ? 62 : 132,
+                      height: 28,
+                      px: 1,
+                      fontSize: 10,
+                      fontWeight: 800,
+                      color: centerWorkspace === 'coverage-review' ? '#fff' : '#9ca3af',
+                      bgcolor: centerWorkspace === 'coverage-review' ? 'rgba(16,185,129,0.16)' : 'rgba(255,255,255,0.035)',
+                      border: centerWorkspace === 'coverage-review' ? '1px solid rgba(52,211,153,0.42)' : '1px solid #252d3d',
+                    }}
+                  >
+                    {isMobile ? 'Review' : 'Coverage Review'}
+                  </Button>
+                </Stack>
+              )}
               {readThroughMode && (
                 <>
                   <Stack direction="row" spacing={isMobile ? 0.5 : 1}>
@@ -4048,6 +4748,26 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
           </Box>
 
           {/* Manuscript Content */}
+          {centerWorkspace === 'coverage-review' ? (
+            <CoverageReviewWorkspace
+              selectedScene={selectedScene}
+              selectedShot={selectedShot}
+              selectedSceneShots={selectedSceneShots}
+              selectedSceneDialogue={selectedSceneDialogue}
+              liveSetStatus={liveSetStatus}
+              shotLineCoverage={shotLineCoverage}
+              takeReviewMap={takeReviewMap}
+              onSelectShot={setSelectedShot}
+              onToggleLineCoverage={handleToggleReviewLineCoverage}
+              onToggleTakeReview={handleToggleTakeReview}
+              onToggleTakeSelected={handleToggleTakeSelected}
+              onUpdateTakeNote={handleUpdateTakeNote}
+              onSendTakeToPost={handleSendTakeToPost}
+              syncStatus={coverageReviewSyncStatus}
+              syncError={coverageReviewSyncError}
+              syncVersion={coverageReviewVersion}
+            />
+          ) : (
           <Box sx={{ flex: 1, overflow: 'auto', p: isMobile ? 1.5 : 4, '&::-webkit-scrollbar': { width: 8 }, '&::-webkit-scrollbar-thumb': { bgcolor: '#374151', borderRadius: 4 } }}>
             {selectedScene ? (
               <Box sx={{ 
@@ -4721,6 +5441,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               </Box>
             )}
           </Box>
+          )}
 
           {/* TIMELINE - ENHANCED */}
           <Box
@@ -4809,14 +5530,180 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                 </Typography>
               )}
             </Stack>
+
+            {!isTablet && (
+              <Stack direction="row" spacing={0.5} alignItems="center" data-testid="pmv-timeline-zoom-presets">
+                {TIMELINE_ZOOM_PRESETS.map((preset) => (
+                  <Button
+                    key={preset}
+                    size="small"
+                    data-testid={getTimelineZoomTestId(preset)}
+                    onClick={() => handleTimelineZoomPreset(preset)}
+                    sx={{
+                      minWidth: 34,
+                      height: 24,
+                      px: 0.75,
+                      fontSize: 10,
+                      color: timelineZoom === preset ? '#fff' : '#9ca3af',
+                      bgcolor: timelineZoom === preset ? 'rgba(59,130,246,0.26)' : 'rgba(255,255,255,0.04)',
+                      border: timelineZoom === preset ? '1px solid rgba(96,165,250,0.65)' : '1px solid #252d3d',
+                      '&:hover': { bgcolor: 'rgba(59,130,246,0.18)', borderColor: '#3b82f6' },
+                    }}
+                  >
+                    {preset}x
+                  </Button>
+                ))}
+                <Button
+                  size="small"
+                  data-testid="pmv-timeline-fit"
+                  onClick={handleTimelineFitToScreenClick}
+                  sx={{
+                    height: 24,
+                    px: 1,
+                    fontSize: 10,
+                    color: '#a7f3d0',
+                    bgcolor: 'rgba(16,185,129,0.08)',
+                    border: '1px solid rgba(16,185,129,0.25)',
+                    '&:hover': { bgcolor: 'rgba(16,185,129,0.16)', borderColor: '#10b981' },
+                  }}
+                >
+                  Fit
+                </Button>
+              </Stack>
+            )}
+
+            {!isTablet && (
+              <Stack direction="row" spacing={0.5} alignItems="center" data-testid="pmv-timeline-scope-controls">
+                <Button
+                  size="small"
+                  data-testid="pmv-timeline-show-selected-scene"
+                  disabled={!selectedScene}
+                  onClick={handleShowSelectedSceneTimeline}
+                  sx={{
+                    height: 24,
+                    px: 1,
+                    fontSize: 10,
+                    color: timelineScope === 'selected-scene' ? '#fff' : '#9ca3af',
+                    bgcolor: timelineScope === 'selected-scene' ? 'rgba(139,92,246,0.22)' : 'rgba(255,255,255,0.04)',
+                    border: timelineScope === 'selected-scene' ? '1px solid rgba(167,139,250,0.58)' : '1px solid #252d3d',
+                    '&:hover': { bgcolor: 'rgba(139,92,246,0.16)', borderColor: '#8b5cf6' },
+                    '&:disabled': { color: '#374151', borderColor: '#1e2536' },
+                  }}
+                >
+                  Valgt scene
+                </Button>
+                <Button
+                  size="small"
+                  data-testid="pmv-timeline-show-act"
+                  disabled={!acts.length && !selectedSceneActId}
+                  onClick={handleShowSelectedActTimeline}
+                  sx={{
+                    height: 24,
+                    px: 1,
+                    fontSize: 10,
+                    color: timelineScope === 'selected-act' ? '#fff' : '#9ca3af',
+                    bgcolor: timelineScope === 'selected-act' ? 'rgba(234,179,8,0.18)' : 'rgba(255,255,255,0.04)',
+                    border: timelineScope === 'selected-act' ? '1px solid rgba(251,191,36,0.52)' : '1px solid #252d3d',
+                    '&:hover': { bgcolor: 'rgba(234,179,8,0.14)', borderColor: '#fbbf24' },
+                    '&:disabled': { color: '#374151', borderColor: '#1e2536' },
+                  }}
+                >
+                  Vis akt
+                </Button>
+                <Button
+                  size="small"
+                  data-testid="pmv-timeline-show-all"
+                  onClick={() => setTimelineScope('all')}
+                  sx={{
+                    height: 24,
+                    px: 1,
+                    fontSize: 10,
+                    color: timelineScope === 'all' ? '#fff' : '#9ca3af',
+                    bgcolor: timelineScope === 'all' ? 'rgba(59,130,246,0.18)' : 'rgba(255,255,255,0.04)',
+                    border: timelineScope === 'all' ? '1px solid rgba(96,165,250,0.52)' : '1px solid #252d3d',
+                    '&:hover': { bgcolor: 'rgba(59,130,246,0.14)', borderColor: '#3b82f6' },
+                  }}
+                >
+                  Alt
+                </Button>
+              </Stack>
+            )}
             
             {!isTablet && (
               <Typography sx={{ fontSize: responsive.bodyFontSize, color: '#6b7280' }}>
-                {timelineData.blocks.length} shots • {scenes.length} scener
+                {timelineData.blocks.filter((block) => block.shot).length} shots • {timelineData.scenes.length}/{scenes.length} scener
               </Typography>
             )}
           </Stack>
           <Stack direction="row" spacing={isTablet ? 0.5 : 1} alignItems="center">
+            {!isTablet && timelineScope === 'selected-act' && (
+              <Select
+                size="small"
+                value={timelineActId}
+                data-testid="pmv-timeline-act-select"
+                onChange={(event) => handleTimelineActChange(String(event.target.value))}
+                sx={{
+                  height: 28,
+                  minWidth: 110,
+                  color: '#d1d5db',
+                  fontSize: 11,
+                  bgcolor: 'rgba(255,255,255,0.04)',
+                  borderRadius: '8px',
+                  '& .MuiOutlinedInput-notchedOutline': { borderColor: '#252d3d' },
+                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#fbbf24' },
+                  '& .MuiSvgIcon-root': { color: '#9ca3af' },
+                }}
+              >
+                {acts.map((act) => (
+                  <MenuItem key={act.id} value={act.id}>
+                    Akt {act.actNumber}
+                  </MenuItem>
+                ))}
+                {scenes.some((scene) => !getSceneActId(scene)) && (
+                  <MenuItem value="no-act">Uten akt</MenuItem>
+                )}
+              </Select>
+            )}
+            {!isTablet && (
+              <Stack direction="row" spacing={0.5} alignItems="center">
+                <Button
+                  size="small"
+                  data-testid="pmv-timeline-jump-selected-shot"
+                  disabled={!selectedShot && !selectedScene}
+                  onClick={handleJumpToSelectedShot}
+                  sx={{
+                    height: 28,
+                    px: 1,
+                    fontSize: 10,
+                    color: '#bfdbfe',
+                    bgcolor: 'rgba(59,130,246,0.08)',
+                    border: '1px solid rgba(59,130,246,0.22)',
+                    '&:hover': { bgcolor: 'rgba(59,130,246,0.16)', borderColor: '#3b82f6' },
+                    '&:disabled': { color: '#374151', borderColor: '#1e2536' },
+                  }}
+                >
+                  Jump valgt
+                </Button>
+                <Button
+                  size="small"
+                  data-testid="pmv-timeline-jump-live-shot"
+                  disabled={!liveSetStatus?.currentShot && !liveSetStatus?.currentScene}
+                  onClick={handleJumpToLiveShot}
+                  sx={{
+                    height: 28,
+                    px: 1,
+                    fontSize: 10,
+                    color: '#fecaca',
+                    bgcolor: liveSetStatus?.isRolling ? 'rgba(239,68,68,0.16)' : 'rgba(239,68,68,0.08)',
+                    border: '1px solid rgba(239,68,68,0.25)',
+                    '&:hover': { bgcolor: 'rgba(239,68,68,0.16)', borderColor: '#ef4444' },
+                    '&:disabled': { color: '#374151', borderColor: '#1e2536' },
+                  }}
+                >
+                  Live shot
+                </Button>
+              </Stack>
+            )}
             {!isTablet && (
               <Box sx={{
                 px: 1.5,
@@ -4882,28 +5769,32 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
           <Box sx={{ width: 50, flexShrink: 0 }}>
             <Typography sx={{ fontSize: 9, color: '#4b5563', fontWeight: 600 }}>SCENER</Typography>
           </Box>
-          <Box sx={{ flex: 1, display: 'flex' }}>
-            {scenes.slice(0, 6).map((scene, idx) => (
+          <Box sx={{ flex: 1, display: 'flex', minWidth: 0, overflow: 'hidden' }}>
+            {timelineData.segments.map((segment) => (
               <Box
-                key={scene.id}
-                onClick={() => scrollToScene(scene)}
+                key={segment.scene.id}
+                data-testid="pmv-timeline-scene-label"
+                data-scene-id={segment.scene.id}
+                onClick={() => scrollToScene(segment.scene)}
                 sx={{
-                  flex: 1,
+                  flex: `0 0 ${Math.max(segment.width * timelineZoom, 5)}%`,
+                  minWidth: `${Math.max(segment.width * timelineZoom, 5)}%`,
                   textAlign: 'center',
                   cursor: 'pointer',
                   py: 0.5,
                   borderRadius: '4px',
-                  bgcolor: selectedScene?.id === scene.id ? 'rgba(59,130,246,0.2)' : 'transparent',
+                  bgcolor: selectedScene?.id === segment.scene.id ? 'rgba(59,130,246,0.2)' : 'transparent',
+                  borderLeft: segment.sceneIndex > 0 ? '1px solid rgba(96,165,250,0.22)' : 'none',
                   transition: 'all 0.2s',
                   '&:hover': { bgcolor: 'rgba(59,130,246,0.1)' },
                 }}
               >
                 <Typography sx={{ 
                   fontSize: 10, 
-                  color: selectedScene?.id === scene.id ? '#60a5fa' : '#6b7280', 
+                  color: selectedScene?.id === segment.scene.id ? '#60a5fa' : '#6b7280',
                   fontWeight: 600,
                 }}>
-                  S{(scene.sceneNumber ?? idx + 1).toString().padStart(2, '0')}
+                  S{(segment.scene.sceneNumber ?? segment.sceneIndex + 1).toString().padStart(2, '0')}
                 </Typography>
               </Box>
             ))}
@@ -5013,6 +5904,8 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
             </Box>
           </Box>
           <Box
+            ref={timelineTrackRef}
+            data-testid="pmv-timeline-track"
             sx={{
               flex: 1,
               height: 44,
@@ -5027,56 +5920,27 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               '&::-webkit-scrollbar-thumb': { bgcolor: '#374151', borderRadius: 3 },
             }}
           >
-            {timelineData.blocks.map((block, idx) => (
-              <Tooltip 
-                key={idx} 
-                title={`${block.label} • Scene ${block.scene.sceneNumber}`}
-                placement="top"
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleTimelineShotReorder}
+            >
+              <SortableContext
+                items={timelineData.blocks.flatMap((block) => block.shot?.id ? [block.shot.id] : [])}
+                strategy={horizontalListSortingStrategy}
               >
-                <Box
-                  onClick={() => {
-                    scrollToScene(block.scene);
-                    if (block.shot.id) setSelectedShot(block.shot);
-                  }}
-                  sx={{
-                    flex: `0 0 ${Math.max(block.width * timelineZoom, 4)}%`,
-                    minWidth: `${Math.max(block.width * timelineZoom, 4)}%`,
-                    height: '100%',
-                    bgcolor: block.color,
-                    borderRadius: '6px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer',
-                    position: 'relative',
-                    transition: 'all 0.2s',
-                    border: selectedShot?.id === block.shot.id ? '2px solid #fff' : '1px solid rgba(0,0,0,0.2)',
-                    boxShadow: selectedShot?.id === block.shot.id 
-                      ? '0 0 10px rgba(255,255,255,0.3)' 
-                      : '0 2px 4px rgba(0,0,0,0.2)',
-                    '&:hover': {
-                      transform: 'scaleY(1.15)',
-                      zIndex: 10,
-                      boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                    },
-                  }}
-                >
-                  {block.width > 6 && (
-                    <Typography
-                      sx={{
-                        fontSize: 9,
-                        fontWeight: 700,
-                        color: '#fff',
-                        textShadow: '0 1px 3px rgba(0,0,0,0.5)',
-                        letterSpacing: 0.5,
-                      }}
-                    >
-                      {block.label}
-                    </Typography>
-                  )}
-                </Box>
-              </Tooltip>
-            ))}
+                {timelineData.blocks.map((block) => (
+                  <SortableTimelineShotBlock
+                    key={block.id}
+                    block={block}
+                    selectedShotId={selectedShot?.id}
+                    timelineZoom={timelineZoom}
+                    registerBlockRef={registerTimelineBlockRef}
+                    onSelect={focusTimelineBlock}
+                  />
+                ))}
+              </SortableContext>
+            </DndContext>
           </Box>
           <Box sx={{ width: 60, flexShrink: 0, textAlign: 'right', pl: 1 }}>
             <Typography sx={{ fontSize: 10, color: '#6b7280' }}>VIDEO</Typography>
@@ -5139,7 +6003,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                 pointerEvents: 'none',
               }}
             >
-              {['00:00', '00:30', '01:00', '01:30', '02:00', '02:30', '03:00'].map((time, idx) => (
+              {Array.from({ length: 7 }, (_, idx) => formatTime((getTotalDuration() / 6) * idx)).map((time, idx) => (
                 <Box
                   key={idx}
                   sx={{

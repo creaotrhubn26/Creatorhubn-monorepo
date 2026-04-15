@@ -1,13 +1,10 @@
 import { expect, test, type Page } from '@playwright/test';
 
 const TEST_PAGE = '/e2e-casting-test.html?session=content-producer';
-const DEMO_PROJECT_NAME = 'Northwind Drilling - Sikker start';
 
 async function openRoleRoom(page: Page) {
   await page.goto(TEST_PAGE, { waitUntil: 'load', timeout: 60_000 });
-  await expect(
-    page.locator('text=/Role Room|Casting|produksjonsplanlegging|The Role Room/i').first(),
-  ).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('tab', { name: /Planner/i })).toBeVisible({ timeout: 30_000 });
 }
 
 async function dismissOnboardingIfPresent(page: Page) {
@@ -35,7 +32,7 @@ async function selectProject(page: Page, projectName: string) {
     return;
   }
 
-  const projectSelectorButton = page.getByRole('button', { name: /Alle prosjekter/i }).first();
+  const projectSelectorButton = page.getByRole('button', { name: /Alle prosjekter|Prosjekter/i }).first();
   await projectSelectorButton.click();
 
   const projectDialog = page.locator('[role="dialog"]').filter({ hasText: /prosjekter|project/i }).first();
@@ -56,7 +53,7 @@ async function selectProject(page: Page, projectName: string) {
 }
 
 async function openProducerMediaWorkspace(page: Page) {
-  await page.locator('#tab-producer-media').click();
+  await page.getByRole('tab', { name: /^Prosjektrom$/i }).click();
   await expect(page.getByTestId('producer-media-page-brief')).toBeVisible({ timeout: 20_000 });
 }
 
@@ -64,7 +61,6 @@ test.describe('Client media workspaces', () => {
   test.beforeEach(async ({ page }) => {
     await openRoleRoom(page);
     await dismissOnboardingIfPresent(page);
-    await selectProject(page, DEMO_PROJECT_NAME);
     await openProducerMediaWorkspace(page);
   });
 

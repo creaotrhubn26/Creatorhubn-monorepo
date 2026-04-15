@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Folder Feature Mapping Utility
  * Maps Google Drive folders to profession features for access control

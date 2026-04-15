@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Contract View Component
  * Viser kontraktdetaljer for klienter

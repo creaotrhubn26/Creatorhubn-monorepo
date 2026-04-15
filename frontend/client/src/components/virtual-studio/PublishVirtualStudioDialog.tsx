@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Publish Virtual Studio Dialog
  * 

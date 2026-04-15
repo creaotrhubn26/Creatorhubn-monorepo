@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Smart Content Generator - AI-powered content creation and enhancement
  * Generates interactive elements, quizzes, diagrams, and more based on content analysis

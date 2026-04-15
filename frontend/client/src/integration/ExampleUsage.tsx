@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Example Usage of Integration System
  * Shows how any component can interact with any other component

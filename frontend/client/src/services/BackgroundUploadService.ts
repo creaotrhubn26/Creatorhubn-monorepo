@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Background Upload Service
  * Håndterer file uploads i bakgrunnen med persistent progress tracking

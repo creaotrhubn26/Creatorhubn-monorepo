@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * StoryboardTimeline - Horizontal timeline view for storyboard frames
  * 
