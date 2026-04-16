@@ -40,6 +40,16 @@ services:
       # nothing useful.
       - key: ROLE_ROOM_BOOTSTRAP_ORCHESTRATOR
         sync: false
+      # Cost-saving cache — serves same-question responses from DB for 30
+      # min before re-charging Anthropic. Default on.
+      - key: ROLE_ROOM_AGENT_CACHE
+        value: "on"
+      # Model router — pushes short info-lookup queries to Haiku
+      # (~5× cheaper). Complex queries keep using Sonnet. Default on.
+      - key: ROLE_ROOM_AGENT_MODEL_ROUTER
+        value: "on"
+      - key: ROLE_ROOM_AGENT_HAIKU_MODEL
+        value: claude-haiku-4-5-20251001
       - key: CLOUDFLARE_R2_ACCOUNT_ID
         sync: false
       - key: CLOUDFLARE_R2_ACCESS_KEY_ID

@@ -34,6 +34,28 @@ export interface RoleRoomAgentContext {
   }>;
   candidates?: RoleRoomAgentCandidate[];
   crew?: RoleRoomAgentCandidate[];
+  shootingDays?: Array<{
+    id: string;
+    dayNumber: number;
+    date: string;
+    callTime?: string | null;
+    wrapTime?: string | null;
+    location?: string | null;
+    status: string;
+    weather?: { condition: string; temperature: number } | null;
+  }>;
+  economyItems?: Array<{
+    id: string;
+    phase: string;
+    category: string;
+    itemName: string;
+    estimate?: string | number | null;
+    approved?: string | number | null;
+    actual?: string | number | null;
+    currency?: string;
+    status: string;
+    clientVisible?: boolean;
+  }>;
 }
 
 export interface RoleRoomAgentToolUse {

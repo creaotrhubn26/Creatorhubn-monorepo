@@ -34,6 +34,7 @@ import * as schema from "../migrations/schema.js";
 import { and, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { createRoleRoomRouter } from "./role-room-routes.js";
 import { pruneAiAuditLog } from "./role-room-ai-audit.js";
+import { pruneAgentCache } from "./role-room-agent-cache.js";
 import { createCreatorHubGoogleRouter } from "./creatorhub-google-routes.js";
 import { createRoleRoomIntegrationsV1Router } from "./role-room-integrations-v1-routes.js";
 import { createCommunicationRouter } from "./communication-routes.js";
@@ -35981,6 +35982,16 @@ async function runRoleRoomAiAuditPrune(trigger: string): Promise<void> {
     }
   } catch (error) {
     console.error("[role-room-ai-audit] prune failed", error);
+  }
+  try {
+    const dropped = await pruneAgentCache(pool);
+    if (dropped > 0) {
+      console.log(
+        `[role-room-agent-cache] Dropped ${dropped} expired rows (trigger=${trigger})`,
+      );
+    }
+  } catch (error) {
+    console.error("[role-room-agent-cache] prune failed", error);
   }
 }
 

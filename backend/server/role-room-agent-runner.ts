@@ -41,6 +41,14 @@ import {
   countScrubbed,
   type PseudonymizableEntity,
 } from './role-room-pseudonymize.js';
+import {
+  buildCacheKey,
+  hashContext,
+  lookupCachedResponse,
+  modelIdForTier,
+  pickModelForMessage,
+  storeCachedResponse,
+} from './role-room-agent-cache.js';
 
 export type RoleRoomAgentAction =
   | 'query'
@@ -88,6 +96,30 @@ export interface RoleRoomAgentInvokeInput {
     timelineHighlights?: Array<{ id: string; title: string; phase: string; status: string; dueAt?: string | null }>;
     candidates?: PseudonymizableEntity[];
     crew?: PseudonymizableEntity[];
+    /** Recent / upcoming shooting days — call time, wrap, location, status. */
+    shootingDays?: Array<{
+      id: string;
+      dayNumber: number;
+      date: string;
+      callTime?: string | null;
+      wrapTime?: string | null;
+      location?: string | null;
+      status: string;
+      weather?: { condition: string; temperature: number } | null;
+    }>;
+    /** Economy items — budget lines, estimates, actuals, statuses. */
+    economyItems?: Array<{
+      id: string;
+      phase: string;
+      category: string;
+      itemName: string;
+      estimate?: string | number | null;
+      approved?: string | number | null;
+      actual?: string | number | null;
+      currency?: string;
+      status: string;
+      clientVisible?: boolean;
+    }>;
   };
 }
 
@@ -130,6 +162,37 @@ function buildCachedSystem(input: RoleRoomAgentInvokeInput, pseudo: ReturnType<t
     for (const [i, c] of input.context.crew.entries()) {
       const placeholderName = `{{crew_${i + 1}}}`;
       lines.push(`- ${placeholderName} rolle=${c.role ?? 'ukjent'}`);
+    }
+  }
+  if (input.context.shootingDays?.length) {
+    lines.push('', '### Skytedager');
+    for (const day of input.context.shootingDays) {
+      const weather = day.weather
+        ? ` vær=${day.weather.condition}/${day.weather.temperature}°`
+        : '';
+      const times = [day.callTime ? `kall=${day.callTime}` : null, day.wrapTime ? `wrap=${day.wrapTime}` : null]
+        .filter(Boolean)
+        .join(' ');
+      lines.push(
+        `- id=${day.id} dag=${day.dayNumber} dato=${day.date} status=${day.status} ${times}${weather}${
+          day.location ? ` — ${day.location}` : ''
+        }`,
+      );
+    }
+  }
+  if (input.context.economyItems?.length) {
+    lines.push('', '### Økonomi (pseudonymisert kun for navn)');
+    for (const item of input.context.economyItems) {
+      const est = item.estimate != null ? `est=${item.estimate}` : '';
+      const appr = item.approved != null ? `godkjent=${item.approved}` : '';
+      const actual = item.actual != null ? `faktisk=${item.actual}` : '';
+      const parts = [est, appr, actual].filter(Boolean).join(' ');
+      const visibility = item.clientVisible === false ? ' [kun internt]' : '';
+      lines.push(
+        `- id=${item.id} fase=${item.phase} status=${item.status} ${parts} ${item.currency ?? ''} — ${
+          item.category
+        } / ${item.itemName}${visibility}`,
+      );
     }
   }
   return lines.join('\n');
@@ -201,7 +264,58 @@ export async function invokeRoleRoomAgent(
   if (input.context.briefSummary) fieldCategories.push('brief_fields');
   if (input.context.openReviews?.length) fieldCategories.push('review_metadata');
   if (input.context.timelineHighlights?.length) fieldCategories.push('timeline_metadata');
+  if (input.context.shootingDays?.length) fieldCategories.push('shooting_day_metadata');
+  if (input.context.economyItems?.length) fieldCategories.push('economy_metadata');
   fieldCategories.push(...candidateMap.categoriesTouched, ...crewMap.categoriesTouched);
+
+  // =========================================================================
+  // Cost-saving layer: response cache + model router.
+  //   - cacheKey = sha256(projectId, contextHash, pseudonymizedUserMessage).
+  //   - Cache lookup is best-effort; a miss or DB error just means we call
+  //     Claude as usual.
+  //   - Model router routes short info-lookup queries to Haiku (~5×
+  //     cheaper). Heavier queries stay on Sonnet.
+  // =========================================================================
+  const cacheEnabled = process.env.ROLE_ROOM_AGENT_CACHE !== 'off';
+  const contextHash = hashContext({
+    briefSummary: input.context.briefSummary ?? null,
+    openReviews: input.context.openReviews ?? [],
+    timelineHighlights: input.context.timelineHighlights ?? [],
+    shootingDays: input.context.shootingDays ?? [],
+    economyItems: input.context.economyItems ?? [],
+    // Pseudonymized candidate/crew placeholders — inclusion changes the
+    // cache bucket when the consented set changes.
+    candidatePlaceholders: candidateMap.assignments.map((a) => a.placeholder).sort(),
+    crewPlaceholders: crewMap.assignments.map((a) => a.placeholder).sort(),
+  });
+  const cacheKey = buildCacheKey(projectId, contextHash, pseudonymizedUserMessage);
+
+  if (cacheEnabled) {
+    const cached = await lookupCachedResponse(pool, cacheKey);
+    if (cached) {
+      await logAiCall(pool, {
+        projectId,
+        userId,
+        consentId: consent.id,
+        processor: 'anthropic',
+        model: cached.model,
+        action: input.action,
+        status: 'ok',
+        promptTokens: 0,
+        completionTokens: 0,
+        totalTokens: 0,
+        latencyMs: 0,
+        fieldCategories: [...fieldCategories, 'cache_hit'],
+        entityCount: candidates.length + crew.length,
+        emailsScrubbed: scrubbedFromUser.emails,
+        phonesScrubbed: scrubbedFromUser.phones,
+      });
+      return cached.response as RoleRoomAgentResponse;
+    }
+  }
+
+  const modelTier = pickModelForMessage(input.userMessage);
+  const modelId = modelIdForTier(modelTier);
 
   try {
     const raw = await runClaudeAgent({
@@ -209,6 +323,7 @@ export async function invokeRoleRoomAgent(
       userMessage: pseudonymizedUserMessage,
       tools: ROLE_ROOM_AGENT_TOOLS,
       maxTokens: ROLE_ROOM_AGENT_DEFAULT_MAX_TOKENS,
+      model: modelId,
     });
 
     // De-pseudonymize text so the UI renders real names to the user (who
@@ -241,7 +356,7 @@ export async function invokeRoleRoomAgent(
       phonesScrubbed: scrubbedFromUser.phones,
     });
 
-    return {
+    const response: RoleRoomAgentResponse = {
       text: depseudonymized,
       toolUses: raw.toolUses.map((t) => ({ id: t.id, name: t.name, input: t.input })),
       model: raw.model,
@@ -255,6 +370,21 @@ export async function invokeRoleRoomAgent(
         piiScrubbedFromInput: scrubbedFromUser,
       },
     };
+
+    if (cacheEnabled) {
+      // Do not block the response on cache write.
+      void storeCachedResponse(pool, {
+        cacheKey,
+        projectId,
+        userId,
+        model: raw.model,
+        response,
+        promptTokens: raw.usage.inputTokens,
+        completionTokens: raw.usage.outputTokens,
+      });
+    }
+
+    return response;
   } catch (err) {
     await logAiCall(pool, {
       projectId,
