@@ -10,7 +10,7 @@
  *   node backend/scripts/test-role-room-agent-purchase.playwright.mjs
  *
  * Env:
- *   APP_URL                   base URL (default https://creatorhubn.com)
+ *   APP_URL                   base URL (default https://theroleroom.com)
  *   ROLE_ROOM_PROJECT_ID      optional — jump straight to a known project
  *   STATE_FILE                storage-state JSON path for login reuse
  *                             (default .agent-purchase-state.json)
@@ -24,7 +24,7 @@ import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-const APP_URL = process.env.APP_URL ?? 'https://creatorhubn.com';
+const APP_URL = process.env.APP_URL ?? 'https://theroleroom.com';
 const ROLE_ROOM_PROJECT_ID = process.env.ROLE_ROOM_PROJECT_ID ?? null;
 const HEADLESS = process.env.HEADLESS === '1';
 const STATE_PATH = process.env.STATE_FILE
