@@ -57,6 +57,16 @@ services:
         value: "false"
       - key: ROLE_ROOM_AGENT_DAILY_SCAN_LIMIT
         value: "50"
+      # Cost-safety rate limiter. Per-user / per-project caps enforced in
+      # the API layer before the Claude call. Tune per pilot feedback.
+      - key: ROLE_ROOM_AGENT_RATE_LIMIT
+        value: "on"
+      - key: ROLE_ROOM_AGENT_RL_USER_MIN
+        value: "20"
+      - key: ROLE_ROOM_AGENT_RL_USER_HOUR
+        value: "200"
+      - key: ROLE_ROOM_AGENT_RL_PROJECT_MIN
+        value: "40"
       - key: CLOUDFLARE_R2_ACCOUNT_ID
         sync: false
       - key: CLOUDFLARE_R2_ACCESS_KEY_ID

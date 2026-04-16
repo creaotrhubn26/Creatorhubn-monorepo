@@ -239,3 +239,111 @@ export async function renameAgentThread(
   );
   return response.ok;
 }
+
+export interface AgentStreamEvents {
+  onStart?: (payload: { model: string; threadId: string | null }) => void;
+  onDelta?: (chunk: string) => void;
+  onDone?: (payload: {
+    model: string;
+    threadId: string | null;
+    usage: { inputTokens: number; outputTokens: number };
+    transparency: RoleRoomAgentResponse['transparency'];
+  }) => void;
+  onError?: (message: string) => void;
+}
+
+/**
+ * Streams an agent response via SSE-style POST. Returns a promise that
+ * resolves when the stream completes. Caller can abort via AbortSignal.
+ */
+export async function streamAgentQuery(
+  input: {
+    projectId: string;
+    userMessage: string;
+    requiredScope?: RoleRoomAgentScope;
+    context?: RoleRoomAgentContext;
+    threadId?: string | null;
+    persistThread?: boolean;
+  },
+  events: AgentStreamEvents,
+  signal?: AbortSignal,
+): Promise<void> {
+  const response = await fetch(
+    `${API_BASE}/projects/${encodeURIComponent(input.projectId)}/agent/stream`,
+    {
+      method: 'POST',
+      headers: buildHeaders(),
+      body: JSON.stringify({
+        userMessage: input.userMessage,
+        requiredScope: input.requiredScope ?? 'brief_only',
+        context: input.context ?? {},
+        threadId: input.threadId ?? null,
+        persistThread: input.persistThread ?? true,
+      }),
+      signal,
+    },
+  );
+
+  if (!response.ok) {
+    const raw = await response.text().catch(() => '');
+    let parsed: { error?: string; detail?: string } | null = null;
+    if (raw) {
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        parsed = null;
+      }
+    }
+    const code = (parsed?.error ?? 'http_error') as RoleRoomAgentErrorShape['code'];
+    const detail = parsed?.detail ?? parsed?.error ?? (raw || `HTTP ${response.status}`);
+    throw new RoleRoomAgentClaudeError({
+      code,
+      detail,
+      httpStatus: response.status,
+    });
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) {
+    throw new Error('No response body for stream');
+  }
+
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  // Simple SSE parser: accumulate until `\n\n` separator, then parse the
+  // `event:` + `data:` fields.
+  const dispatch = (rawBlock: string) => {
+    let eventName = 'message';
+    const dataLines: string[] = [];
+    for (const line of rawBlock.split('\n')) {
+      if (line.startsWith('event: ')) eventName = line.slice(7).trim();
+      else if (line.startsWith('data: ')) dataLines.push(line.slice(6));
+    }
+    if (dataLines.length === 0) return;
+    let payload: any;
+    try {
+      payload = JSON.parse(dataLines.join('\n'));
+    } catch {
+      return;
+    }
+    if (eventName === 'start') events.onStart?.(payload);
+    else if (eventName === 'delta') events.onDelta?.(payload.text ?? '');
+    else if (eventName === 'done') events.onDone?.(payload);
+    else if (eventName === 'error') events.onError?.(payload.message ?? 'stream_error');
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let sepIndex: number;
+    while ((sepIndex = buffer.indexOf('\n\n')) >= 0) {
+      const block = buffer.slice(0, sepIndex);
+      buffer = buffer.slice(sepIndex + 2);
+      if (block.trim().length === 0) continue;
+      dispatch(block);
+    }
+  }
+  if (buffer.trim().length > 0) dispatch(buffer);
+}

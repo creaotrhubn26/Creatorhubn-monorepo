@@ -16275,6 +16275,7 @@ export default function ProducerMediaPanel({
         onClose={() => setRoleRoomAgentDialogOpen(false)}
         projectId={projectId}
         projectName={projectName}
+        currentUserId={currentRoleRoomUserId || undefined}
         access={roleRoomAgentAccess}
         initialWebsiteUrl={intakeDraft.referenceLinks || undefined}
         initialOrganizationNumber={project.clientOrganizationNumber || undefined}

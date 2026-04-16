@@ -56,6 +56,16 @@ import {
   listThreads,
   updateThreadTitle,
 } from './role-room-agent-threads.js';
+import {
+  checkAgentRateLimit,
+  RateLimitExceededError,
+} from './role-room-agent-ratelimit.js';
+import { handleAgentStream } from './role-room-agent-stream.js';
+import {
+  getAiGovernanceOverview,
+  getAuditTrail,
+  getConsentList,
+} from './role-room-ai-governance.js';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -19784,6 +19794,21 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           return res.status(400).json({ error: 'invalid requiredScope' });
         }
 
+        try {
+          checkAgentRateLimit(userId, req.params.projectId);
+        } catch (rlError) {
+          if (rlError instanceof RateLimitExceededError) {
+            res.setHeader('Retry-After', String(rlError.retryAfterSeconds));
+            return res.status(429).json({
+              error: 'rate_limit_exceeded',
+              detail: rlError.message,
+              scope: rlError.scope,
+              retryAfterSeconds: rlError.retryAfterSeconds,
+            });
+          }
+          throw rlError;
+        }
+
         const response = await invokeRoleRoomAgent({
           pool,
           projectId: req.params.projectId,
@@ -19808,6 +19833,25 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           error: 'agent_failed',
           detail: error instanceof Error ? error.message : String(error),
         });
+      }
+    },
+  );
+
+  // Streaming agent endpoint (SSE). Non-tool-use only — tool_use queries
+  // still go through the atomic /agent/query endpoint.
+  router.post(
+    '/projects/:projectId/agent/stream',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        await handleAgentStream(pool, req, res, userId);
+      } catch (error) {
+        if (!res.headersSent) {
+          res.status(500).json({ error: 'stream_failed', detail: String(error) });
+        } else {
+          res.end();
+        }
       }
     },
   );
@@ -19877,6 +19921,62 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json({ ok: true });
       } catch (error) {
         res.status(500).json({ error: 'Failed to archive thread', detail: String(error) });
+      }
+    },
+  );
+
+  // DPO admin governance — read-only aggregated views of AI usage.
+  // Admin-gated so consent records + audit rows (metadata only) are never
+  // exposed to non-admins.
+  router.get(
+    '/admin/ai-governance/overview',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      if (!requireScope(req, 'admin')) {
+        return res.status(403).json({ error: 'admin_only' });
+      }
+      try {
+        const overview = await getAiGovernanceOverview(pool);
+        res.json(overview);
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to load overview', detail: String(error) });
+      }
+    },
+  );
+
+  router.get(
+    '/admin/ai-governance/consents',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      if (!requireScope(req, 'admin')) {
+        return res.status(403).json({ error: 'admin_only' });
+      }
+      try {
+        const includeRevoked = req.query.includeRevoked === 'true';
+        const limit = typeof req.query.limit === 'string' ? Number(req.query.limit) : undefined;
+        const consents = await getConsentList(pool, { includeRevoked, limit });
+        res.json({ consents });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to load consents', detail: String(error) });
+      }
+    },
+  );
+
+  router.get(
+    '/admin/ai-governance/audit',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      if (!requireScope(req, 'admin')) {
+        return res.status(403).json({ error: 'admin_only' });
+      }
+      try {
+        const limit = typeof req.query.limit === 'string' ? Number(req.query.limit) : undefined;
+        const projectId = typeof req.query.projectId === 'string' ? req.query.projectId : undefined;
+        const status = typeof req.query.status === 'string' ? req.query.status : undefined;
+        const rows = await getAuditTrail(pool, { limit, projectId, status });
+        res.json({ rows });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to load audit trail', detail: String(error) });
       }
     },
   );

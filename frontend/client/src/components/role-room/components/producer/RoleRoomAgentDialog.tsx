@@ -14,17 +14,27 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { AutoFixHigh as AutoFixHighIcon, Language as LanguageIcon } from '@mui/icons-material';
+import {
+  AutoFixHigh as AutoFixHighIcon,
+  Chat as ChatIcon,
+  Language as LanguageIcon,
+} from '@mui/icons-material';
+import { Tab, Tabs } from '@mui/material';
 import type {
   RoleRoomAgentAccess,
   RoleRoomAgentProducerBootstrapResult,
 } from '../../services/roleRoomAgentService';
+import RoleRoomAgentChatPanel from '../ai/RoleRoomAgentChatPanel';
 
 type RoleRoomAgentDialogProps = {
   open: boolean;
   onClose: () => void;
   projectId: string;
   projectName: string;
+  /** Optional — when provided, the Chat tab becomes available so desktop
+   *  users can talk to the persistent Role Room Agent alongside the
+   *  research bootstrap flow. */
+  currentUserId?: string;
   initialWebsiteUrl?: string | null;
   initialOrganizationNumber?: string | null;
   initialCompanyName?: string | null;
@@ -133,6 +143,7 @@ export default function RoleRoomAgentDialog({
   onClose,
   projectId,
   projectName,
+  currentUserId,
   initialWebsiteUrl,
   initialOrganizationNumber,
   initialCompanyName,
@@ -157,6 +168,7 @@ export default function RoleRoomAgentDialog({
   // full correction trail as the newest source of truth.
   const [refinementDraft, setRefinementDraft] = useState('');
   const [refinementHistory, setRefinementHistory] = useState<string[]>([]);
+  const [activeTab, setActiveTab] = useState<'research' | 'chat'>('research');
 
   useEffect(() => {
     if (!open) {
@@ -349,7 +361,34 @@ export default function RoleRoomAgentDialog({
           </Stack>
         </Stack>
       </DialogTitle>
+      {currentUserId ? (
+        <Tabs
+          value={activeTab}
+          onChange={(_, next) => setActiveTab(next as typeof activeTab)}
+          sx={{
+            px: 2,
+            borderBottom: '1px solid rgba(148,163,184,0.14)',
+            '& .MuiTab-root': { color: 'rgba(226,232,240,0.72)', textTransform: 'none', fontWeight: 600 },
+            '& .Mui-selected': { color: '#22d3ee !important' },
+            '& .MuiTabs-indicator': { bgcolor: '#22d3ee' },
+          }}
+        >
+          <Tab value="research" label="Research" icon={<AutoFixHighIcon fontSize="small" />} iconPosition="start" />
+          <Tab value="chat" label="Chat" icon={<ChatIcon fontSize="small" />} iconPosition="start" />
+        </Tabs>
+      ) : null}
       <DialogContent sx={{ p: { xs: 1.4, md: 2 } }}>
+        {activeTab === 'chat' && currentUserId ? (
+          <Box sx={{ bgcolor: 'rgba(226,232,240,0.98)', borderRadius: 2, p: 1.5 }}>
+            <RoleRoomAgentChatPanel
+              projectId={projectId}
+              currentUserId={currentUserId}
+              context={{
+                briefSummary: initialExtraContext ?? undefined,
+              }}
+            />
+          </Box>
+        ) : (
         <Stack spacing={1.4}>
           {error ? <Alert severity="error">{error}</Alert> : null}
           {notice ? <Alert severity="success">{notice}</Alert> : null}
@@ -1157,6 +1196,7 @@ export default function RoleRoomAgentDialog({
             </Stack>
           ) : null}
         </Stack>
+        )}
       </DialogContent>
       <DialogActions
         sx={{

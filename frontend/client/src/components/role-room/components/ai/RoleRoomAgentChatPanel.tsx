@@ -39,8 +39,10 @@ import {
 
 import AiConsentGate from './AiConsentGate';
 import AiTransparencyBanner from './AiTransparencyBanner';
+import AgentThreadList from './AgentThreadList';
 import { useRoleRoomAgentClaude } from '../../hooks/useRoleRoomAgentClaude';
 import { revokeProjectConsent } from '../../services/aiConsentService';
+import { History as HistoryIcon } from '@mui/icons-material';
 import type { RoleRoomAgentToolUse } from '../../services/roleRoomAgentClaudeApi';
 import type { RoleRoomAgentContext } from '../../services/roleRoomAgentClaudeApi';
 
@@ -72,7 +74,8 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
   const [input, setInput] = useState('');
   const [pendingTool, setPendingTool] = useState<RoleRoomAgentToolUse | null>(null);
   const [toolExecuting, setToolExecuting] = useState(false);
-  const { messages, pending, send, reset, threadId, startNewThread, lastError } = useRoleRoomAgentClaude(projectId);
+  const { messages, pending, send, reset, threadId, loadThread, startNewThread, lastError } = useRoleRoomAgentClaude(projectId);
+  const [historyAnchor, setHistoryAnchor] = useState<HTMLElement | null>(null);
 
   const handleSend = useCallback(
     async (question?: string) => {
@@ -98,16 +101,28 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
             ? `Fortsetter samtale (${messages.length} meldinger lagret)`
             : 'Ny samtale'}
         </Typography>
-        {(threadId || messages.length > 0) ? (
-          <Chip
-            label="Ny samtale"
-            size="small"
-            variant="outlined"
-            onClick={startNewThread}
-            disabled={pending}
-            clickable
-          />
-        ) : null}
+        <Stack direction="row" spacing={0.75}>
+          {projectId ? (
+            <Chip
+              icon={<HistoryIcon fontSize="small" />}
+              label="Historikk"
+              size="small"
+              variant="outlined"
+              onClick={(event) => setHistoryAnchor(event.currentTarget)}
+              clickable
+            />
+          ) : null}
+          {(threadId || messages.length > 0) ? (
+            <Chip
+              label="Ny samtale"
+              size="small"
+              variant="outlined"
+              onClick={startNewThread}
+              disabled={pending}
+              clickable
+            />
+          ) : null}
+        </Stack>
       </Stack>
 
       <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
@@ -273,6 +288,16 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
         {body}
         {composer}
       </Stack>
+      <AgentThreadList
+        projectId={projectId ?? ''}
+        anchorEl={historyAnchor}
+        open={Boolean(historyAnchor) && Boolean(projectId)}
+        onClose={() => setHistoryAnchor(null)}
+        currentThreadId={threadId}
+        onPick={(id) => {
+          void loadThread(id);
+        }}
+      />
       <ToolConfirmDialog
         tool={pendingTool}
         executing={toolExecuting}

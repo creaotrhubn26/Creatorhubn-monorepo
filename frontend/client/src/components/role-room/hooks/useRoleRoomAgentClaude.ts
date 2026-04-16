@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   getAgentThread,
   postAgentQuery,
   RoleRoomAgentClaudeError,
+  streamAgentQuery,
   type RoleRoomAgentContext,
   type RoleRoomAgentResponse,
   type RoleRoomAgentScope,
@@ -22,13 +23,18 @@ export interface UseRoleRoomAgentClaudeResult {
   pending: boolean;
   send: (
     userMessage: string,
-    options?: { scope?: RoleRoomAgentScope; context?: RoleRoomAgentContext },
+    options?: {
+      scope?: RoleRoomAgentScope;
+      context?: RoleRoomAgentContext;
+      stream?: boolean;
+    },
   ) => Promise<RoleRoomAgentResponse | null>;
   reset: () => void;
   threadId: string | null;
   loadThread: (threadId: string) => Promise<void>;
   startNewThread: () => void;
   lastError: { code: string; detail: string } | null;
+  streaming: boolean;
 }
 
 const ACTIVE_THREAD_STORAGE_PREFIX = 'role-room-agent-thread:';
@@ -63,6 +69,8 @@ export function useRoleRoomAgentClaude(projectId: string | null): UseRoleRoomAge
   const [pending, setPending] = useState(false);
   const [lastError, setLastError] = useState<{ code: string; detail: string } | null>(null);
   const [threadId, setThreadId] = useState<string | null>(() => readStoredThreadId(projectId));
+  const [streaming, setStreaming] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
 
   // Load the active thread (if any) when the projectId changes, so the user
   // picks up where they left off across sessions.
@@ -109,7 +117,11 @@ export function useRoleRoomAgentClaude(projectId: string | null): UseRoleRoomAge
   const send = useCallback(
     async (
       userMessage: string,
-      options?: { scope?: RoleRoomAgentScope; context?: RoleRoomAgentContext },
+      options?: {
+        scope?: RoleRoomAgentScope;
+        context?: RoleRoomAgentContext;
+        stream?: boolean;
+      },
     ): Promise<RoleRoomAgentResponse | null> => {
       if (!projectId || !userMessage.trim()) return null;
       const userEntry: AgentChatMessage = {
@@ -121,6 +133,130 @@ export function useRoleRoomAgentClaude(projectId: string | null): UseRoleRoomAge
       setMessages((prev) => [...prev, userEntry]);
       setPending(true);
       setLastError(null);
+      const useStream = options?.stream !== false;
+
+      if (useStream) {
+        // Streaming path: append an assistant-placeholder message and mutate
+        // its text as deltas arrive. On done, set the full response.
+        const assistantId = `a-${Date.now()}`;
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: assistantId,
+            role: 'assistant',
+            text: '',
+            createdAt: new Date().toISOString(),
+          },
+        ]);
+        setStreaming(true);
+        abortRef.current = new AbortController();
+        try {
+          let finalResponse: RoleRoomAgentResponse | null = null;
+          await streamAgentQuery(
+            {
+              projectId,
+              userMessage: userMessage.trim(),
+              requiredScope: options?.scope,
+              context: options?.context,
+              threadId,
+            },
+            {
+              onStart: (payload) => {
+                if (payload.threadId && payload.threadId !== threadId) {
+                  setThreadId(payload.threadId);
+                  writeStoredThreadId(projectId, payload.threadId);
+                }
+              },
+              onDelta: (chunk) => {
+                setMessages((prev) =>
+                  prev.map((m) => (m.id === assistantId ? { ...m, text: m.text + chunk } : m)),
+                );
+              },
+              onDone: (payload) => {
+                // Build a minimal RoleRoomAgentResponse so the UI can render
+                // the transparency banner. Cached/non-cached token fields
+                // are approximations from the stream payload.
+                finalResponse = {
+                  text: '', // filled below from accumulated
+                  toolUses: [],
+                  model: payload.model,
+                  latencyMs: 0,
+                  usage: {
+                    inputTokens: payload.usage.inputTokens,
+                    outputTokens: payload.usage.outputTokens,
+                  },
+                  consentId: '',
+                  threadId: payload.threadId ?? null,
+                  transparency: payload.transparency,
+                };
+                setMessages((prev) =>
+                  prev.map((m) => {
+                    if (m.id !== assistantId) return m;
+                    const completeResponse = finalResponse
+                      ? { ...finalResponse, text: m.text }
+                      : undefined;
+                    return { ...m, response: completeResponse };
+                  }),
+                );
+              },
+              onError: (message) => {
+                setLastError({ code: 'stream_error', detail: message });
+              },
+            },
+            abortRef.current.signal,
+          );
+          return finalResponse;
+        } catch (err) {
+          if (err instanceof RoleRoomAgentClaudeError) {
+            setLastError({ code: err.code, detail: err.detail });
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId ? { ...m, error: err.detail, text: '' } : m,
+              ),
+            );
+            // If the stream endpoint refuses (e.g. agent disabled), fall
+            // back to the non-streaming endpoint so the user still gets an
+            // answer where possible.
+            if (err.code === 'agent_disabled' || err.httpStatus === 404) {
+              try {
+                const fallback = await postAgentQuery({
+                  projectId,
+                  userMessage: userMessage.trim(),
+                  requiredScope: options?.scope,
+                  context: options?.context,
+                  threadId,
+                });
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantId
+                      ? {
+                          ...m,
+                          error: undefined,
+                          text: fallback.text,
+                          response: fallback,
+                        }
+                      : m,
+                  ),
+                );
+                return fallback;
+              } catch {
+                /* already surfaced */
+              }
+            }
+          } else {
+            setLastError({
+              code: 'unknown',
+              detail: err instanceof Error ? err.message : String(err),
+            });
+          }
+          return null;
+        } finally {
+          setStreaming(false);
+          setPending(false);
+          abortRef.current = null;
+        }
+      }
+
       try {
         const response = await postAgentQuery({
           projectId,
@@ -201,5 +337,5 @@ export function useRoleRoomAgentClaude(projectId: string | null): UseRoleRoomAge
     [projectId],
   );
 
-  return { messages, pending, send, reset, threadId, loadThread, startNewThread, lastError };
+  return { messages, pending, send, reset, threadId, loadThread, startNewThread, lastError, streaming };
 }
