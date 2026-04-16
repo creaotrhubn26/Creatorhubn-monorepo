@@ -131,6 +131,34 @@ function extractJsonFromText(text: string): unknown | null {
   }
 }
 
+// When a website provides a hero image via og:image / twitter:image we can
+// feed it to Claude vision alongside the structured text signals. This
+// gives noticeably better brand/tone classification because the model
+// literally sees the visual identity instead of inferring from prose.
+async function fetchImageAsBase64(
+  url: string,
+): Promise<{ base64: string; mediaType: string } | null> {
+  try {
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(10_000),
+      headers: { 'User-Agent': 'RoleRoomAgent/1.0 (visual-analysis)' },
+    });
+    if (!response.ok) return null;
+    const contentType = response.headers.get('content-type') || 'image/jpeg';
+    // Claude vision accepts jpeg, png, gif, webp. Anything else → skip.
+    const mediaType = contentType.split(';')[0].trim().toLowerCase();
+    if (!['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(mediaType)) {
+      return null;
+    }
+    const buffer = Buffer.from(await response.arrayBuffer());
+    // Cap at ~5 MB so we don't blow the API request budget.
+    if (buffer.byteLength > 5 * 1024 * 1024) return null;
+    return { base64: buffer.toString('base64'), mediaType };
+  } catch {
+    return null;
+  }
+}
+
 export async function requestClaudeBootstrap(
   input: RoleRoomAgentProducerBootstrapInput,
   websiteInsights: RoleRoomAgentWebsiteInsights,
@@ -146,6 +174,9 @@ export async function requestClaudeBootstrap(
   if (!client) return null;
 
   const model = process.env.ROLE_ROOM_BOOTSTRAP_CLAUDE_MODEL || 'claude-sonnet-4-5';
+  const visionEnabled = process.env.ROLE_ROOM_BOOTSTRAP_VISION !== 'false';
+  const heroImageUrl = websiteInsights.probableHeroImageUrl;
+  const heroImage = visionEnabled && heroImageUrl ? await fetchImageAsBase64(heroImageUrl) : null;
   const userPayload = {
     task: 'Lag første utkast for kundeprofil, story logikk og brief for et innholdsproduksjonsprosjekt.',
     requirements: {
@@ -167,6 +198,31 @@ export async function requestClaudeBootstrap(
   };
 
   try {
+    // Build the user message. When we have a hero image, mix it into the
+    // content array before the JSON payload so Claude sees the visual first.
+    // Claude vision requires image blocks to come before related text in
+    // multi-part messages for best attention weight.
+    const userContent: any[] = [];
+    if (heroImage) {
+      userContent.push({
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: heroImage.mediaType,
+          data: heroImage.base64,
+        },
+      });
+      userContent.push({
+        type: 'text',
+        text:
+          'Bildet over er kundens hovedvisuelle uttrykk (hentet fra og:image/twitter:image). Bruk det som utgangspunkt når du bedømmer tone, estetikk og brand-signaler i companyProfile.toneAndBrandSignals og storyLogicDraft.',
+      });
+    }
+    userContent.push({
+      type: 'text',
+      text: JSON.stringify(userPayload),
+    });
+
     const response = await Promise.race([
       client.messages.create({
         model,
@@ -183,7 +239,7 @@ export async function requestClaudeBootstrap(
         messages: [
           {
             role: 'user',
-            content: JSON.stringify(userPayload),
+            content: userContent,
           },
         ],
       }),

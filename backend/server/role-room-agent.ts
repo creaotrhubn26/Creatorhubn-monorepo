@@ -185,6 +185,7 @@ export type RoleRoomAgentWebsiteInsights = {
   metaDescription?: string | null;
   textSnippet?: string | null;
   probableLogoUrl?: string | null;
+  probableHeroImageUrl?: string | null;
   socialProfileCandidates?: RoleRoomAgentSocialProfileCandidate[];
   selectedPageSnippets: RoleRoomAgentWebsitePageSnippet[];
 };
@@ -2047,6 +2048,17 @@ async function fetchWebsiteInsights(
       metaDescription: extractMetaContent(html, "description") || extractMetaContent(html, "og:description"),
       textSnippet: mergedSnippet || extractTextSnippet(html),
       probableLogoUrl: extractProbableLogoUrl(html, finalUrl),
+      probableHeroImageUrl: (() => {
+        const ogImage = extractMetaContent(html, "og:image")
+          || extractMetaContent(html, "og:image:url")
+          || extractMetaContent(html, "twitter:image");
+        if (!ogImage) return null;
+        try {
+          return new URL(ogImage, finalUrl).toString();
+        } catch {
+          return ogImage;
+        }
+      })(),
       socialProfileCandidates: finalizeSocialProfileCandidates(
         socialCandidateMap,
         input,
