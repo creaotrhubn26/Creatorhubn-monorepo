@@ -1,0 +1,97 @@
+/*
+ * Role Room mobile-only stylesheet (backlog item 001).
+ *
+ * This file is the single home for mobile + iPad visual rules. Rules MUST be
+ * scoped to `.role-room-route` AND a mobile/iPad media query so desktop
+ * (≥ 1200px) is never affected — see guardrails in
+ * docs/role-room/mobile-ipad-ux-500-improvements.md.
+ *
+ * Fase 1 is infrastructure only. The safe-area padding below is the sole
+ * visual rule and is additive on touch devices (env() insets resolve to 0 on
+ * non-notched browsers). Subsequent mobile tasks should add their rules here
+ * rather than spreading mobile concerns across desktop stylesheets.
+ */
+
+@import './role-room-mobile-tokens.css';
+
+@media (max-width: 599.95px) {
+  .role-room-route {
+    padding-left: max(0px, var(--rr-safe-left));
+    padding-right: max(0px, var(--rr-safe-right));
+    padding-bottom: max(0px, var(--rr-safe-bottom));
+  }
+}
+
+@media (min-width: 600px) and (max-width: 1199.95px) {
+  .role-room-route {
+    padding-left: max(0px, var(--rr-safe-left));
+    padding-right: max(0px, var(--rr-safe-right));
+    padding-bottom: max(0px, var(--rr-safe-bottom));
+  }
+}
+
+/*
+ * Mobile/iPad topbar (items 026, 034, 049).
+ * Sticky so it stays visible above the tab surface, with safe-area top inset
+ * so it doesn't collide with the iPhone notch or iPad status bar.
+ * Desktop (≥ 1200px) never applies these rules.
+ */
+@media (max-width: 1199.95px) {
+  .role-room-route .rr-mobile-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: var(--rr-spacing-compact, 8px);
+    min-height: var(--rr-header-height, 56px);
+    padding-top: calc(var(--rr-safe-top, 0px) + 4px);
+    padding-right: var(--rr-spacing-base, 12px);
+    padding-bottom: 4px;
+    padding-left: var(--rr-spacing-base, 12px);
+    margin-bottom: var(--rr-spacing-base, 12px);
+    background: rgba(255, 255, 255, 0.96);
+    backdrop-filter: saturate(180%) blur(8px);
+    -webkit-backdrop-filter: saturate(180%) blur(8px);
+    border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  }
+}
+
+/* Phone: cap role pill width so long role names truncate cleanly. */
+@media (max-width: 599.95px) {
+  .role-room-route .rr-mobile-topbar__role-pill {
+    max-width: 110px;
+  }
+}
+
+/*
+ * iPad split-view shell (items 051-075). These rules only apply at iPad
+ * breakpoints; phone stays unaffected and desktop ≥ 1200px is never touched.
+ */
+@media (min-width: 600px) and (max-width: 1199.95px) {
+  .role-room-route .rr-ipad-split {
+    padding-left: max(0px, var(--rr-safe-left));
+    padding-right: max(0px, var(--rr-safe-right));
+  }
+
+  /* Item 062: wider cards on iPad so desktop tables don't get compressed. */
+  .role-room-route .rr-ipad-split__master > * {
+    max-width: 360px;
+  }
+
+  /* Item 065: Stage Manager and 50/50 split-screen compat — ensure the detail
+   * column shrinks gracefully rather than forcing horizontal scroll. */
+  .role-room-route .rr-ipad-split__detail {
+    min-width: 0;
+  }
+}
+
+/*
+ * In iPad landscape (≥ 900px in range), give the detail column more breathing
+ * room than in portrait. Purely a visual refinement.
+ */
+@media (min-width: 900px) and (max-width: 1199.95px) and (orientation: landscape) {
+  .role-room-route .rr-ipad-split--landscape {
+    column-gap: var(--rr-spacing-comfortable, 24px);
+  }
+}

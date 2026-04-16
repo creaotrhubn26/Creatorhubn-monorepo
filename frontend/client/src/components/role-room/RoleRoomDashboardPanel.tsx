@@ -10,7 +10,31 @@
  *  5. Quick sync action
  */
 
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import '../../styles/role-room-mobile.css';
+import { useAuth } from '../../hooks/useAuth';
+import { useRoleRoomViewportMode } from './hooks/useRoleRoomViewportMode';
+import { useProducerNotifications } from './hooks/useProducerNotifications';
+import { useProducerReviews } from './hooks/useProducerReviews';
+import { useProducerTimeline } from './hooks/useProducerTimeline';
+import RoleRoomMobileTopBar, { MobileSyncStatus } from './components/RoleRoomMobileTopBar';
+import RoleRoomProjectSwitcher from './components/RoleRoomProjectSwitcher';
+import RoleRoomMobileInboxSheet, { InboxItem } from './components/RoleRoomMobileInboxSheet';
+import RoleRoomMobileProfileSheet from './components/RoleRoomMobileProfileSheet';
+import RoleRoomMobileApprovalView from './components/mobile-approval/RoleRoomMobileApprovalView';
+import RoleRoomMobileBriefWizard from './components/mobile-brief/RoleRoomMobileBriefWizard';
+import RoleRoomMobilePlannerView from './components/mobile-planner/RoleRoomMobilePlannerView';
+import RoleRoomMobileShootingDayView from './components/production-mobile/RoleRoomMobileShootingDayView';
+import RoleRoomMobileShotListView from './components/production-mobile/RoleRoomMobileShotListView';
+import RoleRoomMobileCrewView from './components/production-mobile/RoleRoomMobileCrewView';
+import RoleRoomAgentChatPanel from './components/ai/RoleRoomAgentChatPanel';
+import { useRoleRoomAgentContext } from './hooks/useRoleRoomAgentContext';
+import {
+  readLastWorkspace,
+  saveLastWorkspace,
+  readRecentProjects,
+  pushRecentProject,
+} from './state/roleRoomWorkspacePersistence';
 import {
   Box,
   Card,
@@ -60,6 +84,7 @@ import {
   LinkOff as LinkOffIcon,
   Link as LinkIcon,
   YouTube as YouTubeIcon,
+  AutoFixHigh as AutoFixHighIcon,
 } from '@mui/icons-material';
 
 import {
@@ -195,7 +220,19 @@ function buildRoleRoomPublishingSuggestion(
 
 // ── Sub-tabs inside the panel ────────────────────────────────
 
-type SubTab = 'roles' | 'candidates' | 'crew' | 'schedule' | 'publishing';
+type SubTab =
+  | 'roles'
+  | 'candidates'
+  | 'crew'
+  | 'schedule'
+  | 'publishing'
+  | 'approval'
+  | 'brief'
+  | 'planner'
+  | 'shooting'
+  | 'shotlist'
+  | 'mannskap'
+  | 'agent';
 
 // ── Props ────────────────────────────────────────────────────
 
@@ -227,6 +264,18 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectDesc, setNewProjectDesc] = useState('');
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [switcherAnchor, setSwitcherAnchor] = useState<HTMLElement | null>(null);
+  const [inboxOpen, setInboxOpen] = useState(false);
+  const [inboxAnchor, setInboxAnchor] = useState<HTMLElement | null>(null);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [profileAnchor, setProfileAnchor] = useState<HTMLElement | null>(null);
+  const [recentProjectIds, setRecentProjectIds] = useState<string[]>(() => readRecentProjects());
+  const [restoredFromSession, setRestoredFromSession] = useState(false);
+  const restoreAttemptedRef = useRef(false);
+
+  const viewport = useRoleRoomViewportMode();
+  const auth = useAuth();
   const [roleRoomAgentAccess, setRoleRoomAgentAccess] = useState<RoleRoomAgentAccess | null>(null);
   const [roleRoomAgentSnapshot, setRoleRoomAgentSnapshot] = useState<RoleRoomAgentProducerBootstrapResult | null>(null);
 
@@ -397,6 +446,121 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
     [roleRoomAgentAccess?.allowed, roleRoomAgentAccess?.isAdmin, roleRoomAgentSnapshot, selectedProject?.name],
   );
 
+  const mobileSyncStatus: MobileSyncStatus = useMemo(() => {
+    if (syncProjectMut.isPending) return 'syncing';
+    if (syncProjectMut.isError) return 'error';
+    if (syncProjectMut.isSuccess) return 'success';
+    return 'idle';
+  }, [syncProjectMut.isPending, syncProjectMut.isError, syncProjectMut.isSuccess]);
+
+  const activeRoleLabel = useMemo(() => {
+    const role = currentUserProjectRoles[0]?.role;
+    if (!role) return null;
+    const spaced = String(role).replace(/_/g, ' ');
+    return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+  }, [currentUserProjectRoles]);
+
+  // Item 042/366: restore last workspace once, after projects load. Ignore demo
+  // projects and only restore if the stored id still exists in the project list.
+  useEffect(() => {
+    if (restoreAttemptedRef.current) return;
+    if (!projects || projects.length === 0) return;
+    restoreAttemptedRef.current = true;
+
+    if (selectedProjectId) return;
+    const last = readLastWorkspace();
+    if (!last) return;
+    const stillExists = projects.some((p) => p.id === last.projectId);
+    if (!stillExists) return;
+
+    setSelectedProjectId(last.projectId);
+    if (last.subTab) {
+      setSubTab(last.subTab as SubTab);
+    }
+    setRestoredFromSession(true);
+  }, [projects, selectedProjectId]);
+
+  // Persist last workspace + maintain recents list on every real selection.
+  useEffect(() => {
+    if (!selectedProjectId) return;
+    saveLastWorkspace(selectedProjectId, subTab);
+    setRecentProjectIds((prev) => {
+      const filtered = prev.filter((id) => id !== selectedProjectId);
+      return [selectedProjectId, ...filtered].slice(0, 3);
+    });
+    // Writing-through to localStorage; the returned list is identical shape.
+    pushRecentProject(selectedProjectId);
+  }, [selectedProjectId, subTab]);
+
+  // Inbox: producer notifications scoped to the active project.
+  const {
+    items: rawNotifications,
+    loading: inboxLoading,
+    error: inboxErrorRaw,
+    unreadCount: inboxUnreadCount,
+    markAsRead: markNotificationAsRead,
+  } = useProducerNotifications(selectedProjectId ?? undefined);
+
+  const inboxItems: InboxItem[] = useMemo(
+    () =>
+      (rawNotifications ?? []).map((n) => ({
+        id: n.id,
+        title: n.title,
+        message: n.message,
+        read: Boolean(n.read),
+        createdAt: n.created_at,
+        eventType: n.event_type,
+      })),
+    [rawNotifications],
+  );
+
+  const handleOpenSwitcher = useCallback((anchor: HTMLElement) => {
+    setSwitcherAnchor(anchor);
+    setSwitcherOpen(true);
+  }, []);
+
+  const handleCloseSwitcher = useCallback(() => {
+    setSwitcherOpen(false);
+  }, []);
+
+  const handleSelectFromSwitcher = useCallback((id: string) => {
+    setSelectedProjectId(id);
+    setRestoredFromSession(false);
+  }, []);
+
+  const handleOpenInbox = useCallback((anchor: HTMLElement) => {
+    setInboxAnchor(anchor);
+    setInboxOpen(true);
+  }, []);
+
+  const handleCloseInbox = useCallback(() => setInboxOpen(false), []);
+
+  const handleInboxItemClick = useCallback(
+    (id: string) => {
+      void markNotificationAsRead(id).catch(() => {
+        /* swallow — surfacing mark-read errors is out of scope for fase 2 */
+      });
+    },
+    [markNotificationAsRead],
+  );
+
+  const handleOpenProfile = useCallback((anchor: HTMLElement) => {
+    setProfileAnchor(anchor);
+    setProfileOpen(true);
+  }, []);
+
+  const handleCloseProfile = useCallback(() => setProfileOpen(false), []);
+
+  const profileDisplayName = auth.user?.displayName || auth.user?.name || null;
+  const profileEmail = auth.user?.email || null;
+  const profileInitials = useMemo(() => {
+    const source = (profileDisplayName ?? profileEmail ?? '').trim();
+    if (!source) return null;
+    const parts = source.split(/\s+/);
+    if (parts.length === 1) return source.slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  }, [profileDisplayName, profileEmail]);
+
   // ── Render ───────────────────────────────────────────────
 
   if (projectsLoading) {
@@ -409,9 +573,60 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
   }
 
   return (
-    <Box sx={{ p: { xs: 1, sm: 2, md: 3 }, maxWidth: 1400, mx: 'auto' }}>
-      {/* ── Header ─────────────────────────────────────── */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+    <Box className="role-room-route" sx={{ p: { xs: 1, sm: 2, md: 3 }, maxWidth: 1400, mx: 'auto' }}>
+      {/* ── Mobile/iPad topbar (items 026-050) ─────────── */}
+      {!viewport.isDesktop ? (
+        <>
+          <RoleRoomMobileTopBar
+            projectName={selectedProject?.name ?? null}
+            projectCount={projects?.length ?? 0}
+            activeRoleLabel={activeRoleLabel}
+            syncStatus={mobileSyncStatus}
+            onOpenProjectSwitcher={handleOpenSwitcher}
+            onRefresh={() => refetchProjects()}
+            onCreateProject={() => setNewProjectOpen(true)}
+            restoredFromSession={restoredFromSession}
+            onDismissRestoredChip={() => setRestoredFromSession(false)}
+            onOpenInbox={handleOpenInbox}
+            inboxUnreadCount={inboxUnreadCount ?? 0}
+            onOpenProfile={handleOpenProfile}
+            profileInitials={profileInitials}
+          />
+          <RoleRoomProjectSwitcher
+            open={switcherOpen}
+            onClose={handleCloseSwitcher}
+            mode={viewport.mode}
+            anchorEl={switcherAnchor}
+            projects={projects ?? []}
+            selectedProjectId={selectedProjectId}
+            onSelect={handleSelectFromSwitcher}
+            recentProjectIds={recentProjectIds}
+          />
+          <RoleRoomMobileInboxSheet
+            open={inboxOpen}
+            onClose={handleCloseInbox}
+            mode={viewport.mode}
+            items={inboxItems}
+            loading={inboxLoading}
+            error={inboxErrorRaw}
+            onItemClick={handleInboxItemClick}
+          />
+          <RoleRoomMobileProfileSheet
+            open={profileOpen}
+            onClose={handleCloseProfile}
+            mode={viewport.mode}
+            anchorEl={profileAnchor}
+            displayName={profileDisplayName}
+            email={profileEmail}
+            roleLabel={activeRoleLabel}
+            workspaceSummary={workspaceSummary ?? null}
+            onLogout={auth.logout ? () => { void auth.logout(); } : undefined}
+          />
+        </>
+      ) : null}
+
+      {/* ── Desktop header ─────────────────────────────── */}
+      <Box sx={{ display: viewport.isDesktop ? 'flex' : 'none', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Box>
           <Typography variant="h5" fontWeight={700} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <RoleRoomBrandMark appearance="header" showLabel={false} />
@@ -674,6 +889,67 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                     sx={{ minHeight: 48 }}
                   />
                 )}
+                {!viewport.isDesktop && (
+                  <Tab
+                    value="approval"
+                    label="Godkjenning"
+                    icon={<CheckCircleIcon fontSize="small" />}
+                    iconPosition="start"
+                    sx={{ minHeight: 48 }}
+                  />
+                )}
+                {!viewport.isDesktop && (
+                  <Tab
+                    value="brief"
+                    label="Brief"
+                    icon={<EditIcon fontSize="small" />}
+                    iconPosition="start"
+                    sx={{ minHeight: 48 }}
+                  />
+                )}
+                {!viewport.isDesktop && (
+                  <Tab
+                    value="planner"
+                    label="Planner"
+                    icon={<ScheduleIcon fontSize="small" />}
+                    iconPosition="start"
+                    sx={{ minHeight: 48 }}
+                  />
+                )}
+                {!viewport.isDesktop && (
+                  <Tab
+                    value="shooting"
+                    label="Skyting"
+                    icon={<MovieIcon fontSize="small" />}
+                    iconPosition="start"
+                    sx={{ minHeight: 48 }}
+                  />
+                )}
+                {!viewport.isDesktop && (
+                  <Tab
+                    value="shotlist"
+                    label="Shotliste"
+                    icon={<TheaterIcon fontSize="small" />}
+                    iconPosition="start"
+                    sx={{ minHeight: 48 }}
+                  />
+                )}
+                {!viewport.isDesktop && (
+                  <Tab
+                    value="mannskap"
+                    label="Mannskap"
+                    icon={<GroupIcon fontSize="small" />}
+                    iconPosition="start"
+                    sx={{ minHeight: 48 }}
+                  />
+                )}
+                <Tab
+                  value="agent"
+                  label="Agent"
+                  icon={<AutoFixHighIcon fontSize="small" />}
+                  iconPosition="start"
+                  sx={{ minHeight: 48 }}
+                />
               </Tabs>
               <Divider />
 
@@ -728,6 +1004,52 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                     />
                   </Box>
                 )}
+                {subTab === 'approval' && !viewport.isDesktop && (
+                  <RoleRoomMobileApprovalView
+                    projectId={selectedProjectId}
+                    currentUserId={userId}
+                    mode={viewport.mode}
+                    canApprove={Boolean(selectedProjectId)}
+                    canRequestChanges={Boolean(selectedProjectId)}
+                    canReject={Boolean(selectedProjectId)}
+                    canComment={Boolean(selectedProjectId)}
+                  />
+                )}
+                {subTab === 'brief' && !viewport.isDesktop && (
+                  <RoleRoomMobileBriefWizard projectId={selectedProjectId} mode={viewport.mode} />
+                )}
+                {subTab === 'planner' && !viewport.isDesktop && (
+                  <RoleRoomMobilePlannerView
+                    projectId={selectedProjectId}
+                    mode={viewport.mode}
+                  />
+                )}
+                {subTab === 'shooting' && !viewport.isDesktop && (
+                  <RoleRoomMobileShootingDayView
+                    projectId={selectedProjectId}
+                    mode={viewport.mode}
+                  />
+                )}
+                {subTab === 'shotlist' && !viewport.isDesktop && (
+                  <RoleRoomMobileShotListView
+                    projectId={selectedProjectId}
+                    mode={viewport.mode}
+                  />
+                )}
+                {subTab === 'mannskap' && !viewport.isDesktop && (
+                  <RoleRoomMobileCrewView
+                    projectId={selectedProjectId}
+                    mode={viewport.mode}
+                  />
+                )}
+                {subTab === 'agent' && (
+                  <AgentChatMount
+                    projectId={selectedProjectId}
+                    currentUserId={userId}
+                    candidates={candidates as any}
+                    crew={crew as any}
+                  />
+                )}
               </CardContent>
             </Card>
           )}
@@ -770,6 +1092,95 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
 };
 
 export default RoleRoomDashboardPanel;
+
+// ── Agent chat mount ──────────────────────────────────────────
+// Separate component so hooks (useRoleRoomAgentContext + the write
+// mutations) are only run when the Agent subtab is active. Without this,
+// every Role Room render would trigger producer-review + timeline fetches
+// even if the user never opens the agent.
+
+interface AgentChatMountProps {
+  projectId: string | null;
+  currentUserId: string;
+  candidates?: any[];
+  crew?: any[];
+}
+
+const AgentChatMount: React.FC<AgentChatMountProps> = ({
+  projectId,
+  currentUserId,
+  candidates,
+  crew,
+}) => {
+  const context = useRoleRoomAgentContext({ projectId, candidates, crew });
+  const { createReview } = useProducerReviews(projectId ?? undefined);
+  const { createItem } = useProducerTimeline(projectId ?? undefined);
+
+  const handleConfirmToolUse = React.useCallback(
+    async (tool: { name: string; input: Record<string, any> }) => {
+      if (!projectId) return;
+      switch (tool.name) {
+        case 'draft_review_request': {
+          const input = tool.input || {};
+          const dueDays = typeof input.suggested_due_days_from_now === 'number'
+            ? Math.max(0, Math.min(60, input.suggested_due_days_from_now))
+            : undefined;
+          const dueAt = dueDays !== undefined
+            ? new Date(Date.now() + dueDays * 24 * 60 * 60 * 1000).toISOString()
+            : undefined;
+          await createReview({
+            review_type: String(input.review_type ?? 'storyboard'),
+            title: String(input.title ?? 'Agent-foreslått review'),
+            description: input.description ? String(input.description) : undefined,
+            target_entity_type: input.target_entity_type
+              ? String(input.target_entity_type)
+              : undefined,
+            target_entity_id: input.target_entity_id
+              ? String(input.target_entity_id)
+              : undefined,
+            due_at: dueAt,
+          } as any);
+          break;
+        }
+        case 'propose_timeline_item': {
+          const input = tool.input || {};
+          const dueDays = typeof input.suggested_due_days_from_now === 'number'
+            ? Math.max(0, Math.min(365, input.suggested_due_days_from_now))
+            : undefined;
+          const dueAt = dueDays !== undefined
+            ? new Date(Date.now() + dueDays * 24 * 60 * 60 * 1000).toISOString()
+            : undefined;
+          await createItem({
+            phase: (input.phase ?? 'preproduction') as any,
+            title: String(input.title ?? 'Agent-foreslått oppgave'),
+            description: input.description ? String(input.description) : undefined,
+            dueAt,
+            status: 'planned',
+            metadata: {
+              entryType: input.entry_type,
+              agentRationale: input.rationale,
+            },
+          });
+          break;
+        }
+        default:
+          // summarize_brief_gaps / flag_scope_impact / suggest_next_decision are
+          // read-only; their input is the "answer" and needs no write.
+          break;
+      }
+    },
+    [projectId, createReview, createItem],
+  );
+
+  return (
+    <RoleRoomAgentChatPanel
+      projectId={projectId}
+      currentUserId={currentUserId}
+      context={context}
+      onConfirmToolUse={handleConfirmToolUse}
+    />
+  );
+};
 
 // ── Sub-panels ───────────────────────────────────────────────
 

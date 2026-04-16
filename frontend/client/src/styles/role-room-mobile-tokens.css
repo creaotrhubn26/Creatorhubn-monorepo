@@ -1,0 +1,49 @@
+/*
+ * Role Room mobile + iPad tokens.
+ *
+ * Scope: variables only — no visual rules — and only inside .role-room-route
+ * so desktop globals in index.css are never overridden.
+ *
+ * Phone (≤ 599px) and iPad (600–1199px) tokens are defined separately per
+ * backlog item 008 to prevent compressed phone UI from leaking into tablet.
+ * Safe-area insets follow backlog item 009.
+ */
+
+.role-room-route {
+  --rr-safe-top: env(safe-area-inset-top, 0px);
+  --rr-safe-right: env(safe-area-inset-right, 0px);
+  --rr-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --rr-safe-left: env(safe-area-inset-left, 0px);
+}
+
+@media (max-width: 599.95px) {
+  .role-room-route {
+    --rr-touch-target-min: 44px;
+    --rr-touch-target-destructive-gap: 16px;
+    --rr-spacing-compact: 8px;
+    --rr-spacing-base: 12px;
+    --rr-spacing-comfortable: 16px;
+    --rr-header-height: 56px;
+    --rr-bottom-nav-height: 64px;
+    --rr-bottom-sheet-radius: 16px;
+    --rr-card-radius: 12px;
+    --rr-modal-max-height: calc(100dvh - var(--rr-safe-top) - var(--rr-safe-bottom) - 32px);
+  }
+}
+
+@media (min-width: 600px) and (max-width: 1199.95px) {
+  .role-room-route {
+    --rr-touch-target-min: 44px;
+    --rr-touch-target-destructive-gap: 20px;
+    --rr-spacing-compact: 12px;
+    --rr-spacing-base: 16px;
+    --rr-spacing-comfortable: 24px;
+    --rr-header-height: 64px;
+    --rr-bottom-nav-height: 0px;
+    --rr-bottom-sheet-radius: 20px;
+    --rr-card-radius: 16px;
+    --rr-side-rail-width: 72px;
+    --rr-split-view-min-detail: 420px;
+    --rr-modal-max-height: calc(100dvh - var(--rr-safe-top) - var(--rr-safe-bottom) - 48px);
+  }
+}
