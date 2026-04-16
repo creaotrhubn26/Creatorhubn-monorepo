@@ -33,6 +33,7 @@ import { Pool } from "pg";
 import * as schema from "../migrations/schema.js";
 import { and, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { createRoleRoomRouter } from "./role-room-routes.js";
+import { pruneAiAuditLog } from "./role-room-ai-audit.js";
 import { createCreatorHubGoogleRouter } from "./creatorhub-google-routes.js";
 import { createRoleRoomIntegrationsV1Router } from "./role-room-integrations-v1-routes.js";
 import { createCommunicationRouter } from "./communication-routes.js";
@@ -35961,6 +35962,38 @@ function maybeStartRoleRoomCommercialReminderSweep() {
   setInterval(() => {
     void runRoleRoomCommercialReminderSweep("interval");
   }, ROLE_ROOM_REMINDER_INTERVAL_MS).unref();
+}
+
+// GDPR Art. 30: retention of role_room_ai_audit_log is 365 days. A daily
+// prune keeps the table size stable and ensures we never hold audit rows
+// past their retention window. Safe to run concurrently with writes
+// because the DELETE predicate is on created_at.
+const ROLE_ROOM_AI_AUDIT_PRUNE_INTERVAL_MS = 24 * 60 * 60 * 1000;
+let roleRoomAiAuditPruneStarted = false;
+
+async function runRoleRoomAiAuditPrune(trigger: string): Promise<void> {
+  try {
+    const deleted = await pruneAiAuditLog(pool);
+    if (deleted > 0) {
+      console.log(
+        `[role-room-ai-audit] Pruned ${deleted} rows older than 365 days (trigger=${trigger})`,
+      );
+    }
+  } catch (error) {
+    console.error("[role-room-ai-audit] prune failed", error);
+  }
+}
+
+function maybeStartRoleRoomAiAuditPrune() {
+  if (roleRoomAiAuditPruneStarted) return;
+  roleRoomAiAuditPruneStarted = true;
+  // Give the app ~60 s after startup to settle before the first prune.
+  setTimeout(() => {
+    void runRoleRoomAiAuditPrune("startup");
+  }, 60_000).unref();
+  setInterval(() => {
+    void runRoleRoomAiAuditPrune("interval");
+  }, ROLE_ROOM_AI_AUDIT_PRUNE_INTERVAL_MS).unref();
 }
 
 async function findRoleRoomCommercialInviteByActivationToken(token: string) {
@@ -108465,6 +108498,7 @@ httpServer.listen(PORT, "0.0.0.0", () => {
   maybeStartRoleRoomGoogleRedirectBridge();
   maybeStartRoleRoomLinkedInRedirectBridge();
   maybeStartRoleRoomCommercialReminderSweep();
+  maybeStartRoleRoomAiAuditPrune();
   if (isStoryArcV2Enabled() && STORY_ARC_V2_STARTUP_WARMUP_ENABLED) {
     void runStoryArcV2StartupWarmup();
   }

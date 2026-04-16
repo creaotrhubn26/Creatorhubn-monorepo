@@ -13,6 +13,15 @@ services:
         sync: false
       - key: OPENAI_API_KEY
         sync: false
+      # Anthropic Claude for The Role Room Agent (generation tasks).
+      # Sets feature flag to `false` so the agent falls back to Cohere/OpenAI
+      # until the DPA is signed and the flag is flipped in Render UI.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ROLE_ROOM_AGENT_CLAUDE_ENABLED
+        value: "false"
+      - key: ROLE_ROOM_AGENT_CLAUDE_MODEL
+        value: claude-sonnet-4-5
       - key: CLOUDFLARE_R2_ACCOUNT_ID
         sync: false
       - key: CLOUDFLARE_R2_ACCESS_KEY_ID

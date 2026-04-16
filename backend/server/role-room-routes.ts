@@ -35,6 +35,15 @@ import {
   loadPersistedAuthSession,
   persistAuthSession,
 } from './auth-session-store.js';
+import {
+  grantConsent as grantAiConsent,
+  getActiveConsent as getAiConsent,
+  revokeConsent as revokeAiConsent,
+  updateEntityLists as updateAiConsentEntities,
+  type RoleRoomAiConsentScope,
+  type RoleRoomAiProcessor,
+} from './role-room-ai-consent.js';
+import { listAiCallsForUser } from './role-room-ai-audit.js';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -19633,6 +19642,119 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       res.status(500).json({ error: 'Failed to schedule maintenance' });
     }
   });
+
+  // ─────────────────────────────────────────────────────────────
+  // GDPR — AI consent (Art. 6.1a / Art. 7) and audit (Art. 30)
+  // ─────────────────────────────────────────────────────────────
+
+  const VALID_SCOPES: RoleRoomAiConsentScope[] = [
+    'brief_only',
+    'brief_and_reviews',
+    'full_context',
+  ];
+  const VALID_PROCESSORS: RoleRoomAiProcessor[] = ['cohere', 'anthropic'];
+
+  router.get(
+    '/projects/:projectId/ai-consent',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const processor = String(req.query.processor ?? 'anthropic') as RoleRoomAiProcessor;
+        if (!VALID_PROCESSORS.includes(processor)) {
+          return res.status(400).json({ error: 'invalid processor' });
+        }
+        const record = await getAiConsent(pool, req.params.projectId, processor);
+        res.json({ consent: record });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to load AI consent', detail: String(error) });
+      }
+    },
+  );
+
+  router.post(
+    '/projects/:projectId/ai-consent',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const { scope, processor, note, excludedEntityIds, includedEntityIds } = req.body ?? {};
+        if (!VALID_SCOPES.includes(scope)) {
+          return res.status(400).json({ error: 'invalid scope' });
+        }
+        if (!VALID_PROCESSORS.includes(processor)) {
+          return res.status(400).json({ error: 'invalid processor' });
+        }
+        const record = await grantAiConsent(pool, {
+          projectId: req.params.projectId,
+          userId,
+          scope,
+          processor,
+          note: typeof note === 'string' ? note : undefined,
+          excludedEntityIds: Array.isArray(excludedEntityIds) ? excludedEntityIds : undefined,
+          includedEntityIds: Array.isArray(includedEntityIds) ? includedEntityIds : undefined,
+        });
+        res.status(201).json({ consent: record });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to grant AI consent', detail: String(error) });
+      }
+    },
+  );
+
+  router.delete(
+    '/projects/:projectId/ai-consent',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const processor = String(req.query.processor ?? 'anthropic') as RoleRoomAiProcessor;
+        if (!VALID_PROCESSORS.includes(processor)) {
+          return res.status(400).json({ error: 'invalid processor' });
+        }
+        await revokeAiConsent(pool, req.params.projectId, processor);
+        res.json({ ok: true });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to revoke AI consent', detail: String(error) });
+      }
+    },
+  );
+
+  router.patch(
+    '/projects/:projectId/ai-consent/entities',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const processor = String(req.query.processor ?? 'anthropic') as RoleRoomAiProcessor;
+        if (!VALID_PROCESSORS.includes(processor)) {
+          return res.status(400).json({ error: 'invalid processor' });
+        }
+        const { excludedEntityIds, includedEntityIds } = req.body ?? {};
+        const updated = await updateAiConsentEntities(pool, req.params.projectId, processor, {
+          excludedEntityIds: Array.isArray(excludedEntityIds) ? excludedEntityIds : undefined,
+          includedEntityIds: Array.isArray(includedEntityIds) ? includedEntityIds : undefined,
+        });
+        if (!updated) return res.status(404).json({ error: 'no active consent' });
+        res.json({ consent: updated });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to update entity lists', detail: String(error) });
+      }
+    },
+  );
+
+  // Art. 15 — user's right of access to their own AI-call audit log.
+  router.get(
+    '/me/ai-interactions',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const projectId = typeof req.query.projectId === 'string' ? req.query.projectId : undefined;
+        const limit = typeof req.query.limit === 'string' ? Number(req.query.limit) : undefined;
+        const rows = await listAiCallsForUser(pool, userId, { projectId, limit });
+        res.json({ interactions: rows });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to load AI interactions', detail: String(error) });
+      }
+    },
+  );
 
   return router;
 }
