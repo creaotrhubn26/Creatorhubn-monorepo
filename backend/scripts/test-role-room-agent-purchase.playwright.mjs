@@ -50,46 +50,112 @@ async function hasStorageState() {
 }
 
 async function waitForLogin(page) {
-  // "Logged in" = any url that is not the landing / login / register page
-  // AND has the top nav present. We match on the absence of /login in the
-  // URL and the presence of any dashboard-ish link.
+  // "Logged in" = we landed on a real app path. Check by pathname so the
+  // hostname (theroleroom.com) doesn't accidentally match string-includes.
+  // We also require a logged-in-only DOM element so we don't treat a mid-
+  // redirect landing as success.
   log(`Waiting up to ${LOGIN_WAIT_SECONDS}s for you to log in...`);
   const deadline = Date.now() + LOGIN_WAIT_SECONDS * 1000;
   while (Date.now() < deadline) {
-    const url = page.url();
-    const looksLoggedIn =
-      url.includes('/dashboard')
-      || url.includes('/role-room')
-      || url.includes('/theroleroom');
-    if (looksLoggedIn) return true;
+    const pathname = new URL(page.url()).pathname;
+    const isAppPath =
+      pathname.startsWith('/dashboard')
+      || pathname.startsWith('/role-room')
+      || pathname.startsWith('/smart-dashboard')
+      || pathname.startsWith('/universal-dashboard');
+    if (isAppPath) {
+      // Secondary signal: wait briefly for SOMETHING that only exists when
+      // the user is actually signed in — the main MUI AppBar or a tab
+      // labelled "The Role Room".
+      const hasAppShell =
+        (await page.getByRole('tab', { name: /The Role Room/i }).count()) > 0
+        || (await page.locator('[data-testid="universal-dashboard"], header.MuiAppBar-root').count()) > 0;
+      if (hasAppShell) return true;
+    }
     await page.waitForTimeout(1500);
   }
   return false;
 }
 
 async function clickAgentTab(page) {
-  // Agent tab inside Role Room subtabs. Label is "Agent".
+  // Role Room's subtabs render as MUI Tabs; Agent has label "Agent".
+  // Scroll it into view first — the subtab strip is horizontally scrollable.
+  log('Looking for Agent subtab...');
   const tab = page.getByRole('tab', { name: /^Agent$/i }).first();
-  await tab.waitFor({ timeout: 15_000 });
-  await tab.click();
+  try {
+    await tab.waitFor({ timeout: 15_000 });
+    await tab.scrollIntoViewIfNeeded();
+    await tab.click();
+    log('Clicked Agent subtab.');
+  } catch (error) {
+    // Dump visible tab names so we can diagnose naming drift.
+    const names = await page.getByRole('tab').allTextContents();
+    log(`Visible tabs: ${JSON.stringify(names)}`);
+    throw error;
+  }
 }
 
 async function openRoleRoomPanel(page) {
-  // If URL jumps us directly to a project, we're already there. Otherwise
-  // locate "The Role Room" in the side nav / tab strip.
-  if (ROLE_ROOM_PROJECT_ID) {
-    await page.goto(`${APP_URL}/dashboard?role_room_project=${encodeURIComponent(ROLE_ROOM_PROJECT_ID)}`);
-  }
-  // Main nav may call it "The Role Room" or just "Role Room".
-  const nav = page.getByRole('tab', { name: /The Role Room|^Role Room/i }).first();
-  if (await nav.count()) await nav.click();
+  // The Role Room lives as a top-level tab inside UniversalDashboard at
+  // /dashboard. The tab is rendered with an img icon + label text
+  // "The Role Room", so we target by text.
+  log('Opening The Role Room tab...');
+  await page.goto(`${APP_URL}/dashboard`, { waitUntil: 'domcontentloaded' });
 
-  // Pick the first project card / list item if we're not pinned to one.
+  // Try several selectors in order of specificity.
+  const candidates = [
+    page.getByRole('tab', { name: /The Role Room/i }).first(),
+    page.getByRole('button', { name: /The Role Room/i }).first(),
+    page.locator('[role="tab"]:has-text("The Role Room")').first(),
+    page.locator('[role="tab"] img[alt="Role Room"]').first(),
+  ];
+  let clicked = false;
+  for (const locator of candidates) {
+    if ((await locator.count()) > 0) {
+      try {
+        await locator.scrollIntoViewIfNeeded();
+        await locator.click();
+        clicked = true;
+        break;
+      } catch {
+        /* try next */
+      }
+    }
+  }
+  if (!clicked) {
+    const names = await page.getByRole('tab').allTextContents();
+    throw new Error(
+      `Could not find The Role Room tab. Visible tabs: ${JSON.stringify(names)}`,
+    );
+  }
+  log('Clicked The Role Room tab.');
+
+  // Pick the first project. Project list items are usually buttons /
+  // list items with a project name and a status chip. Try a few patterns.
   if (!ROLE_ROOM_PROJECT_ID) {
-    const firstProject = page
-      .locator('[role="button"]:has-text("Prosjekt"), [role="listitem"] >> nth=0')
-      .first();
-    if (await firstProject.count()) await firstProject.click();
+    log('Selecting first project in the list...');
+    // Wait for the project list to appear.
+    await page.waitForTimeout(1000);
+    const projectCandidates = [
+      page.locator('[role="listitem"] button').first(),
+      page.locator('ul [role="button"]').first(),
+      page.locator('.MuiListItemButton-root').first(),
+    ];
+    let projectClicked = false;
+    for (const locator of projectCandidates) {
+      if ((await locator.count()) > 0) {
+        try {
+          await locator.click();
+          projectClicked = true;
+          break;
+        } catch {
+          /* try next */
+        }
+      }
+    }
+    if (!projectClicked) {
+      log('No project list item found — assuming the first project is already selected.');
+    }
   }
 }
 
@@ -180,13 +246,20 @@ async function verifyEntitlementActive(page) {
   const page = await context.newPage();
 
   try {
-    await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
+    // Start at /dashboard so unauthenticated visits get redirected to login,
+    // and authenticated visits land directly inside the app.
+    await page.goto(`${APP_URL}/dashboard`, { waitUntil: 'domcontentloaded' });
 
     if (!storageState && !HEADLESS) {
       log('Log in as a NON-admin test user in the browser window.');
+      log('The script is waiting for the dashboard shell to appear — do NOT close the window.');
       const ok = await waitForLogin(page);
-      if (!ok) throw new Error('Login timed out.');
-      log('Login detected — saving storage state for next run.');
+      if (!ok) {
+        throw new Error(
+          `Login not detected within ${LOGIN_WAIT_SECONDS}s. Final URL: ${page.url()}`,
+        );
+      }
+      log('Dashboard shell detected — saving storage state for next run.');
       await context.storageState({ path: STATE_PATH });
     }
 
