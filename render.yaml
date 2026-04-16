@@ -67,6 +67,22 @@ services:
         value: "200"
       - key: ROLE_ROOM_AGENT_RL_PROJECT_MIN
         value: "40"
+      # Monetization — hybrid tier + add-on model for the Role Room Agent.
+      # Pro/Enterprise subscribers auto-grant; Basic/Prototype can start a
+      # trial or buy the add-on. Stripe price id is sync=false — set it in
+      # Render UI once the Stripe product is published.
+      - key: ROLE_ROOM_AGENT_TRIAL_DAYS
+        value: "14"
+      - key: ROLE_ROOM_AGENT_ADDON_PRICE_NOK
+        value: "99"
+      - key: ROLE_ROOM_AGENT_BASIC_INCLUDED
+        value: "false"
+      - key: STRIPE_ROLE_ROOM_AGENT_PRICE_ID
+        sync: false
+      - key: ROLE_ROOM_AGENT_CHECKOUT_SUCCESS_URL
+        sync: false
+      - key: ROLE_ROOM_AGENT_CHECKOUT_CANCEL_URL
+        sync: false
       - key: CLOUDFLARE_R2_ACCOUNT_ID
         sync: false
       - key: CLOUDFLARE_R2_ACCESS_KEY_ID

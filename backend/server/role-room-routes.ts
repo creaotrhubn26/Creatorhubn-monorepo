@@ -48,8 +48,17 @@ import { listAiCallsForUser } from './role-room-ai-audit.js';
 import {
   invokeRoleRoomAgent,
   RoleRoomAgentDisabledError,
+  RoleRoomAgentEntitlementError,
   type RoleRoomAgentAction,
 } from './role-room-agent-runner.js';
+import {
+  adminGrantEntitlement,
+  checkAgentEntitlement,
+  getEntitlementConfig,
+  listEntitlements,
+  revokeEntitlement,
+  startAgentTrial,
+} from './role-room-agent-entitlements.js';
 import {
   archiveThread,
   getThread,
@@ -19813,6 +19822,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           pool,
           projectId: req.params.projectId,
           userId,
+          userRole: readRoleRoomDevUserRole(req),
           action: action as RoleRoomAgentAction,
           userMessage: userMessage.trim(),
           requiredScope,
@@ -19825,6 +19835,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       } catch (error) {
         if (error instanceof RoleRoomAgentDisabledError) {
           return res.status(503).json({ error: 'agent_disabled', detail: error.message });
+        }
+        if (error instanceof RoleRoomAgentEntitlementError) {
+          return res.status(402).json({
+            error: 'entitlement_required',
+            detail: error.entitlement.reason,
+            entitlement: error.entitlement,
+          });
         }
         if (error instanceof RoleRoomAiConsentError) {
           return res.status(403).json({ error: error.code, detail: error.message });
@@ -19845,7 +19862,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     async (req: Request, res: Response) => {
       try {
         const userId = getUserId(req);
-        await handleAgentStream(pool, req, res, userId);
+        await handleAgentStream(pool, req, res, userId, readRoleRoomDevUserRole(req));
       } catch (error) {
         if (!res.headersSent) {
           res.status(500).json({ error: 'stream_failed', detail: String(error) });
@@ -19921,6 +19938,168 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json({ ok: true });
       } catch (error) {
         res.status(500).json({ error: 'Failed to archive thread', detail: String(error) });
+      }
+    },
+  );
+
+  // ───────────────────────────────────────────────
+  // Monetization — entitlements, trial, add-on checkout.
+  // ───────────────────────────────────────────────
+
+  router.get(
+    '/agent/entitlement',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const entitlement = await checkAgentEntitlement(pool, userId, readRoleRoomDevUserRole(req));
+        const config = getEntitlementConfig();
+        res.json({ entitlement, config });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to load entitlement', detail: String(error) });
+      }
+    },
+  );
+
+  router.post(
+    '/agent/entitlement/trial/start',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const result = await startAgentTrial(pool, userId);
+        if (!result.ok) {
+          return res.status(409).json({ error: result.error });
+        }
+        const entitlement = await checkAgentEntitlement(pool, userId, readRoleRoomDevUserRole(req));
+        res.status(201).json({ trialEndsAt: result.trialEndsAt, entitlement });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to start trial', detail: String(error) });
+      }
+    },
+  );
+
+  /**
+   * Stripe add-on checkout. Stubbed until STRIPE_ROLE_ROOM_AGENT_PRICE_ID
+   * + STRIPE_SECRET_KEY are configured. When env is not set, returns
+   *  `status: 'not_configured'` so the frontend can show a waitlist CTA.
+   */
+  router.post(
+    '/agent/entitlement/addon/checkout',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const priceId = process.env.STRIPE_ROLE_ROOM_AGENT_PRICE_ID;
+        const stripeKey = process.env.STRIPE_SECRET_KEY;
+        const successUrl = process.env.ROLE_ROOM_AGENT_CHECKOUT_SUCCESS_URL
+          || process.env.APP_URL
+          || 'https://creatorhubn.com/dashboard';
+        const cancelUrl = process.env.ROLE_ROOM_AGENT_CHECKOUT_CANCEL_URL
+          || process.env.APP_URL
+          || 'https://creatorhubn.com/dashboard';
+
+        if (!priceId || !stripeKey) {
+          return res.status(503).json({
+            status: 'not_configured',
+            detail: 'Stripe Role Room Agent add-on is not configured yet.',
+          });
+        }
+
+        // Dynamic import so the Stripe SDK only loads when needed.
+        // @ts-ignore — optional SDK
+        const stripeMod: any = await import('stripe').catch(() => null);
+        if (!stripeMod) {
+          return res.status(503).json({ status: 'not_configured', detail: 'Stripe SDK unavailable' });
+        }
+        const StripeCtor = stripeMod.default ?? stripeMod.Stripe;
+        const stripe = new StripeCtor(stripeKey);
+
+        const session = await stripe.checkout.sessions.create({
+          mode: 'subscription',
+          line_items: [{ price: priceId, quantity: 1 }],
+          success_url: successUrl,
+          cancel_url: cancelUrl,
+          client_reference_id: userId,
+          metadata: {
+            product: 'role_room_agent',
+            role_room_user_id: userId,
+          },
+          subscription_data: {
+            metadata: {
+              product: 'role_room_agent',
+              role_room_user_id: userId,
+            },
+          },
+        });
+
+        res.json({ status: 'ok', url: session.url, id: session.id });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to create checkout', detail: String(error) });
+      }
+    },
+  );
+
+  // Admin-only: grant / revoke entitlements for support cases.
+  router.post(
+    '/admin/agent/entitlements/grant',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      if (!requireScope(req, 'admin')) {
+        return res.status(403).json({ error: 'admin_only' });
+      }
+      const { userId, notes, trialDays } = req.body ?? {};
+      if (typeof userId !== 'string' || userId.trim().length === 0) {
+        return res.status(400).json({ error: 'userId required' });
+      }
+      const trialEndsAt = typeof trialDays === 'number' && trialDays > 0
+        ? new Date(Date.now() + trialDays * 24 * 60 * 60 * 1000)
+        : undefined;
+      try {
+        await adminGrantEntitlement(pool, userId, {
+          notes: typeof notes === 'string' ? notes : undefined,
+          trialEndsAt,
+        });
+        res.json({ ok: true });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to grant', detail: String(error) });
+      }
+    },
+  );
+
+  router.post(
+    '/admin/agent/entitlements/revoke',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      if (!requireScope(req, 'admin')) {
+        return res.status(403).json({ error: 'admin_only' });
+      }
+      const { userId, reason } = req.body ?? {};
+      if (typeof userId !== 'string' || userId.trim().length === 0) {
+        return res.status(400).json({ error: 'userId required' });
+      }
+      try {
+        await revokeEntitlement(pool, userId, typeof reason === 'string' ? reason : 'admin_revoke');
+        res.json({ ok: true });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to revoke', detail: String(error) });
+      }
+    },
+  );
+
+  router.get(
+    '/admin/agent/entitlements',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      if (!requireScope(req, 'admin')) {
+        return res.status(403).json({ error: 'admin_only' });
+      }
+      try {
+        const limit = typeof req.query.limit === 'string' ? Number(req.query.limit) : undefined;
+        const rows = await listEntitlements(pool, { limit });
+        res.json({ entitlements: rows });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to list', detail: String(error) });
       }
     },
   );

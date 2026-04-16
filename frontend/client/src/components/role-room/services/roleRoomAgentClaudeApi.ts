@@ -110,22 +110,28 @@ export interface RoleRoomAgentErrorShape {
     | 'missing_consent'
     | 'wrong_scope'
     | 'entity_excluded'
+    | 'entitlement_required'
+    | 'rate_limit_exceeded'
     | 'agent_failed'
     | 'http_error';
   detail: string;
   httpStatus: number;
+  /** Populated on 402 entitlement_required responses. */
+  entitlement?: unknown;
 }
 
 export class RoleRoomAgentClaudeError extends Error {
   code: RoleRoomAgentErrorShape['code'];
   httpStatus: number;
   detail: string;
+  entitlement?: unknown;
   constructor(shape: RoleRoomAgentErrorShape) {
     super(shape.detail);
     this.name = 'RoleRoomAgentClaudeError';
     this.code = shape.code;
     this.httpStatus = shape.httpStatus;
     this.detail = shape.detail;
+    this.entitlement = shape.entitlement;
   }
 }
 
@@ -300,6 +306,7 @@ export async function streamAgentQuery(
       code,
       detail,
       httpStatus: response.status,
+      entitlement: (parsed as any)?.entitlement,
     });
   }
 

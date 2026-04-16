@@ -40,6 +40,7 @@ import {
   checkAgentRateLimit,
   RateLimitExceededError,
 } from './role-room-agent-ratelimit.js';
+import { checkAgentEntitlement } from './role-room-agent-entitlements.js';
 
 let cachedAnthropicClient: unknown = null;
 
@@ -81,6 +82,7 @@ export async function handleAgentStream(
   req: Request,
   res: Response,
   userId: string,
+  userRole?: string | null,
 ): Promise<void> {
   const projectId = req.params.projectId;
   const body = (req.body ?? {}) as StreamRequestBody;
@@ -91,6 +93,16 @@ export async function handleAgentStream(
   }
   if (userMessage.length > 4000) {
     res.status(400).json({ error: 'userMessage too long' });
+    return;
+  }
+
+  const entitlement = await checkAgentEntitlement(pool, userId, userRole);
+  if (!entitlement.allowed) {
+    res.status(402).json({
+      error: 'entitlement_required',
+      detail: entitlement.reason,
+      entitlement,
+    });
     return;
   }
 

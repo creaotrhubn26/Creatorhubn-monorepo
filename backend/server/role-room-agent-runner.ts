@@ -50,6 +50,10 @@ import {
   storeCachedResponse,
 } from './role-room-agent-cache.js';
 import { appendMessage, ensureThread } from './role-room-agent-threads.js';
+import {
+  checkAgentEntitlement,
+  type EntitlementResult,
+} from './role-room-agent-entitlements.js';
 
 export type RoleRoomAgentAction =
   | 'query'
@@ -83,6 +87,8 @@ export interface RoleRoomAgentInvokeInput {
   pool: Pool;
   projectId: string;
   userId: string;
+  /** The caller's role for privileged-bypass detection (admin/owner). */
+  userRole?: string | null;
   action: RoleRoomAgentAction;
   /** User's natural-language question. Short (max ~1 KB). */
   userMessage: string;
@@ -135,6 +141,15 @@ export class RoleRoomAgentDisabledError extends Error {
   constructor() {
     super('Role Room Agent (Claude) is feature-flagged off');
     this.name = 'RoleRoomAgentDisabledError';
+  }
+}
+
+export class RoleRoomAgentEntitlementError extends Error {
+  readonly entitlement: EntitlementResult;
+  constructor(entitlement: EntitlementResult) {
+    super(`Agent entitlement missing: ${entitlement.reason}`);
+    this.name = 'RoleRoomAgentEntitlementError';
+    this.entitlement = entitlement;
   }
 }
 
@@ -213,6 +228,11 @@ export async function invokeRoleRoomAgent(
 
   if (!claudeAgentEnabled()) {
     throw new RoleRoomAgentDisabledError();
+  }
+
+  const entitlement = await checkAgentEntitlement(pool, userId, input.userRole);
+  if (!entitlement.allowed) {
+    throw new RoleRoomAgentEntitlementError(entitlement);
   }
 
   let consent: RoleRoomAiConsentRecord;

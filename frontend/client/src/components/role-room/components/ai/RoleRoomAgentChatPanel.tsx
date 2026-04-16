@@ -40,8 +40,13 @@ import {
 import AiConsentGate from './AiConsentGate';
 import AiTransparencyBanner from './AiTransparencyBanner';
 import AgentThreadList from './AgentThreadList';
+import AgentPaywallDialog from './AgentPaywallDialog';
 import { useRoleRoomAgentClaude } from '../../hooks/useRoleRoomAgentClaude';
 import { revokeProjectConsent } from '../../services/aiConsentService';
+import {
+  fetchAgentEntitlement,
+  type EntitlementBundle,
+} from '../../services/roleRoomAgentEntitlementApi';
 import { History as HistoryIcon } from '@mui/icons-material';
 import type { RoleRoomAgentToolUse } from '../../services/roleRoomAgentClaudeApi';
 import type { RoleRoomAgentContext } from '../../services/roleRoomAgentClaudeApi';
@@ -76,6 +81,35 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
   const [toolExecuting, setToolExecuting] = useState(false);
   const { messages, pending, send, reset, threadId, loadThread, startNewThread, lastError } = useRoleRoomAgentClaude(projectId);
   const [historyAnchor, setHistoryAnchor] = useState<HTMLElement | null>(null);
+  const [paywallOpen, setPaywallOpen] = useState(false);
+  const [entitlementBundle, setEntitlementBundle] = useState<EntitlementBundle | null>(null);
+
+  // Pre-flight entitlement fetch so we can skip the 402 round-trip and
+  // show the paywall immediately for users who don't have access.
+  React.useEffect(() => {
+    if (!projectId) return;
+    let cancelled = false;
+    fetchAgentEntitlement().then((data) => {
+      if (!cancelled) setEntitlementBundle(data);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
+
+  // Surface a paywall when a send call comes back with
+  // entitlement_required (HTTP 402). The hook stores the code+detail in
+  // lastError so we just watch for it.
+  React.useEffect(() => {
+    if (lastError?.code === 'entitlement_required') {
+      setPaywallOpen(true);
+      // Best-effort refresh so the dialog shows current state.
+      void fetchAgentEntitlement().then((bundle) => setEntitlementBundle(bundle));
+    }
+  }, [lastError]);
+
+  const needsPaywall =
+    entitlementBundle != null && !entitlementBundle.entitlement.allowed;
 
   const handleSend = useCallback(
     async (question?: string) => {
@@ -296,6 +330,18 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
         currentThreadId={threadId}
         onPick={(id) => {
           void loadThread(id);
+        }}
+      />
+      <AgentPaywallDialog
+        open={paywallOpen || needsPaywall}
+        onClose={() => setPaywallOpen(false)}
+        entitlement={entitlementBundle?.entitlement ?? null}
+        config={entitlementBundle?.config ?? null}
+        onEntitlementChanged={() => {
+          void fetchAgentEntitlement().then((bundle) => {
+            setEntitlementBundle(bundle);
+            if (bundle?.entitlement.allowed) setPaywallOpen(false);
+          });
         }}
       />
       <ToolConfirmDialog
