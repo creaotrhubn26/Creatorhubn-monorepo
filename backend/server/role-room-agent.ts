@@ -4,6 +4,10 @@ import {
   claudeBootstrapEnabled,
   requestClaudeBootstrap,
 } from "./role-room-agent-bootstrap-claude.js";
+import {
+  orchestratorEnabled,
+  runOrchestratedBootstrap,
+} from "./role-room-agent-bootstrap-orchestrator.js";
 
 export type RoleRoomAgentProducerBootstrapInput = {
   projectId: string;
@@ -659,7 +663,7 @@ function buildBrregUnavailable(status: RoleRoomAgentBrregLookupStatus, input: st
   };
 }
 
-async function fetchBrregCompany(input: RoleRoomAgentProducerBootstrapInput): Promise<RoleRoomAgentBrregCompany | null> {
+export async function fetchBrregCompany(input: RoleRoomAgentProducerBootstrapInput): Promise<RoleRoomAgentBrregCompany | null> {
   const rawOrgNumber = hasText(input.organizationNumber) ? normalizeWhitespace(input.organizationNumber) : null;
   const organizationNumber = normalizeOrganizationNumber(input.organizationNumber);
   const companyName = hasText(input.companyName) ? normalizeWhitespace(input.companyName) : "";
@@ -1906,7 +1910,7 @@ function deriveToneFromClassification(
   return ["Tydelig", "Trygg", "Profesjonell"];
 }
 
-async function fetchWebsiteInsights(
+export async function fetchWebsiteInsights(
   websiteUrl: string | null,
   input: RoleRoomAgentProducerBootstrapInput,
   brregCompany: RoleRoomAgentBrregCompany | null = null,
@@ -2077,7 +2081,7 @@ async function fetchWebsiteInsights(
   }
 }
 
-async function fetchGooglePlacesBusinessSignals(
+export async function fetchGooglePlacesBusinessSignals(
   input: RoleRoomAgentProducerBootstrapInput,
   websiteInsights: RoleRoomAgentWebsiteInsights,
 ): Promise<RoleRoomAgentBusinessSignals | null> {
@@ -3383,6 +3387,43 @@ function normalizeBootstrapPayload(
 export async function generateRoleRoomAgentProducerBootstrap(
   input: RoleRoomAgentProducerBootstrapInput,
 ): Promise<RoleRoomAgentNormalizedPayload> {
+  // Orchestrated path: Claude decides which data sources to fetch, runs
+  // the tool loop, and returns a synthesized payload. If anything fails
+  // (no synthesis, SDK unavailable, timeout), fall through to the
+  // deterministic pipeline below so the user always gets a result.
+  if (orchestratorEnabled()) {
+    const orch = await runOrchestratedBootstrap(input);
+    if (orch?.synthesis) {
+      const orchWebsiteInsights: RoleRoomAgentWebsiteInsights =
+        orch.websiteInsights ?? {
+          finalUrl: input.websiteUrl ?? "",
+          selectedPageSnippets: [],
+          socialProfileCandidates: [],
+        };
+      const orchCompanyAge = calculateCompanyAge(orch.brregCompany);
+      const orchFallback = buildFallbackBootstrap(
+        input,
+        orchWebsiteInsights,
+        orch.businessSignals,
+        orch.brregCompany,
+        orchCompanyAge,
+        buildAgreementSuggestions(orch.brregCompany, orchCompanyAge),
+        { competitors: [], rawCompetitorCandidates: [], marketContext: null } as unknown as RoleRoomAgentCompetitorAnalysis,
+        { nearbyOpportunities: [], recommendedEventConcepts: [], hasDataCoverage: false } as unknown as RoleRoomAgentLocalPresencePlan,
+      );
+      return normalizeBootstrapPayload(
+        orch.synthesis,
+        input,
+        orchWebsiteInsights,
+        orchFallback,
+        orch.businessSignals,
+        "anthropic",
+        process.env.ROLE_ROOM_BOOTSTRAP_CLAUDE_MODEL || "claude-sonnet-4-5",
+      );
+    }
+    // Orchestrator returned nothing usable — fall through to deterministic.
+  }
+
   const initialBrregCompany = await fetchBrregCompany(input);
   const companyAge = calculateCompanyAge(initialBrregCompany);
   const agreementSuggestions = buildAgreementSuggestions(initialBrregCompany, companyAge);

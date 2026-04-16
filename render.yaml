@@ -34,6 +34,12 @@ services:
       # default is on when ROLE_ROOM_BOOTSTRAP_MODEL=claude.
       - key: ROLE_ROOM_BOOTSTRAP_VISION
         value: "true"
+      # Tool-orchestrated bootstrap: Claude decides which data sources to
+      # fetch. Default unset (deterministic pipeline). Set to "claude" to
+      # opt in — falls through to deterministic if orchestrator yields
+      # nothing useful.
+      - key: ROLE_ROOM_BOOTSTRAP_ORCHESTRATOR
+        sync: false
       - key: CLOUDFLARE_R2_ACCOUNT_ID
         sync: false
       - key: CLOUDFLARE_R2_ACCESS_KEY_ID
