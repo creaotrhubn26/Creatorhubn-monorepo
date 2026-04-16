@@ -152,6 +152,12 @@ export default function RoleRoomAgentDialog({
   const [companyName, setCompanyName] = useState(initialCompanyName ?? '');
   const [extraContext, setExtraContext] = useState(initialExtraContext ?? '');
 
+  // Refinement history — grows as the user tells the agent "actually...".
+  // Each round is appended to the outgoing extraContext so Claude sees the
+  // full correction trail as the newest source of truth.
+  const [refinementDraft, setRefinementDraft] = useState('');
+  const [refinementHistory, setRefinementHistory] = useState<string[]>([]);
+
   useEffect(() => {
     if (!open) {
       return;
@@ -160,7 +166,38 @@ export default function RoleRoomAgentDialog({
     setOrganizationNumber(initialOrganizationNumber ?? '');
     setCompanyName(initialCompanyName ?? '');
     setExtraContext(initialExtraContext ?? '');
+    setRefinementDraft('');
+    setRefinementHistory([]);
   }, [initialCompanyName, initialExtraContext, initialOrganizationNumber, initialWebsiteUrl, open]);
+
+  // Compose the extraContext that actually gets sent to the agent. Original
+  // extraContext is preserved verbatim; refinements are appended as a
+  // clearly-labelled block so Claude treats them as the newest signal.
+  const buildRefinedExtraContext = (nextRounds: string[]): string => {
+    const base = extraContext.trim();
+    if (nextRounds.length === 0) return base;
+    const rounds = nextRounds
+      .map((feedback, index) => `Runde ${index + 1}: ${feedback.trim()}`)
+      .join('\n');
+    const refinementBlock = `\n\n[Forfining fra bruker — nyeste signal, overskriv tidligere antagelser om de er feil]\n${rounds}`;
+    return base ? `${base}${refinementBlock}` : refinementBlock.trimStart();
+  };
+
+  const submitRefinement = () => {
+    const draft = refinementDraft.trim();
+    if (!draft) return;
+    const nextHistory = [...refinementHistory, draft];
+    setRefinementHistory(nextHistory);
+    setRefinementDraft('');
+    void onGenerate({
+      projectId,
+      projectName,
+      websiteUrl,
+      organizationNumber,
+      companyName,
+      extraContext: buildRefinedExtraContext(nextHistory),
+    });
+  };
 
   const result = initialResult ?? null;
   const canGenerate = companyName.trim().length > 0 || websiteUrl.trim().length > 0 || organizationNumber.trim().length > 0;
@@ -410,6 +447,81 @@ export default function RoleRoomAgentDialog({
                   ? `Vi har nå hentet all tilgjengelig offentlig informasjon om kunden fra Brønnøysundregistrene. Ønsker du å opprette et prosjekt på ${result.companyProfile.companyName}?`
                   : brregCompany?.statusMessage || 'Agenten har laget et kundeutkast. Brreg-data er ikke verifisert for denne analysen.'}
               </Alert>
+
+              {/* Multi-turn refinement: user tells the agent "actually X" and
+                  we re-run the pipeline with the feedback appended to
+                  extraContext. History is shown as chips so the user can
+                  track their own corrections. */}
+              <Box
+                sx={{
+                  p: 1.2,
+                  borderRadius: 3,
+                  border: '1px dashed rgba(34,211,238,0.28)',
+                  bgcolor: 'rgba(8,47,73,0.32)',
+                }}
+              >
+                <Stack spacing={0.85}>
+                  <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.92rem' }}>
+                    Forfin utkastet
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.82rem', lineHeight: 1.5 }}>
+                    Ikke helt treff? Fortell agenten hva som er feil, så genererer den på nytt
+                    med den korreksjonen som nyeste signal. Eksempler: «Vi er B2B, ikke B2C»,
+                    «Fjern fokus på lokalt event», «Tone of voice skal være humoristisk».
+                  </Typography>
+                  {refinementHistory.length > 0 ? (
+                    <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap>
+                      {refinementHistory.map((entry, index) => (
+                        <Chip
+                          key={`rr-refinement-${index}`}
+                          label={`Runde ${index + 1}: ${entry.length > 60 ? `${entry.slice(0, 60)}…` : entry}`}
+                          size="small"
+                          sx={{ bgcolor: 'rgba(34,211,238,0.14)', color: '#a5f3fc', maxWidth: '100%' }}
+                        />
+                      ))}
+                    </Stack>
+                  ) : null}
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'flex-end' }}>
+                    <TextField
+                      value={refinementDraft}
+                      onChange={(event) => setRefinementDraft(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+                          event.preventDefault();
+                          submitRefinement();
+                        }
+                      }}
+                      placeholder="Hva bør agenten endre i utkastet?"
+                      size="small"
+                      multiline
+                      minRows={2}
+                      fullWidth
+                      disabled={generating || applying}
+                      sx={{
+                        '& .MuiOutlinedInput-root': {
+                          bgcolor: 'rgba(15,23,42,0.48)',
+                          color: '#f1f5f9',
+                        },
+                      }}
+                    />
+                    <Button
+                      variant="contained"
+                      disabled={!refinementDraft.trim() || generating || applying}
+                      onClick={submitRefinement}
+                      sx={{
+                        textTransform: 'none',
+                        fontWeight: 700,
+                        minHeight: 40,
+                        bgcolor: 'rgba(34,211,238,0.9)',
+                        color: '#082f49',
+                        '&:hover': { bgcolor: 'rgba(34,211,238,1)' },
+                      }}
+                    >
+                      {generating ? 'Forfiner…' : 'Forfin'}
+                    </Button>
+                  </Stack>
+                </Stack>
+              </Box>
               <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.2}>
                 <Box
                   sx={{
