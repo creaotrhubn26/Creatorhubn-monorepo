@@ -80,7 +80,7 @@ services:
       # Global off-switch for new trials — set "false" to stop accepting
       # new prøveperioder without disabling the paid tiers.
       - key: ROLE_ROOM_AGENT_TRIALS_ENABLED
-        value: "true"
+        value: "false"
       - key: ROLE_ROOM_AGENT_ADDON_PRICE_NOK
         value: "99"
       - key: ROLE_ROOM_AGENT_BASIC_INCLUDED
