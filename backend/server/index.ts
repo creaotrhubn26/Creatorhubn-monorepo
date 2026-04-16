@@ -33,9 +33,16 @@ import { Pool } from "pg";
 import * as schema from "../migrations/schema.js";
 import { and, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { createRoleRoomRouter } from "./role-room-routes.js";
+import { createCaptureRouter } from "./capture-routes.js";
+import { attachCaptureWebSocket } from "./capture-websocket.js";
 import { pruneAiAuditLog } from "./role-room-ai-audit.js";
 import { pruneAgentCache } from "./role-room-agent-cache.js";
 import { runDailyAgentScan } from "./role-room-agent-daily-scan.js";
+import {
+  handleAgentCheckoutSessionCompleted,
+  handleAgentPaymentFailed,
+  handleAgentSubscriptionRevoked,
+} from "./role-room-agent-stripe-webhook.js";
 import { createCreatorHubGoogleRouter } from "./creatorhub-google-routes.js";
 import { createRoleRoomIntegrationsV1Router } from "./role-room-integrations-v1-routes.js";
 import { createCommunicationRouter } from "./communication-routes.js";
@@ -439,24 +446,42 @@ app.post(
 
       switch (event.type) {
         case "checkout.session.completed":
-        case "checkout.session.async_payment_succeeded":
-          await syncRoleRoomCommercialStripeCheckoutSession(
-            event.data.object as Stripe.Checkout.Session,
-            eventTimestamp,
-          );
+        case "checkout.session.async_payment_succeeded": {
+          const session = event.data.object as Stripe.Checkout.Session;
+          // Route agent add-on checkouts to our handler first. If the
+          // metadata tag doesn't match, the commercial sync runs as usual.
+          const agentResult = await handleAgentCheckoutSessionCompleted(pool, session);
+          if (!agentResult.matched) {
+            await syncRoleRoomCommercialStripeCheckoutSession(session, eventTimestamp);
+          }
           break;
+        }
         case "invoice.paid":
           await syncRoleRoomCommercialStripeInvoice(
             event.data.object as Stripe.Invoice,
             eventTimestamp,
           );
           break;
-        case "invoice.payment_failed":
-        case "customer.subscription.deleted":
-          await clearRoleRoomCommercialStripeSubscription(
-            event.data.object as Stripe.Invoice | Stripe.Subscription,
-          );
+        case "invoice.payment_failed": {
+          const invoice = event.data.object as Stripe.Invoice;
+          const agentResult = await handleAgentPaymentFailed(pool, invoice);
+          if (!agentResult.matched) {
+            await clearRoleRoomCommercialStripeSubscription(invoice);
+          }
           break;
+        }
+        case "customer.subscription.deleted": {
+          const subscription = event.data.object as Stripe.Subscription;
+          const agentResult = await handleAgentSubscriptionRevoked(
+            pool,
+            subscription,
+            "customer.subscription.deleted",
+          );
+          if (!agentResult.matched) {
+            await clearRoleRoomCommercialStripeSubscription(subscription);
+          }
+          break;
+        }
         default:
           break;
       }
@@ -518,22 +543,42 @@ app.post(
     try {
       switch (event.type) {
         case "checkout.session.completed":
-        case "checkout.session.async_payment_succeeded":
-          await syncCreatorHubStripeCheckoutSession(
-            event.data.object as Stripe.Checkout.Session,
-          );
+        case "checkout.session.async_payment_succeeded": {
+          const session = event.data.object as Stripe.Checkout.Session;
+          // Also accept agent add-on checkouts on the CreatorHub webhook so
+          // Stripe accounts that only have a single webhook registered
+          // still work end-to-end.
+          const agentResult = await handleAgentCheckoutSessionCompleted(pool, session);
+          if (!agentResult.matched) {
+            await syncCreatorHubStripeCheckoutSession(session);
+          }
           break;
+        }
         case "invoice.paid":
           await syncCreatorHubStripeInvoice(
             event.data.object as Stripe.Invoice,
           );
           break;
-        case "invoice.payment_failed":
-        case "customer.subscription.deleted":
-          await clearCreatorHubStripeSubscription(
-            event.data.object as Stripe.Invoice | Stripe.Subscription,
-          );
+        case "invoice.payment_failed": {
+          const invoice = event.data.object as Stripe.Invoice;
+          const agentResult = await handleAgentPaymentFailed(pool, invoice);
+          if (!agentResult.matched) {
+            await clearCreatorHubStripeSubscription(invoice);
+          }
           break;
+        }
+        case "customer.subscription.deleted": {
+          const subscription = event.data.object as Stripe.Subscription;
+          const agentResult = await handleAgentSubscriptionRevoked(
+            pool,
+            subscription,
+            "customer.subscription.deleted",
+          );
+          if (!agentResult.matched) {
+            await clearCreatorHubStripeSubscription(subscription);
+          }
+          break;
+        }
         default:
           break;
       }
@@ -863,6 +908,7 @@ registerTidumAdminRoutes(app, pool, requireAdminSession);
 
 app.use("/api/creatorhub/google", createCreatorHubGoogleRouter(pool, activeSessions));
 app.use("/api/role-room", createRoleRoomRouter(pool, activeSessions));
+app.use("/api/capture", createCaptureRouter(pool, activeSessions));
 app.use("/api/youtube", createYouTubeRouter(pool));
 app.use("/api/photo-enhancer", createPhotoEnhancerRouter());
 app.use("/api/photo-enhancement", createPhotoEnhancementCompatRouter());
@@ -108537,6 +108583,7 @@ app.all("/api/*", (req, res) => {
 // Create HTTP server for WebSocket support
 const httpServer = createServer(app);
 createWebSocketServer(httpServer, db);
+attachCaptureWebSocket(httpServer, pool, activeSessions);
 
 httpServer.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Backend server running on port ${PORT} (HTTP + WebSocket)`);
