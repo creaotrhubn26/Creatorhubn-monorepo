@@ -86,3 +86,11 @@ tmp/
 *.env.backup
 **/.env.backup
 frontend/scripts/setup-sentry.cjs
+
+# Canon SDK & CCAPI materials — NDA, must never be committed
+canon/
+**/canon/
+CCAPI*.zip
+EDSDK*.zip
+EDSDKv*/
+Camera Agreement*.pdf
