@@ -25,6 +25,7 @@ import RoleRoomMobilePlannerView from './components/mobile-planner/RoleRoomMobil
 import RoleRoomMobileShootingDayView from './components/production-mobile/RoleRoomMobileShootingDayView';
 import RoleRoomMobileShotListView from './components/production-mobile/RoleRoomMobileShotListView';
 import RoleRoomMobileCrewView from './components/production-mobile/RoleRoomMobileCrewView';
+import RoleRoomAgentChatPanel from './components/ai/RoleRoomAgentChatPanel';
 import {
   readLastWorkspace,
   saveLastWorkspace,
@@ -80,6 +81,7 @@ import {
   LinkOff as LinkOffIcon,
   Link as LinkIcon,
   YouTube as YouTubeIcon,
+  AutoFixHigh as AutoFixHighIcon,
 } from '@mui/icons-material';
 
 import {
@@ -226,7 +228,8 @@ type SubTab =
   | 'planner'
   | 'shooting'
   | 'shotlist'
-  | 'mannskap';
+  | 'mannskap'
+  | 'agent';
 
 // ── Props ────────────────────────────────────────────────────
 
@@ -937,6 +940,15 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                     sx={{ minHeight: 48 }}
                   />
                 )}
+                {!viewport.isDesktop && (
+                  <Tab
+                    value="agent"
+                    label="Agent"
+                    icon={<AutoFixHighIcon fontSize="small" />}
+                    iconPosition="start"
+                    sx={{ minHeight: 48 }}
+                  />
+                )}
               </Tabs>
               <Divider />
 
@@ -1027,6 +1039,15 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                   <RoleRoomMobileCrewView
                     projectId={selectedProjectId}
                     mode={viewport.mode}
+                  />
+                )}
+                {subTab === 'agent' && !viewport.isDesktop && (
+                  <RoleRoomAgentChatPanel
+                    projectId={selectedProjectId}
+                    currentUserId={userId}
+                    context={{
+                      briefSummary: selectedProject?.description ?? undefined,
+                    }}
                   />
                 )}
               </CardContent>

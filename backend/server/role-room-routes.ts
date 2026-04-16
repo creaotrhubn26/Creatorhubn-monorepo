@@ -40,10 +40,16 @@ import {
   getActiveConsent as getAiConsent,
   revokeConsent as revokeAiConsent,
   updateEntityLists as updateAiConsentEntities,
+  RoleRoomAiConsentError,
   type RoleRoomAiConsentScope,
   type RoleRoomAiProcessor,
 } from './role-room-ai-consent.js';
 import { listAiCallsForUser } from './role-room-ai-audit.js';
+import {
+  invokeRoleRoomAgent,
+  RoleRoomAgentDisabledError,
+  type RoleRoomAgentAction,
+} from './role-room-agent-runner.js';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -19735,6 +19741,63 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json({ consent: updated });
       } catch (error) {
         res.status(500).json({ error: 'Failed to update entity lists', detail: String(error) });
+      }
+    },
+  );
+
+  // Role Room Agent (Claude) — protected endpoint that runs every call
+  // through consent → pseudonymize → audit. Scope defaults to 'brief_only'
+  // but the caller can request more via the body.
+  router.post(
+    '/projects/:projectId/agent/query',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const {
+          action = 'query',
+          userMessage,
+          requiredScope = 'brief_only',
+          context = {},
+        } = req.body ?? {};
+
+        if (typeof userMessage !== 'string' || userMessage.trim().length === 0) {
+          return res.status(400).json({ error: 'userMessage is required' });
+        }
+        if (userMessage.length > 4000) {
+          return res.status(400).json({ error: 'userMessage too long (max 4000 chars)' });
+        }
+        const validScopes: RoleRoomAiConsentScope[] = [
+          'brief_only',
+          'brief_and_reviews',
+          'full_context',
+        ];
+        if (!validScopes.includes(requiredScope)) {
+          return res.status(400).json({ error: 'invalid requiredScope' });
+        }
+
+        const response = await invokeRoleRoomAgent({
+          pool,
+          projectId: req.params.projectId,
+          userId,
+          action: action as RoleRoomAgentAction,
+          userMessage: userMessage.trim(),
+          requiredScope,
+          context,
+        });
+
+        res.json(response);
+      } catch (error) {
+        if (error instanceof RoleRoomAgentDisabledError) {
+          return res.status(503).json({ error: 'agent_disabled', detail: error.message });
+        }
+        if (error instanceof RoleRoomAiConsentError) {
+          return res.status(403).json({ error: error.code, detail: error.message });
+        }
+        res.status(500).json({
+          error: 'agent_failed',
+          detail: error instanceof Error ? error.message : String(error),
+        });
       }
     },
   );
