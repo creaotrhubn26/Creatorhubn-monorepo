@@ -30,7 +30,12 @@ import {
   ROLE_ROOM_AGENT_SYSTEM_PROMPT,
 } from './role-room-agent-definition.js';
 import { modelIdForTier, pickModelForMessage } from './role-room-agent-cache.js';
-import { appendMessage, ensureThread } from './role-room-agent-threads.js';
+import {
+  appendMessage,
+  createStreamingPlaceholder,
+  ensureThread,
+  updateStreamingMessage,
+} from './role-room-agent-threads.js';
 import {
   checkAgentRateLimit,
   RateLimitExceededError,
@@ -185,6 +190,14 @@ export async function handleAgentStream(
     void appendMessage(pool, { threadId, role: 'user', text: userMessage });
   }
 
+  // Pre-create a placeholder assistant message so we can checkpoint the
+  // growing stream into it. If the SSE connection drops mid-stream we
+  // still have the accumulated text in the thread — the user can scroll
+  // back and see what the agent had produced up to the point of failure.
+  const streamingMessageId = threadId
+    ? await createStreamingPlaceholder(pool, { threadId })
+    : null;
+
   // Open the SSE stream. Do this only AFTER all pre-checks pass so we
   // never open an empty stream just to close it with an error.
   res.setHeader('Content-Type', 'text/event-stream');
@@ -198,6 +211,40 @@ export async function handleAgentStream(
   let inputTokens = 0;
   let outputTokens = 0;
   const startedAt = Date.now();
+
+  // Throttle checkpoint writes so we don't hammer the DB on every token.
+  // 1.5 s cadence is enough to survive a dropped connection while keeping
+  // write amplification bounded (~0.5% of token throughput).
+  const CHECKPOINT_INTERVAL_MS = 1500;
+  let lastCheckpointAt = 0;
+  let checkpointInFlight = false;
+  const maybeCheckpoint = () => {
+    if (!streamingMessageId) return;
+    const now = Date.now();
+    if (now - lastCheckpointAt < CHECKPOINT_INTERVAL_MS) return;
+    if (checkpointInFlight) return;
+    lastCheckpointAt = now;
+    checkpointInFlight = true;
+    void updateStreamingMessage(pool, {
+      messageId: streamingMessageId,
+      text: accumulatedText,
+      partial: true,
+    }).finally(() => {
+      checkpointInFlight = false;
+    });
+  };
+
+  // If the client disconnects (tab closed, laptop lid, proxy timeout) we
+  // still want the partial text persisted. Node's Express surfaces this
+  // via the 'close' event on the response's underlying socket.
+  req.on('close', () => {
+    if (!streamingMessageId) return;
+    void updateStreamingMessage(pool, {
+      messageId: streamingMessageId,
+      text: accumulatedText,
+      partial: true,
+    });
+  });
 
   try {
     const stream = client.messages.stream({
@@ -223,6 +270,7 @@ export async function handleAgentStream(
       }
       accumulatedText += out;
       writeEvent(res, 'delta', { text: out });
+      maybeCheckpoint();
     });
 
     const finalMessage = await stream.finalMessage();
@@ -253,7 +301,31 @@ export async function handleAgentStream(
       phonesScrubbed: scrubbedFromUser.phones,
     });
 
-    if (threadId) {
+    // Finalize the checkpoint: flip partial=false and write the full
+    // transparency payload so the thread row matches the non-streaming shape.
+    if (streamingMessageId) {
+      void updateStreamingMessage(pool, {
+        messageId: streamingMessageId,
+        text: accumulatedText,
+        partial: false,
+        response: {
+          text: accumulatedText,
+          toolUses: [],
+          model: modelId,
+          latencyMs: Date.now() - startedAt,
+          usage: { inputTokens, outputTokens },
+          consentId: consent.id,
+          threadId,
+          transparency: {
+            model: modelId,
+            fields: candidateMap.categoriesTouched.concat(crewMap.categoriesTouched),
+            entityCount: candidates.length + crew.length,
+            piiScrubbedFromInput: scrubbedFromUser,
+          },
+        },
+      });
+    } else if (threadId) {
+      // Fallback path: placeholder creation failed but thread exists.
       void appendMessage(pool, {
         threadId,
         role: 'assistant',
@@ -300,6 +372,25 @@ export async function handleAgentStream(
       errorMessage: err instanceof Error ? err.message : String(err),
       latencyMs: Date.now() - startedAt,
     });
+    // On error, flush whatever text we have into the placeholder so the
+    // thread reflects what the user actually saw in the browser.
+    if (streamingMessageId) {
+      void updateStreamingMessage(pool, {
+        messageId: streamingMessageId,
+        text: accumulatedText,
+        partial: true,
+        response: {
+          text: accumulatedText,
+          toolUses: [],
+          model: modelId,
+          latencyMs: Date.now() - startedAt,
+          usage: { inputTokens, outputTokens },
+          consentId: consent.id,
+          threadId,
+          error: err instanceof Error ? err.message : String(err),
+        } as unknown,
+      });
+    }
     writeEvent(res, 'error', { message: err instanceof Error ? err.message : String(err) });
     res.end();
   }

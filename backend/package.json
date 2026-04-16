@@ -20,6 +20,8 @@
     "start:all": "concurrently -n \"node,python\" -c \"cyan,yellow\" \"npm start\" \"npm run ml:start\"",
     "migrate": "./migrate.sh",
     "typecheck": "tsc --noEmit",
+    "test:unit": "vitest run --config vitest.config.ts",
+    "test:unit:watch": "vitest --config vitest.config.ts",
     "lint": "eslint . --ext .ts --fix",
     "format": "prettier --write .",
     "db:push": "npx --yes drizzle-kit push",

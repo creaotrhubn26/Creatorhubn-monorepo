@@ -57,6 +57,7 @@ import {
   Schedule as ScheduleIcon,
   Palette as PaletteIcon,
   MenuBook as GuideBookIcon,
+  Shield as ShieldIcon,
 } from '@mui/icons-material';
 import { LocationsIcon as LocationIcon } from './icons/CastingIcons';
 import {
@@ -71,6 +72,7 @@ import {
 } from '../config/branding';
 import { useBrandingSettings } from '../hooks/useBrandingSettings';
 import { GuideEditorPanel } from './admin/visual-editor/GuideEditorPanel';
+import RoleRoomAiGovernancePanel from './ai/RoleRoomAiGovernancePanel';
 
 interface AdminUser {
   id: number;
@@ -2303,6 +2305,7 @@ export default function AdminDashboard({ open, onClose, projectName = 'Mitt Pros
             <Tab label="E-post Designer" icon={<EmailIcon sx={{ fontSize: iconSize }} />} iconPosition="start" />
             <Tab label="Branding" icon={<PaletteIcon sx={{ fontSize: iconSize }} />} iconPosition="start" />
             <Tab label="Guider" icon={<GuideBookIcon sx={{ fontSize: iconSize }} />} iconPosition="start" />
+            <Tab label="AI Governance" icon={<ShieldIcon sx={{ fontSize: iconSize }} />} iconPosition="start" />
           </Tabs>
         </Box>
 
@@ -3109,6 +3112,11 @@ export default function AdminDashboard({ open, onClose, projectName = 'Mitt Pros
           {mainTab === 3 && (
             <Box sx={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
               <GuideEditorPanel />
+            </Box>
+          )}
+          {mainTab === 4 && (
+            <Box sx={{ flex: 1, overflow: 'auto', p: spacing, bgcolor: '#f8fafc' }}>
+              <RoleRoomAiGovernancePanel />
             </Box>
           )}
         </DialogContent>

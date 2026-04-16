@@ -162,6 +162,58 @@ export async function appendMessage(
   }
 }
 
+/**
+ * Stream checkpoint — append an empty assistant placeholder that later
+ * `updateStreamingMessage` calls mutate with the growing text. This lets
+ * the runner persist partial output while the SSE is still flowing so a
+ * dropped connection still leaves the user with what Claude said so far.
+ */
+export async function createStreamingPlaceholder(
+  pool: Pool,
+  input: { threadId: string; initialText?: string },
+): Promise<string | null> {
+  try {
+    const result = await pool.query(
+      `INSERT INTO role_room_agent_messages (thread_id, role, text, response)
+       VALUES ($1, 'assistant', $2, $3::jsonb)
+       RETURNING id`,
+      [
+        input.threadId,
+        input.initialText ?? '',
+        JSON.stringify({ streaming: true, partial: true }),
+      ],
+    );
+    return result.rows[0]?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function updateStreamingMessage(
+  pool: Pool,
+  input: {
+    messageId: string;
+    text: string;
+    response?: unknown;
+    partial?: boolean;
+  },
+): Promise<void> {
+  try {
+    const responseJson = input.response != null
+      ? JSON.stringify(input.response)
+      : JSON.stringify({ streaming: true, partial: input.partial ?? true });
+    await pool.query(
+      `UPDATE role_room_agent_messages
+          SET text = $2,
+              response = $3::jsonb
+        WHERE id = $1`,
+      [input.messageId, input.text, responseJson],
+    );
+  } catch {
+    /* best-effort */
+  }
+}
+
 export async function archiveThread(
   pool: Pool,
   threadId: string,
