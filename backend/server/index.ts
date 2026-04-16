@@ -35,6 +35,7 @@ import { and, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { createRoleRoomRouter } from "./role-room-routes.js";
 import { pruneAiAuditLog } from "./role-room-ai-audit.js";
 import { pruneAgentCache } from "./role-room-agent-cache.js";
+import { runDailyAgentScan } from "./role-room-agent-daily-scan.js";
 import { createCreatorHubGoogleRouter } from "./creatorhub-google-routes.js";
 import { createRoleRoomIntegrationsV1Router } from "./role-room-integrations-v1-routes.js";
 import { createCommunicationRouter } from "./communication-routes.js";
@@ -36005,6 +36006,39 @@ function maybeStartRoleRoomAiAuditPrune() {
   setInterval(() => {
     void runRoleRoomAiAuditPrune("interval");
   }, ROLE_ROOM_AI_AUDIT_PRUNE_INTERVAL_MS).unref();
+}
+
+// Proactive daily scan — the Role Room Agent looks at every active
+// project with AI consent and drops risk notifications into Innboks.
+// Disabled unless ROLE_ROOM_AGENT_DAILY_SCAN_ENABLED === "true".
+let roleRoomAgentDailyScanStarted = false;
+const ROLE_ROOM_AGENT_DAILY_SCAN_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+async function runRoleRoomAgentDailyScan(trigger: string): Promise<void> {
+  try {
+    const result = await runDailyAgentScan(pool);
+    if (result.scanned > 0) {
+      console.log(
+        `[role-room-agent-daily-scan] Scanned ${result.scanned} projects (trigger=${trigger})`,
+      );
+    }
+  } catch (error) {
+    console.error("[role-room-agent-daily-scan] scan failed", error);
+  }
+}
+
+function maybeStartRoleRoomAgentDailyScan() {
+  if (roleRoomAgentDailyScanStarted) return;
+  if (process.env.ROLE_ROOM_AGENT_DAILY_SCAN_ENABLED !== "true") return;
+  roleRoomAgentDailyScanStarted = true;
+  // Wait ~5 min after boot before the first scan so the rest of the app
+  // is fully warm and we don't spike startup load.
+  setTimeout(() => {
+    void runRoleRoomAgentDailyScan("startup");
+  }, 5 * 60 * 1000).unref();
+  setInterval(() => {
+    void runRoleRoomAgentDailyScan("interval");
+  }, ROLE_ROOM_AGENT_DAILY_SCAN_INTERVAL_MS).unref();
 }
 
 async function findRoleRoomCommercialInviteByActivationToken(token: string) {
@@ -108510,6 +108544,7 @@ httpServer.listen(PORT, "0.0.0.0", () => {
   maybeStartRoleRoomLinkedInRedirectBridge();
   maybeStartRoleRoomCommercialReminderSweep();
   maybeStartRoleRoomAiAuditPrune();
+  maybeStartRoleRoomAgentDailyScan();
   if (isStoryArcV2Enabled() && STORY_ARC_V2_STARTUP_WARMUP_ENABLED) {
     void runStoryArcV2StartupWarmup();
   }

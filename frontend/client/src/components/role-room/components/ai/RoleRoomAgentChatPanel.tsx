@@ -72,7 +72,7 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
   const [input, setInput] = useState('');
   const [pendingTool, setPendingTool] = useState<RoleRoomAgentToolUse | null>(null);
   const [toolExecuting, setToolExecuting] = useState(false);
-  const { messages, pending, send, reset, lastError } = useRoleRoomAgentClaude(projectId);
+  const { messages, pending, send, reset, threadId, startNewThread, lastError } = useRoleRoomAgentClaude(projectId);
 
   const handleSend = useCallback(
     async (question?: string) => {
@@ -92,6 +92,24 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
 
   const body = useMemo(() => (
     <Stack spacing={2}>
+      <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+        <Typography variant="caption" color="text.secondary">
+          {threadId
+            ? `Fortsetter samtale (${messages.length} meldinger lagret)`
+            : 'Ny samtale'}
+        </Typography>
+        {(threadId || messages.length > 0) ? (
+          <Chip
+            label="Ny samtale"
+            size="small"
+            variant="outlined"
+            onClick={startNewThread}
+            disabled={pending}
+            clickable
+          />
+        ) : null}
+      </Stack>
+
       <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
         {SUGGESTED_PROMPTS.map((prompt) => (
           <Chip
@@ -191,7 +209,7 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
         </Alert>
       ) : null}
     </Stack>
-  ), [messages, pending, handleSend, handleRevokeConsent, projectId, lastError]);
+  ), [messages, pending, handleSend, handleRevokeConsent, projectId, lastError, threadId, startNewThread]);
 
   const composer = (
     <Box

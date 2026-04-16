@@ -50,6 +50,13 @@ services:
         value: "on"
       - key: ROLE_ROOM_AGENT_HAIKU_MODEL
         value: claude-haiku-4-5-20251001
+      # Proactive daily scan — runs once a day and pushes risk findings
+      # into producer_project_notifications. Default off; enable after
+      # you've validated costs with a small pilot group.
+      - key: ROLE_ROOM_AGENT_DAILY_SCAN_ENABLED
+        value: "false"
+      - key: ROLE_ROOM_AGENT_DAILY_SCAN_LIMIT
+        value: "50"
       - key: CLOUDFLARE_R2_ACCOUNT_ID
         sync: false
       - key: CLOUDFLARE_R2_ACCESS_KEY_ID

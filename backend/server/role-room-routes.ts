@@ -50,6 +50,12 @@ import {
   RoleRoomAgentDisabledError,
   type RoleRoomAgentAction,
 } from './role-room-agent-runner.js';
+import {
+  archiveThread,
+  getThread,
+  listThreads,
+  updateThreadTitle,
+} from './role-room-agent-threads.js';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -19759,6 +19765,8 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           userMessage,
           requiredScope = 'brief_only',
           context = {},
+          threadId,
+          persistThread,
         } = req.body ?? {};
 
         if (typeof userMessage !== 'string' || userMessage.trim().length === 0) {
@@ -19784,6 +19792,8 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           userMessage: userMessage.trim(),
           requiredScope,
           context,
+          threadId: typeof threadId === 'string' ? threadId : null,
+          persistThread: persistThread !== false,
         });
 
         res.json(response);
@@ -19798,6 +19808,75 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           error: 'agent_failed',
           detail: error instanceof Error ? error.message : String(error),
         });
+      }
+    },
+  );
+
+  // Agent thread CRUD — persistent conversations per (project, user).
+  router.get(
+    '/projects/:projectId/agent/threads',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const includeArchived = req.query.includeArchived === 'true';
+        const limit = typeof req.query.limit === 'string' ? Number(req.query.limit) : undefined;
+        const threads = await listThreads(pool, req.params.projectId, userId, {
+          includeArchived,
+          limit,
+        });
+        res.json({ threads });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to list threads', detail: String(error) });
+      }
+    },
+  );
+
+  router.get(
+    '/projects/:projectId/agent/threads/:threadId',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const data = await getThread(pool, req.params.threadId, userId);
+        if (!data) return res.status(404).json({ error: 'Not found' });
+        res.json({ thread: data.thread, messages: data.messages });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to load thread', detail: String(error) });
+      }
+    },
+  );
+
+  router.patch(
+    '/projects/:projectId/agent/threads/:threadId',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const { title } = req.body ?? {};
+        if (typeof title !== 'string' || title.trim().length === 0) {
+          return res.status(400).json({ error: 'title required' });
+        }
+        const ok = await updateThreadTitle(pool, req.params.threadId, userId, title.trim().slice(0, 200));
+        if (!ok) return res.status(404).json({ error: 'Not found' });
+        res.json({ ok: true });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to rename thread', detail: String(error) });
+      }
+    },
+  );
+
+  router.delete(
+    '/projects/:projectId/agent/threads/:threadId',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const ok = await archiveThread(pool, req.params.threadId, userId);
+        if (!ok) return res.status(404).json({ error: 'Not found' });
+        res.json({ ok: true });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to archive thread', detail: String(error) });
       }
     },
   );

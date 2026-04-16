@@ -49,6 +49,7 @@ import {
   pickModelForMessage,
   storeCachedResponse,
 } from './role-room-agent-cache.js';
+import { appendMessage, ensureThread } from './role-room-agent-threads.js';
 
 export type RoleRoomAgentAction =
   | 'query'
@@ -66,6 +67,8 @@ export interface RoleRoomAgentResponse {
   toolUses: RoleRoomAgentToolUse[];
   model: string;
   latencyMs: number;
+  /** Present when the call was persisted to a thread. */
+  threadId?: string | null;
   usage: RunClaudeAgentResult['usage'];
   consentId: string;
   transparency: {
@@ -83,6 +86,11 @@ export interface RoleRoomAgentInvokeInput {
   action: RoleRoomAgentAction;
   /** User's natural-language question. Short (max ~1 KB). */
   userMessage: string;
+  /** Optional thread-id. When provided (or null to auto-create), the user
+   *  message and the assistant response are persisted to the thread. */
+  threadId?: string | null;
+  /** If true, will create a new thread when threadId is null/invalid. */
+  persistThread?: boolean;
   /**
    * Required scope for this call. The runner verifies the active consent
    * covers at least this level before sending anything to Claude.
@@ -276,6 +284,21 @@ export async function invokeRoleRoomAgent(
   //   - Model router routes short info-lookup queries to Haiku (~5×
   //     cheaper). Heavier queries stay on Sonnet.
   // =========================================================================
+  // Resolve the persistent thread (creates one if needed) before any LLM
+  // call so even cache-hits get persisted to the conversation.
+  const persistThread = input.persistThread !== false && (input.threadId !== undefined || input.persistThread === true);
+  const resolvedThreadId = persistThread
+    ? await ensureThread(pool, projectId, userId, input.threadId, input.userMessage)
+    : null;
+
+  if (resolvedThreadId) {
+    void appendMessage(pool, {
+      threadId: resolvedThreadId,
+      role: 'user',
+      text: input.userMessage,
+    });
+  }
+
   const cacheEnabled = process.env.ROLE_ROOM_AGENT_CACHE !== 'off';
   const contextHash = hashContext({
     briefSummary: input.context.briefSummary ?? null,
@@ -310,7 +333,16 @@ export async function invokeRoleRoomAgent(
         emailsScrubbed: scrubbedFromUser.emails,
         phonesScrubbed: scrubbedFromUser.phones,
       });
-      return cached.response as RoleRoomAgentResponse;
+      const cachedResponse = { ...(cached.response as RoleRoomAgentResponse), threadId: resolvedThreadId };
+      if (resolvedThreadId) {
+        void appendMessage(pool, {
+          threadId: resolvedThreadId,
+          role: 'assistant',
+          text: cachedResponse.text,
+          response: cachedResponse,
+        });
+      }
+      return cachedResponse;
     }
   }
 
@@ -363,6 +395,7 @@ export async function invokeRoleRoomAgent(
       latencyMs: raw.latencyMs,
       usage: raw.usage,
       consentId: consent.id,
+      threadId: resolvedThreadId,
       transparency: {
         model: raw.model,
         fields: fieldCategories,
@@ -381,6 +414,15 @@ export async function invokeRoleRoomAgent(
         response,
         promptTokens: raw.usage.inputTokens,
         completionTokens: raw.usage.outputTokens,
+      });
+    }
+
+    if (resolvedThreadId) {
+      void appendMessage(pool, {
+        threadId: resolvedThreadId,
+        role: 'assistant',
+        text: depseudonymized,
+        response,
       });
     }
 

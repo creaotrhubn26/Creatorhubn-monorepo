@@ -76,12 +76,32 @@ export interface RoleRoomAgentResponse {
     cacheReadInputTokens?: number;
   };
   consentId: string;
+  threadId?: string | null;
   transparency: {
     model: string;
     fields: string[];
     entityCount: number;
     piiScrubbedFromInput: { emails: number; phones: number };
   };
+}
+
+export interface RoleRoomAgentThread {
+  id: string;
+  projectId: string;
+  userId: string;
+  title: string | null;
+  createdAt: string;
+  lastActiveAt: string;
+  archivedAt: string | null;
+}
+
+export interface RoleRoomAgentStoredMessage {
+  id: string;
+  threadId: string;
+  role: 'user' | 'assistant' | 'system';
+  text: string;
+  response: RoleRoomAgentResponse | null;
+  createdAt: string;
 }
 
 export interface RoleRoomAgentErrorShape {
@@ -127,6 +147,8 @@ export async function postAgentQuery(input: {
   requiredScope?: RoleRoomAgentScope;
   action?: RoleRoomAgentAction;
   context?: RoleRoomAgentContext;
+  threadId?: string | null;
+  persistThread?: boolean;
 }): Promise<RoleRoomAgentResponse> {
   const response = await fetch(
     `${API_BASE}/projects/${encodeURIComponent(input.projectId)}/agent/query`,
@@ -138,6 +160,8 @@ export async function postAgentQuery(input: {
         requiredScope: input.requiredScope ?? 'brief_only',
         action: input.action ?? 'query',
         context: input.context ?? {},
+        threadId: input.threadId ?? null,
+        persistThread: input.persistThread ?? true,
       }),
     },
   );
@@ -162,4 +186,56 @@ export async function postAgentQuery(input: {
   }
 
   return (await response.json()) as RoleRoomAgentResponse;
+}
+
+export async function listAgentThreads(projectId: string, includeArchived = false): Promise<RoleRoomAgentThread[]> {
+  const qs = new URLSearchParams();
+  if (includeArchived) qs.set('includeArchived', 'true');
+  const response = await fetch(
+    `${API_BASE}/projects/${encodeURIComponent(projectId)}/agent/threads${qs.size ? `?${qs}` : ''}`,
+    { headers: buildHeaders() },
+  );
+  if (!response.ok) return [];
+  const body = await response.json();
+  return Array.isArray(body.threads) ? body.threads : [];
+}
+
+export async function getAgentThread(
+  projectId: string,
+  threadId: string,
+): Promise<{ thread: RoleRoomAgentThread; messages: RoleRoomAgentStoredMessage[] } | null> {
+  const response = await fetch(
+    `${API_BASE}/projects/${encodeURIComponent(projectId)}/agent/threads/${encodeURIComponent(threadId)}`,
+    { headers: buildHeaders() },
+  );
+  if (!response.ok) return null;
+  const body = await response.json();
+  return {
+    thread: body.thread,
+    messages: Array.isArray(body.messages) ? body.messages : [],
+  };
+}
+
+export async function archiveAgentThread(projectId: string, threadId: string): Promise<boolean> {
+  const response = await fetch(
+    `${API_BASE}/projects/${encodeURIComponent(projectId)}/agent/threads/${encodeURIComponent(threadId)}`,
+    { method: 'DELETE', headers: buildHeaders() },
+  );
+  return response.ok;
+}
+
+export async function renameAgentThread(
+  projectId: string,
+  threadId: string,
+  title: string,
+): Promise<boolean> {
+  const response = await fetch(
+    `${API_BASE}/projects/${encodeURIComponent(projectId)}/agent/threads/${encodeURIComponent(threadId)}`,
+    {
+      method: 'PATCH',
+      headers: buildHeaders(),
+      body: JSON.stringify({ title }),
+    },
+  );
+  return response.ok;
 }
