@@ -1,8 +1,8 @@
 import Foundation
 
 protocol IngestAdapter: Actor {
-    var adapterId: String { get }
-    var events: AsyncStream<IngestEvent> { get }
+    nonisolated var adapterId: String { get }
+    nonisolated var events: AsyncStream<IngestEvent> { get }
 
     func start() async throws
     func stop() async

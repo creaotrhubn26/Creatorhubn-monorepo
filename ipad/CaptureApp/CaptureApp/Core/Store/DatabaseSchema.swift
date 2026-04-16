@@ -83,24 +83,28 @@ extension Session: FetchableRecord, PersistableRecord {
     static var databaseTableName: String { "session" }
     static let databaseDateDecodingStrategy: DatabaseDateDecodingStrategy = .iso8601
     static let databaseDateEncodingStrategy: DatabaseDateEncodingStrategy = .iso8601
+    static func databaseUUIDEncodingStrategy(for column: String) -> DatabaseUUIDEncodingStrategy { .uppercaseString }
 }
 
 extension Asset: FetchableRecord, PersistableRecord {
     static var databaseTableName: String { "asset" }
     static let databaseDateDecodingStrategy: DatabaseDateDecodingStrategy = .iso8601
     static let databaseDateEncodingStrategy: DatabaseDateEncodingStrategy = .iso8601
+    static func databaseUUIDEncodingStrategy(for column: String) -> DatabaseUUIDEncodingStrategy { .uppercaseString }
 }
 
 extension Review: FetchableRecord, PersistableRecord {
     static var databaseTableName: String { "review" }
     static let databaseDateDecodingStrategy: DatabaseDateDecodingStrategy = .iso8601
     static let databaseDateEncodingStrategy: DatabaseDateEncodingStrategy = .iso8601
+    static func databaseUUIDEncodingStrategy(for column: String) -> DatabaseUUIDEncodingStrategy { .uppercaseString }
 }
 
 extension CaptureEvent: FetchableRecord, PersistableRecord {
     static var databaseTableName: String { "event" }
     static let databaseDateDecodingStrategy: DatabaseDateDecodingStrategy = .iso8601
     static let databaseDateEncodingStrategy: DatabaseDateEncodingStrategy = .iso8601
+    static func databaseUUIDEncodingStrategy(for column: String) -> DatabaseUUIDEncodingStrategy { .uppercaseString }
 }
 
 // MARK: - JSON-backed columns
@@ -127,7 +131,7 @@ extension AssetSignals: DatabaseValueConvertible {
     }
 }
 
-extension Dictionary: DatabaseValueConvertible where Key == String, Value == String {
+extension Dictionary: DatabaseValueConvertible, StatementBinding, SQLExpressible where Key == String, Value == String {
     public var databaseValue: DatabaseValue {
         guard
             let data = try? JSONEncoder().encode(self),

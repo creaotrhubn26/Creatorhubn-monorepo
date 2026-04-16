@@ -9,7 +9,7 @@ options:
 packages:
   GRDB:
     url: https://github.com/groue/GRDB.swift
-    from: 6.29.0
+    from: 7.0.0
 
 settings:
   base:
@@ -23,7 +23,6 @@ targets:
   CaptureApp:
     type: application
     platform: iOS
-    supportedDestinations: [iPad]
     sources:
       - path: CaptureApp
     dependencies:
@@ -53,3 +52,6 @@ targets:
       - path: CaptureAppTests
     dependencies:
       - target: CaptureApp
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
