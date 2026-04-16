@@ -1,7 +1,11 @@
 import { load } from "cheerio";
 import { CohereClientV2 } from "cohere-ai";
+import {
+  claudeBootstrapEnabled,
+  requestClaudeBootstrap,
+} from "./role-room-agent-bootstrap-claude.js";
 
-type RoleRoomAgentProducerBootstrapInput = {
+export type RoleRoomAgentProducerBootstrapInput = {
   projectId: string;
   projectName?: string;
   websiteUrl?: string | null;
@@ -84,7 +88,7 @@ type RoleRoomAgentCompetitorCandidate = {
   requiresManualConfirmation: boolean;
 };
 
-type RoleRoomAgentCompetitorAnalysis = {
+export type RoleRoomAgentCompetitorAnalysis = {
   status: "ready" | "limited" | "unavailable";
   source: "google_places" | "fallback";
   generatedAt: string;
@@ -155,7 +159,7 @@ type RoleRoomAgentLocalPresenceOpportunity = {
   requiresManualConfirmation: boolean;
 };
 
-type RoleRoomAgentLocalPresencePlan = {
+export type RoleRoomAgentLocalPresencePlan = {
   status: "ready" | "limited" | "unavailable";
   source: "google_places" | "fallback";
   generatedAt: string;
@@ -174,7 +178,7 @@ type RoleRoomAgentLocalPresencePlan = {
   limitations: string[];
 };
 
-type RoleRoomAgentWebsiteInsights = {
+export type RoleRoomAgentWebsiteInsights = {
   finalUrl?: string | null;
   pageTitle?: string | null;
   siteName?: string | null;
@@ -216,7 +220,7 @@ type RoleRoomAgentReviewQuote = {
   googleMapsUri?: string | null;
 };
 
-type RoleRoomAgentBusinessSignals = {
+export type RoleRoomAgentBusinessSignals = {
   source: "google_places";
   displayName?: string;
   formattedAddress?: string | null;
@@ -239,7 +243,7 @@ type RoleRoomAgentBrregLookupStatus =
   | "unavailable"
   | "skipped";
 
-type RoleRoomAgentBrregCompany = {
+export type RoleRoomAgentBrregCompany = {
   source: "brreg";
   lookupStatus: RoleRoomAgentBrregLookupStatus;
   lookupInput?: string | null;
@@ -272,7 +276,7 @@ type RoleRoomAgentBrregCompany = {
   statusMessage?: string | null;
 };
 
-type RoleRoomAgentCompanyAge = {
+export type RoleRoomAgentCompanyAge = {
   status: "unknown" | "new" | "young" | "established" | "mature";
   label: string;
   registrationDate?: string | null;
@@ -282,14 +286,14 @@ type RoleRoomAgentCompanyAge = {
   isNewCompany: boolean;
 };
 
-type RoleRoomAgentAgreementSuggestion = {
+export type RoleRoomAgentAgreementSuggestion = {
   id: string;
   title: string;
   detail: string;
   priority: "critical" | "recommended" | "standard";
 };
 
-type RoleRoomAgentRetrievalMeta = {
+export type RoleRoomAgentRetrievalMeta = {
   cohereRerankUsed: boolean;
   rerankerModel?: string;
   websitePagesReviewed: number;
@@ -312,7 +316,7 @@ type RoleRoomAgentRerankResult<T> = {
 
 type RoleRoomAgentNormalizedPayload = {
   generatedAt: string;
-  provider: "openai" | "fallback";
+  provider: "openai" | "anthropic" | "fallback";
   model: string;
   businessSignals?: RoleRoomAgentBusinessSignals | null;
   brregCompany?: RoleRoomAgentBrregCompany | null;
@@ -3179,6 +3183,8 @@ function normalizeBootstrapPayload(
   websiteInsights: RoleRoomAgentWebsiteInsights,
   fallback: RoleRoomAgentNormalizedPayload,
   businessSignals: RoleRoomAgentBusinessSignals | null,
+  provider: "openai" | "anthropic" = "openai",
+  modelOverride?: string,
 ): RoleRoomAgentNormalizedPayload {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     return fallback;
@@ -3217,8 +3223,8 @@ function normalizeBootstrapPayload(
   return {
     ...fallback,
     generatedAt: new Date().toISOString(),
-    provider: "openai",
-    model: getRoleRoomAgentRuntimeConfig().defaultModel,
+    provider,
+    model: modelOverride ?? getRoleRoomAgentRuntimeConfig().defaultModel,
     businessSignals,
     brregCompany: fallback.brregCompany,
     companyAge: fallback.companyAge,
@@ -3410,20 +3416,73 @@ export async function generateRoleRoomAgentProducerBootstrap(
     competitorAnalysis,
     localPresencePlan,
   );
-  const openAiPayload = await requestOpenAiBootstrap(
-    enrichedInput,
-    websiteInsights,
-    businessSignals,
-    initialBrregCompany,
-    companyAge,
-    agreementSuggestions,
-    competitorAnalysis,
-    localPresencePlan,
-    fallback.retrievalMeta ?? null,
-  );
-  if (!openAiPayload) {
+  // Model dispatcher. `ROLE_ROOM_BOOTSTRAP_MODEL=claude` routes synthesis
+  // through Anthropic; anything else (default) keeps the existing OpenAI
+  // path. The deterministic fetchers above (Brreg, Places, website scrape)
+  // run regardless of which synthesis model is picked.
+  const useClaude = claudeBootstrapEnabled();
+  const synthesisPayload = useClaude
+    ? await requestClaudeBootstrap(
+        enrichedInput,
+        websiteInsights,
+        businessSignals,
+        initialBrregCompany,
+        companyAge,
+        agreementSuggestions,
+        competitorAnalysis,
+        localPresencePlan,
+        fallback.retrievalMeta ?? null,
+      )
+    : await requestOpenAiBootstrap(
+        enrichedInput,
+        websiteInsights,
+        businessSignals,
+        initialBrregCompany,
+        companyAge,
+        agreementSuggestions,
+        competitorAnalysis,
+        localPresencePlan,
+        fallback.retrievalMeta ?? null,
+      );
+
+  if (!synthesisPayload) {
+    // If Claude was the primary and returned null (e.g. Anthropic outage),
+    // try OpenAI as a fallback so the user still gets a first-pass bootstrap.
+    if (useClaude) {
+      const openAiFallback = await requestOpenAiBootstrap(
+        enrichedInput,
+        websiteInsights,
+        businessSignals,
+        initialBrregCompany,
+        companyAge,
+        agreementSuggestions,
+        competitorAnalysis,
+        localPresencePlan,
+        fallback.retrievalMeta ?? null,
+      );
+      if (openAiFallback) {
+        return normalizeBootstrapPayload(
+          openAiFallback,
+          enrichedInput,
+          websiteInsights,
+          fallback,
+          businessSignals,
+          "openai",
+        );
+      }
+    }
     return fallback;
   }
 
-  return normalizeBootstrapPayload(openAiPayload, enrichedInput, websiteInsights, fallback, businessSignals);
+  return normalizeBootstrapPayload(
+    synthesisPayload,
+    enrichedInput,
+    websiteInsights,
+    fallback,
+    businessSignals,
+    useClaude ? "anthropic" : "openai",
+    useClaude
+      ? (process.env.ROLE_ROOM_BOOTSTRAP_CLAUDE_MODEL || "claude-sonnet-4-5")
+      : undefined,
+  );
 }

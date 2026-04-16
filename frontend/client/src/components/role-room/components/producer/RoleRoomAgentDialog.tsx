@@ -166,7 +166,9 @@ export default function RoleRoomAgentDialog({
   const canGenerate = companyName.trim().length > 0 || websiteUrl.trim().length > 0 || organizationNumber.trim().length > 0;
   const providerLabel = useMemo(() => {
     if (!result) return null;
-    return result.provider === 'openai' ? `OpenAI · ${result.model}` : 'Fallback-analyse';
+    if (result.provider === 'openai') return `OpenAI · ${result.model}`;
+    if (result.provider === 'anthropic') return `Anthropic Claude · ${result.model}`;
+    return 'Fallback-analyse';
   }, [result]);
   const runtimeLabel = useMemo(() => {
     if (!access?.provider) {

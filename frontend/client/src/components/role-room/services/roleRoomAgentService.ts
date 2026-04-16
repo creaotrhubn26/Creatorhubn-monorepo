@@ -239,7 +239,7 @@ export interface RoleRoomAgentLocalPresencePlan {
 
 export interface RoleRoomAgentProducerBootstrapResult {
   generatedAt: string;
-  provider: 'openai' | 'fallback';
+  provider: 'openai' | 'anthropic' | 'fallback';
   model: string;
   businessSignals?: RoleRoomAgentBusinessSignals | null;
   brregCompany?: RoleRoomAgentBrregCompany | null;
