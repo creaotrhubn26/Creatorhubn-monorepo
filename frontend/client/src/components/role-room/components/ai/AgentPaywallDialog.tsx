@@ -125,12 +125,16 @@ export const AgentPaywallDialog: React.FC<AgentPaywallDialogProps> = ({
       </DialogTitle>
       <DialogContent>
         {entitlement?.reason ? (
-          <Alert severity="info" sx={{ mb: 2 }}>
-            {entitlement.status === 'expired'
-              ? 'Prøveperioden din er over.'
-              : entitlement.status === 'revoked'
-                ? 'Tilgangen din er trukket tilbake. Kontakt admin.'
-                : 'AI-tilgang krever abonnement eller prøveperiode.'}
+          <Alert severity={entitlement.reason.startsWith('trial_') ? 'warning' : 'info'} sx={{ mb: 2 }}>
+            {entitlement.reason.startsWith('trial_daily_cap_reached')
+              ? 'Dagens prøve-kvote er brukt opp. Prøv igjen i morgen, eller oppgrader nå for å fortsette.'
+              : entitlement.reason.startsWith('trial_total_cap_reached')
+                ? 'Prøveperioden din har nådd sitt maksimale bruksantall. Oppgrader for å fortsette.'
+                : entitlement.status === 'expired'
+                  ? 'Prøveperioden din er over.'
+                  : entitlement.status === 'revoked'
+                    ? 'Tilgangen din er trukket tilbake. Kontakt admin.'
+                    : 'AI-tilgang krever abonnement eller prøveperiode.'}
           </Alert>
         ) : null}
 

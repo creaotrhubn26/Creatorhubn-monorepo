@@ -41,6 +41,8 @@ export interface EntitlementResult {
 export interface EntitlementConfig {
   trialDays: number;
   trialCallsPerDay: number;
+  trialCallsTotal: number;
+  trialsEnabled: boolean;
   basicTierIncluded: boolean;
   addonMonthlyPriceNok: number;
 }
@@ -56,9 +58,38 @@ export function getEntitlementConfig(): EntitlementConfig {
   return {
     trialDays: envInt('ROLE_ROOM_AGENT_TRIAL_DAYS', 14),
     trialCallsPerDay: envInt('ROLE_ROOM_AGENT_TRIAL_CALLS_PER_DAY', 20),
+    trialCallsTotal: envInt('ROLE_ROOM_AGENT_TRIAL_CALLS_TOTAL', 150),
+    // Off-switch — when unset or 'true' trials can be started; 'false'
+    // blocks new trials even though existing ones keep running.
+    trialsEnabled: process.env.ROLE_ROOM_AGENT_TRIALS_ENABLED !== 'false',
     basicTierIncluded: process.env.ROLE_ROOM_AGENT_BASIC_INCLUDED === 'true',
     addonMonthlyPriceNok: envInt('ROLE_ROOM_AGENT_ADDON_PRICE_NOK', 99),
   };
+}
+
+async function countTrialCalls(
+  pool: Pool,
+  userId: string,
+  sinceHours: number,
+): Promise<number> {
+  try {
+    const result = await pool.query(
+      `SELECT COUNT(*) AS n
+         FROM role_room_ai_audit_log
+        WHERE user_id = $1
+          AND status = 'ok'
+          AND action != 'daily_scan'
+          AND NOT (field_categories ? 'cache_hit')
+          AND created_at > now() - make_interval(hours => $2)`,
+      [userId, sinceHours],
+    );
+    return Number(result.rows[0]?.n ?? 0);
+  } catch {
+    // If the audit query fails we fall open — rate limits elsewhere will
+    // still cap abuse, and failing closed here would lock out users on
+    // transient DB hiccups.
+    return 0;
+  }
 }
 
 export function isPrivilegedRole(role: string | null | undefined): boolean {
@@ -157,13 +188,52 @@ export async function checkAgentEntitlement(
     };
   }
 
-  // Trial — check expiry.
+  // Trial — check expiry AND usage caps. Trials aren't unlimited — they
+  // exist for evaluation, not bulk production. We cap calls/day and
+  // total calls per trial to bound exposure.
   if (existing && existing.status === 'trial') {
     const trialEndsAt: Date | null = existing.trial_ends_at ?? null;
     if (trialEndsAt && trialEndsAt.getTime() > Date.now()) {
       const daysRemaining = Math.ceil(
         (trialEndsAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000),
       );
+      // Daily cap (rolling 24h).
+      const [callsLast24h, callsTotal] = await Promise.all([
+        countTrialCalls(pool, userId, 24),
+        countTrialCalls(pool, userId, cfg.trialDays * 24),
+      ]);
+      if (callsLast24h >= cfg.trialCallsPerDay) {
+        return {
+          allowed: false,
+          source: 'trial',
+          status: 'trial',
+          trialEndsAt: trialEndsAt.toISOString(),
+          daysRemaining,
+          upsell: {
+            canStartTrial: false,
+            canBuyAddOn: true,
+            canUpgradeToPro: planType !== 'pro' && planType !== 'enterprise',
+            currentPlanType: planType,
+          },
+          reason: `trial_daily_cap_reached (${callsLast24h}/${cfg.trialCallsPerDay})`,
+        };
+      }
+      if (callsTotal >= cfg.trialCallsTotal) {
+        return {
+          allowed: false,
+          source: 'trial',
+          status: 'trial',
+          trialEndsAt: trialEndsAt.toISOString(),
+          daysRemaining,
+          upsell: {
+            canStartTrial: false,
+            canBuyAddOn: true,
+            canUpgradeToPro: planType !== 'pro' && planType !== 'enterprise',
+            currentPlanType: planType,
+          },
+          reason: `trial_total_cap_reached (${callsTotal}/${cfg.trialCallsTotal})`,
+        };
+      }
       return {
         allowed: true,
         source: 'trial',
@@ -173,7 +243,7 @@ export async function checkAgentEntitlement(
         reason: 'trial active',
       };
     }
-    // Expired: mark and fall through to upsell.
+    // Expired by time: mark and fall through to upsell.
     await pool
       .query(
         `UPDATE role_room_agent_entitlements
@@ -233,6 +303,10 @@ export async function startAgentTrial(
   pool: Pool,
   userId: string,
 ): Promise<{ ok: true; trialEndsAt: string } | { ok: false; error: string }> {
+  const cfg = getEntitlementConfig();
+  if (!cfg.trialsEnabled) {
+    return { ok: false, error: 'trials_disabled' };
+  }
   const existing = await readActiveEntitlement(pool, userId);
   if (existing) {
     return { ok: false, error: 'already_has_entitlement' };
@@ -248,7 +322,6 @@ export async function startAgentTrial(
   if (anyPrevTrial.rows.length > 0) {
     return { ok: false, error: 'trial_already_used' };
   }
-  const cfg = getEntitlementConfig();
   const trialEndsAt = new Date(Date.now() + cfg.trialDays * 24 * 60 * 60 * 1000);
   try {
     await pool.query(

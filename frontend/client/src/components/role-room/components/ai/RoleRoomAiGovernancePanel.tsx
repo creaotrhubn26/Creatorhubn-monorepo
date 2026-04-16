@@ -38,12 +38,16 @@ import {
   fetchAiGovernanceAudit,
   fetchAiGovernanceConsents,
   fetchAiGovernanceOverview,
+  fetchEntitlements,
+  grantEntitlement,
+  revokeEntitlement,
+  type AiEntitlementRow,
   type AiGovernanceAuditRow,
   type AiGovernanceConsent,
   type AiGovernanceOverview,
 } from '../../services/roleRoomAiGovernanceApi';
 
-type GovernanceTab = 'overview' | 'consents' | 'audit';
+type GovernanceTab = 'overview' | 'consents' | 'audit' | 'entitlements';
 
 function formatDate(iso: string): string {
   if (!iso) return '';
@@ -74,6 +78,14 @@ export const RoleRoomAiGovernancePanel: React.FC = () => {
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditProjectFilter, setAuditProjectFilter] = useState('');
   const [auditStatusFilter, setAuditStatusFilter] = useState('');
+
+  const [entitlements, setEntitlements] = useState<AiEntitlementRow[]>([]);
+  const [entLoading, setEntLoading] = useState(false);
+  const [grantUserId, setGrantUserId] = useState('');
+  const [grantDays, setGrantDays] = useState('');
+  const [grantNotes, setGrantNotes] = useState('');
+  const [grantBusy, setGrantBusy] = useState(false);
+  const [grantFeedback, setGrantFeedback] = useState<string | null>(null);
 
   useEffect(() => {
     if (tab !== 'overview') return;
@@ -133,6 +145,48 @@ export const RoleRoomAiGovernancePanel: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
+  const refreshEntitlements = () => {
+    setEntLoading(true);
+    fetchEntitlements(200)
+      .then((rows) => setEntitlements(rows))
+      .finally(() => setEntLoading(false));
+  };
+
+  useEffect(() => {
+    if (tab !== 'entitlements') return;
+    refreshEntitlements();
+  }, [tab]);
+
+  const handleGrant = async () => {
+    if (!grantUserId.trim()) return;
+    setGrantBusy(true);
+    setGrantFeedback(null);
+    try {
+      const days = Number.parseInt(grantDays, 10);
+      const ok = await grantEntitlement({
+        userId: grantUserId.trim(),
+        notes: grantNotes.trim() || undefined,
+        trialDays: Number.isFinite(days) && days > 0 ? days : undefined,
+      });
+      setGrantFeedback(ok ? `Tildelt til ${grantUserId}` : 'Feil ved tildeling');
+      if (ok) {
+        setGrantUserId('');
+        setGrantDays('');
+        setGrantNotes('');
+        refreshEntitlements();
+      }
+    } finally {
+      setGrantBusy(false);
+    }
+  };
+
+  const handleRevoke = async (row: AiEntitlementRow) => {
+    const reason = window.prompt(`Årsak for å trekke tilbake ${row.user_id}?`, 'admin_revoke');
+    if (reason === null) return;
+    const ok = await revokeEntitlement({ userId: row.user_id, reason });
+    if (ok) refreshEntitlements();
+  };
+
   const cacheHitRate = useMemo(() => {
     if (!overview) return null;
     const total = overview.calls24h.total;
@@ -156,6 +210,7 @@ export const RoleRoomAiGovernancePanel: React.FC = () => {
           <Tab value="overview" label="Oversikt" />
           <Tab value="consents" label="Samtykker" />
           <Tab value="audit" label="Auditlogg" />
+          <Tab value="entitlements" label="Tilganger" />
         </Tabs>
 
         {tab === 'overview' ? (
@@ -297,6 +352,103 @@ export const RoleRoomAiGovernancePanel: React.FC = () => {
                       <TableCell>{row.processor}</TableCell>
                       <TableCell>{formatDate(row.grantedAt)}</TableCell>
                       <TableCell>{row.revokedAt ? formatDate(row.revokedAt) : '—'}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Box>
+        ) : null}
+
+        {tab === 'entitlements' ? (
+          <Box>
+            <Paper variant="outlined" sx={{ p: 1.5, mb: 2 }}>
+              <Typography variant="overline" color="text.secondary" fontWeight={700}>
+                Manuell grant
+              </Typography>
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} sx={{ mt: 0.5 }}>
+                <TextField
+                  label="Bruker-id"
+                  size="small"
+                  value={grantUserId}
+                  onChange={(event) => setGrantUserId(event.target.value)}
+                  sx={{ flex: 1 }}
+                />
+                <TextField
+                  label="Dager (blank = permanent)"
+                  size="small"
+                  value={grantDays}
+                  onChange={(event) => setGrantDays(event.target.value)}
+                  sx={{ width: 180 }}
+                />
+                <TextField
+                  label="Notat"
+                  size="small"
+                  value={grantNotes}
+                  onChange={(event) => setGrantNotes(event.target.value)}
+                  sx={{ flex: 1 }}
+                />
+                <Button
+                  variant="contained"
+                  onClick={handleGrant}
+                  disabled={!grantUserId.trim() || grantBusy}
+                >
+                  Tildel
+                </Button>
+              </Stack>
+              {grantFeedback ? (
+                <Alert severity="info" sx={{ mt: 1 }}>{grantFeedback}</Alert>
+              ) : null}
+            </Paper>
+            {entLoading ? <LinearProgress /> : null}
+            <TableContainer component={Paper} variant="outlined">
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Bruker</TableCell>
+                    <TableCell>Status</TableCell>
+                    <TableCell>Kilde</TableCell>
+                    <TableCell>Prøve slutt</TableCell>
+                    <TableCell>Gitt</TableCell>
+                    <TableCell>Tilbaketrukket</TableCell>
+                    <TableCell />
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {entitlements.map((row) => (
+                    <TableRow key={row.id}>
+                      <TableCell>
+                        <Typography variant="caption" noWrap sx={{ maxWidth: 180 }}>
+                          {row.user_id}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          size="small"
+                          label={row.status}
+                          variant="outlined"
+                          color={
+                            row.status === 'active'
+                              ? 'success'
+                              : row.status === 'trial'
+                                ? 'primary'
+                                : row.status === 'expired'
+                                  ? 'warning'
+                                  : 'default'
+                          }
+                        />
+                      </TableCell>
+                      <TableCell>{row.source}</TableCell>
+                      <TableCell>{row.trial_ends_at ? formatDate(row.trial_ends_at) : '—'}</TableCell>
+                      <TableCell>{formatDate(row.granted_at)}</TableCell>
+                      <TableCell>{row.revoked_at ? formatDate(row.revoked_at) : '—'}</TableCell>
+                      <TableCell align="right">
+                        {!row.revoked_at ? (
+                          <Button size="small" color="error" onClick={() => handleRevoke(row)}>
+                            Trekk tilbake
+                          </Button>
+                        ) : null}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

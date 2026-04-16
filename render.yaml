@@ -73,6 +73,14 @@ services:
       # Render UI once the Stripe product is published.
       - key: ROLE_ROOM_AGENT_TRIAL_DAYS
         value: "14"
+      - key: ROLE_ROOM_AGENT_TRIAL_CALLS_PER_DAY
+        value: "20"
+      - key: ROLE_ROOM_AGENT_TRIAL_CALLS_TOTAL
+        value: "150"
+      # Global off-switch for new trials — set "false" to stop accepting
+      # new prøveperioder without disabling the paid tiers.
+      - key: ROLE_ROOM_AGENT_TRIALS_ENABLED
+        value: "true"
       - key: ROLE_ROOM_AGENT_ADDON_PRICE_NOK
         value: "99"
       - key: ROLE_ROOM_AGENT_BASIC_INCLUDED

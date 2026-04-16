@@ -106,3 +106,54 @@ export async function fetchAiGovernanceAudit(
   const body = await response.json();
   return Array.isArray(body.rows) ? body.rows : [];
 }
+
+// ── Entitlements (admin) ──────────────────────────────────────
+
+const ADMIN_AGENT_BASE = '/api/role-room/admin/agent';
+
+export interface AiEntitlementRow {
+  id: string;
+  user_id: string;
+  status: 'trial' | 'active' | 'expired' | 'revoked';
+  source: 'plan_pro' | 'plan_enterprise' | 'addon_monthly' | 'admin_grant' | 'trial';
+  trial_ends_at: string | null;
+  stripe_subscription_id: string | null;
+  granted_at: string;
+  revoked_at: string | null;
+  notes: string | null;
+}
+
+export async function fetchEntitlements(limit = 200): Promise<AiEntitlementRow[]> {
+  const response = await fetch(
+    `${ADMIN_AGENT_BASE}/entitlements?limit=${limit}`,
+    { headers: buildHeaders() },
+  );
+  if (!response.ok) return [];
+  const body = await response.json();
+  return Array.isArray(body.entitlements) ? body.entitlements : [];
+}
+
+export async function grantEntitlement(input: {
+  userId: string;
+  notes?: string;
+  trialDays?: number;
+}): Promise<boolean> {
+  const response = await fetch(`${ADMIN_AGENT_BASE}/entitlements/grant`, {
+    method: 'POST',
+    headers: buildHeaders(),
+    body: JSON.stringify(input),
+  });
+  return response.ok;
+}
+
+export async function revokeEntitlement(input: {
+  userId: string;
+  reason?: string;
+}): Promise<boolean> {
+  const response = await fetch(`${ADMIN_AGENT_BASE}/entitlements/revoke`, {
+    method: 'POST',
+    headers: buildHeaders(),
+    body: JSON.stringify(input),
+  });
+  return response.ok;
+}

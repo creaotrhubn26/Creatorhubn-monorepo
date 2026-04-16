@@ -111,6 +111,16 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
   const needsPaywall =
     entitlementBundle != null && !entitlementBundle.entitlement.allowed;
 
+  // Soft trial-expiry banner — shown when user has 3 or fewer days left
+  // on an active trial. No email today; this is the in-app nudge.
+  const trialBannerDays = entitlementBundle?.entitlement.status === 'trial'
+    && entitlementBundle.entitlement.allowed
+    && typeof entitlementBundle.entitlement.daysRemaining === 'number'
+    && entitlementBundle.entitlement.daysRemaining >= 0
+    && entitlementBundle.entitlement.daysRemaining <= 3
+    ? entitlementBundle.entitlement.daysRemaining
+    : null;
+
   const handleSend = useCallback(
     async (question?: string) => {
       const text = (question ?? input).trim();
@@ -129,6 +139,22 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
 
   const body = useMemo(() => (
     <Stack spacing={2}>
+      {trialBannerDays !== null ? (
+        <Alert
+          severity="warning"
+          action={
+            <Button size="small" onClick={() => setPaywallOpen(true)}>
+              Oppgrader
+            </Button>
+          }
+        >
+          {trialBannerDays === 0
+            ? 'Prøveperioden din utløper i dag.'
+            : trialBannerDays === 1
+              ? 'Prøveperioden din utløper i morgen.'
+              : `Prøveperioden din utløper om ${trialBannerDays} dager.`}
+        </Alert>
+      ) : null}
       <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
         <Typography variant="caption" color="text.secondary">
           {threadId
@@ -258,7 +284,7 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
         </Alert>
       ) : null}
     </Stack>
-  ), [messages, pending, handleSend, handleRevokeConsent, projectId, lastError, threadId, startNewThread]);
+  ), [messages, pending, handleSend, handleRevokeConsent, projectId, lastError, threadId, startNewThread, trialBannerDays]);
 
   const composer = (
     <Box
