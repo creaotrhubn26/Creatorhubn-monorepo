@@ -15,6 +15,8 @@ import '../../styles/role-room-mobile.css';
 import { useAuth } from '../../hooks/useAuth';
 import { useRoleRoomViewportMode } from './hooks/useRoleRoomViewportMode';
 import { useProducerNotifications } from './hooks/useProducerNotifications';
+import { useProducerReviews } from './hooks/useProducerReviews';
+import { useProducerTimeline } from './hooks/useProducerTimeline';
 import RoleRoomMobileTopBar, { MobileSyncStatus } from './components/RoleRoomMobileTopBar';
 import RoleRoomProjectSwitcher from './components/RoleRoomProjectSwitcher';
 import RoleRoomMobileInboxSheet, { InboxItem } from './components/RoleRoomMobileInboxSheet';
@@ -26,6 +28,7 @@ import RoleRoomMobileShootingDayView from './components/production-mobile/RoleRo
 import RoleRoomMobileShotListView from './components/production-mobile/RoleRoomMobileShotListView';
 import RoleRoomMobileCrewView from './components/production-mobile/RoleRoomMobileCrewView';
 import RoleRoomAgentChatPanel from './components/ai/RoleRoomAgentChatPanel';
+import { useRoleRoomAgentContext } from './hooks/useRoleRoomAgentContext';
 import {
   readLastWorkspace,
   saveLastWorkspace,
@@ -940,15 +943,13 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                     sx={{ minHeight: 48 }}
                   />
                 )}
-                {!viewport.isDesktop && (
-                  <Tab
-                    value="agent"
-                    label="Agent"
-                    icon={<AutoFixHighIcon fontSize="small" />}
-                    iconPosition="start"
-                    sx={{ minHeight: 48 }}
-                  />
-                )}
+                <Tab
+                  value="agent"
+                  label="Agent"
+                  icon={<AutoFixHighIcon fontSize="small" />}
+                  iconPosition="start"
+                  sx={{ minHeight: 48 }}
+                />
               </Tabs>
               <Divider />
 
@@ -1041,13 +1042,12 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                     mode={viewport.mode}
                   />
                 )}
-                {subTab === 'agent' && !viewport.isDesktop && (
-                  <RoleRoomAgentChatPanel
+                {subTab === 'agent' && (
+                  <AgentChatMount
                     projectId={selectedProjectId}
                     currentUserId={userId}
-                    context={{
-                      briefSummary: selectedProject?.description ?? undefined,
-                    }}
+                    candidates={candidates as any}
+                    crew={crew as any}
                   />
                 )}
               </CardContent>
@@ -1092,6 +1092,95 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
 };
 
 export default RoleRoomDashboardPanel;
+
+// ── Agent chat mount ──────────────────────────────────────────
+// Separate component so hooks (useRoleRoomAgentContext + the write
+// mutations) are only run when the Agent subtab is active. Without this,
+// every Role Room render would trigger producer-review + timeline fetches
+// even if the user never opens the agent.
+
+interface AgentChatMountProps {
+  projectId: string | null;
+  currentUserId: string;
+  candidates?: any[];
+  crew?: any[];
+}
+
+const AgentChatMount: React.FC<AgentChatMountProps> = ({
+  projectId,
+  currentUserId,
+  candidates,
+  crew,
+}) => {
+  const context = useRoleRoomAgentContext({ projectId, candidates, crew });
+  const { createReview } = useProducerReviews(projectId ?? undefined);
+  const { createItem } = useProducerTimeline(projectId ?? undefined);
+
+  const handleConfirmToolUse = React.useCallback(
+    async (tool: { name: string; input: Record<string, any> }) => {
+      if (!projectId) return;
+      switch (tool.name) {
+        case 'draft_review_request': {
+          const input = tool.input || {};
+          const dueDays = typeof input.suggested_due_days_from_now === 'number'
+            ? Math.max(0, Math.min(60, input.suggested_due_days_from_now))
+            : undefined;
+          const dueAt = dueDays !== undefined
+            ? new Date(Date.now() + dueDays * 24 * 60 * 60 * 1000).toISOString()
+            : undefined;
+          await createReview({
+            review_type: String(input.review_type ?? 'storyboard'),
+            title: String(input.title ?? 'Agent-foreslått review'),
+            description: input.description ? String(input.description) : undefined,
+            target_entity_type: input.target_entity_type
+              ? String(input.target_entity_type)
+              : undefined,
+            target_entity_id: input.target_entity_id
+              ? String(input.target_entity_id)
+              : undefined,
+            due_at: dueAt,
+          } as any);
+          break;
+        }
+        case 'propose_timeline_item': {
+          const input = tool.input || {};
+          const dueDays = typeof input.suggested_due_days_from_now === 'number'
+            ? Math.max(0, Math.min(365, input.suggested_due_days_from_now))
+            : undefined;
+          const dueAt = dueDays !== undefined
+            ? new Date(Date.now() + dueDays * 24 * 60 * 60 * 1000).toISOString()
+            : undefined;
+          await createItem({
+            phase: (input.phase ?? 'preproduction') as any,
+            title: String(input.title ?? 'Agent-foreslått oppgave'),
+            description: input.description ? String(input.description) : undefined,
+            dueAt,
+            status: 'planned',
+            metadata: {
+              entryType: input.entry_type,
+              agentRationale: input.rationale,
+            },
+          });
+          break;
+        }
+        default:
+          // summarize_brief_gaps / flag_scope_impact / suggest_next_decision are
+          // read-only; their input is the "answer" and needs no write.
+          break;
+      }
+    },
+    [projectId, createReview, createItem],
+  );
+
+  return (
+    <RoleRoomAgentChatPanel
+      projectId={projectId}
+      currentUserId={currentUserId}
+      context={context}
+      onConfirmToolUse={handleConfirmToolUse}
+    />
+  );
+};
 
 // ── Sub-panels ───────────────────────────────────────────────
 
