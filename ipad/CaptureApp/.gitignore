@@ -1,0 +1,15 @@
+build/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+*.xcworkspace/xcuserdata/
+*.xcworkspace/contents.xcworkspacedata
+
+CaptureApp.xcodeproj/
+CaptureApp/Generated/
+
+.build/
+.swiftpm/
+Package.resolved
+
+.DS_Store

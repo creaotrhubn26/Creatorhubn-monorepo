@@ -1,0 +1,23 @@
+disabled_rules:
+  - trailing_comma
+  - line_length
+  - file_length
+  - type_body_length
+  - function_body_length
+  - identifier_name
+
+opt_in_rules:
+  - force_unwrapping
+  - implicit_return
+  - unused_declaration
+  - unused_import
+  - closure_end_indentation
+  - redundant_type_annotation
+
+excluded:
+  - CaptureApp/Generated
+  - CaptureApp.xcodeproj
+
+force_cast: error
+force_try: error
+force_unwrapping: warning
