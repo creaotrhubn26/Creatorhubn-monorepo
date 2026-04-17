@@ -262,10 +262,12 @@ final class FakeCanonCamera: @unchecked Sendable {
             bitmapInfo: bitmapInfo
         ) else { return Data() }
 
-        let s = abs(seed)
-        let r = CGFloat((s * 47) % 256) / 255.0
-        let g = CGFloat((s * 91) % 256) / 255.0
-        let b = CGFloat((s * 157) % 256) / 255.0
+        // Bound the seed first — `filename.hashValue` can be near Int.max,
+        // so plain `s * 47` traps on overflow in Swift's default integer mode.
+        let s = abs(seed) % 10_000
+        let r = CGFloat((s &* 47) % 256) / 255.0
+        let g = CGFloat((s &* 91) % 256) / 255.0
+        let b = CGFloat((s &* 157) % 256) / 255.0
 
         // Background: lighter hue
         ctx.setFillColor(CGColor(red: min(1, r + 0.2), green: min(1, g + 0.2), blue: min(1, b + 0.2), alpha: 1))
