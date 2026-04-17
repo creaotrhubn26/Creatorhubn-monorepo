@@ -1,5 +1,8 @@
 #if DEBUG
 import Foundation
+import CoreGraphics
+import ImageIO
+import UniformTypeIdentifiers
 
 /// In-process fake of a Canon CCAPI-enabled body. Drives both the test
 /// suite and the app's Demo Mode (connect to `https://camera.demo` to
@@ -26,7 +29,7 @@ final class FakeCanonCamera: @unchecked Sendable {
         for i in 0..<initialAssetCount {
             let name = String(format: "IMG_%04d.JPG", i + 1)
             let path = "/ccapi/ver120/contents/sd/100CANON/\(name)"
-            contentBodies[path] = Data(repeating: 0xAA, count: 32)
+            contentBodies[path] = Self.makePreviewJPEG(seed: i + 1)
         }
     }
 
@@ -37,12 +40,12 @@ final class FakeCanonCamera: @unchecked Sendable {
 
     /// Queue a new content URL so the next `pollEvents` call returns it as
     /// `addedcontents`. Also stages a small body for `downloadContent`.
-    func simulateCapture(filename: String, body: Data = Data(repeating: 0xCC, count: 32)) -> String {
+    func simulateCapture(filename: String, body: Data? = nil) -> String {
         let url = "/ccapi/ver120/contents/sd/100CANON/\(filename)"
         lock.lock()
         defer { lock.unlock() }
         pendingAddedContents.append(url)
-        contentBodies[url] = body
+        contentBodies[url] = body ?? Self.makePreviewJPEG(seed: abs(filename.hashValue))
         return url
     }
 
@@ -239,5 +242,59 @@ final class FakeCanonCamera: @unchecked Sendable {
       "path": ["/ccapi/ver120/contents/sd/100CANON"]
     }
     """
+
+    /// Generates a real 640x480 JPEG with a seeded two-tone background so
+    /// each fake asset looks distinct in the filmstrip and has actual
+    /// decodable pixels the DemoEnhancer can run CoreImage over. Used only
+    /// in DEBUG / Demo Mode; tests that just check file existence don't
+    /// care about what's inside but this still satisfies them.
+    static func makePreviewJPEG(seed: Int) -> Data {
+        let width = 640, height = 480
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        let bitmapInfo = CGImageAlphaInfo.noneSkipLast.rawValue
+        guard let ctx = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: width * 4,
+            space: colorSpace,
+            bitmapInfo: bitmapInfo
+        ) else { return Data() }
+
+        let s = abs(seed)
+        let r = CGFloat((s * 47) % 256) / 255.0
+        let g = CGFloat((s * 91) % 256) / 255.0
+        let b = CGFloat((s * 157) % 256) / 255.0
+
+        // Background: lighter hue
+        ctx.setFillColor(CGColor(red: min(1, r + 0.2), green: min(1, g + 0.2), blue: min(1, b + 0.2), alpha: 1))
+        ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+
+        // Offset rectangle: darker hue for visual interest
+        ctx.setFillColor(CGColor(red: r * 0.6, green: g * 0.6, blue: b * 0.6, alpha: 1))
+        ctx.fill(CGRect(x: 80, y: 80, width: width - 160, height: height - 160))
+
+        // Inner accent: a narrow strip
+        ctx.setFillColor(CGColor(red: min(1, r + 0.35), green: min(1, g + 0.35), blue: min(1, b + 0.35), alpha: 1))
+        ctx.fill(CGRect(x: 0, y: height / 2 - 8, width: width, height: 16))
+
+        guard let cgImage = ctx.makeImage() else { return Data() }
+
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(
+            data,
+            UTType.jpeg.identifier as CFString,
+            1,
+            nil
+        ) else { return Data() }
+        CGImageDestinationAddImage(
+            destination,
+            cgImage,
+            [kCGImageDestinationLossyCompressionQuality: 0.85] as CFDictionary
+        )
+        CGImageDestinationFinalize(destination)
+        return data as Data
+    }
 }
 #endif
