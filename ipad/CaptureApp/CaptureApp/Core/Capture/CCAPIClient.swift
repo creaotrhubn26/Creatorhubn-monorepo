@@ -139,16 +139,24 @@ actor CCAPIClient {
         timeout: TimeInterval? = nil,
     ) async throws -> T {
         guard let inventory else { throw CCAPIError.notDiscovered }
+        // Inventory entries never carry a query string; match on path only,
+        // then re-attach the query when issuing the request.
+        let (basePath, query) = Self.splitQuery(base)
         guard
             let version = pickVersion(
                 inventory: inventory,
-                base: base,
+                base: basePath,
                 minVersion: minVersion,
             )
         else {
             throw CCAPIError.unsupportedOperation(base)
         }
-        return try await get(path: "/ccapi/\(version)\(base)", timeout: timeout)
+        return try await get(path: "/ccapi/\(version)\(basePath)\(query)", timeout: timeout)
+    }
+
+    private static func splitQuery(_ base: String) -> (path: String, query: String) {
+        guard let q = base.firstIndex(of: "?") else { return (base, "") }
+        return (String(base[..<q]), String(base[q...]))
     }
 
     private func get<T: Decodable>(
@@ -179,7 +187,15 @@ actor CCAPIClient {
         if let timeout {
             request.timeoutInterval = timeout
         }
-        let (data, response) = try await session.data(for: request)
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch let urlError as URLError where urlError.code == .timedOut {
+            throw CCAPIError.timedOut
+        } catch let urlError as URLError {
+            throw CCAPIError.network(String(describing: urlError.code))
+        }
         guard let http = response as? HTTPURLResponse else {
             throw CCAPIError.invalidResponse("not HTTPURLResponse")
         }
