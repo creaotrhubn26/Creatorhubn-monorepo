@@ -78,7 +78,19 @@ struct LiveCaptureView: View {
                     asset: model.focusedAsset,
                     showEnhanced: model.showEnhanced,
                     onTap: { asset in viewerAsset = asset },
-                    onToggleEnhanced: { model.showEnhanced.toggle() }
+                    onToggleEnhanced: { model.showEnhanced.toggle() },
+                    onSetRating: { rating in
+                        guard let id = model.focusedAsset?.id else { return }
+                        Task { await model.setRating(assetId: id, rating: rating) }
+                    },
+                    onTogglePick: {
+                        guard let asset = model.focusedAsset else { return }
+                        Task { await model.togglePick(asset: asset) }
+                    },
+                    onToggleReject: {
+                        guard let asset = model.focusedAsset else { return }
+                        Task { await model.toggleReject(asset: asset) }
+                    }
                 )
                 ShutterFlashOverlay(trigger: model.shutterFlashToken)
                     .allowsHitTesting(false)
@@ -87,13 +99,24 @@ struct LiveCaptureView: View {
 
             TelemetryFooter(telemetry: model.telemetry)
 
-            FilmstripRail(
-                assets: model.assets,
-                focusedAssetId: model.focusedAssetId,
-                onSelect: { model.focusedAssetId = $0.id },
-                onDoubleTap: { viewerAsset = $0 }
-            )
-            .frame(height: 152)
+            VStack(spacing: 0) {
+                FilmstripFilterBar(
+                    current: model.filmstripFilter,
+                    counts: FilmstripFilterBar.Counts(
+                        total: model.assets.count,
+                        picks: model.assets.filter { $0.flaggedForClient && !$0.rejected }.count,
+                        fourPlus: model.assets.filter { $0.rating >= 4 && !$0.rejected }.count
+                    ),
+                    onSelect: { model.filmstripFilter = $0 }
+                )
+                FilmstripRail(
+                    assets: model.filteredAssets,
+                    focusedAssetId: model.focusedAssetId,
+                    onSelect: { model.focusedAssetId = $0.id },
+                    onDoubleTap: { viewerAsset = $0 }
+                )
+                .frame(height: 152)
+            }
             .background(Color.captureFilmstripBG)
         }
         .overlay(alignment: .bottomTrailing) {
@@ -450,24 +473,42 @@ private struct HeroStage: View {
     let showEnhanced: Bool
     let onTap: (Asset) -> Void
     let onToggleEnhanced: () -> Void
+    let onSetRating: (Int) -> Void
+    let onTogglePick: () -> Void
+    let onToggleReject: () -> Void
 
     var body: some View {
         Group {
             if let asset {
-                VStack(spacing: 16) {
+                VStack(spacing: 12) {
                     HeroImage(asset: asset, preferEnhanced: showEnhanced)
                         .onTapGesture { onTap(asset) }
                         .padding(.horizontal, 24)
-                        .padding(.top, 24)
+                        .padding(.top, 16)
                         .overlay(alignment: .topTrailing) {
                             if asset.enhancedKey != nil {
                                 EnhancedToggleChip(showEnhanced: showEnhanced, action: onToggleEnhanced)
-                                    .padding(.top, 36)
+                                    .padding(.top, 28)
                                     .padding(.trailing, 36)
                             }
                         }
 
-                    HStack(spacing: 16) {
+                    // Selects workflow: star rating + pick/reject actions.
+                    // Core value of a tether app — letting the photographer
+                    // cull in-camera while shooting continues. Keyboard
+                    // shortcuts surface for external-keyboard users.
+                    HStack(spacing: 18) {
+                        RatingBar(rating: asset.rating, onRate: onSetRating)
+                        Divider().frame(height: 20)
+                        PickRejectControls(
+                            flagged: asset.flaggedForClient,
+                            rejected: asset.rejected,
+                            onTogglePick: onTogglePick,
+                            onToggleReject: onToggleReject
+                        )
+                    }
+
+                    HStack(spacing: 12) {
                         AssetBadge(text: asset.originalFilename, icon: "photo")
                         if let kind = fileKind(asset.originalFilename) {
                             AssetBadge(text: kind, icon: "rectangle.stack")
@@ -485,7 +526,7 @@ private struct HeroStage: View {
                         }
                         AssetStateBadge(state: asset.state)
                     }
-                    .padding(.bottom, 24)
+                    .padding(.bottom, 16)
                 }
             } else {
                 EmptyHero()
@@ -520,7 +561,19 @@ private struct HeroImage: View {
         ZStack {
             RoundedRectangle(cornerRadius: 14)
                 .fill(Color.captureChipBG)
-            let key = (preferEnhanced ? asset.enhancedKey : nil) ?? asset.previewKey
+            // When we have BOTH original and enhanced, show the comparison
+            // slider so the photographer can A/B by dragging the divider
+            // rather than tap-toggling through two states. When only one
+            // exists (not yet enhanced, or enhancedDisabled via toggle),
+            // fall back to the single-image display.
+            if preferEnhanced,
+               let originalKey = asset.previewKey,
+               let enhancedKey = asset.enhancedKey {
+                ComparisonSlider(originalPath: originalKey, enhancedPath: enhancedKey)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                    .shadow(radius: 20, y: 8)
+            } else {
+            let key = asset.previewKey
             if let key, let image = UIImage(contentsOfFile: key) {
                 Image(uiImage: image)
                     .resizable()
@@ -547,6 +600,7 @@ private struct HeroImage: View {
                     }
                 }
             }
+            }
         }
     }
 }
@@ -566,6 +620,164 @@ private struct EmptyHero: View {
         .multilineTextAlignment(.center)
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+// MARK: - Comparison slider
+
+/// Drag-to-reveal before/after viewer. Left half of the divider shows the
+/// original preview, right half the enhanced version. Gesture moves the
+/// divider anywhere horizontally. Tap the handle to snap to center.
+private struct ComparisonSlider: View {
+    let originalPath: String
+    let enhancedPath: String
+    @State private var divider: CGFloat = 0.5
+    @State private var isDragging: Bool = false
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .topLeading) {
+                // Base: enhanced image (shown as the "result" side)
+                ImageFile(path: enhancedPath)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipped()
+
+                // Overlay: original, clipped to LEFT portion via mask
+                ImageFile(path: originalPath)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipped()
+                    .mask(alignment: .leading) {
+                        HStack(spacing: 0) {
+                            Color.white.frame(width: geo.size.width * divider)
+                            Color.clear
+                        }
+                    }
+
+                // Divider line + handle
+                let x = geo.size.width * divider
+                Rectangle()
+                    .fill(.white)
+                    .frame(width: 2, height: geo.size.height)
+                    .offset(x: x - 1)
+                    .shadow(color: .black.opacity(0.5), radius: 3, y: 0)
+
+                Circle()
+                    .fill(.white)
+                    .frame(width: 40, height: 40)
+                    .overlay(
+                        Image(systemName: "chevron.left.chevron.right")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(.black.opacity(0.7))
+                    )
+                    .shadow(color: .black.opacity(0.4), radius: 6, y: 2)
+                    .scaleEffect(isDragging ? 1.12 : 1)
+                    .offset(x: x - 20, y: geo.size.height / 2 - 20)
+                    .animation(.easeOut(duration: 0.1), value: isDragging)
+
+                // Labels
+                HStack {
+                    labelChip("Original", color: .black.opacity(0.6))
+                        .padding(.leading, 12)
+                    Spacer()
+                    labelChip("Enhanced", color: .purple.opacity(0.8))
+                        .padding(.trailing, 12)
+                }
+                .padding(.top, 12)
+            }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture()
+                    .onChanged { value in
+                        isDragging = true
+                        divider = max(0, min(1, value.location.x / geo.size.width))
+                    }
+                    .onEnded { _ in isDragging = false }
+            )
+            .onTapGesture(count: 2) {
+                withAnimation(.spring) { divider = 0.5 }
+            }
+        }
+    }
+
+    private func labelChip(_ text: String, color: Color) -> some View {
+        Text(text)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 10).padding(.vertical, 5)
+            .background(color, in: Capsule())
+    }
+}
+
+private struct ImageFile: View {
+    let path: String
+    var body: some View {
+        if let img = UIImage(contentsOfFile: path) {
+            Image(uiImage: img).resizable().aspectRatio(contentMode: .fit)
+        } else {
+            Color.captureChipBG
+        }
+    }
+}
+
+// MARK: - Rating + pick/reject controls
+
+/// Five-star rating with tap-to-set and keyboard 1-5. Tap a lit star to
+/// clear back to zero. Keyboard shortcuts live on invisible buttons so
+/// external-keyboard users can fly without touching the screen.
+private struct RatingBar: View {
+    let rating: Int
+    let onRate: (Int) -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(1...5, id: \.self) { value in
+                Button {
+                    onRate(rating == value ? 0 : value)
+                } label: {
+                    Image(systemName: value <= rating ? "star.fill" : "star")
+                        .font(.title3)
+                        .foregroundStyle(value <= rating ? .yellow : .white.opacity(0.35))
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut(KeyEquivalent(Character("\(value)")), modifiers: [])
+                .accessibilityLabel("Rate \(value) star\(value == 1 ? "" : "s")")
+            }
+        }
+    }
+}
+
+private struct PickRejectControls: View {
+    let flagged: Bool
+    let rejected: Bool
+    let onTogglePick: () -> Void
+    let onToggleReject: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Button(action: onTogglePick) {
+                Label("Pick", systemImage: flagged ? "flag.fill" : "flag")
+                    .labelStyle(.iconOnly)
+                    .font(.title3)
+                    .foregroundStyle(flagged ? .green : .white.opacity(0.35))
+                    .frame(width: 36, height: 36)
+                    .background(flagged ? Color.green.opacity(0.15) : .clear, in: Circle())
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut("p", modifiers: [])
+            .accessibilityLabel("Flag as pick")
+
+            Button(action: onToggleReject) {
+                Label("Reject", systemImage: rejected ? "xmark.seal.fill" : "xmark.seal")
+                    .labelStyle(.iconOnly)
+                    .font(.title3)
+                    .foregroundStyle(rejected ? .red : .white.opacity(0.35))
+                    .frame(width: 36, height: 36)
+                    .background(rejected ? Color.red.opacity(0.15) : .clear, in: Circle())
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut("x", modifiers: [])
+            .accessibilityLabel("Mark as rejected")
+        }
     }
 }
 
@@ -668,6 +880,47 @@ private struct AssetStateBadge: View {
 
 // MARK: - Filmstrip
 
+private struct FilmstripFilterBar: View {
+    struct Counts { let total: Int; let picks: Int; let fourPlus: Int }
+    let current: LiveCaptureModel.FilmstripFilter
+    let counts: Counts
+    let onSelect: (LiveCaptureModel.FilmstripFilter) -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            chip(for: .all, count: counts.total)
+            chip(for: .picks, count: counts.picks)
+            chip(for: .fourPlus, count: counts.fourPlus)
+            Spacer()
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 10)
+        .padding(.bottom, 2)
+    }
+
+    private func chip(for filter: LiveCaptureModel.FilmstripFilter, count: Int) -> some View {
+        Button {
+            onSelect(filter)
+        } label: {
+            HStack(spacing: 6) {
+                Text(filter.rawValue).font(.caption.weight(.medium))
+                Text("\(count)")
+                    .font(.caption.weight(.medium))
+                    .padding(.horizontal, 6).padding(.vertical, 1)
+                    .background(.white.opacity(0.1), in: Capsule())
+            }
+            .foregroundStyle(current == filter ? .white : .secondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(
+                current == filter ? Color.accentColor : .white.opacity(0.06),
+                in: Capsule()
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 private struct FilmstripRail: View {
     let assets: [Asset]
     let focusedAssetId: UUID?
@@ -734,15 +987,27 @@ private struct FilmstripTile: View {
                 }
                 .frame(width: 156, height: 104)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
+                .opacity(asset.rejected ? 0.35 : 1)
                 .overlay {
                     RoundedRectangle(cornerRadius: 8)
-                        .stroke(isFocused ? Color.accentColor : .white.opacity(0.08), lineWidth: isFocused ? 2 : 1)
+                        .stroke(
+                            overlayColor,
+                            lineWidth: isFocused ? 2.5 : (asset.flaggedForClient ? 2 : 1)
+                        )
                 }
 
+                // Top-right: error, enhanced, or reject marker
                 if asset.state == .failedTransient || asset.state == .failedPermanent {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.caption)
                         .foregroundStyle(.white, .red)
+                        .padding(6)
+                } else if asset.rejected {
+                    Image(systemName: "xmark.seal.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white, .red)
+                        .padding(4)
+                        .background(.red.opacity(0.85), in: Circle())
                         .padding(6)
                 } else if asset.enhancedKey != nil {
                     Image(systemName: "wand.and.stars")
@@ -753,6 +1018,31 @@ private struct FilmstripTile: View {
                         .padding(6)
                 }
             }
+            .overlay(alignment: .bottomLeading) {
+                if asset.flaggedForClient {
+                    Image(systemName: "flag.fill")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.white)
+                        .padding(4)
+                        .background(.green, in: Circle())
+                        .padding(6)
+                }
+            }
+            .overlay(alignment: .bottom) {
+                if asset.rating > 0 {
+                    HStack(spacing: 1) {
+                        ForEach(0..<asset.rating, id: \.self) { _ in
+                            Image(systemName: "star.fill")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundStyle(.yellow)
+                        }
+                    }
+                    .padding(.horizontal, 5).padding(.vertical, 2)
+                    .background(.black.opacity(0.55), in: Capsule())
+                    .padding(.bottom, 6)
+                }
+            }
+
             Text(asset.originalFilename)
                 .font(.caption2.monospaced())
                 .lineLimit(1)
@@ -760,6 +1050,13 @@ private struct FilmstripTile: View {
                 .foregroundStyle(isFocused ? .primary : .secondary)
         }
         .frame(width: 156)
+    }
+
+    private var overlayColor: Color {
+        if isFocused                 { return .accentColor }
+        if asset.rejected            { return .red.opacity(0.6) }
+        if asset.flaggedForClient    { return .green.opacity(0.7) }
+        return .white.opacity(0.08)
     }
 }
 
@@ -1128,6 +1425,24 @@ final class LiveCaptureModel {
     /// Toggled from the hero badge. Persists for the connected session.
     var showEnhanced: Bool = true
 
+    /// Selects filter applied to the filmstrip. The source array stays
+    /// complete so ratings/flags from currently-hidden assets still persist.
+    var filmstripFilter: FilmstripFilter = .all
+
+    enum FilmstripFilter: String, CaseIterable, Equatable {
+        case all     = "All"
+        case picks   = "Picks"
+        case fourPlus = "4★ and up"
+    }
+
+    var filteredAssets: [Asset] {
+        switch filmstripFilter {
+        case .all:     return assets
+        case .picks:   return assets.filter { $0.flaggedForClient && !$0.rejected }
+        case .fourPlus: return assets.filter { $0.rating >= 4 && !$0.rejected }
+        }
+    }
+
     private let actorUserId = "local-photographer"
 
     /// URL that triggers in-process Demo Mode. Keeps the fake swap isolated
@@ -1241,6 +1556,39 @@ final class LiveCaptureModel {
             try await client.triggerManualShutter(af: false)
         } catch {
             errorMessage = "Shutter failed: \(error.localizedDescription)"
+        }
+    }
+
+    func setRating(assetId: UUID, rating: Int) async {
+        guard let store else { return }
+        do {
+            try await store.updateAssetLabels(id: assetId, rating: rating)
+        } catch {
+            errorMessage = "Rating failed: \(error.localizedDescription)"
+        }
+    }
+
+    func togglePick(asset: Asset) async {
+        guard let store else { return }
+        do {
+            try await store.updateAssetLabels(
+                id: asset.id,
+                flaggedForClient: !asset.flaggedForClient
+            )
+        } catch {
+            errorMessage = "Flag failed: \(error.localizedDescription)"
+        }
+    }
+
+    func toggleReject(asset: Asset) async {
+        guard let store else { return }
+        do {
+            try await store.updateAssetLabels(
+                id: asset.id,
+                rejected: !asset.rejected
+            )
+        } catch {
+            errorMessage = "Reject failed: \(error.localizedDescription)"
         }
     }
 
