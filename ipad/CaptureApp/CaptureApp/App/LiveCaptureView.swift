@@ -11,6 +11,7 @@ struct LiveCaptureView: View {
     @State private var model = LiveCaptureModel()
     @AppStorage("capture.lastCameraURL") private var lastCameraURL: String = "https://192.168.1.2"
     @State private var isSettingsPresented = false
+    @State private var isTunePresented = false
     @State private var viewerAsset: Asset?
 
     var body: some View {
@@ -63,6 +64,16 @@ struct LiveCaptureView: View {
         .fullScreenCover(item: $viewerAsset) { asset in
             AssetViewerScreen(asset: asset) { viewerAsset = nil }
         }
+        .sheet(isPresented: $isTunePresented) {
+            if let asset = model.focusedAsset {
+                TunePanel(
+                    initialRecipe: model.recipe(for: asset.id),
+                    onChange: { model.tune(assetId: asset.id, recipe: $0) },
+                    onReset: { model.resetRecipe(assetId: asset.id) }
+                )
+                .presentationDetents([.medium, .large])
+            }
+        }
         .animation(.spring(duration: 0.35, bounce: 0.1), value: model.phase)
     }
 
@@ -84,9 +95,15 @@ struct LiveCaptureView: View {
             ZStack {
                 HeroStage(
                     asset: model.focusedAsset,
-                    showEnhanced: model.showEnhanced,
+                    recipe: model.focusedAsset.map { model.recipe(for: $0.id) } ?? .neutral,
+                    isTuned: model.focusedAsset.map { model.tunedRecipes[$0.id] != nil } ?? false,
+                    showMagic: model.showMagic,
                     onTap: { asset in viewerAsset = asset },
-                    onToggleEnhanced: { model.showEnhanced.toggle() },
+                    onToggleMagic: { model.showMagic.toggle() },
+                    onOpenTune: {
+                        guard model.focusedAsset?.enhancedKey != nil else { return }
+                        isTunePresented = true
+                    },
                     onSetRating: { rating in
                         guard let id = model.focusedAsset?.id else { return }
                         Task { await model.setRating(assetId: id, rating: rating) }
@@ -588,9 +605,12 @@ private struct ConnectionBadge: View {
 
 private struct HeroStage: View {
     let asset: Asset?
-    let showEnhanced: Bool
+    let recipe: MagicRecipe
+    let isTuned: Bool
+    let showMagic: Bool
     let onTap: (Asset) -> Void
-    let onToggleEnhanced: () -> Void
+    let onToggleMagic: () -> Void
+    let onOpenTune: () -> Void
     let onSetRating: (Int) -> Void
     let onTogglePick: () -> Void
     let onToggleReject: () -> Void
@@ -599,17 +619,27 @@ private struct HeroStage: View {
         Group {
             if let asset {
                 VStack(spacing: 12) {
-                    HeroImage(asset: asset, preferEnhanced: showEnhanced)
+                    HeroImage(asset: asset, preferMagic: showMagic)
                         .onTapGesture { onTap(asset) }
                         .padding(.horizontal, 24)
                         .padding(.top, 16)
                         .overlay(alignment: .topTrailing) {
                             if asset.enhancedKey != nil {
-                                EnhancedToggleChip(showEnhanced: showEnhanced, action: onToggleEnhanced)
+                                MagicToggleChip(showMagic: showMagic, action: onToggleMagic)
                                     .padding(.top, 28)
                                     .padding(.trailing, 36)
                             }
                         }
+
+                    // Recipe chips — show exactly what Magic is doing so
+                    // the photographer can tune deliberately rather than
+                    // trust an opaque preset. Tap to open the slider panel.
+                    if asset.enhancedKey != nil, !recipe.displayChips.isEmpty {
+                        Button(action: onOpenTune) {
+                            RecipeChipsRow(chips: recipe.displayChips, isTuned: isTuned)
+                        }
+                        .buttonStyle(.plain)
+                    }
 
                     // Selects workflow: star rating + pick/reject actions.
                     // Core value of a tether app — letting the photographer
@@ -635,7 +665,7 @@ private struct HeroStage: View {
                             AssetBadge(text: capturedAt, icon: "clock")
                         }
                         if asset.enhancedKey != nil {
-                            Label("Enhanced", systemImage: "wand.and.stars")
+                            Label("Magic", systemImage: "wand.and.stars")
                                 .font(.caption.weight(.semibold))
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 6)
@@ -673,7 +703,7 @@ private struct HeroStage: View {
 
 private struct HeroImage: View {
     let asset: Asset
-    var preferEnhanced: Bool = true
+    var preferMagic: Bool = true
 
     @State private var loupePoint: CGPoint?
 
@@ -686,7 +716,7 @@ private struct HeroImage: View {
             // rather than tap-toggling through two states. When only one
             // exists (not yet enhanced, or enhancedDisabled via toggle),
             // fall back to the single-image display.
-            if preferEnhanced,
+            if preferMagic,
                let originalKey = asset.previewKey,
                let enhancedKey = asset.enhancedKey {
                 ComparisonSlider(originalPath: originalKey, enhancedPath: enhancedKey)
@@ -886,7 +916,7 @@ private struct ComparisonSlider: View {
                     labelChip("Original", color: .black.opacity(0.6))
                         .padding(.leading, 12)
                     Spacer()
-                    labelChip("Enhanced", color: .purple.opacity(0.8))
+                    labelChip("Magic", color: .purple.opacity(0.8))
                         .padding(.trailing, 12)
                 }
                 .padding(.top, 12)
@@ -988,23 +1018,152 @@ private struct PickRejectControls: View {
     }
 }
 
-private struct EnhancedToggleChip: View {
-    let showEnhanced: Bool
+// MARK: - Recipe chips + Tune panel
+
+private struct RecipeChipsRow: View {
+    let chips: [String]
+    let isTuned: Bool
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: isTuned ? "slider.horizontal.3" : "sparkles")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(isTuned ? .orange : .purple)
+            ForEach(chips, id: \.self) { chip in
+                Text(chip)
+                    .font(.caption.monospaced())
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .foregroundStyle(.secondary)
+                    .background(Color.captureChipBG, in: Capsule())
+            }
+            Text(isTuned ? "Tuned" : "Tune")
+                .font(.caption.weight(.semibold))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .foregroundStyle(isTuned ? .orange : .secondary)
+                .overlay(Capsule().stroke(isTuned ? .orange.opacity(0.6) : .secondary.opacity(0.3), lineWidth: 1))
+        }
+    }
+}
+
+struct TunePanel: View {
+    let initialRecipe: MagicRecipe
+    let onChange: (MagicRecipe) -> Void
+    let onReset: () -> Void
+
+    @State private var recipe: MagicRecipe
+    @State private var debounce: Task<Void, Never>?
+    @Environment(\.dismiss) private var dismiss
+
+    init(initialRecipe: MagicRecipe,
+         onChange: @escaping (MagicRecipe) -> Void,
+         onReset: @escaping () -> Void) {
+        self.initialRecipe = initialRecipe
+        self.onChange = onChange
+        self.onReset = onReset
+        self._recipe = State(initialValue: initialRecipe)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TuneSlider(title: "Warmth", icon: "thermometer.sun",
+                               value: $recipe.warmth, range: -1...1,
+                               format: { v in
+                                let k = Int((v * 700).rounded())
+                                return k == 0 ? "neutral" : "\(k > 0 ? "+" : "")\(k)K"
+                               })
+                    TuneSlider(title: "Skin smoothing", icon: "face.smiling",
+                               value: $recipe.skinSmooth, range: 0...1,
+                               format: { "\(Int(($0 * 100).rounded()))%" })
+                    TuneSlider(title: "Shadow lift", icon: "circle.lefthalf.filled",
+                               value: $recipe.shadowLift, range: 0...1,
+                               format: { "\(Int(($0 * 100).rounded()))%" })
+                    TuneSlider(title: "Contrast", icon: "rectangle.lefthalf.inset.filled",
+                               value: $recipe.contrast, range: -1...1,
+                               format: signedPercent)
+                    TuneSlider(title: "Saturation", icon: "paintpalette",
+                               value: $recipe.saturation, range: -1...1,
+                               format: signedPercent)
+                } header: {
+                    Text("Tune this shot")
+                } footer: {
+                    Text("Changes apply live. Reset restores the auto-selected baseline (portrait, vehicle, food, etc.).")
+                }
+
+                Section {
+                    Button(role: .destructive) {
+                        recipe = initialRecipe
+                        onReset()
+                    } label: {
+                        Label("Reset to baseline", systemImage: "arrow.uturn.backward")
+                    }
+                }
+            }
+            .navigationTitle("Magic · Tune")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }
+                }
+            }
+            .onChange(of: recipe) { _, new in
+                debounce?.cancel()
+                debounce = Task {
+                    try? await Task.sleep(for: .milliseconds(120))
+                    if !Task.isCancelled { onChange(new) }
+                }
+            }
+        }
+    }
+
+    private func signedPercent(_ v: Double) -> String {
+        let pct = Int((v * 100).rounded())
+        return pct == 0 ? "neutral" : "\(pct > 0 ? "+" : "")\(pct)%"
+    }
+}
+
+private struct TuneSlider: View {
+    let title: String
+    let icon: String
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    let format: (Double) -> String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Label(title, systemImage: icon).font(.callout)
+                Spacer()
+                Text(format(value))
+                    .font(.footnote.monospaced())
+                    .foregroundStyle(.secondary)
+            }
+            Slider(value: $value, in: range)
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+private struct MagicToggleChip: View {
+    let showMagic: Bool
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 6) {
-                Image(systemName: showEnhanced ? "wand.and.stars" : "photo")
+                Image(systemName: showMagic ? "wand.and.stars" : "photo")
                     .font(.footnote.weight(.semibold))
-                Text(showEnhanced ? "Enhanced" : "Original")
+                Text(showMagic ? "Magic" : "Original")
                     .font(.footnote.weight(.semibold))
             }
             .foregroundStyle(.white)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(
-                (showEnhanced ? Color.purple : Color.black.opacity(0.6)).gradient,
+                (showMagic ? Color.purple : Color.black.opacity(0.6)).gradient,
                 in: Capsule()
             )
             .overlay(Capsule().stroke(.white.opacity(0.2), lineWidth: 1))
@@ -1651,13 +1810,47 @@ final class LiveCaptureModel {
     /// Retained while Demo Mode is active so its MockURLProtocol handler
     /// stays installed. Cleared on teardown.
     private var demoFake: FakeCanonCamera?
-    private var demoEnhancer: DemoEnhancer?
+    private var magicPipeline: MagicPipeline?
     #endif
 
-    /// Controls whether the hero + filmstrip tile prefer the enhanced
+    /// Controls whether the hero + filmstrip tile prefer the Magic
     /// preview when one is available. Off = always show original.
     /// Toggled from the hero badge. Persists for the connected session.
-    var showEnhanced: Bool = true
+    var showMagic: Bool = true
+
+    /// Per-asset tuned recipes. Nil means "use the pipeline's auto-detected
+    /// baseline". When the photographer drags a slider we set this and the
+    /// pipeline re-runs with the new values, overwriting the enhanced bytes.
+    var tunedRecipes: [UUID: MagicRecipe] = [:]
+
+    /// Recipe currently in effect for an asset: tuned if set, else the
+    /// auto-detected baseline from the pipeline, else neutral.
+    func recipe(for assetId: UUID) -> MagicRecipe {
+        if let tuned = tunedRecipes[assetId] { return tuned }
+        #if DEBUG
+        if let baseline = magicPipeline?.baselineRecipes[assetId] { return baseline }
+        #endif
+        return .neutral
+    }
+
+    func tune(assetId: UUID, recipe: MagicRecipe) {
+        tunedRecipes[assetId] = recipe
+        #if DEBUG
+        guard let sourcePath = assets.first(where: { $0.id == assetId })?.previewKey
+        else { return }
+        magicPipeline?.retune(assetId: assetId, recipe: recipe, sourcePath: sourcePath)
+        #endif
+    }
+
+    func resetRecipe(assetId: UUID) {
+        tunedRecipes.removeValue(forKey: assetId)
+        #if DEBUG
+        guard let sourcePath = assets.first(where: { $0.id == assetId })?.previewKey,
+              let baseline = magicPipeline?.baselineRecipes[assetId]
+        else { return }
+        magicPipeline?.retune(assetId: assetId, recipe: baseline, sourcePath: sourcePath)
+        #endif
+    }
 
     /// Selects filter applied to the filmstrip. The source array stays
     /// complete so ratings/flags from currently-hidden assets still persist.
@@ -1735,9 +1928,9 @@ final class LiveCaptureModel {
             // validate the Enhanced UX flow with real cameras too, before
             // the backend-driven enhancer loop is wired up. Won't ship to
             // release builds.
-            let enhancer = DemoEnhancer(store: store, outputDirectory: tempDir.appendingPathComponent("enhanced"))
+            let enhancer = MagicPipeline(store: store, outputDirectory: tempDir.appendingPathComponent("enhanced"))
             enhancer.start(sessionId: dbSession.id)
-            self.demoEnhancer = enhancer
+            self.magicPipeline = enhancer
             #endif
 
             // Fetch static device info in parallel; tolerate failure
@@ -1857,8 +2050,8 @@ final class LiveCaptureModel {
         downloadDirectory = nil
         deviceSummary = nil
         #if DEBUG
-        demoEnhancer?.stop()
-        demoEnhancer = nil
+        magicPipeline?.stop()
+        magicPipeline = nil
         demoFake = nil
         MockURLProtocol.handler = nil
         #endif
