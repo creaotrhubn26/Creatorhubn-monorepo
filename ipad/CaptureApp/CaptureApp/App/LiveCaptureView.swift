@@ -707,6 +707,13 @@ private struct HeroImage: View {
 
     @State private var loupePoint: CGPoint?
 
+    /// Re-render token: changes every time the underlying enhanced file is
+    /// rewritten (MagicPipeline.retune writes to the same path, so without
+    /// this SwiftUI caches the stale image).
+    private var reloadToken: String {
+        "\(asset.id.uuidString)-\(asset.updatedAt.timeIntervalSince1970)"
+    }
+
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 14)
@@ -720,6 +727,7 @@ private struct HeroImage: View {
                let originalKey = asset.previewKey,
                let enhancedKey = asset.enhancedKey {
                 ComparisonSlider(originalPath: originalKey, enhancedPath: enhancedKey)
+                    .id(reloadToken)  // rebuild when bytes on disk change
                     .clipShape(RoundedRectangle(cornerRadius: 14))
                     .shadow(radius: 20, y: 8)
             } else {
@@ -732,7 +740,7 @@ private struct HeroImage: View {
                         .clipShape(RoundedRectangle(cornerRadius: 14))
                         .shadow(radius: 20, y: 8)
                         .transition(.opacity)
-                        .id(key)
+                        .id(reloadToken)
                         .overlay {
                             if let loupePoint {
                                 FocusLoupe(image: image, containerSize: geo.size, point: loupePoint)
@@ -870,17 +878,20 @@ private struct ComparisonSlider: View {
     let enhancedPath: String
     @State private var divider: CGFloat = 0.5
     @State private var isDragging: Bool = false
+    /// Nudging this forces re-reading the JPEG from disk after MagicPipeline
+    /// overwrites it at the same path.
+    @State private var reloadToken: Int = 0
 
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .topLeading) {
                 // Base: enhanced image (shown as the "result" side)
-                ImageFile(path: enhancedPath)
+                ImageFile(path: enhancedPath, reload: reloadToken)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .clipped()
 
                 // Overlay: original, clipped to LEFT portion via mask
-                ImageFile(path: originalPath)
+                ImageFile(path: originalPath, reload: reloadToken)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .clipped()
                     .mask(alignment: .leading) {
@@ -947,12 +958,17 @@ private struct ComparisonSlider: View {
 
 private struct ImageFile: View {
     let path: String
+    /// Bump to force a re-read of the file (same path, new bytes).
+    var reload: Int = 0
     var body: some View {
-        if let img = UIImage(contentsOfFile: path) {
-            Image(uiImage: img).resizable().aspectRatio(contentMode: .fit)
-        } else {
-            Color.captureChipBG
+        Group {
+            if let img = UIImage(contentsOfFile: path) {
+                Image(uiImage: img).resizable().aspectRatio(contentMode: .fit)
+            } else {
+                Color.captureChipBG
+            }
         }
+        .id("\(path)#\(reload)")
     }
 }
 

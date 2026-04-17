@@ -34,42 +34,42 @@ struct MagicRecipe: Sendable, Equatable, Codable {
     /// retouch editor typically does for that subject — not dramatic.
 
     static let portrait = MagicRecipe(
-        warmth: 0.35, skinSmooth: 0.55, shadowLift: 0.35, contrast: 0.05, saturation: 0.1
+        warmth: 0.45, skinSmooth: 0.65, shadowLift: 0.45, contrast: 0.15, saturation: 0.20
     )
 
-    /// Planes + aviation: crisp, slightly cool to fight haze, punched
-    /// contrast so rivets and markings pop against the sky.
+    /// Planes + aviation: crisp, cool to fight haze, deep contrast so
+    /// rivets and markings pop against the sky.
     static let aviation = MagicRecipe(
-        warmth: -0.15, skinSmooth: 0, shadowLift: 0.25, contrast: 0.30, saturation: 0.25
+        warmth: -0.25, skinSmooth: 0, shadowLift: 0.30, contrast: 0.55, saturation: 0.40
     )
 
-    /// Cars + vehicles: saturate bodywork colour, deep shadows for metal,
-    /// warm highlights for chrome.
+    /// Cars + vehicles: punch the bodywork colour, deep shadows for
+    /// metal, warm highlights for chrome.
     static let vehicle = MagicRecipe(
-        warmth: 0.10, skinSmooth: 0, shadowLift: 0.15, contrast: 0.25, saturation: 0.35
+        warmth: 0.15, skinSmooth: 0, shadowLift: 0.20, contrast: 0.50, saturation: 0.55
     )
 
-    /// Food: warm golden-hour tint, gentle shadow lift, saturation bump
-    /// on reds/oranges. Avoid skin-style softening.
+    /// Food: warm golden-hour tint, gentle shadow lift, heavy saturation
+    /// bump on reds/oranges. Avoid skin-style softening.
     static let food = MagicRecipe(
-        warmth: 0.45, skinSmooth: 0, shadowLift: 0.30, contrast: 0.15, saturation: 0.30
+        warmth: 0.60, skinSmooth: 0, shadowLift: 0.40, contrast: 0.30, saturation: 0.50
     )
 
-    /// Landscape: punchy everything, cool toward blue to emphasise sky/water.
+    /// Landscape: punchy everything, cool toward blue to emphasise
+    /// sky and water.
     static let landscape = MagicRecipe(
-        warmth: -0.10, skinSmooth: 0, shadowLift: 0.35, contrast: 0.30, saturation: 0.35
+        warmth: -0.15, skinSmooth: 0, shadowLift: 0.45, contrast: 0.50, saturation: 0.55
     )
 
     /// Product on white/studio background: minimal warmth shift, clean
-    /// shadow recovery, tasteful contrast. Saturation neutral to keep
-    /// colours honest.
+    /// shadow recovery, tasteful contrast, honest saturation.
     static let product = MagicRecipe(
-        warmth: 0.05, skinSmooth: 0, shadowLift: 0.25, contrast: 0.15, saturation: 0.05
+        warmth: 0.10, skinSmooth: 0, shadowLift: 0.30, contrast: 0.30, saturation: 0.15
     )
 
     /// Fallback when nothing classifies confidently.
     static let neutral = MagicRecipe(
-        warmth: 0.25, skinSmooth: 0, shadowLift: 0.20, contrast: 0.10, saturation: 0.20
+        warmth: 0.35, skinSmooth: 0, shadowLift: 0.30, contrast: 0.25, saturation: 0.30
     )
 
     /// Short chip-strings for the recipe display under the hero. Hides
