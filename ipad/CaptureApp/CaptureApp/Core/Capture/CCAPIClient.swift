@@ -29,6 +29,19 @@ actor CCAPIClient {
         self.decoder = decoder
     }
 
+    /// Build a `URLSession` that trusts the self-signed certificate served by
+    /// a Canon CCAPI camera at `baseURL.host`. The delegate's trust is scoped
+    /// to that single host — other hosts still get normal TLS validation.
+    ///
+    /// Retains the delegate via the session's strong reference so the caller
+    /// doesn't have to keep it alive separately. Use once per client.
+    static func makeInsecureSession(trustingHostOf baseURL: URL) -> URLSession {
+        let host = baseURL.host ?? ""
+        let delegate = CCAPIInsecureTrustDelegate(trustedHost: host)
+        let config = URLSessionConfiguration.ephemeral
+        return URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
+    }
+
     // MARK: - Discovery
 
     /// `GET /ccapi` — returns the inventory of supported API versions + paths.
