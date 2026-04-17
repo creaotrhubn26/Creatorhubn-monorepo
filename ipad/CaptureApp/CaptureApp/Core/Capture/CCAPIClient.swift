@@ -189,20 +189,24 @@ actor CCAPIClient {
 
     /// Short poll: returns the current diff immediately. Spec §4.13.1.
     /// Response is lenient — only changed fields are populated.
-    /// R6 Mark II exposes this at ver110 (verified 2026-04-17).
+    /// `ver100` because the original R5 exposes polling only there; the
+    /// R6 Mark II has it at ver110 too but `pickVersion` picks the highest
+    /// advertised version, so newer bodies still use ver110 and R5 falls
+    /// back cleanly. Verified against R5 fixture 2026-04-18.
     func pollEvents() async throws -> CCAPIPollingResponse {
         try await getVersioned(
             base: "/event/polling",
-            minVersion: "ver110",
+            minVersion: "ver100",
         )
     }
 
     /// Long poll: server blocks up to ~30s waiting for the next event.
     /// Spec §4.13.1 + §6.2.25 Get Event (polling?continue=on).
+    /// Same version logic as `pollEvents`.
     func longPollEvents(timeout: TimeInterval = 30) async throws -> CCAPIPollingResponse {
         try await getVersioned(
             base: "/event/polling?continue=on",
-            minVersion: "ver110",
+            minVersion: "ver100",
             timeout: timeout,
         )
     }
