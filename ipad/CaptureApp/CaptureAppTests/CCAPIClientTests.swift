@@ -3,29 +3,27 @@ import XCTest
 
 final class CCAPIInventoryTests: XCTestCase {
     func testDecodesVersionedInventory() throws {
+        // R6 Mark II wire format: top-level dict keyed by version string,
+        // each value is the endpoint array for that version.
         let json = #"""
         {
-          "versions": [
-            {
-              "ver": "ver100",
-              "apis": [
-                {"path":"/ccapi/ver100/deviceinformation","get":true},
-                {"path":"/ccapi/ver100/event/polling","get":true}
-              ]
-            },
-            {
-              "ver": "ver140",
-              "apis": [
-                {"path":"/ccapi/ver140/shooting/control/shutterbutton","post":true}
-              ]
-            }
+          "ver100": [
+            {"path":"/ccapi/ver100/deviceinformation","get":true,"post":false,"put":false,"delete":false},
+            {"path":"/ccapi/ver100/event/monitoring","get":true,"post":false,"put":false,"delete":true}
+          ],
+          "ver110": [
+            {"path":"/ccapi/ver110/event/polling","get":true,"post":false,"put":false,"delete":true}
+          ],
+          "ver140": [
+            {"path":"/ccapi/ver140/shooting/control/shutterbutton","get":false,"post":true,"put":false,"delete":false}
           ]
         }
         """#.data(using: .utf8)!
 
         let inventory = try JSONDecoder().decode(CCAPIInventory.self, from: json)
-        XCTAssertEqual(inventory.versions.count, 2)
+        XCTAssertEqual(inventory.versions.count, 3)
         XCTAssertTrue(inventory.supports(path: "/ccapi/ver100/deviceinformation"))
+        XCTAssertTrue(inventory.supports(path: "/ccapi/ver110/event/polling"))
         XCTAssertFalse(inventory.supports(path: "/ccapi/ver100/shooting/bracket"))
         XCTAssertEqual(inventory.latestVersion(for: "/ccapi/ver100/deviceinformation"), "ver100")
     }

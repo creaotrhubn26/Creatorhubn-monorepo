@@ -4,6 +4,11 @@ import Foundation
 
 /// Response from `GET /ccapi` — lists API versions + endpoints the camera
 /// supports. Section 6.1 (Discovery Sequence) + 4.2 (List of supported APIs).
+///
+/// Wire format observed on R6 Mark II is a dict keyed by version string, with
+/// each value being an array of endpoint objects:
+///
+///     {"ver100":[{"path":"...","get":true,…}, …], "ver110":[…], "ver120":[…]}
 struct CCAPIInventory: Sendable, Decodable {
     let versions: [CCAPIVersionEntry]
 
@@ -19,6 +24,27 @@ struct CCAPIInventory: Sendable, Decodable {
             .map(\.ver)
             .sorted(by: >)
             .first
+    }
+
+    init(versions: [CCAPIVersionEntry]) {
+        self.versions = versions
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: DynamicKey.self)
+        self.versions = try container.allKeys
+            .sorted(by: { $0.stringValue < $1.stringValue })
+            .map { key in
+                let apis = try container.decode([CCAPIEndpoint].self, forKey: key)
+                return CCAPIVersionEntry(ver: key.stringValue, apis: apis)
+            }
+    }
+
+    private struct DynamicKey: CodingKey {
+        var stringValue: String
+        var intValue: Int? { nil }
+        init(stringValue: String) { self.stringValue = stringValue }
+        init?(intValue: Int) { nil }
     }
 }
 

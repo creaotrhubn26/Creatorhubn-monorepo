@@ -21,8 +21,9 @@ final class CCAPIClientIntegrationTests: XCTestCase {
     func testConnectFetchesInventory() async throws {
         let client = CCAPIClient(baseURL: FakeCanonCamera.baseURL, session: camera.makeSession())
         let inventory = try await client.connect()
-        XCTAssertEqual(inventory.versions.count, 1)
-        XCTAssertTrue(inventory.supports(path: "/ccapi/ver100/devicestatus/storage"))
+        XCTAssertEqual(inventory.versions.count, 2) // ver100 + ver110
+        XCTAssertTrue(inventory.supports(path: "/ccapi/ver110/devicestatus/storage"))
+        XCTAssertTrue(inventory.supports(path: "/ccapi/ver110/event/polling"))
         let connected = await client.isConnected
         XCTAssertTrue(connected)
     }
@@ -33,7 +34,7 @@ final class CCAPIClientIntegrationTests: XCTestCase {
         let storages = try await client.listStorages()
         XCTAssertEqual(storages.count, 1)
         XCTAssertEqual(storages.first?.name, "sd")
-        XCTAssertEqual(storages.first?.url, "/ccapi/ver100/contents/sd")
+        XCTAssertEqual(storages.first?.url, "/ccapi/ver120/contents/sd")
     }
 
     func testListContentsWalksFromStorageToFiles() async throws {
@@ -41,11 +42,11 @@ final class CCAPIClientIntegrationTests: XCTestCase {
         _ = try await client.connect()
         let storages = try await client.listStorages()
         let directories = try await client.listDirectories(storagePath: storages[0].url)
-        XCTAssertEqual(directories, ["/ccapi/ver100/contents/sd/100CANON"])
+        XCTAssertEqual(directories, ["/ccapi/ver120/contents/sd/100CANON"])
         let contents = try await client.listContents(directoryPath: directories[0])
         XCTAssertEqual(contents.sorted(), [
-            "/ccapi/ver100/contents/sd/100CANON/IMG_0001.JPG",
-            "/ccapi/ver100/contents/sd/100CANON/IMG_0002.CR3",
+            "/ccapi/ver120/contents/sd/100CANON/IMG_0001.JPG",
+            "/ccapi/ver120/contents/sd/100CANON/IMG_0002.CR3",
         ])
     }
 

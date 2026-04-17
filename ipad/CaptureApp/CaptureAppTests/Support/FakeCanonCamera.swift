@@ -19,8 +19,8 @@ final class FakeCanonCamera: @unchecked Sendable {
 
     init() {
         // Pre-populate two assets that already exist on the card at boot.
-        contentBodies["/ccapi/ver100/contents/sd/100CANON/IMG_0001.JPG"] = Data(repeating: 0xAA, count: 64)
-        contentBodies["/ccapi/ver100/contents/sd/100CANON/IMG_0002.CR3"] = Data(repeating: 0xBB, count: 96)
+        contentBodies["/ccapi/ver120/contents/sd/100CANON/IMG_0001.JPG"] = Data(repeating: 0xAA, count: 64)
+        contentBodies["/ccapi/ver120/contents/sd/100CANON/IMG_0002.CR3"] = Data(repeating: 0xBB, count: 96)
     }
 
     /// Initial card contents — present from `connect()` onward.
@@ -31,7 +31,7 @@ final class FakeCanonCamera: @unchecked Sendable {
     /// Queue a new content URL so the next `pollEvents` call returns it as
     /// `addedcontents`. Also stages a small body for `downloadContent`.
     func simulateCapture(filename: String, body: Data = Data(repeating: 0xCC, count: 32)) -> String {
-        let url = "/ccapi/ver100/contents/sd/100CANON/\(filename)"
+        let url = "/ccapi/ver120/contents/sd/100CANON/\(filename)"
         lock.lock()
         defer { lock.unlock() }
         pendingAddedContents.append(url)
@@ -71,17 +71,17 @@ final class FakeCanonCamera: @unchecked Sendable {
         case "/ccapi":
             return MockURLProtocol.jsonResponse(for: url, body: Self.inventoryJSON)
 
-        case "/ccapi/ver100/devicestatus/storage":
+        case "/ccapi/ver110/devicestatus/storage":
             return MockURLProtocol.jsonResponse(for: url, body: Self.storageListJSON)
 
-        case "/ccapi/ver100/contents/sd":
+        case "/ccapi/ver120/contents/sd":
             return MockURLProtocol.jsonResponse(for: url, body: Self.directoryListJSON)
 
-        case "/ccapi/ver100/contents/sd/100CANON":
+        case "/ccapi/ver120/contents/sd/100CANON":
             return MockURLProtocol.jsonResponse(for: url, body: Self.contentsListJSON(initial: initialContentURLs()))
 
-        case "/ccapi/ver100/event/polling?continue=on",
-             "/ccapi/ver100/event/polling":
+        case "/ccapi/ver110/event/polling?continue=on",
+             "/ccapi/ver110/event/polling":
             return pollResponse(for: url)
 
         default:
@@ -117,15 +117,12 @@ final class FakeCanonCamera: @unchecked Sendable {
 
     private static let inventoryJSON = """
     {
-      "versions": [
-        {
-          "ver": "ver100",
-          "apis": [
-            {"path":"/ccapi/ver100/devicestatus/storage","get":true},
-            {"path":"/ccapi/ver100/event/polling","get":true},
-            {"path":"/ccapi/ver100/deviceinformation","get":true}
-          ]
-        }
+      "ver100": [
+        {"path":"/ccapi/ver100/deviceinformation","get":true,"post":false,"put":false,"delete":false}
+      ],
+      "ver110": [
+        {"path":"/ccapi/ver110/devicestatus/storage","get":true,"post":false,"put":false,"delete":false},
+        {"path":"/ccapi/ver110/event/polling","get":true,"post":false,"put":false,"delete":true}
       ]
     }
     """
@@ -135,7 +132,7 @@ final class FakeCanonCamera: @unchecked Sendable {
       "storagelist": [
         {
           "name": "sd",
-          "url": "/ccapi/ver100/contents/sd",
+          "url": "/ccapi/ver120/contents/sd",
           "accesscapability": "readwrite",
           "maxsize": 256000000000,
           "spacesize": 120000000000,
@@ -147,8 +144,8 @@ final class FakeCanonCamera: @unchecked Sendable {
 
     private static let directoryListJSON = """
     {
-      "url": ["/ccapi/ver100/contents/sd/100CANON"],
-      "path": "/ccapi/ver100/contents/sd"
+      "url": ["/ccapi/ver120/contents/sd/100CANON"],
+      "path": "/ccapi/ver120/contents/sd"
     }
     """
 
@@ -157,7 +154,7 @@ final class FakeCanonCamera: @unchecked Sendable {
         return """
         {
           "url": [\(urls)],
-          "path": "/ccapi/ver100/contents/sd/100CANON"
+          "path": "/ccapi/ver120/contents/sd/100CANON"
         }
         """
     }

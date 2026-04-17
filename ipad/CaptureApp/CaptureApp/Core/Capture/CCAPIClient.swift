@@ -58,10 +58,11 @@ actor CCAPIClient {
     // MARK: - Storages + contents (§4.7)
 
     /// List of storage URLs. Spec §4.7.1.
+    /// R6 Mark II exposes this at ver110 (verified 2026-04-17).
     func listStorages() async throws -> [CCAPIStorage] {
         let wrapper: CCAPIStorageList = try await getVersioned(
             base: "/devicestatus/storage",
-            minVersion: "ver100",
+            minVersion: "ver110",
         )
         return wrapper.storagelist
     }
@@ -114,10 +115,11 @@ actor CCAPIClient {
 
     /// Short poll: returns the current diff immediately. Spec §4.13.1.
     /// Response is lenient — only changed fields are populated.
+    /// R6 Mark II exposes this at ver110 (verified 2026-04-17).
     func pollEvents() async throws -> CCAPIPollingResponse {
         try await getVersioned(
             base: "/event/polling",
-            minVersion: "ver100",
+            minVersion: "ver110",
         )
     }
 
@@ -126,7 +128,7 @@ actor CCAPIClient {
     func longPollEvents(timeout: TimeInterval = 30) async throws -> CCAPIPollingResponse {
         try await getVersioned(
             base: "/event/polling?continue=on",
-            minVersion: "ver100",
+            minVersion: "ver110",
             timeout: timeout,
         )
     }
