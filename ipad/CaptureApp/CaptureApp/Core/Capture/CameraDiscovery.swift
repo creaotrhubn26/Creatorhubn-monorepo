@@ -140,13 +140,38 @@ final class CameraDiscovery: ObservableObject {
         }
     }
 
+    /// Every Canon body we've verified uses one of these three (scheme, port)
+    /// combinations for CCAPI:
+    ///   - http://host:8080   — R5 (original) in infrastructure mode
+    ///   - https://host:443   — R6 Mark II in AP mode (Canon's default TLS)
+    ///   - https://host:8443  — alternate TLS port some newer bodies use
+    /// Probe all three in parallel per IP and take the first valid responder.
+    private static let probeVariants: [(scheme: String, port: Int?)] = [
+        ("http",  8080),
+        ("https", nil),   // default 443
+        ("https", 8443),
+    ]
+
     private func probeIP(host: String) async {
-        guard let baseURL = URL(string: "https://\(host)") else { return }
-        let key = "ip:\(host)"
         let alreadyFound = await MainActor.run {
             self.cameras.contains { $0.baseURL.host == host }
         }
         if alreadyFound { return }
+
+        await withTaskGroup(of: Void.self) { group in
+            for variant in Self.probeVariants {
+                group.addTask { [weak self] in
+                    await self?.probe(host: host, scheme: variant.scheme, port: variant.port)
+                }
+            }
+            await group.waitForAll()
+        }
+    }
+
+    private func probe(host: String, scheme: String, port: Int?) async {
+        let portSegment = port.map { ":\($0)" } ?? ""
+        guard let baseURL = URL(string: "\(scheme)://\(host)\(portSegment)") else { return }
+        let key = "ip:\(host)"
 
         let session = sessionFactory(baseURL)
         let client = CCAPIClient(baseURL: baseURL, session: session)
@@ -154,7 +179,7 @@ final class CameraDiscovery: ObservableObject {
             _ = try await withTimeout(seconds: 3.5) {
                 try await client.connect()
             }
-            print("CameraDiscovery: CCAPI responder at \(host)")
+            print("CameraDiscovery: CCAPI responder at \(baseURL.absoluteString)")
             let info = try? await client.deviceInformation()
             let found = Found(
                 id: key,
