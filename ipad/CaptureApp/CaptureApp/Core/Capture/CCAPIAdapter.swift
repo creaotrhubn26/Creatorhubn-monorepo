@@ -19,6 +19,7 @@ actor CCAPIAdapter: IngestAdapter {
     nonisolated let events: AsyncStream<IngestEvent>
     private let continuation: AsyncStream<IngestEvent>.Continuation
 
+    private let baseURL: URL
     private let client: CCAPIClient
     private let fileManager: FileManager
     private let downloadDirectory: URL
@@ -46,6 +47,7 @@ actor CCAPIAdapter: IngestAdapter {
         enumerateOnStart: Bool = true,
     ) throws {
         self.adapterId = adapterId ?? "ccapi:\(baseURL.host ?? UUID().uuidString)"
+        self.baseURL = baseURL
         self.client = client ?? CCAPIClient(baseURL: baseURL)
         self.fileManager = fileManager
         self.enumerateOnStart = enumerateOnStart
@@ -184,7 +186,11 @@ actor CCAPIAdapter: IngestAdapter {
     private func register(contentURL rawURL: String) {
         let assetId = Self.deterministicUUID(for: rawURL)
         guard knownAssets[assetId] == nil else { return }
-        guard let url = URL(string: rawURL) else { return }
+        // Polling payloads expose content URLs as paths (e.g.
+        // "/ccapi/ver120/contents/card1/100CANON/IMG_0001.JPG"). Resolve
+        // against the camera's baseURL so the stored URL is absolute and
+        // URLSession can actually GET it in production.
+        guard let url = URL(string: rawURL, relativeTo: baseURL)?.absoluteURL else { return }
 
         let descriptor = AssetDescriptor(
             id: assetId,
