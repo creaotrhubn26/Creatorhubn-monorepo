@@ -142,17 +142,28 @@ actor CCAPIAdapter: IngestAdapter {
 
     // MARK: - Polling
 
+    /// Polling interval between short-poll calls. Short enough that a new
+    /// capture surfaces within ~1s, long enough that we don't thrash the
+    /// camera's HTTP stack on a body that has nothing new to report.
+    private static let pollInterval = Duration.milliseconds(500)
+
     private func runPollingLoop() async {
         var reconnectAttempt = 0
         while !Task.isCancelled {
             do {
-                let payload = try await client.longPollEvents(timeout: 35)
+                // Short poll + interval. We verified on R6 mkII fw 1.6.0 that
+                // `?continue=on` long-polling does not reliably surface
+                // `addedcontents` through URLSession's HTTP 100 Continue
+                // handling; short polling is the robust path until we
+                // switch to the event/monitoring SSE-style stream.
+                let payload = try await client.pollEvents()
                 reconnectAttempt = 0
                 if let added = payload.addedcontents {
                     for url in added {
                         register(contentURL: url)
                     }
                 }
+                try? await Task.sleep(for: Self.pollInterval)
             } catch CCAPIError.timedOut {
                 continue
             } catch {
