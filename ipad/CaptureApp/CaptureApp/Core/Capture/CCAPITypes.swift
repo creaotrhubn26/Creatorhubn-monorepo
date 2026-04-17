@@ -130,27 +130,68 @@ struct CCAPIPollingResponse: Sendable, Decodable {
     /// (e.g., after a reconnect we only see the storage snapshot change).
     let totalContentsCount: Int?
 
+    /// Bytes still free on the current card, when included in the diff.
+    let freeSpaceBytes: Int64?
+
+    /// Battery level as the camera reports it — can be a percent string
+    /// ("11") or a named bucket ("full", "half", "low"). We don't normalise.
+    let batteryLevel: String?
+
+    /// Exposure triangle, each as the user-facing display string.
+    let apertureValue: String?     // e.g. "f5.0"
+    let shutterSpeed: String?      // e.g. "1/60"
+    let isoValue: String?          // e.g. "1250"
+
+    /// Attached lens name, mirrors `/devicestatus/lens.name`.
+    let lensName: String?
+
     private enum CodingKeys: String, CodingKey {
         case addedcontents
         case storage
+        case battery
+        case av
+        case tv
+        case iso
+        case lens
     }
 
     init(
         addedcontents: [String]? = nil,
-        totalContentsCount: Int? = nil
+        totalContentsCount: Int? = nil,
+        freeSpaceBytes: Int64? = nil,
+        batteryLevel: String? = nil,
+        apertureValue: String? = nil,
+        shutterSpeed: String? = nil,
+        isoValue: String? = nil,
+        lensName: String? = nil
     ) {
         self.addedcontents = addedcontents
         self.totalContentsCount = totalContentsCount
+        self.freeSpaceBytes = freeSpaceBytes
+        self.batteryLevel = batteryLevel
+        self.apertureValue = apertureValue
+        self.shutterSpeed = shutterSpeed
+        self.isoValue = isoValue
+        self.lensName = lensName
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.addedcontents = try container.decodeIfPresent([String].self, forKey: .addedcontents)
+
         if let storage = try? container.decodeIfPresent(CCAPIStorageSnapshot.self, forKey: .storage) {
             self.totalContentsCount = storage.storagelist.first?.contentsnumber
+            self.freeSpaceBytes = storage.storagelist.first?.spacesize
         } else {
             self.totalContentsCount = nil
+            self.freeSpaceBytes = nil
         }
+
+        self.batteryLevel = (try? container.decodeIfPresent(CCAPIBatteryDiff.self, forKey: .battery))?.level
+        self.lensName = (try? container.decodeIfPresent(CCAPILensDiff.self, forKey: .lens))?.name
+        self.apertureValue = (try? container.decodeIfPresent(CCAPIValueDiff.self, forKey: .av))?.value
+        self.shutterSpeed = (try? container.decodeIfPresent(CCAPIValueDiff.self, forKey: .tv))?.value
+        self.isoValue = (try? container.decodeIfPresent(CCAPIValueDiff.self, forKey: .iso))?.value
     }
 }
 
@@ -159,4 +200,21 @@ struct CCAPIPollingResponse: Sendable, Decodable {
 /// `GET /devicestatus/storage` which returns that list at the top level.
 private struct CCAPIStorageSnapshot: Decodable {
     let storagelist: [CCAPIStorage]
+}
+
+/// Most setting fields in the polling diff look like `{"value": <x>, "ability": [...]}`.
+private struct CCAPIValueDiff: Decodable {
+    let value: String?
+}
+
+private struct CCAPIBatteryDiff: Decodable {
+    let kind: String?
+    let name: String?
+    let level: String?
+    let quality: String?
+}
+
+private struct CCAPILensDiff: Decodable {
+    let mount: Bool?
+    let name: String?
 }

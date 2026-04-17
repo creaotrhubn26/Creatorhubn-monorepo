@@ -165,6 +165,18 @@ actor CCAPIAdapter: IngestAdapter {
                         register(contentURL: url)
                     }
                 }
+                let telemetry = CameraTelemetry(
+                    batteryLevel: payload.batteryLevel,
+                    apertureValue: payload.apertureValue,
+                    shutterSpeed: payload.shutterSpeed,
+                    isoValue: payload.isoValue,
+                    lensName: payload.lensName,
+                    freeSpaceBytes: payload.freeSpaceBytes,
+                    totalContentsCount: payload.totalContentsCount
+                )
+                if !telemetry.isEmpty {
+                    continuation.yield(.telemetryUpdated(telemetry))
+                }
                 try? await Task.sleep(for: Self.pollInterval)
             } catch CCAPIError.timedOut {
                 continue

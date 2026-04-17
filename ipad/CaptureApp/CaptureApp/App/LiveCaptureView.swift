@@ -28,7 +28,12 @@ struct LiveCaptureView: View {
                         Task { await model.connect(to: url) }
                     }
                 )
-            case .connecting, .connected:
+            case .connecting:
+                ConnectingOverlay(
+                    state: model.connectionState,
+                    onCancel: { Task { await model.disconnect() } }
+                )
+            case .connected:
                 connectedLayout
             }
         }
@@ -55,7 +60,9 @@ struct LiveCaptureView: View {
             StatusBar(
                 state: model.connectionState,
                 device: model.deviceSummary,
-                storageUsed: model.storageContentsCount,
+                telemetry: model.telemetry,
+                pinnedFocus: model.pinnedFocus,
+                onTogglePin: { model.pinnedFocus.toggle() },
                 onSettings: { isSettingsPresented = true }
             )
             .padding(.horizontal, 24)
@@ -63,11 +70,17 @@ struct LiveCaptureView: View {
 
             Divider().background(Color.captureSeparator)
 
-            HeroStage(
-                asset: model.focusedAsset,
-                onTap: { asset in viewerAsset = asset }
-            )
+            ZStack {
+                HeroStage(
+                    asset: model.focusedAsset,
+                    onTap: { asset in viewerAsset = asset }
+                )
+                ShutterFlashOverlay(trigger: model.shutterFlashToken)
+                    .allowsHitTesting(false)
+            }
             .frame(maxHeight: .infinity)
+
+            TelemetryFooter(telemetry: model.telemetry)
 
             FilmstripRail(
                 assets: model.assets,
@@ -144,11 +157,20 @@ private struct DisconnectedOverlay: View {
             .frame(maxWidth: 440)
 
             if let lastError {
-                Label(lastError, systemImage: "exclamationmark.triangle")
-                    .font(.footnote)
-                    .foregroundStyle(.red)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal)
+                VStack(alignment: .leading, spacing: 10) {
+                    Label(lastError, systemImage: "exclamationmark.triangle")
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(.red)
+                    Text("Usual causes:")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                    FailureGuideItem(icon: "wifi",             text: "Your Mac or iPad must be on the camera's Access Point.")
+                    FailureGuideItem(icon: "camera",           text: "CCAPI must be enabled: MENU → Wi-Fi → Camera Control API.")
+                    FailureGuideItem(icon: "network",          text: "The URL must match what the camera's screen shows exactly.")
+                }
+                .padding(14)
+                .background(Color.captureFieldBG, in: RoundedRectangle(cornerRadius: 10))
+                .frame(maxWidth: 440)
             }
 
             Button(action: connect) {
@@ -179,12 +201,121 @@ private struct DisconnectedOverlay: View {
     }
 }
 
+// MARK: - Failure guide helper
+
+private struct FailureGuideItem: View {
+    let icon: String
+    let text: String
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: icon)
+                .foregroundStyle(.tint)
+                .frame(width: 20)
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+// MARK: - Connecting overlay (progress ladder)
+
+private struct ConnectingOverlay: View {
+    let state: CameraSession.State
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(spacing: 28) {
+            VStack(spacing: 10) {
+                ProgressView()
+                    .controlSize(.large)
+                Text("Connecting to camera")
+                    .font(.title3.weight(.semibold))
+            }
+
+            VStack(alignment: .leading, spacing: 14) {
+                ConnectStep(title: "Discovered capabilities",  level: stepLevel(.discovered))
+                ConnectStep(title: "Paired securely",           level: stepLevel(.paired))
+                ConnectStep(title: "Ready to shoot",            level: stepLevel(.ready))
+            }
+            .padding(18)
+            .frame(maxWidth: 380, alignment: .leading)
+            .background(Color.captureChipBG, in: RoundedRectangle(cornerRadius: 12))
+
+            if case let .error(message) = state {
+                Text(message)
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+                    .multilineTextAlignment(.center)
+            }
+
+            Button(role: .destructive, action: onCancel) {
+                Label("Cancel", systemImage: "xmark")
+                    .padding(.horizontal, 16).padding(.vertical, 8)
+            }
+            .buttonStyle(.bordered)
+        }
+        .padding(40)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private enum Step { case discovered, paired, ready }
+
+    private func stepLevel(_ step: Step) -> ConnectStep.Level {
+        switch (step, state) {
+        case (.discovered, .discovering):                         return .inProgress
+        case (.discovered, _):                                    return .done
+        case (.paired, .discovering):                             return .idle
+        case (.paired, .pairing):                                 return .inProgress
+        case (.paired, _):                                        return .done
+        case (.ready, .discovering), (.ready, .pairing):          return .idle
+        case (.ready, .ready), (.ready, .shooting):               return .done
+        case (.ready, .reconnecting), (.ready, .error):           return .idle
+        default:                                                  return .idle
+        }
+    }
+}
+
+private struct ConnectStep: View {
+    enum Level { case idle, inProgress, done, failed }
+    let title: String
+    let level: Level
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Group {
+                switch level {
+                case .idle:
+                    Image(systemName: "circle")
+                        .foregroundStyle(.tertiary)
+                case .inProgress:
+                    ProgressView().controlSize(.small)
+                case .done:
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                case .failed:
+                    Image(systemName: "xmark.octagon.fill")
+                        .foregroundStyle(.red)
+                }
+            }
+            .frame(width: 24, height: 24)
+            Text(title)
+                .font(.callout)
+                .foregroundStyle(level == .idle ? .secondary : .primary)
+            Spacer()
+        }
+    }
+}
+
 // MARK: - Status bar
 
 private struct StatusBar: View {
     let state: CameraSession.State
     let device: LiveCaptureModel.DeviceSummary?
-    let storageUsed: Int?
+    let telemetry: CameraTelemetry
+    let pinnedFocus: Bool
+    let onTogglePin: () -> Void
     let onSettings: () -> Void
 
     var body: some View {
@@ -205,12 +336,26 @@ private struct StatusBar: View {
 
             Spacer()
 
-            if let storageUsed {
-                Label("\(storageUsed) on card", systemImage: "sdcard")
+            if let files = telemetry.totalContentsCount {
+                Label("\(files) on card", systemImage: "sdcard")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
-                    .labelStyle(.titleAndIcon)
             }
+
+            Button(action: onTogglePin) {
+                Image(systemName: pinnedFocus ? "pin.fill" : "pin.slash")
+                    .font(.body)
+                    .frame(width: 36, height: 36)
+                    .foregroundStyle(pinnedFocus ? Color.accentColor : .secondary)
+                    .background(
+                        pinnedFocus
+                            ? Color.accentColor.opacity(0.15)
+                            : Color.clear,
+                        in: Circle()
+                    )
+            }
+            .buttonStyle(.plain)
+            .help(pinnedFocus ? "Focus is pinned — new shots won't jump to latest" : "Follow latest")
 
             Button(action: onSettings) {
                 Image(systemName: "gear")
@@ -549,6 +694,120 @@ private struct FilmstripTile: View {
     }
 }
 
+// MARK: - Shutter flash overlay
+
+/// Brief white flash on the hero area when a new asset lands. Mimics the
+/// physical camera's capture feedback so the photographer knows the shot
+/// reached the app, not just the card. Driven by a token on the model
+/// that changes each time assets.count increases.
+private struct ShutterFlashOverlay: View {
+    let trigger: UUID?
+    @State private var opacity: Double = 0
+
+    var body: some View {
+        Color.white
+            .opacity(opacity)
+            .onChange(of: trigger) { _, _ in
+                opacity = 0.85
+                withAnimation(.easeOut(duration: 0.45)) { opacity = 0 }
+            }
+    }
+}
+
+// MARK: - Telemetry footer
+
+private struct TelemetryFooter: View {
+    let telemetry: CameraTelemetry
+
+    var body: some View {
+        if telemetry.isEmpty { EmptyView() }
+        else {
+            HStack(spacing: 20) {
+                if let battery = telemetry.batteryLevel {
+                    TelemetryChip(icon: batteryIcon(for: battery), text: batteryLabel(for: battery), color: batteryColor(for: battery))
+                }
+                if let lens = telemetry.lensName {
+                    TelemetryChip(icon: "camera.circle", text: lens, color: .secondary)
+                }
+                if let aperture = telemetry.apertureValue {
+                    TelemetryChip(icon: "circle.lefthalf.filled", text: aperture, color: .primary)
+                }
+                if let shutter = telemetry.shutterSpeed {
+                    TelemetryChip(icon: "clock", text: shutter, color: .primary)
+                }
+                if let iso = telemetry.isoValue {
+                    TelemetryChip(icon: "s.square", text: "ISO \(iso)", color: .primary)
+                }
+                Spacer(minLength: 0)
+                if let free = telemetry.freeSpaceBytes {
+                    TelemetryChip(icon: "externaldrive", text: formatBytes(free) + " free", color: .secondary)
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 10)
+            .background(Color.captureChipBG.opacity(0.6))
+            .overlay(Rectangle().frame(height: 0.5).foregroundStyle(Color.captureSeparator), alignment: .top)
+        }
+    }
+
+    private func batteryIcon(for level: String) -> String {
+        if let pct = Int(level) {
+            if pct >= 75 { return "battery.100" }
+            if pct >= 50 { return "battery.75" }
+            if pct >= 25 { return "battery.50" }
+            if pct >= 10 { return "battery.25" }
+            return "battery.0"
+        }
+        switch level.lowercased() {
+        case "full":   return "battery.100"
+        case "half":   return "battery.50"
+        case "low":    return "battery.25"
+        case "empty":  return "battery.0"
+        default:       return "battery.75"
+        }
+    }
+
+    private func batteryLabel(for level: String) -> String {
+        if Int(level) != nil { return "\(level)%" }
+        return level.capitalized
+    }
+
+    private func batteryColor(for level: String) -> Color {
+        if let pct = Int(level) {
+            if pct >= 20 { return .primary }
+            return .red
+        }
+        switch level.lowercased() {
+        case "low", "empty": return .red
+        default:             return .primary
+        }
+    }
+
+    private func formatBytes(_ bytes: Int64) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useGB, .useMB]
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: bytes)
+    }
+}
+
+private struct TelemetryChip: View {
+    let icon: String
+    let text: String
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.caption.weight(.medium))
+            Text(text)
+                .font(.caption.weight(.medium))
+                .lineLimit(1)
+        }
+        .foregroundStyle(color)
+    }
+}
+
 // MARK: - Shutter
 
 private struct ShutterButton: View {
@@ -746,19 +1005,30 @@ final class LiveCaptureModel {
     }
     var assets: [Asset] = [] {
         didSet {
-            if focusedAssetId == nil || !assets.contains(where: { $0.id == focusedAssetId }) {
-                focusedAssetId = assets.last?.id
-            } else if let last = assets.last?.id, oldValue.count < assets.count {
-                focusedAssetId = last
+            // Follow latest unless the user has pinned focus to a specific
+            // asset. Pinning is a UX affordance for reviewing while shooting
+            // continues — without it every new capture would steal focus.
+            let newCaptureArrived = assets.count > oldValue.count
+            if !pinnedFocus {
+                if focusedAssetId == nil || !assets.contains(where: { $0.id == focusedAssetId }) {
+                    focusedAssetId = assets.last?.id
+                } else if newCaptureArrived, let last = assets.last?.id {
+                    focusedAssetId = last
+                }
             }
+            if newCaptureArrived { shutterFlashToken = UUID() }
         }
     }
     var errorMessage: String?
     var isConnecting: Bool = false
     var phase: Phase = .disconnected
     var deviceSummary: DeviceSummary?
-    var storageContentsCount: Int?
+    var telemetry: CameraTelemetry = .empty
     var focusedAssetId: UUID?
+    var pinnedFocus: Bool = false
+    /// Token that changes every time a new asset lands. Views bind to it
+    /// to trigger the shutter-fired flash animation.
+    var shutterFlashToken: UUID?
 
     var focusedAsset: Asset? {
         guard let focusedAssetId else { return assets.last }
@@ -847,7 +1117,13 @@ final class LiveCaptureModel {
                     await MainActor.run { self?.assets = assets }
                 }
             }
-            forwardingTasks = [stateTask, assetsTask]
+            let telemetryStream = camera.telemetryUpdates
+            let telemetryTask = Task { [weak self] in
+                for await diff in telemetryStream {
+                    await MainActor.run { self?.mergeTelemetry(diff) }
+                }
+            }
+            forwardingTasks = [stateTask, assetsTask, telemetryTask]
 
             isConnecting = false
             refreshPhase()
@@ -885,7 +1161,9 @@ final class LiveCaptureModel {
         store = nil
         downloadDirectory = nil
         deviceSummary = nil
-        storageContentsCount = nil
+        telemetry = .empty
+        pinnedFocus = false
+        shutterFlashToken = nil
         assets = []
         focusedAssetId = nil
         connectionState = .disconnected
@@ -900,6 +1178,19 @@ final class LiveCaptureModel {
         } else {
             phase = .connected
         }
+    }
+
+    /// Merge a partial telemetry diff into the accumulated snapshot — only
+    /// non-nil fields overwrite existing values so last-known state persists
+    /// across polls where Canon reports nothing new.
+    private func mergeTelemetry(_ diff: CameraTelemetry) {
+        if let v = diff.batteryLevel       { telemetry.batteryLevel = v }
+        if let v = diff.apertureValue      { telemetry.apertureValue = v }
+        if let v = diff.shutterSpeed       { telemetry.shutterSpeed = v }
+        if let v = diff.isoValue           { telemetry.isoValue = v }
+        if let v = diff.lensName           { telemetry.lensName = v }
+        if let v = diff.freeSpaceBytes     { telemetry.freeSpaceBytes = v }
+        if let v = diff.totalContentsCount { telemetry.totalContentsCount = v }
     }
 }
 

@@ -32,7 +32,9 @@ actor CameraSession {
     private(set) var state: State = .disconnected
 
     nonisolated let stateChanges: AsyncStream<State>
+    nonisolated let telemetryUpdates: AsyncStream<CameraTelemetry>
     private let stateContinuation: AsyncStream<State>.Continuation
+    private let telemetryContinuation: AsyncStream<CameraTelemetry>.Continuation
 
     init(
         sessionId: UUID,
@@ -47,10 +49,15 @@ actor CameraSession {
         let (stream, cont) = AsyncStream<State>.makeStream(bufferingPolicy: .unbounded)
         self.stateChanges = stream
         self.stateContinuation = cont
+        let (telemetryStream, telemetryCont) = AsyncStream<CameraTelemetry>
+            .makeStream(bufferingPolicy: .bufferingNewest(1))
+        self.telemetryUpdates = telemetryStream
+        self.telemetryContinuation = telemetryCont
     }
 
     deinit {
         stateContinuation.finish()
+        telemetryContinuation.finish()
     }
 
     func start() async throws {
@@ -145,6 +152,10 @@ actor CameraSession {
         case .downloadProgress:
             // Progress is UI-only; not persisted to the event log.
             break
+
+        case let .telemetryUpdated(telemetry):
+            // Forward verbatim; consumers accumulate (partial diffs).
+            telemetryContinuation.yield(telemetry)
 
         case let .cardContentsEnumerated(count):
             try? await store.appendEvent(
