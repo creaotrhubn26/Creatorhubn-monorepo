@@ -108,27 +108,41 @@ final class CameraDiscovery: ObservableObject {
 
     /// Enumerate all local /24 subnets via `getifaddrs`, probe every host
     /// in each, and surface CCAPI responders. Parallelism is capped so we
-    /// don't open 254 simultaneous sockets.
+    /// don't open 254 simultaneous sockets — batches of 16.
     private func scanLocalSubnets() async {
         let subnets = Self.localIPv4Subnets()
-        if subnets.isEmpty { return }
-        await withTaskGroup(of: Void.self) { group in
-            for subnet in subnets {
-                for host in subnet.hosts {
+        if subnets.isEmpty {
+            print("CameraDiscovery: no private IPv4 subnets found — getifaddrs empty")
+            return
+        }
+        for s in subnets {
+            print("CameraDiscovery: scanning \(s.base).1-254 (skipping \(s.base).\(s.mine))")
+        }
+        let hosts = subnets.flatMap(\.hosts)
+        let batchSize = 16
+        var index = 0
+        while index < hosts.count, !Task.isCancelled {
+            let upper = min(index + batchSize, hosts.count)
+            let slice = Array(hosts[index..<upper])
+            await withTaskGroup(of: Void.self) { group in
+                for host in slice {
                     group.addTask { [weak self] in
                         await self?.probeIP(host: host)
                     }
                 }
+                await group.waitForAll()
             }
-            await group.waitForAll()
+            index = upper
         }
-        await MainActor.run { self.isSearching = false }
+        await MainActor.run {
+            self.isSearching = false
+            print("CameraDiscovery: scan complete — \(self.cameras.count) camera(s) found")
+        }
     }
 
     private func probeIP(host: String) async {
         guard let baseURL = URL(string: "https://\(host)") else { return }
         let key = "ip:\(host)"
-        // Skip if we already have this host from Bonjour
         let alreadyFound = await MainActor.run {
             self.cameras.contains { $0.baseURL.host == host }
         }
@@ -137,9 +151,10 @@ final class CameraDiscovery: ObservableObject {
         let session = sessionFactory(baseURL)
         let client = CCAPIClient(baseURL: baseURL, session: session)
         do {
-            _ = try await withTimeout(seconds: 1.5) {
+            _ = try await withTimeout(seconds: 3.5) {
                 try await client.connect()
             }
+            print("CameraDiscovery: CCAPI responder at \(host)")
             let info = try? await client.deviceInformation()
             let found = Found(
                 id: key,
@@ -157,7 +172,7 @@ final class CameraDiscovery: ObservableObject {
                 }
             }
         } catch {
-            // Not a CCAPI responder. Silent.
+            // Silent: either no server, not CCAPI, or timeout.
         }
     }
 
