@@ -54,15 +54,25 @@ hit contents_dcim_info "/ccapi/ver120/contents/card1/100CANON?kind=info"
 # 5. Event polling — stateful. Snapshot, capture a frame, then diff.
 hit polling_initial "/ccapi/ver110/event/polling"
 
-echo "==> POST /ccapi/ver100/shooting/control/shutterbutton (trigger capture)"
+echo "==> POST /ccapi/ver100/shooting/control/shutterbutton/manual (no-AF capture)"
 curl -sS -k -m 10 \
   -X POST \
   -H "Content-Type: application/json" \
-  -d '{"af":true}' \
+  -d '{"action":"full_press"}' \
   -D "$OUT/shutter.headers" \
   -o "$OUT/shutter.json" \
   -w "HTTP %{http_code} · %{size_download}B · %{time_total}s\n" \
-  "$BASE/ccapi/ver100/shooting/control/shutterbutton" || true
+  "$BASE/ccapi/ver100/shooting/control/shutterbutton/manual" || true
+
+# Release the shutter (manual endpoint is press/release-based).
+curl -sS -k -m 10 \
+  -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"action":"release"}' \
+  -D "$OUT/shutter_release.headers" \
+  -o "$OUT/shutter_release.json" \
+  -w "HTTP %{http_code} · %{size_download}B · %{time_total}s\n" \
+  "$BASE/ccapi/ver100/shooting/control/shutterbutton/manual" || true
 
 # Wait for camera to write to card, then poll for the diff.
 sleep 3

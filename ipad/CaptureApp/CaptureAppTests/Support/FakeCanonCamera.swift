@@ -144,8 +144,7 @@ final class FakeCanonCamera: @unchecked Sendable {
 
     private static let directoryListJSON = """
     {
-      "url": ["/ccapi/ver120/contents/sd/100CANON"],
-      "path": "/ccapi/ver120/contents/sd"
+      "path": ["/ccapi/ver120/contents/sd/100CANON"]
     }
     """
 
@@ -153,8 +152,7 @@ final class FakeCanonCamera: @unchecked Sendable {
         let urls = initial.map { "\"\($0)\"" }.joined(separator: ",")
         return """
         {
-          "url": [\(urls)],
-          "path": "/ccapi/ver120/contents/sd/100CANON"
+          "path": [\(urls)]
         }
         """
     }

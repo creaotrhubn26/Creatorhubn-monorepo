@@ -94,10 +94,12 @@ struct CCAPIStorage: Sendable, Decodable, Hashable {
 
 // MARK: - Contents (§4.7.3, §4.7.5)
 
+/// Every level of the contents hierarchy on R6 mkII returns the same shape:
+/// `{"path":[<array of child URLs>]}`. Used for storages, directories, and
+/// files interchangeably — the depth is implicit in the URL you GET.
+/// Verified against hardware 2026-04-17.
 struct CCAPIContentsURLList: Sendable, Decodable {
-    /// Each entry is a full path URL to a content item.
-    let url: [String]
-    let path: String?
+    let path: [String]
 }
 
 // MARK: - Event polling (§4.13.1 polling, §5.3 Event Data)

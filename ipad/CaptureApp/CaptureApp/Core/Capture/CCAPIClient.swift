@@ -74,7 +74,7 @@ actor CCAPIClient {
         let wrapper: CCAPIContentsURLList = try await getAbsolute(
             path: storagePath,
         )
-        return wrapper.url
+        return wrapper.path
     }
 
     /// List of content URLs under a directory. Spec §4.7.3.
@@ -82,7 +82,7 @@ actor CCAPIClient {
         let wrapper: CCAPIContentsURLList = try await getAbsolute(
             path: directoryPath,
         )
-        return wrapper.url
+        return wrapper.path
     }
 
     /// Download the binary content at `contentURL`. Supports HTTP Range for
