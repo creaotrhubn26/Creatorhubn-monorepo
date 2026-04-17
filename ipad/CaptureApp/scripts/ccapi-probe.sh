@@ -54,21 +54,21 @@ hit contents_dcim_info "/ccapi/ver120/contents/card1/100CANON?kind=info"
 # 5. Event polling — stateful. Snapshot, capture a frame, then diff.
 hit polling_initial "/ccapi/ver110/event/polling"
 
-echo "==> POST /ccapi/ver100/shooting/control/shutterbutton/manual (no-AF capture)"
+echo "==> POST /ccapi/ver100/shooting/control/shutterbutton/manual full_press (af:false)"
 curl -sS -k -m 10 \
   -X POST \
   -H "Content-Type: application/json" \
-  -d '{"action":"full_press"}' \
+  -d '{"action":"full_press","af":false}' \
   -D "$OUT/shutter.headers" \
   -o "$OUT/shutter.json" \
   -w "HTTP %{http_code} · %{size_download}B · %{time_total}s\n" \
   "$BASE/ccapi/ver100/shooting/control/shutterbutton/manual" || true
 
-# Release the shutter (manual endpoint is press/release-based).
+echo "==> POST /ccapi/ver100/shooting/control/shutterbutton/manual release"
 curl -sS -k -m 10 \
   -X POST \
   -H "Content-Type: application/json" \
-  -d '{"action":"release"}' \
+  -d '{"action":"release","af":false}' \
   -D "$OUT/shutter_release.headers" \
   -o "$OUT/shutter_release.json" \
   -w "HTTP %{http_code} · %{size_download}B · %{time_total}s\n" \
