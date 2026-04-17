@@ -9,6 +9,21 @@ import Vision
 /// same public shape (observe SessionStore → produce enhanced preview →
 /// attach via `attachEnhancedKey`), just runs CoreImage locally.
 ///
+/// **Important context on RAW:** this pipeline operates on the display
+/// JPEG Canon generates from the RAW (fetched via `?kind=display`) so the
+/// UI has sub-second preview feedback while shooting continues. For
+/// final-quality delivery we still need a separate RAW pass that:
+///   1. downloads the CR3 via `?kind=main`,
+///   2. runs it through `CIRAWFilter` (proper demosaic + WB + exposure),
+///   3. applies the same `MagicRecipe` parameters (which were chosen to
+///      translate cleanly to CIRAWFilter's own inputs — `temperature`,
+///      `exposure`, `shadowAmount`, etc.).
+/// That's Phase 2 when we wire Export. Recipe tuning on the preview is
+/// a faithful proxy — warmth/shadow/contrast decisions carry over — but
+/// the demosaiced RAW pass has ~2 stops more shadow headroom and
+/// accurate white-balance so the committed deliverable will be cleaner
+/// than what the UI shows live.
+///
 /// Two responsibilities:
 /// 1. `start(sessionId:)` — watch for new previews; for each one run a
 ///    subject-aware recipe (portrait when faces detected, neutral otherwise)
@@ -23,6 +38,10 @@ final class MagicPipeline {
     private let outputDirectory: URL
     private var autoTask: Task<Void, Never>?
     private var inFlightAssets: Set<UUID> = []
+    /// Per-asset live retune task; we cancel the previous one before
+    /// spawning a new one so slider drags don't queue up parallel
+    /// CoreImage renders (that was the source of the laggy tune panel).
+    private var retuneTasks: [UUID: Task<Void, Never>] = [:]
 
     /// Tracks the auto-detected recipe for each asset so later retunes
     /// start from the right baseline if the user resets sliders.
@@ -52,6 +71,8 @@ final class MagicPipeline {
     func stop() {
         autoTask?.cancel()
         autoTask = nil
+        for t in retuneTasks.values { t.cancel() }
+        retuneTasks.removeAll()
         inFlightAssets.removeAll()
     }
 
@@ -59,9 +80,10 @@ final class MagicPipeline {
     /// Tune panel each time the photographer adjusts a slider (caller
     /// should debounce so we don't saturate CoreImage).
     func retune(assetId: UUID, recipe: MagicRecipe, sourcePath: String) {
+        retuneTasks[assetId]?.cancel()
         let destination = outputDirectory
             .appendingPathComponent("\(assetId.uuidString)-enhanced.jpg")
-        Task { [weak self] in
+        retuneTasks[assetId] = Task { [weak self] in
             guard let self else { return }
             await self.applyMagic(
                 assetId: assetId,
@@ -117,31 +139,48 @@ final class MagicPipeline {
 
     // MARK: - Filter execution
 
+    /// Does the CoreImage work on a detached task (off the main actor) so
+    /// slider drags don't stutter the UI. Main-actor work is limited to
+    /// reading the asset list and writing the resulting key back to
+    /// SessionStore.
     private func applyMagic(
         assetId: UUID,
         source: String,
         destination: URL,
         recipe: MagicRecipe
     ) async {
-        guard let sourceImage = UIImage(contentsOfFile: source),
-              let enhanced = Self.apply(recipe: recipe, to: sourceImage),
-              let jpeg = enhanced.jpegData(compressionQuality: 0.85)
-        else { return }
-        do {
-            try jpeg.write(to: destination, options: .atomic)
-            try await store.attachEnhancedKey(id: assetId, key: destination.path)
-        } catch {
-            // Best-effort; silent on failure.
-        }
+        let ok: Bool = await Task.detached(priority: .userInitiated) {
+            Self.renderToDisk(source: source, destination: destination, recipe: recipe)
+        }.value
+        guard ok, !Task.isCancelled else { return }
+        try? await store.attachEnhancedKey(id: assetId, key: destination.path)
     }
 
-    private static func apply(recipe: MagicRecipe, to image: UIImage) -> UIImage? {
-        guard let ciImage = CIImage(image: image) else { return nil }
-        let ctx = CIContext(options: nil)
-        var current = ciImage
+    nonisolated private static func renderToDisk(source: String, destination: URL, recipe: MagicRecipe) -> Bool {
+        guard let sourceImage = UIImage(contentsOfFile: source),
+              let ciImage = CIImage(image: sourceImage)
+        else { return false }
+        let ctx = CIContext(options: [.useSoftwareRenderer: false])
 
+        // 1. Apple's auto-adjustment filters: white balance, tone curve,
+        //    red-eye. These analyse the scene, so they give us a clean
+        //    colour-neutral baseline before we apply subject-specific
+        //    recipe adjustments on top.
+        var current = ciImage
+        let autoFilters = ciImage.autoAdjustmentFilters(options: [
+            .enhance: true,
+            .redEye: true
+        ])
+        for filter in autoFilters {
+            filter.setValue(current, forKey: kCIInputImageKey)
+            if let out = filter.outputImage { current = out }
+        }
+
+        // 2. Recipe adjustments in stable order: warmth → shadows → tone →
+        //    skin. Warmth first because it interacts with white balance
+        //    that the auto pass just set.
         if recipe.warmth != 0 {
-            let target = 6500.0 + recipe.warmth * 700.0
+            let target = 6500.0 + recipe.warmth * 900.0
             let f = CIFilter(name: "CITemperatureAndTint")!
             f.setValue(current, forKey: kCIInputImageKey)
             f.setValue(CIVector(x: 6500, y: 0), forKey: "inputNeutral")
@@ -160,15 +199,15 @@ final class MagicPipeline {
         if recipe.contrast != 0 || recipe.saturation != 0 {
             let f = CIFilter(name: "CIColorControls")!
             f.setValue(current, forKey: kCIInputImageKey)
-            f.setValue(1.0 + recipe.saturation * 0.35, forKey: kCIInputSaturationKey)
-            f.setValue(1.0 + recipe.contrast * 0.35, forKey: kCIInputContrastKey)
+            f.setValue(1.0 + recipe.saturation * 0.45, forKey: kCIInputSaturationKey)
+            f.setValue(1.0 + recipe.contrast * 0.45, forKey: kCIInputContrastKey)
             if let out = f.outputImage { current = out }
         }
 
         if recipe.skinSmooth > 0 {
             let blur = CIFilter(name: "CIGaussianBlur")!
             blur.setValue(current, forKey: kCIInputImageKey)
-            blur.setValue(recipe.skinSmooth * 1.5, forKey: kCIInputRadiusKey)
+            blur.setValue(recipe.skinSmooth * 2.0, forKey: kCIInputRadiusKey)
             if let soft = blur.outputImage {
                 current = soft.cropped(to: ciImage.extent)
             }
@@ -178,10 +217,16 @@ final class MagicPipeline {
             if let out = sharpen.outputImage { current = out }
         }
 
-        guard let cgImage = ctx.createCGImage(current, from: ciImage.extent) else {
-            return nil
+        guard !Task.isCancelled,
+              let cgImage = ctx.createCGImage(current, from: ciImage.extent),
+              let jpeg = UIImage(cgImage: cgImage).jpegData(compressionQuality: 0.85)
+        else { return false }
+        do {
+            try jpeg.write(to: destination, options: .atomic)
+            return true
+        } catch {
+            return false
         }
-        return UIImage(cgImage: cgImage)
     }
 
     // MARK: - Subject classification

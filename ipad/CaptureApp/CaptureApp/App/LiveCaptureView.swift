@@ -1083,12 +1083,17 @@ struct TunePanel: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    Text("White balance + tone are auto-corrected first. These sliders apply on top — warmth shifts your target temperature by up to ±900K.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
                     TuneSlider(title: "Warmth", icon: "thermometer.sun",
                                value: $recipe.warmth, range: -1...1,
                                format: { v in
-                                let k = Int((v * 700).rounded())
+                                let k = Int((v * 900).rounded())
                                 return k == 0 ? "neutral" : "\(k > 0 ? "+" : "")\(k)K"
                                })
                     TuneSlider(title: "Skin smoothing", icon: "face.smiling",
@@ -1103,21 +1108,21 @@ struct TunePanel: View {
                     TuneSlider(title: "Saturation", icon: "paintpalette",
                                value: $recipe.saturation, range: -1...1,
                                format: signedPercent)
-                } header: {
-                    Text("Tune this shot")
-                } footer: {
-                    Text("Changes apply live. Reset restores the auto-selected baseline (portrait, vehicle, food, etc.).")
-                }
 
-                Section {
                     Button(role: .destructive) {
                         recipe = initialRecipe
                         onReset()
                     } label: {
                         Label("Reset to baseline", systemImage: "arrow.uturn.backward")
+                            .frame(maxWidth: .infinity, minHeight: 40)
                     }
+                    .buttonStyle(.bordered)
+                    .tint(.red)
+                    .padding(.top, 8)
                 }
+                .padding(20)
             }
+            .scrollDismissesKeyboard(.immediately)
             .navigationTitle("Magic · Tune")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
