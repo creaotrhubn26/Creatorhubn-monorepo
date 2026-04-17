@@ -1,5 +1,6 @@
 import Foundation
 import Network
+import Darwin
 
 /// Auto-discovery of CCAPI-enabled Canon cameras on the local network.
 /// Uses Bonjour (`_http._tcp.local.`) to find candidate HTTP services,
@@ -45,12 +46,18 @@ final class CameraDiscovery: ObservableObject {
         self.sessionFactory = sessionFactory
     }
 
+    private var scanTask: Task<Void, Never>?
+
     func start() {
         guard browser == nil else { return }
         cameras = []
         permissionDenied = false
         isSearching = true
 
+        // Bonjour first. Most Canon bodies don't advertise via mDNS in
+        // CCAPI mode (verified against R5 + R6 mkII 2026-04-18), but
+        // running the browser is essentially free and catches bodies that
+        // might in future firmware.
         let params = NWParameters()
         params.includePeerToPeer = true
 
@@ -63,13 +70,10 @@ final class CameraDiscovery: ObservableObject {
                 guard let self else { return }
                 switch state {
                 case .failed(let error):
-                    // Most common failure: local-network permission denied.
-                    // NWError.dns(-65570) on iOS is the policy-denied code.
                     self.permissionDenied = true
-                    self.isSearching = false
                     print("CameraDiscovery: browser failed — \(error)")
                 case .cancelled:
-                    self.isSearching = false
+                    break
                 default:
                     break
                 }
@@ -83,14 +87,138 @@ final class CameraDiscovery: ObservableObject {
         }
 
         browser.start(queue: .main)
+
+        // IP-range scan is the actual discovery path for Canon. Scan the
+        // local /24 subnet in parallel; successful CCAPI probes land as
+        // Found entries alongside any Bonjour hits (deduped by host).
+        scanTask = Task { [weak self] in
+            await self?.scanLocalSubnets()
+        }
     }
 
     func stop() {
         browser?.cancel()
         browser = nil
+        scanTask?.cancel()
+        scanTask = nil
         for task in probes.values { task.cancel() }
         probes.removeAll()
         isSearching = false
+    }
+
+    /// Enumerate all local /24 subnets via `getifaddrs`, probe every host
+    /// in each, and surface CCAPI responders. Parallelism is capped so we
+    /// don't open 254 simultaneous sockets.
+    private func scanLocalSubnets() async {
+        let subnets = Self.localIPv4Subnets()
+        if subnets.isEmpty { return }
+        await withTaskGroup(of: Void.self) { group in
+            for subnet in subnets {
+                for host in subnet.hosts {
+                    group.addTask { [weak self] in
+                        await self?.probeIP(host: host)
+                    }
+                }
+            }
+            await group.waitForAll()
+        }
+        await MainActor.run { self.isSearching = false }
+    }
+
+    private func probeIP(host: String) async {
+        guard let baseURL = URL(string: "https://\(host)") else { return }
+        let key = "ip:\(host)"
+        // Skip if we already have this host from Bonjour
+        let alreadyFound = await MainActor.run {
+            self.cameras.contains { $0.baseURL.host == host }
+        }
+        if alreadyFound { return }
+
+        let session = sessionFactory(baseURL)
+        let client = CCAPIClient(baseURL: baseURL, session: session)
+        do {
+            _ = try await withTimeout(seconds: 1.5) {
+                try await client.connect()
+            }
+            let info = try? await client.deviceInformation()
+            let found = Found(
+                id: key,
+                serviceName: info?.productname ?? host,
+                baseURL: baseURL,
+                deviceName: info?.productname,
+                firmware: info?.firmwareversion,
+                serial: info?.serialnumber
+            )
+            if !Task.isCancelled {
+                await MainActor.run {
+                    if !self.cameras.contains(where: { $0.baseURL.host == host }) {
+                        self.cameras.append(found)
+                    }
+                }
+            }
+        } catch {
+            // Not a CCAPI responder. Silent.
+        }
+    }
+
+    private func withTimeout<T: Sendable>(
+        seconds: TimeInterval,
+        operation: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask { try await operation() }
+            group.addTask {
+                try await Task.sleep(for: .seconds(seconds))
+                throw CancellationError()
+            }
+            let result = try await group.next()!
+            group.cancelAll()
+            return result
+        }
+    }
+
+    private struct Subnet {
+        let base: String  // e.g. "192.168.1"
+        let mine: Int     // our own host byte so we skip it
+
+        var hosts: [String] {
+            (1...254).filter { $0 != mine }.map { "\(base).\($0)" }
+        }
+    }
+
+    /// Uses getifaddrs to enumerate active IPv4 /24 interfaces. Loopback
+    /// and link-local autoconf ranges are filtered out.
+    private static func localIPv4Subnets() -> [Subnet] {
+        var result: [Subnet] = []
+        var ifaddr: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&ifaddr) == 0, let first = ifaddr else { return [] }
+        defer { freeifaddrs(first) }
+
+        var ptr: UnsafeMutablePointer<ifaddrs>? = first
+        while let entry = ptr {
+            defer { ptr = entry.pointee.ifa_next }
+            let flags = Int32(entry.pointee.ifa_flags)
+            guard (flags & IFF_UP) != 0, (flags & IFF_LOOPBACK) == 0 else { continue }
+            guard let addr = entry.pointee.ifa_addr, addr.pointee.sa_family == UInt8(AF_INET) else { continue }
+
+            var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+            let err = getnameinfo(addr, socklen_t(addr.pointee.sa_len),
+                                  &host, socklen_t(host.count),
+                                  nil, 0, NI_NUMERICHOST)
+            guard err == 0 else { continue }
+            let ip = String(cString: host)
+
+            // Keep private ranges only; skip link-local 169.254.x.x
+            guard ip.hasPrefix("192.168.") || ip.hasPrefix("10.") || ip.hasPrefix("172.") else { continue }
+
+            let parts = ip.split(separator: ".").compactMap { Int($0) }
+            guard parts.count == 4 else { continue }
+            let base = "\(parts[0]).\(parts[1]).\(parts[2])"
+            if !result.contains(where: { $0.base == base }) {
+                result.append(Subnet(base: base, mine: parts[3]))
+            }
+        }
+        return result
     }
 
     private func reconcile(results: [NWBrowser.Result]) {
