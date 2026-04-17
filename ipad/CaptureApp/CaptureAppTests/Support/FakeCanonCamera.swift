@@ -17,10 +17,15 @@ final class FakeCanonCamera: @unchecked Sendable {
     private(set) var pollCount = 0
     private(set) var seenRequests: [String] = []
 
-    init() {
-        // Pre-populate two assets that already exist on the card at boot.
-        contentBodies["/ccapi/ver120/contents/sd/100CANON/IMG_0001.JPG"] = Data(repeating: 0xAA, count: 64)
-        contentBodies["/ccapi/ver120/contents/sd/100CANON/IMG_0002.CR3"] = Data(repeating: 0xBB, count: 96)
+    init(initialAssetCount: Int = 2) {
+        // Pre-populate N assets that already exist on the card at boot.
+        // Default 2 is enough for the basic contents tests; pass larger values
+        // (e.g. 250) to exercise the paginated enumerate path.
+        for i in 1...initialAssetCount {
+            let name = String(format: "IMG_%04d.JPG", i)
+            let path = "/ccapi/ver120/contents/sd/100CANON/\(name)"
+            contentBodies[path] = Data(repeating: 0xAA, count: 32)
+        }
     }
 
     /// Initial card contents — present from `connect()` onward.
@@ -77,14 +82,16 @@ final class FakeCanonCamera: @unchecked Sendable {
         case "/ccapi/ver120/contents/sd":
             return MockURLProtocol.jsonResponse(for: url, body: Self.directoryListJSON)
 
-        case "/ccapi/ver120/contents/sd/100CANON":
-            return MockURLProtocol.jsonResponse(for: url, body: Self.contentsListJSON(initial: initialContentURLs()))
-
         case "/ccapi/ver110/event/polling?continue=on",
              "/ccapi/ver110/event/polling":
             return pollResponse(for: url)
 
         default:
+            // Contents-directory pagination: /ccapi/ver120/contents/sd/100CANON
+            // with optional ?kind=number or ?kind=list&page=N.
+            if url.path == "/ccapi/ver120/contents/sd/100CANON" {
+                return contentsDirectoryResponse(for: url)
+            }
             // Treat any other path as a content download if we have bytes for it.
             lock.lock()
             let body = contentBodies[pathWithQuery]
@@ -95,6 +102,28 @@ final class FakeCanonCamera: @unchecked Sendable {
             let resp = HTTPURLResponse(url: url, statusCode: 404, httpVersion: "HTTP/1.1", headerFields: nil)!
             return (resp, Data("not found: \(pathWithQuery)".utf8))
         }
+    }
+
+    /// Canon pagination: `?kind=number` → totals, `?kind=list&page=N` → slice
+    /// of up to 100 URLs. Default (no kind) behaves like page=1.
+    private func contentsDirectoryResponse(for url: URL) -> (HTTPURLResponse, Data) {
+        let all = initialContentURLs()
+        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        let query = components?.queryItems ?? []
+        let kind = query.first(where: { $0.name == "kind" })?.value ?? "list"
+
+        if kind == "number" {
+            let pages = max(1, Int((Double(all.count) / 100.0).rounded(.up)))
+            let body = "{\"contentsnumber\":\(all.count),\"pagenumber\":\(pages)}"
+            return MockURLProtocol.jsonResponse(for: url, body: body)
+        }
+
+        let page = Int(query.first(where: { $0.name == "page" })?.value ?? "1") ?? 1
+        let start = (page - 1) * 100
+        let end = min(start + 100, all.count)
+        let slice = (start < end) ? Array(all[start..<end]) : []
+        let urls = slice.map { "\"\($0)\"" }.joined(separator: ",")
+        return MockURLProtocol.jsonResponse(for: url, body: "{\"path\":[\(urls)]}")
     }
 
     private func pollResponse(for url: URL) -> (HTTPURLResponse, Data) {
@@ -147,13 +176,4 @@ final class FakeCanonCamera: @unchecked Sendable {
       "path": ["/ccapi/ver120/contents/sd/100CANON"]
     }
     """
-
-    private static func contentsListJSON(initial: [String]) -> String {
-        let urls = initial.map { "\"\($0)\"" }.joined(separator: ",")
-        return """
-        {
-          "path": [\(urls)]
-        }
-        """
-    }
 }

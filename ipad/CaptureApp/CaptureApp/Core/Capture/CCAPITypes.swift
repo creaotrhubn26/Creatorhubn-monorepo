@@ -102,6 +102,15 @@ struct CCAPIContentsURLList: Sendable, Decodable {
     let path: [String]
 }
 
+/// Pagination metadata for a directory listing. Fetched via
+/// `GET …/contents/{storage}/{dir}?kind=number`. `page=N` returns items
+/// (N-1)*100 + 1 … N*100, so pagenumber = ceil(contentsnumber / 100).
+/// Spec: CCAPI Reference v1.4.0 §contents kind=number.
+struct CCAPIContentsNumber: Sendable, Decodable {
+    let contentsnumber: Int
+    let pagenumber: Int
+}
+
 // MARK: - Event polling (§4.13.1 polling, §5.3 Event Data)
 
 /// Polling diff response. R6 mkII returns a huge union (70+ camera-state

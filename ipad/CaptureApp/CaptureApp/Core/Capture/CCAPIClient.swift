@@ -90,12 +90,33 @@ actor CCAPIClient {
         return wrapper.path
     }
 
-    /// List of content URLs under a directory. Spec §4.7.3.
-    func listContents(directoryPath: String) async throws -> [String] {
-        let wrapper: CCAPIContentsURLList = try await getAbsolute(
-            path: directoryPath,
-        )
-        return wrapper.path
+    /// Pagination metadata for a directory. Spec §contents kind=number.
+    /// Always safe to call (no side effects); returns the total file count
+    /// plus how many `kind=list` pages we'd need to enumerate every file.
+    func listContentsNumber(directoryPath: String) async throws -> CCAPIContentsNumber {
+        try await getAbsolute(path: directoryPath + "?kind=number")
+    }
+
+    /// All content URLs under a directory, auto-paginated.
+    /// CCAPI returns up to 100 URLs per `page`; we fetch every page and
+    /// concatenate. Pass `maxPages` when you want to cap enumeration (e.g.,
+    /// a progressive UI that only needs the newest N assets up front).
+    func listContents(
+        directoryPath: String,
+        maxPages: Int? = nil,
+    ) async throws -> [String] {
+        let meta = try await listContentsNumber(directoryPath: directoryPath)
+        let pagesToFetch = min(meta.pagenumber, maxPages ?? meta.pagenumber)
+        guard pagesToFetch > 0 else { return [] }
+        var all: [String] = []
+        all.reserveCapacity(meta.contentsnumber)
+        for page in 1...pagesToFetch {
+            let wrapper: CCAPIContentsURLList = try await getAbsolute(
+                path: "\(directoryPath)?kind=list&page=\(page)",
+            )
+            all.append(contentsOf: wrapper.path)
+        }
+        return all
     }
 
     /// Download the binary content at `contentURL`. Supports HTTP Range for

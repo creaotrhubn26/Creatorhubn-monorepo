@@ -79,7 +79,7 @@ final class CCAPIAdapterIntegrationTests: XCTestCase {
         let discovered = collected.compactMap { event -> AssetDescriptor? in
             if case let .assetDiscovered(descriptor) = event { return descriptor } else { return nil }
         }
-        XCTAssertEqual(Set(discovered.map(\.originalFilename)), ["IMG_0001.JPG", "IMG_0002.CR3"])
+        XCTAssertEqual(Set(discovered.map(\.originalFilename)), ["IMG_0001.JPG", "IMG_0002.JPG"])
 
         let enumCount = collected.compactMap { event -> Int? in
             if case let .cardContentsEnumerated(count) = event { return count } else { return nil }

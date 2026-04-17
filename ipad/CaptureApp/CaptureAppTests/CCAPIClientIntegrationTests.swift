@@ -46,7 +46,7 @@ final class CCAPIClientIntegrationTests: XCTestCase {
         let contents = try await client.listContents(directoryPath: directories[0])
         XCTAssertEqual(contents.sorted(), [
             "/ccapi/ver120/contents/sd/100CANON/IMG_0001.JPG",
-            "/ccapi/ver120/contents/sd/100CANON/IMG_0002.CR3",
+            "/ccapi/ver120/contents/sd/100CANON/IMG_0002.JPG",
         ])
     }
 
