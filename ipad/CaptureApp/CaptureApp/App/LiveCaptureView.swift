@@ -29,6 +29,10 @@ struct LiveCaptureView: View {
                     },
                     onDemo: {
                         Task { await model.connect(to: LiveCaptureModel.demoBaseURL) }
+                    },
+                    onPickDiscovered: { camera in
+                        lastCameraURL = camera.baseURL.absoluteString
+                        Task { await model.connect(to: camera.baseURL) }
                     }
                 )
             case .connecting:
@@ -151,12 +155,14 @@ private struct DisconnectedOverlay: View {
     let lastError: String?
     let onConnect: (URL) -> Void
     let onDemo: () -> Void
+    let onPickDiscovered: (CameraDiscovery.Found) -> Void
 
     @State private var url: String = ""
+    @StateObject private var discovery = CameraDiscovery()
     @FocusState private var urlFocused: Bool
 
     var body: some View {
-        VStack(spacing: 28) {
+        VStack(spacing: 24) {
             VStack(spacing: 12) {
                 Image(systemName: "camera.aperture")
                     .font(.system(size: 64, weight: .light))
@@ -168,8 +174,16 @@ private struct DisconnectedOverlay: View {
                     .foregroundStyle(.secondary)
             }
 
+            DiscoveredCamerasSection(
+                cameras: discovery.cameras,
+                isSearching: discovery.isSearching,
+                permissionDenied: discovery.permissionDenied,
+                onPick: onPickDiscovered
+            )
+            .frame(maxWidth: 440)
+
             VStack(alignment: .leading, spacing: 8) {
-                Label("Camera URL", systemImage: "network")
+                Label("Or enter manually", systemImage: "network")
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(.secondary)
                 TextField("https://192.168.1.2", text: $url)
@@ -229,12 +243,13 @@ private struct DisconnectedOverlay: View {
             #endif
         }
         .padding(.horizontal, 40)
-        .padding(.vertical, 32)
+        .padding(.vertical, 24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
             url = defaultURL
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { urlFocused = true }
+            discovery.start()
         }
+        .onDisappear { discovery.stop() }
     }
 
     private func connect() {
@@ -242,6 +257,105 @@ private struct DisconnectedOverlay: View {
         urlFocused = false
         onConnect(resolved)
     }
+}
+
+private struct DiscoveredCamerasSection: View {
+    let cameras: [CameraDiscovery.Found]
+    let isSearching: Bool
+    let permissionDenied: Bool
+    let onPick: (CameraDiscovery.Found) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                if isSearching && cameras.isEmpty {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Image(systemName: "wifi")
+                        .foregroundStyle(.tint)
+                }
+                Text(header)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+
+            if permissionDenied {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "lock.shield")
+                        .foregroundStyle(.yellow)
+                    Text("Local-network permission was denied. Enable it in Settings → CreatorHub Capture → Local Network to find cameras automatically.")
+                        .font(.caption)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(10)
+                .background(Color.captureChipBG, in: RoundedRectangle(cornerRadius: 8))
+            } else if cameras.isEmpty && isSearching {
+                Text("Checking the network for cameras… make sure the camera is on and CCAPI is enabled.")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(cameras) { camera in
+                        DiscoveredCameraCard(camera: camera, onTap: { onPick(camera) })
+                    }
+                }
+            }
+        }
+    }
+
+    private var header: String {
+        if permissionDenied                { return "Local-network permission needed" }
+        if cameras.isEmpty && isSearching  { return "Searching for cameras…" }
+        if cameras.isEmpty                 { return "No cameras on the network yet" }
+        if cameras.count == 1              { return "1 camera found" }
+        return "\(cameras.count) cameras found"
+    }
+}
+
+private struct DiscoveredCameraCard: View {
+    let camera: CameraDiscovery.Found
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 14) {
+                Image(systemName: "camera.fill")
+                    .font(.title2)
+                    .foregroundStyle(.tint)
+                    .frame(width: 40, height: 40)
+                    .background(Color.tint.opacity(0.15), in: Circle())
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(camera.displayName)
+                        .font(.body.weight(.semibold))
+                    HStack(spacing: 6) {
+                        if let firmware = camera.firmware {
+                            Text("fw \(firmware)").font(.caption2.monospaced())
+                        }
+                        if let host = camera.baseURL.host {
+                            if camera.firmware != nil { Text("·").foregroundStyle(.tertiary) }
+                            Text(host).font(.caption2.monospaced())
+                        }
+                    }
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(12)
+            .background(Color.captureFieldBG, in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(.tint.opacity(0.25), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private extension Color {
+    static var tint: Color { Color.accentColor }
 }
 
 // MARK: - Failure guide helper
