@@ -59,6 +59,18 @@ actor SessionStore {
         }
     }
 
+    /// Rename a session in place. Leaves everything else untouched.
+    func renameSession(id: UUID, name: String) async throws {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        try await database.dbWriter.write { db in
+            guard var session = try Session.fetchOne(db, key: id.uuidString) else { return }
+            session.name = trimmed
+            session.updatedAt = Date()
+            try session.update(db)
+        }
+    }
+
     // MARK: - Assets
 
     func createAsset(

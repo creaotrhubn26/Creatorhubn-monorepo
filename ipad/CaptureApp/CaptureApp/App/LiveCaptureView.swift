@@ -45,6 +45,10 @@ struct LiveCaptureView: View {
             SettingsSheet(
                 currentURL: lastCameraURL,
                 device: model.deviceSummary,
+                sessionName: model.sessionName,
+                onRename: { newName in
+                    Task { await model.renameSession(newName) }
+                },
                 onDisconnect: {
                     isSettingsPresented = false
                     Task { await model.disconnect() }
@@ -557,6 +561,8 @@ private struct HeroImage: View {
     let asset: Asset
     var preferEnhanced: Bool = true
 
+    @State private var loupePoint: CGPoint?
+
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 14)
@@ -575,13 +581,33 @@ private struct HeroImage: View {
             } else {
             let key = asset.previewKey
             if let key, let image = UIImage(contentsOfFile: key) {
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
-                    .shadow(radius: 20, y: 8)
-                    .transition(.opacity)
-                    .id(key)
+                GeometryReader { geo in
+                    Image(uiImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .shadow(radius: 20, y: 8)
+                        .transition(.opacity)
+                        .id(key)
+                        .overlay {
+                            if let loupePoint {
+                                FocusLoupe(image: image, containerSize: geo.size, point: loupePoint)
+                            }
+                        }
+                        .gesture(
+                            LongPressGesture(minimumDuration: 0.2)
+                                .sequenced(before: DragGesture(minimumDistance: 0))
+                                .onChanged { value in
+                                    switch value {
+                                    case .second(true, let drag):
+                                        loupePoint = drag?.location
+                                    default:
+                                        break
+                                    }
+                                }
+                                .onEnded { _ in loupePoint = nil }
+                        )
+                }
             } else {
                 VStack(spacing: 14) {
                     if asset.state == .previewPending {
@@ -602,6 +628,73 @@ private struct HeroImage: View {
             }
             }
         }
+    }
+}
+
+/// 100% zoom loupe that follows the finger. Long-press-and-drag anywhere
+/// on the hero image to summon it — matches the pro-photography gesture
+/// for focus-checking. The loupe offsets its inner image so the pixel
+/// directly under the finger is always centered in the circle.
+private struct FocusLoupe: View {
+    let image: UIImage
+    let containerSize: CGSize
+    let point: CGPoint
+
+    private static let loupeDiameter: CGFloat = 180
+    private static let zoom: CGFloat = 2.5
+
+    var body: some View {
+        // Compute image display rect inside the container (aspectFit).
+        let imgAspect = image.size.width / max(image.size.height, 1)
+        let boxAspect = containerSize.width / max(containerSize.height, 1)
+        let displaySize: CGSize
+        if imgAspect > boxAspect {
+            let w = containerSize.width
+            displaySize = CGSize(width: w, height: w / imgAspect)
+        } else {
+            let h = containerSize.height
+            displaySize = CGSize(width: h * imgAspect, height: h)
+        }
+        let displayOrigin = CGPoint(
+            x: (containerSize.width - displaySize.width) / 2,
+            y: (containerSize.height - displaySize.height) / 2
+        )
+
+        // Pixel position under finger, in display-rect coordinates.
+        let localX = max(0, min(displaySize.width, point.x - displayOrigin.x))
+        let localY = max(0, min(displaySize.height, point.y - displayOrigin.y))
+
+        // The loupe renders a zoomed copy of the same displayed image and
+        // offsets it so (localX, localY) centers in the circle.
+        return ZStack {
+            Image(uiImage: image)
+                .resizable()
+                .interpolation(.high)
+                .aspectRatio(contentMode: .fit)
+                .frame(width: displaySize.width * Self.zoom, height: displaySize.height * Self.zoom)
+                .offset(
+                    x: -localX * Self.zoom + Self.loupeDiameter / 2,
+                    y: -localY * Self.zoom + Self.loupeDiameter / 2
+                )
+                .frame(width: Self.loupeDiameter, height: Self.loupeDiameter, alignment: .topLeading)
+                .clipShape(Circle())
+                .overlay(Circle().stroke(.white, lineWidth: 3))
+                .overlay(Circle().stroke(.black.opacity(0.3), lineWidth: 1).padding(2))
+                .shadow(color: .black.opacity(0.4), radius: 12, y: 4)
+                .position(x: clampedX(for: point.x), y: clampedY(for: point.y))
+                .allowsHitTesting(false)
+        }
+    }
+
+    private func clampedX(for x: CGFloat) -> CGFloat {
+        min(max(x, Self.loupeDiameter / 2 + 8), containerSize.width - Self.loupeDiameter / 2 - 8)
+    }
+
+    private func clampedY(for y: CGFloat) -> CGFloat {
+        // Place loupe above finger so it's visible; clamp so it doesn't
+        // escape the display bounds.
+        let target = y - Self.loupeDiameter / 2 - 20
+        return min(max(target, Self.loupeDiameter / 2 + 8), containerSize.height - Self.loupeDiameter / 2 - 8)
     }
 }
 
@@ -1253,11 +1346,29 @@ private struct ErrorToast: View {
 private struct SettingsSheet: View {
     let currentURL: String
     let device: LiveCaptureModel.DeviceSummary?
+    let sessionName: String
+    let onRename: (String) -> Void
     let onDisconnect: () -> Void
+
+    @State private var editingName: String = ""
 
     var body: some View {
         NavigationStack {
             List {
+                Section("Session") {
+                    TextField("Session name", text: $editingName)
+                        .textInputAutocapitalization(.words)
+                        .submitLabel(.done)
+                        .onSubmit { commitRename() }
+                    Button {
+                        commitRename()
+                    } label: {
+                        Label("Rename", systemImage: "pencil")
+                    }
+                    .disabled(editingName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                              || editingName == sessionName)
+                }
+
                 Section("Camera") {
                     if let device {
                         LabeledContent("Model", value: device.productName)
@@ -1279,7 +1390,14 @@ private struct SettingsSheet: View {
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
+            .onAppear { editingName = sessionName }
         }
+    }
+
+    private func commitRename() {
+        let trimmed = editingName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != sessionName else { return }
+        onRename(trimmed)
     }
 }
 
@@ -1392,6 +1510,7 @@ final class LiveCaptureModel {
     var telemetry: CameraTelemetry = .empty
     var focusedAssetId: UUID?
     var pinnedFocus: Bool = false
+    var sessionName: String = "Live shoot"
     /// Token that changes every time a new asset lands. Views bind to it
     /// to trigger the shutter-fired flash animation.
     var shutterFlashToken: UUID?
@@ -1411,6 +1530,7 @@ final class LiveCaptureModel {
     private var cameraSession: CameraSession?
     private var client: CCAPIClient?
     private var store: SessionStore?
+    private var currentSessionId: UUID?
     private var downloadDirectory: URL?
     private var forwardingTasks: [Task<Void, Never>] = []
     #if DEBUG
@@ -1491,6 +1611,8 @@ final class LiveCaptureModel {
             self.store = store
             self.cameraSession = camera
             self.downloadDirectory = tempDir
+            self.currentSessionId = dbSession.id
+            self.sessionName = dbSession.name
 
             try await camera.start()
 
@@ -1592,6 +1714,16 @@ final class LiveCaptureModel {
         }
     }
 
+    func renameSession(_ newName: String) async {
+        guard let store, let sessionId = currentSessionId else { return }
+        do {
+            try await store.renameSession(id: sessionId, name: newName)
+            sessionName = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        } catch {
+            errorMessage = "Rename failed: \(error.localizedDescription)"
+        }
+    }
+
     private func teardown() async {
         if let cameraSession {
             await cameraSession.stop()
@@ -1604,6 +1736,8 @@ final class LiveCaptureModel {
         cameraSession = nil
         client = nil
         store = nil
+        currentSessionId = nil
+        sessionName = "Live shoot"
         downloadDirectory = nil
         deviceSummary = nil
         #if DEBUG
