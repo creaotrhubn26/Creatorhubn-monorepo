@@ -145,6 +145,46 @@ actor CCAPIClient {
         return (data, totalSize)
     }
 
+    // MARK: - Shooting control (§shutterbutton)
+
+    /// Takes a still image by pressing then releasing the shutter via the
+    /// `/manual` endpoint. `af: false` skips autofocus — useful when AF would
+    /// fail (lens cap on, featureless target). The resulting file shows up in
+    /// the next polling diff's `addedcontents`.
+    /// Spec: CCAPI Reference v1.4.0 §shutterbutton/manual.
+    func triggerManualShutter(af: Bool = true) async throws {
+        let path = "/ccapi/ver100/shooting/control/shutterbutton/manual"
+        try await post(path: path, body: ["action": "full_press", "af": af])
+        try await post(path: path, body: ["action": "release",    "af": af])
+    }
+
+    private func post(path: String, body: [String: any Sendable]) async throws {
+        let url = baseURL.appendingPathComponent(path)
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch let urlError as URLError where urlError.code == .timedOut {
+            throw CCAPIError.timedOut
+        } catch let urlError as URLError {
+            throw CCAPIError.network(String(describing: urlError.code))
+        }
+        guard let http = response as? HTTPURLResponse else {
+            throw CCAPIError.invalidResponse("not HTTPURLResponse")
+        }
+        if http.statusCode == 503 { throw CCAPIError.cameraBusy }
+        guard (200..<300).contains(http.statusCode) else {
+            throw CCAPIError.httpStatus(
+                code: http.statusCode,
+                body: String(data: data, encoding: .utf8),
+            )
+        }
+    }
+
     // MARK: - Event polling (§4.13.1)
 
     /// Short poll: returns the current diff immediately. Spec §4.13.1.

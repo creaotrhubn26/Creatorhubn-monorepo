@@ -20,9 +20,9 @@ final class FakeCanonCamera: @unchecked Sendable {
     init(initialAssetCount: Int = 2) {
         // Pre-populate N assets that already exist on the card at boot.
         // Default 2 is enough for the basic contents tests; pass larger values
-        // (e.g. 250) to exercise the paginated enumerate path.
-        for i in 1...initialAssetCount {
-            let name = String(format: "IMG_%04d.JPG", i)
+        // (e.g. 250) to exercise the paginated enumerate path. 0 is valid.
+        for i in 0..<initialAssetCount {
+            let name = String(format: "IMG_%04d.JPG", i + 1)
             let path = "/ccapi/ver120/contents/sd/100CANON/\(name)"
             contentBodies[path] = Data(repeating: 0xAA, count: 32)
         }

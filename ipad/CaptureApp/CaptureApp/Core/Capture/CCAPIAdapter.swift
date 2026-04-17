@@ -22,6 +22,7 @@ actor CCAPIAdapter: IngestAdapter {
     private let client: CCAPIClient
     private let fileManager: FileManager
     private let downloadDirectory: URL
+    private let enumerateOnStart: Bool
 
     private var pollingTask: Task<Void, Never>?
     private var downloadTask: Task<Void, Never>?
@@ -42,10 +43,12 @@ actor CCAPIAdapter: IngestAdapter {
         client: CCAPIClient? = nil,
         downloadDirectory: URL? = nil,
         fileManager: FileManager = .default,
+        enumerateOnStart: Bool = true,
     ) throws {
         self.adapterId = adapterId ?? "ccapi:\(baseURL.host ?? UUID().uuidString)"
         self.client = client ?? CCAPIClient(baseURL: baseURL)
         self.fileManager = fileManager
+        self.enumerateOnStart = enumerateOnStart
 
         let (stream, cont) = AsyncStream<IngestEvent>.makeStream(bufferingPolicy: .unbounded)
         self.events = stream
@@ -74,7 +77,9 @@ actor CCAPIAdapter: IngestAdapter {
             throw error
         }
         try await transition(to: .pairing)
-        try await enumerateAllContent()
+        if enumerateOnStart {
+            try await enumerateAllContent()
+        }
         try await transition(to: .ready)
 
         pollingTask = Task { [weak self] in

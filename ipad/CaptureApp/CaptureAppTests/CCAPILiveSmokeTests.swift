@@ -72,6 +72,68 @@ final class CCAPILiveSmokeTests: XCTestCase {
         print("LIVE · polling: addedcontents=\(response.addedcontents?.count ?? 0) totalContents=\(response.totalContentsCount ?? -1)")
     }
 
+    func testFullPipelineCaptureAgainstLiveCamera() async throws {
+        let baseURL = try liveBaseURL()
+        let session = CCAPIClient.makeInsecureSession(trustingHostOf: baseURL)
+        let client = CCAPIClient(baseURL: baseURL, session: session)
+
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("live-pipeline-\(UUID().uuidString)", isDirectory: true)
+        let adapter = try CCAPIAdapter(
+            baseURL: baseURL,
+            adapterId: "live-pipeline",
+            client: client,
+            downloadDirectory: tempDir,
+            enumerateOnStart: false  // skip the 2k-file walk
+        )
+        let store = SessionStore(database: try AppDatabase.inMemory())
+        let dbSession = try await store.createSession(
+            name: "Live pipeline smoke",
+            clientId: nil,
+            ownerUserId: "live-smoke"
+        )
+        let cameraSession = CameraSession(
+            sessionId: dbSession.id,
+            actorUserId: "live-smoke",
+            adapter: adapter,
+            store: store
+        )
+
+        try await cameraSession.start()
+        // Let the polling loop settle and drain the initial snapshot.
+        try? await Task.sleep(for: .seconds(2))
+
+        try await client.triggerManualShutter(af: false)
+
+        // Give the camera 15s to write the file and surface it via
+        // polling → adapter events → CameraSession → SessionStore.
+        var captured: Asset?
+        let deadline = Date().addingTimeInterval(15)
+        while Date() < deadline, captured == nil {
+            let assets = try await store.listAssets(sessionId: dbSession.id)
+            captured = assets.first
+            if captured == nil {
+                try? await Task.sleep(for: .milliseconds(250))
+            }
+        }
+
+        await cameraSession.stop()
+        try? FileManager.default.removeItem(at: tempDir)
+
+        XCTAssertNotNil(captured, "shutter-triggered asset did not land in SessionStore within 15s")
+        if let asset = captured {
+            print("LIVE · captured+persisted: name=\(asset.originalFilename) state=\(asset.state.rawValue)")
+            XCTAssertFalse(asset.originalFilename.isEmpty)
+        }
+
+        // Verify the event log captured the transitions we expect.
+        let events = try await store.listEvents(sessionId: dbSession.id)
+        XCTAssertTrue(
+            events.contains { $0.eventType == .captured },
+            "expected a .captured event entry; got types=\(events.map(\.eventType))"
+        )
+    }
+
     func testPaginatedContentsWalkAgainstLiveCamera() async throws {
         let baseURL = try liveBaseURL()
         let client = makeClient(baseURL)
