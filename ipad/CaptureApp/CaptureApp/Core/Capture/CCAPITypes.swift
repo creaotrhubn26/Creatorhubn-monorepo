@@ -83,7 +83,9 @@ struct CCAPIStorageList: Sendable, Decodable {
 
 struct CCAPIStorage: Sendable, Decodable, Hashable {
     let name: String
-    let url: String
+    /// Absolute CCAPI path to the storage root, e.g. "/ccapi/ver120/contents/card1".
+    /// Field is literally `path` on R6 mkII — verified against real hardware 2026-04-17.
+    let path: String
     let accesscapability: String?
     let maxsize: Int64?
     let spacesize: Int64?

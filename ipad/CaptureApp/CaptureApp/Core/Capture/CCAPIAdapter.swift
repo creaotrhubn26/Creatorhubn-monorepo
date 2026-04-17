@@ -123,7 +123,7 @@ actor CCAPIAdapter: IngestAdapter {
         let storages = try await client.listStorages()
         var total = 0
         for storage in storages {
-            let directories = try await client.listDirectories(storagePath: storage.url)
+            let directories = try await client.listDirectories(storagePath: storage.path)
             for dir in directories {
                 let contents = try await client.listContents(directoryPath: dir)
                 for url in contents {

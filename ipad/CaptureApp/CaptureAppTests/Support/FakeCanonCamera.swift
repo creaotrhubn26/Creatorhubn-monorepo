@@ -132,7 +132,7 @@ final class FakeCanonCamera: @unchecked Sendable {
       "storagelist": [
         {
           "name": "sd",
-          "url": "/ccapi/ver120/contents/sd",
+          "path": "/ccapi/ver120/contents/sd",
           "accesscapability": "readwrite",
           "maxsize": 256000000000,
           "spacesize": 120000000000,

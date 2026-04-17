@@ -34,14 +34,14 @@ final class CCAPIClientIntegrationTests: XCTestCase {
         let storages = try await client.listStorages()
         XCTAssertEqual(storages.count, 1)
         XCTAssertEqual(storages.first?.name, "sd")
-        XCTAssertEqual(storages.first?.url, "/ccapi/ver120/contents/sd")
+        XCTAssertEqual(storages.first?.path, "/ccapi/ver120/contents/sd")
     }
 
     func testListContentsWalksFromStorageToFiles() async throws {
         let client = CCAPIClient(baseURL: FakeCanonCamera.baseURL, session: camera.makeSession())
         _ = try await client.connect()
         let storages = try await client.listStorages()
-        let directories = try await client.listDirectories(storagePath: storages[0].url)
+        let directories = try await client.listDirectories(storagePath: storages[0].path)
         XCTAssertEqual(directories, ["/ccapi/ver120/contents/sd/100CANON"])
         let contents = try await client.listContents(directoryPath: directories[0])
         XCTAssertEqual(contents.sorted(), [

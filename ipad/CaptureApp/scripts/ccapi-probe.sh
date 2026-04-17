@@ -43,11 +43,32 @@ hit storage      "/ccapi/ver110/devicestatus/storage"
 hit currentstore "/ccapi/ver110/devicestatus/currentstorage"
 hit currentdir   "/ccapi/ver110/devicestatus/currentdirectory"
 
-# 4. Contents — single endpoint on R6 mkII, shape unknown. Capture as-is.
-hit contents     "/ccapi/ver120/contents"
+# 4. Contents walk — top-level returns storage paths, then drill into card+dir.
+hit contents_root    "/ccapi/ver120/contents"
+hit contents_card1   "/ccapi/ver120/contents/card1"
+hit contents_dcim    "/ccapi/ver120/contents/card1/100CANON"
+# Canon usually supports ?type=filter and ?kind=list|info; capture both variants.
+hit contents_dcim_list "/ccapi/ver120/contents/card1/100CANON?kind=list"
+hit contents_dcim_info "/ccapi/ver120/contents/card1/100CANON?kind=info"
 
-# 5. Event polling — stateful. Hit once to see baseline, DELETE to clear, hit again.
+# 5. Event polling — stateful. Snapshot, capture a frame, then diff.
 hit polling_initial "/ccapi/ver110/event/polling"
+
+echo "==> POST /ccapi/ver100/shooting/control/shutterbutton (trigger capture)"
+curl -sS -k -m 10 \
+  -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"af":true}' \
+  -D "$OUT/shutter.headers" \
+  -o "$OUT/shutter.json" \
+  -w "HTTP %{http_code} · %{size_download}B · %{time_total}s\n" \
+  "$BASE/ccapi/ver100/shooting/control/shutterbutton" || true
+
+# Wait for camera to write to card, then poll for the diff.
+sleep 3
+hit polling_after_capture "/ccapi/ver110/event/polling"
+hit contents_dcim_after   "/ccapi/ver120/contents/card1/100CANON"
+
 hit polling_clear   "/ccapi/ver110/event/polling" DELETE
 hit polling_after   "/ccapi/ver110/event/polling"
 
