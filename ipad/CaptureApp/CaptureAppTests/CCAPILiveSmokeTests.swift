@@ -105,24 +105,30 @@ final class CCAPILiveSmokeTests: XCTestCase {
 
         try await client.triggerManualShutter(af: false)
 
-        // Give the camera 15s to write the file and surface it via
-        // polling → adapter events → CameraSession → SessionStore.
+        // Find the asset (it appears on first poll after shutter ~1-3s),
+        // then keep polling store state until the preview download either
+        // completes (.previewReady) or fails (.failedTransient). Stopping
+        // the session immediately on first-seen was cancelling the in-flight
+        // download, masking the real CCAPI result.
         var captured: Asset?
-        let deadline = Date().addingTimeInterval(15)
-        while Date() < deadline, captured == nil {
+        let deadline = Date().addingTimeInterval(30)
+        while Date() < deadline {
             let assets = try await store.listAssets(sessionId: dbSession.id)
-            captured = assets.first
-            if captured == nil {
-                try? await Task.sleep(for: .milliseconds(250))
+            if let asset = assets.first {
+                captured = asset
+                if asset.state == .previewReady || asset.state == .failedTransient {
+                    break
+                }
             }
+            try? await Task.sleep(for: .milliseconds(300))
         }
 
         await cameraSession.stop()
         try? FileManager.default.removeItem(at: tempDir)
 
-        XCTAssertNotNil(captured, "shutter-triggered asset did not land in SessionStore within 15s")
+        XCTAssertNotNil(captured, "shutter-triggered asset did not land in SessionStore within 30s")
         if let asset = captured {
-            print("LIVE · captured+persisted: name=\(asset.originalFilename) state=\(asset.state.rawValue)")
+            print("LIVE · captured+persisted: name=\(asset.originalFilename) state=\(asset.state.rawValue) previewKey=\(asset.previewKey ?? "nil")")
             XCTAssertFalse(asset.originalFilename.isEmpty)
         }
 
@@ -132,6 +138,9 @@ final class CCAPILiveSmokeTests: XCTestCase {
             events.contains { $0.eventType == .captured },
             "expected a .captured event entry; got types=\(events.map(\.eventType))"
         )
+        for event in events where event.eventType == .failed {
+            print("LIVE · failure metadata: \(event.metadata)")
+        }
     }
 
     func testPaginatedContentsWalkAgainstLiveCamera() async throws {
