@@ -1,12 +1,14 @@
+#if DEBUG
 import Foundation
 
-/// In-process fake of a Canon CCAPI-enabled body. Holds the URLProtocol
-/// handler closure that intercepts every CCAPI call and returns either a
-/// canned JSON response or fake JPEG/RAW bytes.
+/// In-process fake of a Canon CCAPI-enabled body. Drives both the test
+/// suite and the app's Demo Mode (connect to `https://camera.demo` to
+/// stand up a fake locally without hardware). DEBUG-only.
 ///
-/// One body, one storage card, two known assets at start. Each call to
+/// One body, one storage card, N known assets at start. Each call to
 /// `simulateCapture()` queues a new content URL that the next polling
-/// request will return as `addedcontents`.
+/// request will return as `addedcontents`. Shutter POSTs also trigger
+/// a simulated capture in Demo Mode.
 final class FakeCanonCamera: @unchecked Sendable {
     static let baseURL = URL(string: "http://192.0.2.10:8080")!
 
@@ -86,6 +88,10 @@ final class FakeCanonCamera: @unchecked Sendable {
              "/ccapi/ver110/event/polling":
             return pollResponse(for: url)
 
+        case "/ccapi/ver100/shooting/control/shutterbutton/manual",
+             "/ccapi/ver100/shooting/control/shutterbutton":
+            return shutterResponse(for: request, url: url)
+
         default:
             // Contents-directory pagination: /ccapi/ver120/contents/sd/100CANON
             // with optional ?kind=number or ?kind=list&page=N.
@@ -141,15 +147,62 @@ final class FakeCanonCamera: @unchecked Sendable {
         pollCount += 1
         let drained = pendingAddedContents
         pendingAddedContents.removeAll()
+        let emitSnapshot = (pollCount == 1)
+        let currentPoll = pollCount
         lock.unlock()
-        let body: String
-        if drained.isEmpty {
-            body = "{}"
-        } else {
+
+        var fields: [String] = []
+        if !drained.isEmpty {
             let urls = drained.map { "\"\($0)\"" }.joined(separator: ",")
-            body = "{\"addedcontents\":[\(urls)]}"
+            fields.append("\"addedcontents\":[\(urls)]")
         }
+        if emitSnapshot {
+            // Full telemetry snapshot on the first poll — matches what a
+            // real camera does when a client starts polling fresh.
+            fields.append(contentsOf: [
+                #""battery":{"kind":"battery","name":"LP-E6NH","quality":"normal","level":"78"}"#,
+                #""lens":{"mount":true,"name":"RF50mm F1.8 STM"}"#,
+                #""av":{"value":"f5.0","ability":["f1.8","f2.8","f4.0","f5.0","f5.6","f8.0","f11","f16"]}"#,
+                #""tv":{"value":"1/125","ability":["1/30","1/60","1/125","1/250","1/500"]}"#,
+                #""iso":{"value":"400","ability":["auto","100","200","400","800","1600","3200"]}"#,
+                #""storage":{"storagelist":[{"name":"card1","path":"/ccapi/ver120/contents/sd","accesscapability":"readwrite","maxsize":256000000000,"spacesize":119000000000,"contentsnumber":\#(initialContentURLs().count)}]}"#,
+            ])
+        } else if !drained.isEmpty {
+            // After a capture, surface the updated file count + a tiny
+            // battery drain so the footer feels alive. 78 → 77 → 76 …
+            let simulatedLevel = max(10, 78 - ((currentPoll / 20) % 70))
+            fields.append(#""battery":{"kind":"battery","name":"LP-E6NH","quality":"normal","level":"\#(simulatedLevel)"}"#)
+            fields.append(#""storage":{"storagelist":[{"name":"card1","path":"/ccapi/ver120/contents/sd","accesscapability":"readwrite","maxsize":256000000000,"spacesize":119000000000,"contentsnumber":\#(contentBodies.count)}]}"#)
+        }
+        let body = "{" + fields.joined(separator: ",") + "}"
         return MockURLProtocol.jsonResponse(for: url, body: body)
+    }
+
+    /// Full-press registers one simulated capture; release is a no-op so
+    /// the press/release pair counts as a single shot (matches what the
+    /// iPad's `CCAPIClient.triggerManualShutter` sends in the real app).
+    private func shutterResponse(for request: URLRequest, url: URL) -> (HTTPURLResponse, Data) {
+        let body = (request.httpBody ?? Self.drainStream(request.httpBodyStream)) ?? Data()
+        let json = String(data: body, encoding: .utf8) ?? ""
+        if json.contains("full_press") {
+            let filename = String(format: "IMG_%04d.JPG", Int.random(in: 9001...9999))
+            _ = simulateCapture(filename: filename)
+        }
+        return MockURLProtocol.jsonResponse(for: url, body: "{}")
+    }
+
+    private static func drainStream(_ stream: InputStream?) -> Data? {
+        guard let stream else { return nil }
+        stream.open()
+        defer { stream.close() }
+        var data = Data()
+        var buf = [UInt8](repeating: 0, count: 4096)
+        while stream.hasBytesAvailable {
+            let n = stream.read(&buf, maxLength: buf.count)
+            if n <= 0 { break }
+            data.append(buf, count: n)
+        }
+        return data
     }
 
     // MARK: - Canned JSON
@@ -187,3 +240,4 @@ final class FakeCanonCamera: @unchecked Sendable {
     }
     """
 }
+#endif

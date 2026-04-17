@@ -1,7 +1,11 @@
+// swiftformat:disable redundantSelf
+#if DEBUG
 import Foundation
 
-/// URLProtocol that routes requests to a closure-based handler so tests can
-/// stand up a fake HTTP server in-process without touching the network.
+/// URLProtocol that routes requests to a closure-based handler. Used by
+/// unit tests to stand up a fake HTTP server in-process, and by the app's
+/// in-process Demo Mode (see `FakeCanonCamera.install()`). DEBUG-only —
+/// release builds don't ship the protocol or its handler.
 ///
 /// Usage:
 /// ```swift
@@ -70,3 +74,4 @@ extension MockURLProtocol {
         return (response, body)
     }
 }
+#endif

@@ -26,6 +26,9 @@ struct LiveCaptureView: View {
                     onConnect: { url in
                         lastCameraURL = url.absoluteString
                         Task { await model.connect(to: url) }
+                    },
+                    onDemo: {
+                        Task { await model.connect(to: LiveCaptureModel.demoBaseURL) }
                     }
                 )
             case .connecting:
@@ -118,6 +121,7 @@ private struct DisconnectedOverlay: View {
     let isConnecting: Bool
     let lastError: String?
     let onConnect: (URL) -> Void
+    let onDemo: () -> Void
 
     @State private var url: String = ""
     @FocusState private var urlFocused: Bool
@@ -184,6 +188,16 @@ private struct DisconnectedOverlay: View {
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
             .disabled(isConnecting || URL(string: url)?.host == nil)
+
+            #if DEBUG
+            Button(action: onDemo) {
+                Label("Try demo camera", systemImage: "wand.and.stars")
+                    .font(.footnote.weight(.medium))
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.regular)
+            .disabled(isConnecting)
+            #endif
         }
         .padding(.horizontal, 40)
         .padding(.vertical, 32)
@@ -1047,8 +1061,18 @@ final class LiveCaptureModel {
     private var store: SessionStore?
     private var downloadDirectory: URL?
     private var forwardingTasks: [Task<Void, Never>] = []
+    #if DEBUG
+    /// Retained while Demo Mode is active so its MockURLProtocol handler
+    /// stays installed. Cleared on teardown.
+    private var demoFake: FakeCanonCamera?
+    #endif
 
     private let actorUserId = "local-photographer"
+
+    /// URL that triggers in-process Demo Mode. Keeps the fake swap isolated
+    /// to a single well-known host — any other URL goes to the real
+    /// insecure-trust session path.
+    static let demoBaseURL = URL(string: "https://camera.demo")!
 
     func connect(to baseURL: URL) async {
         guard cameraSession == nil else { return }
@@ -1056,7 +1080,11 @@ final class LiveCaptureModel {
         errorMessage = nil
         refreshPhase()
 
-        let urlSession = CCAPIClient.makeInsecureSession(trustingHostOf: baseURL)
+        let urlSession = Self.makeSession(for: baseURL, retain: { [weak self] fake in
+            #if DEBUG
+            self?.demoFake = fake
+            #endif
+        })
         let client = CCAPIClient(baseURL: baseURL, session: urlSession)
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("capture-live", isDirectory: true)
@@ -1161,6 +1189,10 @@ final class LiveCaptureModel {
         store = nil
         downloadDirectory = nil
         deviceSummary = nil
+        #if DEBUG
+        demoFake = nil
+        MockURLProtocol.handler = nil
+        #endif
         telemetry = .empty
         pinnedFocus = false
         shutterFlashToken = nil
@@ -1179,6 +1211,27 @@ final class LiveCaptureModel {
             phase = .connected
         }
     }
+
+    /// Build a URLSession suited to `baseURL`:
+    ///   - `camera.demo` → in-process fake (DEBUG builds only).
+    ///   - anything else → real URLSession with a scoped self-signed cert trust.
+    #if DEBUG
+    private static func makeSession(for baseURL: URL, retain: (FakeCanonCamera) -> Void) -> URLSession {
+        if baseURL.host == "camera.demo" {
+            let fake = FakeCanonCamera(initialAssetCount: 0)
+            fake.install()
+            retain(fake)
+            let config = URLSessionConfiguration.ephemeral
+            config.protocolClasses = [MockURLProtocol.self]
+            return URLSession(configuration: config)
+        }
+        return CCAPIClient.makeInsecureSession(trustingHostOf: baseURL)
+    }
+    #else
+    private static func makeSession(for baseURL: URL, retain: (Void) -> Void) -> URLSession {
+        CCAPIClient.makeInsecureSession(trustingHostOf: baseURL)
+    }
+    #endif
 
     /// Merge a partial telemetry diff into the accumulated snapshot — only
     /// non-nil fields overwrite existing values so last-known state persists
