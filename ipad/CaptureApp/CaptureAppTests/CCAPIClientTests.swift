@@ -36,7 +36,25 @@ final class CCAPIInventoryTests: XCTestCase {
         """#.data(using: .utf8)!
         let response = try JSONDecoder().decode(CCAPIPollingResponse.self, from: json)
         XCTAssertEqual(response.addedcontents?.count, 1)
-        XCTAssertNil(response.batterylist)
-        XCTAssertNil(response.temperature)
+        XCTAssertNil(response.totalContentsCount)
+    }
+
+    func testPollingResponseTolerantsRealR6mkIIDiff() throws {
+        // Verbatim payload captured from R6 mkII firmware 1.6.0 after one
+        // shutter release — has addedcontents plus the full wrapped-object
+        // camera-state diff we don't model. Decoder must skip unknown fields
+        // without throwing.
+        let json = #"""
+        {
+          "storage": {"storagelist": [{"name":"card1","path":"/ccapi/ver120/contents/card1","accesscapability":"readwrite","maxsize":511801556992,"spacesize":488993718272,"contentsnumber":2113}]},
+          "addedcontents": ["/ccapi/ver120/contents/card1/100CANON/_69A8268.CR3"],
+          "shootingmodedial": {"value":"m","ability":["m"]},
+          "av": {"value":"f5.0","ability":["f1.8","f5.0","f22"]},
+          "picturestyle": {"value":"neutral","ability":["standard","neutral"]}
+        }
+        """#.data(using: .utf8)!
+        let response = try JSONDecoder().decode(CCAPIPollingResponse.self, from: json)
+        XCTAssertEqual(response.addedcontents, ["/ccapi/ver120/contents/card1/100CANON/_69A8268.CR3"])
+        XCTAssertEqual(response.totalContentsCount, 2113)
     }
 }

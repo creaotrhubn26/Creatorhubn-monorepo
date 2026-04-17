@@ -104,41 +104,50 @@ struct CCAPIContentsURLList: Sendable, Decodable {
 
 // MARK: - Event polling (§4.13.1 polling, §5.3 Event Data)
 
-/// Union of all event-bearing fields the polling endpoint can return.
-/// The camera returns only the subset that has changed since last poll.
-/// Decode leniently — unknown fields are OK.
+/// Polling diff response. R6 mkII returns a huge union (70+ camera-state
+/// fields) wrapped in nested objects, most of which we don't care about.
+/// We decode defensively: pull out the fields we actually act on, ignore
+/// everything else. This keeps the decoder robust against unknown or
+/// mis-typed siblings without requiring us to model the full schema.
+///
+/// Verified against R6 mkII firmware 1.6.0 (2026-04-17).
 struct CCAPIPollingResponse: Sendable, Decodable {
+    /// URLs of assets that appeared on the card since the last poll.
+    /// Surfaces every shutter release with the path to the resulting file(s).
     let addedcontents: [String]?
-    let deviceinformation: CCAPIDeviceInformation?
-    let storagelist: [CCAPIStorage]?
-    let storageinfo: CCAPIStorageInfo?
-    let batterylist: [CCAPIBattery]?
-    let temperature: String?
-    let cardformatstatus: String?
-    let shootingmode: String?
-    let shootingmodedial: String?
-    let lensname: String?
-    let afframeposition: CCAPIAfFramePosition?
+
+    /// Total file count on the current card, if that field was part of the
+    /// diff. Use as a secondary heartbeat when `addedcontents` is missing
+    /// (e.g., after a reconnect we only see the storage snapshot change).
+    let totalContentsCount: Int?
+
+    private enum CodingKeys: String, CodingKey {
+        case addedcontents
+        case storage
+    }
+
+    init(
+        addedcontents: [String]? = nil,
+        totalContentsCount: Int? = nil
+    ) {
+        self.addedcontents = addedcontents
+        self.totalContentsCount = totalContentsCount
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.addedcontents = try container.decodeIfPresent([String].self, forKey: .addedcontents)
+        if let storage = try? container.decodeIfPresent(CCAPIStorageSnapshot.self, forKey: .storage) {
+            self.totalContentsCount = storage.storagelist.first?.contentsnumber
+        } else {
+            self.totalContentsCount = nil
+        }
+    }
 }
 
-struct CCAPIStorageInfo: Sendable, Decodable {
-    let name: String?
-    let url: String?
-    let accesscapability: String?
-    let maxsize: Int64?
-    let spacesize: Int64?
-    let contentsnumber: Int?
-}
-
-struct CCAPIBattery: Sendable, Decodable {
-    let name: String?
-    let kind: String?
-    let level: String?
-    let quality: String?
-    let chargestage: String?
-}
-
-struct CCAPIAfFramePosition: Sendable, Decodable {
-    let positionx: Int?
-    let positiony: Int?
+/// Wrapper for the `"storage"` field inside a polling diff: the camera
+/// nests the actual list one level deeper under `storagelist`, unlike
+/// `GET /devicestatus/storage` which returns that list at the top level.
+private struct CCAPIStorageSnapshot: Decodable {
+    let storagelist: [CCAPIStorage]
 }
