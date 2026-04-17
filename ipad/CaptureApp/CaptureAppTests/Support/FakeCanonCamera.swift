@@ -92,6 +92,16 @@ final class FakeCanonCamera: @unchecked Sendable {
             if url.path == "/ccapi/ver120/contents/sd/100CANON" {
                 return contentsDirectoryResponse(for: url)
             }
+            // Content file download: look up by path WITHOUT query so
+            // ?kind=display, ?kind=thumbnail, ?kind=main all resolve to
+            // the same bytes. Real camera would return different sizes,
+            // but for unit-test wiring they're equivalent.
+            lock.lock()
+            let bodyIgnoringQuery = contentBodies[url.path]
+            lock.unlock()
+            if let body = bodyIgnoringQuery {
+                return MockURLProtocol.binaryResponse(for: url, body: body)
+            }
             // Treat any other path as a content download if we have bytes for it.
             lock.lock()
             let body = contentBodies[pathWithQuery]

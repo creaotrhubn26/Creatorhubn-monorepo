@@ -254,8 +254,9 @@ actor CCAPIAdapter: IngestAdapter {
             .appendingPathComponent("\(item.assetId.uuidString)-\(item.kind.rawValue)")
         do {
             // TODO: support HTTP Range-based resume when spec is verified.
+            let sourceURL = Self.downloadURL(for: item)
             let (data, totalBytes) = try await client.downloadContent(
-                contentURL: item.contentURL,
+                contentURL: sourceURL,
                 range: nil,
             )
             try data.write(to: destination, options: .atomic)
@@ -304,6 +305,23 @@ actor CCAPIAdapter: IngestAdapter {
         case .full:    return .full
         case .raw:     return .raw
         }
+    }
+
+    /// Per-kind query parameter that tells the camera which representation
+    /// of the file to return. Canon CCAPI v1.4.0 §4.7.5:
+    ///   - main (default) — full-resolution original (30+ MB for CR3)
+    ///   - display        — screen-size preview (~1920px JPEG)
+    ///   - thumbnail      — small thumbnail (~300px)
+    /// We treat `.preview` as `display` (best balance for filmstrip + hero),
+    /// and `.full`/`.raw` as `main` (default, no query param).
+    private static func downloadURL(for item: Pending) -> URL {
+        guard item.kind == .preview,
+              var components = URLComponents(url: item.contentURL, resolvingAgainstBaseURL: false)
+        else { return item.contentURL }
+        var queryItems = components.queryItems ?? []
+        queryItems.append(URLQueryItem(name: "kind", value: "display"))
+        components.queryItems = queryItems
+        return components.url ?? item.contentURL
     }
 
     /// UUID v5-style derivation from a content URL, so the same URL always
