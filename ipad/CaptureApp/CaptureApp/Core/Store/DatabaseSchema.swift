@@ -73,6 +73,11 @@ extension AppDatabase {
             try db.create(indexOn: "event", columns: ["sessionId", "createdAt"])
             try db.create(indexOn: "event", columns: ["assetId"])
         }
+        migrator.registerMigration("v2_asset_enhanced") { db in
+            try db.alter(table: "asset") { t in
+                t.add(column: "enhancedKey", .text)
+            }
+        }
         return migrator
     }()
 }

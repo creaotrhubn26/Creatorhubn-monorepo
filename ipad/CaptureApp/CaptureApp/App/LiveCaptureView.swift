@@ -76,7 +76,9 @@ struct LiveCaptureView: View {
             ZStack {
                 HeroStage(
                     asset: model.focusedAsset,
-                    onTap: { asset in viewerAsset = asset }
+                    showEnhanced: model.showEnhanced,
+                    onTap: { asset in viewerAsset = asset },
+                    onToggleEnhanced: { model.showEnhanced.toggle() }
                 )
                 ShutterFlashOverlay(trigger: model.shutterFlashToken)
                     .allowsHitTesting(false)
@@ -445,16 +447,25 @@ private struct ConnectionBadge: View {
 
 private struct HeroStage: View {
     let asset: Asset?
+    let showEnhanced: Bool
     let onTap: (Asset) -> Void
+    let onToggleEnhanced: () -> Void
 
     var body: some View {
         Group {
             if let asset {
                 VStack(spacing: 16) {
-                    HeroImage(asset: asset)
+                    HeroImage(asset: asset, preferEnhanced: showEnhanced)
                         .onTapGesture { onTap(asset) }
                         .padding(.horizontal, 24)
                         .padding(.top, 24)
+                        .overlay(alignment: .topTrailing) {
+                            if asset.enhancedKey != nil {
+                                EnhancedToggleChip(showEnhanced: showEnhanced, action: onToggleEnhanced)
+                                    .padding(.top, 36)
+                                    .padding(.trailing, 36)
+                            }
+                        }
 
                     HStack(spacing: 16) {
                         AssetBadge(text: asset.originalFilename, icon: "photo")
@@ -463,6 +474,14 @@ private struct HeroStage: View {
                         }
                         if let capturedAt = relativeTime(asset.captureTime) {
                             AssetBadge(text: capturedAt, icon: "clock")
+                        }
+                        if asset.enhancedKey != nil {
+                            Label("Enhanced", systemImage: "wand.and.stars")
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .foregroundStyle(.purple)
+                                .background(Color.purple.opacity(0.15), in: Capsule())
                         }
                         AssetStateBadge(state: asset.state)
                     }
@@ -495,18 +514,21 @@ private struct HeroStage: View {
 
 private struct HeroImage: View {
     let asset: Asset
+    var preferEnhanced: Bool = true
 
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 14)
                 .fill(Color.captureChipBG)
-            if let key = asset.previewKey, let image = UIImage(contentsOfFile: key) {
+            let key = (preferEnhanced ? asset.enhancedKey : nil) ?? asset.previewKey
+            if let key, let image = UIImage(contentsOfFile: key) {
                 Image(uiImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .clipShape(RoundedRectangle(cornerRadius: 14))
                     .shadow(radius: 20, y: 8)
                     .transition(.opacity)
+                    .id(key)
             } else {
                 VStack(spacing: 14) {
                     if asset.state == .previewPending {
@@ -544,6 +566,32 @@ private struct EmptyHero: View {
         .multilineTextAlignment(.center)
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+private struct EnhancedToggleChip: View {
+    let showEnhanced: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: showEnhanced ? "wand.and.stars" : "photo")
+                    .font(.footnote.weight(.semibold))
+                Text(showEnhanced ? "Enhanced" : "Original")
+                    .font(.footnote.weight(.semibold))
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                (showEnhanced ? Color.purple : Color.black.opacity(0.6)).gradient,
+                in: Capsule()
+            )
+            .overlay(Capsule().stroke(.white.opacity(0.2), lineWidth: 1))
+            .shadow(radius: 8, y: 3)
+        }
+        .buttonStyle(PressableScale())
     }
 }
 
@@ -695,6 +743,13 @@ private struct FilmstripTile: View {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.caption)
                         .foregroundStyle(.white, .red)
+                        .padding(6)
+                } else if asset.enhancedKey != nil {
+                    Image(systemName: "wand.and.stars")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white, .purple)
+                        .padding(4)
+                        .background(.purple.opacity(0.85), in: Circle())
                         .padding(6)
                 }
             }
@@ -1065,7 +1120,13 @@ final class LiveCaptureModel {
     /// Retained while Demo Mode is active so its MockURLProtocol handler
     /// stays installed. Cleared on teardown.
     private var demoFake: FakeCanonCamera?
+    private var demoEnhancer: DemoEnhancer?
     #endif
+
+    /// Controls whether the hero + filmstrip tile prefer the enhanced
+    /// preview when one is available. Off = always show original.
+    /// Toggled from the hero badge. Persists for the connected session.
+    var showEnhanced: Bool = true
 
     private let actorUserId = "local-photographer"
 
@@ -1117,6 +1178,14 @@ final class LiveCaptureModel {
             self.downloadDirectory = tempDir
 
             try await camera.start()
+
+            #if DEBUG
+            if baseURL.host == "camera.demo" {
+                let enhancer = DemoEnhancer(store: store, outputDirectory: tempDir.appendingPathComponent("enhanced"))
+                enhancer.start(sessionId: dbSession.id)
+                self.demoEnhancer = enhancer
+            }
+            #endif
 
             // Fetch static device info in parallel; tolerate failure
             // (device-info endpoint is always supported but good to be safe).
@@ -1190,6 +1259,8 @@ final class LiveCaptureModel {
         downloadDirectory = nil
         deviceSummary = nil
         #if DEBUG
+        demoEnhancer?.stop()
+        demoEnhancer = nil
         demoFake = nil
         MockURLProtocol.handler = nil
         #endif

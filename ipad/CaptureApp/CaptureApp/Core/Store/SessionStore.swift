@@ -150,6 +150,19 @@ actor SessionStore {
         }
     }
 
+    /// Attach a local file path pointing at the photo-enhancer result.
+    /// In production this lands when backend receives a completion
+    /// notification and the enhanced bytes are pulled back to the iPad.
+    /// In demo mode the in-process enhancer simulator writes it directly.
+    func attachEnhancedKey(id: UUID, key: String) async throws {
+        try await database.dbWriter.write { db in
+            guard var asset = try Asset.fetchOne(db, key: id.uuidString) else { return }
+            asset.enhancedKey = key
+            asset.updatedAt = Date()
+            try asset.update(db)
+        }
+    }
+
     func fetchAsset(id: UUID) async throws -> Asset? {
         try await database.dbWriter.read { db in
             try Asset.fetchOne(db, key: id.uuidString)

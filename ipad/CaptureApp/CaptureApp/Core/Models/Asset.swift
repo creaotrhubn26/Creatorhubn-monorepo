@@ -9,6 +9,10 @@ struct Asset: Identifiable, Hashable, Sendable, Codable {
     var previewKey: String?
     var fullKey: String?
     var rawKey: String?
+    /// Locally-cached preview of the enhanced-and-returned version of this
+    /// asset (photo-enhancer output). Populated once the enhancement job
+    /// completes; unchanged original lives on `previewKey`/`fullKey`.
+    var enhancedKey: String?
     var checksumSha256: String?
     var mime: String
     var sizeBytes: Int64?
