@@ -1617,11 +1617,13 @@ final class LiveCaptureModel {
             try await camera.start()
 
             #if DEBUG
-            if baseURL.host == "camera.demo" {
-                let enhancer = DemoEnhancer(store: store, outputDirectory: tempDir.appendingPathComponent("enhanced"))
-                enhancer.start(sessionId: dbSession.id)
-                self.demoEnhancer = enhancer
-            }
+            // Run the demo enhancer for every DEBUG connection — lets us
+            // validate the Enhanced UX flow with real cameras too, before
+            // the backend-driven enhancer loop is wired up. Won't ship to
+            // release builds.
+            let enhancer = DemoEnhancer(store: store, outputDirectory: tempDir.appendingPathComponent("enhanced"))
+            enhancer.start(sessionId: dbSession.id)
+            self.demoEnhancer = enhancer
             #endif
 
             // Fetch static device info in parallel; tolerate failure

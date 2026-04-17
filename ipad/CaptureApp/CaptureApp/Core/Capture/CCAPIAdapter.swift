@@ -328,18 +328,19 @@ actor CCAPIAdapter: IngestAdapter {
     /// Per-kind query parameter that tells the camera which representation
     /// of the file to return. Canon CCAPI v1.4.0 §4.7.5:
     ///   - main (default) — full-resolution original (30+ MB for CR3)
-    ///   - display        — screen-size JPEG (~1920px, **JPEG-format only**;
-    ///                      returns 400 on CR3 and other RAW files)
-    ///   - thumbnail      — small thumbnail (~300px, works on every format)
-    /// We treat `.preview` as `thumbnail` because MVP cameras often shoot
-    /// RAW-only or RAW+JPEG and we need a kind that's guaranteed to work.
-    /// Switch to `display` later when we know the asset is a JPEG.
+    ///   - display        — screen-size preview (~1920px JPEG). Canon
+    ///                      generates a JPEG display version even for CR3
+    ///                      files, so this works on RAW-only shoots.
+    ///   - thumbnail      — small thumbnail (~300px, guaranteed to work)
+    /// We use `display` for `.preview` because thumbnail looks soft on an
+    /// iPad's hero stage. If a camera returns 400 for display on some file
+    /// format we'll add a fallback chain, but R6 mkII honors it on CR3.
     private static func downloadURL(for item: Pending) -> URL {
         guard item.kind == .preview,
               var components = URLComponents(url: item.contentURL, resolvingAgainstBaseURL: false)
         else { return item.contentURL }
         var queryItems = components.queryItems ?? []
-        queryItems.append(URLQueryItem(name: "kind", value: "thumbnail"))
+        queryItems.append(URLQueryItem(name: "kind", value: "display"))
         components.queryItems = queryItems
         return components.url ?? item.contentURL
     }
