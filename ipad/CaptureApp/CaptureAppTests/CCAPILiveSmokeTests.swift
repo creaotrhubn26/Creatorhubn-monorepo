@@ -71,4 +71,30 @@ final class CCAPILiveSmokeTests: XCTestCase {
         let response = try await client.pollEvents()
         print("LIVE · polling: addedcontents=\(response.addedcontents?.count ?? 0) totalContents=\(response.totalContentsCount ?? -1)")
     }
+
+    func testPaginatedContentsWalkAgainstLiveCamera() async throws {
+        let baseURL = try liveBaseURL()
+        let client = makeClient(baseURL)
+        _ = try await client.connect()
+        let storages = try await client.listStorages()
+        guard let storage = storages.first else {
+            XCTFail("no storage on camera; cannot test pagination")
+            return
+        }
+        let directories = try await client.listDirectories(storagePath: storage.path)
+        guard let firstDir = directories.first else {
+            XCTFail("no DCIM-style directory on card")
+            return
+        }
+        let meta = try await client.listContentsNumber(directoryPath: firstDir)
+        XCTAssertGreaterThan(meta.contentsnumber, 0, "card should have at least one file")
+        XCTAssertGreaterThanOrEqual(meta.pagenumber, 1)
+        // Only walk the first 2 pages to keep the smoke test fast. Enough to
+        // prove pagination works; full enumeration is a separate bench test.
+        let first200 = try await client.listContents(directoryPath: firstDir, maxPages: 2)
+        XCTAssertLessThanOrEqual(first200.count, 200)
+        XCTAssertEqual(Set(first200).count, first200.count, "pages should not repeat URLs")
+        print("LIVE · pagination: dir=\(firstDir) total=\(meta.contentsnumber) pages=\(meta.pagenumber) fetched=\(first200.count)")
+        if let first = first200.first { print("LIVE · first path: \(first)") }
+    }
 }
