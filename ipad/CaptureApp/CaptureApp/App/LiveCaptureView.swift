@@ -97,6 +97,7 @@ struct LiveCaptureView: View {
                     asset: model.focusedAsset,
                     recipe: model.focusedAsset.map { model.recipe(for: $0.id) } ?? .neutral,
                     isTuned: model.focusedAsset.map { model.tunedRecipes[$0.id] != nil } ?? false,
+                    analysis: model.showHUD ? model.focusedAnalysis : nil,
                     showMagic: model.showMagic,
                     onTap: { asset in viewerAsset = asset },
                     onToggleMagic: { model.showMagic.toggle() },
@@ -117,6 +118,12 @@ struct LiveCaptureView: View {
                         Task { await model.toggleReject(asset: asset) }
                     }
                 )
+                .onChange(of: model.focusedAssetId) { _, _ in
+                    model.refreshAnalysis(for: model.focusedAsset)
+                }
+                .onChange(of: model.focusedAsset?.previewKey) { _, _ in
+                    model.refreshAnalysis(for: model.focusedAsset)
+                }
                 ShutterFlashOverlay(trigger: model.shutterFlashToken)
                     .allowsHitTesting(false)
             }
@@ -607,6 +614,7 @@ private struct HeroStage: View {
     let asset: Asset?
     let recipe: MagicRecipe
     let isTuned: Bool
+    let analysis: ImageAnalysis?
     let showMagic: Bool
     let onTap: (Asset) -> Void
     let onToggleMagic: () -> Void
@@ -628,6 +636,14 @@ private struct HeroStage: View {
                                 MagicToggleChip(showMagic: showMagic, action: onToggleMagic)
                                     .padding(.top, 28)
                                     .padding(.trailing, 36)
+                            }
+                        }
+                        .overlay(alignment: .topLeading) {
+                            if let analysis {
+                                HUDOverlay(analysis: analysis)
+                                    .padding(.top, 28)
+                                    .padding(.leading, 36)
+                                    .allowsHitTesting(false)
                             }
                         }
 
@@ -1030,6 +1046,134 @@ private struct PickRejectControls: View {
             .buttonStyle(.plain)
             .keyboardShortcut("x", modifiers: [])
             .accessibilityLabel("Mark as rejected")
+        }
+    }
+}
+
+// MARK: - HUD overlays (histogram + clipping + skin tone)
+
+/// On-set coaching surface — pro tether software shows these so the
+/// photographer can spot clipped highlights, off-white-balance faces,
+/// or underexposed shadows without leaving the shooting screen.
+private struct HUDOverlay: View {
+    let analysis: ImageAnalysis
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HistogramChart(red: analysis.red, green: analysis.green, blue: analysis.blue)
+                .frame(width: 160, height: 70)
+                .padding(8)
+                .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.1), lineWidth: 0.5))
+
+            if analysis.highlightClipping > 0.005 || analysis.shadowClipping > 0.005 {
+                ClippingBadges(highlight: analysis.highlightClipping, shadow: analysis.shadowClipping)
+            }
+
+            if let skin = analysis.skin {
+                SkinToneChip(reading: skin)
+            }
+        }
+    }
+}
+
+private struct HistogramChart: View {
+    let red: [Double]
+    let green: [Double]
+    let blue: [Double]
+
+    var body: some View {
+        Canvas { context, size in
+            guard !red.isEmpty else { return }
+            let binWidth = size.width / CGFloat(red.count)
+            draw(context, channel: red, color: .red, size: size, binWidth: binWidth)
+            draw(context, channel: green, color: .green, size: size, binWidth: binWidth)
+            draw(context, channel: blue, color: .blue, size: size, binWidth: binWidth)
+        }
+    }
+
+    private func draw(_ ctx: GraphicsContext, channel: [Double], color: Color, size: CGSize, binWidth: CGFloat) {
+        var path = Path()
+        path.move(to: CGPoint(x: 0, y: size.height))
+        for (i, value) in channel.enumerated() {
+            let x = CGFloat(i) * binWidth + binWidth / 2
+            let y = size.height - CGFloat(value) * size.height
+            path.addLine(to: CGPoint(x: x, y: y))
+        }
+        path.addLine(to: CGPoint(x: size.width, y: size.height))
+        path.closeSubpath()
+        ctx.fill(path, with: .color(color.opacity(0.45)))
+        ctx.stroke(path, with: .color(color.opacity(0.9)), lineWidth: 1)
+    }
+}
+
+private struct ClippingBadges: View {
+    let highlight: Double
+    let shadow: Double
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if highlight > 0.005 {
+                badge(text: "⚠ \(percent(highlight))", color: .red)
+            }
+            if shadow > 0.005 {
+                badge(text: "⚠ \(percent(shadow))", color: .blue)
+            }
+        }
+    }
+
+    private func badge(text: String, color: Color) -> some View {
+        Text(text)
+            .font(.caption2.weight(.semibold))
+            .padding(.horizontal, 8).padding(.vertical, 3)
+            .foregroundStyle(.white)
+            .background(color.opacity(0.85), in: Capsule())
+    }
+
+    private func percent(_ v: Double) -> String {
+        let p = Int((v * 100).rounded())
+        return p < 1 ? "<1%" : "\(p)%"
+    }
+}
+
+private struct SkinToneChip: View {
+    let reading: ImageAnalysis.SkinReading
+
+    var body: some View {
+        HStack(spacing: 8) {
+            RoundedRectangle(cornerRadius: 4)
+                .fill(Color(cgColor: reading.sampleColor))
+                .frame(width: 18, height: 18)
+                .overlay(RoundedRectangle(cornerRadius: 4).stroke(.white.opacity(0.3), lineWidth: 0.5))
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Skin")
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.white)
+                Text(label)
+                    .font(.caption2)
+                    .foregroundStyle(color.opacity(0.9))
+            }
+        }
+        .padding(.horizontal, 8).padding(.vertical, 5)
+        .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 6))
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(color.opacity(0.5), lineWidth: 1))
+    }
+
+    private var label: String {
+        switch reading.cast {
+        case .neutral:    return "neutral ✓"
+        case .tooWarm:    return "too warm"
+        case .tooCool:    return "too cool"
+        case .tooGreen:   return "green cast"
+        case .tooMagenta: return "magenta cast"
+        }
+    }
+
+    private var color: Color {
+        switch reading.cast {
+        case .neutral:    return .green
+        case .tooWarm, .tooMagenta: return .orange
+        case .tooCool, .tooGreen:   return .blue
         }
     }
 }
@@ -1814,6 +1958,27 @@ final class LiveCaptureModel {
         return assets.first { $0.id == focusedAssetId } ?? assets.last
     }
 
+    /// Kick off a background analysis pass whenever the focused asset
+    /// changes. Uses the UNenhanced preview so HUD reports the actual
+    /// camera capture, not the post-Magic result.
+    func refreshAnalysis(for asset: Asset?) {
+        analysisTask?.cancel()
+        guard let asset,
+              let key = asset.previewKey,
+              FileManager.default.fileExists(atPath: key)
+        else {
+            focusedAnalysis = nil
+            return
+        }
+        let url = URL(fileURLWithPath: key)
+        let analyser = self.analyser
+        analysisTask = Task { [weak self] in
+            let result = await analyser.analyze(imageURL: url)
+            guard !Task.isCancelled, self?.focusedAssetId == asset.id else { return }
+            await MainActor.run { self?.focusedAnalysis = result }
+        }
+    }
+
     var canShoot: Bool {
         switch connectionState {
         case .ready, .shooting: return true
@@ -1825,6 +1990,13 @@ final class LiveCaptureModel {
     private var client: CCAPIClient?
     private var store: SessionStore?
     private var currentSessionId: UUID?
+    private let analyser = ImageAnalyser()
+    private var analysisTask: Task<Void, Never>?
+
+    /// On-set coaching signals for the currently focused asset. Cleared
+    /// when focus changes; refreshed in background. Nil = no reading yet.
+    var focusedAnalysis: ImageAnalysis?
+    var showHUD: Bool = true
     private var downloadDirectory: URL?
     private var forwardingTasks: [Task<Void, Never>] = []
     #if DEBUG
