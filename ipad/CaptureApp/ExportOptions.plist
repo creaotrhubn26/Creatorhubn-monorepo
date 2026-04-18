@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+    Used by `xcodebuild -exportArchive` when cutting a TestFlight build
+    from CI or the command line. For the first few TestFlight uploads
+    it's simpler to archive via Xcode → Product → Archive → Distribute
+    App → App Store Connect, which does all of this interactively.
+
+    When moving to CI, pass this file:
+        xcodebuild -exportArchive \
+            -archivePath CaptureApp.xcarchive \
+            -exportOptionsPlist ExportOptions.plist \
+            -exportPath build/
+-->
+<plist version="1.0">
+<dict>
+    <key>method</key>
+    <string>app-store</string>
+    <key>destination</key>
+    <string>upload</string>
+    <key>uploadSymbols</key>
+    <true/>
+    <key>uploadBitcode</key>
+    <false/>
+    <key>signingStyle</key>
+    <string>automatic</string>
+    <!-- Fill in once App ID is registered on developer.apple.com.
+         Leave blank while using automatic signing under a single team. -->
+    <key>teamID</key>
+    <string></string>
+</dict>
+</plist>

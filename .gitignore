@@ -47,6 +47,7 @@ scratch/
 docker/
 *.md
 !README.md
+!ipad/CaptureApp/TESTFLIGHT.md
 docs/
 !docs/
 !docs/role-room/
