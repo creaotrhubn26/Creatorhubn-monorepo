@@ -58,6 +58,47 @@ import {
   Info,
 } from '@mui/icons-material';
 
+/// Validate a single file against the active profession's whitelist
+/// (`config.settings.supportedFileTypes`) and size cap
+/// (`config.settings.maxFileSize` in MB). Returns the reason a file
+/// would be rejected, or null when accepted. Centralised here so the
+/// drag-drop and file-browse code paths can't drift.
+function rejectionReason(
+  file: File,
+  supportedExtensions: string[] | null | undefined,
+  maxSizeMB: number | null | undefined,
+): string | null {
+  const sizeBytesCap = (maxSizeMB && maxSizeMB > 0) ? maxSizeMB * 1024 * 1024 : null;
+  if (sizeBytesCap !== null && file.size > sizeBytesCap) {
+    return `${file.name}: ${(file.size / 1024 / 1024).toFixed(1)} MB exceeds the ${maxSizeMB} MB cap for this profession`;
+  }
+  // No whitelist configured = accept everything that's plausibly media.
+  // We still require image/video/audio MIME or a known RAW extension as
+  // the absolute floor — protects against accidentally uploading PDFs
+  // or .DS_Store junk.
+  const hasGenericMedia =
+    file.type.startsWith('image/') ||
+    file.type.startsWith('video/') ||
+    file.type.startsWith('audio/') ||
+    /\.(raw|arw|cr2|cr3|nef|orf|rw2|dng|raf|pef|srw|x3f)$/i.test(file.name);
+  if (!supportedExtensions || supportedExtensions.length === 0) {
+    return hasGenericMedia ? null : `${file.name}: not a supported media type`;
+  }
+  // Whitelist configured: extension must be in the list. Compare lowercase
+  // and strip leading dots so the config can use either `jpg` or `.jpg`.
+  const lastDot = file.name.lastIndexOf('.');
+  const ext = lastDot >= 0 ? file.name.slice(lastDot + 1).toLowerCase() : '';
+  const allowed = new Set(supportedExtensions.map((s) => s.replace(/^\./, '').toLowerCase()));
+  // Special-case: 'raw' in the list means "accept any of the canonical
+  // raw extensions" so a photographer config doesn't have to enumerate
+  // every camera vendor's variant.
+  if (allowed.has('raw') && /\.(raw|arw|cr2|cr3|nef|orf|rw2|dng|raf|pef|srw|x3f)$/i.test(file.name)) {
+    return null;
+  }
+  if (allowed.has(ext)) return null;
+  return `${file.name}: .${ext || '?'} not in this profession's allowed types (${Array.from(allowed).join(', ')})`;
+}
+
 interface FolderUploadItem {
   id: string;
   name: string;
@@ -153,7 +194,8 @@ const BulkFolderUpload: React.FC<BulkFolderUploadProps> = ({
   // Process dropped items (files/folders)
   const processDroppedItems = useCallback(async (items: DataTransferItemList) => {
     const newFolders: FolderUploadItem[] = [];
-    
+    const rejectedFilesAcrossFolders: string[] = [];
+
     const readDirectory = async (entry: FileSystemDirectoryEntry, parentPath: string = ', '): Promise<File[]> => {
       const files: File[] = [];
       const reader = entry.createReader();
@@ -198,13 +240,20 @@ const BulkFolderUpload: React.FC<BulkFolderUploadProps> = ({
         const dirEntry = entry as FileSystemDirectoryEntry;
         const files = await readDirectory(dirEntry);
 
-        // Filter valid media files
-        const validFiles = files.filter(f =>
-          f.type.startsWith('image/') ||
-          f.type.startsWith('video/') ||
-          f.type.startsWith('audio/') ||
-          /\.(raw|arw|cr2|cr3|nef|orf|rw2|dng|raf|pef|srw|x3f)$/i.test(f.name)
-        );
+        // Filter against the active profession's whitelist + size cap.
+        // Rejected files surface in `rejections` so the photographer
+        // sees exactly which files (and why) didn't make it in.
+        const supported = (enhancedProfessionConfig as any)?.settings?.supportedFileTypes as string[] | undefined;
+        const maxMB = (enhancedProfessionConfig as any)?.settings?.maxFileSize as number | undefined;
+        const validFiles: File[] = [];
+        for (const f of files) {
+          const reason = rejectionReason(f, supported, maxMB);
+          if (reason) {
+            rejectedFilesAcrossFolders.push(reason);
+          } else {
+            validFiles.push(f);
+          }
+        }
 
         if (validFiles.length > 0) {
           // Create preview from first image
@@ -229,12 +278,31 @@ const BulkFolderUpload: React.FC<BulkFolderUploadProps> = ({
     }
 
     if (newFolders.length === 0) {
-      setError('No valid media files found in the dropped folders. Supported: images, videos, audio, and RAW files.');
+      const supported = (enhancedProfessionConfig as any)?.settings?.supportedFileTypes as string[] | undefined;
+      const list = (supported && supported.length > 0)
+        ? supported.join(', ')
+        : 'images, videos, audio, and RAW files';
+      const sample = rejectedFilesAcrossFolders.slice(0, 3).join('; ');
+      setError(
+        `No valid media files for ${currentProfession}. Allowed: ${list}.` +
+        (sample ? ` Rejected examples — ${sample}` : '')
+      );
     } else {
       setFolders(prev => [...prev, ...newFolders]);
-      setError(null);
+      // If some files were rejected even though others made it in, surface
+      // a non-blocking note so the user knows what was filtered out.
+      if (rejectedFilesAcrossFolders.length > 0) {
+        const sample = rejectedFilesAcrossFolders.slice(0, 3).join('; ');
+        const moreCount = Math.max(0, rejectedFilesAcrossFolders.length - 3);
+        setError(
+          `Skipped ${rejectedFilesAcrossFolders.length} file(s) that don't match this profession's allowed types: ${sample}` +
+          (moreCount > 0 ? ` (+${moreCount} more)` : '')
+        );
+      } else {
+        setError(null);
+      }
     }
-  }, []);
+  }, [enhancedProfessionConfig, currentProfession]);
 
   // Handle drag events
   const handleDragOver = useCallback((e: React.DragEvent) => {

@@ -792,7 +792,14 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   const videoPlayerRef = useRef<HTMLVideoElement | null>(null);
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  // Initial viewMode now follows the profession's preferred layout from
+  // ProfessionConfig.ui.layout — photographer/videographer default to
+  // grid, music_producer to list, etc. The user can still override via
+  // the toggle; we just stop forcing 'grid' for everyone.
+  // (Carousel + timeline aren't yet rendered here — they fall back to
+  // grid for now and are tracked as a follow-up; see task #71 design.)
   const [viewMode, setViewMode] = useState<'grid' | 'list' | 'masonry'>('grid');
+  const viewModeInitializedFromConfigRef = useRef(false);
   const [popperAnchorEl, setPopperAnchorEl] = useState<null | HTMLElement>(null);
   const popperOpen = Boolean(popperAnchorEl);
 
@@ -875,6 +882,26 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       icon: professionIcon || baseConfig.icon,
     };
   }, [profession, baseConfig, getProfessionDisplayName, getUserProfessionColor, getDynamicProfessionIcon]);
+
+  // Sync the initial viewMode from the profession's preferred layout
+  // exactly once after the config loads. After that the user owns the
+  // setting via the ToggleButtonGroup — we don't keep snapping it back.
+  // Carousel/timeline layouts aren't rendered yet so we coerce them to
+  // grid (carousel) or list (timeline) as the closest visual neighbour.
+  useEffect(() => {
+    if (viewModeInitializedFromConfigRef.current) return;
+    if (!professionConfig) return;
+    const preferred = (professionConfig as any).ui?.layout as
+      | 'grid' | 'masonry' | 'list' | 'carousel' | 'timeline' | undefined;
+    if (!preferred) return;
+    const mapped: 'grid' | 'list' | 'masonry' =
+      preferred === 'list'     ? 'list'     :
+      preferred === 'masonry'  ? 'masonry'  :
+      preferred === 'timeline' ? 'list'     :  // closest fallback
+      /* grid | carousel */     'grid';
+    setViewMode(mapped);
+    viewModeInitializedFromConfigRef.current = true;
+  }, [professionConfig]);
 
   // Profession Config Functions - Properly implemented
   const terminology = useMemo(() => {
