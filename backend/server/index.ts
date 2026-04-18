@@ -146,6 +146,10 @@ import {
   recordDataDeletionRequest,
   revokeConnectionsForFbUser,
 } from "./role-room-instagram-deauth.js";
+import {
+  fetchClientGalleryByAccessToken,
+  listClientGalleryImages,
+} from "./client-gallery-render.js";
 import { registerTidumAdminRoutes } from "./tidum-admin-routes.js";
 import {
   getNotebookLmWorkspaceStatus,
@@ -23052,6 +23056,59 @@ function calculateContractHash(contract: any): string {
 }
 
 const serverStartedAt = new Date().toISOString();
+
+// ── Public client-gallery viewer endpoints ──────────────────────────────
+//
+// Unauthenticated — the accessToken IS the auth. Every request re-signs
+// Capture-sourced image URLs so the gallery keeps working past R2's
+// 7-day signed-URL ceiling.
+
+app.get("/api/client/gallery/:accessToken", async (req, res) => {
+  const accessToken = String(req.params.accessToken || "").trim();
+  if (!accessToken) {
+    return res.status(400).json({ error: "missing_access_token" });
+  }
+  try {
+    const gallery = await fetchClientGalleryByAccessToken(db, accessToken);
+    if (!gallery) return res.status(404).json({ error: "not_found" });
+    return res.json({
+      id: gallery.id,
+      clientName: gallery.clientName,
+      clientEmail: gallery.clientEmail,
+      projectTitle: gallery.projectTitle,
+      status: gallery.status,
+      createdAt: gallery.createdAt,
+      completedAt: gallery.completedAt,
+      source: gallery.source,
+      captureSessionId: gallery.captureSessionId,
+    });
+  } catch (error) {
+    console.error("[client-gallery] fetch failed", error);
+    return res.status(500).json({ error: "gallery_fetch_failed" });
+  }
+});
+
+app.get("/api/client/gallery/:accessToken/images", async (req, res) => {
+  const accessToken = String(req.params.accessToken || "").trim();
+  if (!accessToken) {
+    return res.status(400).json({ error: "missing_access_token" });
+  }
+  try {
+    const gallery = await fetchClientGalleryByAccessToken(db, accessToken);
+    if (!gallery) return res.status(404).json({ error: "not_found" });
+    const images = await listClientGalleryImages(db, gallery.id);
+    return res.json({
+      galleryId: gallery.id,
+      images,
+      // Client can display a banner when any image came back with
+      // signingFailed: true (e.g. the captureAssets row was deleted).
+      anySigningFailed: images.some((i) => i.signingFailed),
+    });
+  } catch (error) {
+    console.error("[client-gallery] list images failed", error);
+    return res.status(500).json({ error: "gallery_images_failed" });
+  }
+});
 
 // Health check
 app.get("/api/health", (req, res) => {
