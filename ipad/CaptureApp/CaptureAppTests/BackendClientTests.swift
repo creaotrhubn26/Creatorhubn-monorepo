@@ -197,6 +197,111 @@ final class BackendClientTests: XCTestCase {
         XCTAssertEqual(filter?["rating"] as? Int, 4)
     }
 
+    // MARK: - Claude Vision analyse
+
+    func testAnalyzeImagePostsBase64AndDecodesAnalysis() async throws {
+        let assetId = UUID()
+        let captured = Box<URLRequest>()
+        let capturedBody = Box<Data>()
+        MockURLProtocol.handler = { request in
+            captured.value = request
+            capturedBody.value = request.httpBodyStreamData() ?? request.httpBody
+            return MockURLProtocol.jsonResponse(
+                for: request.url!,
+                body: """
+                {
+                  "analysis": {
+                    "subject": "portrait",
+                    "confidence": 0.92,
+                    "tonality": "soft window light, gentle shadows",
+                    "suggested_recipe": {
+                      "warmth": 0.4,
+                      "skinSmooth": 0.55,
+                      "shadowLift": 0.35,
+                      "contrast": 0.1,
+                      "saturation": 0.18
+                    },
+                    "quality_notes": ["motion blur — subject not sharp"],
+                    "caption_suggestion": "Golden hour portrait, natural window light"
+                  },
+                  "usage": {
+                    "input_tokens": 4500,
+                    "output_tokens": 220,
+                    "cache_creation_input_tokens": 4400,
+                    "cache_read_input_tokens": 0
+                  }
+                }
+                """
+            )
+        }
+        let client = makeClient()
+        let response = try await client.analyzeImage(
+            assetId: assetId,
+            imageBase64: "ZmFrZS1qcGVnLWJ5dGVz",
+            mime: "image/jpeg"
+        )
+        XCTAssertEqual(response.analysis.subject, .portrait)
+        XCTAssertEqual(response.analysis.confidence, 0.92, accuracy: 0.001)
+        XCTAssertEqual(response.analysis.suggestedRecipe.warmth, 0.4, accuracy: 0.001)
+        XCTAssertEqual(response.analysis.qualityNotes.first, "motion blur — subject not sharp")
+        XCTAssertEqual(response.analysis.captionSuggestion, "Golden hour portrait, natural window light")
+        XCTAssertEqual(response.usage.inputTokens, 4500)
+        XCTAssertEqual(response.usage.cacheCreationInputTokens, 4400)
+        XCTAssertEqual(captured.value?.httpMethod, "POST")
+        XCTAssertEqual(captured.value?.url?.path, "/api/capture/assets/\(assetId.uuidString.lowercased())/analyze")
+        let json = try JSONSerialization.jsonObject(with: try XCTUnwrap(capturedBody.value)) as? [String: Any]
+        XCTAssertEqual(json?["imageBase64"] as? String, "ZmFrZS1qcGVnLWJ5dGVz")
+        XCTAssertEqual(json?["mime"] as? String, "image/jpeg")
+    }
+
+    func testAnalyzeImageDecodesUnknownSubjectAsNeutral() async throws {
+        // Belt-and-braces: a server upgrade adding a new subject category
+        // must not crash older iPad builds. Decoding falls back to neutral.
+        MockURLProtocol.handler = { request in
+            MockURLProtocol.jsonResponse(
+                for: request.url!,
+                body: """
+                {
+                  "analysis": {
+                    "subject": "drone_orbital",
+                    "confidence": 0.7,
+                    "tonality": "—",
+                    "suggested_recipe": {"warmth":0,"skinSmooth":0,"shadowLift":0,"contrast":0,"saturation":0},
+                    "quality_notes": [],
+                    "caption_suggestion": ""
+                  },
+                  "usage": {"input_tokens":0,"output_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}
+                }
+                """
+            )
+        }
+        let client = makeClient()
+        let response = try await client.analyzeImage(
+            assetId: UUID(), imageBase64: "x", mime: "image/jpeg"
+        )
+        XCTAssertEqual(response.analysis.subject, .neutral)
+    }
+
+    func testAnalyzeImageMapsServiceUnavailableTo503() async throws {
+        // Backend returns 503 when ANTHROPIC_API_KEY isn't set. The iPad
+        // gets BackendError.httpStatus(503, ...) and silently falls back.
+        MockURLProtocol.handler = { request in
+            let response = HTTPURLResponse(
+                url: request.url!, statusCode: 503, httpVersion: "HTTP/1.1", headerFields: nil
+            )!
+            return (response, Data(#"{"error":"not_configured"}"#.utf8))
+        }
+        let client = makeClient()
+        do {
+            _ = try await client.analyzeImage(
+                assetId: UUID(), imageBase64: "x", mime: "image/jpeg"
+            )
+            XCTFail("expected httpStatus error")
+        } catch let BackendError.httpStatus(code, _) {
+            XCTAssertEqual(code, 503)
+        }
+    }
+
     // MARK: - Error mapping
 
     func testUnauthorizedMapsTo401Error() async throws {

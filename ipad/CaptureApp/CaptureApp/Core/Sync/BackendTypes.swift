@@ -160,6 +160,73 @@ struct BackendHandoffResult: Decodable, Sendable {
     let jobs: [Job]
 }
 
+// MARK: - Claude Vision analyse
+
+/// Sent to `POST /api/capture/assets/:id/analyze`. The preview JPEG is
+/// shipped inline base64 so the backend doesn't need to wait for an R2
+/// round-trip — keeps end-to-end latency under ~3s on a good link.
+struct BackendAnalyzeRequest: Encodable, Sendable {
+    let imageBase64: String
+    let mime: String
+}
+
+/// Bounded subject categories — mirrors the backend `SubjectCategory`
+/// union exactly. Unknown values from the wire decode as `.neutral` so
+/// a server upgrade that adds a new category can't crash the iPad.
+enum BackendSubjectCategory: String, Decodable, Sendable, CaseIterable {
+    case portrait, aviation, vehicle, food, landscape, product, neutral
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = BackendSubjectCategory(rawValue: raw) ?? .neutral
+    }
+}
+
+/// Mirrors `MagicRecipe` on the iPad and the backend
+/// `MagicRecipe` interface in capture-analyze-service.ts.
+struct BackendSuggestedRecipe: Decodable, Sendable {
+    let warmth: Double
+    let skinSmooth: Double
+    let shadowLift: Double
+    let contrast: Double
+    let saturation: Double
+}
+
+struct BackendPhotoAnalysis: Decodable, Sendable {
+    let subject: BackendSubjectCategory
+    let confidence: Double
+    let tonality: String
+    let suggestedRecipe: BackendSuggestedRecipe
+    let qualityNotes: [String]
+    let captionSuggestion: String
+
+    private enum CodingKeys: String, CodingKey {
+        case subject, confidence, tonality
+        case suggestedRecipe = "suggested_recipe"
+        case qualityNotes = "quality_notes"
+        case captionSuggestion = "caption_suggestion"
+    }
+}
+
+struct BackendAnalyzeUsage: Decodable, Sendable {
+    let inputTokens: Int
+    let outputTokens: Int
+    let cacheCreationInputTokens: Int
+    let cacheReadInputTokens: Int
+
+    private enum CodingKeys: String, CodingKey {
+        case inputTokens = "input_tokens"
+        case outputTokens = "output_tokens"
+        case cacheCreationInputTokens = "cache_creation_input_tokens"
+        case cacheReadInputTokens = "cache_read_input_tokens"
+    }
+}
+
+struct BackendAnalyzeResponse: Decodable, Sendable {
+    let analysis: BackendPhotoAnalysis
+    let usage: BackendAnalyzeUsage
+}
+
 // MARK: - Errors
 
 enum BackendError: Error, Sendable, Equatable {

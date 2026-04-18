@@ -99,6 +99,23 @@ actor BackendClient {
         return etag
     }
 
+    // MARK: - Claude Vision analyse
+
+    /// Forward a preview JPEG to the backend's Claude Vision analyser.
+    /// Caller decides how to handle failure — typical use is "fall back
+    /// to the on-device classifier silently" so the photographer never
+    /// sees a network blip interrupt their tether session.
+    func analyzeImage(
+        assetId: UUID,
+        imageBase64: String,
+        mime: String,
+    ) async throws -> BackendAnalyzeResponse {
+        try await postJSON(
+            path: "/api/capture/assets/\(assetId.uuidString.lowercased())/analyze",
+            body: BackendAnalyzeRequest(imageBase64: imageBase64, mime: mime),
+        )
+    }
+
     // MARK: - Handoff
 
     func handoff(

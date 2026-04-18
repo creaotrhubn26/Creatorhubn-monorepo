@@ -98,8 +98,10 @@ struct LiveCaptureView: View {
                 HeroStage(
                     asset: model.focusedAsset,
                     recipe: model.focusedAsset.map { model.recipe(for: $0.id) } ?? .neutral,
-                    isTuned: model.focusedAsset.map { model.tunedRecipes[$0.id] != nil } ?? false,
+                    recipeSource: model.focusedAsset.map { model.recipeSource[$0.id] ?? .baseline } ?? .baseline,
                     analysis: model.showHUD ? model.focusedAnalysis : nil,
+                    aiAnalysis: model.focusedAsset.flatMap { model.aiAnalyses[$0.id] },
+                    aiNotesDismissed: model.focusedAsset.map { model.dismissedNoteAssets.contains($0.id) } ?? false,
                     showMagic: model.showMagic,
                     onTap: { asset in viewerAsset = asset },
                     onToggleMagic: { model.showMagic.toggle() },
@@ -118,6 +120,10 @@ struct LiveCaptureView: View {
                     onToggleReject: {
                         guard let asset = model.focusedAsset else { return }
                         Task { await model.toggleReject(asset: asset) }
+                    },
+                    onDismissNotes: {
+                        guard let id = model.focusedAsset?.id else { return }
+                        model.dismissNotes(assetId: id)
                     }
                 )
                 .onChange(of: model.focusedAssetId) { _, _ in
@@ -615,8 +621,10 @@ private struct ConnectionBadge: View {
 private struct HeroStage: View {
     let asset: Asset?
     let recipe: MagicRecipe
-    let isTuned: Bool
+    let recipeSource: LiveCaptureModel.RecipeSource
     let analysis: ImageAnalysis?
+    let aiAnalysis: BackendPhotoAnalysis?
+    let aiNotesDismissed: Bool
     let showMagic: Bool
     let onTap: (Asset) -> Void
     let onToggleMagic: () -> Void
@@ -624,6 +632,7 @@ private struct HeroStage: View {
     let onSetRating: (Int) -> Void
     let onTogglePick: () -> Void
     let onToggleReject: () -> Void
+    let onDismissNotes: () -> Void
 
     var body: some View {
         Group {
@@ -656,9 +665,30 @@ private struct HeroStage: View {
                     // so the Tune entry point is reliably reachable.
                     if asset.enhancedKey != nil {
                         Button(action: onOpenTune) {
-                            RecipeChipsRow(chips: recipe.displayChips, isTuned: isTuned)
+                            RecipeChipsRow(chips: recipe.displayChips, source: recipeSource)
                         }
                         .buttonStyle(.plain)
+                    }
+
+                    // Claude Vision quality observations — eyes closed,
+                    // motion blur, clipped highlights. The photographer
+                    // can act on these in-camera before moving on.
+                    if let aiAnalysis,
+                       !aiNotesDismissed,
+                       !aiAnalysis.qualityNotes.isEmpty {
+                        AIQualityNotesRow(
+                            notes: aiAnalysis.qualityNotes,
+                            onDismiss: onDismissNotes
+                        )
+                        .padding(.horizontal, 24)
+                    }
+
+                    // Suggested caption — copy-to-clipboard pill for
+                    // delivery / metadata workflow. Hidden when blank.
+                    if let aiAnalysis,
+                       !aiAnalysis.captionSuggestion.isEmpty {
+                        AICaptionRow(caption: aiAnalysis.captionSuggestion)
+                            .padding(.horizontal, 24)
                     }
 
                     // Selects workflow: star rating + pick/reject actions.
@@ -1186,13 +1216,13 @@ private struct SkinToneChip: View {
 
 private struct RecipeChipsRow: View {
     let chips: [String]
-    let isTuned: Bool
+    let source: LiveCaptureModel.RecipeSource
 
     var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: isTuned ? "slider.horizontal.3" : "sparkles")
+            Image(systemName: leadingIcon)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(isTuned ? .orange : .purple)
+                .foregroundStyle(accent)
             if chips.isEmpty {
                 Text("At baseline")
                     .font(.caption.monospaced())
@@ -1210,13 +1240,108 @@ private struct RecipeChipsRow: View {
                         .background(Color.captureChipBG, in: Capsule())
                 }
             }
-            Text(isTuned ? "Tuned" : "Tune")
+            Text(trailingLabel)
                 .font(.caption.weight(.semibold))
                 .padding(.horizontal, 10)
                 .padding(.vertical, 4)
-                .foregroundStyle(isTuned ? .orange : .secondary)
-                .overlay(Capsule().stroke(isTuned ? .orange.opacity(0.6) : .secondary.opacity(0.3), lineWidth: 1))
+                .foregroundStyle(accent)
+                .overlay(Capsule().stroke(accent.opacity(0.6), lineWidth: 1))
         }
+    }
+
+    private var leadingIcon: String {
+        switch source {
+        case .baseline:    return "sparkles"
+        case .aiRefined:   return "sparkles.rectangle.stack"
+        case .userTuned:   return "slider.horizontal.3"
+        }
+    }
+
+    private var accent: Color {
+        switch source {
+        case .baseline:    return .purple
+        case .aiRefined:   return .cyan
+        case .userTuned:   return .orange
+        }
+    }
+
+    private var trailingLabel: String {
+        switch source {
+        case .baseline:    return "Tune"
+        case .aiRefined:   return "AI · tap to tune"
+        case .userTuned:   return "Tuned"
+        }
+    }
+}
+
+/// Quality observations Claude flagged — eyes closed, motion blur, clipped
+/// highlights. Dismissable so a single nag doesn't block the hero forever.
+/// Tap any pill or the X to clear them all for this asset.
+private struct AIQualityNotesRow: View {
+    let notes: [String]
+    let onDismiss: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.yellow)
+                .padding(.top, 4)
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(notes, id: \.self) { note in
+                    Text(note)
+                        .font(.caption)
+                        .foregroundStyle(.primary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Color.yellow.opacity(0.15), in: Capsule())
+                        .overlay(Capsule().stroke(.yellow.opacity(0.5), lineWidth: 0.5))
+                }
+            }
+            Spacer(minLength: 0)
+            Button(action: onDismiss) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss quality notes")
+        }
+        .padding(.horizontal, 4)
+    }
+}
+
+/// AI caption suggestion — small, secondary text under the hero. Tap to
+/// copy to clipboard for paste into delivery / metadata workflow.
+private struct AICaptionRow: View {
+    let caption: String
+    @State private var copied: Bool = false
+
+    var body: some View {
+        Button {
+            UIPasteboard.general.string = caption
+            withAnimation { copied = true }
+            Task {
+                try? await Task.sleep(for: .seconds(1.4))
+                withAnimation { copied = false }
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: copied ? "checkmark.circle.fill" : "text.quote")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(copied ? .green : .cyan)
+                Text(copied ? "Caption copied" : caption)
+                    .font(.caption.italic())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color.captureChipBG, in: RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -1971,6 +2096,10 @@ final class LiveCaptureModel {
                 }
             }
             if newCaptureArrived { shutterFlashToken = UUID() }
+            // Fire Claude Vision analysis the moment a preview lands. Once
+            // per asset; failures are silent so the on-device pipeline result
+            // remains the visible state if the backend is unreachable.
+            scheduleAIAnalyses(after: oldValue)
         }
     }
     var errorMessage: String?
@@ -2024,6 +2153,16 @@ final class LiveCaptureModel {
     private var currentSessionId: UUID?
     private let analyser = ImageAnalyser()
     private var analysisTask: Task<Void, Never>?
+    /// Configured at connect time from UserDefaults. Nil = no backend, in
+    /// which case the on-device pipeline is the only source of truth and
+    /// no Claude Vision call is ever attempted.
+    private var backendClient: BackendClient?
+    /// One AI analyse task per asset, keyed by id. Cancel on teardown so
+    /// a disconnect doesn't leave a 12-second backend call running.
+    private var aiAnalyseTasks: [UUID: Task<Void, Never>] = [:]
+    /// Track which assets we've already queued an AI analyse for, so a
+    /// resync that re-emits the asset list doesn't fire duplicate calls.
+    private var aiAnalyseDispatched: Set<UUID> = []
 
     /// On-set coaching signals for the currently focused asset. Cleared
     /// when focus changes; refreshed in background. Nil = no reading yet.
@@ -2048,6 +2187,23 @@ final class LiveCaptureModel {
     /// pipeline re-runs with the new values, overwriting the enhanced bytes.
     var tunedRecipes: [UUID: MagicRecipe] = [:]
 
+    /// Where the active recipe for an asset came from. Drives the
+    /// chip / badge UI so the photographer can tell at a glance whether
+    /// they're looking at on-device baseline, Claude's refinement, or
+    /// their own slider override.
+    enum RecipeSource: Equatable { case baseline, aiRefined, userTuned }
+
+    var recipeSource: [UUID: RecipeSource] = [:]
+
+    /// Claude Vision results keyed by asset id. Populated asynchronously
+    /// after the preview lands. Carries quality notes + caption suggestion
+    /// the UI surfaces below the hero.
+    var aiAnalyses: [UUID: BackendPhotoAnalysis] = [:]
+
+    /// Quality-note pills the user has dismissed for a given asset, so a
+    /// "soft focus" warning doesn't keep nagging once acknowledged.
+    var dismissedNoteAssets: Set<UUID> = []
+
     /// Recipe currently in effect for an asset: tuned if set, else the
     /// auto-detected baseline from the pipeline, else neutral.
     func recipe(for assetId: UUID) -> MagicRecipe {
@@ -2058,8 +2214,12 @@ final class LiveCaptureModel {
         return .neutral
     }
 
+    /// User-driven tune from the slider panel. Always marks the recipe
+    /// as user-tuned so the AI badge gets demoted — the photographer's
+    /// hand on the slider wins over Claude's recommendation.
     func tune(assetId: UUID, recipe: MagicRecipe) {
         tunedRecipes[assetId] = recipe
+        recipeSource[assetId] = .userTuned
         #if DEBUG
         guard let sourcePath = assets.first(where: { $0.id == assetId })?.previewKey
         else { return }
@@ -2067,14 +2227,33 @@ final class LiveCaptureModel {
         #endif
     }
 
+    /// Reset to the best available baseline. If Claude provided a
+    /// confident recipe we fall back to that (still labelled .aiRefined);
+    /// otherwise the on-device subject classifier's pick.
     func resetRecipe(assetId: UUID) {
         tunedRecipes.removeValue(forKey: assetId)
+        recipeSource[assetId] = .baseline
+        if let analysis = aiAnalyses[assetId], analysis.confidence >= 0.5 {
+            let claude = magicRecipe(from: analysis.suggestedRecipe)
+            tunedRecipes[assetId] = claude
+            recipeSource[assetId] = .aiRefined
+            #if DEBUG
+            if let sourcePath = assets.first(where: { $0.id == assetId })?.previewKey {
+                magicPipeline?.retune(assetId: assetId, recipe: claude, sourcePath: sourcePath)
+            }
+            #endif
+            return
+        }
         #if DEBUG
         guard let sourcePath = assets.first(where: { $0.id == assetId })?.previewKey,
               let baseline = magicPipeline?.baselineRecipes[assetId]
         else { return }
         magicPipeline?.retune(assetId: assetId, recipe: baseline, sourcePath: sourcePath)
         #endif
+    }
+
+    func dismissNotes(assetId: UUID) {
+        dismissedNoteAssets.insert(assetId)
     }
 
     /// Selects filter applied to the filmstrip. The source array stays
@@ -2145,6 +2324,7 @@ final class LiveCaptureModel {
             self.downloadDirectory = tempDir
             self.currentSessionId = dbSession.id
             self.sessionName = dbSession.name
+            self.backendClient = makeBackendClientFromDefaults()
 
             try await camera.start()
 
@@ -2258,12 +2438,124 @@ final class LiveCaptureModel {
         }
     }
 
+    // MARK: - Claude Vision (Phase 2A)
+
+    /// Read backend URL + bearer from UserDefaults. The settings sheet
+    /// can write these; absence means "skip the backend call entirely".
+    /// Keeps the iPad fully functional offline — Claude Vision is
+    /// strictly an enhancement layer on top of the on-device pipeline.
+    private func makeBackendClientFromDefaults() -> BackendClient? {
+        let defaults = UserDefaults.standard
+        guard let urlString = defaults.string(forKey: "capture.backendBaseURL"),
+              let url = URL(string: urlString),
+              let token = defaults.string(forKey: "capture.backendBearerToken"),
+              !token.isEmpty
+        else { return nil }
+        return BackendClient(
+            baseURL: url,
+            authHeaders: ["Authorization": "Bearer \(token)"]
+        )
+    }
+
+    /// Walk newly-arrived previews and dispatch one AI analyse per asset.
+    /// Called from `assets.didSet` so we don't need a separate stream.
+    private func scheduleAIAnalyses(after old: [Asset]) {
+        guard backendClient != nil else { return }
+        let oldKeys: [UUID: String?] = Dictionary(uniqueKeysWithValues: old.map { ($0.id, $0.previewKey) })
+        for asset in assets {
+            guard !aiAnalyseDispatched.contains(asset.id),
+                  let previewKey = asset.previewKey,
+                  FileManager.default.fileExists(atPath: previewKey)
+            else { continue }
+            // Only fire when previewKey transitions from nil → set, OR on
+            // a brand-new asset we haven't seen before.
+            let wasReady = (oldKeys[asset.id] ?? nil) != nil
+            let isNew = oldKeys[asset.id] == nil
+            guard isNew || !wasReady else { continue }
+            aiAnalyseDispatched.insert(asset.id)
+            dispatchAIAnalyse(assetId: asset.id, previewKey: previewKey)
+        }
+    }
+
+    private func dispatchAIAnalyse(assetId: UUID, previewKey: String) {
+        guard let backend = backendClient else { return }
+        aiAnalyseTasks[assetId]?.cancel()
+        let task = Task { [weak self] in
+            guard let self else { return }
+            // Wait briefly so the on-device pipeline gets first paint —
+            // the user always sees Magic's instant render and Claude's
+            // refinement only lands after, never replacing a blank hero.
+            try? await Task.sleep(for: .milliseconds(400))
+            if Task.isCancelled { return }
+            guard
+                let data = try? Data(contentsOf: URL(fileURLWithPath: previewKey)),
+                !data.isEmpty
+            else { return }
+            let mime = previewKey.lowercased().hasSuffix(".png") ? "image/png" : "image/jpeg"
+            let base64 = data.base64EncodedString()
+            do {
+                let response = try await backend.analyzeImage(
+                    assetId: assetId,
+                    imageBase64: base64,
+                    mime: mime,
+                )
+                if Task.isCancelled { return }
+                await MainActor.run {
+                    self.applyAIAnalysis(assetId: assetId, response: response)
+                }
+            } catch {
+                // Silent fallback: the on-device recipe stays in effect.
+                // Keeping the dispatched flag set means we don't retry on
+                // every assets refresh — a single shot per asset is plenty,
+                // the user can tune by hand if Claude wasn't reachable.
+            }
+        }
+        aiAnalyseTasks[assetId] = task
+    }
+
+    /// Apply Claude's recommendation. Skipped silently when:
+    ///   - the user has already moved sliders (userTuned wins)
+    ///   - confidence is below 0.5 (Claude is guessing)
+    /// Otherwise stores the analysis (so notes/caption surface in the UI),
+    /// pushes the recipe through the on-device pipeline, and marks the
+    /// recipe as `.aiRefined` so the badge reflects it.
+    private func applyAIAnalysis(assetId: UUID, response: BackendAnalyzeResponse) {
+        aiAnalyses[assetId] = response.analysis
+        guard recipeSource[assetId] != .userTuned else { return }
+        guard response.analysis.confidence >= 0.5 else { return }
+        let claude = magicRecipe(from: response.analysis.suggestedRecipe)
+        tunedRecipes[assetId] = claude
+        recipeSource[assetId] = .aiRefined
+        #if DEBUG
+        if let sourcePath = assets.first(where: { $0.id == assetId })?.previewKey {
+            magicPipeline?.retune(assetId: assetId, recipe: claude, sourcePath: sourcePath)
+        }
+        #endif
+    }
+
+    private func magicRecipe(from wire: BackendSuggestedRecipe) -> MagicRecipe {
+        MagicRecipe(
+            warmth: wire.warmth,
+            skinSmooth: wire.skinSmooth,
+            shadowLift: wire.shadowLift,
+            contrast: wire.contrast,
+            saturation: wire.saturation
+        )
+    }
+
     private func teardown() async {
         if let cameraSession {
             await cameraSession.stop()
         }
         for task in forwardingTasks { task.cancel() }
         forwardingTasks.removeAll()
+        for task in aiAnalyseTasks.values { task.cancel() }
+        aiAnalyseTasks.removeAll()
+        aiAnalyseDispatched.removeAll()
+        backendClient = nil
+        aiAnalyses.removeAll()
+        recipeSource.removeAll()
+        dismissedNoteAssets.removeAll()
         if let downloadDirectory {
             try? FileManager.default.removeItem(at: downloadDirectory)
         }

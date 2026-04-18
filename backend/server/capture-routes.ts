@@ -43,6 +43,7 @@ import {
 } from './capture-assets-service.js';
 import { addReview as addReviewRow } from './capture-reviews-service.js';
 import { performHandoff, type HandoffFilter } from './capture-handoff-service.js';
+import { analyzePhoto, type AnalyzeError } from './capture-analyze-service.js';
 import { captureAssets, captureSessions } from '../migrations/capture-schema.js';
 import { and, asc, eq } from 'drizzle-orm';
 
@@ -84,6 +85,13 @@ const updateAssetBody = z.object({
     .optional(),
   flaggedForClient: z.boolean().optional(),
   rejected: z.boolean().optional(),
+});
+
+// 12 MB cap on the base64 payload — comfortably above any preview JPEG
+// Canon emits at ?kind=display, well below Express's default JSON limit.
+const analyzeAssetBody = z.object({
+  imageBase64: z.string().min(64).max(16 * 1024 * 1024),
+  mime: z.enum(['image/jpeg', 'image/png', 'image/webp']),
 });
 
 const assetSignalsBody = z.object({
@@ -173,6 +181,20 @@ const clientReviewBody = z
   .refine((d) => d.heart !== undefined || d.comment !== undefined, {
     message: 'At least one of heart or comment must be provided',
   });
+
+function analyzeErrorStatus(error: AnalyzeError): number {
+  switch (error) {
+    case 'not_configured':
+      return 503;
+    case 'timeout':
+      return 504;
+    case 'upstream_failed':
+    case 'invalid_response':
+      return 502;
+    case 'not_found':
+      return 404;
+  }
+}
 
 function uploadErrorStatus(error: UploadError): number {
   switch (error) {
@@ -400,6 +422,29 @@ export function createCaptureRouter(
       return;
     }
     res.json(row);
+  });
+
+  // ── Claude Vision analyse ───────────────────────────────────
+
+  router.post('/assets/:id/analyze', auth, async (req, res) => {
+    const parsed = analyzeAssetBody.safeParse(req.body);
+    if (!handleZod(res, parsed)) return;
+    const { userId } = req as AuthedRequest;
+    const result = await analyzePhoto({
+      db,
+      ownerUserId: userId,
+      assetId: req.params.id,
+      imageBase64: parsed.data.imageBase64,
+      mime: parsed.data.mime,
+    });
+    if (!result.ok) {
+      res.status(analyzeErrorStatus(result.error)).json({
+        error: result.error,
+        detail: result.detail,
+      });
+      return;
+    }
+    res.json({ analysis: result.analysis, usage: result.usage });
   });
 
   // ── Uploads (R2 multipart) ──────────────────────────────────
