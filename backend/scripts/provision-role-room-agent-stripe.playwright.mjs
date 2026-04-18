@@ -158,6 +158,33 @@ async function waitForLoginOrTimeout(page, maxSeconds = 300) {
       await intervalButton.click();
     }
 
+    // MVA: 99 NOK vises som "99 kr/mnd + mva" i appen, så Stripe-prisen skal
+    // IKKE være inklusiv mva. Stripe Tax legger på 25% norsk mva på toppen
+    // ved checkout. Vi forsikrer eksplisitt at "Includes tax" er AV.
+    try {
+      const includeTaxCheckbox = page
+        .getByRole('checkbox', { name: /includes tax|inkl(udert)?\.? *mva|tax included/i })
+        .first();
+      if (await includeTaxCheckbox.count()) {
+        if (await includeTaxCheckbox.isChecked()) await includeTaxCheckbox.uncheck();
+      } else {
+        const taxBehaviorButton = page
+          .getByRole('button', { name: /tax behavior|skatteatferd/i })
+          .first();
+        if (await taxBehaviorButton.count()) {
+          await taxBehaviorButton.click();
+          const exclusiveOption = page
+            .getByRole('option', { name: /excludes tax|exclusive|kommer i tillegg/i })
+            .first();
+          if (await exclusiveOption.count()) await exclusiveOption.click();
+        } else {
+          console.log('⚠  Fant ikke tax-behavior-felt — verifiser at "Includes tax" er AV på prisen.');
+        }
+      }
+    } catch (taxError) {
+      console.log('⚠  Kunne ikke sette tax_behavior=exclusive: ', taxError?.message ?? taxError);
+    }
+
     // Submit.
     console.log('Submitting new product...');
     const submitButton = page

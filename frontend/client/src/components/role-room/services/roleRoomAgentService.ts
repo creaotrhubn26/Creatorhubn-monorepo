@@ -107,6 +107,10 @@ export interface RoleRoomAgentSocialProfileEvidence {
   type:
     | 'website_link'
     | 'schema_same_as'
+    | 'meta_tag'
+    | 'link_rel_me'
+    | 'text_mention'
+    | 'data_attribute'
     | 'name_match'
     | 'handle_match'
     | 'domain_match'
@@ -397,6 +401,148 @@ const normalizeStoryLogicDraft = (value: Record<string, unknown>): Record<string
   versions: Array.isArray(value.versions) ? value.versions : [],
 });
 
+export type RoleRoomFeedPlatform = 'instagram' | 'tiktok' | 'linkedin';
+
+export type RoleRoomFeedPostConcept =
+  | 'product_highlight'
+  | 'behind_the_scenes'
+  | 'testimonial'
+  | 'promo'
+  | 'educational'
+  | 'announcement';
+
+export type RoleRoomFeedMediaType = 'image' | 'reel' | 'carousel';
+
+export type RoleRoomFeedLogoPlacement =
+  | 'top-left'
+  | 'top-right'
+  | 'bottom-left'
+  | 'bottom-right'
+  | 'center';
+
+export interface RoleRoomFeedPost {
+  id: string;
+  concept: RoleRoomFeedPostConcept | string;
+  title: string;
+  caption: string;
+  hashtags: string[];
+  callToAction: string;
+  imageStyle: string;
+  scheduledFor: string | null;
+  backgroundColor: string | null;
+  accentColor: string | null;
+  textColor: string | null;
+  logoPlacement: RoleRoomFeedLogoPlacement | null;
+  mediaType: RoleRoomFeedMediaType;
+  locked: boolean;
+  customImageUrl?: string | null;
+  customImageName?: string | null;
+}
+
+export interface RoleRoomFeedBrandSnapshot {
+  companyName?: string | null;
+  logoUrl?: string | null;
+  primaryColor?: string | null;
+  secondaryColor?: string | null;
+  accentColor?: string | null;
+  toneOfVoice?: string | null;
+  visualStyle?: string | null;
+}
+
+export interface RoleRoomFeedPlan {
+  projectId: string;
+  platform: RoleRoomFeedPlatform;
+  posts: RoleRoomFeedPost[];
+  brandSnapshot: RoleRoomFeedBrandSnapshot | null;
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
+interface FeedPlanResponse {
+  success?: boolean;
+  error?: string;
+  plan?: RoleRoomFeedPlan | null;
+}
+
+export interface RoleRoomDriveImage {
+  id: string;
+  name: string;
+  mimeType: string;
+  thumbnailLink?: string | null;
+  iconLink?: string | null;
+  webViewLink?: string | null;
+  modifiedTime?: string | null;
+  sizeBytes?: number | null;
+}
+
+export interface RoleRoomDriveImportedImage {
+  dataUrl: string;
+  name: string;
+  mimeType: string;
+  fileId: string;
+  width?: number;
+  height?: number;
+}
+
+interface DriveListResponse {
+  success?: boolean;
+  error?: string;
+  notConnected?: boolean;
+  files?: RoleRoomDriveImage[];
+  nextPageToken?: string | null;
+}
+
+interface DriveImportResponse {
+  success?: boolean;
+  error?: string;
+  image?: RoleRoomDriveImportedImage;
+}
+
+export interface RoleRoomFeedRecommendation {
+  caption: string;
+  hashtags: string[];
+  callToAction: string;
+  scheduledFor: string | null;
+  strategyNotes: string;
+  bestTimeRationale: string;
+  strategyFreshness: 'fresh' | 'stale' | 'seed' | 'failed';
+  refreshedAt: string | null;
+}
+
+export interface RoleRoomFeedRecommendEntitlement {
+  source: string;
+  status: string;
+  trialEndsAt: string | null;
+  daysRemaining: number | null;
+}
+
+interface RecommendResponse {
+  success?: boolean;
+  error?: string;
+  recommendation?: RoleRoomFeedRecommendation;
+  entitlement?: RoleRoomFeedRecommendEntitlement | {
+    allowed: boolean;
+    source: string;
+    status: string;
+    reason: string;
+    upsell?: {
+      canStartTrial: boolean;
+      canBuyAddOn: boolean;
+      canUpgradeToPro: boolean;
+      currentPlanType: string | null;
+    };
+  };
+}
+
+export class RoleRoomFeedEntitlementError extends Error {
+  entitlement: RecommendResponse['entitlement'];
+  constructor(message: string, entitlement: RecommendResponse['entitlement']) {
+    super(message);
+    this.name = 'RoleRoomFeedEntitlementError';
+    this.entitlement = entitlement;
+  }
+}
+
 export const roleRoomAgentService = {
   async getAccess(): Promise<RoleRoomAgentAccess> {
     const response = await fetch('/api/role-room/agent/access', {
@@ -498,6 +644,160 @@ export const roleRoomAgentService = {
       result,
       { projectId },
     );
+  },
+
+  async loadFeedPlan(
+    projectId: string,
+    platform: RoleRoomFeedPlatform,
+  ): Promise<RoleRoomFeedPlan | null> {
+    const response = await fetch(
+      `/api/role-room/agent/feed-plan/${encodeURIComponent(projectId)}/${encodeURIComponent(platform)}`,
+      { headers: readRoleRoomAgentHeaders() },
+    );
+    if (!response.ok) {
+      return null;
+    }
+    const payload = (await response.json().catch(() => null)) as FeedPlanResponse | null;
+    if (!payload?.success) {
+      return null;
+    }
+    return payload.plan ?? null;
+  },
+
+  async saveFeedPlan(
+    projectId: string,
+    platform: RoleRoomFeedPlatform,
+    posts: RoleRoomFeedPost[],
+    brandSnapshot: RoleRoomFeedBrandSnapshot | null,
+  ): Promise<RoleRoomFeedPlan | null> {
+    const response = await fetch(
+      `/api/role-room/agent/feed-plan/${encodeURIComponent(projectId)}/${encodeURIComponent(platform)}`,
+      {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...readRoleRoomAgentHeaders(),
+        },
+        body: JSON.stringify({ posts, brandSnapshot }),
+      },
+    );
+    const payload = (await response.json().catch(() => null)) as FeedPlanResponse | null;
+    if (!response.ok || !payload?.success) {
+      throw new Error(payload?.error || 'Kunne ikke lagre feed-planen.');
+    }
+    return payload.plan ?? null;
+  },
+
+  async listDriveImages(
+    query?: string,
+  ): Promise<{ files: RoleRoomDriveImage[]; notConnected: boolean; nextPageToken?: string | null }> {
+    const url = new URL('/api/role-room/agent/feed-plan/drive/images', window.location.origin);
+    if (query && query.trim()) {
+      url.searchParams.set('q', query.trim());
+    }
+    const response = await fetch(url.pathname + url.search, {
+      headers: readRoleRoomAgentHeaders(),
+    });
+    const payload = (await response.json().catch(() => null)) as DriveListResponse | null;
+    if (!response.ok) {
+      if (payload?.notConnected) {
+        return { files: [], notConnected: true };
+      }
+      throw new Error(payload?.error || 'Kunne ikke hente Drive-bilder.');
+    }
+    return {
+      files: Array.isArray(payload?.files) ? payload!.files! : [],
+      notConnected: Boolean(payload?.notConnected),
+      nextPageToken: payload?.nextPageToken ?? null,
+    };
+  },
+
+  async refreshFeedPlanStrategy(platform: RoleRoomFeedPlatform): Promise<{
+    success: boolean;
+    error?: string;
+    strategy?: unknown;
+  }> {
+    const response = await fetch('/api/role-room/agent/feed-plan/strategy/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...readRoleRoomAgentHeaders() },
+      body: JSON.stringify({ platform }),
+    });
+    const payload = (await response.json().catch(() => null)) as
+      | { success?: boolean; error?: string; strategy?: unknown }
+      | null;
+    if (!response.ok || !payload?.success) {
+      return { success: false, error: payload?.error || `HTTP ${response.status}` };
+    }
+    return { success: true, strategy: payload.strategy };
+  },
+
+  async recommendFeedPost(input: {
+    projectId: string;
+    platform: RoleRoomFeedPlatform;
+    post: {
+      concept: string;
+      title: string;
+      caption: string;
+      callToAction: string;
+      hashtags: string[];
+      mediaType: string;
+    };
+    brand: {
+      companyName?: string | null;
+      industry?: string | null;
+      subIndustry?: string | null;
+      businessModel?: string | null;
+      targetAudience?: string[];
+      offerings?: string[];
+      toneOfVoice?: string | null;
+      visualStyle?: string | null;
+      keyMessage?: string | null;
+      dos?: string[];
+      donts?: string[];
+    };
+    scheduleHint?: string | null;
+  }): Promise<{ recommendation: RoleRoomFeedRecommendation; entitlement: RoleRoomFeedRecommendEntitlement | null }> {
+    const response = await fetch('/api/role-room/agent/feed-plan/recommend', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...readRoleRoomAgentHeaders(),
+      },
+      body: JSON.stringify(input),
+    });
+    const payload = (await response.json().catch(() => null)) as RecommendResponse | null;
+    if (response.status === 402) {
+      throw new RoleRoomFeedEntitlementError(
+        payload?.error || 'Tilgang krever aktiv pakke.',
+        payload?.entitlement,
+      );
+    }
+    if (!response.ok || !payload?.success || !payload.recommendation) {
+      throw new Error(payload?.error || 'Kunne ikke hente AI-anbefaling.');
+    }
+    return {
+      recommendation: payload.recommendation,
+      entitlement: (payload.entitlement as RoleRoomFeedRecommendEntitlement) ?? null,
+    };
+  },
+
+  async importDriveImage(
+    fileId: string,
+    aspect: '4:5' | '1:1' | '9:16' = '4:5',
+  ): Promise<RoleRoomDriveImportedImage> {
+    const response = await fetch('/api/role-room/agent/feed-plan/drive/import', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...readRoleRoomAgentHeaders(),
+      },
+      body: JSON.stringify({ fileId, aspect }),
+    });
+    const payload = (await response.json().catch(() => null)) as DriveImportResponse | null;
+    if (!response.ok || !payload?.success || !payload.image) {
+      throw new Error(payload?.error || 'Kunne ikke importere bildet fra Google Drive.');
+    }
+    return payload.image;
   },
 };
 

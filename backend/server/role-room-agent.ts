@@ -33,6 +33,10 @@ type RoleRoomAgentSocialProfileEvidence = {
   type:
     | "website_link"
     | "schema_same_as"
+    | "meta_tag"
+    | "link_rel_me"
+    | "text_mention"
+    | "data_attribute"
     | "name_match"
     | "handle_match"
     | "domain_match"
@@ -1403,6 +1407,9 @@ function scoreWebsiteLink(url: URL, label: string): number {
   if (/(om-oss|about|kontakt|contact)/.test(haystack)) {
     score += 40;
   }
+  if (/(sosial|social|folg-oss|følg-oss|follow-us|press|presse|team|ansatte|medarbeidere|staff)/.test(haystack)) {
+    score += 35;
+  }
   if (/(meny|menu|bestill|order|levering|takeaway)/.test(haystack)) {
     score += 55;
   }
@@ -1421,13 +1428,13 @@ function scoreWebsiteLink(url: URL, label: string): number {
 
 function inferSocialPlatformFromUrl(url: URL): RoleRoomAgentSocialPlatform | null {
   const host = url.hostname.replace(/^www\./i, "").replace(/^m\./i, "").toLowerCase();
-  if (host === "instagram.com" || host.endsWith(".instagram.com")) return "instagram";
+  if (host === "instagram.com" || host.endsWith(".instagram.com") || host === "instagr.am") return "instagram";
   if (host === "facebook.com" || host.endsWith(".facebook.com") || host === "fb.com") return "facebook";
   if (host === "linkedin.com" || host.endsWith(".linkedin.com")) return "linkedin";
   if (host === "youtube.com" || host.endsWith(".youtube.com") || host === "youtu.be") return "youtube";
   if (host === "tiktok.com" || host.endsWith(".tiktok.com")) return "tiktok";
   if (host === "x.com" || host === "twitter.com") return "x";
-  if (host === "threads.net" || host.endsWith(".threads.net")) return "threads";
+  if (host === "threads.net" || host.endsWith(".threads.net") || host === "threads.com") return "threads";
   if (host === "vimeo.com" || host.endsWith(".vimeo.com")) return "vimeo";
   if (host === "pinterest.com" || host === "pinterest.no" || host.endsWith(".pinterest.com")) return "pinterest";
   return null;
@@ -1439,23 +1446,45 @@ function extractSocialHandle(platform: RoleRoomAgentSocialPlatform, url: URL): s
     return null;
   }
 
-  if (platform === "instagram" || platform === "tiktok" || platform === "threads") {
+  if (platform === "instagram" || platform === "threads") {
     const first = segments[0].replace(/^@/, "");
-    return /^(p|reel|reels|stories|explore|accounts|about|developer)$/i.test(first) ? null : first;
+    return /^(p|reel|reels|stories|explore|accounts|about|developer|direct|tv)$/i.test(first) ? null : first;
+  }
+
+  if (platform === "tiktok") {
+    const first = segments[0].replace(/^@/, "");
+    return /^(discover|foryou|following|friends|live|tag|music|upload|video|channel|business|creators|trending|embed|about)$/i.test(first)
+      ? null
+      : first;
   }
 
   if (platform === "facebook") {
     if (segments[0] === "profile.php") {
       return url.searchParams.get("id");
     }
-    return /^(share|sharer|events|groups|watch|reel|photo|pages|login|plugins)$/i.test(segments[0]) ? null : segments[0];
+    if (segments[0] === "pages" && segments.length >= 2) {
+      const numericId = segments.find((entry) => /^\d{5,}$/.test(entry));
+      if (numericId) return numericId;
+      return segments[1];
+    }
+    if (segments[0] === "people" && segments[1]) {
+      const numericId = segments.find((entry) => /^\d{5,}$/.test(entry));
+      return numericId ?? segments[1];
+    }
+    return /^(share|sharer|events|groups|watch|reel|photo|login|plugins|dialog|tr|policies|help|privacy|legal)$/i.test(segments[0]) ? null : segments[0];
   }
 
   if (platform === "linkedin") {
     if (["company", "school", "showcase"].includes(segments[0]) && segments[1]) {
       return segments[1];
     }
-    return segments[0] === "in" && segments[1] ? segments[1] : null;
+    if (segments[0] === "in" && segments[1]) {
+      return segments[1];
+    }
+    if (segments[0] === "pub" && segments[1]) {
+      return segments[1];
+    }
+    return null;
   }
 
   if (platform === "youtube") {
@@ -1571,6 +1600,17 @@ function addSocialCandidateEvidence(
   });
 }
 
+const SOCIAL_URL_REGEX =
+  /https?:\/\/(?:www\.|m\.)?(?:instagram\.com|instagr\.am|facebook\.com|fb\.com|linkedin\.com|youtube\.com|youtu\.be|tiktok\.com|twitter\.com|x\.com|threads\.(?:net|com)|vimeo\.com|pinterest\.(?:com|no))\/[A-Za-z0-9_\-./@?=&%]+/gi;
+
+function normalizeTwitterMetaHandle(value: string): string | null {
+  const trimmed = normalizeWhitespace(value).replace(/^@/, "").trim();
+  if (!trimmed || /[\s/]/.test(trimmed) || trimmed.length > 40) {
+    return null;
+  }
+  return trimmed;
+}
+
 function collectSocialCandidatesFromHtml(
   html: string,
   pageUrl: string,
@@ -1578,26 +1618,104 @@ function collectSocialCandidatesFromHtml(
   candidateMap: Map<string, RoleRoomAgentSocialProfileCandidate>,
 ) {
   const $ = load(html);
-  $("a[href]").each((_, element) => {
+  const anchorLabel = pageLabel ? `Lenket fra ${pageLabel}` : "Lenket fra kundens nettside";
+
+  $("a").each((_, element) => {
+    const el = $(element);
+    const label = normalizeWhitespace(el.text() || "");
+    const ariaLabel = normalizeWhitespace(el.attr("aria-label") || "");
+    const displayLabel = label || ariaLabel;
+    const seen = new Set<string>();
+
+    const addFromAttr = (attr: string, weight: number, evidenceType: "website_link" | "data_attribute", evidenceLabel: string) => {
+      const value = el.attr(attr);
+      if (!hasText(value)) return;
+      const resolved = resolveUrl(pageUrl, value);
+      if (!resolved || seen.has(resolved)) return;
+      seen.add(resolved);
+      addSocialCandidateEvidence(
+        candidateMap,
+        resolved,
+        pageUrl,
+        "company_website",
+        { type: evidenceType, label: evidenceLabel, weight },
+        displayLabel,
+      );
+    };
+
+    addFromAttr("href", 65, "website_link", anchorLabel);
+    addFromAttr("data-href", 60, "data_attribute", `${anchorLabel} (data-href)`);
+    addFromAttr("data-url", 60, "data_attribute", `${anchorLabel} (data-url)`);
+    addFromAttr("data-link", 60, "data_attribute", `${anchorLabel} (data-link)`);
+  });
+
+  $('link[rel~="me"][href]').each((_, element) => {
     const href = $(element).attr("href");
-    const label = normalizeWhitespace($(element).text() || "");
     const resolved = resolveUrl(pageUrl, href);
-    if (!resolved) {
-      return;
-    }
+    if (!resolved) return;
     addSocialCandidateEvidence(
       candidateMap,
       resolved,
       pageUrl,
       "company_website",
       {
-        type: "website_link",
-        label: pageLabel ? `Lenket fra ${pageLabel}` : "Lenket fra kundens nettside",
-        weight: 65,
+        type: "link_rel_me",
+        label: "Oppført som rel=\"me\" (IndieWeb-verifisert kobling)",
+        weight: 75,
       },
-      label,
     );
   });
+
+  const twitterSite = extractMetaContent(html, "twitter:site");
+  if (twitterSite) {
+    const handle = normalizeTwitterMetaHandle(twitterSite);
+    if (handle) {
+      addSocialCandidateEvidence(
+        candidateMap,
+        `https://x.com/${handle}`,
+        pageUrl,
+        "company_website",
+        {
+          type: "meta_tag",
+          label: "Oppført som twitter:site i metadata",
+          weight: 60,
+        },
+      );
+    }
+  }
+
+  const twitterCreator = extractMetaContent(html, "twitter:creator");
+  if (twitterCreator) {
+    const handle = normalizeTwitterMetaHandle(twitterCreator);
+    if (handle) {
+      addSocialCandidateEvidence(
+        candidateMap,
+        `https://x.com/${handle}`,
+        pageUrl,
+        "company_website",
+        {
+          type: "meta_tag",
+          label: "Oppført som twitter:creator i metadata",
+          weight: 55,
+        },
+      );
+    }
+  }
+
+  const fbPageId = extractMetaContent(html, "fb:page_id");
+  if (fbPageId && /^\d{5,}$/.test(normalizeWhitespace(fbPageId))) {
+    addSocialCandidateEvidence(
+      candidateMap,
+      `https://facebook.com/${normalizeWhitespace(fbPageId)}`,
+      pageUrl,
+      "company_website",
+      {
+        type: "meta_tag",
+        label: "Oppført som fb:page_id i metadata",
+        weight: 60,
+      },
+    );
+  }
 
   $('script[type="application/ld+json"]').each((_, element) => {
     const raw = $(element).contents().text();
@@ -1623,6 +1741,31 @@ function collectSocialCandidatesFromHtml(
       // Ignore invalid JSON-LD and continue with visible links.
     }
   });
+
+  const textOnly = html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<a\b[^>]*>[\s\S]*?<\/a>/gi, " ");
+  const textMatches = textOnly.match(SOCIAL_URL_REGEX);
+  if (textMatches) {
+    const seenText = new Set<string>();
+    for (const match of textMatches) {
+      const cleaned = match.replace(/[.,;:!?)\]>"']+$/, "");
+      if (seenText.has(cleaned)) continue;
+      seenText.add(cleaned);
+      addSocialCandidateEvidence(
+        candidateMap,
+        cleaned,
+        pageUrl,
+        "company_website",
+        {
+          type: "text_mention",
+          label: pageLabel ? `Nevnt i tekst på ${pageLabel}` : "Nevnt i tekst på kundens nettside",
+          weight: 50,
+        },
+      );
+    }
+  }
 }
 
 function finalizeSocialProfileCandidates(
@@ -1978,7 +2121,7 @@ export async function fetchWebsiteInsights(
       ).values(),
     )
       .sort((left, right) => right.priority - left.priority)
-      .slice(0, 6);
+      .slice(0, 8);
 
     const pageCandidates: RoleRoomAgentWebsitePageSnippet[] = [
       {

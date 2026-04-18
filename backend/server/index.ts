@@ -90,6 +90,24 @@ import {
   generateRoleRoomAgentProducerBootstrap,
   getRoleRoomAgentRuntimeConfig,
 } from "./role-room-agent.js";
+import {
+  isSupportedPlatform as isSupportedFeedPlatform,
+  loadFeedPlan,
+  normalizeFeedPostsPayload,
+  saveFeedPlan,
+} from "./role-room-feed-plan.js";
+import { recommendFeedPost } from "./role-room-feed-recommend.js";
+import {
+  refreshStrategyWithClaude,
+  upsertStrategy,
+  loadStrategy,
+} from "./role-room-feed-strategy.js";
+import { checkAgentEntitlement } from "./role-room-agent-entitlements.js";
+import { logAiCall } from "./role-room-ai-audit.js";
+import {
+  requireActiveConsent,
+  RoleRoomAiConsentError,
+} from "./role-room-ai-consent.js";
 import { registerTidumAdminRoutes } from "./tidum-admin-routes.js";
 import {
   getNotebookLmWorkspaceStatus,
@@ -28766,6 +28784,465 @@ app.post("/api/role-room/agent/producer-bootstrap", async (req, res) => {
       error: "Kunne ikke generere utkast fra The Role Room Agent.",
     });
   }
+});
+
+app.post("/api/role-room/agent/feed-plan/strategy/refresh", async (req, res) => {
+  const featureId = "role-room-agent-producer";
+  if (!isCompatAdminFeatureEnabled(featureId)) {
+    return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
+  }
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+
+  const body =
+    req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
+  const platform = body.platform;
+  if (!isSupportedFeedPlatform(platform)) {
+    return res.status(400).json({ success: false, error: "Støttet plattform er påkrevd." });
+  }
+
+  // Synkron refresh — admin venter aktivt og får strategi-summeringen tilbake.
+  // Bakgrunnstriggeren er fortsatt opportunistisk; dette er manuell override.
+  const refreshed = await refreshStrategyWithClaude(platform);
+  if (!refreshed) {
+    const current = await loadStrategy(pool, platform);
+    return res.status(502).json({
+      success: false,
+      error: "Claude refresh feilet — strategi ikke endret. Sjekk ANTHROPIC_API_KEY og ROLE_ROOM_AGENT_CLAUDE_ENABLED.",
+      strategy: current,
+    });
+  }
+
+  await upsertStrategy(pool, platform, refreshed.summary, refreshed.sourceUrls, {
+    refreshedBy: `manual:${session.userId}`,
+  });
+  const persisted = await loadStrategy(pool, platform);
+  return res.json({ success: true, strategy: persisted });
+});
+
+app.post("/api/role-room/agent/feed-plan/recommend", async (req, res) => {
+  const featureId = "role-room-agent-producer";
+  if (!isCompatAdminFeatureEnabled(featureId)) {
+    return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
+  }
+
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+
+  const body =
+    req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
+  const platform = body.platform;
+  if (!isSupportedFeedPlatform(platform)) {
+    return res.status(400).json({ success: false, error: "Støttet plattform er påkrevd." });
+  }
+  if (!body.post || typeof body.post !== "object") {
+    return res.status(400).json({ success: false, error: "post er påkrevd." });
+  }
+  if (!body.brand || typeof body.brand !== "object") {
+    return res.status(400).json({ success: false, error: "brand-kontekst er påkrevd." });
+  }
+  const projectId = typeof body.projectId === "string" ? body.projectId.trim() : "";
+  if (!projectId) {
+    return res.status(400).json({ success: false, error: "projectId er påkrevd." });
+  }
+
+  // Følg samme entitlement-regler som resten av The Role Room-agenten:
+  // admins går rett gjennom, betalende planer får uhindret tilgang,
+  // trial-brukere får tilgang innenfor daglige/månedlige tak, ellers 402
+  // med upsell-stier (addon_monthly / plan_pro / start_trial).
+  const entitlement = await checkAgentEntitlement(pool, session.userId, session.role);
+  if (!entitlement.allowed) {
+    return res.status(402).json({
+      success: false,
+      error: entitlement.reason || "Tilgang til AI-anbefalinger krever aktiv plan eller addon.",
+      entitlement,
+    });
+  }
+
+  // GDPR: AI-anbefaling sender brand-kontekst (og evt. opplastet bilde) til
+  // Anthropic. Krever aktivt samtykke per prosjekt + prosessor (samme
+  // mekanisme som bootstrap/chat-flyten). Vision-kall krever 'full_context'
+  // siden bildedata er bredere enn tekst-brief.
+  const hasImageInPost =
+    body.post && typeof body.post === "object"
+      ? typeof (body.post as Record<string, unknown>).customImageUrl === "string"
+      : false;
+  try {
+    await requireActiveConsent(
+      pool,
+      projectId,
+      "anthropic",
+      hasImageInPost ? "full_context" : "brief_and_reviews",
+    );
+  } catch (consentError) {
+    if (consentError instanceof RoleRoomAiConsentError) {
+      await logAiCall(pool, {
+        projectId,
+        userId: session.userId,
+        processor: "anthropic",
+        model: process.env.ROLE_ROOM_AGENT_CLAUDE_MODEL || "claude-sonnet-4-5",
+        action: hasImageInPost ? "feed_plan_recommend_vision" : "feed_plan_recommend",
+        status: "blocked_by_consent",
+        errorCode: consentError.code,
+      });
+      return res.status(403).json({
+        success: false,
+        error: consentError.message,
+        consent: { code: consentError.code, requiredScope: hasImageInPost ? "full_context" : "brief_and_reviews" },
+      });
+    }
+    throw consentError;
+  }
+
+  const startedAt = Date.now();
+  try {
+    const recommendation = await recommendFeedPost(pool, {
+      projectId,
+      userId: session.userId,
+      input: {
+        platform,
+        post: body.post as any,
+        brand: body.brand as any,
+        scheduleHint: typeof body.scheduleHint === "string" ? body.scheduleHint : null,
+      },
+    });
+
+    const visionUsed = (recommendation as { visionUsed?: boolean }).visionUsed === true;
+    // Logg samtalen i samme audit-tabell som øvrige role-room-agent-kall —
+    // trialtakene i checkAgentEntitlement telles derfra, så feed-planner
+    // arver automatisk pris- og forbruksreglene. Vi flagger også når vision
+    // ble brukt så DPO-rapportene viser hvor bildedata ble prosessert.
+    await logAiCall(pool, {
+      projectId,
+      userId: session.userId,
+      processor: "anthropic",
+      model: process.env.ROLE_ROOM_AGENT_CLAUDE_MODEL || "claude-sonnet-4-5",
+      action: visionUsed ? "feed_plan_recommend_vision" : "feed_plan_recommend",
+      status: "ok",
+      latencyMs: Date.now() - startedAt,
+      fieldCategories: visionUsed
+        ? ["social_caption", "posting_time", "image_content"]
+        : ["social_caption", "posting_time"],
+    });
+
+    return res.json({
+      success: true,
+      recommendation,
+      entitlement: {
+        source: entitlement.source,
+        status: entitlement.status,
+        trialEndsAt: entitlement.trialEndsAt ?? null,
+        daysRemaining: entitlement.daysRemaining ?? null,
+      },
+    });
+  } catch (error) {
+    console.error("[role-room-agent] feed-plan recommend failed", error);
+    await logAiCall(pool, {
+      projectId,
+      userId: session.userId,
+      processor: "anthropic",
+      model: process.env.ROLE_ROOM_AGENT_CLAUDE_MODEL || "claude-sonnet-4-5",
+      action: "feed_plan_recommend",
+      status: "error",
+      latencyMs: Date.now() - startedAt,
+      errorMessage: error instanceof Error ? error.message.slice(0, 500) : "unknown",
+    });
+    return res.status(500).json({
+      success: false,
+      error: "Kunne ikke hente AI-anbefaling.",
+    });
+  }
+});
+
+app.get("/api/role-room/agent/feed-plan/drive/images", async (req, res) => {
+  const featureId = "role-room-agent-producer";
+  if (!isCompatAdminFeatureEnabled(featureId)) {
+    return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
+  }
+
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+
+  let authorized;
+  try {
+    authorized = await resolveRoleRoomGoogleConnection(pool, session.userId);
+  } catch (error) {
+    console.error("[role-room-agent] drive images: no connection", error);
+    return res.status(200).json({
+      success: false,
+      notConnected: true,
+      error: "Google Drive er ikke koblet til denne brukeren.",
+    });
+  }
+
+  const searchQuery = typeof req.query.q === "string" ? req.query.q.trim() : "";
+  const escaped = searchQuery.replace(/'/g, "\\'");
+  const queryParts = [
+    "mimeType contains 'image/'",
+    "trashed = false",
+  ];
+  if (escaped) {
+    queryParts.push(`name contains '${escaped}'`);
+  }
+
+  try {
+    const driveApi = google.drive({ version: "v3", auth: authorized.oauthClient });
+    const result = await driveApi.files.list({
+      q: queryParts.join(" and "),
+      pageSize: 60,
+      orderBy: "modifiedTime desc",
+      fields:
+        "nextPageToken, files(id, name, mimeType, thumbnailLink, iconLink, webViewLink, modifiedTime, size)",
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    });
+
+    const files = (result.data.files || []).map((file) => ({
+      id: file.id || "",
+      name: file.name || "Uten navn",
+      mimeType: file.mimeType || "image/jpeg",
+      thumbnailLink: file.thumbnailLink ?? null,
+      iconLink: file.iconLink ?? null,
+      webViewLink: file.webViewLink ?? null,
+      modifiedTime: file.modifiedTime ?? null,
+      sizeBytes: file.size ? Number(file.size) : null,
+    }));
+
+    return res.json({
+      success: true,
+      files,
+      nextPageToken: result.data.nextPageToken ?? null,
+    });
+  } catch (error) {
+    console.error("[role-room-agent] drive images list failed", error);
+    return res.status(500).json({
+      success: false,
+      error: "Kunne ikke hente bildene fra Google Drive.",
+    });
+  }
+});
+
+app.post("/api/role-room/agent/feed-plan/drive/import", async (req, res) => {
+  const featureId = "role-room-agent-producer";
+  if (!isCompatAdminFeatureEnabled(featureId)) {
+    return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
+  }
+
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+
+  const body =
+    req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
+  const fileId = typeof body.fileId === "string" ? body.fileId.trim() : "";
+  if (!fileId) {
+    return res.status(400).json({ success: false, error: "fileId er påkrevd." });
+  }
+
+  const entitlement = await checkAgentEntitlement(pool, session.userId, session.role);
+  if (!entitlement.allowed) {
+    return res.status(402).json({
+      success: false,
+      error: entitlement.reason || "Bildeimport fra Drive krever aktiv Role Room-pakke.",
+      entitlement,
+    });
+  }
+
+  let authorized;
+  try {
+    authorized = await resolveRoleRoomGoogleConnection(pool, session.userId);
+  } catch (error) {
+    console.error("[role-room-agent] drive import: no connection", error);
+    return res.status(400).json({
+      success: false,
+      notConnected: true,
+      error: "Google Drive er ikke koblet til denne brukeren.",
+    });
+  }
+
+  try {
+    const driveApi = google.drive({ version: "v3", auth: authorized.oauthClient });
+    const metaResponse = await driveApi.files.get({
+      fileId,
+      fields: "id, name, mimeType, size",
+      supportsAllDrives: true,
+    });
+    const meta = metaResponse.data;
+    if (!meta?.mimeType || !meta.mimeType.startsWith("image/")) {
+      return res.status(400).json({
+        success: false,
+        error: "Valgt fil er ikke et bilde.",
+      });
+    }
+
+    const fileResponse = await driveApi.files.get(
+      { fileId, alt: "media", supportsAllDrives: true },
+      { responseType: "arraybuffer" },
+    );
+    const sourceBuffer = Buffer.from(fileResponse.data as ArrayBuffer);
+
+    const aspectRaw = typeof body.aspect === "string" ? body.aspect : "4:5";
+    const dimensions = ((): { width: number; height: number } => {
+      switch (aspectRaw) {
+        case "1:1":
+          return { width: 1080, height: 1080 };
+        case "9:16":
+          return { width: 1080, height: 1920 };
+        case "4:5":
+        default:
+          return { width: 1080, height: 1350 };
+      }
+    })();
+
+    // sharp (libvips) — perseptuelt tapfri pipeline:
+    //   .rotate()            respekterer EXIF-orientering fra kamera
+    //   toColorspace('srgb') sikrer samme farger på IG/LinkedIn
+    //   kernel: lanczos3     beste nedskalerings-filter i praksis
+    //   position: attention  saliency-basert beskjæring holder motivet
+    //   mozjpeg q=90         IG re-komprimerer uansett, høyere er spilt
+    const sharpModule = await import("sharp");
+    const resized = await sharpModule
+      .default(sourceBuffer, { failOn: "none" })
+      .rotate()
+      .toColorspace("srgb")
+      .resize({
+        width: dimensions.width,
+        height: dimensions.height,
+        fit: "cover",
+        position: "attention",
+        kernel: sharpModule.default.kernel.lanczos3,
+        withoutEnlargement: false,
+      })
+      .jpeg({
+        quality: 90,
+        progressive: true,
+        mozjpeg: true,
+        chromaSubsampling: "4:4:4",
+      })
+      .toBuffer();
+
+    const dataUrl = `data:image/jpeg;base64,${resized.toString("base64")}`;
+
+    // Behold Drive-filens originale navn uendret — ikke generer eget navn.
+    // Bytene er alltid JPEG etter sharp-pipen, men navnet skal vises som i Drive.
+    return res.json({
+      success: true,
+      image: {
+        dataUrl,
+        name: meta.name ?? "",
+        mimeType: "image/jpeg",
+        fileId,
+        width: dimensions.width,
+        height: dimensions.height,
+      },
+    });
+  } catch (error) {
+    console.error("[role-room-agent] drive import failed", error);
+    return res.status(500).json({
+      success: false,
+      error: "Kunne ikke importere bildet fra Google Drive.",
+    });
+  }
+});
+
+app.get("/api/role-room/agent/feed-plan/:projectId/:platform", async (req, res) => {
+  const featureId = "role-room-agent-producer";
+  if (!isCompatAdminFeatureEnabled(featureId)) {
+    return res.status(403).json({
+      success: false,
+      error: "The Role Room Agent er ikke aktivert.",
+    });
+  }
+
+  const session = requireAdminSession(req, res);
+  if (!session) {
+    return;
+  }
+
+  const { projectId, platform } = req.params;
+  if (!projectId || !isSupportedFeedPlatform(platform)) {
+    return res.status(400).json({
+      success: false,
+      error: "projectId og støttet plattform er påkrevd.",
+    });
+  }
+
+  const plan = await loadFeedPlan(pool, projectId, platform);
+  return res.json({
+    success: true,
+    plan: plan
+      ? {
+          projectId: plan.projectId,
+          platform: plan.platform,
+          posts: plan.posts,
+          brandSnapshot: plan.brandSnapshot,
+          updatedAt: plan.updatedAt,
+          updatedBy: plan.updatedBy,
+        }
+      : null,
+  });
+});
+
+app.put("/api/role-room/agent/feed-plan/:projectId/:platform", async (req, res) => {
+  const featureId = "role-room-agent-producer";
+  if (!isCompatAdminFeatureEnabled(featureId)) {
+    return res.status(403).json({
+      success: false,
+      error: "The Role Room Agent er ikke aktivert.",
+    });
+  }
+
+  const session = requireAdminSession(req, res);
+  if (!session) {
+    return;
+  }
+
+  const { projectId, platform } = req.params;
+  if (!projectId || !isSupportedFeedPlatform(platform)) {
+    return res.status(400).json({
+      success: false,
+      error: "projectId og støttet plattform er påkrevd.",
+    });
+  }
+
+  // Følg samme tier-regler som resten av The Role Room-agenten: admins går
+  // gjennom, betalende planer får tilgang, trial-brukere innenfor sine tak.
+  const entitlement = await checkAgentEntitlement(pool, session.userId, session.role);
+  if (!entitlement.allowed) {
+    return res.status(402).json({
+      success: false,
+      error: entitlement.reason || "Feed-planlegging krever aktiv Role Room-pakke.",
+      entitlement,
+    });
+  }
+
+  const body =
+    req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
+  const posts = normalizeFeedPostsPayload(body.posts);
+  const brandSnapshot = body.brandSnapshot === undefined ? null : body.brandSnapshot;
+
+  const saved = await saveFeedPlan(pool, projectId, platform, posts, {
+    brandSnapshot,
+    updatedBy: session.userId,
+  });
+
+  if (!saved) {
+    return res.status(500).json({
+      success: false,
+      error: "Kunne ikke lagre feed-planen.",
+    });
+  }
+
+  return res.json({
+    success: true,
+    plan: {
+      projectId: saved.projectId,
+      platform: saved.platform,
+      posts: saved.posts,
+      brandSnapshot: saved.brandSnapshot,
+      updatedAt: saved.updatedAt,
+      updatedBy: saved.updatedBy,
+    },
+  });
 });
 
 app.get("/api/admin/features", (req, res) => {

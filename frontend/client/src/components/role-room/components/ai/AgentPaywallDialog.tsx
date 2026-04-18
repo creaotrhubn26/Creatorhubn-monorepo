@@ -154,8 +154,8 @@ export const AgentPaywallDialog: React.FC<AgentPaywallDialogProps> = ({
           {upsell.canBuyAddOn ? (
             <Option
               icon={<CardIcon />}
-              title={`Legg til for ${addonPrice} kr/mnd`}
-              detail="Månedlig abonnement som kan sies opp når som helst. Faktureres via Stripe."
+              title={`Legg til for ${addonPrice} kr/mnd + mva`}
+              detail="Månedlig abonnement som kan sies opp når som helst. 25% mva legges til ved checkout via Stripe Tax."
               cta={pending === 'addon' ? <CircularProgress size={20} /> : 'Kjøp add-on'}
               onClick={handleAddOnCheckout}
               disabled={pending !== null}

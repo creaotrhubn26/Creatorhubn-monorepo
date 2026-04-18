@@ -94,3 +94,7 @@ CCAPI*.zip
 EDSDK*.zip
 EDSDKv*/
 Camera Agreement*.pdf
+
+# Playwright auth state for Stripe provisioning — contains login cookies
+.stripe-playwright-state.json
+**/.stripe-playwright-state.json
