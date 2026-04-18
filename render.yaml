@@ -141,6 +141,37 @@ services:
         sync: false
       - key: ROLE_ROOM_LINKEDIN_REDIRECT_URI
         sync: false
+      # ── Meta / Instagram Graph API ─────────────────────────────────
+      # App id + secret from developers.facebook.com → your app → Settings.
+      - key: META_APP_ID
+        sync: false
+      - key: META_APP_SECRET
+        sync: false
+      # OAuth redirect URI registered on the Meta App Dashboard under
+      # "Facebook Login for Business" → Valid OAuth Redirect URIs.
+      # Must match exactly, including protocol + path.
+      - key: META_OAUTH_REDIRECT_URI
+        sync: false
+      # Hub.verify_token used for the initial GET /api/role-room/instagram/
+      # webhook subscription handshake. Any opaque string — pasted into the
+      # Meta Dashboard webhook config at the same time as this env.
+      - key: META_WEBHOOK_VERIFY_TOKEN
+        sync: false
+      # Optional — only set when using FB Login for Business's saved
+      # configuration (scopes come from the config rather than inline).
+      # Leave unset for classic FB Login.
+      - key: META_LOGIN_CONFIG_ID
+        sync: false
+      # ── CreatorHub Google OAuth (iPad + web sign-in) ───────────────
+      # The Google OAuth audience CreatorHub's /api/auth/google/token
+      # accepts. Falls back to ROLE_ROOM_GOOGLE_CLIENT_ID when unset.
+      - key: CREATORHUB_GOOGLE_CLIENT_ID
+        sync: false
+      # Public host used for the gallery share URL the photographer
+      # hands to the client (app.creatorhubn.com/client/gallery/<token>).
+      # Defaults to https://app.creatorhubn.com when unset.
+      - key: CREATORHUB_PUBLIC_URL
+        sync: false
       - key: APP_URL
         sync: false
       - key: PUBLIC_APP_URL
