@@ -22,6 +22,7 @@ import {
 } from './role-room-instagram-oauth.js';
 import {
   deleteInstagramHostedImage,
+  signInstagramHostedImageUrl,
   uploadImageForInstagram,
   type InstagramHostedImage,
 } from './role-room-instagram-image-upload.js';
@@ -59,6 +60,8 @@ export interface IgPublishJobRow {
   feedPlanPostId: string;
   mediaType: IgMediaType;
   caption: string;
+  imageBucket: string | null;
+  imageKey: string | null;
   imagePublicUrl: string | null;
   igContainerId: string | null;
   igMediaId: string | null;
@@ -79,6 +82,8 @@ function mapJob(row: Record<string, unknown>): IgPublishJobRow {
     feedPlanPostId: String(row.feed_plan_post_id),
     mediaType: row.media_type as IgMediaType,
     caption: String(row.caption ?? ''),
+    imageBucket: (row.image_bucket as string | null) ?? null,
+    imageKey: (row.image_key as string | null) ?? null,
     imagePublicUrl: (row.image_public_url as string | null) ?? null,
     igContainerId: (row.ig_container_id as string | null) ?? null,
     igMediaId: (row.ig_media_id as string | null) ?? null,
@@ -126,12 +131,17 @@ async function rateLimitedCheck(pool: Pool, connectionId: string): Promise<numbe
   }
 }
 
-async function insertJob(pool: Pool, input: IgPublishInput): Promise<IgPublishJobRow | null> {
+async function insertJob(
+  pool: Pool,
+  input: IgPublishInput,
+  image: InstagramHostedImage,
+): Promise<IgPublishJobRow | null> {
   try {
     const result = await pool.query(
       `INSERT INTO role_room_instagram_publish_jobs
-         (user_id, project_id, connection_id, feed_plan_post_id, media_type, caption, scheduled_for)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+         (user_id, project_id, connection_id, feed_plan_post_id, media_type, caption,
+          scheduled_for, image_bucket, image_key, image_public_url)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING *`,
       [
         input.userId,
@@ -141,6 +151,9 @@ async function insertJob(pool: Pool, input: IgPublishInput): Promise<IgPublishJo
         input.mediaType,
         input.caption,
         input.scheduledFor ? new Date(input.scheduledFor) : null,
+        image.bucket,
+        image.key,
+        image.publicUrl,
       ],
     );
     return result.rows[0] ? mapJob(result.rows[0]) : null;
@@ -183,25 +196,28 @@ async function updateJob(
 }
 
 /**
- * Run the full publish pipeline for a job. Returns the final job row.
+ * Run the publish pipeline for a job whose image has already been
+ * uploaded to R2. Re-signs a fresh 1h URL (because the one stored at
+ * queue time may be expired by the time the worker picks up a
+ * scheduled job), then container + publish against Meta.
  */
 async function executePublishJob(
   pool: Pool,
   job: IgPublishJobRow,
   connection: InstagramConnectionRow,
-  imageDataUrl: string,
 ): Promise<IgPublishJobRow> {
-  let hosted: InstagramHostedImage | null = null;
   try {
-    // Step 1: upload image to R2 → public URL.
     await updateJob(pool, job.id, { status: 'uploading', attemptedCount: job.attemptedCount + 1 });
-    hosted = await uploadImageForInstagram({ userId: job.userId, dataUrl: imageDataUrl });
-    if (!hosted) throw new Error('Image upload failed (R2 not configured?)');
+    if (!job.imageBucket || !job.imageKey) {
+      throw new Error('Job mangler image_bucket / image_key — kan ikke re-signere URL');
+    }
+    const freshUrl = await signInstagramHostedImageUrl(job.imageBucket, job.imageKey);
+    if (!freshUrl) throw new Error('Klarte ikke å re-signere R2 URL (ikke konfigurert?)');
 
     // Step 2: create the IG container.
-    await updateJob(pool, job.id, { status: 'container', imagePublicUrl: hosted.publicUrl });
+    await updateJob(pool, job.id, { status: 'container', imagePublicUrl: freshUrl });
     const containerForm = new URLSearchParams({
-      image_url: hosted.publicUrl,
+      image_url: freshUrl,
       caption: job.caption,
       access_token: connection.accessToken,
     });
@@ -249,25 +265,25 @@ async function executePublishJob(
     });
 
     // Cleanup: best-effort delete from R2 (image is now on Instagram).
-    if (hosted) {
-      void deleteInstagramHostedImage(hosted.bucket, hosted.key);
-    }
+    void deleteInstagramHostedImage(job.imageBucket, job.imageKey);
 
     return { ...job, status: 'published', igMediaId: mediaId, publishedAt: new Date() };
   } catch (error) {
     const message = error instanceof Error ? error.message.slice(0, 500) : 'unknown';
     await updateJob(pool, job.id, { status: 'failed', lastError: message });
-    if (hosted) {
-      // Keep image around for 24h debugging — the nightly capture cleanup will sweep.
-    }
+    // Keep the image in R2 for 24h so a retry can re-use it; the nightly
+    // capture cleanup sweep will eventually remove stale objects.
     return { ...job, status: 'failed', lastError: message };
   }
 }
 
 /**
- * Public entry: queue + execute a publish synchronously (caller awaits).
- * For scheduled publishes (input.scheduledFor in the future) we just
- * queue and return — a separate worker picks up due jobs.
+ * Public entry: queue + execute a publish. Always uploads to R2 first
+ * so the image is reachable by either the caller (immediate) or the
+ * scheduled-publish worker (future `scheduledFor`). The R2 URL gets
+ * re-signed each time a job fires, so a job scheduled 10 days out is
+ * still executable even though the original pre-signed URL expired
+ * after an hour.
  */
 export async function queueAndPublish(
   pool: Pool,
@@ -280,11 +296,18 @@ export async function queueAndPublish(
     throw new Error('Instagram-tilkoblingen er utløpt. Koble til på nytt.');
   }
 
-  // Rate-limit pre-check.
+  // Upload to R2 up-front so the job row stores image_bucket/image_key
+  // — the worker needs this to re-sign a fresh URL at execute time.
+  const hosted = await uploadImageForInstagram({ userId: input.userId, dataUrl: input.imageDataUrl });
+  if (!hosted) throw new Error('Image upload failed (R2 ikke konfigurert?)');
+
+  // Rate-limit pre-check — only applies to immediate publishes. A future
+  // scheduled job is queued regardless; the worker re-checks when it
+  // fires so rate-limit state is current, not stale from queueing.
   const used24h = await rateLimitedCheck(pool, conn.id);
   const wantsImmediate = !input.scheduledFor || new Date(input.scheduledFor).getTime() <= Date.now();
   if (wantsImmediate && used24h >= META_RATE_LIMIT_PER_24H) {
-    const job = await insertJob(pool, input);
+    const job = await insertJob(pool, input, hosted);
     if (job) await updateJob(pool, job.id, { status: 'rate_limited', lastError: `${used24h}/${META_RATE_LIMIT_PER_24H} brukt siste 24t` });
     return {
       job: job ?? ({} as IgPublishJobRow),
@@ -293,7 +316,7 @@ export async function queueAndPublish(
     };
   }
 
-  const job = await insertJob(pool, input);
+  const job = await insertJob(pool, input, hosted);
   if (!job) throw new Error('Kunne ikke kø-legge publish-jobben');
 
   if (!wantsImmediate) {
@@ -303,8 +326,140 @@ export async function queueAndPublish(
 
   // Refresh token if close to expiry, then run.
   const fresh = await ensureFreshConnection(pool, conn);
-  const finalJob = await executePublishJob(pool, job, fresh, input.imageDataUrl);
+  const finalJob = await executePublishJob(pool, job, fresh);
   return { job: finalJob, immediatelyPublished: finalJob.status === 'published', rateLimited: false };
+}
+
+// ── Scheduled-publish worker ────────────────────────────────────────────
+
+/**
+ * Pick up to `batchSize` jobs that are due (scheduled_for in the past
+ * or unset) and execute each. `FOR UPDATE SKIP LOCKED` means two worker
+ * instances won't clobber each other if the app runs multi-instance.
+ * Updates the jobs to status='uploading' inside the transaction so
+ * siblings see them as taken.
+ */
+export async function processDuePublishJobs(
+  pool: Pool,
+  batchSize = 10,
+): Promise<{ picked: number; published: number; failed: number; rateLimited: number }> {
+  const stats = { picked: 0, published: 0, failed: 0, rateLimited: 0 };
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const dueResult = await client.query(
+      `SELECT * FROM role_room_instagram_publish_jobs
+        WHERE status = 'queued'
+          AND (scheduled_for IS NULL OR scheduled_for <= now())
+        ORDER BY scheduled_for NULLS FIRST, created_at
+        LIMIT $1
+        FOR UPDATE SKIP LOCKED`,
+      [batchSize],
+    );
+    const jobs = dueResult.rows.map(mapJob);
+    // Mark picked — release the row lock on commit so subsequent UPDATE
+    // statements (inside executePublishJob) can proceed on the client.
+    for (const j of jobs) {
+      await client.query(
+        `UPDATE role_room_instagram_publish_jobs SET status = 'uploading', updated_at = now() WHERE id = $1`,
+        [j.id],
+      );
+    }
+    await client.query('COMMIT');
+    stats.picked = jobs.length;
+
+    for (const job of jobs) {
+      const conn = await getConnection(pool, job.connectionId, job.userId);
+      if (!conn || conn.connectionState !== 'connected') {
+        await updateJob(pool, job.id, {
+          status: 'failed',
+          lastError: 'Instagram-tilkoblingen er ikke lenger koblet til.',
+        });
+        stats.failed += 1;
+        continue;
+      }
+      const used24h = await rateLimitedCheck(pool, conn.id);
+      if (used24h >= META_RATE_LIMIT_PER_24H) {
+        // Leave the job queued so a subsequent tick can retry once the
+        // 24h window advances; don't flip to 'rate_limited' which would
+        // require manual re-queue.
+        await updateJob(pool, job.id, {
+          status: 'queued',
+          lastError: `Rate limit ${used24h}/${META_RATE_LIMIT_PER_24H} — venter`,
+        });
+        stats.rateLimited += 1;
+        continue;
+      }
+      let fresh: InstagramConnectionRow;
+      try {
+        fresh = await ensureFreshConnection(pool, conn);
+      } catch (error) {
+        await updateJob(pool, job.id, {
+          status: 'failed',
+          lastError: `Token refresh feilet: ${(error as Error).message}`.slice(0, 500),
+        });
+        stats.failed += 1;
+        continue;
+      }
+      const final = await executePublishJob(pool, job, fresh);
+      if (final.status === 'published') stats.published += 1;
+      else stats.failed += 1;
+    }
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('[ig-publish-worker] unexpected error', error);
+  } finally {
+    client.release();
+  }
+  return stats;
+}
+
+interface WorkerHandle {
+  stop: () => void;
+}
+
+/**
+ * Start the in-process scheduled-publish worker. Runs every
+ * `intervalSeconds` (default 30) and processes a batch of due jobs.
+ * Returns a handle with .stop() for graceful shutdown.
+ */
+export function startInstagramPublishWorker(
+  pool: Pool,
+  options: { intervalSeconds?: number; batchSize?: number } = {},
+): WorkerHandle {
+  const interval = Math.max(5, options.intervalSeconds ?? 30) * 1000;
+  const batchSize = options.batchSize ?? 10;
+  let running = false;
+  let stopped = false;
+
+  const tick = async () => {
+    if (running || stopped) return;
+    running = true;
+    try {
+      const stats = await processDuePublishJobs(pool, batchSize);
+      if (stats.picked > 0) {
+        console.log(
+          `[ig-publish-worker] picked=${stats.picked} published=${stats.published} failed=${stats.failed} rate_limited=${stats.rateLimited}`,
+        );
+      }
+    } catch (error) {
+      console.error('[ig-publish-worker] tick error', error);
+    } finally {
+      running = false;
+    }
+  };
+
+  // Kick one tick shortly after startup so a server restart doesn't lose
+  // up to `interval` seconds of latency on the first due job.
+  const kickoff = setTimeout(tick, 2_000);
+  const timer = setInterval(tick, interval);
+  return {
+    stop: () => {
+      stopped = true;
+      clearTimeout(kickoff);
+      clearInterval(timer);
+    },
+  };
 }
 
 export async function listPublishJobs(

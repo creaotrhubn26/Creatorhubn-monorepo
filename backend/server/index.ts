@@ -132,6 +132,7 @@ import {
   IG_RATE_LIMIT_PER_24H,
   listPublishJobs as listIgPublishJobs,
   queueAndPublish as queueAndPublishIg,
+  startInstagramPublishWorker,
 } from "./role-room-instagram-publish.js";
 import { isInstagramImageUploadConfigured } from "./role-room-instagram-image-upload.js";
 import {
@@ -109502,6 +109503,10 @@ httpServer.listen(PORT, "0.0.0.0", () => {
   maybeStartRoleRoomCommercialReminderSweep();
   maybeStartRoleRoomAiAuditPrune();
   maybeStartRoleRoomAgentDailyScan();
+  // Scheduled-publish worker: scan role_room_instagram_publish_jobs
+  // every 30s for due rows and run them. No-op until a job actually
+  // becomes due, so it's safe to always start.
+  startInstagramPublishWorker(pool);
   if (isStoryArcV2Enabled() && STORY_ARC_V2_STARTUP_WARMUP_ENABLED) {
     void runStoryArcV2StartupWarmup();
   }

@@ -146,6 +146,30 @@ export async function uploadImageForInstagram(input: {
 }
 
 /**
+ * Re-sign a fresh 1h URL for an already-uploaded image. Used by the
+ * scheduled-publish worker when a queued job fires hours or days after
+ * queueing — the original upload's URL will have expired by then.
+ */
+export async function signInstagramHostedImageUrl(bucket: string, key: string): Promise<string | null> {
+  const cfg = readR2Config();
+  if (!cfg) return null;
+  // Allow the bucket on the job row to override the config default so a
+  // migration between buckets doesn't break in-flight scheduled jobs.
+  const effectiveBucket = bucket || cfg.bucket;
+  try {
+    const client = getClient(cfg);
+    return await getSignedUrl(
+      client,
+      new GetObjectCommand({ Bucket: effectiveBucket, Key: key }),
+      { expiresIn: SIGNED_URL_TTL_SECONDS },
+    );
+  } catch (error) {
+    console.error('[ig-image-upload] re-sign failed', error);
+    return null;
+  }
+}
+
+/**
  * Delete a previously uploaded image (best-effort cleanup after publish).
  */
 export async function deleteInstagramHostedImage(bucket: string, key: string): Promise<void> {
