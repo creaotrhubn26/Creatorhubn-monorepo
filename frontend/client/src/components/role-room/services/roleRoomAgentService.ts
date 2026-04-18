@@ -437,6 +437,13 @@ export interface RoleRoomFeedPost {
   locked: boolean;
   customImageUrl?: string | null;
   customImageName?: string | null;
+  /** 2-10 images for carousel posts. Parallel to customImageUrl;
+   *  when mediaType='carousel' this is the authoritative source. */
+  customImageUrls?: string[] | null;
+  customImageNames?: string[] | null;
+  /** Single video data URL for reels (video/mp4 or video/quicktime). */
+  customVideoDataUrl?: string | null;
+  customVideoName?: string | null;
 }
 
 export interface RoleRoomFeedBrandSnapshot {
@@ -747,11 +754,13 @@ export const roleRoomAgentService = {
 
   async listDriveImages(
     query?: string,
+    kind: 'image' | 'video' | 'media' = 'image',
   ): Promise<{ files: RoleRoomDriveImage[]; notConnected: boolean; nextPageToken?: string | null }> {
     const url = new URL('/api/role-room/agent/feed-plan/drive/images', window.location.origin);
     if (query && query.trim()) {
       url.searchParams.set('q', query.trim());
     }
+    if (kind !== 'image') url.searchParams.set('kind', kind);
     const response = await fetch(url.pathname + url.search, {
       headers: readRoleRoomAgentHeaders(),
     });
@@ -760,7 +769,7 @@ export const roleRoomAgentService = {
       if (payload?.notConnected) {
         return { files: [], notConnected: true };
       }
-      throw new Error(payload?.error || 'Kunne ikke hente Drive-bilder.');
+      throw new Error(payload?.error || 'Kunne ikke hente Drive-filer.');
     }
     return {
       files: Array.isArray(payload?.files) ? payload!.files! : [],
@@ -817,7 +826,12 @@ export const roleRoomAgentService = {
     feedPlanPostId: string;
     mediaType: 'image' | 'reel' | 'carousel';
     caption: string;
-    imageDataUrl: string;
+    /** Single image — used for mediaType='image'. */
+    imageDataUrl?: string;
+    /** 2-10 images — used for mediaType='carousel'. */
+    imageDataUrls?: string[];
+    /** Single video/mp4 or video/quicktime data URL — used for mediaType='reel'. */
+    videoDataUrl?: string;
     scheduledFor?: string | null;
   }): Promise<RoleRoomInstagramPublishResult> {
     const response = await fetch('/api/role-room/instagram/publish', {

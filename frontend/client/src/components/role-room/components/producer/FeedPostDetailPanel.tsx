@@ -23,9 +23,11 @@ import {
   Bookmark as BookmarkIcon,
   BookmarkAdd as BookmarkAddIcon,
   Close as CloseIcon,
+  Collections as CollectionsIcon,
   DeleteOutline as DeleteOutlineIcon,
   LockOpen as LockOpenIcon,
   Lock as LockIcon,
+  Movie as MovieIcon,
   Tag as TagIcon,
 } from '@mui/icons-material';
 import roleRoomAgentService, {
@@ -191,10 +193,26 @@ export default function FeedPostDetailPanel({
   const [publishStatus, setPublishStatus] = useState<string | null>(null);
   const publishToInstagram = async () => {
     if (!isShowrunner || platform !== 'instagram' || instagramConnections.length === 0) return;
-    if (!post.customImageUrl) {
+
+    // Per-mediaType readiness check, aligned with the backend's
+    // validation in queueAndPublish so the user gets the "missing X"
+    // message before we even send the request.
+    if (post.mediaType === 'carousel') {
+      const count = post.customImageUrls?.length ?? 0;
+      if (count < 2 || count > 10) {
+        setPublishStatus('Carousel krever 2-10 bilder fra Drive.');
+        return;
+      }
+    } else if (post.mediaType === 'reel') {
+      if (!post.customVideoDataUrl) {
+        setPublishStatus('Reel krever en video fra Drive.');
+        return;
+      }
+    } else if (!post.customImageUrl) {
       setPublishStatus('Posten må ha et bilde fra Drive før den kan publiseres.');
       return;
     }
+
     if (!window.confirm(`Publiser nå til @${instagramConnections[0]?.igUsername ?? 'Instagram'}?`)) return;
     setPublishing(true);
     setPublishStatus(null);
@@ -205,7 +223,9 @@ export default function FeedPostDetailPanel({
         feedPlanPostId: post.id,
         mediaType: post.mediaType,
         caption: `${post.title}\n\n${post.caption}\n\n${post.hashtags.join(' ')}\n\n${post.callToAction}`.trim(),
-        imageDataUrl: post.customImageUrl,
+        imageDataUrl: post.mediaType === 'image' ? post.customImageUrl ?? undefined : undefined,
+        imageDataUrls: post.mediaType === 'carousel' ? post.customImageUrls ?? undefined : undefined,
+        videoDataUrl: post.mediaType === 'reel' ? post.customVideoDataUrl ?? undefined : undefined,
         scheduledFor: post.scheduledFor,
       });
       if (result.rateLimited) {
@@ -368,72 +388,266 @@ export default function FeedPostDetailPanel({
         <FeedPostTile post={post} index={postIndex} brandSnapshot={brandSnapshot} />
       </Box>
 
-      <Stack
-        direction="row"
-        spacing={0.8}
-        alignItems="center"
-        sx={{
-          p: 1,
-          borderRadius: 1.8,
-          bgcolor: 'rgba(15,23,42,0.55)',
-          border: '1px solid rgba(148,163,184,0.16)',
-        }}
-      >
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography sx={{ color: '#e2e8f0', fontSize: '0.78rem', fontWeight: 700 }}>
-            {post.customImageUrl ? 'Eget bilde valgt' : 'Ingen egne bilder ennå'}
-          </Typography>
-          <Typography
-            sx={{
-              color: 'rgba(226,232,240,0.58)',
-              fontSize: '0.72rem',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {post.customImageUrl
-              ? post.customImageName || 'Importert fra Google Drive'
-              : 'Velg et bilde fra Google Drive for å erstatte placeholder.'}
-          </Typography>
-        </Box>
-        <Button
-          size="small"
-          variant="outlined"
-          startIcon={<AddPhotoAlternateIcon fontSize="small" />}
-          onClick={() => setDrivePickerOpen(true)}
+      {/* Media picker — reacts to the post's mediaType: image = single
+          picker, carousel = multi-pick (2-10), reel = video picker. All
+          three surface the same Drive flow; kind= filters the listing
+          server-side. */}
+      {post.mediaType === 'carousel' ? (
+        <Stack
+          spacing={0.8}
           sx={{
-            textTransform: 'none',
-            fontWeight: 700,
-            color: '#22d3ee',
-            borderColor: 'rgba(34,211,238,0.5)',
-            '&:hover': { borderColor: '#22d3ee', bgcolor: 'rgba(34,211,238,0.08)' },
+            p: 1,
+            borderRadius: 1.8,
+            bgcolor: 'rgba(15,23,42,0.55)',
+            border: '1px solid rgba(148,163,184,0.16)',
           }}
         >
-          {post.customImageUrl ? 'Bytt bilde' : 'Fra Drive'}
-        </Button>
-        {post.customImageUrl ? (
-          <Tooltip title="Fjern eget bilde">
-            <IconButton
+          <Stack direction="row" spacing={0.8} alignItems="center">
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography sx={{ color: '#e2e8f0', fontSize: '0.78rem', fontWeight: 700 }}>
+                {post.customImageUrls && post.customImageUrls.length > 0
+                  ? `${post.customImageUrls.length} bilder valgt`
+                  : 'Carousel trenger 2-10 bilder'}
+              </Typography>
+              <Typography sx={{ color: 'rgba(226,232,240,0.58)', fontSize: '0.72rem' }}>
+                {post.customImageUrls && post.customImageUrls.length > 0
+                  ? (post.customImageNames ?? []).join(', ')
+                  : 'Velg flere bilder fra Drive — holdes sammen som én carousel.'}
+              </Typography>
+            </Box>
+            <Button
               size="small"
-              onClick={() => onUpdate({ customImageUrl: null, customImageName: null })}
-              sx={{ color: 'rgba(248,113,113,0.9)' }}
+              variant="outlined"
+              startIcon={<CollectionsIcon fontSize="small" />}
+              onClick={() => setDrivePickerOpen(true)}
+              sx={{
+                textTransform: 'none',
+                fontWeight: 700,
+                color: '#22d3ee',
+                borderColor: 'rgba(34,211,238,0.5)',
+                '&:hover': { borderColor: '#22d3ee', bgcolor: 'rgba(34,211,238,0.08)' },
+              }}
             >
-              <DeleteOutlineIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-        ) : null}
-      </Stack>
+              {post.customImageUrls && post.customImageUrls.length > 0 ? 'Endre utvalg' : 'Velg fra Drive'}
+            </Button>
+            {post.customImageUrls && post.customImageUrls.length > 0 ? (
+              <Tooltip title="Fjern alle">
+                <IconButton
+                  size="small"
+                  onClick={() => onUpdate({ customImageUrls: null, customImageNames: null })}
+                  sx={{ color: 'rgba(248,113,113,0.9)' }}
+                >
+                  <DeleteOutlineIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            ) : null}
+          </Stack>
+          {post.customImageUrls && post.customImageUrls.length > 0 ? (
+            <Stack direction="row" spacing={0.6} sx={{ overflowX: 'auto', py: 0.4 }}>
+              {post.customImageUrls.map((url, index) => (
+                <Box
+                  key={`${url.slice(-16)}-${index}`}
+                  sx={{
+                    flexShrink: 0,
+                    width: 56,
+                    height: 56,
+                    borderRadius: 1.2,
+                    border: '1px solid rgba(148,163,184,0.22)',
+                    background: `center/cover no-repeat url(${url})`,
+                    position: 'relative',
+                  }}
+                >
+                  <Box
+                    sx={{
+                      position: 'absolute',
+                      top: 2,
+                      left: 2,
+                      bgcolor: 'rgba(15,23,42,0.82)',
+                      color: '#fff',
+                      fontSize: '0.64rem',
+                      fontWeight: 800,
+                      px: 0.5,
+                      borderRadius: 0.6,
+                    }}
+                  >
+                    {index + 1}
+                  </Box>
+                </Box>
+              ))}
+            </Stack>
+          ) : null}
+        </Stack>
+      ) : post.mediaType === 'reel' ? (
+        <Stack
+          spacing={0.8}
+          sx={{
+            p: 1,
+            borderRadius: 1.8,
+            bgcolor: 'rgba(15,23,42,0.55)',
+            border: '1px solid rgba(148,163,184,0.16)',
+          }}
+        >
+          <Stack direction="row" spacing={0.8} alignItems="center">
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography sx={{ color: '#e2e8f0', fontSize: '0.78rem', fontWeight: 700 }}>
+                {post.customVideoDataUrl ? 'Video valgt' : 'Ingen video ennå'}
+              </Typography>
+              <Typography
+                sx={{
+                  color: 'rgba(226,232,240,0.58)',
+                  fontSize: '0.72rem',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {post.customVideoDataUrl
+                  ? post.customVideoName || 'Importert fra Drive (konverteres automatisk til 1080×1920 ved publisering)'
+                  : 'Velg en video fra Drive — konverteres til IG-reel-spec ved publisering.'}
+              </Typography>
+            </Box>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<MovieIcon fontSize="small" />}
+              onClick={() => setDrivePickerOpen(true)}
+              sx={{
+                textTransform: 'none',
+                fontWeight: 700,
+                color: '#22d3ee',
+                borderColor: 'rgba(34,211,238,0.5)',
+                '&:hover': { borderColor: '#22d3ee', bgcolor: 'rgba(34,211,238,0.08)' },
+              }}
+            >
+              {post.customVideoDataUrl ? 'Bytt video' : 'Fra Drive'}
+            </Button>
+            {post.customVideoDataUrl ? (
+              <Tooltip title="Fjern video">
+                <IconButton
+                  size="small"
+                  onClick={() => onUpdate({ customVideoDataUrl: null, customVideoName: null })}
+                  sx={{ color: 'rgba(248,113,113,0.9)' }}
+                >
+                  <DeleteOutlineIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            ) : null}
+          </Stack>
+          {post.customVideoDataUrl ? (
+            <Box
+              sx={{
+                mt: 0.4,
+                borderRadius: 1.4,
+                overflow: 'hidden',
+                bgcolor: '#000',
+                maxWidth: 260,
+                aspectRatio: '9 / 16',
+              }}
+            >
+              <Box
+                component="video"
+                src={post.customVideoDataUrl}
+                controls
+                playsInline
+                sx={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
+              />
+            </Box>
+          ) : null}
+        </Stack>
+      ) : (
+        <Stack
+          spacing={0.8}
+          sx={{
+            p: 1,
+            borderRadius: 1.8,
+            bgcolor: 'rgba(15,23,42,0.55)',
+            border: '1px solid rgba(148,163,184,0.16)',
+          }}
+        >
+          <Stack direction="row" spacing={0.8} alignItems="center">
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography sx={{ color: '#e2e8f0', fontSize: '0.78rem', fontWeight: 700 }}>
+                {post.customImageUrl ? 'Eget bilde valgt' : 'Ingen egne bilder ennå'}
+              </Typography>
+              <Typography
+                sx={{
+                  color: 'rgba(226,232,240,0.58)',
+                  fontSize: '0.72rem',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {post.customImageUrl
+                  ? post.customImageName || 'Importert fra Google Drive'
+                  : 'Velg et bilde fra Google Drive for å erstatte placeholder.'}
+              </Typography>
+            </Box>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<AddPhotoAlternateIcon fontSize="small" />}
+              onClick={() => setDrivePickerOpen(true)}
+              sx={{
+                textTransform: 'none',
+                fontWeight: 700,
+                color: '#22d3ee',
+                borderColor: 'rgba(34,211,238,0.5)',
+                '&:hover': { borderColor: '#22d3ee', bgcolor: 'rgba(34,211,238,0.08)' },
+              }}
+            >
+              {post.customImageUrl ? 'Bytt bilde' : 'Fra Drive'}
+            </Button>
+            {post.customImageUrl ? (
+              <Tooltip title="Fjern eget bilde">
+                <IconButton
+                  size="small"
+                  onClick={() => onUpdate({ customImageUrl: null, customImageName: null })}
+                  sx={{ color: 'rgba(248,113,113,0.9)' }}
+                >
+                  <DeleteOutlineIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            ) : null}
+          </Stack>
+          {post.customImageUrl ? (
+            <Box
+              component="img"
+              src={post.customImageUrl}
+              alt={post.customImageName ?? 'valgt bilde'}
+              sx={{
+                mt: 0.4,
+                maxWidth: 260,
+                maxHeight: 260,
+                borderRadius: 1.4,
+                border: '1px solid rgba(148,163,184,0.18)',
+                objectFit: 'cover',
+                display: 'block',
+              }}
+            />
+          ) : null}
+        </Stack>
+      )}
 
       <GoogleDriveImagePicker
         open={drivePickerOpen}
         onClose={() => setDrivePickerOpen(false)}
-        onPick={(image) =>
+        kind={post.mediaType === 'reel' ? 'video' : 'image'}
+        multiSelect={post.mediaType === 'carousel' ? { min: 2, max: 10 } : undefined}
+        onPick={(media) => {
+          if (post.mediaType === 'reel') {
+            onUpdate({ customVideoDataUrl: media.dataUrl, customVideoName: media.name });
+          } else {
+            onUpdate({ customImageUrl: media.dataUrl, customImageName: media.name });
+          }
+        }}
+        onPickMultiple={(items) => {
+          // Carousel branch — store parallel arrays.
           onUpdate({
-            customImageUrl: image.dataUrl,
-            customImageName: image.name,
-          })
-        }
+            customImageUrls: items.map((i) => i.dataUrl),
+            customImageNames: items.map((i) => i.name),
+          });
+        }}
       />
 
       {/* Brand-fargekontrollere — applied template-farger kan finjusteres her */}
@@ -776,7 +990,12 @@ export default function FeedPostDetailPanel({
             variant="contained"
             onClick={publishToInstagram}
             disabled={
-              publishing || post.locked || instagramConnections.length === 0 || !post.customImageUrl
+              publishing
+              || post.locked
+              || instagramConnections.length === 0
+              || (post.mediaType === 'image' && !post.customImageUrl)
+              || (post.mediaType === 'carousel' && (post.customImageUrls?.length ?? 0) < 2)
+              || (post.mediaType === 'reel' && !post.customVideoDataUrl)
             }
             sx={{
               alignSelf: 'flex-start',
