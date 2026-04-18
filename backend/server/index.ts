@@ -133,6 +133,11 @@ import {
   queueAndPublish as queueAndPublishIg,
 } from "./role-room-instagram-publish.js";
 import { isInstagramImageUploadConfigured } from "./role-room-instagram-image-upload.js";
+import {
+  parseMetaWebhookEvent,
+  summariseEvent as summariseMetaWebhookEvent,
+  verifyMetaWebhookSignature,
+} from "./role-room-instagram-webhook.js";
 import { registerTidumAdminRoutes } from "./tidum-admin-routes.js";
 import {
   getNotebookLmWorkspaceStatus,
@@ -29088,13 +29093,48 @@ app.get("/api/role-room/instagram/webhook", (req, res) => {
   return res.status(403).send("verify token mismatch");
 });
 
-app.post("/api/role-room/instagram/webhook", express.json(), async (req, res) => {
-  // Meta posts events here (publish status, deauth, etc.). Verify signature
-  // header if META_APP_SECRET is set; for now we just log and ack so the
-  // subscription stays healthy.
-  console.log("[ig-webhook] event received:", JSON.stringify(req.body).slice(0, 500));
-  return res.status(200).send("ok");
-});
+app.post(
+  "/api/role-room/instagram/webhook",
+  // Raw body required: signature is HMAC over the exact bytes Meta sent.
+  express.raw({ type: "application/json", limit: "1mb" }),
+  async (req, res) => {
+    const appSecret = process.env.META_APP_SECRET;
+    if (!appSecret) {
+      // Without META_APP_SECRET we can't verify anything. In production
+      // this is a misconfiguration — reject loud so monitoring notices.
+      if (process.env.NODE_ENV === "production") {
+        console.error("[ig-webhook] META_APP_SECRET unset — cannot verify signature");
+        return res.status(503).send("webhook not configured");
+      }
+      // Non-prod: allow unsigned for local testing, but log it.
+      console.warn("[ig-webhook] accepting unsigned event (META_APP_SECRET unset, non-prod)");
+    }
+
+    const rawBody: Buffer = Buffer.isBuffer(req.body)
+      ? req.body
+      : Buffer.from(String(req.body ?? ""), "utf8");
+
+    if (appSecret) {
+      const signatureHeader = req.headers["x-hub-signature-256"];
+      const valid = verifyMetaWebhookSignature(rawBody, signatureHeader, appSecret);
+      if (!valid) {
+        console.warn("[ig-webhook] signature mismatch — rejecting");
+        return res.status(401).send("invalid signature");
+      }
+    }
+
+    const event = parseMetaWebhookEvent(rawBody);
+    if (!event) {
+      console.warn("[ig-webhook] body was not valid JSON");
+      // Still 200 so Meta doesn't retry forever on a single bad payload.
+      return res.status(200).send("ok");
+    }
+
+    console.log("[ig-webhook]", summariseMetaWebhookEvent(event));
+    // Ack quickly — Meta treats >10s as a failure and will retry.
+    return res.status(200).send("ok");
+  },
+);
 
 app.post("/api/role-room/agent/feed-plan/strategy/refresh", async (req, res) => {
   const featureId = "role-room-agent-producer";
