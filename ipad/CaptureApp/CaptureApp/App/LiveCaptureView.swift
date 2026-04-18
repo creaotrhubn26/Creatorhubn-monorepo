@@ -51,6 +51,8 @@ struct LiveCaptureView: View {
                 currentURL: lastCameraURL,
                 device: model.deviceSummary,
                 sessionName: model.sessionName,
+                showHUD: model.showHUD,
+                onToggleHUD: { model.showHUD.toggle() },
                 onRename: { newName in
                     Task { await model.renameSession(newName) }
                 },
@@ -650,7 +652,9 @@ private struct HeroStage: View {
                     // Recipe chips — show exactly what Magic is doing so
                     // the photographer can tune deliberately rather than
                     // trust an opaque preset. Tap to open the slider panel.
-                    if asset.enhancedKey != nil, !recipe.displayChips.isEmpty {
+                    // Always surfaced (even when recipe is entirely neutral)
+                    // so the Tune entry point is reliably reachable.
+                    if asset.enhancedKey != nil {
                         Button(action: onOpenTune) {
                             RecipeChipsRow(chips: recipe.displayChips, isTuned: isTuned)
                         }
@@ -1189,13 +1193,22 @@ private struct RecipeChipsRow: View {
             Image(systemName: isTuned ? "slider.horizontal.3" : "sparkles")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(isTuned ? .orange : .purple)
-            ForEach(chips, id: \.self) { chip in
-                Text(chip)
+            if chips.isEmpty {
+                Text("At baseline")
                     .font(.caption.monospaced())
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .foregroundStyle(.secondary)
                     .background(Color.captureChipBG, in: Capsule())
+            } else {
+                ForEach(chips, id: \.self) { chip in
+                    Text(chip)
+                        .font(.caption.monospaced())
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .foregroundStyle(.secondary)
+                        .background(Color.captureChipBG, in: Capsule())
+                }
             }
             Text(isTuned ? "Tuned" : "Tune")
                 .font(.caption.weight(.semibold))
@@ -1785,6 +1798,8 @@ private struct SettingsSheet: View {
     let currentURL: String
     let device: LiveCaptureModel.DeviceSummary?
     let sessionName: String
+    let showHUD: Bool
+    let onToggleHUD: () -> Void
     let onRename: (String) -> Void
     let onDisconnect: () -> Void
 
@@ -1805,6 +1820,23 @@ private struct SettingsSheet: View {
                     }
                     .disabled(editingName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                               || editingName == sessionName)
+                }
+
+                Section("Display") {
+                    Toggle(isOn: .init(
+                        get: { showHUD },
+                        set: { _ in onToggleHUD() }
+                    )) {
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Photo Village overlays")
+                                Text("Histogram · clipping · skin tone on the hero")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                        } icon: {
+                            Image(systemName: "chart.bar.xaxis")
+                        }
+                    }
                 }
 
                 Section("Camera") {
