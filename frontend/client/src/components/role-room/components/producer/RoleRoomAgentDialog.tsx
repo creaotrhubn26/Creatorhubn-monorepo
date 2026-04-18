@@ -13,6 +13,8 @@ import {
   Stack,
   TextField,
   Typography,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import {
   AutoFixHigh as AutoFixHighIcon,
@@ -172,6 +174,13 @@ export default function RoleRoomAgentDialog({
   const [refinementHistory, setRefinementHistory] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<'research' | 'chat' | 'feed-planner'>('research');
 
+  // Phone + iPad-portrait widths get a fullScreen dialog so the chat
+  // surface and the research forms are actually usable without pinch-
+  // zoom. md+ keeps the centered dialog look that matches the rest of
+  // the admin dashboard.
+  const theme = useTheme();
+  const fullScreen = useMediaQuery(theme.breakpoints.down('md'));
+
   useEffect(() => {
     if (!open) {
       return;
@@ -309,14 +318,24 @@ export default function RoleRoomAgentDialog({
       open={open}
       onClose={generating || applying ? undefined : onClose}
       fullWidth
+      fullScreen={fullScreen}
       maxWidth="lg"
       PaperProps={{
         sx: {
-          borderRadius: 4,
+          borderRadius: fullScreen ? 0 : 4,
           overflow: 'hidden',
-          border: '1px solid rgba(34,211,238,0.22)',
+          border: fullScreen ? 'none' : '1px solid rgba(34,211,238,0.22)',
           background: 'linear-gradient(180deg, rgba(15,23,42,0.98) 0%, rgba(2,6,23,0.98) 100%)',
-          boxShadow: '0 32px 90px rgba(0,0,0,0.48)',
+          boxShadow: fullScreen ? 'none' : '0 32px 90px rgba(0,0,0,0.48)',
+          // On iPad+iPhone let the whole panel scroll within viewport;
+          // Dialog's default overflow:hidden leaves DialogContent as the
+          // only scroll surface, which hides the composer behind the
+          // keyboard. Using a max-height with internal flex-column makes
+          // the composer stick naturally.
+          display: 'flex',
+          flexDirection: 'column',
+          height: fullScreen ? '100%' : undefined,
+          maxHeight: fullScreen ? '100%' : '92vh',
         },
       }}
     >
@@ -385,9 +404,31 @@ export default function RoleRoomAgentDialog({
           <Tab value="chat" label="Chat" icon={<ChatIcon fontSize="small" />} iconPosition="start" />
         ) : null}
       </Tabs>
-      <DialogContent sx={{ p: { xs: 1.4, md: 2 } }}>
+      <DialogContent
+        sx={{
+          p: activeTab === 'chat' ? 0 : { xs: 1.4, md: 2 },
+          flex: 1,
+          // Chat tab owns its own scroll region via the panel's internal
+          // layout; research/feed-planner keep the dialog's default
+          // overflow behaviour so their many cards scroll naturally.
+          overflow: activeTab === 'chat' ? 'hidden' : 'auto',
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      >
         {activeTab === 'chat' && currentUserId ? (
-          <Box sx={{ bgcolor: 'rgba(226,232,240,0.98)', borderRadius: 2, p: 1.5 }}>
+          <Box
+            sx={{
+              flex: 1,
+              minHeight: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              // Transparent wrapper so the panel inherits the dark dialog
+              // background — no more light band behind the chat that
+              // made outlined chips and secondary text vanish.
+              bgcolor: 'transparent',
+            }}
+          >
             <RoleRoomAgentChatPanel
               projectId={projectId}
               currentUserId={currentUserId}

@@ -138,7 +138,7 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
   }, [projectId, reset]);
 
   const body = useMemo(() => (
-    <Stack spacing={2}>
+    <Stack spacing={1.6} sx={{ flex: 1, minHeight: 0, overflow: 'auto', px: { xs: 1.4, md: 2 }, pt: 1.4, pb: 1 }}>
       {trialBannerDays !== null ? (
         <Alert
           severity="warning"
@@ -147,6 +147,12 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
               Oppgrader
             </Button>
           }
+          sx={{
+            bgcolor: 'rgba(250,204,21,0.12)',
+            color: '#fde68a',
+            border: '1px solid rgba(250,204,21,0.28)',
+            '& .MuiAlert-icon': { color: '#fde68a' },
+          }}
         >
           {trialBannerDays === 0
             ? 'Prøveperioden din utløper i dag.'
@@ -155,21 +161,27 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
               : `Prøveperioden din utløper om ${trialBannerDays} dager.`}
         </Alert>
       ) : null}
-      <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
-        <Typography variant="caption" color="text.secondary">
+      <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between" flexWrap="wrap" useFlexGap>
+        <Typography sx={{ color: 'rgba(226,232,240,0.64)', fontSize: '0.76rem' }}>
           {threadId
             ? `Fortsetter samtale (${messages.length} meldinger lagret)`
             : 'Ny samtale'}
         </Typography>
-        <Stack direction="row" spacing={0.75}>
+        <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
           {projectId ? (
             <Chip
-              icon={<HistoryIcon fontSize="small" />}
+              icon={<HistoryIcon sx={{ fontSize: 14, color: '#a5f3fc !important' }} />}
               label="Historikk"
               size="small"
               variant="outlined"
               onClick={(event) => setHistoryAnchor(event.currentTarget)}
               clickable
+              sx={{
+                color: '#e2e8f0',
+                borderColor: 'rgba(34,211,238,0.3)',
+                bgcolor: 'rgba(8,47,73,0.24)',
+                '&:hover': { bgcolor: 'rgba(8,47,73,0.42)' },
+              }}
             />
           ) : null}
           {(threadId || messages.length > 0) ? (
@@ -180,6 +192,12 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
               onClick={startNewThread}
               disabled={pending}
               clickable
+              sx={{
+                color: '#e2e8f0',
+                borderColor: 'rgba(148,163,184,0.3)',
+                bgcolor: 'rgba(15,23,42,0.4)',
+                '&:hover': { bgcolor: 'rgba(15,23,42,0.6)' },
+              }}
             />
           ) : null}
         </Stack>
@@ -195,45 +213,99 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
             clickable
             size="small"
             variant="outlined"
+            sx={{
+              color: '#a5f3fc',
+              borderColor: 'rgba(34,211,238,0.3)',
+              bgcolor: 'rgba(8,47,73,0.22)',
+              '&:hover': { bgcolor: 'rgba(8,47,73,0.4)', borderColor: 'rgba(34,211,238,0.5)' },
+              '&.Mui-disabled': {
+                color: 'rgba(165,243,252,0.4)',
+                borderColor: 'rgba(34,211,238,0.14)',
+              },
+            }}
           />
         ))}
       </Stack>
 
       {messages.length === 0 ? (
-        <Alert severity="info" variant="outlined">
+        <Alert
+          severity="info"
+          variant="outlined"
+          sx={{
+            bgcolor: 'rgba(34,211,238,0.08)',
+            color: '#cbd5e1',
+            border: '1px solid rgba(34,211,238,0.22)',
+            '& .MuiAlert-icon': { color: '#a5f3fc' },
+          }}
+        >
           Spør The Role Room Agent om prosjektet. Alle svar kommer fra Claude via
           en server-side rutine som sjekker samtykke og pseudonymiserer kandidater/crew
           før kallet.
         </Alert>
       ) : null}
 
-      <Stack spacing={2}>
-        {messages.map((message) => (
-          <Box
-            key={message.id}
-            sx={{
-              p: 1.5,
-              borderRadius: 'var(--rr-card-radius, 12px)',
-              border: '1px solid',
-              borderColor: 'divider',
-              bgcolor: message.role === 'user' ? 'rgba(99,102,241,0.06)' : 'background.paper',
-            }}
-          >
-            <Typography variant="overline" color="text.secondary">
-              {message.role === 'user' ? 'Du' : 'The Role Room Agent'}
-            </Typography>
-
-            {message.error ? (
-              <Alert severity="error" icon={<ErrorIcon />} sx={{ mt: 0.5 }}>
-                {message.error}
-              </Alert>
-            ) : null}
-
-            {message.text ? (
-              <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', mt: 0.5 }}>
-                {message.text}
+      <Stack spacing={1.4}>
+        {messages.map((message) => {
+          const isUser = message.role === 'user';
+          return (
+            <Box
+              key={message.id}
+              sx={{
+                p: 1.4,
+                borderRadius: 2.2,
+                border: '1px solid',
+                borderColor: isUser ? 'rgba(99,102,241,0.32)' : 'rgba(148,163,184,0.16)',
+                bgcolor: isUser ? 'rgba(99,102,241,0.16)' : 'rgba(15,23,42,0.56)',
+                // Leaves breathing room on iPad so message bubbles don't
+                // stretch across the whole dialog width and look like a
+                // wall of text.
+                maxWidth: { md: '92%' },
+                alignSelf: isUser ? 'flex-end' : 'flex-start',
+                ml: isUser ? { md: 'auto' } : undefined,
+              }}
+            >
+              <Typography
+                sx={{
+                  color: isUser ? '#c7d2fe' : '#a5f3fc',
+                  fontSize: '0.68rem',
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.08em',
+                  mb: 0.4,
+                }}
+              >
+                {isUser ? 'Du' : 'The Role Room Agent'}
               </Typography>
-            ) : null}
+
+              {message.error ? (
+                <Alert
+                  severity="error"
+                  icon={<ErrorIcon />}
+                  sx={{
+                    mt: 0.5,
+                    bgcolor: 'rgba(239,68,68,0.12)',
+                    color: '#fecaca',
+                    border: '1px solid rgba(239,68,68,0.28)',
+                    '& .MuiAlert-icon': { color: '#fecaca' },
+                  }}
+                >
+                  {message.error}
+                </Alert>
+              ) : null}
+
+              {message.text ? (
+                <Typography
+                  sx={{
+                    whiteSpace: 'pre-wrap',
+                    mt: 0.5,
+                    color: '#f1f5f9',
+                    fontSize: { xs: '0.92rem', md: '0.95rem' },
+                    lineHeight: 1.55,
+                  }}
+                >
+                  {message.text}
+                </Typography>
+              ) : null}
 
             {message.response ? (
               <Box sx={{ mt: 1 }}>
@@ -244,8 +316,8 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
                   onRevokeConsent={handleRevokeConsent}
                 />
                 {message.response.toolUses.length > 0 ? (
-                  <Stack spacing={0.75}>
-                    <Typography variant="caption" color="text.secondary">
+                  <Stack spacing={0.75} sx={{ mt: 1 }}>
+                    <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.76rem' }}>
                       Agenten foreslår {message.response.toolUses.length} handling
                       {message.response.toolUses.length === 1 ? '' : 'er'} — bekreft for å utføre:
                     </Typography>
@@ -256,7 +328,13 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
                         variant="outlined"
                         startIcon={<AutoFixIcon />}
                         onClick={() => setPendingTool(tool)}
-                        sx={{ alignSelf: 'flex-start', textTransform: 'none' }}
+                        sx={{
+                          alignSelf: 'flex-start',
+                          textTransform: 'none',
+                          color: '#a5f3fc',
+                          borderColor: 'rgba(34,211,238,0.4)',
+                          '&:hover': { borderColor: 'rgba(34,211,238,0.7)', bgcolor: 'rgba(8,47,73,0.3)' },
+                        }}
                       >
                         {tool.name.replace(/_/g, ' ')}
                       </Button>
@@ -266,11 +344,12 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
               </Box>
             ) : null}
           </Box>
-        ))}
+          );
+        })}
         {pending ? (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <CircularProgress size={18} />
-            <Typography variant="caption" color="text.secondary">
+            <CircularProgress size={18} sx={{ color: '#22d3ee' }} />
+            <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.8rem' }}>
               The Role Room Agent tenker …
             </Typography>
           </Box>
@@ -278,7 +357,15 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
       </Stack>
 
       {lastError && lastError.code === 'agent_disabled' ? (
-        <Alert severity="warning">
+        <Alert
+          severity="warning"
+          sx={{
+            bgcolor: 'rgba(250,204,21,0.12)',
+            color: '#fde68a',
+            border: '1px solid rgba(250,204,21,0.28)',
+            '& .MuiAlert-icon': { color: '#fde68a' },
+          }}
+        >
           Claude-agenten er slått av (feature flag). Be admin sette
           <code> ROLE_ROOM_AGENT_CLAUDE_ENABLED=true</code> i backend-env.
         </Alert>
@@ -289,16 +376,18 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
   const composer = (
     <Box
       sx={{
-        position: 'sticky',
-        bottom: 0,
-        bgcolor: 'background.paper',
-        borderTop: '1px solid',
-        borderColor: 'divider',
-        pt: 1.5,
-        pb: 'calc(var(--rr-safe-bottom, 0px) + 8px)',
-        mt: 2,
+        flexShrink: 0,
+        bgcolor: 'rgba(2,6,23,0.82)',
+        borderTop: '1px solid rgba(148,163,184,0.18)',
+        pt: 1.2,
+        pb: 'calc(var(--rr-safe-bottom, 0px) + 10px)',
+        px: { xs: 1.4, md: 2 },
         display: 'flex',
         gap: 1,
+        alignItems: 'flex-end',
+        // Backdrop-blur so if the messages scroll behind the composer
+        // on iOS Safari, the composer still reads cleanly.
+        backdropFilter: 'blur(6px)',
       }}
     >
       <TextField
@@ -315,18 +404,33 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
         multiline
         maxRows={4}
         disabled={!projectId || pending}
+        sx={{
+          '& .MuiOutlinedInput-root': {
+            bgcolor: 'rgba(15,23,42,0.62)',
+            color: '#f1f5f9',
+            fontSize: { xs: '0.95rem', md: '0.95rem' },
+            '& fieldset': { borderColor: 'rgba(148,163,184,0.3)' },
+            '&:hover fieldset': { borderColor: 'rgba(34,211,238,0.5)' },
+            '&.Mui-focused fieldset': { borderColor: '#22d3ee' },
+          },
+          '& .MuiOutlinedInput-input::placeholder': {
+            color: 'rgba(226,232,240,0.5)',
+            opacity: 1,
+          },
+        }}
       />
       <IconButton
         onClick={() => { void handleSend(); }}
         disabled={!input.trim() || pending || !projectId}
         aria-label="Send"
         sx={{
-          width: 'var(--rr-touch-target-min, 44px)',
-          height: 'var(--rr-touch-target-min, 44px)',
-          bgcolor: '#6366f1',
-          color: '#fff',
-          '&:hover': { bgcolor: '#4f46e5' },
-          '&.Mui-disabled': { bgcolor: 'rgba(99,102,241,0.2)', color: '#fff' },
+          width: { xs: 44, md: 48 },
+          height: { xs: 44, md: 48 },
+          flexShrink: 0,
+          bgcolor: '#22d3ee',
+          color: '#082f49',
+          '&:hover': { bgcolor: '#06b6d4' },
+          '&.Mui-disabled': { bgcolor: 'rgba(34,211,238,0.25)', color: 'rgba(8,47,73,0.6)' },
         }}
       >
         {pending ? <CircularProgress size={18} color="inherit" /> : <SendIcon fontSize="small" />}
@@ -336,7 +440,17 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
 
   if (!projectId) {
     return (
-      <Alert severity="info" variant="outlined">
+      <Alert
+        severity="info"
+        variant="outlined"
+        sx={{
+          m: 2,
+          bgcolor: 'rgba(34,211,238,0.08)',
+          color: '#cbd5e1',
+          border: '1px solid rgba(34,211,238,0.22)',
+          '& .MuiAlert-icon': { color: '#a5f3fc' },
+        }}
+      >
         Velg et prosjekt for å åpne The Role Room Agent.
       </Alert>
     );
@@ -344,10 +458,30 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
 
   return (
     <AiConsentGate projectId={projectId} currentUserId={currentUserId}>
-      <Stack spacing={2}>
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          // When the parent constrains height (inside the Dialog we set
+          // fullScreen + height:100%), the messages area scrolls within
+          // this flex-column. When the parent is unbounded (dashboard
+          // Card), we fall back to a comfortable min-height so short
+          // conversations don't collapse and tall ones scroll the page.
+          height: '100%',
+          minHeight: { xs: 420, md: 520 },
+          // Own the colour scheme so the panel looks identical on the
+          // dark RoleRoomAgentDialog *and* the light RoleRoomDashboard
+          // Card. Before this wrap the agent bubbles blended into the
+          // Dialog's own light-wrapper and the text was unreadable.
+          background: 'linear-gradient(180deg, rgba(15,23,42,0.98) 0%, rgba(2,6,23,0.98) 100%)',
+          borderRadius: { xs: 0, md: 2 },
+          border: { xs: 'none', md: '1px solid rgba(148,163,184,0.14)' },
+          overflow: 'hidden',
+        }}
+      >
         {body}
         {composer}
-      </Stack>
+      </Box>
       <AgentThreadList
         projectId={projectId ?? ''}
         anchorEl={historyAnchor}
