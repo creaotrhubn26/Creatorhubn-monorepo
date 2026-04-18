@@ -133,14 +133,22 @@ export function verifyOauthState(state: string | undefined | null): StateClaims 
 export function buildAuthorizationUrl(state: string): string | null {
   const config = getMetaAppConfig();
   if (!config) return null;
+  const loginConfigId = process.env.META_LOGIN_CONFIG_ID?.trim() || null;
   const params = new URLSearchParams({
     client_id: config.appId,
     redirect_uri: config.redirectUri,
     state,
     response_type: 'code',
-    scope: REQUIRED_SCOPES.join(','),
-    auth_type: 'rerequest',
   });
+  if (loginConfigId) {
+    // Facebook Login for Business: scopes come from the saved configuration,
+    // so we pass config_id and OMIT the scope parameter (Meta rejects both).
+    params.set('config_id', loginConfigId);
+  } else {
+    // Classic Facebook Login: ask for the scopes inline.
+    params.set('scope', REQUIRED_SCOPES.join(','));
+    params.set('auth_type', 'rerequest');
+  }
   return `${META_OAUTH_DIALOG}?${params.toString()}`;
 }
 
