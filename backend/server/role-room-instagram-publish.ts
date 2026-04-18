@@ -26,6 +26,7 @@ import {
   uploadImageForInstagram,
   type InstagramHostedImage,
 } from './role-room-instagram-image-upload.js';
+import { normalizeReelDataUrl } from './role-room-video-normalize.js';
 
 const META_GRAPH_BASE = `https://graph.facebook.com/${META_GRAPH_API_VERSION}`;
 const META_RATE_LIMIT_PER_24H = 50;
@@ -48,10 +49,12 @@ export interface IgPublishInput {
   feedPlanPostId: string;
   mediaType: IgMediaType;
   caption: string;
-  /** Single-image / reel convenience field — ignored if imageDataUrls is set. */
+  /** Single image for image media-type. */
   imageDataUrl?: string;
   /** 2-10 data URLs for carousel; overrides imageDataUrl when present. */
   imageDataUrls?: string[];
+  /** Single video data URL for reels (video/mp4 or video/quicktime). */
+  videoDataUrl?: string;
   scheduledFor?: string | null;
 }
 
@@ -326,15 +329,30 @@ async function executePublishJob(
       const parentResp = (await metaPost(parentUrl, parentForm)) as { id?: string };
       if (!parentResp.id) throw new Error('Meta returnerte ingen carousel container-id');
       parentContainerId = parentResp.id;
+    } else if (job.mediaType === 'reel') {
+      // Reels take a video_url (not image_url) + media_type=REELS.
+      // Meta's reels pipeline is async — the container goes from
+      // IN_PROGRESS to FINISHED once Meta has ingested and transcoded
+      // the video. We allow up to 5 minutes for that.
+      await updateJob(pool, job.id, { status: 'container', imagePublicUrl: signed[0] });
+      const containerForm = new URLSearchParams({
+        media_type: 'REELS',
+        video_url: signed[0],
+        caption: job.caption,
+        access_token: connection.accessToken,
+      });
+      const containerUrl = `${META_GRAPH_BASE}/${connection.igBusinessAccountId}/media`;
+      const containerResp = (await metaPost(containerUrl, containerForm)) as { id?: string };
+      if (!containerResp.id) throw new Error('Meta returnerte ingen reel container-id');
+      parentContainerId = containerResp.id;
     } else {
-      // image or reel — single container.
+      // image — single container with image_url.
       await updateJob(pool, job.id, { status: 'container', imagePublicUrl: signed[0] });
       const containerForm = new URLSearchParams({
         image_url: signed[0],
         caption: job.caption,
         access_token: connection.accessToken,
       });
-      if (job.mediaType === 'reel') containerForm.set('media_type', 'REELS');
       const containerUrl = `${META_GRAPH_BASE}/${connection.igBusinessAccountId}/media`;
       const containerResp = (await metaPost(containerUrl, containerForm)) as { id?: string };
       if (!containerResp.id) throw new Error('Meta returnerte ingen container-id');
@@ -342,8 +360,12 @@ async function executePublishJob(
     }
 
     await updateJob(pool, job.id, { status: 'publishing', igContainerId: parentContainerId });
-    // Reels + carousel parents both need a ready-check before publish.
-    if (job.mediaType === 'reel' || job.mediaType === 'carousel') {
+    // Reels + carousel parents need a ready-check before publish. Reels
+    // take materially longer to transcode than carousels (video vs
+    // multi-image upload), so we give them 5 minutes instead of 90s.
+    if (job.mediaType === 'reel') {
+      await pollContainerReady(connection, parentContainerId, 300_000);
+    } else if (job.mediaType === 'carousel') {
       await pollContainerReady(connection, parentContainerId, 90_000);
     }
 
@@ -397,20 +419,55 @@ export async function queueAndPublish(
     throw new Error('Instagram-tilkoblingen er utløpt. Koble til på nytt.');
   }
 
-  // Resolve the image list from either the multi-image field (carousel)
-  // or the single-image convenience field (image/reel).
-  const dataUrls: string[] = input.imageDataUrls && input.imageDataUrls.length > 0
-    ? input.imageDataUrls
-    : input.imageDataUrl
-      ? [input.imageDataUrl]
-      : [];
-  if (dataUrls.length === 0) throw new Error('Mangler bildedata for publisering');
-  if (input.mediaType === 'carousel') {
-    if (dataUrls.length < CAROUSEL_MIN || dataUrls.length > CAROUSEL_MAX) {
-      throw new Error(`Carousel krever ${CAROUSEL_MIN}-${CAROUSEL_MAX} bilder, fikk ${dataUrls.length}`);
+  // Resolve the data-URL list based on media type:
+  //   reel     → videoDataUrl (single video/* data URL, normalised
+  //              to 1080×1920 H.264 MP4 via ffmpeg when available)
+  //   carousel → imageDataUrls[] (2-10 image data URLs)
+  //   image    → imageDataUrl (single image/*)
+  let dataUrls: string[];
+  if (input.mediaType === 'reel') {
+    if (!input.videoDataUrl) {
+      throw new Error('Reel krever videoDataUrl (video/mp4 eller video/quicktime)');
     }
-  } else if (dataUrls.length !== 1) {
-    throw new Error(`${input.mediaType} krever nøyaktig ett bilde, fikk ${dataUrls.length}`);
+    if (!/^data:video\//i.test(input.videoDataUrl)) {
+      throw new Error('videoDataUrl må være en video/* data-URL');
+    }
+    // Normalise to IG-reel spec (portrait 9:16, H.264/AAC, +faststart,
+    // cap at 90s). Passthrough when ffmpeg is unavailable on the host
+    // so local dev still works; Meta will surface its own format error
+    // in that case.
+    const normalized = await normalizeReelDataUrl(input.videoDataUrl);
+    if (!normalized.normalized) {
+      console.warn(
+        `[ig-publish] reel passthrough — ${normalized.skipReason ?? 'unknown'} (${(normalized.sourceBytes / 1024 / 1024).toFixed(1)} MB)`,
+      );
+    } else {
+      console.log(
+        `[ig-publish] reel normalised: ${(normalized.sourceBytes / 1024 / 1024).toFixed(1)} MB → ${((normalized.outputBytes ?? 0) / 1024 / 1024).toFixed(1)} MB`,
+      );
+    }
+    dataUrls = [normalized.dataUrl];
+  } else if (input.mediaType === 'carousel') {
+    const list = input.imageDataUrls && input.imageDataUrls.length > 0
+      ? input.imageDataUrls
+      : input.imageDataUrl
+        ? [input.imageDataUrl]
+        : [];
+    if (list.length < CAROUSEL_MIN || list.length > CAROUSEL_MAX) {
+      throw new Error(`Carousel krever ${CAROUSEL_MIN}-${CAROUSEL_MAX} bilder, fikk ${list.length}`);
+    }
+    dataUrls = list;
+  } else {
+    // image
+    const list = input.imageDataUrls && input.imageDataUrls.length > 0
+      ? input.imageDataUrls
+      : input.imageDataUrl
+        ? [input.imageDataUrl]
+        : [];
+    if (list.length !== 1) {
+      throw new Error(`image krever nøyaktig ett bilde, fikk ${list.length}`);
+    }
+    dataUrls = list;
   }
 
   // Upload to R2 up-front so the job row stores image_bucket/image_key/

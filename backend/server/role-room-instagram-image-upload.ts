@@ -75,13 +75,33 @@ function getClient(cfg: R2Config): S3Client {
   return cachedClient;
 }
 
+// Accepts both image/* and video/* so reels (mp4/quicktime) can ride
+// the same upload path as carousel/single images. Meta's reel flow
+// still wants a publicly fetchable URL — same contract, different MIME.
 function decodeDataUrl(dataUrl: string): { contentType: string; bytes: Buffer } | null {
-  const match = /^data:(image\/[a-zA-Z0-9+.-]+);base64,([\s\S]+)$/.exec(dataUrl);
+  const match = /^data:((?:image|video)\/[a-zA-Z0-9+.-]+);base64,([\s\S]+)$/.exec(dataUrl);
   if (!match) return null;
   return {
     contentType: match[1],
     bytes: Buffer.from(match[2], 'base64'),
   };
+}
+
+function extensionForContentType(contentType: string): string {
+  switch (contentType) {
+    case 'image/png': return 'png';
+    case 'image/webp': return 'webp';
+    case 'image/jpeg':
+    case 'image/jpg': return 'jpg';
+    case 'video/mp4': return 'mp4';
+    case 'video/quicktime': return 'mov';
+    default: {
+      // Last-ditch: use the part after the slash — safe for unknown but
+      // spec-compliant subtypes (image/gif → gif, video/webm → webm).
+      const slash = contentType.indexOf('/');
+      return slash >= 0 ? contentType.slice(slash + 1) : 'bin';
+    }
+  }
 }
 
 export interface InstagramHostedImage {
@@ -95,9 +115,9 @@ export interface InstagramHostedImage {
 const SIGNED_URL_TTL_SECONDS = 60 * 60; // 1 hour
 
 /**
- * Upload `dataUrl` (JPEG/PNG/WebP) to R2 and return a pre-signed URL Meta
- * can fetch during container creation. Returns null if R2 is not
- * configured or the data URL is malformed.
+ * Upload `dataUrl` (image/* or video/*) to R2 and return a pre-signed
+ * URL Meta can fetch during container creation. Returns null if R2 is
+ * not configured or the data URL is malformed.
  */
 export async function uploadImageForInstagram(input: {
   userId: string;
@@ -114,9 +134,7 @@ export async function uploadImageForInstagram(input: {
     return null;
   }
 
-  const ext = decoded.contentType === 'image/png' ? 'png'
-    : decoded.contentType === 'image/webp' ? 'webp'
-    : 'jpg';
+  const ext = extensionForContentType(decoded.contentType);
   const random = crypto.randomBytes(8).toString('hex');
   const key = `${cfg.prefix}${input.userId}/${Date.now()}-${random}.${ext}`;
 

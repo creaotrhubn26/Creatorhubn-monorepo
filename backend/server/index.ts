@@ -34,6 +34,11 @@ import * as schema from "../migrations/schema.js";
 import { and, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { createRoleRoomRouter } from "./role-room-routes.js";
 import { createCaptureRouter } from "./capture-routes.js";
+import {
+  upsertShotListForProject,
+  bootstrapCaptureSessionForProject,
+  linkShotToAsset,
+} from "./capture-projects-service.js";
 import { attachCaptureWebSocket } from "./capture-websocket.js";
 import { pruneAiAuditLog } from "./role-room-ai-audit.js";
 import { pruneAgentCache } from "./role-room-agent-cache.js";
@@ -29120,10 +29125,16 @@ app.post("/api/role-room/instagram/publish", async (req, res) => {
     ? body.imageDataUrls.filter((s): s is string => typeof s === "string")
     : undefined;
   const imageDataUrl = typeof body.imageDataUrl === "string" ? body.imageDataUrl : undefined;
-  if (!imageDataUrl && (!imageDataUrls || imageDataUrls.length === 0)) {
+  const videoDataUrl = typeof body.videoDataUrl === "string" ? body.videoDataUrl : undefined;
+  const mediaType = body.mediaType as "image" | "reel" | "carousel";
+  if (mediaType === "reel") {
+    if (!videoDataUrl) {
+      return res.status(400).json({ success: false, error: "reel krever videoDataUrl." });
+    }
+  } else if (!imageDataUrl && (!imageDataUrls || imageDataUrls.length === 0)) {
     return res.status(400).json({
       success: false,
-      error: "imageDataUrl eller imageDataUrls er påkrevd.",
+      error: "imageDataUrl eller imageDataUrls er påkrevd for image/carousel.",
     });
   }
 
@@ -29133,10 +29144,11 @@ app.post("/api/role-room/instagram/publish", async (req, res) => {
       userId: session.userId,
       projectId: String(body.projectId),
       feedPlanPostId: String(body.feedPlanPostId),
-      mediaType: body.mediaType as "image" | "reel" | "carousel",
+      mediaType,
       caption: typeof body.caption === "string" ? body.caption : "",
       imageDataUrl,
       imageDataUrls,
+      videoDataUrl,
       scheduledFor: typeof body.scheduledFor === "string" ? body.scheduledFor : null,
     });
     return res.json({
@@ -29479,8 +29491,17 @@ app.get("/api/role-room/agent/feed-plan/drive/images", async (req, res) => {
 
   const searchQuery = typeof req.query.q === "string" ? req.query.q.trim() : "";
   const escaped = searchQuery.replace(/'/g, "\\'");
+  // `kind=video` restricts the listing to Drive's video MIME types (for
+  // reels); `kind=media` returns image+video (useful when the UI wants a
+  // combined picker); anything else keeps the legacy image-only scope.
+  const kind = typeof req.query.kind === "string" ? req.query.kind.trim() : "image";
+  const mimeFilter = kind === "video"
+    ? "mimeType contains 'video/'"
+    : kind === "media"
+      ? "(mimeType contains 'image/' or mimeType contains 'video/')"
+      : "mimeType contains 'image/'";
   const queryParts = [
-    "mimeType contains 'image/'",
+    mimeFilter,
     "trashed = false",
   ];
   if (escaped) {
@@ -29569,10 +29590,13 @@ app.post("/api/role-room/agent/feed-plan/drive/import", async (req, res) => {
       supportsAllDrives: true,
     });
     const meta = metaResponse.data;
-    if (!meta?.mimeType || !meta.mimeType.startsWith("image/")) {
+    const mimeType = meta?.mimeType ?? "";
+    const isImage = mimeType.startsWith("image/");
+    const isVideo = mimeType.startsWith("video/");
+    if (!isImage && !isVideo) {
       return res.status(400).json({
         success: false,
-        error: "Valgt fil er ikke et bilde.",
+        error: "Valgt fil er ikke et bilde eller en video.",
       });
     }
 
@@ -29581,6 +29605,32 @@ app.post("/api/role-room/agent/feed-plan/drive/import", async (req, res) => {
       { responseType: "arraybuffer" },
     );
     const sourceBuffer = Buffer.from(fileResponse.data as ArrayBuffer);
+
+    // Video path: we don't run video through sharp — Meta's reel
+    // pipeline accepts the original file as-is. Size cap matches the
+    // global express.json limit (50MB) with a little headroom for the
+    // base64 overhead; larger files fail fast with a clear message
+    // instead of a payload-too-large surprise downstream.
+    if (isVideo) {
+      const VIDEO_MAX_BYTES = 36 * 1024 * 1024; // ~48MB as base64
+      if (sourceBuffer.byteLength > VIDEO_MAX_BYTES) {
+        return res.status(413).json({
+          success: false,
+          error: `Videoen er for stor (${(sourceBuffer.byteLength / 1024 / 1024).toFixed(1)} MB). Maks 36 MB via Drive-import.`,
+        });
+      }
+      const videoDataUrl = `data:${mimeType};base64,${sourceBuffer.toString("base64")}`;
+      return res.json({
+        success: true,
+        image: {
+          dataUrl: videoDataUrl,
+          name: meta?.name ?? "",
+          mimeType,
+          fileId,
+          kind: "video",
+        },
+      });
+    }
 
     const aspectRaw = typeof body.aspect === "string" ? body.aspect : "4:5";
     const dimensions = ((): { width: number; height: number } => {
@@ -56927,6 +56977,111 @@ app.post("/api/projects/:projectId/memory-cards", async (req, res) => {
     res.status(500).json({ error: "Kunne ikke lagre minnekort-konfigurasjon" });
   }
 });
+
+// POST /api/projects/:projectId/shot-list — persist shot list to
+// shot_lists table so the iPad CaptureApp sees it (previously shots
+// only lived inside projects.projectData.metadata.shotList which the
+// iPad never reads).
+app.post("/api/projects/:projectId/shot-list", async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const userId = getUserIdFromAuth(req);
+    if (!userId) {
+      return res.status(401).json({ error: "unauthorized" });
+    }
+    const shots = Array.isArray(req.body?.shots) ? req.body.shots : [];
+    const listName = typeof req.body?.listName === "string" ? req.body.listName : undefined;
+    const eventType = typeof req.body?.eventType === "string" ? req.body.eventType : undefined;
+    const result = await upsertShotListForProject(db as any, {
+      ownerUserId: userId,
+      projectId,
+      shots,
+      listName,
+      eventType,
+    });
+    if (!result.ok) {
+      return res.status(404).json({ error: result.error });
+    }
+    res.json({ success: true, data: result.data });
+  } catch (error) {
+    console.error("Error persisting shot list:", error);
+    res.status(500).json({ error: "Kunne ikke lagre shot list" });
+  }
+});
+
+// POST /api/projects/:projectId/capture-session — bootstrap (or reuse)
+// a capture_sessions row linked to the project so the iPad sees the
+// session immediately after the photographer finishes the web modal.
+app.post("/api/projects/:projectId/capture-session", async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const userId = getUserIdFromAuth(req);
+    if (!userId) {
+      return res.status(401).json({ error: "unauthorized" });
+    }
+    const name = typeof req.body?.name === "string" ? req.body.name : undefined;
+    const startsAt = typeof req.body?.startsAt === "string" ? new Date(req.body.startsAt) : undefined;
+    const result = await bootstrapCaptureSessionForProject(
+      db as any,
+      userId,
+      projectId,
+      { name, startsAt },
+    );
+    if (!result.ok) {
+      return res.status(404).json({ error: result.error });
+    }
+    res.json({
+      success: true,
+      session: result.session,
+      reused: result.reused,
+    });
+  } catch (error) {
+    console.error("Error bootstrapping capture session:", error);
+    res.status(500).json({ error: "Kunne ikke opprette capture-økt" });
+  }
+});
+
+// POST /api/projects/:projectId/shots/:shotId/link-asset — mark a shot
+// in the shot list as captured by linking it to an uploaded asset.
+// Used by the iPad (Phase 2B Lag D follow-up) and can also be called
+// from the web review surface.
+app.post(
+  "/api/projects/:projectId/shots/:shotId/link-asset",
+  async (req, res) => {
+    try {
+      const { projectId, shotId } = req.params;
+      const userId = getUserIdFromAuth(req);
+      if (!userId) {
+        return res.status(401).json({ error: "unauthorized" });
+      }
+      const capturedAssetId =
+        typeof req.body?.capturedAssetId === "string" && req.body.capturedAssetId
+          ? req.body.capturedAssetId
+          : req.body?.capturedAssetId === null
+            ? null
+            : undefined;
+      if (capturedAssetId === undefined) {
+        return res
+          .status(400)
+          .json({ error: "capturedAssetId is required (use null to unlink)" });
+      }
+      const result = await linkShotToAsset(
+        db as any,
+        userId,
+        projectId,
+        shotId,
+        capturedAssetId,
+      );
+      if (!result.ok) {
+        return res.status(404).json({ error: result.error });
+      }
+      res.json({ success: true, data: result.data });
+    } catch (error) {
+      console.error("Error linking shot to asset:", error);
+      res.status(500).json({ error: "Kunne ikke knytte shot til asset" });
+    }
+  },
+);
 
 // GET /api/user/meeting-preferences — load meeting preferences
 app.get("/api/user/meeting-preferences", async (req, res) => {
@@ -109553,6 +109708,232 @@ app.use(communicationRouter);
 const lightroomRouter = createLightroomRouter(pool);
 app.use("/api/lightroom", lightroomRouter);
 app.use("/api/lightroom-routes", lightroomRouter);
+
+// --- Kartverket (Geonorge) proxies ------------------------------------
+// Frontend calls these from ExternalDataService on every keystroke in
+// location pickers, so a 404 here floods the console. Proxy the public
+// Geonorge APIs and fall back to an empty result on failure.
+
+app.get("/api/external-data/kartverket/address/:address", async (req, res) => {
+  const address = String(req.params.address || "").trim();
+  if (!address) {
+    return res.json({ success: false, error: "address query is required" });
+  }
+  try {
+    const url = `https://ws.geonorge.no/adresser/v1/sok?sok=${encodeURIComponent(address)}&fuzzy=true&treffPerSide=1`;
+    const upstream = await fetch(url, { headers: { Accept: "application/json" } });
+    if (!upstream.ok) {
+      return res.json({ success: false, error: `Upstream ${upstream.status}` });
+    }
+    const payload = await upstream.json();
+    const first = Array.isArray(payload?.adresser) ? payload.adresser[0] : null;
+    if (!first) {
+      return res.json({ success: false, error: "No match" });
+    }
+    return res.json({
+      success: true,
+      data: {
+        address: `${first.adressetekst || ""}, ${first.poststed || ""}`.trim(),
+        coordinates: {
+          lat: first.representasjonspunkt?.lat ?? 0,
+          lng: first.representasjonspunkt?.lon ?? 0,
+        },
+        municipality: first.kommunenavn || "",
+        county: first.fylkesnavn || "",
+        postalCode: first.postnummer || "",
+        propertyId: first.matrikkelId ? String(first.matrikkelId) : "",
+      },
+    });
+  } catch (error) {
+    console.warn("Kartverket address proxy failed:", error);
+    return res.json({ success: false, error: "Upstream failure" });
+  }
+});
+
+app.get("/api/external-data/kartverket/places", async (req, res) => {
+  const query = String(req.query.query || "").trim();
+  const limit = Math.min(Number(req.query.limit) || 10, 25);
+  if (!query) {
+    return res.json({ success: true, data: [] });
+  }
+  try {
+    const url = `https://ws.geonorge.no/stedsnavn/v1/sted?sok=${encodeURIComponent(query)}*&fuzzy=true&treffPerSide=${limit}`;
+    const upstream = await fetch(url, { headers: { Accept: "application/json" } });
+    if (!upstream.ok) {
+      return res.json({ success: false, error: `Upstream ${upstream.status}` });
+    }
+    const payload = await upstream.json();
+    const rows = Array.isArray(payload?.navn) ? payload.navn : [];
+    return res.json({
+      success: true,
+      data: rows.map((row: any) => ({
+        name: row.skrivemåte || row.stedsnavn || "",
+        type: row.navneobjekttype || "stedsnavn",
+        coordinates: {
+          lat: row.representasjonspunkt?.nord ?? 0,
+          lng: row.representasjonspunkt?.øst ?? 0,
+        },
+        municipality: Array.isArray(row.kommuner) && row.kommuner[0]
+          ? row.kommuner[0].kommunenavn
+          : "",
+        county: Array.isArray(row.fylker) && row.fylker[0]
+          ? row.fylker[0].fylkesnavn
+          : "",
+        description: row.navneobjekttype || "",
+      })),
+    });
+  } catch (error) {
+    console.warn("Kartverket places proxy failed:", error);
+    return res.json({ success: false, error: "Upstream failure" });
+  }
+});
+
+// Property lookup via Kartverket matrikkel — public API requires token, so
+// return a 200 with success:false so the frontend falls back silently instead
+// of spamming 404s on every render.
+app.get("/api/external-data/kartverket/property/:id", async (_req, res) => {
+  res.json({ success: false, error: "Property lookup not configured" });
+});
+
+app.get(
+  "/api/external-data/kartverket/elevation/:lat/:lng",
+  async (req, res) => {
+    const lat = Number(req.params.lat);
+    const lng = Number(req.params.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      return res.json({ success: false, error: "Invalid coordinates" });
+    }
+    try {
+      const url = `https://ws.geonorge.no/hoydedata/v1/punkt?koordsys=4258&nord=${lat}&ost=${lng}`;
+      const upstream = await fetch(url, {
+        headers: { Accept: "application/json" },
+      });
+      if (!upstream.ok) {
+        return res.json({
+          success: false,
+          error: `Upstream ${upstream.status}`,
+        });
+      }
+      const payload = await upstream.json();
+      const punkt = Array.isArray(payload?.punkter)
+        ? payload.punkter[0]
+        : null;
+      if (!punkt || typeof punkt.z !== "number") {
+        return res.json({ success: false, error: "No elevation data" });
+      }
+      return res.json({
+        success: true,
+        data: {
+          coordinates: { lat, lng },
+          elevation: punkt.z,
+          accuracy: "DTM10",
+        },
+      });
+    } catch (error) {
+      console.warn("Kartverket elevation proxy failed:", error);
+      return res.json({ success: false, error: "Upstream failure" });
+    }
+  },
+);
+
+// --- Price administration: fuel prices --------------------------------
+// Returns indicative Norwegian fuel prices. Frontend caches the result and
+// only falls back silently if success:false, so we ship baseline values that
+// the admin pricing panel can later override via pricing_administration.
+app.get("/api/price-administration/fuel-prices", async (_req, res) => {
+  res.json({
+    success: true,
+    source: "baseline",
+    lastUpdated: new Date().toISOString(),
+    prices: {
+      bensin: 21.5,
+      diesel: 20.8,
+      elbil: 3.2,
+    },
+  });
+});
+
+// --- Lead import stubs -------------------------------------------------
+// useLeadImport queries /import/leads and /import/history via the default
+// queryFn (the queryKey is used as the URL). Backed by sales_leads when a
+// user id is supplied; empty arrays for anonymous sessions.
+app.get("/import/leads", async (req, res) => {
+  try {
+    const queryUserId = readString(req.query.userId);
+    const headerUserId = readString(req.headers["x-user-id"]);
+    const userId = queryUserId || headerUserId;
+    if (!userId || userId === "guest") {
+      return res.json({ leads: [] });
+    }
+    const storageShape = await resolveSalesLeadsStorageShape();
+    const result = await pool.query(
+      `${buildSalesLeadSelectQuery(storageShape)} WHERE user_id = $1 AND status IN ('cold','warm','hot','qualified') ORDER BY updated_at DESC NULLS LAST, created_at DESC LIMIT 100`,
+      [userId],
+    );
+    const leads = result.rows.map((row: Record<string, unknown>) => {
+      const mapped = mapSalesLeadRow(row);
+      return {
+        id: mapped.id,
+        title: mapped.notes?.slice(0, 60) || `${mapped.projectType} — ${mapped.name}`,
+        clientName: mapped.name,
+        clientEmail: mapped.email,
+        clientPhone: mapped.phone,
+        projectType: mapped.projectType,
+        location: mapped.location,
+        preferredDate: mapped.eventDate,
+        estimatedBudget: mapped.estimatedValue,
+        specialRequests: mapped.notes,
+        source: mapped.source,
+      };
+    });
+    res.json({ leads });
+  } catch (error) {
+    if (isMissingRelationError(error) || isMissingColumnError(error)) {
+      return res.json({ leads: [] });
+    }
+    console.error("/import/leads failed:", error);
+    res.status(500).json({ error: "Could not fetch leads for import" });
+  }
+});
+
+app.get("/import/history", async (_req, res) => {
+  res.json({ history: [] });
+});
+
+app.post("/import/lead/:leadId", async (req, res) => {
+  try {
+    const leadId = readString(req.params.leadId);
+    if (!leadId) {
+      return res.status(400).json({ error: "Lead ID is required" });
+    }
+    const storageShape = await resolveSalesLeadsStorageShape();
+    const result = await pool.query(
+      `${buildSalesLeadSelectQuery(storageShape)} WHERE id = $1 LIMIT 1`,
+      [leadId],
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Lead not found" });
+    }
+    const mapped = mapSalesLeadRow(result.rows[0] as Record<string, unknown>);
+    res.json({
+      projectData: {
+        projectName: `${mapped.projectType} — ${mapped.name}`,
+        projectType: mapped.projectType,
+        clientName: mapped.name,
+        location: mapped.location,
+        projectDate: mapped.eventDate,
+        totalPrice: mapped.estimatedValue,
+        specialRequests: mapped.notes,
+      },
+    });
+  } catch (error) {
+    if (isMissingRelationError(error) || isMissingColumnError(error)) {
+      return res.status(404).json({ error: "Lead not found" });
+    }
+    console.error("/import/lead/:leadId failed:", error);
+    res.status(500).json({ error: "Could not import lead" });
+  }
+});
 
 // Catch-all for unhandled API routes
 app.all("/api/*", (req, res) => {

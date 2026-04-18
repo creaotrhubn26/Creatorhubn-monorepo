@@ -14,6 +14,17 @@ vi.mock('./role-room-instagram-image-upload.js', () => ({
   deleteInstagramHostedImage: vi.fn(),
 }));
 
+// Pass-through stub: the real normalize spawns ffmpeg and eats 5s on
+// fake bytes. The normalize path itself has its own test file.
+vi.mock('./role-room-video-normalize.js', () => ({
+  normalizeReelDataUrl: vi.fn(async (dataUrl: string) => ({
+    dataUrl,
+    normalized: false,
+    skipReason: 'ffmpeg_missing' as const,
+    sourceBytes: 100,
+  })),
+}));
+
 import * as oauthMock from './role-room-instagram-oauth.js';
 import * as uploadMock from './role-room-instagram-image-upload.js';
 import {
@@ -165,7 +176,7 @@ describe('queueAndPublish — validation', () => {
     ).rejects.toThrow(/utløpt/);
   });
 
-  it('throws when no image data is provided', async () => {
+  it('throws when no image data is provided for image media-type', async () => {
     getConnection.mockResolvedValue(baseConnection());
     const { pool } = makePool(async () => ({ rows: [] }));
     await expect(
@@ -173,7 +184,30 @@ describe('queueAndPublish — validation', () => {
         connectionId: 'c', userId: 'u1', projectId: 'p', feedPlanPostId: 'f',
         mediaType: 'image', caption: '',
       }),
-    ).rejects.toThrow(/Mangler bildedata/);
+    ).rejects.toThrow(/image krever nøyaktig ett bilde, fikk 0/);
+  });
+
+  it('throws when reel is missing videoDataUrl', async () => {
+    getConnection.mockResolvedValue(baseConnection());
+    const { pool } = makePool(async () => ({ rows: [] }));
+    await expect(
+      queueAndPublish(pool, {
+        connectionId: 'c', userId: 'u1', projectId: 'p', feedPlanPostId: 'f',
+        mediaType: 'reel', caption: '',
+      }),
+    ).rejects.toThrow(/Reel krever videoDataUrl/);
+  });
+
+  it('throws when reel videoDataUrl is not a video/* data URL', async () => {
+    getConnection.mockResolvedValue(baseConnection());
+    const { pool } = makePool(async () => ({ rows: [] }));
+    await expect(
+      queueAndPublish(pool, {
+        connectionId: 'c', userId: 'u1', projectId: 'p', feedPlanPostId: 'f',
+        mediaType: 'reel', caption: '',
+        videoDataUrl: 'data:image/jpeg;base64,AAAA',
+      }),
+    ).rejects.toThrow(/video\/\* data-URL/);
   });
 
   it('rejects carousel with fewer than 2 images', async () => {
@@ -201,16 +235,16 @@ describe('queueAndPublish — validation', () => {
     ).rejects.toThrow(/Carousel krever 2-10 bilder, fikk 11/);
   });
 
-  it('rejects image/reel with more than one image', async () => {
+  it('rejects image media-type with more than one image', async () => {
     getConnection.mockResolvedValue(baseConnection());
     const { pool } = makePool(async () => ({ rows: [] }));
     await expect(
       queueAndPublish(pool, {
         connectionId: 'c', userId: 'u1', projectId: 'p', feedPlanPostId: 'f',
-        mediaType: 'reel', caption: '',
+        mediaType: 'image', caption: '',
         imageDataUrls: ['data:image/jpeg;base64,AA', 'data:image/jpeg;base64,BB'],
       }),
-    ).rejects.toThrow(/reel krever nøyaktig ett bilde/);
+    ).rejects.toThrow(/image krever nøyaktig ett bilde, fikk 2/);
   });
 });
 
@@ -311,6 +345,75 @@ describe('queueAndPublish — immediate image publish', () => {
     expect(publishCall).toBeDefined();
     expect((publishCall!.init!.body as URLSearchParams).toString()).toContain('creation_id=container-1');
   });
+});
+
+// ── End-to-end immediate reel ───────────────────────────────────────────
+
+describe('queueAndPublish — immediate reel publish', () => {
+  it('creates the container with video_url + media_type=REELS, polls FINISHED, publishes', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    getConnection.mockResolvedValue(baseConnection());
+    ensureFreshConnection.mockResolvedValue(baseConnection());
+    uploadImageForInstagram.mockResolvedValue(hostedImage({
+      key: 'role-room/instagram-publish/u1/reel-1.mp4',
+      contentType: 'video/mp4',
+    }));
+    signInstagramHostedImageUrl.mockResolvedValue('https://signed.example/reel');
+    const { pool } = makePool(async (sql) => {
+      if (sql.includes('role_room_instagram_publishes_last_24h')) return { rows: [{ published_count: 0 }] };
+      if (sql.startsWith('INSERT INTO role_room_instagram_publish_jobs')) {
+        return {
+          rows: [jobRow({
+            media_type: 'reel',
+            image_bucket: 'role-room-bucket',
+            image_key: 'role-room/instagram-publish/u1/reel-1.mp4',
+            image_parts: [{ bucket: 'role-room-bucket', key: 'role-room/instagram-publish/u1/reel-1.mp4' }],
+          })],
+        };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+
+    fetchRouter = (url, init) => {
+      if (url.includes('/ig-biz-1/media_publish')) {
+        return { body: { id: 'reel-media-id' } };
+      }
+      if (url.includes('/ig-biz-1/media')) {
+        return { body: { id: 'reel-container-1' } };
+      }
+      if (url.includes('?fields=status_code')) {
+        return { body: { status_code: 'FINISHED' } };
+      }
+      return { status: 404, body: {} };
+    };
+
+    const resultP = queueAndPublish(pool, {
+      connectionId: 'c', userId: 'u1', projectId: 'p', feedPlanPostId: 'f',
+      mediaType: 'reel', caption: 'my reel',
+      videoDataUrl: 'data:video/mp4;base64,AAAAAA',
+    });
+    // Reels poll up to 5 min; advance enough to hit FINISHED.
+    await vi.advanceTimersByTimeAsync(30_000);
+    const result = await resultP;
+    vi.useRealTimers();
+
+    expect(result.immediatelyPublished).toBe(true);
+    expect(result.job.igMediaId).toBe('reel-media-id');
+    // Container call carries media_type=REELS + video_url.
+    const containerCall = fetchCalls.find(
+      (c) => c.url.includes('/ig-biz-1/media')
+        && !c.url.includes('media_publish')
+        && !c.url.includes('?fields=status_code'),
+    );
+    expect(containerCall).toBeDefined();
+    const body = (containerCall!.init!.body as URLSearchParams).toString();
+    expect(body).toContain('media_type=REELS');
+    expect(body).toContain('video_url=' + encodeURIComponent('https://signed.example/reel'));
+    expect(body).not.toContain('image_url=');
+    // Publish used the reel container id.
+    const publishCall = fetchCalls.find((c) => c.url.includes('media_publish'));
+    expect((publishCall!.init!.body as URLSearchParams).toString()).toContain('creation_id=reel-container-1');
+  }, 15_000);
 });
 
 // ── End-to-end immediate carousel ────────────────────────────────────────
