@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
@@ -20,6 +20,8 @@ import {
   Autorenew as AutorenewIcon,
   AddPhotoAlternate as AddPhotoAlternateIcon,
   AutoAwesome as AutoAwesomeIcon,
+  Bookmark as BookmarkIcon,
+  BookmarkAdd as BookmarkAddIcon,
   Close as CloseIcon,
   DeleteOutline as DeleteOutlineIcon,
   LockOpen as LockOpenIcon,
@@ -38,6 +40,8 @@ import type {
   RoleRoomFeedPlatform,
   RoleRoomFeedPost,
   RoleRoomFeedPostConcept,
+  RoleRoomFeedTemplate,
+  RoleRoomFeedTemplatePayload,
 } from '../../services/roleRoomAgentService';
 import { CONCEPT_LABELS, FEED_POST_CONCEPT_ORDER, buildFeedPost } from '../../utils/feedPlanner';
 import FeedPostTile from './FeedPostTile';
@@ -50,6 +54,8 @@ type FeedPostDetailPanelProps = {
   bootstrap: RoleRoomAgentProducerBootstrapResult;
   brandSnapshot: RoleRoomFeedBrandSnapshot | null;
   platform: RoleRoomFeedPlatform;
+  isShowrunner?: boolean;
+  instagramConnections?: { id: string; igUsername: string | null }[];
   onUpdate: (patch: Partial<RoleRoomFeedPost>) => void;
   onRegenerate: (post: RoleRoomFeedPost) => void;
   onClose?: () => void;
@@ -89,6 +95,8 @@ export default function FeedPostDetailPanel({
   bootstrap,
   brandSnapshot,
   platform,
+  isShowrunner = false,
+  instagramConnections = [],
   onUpdate,
   onRegenerate,
   onClose,
@@ -100,6 +108,125 @@ export default function FeedPostDetailPanel({
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiNote, setAiNote] = useState<{ strategyNotes: string; bestTimeRationale: string; freshness: string } | null>(null);
   const [tierSlug, setTierSlug] = useState<'spotlight' | 'headliner' | 'showrunner' | 'admin' | null>(null);
+  const [templates, setTemplates] = useState<RoleRoomFeedTemplate[]>([]);
+  const [savingTemplate, setSavingTemplate] = useState(false);
+  const [templateError, setTemplateError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const list = await roleRoomAgentService.listFeedTemplates(projectId, platform);
+        if (!cancelled) setTemplates(list);
+      } catch {
+        /* templates are optional */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, platform]);
+
+  const applyTemplate = (template: RoleRoomFeedTemplatePayload) => {
+    if (post.locked) return;
+    // Apply all template fields except customImageUrl/customImageName + scheduledFor.
+    // Image stays per-post; schedule is per-post too.
+    onUpdate({
+      concept: template.concept || post.concept,
+      title: template.title || post.title,
+      caption: template.caption || post.caption,
+      hashtags: template.hashtags?.length ? template.hashtags : post.hashtags,
+      callToAction: template.callToAction || post.callToAction,
+      imageStyle: template.imageStyle || post.imageStyle,
+      backgroundColor: template.backgroundColor ?? post.backgroundColor,
+      accentColor: template.accentColor ?? post.accentColor,
+      textColor: template.textColor ?? post.textColor,
+      logoPlacement: template.logoPlacement ?? post.logoPlacement,
+      mediaType: template.mediaType ?? post.mediaType,
+    });
+  };
+
+  const saveCurrentAsTemplate = async () => {
+    const name = window.prompt(
+      'Navn på malen?',
+      `${post.title?.slice(0, 40) || 'Mal'} — ${new Date().toLocaleDateString('nb-NO')}`,
+    );
+    if (!name?.trim()) return;
+    setSavingTemplate(true);
+    setTemplateError(null);
+    try {
+      const created = await roleRoomAgentService.createFeedTemplate({
+        projectId,
+        platform,
+        name: name.trim(),
+        template: {
+          concept: String(post.concept),
+          title: post.title,
+          caption: post.caption,
+          hashtags: post.hashtags,
+          callToAction: post.callToAction,
+          imageStyle: post.imageStyle,
+          backgroundColor: post.backgroundColor,
+          accentColor: post.accentColor,
+          textColor: post.textColor,
+          logoPlacement: post.logoPlacement,
+          mediaType: post.mediaType,
+        },
+      });
+      if (created) setTemplates((current) => [created, ...current]);
+    } catch (caught) {
+      setTemplateError(caught instanceof Error ? caught.message : 'Kunne ikke lagre malen.');
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
+
+  const archiveTemplate = async (templateId: string) => {
+    if (!window.confirm('Arkiver denne malen?')) return;
+    const ok = await roleRoomAgentService.archiveFeedTemplate(templateId);
+    if (ok) setTemplates((current) => current.filter((t) => t.id !== templateId));
+  };
+
+  const [publishing, setPublishing] = useState(false);
+  const [publishStatus, setPublishStatus] = useState<string | null>(null);
+  const publishToInstagram = async () => {
+    if (!isShowrunner || platform !== 'instagram' || instagramConnections.length === 0) return;
+    if (!post.customImageUrl) {
+      setPublishStatus('Posten må ha et bilde fra Drive før den kan publiseres.');
+      return;
+    }
+    if (!window.confirm(`Publiser nå til @${instagramConnections[0]?.igUsername ?? 'Instagram'}?`)) return;
+    setPublishing(true);
+    setPublishStatus(null);
+    try {
+      const result = await roleRoomAgentService.publishInstagram({
+        connectionId: instagramConnections[0].id,
+        projectId,
+        feedPlanPostId: post.id,
+        mediaType: post.mediaType,
+        caption: `${post.title}\n\n${post.caption}\n\n${post.hashtags.join(' ')}\n\n${post.callToAction}`.trim(),
+        imageDataUrl: post.customImageUrl,
+        scheduledFor: post.scheduledFor,
+      });
+      if (result.rateLimited) {
+        setPublishStatus('Rate-limit nådd (50/24t). Prøv igjen senere.');
+      } else if (result.immediatelyPublished) {
+        setPublishStatus(`✓ Publisert (media id ${result.job.igMediaId})`);
+      } else {
+        setPublishStatus(`Køet for publisering ${post.scheduledFor ? new Date(post.scheduledFor).toLocaleString('nb-NO') : 'snart'}`);
+      }
+    } catch (caught) {
+      if (caught instanceof RoleRoomFeedEntitlementError) {
+        const message = caught.message || 'IG-publisering krever Showrunner.';
+        setPublishStatus(message);
+        onEntitlementBlocked?.(message);
+      } else {
+        setPublishStatus(caught instanceof Error ? caught.message : 'Publisering feilet.');
+      }
+    } finally {
+      setPublishing(false);
+    }
+  };
 
   const requestAiRecommendation = async () => {
     if (post.locked) return;
@@ -308,6 +435,104 @@ export default function FeedPostDetailPanel({
           })
         }
       />
+
+      {/* Brand-fargekontrollere — applied template-farger kan finjusteres her */}
+      <Stack
+        spacing={0.8}
+        sx={{
+          p: 1,
+          borderRadius: 1.8,
+          bgcolor: 'rgba(15,23,42,0.55)',
+          border: '1px solid rgba(148,163,184,0.16)',
+        }}
+      >
+        <Typography sx={{ color: '#e2e8f0', fontSize: '0.78rem', fontWeight: 700 }}>
+          Brand-farger
+        </Typography>
+        <Stack direction="row" spacing={1.2} flexWrap="wrap" useFlexGap>
+          <ColorSwatchInput
+            label="Bakgrunn"
+            value={post.backgroundColor || '#0f172a'}
+            onChange={(value) => onUpdate({ backgroundColor: value })}
+          />
+          <ColorSwatchInput
+            label="Accent"
+            value={post.accentColor || '#22d3ee'}
+            onChange={(value) => onUpdate({ accentColor: value })}
+          />
+          <ColorSwatchInput
+            label="Tekst"
+            value={post.textColor || '#f8fafc'}
+            onChange={(value) => onUpdate({ textColor: value })}
+          />
+        </Stack>
+      </Stack>
+
+      {/* Maler — apply preserves edit-flow: feltene kan endres etterpå */}
+      <Stack
+        spacing={0.8}
+        sx={{
+          p: 1,
+          borderRadius: 1.8,
+          bgcolor: 'rgba(15,23,42,0.55)',
+          border: '1px solid rgba(148,163,184,0.16)',
+        }}
+      >
+        <Stack direction="row" alignItems="center" spacing={0.6}>
+          <BookmarkIcon fontSize="small" sx={{ color: '#a78bfa' }} />
+          <Typography sx={{ color: '#e2e8f0', fontSize: '0.78rem', fontWeight: 700 }}>
+            Maler
+          </Typography>
+          <Box sx={{ flex: 1 }} />
+          <Button
+            size="small"
+            startIcon={<BookmarkAddIcon fontSize="small" />}
+            onClick={saveCurrentAsTemplate}
+            disabled={savingTemplate}
+            sx={{
+              textTransform: 'none',
+              fontWeight: 700,
+              fontSize: '0.72rem',
+              color: '#a78bfa',
+              '&:hover': { bgcolor: 'rgba(167,139,250,0.08)' },
+            }}
+          >
+            {savingTemplate ? 'Lagrer…' : 'Lagre som mal'}
+          </Button>
+        </Stack>
+        {templates.length === 0 ? (
+          <Typography sx={{ color: 'rgba(226,232,240,0.55)', fontSize: '0.7rem' }}>
+            Ingen lagrede maler ennå. Tilpass posten og lagre den som mal for gjenbruk på fremtidige innlegg.
+          </Typography>
+        ) : (
+          <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap>
+            {templates.map((tpl) => (
+              <Chip
+                key={tpl.id}
+                label={tpl.name}
+                size="small"
+                onClick={() => applyTemplate(tpl.template)}
+                onDelete={() => archiveTemplate(tpl.id)}
+                disabled={post.locked}
+                sx={{
+                  fontWeight: 600,
+                  fontSize: '0.7rem',
+                  color: 'rgba(226,232,240,0.88)',
+                  borderColor: 'rgba(167,139,250,0.4)',
+                  bgcolor: 'rgba(167,139,250,0.08)',
+                  '&:hover': { bgcolor: 'rgba(167,139,250,0.16)' },
+                  '& .MuiChip-deleteIcon': { color: 'rgba(248,113,113,0.7)' },
+                }}
+                variant="outlined"
+                title={`Bruk malen "${tpl.name}". Du kan redigere felt etterpå.`}
+              />
+            ))}
+          </Stack>
+        )}
+        {templateError ? (
+          <Typography sx={{ color: '#fca5a5', fontSize: '0.7rem' }}>{templateError}</Typography>
+        ) : null}
+      </Stack>
 
       <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap>
         {FEED_POST_CONCEPT_ORDER.map((concept) => (
@@ -521,6 +746,58 @@ export default function FeedPostDetailPanel({
         ) : null}
       </Stack>
 
+      {isShowrunner && platform === 'instagram' ? (
+        <Stack
+          spacing={0.6}
+          sx={{
+            p: 1.2,
+            borderRadius: 1.8,
+            background: 'linear-gradient(135deg, rgba(245,133,41,0.06) 0%, rgba(81,91,212,0.06) 100%)',
+            border: '1px solid rgba(221,42,123,0.25)',
+          }}
+        >
+          <Stack direction="row" alignItems="center" spacing={0.6}>
+            <Typography sx={{ color: '#e2e8f0', fontSize: '0.82rem', fontWeight: 700 }}>
+              Publiser til Instagram
+            </Typography>
+          </Stack>
+          {instagramConnections.length === 0 ? (
+            <Typography sx={{ color: 'rgba(226,232,240,0.62)', fontSize: '0.72rem' }}>
+              Ingen IG-konto koblet. Koble en konto øverst i feed-planneren.
+            </Typography>
+          ) : (
+            <Typography sx={{ color: 'rgba(226,232,240,0.62)', fontSize: '0.72rem' }}>
+              Publiseres til <strong>@{instagramConnections[0].igUsername ?? 'IG-konto'}</strong>{' '}
+              {post.scheduledFor ? `på ${new Date(post.scheduledFor).toLocaleString('nb-NO')}` : 'umiddelbart'}.
+            </Typography>
+          )}
+          <Button
+            size="small"
+            variant="contained"
+            onClick={publishToInstagram}
+            disabled={
+              publishing || post.locked || instagramConnections.length === 0 || !post.customImageUrl
+            }
+            sx={{
+              alignSelf: 'flex-start',
+              textTransform: 'none',
+              fontWeight: 700,
+              color: '#fff',
+              background: 'linear-gradient(135deg, #f58529 0%, #DD2A7B 50%, #515BD4 100%)',
+              boxShadow: 'none',
+              '&:hover': { boxShadow: '0 4px 16px rgba(221,42,123,0.3)' },
+            }}
+          >
+            {publishing ? 'Publiserer…' : post.scheduledFor ? 'Køleg for publisering' : 'Publiser nå'}
+          </Button>
+          {publishStatus ? (
+            <Typography sx={{ color: 'rgba(226,232,240,0.78)', fontSize: '0.74rem' }}>
+              {publishStatus}
+            </Typography>
+          ) : null}
+        </Stack>
+      ) : null}
+
       <Button
         variant="outlined"
         size="small"
@@ -561,3 +838,65 @@ const selectSx = {
   ...textFieldSx,
   '& .MuiSelect-icon': { color: 'rgba(226,232,240,0.6)' },
 };
+
+function ColorSwatchInput({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <Stack
+      direction="row"
+      spacing={0.6}
+      alignItems="center"
+      sx={{
+        px: 0.8,
+        py: 0.5,
+        borderRadius: 1,
+        bgcolor: 'rgba(15,23,42,0.6)',
+        border: '1px solid rgba(148,163,184,0.18)',
+      }}
+    >
+      <Box
+        component="label"
+        sx={{
+          width: 26,
+          height: 26,
+          borderRadius: 0.8,
+          bgcolor: value,
+          border: '1px solid rgba(255,255,255,0.18)',
+          cursor: 'pointer',
+          position: 'relative',
+          overflow: 'hidden',
+        }}
+      >
+        <Box
+          component="input"
+          type="color"
+          value={value}
+          onChange={(event) => onChange((event.target as HTMLInputElement).value)}
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            opacity: 0,
+            cursor: 'pointer',
+            border: 'none',
+            padding: 0,
+          }}
+        />
+      </Box>
+      <Stack spacing={0}>
+        <Typography sx={{ color: 'rgba(226,232,240,0.85)', fontSize: '0.68rem', fontWeight: 700 }}>
+          {label}
+        </Typography>
+        <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.6rem', fontFamily: 'monospace' }}>
+          {value.toUpperCase()}
+        </Typography>
+      </Stack>
+    </Stack>
+  );
+}

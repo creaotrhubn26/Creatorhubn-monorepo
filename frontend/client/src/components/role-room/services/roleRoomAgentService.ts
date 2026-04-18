@@ -498,6 +498,63 @@ interface DriveImportResponse {
   image?: RoleRoomDriveImportedImage;
 }
 
+export interface RoleRoomInstagramConnection {
+  id: string;
+  igBusinessAccountId: string;
+  igUsername: string | null;
+  facebookPageName: string | null;
+  tokenExpiresAt: string | null;
+  scopes: string[];
+}
+
+export type RoleRoomInstagramJobStatus =
+  | 'queued'
+  | 'uploading'
+  | 'container'
+  | 'publishing'
+  | 'published'
+  | 'failed'
+  | 'rate_limited';
+
+export interface RoleRoomInstagramPublishJob {
+  id: string;
+  feedPlanPostId: string;
+  status: RoleRoomInstagramJobStatus;
+  igMediaId: string | null;
+  scheduledFor: string | null;
+  attemptedCount: number;
+  lastError: string | null;
+  publishedAt: string | null;
+}
+
+export interface RoleRoomInstagramPublishResult {
+  job: RoleRoomInstagramPublishJob;
+  immediatelyPublished: boolean;
+  rateLimited: boolean;
+}
+
+export interface RoleRoomFeedTemplatePayload {
+  concept: string;
+  title: string;
+  caption: string;
+  hashtags: string[];
+  callToAction: string;
+  imageStyle: string;
+  backgroundColor: string | null;
+  accentColor: string | null;
+  textColor: string | null;
+  logoPlacement: RoleRoomFeedLogoPlacement | null;
+  mediaType: RoleRoomFeedMediaType;
+}
+
+export interface RoleRoomFeedTemplate {
+  id: string;
+  name: string;
+  template: RoleRoomFeedTemplatePayload;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface RoleRoomFeedRecommendation {
   caption: string;
   hashtags: string[];
@@ -710,6 +767,142 @@ export const roleRoomAgentService = {
       notConnected: Boolean(payload?.notConnected),
       nextPageToken: payload?.nextPageToken ?? null,
     };
+  },
+
+  async listInstagramConnections(): Promise<{
+    metaConfigured: boolean;
+    imageHostingConfigured: boolean;
+    rateLimitPer24h: number;
+    connections: RoleRoomInstagramConnection[];
+  }> {
+    const response = await fetch('/api/role-room/instagram/connections', {
+      headers: readRoleRoomAgentHeaders(),
+    });
+    if (!response.ok) {
+      return { metaConfigured: false, imageHostingConfigured: false, rateLimitPer24h: 50, connections: [] };
+    }
+    const payload = await response.json().catch(() => null);
+    return {
+      metaConfigured: Boolean(payload?.metaConfigured),
+      imageHostingConfigured: Boolean(payload?.imageHostingConfigured),
+      rateLimitPer24h: Number(payload?.rateLimitPer24h ?? 50),
+      connections: Array.isArray(payload?.connections) ? payload.connections : [],
+    };
+  },
+
+  async startInstagramOauth(projectId: string): Promise<{ url: string } | { error: string }> {
+    const response = await fetch(
+      `/api/role-room/instagram/oauth/start?projectId=${encodeURIComponent(projectId)}`,
+      { headers: readRoleRoomAgentHeaders() },
+    );
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || !payload?.success) {
+      return { error: payload?.error || 'Kunne ikke starte Instagram-innlogging.' };
+    }
+    return { url: payload.url };
+  },
+
+  async revokeInstagramConnection(connectionId: string): Promise<boolean> {
+    const response = await fetch(`/api/role-room/instagram/connections/${encodeURIComponent(connectionId)}`, {
+      method: 'DELETE',
+      headers: readRoleRoomAgentHeaders(),
+    });
+    const payload = await response.json().catch(() => null);
+    return Boolean(payload?.success);
+  },
+
+  async publishInstagram(input: {
+    connectionId: string;
+    projectId: string;
+    feedPlanPostId: string;
+    mediaType: 'image' | 'reel' | 'carousel';
+    caption: string;
+    imageDataUrl: string;
+    scheduledFor?: string | null;
+  }): Promise<RoleRoomInstagramPublishResult> {
+    const response = await fetch('/api/role-room/instagram/publish', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...readRoleRoomAgentHeaders() },
+      body: JSON.stringify(input),
+    });
+    const payload = (await response.json().catch(() => null)) as {
+      success?: boolean;
+      error?: string;
+      job?: RoleRoomInstagramPublishJob;
+      immediatelyPublished?: boolean;
+      rateLimited?: boolean;
+      entitlement?: unknown;
+    } | null;
+    if (response.status === 402) {
+      throw new RoleRoomFeedEntitlementError(
+        payload?.error || 'IG-publisering krever Showrunner-pakken.',
+        payload?.entitlement as never,
+      );
+    }
+    if (!response.ok || !payload?.success || !payload.job) {
+      throw new Error(payload?.error || 'Publisering feilet.');
+    }
+    return {
+      job: payload.job,
+      immediatelyPublished: Boolean(payload.immediatelyPublished),
+      rateLimited: Boolean(payload.rateLimited),
+    };
+  },
+
+  async listInstagramJobs(projectId: string): Promise<RoleRoomInstagramPublishJob[]> {
+    const response = await fetch(`/api/role-room/instagram/jobs/${encodeURIComponent(projectId)}`, {
+      headers: readRoleRoomAgentHeaders(),
+    });
+    if (!response.ok) return [];
+    const payload = await response.json().catch(() => null);
+    return Array.isArray(payload?.jobs) ? payload.jobs : [];
+  },
+
+  async listFeedTemplates(
+    projectId: string,
+    platform: RoleRoomFeedPlatform,
+  ): Promise<RoleRoomFeedTemplate[]> {
+    const response = await fetch(
+      `/api/role-room/agent/feed-plan/templates/${encodeURIComponent(projectId)}/${encodeURIComponent(platform)}`,
+      { headers: readRoleRoomAgentHeaders() },
+    );
+    if (!response.ok) return [];
+    const payload = (await response.json().catch(() => null)) as
+      | { success?: boolean; templates?: RoleRoomFeedTemplate[] }
+      | null;
+    return payload?.templates ?? [];
+  },
+
+  async createFeedTemplate(input: {
+    projectId: string;
+    platform: RoleRoomFeedPlatform;
+    name: string;
+    template: RoleRoomFeedTemplatePayload;
+  }): Promise<RoleRoomFeedTemplate | null> {
+    const response = await fetch(
+      `/api/role-room/agent/feed-plan/templates/${encodeURIComponent(input.projectId)}/${encodeURIComponent(input.platform)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...readRoleRoomAgentHeaders() },
+        body: JSON.stringify({ name: input.name, template: input.template }),
+      },
+    );
+    const payload = (await response.json().catch(() => null)) as
+      | { success?: boolean; error?: string; template?: RoleRoomFeedTemplate }
+      | null;
+    if (!response.ok || !payload?.success) {
+      throw new Error(payload?.error || 'Kunne ikke lagre malen.');
+    }
+    return payload.template ?? null;
+  },
+
+  async archiveFeedTemplate(templateId: string): Promise<boolean> {
+    const response = await fetch(
+      `/api/role-room/agent/feed-plan/templates/${encodeURIComponent(templateId)}`,
+      { method: 'DELETE', headers: readRoleRoomAgentHeaders() },
+    );
+    const payload = (await response.json().catch(() => null)) as { success?: boolean } | null;
+    return Boolean(payload?.success);
   },
 
   async refreshFeedPlanStrategy(platform: RoleRoomFeedPlatform): Promise<{

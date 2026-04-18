@@ -102,12 +102,37 @@ import {
   upsertStrategy,
   loadStrategy,
 } from "./role-room-feed-strategy.js";
+import {
+  archiveTemplate as archiveFeedTemplate,
+  createTemplate as createFeedTemplate,
+  listTemplates as listFeedTemplates,
+  normalizeTemplatePayload,
+} from "./role-room-feed-templates.js";
 import { checkAgentEntitlement } from "./role-room-agent-entitlements.js";
 import { logAiCall } from "./role-room-ai-audit.js";
 import {
   requireActiveConsent,
   RoleRoomAiConsentError,
 } from "./role-room-ai-consent.js";
+import {
+  buildAuthorizationUrl,
+  discoverIgBusinessAccounts,
+  exchangeCodeForShortLivedToken,
+  exchangeForLongLivedToken,
+  getMetaAppConfig,
+  listInstagramConnections,
+  META_REQUIRED_SCOPES,
+  revokeConnection as revokeIgConnection,
+  signOauthState,
+  upsertInstagramConnection,
+  verifyOauthState,
+} from "./role-room-instagram-oauth.js";
+import {
+  IG_RATE_LIMIT_PER_24H,
+  listPublishJobs as listIgPublishJobs,
+  queueAndPublish as queueAndPublishIg,
+} from "./role-room-instagram-publish.js";
+import { isInstagramImageUploadConfigured } from "./role-room-instagram-image-upload.js";
 import { registerTidumAdminRoutes } from "./tidum-admin-routes.js";
 import {
   getNotebookLmWorkspaceStatus,
@@ -123,6 +148,7 @@ import {
   loadPersistedAuthSession,
   persistAuthSession,
 } from "./auth-session-store.js";
+import { exchangeGoogleIdToken } from "./google-id-token-service.js";
 import {
   derivePreferredGoogleWorkspaceOauthApps,
   type GoogleWorkspaceOauthApp,
@@ -23749,8 +23775,29 @@ app.get("/api/auth/session-status", async (req, res) => {
   res.json({ active: false, authenticated: false });
 });
 
-app.post("/api/auth/google/token", (req, res) => {
-  res.json({ success: false, message: "Google auth not configured" });
+// Mobile / iPad sign-in: client (e.g. iPad CaptureApp) obtains a Google
+// ID token via the Google Sign-In SDK, posts it here, and gets back a
+// CreatorHub bearer that works against /api/capture/* and any other
+// requireAuth-gated route. Cheaper than running the full web OAuth dance
+// from a native app and avoids needing a redirect URI scheme at all.
+// Logic lives in google-id-token-service.ts so it can be unit-tested
+// without spinning up Express.
+app.post("/api/auth/google/token", async (req, res) => {
+  try {
+    const idToken = typeof req.body?.idToken === "string" ? req.body.idToken : "";
+    const result = await exchangeGoogleIdToken({
+      idToken,
+      pool,
+      activeSessions,
+    });
+    if (!result.ok) {
+      return res.status(result.status).json({ error: result.error });
+    }
+    return res.json({ success: true, token: result.token, user: result.user });
+  } catch (error) {
+    console.error("[Auth] /api/auth/google/token failed:", error);
+    return res.status(500).json({ error: "internal_error" });
+  }
 });
 
 // GET /api/auth/public-session — minimal public session details for dashboard bootstrap
@@ -28784,6 +28831,269 @@ app.post("/api/role-room/agent/producer-bootstrap", async (req, res) => {
       error: "Kunne ikke generere utkast fra The Role Room Agent.",
     });
   }
+});
+
+app.get("/api/role-room/agent/feed-plan/templates/:projectId/:platform", async (req, res) => {
+  const featureId = "role-room-agent-producer";
+  if (!isCompatAdminFeatureEnabled(featureId)) {
+    return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
+  }
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+  const { projectId, platform } = req.params;
+  if (!projectId || !isSupportedFeedPlatform(platform)) {
+    return res.status(400).json({ success: false, error: "projectId og støttet plattform er påkrevd." });
+  }
+  const templates = await listFeedTemplates(pool, projectId, platform);
+  return res.json({
+    success: true,
+    templates: templates.map((t) => ({
+      id: t.id,
+      name: t.name,
+      template: t.template,
+      createdAt: t.createdAt,
+      updatedAt: t.updatedAt,
+    })),
+  });
+});
+
+app.post("/api/role-room/agent/feed-plan/templates/:projectId/:platform", async (req, res) => {
+  const featureId = "role-room-agent-producer";
+  if (!isCompatAdminFeatureEnabled(featureId)) {
+    return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
+  }
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+  const { projectId, platform } = req.params;
+  if (!projectId || !isSupportedFeedPlatform(platform)) {
+    return res.status(400).json({ success: false, error: "projectId og støttet plattform er påkrevd." });
+  }
+  const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+  if (!name) {
+    return res.status(400).json({ success: false, error: "Navn på malen er påkrevd." });
+  }
+  const created = await createFeedTemplate(pool, {
+    projectId,
+    ownerUserId: session.userId,
+    platform,
+    name,
+    template: normalizeTemplatePayload(body.template),
+  });
+  if (!created) {
+    return res.status(500).json({ success: false, error: "Kunne ikke lagre malen." });
+  }
+  return res.json({
+    success: true,
+    template: {
+      id: created.id,
+      name: created.name,
+      template: created.template,
+      createdAt: created.createdAt,
+      updatedAt: created.updatedAt,
+    },
+  });
+});
+
+app.delete("/api/role-room/agent/feed-plan/templates/:templateId", async (req, res) => {
+  const featureId = "role-room-agent-producer";
+  if (!isCompatAdminFeatureEnabled(featureId)) {
+    return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
+  }
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+  const { templateId } = req.params;
+  if (!templateId) {
+    return res.status(400).json({ success: false, error: "templateId er påkrevd." });
+  }
+  const ok = await archiveFeedTemplate(pool, templateId, session.userId);
+  return res.json({ success: ok });
+});
+
+// ── Instagram publishing endpoints ────────────────────────────────────
+
+app.get("/api/role-room/instagram/oauth/start", async (req, res) => {
+  const featureId = "role-room-agent-producer";
+  if (!isCompatAdminFeatureEnabled(featureId)) {
+    return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
+  }
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+  const config = getMetaAppConfig();
+  if (!config) {
+    return res.status(503).json({
+      success: false,
+      error: "Meta App er ikke konfigurert. Sett META_APP_ID, META_APP_SECRET og META_OAUTH_REDIRECT_URI.",
+    });
+  }
+  const projectId = typeof req.query.projectId === "string" ? req.query.projectId : null;
+  const state = signOauthState({ userId: session.userId, projectId });
+  const url = buildAuthorizationUrl(state);
+  if (!url) return res.status(500).json({ success: false, error: "Kunne ikke bygge auth-URL." });
+  return res.json({ success: true, url, scopes: META_REQUIRED_SCOPES });
+});
+
+app.get("/api/role-room/instagram/oauth/callback", async (req, res) => {
+  const code = typeof req.query.code === "string" ? req.query.code : null;
+  const state = typeof req.query.state === "string" ? req.query.state : null;
+  const error = typeof req.query.error === "string" ? req.query.error : null;
+  if (error) {
+    return res.status(400).send(`<html><body><h1>Meta returnerte feil</h1><p>${error}</p></body></html>`);
+  }
+  if (!code || !state) {
+    return res.status(400).send("Mangler code/state");
+  }
+  const claims = verifyOauthState(state);
+  if (!claims) {
+    return res.status(400).send("Ugyldig eller utløpt state");
+  }
+  try {
+    const short = await exchangeCodeForShortLivedToken(code);
+    const long = await exchangeForLongLivedToken(short.accessToken);
+    const accounts = await discoverIgBusinessAccounts(long.accessToken);
+    if (accounts.length === 0) {
+      return res.status(400).send(
+        "<html><body><h1>Ingen Instagram Business Account funnet</h1>" +
+          "<p>Sørg for at brukeren har en Instagram Business-konto koblet til en Facebook Page.</p></body></html>",
+      );
+    }
+    const saved: { igUsername: string | null; igBusinessAccountId: string }[] = [];
+    for (const acct of accounts) {
+      const row = await upsertInstagramConnection(pool, {
+        userId: claims.userId,
+        projectId: claims.projectId ?? null,
+        page: acct,
+        longLivedToken: long.accessToken,
+        expiresInSeconds: long.expiresIn,
+        scopes: META_REQUIRED_SCOPES,
+      });
+      if (row) saved.push({ igUsername: row.igUsername, igBusinessAccountId: row.igBusinessAccountId });
+    }
+    return res.send(
+      `<html><body style="font-family:system-ui;padding:40px;background:#0b1220;color:#e2e8f0;">` +
+        `<h1>Instagram er koblet til</h1>` +
+        `<p>${saved.length} konto(er) lagret. Du kan lukke dette vinduet og gå tilbake til The Role Room.</p>` +
+        `<ul>${saved.map((a) => `<li>@${a.igUsername ?? "(ukjent)"} — ${a.igBusinessAccountId}</li>`).join("")}</ul>` +
+        `<script>window.opener && window.opener.postMessage({type:'instagram-connected',count:${saved.length}}, '*'); setTimeout(()=>window.close(), 4000);</script>` +
+        `</body></html>`,
+    );
+  } catch (oauthError) {
+    console.error("[ig-oauth] callback failed", oauthError);
+    return res.status(500).send(
+      `<html><body><h1>Innlogging feilet</h1><p>${(oauthError as Error).message}</p></body></html>`,
+    );
+  }
+});
+
+app.get("/api/role-room/instagram/connections", async (req, res) => {
+  const featureId = "role-room-agent-producer";
+  if (!isCompatAdminFeatureEnabled(featureId)) {
+    return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
+  }
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+  const connections = await listInstagramConnections(pool, session.userId);
+  return res.json({
+    success: true,
+    metaConfigured: getMetaAppConfig() !== null,
+    imageHostingConfigured: isInstagramImageUploadConfigured(),
+    rateLimitPer24h: IG_RATE_LIMIT_PER_24H,
+    connections: connections.map((c) => ({
+      id: c.id,
+      igBusinessAccountId: c.igBusinessAccountId,
+      igUsername: c.igUsername,
+      facebookPageName: c.facebookPageName,
+      tokenExpiresAt: c.tokenExpiresAt,
+      scopes: c.scopes,
+    })),
+  });
+});
+
+app.delete("/api/role-room/instagram/connections/:connectionId", async (req, res) => {
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+  const ok = await revokeIgConnection(pool, req.params.connectionId, session.userId);
+  return res.json({ success: ok });
+});
+
+app.post("/api/role-room/instagram/publish", async (req, res) => {
+  const featureId = "role-room-agent-producer";
+  if (!isCompatAdminFeatureEnabled(featureId)) {
+    return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
+  }
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+
+  // Showrunner-tier (or admin) only — entitlement check via the same gate.
+  const entitlement = await checkAgentEntitlement(pool, session.userId, session.role);
+  if (!entitlement.allowed) {
+    return res.status(402).json({
+      success: false,
+      error: entitlement.reason || "IG-publisering krever Showrunner-pakken.",
+      entitlement,
+    });
+  }
+
+  const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
+  const required = ["connectionId", "projectId", "feedPlanPostId", "mediaType", "imageDataUrl"];
+  for (const k of required) {
+    if (!body[k]) return res.status(400).json({ success: false, error: `${k} er påkrevd.` });
+  }
+  if (!["image", "reel", "carousel"].includes(String(body.mediaType))) {
+    return res.status(400).json({ success: false, error: "mediaType må være image|reel|carousel." });
+  }
+
+  try {
+    const result = await queueAndPublishIg(pool, {
+      connectionId: String(body.connectionId),
+      userId: session.userId,
+      projectId: String(body.projectId),
+      feedPlanPostId: String(body.feedPlanPostId),
+      mediaType: body.mediaType as "image" | "reel" | "carousel",
+      caption: typeof body.caption === "string" ? body.caption : "",
+      imageDataUrl: String(body.imageDataUrl),
+      scheduledFor: typeof body.scheduledFor === "string" ? body.scheduledFor : null,
+    });
+    return res.json({
+      success: true,
+      job: result.job,
+      immediatelyPublished: result.immediatelyPublished,
+      rateLimited: result.rateLimited,
+    });
+  } catch (publishError) {
+    console.error("[ig-publish] error", publishError);
+    return res.status(500).json({
+      success: false,
+      error: (publishError as Error).message || "Publish feilet.",
+    });
+  }
+});
+
+app.get("/api/role-room/instagram/jobs/:projectId", async (req, res) => {
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+  const jobs = await listIgPublishJobs(pool, req.params.projectId, session.userId);
+  return res.json({ success: true, jobs });
+});
+
+// Meta webhook for IG events (status updates, mention notifications, etc.)
+app.get("/api/role-room/instagram/webhook", (req, res) => {
+  const expectedToken = process.env.META_WEBHOOK_VERIFY_TOKEN;
+  const mode = req.query["hub.mode"];
+  const token = req.query["hub.verify_token"];
+  const challenge = req.query["hub.challenge"];
+  if (mode === "subscribe" && expectedToken && token === expectedToken) {
+    return res.status(200).send(String(challenge ?? ""));
+  }
+  return res.status(403).send("verify token mismatch");
+});
+
+app.post("/api/role-room/instagram/webhook", express.json(), async (req, res) => {
+  // Meta posts events here (publish status, deauth, etc.). Verify signature
+  // header if META_APP_SECRET is set; for now we just log and ack so the
+  // subscription stays healthy.
+  console.log("[ig-webhook] event received:", JSON.stringify(req.body).slice(0, 500));
+  return res.status(200).send("ok");
 });
 
 app.post("/api/role-room/agent/feed-plan/strategy/refresh", async (req, res) => {

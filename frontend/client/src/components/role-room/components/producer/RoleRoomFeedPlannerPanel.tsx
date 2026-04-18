@@ -42,6 +42,8 @@ import {
 } from '../../services/roleRoomAgentEntitlementApi';
 import AgentPaywallDialog from '../ai/AgentPaywallDialog';
 import RoleRoomTierIcon, { ROLE_ROOM_TIERS, tierForEntitlementSource, type RoleRoomTierSlug } from './RoleRoomTierIcon';
+import InstagramConnectionCard from './InstagramConnectionCard';
+import type { RoleRoomInstagramConnection } from '../../services/roleRoomAgentService';
 import FeedPostDetailPanel from './FeedPostDetailPanel';
 import FeedPlanTimeline from './FeedPlanTimeline';
 import SocialBrandLogo, { InstagramBrandLogo } from './SocialBrandLogo';
@@ -101,6 +103,8 @@ export default function RoleRoomFeedPlannerPanel({
     [entitlementBundle],
   );
   const currentTierLevel = ROLE_ROOM_TIERS[currentTierSlug].level;
+  const isShowrunner = currentTierSlug === 'showrunner' || currentTierSlug === 'admin';
+  const [instagramConnections, setInstagramConnections] = useState<RoleRoomInstagramConnection[]>([]);
   const [loadingPlan, setLoadingPlan] = useState(false);
   const [saving, setSaving] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
@@ -456,6 +460,14 @@ export default function RoleRoomFeedPlannerPanel({
 
       <BrandSummaryStrip brandSnapshot={brandSnapshot} brandColors={brandColors} />
 
+      {isShowrunner ? (
+        <InstagramConnectionCard
+          projectId={projectId}
+          showrunner={isShowrunner}
+          onConnectionsChange={setInstagramConnections}
+        />
+      ) : null}
+
       <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
         <Stack direction="row" spacing={1} alignItems="center">
           <Typography sx={{ color: 'rgba(226,232,240,0.68)', fontSize: '0.82rem' }}>
@@ -609,6 +621,8 @@ export default function RoleRoomFeedPlannerPanel({
                 bootstrap={bootstrap}
                 brandSnapshot={brandSnapshot}
                 platform={platform}
+                isShowrunner={isShowrunner}
+                instagramConnections={instagramConnections}
                 onUpdate={(patch) => updatePost(selectedPost.id, patch)}
                 onRegenerate={regeneratePost}
                 onClose={() => setSelectedPostId(null)}
