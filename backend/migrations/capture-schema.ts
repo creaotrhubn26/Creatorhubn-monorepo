@@ -19,6 +19,14 @@ export const captureSessions = pgTable(
     ownerUserId: varchar('owner_user_id', { length: 255 }).notNull(),
     name: varchar('name', { length: 255 }).notNull(),
     clientId: uuid('client_id'),
+    /// Optional link to a UniversalDashboard project. Set when the iPad
+    /// photographer either picks an existing project at sign-in or
+    /// auto-creates one for a "simple photo session". Lets the bridge
+    /// pull showcase prefs + shot list off the project, and the project
+    /// dashboard surface every Capture session under the right wedding /
+    /// event without manual tagging. Stored as varchar to match the
+    /// legacy `projects.id` (varchar UUID-as-text).
+    projectId: varchar('project_id', { length: 255 }),
     startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
     endsAt: timestamp('ends_at', { withTimezone: true }),
     status: varchar('status', { length: 32 }).notNull().default('active'),
@@ -28,6 +36,7 @@ export const captureSessions = pgTable(
   (t) => ({
     ownerIdx: index('capture_sessions_owner_idx').on(t.ownerUserId),
     clientIdx: index('capture_sessions_client_idx').on(t.clientId),
+    projectIdx: index('capture_sessions_project_idx').on(t.projectId),
   }),
 );
 

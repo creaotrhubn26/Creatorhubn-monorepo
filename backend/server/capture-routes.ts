@@ -44,6 +44,17 @@ import {
 import { addReview as addReviewRow } from './capture-reviews-service.js';
 import { performHandoff, type HandoffFilter } from './capture-handoff-service.js';
 import { analyzePhoto, type AnalyzeError } from './capture-analyze-service.js';
+import {
+  bridgeCaptureSessionToGallery,
+  pickAssetsFromCaptureSession,
+  type BridgeError,
+} from './capture-showcase-bridge.js';
+import {
+  createMinimalProject,
+  fetchProjectDetail,
+  linkCaptureSessionToProject,
+  listProjectsForPhotographer,
+} from './capture-projects-service.js';
 import { captureAssets, captureSessions } from '../migrations/capture-schema.js';
 import { and, asc, eq } from 'drizzle-orm';
 
@@ -85,6 +96,26 @@ const updateAssetBody = z.object({
     .optional(),
   flaggedForClient: z.boolean().optional(),
   rejected: z.boolean().optional(),
+});
+
+const createMinimalProjectBody = z.object({
+  title: z.string().min(1).max(255),
+  clientName: z.string().max(255).optional(),
+  eventDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  location: z.string().max(255).optional(),
+  projectType: z.string().max(64).optional(),
+});
+
+const linkSessionProjectBody = z.object({
+  projectId: z.string().uuid().nullable(),
+});
+
+const deliverToShowcaseBody = z.object({
+  filter: z.enum(['flagged', 'rating_at_least_4', 'picks_or_4plus', 'all_non_rejected'])
+    .default('picks_or_4plus'),
+  clientName: z.string().min(1).max(255),
+  clientEmail: z.string().email().max(255),
+  projectTitle: z.string().min(1).max(255).optional(),
 });
 
 // 12 MB cap on the base64 payload — comfortably above any preview JPEG
@@ -181,6 +212,15 @@ const clientReviewBody = z
   .refine((d) => d.heart !== undefined || d.comment !== undefined, {
     message: 'At least one of heart or comment must be provided',
   });
+
+function bridgeErrorStatus(error: BridgeError): number {
+  switch (error) {
+    case 'session_not_found':       return 404;
+    case 'no_picks':                return 400;
+    case 'sign_failed':             return 502;
+    case 'gallery_persist_failed':  return 500;
+  }
+}
 
 function analyzeErrorStatus(error: AnalyzeError): number {
   switch (error) {
@@ -290,6 +330,68 @@ export function createCaptureRouter(
   const router = Router();
   const db = drizzle(pool);
   const auth = requireAuth(pool, activeSessions);
+
+  // ── Projects (UniversalDashboard integration) ──────────────
+
+  // List the photographer's projects so the iPad can show a project
+  // picker right after sign-in. Returns a slim summary; the
+  // /projects/:id detail endpoint carries the full shot list.
+  router.get('/projects', auth, async (req, res) => {
+    const { userId } = req as AuthedRequest;
+    const limit = Math.min(Number(req.query.limit ?? 50), 200);
+    const rows = await listProjectsForPhotographer(db, userId, limit);
+    res.json({ projects: rows });
+  });
+
+  router.get('/projects/:id', auth, async (req, res) => {
+    const { userId } = req as AuthedRequest;
+    const detail = await fetchProjectDetail(db, userId, req.params.id);
+    if (!detail) {
+      res.status(404).json({ error: 'project_not_found' });
+      return;
+    }
+    res.json(detail);
+  });
+
+  // Create a minimal project from the iPad — used when the photographer
+  // picks "Start simple session" instead of choosing an existing
+  // project. Just enough fields for the project to exist in the
+  // dashboard; everything else can be filled in from the web later.
+  router.post('/projects', auth, async (req, res) => {
+    const parsed = createMinimalProjectBody.safeParse(req.body);
+    if (!handleZod(res, parsed)) return;
+    const { userId } = req as AuthedRequest;
+    const created = await createMinimalProject(db, {
+      ownerUserId: userId,
+      title: parsed.data.title,
+      clientName: parsed.data.clientName,
+      eventDate: parsed.data.eventDate,
+      location: parsed.data.location,
+      projectType: parsed.data.projectType,
+    });
+    res.status(201).json(created);
+  });
+
+  // Link / unlink an existing capture session to a project. Used after
+  // a "simple session" auto-creates a project and we need to attach it,
+  // or when the photographer changes their mind about which project a
+  // session belongs to.
+  router.patch('/sessions/:id/project', auth, async (req, res) => {
+    const parsed = linkSessionProjectBody.safeParse(req.body);
+    if (!handleZod(res, parsed)) return;
+    const { userId } = req as AuthedRequest;
+    const result = await linkCaptureSessionToProject(
+      db,
+      userId,
+      req.params.id,
+      parsed.data.projectId,
+    );
+    if (!result.ok) {
+      res.status(404).json({ error: result.error });
+      return;
+    }
+    res.status(204).end();
+  });
 
   // ── Sessions ────────────────────────────────────────────────
 
@@ -613,6 +715,57 @@ export function createCaptureRouter(
       requestedCount: result.requestedCount,
     });
     res.status(202).json(result);
+  });
+
+  // ── Deliver to UniversalShowcase (Phase 2B) ────────────────
+
+  // Bridges a Capture session into a CreatorHub UniversalShowcase
+  // gallery so the iPad's "Deliver" surface produces the same kind of
+  // share link the photographer's regular gallery manager creates. Lives
+  // alongside the legacy /client-tokens path — both can coexist and the
+  // iPad picks whichever matches its current product mode.
+  router.post('/sessions/:sessionId/deliver-to-showcase', auth, async (req, res) => {
+    const parsed = deliverToShowcaseBody.safeParse(req.body);
+    if (!handleZod(res, parsed)) return;
+    const { userId } = req as AuthedRequest;
+
+    const picks = await pickAssetsFromCaptureSession(
+      db,
+      userId,
+      req.params.sessionId,
+      parsed.data.filter,
+    );
+    if (picks.length === 0) {
+      // Most-likely cause: session has no flagged / 4★ assets that have
+      // a previewKey yet. The iPad surfaces this as "Pick at least one
+      // photo before delivering".
+      res.status(400).json({ error: 'no_picks' });
+      return;
+    }
+
+    const result = await bridgeCaptureSessionToGallery({
+      db,
+      ownerUserId: userId,
+      captureSessionId: req.params.sessionId,
+      projectTitle: parsed.data.projectTitle,
+      clientName: parsed.data.clientName,
+      clientEmail: parsed.data.clientEmail,
+      picks,
+    });
+    if (!result.ok) {
+      res.status(bridgeErrorStatus(result.error)).json({
+        error: result.error,
+        detail: result.detail,
+      });
+      return;
+    }
+    res.status(result.reusedExisting ? 200 : 201).json({
+      galleryId: result.galleryId,
+      accessToken: result.accessToken,
+      shareUrl: result.shareUrl,
+      uploadedImageCount: result.uploadedImageCount,
+      reusedExisting: result.reusedExisting,
+    });
   });
 
   // ── Client tokens (photographer-side management) ────────────

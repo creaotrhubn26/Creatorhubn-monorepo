@@ -337,6 +337,12 @@ export async function completeMultipartUpload(
 }
 
 const READ_URL_TTL_SECONDS = 5 * 60;
+/// 7 days is the AWS / Cloudflare R2 hard ceiling on presigned URL TTL.
+/// Used when the URL needs to live in a database row for delivery
+/// galleries — the client gallery viewer should re-sign on render once
+/// the longer-term signing strategy lands, but this gets us through the
+/// typical photographer-to-client delivery window.
+const DELIVERY_URL_TTL_SECONDS = 7 * 24 * 60 * 60;
 
 /**
  * Generate a short-lived signed GET URL for a previously-uploaded asset key.
@@ -346,6 +352,21 @@ const READ_URL_TTL_SECONDS = 5 * 60;
 export async function signAssetReadUrl(
   key: string | null,
 ): Promise<string | null> {
+  return signAssetReadUrlWithTtl(key, READ_URL_TTL_SECONDS);
+}
+
+/// Maximum-TTL signed URL for persisted contexts (e.g. gallery image rows
+/// that live longer than the 5-minute review-mode default).
+export async function signAssetReadUrlForDelivery(
+  key: string | null,
+): Promise<string | null> {
+  return signAssetReadUrlWithTtl(key, DELIVERY_URL_TTL_SECONDS);
+}
+
+async function signAssetReadUrlWithTtl(
+  key: string | null,
+  ttlSeconds: number,
+): Promise<string | null> {
   if (!key) return null;
   const cfg = buildCaptureR2Config();
   const client = getClient(cfg);
@@ -353,7 +374,7 @@ export async function signAssetReadUrl(
   return getSignedUrl(
     client,
     new GetObjectCommand({ Bucket: cfg.bucket, Key: key }),
-    { expiresIn: READ_URL_TTL_SECONDS },
+    { expiresIn: ttlSeconds },
   );
 }
 

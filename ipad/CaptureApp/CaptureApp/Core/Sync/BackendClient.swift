@@ -35,6 +35,79 @@ actor BackendClient {
         try await postJSON(path: "/api/capture/sessions", body: body)
     }
 
+    /// Page through the photographer's sessions. `limit` capped at 200 by
+    /// the server; we don't enforce client-side so callers can rely on
+    /// whatever the backend chooses.
+    func listSessions(limit: Int = 50, offset: Int = 0) async throws -> BackendListSessionsResponse {
+        try await getJSON(path: "/api/capture/sessions?limit=\(limit)&offset=\(offset)")
+    }
+
+    // MARK: - UniversalShowcase delivery (Phase 2B)
+
+    /// Bridge a Capture session into a CreatorHub UniversalShowcase
+    /// gallery — the URL the client receives points at the standard
+    /// `/client/gallery/<accessToken>` viewer the photographer's
+    /// regular delivery flow uses, so the iPad capture path lands in
+    /// the same place as everything else.
+    func deliverToShowcase(
+        sessionId: UUID,
+        body: BackendDeliverToShowcaseRequest,
+    ) async throws -> BackendDeliverToShowcaseResponse {
+        try await postJSON(
+            path: "/api/capture/sessions/\(sessionId.uuidString.lowercased())/deliver-to-showcase",
+            body: body,
+        )
+    }
+
+    // MARK: - Projects (UniversalDashboard, Phase 2B Lag D)
+
+    func listProjects(limit: Int = 50) async throws -> BackendListProjectsResponse {
+        try await getJSON(path: "/api/capture/projects?limit=\(limit)")
+    }
+
+    func fetchProject(projectId: String) async throws -> BackendProjectDetail {
+        try await getJSON(path: "/api/capture/projects/\(projectId)")
+    }
+
+    func createMinimalProject(
+        body: BackendCreateMinimalProjectRequest,
+    ) async throws -> BackendCreatedProject {
+        try await postJSON(path: "/api/capture/projects", body: body)
+    }
+
+    /// PATCH /sessions/:id/project — link or unlink a capture session to
+    /// a project. Returns 204; we model that by decoding into a simple
+    /// empty struct via an inline GET-style request to keep typing
+    /// consistent. (Express returns no body so we just check the
+    /// response code via the patchEmpty helper.)
+    func linkSessionToProject(sessionId: UUID, projectId: String?) async throws {
+        try await patchEmpty(
+            path: "/api/capture/sessions/\(sessionId.uuidString.lowercased())/project",
+            body: BackendLinkSessionProjectRequest(projectId: projectId),
+        )
+    }
+
+    // MARK: - Client tokens (Deliver flow)
+
+    /// Mint a one-time-revealed client token scoped to a session. The
+    /// returned `token` is the only chance to capture the secret —
+    /// downstream calls only ever see the hash.
+    func createClientToken(
+        sessionId: UUID,
+        body: BackendCreateClientTokenRequest,
+    ) async throws -> BackendCreatedClientToken {
+        try await postJSON(
+            path: "/api/capture/sessions/\(sessionId.uuidString.lowercased())/client-tokens",
+            body: body,
+        )
+    }
+
+    func listClientTokens(sessionId: UUID) async throws -> BackendListClientTokensResponse {
+        try await getJSON(
+            path: "/api/capture/sessions/\(sessionId.uuidString.lowercased())/client-tokens"
+        )
+    }
+
     // MARK: - Assets
 
     func registerAsset(
@@ -129,6 +202,67 @@ actor BackendClient {
     }
 
     // MARK: - Internals
+
+    /// PATCH a JSON body, expect 2xx with no/ignored response. Used for
+    /// idempotent link operations where the server returns 204.
+    private func patchEmpty<RequestBody: Encodable>(
+        path: String,
+        body: RequestBody,
+    ) async throws {
+        guard let url = URL(string: path, relativeTo: baseURL) else {
+            throw BackendError.transport("invalid path \(path)")
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "PATCH"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        for (name, value) in authHeaders {
+            request.setValue(value, forHTTPHeaderField: name)
+        }
+        request.httpBody = try JSONEncoder().encode(body)
+        let (data, response) = try await self.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw BackendError.transport("not HTTPURLResponse")
+        }
+        if http.statusCode == 401 || http.statusCode == 403 { throw BackendError.unauthorized }
+        if http.statusCode == 404 { throw BackendError.notFound }
+        guard (200..<300).contains(http.statusCode) else {
+            throw BackendError.httpStatus(http.statusCode, body: String(data: data, encoding: .utf8))
+        }
+    }
+
+    private func getJSON<Response: Decodable>(path: String) async throws -> Response {
+        // Path may carry a query string (?limit=…&offset=…) so we resolve
+        // it via URL(string:relativeTo:) instead of appendingPathComponent,
+        // which would percent-escape the '?' and break the request.
+        guard let url = URL(string: path, relativeTo: baseURL) else {
+            throw BackendError.transport("invalid path \(path)")
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        for (name, value) in authHeaders {
+            request.setValue(value, forHTTPHeaderField: name)
+        }
+        let (data, response) = try await self.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw BackendError.transport("not HTTPURLResponse")
+        }
+        if http.statusCode == 401 || http.statusCode == 403 {
+            throw BackendError.unauthorized
+        }
+        if http.statusCode == 404 {
+            throw BackendError.notFound
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw BackendError.httpStatus(http.statusCode, body: String(data: data, encoding: .utf8))
+        }
+        do {
+            return try JSONDecoder().decode(Response.self, from: data)
+        } catch {
+            throw BackendError.decode(String(describing: error))
+        }
+    }
 
     private func postJSON<RequestBody: Encodable, Response: Decodable>(
         path: String,

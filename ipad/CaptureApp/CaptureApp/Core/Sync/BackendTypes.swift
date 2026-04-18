@@ -160,6 +160,139 @@ struct BackendHandoffResult: Decodable, Sendable {
     let jobs: [Job]
 }
 
+// MARK: - Projects (UniversalDashboard integration, Phase 2B Lag D)
+
+struct BackendProjectShotListSummary: Decodable, Sendable {
+    let listId: String?
+    let totalShots: Int
+    let completedShots: Int
+    let mustHaveShots: Int
+    let completedMustHave: Int
+}
+
+struct BackendProjectSummary: Decodable, Sendable, Identifiable {
+    let id: String
+    let title: String
+    let clientName: String?
+    let eventDate: String?
+    let location: String?
+    let projectType: String?
+    let status: String
+    let shotListSummary: BackendProjectShotListSummary?
+    let updatedAt: String?
+}
+
+struct BackendListProjectsResponse: Decodable, Sendable {
+    let projects: [BackendProjectSummary]
+}
+
+struct BackendShotListItem: Decodable, Sendable, Identifiable, Hashable {
+    let id: String
+    let scene: String
+    let description: String?
+    let estimatedDuration: Int?
+    let priority: String?
+    let shotType: String?
+    let locationName: String?
+    let notes: String?
+    let scouted: Bool?
+    let isCompleted: Bool?
+    let capturedAssetId: String?
+}
+
+struct BackendProjectDetail: Decodable, Sendable, Identifiable {
+    let id: String
+    let title: String
+    let description: String?
+    let clientName: String?
+    let eventDate: String?
+    let location: String?
+    let projectType: String?
+    let status: String
+    let shotListSummary: BackendProjectShotListSummary?
+    let updatedAt: String?
+    let shotList: [BackendShotListItem]
+}
+
+struct BackendCreateMinimalProjectRequest: Encodable, Sendable {
+    let title: String
+    let clientName: String?
+    let eventDate: String?    // YYYY-MM-DD
+    let location: String?
+    let projectType: String?
+}
+
+struct BackendCreatedProject: Decodable, Sendable {
+    let id: String
+    let title: String
+    let createdAt: String
+}
+
+struct BackendLinkSessionProjectRequest: Encodable, Sendable {
+    let projectId: String?
+}
+
+// MARK: - UniversalShowcase delivery (Phase 2B)
+
+enum BackendDeliverFilter: String, Encodable, Sendable {
+    case flagged
+    case ratingAtLeast4 = "rating_at_least_4"
+    case picksOr4Plus   = "picks_or_4plus"
+    case allNonRejected = "all_non_rejected"
+}
+
+struct BackendDeliverToShowcaseRequest: Encodable, Sendable {
+    let filter: BackendDeliverFilter
+    let clientName: String
+    let clientEmail: String
+    let projectTitle: String?
+}
+
+struct BackendDeliverToShowcaseResponse: Decodable, Sendable {
+    let galleryId: String
+    let accessToken: String
+    let shareUrl: String
+    let uploadedImageCount: Int
+    let reusedExisting: Bool
+}
+
+// MARK: - Client tokens (Deliver flow)
+
+struct BackendCreateClientTokenRequest: Encodable, Sendable {
+    let clientLabel: String?
+    let pin: String?
+    let ttlMinutes: Int?
+}
+
+/// Returned only at create-time — the raw token is shown to the
+/// photographer once and never persisted in plaintext on the backend
+/// (only the hash). Treat as secret material in the UI.
+struct BackendCreatedClientToken: Decodable, Sendable {
+    let id: String
+    let token: String
+    let clientLabel: String?
+    let expiresAt: String
+    let hasPin: Bool
+}
+
+struct BackendClientTokenSummary: Decodable, Sendable {
+    let id: String
+    let clientLabel: String?
+    let createdAt: String
+    let expiresAt: String
+    let revokedAt: String?
+    let lastUsedAt: String?
+    let hasPin: Bool
+}
+
+struct BackendListClientTokensResponse: Decodable, Sendable {
+    let tokens: [BackendClientTokenSummary]
+}
+
+struct BackendListSessionsResponse: Decodable, Sendable {
+    let sessions: [BackendSession]
+}
+
 // MARK: - Claude Vision analyse
 
 /// Sent to `POST /api/capture/assets/:id/analyze`. The preview JPEG is

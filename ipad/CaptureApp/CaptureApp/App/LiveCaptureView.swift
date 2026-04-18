@@ -9,9 +9,15 @@ import UIKit
 /// dark background, large touch targets, persistent status glance.
 struct LiveCaptureView: View {
     @State private var model = LiveCaptureModel()
+    @State private var auth = SignInService.shared
+    @State private var isProjectSelectionPresented = false
+    @State private var isShotListPresented = false
     @AppStorage("capture.lastCameraURL") private var lastCameraURL: String = "https://192.168.1.2"
     @State private var isSettingsPresented = false
     @State private var isTunePresented = false
+    @State private var isDeliverPresented = false
+    @State private var isArchivePresented = false
+    @State private var isSignInPresented = false
     @State private var viewerAsset: Asset?
 
     var body: some View {
@@ -59,9 +65,14 @@ struct LiveCaptureView: View {
                 onDisconnect: {
                     isSettingsPresented = false
                     Task { await model.disconnect() }
+                },
+                onSignIn: {
+                    isSettingsPresented = false
+                    isSignInPresented = true
                 }
             )
-            .presentationDetents([.medium])
+            .environment(auth)
+            .presentationDetents([.medium, .large])
         }
         .fullScreenCover(item: $viewerAsset) { asset in
             AssetViewerScreen(asset: asset) { viewerAsset = nil }
@@ -76,6 +87,31 @@ struct LiveCaptureView: View {
                 .presentationDetents([.medium, .large])
             }
         }
+        .sheet(isPresented: $isDeliverPresented) {
+            DeliverSheet(model: model)
+                .environment(auth)
+                .presentationDetents([.large])
+        }
+        .sheet(isPresented: $isArchivePresented) {
+            SessionsArchiveSheet(model: model)
+                .presentationDetents([.large])
+        }
+        .sheet(isPresented: $isSignInPresented) {
+            SignInView()
+                .environment(auth)
+                .presentationDetents([.large])
+        }
+        .sheet(isPresented: $isProjectSelectionPresented) {
+            ProjectSelectionView { summary in
+                model.selectProject(summary)
+            }
+            .environment(auth)
+            .presentationDetents([.large])
+        }
+        .sheet(isPresented: $isShotListPresented) {
+            ShotListPanel(model: model)
+                .presentationDetents([.large])
+        }
         .animation(.spring(duration: 0.35, bounce: 0.1), value: model.phase)
     }
 
@@ -86,7 +122,17 @@ struct LiveCaptureView: View {
                 device: model.deviceSummary,
                 telemetry: model.telemetry,
                 pinnedFocus: model.pinnedFocus,
+                pickCount: model.deliverablePicksCount,
+                canDeliver: model.canDeliver,
+                projectTitle: model.selectedProject?.title,
+                shotListProgress: model.selectedProject?.shotListSummary.map {
+                    .init(completed: $0.completedShots, total: $0.totalShots)
+                },
                 onTogglePin: { model.pinnedFocus.toggle() },
+                onPickProject: { isProjectSelectionPresented = true },
+                onShotList: { isShotListPresented = true },
+                onDeliver: { isDeliverPresented = true },
+                onArchive: { isArchivePresented = true },
                 onSettings: { isSettingsPresented = true }
             )
             .padding(.horizontal, 24)
@@ -504,8 +550,21 @@ private struct StatusBar: View {
     let device: LiveCaptureModel.DeviceSummary?
     let telemetry: CameraTelemetry
     let pinnedFocus: Bool
+    let pickCount: Int
+    let canDeliver: Bool
+    let projectTitle: String?
+    let shotListProgress: ShotListProgress?
     let onTogglePin: () -> Void
+    let onPickProject: () -> Void
+    let onShotList: () -> Void
+    let onDeliver: () -> Void
+    let onArchive: () -> Void
     let onSettings: () -> Void
+
+    struct ShotListProgress: Equatable {
+        let completed: Int
+        let total: Int
+    }
 
     var body: some View {
         HStack(spacing: 16) {
@@ -524,6 +583,59 @@ private struct StatusBar: View {
             }
 
             Spacer()
+
+            // Active project pill — always visible so the photographer
+            // can confirm at a glance which CreatorHub project this
+            // session is feeding. Tap to swap project.
+            Button(action: onPickProject) {
+                HStack(spacing: 6) {
+                    Image(systemName: projectTitle == nil ? "folder.badge.plus" : "folder.fill")
+                        .font(.caption.weight(.semibold))
+                    Text(projectTitle ?? "No project")
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                .foregroundStyle(projectTitle == nil ? .secondary : .primary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    (projectTitle == nil ? Color.secondary : Color.accentColor).opacity(0.18),
+                    in: Capsule()
+                )
+                .overlay(Capsule().stroke(
+                    (projectTitle == nil ? Color.secondary : Color.accentColor).opacity(0.5),
+                    lineWidth: 1
+                ))
+            }
+            .buttonStyle(.plain)
+            .help(projectTitle == nil ? "Pick a CreatorHub project" : "Switch project")
+
+            if let progress = shotListProgress {
+                Button(action: onShotList) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "checklist")
+                            .font(.caption.weight(.semibold))
+                        Text("\(progress.completed)/\(progress.total)")
+                            .font(.caption.monospaced().weight(.semibold))
+                    }
+                    .foregroundStyle(.primary)
+                    .padding(.horizontal, 10).padding(.vertical, 6)
+                    .background(Color.green.opacity(0.18), in: Capsule())
+                    .overlay(Capsule().stroke(Color.green.opacity(0.5), lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .help("Open shot list")
+            } else if projectTitle != nil {
+                Button(action: onShotList) {
+                    Image(systemName: "checklist")
+                        .font(.body)
+                        .frame(width: 36, height: 36)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Open shot list")
+            }
 
             if let files = telemetry.totalContentsCount {
                 Label("\(files) on card", systemImage: "sdcard")
@@ -545,6 +657,43 @@ private struct StatusBar: View {
             }
             .buttonStyle(.plain)
             .help(pinnedFocus ? "Focus is pinned — new shots won't jump to latest" : "Follow latest")
+
+            // Deliver — only enabled when there are picks AND a backend
+            // is configured. Disabled state explains via help text.
+            Button(action: onDeliver) {
+                HStack(spacing: 6) {
+                    Image(systemName: "paperplane.fill")
+                        .font(.caption.weight(.semibold))
+                    Text("Deliver")
+                        .font(.caption.weight(.semibold))
+                    if pickCount > 0 {
+                        Text("\(pickCount)")
+                            .font(.caption2.weight(.bold).monospaced())
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.accentColor.opacity(0.25), in: Capsule())
+                    }
+                }
+                .foregroundStyle(canDeliver ? .primary : .secondary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(canDeliver ? Color.accentColor.opacity(0.18) : Color.clear, in: Capsule())
+                .overlay(Capsule().stroke(canDeliver ? Color.accentColor.opacity(0.6) : .secondary.opacity(0.3), lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .disabled(!canDeliver)
+            .help(canDeliver
+                  ? "Mint a client share link for picks"
+                  : "Need backend configured + at least one picked or 4★ shot")
+
+            Button(action: onArchive) {
+                Image(systemName: "tray.full")
+                    .font(.title3)
+                    .frame(width: 36, height: 36)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help("Browse past sessions")
 
             Button(action: onSettings) {
                 Image(systemName: "gear")
@@ -1927,7 +2076,9 @@ private struct SettingsSheet: View {
     let onToggleHUD: () -> Void
     let onRename: (String) -> Void
     let onDisconnect: () -> Void
+    let onSignIn: () -> Void
 
+    @Environment(SignInService.self) private var auth
     @State private var editingName: String = ""
 
     var body: some View {
@@ -1975,6 +2126,30 @@ private struct SettingsSheet: View {
                     }
                     LabeledContent("URL", value: currentURL)
                         .font(.caption.monospaced())
+                }
+
+                Section("CreatorHub account") {
+                    if let s = auth.session {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(s.displayName).font(.body.weight(.semibold))
+                            Text(s.email).font(.caption).foregroundStyle(.secondary)
+                            Text(s.backendBaseURL.absoluteString)
+                                .font(.caption2.monospaced())
+                                .foregroundStyle(.tertiary)
+                        }
+                        Button(role: .destructive) {
+                            auth.signOut()
+                        } label: {
+                            Label("Sign out", systemImage: "arrow.backward.circle")
+                        }
+                    } else {
+                        Text("Not signed in — Deliver and AI photo enhancement need a CreatorHub account.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        Button(action: onSignIn) {
+                            Label("Sign in to CreatorHub", systemImage: "person.crop.circle.badge.plus")
+                        }
+                    }
                 }
 
                 Section {
@@ -2274,7 +2449,14 @@ final class LiveCaptureModel {
         }
     }
 
-    private let actorUserId = "local-photographer"
+    /// Identity for local SQLite rows. When the user has signed into
+    /// CreatorHub via SignInService we tag every session/asset with their
+    /// actual userId so a future delivery to UniversalShowcase ends up in
+    /// their account. When signed-out we fall back to a stable local
+    /// pseudonym so the app still works as a pure local tether.
+    private var actorUserId: String {
+        SignInService.shared.session?.userId ?? "local-photographer"
+    }
 
     /// URL that triggers in-process Demo Mode. Keeps the fake swap isolated
     /// to a single well-known host — any other URL goes to the real
@@ -2438,22 +2620,272 @@ final class LiveCaptureModel {
         }
     }
 
+    // MARK: - Deliver + Archive (Phase 2B)
+
+    enum PickFilter: String, CaseIterable, Equatable, Sendable {
+        case flagged   = "Picks (flag)"
+        case fourPlus  = "4★ and up"
+        case picksAndFourPlus = "Picks + 4★"
+        case all       = "All non-rejected"
+    }
+
+    /// Lazy-allocated mirror of the backend client, lives only as long
+    /// as the connected session. Rebuilt on connect because authHeaders
+    /// can change between sessions.
+    private var deliveryService: DeliveryService?
+
+    /// Last successful delivery — surfaces in the sheet so the photographer
+    /// can re-share the same link without re-uploading.
+    var lastDelivery: DeliveryService.DeliveryResult?
+
+    /// Last successful showcase delivery — used to short-circuit the
+    /// upload step on re-share. Distinct from the legacy Capture-token
+    /// path above so each surface owns its own redo state.
+    var lastShowcaseDelivery: DeliveryService.ShowcaseDeliveryResult?
+
+    /// Mirrors the local session state for the archive sheet. Loaded on
+    /// open via `loadArchivedSessions()` so we don't keep a live stream.
+    var archivedSessions: [Session] = []
+    var isLoadingArchive: Bool = false
+
+    /// The CreatorHub project this session belongs to. Set by the
+    /// ProjectSelectionView right after sign-in. When non-nil:
+    ///   - shot list panel shows the project's planned shots
+    ///   - DeliverSheet pre-fills clientName/email/projectTitle
+    ///   - the Capture session row's projectId column is set on backend
+    ///     (via BackendClient.linkSessionToProject after session create)
+    var selectedProject: BackendProjectSummary?
+
+    /// Full project detail (with shot list) — loaded lazily after the
+    /// summary lands so the shot list panel can render shots[]. Nil
+    /// when the project hasn't been opened yet, or when no project is
+    /// selected.
+    var selectedProjectDetail: BackendProjectDetail?
+
+    /// Count of assets that match the default delivery filter (picks +
+    /// 4★ that aren't rejected). Drives the badge on the Deliver button.
+    var deliverablePicksCount: Int {
+        deliverablePicks(filter: .picksAndFourPlus).count
+    }
+
+    /// Deliver button stays disabled until the photographer has actually
+    /// picked something AND a backend is configured to ship to. Better to
+    /// hide capability than to surface "Network failed" as the first feedback.
+    var canDeliver: Bool {
+        backendClient != nil && deliverablePicksCount > 0
+    }
+
+    func deliverablePicks(filter: PickFilter) -> [Asset] {
+        switch filter {
+        case .flagged:
+            return assets.filter { $0.flaggedForClient && !$0.rejected }
+        case .fourPlus:
+            return assets.filter { $0.rating >= 4 && !$0.rejected }
+        case .picksAndFourPlus:
+            return assets.filter { ($0.flaggedForClient || $0.rating >= 4) && !$0.rejected }
+        case .all:
+            return assets.filter { !$0.rejected }
+        }
+    }
+
+    /// Run the deliver flow. Mirror session, upload picks (preview JPEGs
+    /// only — Phase 2C handles full/RAW), mint a client token. Returns the
+    /// result and stashes it in `lastDelivery` so the sheet can re-show
+    /// the URL without retriggering the upload.
+    func deliver(
+        filter: PickFilter,
+        clientLabel: String?,
+        pin: String?,
+        ttlMinutes: Int?,
+    ) async throws -> DeliveryService.DeliveryResult {
+        guard let backend = backendClient else {
+            throw DeliveryService.DeliveryError.tokenMintFailed("backend not configured")
+        }
+        let service = deliveryService ?? DeliveryService(backend: backend)
+        deliveryService = service
+
+        let picks = deliverablePicks(filter: filter)
+            .compactMap { asset -> DeliveryService.DeliverableAsset? in
+                guard let previewKey = asset.previewKey,
+                      FileManager.default.fileExists(atPath: previewKey)
+                else { return nil }
+                return DeliveryService.DeliverableAsset(
+                    localId: asset.id,
+                    originalFilename: asset.originalFilename,
+                    captureTime: asset.captureTime,
+                    mime: "image/jpeg",
+                    previewPath: previewKey,
+                )
+            }
+        guard !picks.isEmpty else {
+            throw DeliveryService.DeliveryError.noUploadablePicks
+        }
+
+        let result = try await service.deliver(
+            sessionName: sessionName,
+            sessionStartedAt: assets.first?.captureTime ?? Date(),
+            picks: picks,
+            clientLabel: clientLabel,
+            pin: pin,
+            ttlMinutes: ttlMinutes,
+        )
+        await MainActor.run { self.lastDelivery = result }
+        return result
+    }
+
+    /// Pick a project to attach this session to. Loads the full detail
+    /// (with shot list) in the background so the shot list panel can
+    /// render shots[] right away.
+    func selectProject(_ summary: BackendProjectSummary) {
+        selectedProject = summary
+        sessionName = summary.title
+        Task { await loadProjectDetail(projectId: summary.id) }
+    }
+
+    func clearSelectedProject() {
+        selectedProject = nil
+        selectedProjectDetail = nil
+    }
+
+    private func loadProjectDetail(projectId: String) async {
+        guard let backend = backendClient else { return }
+        do {
+            let detail = try await backend.fetchProject(projectId: projectId)
+            await MainActor.run {
+                self.selectedProjectDetail = detail
+            }
+        } catch {
+            // Non-fatal — the summary already has enough for the picker;
+            // shot list panel just shows "couldn't load" state.
+        }
+    }
+
+    /// Link the live capture session row on the backend to the chosen
+    /// project. Called after the DeliveryService has mirrored the
+    /// session to the backend. Idempotent — safe to call multiple times
+    /// per session.
+    func linkSessionToSelectedProject(backendSessionId: UUID) async {
+        guard let backend = backendClient,
+              let projectId = selectedProject?.id
+        else { return }
+        do {
+            try await backend.linkSessionToProject(
+                sessionId: backendSessionId,
+                projectId: projectId,
+            )
+        } catch {
+            errorMessage = "Couldn't attach session to project: \(error.localizedDescription)"
+        }
+    }
+
+    /// End-to-end Phase 2B deliver: upload picks → bridge into a
+    /// CreatorHub UniversalShowcase gallery → return shareable URL.
+    /// The URL targets the standard `/client/gallery/<token>` viewer
+    /// the photographer's regular delivery flow uses, so the iPad
+    /// deliveries land in the same dashboard as everything else.
+    func deliverToShowcase(
+        filter: BackendDeliverFilter,
+        clientName: String,
+        clientEmail: String,
+        projectTitle: String?,
+    ) async throws -> DeliveryService.ShowcaseDeliveryResult {
+        guard let backend = backendClient else {
+            throw DeliveryService.DeliveryError.bridgeFailed("backend not configured — sign in to CreatorHub first")
+        }
+        let service = deliveryService ?? DeliveryService(backend: backend)
+        deliveryService = service
+
+        let localFilter: PickFilter = {
+            switch filter {
+            case .flagged:        return .flagged
+            case .ratingAtLeast4: return .fourPlus
+            case .picksOr4Plus:   return .picksAndFourPlus
+            case .allNonRejected: return .all
+            }
+        }()
+        let picks = deliverablePicks(filter: localFilter)
+            .compactMap { asset -> DeliveryService.DeliverableAsset? in
+                guard let previewKey = asset.previewKey,
+                      FileManager.default.fileExists(atPath: previewKey)
+                else { return nil }
+                return DeliveryService.DeliverableAsset(
+                    localId: asset.id,
+                    originalFilename: asset.originalFilename,
+                    captureTime: asset.captureTime,
+                    mime: "image/jpeg",
+                    previewPath: previewKey,
+                )
+            }
+        guard !picks.isEmpty else {
+            throw DeliveryService.DeliveryError.noUploadablePicks
+        }
+
+        let result = try await service.deliverToShowcase(
+            sessionName: sessionName,
+            sessionStartedAt: assets.first?.captureTime ?? Date(),
+            picks: picks,
+            clientName: clientName,
+            clientEmail: clientEmail,
+            projectTitle: projectTitle,
+            filter: filter,
+        )
+        await MainActor.run { self.lastShowcaseDelivery = result }
+        return result
+    }
+
+    /// Build the share URL the photographer hands to the client. Reads
+    /// `capture.clientShareBaseURL` from UserDefaults — settable via the
+    /// settings sheet. Falls back to a placeholder so the sheet shows
+    /// *something* rather than nothing.
+    func clientShareURL(token: BackendCreatedClientToken) -> URL {
+        let base = UserDefaults.standard.string(forKey: "capture.clientShareBaseURL")
+            ?? "https://capture.creatorhubn.com/c"
+        var components = URLComponents(string: base) ?? URLComponents()
+        var existing = components.queryItems ?? []
+        existing.append(URLQueryItem(name: "t", value: token.token))
+        components.queryItems = existing
+        return components.url ?? URL(string: "\(base)?t=\(token.token)")!
+    }
+
+    /// Load the local SQLite session list for the archive sheet. Doesn't
+    /// touch the backend — archive is purely a local-state surface.
+    func loadArchivedSessions() async {
+        guard let store else {
+            await MainActor.run { self.archivedSessions = [] }
+            return
+        }
+        await MainActor.run { self.isLoadingArchive = true }
+        let rows = (try? await store.listSessions(ownerUserId: actorUserId)) ?? []
+        await MainActor.run {
+            self.archivedSessions = rows
+            self.isLoadingArchive = false
+        }
+    }
+
+    /// Mark the current local session as closed. Stops the magic pipeline
+    /// but leaves the camera connected — photographer can keep shooting in
+    /// a new session if they want, or disconnect. Idempotent.
+    func closeCurrentSession() async {
+        guard let store, let sessionId = currentSessionId else { return }
+        do {
+            try await store.closeSession(id: sessionId)
+        } catch {
+            errorMessage = "Couldn't close session: \(error.localizedDescription)"
+        }
+    }
+
     // MARK: - Claude Vision (Phase 2A)
 
-    /// Read backend URL + bearer from UserDefaults. The settings sheet
-    /// can write these; absence means "skip the backend call entirely".
-    /// Keeps the iPad fully functional offline — Claude Vision is
-    /// strictly an enhancement layer on top of the on-device pipeline.
+    /// Read backend baseURL + auth headers from SignInService. Absence
+    /// (signed-out state) means "skip the backend call entirely" — the
+    /// app stays fully functional offline; Claude Vision and Deliver
+    /// simply don't fire. This is the source of truth for "are we
+    /// connected to CreatorHub" everywhere in LiveCaptureModel.
     private func makeBackendClientFromDefaults() -> BackendClient? {
-        let defaults = UserDefaults.standard
-        guard let urlString = defaults.string(forKey: "capture.backendBaseURL"),
-              let url = URL(string: urlString),
-              let token = defaults.string(forKey: "capture.backendBearerToken"),
-              !token.isEmpty
-        else { return nil }
+        guard let session = SignInService.shared.session else { return nil }
         return BackendClient(
-            baseURL: url,
-            authHeaders: ["Authorization": "Bearer \(token)"]
+            baseURL: session.backendBaseURL,
+            authHeaders: ["Authorization": "Bearer \(session.bearer)"]
         )
     }
 
@@ -2553,6 +2985,13 @@ final class LiveCaptureModel {
         aiAnalyseTasks.removeAll()
         aiAnalyseDispatched.removeAll()
         backendClient = nil
+        deliveryService = nil
+        lastDelivery = nil
+        lastShowcaseDelivery = nil
+        selectedProject = nil
+        selectedProjectDetail = nil
+        archivedSessions = []
+        isLoadingArchive = false
         aiAnalyses.removeAll()
         recipeSource.removeAll()
         dismissedNoteAssets.removeAll()
@@ -2623,6 +3062,362 @@ final class LiveCaptureModel {
         if let v = diff.lensName           { telemetry.lensName = v }
         if let v = diff.freeSpaceBytes     { telemetry.freeSpaceBytes = v }
         if let v = diff.totalContentsCount { telemetry.totalContentsCount = v }
+    }
+}
+
+// MARK: - Deliver sheet
+
+/// Phase 2B: bridge picks into a CreatorHub UniversalShowcase gallery.
+/// Three states walk the user through the flow:
+///   1. Configure — pick filter, client name + email, project title.
+///   2. Working   — progress bar while we mirror session + upload picks
+///                  + create the gallery on the backend.
+///   3. Done      — CreatorHub gallery URL + iOS share sheet hook.
+///
+/// Failures map back to state 1 with an error banner so the photographer
+/// can adjust + retry without losing their input.
+private struct DeliverSheet: View {
+    @Bindable var model: LiveCaptureModel
+    @Environment(SignInService.self) private var auth
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var filter: BackendDeliverFilter = .picksOr4Plus
+    @State private var clientName: String = ""
+    @State private var clientEmail: String = ""
+    @State private var projectTitle: String = ""
+    @State private var didPrefill: Bool = false
+    @State private var phase: Phase = .configure
+    @State private var errorMessage: String?
+    @State private var result: DeliveryService.ShowcaseDeliveryResult?
+    @State private var showShareSheet: Bool = false
+
+    private enum Phase: Equatable { case configure, working, done }
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if !auth.isSignedIn {
+                    notSignedInView
+                } else {
+                    switch phase {
+                    case .configure: configureView
+                    case .working:   workingView
+                    case .done:      doneView
+                    }
+                }
+            }
+            .navigationTitle("Deliver to client")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(phase == .done ? "Done" : "Cancel") { dismiss() }
+                }
+            }
+            .onAppear {
+                // Prefill from the active project so the photographer
+                // doesn't re-type details that already live in CreatorHub.
+                // Only on the first onAppear so manual edits aren't
+                // overwritten when the sheet re-presents.
+                if !didPrefill, let project = model.selectedProject {
+                    if clientName.isEmpty { clientName = project.clientName ?? "" }
+                    if projectTitle.isEmpty { projectTitle = project.title }
+                    didPrefill = true
+                }
+                // If we already delivered this session, jump straight to the
+                // share view rather than re-running the upload.
+                if let prior = model.lastShowcaseDelivery {
+                    result = prior
+                    phase = .done
+                }
+            }
+        }
+    }
+
+    private var notSignedInView: some View {
+        ContentUnavailableView(
+            "Sign in to CreatorHub",
+            systemImage: "person.crop.circle.badge.exclamationmark",
+            description: Text("Delivering picks creates a CreatorHub gallery the client can view. Sign in via Settings → CreatorHub account.")
+        )
+    }
+
+    private var configureView: some View {
+        Form {
+            Section("Which photos") {
+                Picker("Filter", selection: $filter) {
+                    Text("Picks (flag)").tag(BackendDeliverFilter.flagged)
+                    Text("4★ and up").tag(BackendDeliverFilter.ratingAtLeast4)
+                    Text("Picks + 4★").tag(BackendDeliverFilter.picksOr4Plus)
+                    Text("All non-rejected").tag(BackendDeliverFilter.allNonRejected)
+                }
+                .pickerStyle(.segmented)
+                let count = model.deliverablePicks(filter: localFilter(for: filter)).count
+                Text(count == 1 ? "1 photo will be uploaded" : "\(count) photos will be uploaded")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            Section("Client") {
+                TextField("Client name", text: $clientName)
+                    .textInputAutocapitalization(.words)
+                TextField("Client email", text: $clientEmail)
+                    .keyboardType(.emailAddress)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+            }
+            Section("Project (optional)") {
+                TextField("Project title — defaults to session name", text: $projectTitle)
+            }
+            if let errorMessage {
+                Section {
+                    Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                }
+            }
+            Section {
+                Button {
+                    Task { await runDelivery() }
+                } label: {
+                    Label("Deliver to CreatorHub", systemImage: "paperplane.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(
+                    model.deliverablePicks(filter: localFilter(for: filter)).isEmpty
+                    || clientName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    || !clientEmail.contains("@")
+                )
+                Text("Picks are uploaded to your CreatorHub account, then surfaced as a UniversalShowcase gallery the client can view at app.creatorhubn.com/client/gallery/…")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func localFilter(for filter: BackendDeliverFilter) -> LiveCaptureModel.PickFilter {
+        switch filter {
+        case .flagged:        return .flagged
+        case .ratingAtLeast4: return .fourPlus
+        case .picksOr4Plus:   return .picksAndFourPlus
+        case .allNonRejected: return .all
+        }
+    }
+
+    private var workingView: some View {
+        VStack(spacing: 18) {
+            ProgressView()
+                .controlSize(.large)
+            Text("Uploading picks to CreatorHub…")
+                .font(.headline)
+            Text("Mirroring session, uploading previews to R2, creating UniversalShowcase gallery. Keep the iPad on this screen.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var doneView: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                if let result {
+                    Label("Gallery ready", systemImage: "checkmark.seal.fill")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(.green)
+                    let urlString = result.response.shareUrl
+                    let url = URL(string: urlString) ?? URL(string: "https://app.creatorhubn.com")!
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Client gallery URL").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                        Text(urlString)
+                            .font(.callout.monospaced())
+                            .lineLimit(3)
+                            .padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.captureChipBG, in: RoundedRectangle(cornerRadius: 8))
+                            .textSelection(.enabled)
+                    }
+
+                    HStack(spacing: 12) {
+                        Label("\(result.uploadedCount) uploaded", systemImage: "icloud.and.arrow.up")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        Label(result.response.reusedExisting ? "Reused gallery" : "New gallery",
+                              systemImage: result.response.reusedExisting ? "arrow.triangle.2.circlepath" : "sparkles")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        Label("\(result.response.uploadedImageCount) added",
+                              systemImage: "photo.stack")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    HStack(spacing: 12) {
+                        Button {
+                            UIPasteboard.general.string = urlString
+                        } label: {
+                            Label("Copy URL", systemImage: "doc.on.doc")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+
+                        Button {
+                            showShareSheet = true
+                        } label: {
+                            Label("Share", systemImage: "square.and.arrow.up")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                    .padding(.top, 8)
+
+                    Text("This gallery now lives in your CreatorHub UniversalShowcase — manage it from the web dashboard like any other delivery.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 4)
+                }
+            }
+            .padding(24)
+        }
+        .sheet(isPresented: $showShareSheet) {
+            if let result, let url = URL(string: result.response.shareUrl) {
+                ShareSheet(items: [url])
+            }
+        }
+    }
+
+    private func runDelivery() async {
+        errorMessage = nil
+        phase = .working
+        do {
+            let r = try await model.deliverToShowcase(
+                filter: filter,
+                clientName: clientName.trimmingCharacters(in: .whitespacesAndNewlines),
+                clientEmail: clientEmail.trimmingCharacters(in: .whitespacesAndNewlines),
+                projectTitle: projectTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    ? nil
+                    : projectTitle.trimmingCharacters(in: .whitespacesAndNewlines),
+            )
+            result = r
+            phase = .done
+        } catch {
+            errorMessage = error.localizedDescription
+            phase = .configure
+        }
+    }
+}
+
+/// Thin `UIActivityViewController` wrapper so SwiftUI can present the
+/// system share sheet for the URL.
+private struct ShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+// MARK: - Sessions archive sheet
+
+/// Phase 2B: browse all local sessions (active + closed). Tap one to
+/// open a session-detail view; close the active one with a tap.
+/// Backend-mirrored sessions still live in the local DB so this is a
+/// purely local view of "what shoots have I done" — no network call.
+private struct SessionsArchiveSheet: View {
+    @Bindable var model: LiveCaptureModel
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if model.isLoadingArchive {
+                    ProgressView().controlSize(.large)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if model.archivedSessions.isEmpty {
+                    ContentUnavailableView(
+                        "No sessions yet",
+                        systemImage: "tray",
+                        description: Text("Connect a camera and capture a few shots — sessions land here automatically.")
+                    )
+                } else {
+                    List(model.archivedSessions, id: \.id) { session in
+                        SessionRow(session: session)
+                    }
+                    .listStyle(.insetGrouped)
+                }
+            }
+            .navigationTitle("Sessions")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }
+                }
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        Task { await model.closeCurrentSession(); await model.loadArchivedSessions() }
+                    } label: {
+                        Label("Close current", systemImage: "stop.circle")
+                    }
+                }
+            }
+            .task { await model.loadArchivedSessions() }
+        }
+    }
+}
+
+private struct SessionRow: View {
+    let session: Session
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(session.name)
+                    .font(.headline)
+                Spacer()
+                statusBadge
+            }
+            HStack(spacing: 12) {
+                Label(formatDate(session.startsAt), systemImage: "calendar")
+                if let endsAt = session.endsAt {
+                    Label("ended \(formatRelative(endsAt))", systemImage: "clock")
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 4)
+    }
+
+    private var statusBadge: some View {
+        Text(session.status.rawValue.capitalized)
+            .font(.caption.weight(.semibold))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .foregroundStyle(badgeColor)
+            .background(badgeColor.opacity(0.18), in: Capsule())
+            .overlay(Capsule().stroke(badgeColor.opacity(0.5), lineWidth: 0.5))
+    }
+
+    private var badgeColor: Color {
+        switch session.status {
+        case .active: return .green
+        case .paused: return .orange
+        case .closed: return .secondary
+        }
+    }
+
+    private func formatDate(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .short
+        return f.string(from: date)
+    }
+
+    private func formatRelative(_ date: Date) -> String {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .short
+        return f.localizedString(for: date, relativeTo: Date())
     }
 }
 
