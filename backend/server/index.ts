@@ -29052,12 +29052,22 @@ app.post("/api/role-room/instagram/publish", async (req, res) => {
   }
 
   const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
-  const required = ["connectionId", "projectId", "feedPlanPostId", "mediaType", "imageDataUrl"];
+  const required = ["connectionId", "projectId", "feedPlanPostId", "mediaType"];
   for (const k of required) {
     if (!body[k]) return res.status(400).json({ success: false, error: `${k} er påkrevd.` });
   }
   if (!["image", "reel", "carousel"].includes(String(body.mediaType))) {
     return res.status(400).json({ success: false, error: "mediaType må være image|reel|carousel." });
+  }
+  const imageDataUrls = Array.isArray(body.imageDataUrls)
+    ? body.imageDataUrls.filter((s): s is string => typeof s === "string")
+    : undefined;
+  const imageDataUrl = typeof body.imageDataUrl === "string" ? body.imageDataUrl : undefined;
+  if (!imageDataUrl && (!imageDataUrls || imageDataUrls.length === 0)) {
+    return res.status(400).json({
+      success: false,
+      error: "imageDataUrl eller imageDataUrls er påkrevd.",
+    });
   }
 
   try {
@@ -29068,7 +29078,8 @@ app.post("/api/role-room/instagram/publish", async (req, res) => {
       feedPlanPostId: String(body.feedPlanPostId),
       mediaType: body.mediaType as "image" | "reel" | "carousel",
       caption: typeof body.caption === "string" ? body.caption : "",
-      imageDataUrl: String(body.imageDataUrl),
+      imageDataUrl,
+      imageDataUrls,
       scheduledFor: typeof body.scheduledFor === "string" ? body.scheduledFor : null,
     });
     return res.json({

@@ -48,8 +48,20 @@ export interface IgPublishInput {
   feedPlanPostId: string;
   mediaType: IgMediaType;
   caption: string;
-  imageDataUrl: string;
+  /** Single-image / reel convenience field — ignored if imageDataUrls is set. */
+  imageDataUrl?: string;
+  /** 2-10 data URLs for carousel; overrides imageDataUrl when present. */
+  imageDataUrls?: string[];
   scheduledFor?: string | null;
+}
+
+const CAROUSEL_MIN = 2;
+const CAROUSEL_MAX = 10;
+
+export interface IgJobImagePart {
+  bucket: string;
+  key: string;
+  publicUrl?: string;
 }
 
 export interface IgPublishJobRow {
@@ -62,6 +74,7 @@ export interface IgPublishJobRow {
   caption: string;
   imageBucket: string | null;
   imageKey: string | null;
+  imageParts: IgJobImagePart[];
   imagePublicUrl: string | null;
   igContainerId: string | null;
   igMediaId: string | null;
@@ -73,7 +86,23 @@ export interface IgPublishJobRow {
   publishedAt: Date | null;
 }
 
+function parseImageParts(
+  raw: unknown,
+  fallbackBucket: string | null,
+  fallbackKey: string | null,
+): IgJobImagePart[] {
+  if (Array.isArray(raw)) {
+    return raw
+      .map((p) => p as Partial<IgJobImagePart>)
+      .filter((p): p is IgJobImagePart => typeof p?.bucket === 'string' && typeof p?.key === 'string');
+  }
+  if (fallbackBucket && fallbackKey) return [{ bucket: fallbackBucket, key: fallbackKey }];
+  return [];
+}
+
 function mapJob(row: Record<string, unknown>): IgPublishJobRow {
+  const bucket = (row.image_bucket as string | null) ?? null;
+  const key = (row.image_key as string | null) ?? null;
   return {
     id: String(row.id),
     userId: String(row.user_id),
@@ -82,8 +111,9 @@ function mapJob(row: Record<string, unknown>): IgPublishJobRow {
     feedPlanPostId: String(row.feed_plan_post_id),
     mediaType: row.media_type as IgMediaType,
     caption: String(row.caption ?? ''),
-    imageBucket: (row.image_bucket as string | null) ?? null,
-    imageKey: (row.image_key as string | null) ?? null,
+    imageBucket: bucket,
+    imageKey: key,
+    imageParts: parseImageParts(row.image_parts, bucket, key),
     imagePublicUrl: (row.image_public_url as string | null) ?? null,
     igContainerId: (row.ig_container_id as string | null) ?? null,
     igMediaId: (row.ig_media_id as string | null) ?? null,
@@ -134,14 +164,21 @@ async function rateLimitedCheck(pool: Pool, connectionId: string): Promise<numbe
 async function insertJob(
   pool: Pool,
   input: IgPublishInput,
-  image: InstagramHostedImage,
+  images: InstagramHostedImage[],
 ): Promise<IgPublishJobRow | null> {
+  if (images.length === 0) return null;
+  const head = images[0];
+  const parts: IgJobImagePart[] = images.map((i) => ({
+    bucket: i.bucket,
+    key: i.key,
+    publicUrl: i.publicUrl,
+  }));
   try {
     const result = await pool.query(
       `INSERT INTO role_room_instagram_publish_jobs
          (user_id, project_id, connection_id, feed_plan_post_id, media_type, caption,
-          scheduled_for, image_bucket, image_key, image_public_url)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          scheduled_for, image_bucket, image_key, image_public_url, image_parts)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
        RETURNING *`,
       [
         input.userId,
@@ -151,9 +188,10 @@ async function insertJob(
         input.mediaType,
         input.caption,
         input.scheduledFor ? new Date(input.scheduledFor) : null,
-        image.bucket,
-        image.key,
-        image.publicUrl,
+        head.bucket,
+        head.key,
+        head.publicUrl,
+        JSON.stringify(parts),
       ],
     );
     return result.rows[0] ? mapJob(result.rows[0]) : null;
@@ -195,11 +233,52 @@ async function updateJob(
   }
 }
 
+async function pollContainerReady(
+  connection: InstagramConnectionRow,
+  containerId: string,
+  timeoutMs: number,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  let containerStatus = 'IN_PROGRESS';
+  while (Date.now() < deadline && containerStatus !== 'FINISHED') {
+    await new Promise((resolve) => setTimeout(resolve, 5_000));
+    try {
+      const statusUrl = `${META_GRAPH_BASE}/${containerId}?fields=status_code&access_token=${encodeURIComponent(connection.accessToken)}`;
+      const statusResp = (await metaGet(statusUrl)) as { status_code?: string };
+      containerStatus = statusResp.status_code || 'IN_PROGRESS';
+      if (containerStatus === 'ERROR') throw new Error(`Meta meldte ERROR på container ${containerId}`);
+    } catch (pollError) {
+      // Surface the ERROR status up immediately; otherwise keep polling.
+      if ((pollError as Error).message?.includes('ERROR')) throw pollError;
+    }
+  }
+  if (containerStatus !== 'FINISHED') {
+    throw new Error(`Container ${containerId} ikke klar etter ${Math.round(timeoutMs / 1000)} sekunder`);
+  }
+}
+
+async function createChildContainer(
+  connection: InstagramConnectionRow,
+  imageUrl: string,
+): Promise<string> {
+  const form = new URLSearchParams({
+    image_url: imageUrl,
+    is_carousel_item: 'true',
+    access_token: connection.accessToken,
+  });
+  const url = `${META_GRAPH_BASE}/${connection.igBusinessAccountId}/media`;
+  const resp = (await metaPost(url, form)) as { id?: string };
+  if (!resp.id) throw new Error('Meta returnerte ingen child container-id');
+  return resp.id;
+}
+
 /**
- * Run the publish pipeline for a job whose image has already been
- * uploaded to R2. Re-signs a fresh 1h URL (because the one stored at
- * queue time may be expired by the time the worker picks up a
- * scheduled job), then container + publish against Meta.
+ * Run the publish pipeline for a job whose image(s) have already been
+ * uploaded to R2. Image/reel jobs use a single container; carousel
+ * jobs create N children (is_carousel_item=true) and one parent
+ * container with children=[...] before publishing. Re-signs fresh 1h
+ * URLs each time — the pre-signed URL stored at queue time is gone by
+ * the time a scheduled job fires.
  */
 async function executePublishJob(
   pool: Pool,
@@ -208,49 +287,70 @@ async function executePublishJob(
 ): Promise<IgPublishJobRow> {
   try {
     await updateJob(pool, job.id, { status: 'uploading', attemptedCount: job.attemptedCount + 1 });
-    if (!job.imageBucket || !job.imageKey) {
-      throw new Error('Job mangler image_bucket / image_key — kan ikke re-signere URL');
-    }
-    const freshUrl = await signInstagramHostedImageUrl(job.imageBucket, job.imageKey);
-    if (!freshUrl) throw new Error('Klarte ikke å re-signere R2 URL (ikke konfigurert?)');
+    const parts = job.imageParts;
+    if (parts.length === 0) throw new Error('Job mangler bildedata — kan ikke publisere');
 
-    // Step 2: create the IG container.
-    await updateJob(pool, job.id, { status: 'container', imagePublicUrl: freshUrl });
-    const containerForm = new URLSearchParams({
-      image_url: freshUrl,
-      caption: job.caption,
-      access_token: connection.accessToken,
-    });
-    if (job.mediaType === 'reel') containerForm.set('media_type', 'REELS');
-    const containerUrl = `${META_GRAPH_BASE}/${connection.igBusinessAccountId}/media`;
-    const containerResp = (await metaPost(containerUrl, containerForm)) as { id?: string };
-    const containerId = containerResp.id;
-    if (!containerId) throw new Error('Meta returnerte ingen container-id');
-
-    // Step 3: poll status until container is FINISHED (Reels can take time).
-    await updateJob(pool, job.id, { status: 'publishing', igContainerId: containerId });
-    if (job.mediaType === 'reel') {
-      // Poll for up to 90 seconds.
-      const deadline = Date.now() + 90_000;
-      let containerStatus = 'IN_PROGRESS';
-      while (Date.now() < deadline && containerStatus !== 'FINISHED') {
-        await new Promise((resolve) => setTimeout(resolve, 5_000));
-        try {
-          const statusUrl = `${META_GRAPH_BASE}/${containerId}?fields=status_code&access_token=${encodeURIComponent(connection.accessToken)}`;
-          const statusResp = (await metaGet(statusUrl)) as { status_code?: string };
-          containerStatus = statusResp.status_code || 'IN_PROGRESS';
-          if (containerStatus === 'ERROR') throw new Error('Meta meldte ERROR på reel-container');
-        } catch {
-          // Continue polling on transient errors.
-        }
+    if (job.mediaType === 'carousel') {
+      if (parts.length < CAROUSEL_MIN || parts.length > CAROUSEL_MAX) {
+        throw new Error(`Carousel krever ${CAROUSEL_MIN}-${CAROUSEL_MAX} bilder, har ${parts.length}`);
       }
-      if (containerStatus !== 'FINISHED') throw new Error('Reel-container ikke klar etter 90 sekunder');
     }
 
-    // Step 4: publish.
+    // Re-sign fresh URLs for every part.
+    const signed: string[] = [];
+    for (const part of parts) {
+      const url = await signInstagramHostedImageUrl(part.bucket, part.key);
+      if (!url) throw new Error('Klarte ikke å re-signere R2 URL (ikke konfigurert?)');
+      signed.push(url);
+    }
+
+    let parentContainerId: string;
+
+    if (job.mediaType === 'carousel') {
+      await updateJob(pool, job.id, { status: 'container', imagePublicUrl: signed[0] });
+      const childIds: string[] = [];
+      for (const childUrl of signed) {
+        childIds.push(await createChildContainer(connection, childUrl));
+      }
+      // Children need a few seconds to process before we reference them.
+      for (const childId of childIds) {
+        await pollContainerReady(connection, childId, 60_000);
+      }
+      const parentForm = new URLSearchParams({
+        media_type: 'CAROUSEL',
+        children: childIds.join(','),
+        caption: job.caption,
+        access_token: connection.accessToken,
+      });
+      const parentUrl = `${META_GRAPH_BASE}/${connection.igBusinessAccountId}/media`;
+      const parentResp = (await metaPost(parentUrl, parentForm)) as { id?: string };
+      if (!parentResp.id) throw new Error('Meta returnerte ingen carousel container-id');
+      parentContainerId = parentResp.id;
+    } else {
+      // image or reel — single container.
+      await updateJob(pool, job.id, { status: 'container', imagePublicUrl: signed[0] });
+      const containerForm = new URLSearchParams({
+        image_url: signed[0],
+        caption: job.caption,
+        access_token: connection.accessToken,
+      });
+      if (job.mediaType === 'reel') containerForm.set('media_type', 'REELS');
+      const containerUrl = `${META_GRAPH_BASE}/${connection.igBusinessAccountId}/media`;
+      const containerResp = (await metaPost(containerUrl, containerForm)) as { id?: string };
+      if (!containerResp.id) throw new Error('Meta returnerte ingen container-id');
+      parentContainerId = containerResp.id;
+    }
+
+    await updateJob(pool, job.id, { status: 'publishing', igContainerId: parentContainerId });
+    // Reels + carousel parents both need a ready-check before publish.
+    if (job.mediaType === 'reel' || job.mediaType === 'carousel') {
+      await pollContainerReady(connection, parentContainerId, 90_000);
+    }
+
+    // Publish.
     const publishUrl = `${META_GRAPH_BASE}/${connection.igBusinessAccountId}/media_publish`;
     const publishForm = new URLSearchParams({
-      creation_id: containerId,
+      creation_id: parentContainerId,
       access_token: connection.accessToken,
     });
     const publishResp = (await metaPost(publishUrl, publishForm)) as { id?: string };
@@ -264,15 +364,16 @@ async function executePublishJob(
       lastError: null,
     });
 
-    // Cleanup: best-effort delete from R2 (image is now on Instagram).
-    void deleteInstagramHostedImage(job.imageBucket, job.imageKey);
+    // Cleanup: best-effort delete every part from R2.
+    for (const part of parts) {
+      void deleteInstagramHostedImage(part.bucket, part.key);
+    }
 
     return { ...job, status: 'published', igMediaId: mediaId, publishedAt: new Date() };
   } catch (error) {
     const message = error instanceof Error ? error.message.slice(0, 500) : 'unknown';
     await updateJob(pool, job.id, { status: 'failed', lastError: message });
-    // Keep the image in R2 for 24h so a retry can re-use it; the nightly
-    // capture cleanup sweep will eventually remove stale objects.
+    // Keep images in R2 so a retry can re-use them.
     return { ...job, status: 'failed', lastError: message };
   }
 }
@@ -296,10 +397,36 @@ export async function queueAndPublish(
     throw new Error('Instagram-tilkoblingen er utløpt. Koble til på nytt.');
   }
 
-  // Upload to R2 up-front so the job row stores image_bucket/image_key
-  // — the worker needs this to re-sign a fresh URL at execute time.
-  const hosted = await uploadImageForInstagram({ userId: input.userId, dataUrl: input.imageDataUrl });
-  if (!hosted) throw new Error('Image upload failed (R2 ikke konfigurert?)');
+  // Resolve the image list from either the multi-image field (carousel)
+  // or the single-image convenience field (image/reel).
+  const dataUrls: string[] = input.imageDataUrls && input.imageDataUrls.length > 0
+    ? input.imageDataUrls
+    : input.imageDataUrl
+      ? [input.imageDataUrl]
+      : [];
+  if (dataUrls.length === 0) throw new Error('Mangler bildedata for publisering');
+  if (input.mediaType === 'carousel') {
+    if (dataUrls.length < CAROUSEL_MIN || dataUrls.length > CAROUSEL_MAX) {
+      throw new Error(`Carousel krever ${CAROUSEL_MIN}-${CAROUSEL_MAX} bilder, fikk ${dataUrls.length}`);
+    }
+  } else if (dataUrls.length !== 1) {
+    throw new Error(`${input.mediaType} krever nøyaktig ett bilde, fikk ${dataUrls.length}`);
+  }
+
+  // Upload to R2 up-front so the job row stores image_bucket/image_key/
+  // image_parts — the worker needs these to re-sign fresh URLs at
+  // execute time. If any one upload fails, clean up the ones that did.
+  const hosted: InstagramHostedImage[] = [];
+  try {
+    for (const dataUrl of dataUrls) {
+      const h = await uploadImageForInstagram({ userId: input.userId, dataUrl });
+      if (!h) throw new Error('Image upload failed (R2 ikke konfigurert?)');
+      hosted.push(h);
+    }
+  } catch (error) {
+    for (const h of hosted) void deleteInstagramHostedImage(h.bucket, h.key);
+    throw error;
+  }
 
   // Rate-limit pre-check — only applies to immediate publishes. A future
   // scheduled job is queued regardless; the worker re-checks when it
