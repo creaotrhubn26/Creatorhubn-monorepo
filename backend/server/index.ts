@@ -155,6 +155,10 @@ import {
   fetchClientGalleryByAccessToken,
   listClientGalleryImages,
 } from "./client-gallery-render.js";
+import {
+  ffmpegAvailable,
+  ffmpegVersionLine,
+} from "./role-room-video-normalize.js";
 import { registerTidumAdminRoutes } from "./tidum-admin-routes.js";
 import {
   getNotebookLmWorkspaceStatus,
@@ -23115,10 +23119,24 @@ app.get("/api/client/gallery/:accessToken/images", async (req, res) => {
   }
 });
 
-// Health check
-app.get("/api/health", (req, res) => {
+// Health check. Caches the ffmpeg probe for 60s so rapid pings from
+// Render's health checker don't spawn an ffmpeg child every time.
+let ffmpegHealthCache: { at: number; available: boolean; version: string | null } | null = null;
+
+async function readFfmpegHealth(): Promise<{ available: boolean; version: string | null }> {
+  const now = Date.now();
+  if (ffmpegHealthCache && now - ffmpegHealthCache.at < 60_000) {
+    return { available: ffmpegHealthCache.available, version: ffmpegHealthCache.version };
+  }
+  const version = await ffmpegVersionLine();
+  ffmpegHealthCache = { at: now, available: Boolean(version), version };
+  return { available: Boolean(version), version };
+}
+
+app.get("/api/health", async (req, res) => {
   const isRenderRuntime =
     String(process.env.RENDER || "").toLowerCase() === "true";
+  const ffmpeg = await readFfmpegHealth();
   res.json({
     status: "ok",
     timestamp: new Date().toISOString(),
@@ -23129,6 +23147,11 @@ app.get("/api/health", (req, res) => {
     serviceName: process.env.RENDER_SERVICE_NAME || null,
     instanceId: process.env.RENDER_INSTANCE_ID || null,
     runtime: isRenderRuntime ? "render" : process.env.NODE_ENV || "unknown",
+    // Surfaces on Render's status-page poll so we can see at a glance
+    // whether the reel normaliser has a usable ffmpeg binary on this
+    // instance. Without it reels still ship, but unchanged — the
+    // photographer sees any quality/size issues Meta flags.
+    ffmpeg,
   });
 });
 
@@ -109956,6 +109979,12 @@ httpServer.listen(PORT, "0.0.0.0", () => {
   // every 30s for due rows and run them. No-op until a job actually
   // becomes due, so it's safe to always start.
   startInstagramPublishWorker(pool);
+  // One-off probe so the boot log makes ffmpeg presence/absence
+  // obvious without hitting /api/health. Dockerfile installs ffmpeg
+  // on the Render image, so this should always log "available".
+  void ffmpegAvailable().then((ok) => {
+    console.log(`🎬 ffmpeg ${ok ? "available — reels will be normalised to 1080×1920 H.264" : "NOT FOUND — reels pass through unchanged"}`);
+  });
   if (isStoryArcV2Enabled() && STORY_ARC_V2_STARTUP_WARMUP_ENABLED) {
     void runStoryArcV2StartupWarmup();
   }

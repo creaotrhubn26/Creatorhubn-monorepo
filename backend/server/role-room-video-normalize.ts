@@ -57,7 +57,7 @@ function extensionForVideoMime(contentType: string): string {
   return slash >= 0 ? contentType.slice(slash + 1) : 'bin';
 }
 
-async function ffmpegAvailable(): Promise<boolean> {
+export async function ffmpegAvailable(): Promise<boolean> {
   return new Promise((resolve) => {
     try {
       const proc = spawn('ffmpeg', ['-version'], { stdio: ['ignore', 'ignore', 'ignore'] });
@@ -65,6 +65,29 @@ async function ffmpegAvailable(): Promise<boolean> {
       proc.on('close', (code) => resolve(code === 0));
     } catch {
       resolve(false);
+    }
+  });
+}
+
+/**
+ * Fetch the ffmpeg banner (first stdout line of `ffmpeg -version`).
+ * Used by /api/health so ops can confirm the reel normaliser has a
+ * working binary without shelling into the container.
+ */
+export async function ffmpegVersionLine(): Promise<string | null> {
+  return new Promise((resolve) => {
+    try {
+      const proc = spawn('ffmpeg', ['-version'], { stdio: ['ignore', 'pipe', 'ignore'] });
+      const chunks: Buffer[] = [];
+      proc.stdout.on('data', (chunk) => chunks.push(chunk));
+      proc.on('error', () => resolve(null));
+      proc.on('close', (code) => {
+        if (code !== 0) return resolve(null);
+        const firstLine = Buffer.concat(chunks).toString('utf8').split('\n', 1)[0]?.trim() || null;
+        resolve(firstLine);
+      });
+    } catch {
+      resolve(null);
     }
   });
 }
