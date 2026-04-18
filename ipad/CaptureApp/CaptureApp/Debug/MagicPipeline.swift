@@ -205,16 +205,29 @@ final class MagicPipeline {
         }
 
         if recipe.skinSmooth > 0 {
-            let blur = CIFilter(name: "CIGaussianBlur")!
-            blur.setValue(current, forKey: kCIInputImageKey)
-            blur.setValue(recipe.skinSmooth * 2.0, forKey: kCIInputRadiusKey)
-            if let soft = blur.outputImage {
-                current = soft.cropped(to: ciImage.extent)
+            // Edge-preserving smoothing, not a global Gaussian blur.
+            // CINoiseReduction is Apple's built-in bilateral filter —
+            // smooths flat tonal areas (skin tone variation) while
+            // preserving edge detail (eyelashes, lip edges, hair
+            // strands, individual pores). This is what the pro-retouch
+            // "frequency separation" workflow achieves; Apple ships an
+            // approximation as a single filter, robust and cheap.
+            if let nr = CIFilter(name: "CINoiseReduction") {
+                nr.setValue(current, forKey: kCIInputImageKey)
+                nr.setValue(recipe.skinSmooth * 0.06, forKey: "inputNoiseLevel")
+                nr.setValue(0.5, forKey: "inputSharpness")
+                if let reduced = nr.outputImage {
+                    current = reduced
+                }
             }
-            let sharpen = CIFilter(name: "CISharpenLuminance")!
-            sharpen.setValue(current, forKey: kCIInputImageKey)
-            sharpen.setValue(0.4, forKey: kCIInputSharpnessKey)
-            if let out = sharpen.outputImage { current = out }
+            // Restore micro-detail in the rest of the frame so clothing /
+            // hair / background stay crisp.
+            if let sharpen = CIFilter(name: "CIUnsharpMask") {
+                sharpen.setValue(current, forKey: kCIInputImageKey)
+                sharpen.setValue(1.5, forKey: kCIInputRadiusKey)
+                sharpen.setValue(0.25, forKey: kCIInputIntensityKey)
+                if let out = sharpen.outputImage { current = out }
+            }
         }
 
         guard !Task.isCancelled,
