@@ -217,6 +217,19 @@ export async function exchangeForLongLivedToken(shortLivedToken: string): Promis
 
 // ── Page → IG Business Account discovery ─────────────────────────────────
 
+export async function fetchMetaUserId(userAccessToken: string): Promise<string | null> {
+  try {
+    const url = `${META_GRAPH_BASE}/me?` + new URLSearchParams({
+      fields: 'id',
+      access_token: userAccessToken,
+    }).toString();
+    const resp = (await metaGet(url)) as { id?: string };
+    return resp.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export interface MetaPageWithIgAccount {
   pageId: string;
   pageName: string;
@@ -298,6 +311,7 @@ export interface InstagramConnectionRow {
   igUsername: string | null;
   facebookPageId: string;
   facebookPageName: string | null;
+  fbUserId: string | null;
   accessToken: string; // decrypted
   tokenExpiresAt: Date | null;
   scopes: string[];
@@ -314,6 +328,7 @@ function mapRow(row: Record<string, unknown>): InstagramConnectionRow {
     igUsername: (row.ig_username as string | null) ?? null,
     facebookPageId: String(row.facebook_page_id),
     facebookPageName: (row.facebook_page_name as string | null) ?? null,
+    fbUserId: (row.fb_user_id as string | null) ?? null,
     accessToken: decryptInstagramToken(row.access_token_encrypted as string) ?? '',
     tokenExpiresAt: (row.token_expires_at as Date | null) ?? null,
     scopes: Array.isArray(row.scopes) ? (row.scopes as string[]) : [],
@@ -331,6 +346,7 @@ export async function upsertInstagramConnection(
     longLivedToken: string;
     expiresInSeconds: number;
     scopes: string[];
+    fbUserId: string | null;
   },
 ): Promise<InstagramConnectionRow | null> {
   const encrypted = encryptInstagramToken(input.longLivedToken);
@@ -342,16 +358,17 @@ export async function upsertInstagramConnection(
     const result = await pool.query(
       `INSERT INTO role_room_instagram_connections (
          user_id, project_id, ig_business_account_id, ig_username,
-         facebook_page_id, facebook_page_name,
+         facebook_page_id, facebook_page_name, fb_user_id,
          access_token_encrypted, token_expires_at, scopes, connection_state,
          last_refreshed_at, last_error
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::text[], 'connected', now(), NULL)
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::text[], 'connected', now(), NULL)
        ON CONFLICT (user_id, ig_business_account_id)
          WHERE connection_state = 'connected'
        DO UPDATE SET
          ig_username = EXCLUDED.ig_username,
          facebook_page_id = EXCLUDED.facebook_page_id,
          facebook_page_name = EXCLUDED.facebook_page_name,
+         fb_user_id = COALESCE(EXCLUDED.fb_user_id, role_room_instagram_connections.fb_user_id),
          access_token_encrypted = EXCLUDED.access_token_encrypted,
          token_expires_at = EXCLUDED.token_expires_at,
          scopes = EXCLUDED.scopes,
@@ -367,6 +384,7 @@ export async function upsertInstagramConnection(
         input.page.igUsername,
         input.page.pageId,
         input.page.pageName,
+        input.fbUserId,
         encrypted,
         expiresAt,
         input.scopes,

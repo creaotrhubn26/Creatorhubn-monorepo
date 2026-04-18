@@ -119,6 +119,7 @@ import {
   discoverIgBusinessAccounts,
   exchangeCodeForShortLivedToken,
   exchangeForLongLivedToken,
+  fetchMetaUserId,
   getMetaAppConfig,
   listInstagramConnections,
   META_REQUIRED_SCOPES,
@@ -138,6 +139,12 @@ import {
   summariseEvent as summariseMetaWebhookEvent,
   verifyMetaWebhookSignature,
 } from "./role-room-instagram-webhook.js";
+import {
+  fetchDataDeletionRequest,
+  parseSignedRequest,
+  recordDataDeletionRequest,
+  revokeConnectionsForFbUser,
+} from "./role-room-instagram-deauth.js";
 import { registerTidumAdminRoutes } from "./tidum-admin-routes.js";
 import {
   getNotebookLmWorkspaceStatus,
@@ -28955,6 +28962,9 @@ app.get("/api/role-room/instagram/oauth/callback", async (req, res) => {
   try {
     const short = await exchangeCodeForShortLivedToken(code);
     const long = await exchangeForLongLivedToken(short.accessToken);
+    // Fetch Meta's user id once so we can match future deauth +
+    // data-deletion callbacks back to these rows.
+    const fbUserId = await fetchMetaUserId(long.accessToken);
     const accounts = await discoverIgBusinessAccounts(long.accessToken);
     if (accounts.length === 0) {
       return res.status(400).send(
@@ -28971,6 +28981,7 @@ app.get("/api/role-room/instagram/oauth/callback", async (req, res) => {
         longLivedToken: long.accessToken,
         expiresInSeconds: long.expiresIn,
         scopes: META_REQUIRED_SCOPES,
+        fbUserId,
       });
       if (row) saved.push({ igUsername: row.igUsername, igBusinessAccountId: row.igBusinessAccountId });
     }
@@ -29091,6 +29102,78 @@ app.get("/api/role-room/instagram/webhook", (req, res) => {
     return res.status(200).send(String(challenge ?? ""));
   }
   return res.status(403).send("verify token mismatch");
+});
+
+// Deauthorize Callback URL — registered in the Meta App Dashboard.
+// Body is application/x-www-form-urlencoded with a single `signed_request`
+// field. We verify the signature, extract the fb user id, revoke their
+// IG connections, and respond 200.
+app.post(
+  "/api/role-room/instagram/deauthorize",
+  express.urlencoded({ extended: false, limit: "32kb" }),
+  async (req, res) => {
+    const appSecret = process.env.META_APP_SECRET;
+    if (!appSecret) return res.status(503).send("not configured");
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const signedRequest = typeof body.signed_request === "string" ? body.signed_request : null;
+    const payload = parseSignedRequest(signedRequest, appSecret);
+    if (!payload || !payload.user_id) {
+      console.warn("[ig-deauth] invalid signed_request on deauthorize callback");
+      return res.status(400).send("invalid signed_request");
+    }
+    const revoked = await revokeConnectionsForFbUser(pool, String(payload.user_id));
+    console.log(`[ig-deauth] user=${payload.user_id} revoked ${revoked} connection(s)`);
+    return res.status(200).send("ok");
+  },
+);
+
+// Data Deletion Request URL — registered in the Meta App Dashboard.
+// Same signed_request body as above. Response must be JSON with
+// `{url, confirmation_code}` so the user can check deletion status.
+app.post(
+  "/api/role-room/instagram/data-deletion",
+  express.urlencoded({ extended: false, limit: "32kb" }),
+  async (req, res) => {
+    const appSecret = process.env.META_APP_SECRET;
+    if (!appSecret) return res.status(503).json({ error: "not configured" });
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const signedRequest = typeof body.signed_request === "string" ? body.signed_request : null;
+    const payload = parseSignedRequest(signedRequest, appSecret);
+    if (!payload || !payload.user_id) {
+      console.warn("[ig-deauth] invalid signed_request on data-deletion callback");
+      return res.status(400).json({ error: "invalid signed_request" });
+    }
+    const { confirmationCode, connectionsRevoked } = await recordDataDeletionRequest(
+      pool,
+      String(payload.user_id),
+    );
+    const base = process.env.CREATORHUB_PUBLIC_URL
+      || process.env.APP_URL
+      || "https://theroleroom.com";
+    console.log(
+      `[ig-deauth] data-deletion user=${payload.user_id} code=${confirmationCode} revoked=${connectionsRevoked}`,
+    );
+    return res.status(200).json({
+      url: `${base.replace(/\/$/, "")}/api/role-room/instagram/data-deletion/${confirmationCode}`,
+      confirmation_code: confirmationCode,
+    });
+  },
+);
+
+// Public status check for a data-deletion request. Meta points the user
+// here so they can confirm deletion has been processed.
+app.get("/api/role-room/instagram/data-deletion/:code", async (req, res) => {
+  const record = await fetchDataDeletionRequest(pool, req.params.code);
+  if (!record) return res.status(404).send("Unknown confirmation code.");
+  return res.status(200).send(
+    `<html><body style="font-family:system-ui;padding:40px;background:#0b1220;color:#e2e8f0;">` +
+      `<h1>Data deletion status</h1>` +
+      `<p>Status: <strong>${record.status}</strong></p>` +
+      `<p>Requested: ${record.requestedAt.toISOString()}</p>` +
+      `<p>Connections revoked: ${record.connectionsRevoked}</p>` +
+      (record.completedAt ? `<p>Completed: ${record.completedAt.toISOString()}</p>` : "") +
+      `</body></html>`,
+  );
 });
 
 app.post(
