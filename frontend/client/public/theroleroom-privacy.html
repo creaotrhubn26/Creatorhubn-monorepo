@@ -50,14 +50,14 @@
         <span>The Role Room — Creatorhub AS</span>
       </header>
       <h1>Personvern­erklæring</h1>
-      <p class="muted">Sist oppdatert: april 2026 · Behandlings­ansvarlig: Creatorhub AS, org.nr 937 518 684</p>
+      <p class="muted">Sist oppdatert: 18. april 2026 · Behandlings­ansvarlig: Creatorhub AS, org.nr 937 518 684</p>
 
       <div class="toc">
         <strong>Innhold</strong>
         <ul>
           <li><a href="#hva">1. Hva vi samler</a></li>
           <li><a href="#hvorfor">2. Hvorfor</a></li>
-          <li><a href="#tredjepart">3. Tredjeparts­tjenester (Instagram, Google, Stripe, Anthropic)</a></li>
+          <li><a href="#tredjepart">3. Tredjeparts­tjenester og infrastruktur</a></li>
           <li><a href="#instagram">4. Instagram-data — detaljert</a></li>
           <li><a href="#hvor-lenge">5. Hvor lenge</a></li>
           <li><a href="#dine-rettigheter">6. Dine rettigheter (GDPR)</a></li>
@@ -82,18 +82,34 @@
         <li><strong>Fakturering</strong> — Stripe håndterer betaling for tier-abonnementene</li>
       </ul>
 
-      <h2 id="tredjepart">3. Tredjeparts­tjenester</h2>
-      <p>Vi bruker disse leverandørene:</p>
+      <h2 id="tredjepart">3. Tredjeparts­tjenester og infrastruktur</h2>
+      <p>
+        Vi deler dataen din med følgende databehandlere. Alle er bundet av
+        standard personvernklausuler (SCC) eller ligger i land med
+        adekvat beskyttelsesnivå.
+      </p>
+
+      <p><strong>Funksjonelle tjenester</strong> — disse har tilgang til dataen fordi de leverer en synlig funksjon:</p>
       <h3>Anthropic (Claude AI)</h3>
-      <p>Brand-kontekst og evt. opplastede bilder sendes til Anthropic for å generere caption-anbefalinger. Anthropic lagrer ikke data lenger enn 30 dager. Du gir samtykke før første AI-kall (granular per prosjekt).</p>
+      <p>Brand-kontekst og evt. opplastede bilder sendes til Anthropic for å generere caption-anbefalinger. Anthropic lagrer ikke data lenger enn 30 dager. Du gir samtykke før første AI-kall (granular per prosjekt). USA, SCC-er.</p>
       <h3>Meta Platforms (Instagram, Facebook)</h3>
       <p>Vi henter profil-metadata og publiserer innhold du selv har autorisert. Se egen seksjon nedenfor.</p>
-      <h3>Google (Drive, Gmail, Calendar)</h3>
-      <p>OAuth-basert tilgang. Vi henter kun det du eksplisitt ber om (Drive-bilder, e-post­utkast, kalender­bookinger). Refresh tokens er kryptert.</p>
-      <h3>Stripe</h3>
-      <p>All kort­informasjon lagres hos Stripe (PCI DSS Level 1). Vi lagrer kun en customer-referanse.</p>
-      <h3>Cohere</h3>
-      <p>Brukes for re-ranking av research-resultater. Sender bare anonyme tekst-snippets, ingen bruker-ID.</p>
+      <h3>Google LLC (Drive, Gmail, Calendar)</h3>
+      <p>OAuth-basert tilgang. Vi henter kun det du eksplisitt ber om (Drive-bilder, e-post­utkast, kalender­bookinger). Refresh tokens er kryptert. USA, EU-US Data Privacy Framework.</p>
+      <h3>Stripe, Inc.</h3>
+      <p>All kort­informasjon lagres hos Stripe (PCI DSS Level 1). Vi lagrer kun en customer-referanse. USA, EU-US Data Privacy Framework.</p>
+      <h3>Cohere Inc.</h3>
+      <p>Brukes for re-ranking av research-resultater. Sender bare anonyme tekst-snippets, ingen bruker-ID. Canada, adekvansvedtak.</p>
+
+      <p style="margin-top: 32px;"><strong>Infrastruktur­leverandører</strong> — disse hoster applikasjonen, databasen og opplastede filer. Vi krypterer data som lagres hos dem og bruker standard personvernklausuler for alle overføringer utenfor EØS:</p>
+      <h3>Render Services, Inc.</h3>
+      <p>Kjører backend-applikasjonen (API-er for Role Room, Capture, gallerier). USA, SCC-er. Ingen tilgang til ukryptert innhold utover det som er nødvendig for å kjøre prosessene.</p>
+      <h3>Neon, Inc.</h3>
+      <p>Managed PostgreSQL-database for alle konto-, prosjekt- og koblings­data (inkludert krypterte Instagram-tokens). Region: EU-west-2 (Irland), så dataen blir liggende i EØS. Neon opptrer som underdatabehandler.</p>
+      <h3>Cloudflare, Inc.</h3>
+      <p>Cloudflare R2 brukes som object storage for opplastede bilder, carousel-media og reels-video. Midlertidige signerte URL-er (1–7 dager) deles med Meta når du publiserer — selve filene er tilgjengelige bare fra vår backend. EU-jurisdiksjon, SCC-er.</p>
+      <h3>Vercel Inc.</h3>
+      <p>Hoster den statiske frontenden (theroleroom.com, dashboardet, denne siden). Har ikke tilgang til innhold i prosjekter eller Instagram-tokens. USA, SCC-er.</p>
 
       <h2 id="instagram">4. Instagram-data — detaljert</h2>
       <p>
