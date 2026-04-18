@@ -128,6 +128,46 @@
       "destination": "/theroleroom.html"
     },
     {
+      "source": "/data-deletion",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom-data-deletion.html"
+    },
+    {
+      "source": "/privacy",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom-privacy.html"
+    },
+    {
+      "source": "/terms-and-conditions",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom-terms.html"
+    },
+    {
+      "source": "/terms",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom-terms.html"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "https://creatorhub-backend-rtbl.onrender.com/api/$1"
     },

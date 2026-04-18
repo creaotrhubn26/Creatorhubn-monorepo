@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="nb">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Personvern­erklæring — The Role Room</title>
+    <meta
+      name="description"
+      content="The Role Room — personvern­erklæring for innholdsprodusenter, team og deres kunder. Inkluderer Instagram-, Google- og betalings­data."
+    />
+    <meta name="robots" content="index,follow" />
+    <link rel="canonical" href="https://theroleroom.com/privacy" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Personvern­erklæring — The Role Room" />
+    <meta property="og:url" content="https://theroleroom.com/privacy" />
+    <link rel="icon" type="image/png" href="/creatorhub-icon.png" />
+    <style>
+      :root {
+        --bg: #0b1220;
+        --surface: #111c33;
+        --text: #e2e8f0;
+        --muted: #94a3b8;
+        --accent: #22d3ee;
+        --accent-2: #a855f7;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; line-height: 1.65; }
+      .wrap { max-width: 760px; margin: 0 auto; padding: 64px 24px 96px; }
+      .stripe { height: 4px; background: linear-gradient(90deg, var(--accent), var(--accent-2)); margin-bottom: 48px; }
+      h1 { font-size: 2rem; font-weight: 800; margin: 0 0 16px; letter-spacing: -0.02em; }
+      h2 { font-size: 1.2rem; font-weight: 700; margin: 36px 0 12px; }
+      h3 { font-size: 1rem; font-weight: 700; margin: 24px 0 8px; color: var(--accent); }
+      p, li { color: var(--text); font-size: 1rem; }
+      .muted { color: var(--muted); font-size: 0.92rem; }
+      .small { font-size: 0.85rem; color: var(--muted); }
+      a { color: var(--accent); text-decoration: none; }
+      a:hover { text-decoration: underline; }
+      ul { padding-left: 22px; }
+      header { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
+      header span { font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; font-size: 0.86rem; color: var(--muted); }
+      .toc { background: var(--surface); border: 1px solid rgba(148,163,184,0.18); border-radius: 12px; padding: 20px 28px; margin: 28px 0; }
+      .toc ul { margin: 8px 0; padding-left: 20px; }
+      .toc li { font-size: 0.92rem; }
+    </style>
+  </head>
+  <body>
+    <div class="stripe"></div>
+    <div class="wrap">
+      <header>
+        <span>The Role Room — Creatorhub AS</span>
+      </header>
+      <h1>Personvern­erklæring</h1>
+      <p class="muted">Sist oppdatert: april 2026 · Behandlings­ansvarlig: Creatorhub AS, org.nr 937 518 684</p>
+
+      <div class="toc">
+        <strong>Innhold</strong>
+        <ul>
+          <li><a href="#hva">1. Hva vi samler</a></li>
+          <li><a href="#hvorfor">2. Hvorfor</a></li>
+          <li><a href="#tredjepart">3. Tredjeparts­tjenester (Instagram, Google, Stripe, Anthropic)</a></li>
+          <li><a href="#instagram">4. Instagram-data — detaljert</a></li>
+          <li><a href="#hvor-lenge">5. Hvor lenge</a></li>
+          <li><a href="#dine-rettigheter">6. Dine rettigheter (GDPR)</a></li>
+          <li><a href="#kontakt">7. Kontakt</a></li>
+        </ul>
+      </div>
+
+      <h2 id="hva">1. Hva vi samler</h2>
+      <ul>
+        <li><strong>Konto­data</strong>: e-post, navn, rolle, profil­bilde</li>
+        <li><strong>Prosjekt­data</strong>: kunde­navn, organisasjons­nr, brand-info, feed-planer</li>
+        <li><strong>Bruks­data</strong>: hvilke funksjoner du bruker, AI-samtale­logger, antall AI-anrop (for fakturering og tier-håndheving)</li>
+        <li><strong>Tilkoblede konto-tokens</strong> (kryptert): Instagram, Facebook Pages, Google Workspace</li>
+        <li><strong>Betalings­data</strong>: Stripe customer-ID (selve kortinformasjonen lagres aldri hos oss; den lever bare hos Stripe)</li>
+      </ul>
+
+      <h2 id="hvorfor">2. Hvorfor</h2>
+      <ul>
+        <li><strong>Levere tjenesten</strong> — uten konto kan vi ikke vise deg dine prosjekter</li>
+        <li><strong>AI-anbefalinger</strong> — vi sender brand-kontekst (og evt. opplastet bilde) til Anthropic Claude. Krever ditt eksplisitte samtykke</li>
+        <li><strong>Publisering på vegne av deg</strong> — du autoriserer oss til å poste til Instagram via OAuth</li>
+        <li><strong>Fakturering</strong> — Stripe håndterer betaling for tier-abonnementene</li>
+      </ul>
+
+      <h2 id="tredjepart">3. Tredjeparts­tjenester</h2>
+      <p>Vi bruker disse leverandørene:</p>
+      <h3>Anthropic (Claude AI)</h3>
+      <p>Brand-kontekst og evt. opplastede bilder sendes til Anthropic for å generere caption-anbefalinger. Anthropic lagrer ikke data lenger enn 30 dager. Du gir samtykke før første AI-kall (granular per prosjekt).</p>
+      <h3>Meta Platforms (Instagram, Facebook)</h3>
+      <p>Vi henter profil-metadata og publiserer innhold du selv har autorisert. Se egen seksjon nedenfor.</p>
+      <h3>Google (Drive, Gmail, Calendar)</h3>
+      <p>OAuth-basert tilgang. Vi henter kun det du eksplisitt ber om (Drive-bilder, e-post­utkast, kalender­bookinger). Refresh tokens er kryptert.</p>
+      <h3>Stripe</h3>
+      <p>All kort­informasjon lagres hos Stripe (PCI DSS Level 1). Vi lagrer kun en customer-referanse.</p>
+      <h3>Cohere</h3>
+      <p>Brukes for re-ranking av research-resultater. Sender bare anonyme tekst-snippets, ingen bruker-ID.</p>
+
+      <h2 id="instagram">4. Instagram-data — detaljert</h2>
+      <p>
+        Når du kobler en Instagram Business-konto til The Role Room, gjør vi følgende:
+      </p>
+      <ul>
+        <li>
+          <strong>Lagrer en kryptert OAuth-token</strong> (long-lived user access token, 60-dagers
+          gyldighet, AES-256-GCM med nøkkel som aldri forlater serveren). Tokenet refreshes
+          automatisk før utløp.
+        </li>
+        <li>
+          <strong>Henter kun</strong>: <code>username</code>, <code>account_id</code>,
+          <code>profile_picture</code>, navn på den koblede Facebook-Pagen.
+        </li>
+        <li>
+          <strong>Publiserer på vegne av deg</strong> — bare når du eksplisitt klikker
+          «Publiser nå» eller setter en spesifikk publiserings­tid for en post.
+          Vi auto-publiserer aldri uten en konkret bruker­handling.
+        </li>
+        <li>
+          <strong>Lagrer ikke</strong>: dine følgere, DM-er, andres innhold, kommentarer
+          fra andre brukere.
+        </li>
+        <li>
+          <strong>Deler aldri</strong> Instagram-data med tredjeparter (utenom Anthropic
+          Claude når du eksplisitt ber om en AI-anbefaling for en post).
+        </li>
+        <li>
+          <strong>Du tilbakekaller tilgangen</strong> når som helst via Facebook-innstillinger
+          (Apps and Websites → fjern «The Role Room») eller via vår
+          <a href="/data-deletion">data-slettings­side</a>.
+        </li>
+      </ul>
+
+      <h2 id="hvor-lenge">5. Hvor lenge</h2>
+      <ul>
+        <li>Konto-data: så lenge du er kunde + 90 dager etter sletting</li>
+        <li>AI-samtale­logger: 90 dager (deretter anonymiseres)</li>
+        <li>Audit-logger: 6 måneder etter sletting (compliance)</li>
+        <li>Stripe-fakturaer: 5 år (norsk bokføringslov § 13)</li>
+        <li>Instagram tokens: så lenge du er koblet til + slettes umiddelbart ved tilbakekalling</li>
+      </ul>
+
+      <h2 id="dine-rettigheter">6. Dine rettigheter (GDPR)</h2>
+      <p>Du har rett til:</p>
+      <ul>
+        <li><strong>Innsyn</strong> — be om kopi av all data vi har om deg</li>
+        <li><strong>Korrigering</strong> — rette feil opplysninger</li>
+        <li><strong>Sletting</strong> — be om sletting (se <a href="/data-deletion">data-slettings­side</a>)</li>
+        <li><strong>Dataportabilitet</strong> — eksport av dine prosjekter og caption-historikk i JSON</li>
+        <li><strong>Klage til Datatilsynet</strong> — <a href="https://datatilsynet.no" target="_blank" rel="noreferrer">datatilsynet.no</a></li>
+      </ul>
+
+      <h2 id="kontakt">7. Kontakt</h2>
+      <p>
+        Personvern­spørsmål: <a href="mailto:privacy@theroleroom.com">privacy@theroleroom.com</a><br />
+        Generell kontakt: <a href="mailto:hello@theroleroom.com">hello@theroleroom.com</a><br />
+        Postadresse: Creatorhub AS, Norge
+      </p>
+
+      <p class="small" style="margin-top: 56px;">
+        Vi oppdaterer denne erklæringen ved behov. Endringer kunngjøres i appen senest 14 dager
+        før de trer i kraft.
+      </p>
+    </div>
+  </body>
+</html>
