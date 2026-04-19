@@ -11,6 +11,7 @@
  * inherited from the pillar when not specified explicitly.
  */
 
+import crypto from 'node:crypto';
 import type { Pool } from 'pg';
 import type { MarketingPlanStrategy, PersistedPillar } from './role-room-marketing-plan.js';
 
@@ -348,6 +349,125 @@ export async function persistPlanPosts(
     client.release();
   }
   return listPlanPosts(pool, input.planId);
+}
+
+// ── Accept plan-post into the feed-planner ──────────────────────────────
+
+/**
+ * Move a proposed plan-post into the feed-planner so it becomes a real
+ * scheduling target. Builds a RoleRoomFeedPostInput from the plan-post,
+ * appends it to the project's feed_plan row for the target platform,
+ * and flips the plan-post to status='scheduled' with a back-reference
+ * to the new feed-plan-post id.
+ *
+ * Idempotent: if the plan-post is already scheduled, returns the
+ * current state unchanged — re-accepting doesn't duplicate the feed
+ * entry.
+ */
+export async function acceptPlanPostIntoFeedPlanner(
+  pool: Pool,
+  input: {
+    planPostId: string;
+    projectId: string;
+    ownerUserId: string;
+    scheduledFor?: string | null;
+  },
+  // Injectable so tests can stub the feed-plan module instead of
+  // hitting it for real.
+  feedPlanApi: {
+    loadFeedPlan: (pool: Pool, projectId: string, platform: string) => Promise<{ posts: unknown[] } | null>;
+    saveFeedPlan: (
+      pool: Pool,
+      projectId: string,
+      platform: string,
+      posts: unknown[],
+      options: { updatedBy?: string | null },
+    ) => Promise<unknown>;
+  },
+): Promise<{ planPost: PersistedPlanPost; feedPlanPostId: string } | null> {
+  // 1. Load + authorise the plan-post.
+  const rows = await pool
+    .query(
+      `SELECT p.*, mp.owner_user_id, mp.project_id AS plan_project_id
+         FROM role_room_marketing_plan_posts p
+         JOIN role_room_marketing_plans mp ON mp.id = p.plan_id
+        WHERE p.id = $1
+        LIMIT 1`,
+      [input.planPostId],
+    )
+    .catch((e) => {
+      console.error('[marketing-plan-posts] accept lookup failed', e);
+      return null;
+    });
+  const row = rows?.rows?.[0] as Record<string, unknown> | undefined;
+  if (!row) return null;
+  if (row.owner_user_id !== input.ownerUserId) return null;
+  if (row.plan_project_id !== input.projectId) return null;
+
+  const existingPost = mapPostRow(row);
+  if (existingPost.status !== 'proposed' && existingPost.feedPlanPostId) {
+    // Already accepted — return current state, don't duplicate.
+    return { planPost: existingPost, feedPlanPostId: existingPost.feedPlanPostId };
+  }
+
+  // 2. Platform: prefer the plan-post's primary, fall back to instagram
+  // (the only feed-planner target currently supported).
+  const platform = (existingPost.primaryPlatform ?? 'instagram') as string;
+
+  // 3. Build the feed-planner post shape.
+  const feedPlanPostId = `post-${crypto.randomUUID()}`;
+  const mediaType =
+    existingPost.format === 'reel' ? 'reel'
+    : existingPost.format === 'carousel' ? 'carousel'
+    : 'image';
+  const feedPost = {
+    id: feedPlanPostId,
+    concept: 'marketing_plan',
+    title: existingPost.hook.slice(0, 120),
+    caption: existingPost.captionDraft ?? existingPost.hook,
+    hashtags: [],
+    callToAction: existingPost.callToAction ?? '',
+    imageStyle: existingPost.script?.slice(0, 200) ?? '',
+    mediaType,
+    scheduledFor: input.scheduledFor ?? existingPost.scheduledFor?.toISOString() ?? null,
+    locked: false,
+  };
+
+  // 4. Append to the feed-plan and persist.
+  const existingPlan = await feedPlanApi.loadFeedPlan(pool, input.projectId, platform);
+  const existingPosts = Array.isArray(existingPlan?.posts) ? existingPlan!.posts : [];
+  await feedPlanApi.saveFeedPlan(pool, input.projectId, platform, [...existingPosts, feedPost], {
+    updatedBy: input.ownerUserId,
+  });
+
+  // 5. Flip plan-post to scheduled with back-reference.
+  const scheduledForTs = input.scheduledFor
+    ? new Date(input.scheduledFor)
+    : existingPost.scheduledFor ?? new Date();
+  try {
+    await pool.query(
+      `UPDATE role_room_marketing_plan_posts
+          SET status = 'scheduled',
+              feed_plan_post_id = $1,
+              scheduled_for = $2,
+              updated_at = now()
+        WHERE id = $3`,
+      [feedPlanPostId, scheduledForTs, input.planPostId],
+    );
+  } catch (error) {
+    console.error('[marketing-plan-posts] accept flip failed', error);
+    return null;
+  }
+
+  return {
+    planPost: {
+      ...existingPost,
+      status: 'scheduled',
+      feedPlanPostId,
+      scheduledFor: scheduledForTs,
+    },
+    feedPlanPostId,
+  };
 }
 
 export async function listPlanPosts(pool: Pool, planId: string): Promise<PersistedPlanPost[]> {

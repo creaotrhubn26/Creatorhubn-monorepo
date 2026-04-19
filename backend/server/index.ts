@@ -61,6 +61,8 @@ import {
   createBatch as createDriveUploadBatch,
   fetchBatch as fetchDriveUploadBatch,
 } from "./drive-batch-upload-service.js";
+import { makePgDriveClientResolver } from "./drive-batch-upload-wiring.js";
+import { startDriveBatchWorker } from "./drive-batch-worker.js";
 import { pruneAiAuditLog } from "./role-room-ai-audit.js";
 import { pruneAgentCache } from "./role-room-agent-cache.js";
 import { runDailyAgentScan } from "./role-room-agent-daily-scan.js";
@@ -188,6 +190,7 @@ import {
   persistGeneratedMarketingPlan,
 } from "./role-room-marketing-plan.js";
 import {
+  acceptPlanPostIntoFeedPlanner,
   generatePlanPosts,
   listPlanPosts,
   persistPlanPosts,
@@ -29622,6 +29625,33 @@ app.post("/api/role-room/marketing-plan/:planId/generate-posts", async (req, res
     return res.status(500).json({ success: false, error: "Kunne ikke lagre post-planen." });
   }
   return res.json({ success: true, posts: persisted, model: generated.model });
+});
+
+// Accept a plan-post into the feed-planner so it becomes schedulable.
+// Idempotent — re-accepting an already-scheduled post returns current
+// state without duplicating the feed entry.
+app.post("/api/role-room/marketing-plan/posts/:postId/accept", async (req, res) => {
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+  const postId = String(req.params.postId || "").trim();
+  const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
+  const projectId = typeof body.projectId === "string" ? body.projectId.trim() : "";
+  const scheduledFor = typeof body.scheduledFor === "string" ? body.scheduledFor : null;
+  if (!postId || !projectId) {
+    return res.status(400).json({ success: false, error: "postId og projectId er påkrevd." });
+  }
+  const result = await acceptPlanPostIntoFeedPlanner(
+    pool,
+    { planPostId: postId, projectId, ownerUserId: session.userId, scheduledFor },
+    { loadFeedPlan: loadFeedPlan as never, saveFeedPlan: saveFeedPlan as never },
+  );
+  if (!result) {
+    return res.status(404).json({
+      success: false,
+      error: "Fant ikke posten eller du eier den ikke.",
+    });
+  }
+  return res.json({ success: true, planPost: result.planPost, feedPlanPostId: result.feedPlanPostId });
 });
 
 app.post("/api/role-room/marketing-plan/:planId/activate", async (req, res) => {
@@ -110718,6 +110748,21 @@ const httpServer = createServer(app);
 createWebSocketServer(httpServer, db);
 attachCaptureWebSocket(httpServer, pool, activeSessions);
 attachUserEventsWebSocket(httpServer, pool, activeSessions);
+
+// Drive batch upload worker: periodic sweep of ``queued`` +
+// ``running`` batches. Tick interval set conservatively so one
+// unresponsive OAuth refresh can't starve other workers. Skipped
+// automatically when the CreatorHub Google OAuth env vars are
+// unset (dev environments without Google wiring).
+const driveBatchWorker = startDriveBatchWorker(
+  pool,
+  makePgDriveClientResolver(pool),
+);
+// ``driveBatchWorker.stop`` is intentionally not wired to a
+// shutdown hook — ``.unref()`` inside the worker lets the process
+// exit on its own, and ``app.close`` isn't a pattern used elsewhere
+// here. Exposed on the module scope for tests that need to reach in.
+void driveBatchWorker;
 
 httpServer.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Backend server running on port ${PORT} (HTTP + WebSocket)`);

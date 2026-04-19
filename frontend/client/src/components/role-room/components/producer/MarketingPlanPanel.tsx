@@ -24,6 +24,7 @@ import {
 import {
   AutoAwesome as AutoAwesomeIcon,
   CheckCircle as CheckCircleIcon,
+  ArrowForward as ArrowForwardIcon,
   PlayArrow as PlayArrowIcon,
   Refresh as RefreshIcon,
 } from '@mui/icons-material';
@@ -306,8 +307,13 @@ export default function MarketingPlanPanel({
           <PostsSection
             plan={plan}
             posts={posts}
+            projectId={projectId}
             generating={generatingPosts}
             onGenerate={handleGeneratePosts}
+            onPostAccepted={(updated) => {
+              setPosts((current) => current.map((p) => (p.id === updated.id ? updated : p)));
+            }}
+            onError={setError}
           />
         </Stack>
       ) : !readiness?.ready ? null : (
@@ -505,13 +511,19 @@ const FORMAT_COLOR: Record<MarketingPlanPost['format'], string> = {
 function PostsSection({
   plan,
   posts,
+  projectId,
   generating,
   onGenerate,
+  onPostAccepted,
+  onError,
 }: {
   plan: MarketingPlan;
   posts: MarketingPlanPost[];
+  projectId: string;
   generating: boolean;
   onGenerate: () => void;
+  onPostAccepted: (post: MarketingPlanPost) => void;
+  onError: (message: string) => void;
 }) {
   // Group by pillar so pillar → posts is easy to scan, ordered by
   // pillar sortOrder. Un-pillared posts go at the end under "Uten tag".
@@ -592,7 +604,13 @@ function PostsSection({
               </Stack>
               <Stack spacing={0.8}>
                 {group.posts.map((post) => (
-                  <PostCard key={post.id} post={post} />
+                  <PostCard
+                    key={post.id}
+                    post={post}
+                    projectId={projectId}
+                    onAccepted={onPostAccepted}
+                    onError={onError}
+                  />
                 ))}
               </Stack>
             </Box>
@@ -603,7 +621,36 @@ function PostsSection({
   );
 }
 
-function PostCard({ post }: { post: MarketingPlanPost }) {
+function PostCard({
+  post,
+  projectId,
+  onAccepted,
+  onError,
+}: {
+  post: MarketingPlanPost;
+  projectId: string;
+  onAccepted: (post: MarketingPlanPost) => void;
+  onError: (message: string) => void;
+}) {
+  const [accepting, setAccepting] = useState(false);
+  const handleAccept = useCallback(async () => {
+    setAccepting(true);
+    try {
+      const result = await roleRoomAgentService.acceptMarketingPlanPost({
+        postId: post.id,
+        projectId,
+      });
+      onAccepted(result.planPost);
+    } catch (caught) {
+      onError(caught instanceof Error ? caught.message : 'Kunne ikke akseptere posten.');
+    } finally {
+      setAccepting(false);
+    }
+  }, [post.id, projectId, onAccepted, onError]);
+
+  const isScheduled = post.status === 'scheduled';
+  const isPublished = post.status === 'published';
+
   return (
     <Box
       sx={{
@@ -697,6 +744,41 @@ function PostCard({ post }: { post: MarketingPlanPost }) {
               ))}
             </Stack>
           ) : null}
+
+          <Stack direction="row" spacing={0.6} alignItems="center" sx={{ mt: 0.9 }}>
+            {isScheduled || isPublished ? (
+              <Chip
+                size="small"
+                icon={<CheckCircleIcon sx={{ fontSize: 14 }} />}
+                label={isPublished ? 'Publisert' : 'I feed-planneren'}
+                sx={{
+                  bgcolor: 'rgba(34,197,94,0.16)',
+                  color: '#86efac',
+                  fontWeight: 700,
+                  fontSize: '0.72rem',
+                }}
+              />
+            ) : (
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={handleAccept}
+                disabled={accepting}
+                startIcon={accepting ? <CircularProgress size={12} /> : <ArrowForwardIcon fontSize="small" />}
+                sx={{
+                  textTransform: 'none',
+                  fontWeight: 700,
+                  fontSize: '0.76rem',
+                  py: 0.3,
+                  color: '#a5f3fc',
+                  borderColor: 'rgba(34,211,238,0.4)',
+                  '&:hover': { borderColor: '#22d3ee', bgcolor: 'rgba(34,211,238,0.08)' },
+                }}
+              >
+                {accepting ? 'Aksepterer…' : 'Aksepter → Feed-planner'}
+              </Button>
+            )}
+          </Stack>
         </Box>
       </Stack>
     </Box>

@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { listPlanPosts, persistPlanPosts } from './role-room-marketing-plan-posts';
+import {
+  acceptPlanPostIntoFeedPlanner,
+  listPlanPosts,
+  persistPlanPosts,
+} from './role-room-marketing-plan-posts';
 
 interface QueryRow { sql: string; args: unknown[]; }
 function makePool(impl: (sql: string, args: unknown[]) => Promise<{ rows: unknown[]; rowCount?: number }>) {
@@ -145,6 +149,146 @@ describe('persistPlanPosts', () => {
     const insert = queries.find((q) => q.sql.startsWith('INSERT INTO role_room_marketing_plan_posts'));
     expect(insert).toBeDefined();
     expect(insert!.args[1]).toBeNull();
+  });
+});
+
+describe('acceptPlanPostIntoFeedPlanner', () => {
+  function baseRow(override: Record<string, unknown> = {}) {
+    return {
+      id: 'plan-post-1',
+      plan_id: 'plan-1',
+      pillar_id: 'pillar-a',
+      sort_order: 0,
+      day_offset: 2,
+      hook: 'Her er hva ingen sier om drilling',
+      format: 'reel',
+      script: 'beat',
+      caption_draft: 'caption utkast',
+      call_to_action: 'Book befaring',
+      primary_platform: 'instagram',
+      cross_post_plan: [{ platform: 'tiktok', delayDays: 1 }],
+      goal_kpi: { metric: 'saves', target: 20, per: 'post' },
+      status: 'proposed',
+      feed_plan_post_id: null,
+      scheduled_for: null,
+      published_at: null,
+      created_at: new Date(),
+      updated_at: new Date(),
+      owner_user_id: 'user-1',
+      plan_project_id: 'project-1',
+      ...override,
+    };
+  }
+
+  it('returns null when no plan-post matches', async () => {
+    const { pool } = makePool(async () => ({ rows: [] }));
+    const result = await acceptPlanPostIntoFeedPlanner(
+      pool,
+      { planPostId: 'missing', projectId: 'p', ownerUserId: 'u' },
+      { loadFeedPlan: async () => null, saveFeedPlan: async () => ({}) },
+    );
+    expect(result).toBeNull();
+  });
+
+  it('returns null when the caller does not own the plan', async () => {
+    const { pool } = makePool(async () => ({ rows: [baseRow({ owner_user_id: 'someone-else' })] }));
+    const result = await acceptPlanPostIntoFeedPlanner(
+      pool,
+      { planPostId: 'plan-post-1', projectId: 'project-1', ownerUserId: 'user-1' },
+      { loadFeedPlan: async () => null, saveFeedPlan: async () => ({}) },
+    );
+    expect(result).toBeNull();
+  });
+
+  it('returns null when the project id does not match the plan', async () => {
+    const { pool } = makePool(async () => ({ rows: [baseRow({ plan_project_id: 'other-project' })] }));
+    const result = await acceptPlanPostIntoFeedPlanner(
+      pool,
+      { planPostId: 'plan-post-1', projectId: 'project-1', ownerUserId: 'user-1' },
+      { loadFeedPlan: async () => null, saveFeedPlan: async () => ({}) },
+    );
+    expect(result).toBeNull();
+  });
+
+  it('appends a new feed-plan-post and flips plan-post to scheduled', async () => {
+    const { pool, queries } = makePool(async (sql) => {
+      if (sql.startsWith('SELECT p.*')) return { rows: [baseRow()] };
+      if (sql.startsWith('UPDATE role_room_marketing_plan_posts')) return { rows: [], rowCount: 1 };
+      return { rows: [] };
+    });
+    const loadFeedPlan = vi.fn(async () => ({ posts: [{ id: 'existing-post' }] }));
+    const saveFeedPlan = vi.fn(async () => ({}));
+
+    const result = await acceptPlanPostIntoFeedPlanner(
+      pool,
+      { planPostId: 'plan-post-1', projectId: 'project-1', ownerUserId: 'user-1' },
+      { loadFeedPlan, saveFeedPlan },
+    );
+    expect(result).not.toBeNull();
+    expect(result!.planPost.status).toBe('scheduled');
+    expect(result!.feedPlanPostId).toMatch(/^post-/);
+    // saveFeedPlan called with existing + new post on the right platform.
+    expect(saveFeedPlan).toHaveBeenCalledTimes(1);
+    const [, projectArg, platformArg, postsArg] = saveFeedPlan.mock.calls[0] as [unknown, string, string, any[]];
+    expect(projectArg).toBe('project-1');
+    expect(platformArg).toBe('instagram');
+    expect(postsArg).toHaveLength(2);
+    expect(postsArg[0].id).toBe('existing-post');
+    expect(postsArg[1].id).toBe(result!.feedPlanPostId);
+    expect(postsArg[1].mediaType).toBe('reel');
+    expect(postsArg[1].callToAction).toBe('Book befaring');
+    // Plan-post row got flipped with back-reference.
+    const update = queries.find((q) => q.sql.startsWith('UPDATE role_room_marketing_plan_posts'));
+    expect(update).toBeDefined();
+    expect(update!.args[0]).toBe(result!.feedPlanPostId);
+    expect(update!.args[2]).toBe('plan-post-1');
+  });
+
+  it('is idempotent — re-accepting a scheduled post does not duplicate', async () => {
+    const { pool } = makePool(async () => ({
+      rows: [baseRow({ status: 'scheduled', feed_plan_post_id: 'post-already-1' })],
+    }));
+    const saveFeedPlan = vi.fn(async () => ({}));
+    const result = await acceptPlanPostIntoFeedPlanner(
+      pool,
+      { planPostId: 'plan-post-1', projectId: 'project-1', ownerUserId: 'user-1' },
+      { loadFeedPlan: async () => ({ posts: [] }), saveFeedPlan },
+    );
+    expect(result).not.toBeNull();
+    expect(result!.feedPlanPostId).toBe('post-already-1');
+    expect(saveFeedPlan).not.toHaveBeenCalled();
+  });
+
+  it('maps carousel format to carousel mediaType in the feed post', async () => {
+    const { pool } = makePool(async (sql) => {
+      if (sql.startsWith('SELECT p.*')) return { rows: [baseRow({ format: 'carousel' })] };
+      return { rows: [], rowCount: 1 };
+    });
+    const saveFeedPlan = vi.fn(async () => ({}));
+    await acceptPlanPostIntoFeedPlanner(
+      pool,
+      { planPostId: 'plan-post-1', projectId: 'project-1', ownerUserId: 'user-1' },
+      { loadFeedPlan: async () => null, saveFeedPlan },
+    );
+    const [, , , postsArg] = saveFeedPlan.mock.calls[0] as [unknown, string, string, any[]];
+    expect(postsArg[0].mediaType).toBe('carousel');
+  });
+
+  it('defaults image mediaType for tiktok/linkedin/image/story formats', async () => {
+    for (const format of ['image', 'story', 'tiktok', 'linkedin_post', 'youtube_short']) {
+      const { pool } = makePool(async (sql) => {
+        if (sql.startsWith('SELECT p.*')) return { rows: [baseRow({ format, primary_platform: 'instagram' })] };
+        return { rows: [], rowCount: 1 };
+      });
+      const saveFeedPlan = vi.fn(async () => ({}));
+      await acceptPlanPostIntoFeedPlanner(
+        pool,
+        { planPostId: 'plan-post-1', projectId: 'project-1', ownerUserId: 'user-1' },
+        { loadFeedPlan: async () => null, saveFeedPlan },
+      );
+      const [, , , postsArg] = saveFeedPlan.mock.calls[0] as [unknown, string, string, any[]];
+      expect(postsArg[0].mediaType).toBe('image');
+    }
   });
 });
 

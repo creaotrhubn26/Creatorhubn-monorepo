@@ -1100,6 +1100,31 @@ export const roleRoomAgentService = {
     return payload.posts;
   },
 
+  async acceptMarketingPlanPost(input: {
+    postId: string;
+    projectId: string;
+    scheduledFor?: string | null;
+  }): Promise<{ planPost: MarketingPlanPost; feedPlanPostId: string }> {
+    const response = await fetch(
+      `/api/role-room/marketing-plan/posts/${encodeURIComponent(input.postId)}/accept`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...readRoleRoomAgentHeaders() },
+        body: JSON.stringify({
+          projectId: input.projectId,
+          scheduledFor: input.scheduledFor ?? null,
+        }),
+      },
+    );
+    const payload = (await response.json().catch(() => null)) as
+      | { success?: boolean; planPost?: MarketingPlanPost; feedPlanPostId?: string; error?: string }
+      | null;
+    if (!response.ok || !payload?.success || !payload.planPost || !payload.feedPlanPostId) {
+      throw new Error(payload?.error || 'Kunne ikke akseptere posten inn i feed-planneren.');
+    }
+    return { planPost: payload.planPost, feedPlanPostId: payload.feedPlanPostId };
+  },
+
   async activateMarketingPlan(
     planId: string,
     projectId: string,
