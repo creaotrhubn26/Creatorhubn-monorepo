@@ -55,6 +55,11 @@ import {
   linkCaptureSessionToProject,
   listProjectsForPhotographer,
 } from './capture-projects-service.js';
+import {
+  classifySession,
+  type CaptureAssetForCulling,
+  type CullingStrictness,
+} from './capture-culling-service.js';
 import { captureAssets, captureSessions } from '../migrations/capture-schema.js';
 import { and, asc, eq } from 'drizzle-orm';
 
@@ -718,6 +723,61 @@ export function createCaptureRouter(
   });
 
   // ── Deliver to UniversalShowcase (Phase 2B) ────────────────
+
+  // GET /sessions/:id/cull-suggestions — review-surface helper that
+  // groups the session's assets into reject / weak / keep / hero
+  // buckets based on on-device signals + Claude AI notes + duplicate
+  // clusters. Pure aggregator; doesn't mutate anything, so the
+  // photographer can run it as many times as they want while editing.
+  router.get('/sessions/:id/cull-suggestions', auth, async (req, res) => {
+    const { userId } = req as AuthedRequest;
+    const sessionId = req.params.id;
+    try {
+      // Ownership gate — fetchSession throws if the caller isn't the
+      // session owner (or returns null). We verify before touching
+      // assets so a stranger can't probe cull output for another
+      // photographer's gallery.
+      const session = await fetchSession(db, sessionId, userId);
+      if (!session) {
+        res.status(404).json({ error: 'session_not_found' });
+        return;
+      }
+      const rows = await db
+        .select({
+          id: captureAssets.id,
+          rating: captureAssets.rating,
+          rejected: captureAssets.rejected,
+          flaggedForClient: captureAssets.flaggedForClient,
+          signals: captureAssets.signals,
+        })
+        .from(captureAssets)
+        .where(eq(captureAssets.sessionId, sessionId))
+        .orderBy(asc(captureAssets.captureTime));
+      const forCulling: CaptureAssetForCulling[] = rows.map((r) => ({
+        id: r.id,
+        rating: r.rating ?? 0,
+        rejected: r.rejected ?? false,
+        flaggedForClient: r.flaggedForClient ?? false,
+        signals: (r.signals ?? {}) as CaptureAssetForCulling['signals'],
+      }));
+      const strictnessRaw = typeof req.query.strictness === 'string'
+        ? req.query.strictness.trim().toLowerCase()
+        : '';
+      const strictness: CullingStrictness =
+        strictnessRaw === 'conservative' || strictnessRaw === 'aggressive'
+          ? (strictnessRaw as CullingStrictness)
+          : 'balanced';
+      const summary = classifySession(forCulling, { strictness });
+      res.json({
+        sessionId,
+        strictness,
+        ...summary,
+      });
+    } catch (error) {
+      console.error('[capture] cull-suggestions failed', error);
+      res.status(500).json({ error: 'cull_suggestions_failed' });
+    }
+  });
 
   // Bridges a Capture session into a CreatorHub UniversalShowcase
   // gallery so the iPad's "Deliver" surface produces the same kind of

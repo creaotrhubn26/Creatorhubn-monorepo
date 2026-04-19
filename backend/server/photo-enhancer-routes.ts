@@ -1,5 +1,12 @@
 import express from "express";
 import multer from "multer";
+import type { Pool } from "pg";
+import { suggestPortraitRecipe } from "./photo-enhancer-claude-vision.js";
+import {
+  aggregateUserRecipePreferences,
+  logRecipeFeedback,
+  type PhotoEnhancerRecipe,
+} from "./photo-enhancer-feedback-service.js";
 import crypto from "crypto";
 import fs from "fs/promises";
 import { constants as fsConstants, createWriteStream, existsSync } from "fs";
@@ -187,7 +194,80 @@ type PhotoEnhancerSettings = {
   faceOnlyCrop: boolean;
   preserveBackground: boolean;
   skinTextureGuard: number;
+  // Evoto-parity portrait controls. Each is a 0–100 intensity that the
+  // GFPGAN runner picks up post-face-restoration:
+  //   teethWhiteness  — masked brightness + desaturation on mouth region.
+  //   eyeBrightness   — iris luminance boost + catchlight lift.
+  //   eyeWhiteness    — sclera desaturation/brightening (no ring recolor).
+  //   blemishRemoval  — frequency-separated healing pass on skin region.
+  teethWhiteness: number;
+  eyeBrightness: number;
+  eyeWhiteness: number;
+  blemishRemoval: number;
+  // Per-effect tuning profile. Scales the LAB multipliers and feather
+  // radius inside the Python runner so the photographer can push the
+  // look from conservative (subtle) to aggressive (strong) without the
+  // strength slider having to span the entire taste range.
+  teethProfile: IntensityProfile;
+  eyeBrightnessProfile: IntensityProfile;
+  eyeWhitenessProfile: IntensityProfile;
+  blemishProfile: IntensityProfile;
+  // Subject-aware look. ``subject`` is one of the Claude Vision
+  // categories (food / landscape / product / vehicle / aviation /
+  // other / portrait / group_portrait — the last two are handled by
+  // the portrait retouch pass so the subject_retouch dispatcher is
+  // deliberately a no-op on them). ``subjectLookStrength`` (0-100)
+  // controls how hard the category-specific pass pushes.
+  subject: SubjectKind;
+  subjectLookStrength: number;
 };
+
+type SubjectKind =
+  | ""
+  | "portrait"
+  | "group_portrait"
+  | "food"
+  | "landscape"
+  | "product"
+  | "vehicle"
+  | "aviation"
+  | "other";
+
+const SUBJECT_KINDS: readonly SubjectKind[] = [
+  "",
+  "portrait",
+  "group_portrait",
+  "food",
+  "landscape",
+  "product",
+  "vehicle",
+  "aviation",
+  "other",
+] as const;
+
+function normalizeSubjectKind(value: unknown): SubjectKind {
+  if (typeof value === "string") {
+    const lowered = value.toLowerCase().trim() as SubjectKind;
+    if (SUBJECT_KINDS.includes(lowered)) return lowered;
+  }
+  return "";
+}
+
+type IntensityProfile = "subtle" | "normal" | "strong";
+
+const INTENSITY_PROFILES: readonly IntensityProfile[] = [
+  "subtle",
+  "normal",
+  "strong",
+] as const;
+
+function normalizeIntensityProfile(value: unknown): IntensityProfile {
+  if (typeof value === "string") {
+    const lowered = value.toLowerCase().trim() as IntensityProfile;
+    if (INTENSITY_PROFILES.includes(lowered)) return lowered;
+  }
+  return "normal";
+}
 
 type PhotoEnhancerSavedFile = {
   id: string;
@@ -963,6 +1043,16 @@ const defaultSettings: PhotoEnhancerSettings = {
   faceOnlyCrop: false,
   preserveBackground: true,
   skinTextureGuard: 70,
+  teethWhiteness: 0,
+  eyeBrightness: 0,
+  eyeWhiteness: 0,
+  blemishRemoval: 0,
+  teethProfile: "normal",
+  eyeBrightnessProfile: "normal",
+  eyeWhitenessProfile: "normal",
+  blemishProfile: "normal",
+  subject: "",
+  subjectLookStrength: 0,
 };
 
 const presetSettings: Record<string, Partial<PhotoEnhancerSettings>> = {
@@ -977,6 +1067,10 @@ const presetSettings: Record<string, Partial<PhotoEnhancerSettings>> = {
     gfpganQuality: 82,
     codeformerFidelity: 70,
     skinTextureGuard: 82,
+    teethWhiteness: 25,
+    eyeBrightness: 20,
+    eyeWhiteness: 15,
+    blemishRemoval: 35,
   },
   wedding: {
     brightness: 5,
@@ -988,6 +1082,10 @@ const presetSettings: Record<string, Partial<PhotoEnhancerSettings>> = {
     gfpganQuality: 78,
     codeformerFidelity: 68,
     preserveBackground: true,
+    teethWhiteness: 30,
+    eyeBrightness: 22,
+    eyeWhiteness: 18,
+    blemishRemoval: 40,
   },
   landscape: { contrast: 12, saturation: 16, sharpness: 18, denoising: 25 },
   product: { brightness: 8, contrast: 10, saturation: 6, sharpness: 20 },
@@ -1316,10 +1414,19 @@ function normalizeSettings(
     ...(presetSettings[preset] || {}),
   };
 
+  const STRING_SETTING_KEYS: ReadonlySet<keyof PhotoEnhancerSettings> = new Set([
+    "modelPreference",
+    "teethProfile",
+    "eyeBrightnessProfile",
+    "eyeWhitenessProfile",
+    "blemishProfile",
+    "subject",
+  ]);
+
   for (const key of Object.keys(defaultSettings) as Array<
     keyof PhotoEnhancerSettings
   >) {
-    if (typeof merged[key] === "boolean" || key === "modelPreference") continue;
+    if (typeof merged[key] === "boolean" || STRING_SETTING_KEYS.has(key)) continue;
     const value = readNumber(raw[key]);
     if (value !== null) {
       (merged as Record<string, unknown>)[key] = value;
@@ -1364,6 +1471,22 @@ function normalizeSettings(
     faceOnlyCrop: readBooleanOption("faceOnlyCrop", Boolean(merged.faceOnlyCrop)),
     preserveBackground: readBooleanOption("preserveBackground", Boolean(merged.preserveBackground)),
     skinTextureGuard: clampNumber(merged.skinTextureGuard, 0, 100),
+    teethWhiteness: clampNumber(merged.teethWhiteness, 0, 100),
+    eyeBrightness: clampNumber(merged.eyeBrightness, 0, 100),
+    eyeWhiteness: clampNumber(merged.eyeWhiteness, 0, 100),
+    blemishRemoval: clampNumber(merged.blemishRemoval, 0, 100),
+    teethProfile: normalizeIntensityProfile(raw.teethProfile ?? merged.teethProfile),
+    eyeBrightnessProfile: normalizeIntensityProfile(
+      raw.eyeBrightnessProfile ?? merged.eyeBrightnessProfile,
+    ),
+    eyeWhitenessProfile: normalizeIntensityProfile(
+      raw.eyeWhitenessProfile ?? merged.eyeWhitenessProfile,
+    ),
+    blemishProfile: normalizeIntensityProfile(
+      raw.blemishProfile ?? merged.blemishProfile,
+    ),
+    subject: normalizeSubjectKind(raw.subject ?? merged.subject),
+    subjectLookStrength: clampNumber(merged.subjectLookStrength, 0, 100),
   };
 }
 
@@ -3163,6 +3286,25 @@ async function runGfpganService(params: {
           faceOnlyCrop: params.settings.faceOnlyCrop,
           preserveBackground: params.settings.preserveBackground,
           skinTextureGuard: params.settings.skinTextureGuard,
+          // Evoto-parity portrait sliders. Runner applies the effect
+          // post-GFPGAN using the accompanying intensity profile, which
+          // scales the LAB-shift tuning and feather radius per effect.
+          // Forwarded even when the feature is 0 so the runner can log
+          // uniform telemetry.
+          teethWhiteness: params.settings.teethWhiteness,
+          eyeBrightness: params.settings.eyeBrightness,
+          eyeWhiteness: params.settings.eyeWhiteness,
+          blemishRemoval: params.settings.blemishRemoval,
+          teethProfile: params.settings.teethProfile,
+          eyeBrightnessProfile: params.settings.eyeBrightnessProfile,
+          eyeWhitenessProfile: params.settings.eyeWhitenessProfile,
+          blemishProfile: params.settings.blemishProfile,
+          // Subject-aware pass hint. When the photographer pressed
+          // AI-forslag the frontend seeds these from the Claude
+          // classification + a default strength; manual workflows
+          // leave subject="" and the runner skips the look.
+          subject: params.settings.subject,
+          subjectLookStrength: params.settings.subjectLookStrength,
           requestedModel: params.settings.modelPreference,
         },
         model: {
@@ -3641,7 +3783,7 @@ async function buildPhotoEnhancerSelfTest(options: {
   };
 }
 
-export function createPhotoEnhancerRouter() {
+export function createPhotoEnhancerRouter(pool?: Pool) {
   const router = express.Router();
 
   router.get("/status", async (_req, res) => {
@@ -3771,6 +3913,16 @@ export function createPhotoEnhancerRouter() {
           faceOnlyCrop: true,
           preserveBackground: true,
           skinTextureGuard: { min: 0, max: 100, default: defaultSettings.skinTextureGuard },
+          teethWhiteness: { min: 0, max: 100, default: defaultSettings.teethWhiteness },
+          eyeBrightness: { min: 0, max: 100, default: defaultSettings.eyeBrightness },
+          eyeWhiteness: { min: 0, max: 100, default: defaultSettings.eyeWhiteness },
+          blemishRemoval: { min: 0, max: 100, default: defaultSettings.blemishRemoval },
+          teethProfile: { values: INTENSITY_PROFILES, default: defaultSettings.teethProfile },
+          eyeBrightnessProfile: { values: INTENSITY_PROFILES, default: defaultSettings.eyeBrightnessProfile },
+          eyeWhitenessProfile: { values: INTENSITY_PROFILES, default: defaultSettings.eyeWhitenessProfile },
+          blemishProfile: { values: INTENSITY_PROFILES, default: defaultSettings.blemishProfile },
+          subject: { values: SUBJECT_KINDS, default: defaultSettings.subject },
+          subjectLookStrength: { min: 0, max: 100, default: defaultSettings.subjectLookStrength },
         },
         executionNote:
           "GFPGAN uses the configured runner when available. Other advanced models are exposed as controlled preferences and fall back safely until their runners are connected.",
@@ -4798,6 +4950,138 @@ export function createPhotoEnhancerRouter() {
       }
     },
   );
+
+  // POST /suggest-recipe — Claude Vision-driven first-draft recipe.
+  // Takes a JPEG/PNG/WebP upload, asks Claude Opus 4.7 to read the
+  // image and propose values for every slider the enhancer exposes
+  // (including Evoto-parity teeth/eye/skin + per-effect profile). The
+  // web UI merges the response into the current settings so the
+  // photographer starts from a defensible baseline instead of zero.
+  router.post(
+    "/suggest-recipe",
+    photoEnhancerUpload.single("image"),
+    async (req, res) => {
+      if (!req.file) {
+        return res
+          .status(400)
+          .json({ success: false, error: "image_required" });
+      }
+      const mime = String(req.file.mimetype || "").toLowerCase();
+      if (!["image/jpeg", "image/png", "image/webp"].includes(mime)) {
+        return res
+          .status(415)
+          .json({ success: false, error: "unsupported_mime" });
+      }
+      try {
+        const imageBase64 = req.file.buffer.toString("base64");
+        const presetHint =
+          readString(req.body?.preset) ||
+          readString(req.body?.profession) ||
+          undefined;
+        // Per-user learned drift. Wrapped in a try so a DB hiccup
+        // here can never break the AI suggestion call itself — the
+        // suggestion still fires, just without personalisation.
+        const userId =
+          readString((req.body as Record<string, unknown> | undefined)?.userId) ||
+          readString(req.headers["x-user-id"]) ||
+          null;
+        let userPreferenceSummary: string | undefined;
+        if (pool && userId) {
+          try {
+            const agg = await aggregateUserRecipePreferences(pool, userId);
+            if (agg) userPreferenceSummary = agg;
+          } catch (prefErr) {
+            console.warn(
+              "[photo-enhancer] preference aggregation failed:",
+              prefErr,
+            );
+          }
+        }
+        const result = await suggestPortraitRecipe({
+          imageBase64,
+          mime: mime as "image/jpeg" | "image/png" | "image/webp",
+          presetHint,
+          userPreferenceSummary,
+        });
+        if (!result.ok) {
+          const status =
+            result.error === "not_configured"
+              ? 503
+              : result.error === "timeout"
+                ? 504
+                : result.error === "image_too_large"
+                  ? 413
+                  : 502;
+          return res
+            .status(status)
+            .json({ success: false, error: result.error, detail: result.detail });
+        }
+        res.json({
+          success: true,
+          analysis: result.analysis,
+          recipe: result.recipe,
+          usage: result.usage,
+          personalised: Boolean(userPreferenceSummary),
+        });
+      } catch (error) {
+        console.error("[photo-enhancer] suggest-recipe failed:", error);
+        res
+          .status(500)
+          .json({ success: false, error: "suggest_recipe_failed" });
+      }
+    },
+  );
+
+  // POST /feedback — Records the diff between the AI-suggested recipe
+  // and the recipe the photographer actually enhanced with. Aggregated
+  // by photo-enhancer-feedback-service into per-user drift summaries
+  // that feed back into Claude's next suggestion call.
+  //
+  // Body: { suggested: Recipe, final: Recipe, userId? }
+  // Response: { success: true, id }
+  //
+  // Both recipes are trusted enough to log (they're bounded by the
+  // sanitiser in the suggest route and clampNumber on enhance); diff
+  // is computed server-side to avoid letting the client poison the
+  // log with arbitrary key/value pairs.
+  router.post("/feedback", async (req, res) => {
+    if (!pool) {
+      return res
+        .status(503)
+        .json({ success: false, error: "feedback_not_configured" });
+    }
+    const body = req.body as Record<string, unknown> | undefined;
+    const userId =
+      readString(body?.userId) ||
+      readString(req.headers["x-user-id"]) ||
+      null;
+    if (!userId) {
+      return res
+        .status(400)
+        .json({ success: false, error: "userId_required" });
+    }
+    const suggested = body?.suggested;
+    const final = body?.final;
+    if (!suggested || typeof suggested !== "object" || !final || typeof final !== "object") {
+      return res
+        .status(400)
+        .json({ success: false, error: "suggested_and_final_required" });
+    }
+    try {
+      const { id } = await logRecipeFeedback(
+        pool,
+        userId,
+        suggested as PhotoEnhancerRecipe,
+        final as PhotoEnhancerRecipe,
+      );
+      res.json({ success: true, id });
+    } catch (error) {
+      console.error("[photo-enhancer] feedback log failed:", error);
+      res
+        .status(500)
+        .json({ success: false, error: "feedback_log_failed" });
+    }
+  });
 
   router.post(
     "/enhance",

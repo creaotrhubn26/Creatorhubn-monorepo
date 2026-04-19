@@ -37,6 +37,10 @@ export interface ClientGalleryInfo {
   // Passed through to the viewer so it knows where the gallery came from.
   source: string | null;
   captureSessionId: string | null;
+  /// Project the gallery belongs to. Null for galleries not bound
+  /// to a ProjectCreationWithMemoryCards project (e.g. ad-hoc
+  /// uploads). Used as the key for the project change log.
+  projectId: string | null;
 }
 
 export interface ClientGalleryImageRendered {
@@ -87,6 +91,8 @@ export async function fetchClientGalleryByAccessToken(
     source: typeof settings.source === 'string' ? settings.source : null,
     captureSessionId:
       typeof settings.captureSessionId === 'string' ? settings.captureSessionId : null,
+    projectId:
+      typeof settings.projectId === 'string' ? settings.projectId : null,
   };
 }
 

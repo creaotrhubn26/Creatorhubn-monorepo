@@ -1,6 +1,11 @@
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { and, eq } from 'drizzle-orm';
-import { captureAssets, captureSessions } from '../migrations/capture-schema.js';
+import {
+  captureAssets,
+  captureSessions,
+  type AssetSignalsJson,
+} from '../migrations/capture-schema.js';
+import { updateAssetSignals } from './capture-assets-service.js';
 
 type Db = NodePgDatabase<Record<string, unknown>>;
 
@@ -336,6 +341,34 @@ export async function analyzePhoto(
       cache_creation_input_tokens: response.usage?.cache_creation_input_tokens ?? 0,
       cache_read_input_tokens: response.usage?.cache_read_input_tokens ?? 0,
     };
+
+    // Persist the AI findings onto capture_assets.signals.ai so the
+    // review surface can sort / filter on subject, tonality, and quality
+    // notes without having to re-call Claude or re-query the iPad.
+    // Merges with any prior signals (e.g. on-device sharpness/eyesOpen)
+    // to avoid clobbering those.
+    try {
+      const priorAsset = await input.db
+        .select({ signals: captureAssets.signals })
+        .from(captureAssets)
+        .where(eq(captureAssets.id, input.assetId))
+        .limit(1);
+      const priorSignals = (priorAsset[0]?.signals ?? {}) as AssetSignalsJson;
+      await updateAssetSignals(input.db as any, input.ownerUserId, input.assetId, {
+        ...priorSignals,
+        ai: {
+          subject: analysis.subject,
+          confidence: analysis.confidence,
+          tonality: analysis.tonality,
+          qualityNotes: analysis.quality_notes,
+          analyzedAt: new Date().toISOString(),
+        },
+      });
+    } catch (writeErr) {
+      // Signal persistence must never break the analyze response itself —
+      // the iPad still got a usable recipe. Log and move on.
+      console.warn('capture-analyze: failed to persist AI signals', writeErr);
+    }
 
     return { ok: true, analysis, usage };
   } catch (err: any) {
