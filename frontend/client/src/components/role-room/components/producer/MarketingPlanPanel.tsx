@@ -29,12 +29,15 @@ import {
   Refresh as RefreshIcon,
 } from '@mui/icons-material';
 import roleRoomAgentService, {
+  type ClientPortalInvite,
   type MarketingPlan,
   type MarketingPlanPost,
   type MarketingPlanReadiness,
   MarketingPlanReadinessError,
   RoleRoomFeedEntitlementError,
 } from '../../services/roleRoomAgentService';
+import TextField from '@mui/material/TextField';
+import Snackbar from '@mui/material/Snackbar';
 import type { RoleRoomAgentProducerBootstrapResult } from '../../services/roleRoomAgentService';
 
 interface MarketingPlanPanelProps {
@@ -315,6 +318,8 @@ export default function MarketingPlanPanel({
             }}
             onError={setError}
           />
+          <Divider sx={{ borderColor: 'rgba(148,163,184,0.12)' }} />
+          <ClientPortalSection projectId={projectId} onError={setError} />
         </Stack>
       ) : !readiness?.ready ? null : (
         <Alert
@@ -781,6 +786,215 @@ function PostCard({
           </Stack>
         </Box>
       </Stack>
+    </Box>
+  );
+}
+
+function ClientPortalSection({ projectId, onError }: { projectId: string; onError: (message: string) => void }) {
+  const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [invites, setInvites] = useState<ClientPortalInvite[]>([]);
+  const [latestLink, setLatestLink] = useState<string | null>(null);
+  const [copyTick, setCopyTick] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const list = await roleRoomAgentService.listClientPortalInvites(projectId);
+      if (!cancelled) setInvites(list);
+    })();
+    return () => { cancelled = true; };
+  }, [projectId]);
+
+  const handleInvite = useCallback(async () => {
+    if (!email.trim()) return;
+    setCreating(true);
+    try {
+      const result = await roleRoomAgentService.createClientPortalInvite({
+        projectId,
+        clientEmail: email.trim(),
+        clientName: name.trim() || null,
+      });
+      setInvites((current) => [result.invite, ...current]);
+      setLatestLink(result.magicLinkUrl);
+      setEmail('');
+      setName('');
+    } catch (caught) {
+      onError(caught instanceof Error ? caught.message : 'Kunne ikke opprette invitasjon.');
+    } finally {
+      setCreating(false);
+    }
+  }, [projectId, email, name, onError]);
+
+  const handleRevoke = useCallback(async (inviteId: string) => {
+    if (!window.confirm('Revokere invitasjonen? Klientens lenke stopper å funke umiddelbart.')) return;
+    const ok = await roleRoomAgentService.revokeClientPortalInvite(inviteId);
+    if (ok) {
+      setInvites((current) =>
+        current.map((i) => (i.id === inviteId ? { ...i, status: 'revoked' } : i)),
+      );
+    }
+  }, []);
+
+  const handleCopy = useCallback(async () => {
+    if (!latestLink) return;
+    try {
+      await navigator.clipboard.writeText(latestLink);
+      setCopyTick(true);
+    } catch {
+      /* clipboard may be unavailable; user can select text manually */
+    }
+  }, [latestLink]);
+
+  return (
+    <Box>
+      <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.92rem', mb: 0.4 }}>
+        Klient-portal
+      </Typography>
+      <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.8rem', mb: 1.2 }}>
+        Send en magisk lenke til klienten — de ser dashbordet uten å opprette konto. Lenken varer 30 dager.
+      </Typography>
+
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems="stretch">
+        <TextField
+          placeholder="klient@firma.no"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          size="small"
+          fullWidth
+          sx={{
+            '& .MuiInputBase-root': {
+              bgcolor: 'rgba(15,23,42,0.55)',
+              color: '#e2e8f0',
+              fontSize: '0.88rem',
+            },
+            '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.22)' },
+          }}
+        />
+        <TextField
+          placeholder="Navn (valgfritt)"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          size="small"
+          sx={{
+            minWidth: { sm: 180 },
+            '& .MuiInputBase-root': {
+              bgcolor: 'rgba(15,23,42,0.55)',
+              color: '#e2e8f0',
+              fontSize: '0.88rem',
+            },
+            '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.22)' },
+          }}
+        />
+        <Button
+          variant="contained"
+          onClick={handleInvite}
+          disabled={creating || !email.trim()}
+          startIcon={creating ? <CircularProgress size={14} color="inherit" /> : null}
+          sx={{
+            textTransform: 'none',
+            fontWeight: 700,
+            background: 'linear-gradient(135deg, #22d3ee 0%, #3b82f6 100%)',
+            flexShrink: 0,
+          }}
+        >
+          {creating ? 'Lager…' : 'Send invitasjon'}
+        </Button>
+      </Stack>
+
+      {latestLink ? (
+        <Box
+          sx={{
+            mt: 1.2,
+            p: 1.2,
+            borderRadius: 2,
+            bgcolor: 'rgba(34,197,94,0.08)',
+            border: '1px solid rgba(34,197,94,0.24)',
+          }}
+        >
+          <Typography sx={{ color: '#86efac', fontSize: '0.76rem', fontWeight: 700, mb: 0.4 }}>
+            Lenken er klar — kopier og lim inn i e-post til klienten
+          </Typography>
+          <Stack direction="row" spacing={0.6} alignItems="center">
+            <Typography
+              sx={{
+                flex: 1, color: '#e2e8f0', fontSize: '0.82rem',
+                fontFamily: 'monospace',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}
+            >
+              {latestLink}
+            </Typography>
+            <Button size="small" onClick={handleCopy} sx={{ textTransform: 'none', color: '#86efac' }}>
+              Kopier
+            </Button>
+          </Stack>
+        </Box>
+      ) : null}
+
+      {invites.length > 0 ? (
+        <Box sx={{ mt: 1.6 }}>
+          <Typography sx={{ color: '#cbd5e1', fontSize: '0.76rem', fontWeight: 700, mb: 0.6 }}>
+            Aktive invitasjoner
+          </Typography>
+          <Stack spacing={0.6}>
+            {invites.map((invite) => (
+              <Stack
+                key={invite.id}
+                direction="row"
+                spacing={0.8}
+                alignItems="center"
+                sx={{
+                  p: 1,
+                  borderRadius: 1.4,
+                  bgcolor: 'rgba(15,23,42,0.5)',
+                  border: '1px solid rgba(148,163,184,0.14)',
+                  opacity: invite.status === 'active' ? 1 : 0.5,
+                }}
+              >
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography sx={{ color: '#e2e8f0', fontSize: '0.86rem', fontWeight: 700 }}>
+                    {invite.clientName ? `${invite.clientName} · ` : ''}{invite.clientEmail}
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.72rem' }}>
+                    {invite.lastSeenAt
+                      ? `Sist sett ${new Date(invite.lastSeenAt).toLocaleDateString('nb-NO')}`
+                      : 'Ikke besøkt ennå'} · Utløper {new Date(invite.expiresAt).toLocaleDateString('nb-NO')}
+                  </Typography>
+                </Box>
+                <Chip
+                  size="small"
+                  label={invite.status === 'active' ? 'Aktiv' : invite.status === 'revoked' ? 'Revokert' : 'Utløpt'}
+                  sx={{
+                    bgcolor: invite.status === 'active' ? 'rgba(34,197,94,0.16)' : 'rgba(148,163,184,0.16)',
+                    color: invite.status === 'active' ? '#86efac' : '#cbd5e1',
+                    fontWeight: 700,
+                    fontSize: '0.7rem',
+                  }}
+                />
+                {invite.status === 'active' ? (
+                  <Button
+                    size="small"
+                    onClick={() => handleRevoke(invite.id)}
+                    sx={{ textTransform: 'none', color: 'rgba(248,113,113,0.9)', fontSize: '0.76rem' }}
+                  >
+                    Revoker
+                  </Button>
+                ) : null}
+              </Stack>
+            ))}
+          </Stack>
+        </Box>
+      ) : null}
+
+      <Snackbar
+        open={copyTick}
+        autoHideDuration={2000}
+        onClose={() => setCopyTick(false)}
+        message="Lenken er kopiert"
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      />
     </Box>
   );
 }

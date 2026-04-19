@@ -195,6 +195,13 @@ import {
   listPlanPosts,
   persistPlanPosts,
 } from "./role-room-marketing-plan-posts.js";
+import {
+  createClientPortalInvite,
+  fetchClientDashboard,
+  listClientPortalSessionsForProject,
+  resolveClientPortalSession,
+  revokeClientPortalSession,
+} from "./role-room-client-portal.js";
 import { registerTidumAdminRoutes } from "./tidum-admin-routes.js";
 import {
   getNotebookLmWorkspaceStatus,
@@ -29672,6 +29679,117 @@ app.post("/api/role-room/marketing-plan/:planId/activate", async (req, res) => {
   }
   const plan = await fetchActiveMarketingPlan(pool, projectId);
   return res.json({ success: true, plan });
+});
+
+// ── Client portal (magic-link dashboard) ────────────────────────────────
+//
+// Producer creates invites and can list + revoke them. The client-
+// facing dashboard endpoint is unauthenticated — the session token
+// IS the credential (like any share-URL). Producers share the magic
+// link with clients via email outside the app for Slice 4; a
+// templated email sender is a follow-up.
+
+app.post("/api/role-room/client-portal/invite", async (req, res) => {
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+  const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
+  const projectId = typeof body.projectId === "string" ? body.projectId.trim() : "";
+  const clientEmail = typeof body.clientEmail === "string" ? body.clientEmail.trim() : "";
+  const clientName = typeof body.clientName === "string" ? body.clientName : null;
+  const expiresInDays = typeof body.expiresInDays === "number" ? body.expiresInDays : undefined;
+  if (!projectId || !clientEmail) {
+    return res.status(400).json({ success: false, error: "projectId og clientEmail er påkrevd." });
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clientEmail)) {
+    return res.status(400).json({ success: false, error: "clientEmail ser ikke ut som en gyldig e-post." });
+  }
+  const invite = await createClientPortalInvite(pool, {
+    projectId,
+    invitedByUserId: session.userId,
+    clientEmail,
+    clientName,
+    expiresInDays,
+  });
+  if (!invite) {
+    return res.status(500).json({ success: false, error: "Klarte ikke å opprette invitasjonen." });
+  }
+  const base = process.env.CREATORHUB_PUBLIC_URL
+    || process.env.APP_URL
+    || "https://theroleroom.com";
+  const magicLinkUrl = `${base.replace(/\/$/, "")}/client/portal/${encodeURIComponent(invite.sessionToken)}`;
+  return res.json({
+    success: true,
+    invite: {
+      id: invite.id,
+      clientEmail: invite.clientEmail,
+      clientName: invite.clientName,
+      projectId: invite.projectId,
+      expiresAt: invite.expiresAt.toISOString(),
+      status: invite.status,
+      createdAt: invite.createdAt.toISOString(),
+    },
+    magicLinkUrl,
+  });
+});
+
+app.get("/api/role-room/client-portal/invites/:projectId", async (req, res) => {
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+  const projectId = String(req.params.projectId || "").trim();
+  if (!projectId) {
+    return res.status(400).json({ success: false, error: "projectId er påkrevd." });
+  }
+  const invites = await listClientPortalSessionsForProject(pool, projectId, session.userId);
+  return res.json({
+    success: true,
+    invites: invites.map((i) => ({
+      id: i.id,
+      clientEmail: i.clientEmail,
+      clientName: i.clientName,
+      projectId: i.projectId,
+      status: i.status,
+      expiresAt: i.expiresAt.toISOString(),
+      createdAt: i.createdAt.toISOString(),
+      lastSeenAt: i.lastSeenAt?.toISOString() ?? null,
+    })),
+  });
+});
+
+app.post("/api/role-room/client-portal/invites/:inviteId/revoke", async (req, res) => {
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+  const inviteId = String(req.params.inviteId || "").trim();
+  if (!inviteId) {
+    return res.status(400).json({ success: false, error: "inviteId er påkrevd." });
+  }
+  const ok = await revokeClientPortalSession(pool, inviteId, session.userId);
+  if (!ok) {
+    return res.status(404).json({ success: false, error: "Fant ingen aktiv invitasjon å revokere." });
+  }
+  return res.json({ success: true });
+});
+
+// Public — magic-link-auth via session_token query param. Returns the
+// marketing plan dashboard data scoped to the session's project.
+app.get("/api/client/portal/marketing-plan", async (req, res) => {
+  const token = typeof req.query.token === "string" ? req.query.token : "";
+  if (!token) return res.status(400).json({ error: "missing_token" });
+  const session = await resolveClientPortalSession(pool, token);
+  if (!session) return res.status(404).json({ error: "invalid_or_expired_token" });
+  const dashboard = await fetchClientDashboard(pool, session);
+  if (!dashboard) {
+    return res.status(200).json({
+      status: "no_plan_yet",
+      project: { id: session.projectId, title: null },
+      clientName: session.clientName,
+      sessionExpiresAt: session.expiresAt.toISOString(),
+    });
+  }
+  return res.json({
+    status: "ok",
+    clientName: session.clientName,
+    ...dashboard,
+  });
 });
 
 // Meta webhook for IG events (status updates, mention notifications, etc.)

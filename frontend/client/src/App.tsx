@@ -50,6 +50,8 @@ import VideoShowcase from '@/pages/video-showcase';
 import MusicShowcase from '@/pages/music-showcase';
 import ShowcaseAdmin from '@/pages/showcase-admin';
 import ClientGallery from '@/pages/client-gallery';
+import ClientPortalMarketingPage from '@/pages/client-portal-marketing';
+import CullingReviewPage from '@/pages/CullingReview';
 import ContractView from '@/pages/contract-view';
 import AdminNotificationDisplay from '@/components/notifications/AdminNotificationDisplay';
 import VerificationSystemDashboard from '@/components/admin/VerificationSystemDashboard';
@@ -696,6 +698,8 @@ function App() {
                   <Route path="/about-us" component={About as React.ComponentType<any>} />
                   <Route path="/client/gallery/:projectId/:accessToken" component={ClientGallery as React.ComponentType<any>} />
                   <Route path="/client/gallery/:accessToken" component={ClientGallery as React.ComponentType<any>} />
+                  <Route path="/client/portal/:token" component={ClientPortalMarketingPage as React.ComponentType<any>} />
+                  <Route path="/capture/sessions/:sessionId/culling" component={CullingReviewPage as React.ComponentType<any>} />
                   <Route path="/bryllup/:projectId" component={WeddingClient} />
                   <Route path="/showcase/:projectId" component={ShowcaseClient} />
                   <Route path="/showcase-enhanced/:projectId" component={ShowcaseClientEnhancedRouteWrapper as React.ComponentType<any>} />

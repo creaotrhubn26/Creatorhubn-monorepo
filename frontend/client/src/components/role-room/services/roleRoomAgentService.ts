@@ -1100,6 +1100,45 @@ export const roleRoomAgentService = {
     return payload.posts;
   },
 
+  async createClientPortalInvite(input: {
+    projectId: string;
+    clientEmail: string;
+    clientName?: string | null;
+    expiresInDays?: number;
+  }): Promise<{ invite: ClientPortalInvite; magicLinkUrl: string }> {
+    const response = await fetch('/api/role-room/client-portal/invite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...readRoleRoomAgentHeaders() },
+      body: JSON.stringify(input),
+    });
+    const payload = (await response.json().catch(() => null)) as
+      | { success?: boolean; invite?: ClientPortalInvite; magicLinkUrl?: string; error?: string }
+      | null;
+    if (!response.ok || !payload?.success || !payload.invite || !payload.magicLinkUrl) {
+      throw new Error(payload?.error || 'Kunne ikke opprette klient-invitasjon.');
+    }
+    return { invite: payload.invite, magicLinkUrl: payload.magicLinkUrl };
+  },
+
+  async listClientPortalInvites(projectId: string): Promise<ClientPortalInvite[]> {
+    const response = await fetch(
+      `/api/role-room/client-portal/invites/${encodeURIComponent(projectId)}`,
+      { headers: readRoleRoomAgentHeaders() },
+    );
+    const payload = (await response.json().catch(() => null)) as
+      | { success?: boolean; invites?: ClientPortalInvite[] }
+      | null;
+    return Array.isArray(payload?.invites) ? payload!.invites! : [];
+  },
+
+  async revokeClientPortalInvite(inviteId: string): Promise<boolean> {
+    const response = await fetch(
+      `/api/role-room/client-portal/invites/${encodeURIComponent(inviteId)}/revoke`,
+      { method: 'POST', headers: readRoleRoomAgentHeaders() },
+    );
+    return response.ok;
+  },
+
   async acceptMarketingPlanPost(input: {
     postId: string;
     projectId: string;
@@ -1192,6 +1231,17 @@ export interface MarketingPlan {
   horizonDays: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ClientPortalInvite {
+  id: string;
+  clientEmail: string;
+  clientName: string | null;
+  projectId: string;
+  status: 'active' | 'revoked' | 'expired';
+  expiresAt: string;
+  createdAt: string;
+  lastSeenAt?: string | null;
 }
 
 export interface MarketingPlanPost {
