@@ -1062,6 +1062,44 @@ export const roleRoomAgentService = {
     return payload?.plan ?? null;
   },
 
+  async listMarketingPlanPosts(planId: string): Promise<MarketingPlanPost[]> {
+    const response = await fetch(
+      `/api/role-room/marketing-plan/${encodeURIComponent(planId)}/posts`,
+      { headers: readRoleRoomAgentHeaders() },
+    );
+    const payload = (await response.json().catch(() => null)) as
+      | { success?: boolean; posts?: MarketingPlanPost[] }
+      | null;
+    return Array.isArray(payload?.posts) ? payload!.posts! : [];
+  },
+
+  async generateMarketingPlanPosts(input: {
+    planId: string;
+    projectId: string;
+  }): Promise<MarketingPlanPost[]> {
+    const response = await fetch(
+      `/api/role-room/marketing-plan/${encodeURIComponent(input.planId)}/generate-posts`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...readRoleRoomAgentHeaders() },
+        body: JSON.stringify({ projectId: input.projectId }),
+      },
+    );
+    const payload = (await response.json().catch(() => null)) as
+      | { success?: boolean; posts?: MarketingPlanPost[]; error?: string; entitlement?: unknown }
+      | null;
+    if (response.status === 402) {
+      throw new RoleRoomFeedEntitlementError(
+        payload?.error || 'Post-generering krever aktiv plan eller add-on.',
+        payload?.entitlement as never,
+      );
+    }
+    if (!response.ok || !payload?.success || !Array.isArray(payload.posts)) {
+      throw new Error(payload?.error || 'Klarte ikke å generere post-planen.');
+    }
+    return payload.posts;
+  },
+
   async activateMarketingPlan(
     planId: string,
     projectId: string,
@@ -1127,6 +1165,28 @@ export interface MarketingPlan {
   generatedWithModel: string | null;
   startDate: string | null;
   horizonDays: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MarketingPlanPost {
+  id: string;
+  planId: string;
+  pillarId: string | null;
+  sortOrder: number;
+  dayOffset: number | null;
+  hook: string;
+  format: 'reel' | 'carousel' | 'image' | 'story' | 'tiktok' | 'linkedin_post' | 'youtube_short';
+  script: string | null;
+  captionDraft: string | null;
+  callToAction: string | null;
+  primaryPlatform: 'instagram' | 'tiktok' | 'linkedin' | 'youtube' | 'facebook' | null;
+  crossPostPlan: Array<{ platform: string; delayDays: number; adaptationNote?: string }>;
+  goalKpi: { metric: string; target: number; per: 'post' | 'week' | 'month' | 'quarter' } | null;
+  status: 'proposed' | 'scheduled' | 'published' | 'skipped';
+  feedPlanPostId: string | null;
+  scheduledFor: string | null;
+  publishedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }

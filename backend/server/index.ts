@@ -57,6 +57,10 @@ import {
   listProjectChangeLog,
   recordProjectChange,
 } from "./project-change-log.js";
+import {
+  createBatch as createDriveUploadBatch,
+  fetchBatch as fetchDriveUploadBatch,
+} from "./drive-batch-upload-service.js";
 import { pruneAiAuditLog } from "./role-room-ai-audit.js";
 import { pruneAgentCache } from "./role-room-agent-cache.js";
 import { runDailyAgentScan } from "./role-room-agent-daily-scan.js";
@@ -183,6 +187,11 @@ import {
   generateMarketingPlan,
   persistGeneratedMarketingPlan,
 } from "./role-room-marketing-plan.js";
+import {
+  generatePlanPosts,
+  listPlanPosts,
+  persistPlanPosts,
+} from "./role-room-marketing-plan-posts.js";
 import { registerTidumAdminRoutes } from "./tidum-admin-routes.js";
 import {
   getNotebookLmWorkspaceStatus,
@@ -29548,6 +29557,73 @@ app.get("/api/role-room/marketing-plan/:projectId", async (req, res) => {
   return res.json({ success: true, plan });
 });
 
+app.get("/api/role-room/marketing-plan/:planId/posts", async (req, res) => {
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+  const planId = String(req.params.planId || "").trim();
+  if (!planId) {
+    return res.status(400).json({ success: false, error: "planId er påkrevd." });
+  }
+  const posts = await listPlanPosts(pool, planId);
+  return res.json({ success: true, posts });
+});
+
+app.post("/api/role-room/marketing-plan/:planId/generate-posts", async (req, res) => {
+  const featureId = "role-room-agent-producer";
+  if (!isCompatAdminFeatureEnabled(featureId)) {
+    return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
+  }
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+
+  const planId = String(req.params.planId || "").trim();
+  const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
+  const projectId = typeof body.projectId === "string" ? body.projectId.trim() : "";
+  if (!planId || !projectId) {
+    return res.status(400).json({ success: false, error: "planId og projectId er påkrevd." });
+  }
+
+  // Entitlement — 30-post Claude-gen counts against the AI quota.
+  const entitlement = await checkAgentEntitlement(pool, session.userId, session.role);
+  if (!entitlement.allowed) {
+    return res.status(402).json({
+      success: false,
+      error: entitlement.reason || "Markedsplan-generering krever aktiv plan eller add-on.",
+      entitlement,
+    });
+  }
+
+  // Load the plan + pillars so we can hand Claude the full strategy
+  // context. Ownership gate: plan must belong to the session user's
+  // project (fetchActiveMarketingPlan only returns draft/active; we
+  // also verify owner_user_id to prevent cross-project generation).
+  const plan = await fetchActiveMarketingPlan(pool, projectId);
+  if (!plan || plan.id !== planId || plan.ownerUserId !== session.userId) {
+    return res.status(404).json({ success: false, error: "Fant ingen aktiv markedsplan for dette prosjektet." });
+  }
+
+  const generated = await generatePlanPosts({
+    strategy: plan.strategy,
+    pillars: plan.pillars,
+    horizonDays: plan.horizonDays,
+  });
+  if (!generated) {
+    return res.status(503).json({
+      success: false,
+      error: "Claude kunne ikke generere post-planen nå. Prøv igjen om et øyeblikk.",
+    });
+  }
+  const persisted = await persistPlanPosts(pool, {
+    planId,
+    posts: generated.posts,
+    pillarIndexToId: generated.pillarIndexToId,
+  });
+  if (!persisted) {
+    return res.status(500).json({ success: false, error: "Kunne ikke lagre post-planen." });
+  }
+  return res.json({ success: true, posts: persisted, model: generated.model });
+});
+
 app.post("/api/role-room/marketing-plan/:planId/activate", async (req, res) => {
   const session = requireAdminSession(req, res);
   if (!session) return;
@@ -56325,6 +56401,95 @@ app.get("/api/projects/:id/change-log", async (req, res) => {
     res.json({ entries });
   } catch (error) {
     console.error("[project-change-log] fetch failed", error);
+    res.status(500).json({ error: "fetch_failed" });
+  }
+});
+
+// MARK: Drive batch upload pipeline ----------------------------------
+//
+// POST /api/drive/batches — create a new batch; body carries the
+// items (deduped server-side so the returned count is honest).
+// GET  /api/drive/batches/:id — batch snapshot + progress.
+//
+// The orchestrator runs via ``advanceBatch`` calls driven by a
+// separate worker (out of scope here; see drive-batch-upload-wiring
+// for the live hookup). These routes are the create + read side
+// only — safe to ship independently of the worker.
+
+app.post("/api/drive/batches", async (req, res) => {
+  try {
+    const userId = getUserIdFromAuth(req);
+    if (!userId) return res.status(401).json({ error: "unauthorized" });
+
+    const body = req.body ?? {};
+    const projectId =
+      typeof body.projectId === "string" && body.projectId.length > 0
+        ? body.projectId
+        : null;
+    const rawItems = Array.isArray(body.items) ? body.items : [];
+    const items = rawItems
+      .map((entry: unknown) => {
+        if (!entry || typeof entry !== "object") return null;
+        const obj = entry as Record<string, unknown>;
+        const required =
+          typeof obj.localId === "string" &&
+          obj.localId.length > 0 &&
+          typeof obj.localPath === "string" &&
+          typeof obj.driveName === "string" &&
+          obj.driveName.length > 0 &&
+          typeof obj.targetFolderId === "string" &&
+          obj.targetFolderId.length > 0 &&
+          typeof obj.mimeType === "string" &&
+          typeof obj.checksumSha256 === "string" &&
+          obj.checksumSha256.length > 0;
+        if (!required) return null;
+        const size = Number(obj.sizeBytes);
+        if (!Number.isFinite(size) || size < 0) return null;
+        return {
+          localId: obj.localId as string,
+          localPath: obj.localPath as string,
+          driveName: obj.driveName as string,
+          targetFolderId: obj.targetFolderId as string,
+          mimeType: obj.mimeType as string,
+          sizeBytes: size,
+          checksumSha256: obj.checksumSha256 as string,
+        };
+      })
+      .filter((item: unknown): item is NonNullable<typeof item> => item !== null);
+
+    if (items.length === 0) {
+      return res.status(400).json({ error: "no_valid_items" });
+    }
+
+    const result = await createDriveUploadBatch(pool, {
+      userId,
+      projectId,
+      items,
+    });
+    res.status(201).json({
+      batchId: result.batchId,
+      dedupedCount: result.dedupedCount,
+      duplicateLocalIds: result.duplicateLocalIds,
+    });
+  } catch (error) {
+    console.error("[drive-batch] create failed", error);
+    res.status(500).json({ error: "create_failed" });
+  }
+});
+
+app.get("/api/drive/batches/:id", async (req, res) => {
+  try {
+    const userId = getUserIdFromAuth(req);
+    if (!userId) return res.status(401).json({ error: "unauthorized" });
+    const snapshot = await fetchDriveUploadBatch(pool, userId, req.params.id);
+    if (!snapshot) {
+      // 404 — we don't distinguish "your batch doesn't exist" from
+      // "someone else's batch" to avoid batch-id enumeration.
+      return res.status(404).json({ error: "not_found" });
+    }
+    res.json(snapshot);
+  } catch (error) {
+    console.error("[drive-batch] fetch failed", error);
     res.status(500).json({ error: "fetch_failed" });
   }
 });

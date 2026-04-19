@@ -29,6 +29,7 @@ import {
 } from '@mui/icons-material';
 import roleRoomAgentService, {
   type MarketingPlan,
+  type MarketingPlanPost,
   type MarketingPlanReadiness,
   MarketingPlanReadinessError,
   RoleRoomFeedEntitlementError,
@@ -61,9 +62,11 @@ export default function MarketingPlanPanel({
   onEntitlementBlocked,
 }: MarketingPlanPanelProps) {
   const [plan, setPlan] = useState<MarketingPlan | null>(null);
+  const [posts, setPosts] = useState<MarketingPlanPost[]>([]);
   const [readiness, setReadiness] = useState<MarketingPlanReadiness | null>(null);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [generatingPosts, setGeneratingPosts] = useState(false);
   const [activating, setActivating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -78,7 +81,14 @@ export default function MarketingPlanPanel({
     (async () => {
       try {
         const existing = await roleRoomAgentService.getMarketingPlan(projectId);
-        if (!cancelled) setPlan(existing);
+        if (cancelled) return;
+        setPlan(existing);
+        if (existing) {
+          const existingPosts = await roleRoomAgentService.listMarketingPlanPosts(existing.id);
+          if (!cancelled) setPosts(existingPosts);
+        } else {
+          setPosts([]);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -116,6 +126,7 @@ export default function MarketingPlanPanel({
         bootstrap,
       });
       setPlan(generated);
+      setPosts([]); // new plan = old posts archived with it
     } catch (caught) {
       if (caught instanceof MarketingPlanReadinessError) {
         setReadiness(caught.readiness);
@@ -131,6 +142,29 @@ export default function MarketingPlanPanel({
       setGenerating(false);
     }
   }, [bootstrap, projectId, onEntitlementBlocked]);
+
+  const handleGeneratePosts = useCallback(async () => {
+    if (!plan) return;
+    setGeneratingPosts(true);
+    setError(null);
+    try {
+      const generated = await roleRoomAgentService.generateMarketingPlanPosts({
+        planId: plan.id,
+        projectId,
+      });
+      setPosts(generated);
+    } catch (caught) {
+      if (caught instanceof RoleRoomFeedEntitlementError) {
+        const message = caught.message || 'Post-generering krever aktiv Role Room-pakke.';
+        setError(message);
+        onEntitlementBlocked?.(message);
+      } else {
+        setError(caught instanceof Error ? caught.message : 'Ukjent feil.');
+      }
+    } finally {
+      setGeneratingPosts(false);
+    }
+  }, [plan, projectId, onEntitlementBlocked]);
 
   const handleActivate = useCallback(async () => {
     if (!plan) return;
@@ -268,6 +302,13 @@ export default function MarketingPlanPanel({
           <StrategySection strategy={plan.strategy} />
           <Divider sx={{ borderColor: 'rgba(148,163,184,0.12)' }} />
           <PillarsSection pillars={plan.pillars} />
+          <Divider sx={{ borderColor: 'rgba(148,163,184,0.12)' }} />
+          <PostsSection
+            plan={plan}
+            posts={posts}
+            generating={generatingPosts}
+            onGenerate={handleGeneratePosts}
+          />
         </Stack>
       ) : !readiness?.ready ? null : (
         <Alert
@@ -436,6 +477,227 @@ function PillarsSection({ pillars }: { pillars: MarketingPlan['pillars'] }) {
             ) : null}
           </Box>
         ))}
+      </Stack>
+    </Box>
+  );
+}
+
+const FORMAT_LABEL: Record<MarketingPlanPost['format'], string> = {
+  reel: 'Reel',
+  carousel: 'Carousel',
+  image: 'Image',
+  story: 'Story',
+  tiktok: 'TikTok',
+  linkedin_post: 'LinkedIn',
+  youtube_short: 'YT Short',
+};
+
+const FORMAT_COLOR: Record<MarketingPlanPost['format'], string> = {
+  reel: 'rgba(221,42,123,0.18)',
+  carousel: 'rgba(245,133,41,0.2)',
+  image: 'rgba(34,211,238,0.16)',
+  story: 'rgba(168,85,247,0.2)',
+  tiktok: 'rgba(236,72,153,0.2)',
+  linkedin_post: 'rgba(59,130,246,0.22)',
+  youtube_short: 'rgba(239,68,68,0.18)',
+};
+
+function PostsSection({
+  plan,
+  posts,
+  generating,
+  onGenerate,
+}: {
+  plan: MarketingPlan;
+  posts: MarketingPlanPost[];
+  generating: boolean;
+  onGenerate: () => void;
+}) {
+  // Group by pillar so pillar → posts is easy to scan, ordered by
+  // pillar sortOrder. Un-pillared posts go at the end under "Uten tag".
+  const grouped = useMemo(() => {
+    const groups = new Map<string | null, MarketingPlanPost[]>();
+    for (const p of posts) {
+      const key = p.pillarId;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(p);
+    }
+    const result: Array<{ pillarId: string | null; name: string; posts: MarketingPlanPost[] }> = [];
+    for (const pillar of plan.pillars) {
+      const group = groups.get(pillar.id) ?? [];
+      if (group.length > 0) result.push({ pillarId: pillar.id, name: pillar.name, posts: group });
+    }
+    const orphans = groups.get(null) ?? [];
+    if (orphans.length > 0) result.push({ pillarId: null, name: 'Uten pillar-tag', posts: orphans });
+    return result;
+  }, [plan.pillars, posts]);
+
+  return (
+    <Box>
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }} justifyContent="space-between" sx={{ mb: 1 }}>
+        <Box>
+          <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.92rem' }}>
+            {plan.horizonDays}-dagers plan{posts.length > 0 ? ` (${posts.length} posts)` : ''}
+          </Typography>
+          <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.78rem' }}>
+            Hook + format + script + CTA per post, balansert på tvers av pillars.
+          </Typography>
+        </Box>
+        <Button
+          variant="outlined"
+          size="small"
+          onClick={onGenerate}
+          disabled={generating}
+          startIcon={generating ? <CircularProgress size={14} /> : <AutoAwesomeIcon fontSize="small" />}
+          sx={{
+            textTransform: 'none',
+            fontWeight: 700,
+            color: '#22d3ee',
+            borderColor: 'rgba(34,211,238,0.5)',
+            '&:hover': { borderColor: '#22d3ee', bgcolor: 'rgba(34,211,238,0.08)' },
+          }}
+        >
+          {generating ? 'Genererer posts…' : posts.length > 0 ? 'Regenerer posts' : 'Generer 30-dagers plan'}
+        </Button>
+      </Stack>
+
+      {posts.length === 0 ? (
+        <Alert
+          severity="info"
+          sx={{ bgcolor: 'rgba(34,211,238,0.06)', color: '#cbd5e1', border: '1px solid rgba(34,211,238,0.2)' }}
+        >
+          Ingen post-forslag ennå. Klikk «Generer 30-dagers plan» — Claude bygger én post
+          per dag balansert på tvers av pillars, med hook, format, script og CTA ferdig
+          skrevet.
+        </Alert>
+      ) : (
+        <Stack spacing={1.4}>
+          {grouped.map((group) => (
+            <Box key={group.pillarId ?? 'orphan'}>
+              <Stack direction="row" alignItems="center" spacing={0.8} sx={{ mb: 0.8 }}>
+                <Box
+                  sx={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: '50%',
+                    bgcolor: '#a855f7',
+                  }}
+                />
+                <Typography sx={{ color: '#e9d5ff', fontWeight: 700, fontSize: '0.84rem' }}>
+                  {group.name}
+                </Typography>
+                <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.76rem' }}>
+                  {group.posts.length} post{group.posts.length === 1 ? '' : 's'}
+                </Typography>
+              </Stack>
+              <Stack spacing={0.8}>
+                {group.posts.map((post) => (
+                  <PostCard key={post.id} post={post} />
+                ))}
+              </Stack>
+            </Box>
+          ))}
+        </Stack>
+      )}
+    </Box>
+  );
+}
+
+function PostCard({ post }: { post: MarketingPlanPost }) {
+  return (
+    <Box
+      sx={{
+        p: 1.2,
+        borderRadius: 2.2,
+        border: '1px solid rgba(148,163,184,0.18)',
+        bgcolor: 'rgba(15,23,42,0.58)',
+      }}
+    >
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'flex-start' }}>
+        {/* Day-number badge */}
+        <Box
+          sx={{
+            flexShrink: 0,
+            minWidth: 44,
+            minHeight: 44,
+            borderRadius: 1.4,
+            bgcolor: 'rgba(34,211,238,0.14)',
+            color: '#a5f3fc',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexDirection: 'column',
+            px: 1,
+          }}
+        >
+          <Typography sx={{ fontSize: '0.64rem', fontWeight: 700, letterSpacing: '0.1em' }}>DAG</Typography>
+          <Typography sx={{ fontSize: '1rem', fontWeight: 800 }}>
+            {post.dayOffset !== null ? post.dayOffset + 1 : '—'}
+          </Typography>
+        </Box>
+
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap sx={{ mb: 0.6 }}>
+            <Chip
+              size="small"
+              label={FORMAT_LABEL[post.format]}
+              sx={{ bgcolor: FORMAT_COLOR[post.format], color: '#fff', fontWeight: 700, fontSize: '0.72rem' }}
+            />
+            {post.primaryPlatform ? (
+              <Chip
+                size="small"
+                label={post.primaryPlatform}
+                variant="outlined"
+                sx={{ color: '#cbd5e1', borderColor: 'rgba(148,163,184,0.3)', fontSize: '0.72rem' }}
+              />
+            ) : null}
+            {post.goalKpi ? (
+              <Chip
+                size="small"
+                label={`${post.goalKpi.target} ${post.goalKpi.metric.replace(/_/g, ' ')}/${post.goalKpi.per}`}
+                sx={{ bgcolor: 'rgba(168,85,247,0.16)', color: '#e9d5ff', fontSize: '0.72rem' }}
+              />
+            ) : null}
+          </Stack>
+
+          <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.92rem', lineHeight: 1.4 }}>
+            {post.hook}
+          </Typography>
+
+          {post.script ? (
+            <Typography sx={{ color: 'rgba(226,232,240,0.82)', fontSize: '0.8rem', lineHeight: 1.5, mt: 0.5 }}>
+              <strong style={{ color: '#a5f3fc' }}>Script:</strong> {post.script}
+            </Typography>
+          ) : null}
+
+          {post.callToAction ? (
+            <Typography sx={{ color: 'rgba(226,232,240,0.82)', fontSize: '0.8rem', lineHeight: 1.5, mt: 0.3 }}>
+              <strong style={{ color: '#86efac' }}>CTA:</strong> {post.callToAction}
+            </Typography>
+          ) : null}
+
+          {post.crossPostPlan.length > 0 ? (
+            <Stack direction="row" spacing={0.4} flexWrap="wrap" useFlexGap sx={{ mt: 0.6 }}>
+              <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.72rem', mr: 0.4 }}>
+                Cross-post:
+              </Typography>
+              {post.crossPostPlan.map((cp, i) => (
+                <Chip
+                  key={`${cp.platform}-${i}`}
+                  size="small"
+                  label={`${cp.platform} +${cp.delayDays}d`}
+                  sx={{
+                    bgcolor: 'rgba(15,23,42,0.72)',
+                    color: 'rgba(226,232,240,0.78)',
+                    border: '1px solid rgba(148,163,184,0.22)',
+                    fontSize: '0.7rem',
+                    height: 20,
+                  }}
+                />
+              ))}
+            </Stack>
+          ) : null}
+        </Box>
       </Stack>
     </Box>
   );
