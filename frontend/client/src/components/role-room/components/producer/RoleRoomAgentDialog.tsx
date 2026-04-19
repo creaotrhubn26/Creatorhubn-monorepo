@@ -21,6 +21,7 @@ import {
   Chat as ChatIcon,
   GridView as GridViewIcon,
   Language as LanguageIcon,
+  Rocket as RocketIcon,
 } from '@mui/icons-material';
 import { Tab, Tabs } from '@mui/material';
 import type {
@@ -29,6 +30,7 @@ import type {
 } from '../../services/roleRoomAgentService';
 import RoleRoomAgentChatPanel from '../ai/RoleRoomAgentChatPanel';
 import RoleRoomFeedPlannerPanel from './RoleRoomFeedPlannerPanel';
+import MarketingPlanPanel from './MarketingPlanPanel';
 
 type RoleRoomAgentDialogProps = {
   open: boolean;
@@ -172,7 +174,7 @@ export default function RoleRoomAgentDialog({
   // full correction trail as the newest source of truth.
   const [refinementDraft, setRefinementDraft] = useState('');
   const [refinementHistory, setRefinementHistory] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState<'research' | 'chat' | 'feed-planner'>('research');
+  const [activeTab, setActiveTab] = useState<'research' | 'chat' | 'feed-planner' | 'marketing-plan'>('research');
 
   // Phone + iPad-portrait widths get a fullScreen dialog so the chat
   // surface and the research forms are actually usable without pinch-
@@ -395,6 +397,12 @@ export default function RoleRoomAgentDialog({
       >
         <Tab value="research" label="Research" icon={<AutoFixHighIcon fontSize="small" />} iconPosition="start" />
         <Tab
+          value="marketing-plan"
+          label="Markedsplan"
+          icon={<RocketIcon fontSize="small" />}
+          iconPosition="start"
+        />
+        <Tab
           value="feed-planner"
           label="Feed-planner"
           icon={<GridViewIcon fontSize="small" />}
@@ -443,6 +451,10 @@ export default function RoleRoomAgentDialog({
             bootstrap={result}
             onRequestBootstrap={() => setActiveTab('research')}
           />
+        ) : activeTab === 'marketing-plan' ? (
+          <Box sx={{ p: { xs: 1.4, md: 2 } }}>
+            <MarketingPlanPanel projectId={projectId} bootstrap={result} />
+          </Box>
         ) : (
         <Stack spacing={1.4}>
           {error ? <Alert severity="error">{error}</Alert> : null}

@@ -1006,6 +1006,129 @@ export const roleRoomAgentService = {
     }
     return payload.image;
   },
+
+  // ── Marketing Plan Engine ─────────────────────────────────────────
+
+  async checkMarketingPlanReadiness(
+    bootstrap: unknown,
+  ): Promise<MarketingPlanReadiness | null> {
+    const response = await fetch('/api/role-room/marketing-plan/readiness', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...readRoleRoomAgentHeaders() },
+      body: JSON.stringify({ bootstrap }),
+    });
+    const payload = (await response.json().catch(() => null)) as
+      | { success?: boolean; readiness?: MarketingPlanReadiness }
+      | null;
+    return payload?.readiness ?? null;
+  },
+
+  async generateMarketingPlan(input: {
+    projectId: string;
+    bootstrap: unknown;
+    horizonDays?: number;
+  }): Promise<MarketingPlan> {
+    const response = await fetch('/api/role-room/marketing-plan/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...readRoleRoomAgentHeaders() },
+      body: JSON.stringify(input),
+    });
+    const payload = (await response.json().catch(() => null)) as
+      | { success?: boolean; plan?: MarketingPlan; readiness?: MarketingPlanReadiness; error?: string; entitlement?: unknown }
+      | null;
+    if (response.status === 402) {
+      throw new RoleRoomFeedEntitlementError(
+        payload?.error || 'Markedsplan-generering krever aktiv plan eller add-on.',
+        payload?.entitlement as never,
+      );
+    }
+    if (response.status === 409 && payload?.readiness) {
+      throw new MarketingPlanReadinessError(payload.readiness, payload.error);
+    }
+    if (!response.ok || !payload?.success || !payload.plan) {
+      throw new Error(payload?.error || 'Klarte ikke å generere markedsplan.');
+    }
+    return payload.plan;
+  },
+
+  async getMarketingPlan(projectId: string): Promise<MarketingPlan | null> {
+    const response = await fetch(
+      `/api/role-room/marketing-plan/${encodeURIComponent(projectId)}`,
+      { headers: readRoleRoomAgentHeaders() },
+    );
+    const payload = (await response.json().catch(() => null)) as
+      | { success?: boolean; plan?: MarketingPlan | null }
+      | null;
+    return payload?.plan ?? null;
+  },
+
+  async activateMarketingPlan(
+    planId: string,
+    projectId: string,
+  ): Promise<MarketingPlan | null> {
+    const response = await fetch(
+      `/api/role-room/marketing-plan/${encodeURIComponent(planId)}/activate`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...readRoleRoomAgentHeaders() },
+        body: JSON.stringify({ projectId }),
+      },
+    );
+    const payload = (await response.json().catch(() => null)) as
+      | { success?: boolean; plan?: MarketingPlan | null; error?: string }
+      | null;
+    if (!response.ok) throw new Error(payload?.error || 'Kunne ikke aktivere planen.');
+    return payload?.plan ?? null;
+  },
 };
+
+// ── Marketing plan types ─────────────────────────────────────────────────
+
+export interface MarketingPlanReadiness {
+  ready: boolean;
+  missingFields: string[];
+  hasInstagramConnection: boolean;
+}
+
+export class MarketingPlanReadinessError extends Error {
+  readonly readiness: MarketingPlanReadiness;
+  constructor(readiness: MarketingPlanReadiness, message?: string) {
+    super(message || 'Markedsplan-input er ikke komplett.');
+    this.name = 'MarketingPlanReadinessError';
+    this.readiness = readiness;
+  }
+}
+
+export interface MarketingPlanStrategy {
+  channelStrategy: { primary: string; cadencePerWeek: number; secondary: string[]; reasoning: string };
+  toneOfVoice: { voice: string; dos: string[]; donts: string[] };
+  positioning: { valueProp: string; differentiator: string };
+  kpiTargets: Array<{ metric: string; target: number; per: 'post' | 'week' | 'month' | 'quarter'; rationale: string }>;
+}
+
+export interface MarketingPlanPillar {
+  id: string;
+  planId: string;
+  name: string;
+  description: string;
+  rationale: string;
+  targetKpi?: { metric: string; target: number; per: 'post' | 'week' | 'month' | 'quarter' } | null;
+  sortOrder: number;
+}
+
+export interface MarketingPlan {
+  id: string;
+  projectId: string;
+  ownerUserId: string;
+  status: 'draft' | 'active' | 'archived';
+  strategy: MarketingPlanStrategy;
+  pillars: MarketingPlanPillar[];
+  generatedAt: string | null;
+  generatedWithModel: string | null;
+  startDate: string | null;
+  horizonDays: number;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export default roleRoomAgentService;
