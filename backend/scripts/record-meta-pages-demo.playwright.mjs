@@ -40,8 +40,12 @@ const VIDEO_DIR = path.resolve(process.cwd(), process.env.VIDEO_DIR || 'recordin
 const STATE_PATH = path.resolve(process.cwd(), process.env.STATE_FILE || '.role-room-demo-state.json');
 const HEADLESS = process.env.HEADLESS === '1';
 
-const DEMO_PROJECT_NAME = process.env.DEMO_PROJECT_NAME || 'Northwind Drilling demo';
-const DEMO_WEBSITE = process.env.DEMO_WEBSITE || 'https://www.northwind.no';
+// Default demo customer: Holy Crust — real Norwegian bakery in Oslo,
+// an actual CreatorHub pilot client. Uses a real website so the
+// producer-bootstrap has genuine signals to process, and Meta Pages
+// Search resolves an actual public Facebook Page for reviewer demos.
+const DEMO_PROJECT_NAME = process.env.DEMO_PROJECT_NAME || 'Holy Crust';
+const DEMO_WEBSITE = process.env.DEMO_WEBSITE || 'https://holycrust.no';
 const DEMO_ORG_NUMBER = process.env.DEMO_ORG_NUMBER || '';
 
 const LOGIN_WAIT_SECONDS = 600;
@@ -63,24 +67,25 @@ async function loadStorage() {
   }
 }
 
-async function waitForLogin(page, maxSeconds) {
+async function waitForAgentButton(page, maxSeconds) {
+  // More forgiving than URL-heuristics: just poll for the actual
+  // "The Role Room Agent" button that opens the bootstrap dialog.
+  // User can navigate wherever they want during login, we snap to
+  // the button the moment it's rendered.
   const deadline = Date.now() + maxSeconds * 1000;
   while (Date.now() < deadline) {
-    const pathname = new URL(page.url()).pathname;
-    const isAppPath =
-      pathname.startsWith('/dashboard')
-      || pathname.startsWith('/role-room')
-      || pathname.startsWith('/smart-dashboard')
-      || pathname.startsWith('/universal-dashboard');
-    if (isAppPath) {
-      const hasAppShell =
-        (await page.getByRole('tab', { name: /The Role Room/i }).count()) > 0
-        || (await page.locator('[data-testid="universal-dashboard"], header.MuiAppBar-root').count()) > 0;
-      if (hasAppShell) return true;
+    const button = page.getByRole('button', { name: /^The Role Room Agent$/i }).first();
+    if ((await button.count()) > 0) {
+      try {
+        await button.scrollIntoViewIfNeeded();
+        return button;
+      } catch {
+        /* still rendering — retry */
+      }
     }
     await page.waitForTimeout(1500);
   }
-  return false;
+  return null;
 }
 
 // A short pause that reads well on video — not too fast, not too slow.
@@ -104,43 +109,17 @@ async function beat(page, ms = 1500) {
 
   try {
     log('Opening CreatorHub…');
-    await page.goto(`${APP_URL}/dashboard`, { waitUntil: 'domcontentloaded' });
+    await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
 
-    if (!storageState && !HEADLESS) {
-      log(`Logg inn som admin — opp til ${LOGIN_WAIT_SECONDS}s på å fullføre.`);
-      const ok = await waitForLogin(page, LOGIN_WAIT_SECONDS);
-      if (!ok) throw new Error('Login timed out.');
-      await context.storageState({ path: STATE_PATH });
-      log('Login saved.');
-    }
-
-    // ── Scene 1: Open The Role Room tab ─────────────────────────────
-    log('Scene 1: åpner The Role Room…');
-    const roleRoomTab = page.getByRole('tab', { name: /The Role Room/i }).first();
-    await roleRoomTab.waitFor({ timeout: 15_000 });
-    await roleRoomTab.scrollIntoViewIfNeeded();
-    await roleRoomTab.click();
+    log(`Logg inn + naviger til en side som viser knappen «The Role Room Agent» — opp til ${LOGIN_WAIT_SECONDS}s.`);
+    log('Scriptet venter på at knappen dukker opp i DOM.');
+    const agentButton = await waitForAgentButton(page, LOGIN_WAIT_SECONDS);
+    if (!agentButton) throw new Error('«The Role Room Agent»-knappen dukket aldri opp — er du på rett produsent-panel?');
+    log('✓ Fant knappen. Lagrer sesjonen og åpner agenten…');
+    await context.storageState({ path: STATE_PATH });
+    await beat(page, 1200);
+    await agentButton.click();
     await beat(page, 2000);
-
-    // ── Scene 2: Pick or create a project ───────────────────────────
-    log('Scene 2: velger demo-prosjekt…');
-    // Try project list first.
-    const firstProject = page.locator('[role="listitem"] button, ul [role="button"], .MuiListItemButton-root').first();
-    if (await firstProject.count()) {
-      await firstProject.click();
-      await beat(page, 1500);
-    } else {
-      log('Ingen prosjekt i listen — hopper rett til agent-dialogen.');
-    }
-
-    // ── Scene 3: Open The Role Room Agent ───────────────────────────
-    log('Scene 3: åpner The Role Room Agent…');
-    // The Agent opens via a button or icon in the project panel.
-    const agentOpener = page.getByRole('button', { name: /agent|analyser kunde|bootstrap/i }).first();
-    if (await agentOpener.count()) {
-      await agentOpener.click();
-      await beat(page, 2000);
-    }
 
     // ── Scene 4: Fill research form ─────────────────────────────────
     log('Scene 4: fyller inn kundesignaler…');
