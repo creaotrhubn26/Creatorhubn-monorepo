@@ -39,7 +39,24 @@ import {
   bootstrapCaptureSessionForProject,
   linkShotToAsset,
 } from "./capture-projects-service.js";
+import { normalizePhotographerSignature } from "./quote-photographer-signature.js";
+import {
+  compareSessionToBaseline as compareErgonomicsSession,
+  ingestEventBatch as ingestErgonomicsBatch,
+  ingestReflect as ingestErgonomicsReflect,
+  summariseSession as summariseErgonomicsSession,
+  summariseUserRecent as summariseErgonomicsForUser,
+} from "./ergonomics-telemetry-service.js";
 import { attachCaptureWebSocket } from "./capture-websocket.js";
+import {
+  attachUserEventsWebSocket,
+  broadcastUserEvent,
+} from "./realtime-user-events.js";
+import {
+  ensureProjectChangeLogSchema,
+  listProjectChangeLog,
+  recordProjectChange,
+} from "./project-change-log.js";
 import { pruneAiAuditLog } from "./role-room-ai-audit.js";
 import { pruneAgentCache } from "./role-room-agent-cache.js";
 import { runDailyAgentScan } from "./role-room-agent-daily-scan.js";
@@ -159,6 +176,13 @@ import {
   ffmpegAvailable,
   ffmpegVersionLine,
 } from "./role-room-video-normalize.js";
+import {
+  activateMarketingPlan,
+  checkMarketingPlanReadiness,
+  fetchActiveMarketingPlan,
+  generateMarketingPlan,
+  persistGeneratedMarketingPlan,
+} from "./role-room-marketing-plan.js";
 import { registerTidumAdminRoutes } from "./tidum-admin-routes.js";
 import {
   getNotebookLmWorkspaceStatus,
@@ -980,7 +1004,7 @@ app.use("/api/creatorhub/google", createCreatorHubGoogleRouter(pool, activeSessi
 app.use("/api/role-room", createRoleRoomRouter(pool, activeSessions));
 app.use("/api/capture", createCaptureRouter(pool, activeSessions));
 app.use("/api/youtube", createYouTubeRouter(pool));
-app.use("/api/photo-enhancer", createPhotoEnhancerRouter());
+app.use("/api/photo-enhancer", createPhotoEnhancerRouter(pool));
 app.use("/api/photo-enhancement", createPhotoEnhancementCompatRouter());
 app.use(
   "/api/integrations/v1/role-room",
@@ -23119,6 +23143,236 @@ app.get("/api/client/gallery/:accessToken/images", async (req, res) => {
   }
 });
 
+// ── Client-facing interactions ─────────────────────────────────────────
+// The gallery viewer (frontend/client/src/pages/client-gallery.tsx) has
+// been POSTing to these endpoints for a while, but they were never
+// implemented server-side — the UI mutations silently 404'd and nothing
+// persisted. The tables already exist (client_image_selections,
+// client_image_comments) so wiring them up is a simple REST surface.
+// Access is gated only by the gallery's access_token (clients don't
+// authenticate); all writes are namespaced by the gallery this token
+// resolves to.
+
+app.post("/api/client/gallery/:accessToken/selections", async (req, res) => {
+  const accessToken = String(req.params.accessToken || "").trim();
+  if (!accessToken) return res.status(400).json({ error: "missing_access_token" });
+  const imageId = typeof req.body?.imageId === "string" ? req.body.imageId : null;
+  const selectionType = typeof req.body?.selectionType === "string" ? req.body.selectionType : null;
+  const clientEmail = typeof req.body?.clientEmail === "string" ? req.body.clientEmail : "";
+  const clientNotes = typeof req.body?.clientNotes === "string" ? req.body.clientNotes : null;
+  const priority = Number.isFinite(Number(req.body?.priority)) ? Number(req.body.priority) : 0;
+  const allowedTypes = new Set(["favorite", "selected", "rejected", "pending"]);
+  if (!imageId || !selectionType || !allowedTypes.has(selectionType)) {
+    return res.status(400).json({ error: "invalid_request" });
+  }
+  try {
+    const gallery = await fetchClientGalleryByAccessToken(db, accessToken);
+    if (!gallery) return res.status(404).json({ error: "not_found" });
+    // Upsert by (gallery, image, client_email) so each repeat click just
+    // toggles the row's selectionType rather than piling up duplicates.
+    await pool.query(
+      `INSERT INTO client_image_selections (
+         gallery_id, image_id, client_email, selection_type, priority, client_notes, created_at, updated_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+       ON CONFLICT (gallery_id, image_id, client_email)
+       DO UPDATE SET
+         selection_type = EXCLUDED.selection_type,
+         priority       = EXCLUDED.priority,
+         client_notes   = COALESCE(EXCLUDED.client_notes, client_image_selections.client_notes),
+         updated_at     = NOW()`,
+      [gallery.id, imageId, clientEmail || gallery.clientEmail, selectionType, priority, clientNotes],
+    ).catch(async (err) => {
+      // No unique constraint yet on (gallery_id, image_id, client_email)?
+      // Fall back to a manual upsert so a fresh DB still works.
+      if (String(err?.message || "").includes("ON CONFLICT")) {
+        const existing = await pool.query(
+          `SELECT id FROM client_image_selections
+           WHERE gallery_id = $1 AND image_id = $2 AND client_email = $3 LIMIT 1`,
+          [gallery.id, imageId, clientEmail || gallery.clientEmail],
+        );
+        if (existing.rowCount && existing.rows[0]) {
+          await pool.query(
+            `UPDATE client_image_selections
+             SET selection_type = $1, priority = $2,
+                 client_notes = COALESCE($3, client_notes), updated_at = NOW()
+             WHERE id = $4`,
+            [selectionType, priority, clientNotes, existing.rows[0].id],
+          );
+        } else {
+          await pool.query(
+            `INSERT INTO client_image_selections (
+               gallery_id, image_id, client_email, selection_type, priority, client_notes
+             ) VALUES ($1, $2, $3, $4, $5, $6)`,
+            [gallery.id, imageId, clientEmail || gallery.clientEmail, selectionType, priority, clientNotes],
+          );
+        }
+        return;
+      }
+      throw err;
+    });
+
+    // Push a realtime event to the photographer's connected clients
+    // (iPad + any open tabs) AND persist to the project change-log
+    // so the iPad ContextPanel/timeline can surface the activity
+    // even after the iPad reconnects post-outage. Both calls are
+    // best-effort: a failure here mustn't block the selection save.
+    if (gallery.captureSessionId && (selectionType === "favorite" || selectionType === "pending")) {
+      const hearted = selectionType === "favorite";
+      const timestamp = new Date().toISOString();
+      try {
+        broadcastUserEvent(gallery.photographerId, {
+          kind: "asset.hearted",
+          assetId: imageId,
+          sessionId: gallery.captureSessionId,
+          clientName: gallery.clientName ?? null,
+          hearted,
+          timestamp,
+        });
+      } catch (err) {
+        console.warn("[client-gallery] broadcast asset.hearted failed", err);
+      }
+      if (gallery.projectId) {
+        try {
+          await recordProjectChange(pool, {
+            projectId: gallery.projectId,
+            kind: "asset.hearted",
+            actorKind: "client",
+            actorLabel: gallery.clientName ?? null,
+            payload: {
+              assetId: imageId,
+              sessionId: gallery.captureSessionId,
+              hearted,
+            },
+          });
+        } catch (err) {
+          console.warn("[project-change-log] record failed", err);
+        }
+      }
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error("[client-gallery] selection save failed", error);
+    res.status(500).json({ error: "selection_save_failed" });
+  }
+});
+
+app.get("/api/client/gallery/:accessToken/selections", async (req, res) => {
+  const accessToken = String(req.params.accessToken || "").trim();
+  if (!accessToken) return res.status(400).json({ error: "missing_access_token" });
+  try {
+    const gallery = await fetchClientGalleryByAccessToken(db, accessToken);
+    if (!gallery) return res.status(404).json({ error: "not_found" });
+    const result = await pool.query(
+      `SELECT id, image_id, client_email, selection_type, priority, client_notes, updated_at
+       FROM client_image_selections WHERE gallery_id = $1
+       ORDER BY updated_at DESC`,
+      [gallery.id],
+    );
+    res.json({
+      galleryId: gallery.id,
+      selections: result.rows.map((r: any) => ({
+        id: r.id,
+        imageId: r.image_id,
+        clientEmail: r.client_email,
+        selectionType: r.selection_type,
+        priority: r.priority,
+        clientNotes: r.client_notes,
+        updatedAt: r.updated_at,
+      })),
+    });
+  } catch (error) {
+    console.error("[client-gallery] selection list failed", error);
+    res.status(500).json({ error: "selection_list_failed" });
+  }
+});
+
+app.post("/api/client/gallery/:accessToken/comments", async (req, res) => {
+  const accessToken = String(req.params.accessToken || "").trim();
+  if (!accessToken) return res.status(400).json({ error: "missing_access_token" });
+  const imageId = typeof req.body?.imageId === "string" ? req.body.imageId : null;
+  const comment = typeof req.body?.comment === "string" ? req.body.comment.trim() : "";
+  const clientName = typeof req.body?.clientName === "string" ? req.body.clientName : "";
+  const clientEmail = typeof req.body?.clientEmail === "string" ? req.body.clientEmail : "";
+  const commentType = typeof req.body?.commentType === "string" ? req.body.commentType : "general";
+  if (!imageId || !comment) {
+    return res.status(400).json({ error: "invalid_request" });
+  }
+  if (comment.length > 2000) {
+    return res.status(400).json({ error: "comment_too_long" });
+  }
+  try {
+    const gallery = await fetchClientGalleryByAccessToken(db, accessToken);
+    if (!gallery) return res.status(404).json({ error: "not_found" });
+    const result = await pool.query(
+      `INSERT INTO client_image_comments (
+         gallery_id, image_id, client_name, client_email, comment, comment_type, status, created_at, updated_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, 'open', NOW(), NOW())
+       RETURNING id, created_at`,
+      [
+        gallery.id,
+        imageId,
+        clientName || gallery.clientName,
+        clientEmail || gallery.clientEmail,
+        comment,
+        commentType,
+      ],
+    );
+    const row = result.rows[0];
+    res.json({
+      success: true,
+      comment: {
+        id: row?.id,
+        imageId,
+        comment,
+        commentType,
+        createdAt: row?.created_at,
+      },
+    });
+  } catch (error) {
+    console.error("[client-gallery] comment save failed", error);
+    res.status(500).json({ error: "comment_save_failed" });
+  }
+});
+
+app.get("/api/client/gallery/:accessToken/comments", async (req, res) => {
+  const accessToken = String(req.params.accessToken || "").trim();
+  if (!accessToken) return res.status(400).json({ error: "missing_access_token" });
+  const imageId = typeof req.query?.imageId === "string" ? req.query.imageId : null;
+  try {
+    const gallery = await fetchClientGalleryByAccessToken(db, accessToken);
+    if (!gallery) return res.status(404).json({ error: "not_found" });
+    const params: any[] = [gallery.id];
+    let query = `SELECT id, image_id, client_name, comment, comment_type, status,
+                        photographer_response, responded_at, created_at, updated_at
+                 FROM client_image_comments WHERE gallery_id = $1`;
+    if (imageId) {
+      params.push(imageId);
+      query += ` AND image_id = $${params.length}`;
+    }
+    query += ` ORDER BY created_at DESC LIMIT 500`;
+    const result = await pool.query(query, params);
+    res.json({
+      galleryId: gallery.id,
+      comments: result.rows.map((r: any) => ({
+        id: r.id,
+        imageId: r.image_id,
+        clientName: r.client_name,
+        comment: r.comment,
+        commentType: r.comment_type,
+        status: r.status,
+        photographerResponse: r.photographer_response,
+        respondedAt: r.responded_at,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+      })),
+    });
+  } catch (error) {
+    console.error("[client-gallery] comment list failed", error);
+    res.status(500).json({ error: "comment_list_failed" });
+  }
+});
+
 // Health check. Caches the ffmpeg probe for 60s so rapid pings from
 // Render's health checker don't spawn an ffmpeg child every time.
 let ffmpegHealthCache: { at: number; available: boolean; version: string | null } | null = null;
@@ -29194,6 +29448,124 @@ app.get("/api/role-room/instagram/jobs/:projectId", async (req, res) => {
   if (!session) return;
   const jobs = await listIgPublishJobs(pool, req.params.projectId, session.userId);
   return res.json({ success: true, jobs });
+});
+
+// ── Marketing Plan Engine ───────────────────────────────────────────────
+//
+// Generates content pillars + channel strategy + KPI targets from the
+// producer-bootstrap output. Gated on (a) Role Room Agent entitlement
+// (same as other AI endpoints), and (b) a readiness check that confirms
+// the bootstrap has enough signal to produce a non-generic plan.
+
+app.post("/api/role-room/marketing-plan/readiness", async (req, res) => {
+  const featureId = "role-room-agent-producer";
+  if (!isCompatAdminFeatureEnabled(featureId)) {
+    return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
+  }
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+  const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
+  const bootstrap = (body.bootstrap ?? {}) as Parameters<typeof checkMarketingPlanReadiness>[0];
+  const connections = await listInstagramConnections(pool, session.userId);
+  const readiness = checkMarketingPlanReadiness(bootstrap, connections.length > 0);
+  return res.json({ success: true, readiness });
+});
+
+app.post("/api/role-room/marketing-plan/generate", async (req, res) => {
+  const featureId = "role-room-agent-producer";
+  if (!isCompatAdminFeatureEnabled(featureId)) {
+    return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
+  }
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+
+  const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
+  const projectId = typeof body.projectId === "string" ? body.projectId.trim() : "";
+  if (!projectId) {
+    return res.status(400).json({ success: false, error: "projectId er påkrevd." });
+  }
+  if (!body.bootstrap || typeof body.bootstrap !== "object") {
+    return res.status(400).json({ success: false, error: "bootstrap er påkrevd." });
+  }
+  const horizonDays = typeof body.horizonDays === "number" && body.horizonDays > 0 && body.horizonDays <= 90
+    ? Math.round(body.horizonDays)
+    : undefined;
+
+  // Entitlement gate — marketing-plan generation counts against the
+  // same AI quota as other Claude-powered features.
+  const entitlement = await checkAgentEntitlement(pool, session.userId, session.role);
+  if (!entitlement.allowed) {
+    return res.status(402).json({
+      success: false,
+      error: entitlement.reason || "Markedsplan-generering krever aktiv plan eller add-on.",
+      entitlement,
+    });
+  }
+
+  const connections = await listInstagramConnections(pool, session.userId);
+  const bootstrap = body.bootstrap as Parameters<typeof checkMarketingPlanReadiness>[0];
+  const readiness = checkMarketingPlanReadiness(bootstrap, connections.length > 0);
+  if (!readiness.ready) {
+    return res.status(409).json({
+      success: false,
+      error: "Bootstrap mangler nødvendige felter for en meningsfull markedsplan.",
+      readiness,
+    });
+  }
+
+  const generated = await generateMarketingPlan({
+    bootstrap,
+    hasInstagramConnection: connections.length > 0,
+    horizonDays,
+  });
+  if (!generated) {
+    return res.status(503).json({
+      success: false,
+      error: "Claude kunne ikke generere planen nå. Sjekk ANTHROPIC_API_KEY eller prøv igjen.",
+    });
+  }
+
+  const persisted = await persistGeneratedMarketingPlan(pool, {
+    projectId,
+    ownerUserId: session.userId,
+    horizonDays,
+    generated,
+  });
+  if (!persisted) {
+    return res.status(500).json({ success: false, error: "Kunne ikke lagre planen." });
+  }
+  return res.json({ success: true, plan: persisted });
+});
+
+app.get("/api/role-room/marketing-plan/:projectId", async (req, res) => {
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+  const projectId = String(req.params.projectId || "").trim();
+  if (!projectId) {
+    return res.status(400).json({ success: false, error: "projectId er påkrevd." });
+  }
+  const plan = await fetchActiveMarketingPlan(pool, projectId);
+  return res.json({ success: true, plan });
+});
+
+app.post("/api/role-room/marketing-plan/:planId/activate", async (req, res) => {
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+  const planId = String(req.params.planId || "").trim();
+  const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
+  const projectId = typeof body.projectId === "string" ? body.projectId.trim() : "";
+  if (!planId || !projectId) {
+    return res.status(400).json({ success: false, error: "planId og projectId er påkrevd." });
+  }
+  const ok = await activateMarketingPlan(pool, planId, projectId);
+  if (!ok) {
+    return res.status(409).json({
+      success: false,
+      error: "Fant ingen draft-plan å aktivere (kan allerede være aktivert eller arkivert).",
+    });
+  }
+  const plan = await fetchActiveMarketingPlan(pool, projectId);
+  return res.json({ success: true, plan });
 });
 
 // Meta webhook for IG events (status updates, mention notifications, etc.)
@@ -55918,6 +56290,42 @@ app.get("/api/projects/:id", async (req, res) => {
   } catch (error) {
     console.error("Error fetching project:", error);
     res.status(500).json({ error: "Kunne ikke hente prosjekt" });
+  }
+});
+
+// GET /api/projects/:id/change-log — paged list of noteworthy
+// project events (client hearts, quote/contract signatures). Used
+// by the iPad Context panel timeline + future web activity feed.
+//
+// Owner-gated: the request's bearer must match ``projects.user_id``
+// so one photographer can't browse another's client activity.
+app.get("/api/projects/:id/change-log", async (req, res) => {
+  try {
+    const userId = getUserIdFromAuth(req);
+    if (!userId) return res.status(401).json({ error: "unauthorized" });
+    const owns = await pool.query(
+      "SELECT 1 FROM legacy.projects WHERE id = $1 AND user_id = $2 LIMIT 1",
+      [req.params.id, userId],
+    );
+    if (owns.rowCount === 0) {
+      // Returning 404 instead of 403 so callers can't enumerate
+      // projects by probing ids.
+      return res.status(404).json({ error: "not_found" });
+    }
+    const limit = Number(req.query.limit ?? 50);
+    const before =
+      typeof req.query.before === "string" && req.query.before.length > 0
+        ? req.query.before
+        : null;
+    const entries = await listProjectChangeLog(pool, {
+      projectId: req.params.id,
+      limit,
+      before,
+    });
+    res.json({ entries });
+  } catch (error) {
+    console.error("[project-change-log] fetch failed", error);
+    res.status(500).json({ error: "fetch_failed" });
   }
 });
 
@@ -90124,7 +90532,22 @@ const normalizeQuoteCreationPayload = (payload: any) => {
           phoneNumber: "",
         };
 
-  const approvers = Array.isArray(payload?.approvers) ? payload.approvers : [];
+  const approvers = Array.isArray(payload?.approvers) ? [...payload.approvers] : [];
+
+  // CreatorHub One iPad sends a Pencil-captured signature as
+  // ``photographerSignature`` on the quote payload. We store it as
+  // an entry on the JSONB ``approvers`` array so no schema migration
+  // is needed, and set ``signatureStatus`` to ``photographer_signed``
+  // so the dashboard can surface a "utkast godkjent av fotograf"
+  // pill. Client signature comes later via the shared signature
+  // workflow and tacks on a second approver with ``kind: "client"``.
+  const photographerSignaturePayload = normalizePhotographerSignature(
+    payload?.photographerSignature,
+  );
+  if (photographerSignaturePayload) {
+    approvers.push(photographerSignaturePayload);
+  }
+
   const projectCreationData =
     payload?.projectCreationData &&
     typeof payload.projectCreationData === "object"
@@ -90187,7 +90610,10 @@ const normalizeQuoteCreationPayload = (payload: any) => {
       : null,
     googleDocId: payload?.googleDocId ? String(payload.googleDocId) : null,
     googleDocUrl: payload?.googleDocUrl ? String(payload.googleDocUrl) : null,
-    signatureStatus: String(payload?.signatureStatus || "pending"),
+    signatureStatus: String(
+      payload?.signatureStatus ||
+        (photographerSignaturePayload ? "photographer_signed" : "pending"),
+    ),
     sentAt: payload?.sentAt ? new Date(payload.sentAt) : null,
     viewedAt: payload?.viewedAt ? new Date(payload.viewedAt) : null,
     respondedAt: payload?.respondedAt ? new Date(payload.respondedAt) : null,
@@ -109958,6 +110384,165 @@ app.post("/import/lead/:leadId", async (req, res) => {
   }
 });
 
+// ── Ergonomics telemetry ─────────────────────────────────────────
+// Opt-in telemetry that tracks the cognitive cost of the photo-
+// grapher's work — decision fatigue on long culls, indecision loops
+// on near-duplicate frames, session-level reflect answers — so the
+// product can remove the parts that drain them. The client hook
+// buffers events locally and flushes in batches; every write is
+// user-scoped and the aggregated summary endpoint never exposes
+// individual events, only bucketed stats.
+
+app.post("/api/telemetry/culling-session", async (req, res) => {
+  const userId = getUserIdFromAuth(req);
+  if (!userId) {
+    return res.status(401).json({ error: "unauthorized" });
+  }
+  const body = req.body as { events?: unknown } | undefined;
+  const rawEvents = Array.isArray(body?.events) ? body.events : [];
+  // Cap per-request batch size so a misbehaving client can't flood
+  // the DB. Well above the client's typical 30-second flush window.
+  if (rawEvents.length === 0) {
+    return res.json({ success: true, ingested: 0 });
+  }
+  if (rawEvents.length > 2000) {
+    return res
+      .status(413)
+      .json({ error: "batch_too_large", max: 2000 });
+  }
+  try {
+    const ALLOWED_KINDS = new Set([
+      "session_start",
+      "view",
+      "decide",
+      "reverse",
+      "pause",
+      "session_end",
+    ]);
+    const events = rawEvents
+      .map((raw) => {
+        if (!raw || typeof raw !== "object") return null;
+        const r = raw as Record<string, unknown>;
+        if (typeof r.sessionId !== "string" || !r.sessionId) return null;
+        if (typeof r.kind !== "string" || !ALLOWED_KINDS.has(r.kind)) return null;
+        return {
+          sessionId: String(r.sessionId).slice(0, 128),
+          kind: r.kind as
+            | "session_start"
+            | "view"
+            | "decide"
+            | "reverse"
+            | "pause"
+            | "session_end",
+          ms: Number(r.ms) || 0,
+          sequence: Number(r.sequence) || 0,
+          assetId:
+            typeof r.assetId === "string" ? r.assetId.slice(0, 128) : null,
+          action:
+            typeof r.action === "string" ? r.action.slice(0, 64) : null,
+          previousAction:
+            typeof r.previousAction === "string"
+              ? r.previousAction.slice(0, 64)
+              : null,
+          newAction:
+            typeof r.newAction === "string"
+              ? r.newAction.slice(0, 64)
+              : null,
+          firstView:
+            typeof r.firstView === "boolean" ? r.firstView : undefined,
+        };
+      })
+      .filter((e): e is NonNullable<typeof e> => e !== null);
+    const { ingested } = await ingestErgonomicsBatch(pool, userId, events);
+    res.json({ success: true, ingested });
+  } catch (error) {
+    console.error("[telemetry] culling-session ingest failed:", error);
+    res.status(500).json({ error: "ingest_failed" });
+  }
+});
+
+app.post("/api/telemetry/reflect", async (req, res) => {
+  const userId = getUserIdFromAuth(req);
+  if (!userId) {
+    return res.status(401).json({ error: "unauthorized" });
+  }
+  const body = req.body as {
+    sessionId?: unknown;
+    hardest?: unknown;
+    regretted?: unknown;
+    wouldSave?: unknown;
+  } | undefined;
+  if (typeof body?.sessionId !== "string" || !body.sessionId) {
+    return res.status(400).json({ error: "sessionId_required" });
+  }
+  try {
+    const { id } = await ingestErgonomicsReflect(
+      pool,
+      userId,
+      String(body.sessionId).slice(0, 128),
+      {
+        hardest: typeof body.hardest === "string" ? body.hardest : undefined,
+        regretted: typeof body.regretted === "string" ? body.regretted : undefined,
+        wouldSave:
+          typeof body.wouldSave === "string" ? body.wouldSave : undefined,
+      },
+    );
+    res.json({ success: true, id });
+  } catch (error) {
+    console.error("[telemetry] reflect ingest failed:", error);
+    res.status(500).json({ error: "reflect_ingest_failed" });
+  }
+});
+
+// GET /api/telemetry/ergonomics/session/:sessionId — the "immediate
+// value" endpoint for the post-session insights card. Compares this
+// session's stats against the photographer's own last-30-days
+// baseline (excluding the session itself) and returns ready-to-render
+// delta headlines so the card doesn't duplicate the comparison logic
+// on the client.
+app.get(
+  "/api/telemetry/ergonomics/session/:sessionId",
+  async (req, res) => {
+    const userId = getUserIdFromAuth(req);
+    if (!userId) {
+      return res.status(401).json({ error: "unauthorized" });
+    }
+    const sessionId = String(req.params.sessionId || "").slice(0, 128);
+    if (!sessionId) {
+      return res.status(400).json({ error: "sessionId_required" });
+    }
+    try {
+      const session = await summariseErgonomicsSession(pool, userId, sessionId);
+      const baseline = await summariseErgonomicsForUser(
+        pool,
+        userId,
+        30,
+        sessionId,
+      );
+      const comparison = compareErgonomicsSession(session, baseline);
+      res.json({ success: true, sessionId, session, baseline, comparison });
+    } catch (error) {
+      console.error("[telemetry] session summary failed:", error);
+      res.status(500).json({ error: "session_summary_failed" });
+    }
+  },
+);
+
+app.get("/api/telemetry/ergonomics/summary", async (req, res) => {
+  const userId = getUserIdFromAuth(req);
+  if (!userId) {
+    return res.status(401).json({ error: "unauthorized" });
+  }
+  const lookbackDays = Number(req.query?.lookbackDays) || 30;
+  try {
+    const summary = await summariseErgonomicsForUser(pool, userId, lookbackDays);
+    res.json({ success: true, lookbackDays, summary });
+  } catch (error) {
+    console.error("[telemetry] summary failed:", error);
+    res.status(500).json({ error: "summary_failed" });
+  }
+});
+
 // Catch-all for unhandled API routes
 app.all("/api/*", (req, res) => {
   res.status(404).json({ message: "Endpoint not implemented", path: req.path });
@@ -109967,6 +110552,7 @@ app.all("/api/*", (req, res) => {
 const httpServer = createServer(app);
 createWebSocketServer(httpServer, db);
 attachCaptureWebSocket(httpServer, pool, activeSessions);
+attachUserEventsWebSocket(httpServer, pool, activeSessions);
 
 httpServer.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Backend server running on port ${PORT} (HTTP + WebSocket)`);
