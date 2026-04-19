@@ -946,6 +946,43 @@ export default function RoleRoomAgentDialog({
                               <Typography sx={{ color: '#cbd5e1', fontSize: '0.82rem', lineHeight: 1.45 }}>
                                 {competitor.marketingSignals.positionHint}
                               </Typography>
+                              {(competitor as any).metaPage ? (
+                                <Box
+                                  data-testid="competitor-meta-page"
+                                  sx={{
+                                    mt: 0.8,
+                                    p: 0.9,
+                                    borderRadius: 1.8,
+                                    border: '1px solid rgba(59,130,246,0.28)',
+                                    bgcolor: 'rgba(59,130,246,0.08)',
+                                  }}
+                                >
+                                  <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mb: 0.4 }}>
+                                    <Typography sx={{ color: '#93c5fd', fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                                      Meta Page Public Metadata
+                                    </Typography>
+                                    {(competitor as any).metaPage.verified ? (
+                                      <Chip size="small" label="Verified" sx={{ height: 16, fontSize: '0.62rem', bgcolor: 'rgba(29,161,242,0.22)', color: '#bfdbfe' }} />
+                                    ) : null}
+                                  </Stack>
+                                  <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap>
+                                    {typeof (competitor as any).metaPage.followersCount === 'number' ? (
+                                      <Chip size="small" label={`${((competitor as any).metaPage.followersCount as number).toLocaleString('nb-NO')} følgere`} sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }} />
+                                    ) : null}
+                                    {typeof (competitor as any).metaPage.fanCount === 'number' ? (
+                                      <Chip size="small" label={`${((competitor as any).metaPage.fanCount as number).toLocaleString('nb-NO')} likes`} sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }} />
+                                    ) : null}
+                                    {(competitor as any).metaPage.category ? (
+                                      <Chip size="small" label={(competitor as any).metaPage.category} variant="outlined" sx={{ color: '#cbd5e1', borderColor: 'rgba(148,163,184,0.3)' }} />
+                                    ) : null}
+                                  </Stack>
+                                  {(competitor as any).metaPage.about ? (
+                                    <Typography sx={{ color: 'rgba(226,232,240,0.78)', fontSize: '0.78rem', lineHeight: 1.45, mt: 0.5 }}>
+                                      {(competitor as any).metaPage.about}
+                                    </Typography>
+                                  ) : null}
+                                </Box>
+                              ) : null}
                               <Stack direction="row" spacing={0.7} flexWrap="wrap" useFlexGap>
                                 {competitor.websiteUrl ? (
                                   <Button href={competitor.websiteUrl} target="_blank" rel="noreferrer" size="small" variant="outlined" sx={{ textTransform: 'none', fontWeight: 700 }}>
@@ -955,6 +992,18 @@ export default function RoleRoomAgentDialog({
                                 {competitor.googleMapsUri ? (
                                   <Button href={competitor.googleMapsUri} target="_blank" rel="noreferrer" size="small" variant="outlined" sx={{ textTransform: 'none', fontWeight: 700 }}>
                                     Google
+                                  </Button>
+                                ) : null}
+                                {(competitor as any).metaPage?.pageUrl ? (
+                                  <Button
+                                    href={(competitor as any).metaPage.pageUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    size="small"
+                                    variant="outlined"
+                                    sx={{ textTransform: 'none', fontWeight: 700, color: '#bfdbfe', borderColor: 'rgba(59,130,246,0.4)' }}
+                                  >
+                                    Meta Page
                                   </Button>
                                 ) : null}
                               </Stack>

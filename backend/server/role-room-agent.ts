@@ -8,6 +8,7 @@ import {
   orchestratorEnabled,
   runOrchestratedBootstrap,
 } from "./role-room-agent-bootstrap-orchestrator.js";
+import { enrichCompetitorWithMetaPage } from "./role-room-meta-pages.js";
 
 export type RoleRoomAgentProducerBootstrapInput = {
   projectId: string;
@@ -72,6 +73,18 @@ type RoleRoomAgentCompetitorEvidence = {
   weight: number;
 };
 
+type RoleRoomAgentCompetitorMetaPage = {
+  pageId: string;
+  pageName: string;
+  fanCount: number | null;
+  followersCount: number | null;
+  category: string | null;
+  about: string | null;
+  website: string | null;
+  pageUrl: string | null;
+  verified: boolean;
+};
+
 type RoleRoomAgentCompetitorCandidate = {
   source: "google_places";
   placeId?: string | null;
@@ -82,6 +95,7 @@ type RoleRoomAgentCompetitorCandidate = {
   primaryType?: string | null;
   primaryTypeDisplayName?: string | null;
   rating?: number | null;
+  metaPage?: RoleRoomAgentCompetitorMetaPage | null;
   userRatingCount?: number | null;
   confidence: number;
   status: "verified" | "likely" | "needs_review" | "rejected";
@@ -2435,6 +2449,48 @@ export async function fetchGooglePlacesBusinessSignals(
   };
 }
 
+/**
+ * Meta Pages Public Metadata enrichment: mutates each verified/likely
+ * competitor to carry follower/category/about data. Runs in parallel
+ * with a 3-competitor concurrency cap so we don't burn through Meta's
+ * rate limit on a single bootstrap.
+ */
+async function enrichCompetitorsWithMetaPages(
+  analysis: RoleRoomAgentCompetitorAnalysis,
+): Promise<void> {
+  const targets = (analysis.competitors ?? []).filter(
+    (c) => c.status === "verified" || c.status === "likely",
+  );
+  if (targets.length === 0) return;
+  const limit = 3;
+  for (let i = 0; i < targets.length; i += limit) {
+    const batch = targets.slice(i, i + limit);
+    await Promise.all(
+      batch.map(async (competitor) => {
+        try {
+          const meta = await enrichCompetitorWithMetaPage(competitor.name);
+          if (meta) {
+            competitor.metaPage = {
+              pageId: meta.id,
+              pageName: meta.name,
+              fanCount: meta.fanCount,
+              followersCount: meta.followersCount,
+              category: meta.category,
+              about: meta.about,
+              website: meta.website,
+              pageUrl: meta.link,
+              verified: meta.verificationStatus === "blue_verified"
+                || meta.verificationStatus === "gray_verified",
+            };
+          }
+        } catch {
+          /* best-effort — leave metaPage undefined on error */
+        }
+      }),
+    );
+  }
+}
+
 async function fetchGooglePlacesCompetitorAnalysis(
   input: RoleRoomAgentProducerBootstrapInput,
   websiteInsights: RoleRoomAgentWebsiteInsights,
@@ -3593,6 +3649,12 @@ export async function generateRoleRoomAgentProducerBootstrap(
     businessSignals,
     initialBrregCompany,
   );
+  // Meta Pages Public Metadata enrichment: for each verified/likely
+  // competitor, try to resolve their public Facebook Page and attach
+  // follower/category/about data. All calls are best-effort — if Meta
+  // is unavailable or the Page can't be resolved, the competitor is
+  // returned as-is without metaPage data.
+  await enrichCompetitorsWithMetaPages(competitorAnalysis);
   const localPresencePlan = await fetchGooglePlacesLocalPresencePlan(
     enrichedInput,
     websiteInsights,
