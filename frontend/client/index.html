@@ -36,6 +36,42 @@
     />
     <meta name="twitter:image" content="https://creatorhubn.com/landing_backdrop_with_logo.png" />
     <meta name="google-site-verification" content="4EH878wtJ-QoYJgc0EZbysxeX2ucoYhfSdLHSJ2C_zg" />
+    <script>
+      // Host-aware SEO overrides: when this document is served on
+      // theroleroom.com (Vercel filesystem precedence defeats our
+      // host-based rewrite rules, so the single index.html is shared
+      // across both domains), rewrite the title, canonical, and
+      // Open Graph tags in-place before the React app mounts. Google's
+      // crawler executes JS and will index the updated tags; social
+      // sharing crawlers that do not execute JS fall back to the
+      // generic CreatorHub tags, which is acceptable since theroleroom
+      // landings are served separately via /theroleroom.html on direct
+      // navigation. This script runs synchronously in the <head> so
+      // the final tags are in the DOM before any scrapers look.
+      (function () {
+        var host = (location.hostname || '').toLowerCase();
+        if (!/^(www\.)?theroleroom\.com$/.test(host)) return;
+        var title = 'The Role Room | Casting, crew og produksjonsplanlegging';
+        var description = 'The Role Room er produksjonsflaten i CreatorHub for casting, team, talentportal og koordinering av opptaksdager.';
+        var origin = 'https://theroleroom.com';
+        var image = origin + '/role-room-assets/landing_backdrop_with_logo.webp';
+        document.title = title;
+        function setAttr(selector, attr, value) {
+          var el = document.querySelector(selector);
+          if (el) el.setAttribute(attr, value);
+        }
+        setAttr('meta[name="description"]', 'content', description);
+        setAttr('link[rel="canonical"]', 'href', origin + '/');
+        setAttr('meta[property="og:site_name"]', 'content', 'The Role Room');
+        setAttr('meta[property="og:title"]', 'content', title);
+        setAttr('meta[property="og:description"]', 'content', description);
+        setAttr('meta[property="og:url"]', 'content', origin + '/');
+        setAttr('meta[property="og:image"]', 'content', image);
+        setAttr('meta[name="twitter:title"]', 'content', title);
+        setAttr('meta[name="twitter:description"]', 'content', description);
+        setAttr('meta[name="twitter:image"]', 'content', image);
+      })();
+    </script>
     <script type="application/ld+json" data-seo-ld="organization">
       {
         "@context": "https://schema.org",
