@@ -62,6 +62,17 @@ export function MetaPagePublicMetadataInspector() {
   const [error, setError] = useState<string | null>(null);
   const [connectRequired, setConnectRequired] = useState(false);
 
+  const resolveAuthToken = (): string | null => {
+    if (user?.id) return user.id;
+    try {
+      return (
+        localStorage.getItem('creatorhub_auth_token') ||
+        JSON.parse(localStorage.getItem('creatorhub_auth_user') || 'null')?.id ||
+        null
+      );
+    } catch { return null; }
+  };
+
   const handleInspect = async () => {
     setLoading(true);
     setError(null);
@@ -69,7 +80,8 @@ export function MetaPagePublicMetadataInspector() {
     setResult(null);
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (user?.id) headers['Authorization'] = `Bearer ${user.id}`;
+      const authToken = resolveAuthToken();
+      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
       const response = await fetch('/api/role-room/agent/meta-page-inspect', {
         method: 'POST',
         headers,
@@ -94,7 +106,8 @@ export function MetaPagePublicMetadataInspector() {
     const projectId = 'meta-demo';
     try {
       const headers: Record<string, string> = {};
-      if (user?.id) headers['Authorization'] = `Bearer ${user.id}`;
+      const authToken = resolveAuthToken();
+      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
       const response = await fetch(
         `/api/role-room/instagram/oauth/start?projectId=${encodeURIComponent(projectId)}`,
         { headers, credentials: 'include' },
