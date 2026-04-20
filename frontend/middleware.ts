@@ -13,25 +13,21 @@
  * (which works fine because those paths don't collide with files).
  */
 
+import { rewrite, next } from '@vercel/edge';
+
 export const config = {
   matcher: ['/'],
 };
 
-export default function middleware(request: Request): Response | undefined {
+export default function middleware(request: Request) {
   const url = new URL(request.url);
   const host = (request.headers.get('host') || '').toLowerCase();
 
   const isRoleRoom = /^(?:www\.)?theroleroom\.com$/.test(host);
-  if (!isRoleRoom) return undefined;
+  if (!isRoleRoom) return next();
 
   if (url.pathname === '/') {
-    const rewriteUrl = new URL('/theroleroom.html', url);
-    // Vercel's internal rewrite header — the request continues on to
-    // filesystem lookup of the rewritten path, so the client still
-    // sees "/" in its address bar but we serve theroleroom.html.
-    return new Response(null, {
-      headers: { 'x-middleware-rewrite': rewriteUrl.toString() },
-    });
+    return rewrite(new URL('/theroleroom.html', url));
   }
-  return undefined;
+  return next();
 }
