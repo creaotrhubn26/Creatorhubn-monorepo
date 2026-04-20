@@ -174,6 +174,7 @@ import { EnhancedMasterIntegrationProvider } from './integration/EnhancedMasterI
 import IntegrationTest from './integration/IntegrationTest';
 import ResumeBuilder from '@/components/resume/ResumeBuilder';
 import LinkedInCallback from '@/pages/LinkedInCallback';
+import MetaPagePublicMetadataInspector from '@/components/role-room/components/producer/MetaPagePublicMetadataInspector';
 import LoginPageSimple from '@/pages/LoginPageSimple';
 import SmartMeetingNotesPage from '@/pages/SmartMeetingNotesPage';
 import PrivacyPolicy from '@/pages/privacy-policy';
@@ -567,6 +568,7 @@ function App() {
                   {/* <Route path="/google-oauth-setup" component={GoogleOAuthSetupPage} /> */}
                   {/* <Route path="/oauth-setup" component={OAuthSetup} /> */}
                   <Route path="/auth/linkedin/callback" component={LinkedInCallback} />
+                  <Route path="/meta-page-inspector" component={MetaPagePublicMetadataInspector} />
                   <Route path="/admin" component={AdminDashboardWrapper} />
                   <Route path="/verification-demo" component={VerificationSystemDashboard as React.ComponentType<any>} />
                   <Route path="/visual-cms-admin" component={VisualCMSAdminDashboard as React.ComponentType<any>} />

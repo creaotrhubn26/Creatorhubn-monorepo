@@ -29384,6 +29384,128 @@ app.get("/api/role-room/instagram/connections", async (req, res) => {
   });
 });
 
+/**
+ * Meta Page Public Metadata inspector.
+ *
+ * Demonstrates the Page Public Metadata Access feature: takes a
+ * Facebook Page URL or ID, resolves it, and fetches the documented
+ * public fields from Meta Graph API using the caller's connected
+ * Meta user access token (`pages_read_engagement` scope).
+ *
+ * Before App Review grants the feature, this works on Pages where
+ * the user has a role (admin/editor). After approval we'll switch
+ * to the app access token path and run this against any public Page.
+ */
+app.post("/api/role-room/agent/meta-page-inspect", async (req, res) => {
+  const featureId = "role-room-agent-producer";
+  if (!isCompatAdminFeatureEnabled(featureId)) {
+    return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
+  }
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+
+  const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
+  const rawInput = typeof body.pageIdOrUrl === "string" ? body.pageIdOrUrl.trim() : "";
+  if (!rawInput) {
+    return res.status(400).json({ success: false, error: "pageIdOrUrl er påkrevd." });
+  }
+
+  // Accept numeric Page IDs, full facebook.com URLs, and bare page
+  // handles (e.g. "creatorhubn"). Strip URL chrome and trailing slashes.
+  const pageIdOrHandle = (() => {
+    if (/^[0-9]{5,}$/.test(rawInput)) return rawInput;
+    try {
+      const url = new URL(rawInput.startsWith("http") ? rawInput : `https://${rawInput}`);
+      if (/facebook\.com$/i.test(url.hostname) || /facebook\.com$/i.test(url.hostname.replace(/^www\./, ""))) {
+        const parts = url.pathname.split("/").filter(Boolean);
+        if (parts.length > 0) {
+          const last = parts[parts.length - 1];
+          if (/^[0-9]+$/.test(last)) return last;
+          return parts[0];
+        }
+      }
+    } catch {
+      /* fall through — treat as handle */
+    }
+    return rawInput.replace(/^@/, "").replace(/\/$/, "");
+  })();
+
+  const connections = await listInstagramConnections(pool, session.userId);
+  if (connections.length === 0) {
+    return res.status(409).json({
+      success: false,
+      error: "Du må koble Facebook/Instagram til Role Room før du kan hente public Page-metadata.",
+      connectRequired: true,
+    });
+  }
+  const connection = connections[0];
+
+  const fields = [
+    "id",
+    "name",
+    "fan_count",
+    "followers_count",
+    "category",
+    "category_list",
+    "about",
+    "website",
+    "link",
+    "verification_status",
+  ].join(",");
+  const graphVersion = "v21.0";
+  const graphUrl = `https://graph.facebook.com/${graphVersion}/${encodeURIComponent(pageIdOrHandle)}?${new URLSearchParams({
+    fields,
+    access_token: connection.accessToken,
+  })}`;
+
+  try {
+    const response = await fetch(graphUrl, { method: "GET" });
+    const text = await response.text();
+    let payload: Record<string, unknown> | null = null;
+    try { payload = JSON.parse(text) as Record<string, unknown>; } catch { /* keep raw */ }
+
+    if (!response.ok) {
+      console.error(`[meta-page-inspect] graph status=${response.status} body=${text.replace(/\s+/g, " ").slice(0, 400)}`);
+      const errObj = (payload?.error as Record<string, unknown> | undefined) ?? null;
+      return res.status(response.status === 400 ? 422 : response.status).json({
+        success: false,
+        error: typeof errObj?.message === "string"
+          ? `Meta Graph API: ${errObj.message}`
+          : `Meta Graph API returnerte ${response.status}.`,
+        graphStatus: response.status,
+        graphError: errObj,
+      });
+    }
+    if (!payload || typeof payload.id !== "string") {
+      return res.status(502).json({ success: false, error: "Uventet respons fra Meta Graph API." });
+    }
+
+    return res.json({
+      success: true,
+      page: {
+        id: String(payload.id),
+        name: typeof payload.name === "string" ? payload.name : null,
+        fanCount: typeof payload.fan_count === "number" ? payload.fan_count : null,
+        followersCount: typeof payload.followers_count === "number" ? payload.followers_count : null,
+        category: typeof payload.category === "string" ? payload.category : null,
+        categoryList: Array.isArray(payload.category_list) ? payload.category_list : null,
+        about: typeof payload.about === "string" ? payload.about : null,
+        website: typeof payload.website === "string" ? payload.website : null,
+        link: typeof payload.link === "string" ? payload.link : null,
+        verificationStatus: typeof payload.verification_status === "string" ? payload.verification_status : null,
+      },
+      meta: {
+        resolvedFrom: rawInput,
+        resolvedTo: pageIdOrHandle,
+        graphVersion,
+      },
+    });
+  } catch (err) {
+    console.error(`[meta-page-inspect] fetch threw: ${err instanceof Error ? err.message : String(err)}`);
+    return res.status(500).json({ success: false, error: "Kunne ikke nå Meta Graph API." });
+  }
+});
+
 app.delete("/api/role-room/instagram/connections/:connectionId", async (req, res) => {
   const session = requireAdminSession(req, res);
   if (!session) return;
