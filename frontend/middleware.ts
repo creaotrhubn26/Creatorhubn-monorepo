@@ -22,11 +22,13 @@ export const config = {
 export default function middleware(request: Request) {
   const url = new URL(request.url);
   const host = (request.headers.get('host') || '').toLowerCase();
+  console.log(`[mw] host=${host} path=${url.pathname}`);
 
   const isRoleRoom = /^(?:www\.)?theroleroom\.com$/.test(host);
   if (!isRoleRoom) return next();
 
   if (url.pathname === '/') {
+    console.log('[mw] rewriting theroleroom.com/ -> /theroleroom.html');
     return rewrite(new URL('/theroleroom.html', url));
   }
   return next();
