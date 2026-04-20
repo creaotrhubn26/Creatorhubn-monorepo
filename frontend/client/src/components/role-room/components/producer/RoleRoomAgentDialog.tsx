@@ -19,10 +19,12 @@ import {
 import {
   AutoFixHigh as AutoFixHighIcon,
   Chat as ChatIcon,
+  FactCheck as FactCheckIcon,
   GridView as GridViewIcon,
   Language as LanguageIcon,
   Rocket as RocketIcon,
 } from '@mui/icons-material';
+import MetaPagePublicMetadataInspector from './MetaPagePublicMetadataInspector';
 import { Tab, Tabs } from '@mui/material';
 import type {
   RoleRoomAgentAccess,
@@ -174,7 +176,7 @@ export default function RoleRoomAgentDialog({
   // full correction trail as the newest source of truth.
   const [refinementDraft, setRefinementDraft] = useState('');
   const [refinementHistory, setRefinementHistory] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState<'research' | 'chat' | 'feed-planner' | 'marketing-plan'>('research');
+  const [activeTab, setActiveTab] = useState<'research' | 'chat' | 'feed-planner' | 'marketing-plan' | 'meta-page'>('research');
 
   // Phone + iPad-portrait widths get a fullScreen dialog so the chat
   // surface and the research forms are actually usable without pinch-
@@ -408,6 +410,12 @@ export default function RoleRoomAgentDialog({
           icon={<GridViewIcon fontSize="small" />}
           iconPosition="start"
         />
+        <Tab
+          value="meta-page"
+          label="Meta Page"
+          icon={<FactCheckIcon fontSize="small" />}
+          iconPosition="start"
+        />
         {currentUserId ? (
           <Tab value="chat" label="Chat" icon={<ChatIcon fontSize="small" />} iconPosition="start" />
         ) : null}
@@ -454,6 +462,10 @@ export default function RoleRoomAgentDialog({
         ) : activeTab === 'marketing-plan' ? (
           <Box sx={{ p: { xs: 1.4, md: 2 } }}>
             <MarketingPlanPanel projectId={projectId} bootstrap={result} />
+          </Box>
+        ) : activeTab === 'meta-page' ? (
+          <Box sx={{ p: { xs: 1, md: 2 } }}>
+            <MetaPagePublicMetadataInspector />
           </Box>
         ) : (
         <Stack spacing={1.4}>
