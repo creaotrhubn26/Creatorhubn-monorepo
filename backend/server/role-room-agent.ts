@@ -2465,9 +2465,12 @@ export async function fetchGooglePlacesBusinessSignals(
 async function enrichCompetitorsWithMetaPages(
   analysis: RoleRoomAgentCompetitorAnalysis,
 ): Promise<void> {
+  const allStatuses = (analysis.competitors ?? []).map((c) => `${c.name}:${c.status}(${c.confidence})`);
+  console.log(`[meta-pages] enrichment input: ${analysis.competitors?.length ?? 0} total competitors — ${allStatuses.join(', ')}`);
   const targets = (analysis.competitors ?? []).filter(
     (c) => c.status === "verified" || c.status === "likely",
   );
+  console.log(`[meta-pages] enrichment targets (verified/likely only): ${targets.length} — ${targets.map((t) => t.name).join(', ')}`);
   if (targets.length === 0) return;
   const limit = 3;
   for (let i = 0; i < targets.length; i += limit) {
@@ -2475,7 +2478,9 @@ async function enrichCompetitorsWithMetaPages(
     await Promise.all(
       batch.map(async (competitor) => {
         try {
+          console.log(`[meta-pages] enriching "${competitor.name}"…`);
           const meta = await enrichCompetitorWithMetaPage(competitor.name);
+          console.log(`[meta-pages] "${competitor.name}" → metaPage=${meta ? 'found:' + meta.id : 'null'}`);
           if (meta) {
             competitor.metaPage = {
               pageId: meta.id,

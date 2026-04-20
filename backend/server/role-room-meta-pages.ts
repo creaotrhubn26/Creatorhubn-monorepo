@@ -54,15 +54,17 @@ function appAccessToken(cfg: MetaAppAccessTokenConfig): string {
 async function metaFetch<T>(url: string, timeoutMs: number): Promise<T | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const redactedUrl = url.replace(/access_token=[^&]+/, 'access_token=<redacted>');
   try {
     const response = await fetch(url, { method: 'GET', signal: controller.signal });
     if (!response.ok) {
-      // Meta returns 400/404 for banned/deleted pages, 429 on rate limit.
-      // We don't distinguish here — treat all as "no data, move on".
+      const body = await response.text().catch(() => '');
+      console.error(`[meta-pages] ${redactedUrl} status=${response.status} body=${body.replace(/\s+/g, ' ').slice(0, 500)}`);
       return null;
     }
     return (await response.json()) as T;
-  } catch {
+  } catch (err) {
+    console.error(`[meta-pages] ${redactedUrl} threw: ${err instanceof Error ? err.message : String(err)}`);
     return null;
   } finally {
     clearTimeout(timer);
