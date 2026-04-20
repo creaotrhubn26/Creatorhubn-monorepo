@@ -17,6 +17,7 @@
  * same UI works on any public Page.
  */
 import { useState } from 'react';
+import { useAuth } from '@/hooks/useAuth';
 import {
   Alert,
   Box,
@@ -54,6 +55,7 @@ interface InspectResult {
 }
 
 export function MetaPagePublicMetadataInspector() {
+  const { user } = useAuth();
   const [input, setInput] = useState('https://www.facebook.com/creatorhubn/');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<InspectResult | null>(null);
@@ -66,9 +68,11 @@ export function MetaPagePublicMetadataInspector() {
     setConnectRequired(false);
     setResult(null);
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (user?.id) headers['Authorization'] = `Bearer ${user.id}`;
       const response = await fetch('/api/role-room/agent/meta-page-inspect', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         credentials: 'include',
         body: JSON.stringify({ pageIdOrUrl: input }),
       });
@@ -89,9 +93,11 @@ export function MetaPagePublicMetadataInspector() {
   const handleConnect = async () => {
     const projectId = 'meta-demo';
     try {
+      const headers: Record<string, string> = {};
+      if (user?.id) headers['Authorization'] = `Bearer ${user.id}`;
       const response = await fetch(
         `/api/role-room/instagram/oauth/start?projectId=${encodeURIComponent(projectId)}`,
-        { credentials: 'include' },
+        { headers, credentials: 'include' },
       );
       const body = await response.json().catch(() => ({}));
       if (!response.ok || !body?.url) {
