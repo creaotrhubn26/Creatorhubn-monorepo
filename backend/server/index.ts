@@ -29513,6 +29513,118 @@ app.delete("/api/role-room/instagram/connections/:connectionId", async (req, res
   return res.json({ success: ok });
 });
 
+/**
+ * Meta Ads Attribution inspector.
+ *
+ * Demonstrates the attribution_read / ads_read permissions: takes an
+ * ad account id (act_XXXXXXXX), calls Meta Graph Insights API with
+ * a 7d attribution window, and returns impressions, clicks, spend,
+ * CPC, CPM, CTR, and actions. Rendered inside the Ads Attribution
+ * panel so producers can benchmark paid campaign performance for
+ * clients alongside the competitor and page intelligence data.
+ *
+ * Before App Review grants attribution_read: works on ad accounts
+ * where the caller has a role via business_management scope.
+ */
+app.post("/api/role-room/agent/ads-attribution-inspect", async (req, res) => {
+  const featureId = "role-room-agent-producer";
+  if (!isCompatAdminFeatureEnabled(featureId)) {
+    return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
+  }
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+
+  const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
+  const rawInput = typeof body.adAccountId === "string" ? body.adAccountId.trim() : "";
+  if (!rawInput) {
+    return res.status(400).json({ success: false, error: "adAccountId er påkrevd." });
+  }
+  // Normalize: Meta wants act_{id} prefix on the ad account.
+  const adAccountId = rawInput.startsWith("act_") ? rawInput : `act_${rawInput.replace(/\D/g, "")}`;
+
+  const connections = await listInstagramConnections(pool, session.userId);
+  if (connections.length === 0) {
+    return res.status(409).json({
+      success: false,
+      error: "Du må koble Facebook/Instagram til Role Room før du kan hente ads attribution-data.",
+      connectRequired: true,
+    });
+  }
+  const connection = connections[0];
+
+  const fields = [
+    "impressions",
+    "clicks",
+    "spend",
+    "cpc",
+    "cpm",
+    "ctr",
+    "reach",
+    "frequency",
+    "actions",
+    "action_values",
+  ].join(",");
+  const graphVersion = "v21.0";
+  const graphUrl = `https://graph.facebook.com/${graphVersion}/${encodeURIComponent(adAccountId)}/insights?${new URLSearchParams({
+    fields,
+    date_preset: "last_7d",
+    action_attribution_windows: JSON.stringify(["7d_click", "1d_view"]),
+    access_token: connection.accessToken,
+  })}`;
+
+  try {
+    const response = await fetch(graphUrl, { method: "GET" });
+    const text = await response.text();
+    let payload: Record<string, unknown> | null = null;
+    try { payload = JSON.parse(text) as Record<string, unknown>; } catch { /* keep raw */ }
+
+    if (!response.ok) {
+      console.error(`[ads-attribution-inspect] graph status=${response.status} body=${text.replace(/\s+/g, " ").slice(0, 400)}`);
+      const errObj = (payload?.error as Record<string, unknown> | undefined) ?? null;
+      return res.status(response.status === 400 ? 422 : response.status).json({
+        success: false,
+        error: typeof errObj?.message === "string"
+          ? `Meta Graph API: ${errObj.message}`
+          : `Meta Graph API returnerte ${response.status}.`,
+        graphStatus: response.status,
+        graphError: errObj,
+      });
+    }
+    if (!payload) {
+      return res.status(502).json({ success: false, error: "Uventet respons fra Meta Graph API." });
+    }
+
+    const dataArray = Array.isArray(payload.data) ? payload.data : [];
+    const firstRow = (dataArray[0] as Record<string, unknown> | undefined) ?? null;
+
+    return res.json({
+      success: true,
+      insights: firstRow ? {
+        impressions: typeof firstRow.impressions === "string" ? Number(firstRow.impressions) : null,
+        clicks: typeof firstRow.clicks === "string" ? Number(firstRow.clicks) : null,
+        spend: typeof firstRow.spend === "string" ? Number(firstRow.spend) : null,
+        cpc: typeof firstRow.cpc === "string" ? Number(firstRow.cpc) : null,
+        cpm: typeof firstRow.cpm === "string" ? Number(firstRow.cpm) : null,
+        ctr: typeof firstRow.ctr === "string" ? Number(firstRow.ctr) : null,
+        reach: typeof firstRow.reach === "string" ? Number(firstRow.reach) : null,
+        frequency: typeof firstRow.frequency === "string" ? Number(firstRow.frequency) : null,
+        actions: Array.isArray(firstRow.actions) ? firstRow.actions : null,
+        actionValues: Array.isArray(firstRow.action_values) ? firstRow.action_values : null,
+      } : null,
+      meta: {
+        resolvedFrom: rawInput,
+        resolvedTo: adAccountId,
+        graphVersion,
+        datePreset: "last_7d",
+        attributionWindows: ["7d_click", "1d_view"],
+      },
+    });
+  } catch (err) {
+    console.error(`[ads-attribution-inspect] fetch threw: ${err instanceof Error ? err.message : String(err)}`);
+    return res.status(500).json({ success: false, error: "Kunne ikke nå Meta Graph API." });
+  }
+});
+
 app.post("/api/role-room/instagram/publish", async (req, res) => {
   const featureId = "role-room-agent-producer";
   if (!isCompatAdminFeatureEnabled(featureId)) {

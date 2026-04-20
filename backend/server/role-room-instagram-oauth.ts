@@ -34,6 +34,8 @@ const REQUIRED_SCOPES = [
   'pages_show_list',
   'pages_read_engagement',
   'business_management',
+  'ads_read',
+  'attribution_read',
 ];
 
 export interface MetaAppConfig {
