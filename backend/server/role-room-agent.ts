@@ -2283,7 +2283,7 @@ export async function fetchGooglePlacesBusinessSignals(
 
       if (!response.ok) {
         const body = await response.text().catch(() => "");
-        console.error(`[places-business] query="${query}" status=${response.status} body=${body.slice(0, 400)}`);
+        console.error(`[places-business] query="${query}" status=${response.status} body=${body.replace(/\s+/g, " ").slice(0, 500)}`);
         continue;
       }
 
@@ -2547,7 +2547,7 @@ async function fetchGooglePlacesCompetitorAnalysis(
 
       if (!response.ok) {
         const body = await response.text().catch(() => "");
-        console.error(`[places-competitors] query="${query}" status=${response.status} body=${body.slice(0, 400)}`);
+        console.error(`[places-competitors] query="${query}" status=${response.status} body=${body.replace(/\s+/g, " ").slice(0, 500)}`);
         continue;
       }
 
