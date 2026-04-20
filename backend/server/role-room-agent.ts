@@ -2250,6 +2250,7 @@ export async function fetchGooglePlacesBusinessSignals(
       : "";
 
   if (!hasText(apiKey) || !companyName) {
+    console.warn(`[places-business] skipping: apiKeySet=${hasText(apiKey)} companyName="${companyName}"`);
     return null;
   }
 
@@ -2259,6 +2260,7 @@ export async function fetchGooglePlacesBusinessSignals(
   const fieldMask =
     "places.id,places.displayName,places.formattedAddress,places.location,places.websiteUri,places.rating,places.userRatingCount,places.primaryType,places.primaryTypeDisplayName,places.googleMapsUri";
 
+  console.log(`[places-business] queries=${JSON.stringify(searchQueries)}`);
   const candidates: Array<Record<string, unknown>> = [];
 
   for (const query of searchQueries) {
@@ -2280,6 +2282,8 @@ export async function fetchGooglePlacesBusinessSignals(
       });
 
       if (!response.ok) {
+        const body = await response.text().catch(() => "");
+        console.error(`[places-business] query="${query}" status=${response.status} body=${body.slice(0, 400)}`);
         continue;
       }
 
@@ -2287,14 +2291,17 @@ export async function fetchGooglePlacesBusinessSignals(
         | { places?: Array<Record<string, unknown>> }
         | null;
       const places = Array.isArray(payload?.places) ? payload.places : [];
+      console.log(`[places-business] query="${query}" returnedCount=${places.length}`);
       candidates.push(...places);
       if (places.length > 0) {
         break;
       }
-    } catch {
+    } catch (err) {
+      console.error(`[places-business] query="${query}" threw: ${err instanceof Error ? err.message : String(err)}`);
       continue;
     }
   }
+  console.log(`[places-business] totalCandidates=${candidates.length}`);
 
   if (candidates.length === 0) {
     return null;
@@ -2507,12 +2514,15 @@ async function fetchGooglePlacesCompetitorAnalysis(
   const searchQueries = buildCompetitorSearchQueries(input, websiteInsights, businessSignals, brregCompany);
 
   if (!hasText(apiKey)) {
+    console.warn(`[places-competitors] GOOGLE_PLACES_API_KEY not set`);
     return buildLimitedCompetitorAnalysis("Google Places API er ikke konfigurert, så konkurrenter kan ikke verifiseres automatisk.", input, brregCompany);
   }
   if (!companyName || searchQueries.length === 0) {
+    console.warn(`[places-competitors] insufficient inputs: companyName="${companyName}" queryCount=${searchQueries.length}`);
     return buildLimitedCompetitorAnalysis("Mangler nok firmanavn, kategori eller lokasjon til å finne relevante konkurrenter.", input, brregCompany);
   }
 
+  console.log(`[places-competitors] queries=${JSON.stringify(searchQueries)}`);
   const fieldMask =
     "places.id,places.displayName,places.formattedAddress,places.websiteUri,places.rating,places.userRatingCount,places.primaryType,places.primaryTypeDisplayName,places.googleMapsUri";
   const rawCandidates: Array<Record<string, unknown>> = [];
@@ -2536,6 +2546,8 @@ async function fetchGooglePlacesCompetitorAnalysis(
       });
 
       if (!response.ok) {
+        const body = await response.text().catch(() => "");
+        console.error(`[places-competitors] query="${query}" status=${response.status} body=${body.slice(0, 400)}`);
         continue;
       }
 
@@ -2543,11 +2555,14 @@ async function fetchGooglePlacesCompetitorAnalysis(
         | { places?: Array<Record<string, unknown>> }
         | null;
       const places = Array.isArray(payload?.places) ? payload.places : [];
+      console.log(`[places-competitors] query="${query}" returnedCount=${places.length}`);
       rawCandidates.push(...places);
-    } catch {
+    } catch (err) {
+      console.error(`[places-competitors] query="${query}" threw: ${err instanceof Error ? err.message : String(err)}`);
       continue;
     }
   }
+  console.log(`[places-competitors] totalRawCandidates=${rawCandidates.length}`);
 
   const seenKeys = new Set<string>();
   const competitors = rawCandidates
