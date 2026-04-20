@@ -49,8 +49,97 @@
       "inLanguage": "no-NO",
       "publisher": {
         "@id": "https://theroleroom.com/#organization"
+      },
+      "potentialAction": {
+        "@type": "SearchAction",
+        "target": {
+          "@type": "EntryPoint",
+          "urlTemplate": "https://theroleroom.com/?q={search_term_string}"
+        },
+        "query-input": "required name=search_term_string"
       }
     }
+  </script>
+  <script type="application/ld+json" data-seo-ld="software">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "@id": "https://theroleroom.com/#software",
+      "name": "The Role Room",
+      "description": "Produksjonsflate for casting, talentportal, team og koordinering av opptaksdager. Samler roller, kandidater, auditions og produksjonsplan i ett arbeidsrom.",
+      "url": "https://theroleroom.com",
+      "image": "https://theroleroom.com/role-room-assets/landing_backdrop_with_logo.webp",
+      "applicationCategory": "BusinessApplication",
+      "applicationSubCategory": "CastingSoftware",
+      "operatingSystem": "Web, iOS, Android",
+      "inLanguage": "no-NO",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "NOK",
+        "availability": "https://schema.org/InStock"
+      },
+      "publisher": {
+        "@id": "https://theroleroom.com/#organization"
+      },
+      "featureList": [
+        "Casting og kandidatadministrasjon",
+        "Audition-planlegging og selvbetjent innspilling",
+        "Talentportal for skuespillere og crew",
+        "Utdanningsinstitusjon-partnerskap",
+        "Prosjektrom for produksjonsteam",
+        "Shotlist og storyboard-koordinering"
+      ]
+    }
+  </script>
+  <script type="application/ld+json" data-seo-ld="breadcrumb">
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        { "@type": "ListItem", "position": 1, "name": "Hjem", "item": "https://theroleroom.com/" }
+      ]
+    }
+  </script>
+  <script>
+    // Per-route meta override for rewrites that share theroleroom.html.
+    // The Vercel rewrite maps /talentportal and /utdanningsinstitusjon
+    // both to this file, so the default head tags describe the root
+    // landing. Update title + canonical + og tags in-place based on
+    // pathname so Google indexes these URLs distinctly.
+    (function () {
+      var routes = {
+        '/talentportal': {
+          title: 'Talentportal — The Role Room',
+          description: 'The Role Room Talentportal samler skuespillere, modeller og crew for norske produksjoner. Meld interesse og bli invitert til relevante auditions.',
+          canonical: 'https://theroleroom.com/talentportal',
+          ogImage: 'https://theroleroom.com/role-room-assets/landing_backdrop_with_logo.webp'
+        },
+        '/utdanningsinstitusjon': {
+          title: 'For utdanningsinstitusjoner — The Role Room',
+          description: 'The Role Room tilbyr utdanningsinstitusjoner innen film, TV og teater partner-tilgang for studenter som søker seg mot bransjen.',
+          canonical: 'https://theroleroom.com/utdanningsinstitusjon',
+          ogImage: 'https://theroleroom.com/role-room-assets/landing_backdrop_with_logo.webp'
+        }
+      };
+      var path = location.pathname.replace(/\/+$/, '') || '/';
+      var route = routes[path];
+      if (!route) return;
+      function setAttr(sel, attr, val) {
+        var el = document.querySelector(sel);
+        if (el) el.setAttribute(attr, val);
+      }
+      document.title = route.title;
+      setAttr('meta[name="description"]', 'content', route.description);
+      setAttr('link[rel="canonical"]', 'href', route.canonical);
+      setAttr('meta[property="og:title"]', 'content', route.title);
+      setAttr('meta[property="og:description"]', 'content', route.description);
+      setAttr('meta[property="og:url"]', 'content', route.canonical);
+      setAttr('meta[property="og:image"]', 'content', route.ogImage);
+      setAttr('meta[name="twitter:title"]', 'content', route.title);
+      setAttr('meta[name="twitter:description"]', 'content', route.description);
+      setAttr('meta[name="twitter:image"]', 'content', route.ogImage);
+    })();
   </script>
   <style>
     html, body {
