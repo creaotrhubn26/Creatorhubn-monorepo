@@ -63,14 +63,28 @@ export function MetaPagePublicMetadataInspector() {
   const [connectRequired, setConnectRequired] = useState(false);
 
   const resolveAuthToken = (): string | null => {
-    if (user?.id) return user.id;
+    // Role Room casting-main and the main CreatorHub SPA persist
+    // auth under different keys. Try the Role Room keys first since
+    // this component runs inside RoleRoomAgentDialog, then fall back
+    // to the CreatorHub SPA keys, then to the in-memory useAuth.
     try {
-      return (
-        localStorage.getItem('creatorhub_auth_token') ||
-        JSON.parse(localStorage.getItem('creatorhub_auth_user') || 'null')?.id ||
-        null
-      );
-    } catch { return null; }
+      const rrToken = localStorage.getItem('role_room_auth_token');
+      if (rrToken) return rrToken;
+      const rrSession = localStorage.getItem('role_room_auth_session');
+      if (rrSession) {
+        const parsed = JSON.parse(rrSession);
+        const id = parsed?.adminUser?.id || parsed?.user?.id || parsed?.id;
+        if (id) return id;
+      }
+      const chToken = localStorage.getItem('creatorhub_auth_token');
+      if (chToken) return chToken;
+      const chUser = localStorage.getItem('creatorhub_auth_user');
+      if (chUser) {
+        const id = JSON.parse(chUser)?.id;
+        if (id) return id;
+      }
+    } catch { /* fall through */ }
+    return user?.id || null;
   };
 
   const handleInspect = async () => {
