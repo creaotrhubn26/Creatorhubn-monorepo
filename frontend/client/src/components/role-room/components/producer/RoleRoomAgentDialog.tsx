@@ -179,6 +179,7 @@ export default function RoleRoomAgentDialog({
   const [refinementDraft, setRefinementDraft] = useState('');
   const [refinementHistory, setRefinementHistory] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<'research' | 'chat' | 'feed-planner' | 'marketing-plan' | 'meta-page' | 'ads-attribution'>('research');
+  const [systemStatusOpen, setSystemStatusOpen] = useState(false);
 
   // Phone + iPad-portrait widths get a fullScreen dialog so the chat
   // surface and the research forms are actually usable without pinch-
@@ -380,10 +381,25 @@ export default function RoleRoomAgentDialog({
                 </Typography>
               </Box>
             </Stack>
-            <Stack direction="row" spacing={0.8} flexWrap="wrap" useFlexGap>
+            <Stack direction="row" spacing={0.8} flexWrap="wrap" useFlexGap alignItems="center">
               <Chip label="Kun admin" size="small" sx={{ bgcolor: 'rgba(15,118,110,0.18)', color: '#99f6e4' }} />
               <Chip label="Innholdsprodusent" size="small" sx={{ bgcolor: 'rgba(168,85,247,0.18)', color: '#f0abfc' }} />
               <Chip label={projectName} size="small" sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }} />
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => setSystemStatusOpen(true)}
+                sx={{
+                  textTransform: 'none',
+                  borderColor: 'rgba(148,163,184,0.3)',
+                  color: '#cbd5e1',
+                  fontSize: '0.72rem',
+                  py: 0.2,
+                  '&:hover': { borderColor: '#22d3ee', color: '#22d3ee' },
+                }}
+              >
+                System status
+              </Button>
             </Stack>
           </Stack>
         </Stack>
@@ -483,41 +499,6 @@ export default function RoleRoomAgentDialog({
         <Stack spacing={1.4}>
           {error ? <Alert severity="error">{error}</Alert> : null}
           {notice ? <Alert severity="success">{notice}</Alert> : null}
-          {access && !access.providerConfigured ? (
-            <Alert severity="warning">
-              OpenAI er ikke konfigurert i backend ennå. Agenten fungerer fortsatt, men bruker fallback-regler i stedet for ekte <strong>{access.defaultModel || 'OpenAI-modell'}</strong>.
-            </Alert>
-          ) : null}
-          {access?.providerConfigured ? (
-            <Alert severity="info">
-              Agenten er satt opp mot <strong>{runtimeLabel}</strong>. Dette er standardmotoren for analyse og forslag i denne admin-testen.
-            </Alert>
-          ) : null}
-          {access && !access.googlePlacesConfigured ? (
-            <Alert severity="info">
-              Google Places/review enrichment er ikke konfigurert ennå. Agenten bruker fortsatt nettside og OpenAI, men henter ikke Google-rating, anmeldelser og stedssignaler før <strong>GOOGLE_PLACES_API_KEY</strong> er satt.
-            </Alert>
-          ) : null}
-          {access?.googlePlacesConfigured ? (
-            <Alert severity="success">
-              Google Places enrichment er aktiv. Agenten kan bruke rating, anmeldelser, adresse og stedssignaler i brief og story logikk.
-            </Alert>
-          ) : null}
-          {access && !access.cohereConfigured ? (
-            <Alert severity="info">
-              Cohere retrieval/rerank er ikke konfigurert ennå. Agenten fungerer fortsatt, men velger ikke automatisk de mest relevante nettsidene og reviews før <strong>COHERE_API_KEY</strong> er satt.
-            </Alert>
-          ) : null}
-          {access?.cohereConfigured ? (
-            <Alert severity="success">
-              Cohere retrieval/rerank er aktiv med <strong>{access.cohereRerankModel || 'rerank-v3.5'}</strong>. Agenten bruker dette til å velge de mest relevante nettsidene og anmeldelsene før OpenAI genererer forslag.
-            </Alert>
-          ) : null}
-          {access?.brregConfigured ? (
-            <Alert severity="success">
-              Brreg-oppslag er aktivt. Agenten sjekker organisasjonsnummer eller firmanavn mot Enhetsregisteret før den lager prosjektgrunnlag.
-            </Alert>
-          ) : null}
 
           <Box
             sx={{
@@ -1396,6 +1377,74 @@ export default function RoleRoomAgentDialog({
           </Button>
         </Stack>
       </DialogActions>
+
+      <Dialog
+        open={systemStatusOpen}
+        onClose={() => setSystemStatusOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            bgcolor: '#0b1220',
+            color: '#f1f5f9',
+            border: '1px solid rgba(148,163,184,0.16)',
+            borderRadius: 3,
+          },
+        }}
+      >
+        <DialogTitle sx={{ borderBottom: '1px solid rgba(148,163,184,0.14)' }}>
+          <Typography sx={{ fontWeight: 800, fontSize: '1.15rem' }}>
+            Agent system status
+          </Typography>
+          <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.85rem' }}>
+            Hvilke eksterne tjenester agenten er koblet til akkurat nå.
+          </Typography>
+        </DialogTitle>
+        <DialogContent sx={{ p: { xs: 1.4, md: 2 } }}>
+          <Stack spacing={1.4}>
+            {access && !access.providerConfigured ? (
+              <Alert severity="warning">
+                OpenAI er ikke konfigurert i backend ennå. Agenten fungerer fortsatt, men bruker fallback-regler i stedet for ekte <strong>{access.defaultModel || 'OpenAI-modell'}</strong>.
+              </Alert>
+            ) : null}
+            {access?.providerConfigured ? (
+              <Alert severity="info">
+                Agenten er satt opp mot <strong>{runtimeLabel}</strong>. Dette er standardmotoren for analyse og forslag i denne admin-testen.
+              </Alert>
+            ) : null}
+            {access && !access.googlePlacesConfigured ? (
+              <Alert severity="info">
+                Google Places/review enrichment er ikke konfigurert ennå. Agenten bruker fortsatt nettside og OpenAI, men henter ikke Google-rating, anmeldelser og stedssignaler før <strong>GOOGLE_PLACES_API_KEY</strong> er satt.
+              </Alert>
+            ) : null}
+            {access?.googlePlacesConfigured ? (
+              <Alert severity="success">
+                Google Places enrichment er aktiv. Agenten kan bruke rating, anmeldelser, adresse og stedssignaler i brief og story logikk.
+              </Alert>
+            ) : null}
+            {access && !access.cohereConfigured ? (
+              <Alert severity="info">
+                Cohere retrieval/rerank er ikke konfigurert ennå. Agenten fungerer fortsatt, men velger ikke automatisk de mest relevante nettsidene og reviews før <strong>COHERE_API_KEY</strong> er satt.
+              </Alert>
+            ) : null}
+            {access?.cohereConfigured ? (
+              <Alert severity="success">
+                Cohere retrieval/rerank er aktiv med <strong>{access.cohereRerankModel || 'rerank-v3.5'}</strong>. Agenten bruker dette til å velge de mest relevante nettsidene og anmeldelsene før OpenAI genererer forslag.
+              </Alert>
+            ) : null}
+            {access?.brregConfigured ? (
+              <Alert severity="success">
+                Brreg-oppslag er aktivt. Agenten sjekker organisasjonsnummer eller firmanavn mot Enhetsregisteret før den lager prosjektgrunnlag.
+              </Alert>
+            ) : null}
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ p: 1.6 }}>
+          <Button onClick={() => setSystemStatusOpen(false)} sx={{ textTransform: 'none' }}>
+            Lukk
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Dialog>
   );
 }
