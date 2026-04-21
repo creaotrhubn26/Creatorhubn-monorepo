@@ -39,11 +39,147 @@
  *   recipe (tells the caller "don't trust this one").
  */
 import type {
+  HslRecommendation,
   IntensityProfile,
   PortraitAnalysisSummary,
   PortraitRecipeRecommendation,
   SubjectKind,
 } from "./photo-enhancer-claude-vision.js";
+
+const HSL_BANDS = [
+  "red",
+  "orange",
+  "yellow",
+  "green",
+  "aqua",
+  "blue",
+  "purple",
+  "magenta",
+] as const satisfies ReadonlyArray<keyof HslRecommendation>;
+
+const HSL_IDENTITY_AGG: HslRecommendation = {
+  red: { h: 0, s: 0, l: 0 },
+  orange: { h: 0, s: 0, l: 0 },
+  yellow: { h: 0, s: 0, l: 0 },
+  green: { h: 0, s: 0, l: 0 },
+  aqua: { h: 0, s: 0, l: 0 },
+  blue: { h: 0, s: 0, l: 0 },
+  purple: { h: 0, s: 0, l: 0 },
+  magenta: { h: 0, s: 0, l: 0 },
+};
+
+type LutSample = NonNullable<PortraitRecipeRecommendation["lut"]>;
+
+const LUT_AGG_IDENTITY: LutSample = {
+  name: null,
+  strength: 0,
+  tonalMix: "all",
+};
+
+const LUT_TONAL_MIX_OPTIONS = [
+  "all",
+  "highlights",
+  "midtones",
+  "shadows",
+] as const;
+
+function consolidateLut(samples: ReadonlyArray<SampleRecipe>): {
+  lut: LutSample;
+  lowConfidence: boolean;
+} {
+  const named = samples
+    .map((s) => s.recipe.lut)
+    .filter((l): l is LutSample => Boolean(l && l.name));
+  if (named.length === 0) {
+    return { lut: { ...LUT_AGG_IDENTITY }, lowConfidence: false };
+  }
+  const counts = new Map<string, number>();
+  for (const l of named) {
+    if (l.name) counts.set(l.name, (counts.get(l.name) ?? 0) + 1);
+  }
+  let topName: string | null = null;
+  let topCount = 0;
+  for (const [name, count] of counts) {
+    if (count > topCount) {
+      topName = name;
+      topCount = count;
+    }
+  }
+  const agreement = topCount / samples.length;
+  if (!topName || agreement < 0.5) {
+    return { lut: { ...LUT_AGG_IDENTITY }, lowConfidence: true };
+  }
+  const matchingStrengths = named
+    .filter((l) => l.name === topName)
+    .map((l) => Number(l.strength))
+    .filter((v) => Number.isFinite(v));
+  const matchingTonal = named
+    .filter((l) => l.name === topName)
+    .map((l) => (LUT_TONAL_MIX_OPTIONS as readonly string[]).includes(String(l.tonalMix))
+      ? (l.tonalMix as LutSample["tonalMix"])
+      : "all");
+  const tonalCounts = new Map<string, number>();
+  for (const t of matchingTonal) tonalCounts.set(t, (tonalCounts.get(t) ?? 0) + 1);
+  let topTonal: LutSample["tonalMix"] = "all";
+  let topTonalCount = 0;
+  for (const [t, c] of tonalCounts) {
+    if (c > topTonalCount) {
+      topTonal = t as LutSample["tonalMix"];
+      topTonalCount = c;
+    }
+  }
+  return {
+    lut: {
+      name: topName,
+      strength: Math.round(median(matchingStrengths)),
+      tonalMix: topTonal,
+    },
+    lowConfidence: false,
+  };
+}
+
+/** Per-band/per-channel median of HSL across samples. Divergence guard
+ *  falls back to identity for a band when the cohort disagrees — a
+ *  visible colour cast on only half a gallery usually indicates mixed
+ *  lighting, and the safer move is to leave that band alone. */
+function consolidateHsl(samples: ReadonlyArray<SampleRecipe>): {
+  hsl: HslRecommendation;
+  lowConfidenceBands: string[];
+} {
+  const low: string[] = [];
+  const out: HslRecommendation = {
+    red: { h: 0, s: 0, l: 0 },
+    orange: { h: 0, s: 0, l: 0 },
+    yellow: { h: 0, s: 0, l: 0 },
+    green: { h: 0, s: 0, l: 0 },
+    aqua: { h: 0, s: 0, l: 0 },
+    blue: { h: 0, s: 0, l: 0 },
+    purple: { h: 0, s: 0, l: 0 },
+    magenta: { h: 0, s: 0, l: 0 },
+  };
+  for (const band of HSL_BANDS) {
+    for (const channel of ["h", "s", "l"] as const) {
+      const values = samples
+        .map((s) => Number(s.recipe.hsl?.[band]?.[channel]))
+        .filter((v) => Number.isFinite(v));
+      if (values.length === 0) continue;
+      const med = median(values);
+      const deviation = mad(values, med);
+      const outliers = deviation > 0
+        ? values.filter((v) => Math.abs(v - med) > 3 * deviation).length
+        : 0;
+      const farFromMedian = values.filter((v) => Math.abs(v - med) > 20).length;
+      const divergent =
+        outliers / values.length > 0.3 || farFromMedian / values.length > 0.3;
+      if (divergent) {
+        low.push(`hsl.${band}.${channel}`);
+        continue;
+      }
+      out[band][channel] = Math.round(med);
+    }
+  }
+  return { hsl: out, lowConfidenceBands: low };
+}
 
 const NUMERIC_KEYS = [
   "brightness",
@@ -271,7 +407,21 @@ export function consolidateRecipes(
     teethProfile: profileOut.teethProfile ?? PROFILE_DEFAULT,
     eyeBrightnessProfile: profileOut.eyeBrightnessProfile ?? PROFILE_DEFAULT,
     eyeWhitenessProfile: profileOut.eyeWhitenessProfile ?? PROFILE_DEFAULT,
+    hsl: { ...HSL_IDENTITY_AGG },
+    lut: { ...LUT_AGG_IDENTITY },
   };
+
+  const hslAgg = consolidateHsl(samples);
+  recipe.hsl = hslAgg.hsl;
+  for (const key of hslAgg.lowConfidenceBands) lowConfidenceSliders.push(key);
+
+  // LUT consolidation: mode on the slug, median on strength, mode on
+  // tonalMix. If <50% of samples agree on the slug, we abandon the LUT
+  // selection — a mixed-look gallery is usually better off without a
+  // forced LUT than with the wrong one half the time.
+  const lutAgg = consolidateLut(samples);
+  recipe.lut = lutAgg.lut;
+  if (lutAgg.lowConfidence) lowConfidenceSliders.push("lut");
 
   const isPortraitLike = subject === "portrait" || subject === "group_portrait";
   if (!isPortraitLike) {

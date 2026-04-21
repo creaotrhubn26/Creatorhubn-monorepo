@@ -18,16 +18,24 @@ import { promisify } from "util";
 import { Readable, Transform } from "stream";
 import { ReadableStream as NodeReadableStream } from "stream/web";
 import { pipeline } from "stream/promises";
+import { createHash, randomUUID } from "node:crypto";
 import {
   AbortMultipartUploadCommand,
   CompleteMultipartUploadCommand,
   CreateMultipartUploadCommand,
+  DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
+  PutObjectCommand,
   S3Client,
   UploadPartCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import {
+  computeSwatchPreview,
+  CubeParseError,
+  parseCubeMetadata,
+} from "./photo-enhancer-cube-parser.js";
 import {
   PHOTO_ENHANCER_DRIVE_STRUCTURE,
   PHOTO_ENHANCER_MODEL_REGISTRY_POLICY,
@@ -220,7 +228,114 @@ type PhotoEnhancerSettings = {
   // controls how hard the category-specific pass pushes.
   subject: SubjectKind;
   subjectLookStrength: number;
+  // 8-band HSL colour grading. Matches Evoto / Lightroom conventions:
+  // red / orange / yellow / green / aqua / blue / purple / magenta.
+  // Each band's h / s / l slider is a signed intensity in [-100, 100]
+  // mapped by the Python runner to hue-rotate / sat-multiply / luminance-
+  // lift deltas. All zeros ⇒ identity.
+  hsl: HslAdjustments;
+  // Built-in LUT name + intensity. ``null`` name means no LUT pass runs.
+  // Contract mirrors backend/gfpgan-runner/lut_library.py — the slug set
+  // is authoritative on the runner side; this layer is just a pass-through.
+  lut: LutSelection;
 };
+
+type LutSelection = {
+  name: string | null;
+  strength: number;
+};
+
+type HslBand = {
+  h: number;
+  s: number;
+  l: number;
+};
+
+type HslAdjustments = {
+  red: HslBand;
+  orange: HslBand;
+  yellow: HslBand;
+  green: HslBand;
+  aqua: HslBand;
+  blue: HslBand;
+  purple: HslBand;
+  magenta: HslBand;
+};
+
+const HSL_BAND_NAMES = [
+  "red",
+  "orange",
+  "yellow",
+  "green",
+  "aqua",
+  "blue",
+  "purple",
+  "magenta",
+] as const satisfies ReadonlyArray<keyof HslAdjustments>;
+
+/**
+ * Fallback LUT metadata used when the Python runner is unreachable.
+ * Must stay in sync with backend/gfpgan-runner/lut_library.py — unit
+ * tests on both sides lock the slug set.
+ */
+const PHOTO_ENHANCER_BUILTIN_LUTS = [
+  {
+    id: "neutral",
+    displayName: "Nøytral",
+    description: "Identitet — ingen fargejustering.",
+    swatch: { r: 128, g: 128, b: 128 },
+    size: 17,
+  },
+  {
+    id: "warm_soft",
+    displayName: "Varm (mild)",
+    description: "Lett varmere hudtoner, dempede blå.",
+    swatch: { r: 208, g: 172, b: 144 },
+    size: 17,
+  },
+  {
+    id: "cool_soft",
+    displayName: "Kjølig (mild)",
+    description: "Kjølere skygger, bevarte hudtoner.",
+    swatch: { r: 144, g: 172, b: 210 },
+    size: 17,
+  },
+] as const;
+
+const HSL_IDENTITY: HslAdjustments = {
+  red: { h: 0, s: 0, l: 0 },
+  orange: { h: 0, s: 0, l: 0 },
+  yellow: { h: 0, s: 0, l: 0 },
+  green: { h: 0, s: 0, l: 0 },
+  aqua: { h: 0, s: 0, l: 0 },
+  blue: { h: 0, s: 0, l: 0 },
+  purple: { h: 0, s: 0, l: 0 },
+  magenta: { h: 0, s: 0, l: 0 },
+};
+
+function normalizeHsl(raw: unknown): HslAdjustments {
+  const source = parseJsonObject(raw);
+  const out: HslAdjustments = {
+    red: { ...HSL_IDENTITY.red },
+    orange: { ...HSL_IDENTITY.orange },
+    yellow: { ...HSL_IDENTITY.yellow },
+    green: { ...HSL_IDENTITY.green },
+    aqua: { ...HSL_IDENTITY.aqua },
+    blue: { ...HSL_IDENTITY.blue },
+    purple: { ...HSL_IDENTITY.purple },
+    magenta: { ...HSL_IDENTITY.magenta },
+  };
+  for (const band of HSL_BAND_NAMES) {
+    const bandRaw = parseJsonObject(source[band]);
+    const h = readNumber(bandRaw.h);
+    const s = readNumber(bandRaw.s);
+    const l = readNumber(bandRaw.l);
+    if (h !== null) out[band].h = clampNumber(h, -100, 100);
+    if (s !== null) out[band].s = clampNumber(s, -100, 100);
+    if (l !== null) out[band].l = clampNumber(l, -100, 100);
+  }
+  return out;
+}
 
 type SubjectKind =
   | ""
@@ -1053,7 +1168,35 @@ const defaultSettings: PhotoEnhancerSettings = {
   blemishProfile: "normal",
   subject: "",
   subjectLookStrength: 0,
+  hsl: {
+    red: { h: 0, s: 0, l: 0 },
+    orange: { h: 0, s: 0, l: 0 },
+    yellow: { h: 0, s: 0, l: 0 },
+    green: { h: 0, s: 0, l: 0 },
+    aqua: { h: 0, s: 0, l: 0 },
+    blue: { h: 0, s: 0, l: 0 },
+    purple: { h: 0, s: 0, l: 0 },
+    magenta: { h: 0, s: 0, l: 0 },
+  },
+  lut: { name: null, strength: 0 },
 };
+
+/** Sanitise a LUT selection. Unknown name shape → no-LUT. Strength is
+ *  clamped to [0, 100]. Doesn't validate the slug against the runner
+ *  registry here — an unknown slug is logged + skipped on the runner
+ *  side rather than rejecting the whole enhance request. */
+function normalizeLut(raw: unknown): LutSelection {
+  if (!raw || typeof raw !== "object") return { name: null, strength: 0 };
+  const source = raw as Record<string, unknown>;
+  const rawName = source.name;
+  const name =
+    typeof rawName === "string" && rawName.trim().length > 0
+      ? rawName.trim().slice(0, 80)
+      : null;
+  const strength = clampNumber(readNumber(source.strength) ?? 0, 0, 100);
+  if (!name) return { name: null, strength: 0 };
+  return { name, strength };
+}
 
 const presetSettings: Record<string, Partial<PhotoEnhancerSettings>> = {
   auto: { contrast: 8, saturation: 6, sharpness: 14, denoising: 35 },
@@ -1487,6 +1630,8 @@ function normalizeSettings(
     ),
     subject: normalizeSubjectKind(raw.subject ?? merged.subject),
     subjectLookStrength: clampNumber(merged.subjectLookStrength, 0, 100),
+    hsl: normalizeHsl(raw.hsl ?? merged.hsl),
+    lut: normalizeLut(raw.lut ?? merged.lut),
   };
 }
 
@@ -3151,6 +3296,8 @@ async function buildPhotoEnhancerEnhancementPayload(params: {
   file: Express.Multer.File;
   preset: string;
   settings: PhotoEnhancerSettings;
+  pool?: Pool;
+  ownerUserId?: string | null;
 }) {
   const prepared = await prepareProcessableImage(params.file);
   if (hasUnavailableSourceConversion(prepared.raw)) {
@@ -3174,6 +3321,8 @@ async function buildPhotoEnhancerEnhancementPayload(params: {
       preset: params.preset,
       settings: params.settings,
       model: gfpgan,
+      pool: params.pool,
+      ownerUserId: params.ownerUserId,
     });
     if (modelResult) {
       return {
@@ -3257,9 +3406,45 @@ async function runGfpganService(params: {
   preset: string;
   settings: PhotoEnhancerSettings;
   model: Awaited<ReturnType<typeof resolveGfpganModelStatus>>;
+  pool?: Pool;
+  ownerUserId?: string | null;
 }): Promise<{ enhancedImageUrl: string; modelUsed: string } | null> {
   const endpoint = resolvePhotoEnhancerRunnerEndpoint(params.model);
   if (!endpoint || !params.model.available || !params.model.inferenceAvailable) return null;
+
+  // When the photographer picked a user-uploaded LUT, resolve it to an
+  // inline float table here and hand it to the runner as `lut.inlineTable`
+  // — keeps the runner oblivious to R2 and our DB schema.
+  let resolvedLut = params.settings.lut as (
+    | (PhotoEnhancerSettings["lut"] & {
+        inlineTable?: number[];
+        inlineSize?: number;
+        inlineDomainMin?: number[];
+        inlineDomainMax?: number[];
+      })
+    | null
+  );
+  if (
+    resolvedLut?.name?.startsWith("user_") &&
+    params.pool &&
+    params.ownerUserId &&
+    resolvedLut.strength > 0
+  ) {
+    try {
+      const table = await fetchUserLutTable(params.pool, params.ownerUserId, resolvedLut.name);
+      if (table) {
+        resolvedLut = {
+          ...resolvedLut,
+          inlineTable: table.table,
+          inlineSize: table.size,
+          inlineDomainMin: table.domainMin,
+          inlineDomainMax: table.domainMax,
+        };
+      }
+    } catch {
+      // fall through — runner will hit its own registry (miss) and log
+    }
+  }
 
   const controller = new AbortController();
   const timeout = setTimeout(
@@ -3305,6 +3490,17 @@ async function runGfpganService(params: {
           // leave subject="" and the runner skips the look.
           subject: params.settings.subject,
           subjectLookStrength: params.settings.subjectLookStrength,
+          // 8-band HSL colour grading applied post-restore, pre-subject-look.
+          // Passed under ``controls`` so the runner accepts it even when the
+          // top-level ``settings`` shape skews older (dual-path also used by
+          // the portrait sliders above).
+          hsl: params.settings.hsl,
+          // Built-in LUT look, applied post-HSL. Runner resolves the
+          // name against its own registry; passes through identity when
+          // name is null or strength is 0. For user-uploaded LUTs the
+          // backend inlines the float table so the runner doesn't need
+          // R2 credentials.
+          lut: resolvedLut,
           requestedModel: params.settings.modelPreference,
         },
         model: {
@@ -3480,6 +3676,8 @@ async function enhanceUploadedFile(params: {
   file: Express.Multer.File;
   preset: string;
   settings: PhotoEnhancerSettings;
+  pool?: Pool;
+  ownerUserId?: string | null;
 }): Promise<{
   buffer: Buffer;
   mimeType: string;
@@ -3500,6 +3698,8 @@ async function enhanceUploadedFile(params: {
       preset: params.preset,
       settings: params.settings,
       model: gfpgan,
+      pool: params.pool,
+      ownerUserId: params.ownerUserId,
     });
     if (modelResult?.enhancedImageUrl?.startsWith("data:")) {
       const decoded = dataUrlToBuffer(modelResult.enhancedImageUrl);
@@ -3783,6 +3983,190 @@ async function buildPhotoEnhancerSelfTest(options: {
   };
 }
 
+// ─────────────────── User-LUT database helpers ───────────────────────
+//
+// Thin pg queries — we intentionally avoid pulling in an ORM dependency
+// here because the photo-enhancer routes already use plain SQL via the
+// shared pool. The ``pool`` parameter is provided by createPhotoEnhancerRouter
+// and may be undefined in dev/test; every helper tolerates that by
+// throwing so the route returns the `db_unavailable` error rather than
+// silently producing an empty result.
+
+interface UserLutRow {
+  id: string;
+  ownerUserId: string;
+  displayName: string;
+  description: string;
+  category: string | null;
+  r2Key: string;
+  size: number;
+  domainMin: [number, number, number];
+  domainMax: [number, number, number];
+  swatch: { r: number; g: number; b: number };
+  bytes: number;
+  sha256: string;
+  userUploaded: true;
+}
+
+async function insertUserLut(
+  pool: Pool,
+  row: Omit<UserLutRow, "userUploaded">,
+): Promise<void> {
+  await pool.query(
+    `INSERT INTO photo_enhancer_user_luts
+       (id, owner_user_id, display_name, description, category, r2_key,
+        size, domain_min, domain_max,
+        swatch_r, swatch_g, swatch_b, bytes, sha256)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+    [
+      row.id,
+      row.ownerUserId,
+      row.displayName,
+      row.description,
+      row.category,
+      row.r2Key,
+      row.size,
+      row.domainMin,
+      row.domainMax,
+      row.swatch.r,
+      row.swatch.g,
+      row.swatch.b,
+      row.bytes,
+      row.sha256,
+    ],
+  );
+}
+
+async function listUserLuts(pool: Pool, ownerUserId: string): Promise<Array<{
+  id: string;
+  displayName: string;
+  description: string;
+  category: string | null;
+  size: number;
+  swatch: { r: number; g: number; b: number };
+  userUploaded: true;
+}>> {
+  const result = await pool.query(
+    `SELECT id, display_name, description, category, size,
+            swatch_r, swatch_g, swatch_b
+       FROM photo_enhancer_user_luts
+      WHERE owner_user_id = $1
+      ORDER BY created_at DESC`,
+    [ownerUserId],
+  );
+  return result.rows.map((r: Record<string, unknown>) => ({
+    id: String(r.id),
+    displayName: String(r.display_name),
+    description: String(r.description ?? ""),
+    category: r.category ? String(r.category) : null,
+    size: Number(r.size),
+    swatch: {
+      r: Number(r.swatch_r),
+      g: Number(r.swatch_g),
+      b: Number(r.swatch_b),
+    },
+    userUploaded: true,
+  }));
+}
+
+async function getUserLut(
+  pool: Pool,
+  ownerUserId: string,
+  lutId: string,
+): Promise<UserLutRow | null> {
+  const result = await pool.query(
+    `SELECT * FROM photo_enhancer_user_luts
+      WHERE owner_user_id = $1 AND id = $2
+      LIMIT 1`,
+    [ownerUserId, lutId],
+  );
+  const r = result.rows[0];
+  if (!r) return null;
+  return {
+    id: String(r.id),
+    ownerUserId: String(r.owner_user_id),
+    displayName: String(r.display_name),
+    description: String(r.description ?? ""),
+    category: r.category ? String(r.category) : null,
+    r2Key: String(r.r2_key),
+    size: Number(r.size),
+    domainMin: Array.isArray(r.domain_min)
+      ? [Number(r.domain_min[0]), Number(r.domain_min[1]), Number(r.domain_min[2])]
+      : [0, 0, 0],
+    domainMax: Array.isArray(r.domain_max)
+      ? [Number(r.domain_max[0]), Number(r.domain_max[1]), Number(r.domain_max[2])]
+      : [1, 1, 1],
+    swatch: {
+      r: Number(r.swatch_r),
+      g: Number(r.swatch_g),
+      b: Number(r.swatch_b),
+    },
+    bytes: Number(r.bytes),
+    sha256: String(r.sha256),
+    userUploaded: true,
+  };
+}
+
+async function deleteUserLut(
+  pool: Pool,
+  ownerUserId: string,
+  lutId: string,
+): Promise<void> {
+  await pool.query(
+    `DELETE FROM photo_enhancer_user_luts WHERE owner_user_id = $1 AND id = $2`,
+    [ownerUserId, lutId],
+  );
+}
+
+/** Fetch a user LUT's .cube bytes from R2 and parse. Returned table is
+ *  a flat float32 array ready to ship to the runner. */
+async function fetchUserLutTable(
+  pool: Pool,
+  ownerUserId: string,
+  lutId: string,
+): Promise<{ size: number; domainMin: number[]; domainMax: number[]; table: number[] } | null> {
+  const row = await getUserLut(pool, ownerUserId, lutId);
+  if (!row) return null;
+  const config = buildPhotoEnhancerUploadR2Config();
+  const client = getPhotoEnhancerUploadR2Client(config);
+  if (!client || !config.bucket) return null;
+  const response = await client.send(
+    new GetObjectCommand({ Bucket: config.bucket, Key: row.r2Key }),
+  );
+  const body = response.Body as { transformToString?: () => Promise<string> } | undefined;
+  if (!body?.transformToString) return null;
+  const text = await body.transformToString();
+  const meta = parseCubeMetadata(text);
+  if (meta.kind !== "3D") return null;
+  // Re-parse the full table — parseCubeMetadata only extracts samples.
+  // The runner needs the full ``size³ * 3`` float list, so we walk the
+  // data rows again here rather than bloating the metadata struct.
+  const entries: number[] = [];
+  const lines = text.replace(/\r\n/g, "\n").split("\n");
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) continue;
+    const upper = line.toUpperCase();
+    if (
+      upper.startsWith("LUT_") ||
+      upper.startsWith("DOMAIN_") ||
+      upper.startsWith("TITLE")
+    ) {
+      continue;
+    }
+    const parts = line.split(/\s+/);
+    if (parts.length !== 3) continue;
+    for (const p of parts) entries.push(Number(p));
+  }
+  if (entries.length !== meta.size * meta.size * meta.size * 3) return null;
+  return {
+    size: meta.size,
+    domainMin: meta.domainMin,
+    domainMax: meta.domainMax,
+    table: entries,
+  };
+}
+
 export function createPhotoEnhancerRouter(pool?: Pool) {
   const router = express.Router();
 
@@ -4053,6 +4437,332 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
       });
     },
   );
+
+  // Dedicated face-detection endpoint for the enhancer UI's chip picker.
+  // Skips the /analyze pipeline (eye sharpness, pHash, format probe) so
+  // auto-firing on every image upload stays cheap. Returns bounding
+  // boxes in normalised [0, 1] coordinates so the frontend can map them
+  // onto any canvas size without reading the detection-time resize scale.
+  router.post(
+    "/faces",
+    photoEnhancerUpload.single("image"),
+    async (req, res) => {
+      if (!req.file) {
+        return res.status(400).json({ success: false, error: "image_required" });
+      }
+      const startedAt = Date.now();
+      const faceApiStatus = await resolveFaceApiStatus();
+      if (!faceApiStatus.available) {
+        return res.status(503).json({
+          success: false,
+          available: false,
+          reason: faceApiStatus.reason || "face_api_unavailable",
+          runtime: faceApiStatus,
+        });
+      }
+      try {
+        const result = await withTimeout(
+          runFaceApiExclusive(async () => {
+            const runtime = await loadFaceApiRuntime();
+            const faceInput = await prepareFaceApiInput(req.file as Express.Multer.File);
+            const image = await runtime.canvas.loadImage(faceInput.buffer);
+            const options = new runtime.faceApi.TinyFaceDetectorOptions({
+              inputSize: PHOTO_ENHANCER_FACE_API_INPUT_SIZE,
+              scoreThreshold: PHOTO_ENHANCER_FACE_API_SCORE_THRESHOLD,
+            });
+            const detections = await runtime.faceApi.detectAllFaces(image, options);
+            const width = faceInput.width || 1;
+            const height = faceInput.height || 1;
+            const faces = detections.map((detection: Record<string, any>, index: number) => {
+              const box = detection.box;
+              const score = typeof detection.score === "number" ? Number(detection.score.toFixed(4)) : null;
+              if (!box) {
+                return { index, score, box: null };
+              }
+              return {
+                index,
+                score,
+                // Absolute pixel box in the detector's downscaled frame.
+                boxPixels: {
+                  x: Math.round(box.x),
+                  y: Math.round(box.y),
+                  width: Math.round(box.width),
+                  height: Math.round(box.height),
+                },
+                // Normalised [0, 1] box — stable across canvas sizes.
+                box: {
+                  x: Math.max(0, Math.min(1, box.x / width)),
+                  y: Math.max(0, Math.min(1, box.y / height)),
+                  width: Math.max(0, Math.min(1, box.width / width)),
+                  height: Math.max(0, Math.min(1, box.height / height)),
+                },
+              };
+            });
+            return { faces, width, height };
+          }),
+          PHOTO_ENHANCER_FACE_API_TIMEOUT_MS,
+          "face_detection",
+        );
+        return res.json({
+          success: true,
+          available: true,
+          faceCount: result.faces.length,
+          faces: result.faces,
+          image: {
+            width: result.width,
+            height: result.height,
+            maxDimension: PHOTO_ENHANCER_FACE_API_MAX_DIMENSION,
+          },
+          detectionModel: faceApiStatus.detectionModel,
+          processingMs: Date.now() - startedAt,
+        });
+      } catch (error) {
+        return res.status(504).json({
+          success: false,
+          available: false,
+          reason: error instanceof Error ? error.message : "face_detection_failed",
+          processingMs: Date.now() - startedAt,
+        });
+      }
+    },
+  );
+
+  // LUT library proxy. Forwards to the Python runner's /luts if one is
+  // configured; otherwise returns the built-in fallback slugs so the
+  // frontend dropdown always has something to show even in dev without
+  // the runner running. The fallback must stay in sync with
+  // backend/gfpgan-runner/lut_library.py — there is a test asserting
+  // the slug set on the runner side.
+  router.get("/luts", async (req, res) => {
+    const ownerUserId = readString(req.query.owner) || null;
+
+    let builtIn: unknown[] = PHOTO_ENHANCER_BUILTIN_LUTS as unknown as unknown[];
+    let source: "runner" | "fallback" = "fallback";
+    const runnerEndpoint = resolvePhotoEnhancerRunnerEndpoint({
+      runnerEnvKeys: ["PHOTO_ENHANCER_GFPGAN_URL", "GFPGAN_SERVICE_URL"],
+      defaultRunnerUrl:
+        process.env.RENDER === "true"
+          ? "https://creatorhub-gfpgan-runner.onrender.com/enhance"
+          : null,
+    });
+    if (runnerEndpoint) {
+      const url = new URL(runnerEndpoint);
+      url.pathname = url.pathname.replace(/\/(enhance|)$/, "/luts") || "/luts";
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 4000);
+      try {
+        const response = await fetch(url.toString(), { method: "GET", signal: controller.signal });
+        if (response.ok) {
+          const payload = (await response.json()) as Record<string, unknown>;
+          if (payload && Array.isArray(payload.luts)) {
+            builtIn = payload.luts;
+            source = "runner";
+          }
+        }
+      } catch {
+        // keep fallback
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    let userLuts: unknown[] = [];
+    if (ownerUserId && pool) {
+      try {
+        userLuts = await listUserLuts(pool, ownerUserId);
+      } catch (err) {
+        // Non-fatal — built-ins still render so the photographer can
+        // work with the default library even if the user-LUT table
+        // isn't migrated yet in their env.
+      }
+    }
+    return res.json({ success: true, luts: [...builtIn, ...userLuts], source });
+  });
+
+  router.post(
+    "/luts",
+    photoEnhancerUpload.single("file"),
+    async (req, res) => {
+      if (!pool) {
+        return res.status(503).json({ success: false, error: "db_unavailable" });
+      }
+      const ownerUserId = readString(req.body?.ownerUserId);
+      if (!ownerUserId) {
+        return res.status(400).json({ success: false, error: "owner_user_id_required" });
+      }
+      if (!req.file) {
+        return res.status(400).json({ success: false, error: "file_required" });
+      }
+      if (req.file.size > 2 * 1024 * 1024) {
+        return res.status(413).json({ success: false, error: "file_too_large" });
+      }
+
+      const text = req.file.buffer.toString("utf-8");
+      let meta;
+      try {
+        meta = parseCubeMetadata(text);
+      } catch (err) {
+        if (err instanceof CubeParseError) {
+          return res.status(400).json({ success: false, error: err.code, detail: err.message });
+        }
+        return res.status(400).json({ success: false, error: "parse_failed" });
+      }
+      if (meta.kind !== "3D") {
+        return res.status(400).json({ success: false, error: "1d_lut_not_supported_yet" });
+      }
+
+      const config = buildPhotoEnhancerUploadR2Config();
+      const client = getPhotoEnhancerUploadR2Client(config);
+      if (!client || !config.enabled || !config.bucket) {
+        return res.status(503).json({ success: false, error: "r2_not_configured" });
+      }
+
+      const id = `user_${randomUUID().replace(/-/g, "").slice(0, 24)}`;
+      const r2Key = `users/${encodeURIComponent(ownerUserId)}/luts/${id}.cube`;
+      const sha = createHash("sha256").update(req.file.buffer).digest("hex");
+      const swatch = computeSwatchPreview(meta);
+      const displayName = readString(req.body?.displayName) || req.file.originalname.replace(/\.cube$/i, "");
+      const description = readString(req.body?.description) || meta.title || "";
+      const category = readString(req.body?.category) || null;
+
+      try {
+        await client.send(
+          new PutObjectCommand({
+            Bucket: config.bucket,
+            Key: r2Key,
+            Body: req.file.buffer,
+            ContentType: "application/octet-stream",
+            Metadata: { sha256: sha, size: String(meta.size) },
+          }),
+        );
+      } catch {
+        return res.status(502).json({ success: false, error: "r2_upload_failed" });
+      }
+
+      try {
+        await insertUserLut(pool, {
+          id,
+          ownerUserId,
+          displayName: displayName.slice(0, 200),
+          description: description.slice(0, 500),
+          category: category?.slice(0, 40) || null,
+          r2Key,
+          size: meta.size,
+          domainMin: meta.domainMin,
+          domainMax: meta.domainMax,
+          swatch,
+          bytes: req.file.size,
+          sha256: sha,
+        });
+      } catch (err) {
+        // Best-effort cleanup so we don't leak an orphan R2 object.
+        try {
+          await client.send(new DeleteObjectCommand({ Bucket: config.bucket, Key: r2Key }));
+        } catch {
+          // ignore — operator will reconcile via R2 lifecycle
+        }
+        return res.status(500).json({ success: false, error: "db_insert_failed" });
+      }
+
+      return res.json({
+        success: true,
+        lut: {
+          id,
+          displayName,
+          description,
+          category,
+          size: meta.size,
+          swatch,
+          userUploaded: true,
+        },
+      });
+    },
+  );
+
+  router.delete("/luts/:lutId", async (req, res) => {
+    if (!pool) {
+      return res.status(503).json({ success: false, error: "db_unavailable" });
+    }
+    const lutId = String(req.params.lutId || "").trim();
+    const ownerUserId = readString(req.query.ownerUserId) || readString(req.body?.ownerUserId);
+    if (!ownerUserId || !/^user_[a-zA-Z0-9]{8,32}$/.test(lutId)) {
+      return res.status(400).json({ success: false, error: "bad_request" });
+    }
+    const row = await getUserLut(pool, ownerUserId, lutId);
+    if (!row) return res.status(404).json({ success: false, error: "not_found" });
+
+    const config = buildPhotoEnhancerUploadR2Config();
+    const client = getPhotoEnhancerUploadR2Client(config);
+    if (client && config.bucket) {
+      try {
+        await client.send(new DeleteObjectCommand({ Bucket: config.bucket, Key: row.r2Key }));
+      } catch {
+        // fall through — DB row removal is the authoritative gate
+      }
+    }
+    await deleteUserLut(pool, ownerUserId, lutId);
+    return res.json({ success: true });
+  });
+
+  // LUT table fetch — proxies the runner's /luts/:id/table so the browser
+  // can build a 2D atlas texture for live preview. Falls back to 404 if
+  // the runner is unreachable rather than fabricating a table; the UI
+  // gracefully disables preview in that case.
+  router.get("/luts/:lutId/table", async (req, res) => {
+    const lutId = String(req.params.lutId || "").trim();
+    if (!/^[a-zA-Z0-9_\-]{1,80}$/.test(lutId)) {
+      return res.status(400).json({ success: false, error: "invalid_lut_id" });
+    }
+
+    // User-uploaded LUTs live in R2 + the photo_enhancer_user_luts
+    // table. They're resolved here without touching the runner.
+    if (lutId.startsWith("user_") && pool) {
+      const ownerUserId = readString(req.query.ownerUserId);
+      if (!ownerUserId) {
+        return res.status(400).json({ success: false, error: "owner_user_id_required" });
+      }
+      try {
+        const table = await fetchUserLutTable(pool, ownerUserId, lutId);
+        if (!table) return res.status(404).json({ success: false, error: "lut_not_found" });
+        return res.json({ success: true, id: lutId, ...table });
+      } catch {
+        return res.status(502).json({ success: false, error: "r2_fetch_failed" });
+      }
+    }
+
+    const runnerEndpoint = resolvePhotoEnhancerRunnerEndpoint({
+      runnerEnvKeys: ["PHOTO_ENHANCER_GFPGAN_URL", "GFPGAN_SERVICE_URL"],
+      defaultRunnerUrl:
+        process.env.RENDER === "true"
+          ? "https://creatorhub-gfpgan-runner.onrender.com/enhance"
+          : null,
+    });
+    if (!runnerEndpoint) {
+      return res.status(503).json({ success: false, error: "runner_not_configured" });
+    }
+    const url = new URL(runnerEndpoint);
+    url.pathname = url.pathname.replace(/\/(enhance|)$/, `/luts/${lutId}/table`);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 6000);
+    try {
+      const response = await fetch(url.toString(), {
+        method: "GET",
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        return res.status(response.status === 404 ? 404 : 502).json({
+          success: false,
+          error: response.status === 404 ? "lut_not_found" : "runner_error",
+        });
+      }
+      const payload = (await response.json()) as Record<string, unknown>;
+      return res.json(payload);
+    } catch {
+      return res.status(504).json({ success: false, error: "runner_timeout" });
+    } finally {
+      clearTimeout(timer);
+    }
+  });
 
   router.get("/improvements", (_req, res) => {
     const improvements = buildPhotoEnhancerImprovementBacklog();
@@ -5388,6 +6098,9 @@ export function createPhotoEnhancementCompatRouter() {
       const jobStartedAt = new Date().toISOString();
       const jobStartedMs = Date.now();
       try {
+        // The compat router doesn't have a shared pool in scope, so user-
+        // LUT inline resolution is only available through the primary
+        // router path. Built-in LUTs work fine here.
         const output = await enhanceUploadedFile({ file, preset, settings });
         const record = await persistEnhancedBuffer({
           projectId,

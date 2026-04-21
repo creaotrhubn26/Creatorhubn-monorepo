@@ -56,6 +56,51 @@ const NON_PORTRAIT_KINDS: ReadonlySet<SubjectKind> = new Set<SubjectKind>([
   'other',
 ]);
 
+export type HslBand = { h: number; s: number; l: number };
+export type HslRecommendation = {
+  red: HslBand;
+  orange: HslBand;
+  yellow: HslBand;
+  green: HslBand;
+  aqua: HslBand;
+  blue: HslBand;
+  purple: HslBand;
+  magenta: HslBand;
+};
+
+const HSL_IDENTITY_RECIPE: HslRecommendation = {
+  red: { h: 0, s: 0, l: 0 },
+  orange: { h: 0, s: 0, l: 0 },
+  yellow: { h: 0, s: 0, l: 0 },
+  green: { h: 0, s: 0, l: 0 },
+  aqua: { h: 0, s: 0, l: 0 },
+  blue: { h: 0, s: 0, l: 0 },
+  purple: { h: 0, s: 0, l: 0 },
+  magenta: { h: 0, s: 0, l: 0 },
+};
+
+const HSL_BAND_NAMES: ReadonlyArray<keyof HslRecommendation> = [
+  'red',
+  'orange',
+  'yellow',
+  'green',
+  'aqua',
+  'blue',
+  'purple',
+  'magenta',
+];
+
+export type LutTonalMix = "all" | "highlights" | "midtones" | "shadows";
+
+export interface LutRecommendation {
+  /** Built-in slug or null when no LUT pass is wanted. */
+  name: string | null;
+  /** [0, 100] linear blend with identity. */
+  strength: number;
+  /** Limit the LUT to a tonal range (default "all"). */
+  tonalMix: LutTonalMix;
+}
+
 export interface PortraitRecipeRecommendation {
   brightness: number;
   contrast: number;
@@ -72,7 +117,15 @@ export interface PortraitRecipeRecommendation {
   eyeBrightnessProfile: IntensityProfile;
   eyeWhitenessProfile: IntensityProfile;
   blemishProfile: IntensityProfile;
+  hsl: HslRecommendation;
+  lut: LutRecommendation;
 }
+
+export const LUT_RECIPE_DEFAULT: LutRecommendation = {
+  name: null,
+  strength: 0,
+  tonalMix: "all",
+};
 
 export interface PortraitAnalysisSummary {
   subject: SubjectKind;
@@ -267,6 +320,45 @@ white balance between subjects). Empty array when nothing is notable.
 
 ===== OUTPUT CONTRACT =====
 
+===== LUT LOOK (OPTIONAL) =====
+
+Applied after face restoration and HSL. Pick at most one built-in look
+(name field) and a linear strength in [0, 100].
+
+  * neutral     — identity. Use when no look is needed.
+  * warm_soft   — gentle midtone warmth. Fits skin / food / cosy indoor
+                  light. Safe default at 40–60 strength for portraits
+                  that read a little cool.
+  * cool_soft   — mild cooling of shadows. Fits landscapes / outdoor
+                  product at midday. Rare on portraits (skin goes grey).
+
+If unsure, emit name=null / strength=0. Never pick both a warm and cool
+look. tonalMix lets you limit the effect: "highlights" for sky/
+highlights work, "shadows" for shadow grade, "midtones" for skin
+warmth without blowing highlights. Default "all".
+
+===== HSL (8-BAND COLOUR GRADING) =====
+
+Applied after face restoration on every subject. Bands are red / orange /
+yellow / green / aqua / blue / purple / magenta and each has h, s, l in
+[-100, 100] mapping to hue rotation (±30°), saturation multiplier (0×–2×),
+and luminance offset (±0.25 on 0–1 V).
+
+Default every band to { h: 0, s: 0, l: 0 }. Only move a band when the
+image has a visible colour problem you would fix manually:
+
+  * a yellow-cast white dress under tungsten → reduce yellow saturation
+    and/or yellow luminance
+  * a bluish skin tone from shade → nudge orange hue +10..+20 (toward
+    red) and orange saturation +5..+10
+  * an over-punchy blue sky that looks fake → reduce blue saturation by
+    -10..-20
+  * food shots where the plate greens look grey → green saturation
+    +10..+20
+
+Never stylise for style's sake. Emit identity for every band if the image
+already looks clean; the photographer will dial in any grade they want.
+
 You MUST call the suggest_portrait_recipe tool exactly once. Never
 return plain text. Never speculate about the photographer's intent or
 add conversational pleasantries. Every slider field is required, even
@@ -342,6 +434,49 @@ const SUGGEST_TOOL = {
             type: 'string' as const,
             enum: ['subtle', 'normal', 'strong'],
           },
+          lut: {
+            type: 'object' as const,
+            description:
+              'Optional LUT look selection. Use null name when the image is fine without a colour look. Valid built-in names: "neutral" (identity), "warm_soft" (mild warmth), "cool_soft" (mild cooling). Pick a look only when it genuinely helps the subject — do not stylise for style\'s sake.',
+            properties: {
+              name: {
+                type: ['string', 'null'] as const,
+                enum: ['neutral', 'warm_soft', 'cool_soft', null],
+              },
+              strength: {
+                type: 'number' as const,
+                minimum: 0,
+                maximum: 100,
+              },
+              tonalMix: {
+                type: 'string' as const,
+                enum: ['all', 'highlights', 'midtones', 'shadows'],
+                description:
+                  'Limit the LUT to a tonal range. Default "all". Use "highlights" for sky/skin highlights work, "shadows" for shadow grade, "midtones" for skin warmth without touching extremes.',
+              },
+            },
+            required: ['name', 'strength', 'tonalMix'],
+          },
+          hsl: {
+            type: 'object' as const,
+            description:
+              '8-band HSL colour grading applied after face restoration. Emit zeros (identity) unless the image has a visible colour cast you would fix by hand — do NOT stylise images that already look clean. Per band, h is hue rotation in [-100, 100] (roughly ±30°), s is saturation multiplier in [-100, 100] (fully desaturate at -100, double at +100), l is luminance offset in [-100, 100].',
+            properties: Object.fromEntries(
+              HSL_BAND_NAMES.map((name) => [
+                name,
+                {
+                  type: 'object' as const,
+                  properties: {
+                    h: { type: 'number' as const, minimum: -100, maximum: 100 },
+                    s: { type: 'number' as const, minimum: -100, maximum: 100 },
+                    l: { type: 'number' as const, minimum: -100, maximum: 100 },
+                  },
+                  required: ['h', 's', 'l'],
+                },
+              ]),
+            ),
+            required: HSL_BAND_NAMES,
+          },
         },
         required: [
           'brightness',
@@ -359,6 +494,8 @@ const SUGGEST_TOOL = {
           'teethProfile',
           'eyeBrightnessProfile',
           'eyeWhitenessProfile',
+          'hsl',
+          'lut',
         ],
       },
     },
@@ -398,6 +535,69 @@ function clamp(n: unknown, lo: number, hi: number, fallback = 0): number {
   const raw = typeof n === 'number' ? n : Number(n);
   if (!Number.isFinite(raw)) return fallback;
   return Math.max(lo, Math.min(hi, raw));
+}
+
+function parseHsl(raw: unknown): HslRecommendation {
+  // Accept missing / malformed / partial — default to identity so a
+  // prompt-cache miss that truncates the HSL block just produces an
+  // un-styled image rather than failing the whole suggest call.
+  if (!raw || typeof raw !== 'object') {
+    return {
+      red: { ...HSL_IDENTITY_RECIPE.red },
+      orange: { ...HSL_IDENTITY_RECIPE.orange },
+      yellow: { ...HSL_IDENTITY_RECIPE.yellow },
+      green: { ...HSL_IDENTITY_RECIPE.green },
+      aqua: { ...HSL_IDENTITY_RECIPE.aqua },
+      blue: { ...HSL_IDENTITY_RECIPE.blue },
+      purple: { ...HSL_IDENTITY_RECIPE.purple },
+      magenta: { ...HSL_IDENTITY_RECIPE.magenta },
+    };
+  }
+  const source = raw as Record<string, unknown>;
+  const out = {} as HslRecommendation;
+  for (const name of HSL_BAND_NAMES) {
+    const band = source[name];
+    if (!band || typeof band !== 'object') {
+      out[name] = { ...HSL_IDENTITY_RECIPE[name] };
+      continue;
+    }
+    const b = band as Record<string, unknown>;
+    out[name] = {
+      h: Math.round(clamp(b.h, -100, 100)),
+      s: Math.round(clamp(b.s, -100, 100)),
+      l: Math.round(clamp(b.l, -100, 100)),
+    };
+  }
+  return out;
+}
+
+const ALLOWED_LUT_SLUGS: readonly string[] = [
+  "neutral",
+  "warm_soft",
+  "cool_soft",
+] as const;
+
+const ALLOWED_TONAL_MIX: readonly LutTonalMix[] = [
+  "all",
+  "highlights",
+  "midtones",
+  "shadows",
+] as const;
+
+function parseLut(raw: unknown): LutRecommendation {
+  if (!raw || typeof raw !== "object") {
+    return { ...LUT_RECIPE_DEFAULT };
+  }
+  const source = raw as Record<string, unknown>;
+  const nameRaw = typeof source.name === "string" ? source.name.trim() : "";
+  const name = nameRaw && ALLOWED_LUT_SLUGS.includes(nameRaw) ? nameRaw : null;
+  const strength = Math.round(clamp(source.strength, 0, 100, 0));
+  const tonalRaw = typeof source.tonalMix === "string" ? source.tonalMix.trim() : "";
+  const tonalMix: LutTonalMix = ALLOWED_TONAL_MIX.includes(tonalRaw as LutTonalMix)
+    ? (tonalRaw as LutTonalMix)
+    : "all";
+  if (!name) return { ...LUT_RECIPE_DEFAULT };
+  return { name, strength, tonalMix };
 }
 
 function asProfile(value: unknown): IntensityProfile {
@@ -470,6 +670,8 @@ export function sanitiseSuggestion(raw: unknown):
     teethProfile: asProfile(recipeIn.teethProfile),
     eyeBrightnessProfile: asProfile(recipeIn.eyeBrightnessProfile),
     eyeWhitenessProfile: asProfile(recipeIn.eyeWhitenessProfile),
+    hsl: parseHsl((recipeIn as Record<string, unknown>).hsl),
+    lut: parseLut((recipeIn as Record<string, unknown>).lut),
   };
 
   // Sanity guard: every non-portrait category zeroes the portrait-only

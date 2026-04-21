@@ -14,6 +14,12 @@ from botocore.config import Config
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
+from cube_lut import apply_lut as apply_cube_lut
+from hsl_retouch import apply_hsl
+from lut_library import get_builtin_lut, list_builtin_luts
+from portrait_retouch import apply_portrait_retouch
+from subject_retouch import apply_subject_look
+
 
 DEFAULT_GFPGAN_KEYS = [
     "models/gfpgan/weights/GFPGANv1.4.pth",
@@ -49,6 +55,11 @@ class EnhancePayload(BaseModel):
     mimeType: str | None = None
     preset: str | None = None
     settings: dict[str, Any] = Field(default_factory=dict)
+    # Explicit controls forwarded by the web layer — see
+    # backend/server/photo-enhancer-routes.ts. Kept as an open dict so
+    # new sliders don't require a runner redeploy: the portrait retouch
+    # module only reads keys it knows about.
+    controls: dict[str, Any] = Field(default_factory=dict)
     model: ModelPayload = Field(default_factory=ModelPayload)
     imageBase64: str
 
@@ -233,6 +244,39 @@ def _resize_for_budget(image: np.ndarray) -> tuple[np.ndarray, float]:
     return resized, scale
 
 
+@app.get("/luts")
+def list_luts() -> dict[str, Any]:
+    """Return the runner's built-in LUT registry so the Node/Express
+    backend can forward it to the frontend dropdown without duplicating
+    slugs in two languages. Shape mirrors lut_library.list_builtin_luts().
+    """
+    return {"success": True, "luts": list_builtin_luts()}
+
+
+@app.get("/luts/{lut_id}/table")
+def get_lut_table(lut_id: str) -> dict[str, Any]:
+    """Return a LUT table as a flat float list so the browser can build
+    a 2D atlas for the WebGL preview. Kept separate from /luts so the
+    dropdown listing stays cheap — downloading a 17³×3 table is ~55 KB,
+    fine on demand but unnecessary on every page load.
+    """
+    resolved = get_builtin_lut(lut_id)
+    if resolved is None:
+        raise HTTPException(status_code=404, detail="lut_not_found")
+    # table has shape (size, size, size, 3) in b-major order. Flatten
+    # preserving that — the browser re-encodes to a 2D atlas with the
+    # same semantics.
+    flat = resolved.table.reshape(-1).tolist()
+    return {
+        "success": True,
+        "id": lut_id,
+        "size": resolved.size,
+        "domainMin": list(resolved.domain_min),
+        "domainMax": list(resolved.domain_max),
+        "table": flat,
+    }
+
+
 @app.get("/")
 @app.get("/health")
 def health() -> dict[str, Any]:
@@ -290,6 +334,143 @@ def enhance(payload: EnhancePayload) -> dict[str, Any]:
             paste_back=True,
             weight=weight,
         )
+
+        # Evoto-parity portrait retouch — runs after GFPGAN so the face
+        # restoration cleans up skin first, then we apply masked teeth /
+        # eye / blemish tweaks on the cleaner canvas. The module silently
+        # skips everything if MediaPipe is unavailable or no face was
+        # detected, so the core enhance still succeeds.
+        controls = payload.controls or {}
+        # Web layer sends the new sliders under both ``settings`` and
+        # ``controls`` today; accept either so we don't fail closed if a
+        # future deploy drops one side.
+        merged_controls = {
+            "teethWhiteness": controls.get(
+                "teethWhiteness", payload.settings.get("teethWhiteness", 0)
+            ),
+            "eyeBrightness": controls.get(
+                "eyeBrightness", payload.settings.get("eyeBrightness", 0)
+            ),
+            "eyeWhiteness": controls.get(
+                "eyeWhiteness", payload.settings.get("eyeWhiteness", 0)
+            ),
+            "blemishRemoval": controls.get(
+                "blemishRemoval", payload.settings.get("blemishRemoval", 0)
+            ),
+        }
+        try:
+            restored = apply_portrait_retouch(restored, merged_controls)
+        except Exception as retouch_err:  # noqa: BLE001
+            # Retouch failing must never break the enhance response —
+            # the user's already-restored GFPGAN output is useful on its
+            # own. Log and carry the raw restore forward.
+            _last_error = f"retouch: {retouch_err}"
+            logger = __import__("logging").getLogger("creatorhub.gfpgan-runner")
+            logger.warning("portrait retouch failed, returning raw GFPGAN: %s", retouch_err)
+
+        # 8-band HSL colour grading. Accepts a dict keyed by band name
+        # (red / orange / yellow / green / aqua / blue / purple / magenta)
+        # with per-band {h, s, l} in [-100, 100]. Identity when no bands
+        # are moved, so forwarded-but-empty payloads cost nothing.
+        hsl_params = controls.get("hsl")
+        if hsl_params is None:
+            hsl_params = payload.settings.get("hsl")
+        if hsl_params:
+            try:
+                restored = apply_hsl(restored, hsl_params)
+            except Exception as hsl_err:  # noqa: BLE001
+                _last_error = f"hsl: {hsl_err}"
+                logger = __import__("logging").getLogger("creatorhub.gfpgan-runner")
+                logger.warning("hsl retouch failed, skipping: %s", hsl_err)
+
+        # Built-in LUT look, applied after HSL / portrait retouch and
+        # before the subject pass. Accepts { name, strength } via
+        # controls (preferred) or top-level settings (legacy web). Any
+        # failure (unknown name, parse error, apply error) logs and
+        # skips — the enhance response still returns the HSL-level result.
+        lut_params = controls.get("lut") or payload.settings.get("lut")
+        if isinstance(lut_params, dict):
+            lut_name = str(lut_params.get("name") or "").strip()
+            try:
+                lut_strength = float(lut_params.get("strength") or 0)
+            except (TypeError, ValueError):
+                lut_strength = 0.0
+            if lut_strength > 0:
+                try:
+                    resolved = None
+                    inline_table = lut_params.get("inlineTable")
+                    inline_size = lut_params.get("inlineSize")
+                    # User-uploaded LUT path: backend pre-fetched the
+                    # .cube, validated it, and inlined the float table.
+                    # Skip the registry lookup entirely.
+                    if isinstance(inline_table, list) and isinstance(inline_size, int):
+                        try:
+                            from cube_lut import ParsedCubeLut
+                            import numpy as _np
+                            arr = _np.asarray(inline_table, dtype=_np.float32)
+                            expected = inline_size ** 3 * 3
+                            if arr.size == expected:
+                                dmin = lut_params.get("inlineDomainMin") or [0.0, 0.0, 0.0]
+                                dmax = lut_params.get("inlineDomainMax") or [1.0, 1.0, 1.0]
+                                resolved = ParsedCubeLut(
+                                    kind="3D",
+                                    size=inline_size,
+                                    domain_min=(float(dmin[0]), float(dmin[1]), float(dmin[2])),
+                                    domain_max=(float(dmax[0]), float(dmax[1]), float(dmax[2])),
+                                    title="user",
+                                    table=arr.reshape(inline_size, inline_size, inline_size, 3),
+                                )
+                        except Exception as inline_err:  # noqa: BLE001
+                            _last_error = f"lut inline: {inline_err}"
+                    if resolved is None and lut_name:
+                        resolved = get_builtin_lut(lut_name)
+                    if resolved is not None:
+                        tonal_mix = str(lut_params.get("tonalMix") or "all").strip().lower()
+                        if tonal_mix not in ("all", "highlights", "midtones", "shadows"):
+                            tonal_mix = "all"
+                        restored = apply_cube_lut(restored, resolved, lut_strength, tonal_mix)
+                    elif lut_name:
+                        _last_error = f"lut: unknown name '{lut_name}'"
+                        __import__("logging").getLogger("creatorhub.gfpgan-runner").warning(
+                            "LUT '%s' is not registered — skipping", lut_name,
+                        )
+                except Exception as lut_err:  # noqa: BLE001
+                    _last_error = f"lut: {lut_err}"
+                    __import__("logging").getLogger("creatorhub.gfpgan-runner").warning(
+                        "LUT apply failed, skipping: name=%s err=%s",
+                        lut_name,
+                        lut_err,
+                    )
+
+        # Subject-aware look. Runs only when the request carried a
+        # ``subject`` hint (populated by the Claude Vision suggester or
+        # a future on-device classifier). Portrait and group_portrait
+        # are handled above; the dispatcher silently no-ops on those
+        # plus "other" and unknown labels so this block is safe to run
+        # unconditionally.
+        subject = (
+            str(controls.get("subject") or payload.settings.get("subject") or "")
+            .strip()
+            .lower()
+        )
+        subject_strength = float(
+            controls.get(
+                "subjectLookStrength",
+                payload.settings.get("subjectLookStrength", 0),
+            )
+            or 0
+        ) / 100.0
+        if subject and subject_strength > 0:
+            try:
+                restored = apply_subject_look(restored, subject, subject_strength)
+            except Exception as look_err:  # noqa: BLE001
+                _last_error = f"subject look: {look_err}"
+                logger = __import__("logging").getLogger("creatorhub.gfpgan-runner")
+                logger.warning(
+                    "subject look failed, skipping: subject=%s err=%s",
+                    subject,
+                    look_err,
+                )
 
         ok, encoded = cv2.imencode(
             ".jpg",

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -13,6 +13,7 @@ import {
   Divider,
   FormControl,
   Grid,
+  IconButton,
   InputLabel,
   LinearProgress,
   MenuItem,
@@ -21,6 +22,7 @@ import {
   Slider,
   Stack,
   Switch,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import {
@@ -35,15 +37,45 @@ import {
   Save as SaveIcon,
   Storage as StorageIcon,
   Tune as TuneIcon,
+  Undo as UndoIcon,
+  Redo as RedoIcon,
 } from '@mui/icons-material';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { apiRequest } from '../../../lib/queryClient';
 import CompositionGuides, { GuideType } from '../../photo-enhancer/CompositionGuides';
+import { RealtimePreviewCanvas } from '../../photo-enhancer/RealtimePreviewCanvas';
+import { Filmstrip } from '../../photo-enhancer/Filmstrip';
+import { EditClipboardBar } from '../../photo-enhancer/EditClipboardBar';
+import { ExportPresetDialog } from '../../photo-enhancer/ExportPresetDialog';
+import { useEnhancerShortcuts } from '../../photo-enhancer/useEnhancerShortcuts';
+import { HSLColorPanel } from '../../photo-enhancer/HSLColorPanel';
+import { LUTPanel, type LutRegistryEntry } from '../../photo-enhancer/LUTPanel';
+import { useLutPreview } from '../../photo-enhancer/useLutPreview';
+import { useLutThumbnails } from '../../photo-enhancer/useLutThumbnails';
+import { useImagePixelSampler } from '../../photo-enhancer/useImagePixelSampler';
+import { CullView } from '../../photo-enhancer/CullView';
+import { FaceChipStrip, computeFocusTransform } from '../../photo-enhancer/FaceChipStrip';
+import { useFaceDetectionLoader } from '../../photo-enhancer/useFaceDetectionLoader';
+import type { DetectedFace } from '../../../lib/enhancer-session/types';
+import type { SampledPixel } from '../../../lib/enhancer-session/hsl-band-math';
 import type { CompositionAnalysisResult } from '../../../services/composition-analysis';
 import { compositionAnalyzer } from '../../../services/composition-analysis';
 import EnhancementRatingDialog from '../../ai-training/EnhancementRatingDialog';
 import { useDynamicProfessions } from '../hooks/useDynamicProfessions';
 import { useDemoMode, useDemoModeData } from '../../../contexts/DemoModeContext';
+import { useEnhancerSession } from '../../../lib/enhancer-session/use-enhancer-session';
+import type {
+  EditModuleKey,
+  EnhancementSettings as EnhancementSettingsContract,
+  IntensityProfile,
+  SubjectKind,
+} from '../../../lib/enhancer-session/module-contract';
+import {
+  DEFAULT_SETTINGS,
+  INTENSITY_PROFILES,
+  SUBJECT_KINDS,
+} from '../../../lib/enhancer-session/module-contract';
+import type { ExportPreset, StarRating } from '../../../lib/enhancer-session/types';
 
 type SupportedProfession = 'photographer' | 'videographer' | 'music_producer' | 'musicproducer' | 'vendor';
 type ViewMode = 'single' | 'side-by-side' | 'slider';
@@ -57,25 +89,22 @@ interface EnhancerProject {
   name: string;
 }
 
-interface EnhancementSettings {
-  brightness: number;
-  contrast: number;
-  saturation: number;
-  sharpness: number;
-  denoising: number;
-  faceEnhancement: number;
-  modelPreference: string;
-  gfpganQuality: number;
-  codeformerFidelity: number;
-  realesrganScale: number;
-  swinir: boolean;
-  bsrgan: boolean;
-  diffbir: boolean;
-  lamaInpaint: boolean;
-  faceOnlyCrop: boolean;
-  preserveBackground: boolean;
-  skinTextureGuard: number;
-}
+// EnhancementSettings / IntensityProfile / SubjectKind / DEFAULT_SETTINGS
+// live in the shared contract module so the session state + the React
+// component agree on a single shape. Do NOT re-declare them locally.
+type EnhancementSettings = EnhancementSettingsContract;
+
+const SUBJECT_LABELS: Record<SubjectKind, string> = {
+  '':               'Auto (ingen kategori-look)',
+  portrait:         'Portrett',
+  group_portrait:   'Gruppe-portrett',
+  food:             'Mat',
+  landscape:        'Landskap',
+  product:          'Produkt',
+  vehicle:          'Kjøretøy',
+  aviation:         'Fly',
+  other:            'Annet',
+};
 
 interface PhotoEnhancerModelStatus {
   id: string;
@@ -190,26 +219,6 @@ const PRESETS = [
   { id: 'landscape', name: 'Landscape Master', description: 'Landskap og natur', icon: <PaletteIcon /> },
   { id: 'studio', name: 'Studio Perfect', description: 'Studio og kommersiell', icon: <TuneIcon /> },
 ];
-
-const DEFAULT_SETTINGS: EnhancementSettings = {
-  brightness: 0,
-  contrast: 0,
-  saturation: 0,
-  sharpness: 0,
-  denoising: 50,
-  faceEnhancement: 75,
-  modelPreference: 'auto',
-  gfpganQuality: 75,
-  codeformerFidelity: 65,
-  realesrganScale: 2,
-  swinir: false,
-  bsrgan: false,
-  diffbir: false,
-  lamaInpaint: false,
-  faceOnlyCrop: false,
-  preserveBackground: true,
-  skinTextureGuard: 70,
-};
 
 const RAW_UPLOAD_EXTENSIONS = [
   '.3fr',
@@ -433,6 +442,21 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
   const [directUploadProgress, setDirectUploadProgress] = useState<DirectUploadProgress | null>(null);
   const [queueJob, setQueueJob] = useState<PhotoEnhancerJob | null>(null);
   const [queueActionPending, setQueueActionPending] = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [compareHeld, setCompareHeld] = useState(false);
+  const [eyedropperActive, setEyedropperActive] = useState(false);
+  const [sampledPixel, setSampledPixel] = useState<SampledPixel | null>(null);
+  const [cullOpen, setCullOpen] = useState(false);
+  const [focusedFace, setFocusedFace] = useState<DetectedFace | null>(null);
+
+  const session = useEnhancerSession();
+
+  const faceLoader = useFaceDetectionLoader({
+    setStatus: (imageId, status) =>
+      session.dispatch({ type: 'SET_FACE_STATUS', imageId, status }),
+    setFaces: (imageId, faces) =>
+      session.dispatch({ type: 'SET_FACES', imageId, faces }),
+  });
 
   const professionConfig = getProfessionConfig(profession);
   const accentColor = professionConfig?.iconColor || '#ff8c00';
@@ -775,9 +799,104 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
     onSuccess: (response) => {
       const record = toRecord(response);
       setAnalysisResult(record);
+      const id = session.active?.id;
+      if (id) session.setAnalysis(id, record);
       setDirectUploadProgress((previous) => previous?.active ? { ...previous, phase: 'Analyse fullført', percent: 100 } : previous);
     },
   });
+
+  // Claude Vision recipe suggester — a dedicated "AI-forslag" pass
+  // that asks the backend to propose every slider value + per-effect
+  // intensity profile. Separate from analyzeMutation (which is a local
+  // Sharp/face-api readout); this one is Claude Opus 4.7 driven and
+  // returns a recipe we merge straight into the settings state.
+  const [aiSuggestion, setAiSuggestion] = useState<{
+    subject: string;
+    confidence: number;
+    rationale: string;
+    observations: string[];
+  } | null>(null);
+  // The exact recipe the AI proposed — kept frozen alongside
+  // ``settings`` so we can diff it against whatever the photographer
+  // ultimately enhances with and POST the drift back. Reset to null
+  // whenever a new image is uploaded or an AI suggestion lands (the
+  // next onSuccess will populate this fresh).
+  const [aiSuggestedRecipe, setAiSuggestedRecipe] = useState<Partial<EnhancementSettings> | null>(
+    null,
+  );
+  const suggestRecipeMutation = useMutation({
+    mutationFn: async (file: File): Promise<{
+      recipe: Partial<EnhancementSettings>;
+      analysis: {
+        subject: string;
+        confidence: number;
+        rationale: string;
+        observations: string[];
+      };
+    }> => {
+      const formData = new FormData();
+      formData.append('image', file);
+      // Send the active preset so Claude knows whether we're shooting
+      // wedding / studio portrait / product / landscape etc. Claude still
+      // classifies the image independently but the hint breaks ties.
+      formData.append('preset', activePreset);
+      return apiRequest('/api/photo-enhancer/suggest-recipe', {
+        method: 'POST',
+        body: formData,
+      });
+    },
+    onSuccess: (response) => {
+      const record = toRecord(response);
+      const recipe = (record.recipe ?? {}) as Partial<EnhancementSettings>;
+      const analysis = (record.analysis ?? {}) as {
+        subject?: string;
+        confidence?: number;
+        rationale?: string;
+        observations?: unknown;
+      };
+      const rawSubject = String(analysis.subject ?? 'other');
+      const subject = (SUBJECT_KINDS.includes(rawSubject as SubjectKind)
+        ? (rawSubject as SubjectKind)
+        : 'other') as SubjectKind;
+      // When the AI returns a non-portrait category, seed a default
+      // subject-look strength so the subject_retouch dispatcher
+      // actually kicks in on the next Enhance. Portraits / group
+      // portraits + 'other' stay at 0 (portrait retouch handles the
+      // first two; 'other' is intentionally a no-op).
+      const seedSubjectStrength =
+        subject && subject !== 'portrait' && subject !== 'group_portrait' && subject !== 'other'
+          ? 60
+          : 0;
+      const seeded: Partial<EnhancementSettings> = {
+        ...recipe,
+        subject,
+        subjectLookStrength: seedSubjectStrength,
+      };
+      setSettings((previous) => ({ ...previous, ...seeded }));
+      setAiSuggestedRecipe(seeded);
+      const summary = {
+        subject: rawSubject,
+        confidence: Number(analysis.confidence ?? 0),
+        rationale: String(analysis.rationale ?? ''),
+        observations: Array.isArray(analysis.observations)
+          ? (analysis.observations as unknown[]).filter((o): o is string => typeof o === 'string')
+          : [],
+      };
+      setAiSuggestion(summary);
+      const id = session.active?.id;
+      if (id) {
+        session.setAiSuggestion(id, summary, seeded);
+        // AI-forslag should land as a single undoable step — otherwise
+        // the photographer has to press ⌘Z per slider to back it out.
+        session.commitHistory(id, 'AI-forslag');
+      }
+    },
+  });
+
+  const runSuggestRecipe = async () => {
+    if (!uploadedImage) return;
+    await suggestRecipeMutation.mutateAsync(uploadedImage);
+  };
 
   const enhanceMutation = useMutation({
     mutationFn: async (file: File) => {
@@ -803,8 +922,32 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
       if (imageUrl) {
         setEnhancedImageUrl(imageUrl);
         setViewMode('side-by-side');
+        const id = session.active?.id;
+        if (id) session.setEnhancedUrl(id, imageUrl);
       }
       setDirectUploadProgress((previous) => previous?.active ? { ...previous, phase: 'Forbedring fullført', percent: 100 } : previous);
+      // If the photographer started from an AI suggestion, send the
+      // diff back so the preference-learning service can refine the
+      // next suggestion. Fire-and-forget — feedback is purely an
+      // optimisation; a logging failure shouldn't surface as an
+      // Enhance error to the user.
+      if (aiSuggestedRecipe) {
+        void apiRequest('/api/photo-enhancer/feedback', {
+          method: 'POST',
+          body: {
+            suggested: aiSuggestedRecipe,
+            final: settings,
+          },
+        }).catch((err) => {
+          // Don't retry — feedback is best-effort.
+          console.debug('recipe feedback skipped:', err);
+        });
+        // Clear so a second Enhance on the same recipe doesn't
+        // double-log. A new AI suggestion seeds a fresh one.
+        setAiSuggestedRecipe(null);
+        const activeId = session.active?.id;
+        if (activeId) session.clearAiSuggestedRecipe(activeId);
+      }
     },
   });
 
@@ -828,15 +971,24 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
   });
 
   const onImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0] || null;
-    if (!file) return;
+    const fileList = event.target.files;
+    const files = fileList ? Array.from(fileList) : [];
+    event.target.value = '';
+    if (files.length === 0) return;
 
-    if (originalImageUrl.startsWith('blob:')) {
+    // Legacy single-image blob-URL ownership — the session hook owns the
+    // URLs it creates for session images, so we only revoke the standalone
+    // URL used before multi-image mode existed.
+    if (originalImageUrl.startsWith('blob:') && !session.state.images.some((i) => i.previewUrl === originalImageUrl)) {
       URL.revokeObjectURL(originalImageUrl);
     }
 
-    setUploadedImage(file);
-    setOriginalImageUrl(URL.createObjectURL(file));
+    const added = session.addFiles(files);
+    if (added.length === 0) return;
+
+    const first = added[0];
+    setUploadedImage(first.file);
+    setOriginalImageUrl(first.previewUrl);
     setEnhancedImageUrl('');
     setAnalysisResult(null);
     setCompositionAnalysis(null);
@@ -845,7 +997,54 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
     setQueueJob(null);
     setViewMode('single');
     setCompareSlider(50);
+    setSettings(DEFAULT_SETTINGS);
+    setAiSuggestion(null);
+    setAiSuggestedRecipe(null);
+    session.selectImage(first.id);
   };
+
+  // Syncs the active session image into the legacy per-image state fields
+  // when the user clicks a different thumb in the filmstrip. Only fires
+  // when the active id actually changes, so ongoing edits on the current
+  // image aren't clobbered.
+  const lastActiveIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const active = session.active;
+    if (!active) return;
+    if (lastActiveIdRef.current === active.id) return;
+    // Commit any in-flight edits on the outgoing image so the history
+    // ring has a clean terminal state before we swap. No-op if nothing
+    // actually moved.
+    const outgoingId = lastActiveIdRef.current;
+    if (outgoingId) session.commitHistory(outgoingId, 'Bildebytte');
+    lastActiveIdRef.current = active.id;
+    setFocusedFace(null);
+    faceLoader.requestForImage(active);
+    setUploadedImage(active.file);
+    setOriginalImageUrl(active.previewUrl);
+    setEnhancedImageUrl(active.enhancedUrl ?? '');
+    setSettings(active.settings);
+    setAnalysisResult(active.analysisResult ?? null);
+    setCompositionAnalysis(null);
+    setAiSuggestion(active.aiSuggestion ?? null);
+    setAiSuggestedRecipe(active.aiSuggestedRecipe ?? null);
+    setQueueJob(null);
+    setDirectUploadCache(null);
+    setDirectUploadProgress(null);
+    setCompareSlider(50);
+  }, [session.active]);
+
+  // Pushes local slider tweaks back into the session record so filmstrip
+  // thumbnails, copy/paste, and export preview stay coherent. Debounced
+  // via rAF to avoid firing on every scroll of a slider drag.
+  useEffect(() => {
+    const id = session.active?.id;
+    if (!id) return;
+    const handle = window.requestAnimationFrame(() => {
+      session.setSettings(id, settings);
+    });
+    return () => window.cancelAnimationFrame(handle);
+  }, [settings, session.active?.id]);
 
   const runAnalysis = async () => {
     if (!uploadedImage) return;
@@ -906,6 +1105,79 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
   const canSave = Boolean(enhancedImageUrl && selectedProjectId && selectedFolderId);
   const selectedIsLargeUpload = Boolean(uploadedImage && uploadedImage.size >= DIRECT_UPLOAD_THRESHOLD_BYTES);
   const selectedUsesDirectUpload = uploadedImage ? shouldUseDirectUpload(uploadedImage) : false;
+
+  // Pixel sampler — hidden canvas mirroring the source image so the HSL
+  // eyedropper reads true source colours, independent of the preview shader.
+  const pixelSampler = useImagePixelSampler(originalImageUrl || null);
+
+  // Fetch the LUT table for the active selection so the WebGL preview
+  // reflects the chosen look live (instead of waiting for Enhance).
+  const lutAtlas = useLutPreview(settings.lut.name);
+
+  const [lutRegistry, setLutRegistry] = useState<LutRegistryEntry[]>([]);
+  const lutThumbnails = useLutThumbnails(
+    originalImageUrl || null,
+    lutRegistry,
+    session.active?.id ?? null,
+  );
+
+  // "Recent LUTs" derived from this image's edit history — scan entries
+  // for labels starting with "LUT:" and return the most-recent 5 slugs.
+  const recentLutNames = useMemo(() => {
+    const entries = session.active?.history.entries ?? [];
+    const seen: string[] = [];
+    for (let i = entries.length - 1; i >= 0; i -= 1) {
+      const name = entries[i].settings.lut?.name;
+      if (name && !seen.includes(name)) seen.push(name);
+      if (seen.length >= 5) break;
+    }
+    return seen;
+  }, [session.active]);
+
+  const handleEyedropperStart = () => {
+    if (!originalImageUrl) return;
+    setEyedropperActive(true);
+  };
+
+  const handlePreviewPixelPick = (normX: number, normY: number) => {
+    const sample = pixelSampler.sampleNormalised(normX, normY);
+    if (sample) setSampledPixel(sample);
+    setEyedropperActive(false);
+  };
+
+  useEnhancerShortcuts({
+    activeId: session.active?.id ?? null,
+    imageIds: session.state.images.map((i) => i.id),
+    enabled: !exportDialogOpen && !saveDialogOpen && !showRatingDialog && !cullOpen,
+    setRating: (id, rating) => session.setRating(id, rating),
+    setFlag: (id, flag) => session.setFlag(id, flag),
+    selectImage: (id) => session.selectImage(id),
+    setCompareHeld: (held) => setCompareHeld(held),
+    copyEdits: () => {
+      const id = session.active?.id;
+      if (id) session.copyEdits(id);
+    },
+    undo: () => {
+      const id = session.active?.id;
+      if (id) session.undoHistory(id);
+    },
+    redo: () => {
+      const id = session.active?.id;
+      if (id) session.redoHistory(id);
+    },
+  });
+
+  const commitActiveHistory = useCallback(
+    (label?: string) => {
+      const id = session.active?.id;
+      if (id) session.commitHistory(id, label);
+    },
+    [session],
+  );
+
+  // When compare-held is true, force the preview to show the original so
+  // the photographer can tap \ and see before/after without mouse work.
+  const compareOverrideUrl = compareHeld && enhancedImageUrl ? originalImageUrl : '';
 
   return (
     <Box>
@@ -969,7 +1241,7 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
 
                 <Button component="label" variant="contained" startIcon={<CloudUploadIcon />}>
                   Last opp bilde
-                  <input hidden accept={PHOTO_UPLOAD_ACCEPT} type="file" onChange={onImageUpload} />
+                  <input hidden multiple accept={PHOTO_UPLOAD_ACCEPT} type="file" onChange={onImageUpload} />
                 </Button>
 
                 {uploadedImage ? <Chip label={uploadedImage.name} size="small" /> : null}
@@ -1006,6 +1278,32 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
 
                 <Divider />
 
+                {session.state.images.length > 1 && session.active ? (
+                  <EditClipboardBar
+                    clipboard={session.state.clipboard}
+                    activeImageName={session.active.fileName}
+                    activeImageSettings={session.active.settings}
+                    multiSelectCount={session.state.multiSelectIds.length}
+                    totalImageCount={session.state.images.length}
+                    onCopy={() => session.copyEdits(session.active!.id)}
+                    onPaste={(scope, modules) => {
+                      const ids = scope === 'active'
+                        ? session.active ? [session.active.id] : []
+                        : session.state.multiSelectIds.length > 0
+                          ? session.state.multiSelectIds
+                          : session.state.images.map((i) => i.id);
+                      session.pasteEdits(ids, modules);
+                      for (const id of ids) session.commitHistory(id, 'Lim inn');
+                      const activeId = session.active?.id;
+                      if (activeId && ids.includes(activeId)) {
+                        // force-refresh local settings from session after paste
+                        lastActiveIdRef.current = null;
+                      }
+                    }}
+                    onClearClipboard={() => session.clearClipboard()}
+                  />
+                ) : null}
+
                 <Typography variant="subtitle2">Settings</Typography>
                 {[
                   { key: 'brightness', label: 'Brightness' },
@@ -1030,6 +1328,7 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                           const numericValue = Array.isArray(value) ? value[0] : value;
                           setSettings((previous) => ({ ...previous, [key]: numericValue }));
                         }}
+                        onChangeCommitted={() => commitActiveHistory('Justering')}
                       />
                     </Box>
                   );
@@ -1055,16 +1354,54 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                 </FormControl>
 
                 {[
-                  { key: 'gfpganQuality', label: 'GFPGAN quality' },
-                  { key: 'codeformerFidelity', label: 'CodeFormer fidelity' },
-                  { key: 'skinTextureGuard', label: 'Skin texture guard' },
+                  { key: 'gfpganQuality', label: 'GFPGAN quality', profileKey: null },
+                  { key: 'codeformerFidelity', label: 'CodeFormer fidelity', profileKey: null },
+                  { key: 'skinTextureGuard', label: 'Skin texture guard', profileKey: null },
+                  { key: 'blemishRemoval', label: 'Blemish removal', profileKey: 'blemishProfile' as const },
+                  { key: 'teethWhiteness', label: 'Teeth whiten', profileKey: 'teethProfile' as const },
+                  { key: 'eyeBrightness', label: 'Eye brighten', profileKey: 'eyeBrightnessProfile' as const },
+                  { key: 'eyeWhiteness', label: 'Eye whiten', profileKey: 'eyeWhitenessProfile' as const },
                 ].map((slider) => {
-                  const key = slider.key as 'gfpganQuality' | 'codeformerFidelity' | 'skinTextureGuard';
+                  const key = slider.key as
+                    | 'gfpganQuality'
+                    | 'codeformerFidelity'
+                    | 'skinTextureGuard'
+                    | 'blemishRemoval'
+                    | 'teethWhiteness'
+                    | 'eyeBrightness'
+                    | 'eyeWhiteness';
+                  const profileKey = slider.profileKey;
                   return (
                     <Box key={slider.key}>
-                      <Stack direction="row" justifyContent="space-between">
+                      <Stack direction="row" justifyContent="space-between" alignItems="center">
                         <Typography variant="caption">{slider.label}</Typography>
-                        <Typography variant="caption">{settings[key]}</Typography>
+                        <Stack direction="row" spacing={0.5} alignItems="center">
+                          {profileKey && (
+                            <Stack direction="row" spacing={0.25}>
+                              {INTENSITY_PROFILES.map((p) => {
+                                const active = settings[profileKey] === p;
+                                // Tight one-letter chip per profile keeps the
+                                // row single-line on 360px screens. Title
+                                // attribute spells it out for keyboard users.
+                                const label = p === 'subtle' ? 'S' : p === 'normal' ? 'N' : '+';
+                                return (
+                                  <Chip
+                                    key={p}
+                                    clickable
+                                    size="small"
+                                    label={label}
+                                    title={p}
+                                    color={active ? 'primary' : 'default'}
+                                    variant={active ? 'filled' : 'outlined'}
+                                    sx={{ height: 20, minWidth: 24, '& .MuiChip-label': { px: 0.75, fontSize: 11 } }}
+                                    onClick={() => setSettings((previous) => ({ ...previous, [profileKey]: p }))}
+                                  />
+                                );
+                              })}
+                            </Stack>
+                          )}
+                          <Typography variant="caption">{settings[key]}</Typography>
+                        </Stack>
                       </Stack>
                       <Slider
                         value={typeof settings[key] === 'number' ? settings[key] : 0}
@@ -1074,6 +1411,7 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                           const numericValue = Array.isArray(value) ? value[0] : value;
                           setSettings((previous) => ({ ...previous, [key]: numericValue }));
                         }}
+                        onChangeCommitted={() => commitActiveHistory('Portrett')}
                       />
                     </Box>
                   );
@@ -1094,6 +1432,79 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                     ))}
                   </Select>
                 </FormControl>
+
+                <FormControl fullWidth size="small">
+                  <InputLabel id="enhancer-subject-label">Kategori-look</InputLabel>
+                  <Select
+                    labelId="enhancer-subject-label"
+                    label="Kategori-look"
+                    value={settings.subject}
+                    onChange={(event) =>
+                      setSettings((previous) => ({
+                        ...previous,
+                        subject: event.target.value as SubjectKind,
+                      }))
+                    }
+                  >
+                    {SUBJECT_KINDS.map((kind) => (
+                      <MenuItem key={kind || 'auto'} value={kind}>
+                        {SUBJECT_LABELS[kind]}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+
+                {settings.subject && settings.subject !== 'portrait' && settings.subject !== 'group_portrait' && settings.subject !== 'other' && (
+                  <Box>
+                    <Stack direction="row" justifyContent="space-between">
+                      <Typography variant="caption">Kategori-look styrke</Typography>
+                      <Typography variant="caption">{settings.subjectLookStrength}</Typography>
+                    </Stack>
+                    <Slider
+                      value={settings.subjectLookStrength}
+                      min={0}
+                      max={100}
+                      onChange={(_, value) => {
+                        const numericValue = Array.isArray(value) ? value[0] : value;
+                        setSettings((previous) => ({ ...previous, subjectLookStrength: numericValue }));
+                      }}
+                      onChangeCommitted={() => commitActiveHistory('Kategori-styrke')}
+                    />
+                  </Box>
+                )}
+
+                <HSLColorPanel
+                  value={settings.hsl}
+                  onChange={(next) => setSettings((previous) => ({ ...previous, hsl: next }))}
+                  onCommit={(label) => commitActiveHistory(label ?? 'HSL')}
+                  onEyedropperStart={handleEyedropperStart}
+                  eyedropperActive={eyedropperActive}
+                  sampledPixel={sampledPixel}
+                />
+
+                <LUTPanel
+                  value={settings.lut}
+                  onChange={(next) => setSettings((previous) => ({ ...previous, lut: next }))}
+                  onCommit={(label) => commitActiveHistory(label ?? 'LUT')}
+                  thumbnails={lutThumbnails}
+                  onRegistryLoaded={setLutRegistry}
+                  recentNames={recentLutNames}
+                  onUpload={async (file) => {
+                    const fd = new FormData();
+                    fd.append('file', file);
+                    fd.append('ownerUserId', 'default');
+                    await apiRequest('/api/photo-enhancer/luts', {
+                      method: 'POST',
+                      body: fd,
+                    });
+                  }}
+                  onDelete={async (lutId) => {
+                    await apiRequest(
+                      `/api/photo-enhancer/luts/${encodeURIComponent(lutId)}?ownerUserId=default`,
+                      { method: 'DELETE' },
+                    );
+                  }}
+                />
 
                 <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
                   {[
@@ -1132,9 +1543,46 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                   </Stack>
                 </Paper>
 
-                <Stack direction="row" spacing={1}>
+                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap alignItems="center">
+                  <Tooltip title="Angre (⌘Z)">
+                    <span>
+                      <IconButton
+                        size="small"
+                        disabled={!session.activeCanUndo}
+                        onClick={() => {
+                          const id = session.active?.id;
+                          if (id) session.undoHistory(id);
+                        }}
+                      >
+                        <UndoIcon fontSize="small" />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                  <Tooltip title="Gjør om (⌘⇧Z)">
+                    <span>
+                      <IconButton
+                        size="small"
+                        disabled={!session.activeCanRedo}
+                        onClick={() => {
+                          const id = session.active?.id;
+                          if (id) session.redoHistory(id);
+                        }}
+                      >
+                        <RedoIcon fontSize="small" />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
                   <Button variant="outlined" onClick={() => void runAnalysis()} disabled={!uploadedImage || analyzeMutation.isPending}>
                     Analyze
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    color="secondary"
+                    onClick={() => void runSuggestRecipe()}
+                    disabled={!uploadedImage || suggestRecipeMutation.isPending}
+                    title="Be Claude Vision foreslå verdier for alle slidere basert på bildet"
+                  >
+                    {suggestRecipeMutation.isPending ? 'Spør AI…' : 'AI-forslag'}
                   </Button>
                   <Button
                     variant="contained"
@@ -1145,6 +1593,56 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                     Enhance
                   </Button>
                 </Stack>
+
+                <Typography variant="caption" color="text.secondary">
+                  Slider-preview er en WebGL-approksimasjon — Enhance kjører full pipeline (GFPGAN/CodeFormer/portrait retouch) for endelig kvalitet.
+                </Typography>
+
+                {aiSuggestion && (
+                  <Paper variant="outlined" sx={{ p: 1.25 }}>
+                    <Stack spacing={0.75}>
+                      <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" alignItems="center">
+                        <Chip
+                          size="small"
+                          label={`AI: ${aiSuggestion.subject.replace('_', ' ')}`}
+                          color={aiSuggestion.subject === 'non_portrait' ? 'default' : 'primary'}
+                        />
+                        <Chip
+                          size="small"
+                          label={`${Math.round(aiSuggestion.confidence * 100)}% sikker`}
+                          color={aiSuggestion.confidence < 0.35 ? 'warning' : 'success'}
+                          variant={aiSuggestion.confidence < 0.35 ? 'filled' : 'outlined'}
+                        />
+                        {aiSuggestion.confidence < 0.35 && (
+                          <Typography variant="caption" color="warning.main">
+                            Lav sikkerhet — verifiser manuelt før du enhancer.
+                          </Typography>
+                        )}
+                      </Stack>
+                      {aiSuggestion.rationale && (
+                        <Typography variant="caption" color="text.secondary">
+                          {aiSuggestion.rationale}
+                        </Typography>
+                      )}
+                      {aiSuggestion.observations.length > 0 && (
+                        <Box component="ul" sx={{ m: 0, pl: 2 }}>
+                          {aiSuggestion.observations.map((obs, idx) => (
+                            <Typography key={idx} component="li" variant="caption" color="text.secondary">
+                              {obs}
+                            </Typography>
+                          ))}
+                        </Box>
+                      )}
+                    </Stack>
+                  </Paper>
+                )}
+                {suggestRecipeMutation.isError && (
+                  <Typography variant="caption" color="error">
+                    {suggestRecipeMutation.error instanceof Error
+                      ? `AI-forslag feilet: ${suggestRecipeMutation.error.message}`
+                      : 'AI-forslag feilet.'}
+                  </Typography>
+                )}
 
                 {directUploadProgress?.active ? (
                   <Box>
@@ -1279,6 +1777,15 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                   >
                     Slider
                   </Button>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    color="primary"
+                    onClick={() => setCullOpen(true)}
+                    disabled={session.state.images.length === 0}
+                  >
+                    Cull-modus
+                  </Button>
                 </Stack>
 
                 <FormControlLabelSwitch
@@ -1288,18 +1795,78 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                 />
               </Stack>
 
+              <Box sx={{ mb: 1 }}>
+                <FaceChipStrip
+                  faces={session.active?.faces}
+                  status={session.active?.faceStatus ?? 'idle'}
+                  activeFaceIndex={focusedFace?.index ?? null}
+                  onSelect={(face) => setFocusedFace(face)}
+                />
+              </Box>
+
               {!originalImageUrl ? (
                 <Alert severity="info">Last opp et bilde for forhåndsvisning.</Alert>
               ) : (
-                <Box sx={{ position: 'relative', minHeight: 420, border: '1px solid #e5e7eb', borderRadius: 2, overflow: 'hidden' }}>
+                <Box
+                  sx={{
+                    position: 'relative',
+                    minHeight: 420,
+                    border: '1px solid',
+                    borderColor: eyedropperActive ? 'primary.main' : focusedFace ? 'primary.light' : '#e5e7eb',
+                    borderRadius: 2,
+                    overflow: 'hidden',
+                    cursor: eyedropperActive ? 'crosshair' : 'default',
+                    '& > .face-zoom-layer': focusedFace
+                      ? {
+                          transition: 'transform 180ms cubic-bezier(0.4, 0, 0.2, 1)',
+                          transform: (() => {
+                            const t = computeFocusTransform(focusedFace.box, 1, 1);
+                            return `scale(${t.scale}) translate(${t.translateXPct}%, ${t.translateYPct}%)`;
+                          })(),
+                          transformOrigin: '50% 50%',
+                        }
+                      : {
+                          transition: 'transform 180ms cubic-bezier(0.4, 0, 0.2, 1)',
+                          transform: 'none',
+                        },
+                  }}
+                  onClick={(event) => {
+                    if (!eyedropperActive) return;
+                    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+                    const normX = (event.clientX - rect.left) / rect.width;
+                    const normY = (event.clientY - rect.top) / rect.height;
+                    handlePreviewPixelPick(normX, normY);
+                  }}
+                >
+                  <Box className="face-zoom-layer" sx={{ position: 'relative', width: '100%', height: '100%', minHeight: 420 }}>
                   {viewMode === 'single' && (
-                    <ImagePreview
-                      src={enhancedImageUrl || originalImageUrl}
-                      alt={enhancedImageUrl ? 'Enhanced' : 'Original'}
-                      onLoad={onImageLoaded}
-                      showCompositionGuides={showCompositionGuides}
-                      compositionAnalysis={compositionAnalysis}
-                    />
+                    enhancedImageUrl ? (
+                      <ImagePreview
+                        src={compareOverrideUrl || enhancedImageUrl}
+                        alt={compareOverrideUrl ? 'Original' : 'Enhanced'}
+                        onLoad={onImageLoaded}
+                        showCompositionGuides={showCompositionGuides}
+                        compositionAnalysis={compositionAnalysis}
+                      />
+                    ) : (
+                      <Box sx={{ position: 'relative', width: '100%', height: '100%', minHeight: 420 }}>
+                        <RealtimePreviewCanvas
+                          imageUrl={originalImageUrl}
+                          settings={settings}
+                          lutAtlas={lutAtlas}
+                          lutStrength={settings.lut.strength}
+                          lutTonalMix={settings.lut.tonalMix}
+                          alt="Live preview"
+                        />
+                        <Chip
+                          size="small"
+                          label="Live preview · approximate"
+                          color="info"
+                          variant="filled"
+                          sx={{ position: 'absolute', top: 8, left: 8, opacity: 0.9 }}
+                        />
+                      </Box>
+                    )
                   )}
 
                   {viewMode === 'side-by-side' && enhancedImageUrl && (
@@ -1349,8 +1916,29 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                       </Box>
                     </Box>
                   )}
+                  </Box>
                 </Box>
               )}
+
+              {session.state.images.length > 1 ? (
+                <Box sx={{ mt: 1.5 }}>
+                  <Filmstrip
+                    images={session.state.images}
+                    selectedId={session.state.selectedId}
+                    multiSelectIds={session.state.multiSelectIds}
+                    onSelect={(id, event) => {
+                      if (event.shiftKey && session.state.selectedId) {
+                        session.selectRange(session.state.selectedId, id);
+                      } else if (event.metaKey || event.ctrlKey) {
+                        session.toggleMultiSelect(id, true);
+                      } else {
+                        session.selectImage(id);
+                      }
+                    }}
+                    onRemove={(id) => session.removeImage(id)}
+                  />
+                </Box>
+              ) : null}
 
               {compositionAnalysis ? (
                 <Alert severity="info" sx={{ mt: 1.5 }}>
@@ -1413,11 +2001,51 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                 >
                   Rate enhancement
                 </Button>
+                <Button
+                  variant="contained"
+                  color="secondary"
+                  startIcon={<CloudUploadIcon />}
+                  onClick={() => setExportDialogOpen(true)}
+                  disabled={session.state.images.length === 0}
+                >
+                  Eksporter {session.state.images.length > 1 ? `(${session.state.images.length})` : ''}
+                </Button>
               </Stack>
             </CardContent>
           </Card>
         </Grid>
       </Grid>
+
+      <ExportPresetDialog
+        open={exportDialogOpen}
+        onClose={() => setExportDialogOpen(false)}
+        preset={
+          session.state.exportPresets.find((p) => p.id === session.state.activeExportPresetId) ?? null
+        }
+        images={session.state.images}
+        projectName={projects.find((p) => p.id === selectedProjectId)?.name}
+        clientName={undefined}
+        onSavePreset={(preset: ExportPreset) => {
+          const exists = session.state.exportPresets.some((p) => p.id === preset.id);
+          if (exists) session.dispatch({ type: 'UPDATE_EXPORT_PRESET', preset });
+          else session.dispatch({ type: 'ADD_EXPORT_PRESET', preset });
+          session.dispatch({ type: 'SELECT_EXPORT_PRESET', presetId: preset.id });
+        }}
+        onDeletePreset={(presetId) => session.dispatch({ type: 'REMOVE_EXPORT_PRESET', presetId })}
+      />
+
+      <CullView
+        open={cullOpen}
+        onClose={() => setCullOpen(false)}
+        state={session.state}
+        activeId={session.active?.id ?? null}
+        onSelect={(id) => session.selectImage(id)}
+        onRating={(id, rating) => session.setRating(id, rating)}
+        onFlag={(id, flag) => session.setFlag(id, flag)}
+        onApplyRatingToBurst={(burstId, rating) => session.applyRatingToBurst(burstId, rating)}
+        onApplyFlagToBurst={(burstId, flag) => session.applyFlagToBurst(burstId, flag)}
+        onFilterChange={(filter) => session.setCullFilter(filter)}
+      />
 
       <Dialog open={saveDialogOpen} onClose={() => setSaveDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Save Enhanced Image</DialogTitle>

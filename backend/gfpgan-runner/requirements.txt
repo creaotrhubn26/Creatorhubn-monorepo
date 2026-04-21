@@ -8,6 +8,7 @@ botocore==1.35.90
 numpy==1.26.4
 Pillow==10.4.0
 opencv-python-headless==4.10.0.84
+mediapipe==0.10.18
 torch==2.1.2+cpu
 torchvision==0.16.2+cpu
 basicsr==1.4.2
