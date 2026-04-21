@@ -29774,17 +29774,17 @@ app.post("/api/role-room/agent/ig-hashtag-inspect", async (req, res) => {
       });
     }
 
-    // Step 2: fetch top media
+    // Step 2: fetch top media. IG hashtag top_media supports only a
+    // narrower field set than user/media — thumbnail_url + like_count
+    // + comments_count + timestamp trigger (#100) "Please read docs
+    // for supported fields". Stick to the canonical documented set.
     const fields = [
       "id",
       "media_type",
       "media_url",
-      "thumbnail_url",
       "permalink",
       "caption",
-      "like_count",
-      "comments_count",
-      "timestamp",
+      "children{media_url,media_type}",
     ].join(",");
     const topMediaUrl = `https://graph.facebook.com/${graphVersion}/${encodeURIComponent(hashtagId)}/top_media?${new URLSearchParams({
       user_id: igUserId,
