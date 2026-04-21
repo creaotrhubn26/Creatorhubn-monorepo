@@ -63,10 +63,6 @@ export function MetaPagePublicMetadataInspector() {
   const [connectRequired, setConnectRequired] = useState(false);
 
   const resolveAuthToken = (): string | null => {
-    // Role Room casting-main and the main CreatorHub SPA persist
-    // auth under different keys. Try the Role Room keys first since
-    // this component runs inside RoleRoomAgentDialog, then fall back
-    // to the CreatorHub SPA keys, then to the in-memory useAuth.
     try {
       const rrToken = localStorage.getItem('role_room_auth_token');
       if (rrToken) return rrToken;
