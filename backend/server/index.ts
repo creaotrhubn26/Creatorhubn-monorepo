@@ -29698,6 +29698,139 @@ app.post("/api/role-room/facebook/publish-video", async (req, res) => {
 });
 
 /**
+ * Instagram Public Content Access — hashtag search inspector.
+ *
+ * Demonstrates the allowed usage of the Instagram Hashtag Search
+ * endpoints: given a hashtag (with or without "#"), resolve it to a
+ * hashtag id via /ig_hashtag_search, then fetch /{hashtag-id}/top_media
+ * and return the post thumbnails + engagement counts. Rendered in the
+ * IG Hashtags panel so producers can see what's trending around a
+ * client's campaign hashtag and inform their own creative.
+ */
+app.post("/api/role-room/agent/ig-hashtag-inspect", async (req, res) => {
+  const featureId = "role-room-agent-producer";
+  if (!isCompatAdminFeatureEnabled(featureId)) {
+    return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
+  }
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+
+  const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
+  const rawHashtag = typeof body.hashtag === "string" ? body.hashtag.trim() : "";
+  const normalizedTag = rawHashtag.replace(/^#/, "").trim();
+  if (!normalizedTag) {
+    return res.status(400).json({ success: false, error: "hashtag er påkrevd." });
+  }
+  if (!/^[a-z0-9_]+$/i.test(normalizedTag)) {
+    return res.status(400).json({ success: false, error: "Hashtag kan kun inneholde bokstaver, tall og underscore." });
+  }
+
+  const connections = await listInstagramConnections(pool, session.userId);
+  if (connections.length === 0) {
+    return res.status(409).json({
+      success: false,
+      error: "Koble Facebook/Instagram til Role Room først.",
+      connectRequired: true,
+    });
+  }
+  const connection = connections[0];
+  const igUserId = connection.igBusinessAccountId;
+  if (!igUserId) {
+    return res.status(409).json({
+      success: false,
+      error: "Ingen Instagram Business Account knyttet til Meta-tilkoblingen.",
+    });
+  }
+
+  const graphVersion = "v21.0";
+  // Step 1: resolve hashtag id
+  const searchUrl = `https://graph.facebook.com/${graphVersion}/ig_hashtag_search?${new URLSearchParams({
+    user_id: igUserId,
+    q: normalizedTag,
+    access_token: connection.accessToken,
+  })}`;
+  try {
+    const searchRes = await fetch(searchUrl);
+    const searchText = await searchRes.text();
+    let searchBody: Record<string, unknown> | null = null;
+    try { searchBody = JSON.parse(searchText); } catch { /* keep raw */ }
+    if (!searchRes.ok) {
+      console.error(`[ig-hashtag-inspect] search status=${searchRes.status} body=${searchText.replace(/\s+/g, " ").slice(0, 400)}`);
+      const errObj = (searchBody?.error as Record<string, unknown> | undefined) ?? null;
+      return res.status(searchRes.status === 400 ? 422 : searchRes.status).json({
+        success: false,
+        error: typeof errObj?.message === "string" ? `Meta Graph API: ${errObj.message}` : `Meta Graph API returnerte ${searchRes.status}.`,
+        graphError: errObj,
+      });
+    }
+    const searchData = Array.isArray(searchBody?.data) ? searchBody.data : [];
+    const hashtagId = (searchData[0] as Record<string, unknown> | undefined)?.id;
+    if (!hashtagId || typeof hashtagId !== "string") {
+      return res.json({
+        success: true,
+        hashtag: { id: null, name: normalizedTag },
+        posts: [],
+        meta: { graphVersion, resolvedFrom: rawHashtag },
+      });
+    }
+
+    // Step 2: fetch top media
+    const fields = [
+      "id",
+      "media_type",
+      "media_url",
+      "thumbnail_url",
+      "permalink",
+      "caption",
+      "like_count",
+      "comments_count",
+      "timestamp",
+    ].join(",");
+    const topMediaUrl = `https://graph.facebook.com/${graphVersion}/${encodeURIComponent(hashtagId)}/top_media?${new URLSearchParams({
+      user_id: igUserId,
+      fields,
+      limit: "9",
+      access_token: connection.accessToken,
+    })}`;
+    const mediaRes = await fetch(topMediaUrl);
+    const mediaText = await mediaRes.text();
+    let mediaBody: Record<string, unknown> | null = null;
+    try { mediaBody = JSON.parse(mediaText); } catch { /* keep raw */ }
+    if (!mediaRes.ok) {
+      console.error(`[ig-hashtag-inspect] top_media status=${mediaRes.status} body=${mediaText.replace(/\s+/g, " ").slice(0, 400)}`);
+      const errObj = (mediaBody?.error as Record<string, unknown> | undefined) ?? null;
+      return res.status(mediaRes.status).json({
+        success: false,
+        error: typeof errObj?.message === "string" ? `Meta Graph API: ${errObj.message}` : `Meta Graph API returnerte ${mediaRes.status}.`,
+        graphError: errObj,
+        hashtag: { id: hashtagId, name: normalizedTag },
+      });
+    }
+    const mediaArray = Array.isArray(mediaBody?.data) ? mediaBody.data : [];
+    const posts = mediaArray.map((m: Record<string, unknown>) => ({
+      id: typeof m.id === "string" ? m.id : null,
+      mediaType: typeof m.media_type === "string" ? m.media_type : null,
+      mediaUrl: typeof m.media_url === "string" ? m.media_url : null,
+      thumbnailUrl: typeof m.thumbnail_url === "string" ? m.thumbnail_url : null,
+      permalink: typeof m.permalink === "string" ? m.permalink : null,
+      caption: typeof m.caption === "string" ? m.caption : null,
+      likeCount: typeof m.like_count === "number" ? m.like_count : null,
+      commentsCount: typeof m.comments_count === "number" ? m.comments_count : null,
+      timestamp: typeof m.timestamp === "string" ? m.timestamp : null,
+    }));
+    return res.json({
+      success: true,
+      hashtag: { id: hashtagId, name: normalizedTag },
+      posts,
+      meta: { graphVersion, resolvedFrom: rawHashtag, igUserId },
+    });
+  } catch (err) {
+    console.error(`[ig-hashtag-inspect] fetch threw: ${err instanceof Error ? err.message : String(err)}`);
+    return res.status(500).json({ success: false, error: "Kunne ikke nå Meta Graph API." });
+  }
+});
+
+/**
  * Meta Ads Attribution inspector.
  *
  * Demonstrates the attribution_read / ads_read permissions: takes an
