@@ -191,6 +191,77 @@ export default function FeedPostDetailPanel({
 
   const [publishing, setPublishing] = useState(false);
   const [publishStatus, setPublishStatus] = useState<string | null>(null);
+  const [fbPages, setFbPages] = useState<Array<{ id: string; name: string | null }>>([]);
+  const [fbSelectedPageId, setFbSelectedPageId] = useState<string>('');
+  const [fbPublishing, setFbPublishing] = useState(false);
+  const [fbPublishStatus, setFbPublishStatus] = useState<string | null>(null);
+
+  const resolveAuthToken = (): string | null => {
+    try {
+      const rr = localStorage.getItem('role_room_auth_token');
+      if (rr) return rr;
+      const ch = localStorage.getItem('creatorhub_auth_token');
+      if (ch) return ch;
+    } catch { /* ignore */ }
+    return null;
+  };
+
+  // Load the producer's admin-able FB Pages once so the "Publish to
+  // FB Page" action can render a picker alongside the IG publish CTA.
+  useEffect(() => {
+    const headers: Record<string, string> = {};
+    const tok = resolveAuthToken();
+    if (tok) headers['Authorization'] = `Bearer ${tok}`;
+    fetch('/api/role-room/facebook/pages', { headers, credentials: 'include' })
+      .then((r) => r.json().catch(() => ({})))
+      .then((body) => {
+        if (body?.success && Array.isArray(body.pages)) {
+          setFbPages(body.pages);
+          if (body.pages.length > 0) setFbSelectedPageId(body.pages[0].id);
+        }
+      })
+      .catch(() => { /* silently ignore — button handles errors */ });
+  }, []);
+
+  const publishToFacebookPage = async () => {
+    if (!post.customVideoDataUrl) {
+      setFbPublishStatus('FB Page-publisering krever en video (reel-type).');
+      return;
+    }
+    if (!fbSelectedPageId) {
+      setFbPublishStatus('Velg en Facebook Page først.');
+      return;
+    }
+    if (!window.confirm(`Publiser video til Facebook Page?`)) return;
+    setFbPublishing(true);
+    setFbPublishStatus(null);
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      const tok = resolveAuthToken();
+      if (tok) headers['Authorization'] = `Bearer ${tok}`;
+      const response = await fetch('/api/role-room/facebook/publish-video', {
+        method: 'POST',
+        headers,
+        credentials: 'include',
+        body: JSON.stringify({
+          pageId: fbSelectedPageId,
+          videoDataUrl: post.customVideoDataUrl,
+          description: `${post.title}\n\n${post.caption}\n\n${post.callToAction}`.trim(),
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setFbPublishStatus(body?.error || `HTTP ${response.status}`);
+        return;
+      }
+      setFbPublishStatus(`✓ Publisert til Facebook Page (video id ${body?.video?.id ?? '(ukjent)'})`);
+    } catch (e) {
+      setFbPublishStatus(e instanceof Error ? e.message : 'FB-publisering feilet.');
+    } finally {
+      setFbPublishing(false);
+    }
+  };
+
   const publishToInstagram = async () => {
     if (!isShowrunner || platform !== 'instagram' || instagramConnections.length === 0) return;
 
@@ -1012,6 +1083,70 @@ export default function FeedPostDetailPanel({
           {publishStatus ? (
             <Typography sx={{ color: 'rgba(226,232,240,0.78)', fontSize: '0.74rem' }}>
               {publishStatus}
+            </Typography>
+          ) : null}
+        </Stack>
+      ) : null}
+
+      {post.mediaType === 'reel' ? (
+        <Stack
+          spacing={0.8}
+          data-testid="fb-publish-section"
+          sx={{
+            p: 1.2,
+            borderRadius: 2,
+            bgcolor: 'rgba(24,119,242,0.06)',
+            border: '1px solid rgba(24,119,242,0.22)',
+          }}
+        >
+          <Stack direction="row" alignItems="center" spacing={0.6}>
+            <Typography sx={{ color: '#e2e8f0', fontSize: '0.82rem', fontWeight: 700 }}>
+              Publiser til Facebook Page
+            </Typography>
+          </Stack>
+          {fbPages.length === 0 ? (
+            <Typography sx={{ color: 'rgba(226,232,240,0.62)', fontSize: '0.72rem' }}>
+              Ingen FB Pages funnet — koble Meta-kontoen på nytt for å få pages_manage_posts + publish_video scopes.
+            </Typography>
+          ) : (
+            <TextField
+              select
+              SelectProps={{ native: true }}
+              size="small"
+              value={fbSelectedPageId}
+              onChange={(e) => setFbSelectedPageId(e.target.value)}
+              disabled={fbPublishing || post.locked}
+              inputProps={{ 'data-testid': 'fb-publish-page-select' }}
+              sx={{ '& .MuiSelect-select': { fontSize: '0.82rem', py: 0.6 } }}
+            >
+              {fbPages.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name ?? '(unnamed)'} ({p.id})
+                </option>
+              ))}
+            </TextField>
+          )}
+          <Button
+            size="small"
+            variant="contained"
+            onClick={publishToFacebookPage}
+            disabled={fbPublishing || post.locked || fbPages.length === 0 || !post.customVideoDataUrl}
+            data-testid="fb-publish-submit"
+            sx={{
+              alignSelf: 'flex-start',
+              textTransform: 'none',
+              fontWeight: 700,
+              color: '#fff',
+              background: 'linear-gradient(135deg, #1877F2 0%, #0866ff 100%)',
+              boxShadow: 'none',
+              '&:hover': { boxShadow: '0 4px 16px rgba(24,119,242,0.3)' },
+            }}
+          >
+            {fbPublishing ? 'Laster opp til Facebook…' : 'Publiser til Facebook Page'}
+          </Button>
+          {fbPublishStatus ? (
+            <Typography sx={{ color: 'rgba(226,232,240,0.78)', fontSize: '0.74rem' }}>
+              {fbPublishStatus}
             </Typography>
           ) : null}
         </Stack>
