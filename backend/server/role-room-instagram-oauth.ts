@@ -33,6 +33,8 @@ const REQUIRED_SCOPES = [
   'instagram_content_publish',
   'pages_show_list',
   'pages_read_engagement',
+  'pages_manage_posts',
+  'publish_video',
   'business_management',
   'ads_read',
   'attribution_read',

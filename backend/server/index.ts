@@ -29514,6 +29514,171 @@ app.delete("/api/role-room/instagram/connections/:connectionId", async (req, res
 });
 
 /**
+ * List Facebook Pages the connected admin can administer, via Graph
+ * /me/accounts. Used by the Publish to FB Page panel so the producer
+ * can pick which Page to upload a video to.
+ */
+app.get("/api/role-room/facebook/pages", async (req, res) => {
+  const featureId = "role-room-agent-producer";
+  if (!isCompatAdminFeatureEnabled(featureId)) {
+    return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
+  }
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+
+  const connections = await listInstagramConnections(pool, session.userId);
+  if (connections.length === 0) {
+    return res.status(409).json({
+      success: false,
+      error: "Koble Facebook/Instagram til Role Room først.",
+      connectRequired: true,
+    });
+  }
+  const connection = connections[0];
+
+  const url = `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token,category,tasks&access_token=${encodeURIComponent(connection.accessToken)}`;
+  try {
+    const response = await fetch(url);
+    const text = await response.text();
+    let payload: Record<string, unknown> | null = null;
+    try { payload = JSON.parse(text) as Record<string, unknown>; } catch { /* keep raw */ }
+
+    if (!response.ok) {
+      console.error(`[facebook-pages] status=${response.status} body=${text.replace(/\s+/g, " ").slice(0, 400)}`);
+      const errObj = (payload?.error as Record<string, unknown> | undefined) ?? null;
+      return res.status(response.status).json({
+        success: false,
+        error: typeof errObj?.message === "string" ? `Meta Graph API: ${errObj.message}` : `Meta Graph API returnerte ${response.status}.`,
+      });
+    }
+    const pages = Array.isArray(payload?.data) ? payload.data : [];
+    return res.json({
+      success: true,
+      pages: pages.map((p: Record<string, unknown>) => ({
+        id: String(p.id),
+        name: typeof p.name === "string" ? p.name : null,
+        category: typeof p.category === "string" ? p.category : null,
+        tasks: Array.isArray(p.tasks) ? p.tasks : [],
+        hasPageToken: typeof p.access_token === "string" && p.access_token.length > 0,
+      })),
+    });
+  } catch (err) {
+    console.error(`[facebook-pages] fetch threw: ${err instanceof Error ? err.message : String(err)}`);
+    return res.status(500).json({ success: false, error: "Kunne ikke nå Meta Graph API." });
+  }
+});
+
+/**
+ * Publish a video to a Facebook Page using the publish_video +
+ * pages_manage_posts permissions. Expects a data-URL encoded
+ * video payload (from the browser file picker), decodes it server-
+ * side, looks up the Page access token via /me/accounts, and POSTs
+ * to /{page-id}/videos with a multipart form.
+ *
+ * Returns the Meta video id + the post's graph URL so the producer
+ * can open it in the Facebook UI for verification.
+ */
+app.post("/api/role-room/facebook/publish-video", async (req, res) => {
+  const featureId = "role-room-agent-producer";
+  if (!isCompatAdminFeatureEnabled(featureId)) {
+    return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
+  }
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+
+  const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
+  const pageId = typeof body.pageId === "string" ? body.pageId.trim() : "";
+  const videoDataUrl = typeof body.videoDataUrl === "string" ? body.videoDataUrl : "";
+  const description = typeof body.description === "string" ? body.description.trim() : "";
+  if (!pageId || !videoDataUrl) {
+    return res.status(400).json({ success: false, error: "pageId og videoDataUrl er påkrevd." });
+  }
+
+  const connections = await listInstagramConnections(pool, session.userId);
+  if (connections.length === 0) {
+    return res.status(409).json({
+      success: false,
+      error: "Koble Facebook/Instagram til Role Room først.",
+      connectRequired: true,
+    });
+  }
+  const connection = connections[0];
+
+  // Look up the Page access token — FB Page publishes need a Page-
+  // scoped token, not the user token directly.
+  let pageAccessToken: string | null = null;
+  try {
+    const accountsRes = await fetch(
+      `https://graph.facebook.com/v21.0/me/accounts?fields=id,access_token&access_token=${encodeURIComponent(connection.accessToken)}`,
+    );
+    const accountsBody = await accountsRes.json() as { data?: Array<{ id?: string; access_token?: string }> };
+    const match = (accountsBody.data ?? []).find((p) => String(p.id) === pageId);
+    if (match?.access_token) pageAccessToken = match.access_token;
+  } catch (err) {
+    console.error(`[fb-publish-video] me/accounts threw: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  if (!pageAccessToken) {
+    return res.status(403).json({
+      success: false,
+      error: "Fant ingen Page-token for denne siden. Re-connect Facebook og bekreft at siden er admin'et av deg.",
+    });
+  }
+
+  // Decode data URL.
+  const dataUrlMatch = videoDataUrl.match(/^data:(video\/[a-z0-9.+-]+);base64,(.+)$/i);
+  if (!dataUrlMatch) {
+    return res.status(400).json({ success: false, error: "videoDataUrl må være et base64-kodet video/*-data-URL." });
+  }
+  const mimeType = dataUrlMatch[1];
+  const buffer = Buffer.from(dataUrlMatch[2], "base64");
+  if (buffer.length === 0) {
+    return res.status(400).json({ success: false, error: "Tom video-body etter dekoding." });
+  }
+  if (buffer.length > 100 * 1024 * 1024) {
+    return res.status(413).json({ success: false, error: "Video er over 100 MB — bruk en mindre fil for review-demoen." });
+  }
+
+  const form = new FormData();
+  const blob = new Blob([new Uint8Array(buffer)], { type: mimeType });
+  form.append("source", blob, `upload.${mimeType.split("/")[1] || "mp4"}`);
+  if (description) form.append("description", description);
+  form.append("access_token", pageAccessToken);
+
+  const uploadUrl = `https://graph.facebook.com/v21.0/${encodeURIComponent(pageId)}/videos`;
+  try {
+    const response = await fetch(uploadUrl, { method: "POST", body: form });
+    const text = await response.text();
+    let payload: Record<string, unknown> | null = null;
+    try { payload = JSON.parse(text) as Record<string, unknown>; } catch { /* keep raw */ }
+
+    if (!response.ok) {
+      console.error(`[fb-publish-video] upload status=${response.status} body=${text.replace(/\s+/g, " ").slice(0, 400)}`);
+      const errObj = (payload?.error as Record<string, unknown> | undefined) ?? null;
+      return res.status(response.status === 400 ? 422 : response.status).json({
+        success: false,
+        error: typeof errObj?.message === "string" ? `Meta Graph API: ${errObj.message}` : `Meta Graph API returnerte ${response.status}.`,
+        graphError: errObj,
+      });
+    }
+    const videoId = payload?.id ? String(payload.id) : null;
+    return res.json({
+      success: true,
+      video: {
+        id: videoId,
+        pageId,
+        permalink: videoId ? `https://www.facebook.com/${videoId}` : null,
+        graphUrl: videoId ? `https://graph.facebook.com/v21.0/${videoId}` : null,
+        sizeBytes: buffer.length,
+        mimeType,
+      },
+    });
+  } catch (err) {
+    console.error(`[fb-publish-video] fetch threw: ${err instanceof Error ? err.message : String(err)}`);
+    return res.status(500).json({ success: false, error: "Kunne ikke nå Meta Graph API." });
+  }
+});
+
+/**
  * Meta Ads Attribution inspector.
  *
  * Demonstrates the attribution_read / ads_read permissions: takes an

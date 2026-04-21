@@ -19,6 +19,7 @@ import {
 import {
   AutoFixHigh as AutoFixHighIcon,
   Chat as ChatIcon,
+  CloudUpload as CloudUploadIcon,
   FactCheck as FactCheckIcon,
   GridView as GridViewIcon,
   Language as LanguageIcon,
@@ -27,6 +28,7 @@ import {
 } from '@mui/icons-material';
 import MetaPagePublicMetadataInspector from './MetaPagePublicMetadataInspector';
 import AdsAttributionInspector from './AdsAttributionInspector';
+import FacebookVideoPublisher from './FacebookVideoPublisher';
 import { Tab, Tabs } from '@mui/material';
 import type {
   RoleRoomAgentAccess,
@@ -178,7 +180,7 @@ export default function RoleRoomAgentDialog({
   // full correction trail as the newest source of truth.
   const [refinementDraft, setRefinementDraft] = useState('');
   const [refinementHistory, setRefinementHistory] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState<'research' | 'chat' | 'feed-planner' | 'marketing-plan' | 'meta-page' | 'ads-attribution'>('research');
+  const [activeTab, setActiveTab] = useState<'research' | 'chat' | 'feed-planner' | 'marketing-plan' | 'meta-page' | 'ads-attribution' | 'fb-publish'>('research');
   const [systemStatusOpen, setSystemStatusOpen] = useState(false);
 
   // Phone + iPad-portrait widths get a fullScreen dialog so the chat
@@ -440,6 +442,12 @@ export default function RoleRoomAgentDialog({
           icon={<QueryStatsIcon fontSize="small" />}
           iconPosition="start"
         />
+        <Tab
+          value="fb-publish"
+          label="FB Publish"
+          icon={<CloudUploadIcon fontSize="small" />}
+          iconPosition="start"
+        />
         {currentUserId ? (
           <Tab value="chat" label="Chat" icon={<ChatIcon fontSize="small" />} iconPosition="start" />
         ) : null}
@@ -494,6 +502,10 @@ export default function RoleRoomAgentDialog({
         ) : activeTab === 'ads-attribution' ? (
           <Box sx={{ p: { xs: 1, md: 2 } }}>
             <AdsAttributionInspector />
+          </Box>
+        ) : activeTab === 'fb-publish' ? (
+          <Box sx={{ p: { xs: 1, md: 2 } }}>
+            <FacebookVideoPublisher />
           </Box>
         ) : (
         <Stack spacing={1.4}>
