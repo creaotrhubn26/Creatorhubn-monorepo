@@ -17,6 +17,7 @@ import {
   useTheme,
 } from '@mui/material';
 import {
+  Article as ArticleIcon,
   AutoFixHigh as AutoFixHighIcon,
   Chat as ChatIcon,
   CloudUpload as CloudUploadIcon,
@@ -31,6 +32,7 @@ import MetaPagePublicMetadataInspector from './MetaPagePublicMetadataInspector';
 import AdsAttributionInspector from './AdsAttributionInspector';
 import FacebookVideoPublisher from './FacebookVideoPublisher';
 import IgHashtagInspector from './IgHashtagInspector';
+import PagePublicContentInspector from './PagePublicContentInspector';
 import { Tab, Tabs } from '@mui/material';
 import type {
   RoleRoomAgentAccess,
@@ -182,7 +184,7 @@ export default function RoleRoomAgentDialog({
   // full correction trail as the newest source of truth.
   const [refinementDraft, setRefinementDraft] = useState('');
   const [refinementHistory, setRefinementHistory] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState<'research' | 'chat' | 'feed-planner' | 'marketing-plan' | 'meta-page' | 'ads-attribution' | 'fb-publish' | 'ig-hashtag'>('research');
+  const [activeTab, setActiveTab] = useState<'research' | 'chat' | 'feed-planner' | 'marketing-plan' | 'meta-page' | 'page-content' | 'ads-attribution' | 'fb-publish' | 'ig-hashtag'>('research');
   const [systemStatusOpen, setSystemStatusOpen] = useState(false);
 
   // Phone + iPad-portrait widths get a fullScreen dialog so the chat
@@ -439,6 +441,12 @@ export default function RoleRoomAgentDialog({
           iconPosition="start"
         />
         <Tab
+          value="page-content"
+          label="Page Content"
+          icon={<ArticleIcon fontSize="small" />}
+          iconPosition="start"
+        />
+        <Tab
           value="ads-attribution"
           label="Ads Attribution"
           icon={<QueryStatsIcon fontSize="small" />}
@@ -506,6 +514,10 @@ export default function RoleRoomAgentDialog({
         ) : activeTab === 'meta-page' ? (
           <Box sx={{ p: { xs: 1, md: 2 } }}>
             <MetaPagePublicMetadataInspector />
+          </Box>
+        ) : activeTab === 'page-content' ? (
+          <Box sx={{ p: { xs: 1, md: 2 } }}>
+            <PagePublicContentInspector />
           </Box>
         ) : activeTab === 'ads-attribution' ? (
           <Box sx={{ p: { xs: 1, md: 2 } }}>
