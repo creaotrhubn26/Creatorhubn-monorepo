@@ -8,7 +8,7 @@
  * 3x3 grid so producers can skim public sentiment and engagement
  * around the tag before shaping their own creative.
  */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Alert, Box, Button, Chip, CircularProgress, Container, Divider, Grid, Stack,
   TextField, Typography,
@@ -59,12 +59,17 @@ export function IgHashtagInspector() {
     return user?.id || null;
   };
 
-  const handleSearch = async () => {
-    if (!input.trim()) return;
+  const searchAbortRef = useRef<AbortController | null>(null);
+  const handleSearch = async (override?: string) => {
+    const query = (override ?? input).trim();
+    if (!query) return;
+    // Cancel any in-flight typeahead call so the latest keystroke wins.
+    searchAbortRef.current?.abort();
+    const ctrl = new AbortController();
+    searchAbortRef.current = ctrl;
     setLoading(true);
     setError(null);
     setConnectRequired(false);
-    setResult(null);
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       const tok = resolveAuthToken();
@@ -73,7 +78,8 @@ export function IgHashtagInspector() {
         method: 'POST',
         headers,
         credentials: 'include',
-        body: JSON.stringify({ hashtag: input.trim() }),
+        body: JSON.stringify({ hashtag: query }),
+        signal: ctrl.signal,
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -83,11 +89,27 @@ export function IgHashtagInspector() {
       }
       setResult(body as HashtagResult);
     } catch (e) {
+      if ((e as Error)?.name === 'AbortError') return; // newer keystroke superseded
       setError(e instanceof Error ? e.message : 'Request feilet');
     } finally {
-      setLoading(false);
+      if (searchAbortRef.current === ctrl) setLoading(false);
     }
   };
+
+  // Typeahead: debounced auto-search while the producer types. Needs
+  // at least 2 chars + a-z0-9/_ to avoid hitting Meta's rate limit on
+  // every empty/invalid keystroke.
+  useEffect(() => {
+    const trimmed = input.trim().replace(/^#/, '');
+    if (trimmed.length < 2) {
+      setResult(null);
+      return;
+    }
+    if (!/^[a-z0-9_]+$/i.test(trimmed)) return;
+    const handle = setTimeout(() => { void handleSearch(trimmed); }, 600);
+    return () => clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [input]);
 
   const handleConnect = async () => {
     try {
@@ -143,7 +165,7 @@ export function IgHashtagInspector() {
             <Button
               variant="contained"
               size="large"
-              onClick={handleSearch}
+              onClick={() => handleSearch()}
               disabled={loading || !input.trim()}
               startIcon={loading ? <CircularProgress size={18} color="inherit" /> : <TagIcon />}
               data-testid="ig-hashtag-submit"
