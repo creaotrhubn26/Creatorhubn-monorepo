@@ -167,17 +167,16 @@ export function AdsAttributionInspector() {
             >
               {loading ? 'Kaller Meta Graph API…' : 'Fetch attribution insights'}
             </Button>
-            {connectRequired ? (
-              <Button
-                variant="outlined"
-                size="large"
-                onClick={handleConnect}
-                startIcon={<LaunchIcon />}
-                sx={{ textTransform: 'none', fontWeight: 700 }}
-              >
-                Connect Facebook
-              </Button>
-            ) : null}
+            <Button
+              variant="outlined"
+              size="large"
+              onClick={handleConnect}
+              startIcon={<LaunchIcon />}
+              color={connectRequired ? 'warning' : 'primary'}
+              sx={{ textTransform: 'none', fontWeight: 700 }}
+            >
+              {connectRequired ? 'Connect Facebook' : 'Re-connect Facebook'}
+            </Button>
           </Stack>
           <Typography variant="caption" color="text.secondary">
             Calls <code>GET /act_&#123;id&#125;/insights?fields=impressions,clicks,spend,cpc,cpm,ctr,reach,frequency,actions&amp;action_attribution_windows=[&quot;7d_click&quot;,&quot;1d_view&quot;]</code>

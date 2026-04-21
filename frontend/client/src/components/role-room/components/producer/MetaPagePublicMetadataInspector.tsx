@@ -177,17 +177,16 @@ export function MetaPagePublicMetadataInspector() {
             >
               {loading ? 'Kaller Meta Graph API…' : 'Inspect public metadata'}
             </Button>
-            {connectRequired ? (
-              <Button
-                variant="outlined"
-                size="large"
-                onClick={handleConnect}
-                startIcon={<LaunchIcon />}
-                sx={{ textTransform: 'none', fontWeight: 700 }}
-              >
-                Connect Facebook
-              </Button>
-            ) : null}
+            <Button
+              variant="outlined"
+              size="large"
+              onClick={handleConnect}
+              startIcon={<LaunchIcon />}
+              color={connectRequired ? 'warning' : 'primary'}
+              sx={{ textTransform: 'none', fontWeight: 700 }}
+            >
+              {connectRequired ? 'Connect Facebook' : 'Re-connect Facebook'}
+            </Button>
           </Stack>
           <Typography variant="caption" color="text.secondary">
             Calls <code>GET /&#123;page-id&#125;?fields=fan_count,followers_count,category,about,verification_status,link</code> on
