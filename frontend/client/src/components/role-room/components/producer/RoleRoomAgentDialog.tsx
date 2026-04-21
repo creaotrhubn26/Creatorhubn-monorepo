@@ -17,6 +17,7 @@ import {
   useTheme,
 } from '@mui/material';
 import {
+  AlternateEmail as AlternateEmailIcon,
   Article as ArticleIcon,
   AutoFixHigh as AutoFixHighIcon,
   Chat as ChatIcon,
@@ -31,6 +32,7 @@ import {
 import MetaPagePublicMetadataInspector from './MetaPagePublicMetadataInspector';
 import AdsAttributionInspector from './AdsAttributionInspector';
 import FacebookVideoPublisher from './FacebookVideoPublisher';
+import FacebookPageMentionPublisher from './FacebookPageMentionPublisher';
 import IgHashtagInspector from './IgHashtagInspector';
 import PagePublicContentInspector from './PagePublicContentInspector';
 import { Tab, Tabs } from '@mui/material';
@@ -184,7 +186,7 @@ export default function RoleRoomAgentDialog({
   // full correction trail as the newest source of truth.
   const [refinementDraft, setRefinementDraft] = useState('');
   const [refinementHistory, setRefinementHistory] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState<'research' | 'chat' | 'feed-planner' | 'marketing-plan' | 'meta-page' | 'page-content' | 'ads-attribution' | 'fb-publish' | 'ig-hashtag'>('research');
+  const [activeTab, setActiveTab] = useState<'research' | 'chat' | 'feed-planner' | 'marketing-plan' | 'meta-page' | 'page-content' | 'ads-attribution' | 'fb-publish' | 'fb-mention' | 'ig-hashtag'>('research');
   const [systemStatusOpen, setSystemStatusOpen] = useState(false);
 
   // Phone + iPad-portrait widths get a fullScreen dialog so the chat
@@ -459,6 +461,12 @@ export default function RoleRoomAgentDialog({
           iconPosition="start"
         />
         <Tab
+          value="fb-mention"
+          label="Page Mentions"
+          icon={<AlternateEmailIcon fontSize="small" />}
+          iconPosition="start"
+        />
+        <Tab
           value="ig-hashtag"
           label="IG Hashtags"
           icon={<TagIcon fontSize="small" />}
@@ -526,6 +534,10 @@ export default function RoleRoomAgentDialog({
         ) : activeTab === 'fb-publish' ? (
           <Box sx={{ p: { xs: 1, md: 2 } }}>
             <FacebookVideoPublisher />
+          </Box>
+        ) : activeTab === 'fb-mention' ? (
+          <Box sx={{ p: { xs: 1, md: 2 } }}>
+            <FacebookPageMentionPublisher />
           </Box>
         ) : activeTab === 'ig-hashtag' ? (
           <Box sx={{ p: { xs: 1, md: 2 } }}>

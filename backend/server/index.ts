@@ -29698,6 +29698,108 @@ app.post("/api/role-room/facebook/publish-video", async (req, res) => {
 });
 
 /**
+ * Page Mentions — publish a Facebook Page post that mentions another
+ * Page. Uses Meta's `@[PAGE_ID]` in-line syntax on POST /{page-id}/feed,
+ * which Meta renders as a clickable Page mention in the published post.
+ *
+ * The admin selects one of their own Pages (the post author), a message
+ * body, and a target Page to mention. Backend resolves the author Page's
+ * token via /me/accounts and publishes a feed post whose message
+ * concatenates the user-supplied body with `@[<mentioned-page-id>]`.
+ * Returns the new post id + a graph.facebook.com permalink so the
+ * reviewer can verify the rendered mention.
+ */
+app.post("/api/role-room/facebook/publish-page-post", async (req, res) => {
+  const featureId = "role-room-agent-producer";
+  if (!isCompatAdminFeatureEnabled(featureId)) {
+    return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
+  }
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+
+  const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
+  const pageId = typeof body.pageId === "string" ? body.pageId.trim() : "";
+  const message = typeof body.message === "string" ? body.message.trim() : "";
+  const mentionedPageId = typeof body.mentionedPageId === "string" ? body.mentionedPageId.trim() : "";
+  if (!pageId || !message || !mentionedPageId) {
+    return res.status(400).json({ success: false, error: "pageId, message og mentionedPageId er påkrevd." });
+  }
+  if (!/^[0-9]{3,}$/.test(mentionedPageId)) {
+    return res.status(400).json({ success: false, error: "mentionedPageId må være en numerisk Facebook-Page-id." });
+  }
+
+  const connections = await listInstagramConnections(pool, session.userId);
+  if (connections.length === 0) {
+    return res.status(409).json({
+      success: false,
+      error: "Koble Facebook/Instagram til Role Room først.",
+      connectRequired: true,
+    });
+  }
+  const connection = connections[0];
+
+  let pageAccessToken: string | null = null;
+  try {
+    const accountsRes = await fetch(
+      `https://graph.facebook.com/v21.0/me/accounts?fields=id,access_token&access_token=${encodeURIComponent(connection.accessToken)}`,
+    );
+    const accountsBody = await accountsRes.json() as { data?: Array<{ id?: string; access_token?: string }> };
+    const match = (accountsBody.data ?? []).find((p) => String(p.id) === pageId);
+    if (match?.access_token) pageAccessToken = match.access_token;
+  } catch (err) {
+    console.error(`[fb-publish-page-post] me/accounts threw: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  if (!pageAccessToken) {
+    return res.status(403).json({
+      success: false,
+      error: "Fant ingen Page-token for denne siden — sørg for at du admin'er Page-en.",
+    });
+  }
+
+  // `@[PAGE_ID]` is the documented Meta in-line mention syntax for
+  // /feed posts. It's kept separate from the user's message on the
+  // wire so the reviewer can clearly see the mention was added by
+  // the producer rather than being free text that happened to match.
+  const finalMessage = `${message} @[${mentionedPageId}]`;
+
+  const form = new FormData();
+  form.append("message", finalMessage);
+  form.append("access_token", pageAccessToken);
+
+  const feedUrl = `https://graph.facebook.com/v21.0/${encodeURIComponent(pageId)}/feed`;
+  try {
+    const response = await fetch(feedUrl, { method: "POST", body: form });
+    const text = await response.text();
+    let payload: Record<string, unknown> | null = null;
+    try { payload = JSON.parse(text) as Record<string, unknown>; } catch { /* keep raw */ }
+    if (!response.ok) {
+      console.error(`[fb-publish-page-post] status=${response.status} body=${text.replace(/\s+/g, " ").slice(0, 400)}`);
+      const errObj = (payload?.error as Record<string, unknown> | undefined) ?? null;
+      return res.status(response.status === 400 ? 422 : response.status).json({
+        success: false,
+        error: typeof errObj?.message === "string" ? `Meta Graph API: ${errObj.message}` : `Meta Graph API returnerte ${response.status}.`,
+        graphError: errObj,
+      });
+    }
+    const postId = typeof payload?.id === "string" ? payload.id : null;
+    return res.json({
+      success: true,
+      post: {
+        id: postId,
+        pageId,
+        mentionedPageId,
+        message: finalMessage,
+        graphUrl: postId ? `https://graph.facebook.com/${encodeURIComponent(postId)}` : null,
+        permalink: postId ? `https://www.facebook.com/${encodeURIComponent(postId)}` : null,
+      },
+    });
+  } catch (err) {
+    console.error(`[fb-publish-page-post] fetch threw: ${err instanceof Error ? err.message : String(err)}`);
+    return res.status(500).json({ success: false, error: "Kunne ikke nå Meta Graph API." });
+  }
+});
+
+/**
  * Page Public Content Access — search Pages by name via Pages Search API.
  */
 app.get("/api/role-room/agent/page-search", async (req, res) => {
