@@ -29698,6 +29698,207 @@ app.post("/api/role-room/facebook/publish-video", async (req, res) => {
 });
 
 /**
+ * Page Public Content Access — search Pages by name via Pages Search API.
+ */
+app.get("/api/role-room/agent/page-search", async (req, res) => {
+  const featureId = "role-room-agent-producer";
+  if (!isCompatAdminFeatureEnabled(featureId)) {
+    return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
+  }
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+
+  const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
+  if (!q || q.length < 2) {
+    return res.status(400).json({ success: false, error: "q (search query) må være minst 2 tegn." });
+  }
+  const connections = await listInstagramConnections(pool, session.userId);
+  if (connections.length === 0) {
+    return res.status(409).json({ success: false, error: "Koble Facebook/Instagram til Role Room først.", connectRequired: true });
+  }
+  const connection = connections[0];
+  const url = `https://graph.facebook.com/v21.0/pages/search?${new URLSearchParams({
+    q,
+    fields: "id,name,category,link,verification_status,fan_count",
+    access_token: connection.accessToken,
+  })}`;
+  try {
+    const response = await fetch(url);
+    const text = await response.text();
+    let body: Record<string, unknown> | null = null;
+    try { body = JSON.parse(text); } catch { /* keep raw */ }
+    if (!response.ok) {
+      console.error(`[page-search] status=${response.status} body=${text.replace(/\s+/g, " ").slice(0, 400)}`);
+      const errObj = (body?.error as Record<string, unknown> | undefined) ?? null;
+      return res.status(response.status).json({
+        success: false,
+        error: typeof errObj?.message === "string" ? `Meta Graph API: ${errObj.message}` : `Meta Graph API returnerte ${response.status}.`,
+      });
+    }
+    const results = Array.isArray(body?.data) ? body.data : [];
+    return res.json({
+      success: true,
+      pages: results.slice(0, 8).map((p: Record<string, unknown>) => ({
+        id: typeof p.id === "string" ? p.id : null,
+        name: typeof p.name === "string" ? p.name : null,
+        category: typeof p.category === "string" ? p.category : null,
+        link: typeof p.link === "string" ? p.link : null,
+        verified: p.verification_status === "blue_verified" || p.verification_status === "gray_verified",
+        fanCount: typeof p.fan_count === "number" ? p.fan_count : null,
+      })),
+    });
+  } catch (err) {
+    console.error(`[page-search] fetch threw: ${err instanceof Error ? err.message : String(err)}`);
+    return res.status(500).json({ success: false, error: "Kunne ikke nå Meta Graph API." });
+  }
+});
+
+/**
+ * Page Public Content Access — posts + videos inspector.
+ *
+ * Demonstrates the PPCA feature: takes a Facebook Page URL or ID,
+ * resolves the id, and fetches the Page's 5 most recent public
+ * posts + videos. Rendered in the Page Content panel so producers
+ * can skim a competitor's or reference brand's content cadence,
+ * topics, and engagement patterns before producing their own.
+ *
+ * Pre-review: works on Pages the connected admin has a role on.
+ * Post-approval, the app access token path unlocks any public Page.
+ */
+app.post("/api/role-room/agent/page-content-inspect", async (req, res) => {
+  const featureId = "role-room-agent-producer";
+  if (!isCompatAdminFeatureEnabled(featureId)) {
+    return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
+  }
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+
+  const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
+  const rawInput = typeof body.pageIdOrUrl === "string" ? body.pageIdOrUrl.trim() : "";
+  if (!rawInput) {
+    return res.status(400).json({ success: false, error: "pageIdOrUrl er påkrevd." });
+  }
+
+  const pageIdOrHandle = (() => {
+    if (/^[0-9]{5,}$/.test(rawInput)) return rawInput;
+    try {
+      const url = new URL(rawInput.startsWith("http") ? rawInput : `https://${rawInput}`);
+      if (/facebook\.com$/i.test(url.hostname) || /facebook\.com$/i.test(url.hostname.replace(/^www\./, ""))) {
+        const parts = url.pathname.split("/").filter(Boolean);
+        if (parts.length > 0) {
+          const last = parts[parts.length - 1];
+          if (/^[0-9]+$/.test(last)) return last;
+          return parts[0];
+        }
+      }
+    } catch { /* fall through */ }
+    return rawInput.replace(/^@/, "").replace(/\/$/, "");
+  })();
+
+  const connections = await listInstagramConnections(pool, session.userId);
+  if (connections.length === 0) {
+    return res.status(409).json({
+      success: false,
+      error: "Du må koble Facebook/Instagram til Role Room før du kan hente public Page-innhold.",
+      connectRequired: true,
+    });
+  }
+  const connection = connections[0];
+
+  const graphVersion = "v21.0";
+  const postsFields = [
+    "id",
+    "message",
+    "created_time",
+    "permalink_url",
+    "full_picture",
+    "attachments{media_type,title,url}",
+    "comments.limit(3){message,created_time,from{name}}",
+  ].join(",");
+  const videosFields = [
+    "id",
+    "title",
+    "description",
+    "created_time",
+    "permalink_url",
+    "source",
+    "picture",
+  ].join(",");
+
+  const postsUrl = `https://graph.facebook.com/${graphVersion}/${encodeURIComponent(pageIdOrHandle)}/posts?${new URLSearchParams({
+    fields: postsFields,
+    limit: "5",
+    access_token: connection.accessToken,
+  })}`;
+  const videosUrl = `https://graph.facebook.com/${graphVersion}/${encodeURIComponent(pageIdOrHandle)}/videos?${new URLSearchParams({
+    fields: videosFields,
+    limit: "5",
+    access_token: connection.accessToken,
+  })}`;
+
+  try {
+    const [postsRes, videosRes] = await Promise.all([fetch(postsUrl), fetch(videosUrl)]);
+
+    // Posts endpoint is required; videos is optional (some Pages only
+    // post photos/text). Fail only if posts fails hard.
+    const postsText = await postsRes.text();
+    let postsBody: Record<string, unknown> | null = null;
+    try { postsBody = JSON.parse(postsText); } catch { /* keep raw */ }
+    if (!postsRes.ok) {
+      console.error(`[page-content-inspect] posts status=${postsRes.status} body=${postsText.replace(/\s+/g, " ").slice(0, 400)}`);
+      const errObj = (postsBody?.error as Record<string, unknown> | undefined) ?? null;
+      return res.status(postsRes.status === 400 ? 422 : postsRes.status).json({
+        success: false,
+        error: typeof errObj?.message === "string" ? `Meta Graph API: ${errObj.message}` : `Meta Graph API returnerte ${postsRes.status}.`,
+        graphError: errObj,
+      });
+    }
+
+    const videosText = await videosRes.text();
+    let videosBody: Record<string, unknown> | null = null;
+    try { videosBody = JSON.parse(videosText); } catch { /* keep raw */ }
+    if (!videosRes.ok) {
+      console.warn(`[page-content-inspect] videos status=${videosRes.status} body=${videosText.replace(/\s+/g, " ").slice(0, 200)}`);
+    }
+
+    const postsData = Array.isArray(postsBody?.data) ? postsBody.data : [];
+    const videosData = videosRes.ok && Array.isArray(videosBody?.data) ? videosBody.data : [];
+
+    return res.json({
+      success: true,
+      posts: postsData.map((p: Record<string, unknown>) => ({
+        id: typeof p.id === "string" ? p.id : null,
+        message: typeof p.message === "string" ? p.message : null,
+        createdTime: typeof p.created_time === "string" ? p.created_time : null,
+        permalinkUrl: typeof p.permalink_url === "string" ? p.permalink_url : null,
+        fullPicture: typeof p.full_picture === "string" ? p.full_picture : null,
+        attachments: (p as any).attachments?.data ?? [],
+        comments: Array.isArray((p as any).comments?.data)
+          ? (p as any).comments.data.map((c: any) => ({
+              message: typeof c?.message === "string" ? c.message : null,
+              createdTime: typeof c?.created_time === "string" ? c.created_time : null,
+              fromName: typeof c?.from?.name === "string" ? c.from.name : null,
+            }))
+          : [],
+      })),
+      videos: videosData.map((v: Record<string, unknown>) => ({
+        id: typeof v.id === "string" ? v.id : null,
+        title: typeof v.title === "string" ? v.title : null,
+        description: typeof v.description === "string" ? v.description : null,
+        createdTime: typeof v.created_time === "string" ? v.created_time : null,
+        permalinkUrl: typeof v.permalink_url === "string" ? v.permalink_url : null,
+        source: typeof v.source === "string" ? v.source : null,
+        picture: typeof v.picture === "string" ? v.picture : null,
+      })),
+      meta: { resolvedFrom: rawInput, resolvedTo: pageIdOrHandle, graphVersion },
+    });
+  } catch (err) {
+    console.error(`[page-content-inspect] fetch threw: ${err instanceof Error ? err.message : String(err)}`);
+    return res.status(500).json({ success: false, error: "Kunne ikke nå Meta Graph API." });
+  }
+});
+
+/**
  * AI hashtag suggestions with Meta validation.
  *
  * Producer provides content context (caption / topic / brand). Claude
