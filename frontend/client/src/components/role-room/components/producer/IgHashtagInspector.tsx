@@ -15,6 +15,7 @@ import {
 } from '@mui/material';
 import TagIcon from '@mui/icons-material/Tag';
 import LaunchIcon from '@mui/icons-material/Launch';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import { useAuth } from '@/hooks/useAuth';
 
 interface HashtagPost {
@@ -42,6 +43,16 @@ export function IgHashtagInspector() {
   const [result, setResult] = useState<HashtagResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [connectRequired, setConnectRequired] = useState(false);
+  const [context, setContext] = useState('');
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<Array<{
+    hashtag: string;
+    reasoning: string;
+    hashtagId: string | null;
+    topMediaPreview: string | null;
+    validationError: string | null;
+  }>>([]);
 
   const resolveAuthToken = (): string | null => {
     try {
@@ -110,6 +121,34 @@ export function IgHashtagInspector() {
     return () => clearTimeout(handle);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [input]);
+
+  const handleSuggest = async () => {
+    if (!context.trim()) return;
+    setSuggesting(true);
+    setSuggestError(null);
+    setSuggestions([]);
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      const tok = resolveAuthToken();
+      if (tok) headers['Authorization'] = `Bearer ${tok}`;
+      const response = await fetch('/api/role-room/agent/hashtag-suggest', {
+        method: 'POST',
+        headers,
+        credentials: 'include',
+        body: JSON.stringify({ context: context.trim(), count: 10 }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setSuggestError(body?.error || `HTTP ${response.status}`);
+        return;
+      }
+      setSuggestions(body?.candidates || []);
+    } catch (e) {
+      setSuggestError(e instanceof Error ? e.message : 'Suggest feilet');
+    } finally {
+      setSuggesting(false);
+    }
+  };
 
   const handleConnect = async () => {
     try {
@@ -194,6 +233,59 @@ export function IgHashtagInspector() {
         {error ? (
           <Alert severity={connectRequired ? 'warning' : 'error'}>{error}</Alert>
         ) : null}
+
+        <Divider sx={{ opacity: 0.4 }}>
+          <Chip label="AI-foreslåtte hashtags" size="small" icon={<AutoAwesomeIcon sx={{ fontSize: 14 }} />} />
+        </Divider>
+
+        <Stack spacing={1.5}>
+          <TextField
+            label="Innhold / brief / tema"
+            value={context}
+            onChange={(e) => setContext(e.target.value)}
+            fullWidth
+            multiline
+            minRows={2}
+            placeholder="Lim inn caption-utkast, tema, produkt eller målgruppe…"
+            inputProps={{ 'data-testid': 'ig-hashtag-context' }}
+          />
+          <Stack direction="row" spacing={1.5}>
+            <Button
+              variant="contained"
+              onClick={handleSuggest}
+              disabled={suggesting || !context.trim()}
+              startIcon={suggesting ? <CircularProgress size={18} color="inherit" /> : <AutoAwesomeIcon />}
+              data-testid="ig-hashtag-suggest"
+              sx={{ textTransform: 'none', fontWeight: 700 }}
+            >
+              {suggesting ? 'Genererer forslag…' : 'Foreslå hashtags (AI + Meta)'}
+            </Button>
+          </Stack>
+          {suggestError ? <Alert severity="error">{suggestError}</Alert> : null}
+          {suggestions.length > 0 ? (
+            <Stack
+              data-testid="ig-hashtag-suggestions"
+              direction="row"
+              spacing={0.8}
+              flexWrap="wrap"
+              useFlexGap
+              sx={{ gap: 0.8 }}
+            >
+              {suggestions.map((s) => (
+                <Chip
+                  key={s.hashtag}
+                  label={`#${s.hashtag}${s.hashtagId ? ' ✓' : ''}`}
+                  onClick={() => { setInput(s.hashtag); void handleSearch(s.hashtag); }}
+                  color={s.hashtagId ? 'primary' : 'default'}
+                  variant={s.hashtagId ? 'filled' : 'outlined'}
+                  title={`${s.reasoning}${s.hashtagId ? ` — klikk for å se top_media` : s.validationError ? ` (${s.validationError})` : ''}`}
+                  clickable
+                  sx={{ fontWeight: 600 }}
+                />
+              ))}
+            </Stack>
+          ) : null}
+        </Stack>
 
         {result ? (
           <Box

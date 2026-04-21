@@ -195,6 +195,15 @@ export default function FeedPostDetailPanel({
   const [fbSelectedPageId, setFbSelectedPageId] = useState<string>('');
   const [fbPublishing, setFbPublishing] = useState(false);
   const [fbPublishStatus, setFbPublishStatus] = useState<string | null>(null);
+  const [hashtagSuggesting, setHashtagSuggesting] = useState(false);
+  const [hashtagSuggestError, setHashtagSuggestError] = useState<string | null>(null);
+  const [hashtagSuggestions, setHashtagSuggestions] = useState<Array<{
+    hashtag: string;
+    reasoning: string;
+    hashtagId: string | null;
+    topMediaPreview: string | null;
+    validationError: string | null;
+  }>>([]);
 
   const resolveAuthToken = (): string | null => {
     try {
@@ -900,6 +909,78 @@ export default function FeedPostDetailPanel({
         }}
         sx={textFieldSx}
       />
+
+      <Stack direction="row" spacing={0.8} alignItems="center" flexWrap="wrap" useFlexGap>
+        <Button
+          size="small"
+          variant="outlined"
+          disabled={hashtagSuggesting || post.locked}
+          onClick={async () => {
+            setHashtagSuggesting(true);
+            setHashtagSuggestError(null);
+            setHashtagSuggestions([]);
+            try {
+              const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+              const tok = resolveAuthToken();
+              if (tok) headers['Authorization'] = `Bearer ${tok}`;
+              const response = await fetch('/api/role-room/agent/hashtag-suggest', {
+                method: 'POST',
+                headers,
+                credentials: 'include',
+                body: JSON.stringify({
+                  context: `${post.title}\n${post.caption}\n${post.callToAction}\nKonsept: ${post.concept}`.trim(),
+                  brand: bootstrap?.companyProfile?.companyName ?? '',
+                  count: 10,
+                }),
+              });
+              const body = await response.json().catch(() => ({}));
+              if (!response.ok) {
+                setHashtagSuggestError(body?.error || `HTTP ${response.status}`);
+                return;
+              }
+              setHashtagSuggestions(body?.candidates || []);
+            } catch (e) {
+              setHashtagSuggestError(e instanceof Error ? e.message : 'Suggest feilet');
+            } finally {
+              setHashtagSuggesting(false);
+            }
+          }}
+          startIcon={hashtagSuggesting ? <CircularProgress size={12} sx={{ color: '#c084fc' }} /> : <AutoAwesomeIcon fontSize="small" sx={{ color: '#c084fc' }} />}
+          sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.75rem' }}
+          data-testid="feedpost-hashtag-suggest"
+        >
+          {hashtagSuggesting ? 'Foreslår…' : 'Foreslå hashtags (AI + Meta)'}
+        </Button>
+        {hashtagSuggestions.length > 0 ? (
+          <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.6)' }}>
+            Klikk for å legge til:
+          </Typography>
+        ) : null}
+      </Stack>
+      {hashtagSuggestError ? (
+        <Alert severity="error" sx={{ mt: -0.5 }}>{hashtagSuggestError}</Alert>
+      ) : null}
+      {hashtagSuggestions.length > 0 ? (
+        <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap sx={{ gap: 0.6, mt: -0.6 }}>
+          {hashtagSuggestions.map((s) => (
+            <Chip
+              key={s.hashtag}
+              size="small"
+              label={`#${s.hashtag}${s.hashtagId ? ' ✓' : ''}`}
+              onClick={() => {
+                const existing = hashtagsText.trim();
+                const tag = `#${s.hashtag}`;
+                if (existing.includes(tag)) return;
+                handleHashtagChange(existing ? `${existing} ${tag}` : tag);
+              }}
+              title={s.reasoning || ''}
+              color={s.hashtagId ? 'secondary' : 'default'}
+              variant={s.hashtagId ? 'filled' : 'outlined'}
+              clickable
+            />
+          ))}
+        </Stack>
+      ) : null}
 
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.2}>
         <FormControl size="small" fullWidth sx={selectSx}>

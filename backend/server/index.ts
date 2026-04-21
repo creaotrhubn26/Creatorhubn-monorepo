@@ -29698,6 +29698,165 @@ app.post("/api/role-room/facebook/publish-video", async (req, res) => {
 });
 
 /**
+ * AI hashtag suggestions with Meta validation.
+ *
+ * Producer provides content context (caption / topic / brand). Claude
+ * drafts a set of hashtag candidates; for each we resolve a hashtag
+ * id via /ig_hashtag_search and (best-effort) peek at /top_media to
+ * confirm it's an active tag with public posts. Returns a ranked
+ * list with Claude's reasoning + the validation signal so the
+ * producer can click one to see the full top_media view or paste it
+ * straight into their Feed Planner post.
+ */
+app.post("/api/role-room/agent/hashtag-suggest", async (req, res) => {
+  const featureId = "role-room-agent-producer";
+  if (!isCompatAdminFeatureEnabled(featureId)) {
+    return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
+  }
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+
+  const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
+  const context = typeof body.context === "string" ? body.context.trim() : "";
+  const brand = typeof body.brand === "string" ? body.brand.trim() : "";
+  const desiredCount = Math.min(15, Math.max(3, typeof body.count === "number" ? body.count : 8));
+  if (!context) {
+    return res.status(400).json({ success: false, error: "context er påkrevd." });
+  }
+
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  if (!anthropicKey) {
+    return res.status(503).json({ success: false, error: "ANTHROPIC_API_KEY ikke satt i backend." });
+  }
+
+  // 1) Ask Claude for hashtag candidates.
+  let candidates: Array<{ hashtag: string; reasoning: string }> = [];
+  try {
+    const mod: any = await import("@anthropic-ai/sdk");
+    const AnthropicCtor = mod.default ?? mod.Anthropic;
+    const client = new AnthropicCtor({ apiKey: anthropicKey });
+    const prompt = `Du er en norsk sosial-strateg for Instagram. Basert på dette innholdet, foreslå ${desiredCount} hashtag-kandidater som er mest relevante og sannsynlig vil gi god organic rekkevidde på norsk eller nordisk IG-marked.
+
+${brand ? `Merkevare: ${brand}\n` : ""}Innhold:
+${context.slice(0, 1500)}
+
+Regler:
+- Kun alfanumerisk + underscore (ingen æøå, ingen mellomrom, ingen emoji)
+- Blanding av høy-volum-tags (#oslo, #norway), nisje-tags (#osloeats) og brand-spesifikke tags
+- Ingen dupliserte
+- Ikke bruk #-tegn i svaret, bare selve tag-navnet
+
+Svar KUN med gyldig JSON på dette skjemaet, ingen markdown eller commentary:
+{
+  "candidates": [
+    { "hashtag": "string", "reasoning": "kort norsk begrunnelse i 1 setning" }
+  ]
+}`;
+
+    const response = await client.messages.create({
+      model: process.env.ROLE_ROOM_AGENT_CLAUDE_MODEL || "claude-sonnet-4-5",
+      max_tokens: 1200,
+      messages: [{ role: "user", content: prompt }],
+    });
+    const text = (response?.content ?? [])
+      .map((block: any) => (typeof block?.text === "string" ? block.text : ""))
+      .join("")
+      .trim();
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+    if (parsed && Array.isArray(parsed.candidates)) {
+      candidates = parsed.candidates
+        .map((c: any) => ({
+          hashtag: String(c?.hashtag || "").replace(/^#/, "").replace(/[^A-Za-z0-9_]/g, "").toLowerCase(),
+          reasoning: typeof c?.reasoning === "string" ? c.reasoning : "",
+        }))
+        .filter((c: { hashtag: string }) => c.hashtag.length >= 2 && c.hashtag.length <= 30);
+    }
+  } catch (err) {
+    console.error(`[hashtag-suggest] Claude threw: ${err instanceof Error ? err.message : String(err)}`);
+    return res.status(502).json({ success: false, error: "AI-forslag feilet — prøv igjen om et øyeblikk." });
+  }
+  if (candidates.length === 0) {
+    return res.json({ success: true, candidates: [], meta: { source: "claude", validated: 0 } });
+  }
+
+  // 2) Validate each candidate against Meta /ig_hashtag_search. Best-
+  // effort — if no connection is stored we skip validation and just
+  // return Claude's draft so the producer can still copy them.
+  const connections = await listInstagramConnections(pool, session.userId);
+  const connection = connections[0];
+  const igUserId = connection?.igBusinessAccountId;
+  const graphVersion = "v21.0";
+
+  type Validated = {
+    hashtag: string;
+    reasoning: string;
+    hashtagId: string | null;
+    topMediaPreview: string | null;
+    validationError: string | null;
+  };
+  const validated: Validated[] = await Promise.all(
+    candidates.slice(0, desiredCount).map(async (c) => {
+      if (!connection || !igUserId) {
+        return { hashtag: c.hashtag, reasoning: c.reasoning, hashtagId: null, topMediaPreview: null, validationError: "no_connection" };
+      }
+      try {
+        const searchUrl = `https://graph.facebook.com/${graphVersion}/ig_hashtag_search?${new URLSearchParams({
+          user_id: igUserId,
+          q: c.hashtag,
+          access_token: connection.accessToken,
+        })}`;
+        const r = await fetch(searchUrl);
+        if (!r.ok) {
+          return { hashtag: c.hashtag, reasoning: c.reasoning, hashtagId: null, topMediaPreview: null, validationError: `search_${r.status}` };
+        }
+        const j = await r.json().catch(() => null) as any;
+        const id = j?.data?.[0]?.id ?? null;
+        if (!id) {
+          return { hashtag: c.hashtag, reasoning: c.reasoning, hashtagId: null, topMediaPreview: null, validationError: "not_found" };
+        }
+        // Peek at 1 top post's permalink as a freshness/engagement signal.
+        const peekUrl = `https://graph.facebook.com/${graphVersion}/${encodeURIComponent(id)}/top_media?${new URLSearchParams({
+          user_id: igUserId,
+          fields: "permalink",
+          limit: "1",
+          access_token: connection.accessToken,
+        })}`;
+        const peekRes = await fetch(peekUrl);
+        let topMediaPreview: string | null = null;
+        if (peekRes.ok) {
+          const peek = await peekRes.json().catch(() => null) as any;
+          topMediaPreview = peek?.data?.[0]?.permalink ?? null;
+        }
+        return { hashtag: c.hashtag, reasoning: c.reasoning, hashtagId: id, topMediaPreview, validationError: null };
+      } catch (err) {
+        return { hashtag: c.hashtag, reasoning: c.reasoning, hashtagId: null, topMediaPreview: null, validationError: "fetch_threw" };
+      }
+    }),
+  );
+
+  // Rank: validated first, then by reasoning length (proxy for
+  // specificity), then alphabetical.
+  validated.sort((a, b) => {
+    if (!!a.hashtagId !== !!b.hashtagId) return a.hashtagId ? -1 : 1;
+    const ra = (a.reasoning || "").length;
+    const rb = (b.reasoning || "").length;
+    if (ra !== rb) return rb - ra;
+    return a.hashtag.localeCompare(b.hashtag);
+  });
+
+  return res.json({
+    success: true,
+    candidates: validated,
+    meta: {
+      source: "claude",
+      validated: validated.filter((v) => !!v.hashtagId).length,
+      validationMissing: !connection || !igUserId,
+    },
+  });
+});
+
+/**
  * Instagram Public Content Access — hashtag search inspector.
  *
  * Demonstrates the allowed usage of the Instagram Hashtag Search
