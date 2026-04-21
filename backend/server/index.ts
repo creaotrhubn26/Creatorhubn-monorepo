@@ -29806,6 +29806,40 @@ app.post("/api/role-room/agent/page-content-inspect", async (req, res) => {
   const connection = connections[0];
 
   const graphVersion = "v21.0";
+
+  // Pages on Meta's "New Pages Experience" require a Page-scoped token
+  // for /{page-id}/posts + /videos — user tokens yield OAuthException
+  // code 190 subcode 2069032. Resolve the Page from /me/accounts and
+  // use its access_token for the feed reads.
+  let resolvedPageId: string = pageIdOrHandle;
+  let pageAccessToken: string | null = null;
+  try {
+    const accountsRes = await fetch(
+      `https://graph.facebook.com/${graphVersion}/me/accounts?fields=id,name,username,access_token&access_token=${encodeURIComponent(connection.accessToken)}`,
+    );
+    const accountsBody = await accountsRes.json() as {
+      data?: Array<{ id?: string; name?: string; username?: string; access_token?: string }>;
+    };
+    const needle = pageIdOrHandle.toLowerCase();
+    const match = (accountsBody.data ?? []).find((p) =>
+      String(p.id) === pageIdOrHandle ||
+      (p.username && p.username.toLowerCase() === needle) ||
+      (p.name && p.name.toLowerCase() === needle),
+    );
+    if (match?.access_token && match.id) {
+      pageAccessToken = match.access_token;
+      resolvedPageId = match.id;
+    }
+  } catch (err) {
+    console.error(`[page-content-inspect] me/accounts threw: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  if (!pageAccessToken) {
+    return res.status(403).json({
+      success: false,
+      error: "Fant ingen Page-token for denne siden — admin-kontoen må ha en rolle på Facebook-siden. Pre-review virker kun for sider du er admin på; post-approval åpnes alle public Pages via app access token.",
+    });
+  }
+
   const postsFields = [
     "id",
     "message",
@@ -29825,15 +29859,15 @@ app.post("/api/role-room/agent/page-content-inspect", async (req, res) => {
     "picture",
   ].join(",");
 
-  const postsUrl = `https://graph.facebook.com/${graphVersion}/${encodeURIComponent(pageIdOrHandle)}/posts?${new URLSearchParams({
+  const postsUrl = `https://graph.facebook.com/${graphVersion}/${encodeURIComponent(resolvedPageId)}/posts?${new URLSearchParams({
     fields: postsFields,
     limit: "5",
-    access_token: connection.accessToken,
+    access_token: pageAccessToken,
   })}`;
-  const videosUrl = `https://graph.facebook.com/${graphVersion}/${encodeURIComponent(pageIdOrHandle)}/videos?${new URLSearchParams({
+  const videosUrl = `https://graph.facebook.com/${graphVersion}/${encodeURIComponent(resolvedPageId)}/videos?${new URLSearchParams({
     fields: videosFields,
     limit: "5",
-    access_token: connection.accessToken,
+    access_token: pageAccessToken,
   })}`;
 
   try {
@@ -29890,7 +29924,7 @@ app.post("/api/role-room/agent/page-content-inspect", async (req, res) => {
         source: typeof v.source === "string" ? v.source : null,
         picture: typeof v.picture === "string" ? v.picture : null,
       })),
-      meta: { resolvedFrom: rawInput, resolvedTo: pageIdOrHandle, graphVersion },
+      meta: { resolvedFrom: rawInput, resolvedTo: resolvedPageId, graphVersion },
     });
   } catch (err) {
     console.error(`[page-content-inspect] fetch threw: ${err instanceof Error ? err.message : String(err)}`);
