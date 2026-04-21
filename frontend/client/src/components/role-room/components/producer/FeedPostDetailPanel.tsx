@@ -246,7 +246,8 @@ export default function FeedPostDetailPanel({
         body: JSON.stringify({
           pageId: fbSelectedPageId,
           videoDataUrl: post.customVideoDataUrl,
-          description: `${post.title}\n\n${post.caption}\n\n${post.callToAction}`.trim(),
+          description: `${post.title}\n\n${post.caption}\n\n${post.callToAction}\n\n${post.hashtags.join(' ')}`.trim(),
+          scheduledFor: post.scheduledFor,
         }),
       });
       const body = await response.json().catch(() => ({}));
@@ -254,7 +255,11 @@ export default function FeedPostDetailPanel({
         setFbPublishStatus(body?.error || `HTTP ${response.status}`);
         return;
       }
-      setFbPublishStatus(`✓ Publisert til Facebook Page (video id ${body?.video?.id ?? '(ukjent)'})`);
+      if (body?.video?.scheduled) {
+        setFbPublishStatus(`Køet for publisering ${post.scheduledFor ? new Date(post.scheduledFor).toLocaleString('nb-NO') : 'snart'} (video id ${body.video.id ?? '(ukjent)'})`);
+      } else {
+        setFbPublishStatus(`✓ Publisert til Facebook Page (video id ${body?.video?.id ?? '(ukjent)'})`);
+      }
     } catch (e) {
       setFbPublishStatus(e instanceof Error ? e.message : 'FB-publisering feilet.');
     } finally {

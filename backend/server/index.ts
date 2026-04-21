@@ -29590,8 +29590,19 @@ app.post("/api/role-room/facebook/publish-video", async (req, res) => {
   const pageId = typeof body.pageId === "string" ? body.pageId.trim() : "";
   const videoDataUrl = typeof body.videoDataUrl === "string" ? body.videoDataUrl : "";
   const description = typeof body.description === "string" ? body.description.trim() : "";
+  const scheduledForIso = typeof body.scheduledFor === "string" ? body.scheduledFor.trim() : "";
   if (!pageId || !videoDataUrl) {
     return res.status(400).json({ success: false, error: "pageId og videoDataUrl er påkrevd." });
+  }
+  // Meta scheduled_publish_time must be 10 min – 6 months in future,
+  // expressed as unix seconds. Accept an ISO string from the Feed
+  // Planner and translate; skip if invalid or in the past.
+  let scheduledPublishUnix: number | null = null;
+  if (scheduledForIso) {
+    const parsed = Date.parse(scheduledForIso);
+    if (Number.isFinite(parsed) && parsed > Date.now() + 10 * 60 * 1000) {
+      scheduledPublishUnix = Math.floor(parsed / 1000);
+    }
   }
 
   const connections = await listInstagramConnections(pool, session.userId);
@@ -29642,6 +29653,12 @@ app.post("/api/role-room/facebook/publish-video", async (req, res) => {
   const blob = new Blob([new Uint8Array(buffer)], { type: mimeType });
   form.append("source", blob, `upload.${mimeType.split("/")[1] || "mp4"}`);
   if (description) form.append("description", description);
+  if (scheduledPublishUnix) {
+    // Two-part flag: published=false + scheduled_publish_time tells
+    // Meta to queue rather than publish immediately.
+    form.append("published", "false");
+    form.append("scheduled_publish_time", String(scheduledPublishUnix));
+  }
   form.append("access_token", pageAccessToken);
 
   const uploadUrl = `https://graph.facebook.com/v21.0/${encodeURIComponent(pageId)}/videos`;
@@ -29670,6 +29687,8 @@ app.post("/api/role-room/facebook/publish-video", async (req, res) => {
         graphUrl: videoId ? `https://graph.facebook.com/v21.0/${videoId}` : null,
         sizeBytes: buffer.length,
         mimeType,
+        scheduled: !!scheduledPublishUnix,
+        scheduledFor: scheduledPublishUnix ? new Date(scheduledPublishUnix * 1000).toISOString() : null,
       },
     });
   } catch (err) {
