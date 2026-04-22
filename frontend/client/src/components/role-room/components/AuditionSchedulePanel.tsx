@@ -2955,7 +2955,7 @@ function AuditionSchedulePanelInner({
               size="large"
               onClick={() => onNavigateToTab(candidates.length === 0 ? 2 : 1)}
               sx={{
-                mt: 2,
+                mt: 3,
                 borderColor: 'rgba(255,255,255,0.3)',
                 color: '#fff',
                 fontWeight: 600,
