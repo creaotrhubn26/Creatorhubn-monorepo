@@ -2989,20 +2989,27 @@ export default function LoginDialog({
       setError('Velg en rolle for å fortsette');
       return;
     }
-    if (!effectiveLoginPersona) {
-      setError('Velg om du logger inn som Produksjonsteam, Innholdsprodusent eller Utdanningsinstitusjon');
-      return;
-    }
-    if (effectiveLoginPersona === 'education_institution') {
-      setError('Utdanningsinstitusjoner onboardes via samarbeid. Bruk institusjonsoppsettet og send forespørsel i stedet for direkte innlogging.');
-      return;
-    }
-    if (!validateCommercialSetup(effectiveLoginPersona)) {
-      return;
-    }
-    if (isCommercialPaymentRequired && !isCommercialPaymentSatisfied) {
-      setError('Aktiver planen i Stripe før du logger inn.');
-      return;
+    // Admin variant (isLandingPage=false) authenticates on pure email +
+    // password and skips the commercial gate — admin/super_admin rows
+    // in `users` aren't backed by a Stripe invite + onboarding flow,
+    // so requiring a persona here blocks legitimate admin logins
+    // (including Meta App Review reviewer accounts).
+    if (isLandingPage) {
+      if (!effectiveLoginPersona) {
+        setError('Velg om du logger inn som Produksjonsteam, Innholdsprodusent eller Utdanningsinstitusjon');
+        return;
+      }
+      if (effectiveLoginPersona === 'education_institution') {
+        setError('Utdanningsinstitusjoner onboardes via samarbeid. Bruk institusjonsoppsettet og send forespørsel i stedet for direkte innlogging.');
+        return;
+      }
+      if (!validateCommercialSetup(effectiveLoginPersona)) {
+        return;
+      }
+      if (isCommercialPaymentRequired && !isCommercialPaymentSatisfied) {
+        setError('Aktiver planen i Stripe før du logger inn.');
+        return;
+      }
     }
 
     setLoading(true);
@@ -3050,8 +3057,11 @@ export default function LoginDialog({
         body: JSON.stringify({
           email: email.trim(),
           password,
-          role: selectedRole,
-          loginAs: effectiveLoginPersona || undefined,
+          // Admin variant must NOT send role/loginAs so the backend
+          // commercial gate does not trigger for admin/super_admin
+          // users that have no Stripe invite.
+          role: isLandingPage ? selectedRole : undefined,
+          loginAs: isLandingPage ? (effectiveLoginPersona || undefined) : undefined,
         }),
         credentials: 'include',
       }).then((r) => r.json());
