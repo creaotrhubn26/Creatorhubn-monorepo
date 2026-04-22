@@ -50,11 +50,20 @@ export function useKanbanRealtime(
   const connect = useCallback(() => {
     if (!projectId || !mountedRef.current) return;
 
-    // Derive WS URL from current page origin
+    // WebSockets can't go through Vercel's rewrite layer (HTTP-only),
+    // so in production we dial the Render backend directly. In dev
+    // the Vite dev server proxies /ws to the local backend, so the
+    // same-origin path keeps working.
+    const host = window.location.host;
+    const isLocalDev = /^(localhost|127\.|\[?::1\]?|.+\.local)(?::\d+)?$/i.test(host);
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsHost = isLocalDev
+      ? host
+      : 'creatorhub-backend-rtbl.onrender.com';
+    const wsProtocol = isLocalDev ? protocol : 'wss:';
     const room = encodeURIComponent(`casting:${projectId}`);
     const userId = encodeURIComponent(`casting-ui-${projectId}`);
-    const url = `${protocol}//${window.location.host}/ws?projectId=${encodeURIComponent(projectId)}&room=${room}&role=casting&userId=${userId}`;
+    const url = `${wsProtocol}//${wsHost}/ws?projectId=${encodeURIComponent(projectId)}&room=${room}&role=casting&userId=${userId}`;
 
     let ws: WebSocket;
     try {
