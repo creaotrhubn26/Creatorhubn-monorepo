@@ -863,7 +863,22 @@ export default function NewProjectCreationModal({
   const [clientPhoneError, setClientPhoneError] = useState(false);
 
   // Reset form data when initialData changes (switching between create/edit mode)
+  //
+  // Only runs on *identity* change of the project being edited — not on
+  // every parent re-render. Previously this ran whenever `initialData`
+  // got a new reference (which happens on each parent render if the parent
+  // doesn't memoize — common in the TROLL demo where WebSocket ticks
+  // re-render ancestors). That wiped anything the user had typed into
+  // clientPhone / clientEmail / clientName between keystroke and next
+  // parent render.
+  const lastAppliedInitialIdRef = useRef<string | null>(null);
   useEffect(() => {
+    const currentInitialId = (initialData?.id as string | undefined) ?? null;
+    if (lastAppliedInitialIdRef.current === currentInitialId) {
+      return;
+    }
+    lastAppliedInitialIdRef.current = currentInitialId;
+
     const mappedData = mapInitialData();
     setProjectData(mappedData);
     setActiveStep(0);
@@ -880,14 +895,14 @@ export default function NewProjectCreationModal({
     setClientBrregError(null);
     setBrregError(null);
     autoLoadedDraftKeyRef.current = null;
-    
+
     // Set timestamp for new projects (to ensure consistent ID generation)
     if (!initialData || !initialData.id) {
       setProjectIdTimestamp(Date.now());
     } else {
       setProjectIdTimestamp(null); // Don't use timestamp for existing projects
     }
-    
+
     // Notify parent of project ID if callback provided
     if (mappedData.projectId && onProjectIdChange) {
       onProjectIdChange(mappedData.projectId);
