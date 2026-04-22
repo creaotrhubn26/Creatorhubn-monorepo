@@ -455,12 +455,28 @@ export default function RoleRoomAgentDialog({
       <Tabs
         value={activeTab}
         onChange={(_, next) => setActiveTab(next as typeof activeTab)}
+        variant="scrollable"
+        scrollButtons="auto"
+        allowScrollButtonsMobile
         sx={{
-          px: 2,
+          px: { xs: 1, md: 2 },
           borderBottom: '1px solid rgba(148,163,184,0.14)',
-          '& .MuiTab-root': { color: 'rgba(226,232,240,0.72)', textTransform: 'none', fontWeight: 600 },
+          minHeight: { xs: 42, md: 48 },
+          '& .MuiTab-root': {
+            color: 'rgba(226,232,240,0.72)',
+            textTransform: 'none',
+            fontWeight: 600,
+            minHeight: { xs: 42, md: 48 },
+            minWidth: { xs: 'auto', md: 90 },
+            px: { xs: 1.25, md: 2 },
+            fontSize: { xs: '0.78rem', md: '0.875rem' },
+          },
           '& .Mui-selected': { color: '#22d3ee !important' },
           '& .MuiTabs-indicator': { bgcolor: '#22d3ee' },
+          '& .MuiTabs-scrollButtons': {
+            color: 'rgba(226,232,240,0.72)',
+            '&.Mui-disabled': { opacity: 0.3 },
+          },
         }}
       >
         <Tab value="research" label="Research" icon={<AutoFixHighIcon fontSize="small" />} iconPosition="start" />
