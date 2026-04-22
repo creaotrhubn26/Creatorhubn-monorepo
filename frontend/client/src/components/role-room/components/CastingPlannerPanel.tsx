@@ -981,7 +981,16 @@ type RoleRoomProjectWorkspaceState = {
     projectStates?: Record<string, RoleRoomProjectWorkspaceState>;
     updatedAt?: string;
   };
-  const [activeTab, setActiveTab] = useState(0);
+  const [activeTab, setActiveTab] = useState(() => {
+    // Hydrate from URL on mount so hard-refresh / direct deep-link lands
+    // on the same tab the user was on. Ignore in client-portal mode
+    // (its own URL schema handles navigation).
+    if (typeof window === 'undefined') return 0;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('portal') === 'client') return 0;
+    const parsed = parseInt(params.get('tab') ?? '', 10);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+  });
   const [lastNonLiveTab, setLastNonLiveTab] = useState(0);
   const [isBrowserFullscreen, setIsBrowserFullscreen] = useState<boolean>(() => (
     typeof document !== 'undefined' ? Boolean(document.fullscreenElement) : false
@@ -4094,6 +4103,38 @@ type RoleRoomProjectWorkspaceState = {
     isClientReviewerSession,
     projects,
   ]);
+
+  // URL-state sync for activeTab. Each tab switch writes `?tab=<n>`
+  // via pushState so the browser back button walks through tabs
+  // inside the app instead of jumping straight to the landing page.
+  // Skipped when client-portal URL schema owns the query string.
+  useEffect(() => {
+    if (isExternalClientPortalMode || typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const desired = String(activeTab);
+    if (params.get('tab') === desired) return;
+    params.set('tab', desired);
+    const nextSearch = `?${params.toString()}`;
+    const nextUrl = `${window.location.pathname}${nextSearch}${window.location.hash}`;
+    if (nextUrl === `${window.location.pathname}${window.location.search}${window.location.hash}`) return;
+    window.history.pushState({ rrTabSync: true }, '', nextUrl);
+  }, [activeTab, isExternalClientPortalMode]);
+
+  // Rehydrate activeTab when the user hits browser back/forward.
+  // Without this, pushing a new URL only *writes* history entries;
+  // popping them has no effect on state and the UI looks stuck.
+  useEffect(() => {
+    if (isExternalClientPortalMode || typeof window === 'undefined') return;
+    const applyFromUrl = () => {
+      const params = new URLSearchParams(window.location.search);
+      const parsed = parseInt(params.get('tab') ?? '', 10);
+      if (Number.isFinite(parsed) && parsed >= 0) {
+        setActiveTab((previous) => (previous === parsed ? previous : parsed));
+      }
+    };
+    window.addEventListener('popstate', applyFromUrl);
+    return () => window.removeEventListener('popstate', applyFromUrl);
+  }, [isExternalClientPortalMode]);
 
   // Producer workspace sessions must not auto-select the demo project.
   // Demo stays an explicit choice in the project selector only.
