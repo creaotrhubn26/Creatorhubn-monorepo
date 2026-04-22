@@ -988,8 +988,15 @@ type RoleRoomProjectWorkspaceState = {
     if (typeof window === 'undefined') return 0;
     const params = new URLSearchParams(window.location.search);
     if (params.get('portal') === 'client') return 0;
-    const parsed = parseInt(params.get('tab') ?? '', 10);
-    return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+    const slug = params.get('tab');
+    if (slug) {
+      const byName = TAB_IDS.findIndex((id) => id === `tabpanel-${slug}`);
+      if (byName >= 0) return byName;
+      // Back-compat: older URLs used numeric tab index.
+      const parsed = parseInt(slug, 10);
+      if (Number.isFinite(parsed) && parsed >= 0) return parsed;
+    }
+    return 0;
   });
   const [lastNonLiveTab, setLastNonLiveTab] = useState(0);
   const [isBrowserFullscreen, setIsBrowserFullscreen] = useState<boolean>(() => (
@@ -4104,32 +4111,78 @@ type RoleRoomProjectWorkspaceState = {
     projects,
   ]);
 
-  // URL-state sync for activeTab. Each tab switch writes `?tab=<n>`
-  // via pushState so the browser back button walks through tabs
-  // inside the app instead of jumping straight to the landing page.
-  // Skipped when client-portal URL schema owns the query string.
+  // URL-state sync for activeTab + project. Each tab switch or project
+  // swap writes `?tab=<slug>&project=<id>` via pushState so the browser
+  // back button walks through the in-app navigation instead of jumping
+  // straight to the landing page, and hard-refresh / shared links drop
+  // the user back into the same place. Skipped when client-portal URL
+  // schema owns the query string.
   useEffect(() => {
     if (isExternalClientPortalMode || typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
-    const desired = String(activeTab);
-    if (params.get('tab') === desired) return;
-    params.set('tab', desired);
-    const nextSearch = `?${params.toString()}`;
+    const tabId = TAB_IDS[activeTab];
+    const desiredTabSlug = tabId ? tabId.replace(/^tabpanel-/, '') : String(activeTab);
+    const desiredProject = currentProject?.id ?? '';
+    const currentTabParam = params.get('tab') ?? '';
+    const currentProjectParam = params.get('project') ?? '';
+    if (currentTabParam === desiredTabSlug && currentProjectParam === desiredProject) return;
+    if (desiredTabSlug) params.set('tab', desiredTabSlug);
+    else params.delete('tab');
+    if (desiredProject) params.set('project', desiredProject);
+    else params.delete('project');
+    const nextSearch = params.toString() ? `?${params.toString()}` : '';
     const nextUrl = `${window.location.pathname}${nextSearch}${window.location.hash}`;
     if (nextUrl === `${window.location.pathname}${window.location.search}${window.location.hash}`) return;
-    window.history.pushState({ rrTabSync: true }, '', nextUrl);
-  }, [activeTab, isExternalClientPortalMode]);
+    window.history.pushState({ rrStateSync: true }, '', nextUrl);
+  }, [activeTab, currentProject?.id, isExternalClientPortalMode]);
 
-  // Rehydrate activeTab when the user hits browser back/forward.
-  // Without this, pushing a new URL only *writes* history entries;
-  // popping them has no effect on state and the UI looks stuck.
+  // Rehydrate activeTab + currentProject when the user hits browser
+  // back/forward. Without this, pushing URLs only *writes* history
+  // entries; popping them would have no effect on state and the UI
+  // would look stuck on whatever was last rendered.
+  const projectsRef = useRef(projects);
+  useEffect(() => { projectsRef.current = projects; }, [projects]);
+
+  // On first mount, seed persistedWorkspaceStateRef from the URL's
+  // project param so the existing loadProjects → projectIdToLoad path
+  // picks the URL-specified project over whatever was last persisted.
+  const urlProjectSeededRef = useRef(false);
+  useEffect(() => {
+    if (urlProjectSeededRef.current) return;
+    if (isExternalClientPortalMode || typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const urlProject = params.get('project');
+    if (!urlProject) {
+      urlProjectSeededRef.current = true;
+      return;
+    }
+    const existing = persistedWorkspaceStateRef.current;
+    persistedWorkspaceStateRef.current = {
+      ...(existing ?? {}),
+      lastRealProjectId: urlProject,
+      projectId: existing?.projectId ?? urlProject,
+    };
+    urlProjectSeededRef.current = true;
+  }, [isExternalClientPortalMode]);
+
   useEffect(() => {
     if (isExternalClientPortalMode || typeof window === 'undefined') return;
     const applyFromUrl = () => {
       const params = new URLSearchParams(window.location.search);
-      const parsed = parseInt(params.get('tab') ?? '', 10);
-      if (Number.isFinite(parsed) && parsed >= 0) {
-        setActiveTab((previous) => (previous === parsed ? previous : parsed));
+      const slug = params.get('tab');
+      if (slug) {
+        const byName = TAB_IDS.findIndex((id) => id === `tabpanel-${slug}`);
+        const parsed = byName >= 0 ? byName : parseInt(slug, 10);
+        if (Number.isFinite(parsed) && parsed >= 0) {
+          setActiveTab((previous) => (previous === parsed ? previous : parsed));
+        }
+      }
+      const urlProject = params.get('project');
+      if (urlProject) {
+        const found = projectsRef.current.find((project) => project.id === urlProject);
+        if (found) {
+          setCurrentProject((previous) => (previous?.id === found.id ? previous : found));
+        }
       }
     };
     window.addEventListener('popstate', applyFromUrl);
