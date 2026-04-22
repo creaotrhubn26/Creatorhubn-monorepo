@@ -7877,14 +7877,20 @@ type RoleRoomProjectWorkspaceState = {
               display: 'flex',
               alignItems: useFocusedWorkspaceHeader ? 'center' : 'stretch',
               gap: useDenseDesktopHeader ? 0.75 : { xs: 0.75, sm: 1 },
+              rowGap: useDenseDesktopHeader ? 0.75 : { xs: 0.75, sm: 1, md: 1.25 },
               flex: useCompactHeaderLayout ? '1 1 100%' : 1,
               minWidth: 0,
               order: useCompactHeaderLayout ? 4 : 1,
-              overflowX: 'auto',
+              // Narrow viewports keep the horizontal scroll (mobile-first),
+              // but md+ wraps cards to multiple rows so a 1920/4K viewport
+              // shows 4-6 cards per row instead of clipping at the edge
+              // of a single-row strip.
+              flexWrap: useCompactHeaderLayout ? 'nowrap' : { xs: 'nowrap', md: 'wrap' },
+              overflowX: useCompactHeaderLayout ? 'auto' : { xs: 'auto', md: 'visible' },
               overflowY: 'hidden',
               WebkitOverflowScrolling: 'touch',
               scrollbarWidth: useCompactHeaderLayout ? 'thin' : 'none',
-              scrollSnapType: 'x proximity',
+              scrollSnapType: useCompactHeaderLayout ? 'x proximity' : { xs: 'x proximity', md: 'none' },
               pr: 0.25,
               '&::-webkit-scrollbar': useCompactHeaderLayout ? { height: 4 } : { display: 'none', height: 0 },
               '&::-webkit-scrollbar-thumb': useCompactHeaderLayout
