@@ -189,6 +189,12 @@ export default function RoleRoomAgentDialog({
   const [activeTab, setActiveTab] = useState<'research' | 'chat' | 'feed-planner' | 'marketing-plan' | 'meta-page' | 'page-content' | 'ads-attribution' | 'fb-publish' | 'fb-mention' | 'ig-hashtag'>('research');
   const [systemStatusOpen, setSystemStatusOpen] = useState(false);
 
+  // Track whether the current generated result has already been turned
+  // into a real project. Lets us (a) nudge the user while they're still
+  // in the dialog and (b) confirm on close if they're about to lose
+  // everything the agent produced. Reset whenever a new result arrives.
+  const [projectCreatedFromResult, setProjectCreatedFromResult] = useState(false);
+
   // Phone + iPad-portrait widths get a fullScreen dialog so the chat
   // surface and the research forms are actually usable without pinch-
   // zoom. md+ keeps the centered dialog look that matches the rest of
@@ -207,6 +213,13 @@ export default function RoleRoomAgentDialog({
     setRefinementDraft('');
     setRefinementHistory([]);
   }, [initialCompanyName, initialExtraContext, initialOrganizationNumber, initialWebsiteUrl, open]);
+
+  // Any time a new result lands (or the dialog is re-opened with a fresh
+  // one), the "already saved" bookkeeping is stale — reset so the banner
+  // re-appears and the close-confirm fires again.
+  useEffect(() => {
+    setProjectCreatedFromResult(false);
+  }, [initialResult, open]);
 
   // Compose the extraContext that actually gets sent to the agent. Original
   // extraContext is preserved verbatim; refinements are appended as a
@@ -328,10 +341,37 @@ export default function RoleRoomAgentDialog({
     [localPresencePlan],
   );
 
+  // Close-guard: if the agent has produced a result that the user has
+  // not yet turned into a real project, a refresh or close wipes it.
+  // Ask before letting them throw it away.
+  const hasUnsavedAgentWork = Boolean(result && onCreateProject && !projectCreatedFromResult);
+  const handleCloseWithGuard = () => {
+    if (hasUnsavedAgentWork) {
+      const ok = typeof window !== 'undefined'
+        ? window.confirm(
+            'Du har generert forslag fra The Role Room Agent som ikke er lagret som prosjekt. ' +
+            'Lukker du nå, mister du analysen ved neste refresh. Vil du fortsette?',
+          )
+        : true;
+      if (!ok) return;
+    }
+    onClose();
+  };
+  const handleCreateProjectAndMark = async () => {
+    if (!result || !onCreateProject) return;
+    try {
+      await onCreateProject(result);
+      setProjectCreatedFromResult(true);
+    } catch {
+      // parent owns error UX (toast, notice prop); just leave the banner
+      // visible so the user knows they still haven't saved.
+    }
+  };
+
   return (
     <Dialog
       open={open}
-      onClose={generating || applying ? undefined : onClose}
+      onClose={generating || applying ? undefined : handleCloseWithGuard}
       fullWidth
       fullScreen={fullScreen}
       maxWidth="lg"
@@ -476,6 +516,42 @@ export default function RoleRoomAgentDialog({
           <Tab value="chat" label="Chat" icon={<ChatIcon fontSize="small" />} iconPosition="start" />
         ) : null}
       </Tabs>
+      {hasUnsavedAgentWork ? (
+        <Alert
+          severity="warning"
+          variant="outlined"
+          sx={{
+            mx: { xs: 1.4, md: 2 },
+            mt: 1,
+            mb: 0.4,
+            borderColor: 'rgba(251,191,36,0.45)',
+            color: '#fde68a',
+            backgroundColor: 'rgba(120,53,15,0.22)',
+            '& .MuiAlert-icon': { color: '#fcd34d' },
+            fontSize: '0.84rem',
+          }}
+          action={
+            <Button
+              size="small"
+              variant="contained"
+              onClick={handleCreateProjectAndMark}
+              disabled={generating || applying}
+              sx={{
+                textTransform: 'none',
+                fontWeight: 800,
+                background: 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)',
+                color: '#0b1220',
+              }}
+            >
+              Opprett prosjekt nå
+            </Button>
+          }
+        >
+          Du har generert forslag fra The Role Room Agent. Husk å klikke{' '}
+          <strong>&quot;Opprett prosjekt&quot;</strong> for å lagre — lukkes dialogen uten, mister du
+          analysen ved neste refresh.
+        </Alert>
+      ) : null}
       <DialogContent
         sx={{
           p: activeTab === 'chat' ? 0 : { xs: 1.4, md: 2 },
@@ -1375,20 +1451,18 @@ export default function RoleRoomAgentDialog({
           justifyContent: 'space-between',
         }}
       >
-        <Button onClick={onClose} disabled={generating || applying} sx={{ textTransform: 'none' }}>
+        <Button onClick={handleCloseWithGuard} disabled={generating || applying} sx={{ textTransform: 'none' }}>
           Lukk
         </Button>
         <Stack direction="row" spacing={1}>
           {result && onCreateProject ? (
             <Button
-              variant="outlined"
-              disabled={generating || applying}
-              onClick={() => {
-                void onCreateProject(result);
-              }}
+              variant={projectCreatedFromResult ? 'text' : 'outlined'}
+              disabled={generating || applying || projectCreatedFromResult}
+              onClick={handleCreateProjectAndMark}
               sx={{ textTransform: 'none', fontWeight: 800 }}
             >
-              Ja, opprett prosjekt på kunden
+              {projectCreatedFromResult ? 'Prosjekt opprettet' : 'Ja, opprett prosjekt på kunden'}
             </Button>
           ) : null}
           <Button

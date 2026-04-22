@@ -5442,26 +5442,39 @@ type RoleRoomProjectWorkspaceState = {
           setCurrentProject(fullProject ?? preferredProject);
         }
       } else if (loadedProjects.length === 0) {
-        // Only create empty project if mock data initialization didn't work
-        const defaultProject: CastingProject = {
-          id: `project-${Date.now()}`,
-          name: profession ? `${branding.tokens.labels.newProjectPrefix} ${getTerm('project')}` : 'Nytt Role Room prosjekt',
-          description: '',
-          roles: [],
-          candidates: [],
-          schedules: [],
-          crew: [],
-          locations: [],
-          props: [],
-          productionDays: [],
-          shotLists: [],
-          userRoles: [],
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-        await castingService.saveProject(defaultProject);
-        setProjects([defaultProject]);
-        setCurrentProject(defaultProject);
+        // Client portal view is read-only against a specific projectId
+        // supplied via URL. Do NOT synthesize a fresh `project-${Date.now()}`
+        // fallback here — otherwise every render generates a new id, each
+        // child effect fetches /api/projects/<new-id>/files → 404 → state
+        // updates → URL rewrite → re-mount → new id → Chrome throttles
+        // navigation. The client-portal-intent effect handles the URL-
+        // specified project separately; if that project truly isn't
+        // reachable, showing `currentProject = null` is the correct state.
+        if (clientPortalIntent) {
+          setProjects([]);
+          setCurrentProject(null);
+        } else {
+          // Only create empty project if mock data initialization didn't work
+          const defaultProject: CastingProject = {
+            id: `project-${Date.now()}`,
+            name: profession ? `${branding.tokens.labels.newProjectPrefix} ${getTerm('project')}` : 'Nytt Role Room prosjekt',
+            description: '',
+            roles: [],
+            candidates: [],
+            schedules: [],
+            crew: [],
+            locations: [],
+            props: [],
+            productionDays: [],
+            shotLists: [],
+            userRoles: [],
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+          await castingService.saveProject(defaultProject);
+          setProjects([defaultProject]);
+          setCurrentProject(defaultProject);
+        }
       }
     } catch (error) {
       logRoleRoomDiagnostic('projects:load-failed', {
