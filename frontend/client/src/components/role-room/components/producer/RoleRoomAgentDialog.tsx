@@ -398,17 +398,23 @@ export default function RoleRoomAgentDialog({
       <DialogTitle
         sx={{
           pb: 1.2,
+          px: { xs: 1.4, md: 3 },
+          pt: { xs: 1.4, md: 2 },
           borderBottom: '1px solid rgba(148,163,184,0.14)',
           background: 'radial-gradient(circle at top left, rgba(34,211,238,0.18) 0%, rgba(15,23,42,0) 48%)',
         }}
       >
-        <Stack spacing={1.1}>
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
-            <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
+        <Stack spacing={{ xs: 0.8, md: 1.1 }}>
+          <Stack
+            direction={{ xs: 'column', md: 'row' }}
+            spacing={{ xs: 1, md: 1 }}
+            alignItems={{ xs: 'stretch', md: 'center' }}
+          >
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0, flex: 1 }}>
               <Box
                 sx={{
-                  width: 46,
-                  height: 46,
+                  width: { xs: 38, md: 46 },
+                  height: { xs: 38, md: 46 },
                   borderRadius: 2.5,
                   display: 'grid',
                   placeItems: 'center',
@@ -416,23 +422,57 @@ export default function RoleRoomAgentDialog({
                   border: '1px solid rgba(34,211,238,0.26)',
                   bgcolor: 'rgba(8,47,73,0.22)',
                   boxShadow: '0 0 28px rgba(34,211,238,0.12)',
+                  flexShrink: 0,
                 }}
               >
-                <AutoFixHighIcon />
+                <AutoFixHighIcon sx={{ fontSize: { xs: 20, md: 24 } }} />
               </Box>
-              <Box sx={{ minWidth: 0 }}>
-                <Typography sx={{ color: '#f8fafc', fontWeight: 800, fontSize: { xs: '1.15rem', md: '1.4rem' } }}>
+              <Box sx={{ minWidth: 0, flex: 1 }}>
+                <Typography
+                  sx={{
+                    color: '#f8fafc',
+                    fontWeight: 800,
+                    fontSize: { xs: '1.05rem', md: '1.4rem' },
+                    lineHeight: 1.2,
+                  }}
+                >
                   The Role Room Agent
                 </Typography>
-                <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.88rem' }}>
+                <Typography
+                  sx={{
+                    color: 'rgba(226,232,240,0.72)',
+                    fontSize: { xs: '0.78rem', md: '0.88rem' },
+                    display: { xs: 'none', sm: 'block' },
+                  }}
+                >
                   Admin-test for kundeprofil, brief, branding og story logikk i innholdsprodusent-flyt.
                 </Typography>
               </Box>
             </Stack>
-            <Stack direction="row" spacing={0.8} flexWrap="wrap" useFlexGap alignItems="center">
+            <Stack
+              direction="row"
+              spacing={0.8}
+              flexWrap="wrap"
+              useFlexGap
+              alignItems="center"
+              sx={{ rowGap: 0.6 }}
+            >
               <Chip label="Kun admin" size="small" sx={{ bgcolor: 'rgba(15,118,110,0.18)', color: '#99f6e4' }} />
-              <Chip label="Innholdsprodusent" size="small" sx={{ bgcolor: 'rgba(168,85,247,0.18)', color: '#f0abfc' }} />
-              <Chip label={projectName} size="small" sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }} />
+              <Chip
+                label="Innholdsprodusent"
+                size="small"
+                sx={{ bgcolor: 'rgba(168,85,247,0.18)', color: '#f0abfc', display: { xs: 'none', sm: 'inline-flex' } }}
+              />
+              <Chip
+                label={projectName}
+                size="small"
+                sx={{
+                  bgcolor: 'rgba(59,130,246,0.16)',
+                  color: '#bfdbfe',
+                  maxWidth: { xs: 160, md: 240 },
+                  '& .MuiChip-label': { textOverflow: 'ellipsis', overflow: 'hidden' },
+                }}
+              />
               <Button
                 size="small"
                 variant="outlined"
@@ -1464,13 +1504,24 @@ export default function RoleRoomAgentDialog({
           px: { xs: 1.4, md: 2 },
           pb: { xs: 1.4, md: 1.8 },
           pt: 0.4,
-          justifyContent: 'space-between',
+          flexDirection: { xs: 'column-reverse', md: 'row' },
+          alignItems: { xs: 'stretch', md: 'center' },
+          justifyContent: { md: 'space-between' },
+          gap: { xs: 1, md: 0 },
         }}
       >
-        <Button onClick={handleCloseWithGuard} disabled={generating || applying} sx={{ textTransform: 'none' }}>
+        <Button
+          onClick={handleCloseWithGuard}
+          disabled={generating || applying}
+          sx={{ textTransform: 'none', alignSelf: { xs: 'center', md: 'flex-start' } }}
+        >
           Lukk
         </Button>
-        <Stack direction="row" spacing={1}>
+        <Stack
+          direction={{ xs: 'column', md: 'row' }}
+          spacing={1}
+          sx={{ width: { xs: '100%', md: 'auto' } }}
+        >
           {result && onCreateProject ? (
             <Button
               variant={projectCreatedFromResult ? 'text' : 'outlined'}
