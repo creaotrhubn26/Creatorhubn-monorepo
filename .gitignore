@@ -105,3 +105,6 @@ Camera Agreement*.pdf
 # Playwright auth state for Meta Developers dashboard — contains FB session
 .meta-playwright-state.json
 **/.meta-playwright-state.json
+
+# Editor / backup files
+*.bak

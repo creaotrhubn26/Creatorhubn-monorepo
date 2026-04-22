@@ -1,4 +1,0 @@
-// AUTO-GENERATED: re-exporting from actual source.
-// If you need to customize, replace this with manual exports.
-export * from '../../../exports_temp/CreatorHub-Norge-Complete-Backup-2025-07-31T17-30-39-108Z/client/src/components/layout/index.ts';
-export { default } from '../../../exports_temp/CreatorHub-Norge-Complete-Backup-2025-07-31T17-30-39-108Z/client/src/components/layout/index.ts';

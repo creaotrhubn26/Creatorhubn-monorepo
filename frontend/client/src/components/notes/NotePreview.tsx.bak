@@ -1,9 +1,0 @@
-// client/src/components/notes/NotePreview.tsx
-import { useTheming } from '../../utils/theming-helper';
-import React from 'react';
-import DOMPurify from 'dompurify';
-
-export default function NotePreview({ html }: { html: string }) {
-  const safe = React.useMemo(() => DOMPurify.sanitize(html ?? ''), [html]);
-  return <div className="prose max-w-none" dangerouslySetInnerHTML={{ __html: safe }} />;
-}
