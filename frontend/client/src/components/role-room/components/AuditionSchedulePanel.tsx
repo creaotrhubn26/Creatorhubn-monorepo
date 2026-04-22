@@ -2950,24 +2950,25 @@ function AuditionSchedulePanelInner({
           disabled={candidates.length === 0 || roles.length === 0}
         >
           {(candidates.length === 0 || roles.length === 0) && (
-            <Button
-              variant="outlined"
-              size="large"
-              onClick={() => onNavigateToTab(candidates.length === 0 ? 2 : 1)}
-              sx={{
-                mt: 3,
-                borderColor: 'rgba(255,255,255,0.3)',
-                color: '#fff',
-                fontWeight: 600,
-                px: 4,
-                py: 1.5,
-                minHeight: TOUCH_TARGET_SIZE,
-                '&:hover': { borderColor: roleTabAccent, bgcolor: 'rgba(184,107,255,0.1)' },
-                ...focusVisibleStyles,
-              }}
-            >
-              {candidates.length === 0 ? 'Legg til kandidater' : 'Opprett roller'}
-            </Button>
+            <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center' }}>
+              <Button
+                variant="outlined"
+                size="large"
+                onClick={() => onNavigateToTab(candidates.length === 0 ? 2 : 1)}
+                sx={{
+                  borderColor: 'rgba(255,255,255,0.3)',
+                  color: '#fff',
+                  fontWeight: 600,
+                  px: 4,
+                  py: 1.5,
+                  minHeight: TOUCH_TARGET_SIZE,
+                  '&:hover': { borderColor: roleTabAccent, bgcolor: 'rgba(184,107,255,0.1)' },
+                  ...focusVisibleStyles,
+                }}
+              >
+                {candidates.length === 0 ? 'Legg til kandidater' : 'Opprett roller'}
+              </Button>
+            </Box>
           )}
         </RoleRoomEmptyState>
       ) : viewMode === 'table' ? (
