@@ -2954,7 +2954,7 @@ function AuditionSchedulePanelInner({
               <Button
                 variant="outlined"
                 size="large"
-                onClick={() => onNavigateToTab(candidates.length === 0 ? 2 : 1)}
+                onClick={() => onNavigateToTab(candidates.length === 0 ? 3 : 2)}
                 sx={{
                   borderColor: 'rgba(255,255,255,0.3)',
                   color: '#fff',

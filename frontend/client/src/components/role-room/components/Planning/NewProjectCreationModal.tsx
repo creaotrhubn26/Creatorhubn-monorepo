@@ -862,6 +862,20 @@ export default function NewProjectCreationModal({
   const [clientEmailError, setClientEmailError] = useState(false);
   const [clientPhoneError, setClientPhoneError] = useState(false);
 
+  // Auto-close the TROLL init status dialog once loading is complete.
+  // Previously it sat open on top of NewProjectCreationModal indefinitely,
+  // and MUI's focus trap + backdrop made every input under it look
+  // disabled (no cursor, can't type) until the user explicitly clicked
+  // "Lukk" — which was far from obvious. Auto-dismiss 1.5s after complete
+  // so the form underneath becomes interactive on its own.
+  useEffect(() => {
+    if (trollInitStatus === 'complete' && trollInitDialogOpen) {
+      const timer = setTimeout(() => setTrollInitDialogOpen(false), 1500);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  }, [trollInitStatus, trollInitDialogOpen]);
+
   // Reset form data when initialData changes (switching between create/edit mode)
   //
   // Only runs on *identity* change of the project being edited — not on
