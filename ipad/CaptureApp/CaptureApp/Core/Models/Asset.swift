@@ -38,6 +38,18 @@ struct AssetSignals: Hashable, Sendable, Codable {
     var eyesOpen: Bool?
     var faceCount: Int?
     var duplicateGroupId: UUID?
+    /// Opaque ref to the photographer's Apple Pencil markup layer —
+    /// crop hints, retouch arrows, "remove background person"-notes.
+    /// Resolves to a directory under ``Documents/markups/<ref>/``
+    /// holding the composited PNG plus raw PKDrawing archive.
+    /// Nil when the asset has no markup yet.
+    ///
+    /// Stored inline on signals (JSONB) rather than a fresh column so
+    /// we don't need a v4 migration just to wire Pencil review. The
+    /// backend's ``AssetSignalsJson`` gains the same field — the
+    /// Postgres JSONB blob happily round-trips unknown keys in the
+    /// meantime.
+    var markupRef: String?
 
     static let empty = AssetSignals()
 }

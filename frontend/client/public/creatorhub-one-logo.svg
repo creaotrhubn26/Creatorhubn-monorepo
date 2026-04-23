@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  CreatorHub One primary mark — square app-icon plate.
+
+  Family resemblance with the parent ``creatorhub-logo-amber.svg``:
+  same amber gradient + same cream ink. The parent reads as "CH"
+  (crescent + H-bars). This one substitutes a numeral "1" for the H
+  so the mark reads as "C1" = CreatorHub One.
+
+  Implementation notes:
+    * Radial amber plate (matches the Academy coin's light source).
+    * C-arc rendered as a stroked path — a crescent is geometrically
+      a stroke, not a filled shape.
+    * Numeral "1" rendered as a filled compound path. Fills render
+      more reliably than gradient-stroked straight segments across
+      the various SVG renderers iOS + Quick Look + older browsers
+      can throw at us.
+    * Both glyphs use ``markCream`` so the mark reads warm on amber
+      rather than clashing.
+-->
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="platePremium" cx="0.32" cy="0.22" r="0.95">
+      <stop offset="0" stop-color="#FFD899" />
+      <stop offset="0.45" stop-color="#FF9A24" />
+      <stop offset="1" stop-color="#B23F00" />
+    </radialGradient>
+    <linearGradient id="markCream" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFF8EC" />
+      <stop offset="1" stop-color="#FDE2B3" />
+    </linearGradient>
+  </defs>
+
+  <!-- Plate -->
+  <rect x="0" y="0" width="1024" height="1024" rx="224" ry="224" fill="url(#platePremium)" />
+
+  <!-- C-arc crescent. Three-quarter open oval, open on the right so
+       the numeral tucks in. -->
+  <path
+    d="M 460 246
+       C 344 226 240 266 184 356
+       C 128 446 128 574 184 664
+       C 240 754 344 794 460 774"
+    stroke="url(#markCream)"
+    stroke-width="88"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    fill="none"
+  />
+
+  <!-- "1" numeral as a single filled compound path. Built from:
+       * top flag (slanted serif cap)
+       * vertical stem
+       * base serif (foot)
+       Drawn clockwise so the fill renders correctly on all
+       conformant renderers. Corners slightly rounded by mitre at
+       each junction. -->
+  <path
+    d="M 636 244
+       L 762 244
+       L 762 700
+       L 826 700
+       L 826 784
+       L 598 784
+       L 598 700
+       L 662 700
+       L 662 334
+       L 600 364
+       L 564 302
+       Z"
+    fill="url(#markCream)"
+  />
+</svg>

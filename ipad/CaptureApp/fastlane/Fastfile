@@ -1,0 +1,139 @@
+# CreatorHub One — fastlane Fastfile
+#
+# What this buys you:
+#   * ``fastlane ios beta``  → archive + upload to TestFlight.
+#   * ``fastlane ios release`` → archive + upload for App Store Review.
+#   * ``fastlane ios bump_build`` → increment CFBundleVersion.
+#
+# What this does NOT replace:
+#   * Creating the app in App Store Connect — a one-time manual step
+#     (see ``APP_STORE_CHECKLIST.md``).
+#   * Uploading the screenshots + metadata (deliver) — run with
+#     ``fastlane ios deliver_metadata`` once the copy in ``metadata/``
+#     is finalised. Keeps the metadata PR-reviewable.
+#
+# Credentials: set via environment variables, never commit:
+#   APP_STORE_CONNECT_API_KEY_ID
+#   APP_STORE_CONNECT_API_ISSUER_ID
+#   APP_STORE_CONNECT_API_KEY_CONTENT   (the .p8 file contents, base64)
+#   FASTLANE_USER, FASTLANE_PASSWORD    (fallback for Apple ID auth)
+
+default_platform(:ios)
+
+APP_IDENTIFIER = "com.creatorhubn.capture"
+SCHEME         = "CaptureApp"
+PROJECT        = "CaptureApp.xcodeproj"
+
+platform :ios do
+  before_all do
+    ensure_xcode_version(version: "16.4")
+  end
+
+  desc "Bump CFBundleVersion by 1"
+  lane :bump_build do
+    increment_build_number(xcodeproj: PROJECT)
+  end
+
+  desc "Archive + upload to TestFlight"
+  lane :beta do
+    setup_api_key
+
+    # Bump build number so TestFlight accepts the upload (every
+    # upload must have a strictly-higher CFBundleVersion).
+    bump_build
+
+    build_app(
+      project: PROJECT,
+      scheme: SCHEME,
+      configuration: "Release",
+      export_method: "app-store",
+      export_options: "../ExportOptions.plist",
+      clean: true,
+      output_directory: "build/",
+      output_name: "CreatorHubOne.ipa",
+    )
+
+    upload_to_testflight(
+      skip_waiting_for_build_processing: true,
+      # Changelog is pulled from ``fastlane/changelog.txt`` if
+      # present; otherwise Apple shows "No changes provided".
+      changelog: File.exist?("changelog.txt") ? File.read("changelog.txt") : nil,
+    )
+
+    # Sanity check: fail the lane if the IPA is missing the icon
+    # or is bigger than 200 MB (both are Apple-side rejection
+    # causes we can catch locally).
+    sh "ls -lh build/CreatorHubOne.ipa"
+  end
+
+  desc "Archive + submit for App Store Review"
+  lane :release do
+    setup_api_key
+    bump_build
+
+    build_app(
+      project: PROJECT,
+      scheme: SCHEME,
+      configuration: "Release",
+      export_method: "app-store",
+      export_options: "../ExportOptions.plist",
+      clean: true,
+      output_directory: "build/",
+      output_name: "CreatorHubOne.ipa",
+    )
+
+    upload_to_app_store(
+      force: true, # skip interactive confirmation
+      precheck_include_in_app_purchases: false,
+      submit_for_review: false, # review submission is a deliberate manual step
+      automatic_release: false,
+      skip_screenshots: true,
+      skip_metadata: true,
+    )
+  end
+
+  desc "Push metadata (description/keywords/etc.) from fastlane/metadata/"
+  lane :deliver_metadata do
+    setup_api_key
+    upload_to_app_store(
+      skip_binary_upload: true,
+      skip_screenshots: true, # screenshots go up separately
+      skip_metadata: false,
+      force: true,
+      submit_for_review: false,
+      automatic_release: false,
+    )
+  end
+
+  desc "Push screenshots from fastlane/screenshots/"
+  lane :deliver_screenshots do
+    setup_api_key
+    upload_to_app_store(
+      skip_binary_upload: true,
+      skip_metadata: true,
+      skip_screenshots: false,
+      force: true,
+      submit_for_review: false,
+      automatic_release: false,
+    )
+  end
+
+  private_lane :setup_api_key do
+    # Prefer App Store Connect API key over interactive Apple ID
+    # login when the keys are provided; falls back to the
+    # ``FASTLANE_USER`` env var otherwise.
+    key_id = ENV["APP_STORE_CONNECT_API_KEY_ID"]
+    issuer_id = ENV["APP_STORE_CONNECT_API_ISSUER_ID"]
+    key_content = ENV["APP_STORE_CONNECT_API_KEY_CONTENT"]
+    if key_id && issuer_id && key_content
+      app_store_connect_api_key(
+        key_id: key_id,
+        issuer_id: issuer_id,
+        key_content: key_content,
+        is_key_content_base64: true,
+        duration: 1200,
+        in_house: false,
+      )
+    end
+  end
+end

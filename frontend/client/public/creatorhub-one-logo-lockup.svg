@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Horizontal CreatorHub One lockup: primary mark on the left,
+  tiered wordmark on the right. Used on the product landing page,
+  email footers, App Store collateral. Mirror the mark + typography
+  choices from ``creatorhub-one-logo.svg`` so the brand reads as a
+  single family across surfaces.
+-->
+<svg width="860" height="220" viewBox="0 0 860 220" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="plateBgLockup" cx="0.32" cy="0.22" r="0.95">
+      <stop offset="0" stop-color="#FFD899" />
+      <stop offset="0.45" stop-color="#FF9A24" />
+      <stop offset="1" stop-color="#B23F00" />
+    </radialGradient>
+    <linearGradient id="markCreamLockup" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFF8EC" />
+      <stop offset="1" stop-color="#FDE2B3" />
+    </linearGradient>
+    <linearGradient id="headlineGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ef7d0d" />
+      <stop offset="0.45" stop-color="#f5a01f" />
+      <stop offset="1" stop-color="#ffd07c" />
+    </linearGradient>
+    <linearGradient id="metal2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffe6ab" />
+      <stop offset="0.42" stop-color="#f5b235" />
+      <stop offset="1" stop-color="#a35f0f" />
+    </linearGradient>
+  </defs>
+
+  <!-- Primary mark scaled to ~180 px tall -->
+  <g transform="translate(20 20) scale(0.176)">
+    <rect x="0" y="0" width="1024" height="1024" rx="224" ry="224" fill="url(#plateBgLockup)" />
+    <path
+      d="M 460 246
+         C 344 226 240 266 184 356
+         C 128 446 128 574 184 664
+         C 240 754 344 794 460 774"
+      stroke="url(#markCreamLockup)"
+      stroke-width="88"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      fill="none"
+    />
+    <path
+      d="M 636 244
+         L 762 244
+         L 762 700
+         L 826 700
+         L 826 784
+         L 598 784
+         L 598 700
+         L 662 700
+         L 662 334
+         L 600 364
+         L 564 302
+         Z"
+      fill="url(#markCreamLockup)"
+    />
+  </g>
+
+  <!-- Wordmark -->
+  <g transform="translate(224 44)">
+    <text
+      x="0" y="40"
+      font-family="Manrope, Montserrat, Arial, sans-serif"
+      font-size="26"
+      font-weight="700"
+      letter-spacing="6"
+      fill="url(#metal2)"
+    >CREATORHUB</text>
+    <line x1="0" y1="52" x2="180" y2="52" stroke="url(#metal2)" stroke-width="2" stroke-linecap="round" />
+    <text
+      x="0" y="130"
+      font-family="Manrope, Montserrat, Arial, sans-serif"
+      font-size="96"
+      font-weight="800"
+      letter-spacing="2"
+      fill="url(#headlineGrad)"
+    >ONE</text>
+    <line x1="0" y1="150" x2="240" y2="150" stroke="url(#metal2)" stroke-width="3" stroke-linecap="round" />
+    <text
+      x="0" y="180"
+      font-family="Manrope, Montserrat, Arial, sans-serif"
+      font-size="16"
+      font-weight="600"
+      letter-spacing="5"
+      fill="#f5a01f"
+    >FOR iPAD · TETHER + CULL + DELIVER</text>
+  </g>
+</svg>

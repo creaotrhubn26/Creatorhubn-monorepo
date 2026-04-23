@@ -1,0 +1,29 @@
+CreatorHub One er iPad-følgesvennen til creatorhubn.com — laget for yrkesfotografer som vil ha ett verktøy fra første frame sitter til galleriet lander i klientens innboks.
+
+TETHERET SHOOT
+• Finner Canon-kameraene dine automatisk over Wi-Fi (CCAPI). Validert på R5, R5 Mark II, R6, R6 Mark II og R7.
+• Live-thumbnails mens du skyter, full RAW + JPEG speiling til iPaden.
+• Shot List med Apple Pencil-annotering — planlegg med klient, tikk av på location.
+
+LIVE CULL
+• Sveip venstre for å forkaste, høyre for å beholde, opp for hero. Stor, rask, ergonomisk — laget for lange bryllupsdager.
+• Dobbelttrykk et forhåndsvisningsbilde for å tegne markup-notat med Apple Pencil. Web-editoren plukker opp notatene til retusj.
+• Decision-fatigue-tracker innebygd: appen ser når cullingtempoet faller og foreslår pause.
+
+PENCIL-SIGNATUR PÅ KONTRAKT OG TILBUD
+• Signer kontrakter og godkjenn tilbud direkte på iPaden. Ingen DocuSign-runddans.
+• Signaturer synces til CreatorHub-dashboardet i sanntid.
+
+LEVER FRA SHOOTEN
+• Send kvikk-teaser til klienten før du pakker utstyret — første smakebit lander i innboksen deres mens de fortsatt danser.
+• Full leveringspipeline synces til fotografens Google Drive-arbeidsmappe.
+
+CREATORHUB-ØKOSYSTEM
+• Samme innlogging som creatorhubn.com — prosjekter, klienter, fakturering og administrasjon holdes i synk.
+• Offline-first: hver shoot, markup og signatur står lokalt i kø og synker når du er tilbake på Wi-Fi.
+• Laget i Norge for fotografer verden over.
+
+Krever:
+• iPad med Apple Pencil (2. generasjon eller nyere)
+• En CreatorHub-konto (gratis på creatorhubn.com)
+• Et Canon CCAPI-kompatibelt kamera (R-serien) på samme nettverk

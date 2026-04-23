@@ -3,12 +3,12 @@
 <plist version="1.0">
 <dict>
     <!--
-        CreatorHub Capture privacy manifest. Apple began enforcing this
+        CreatorHub One privacy manifest. Apple began enforcing this
         in May 2024 for apps using "required reason APIs". Missing or
         incomplete manifests trigger App Store warnings now and
         rejections later.
 
-        Scope: the iPad Capture app receives photos from Canon cameras
+        Scope: CreatorHub One (iPad) receives photos from Canon cameras
         over Bonjour/HTTPS, stores them locally via GRDB/SQLite, and
         mirrors selected picks to CreatorHub's backend on explicit
         user action. No analytics SDKs, no ad SDKs, no tracking.

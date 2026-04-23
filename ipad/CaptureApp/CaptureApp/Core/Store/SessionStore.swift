@@ -36,7 +36,7 @@ actor SessionStore {
 
     func fetchSession(id: UUID) async throws -> Session? {
         try await database.dbWriter.read { db in
-            try Session.fetchOne(db, key: id.uuidString)
+            try Session.fetchOne(db, key: id.uuidString.uppercased())
         }
     }
 
@@ -51,7 +51,7 @@ actor SessionStore {
 
     func closeSession(id: UUID) async throws {
         try await database.dbWriter.write { db in
-            guard var session = try Session.fetchOne(db, key: id.uuidString) else { return }
+            guard var session = try Session.fetchOne(db, key: id.uuidString.uppercased()) else { return }
             session.status = .closed
             session.endsAt = Date()
             session.updatedAt = Date()
@@ -64,7 +64,7 @@ actor SessionStore {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         try await database.dbWriter.write { db in
-            guard var session = try Session.fetchOne(db, key: id.uuidString) else { return }
+            guard var session = try Session.fetchOne(db, key: id.uuidString.uppercased()) else { return }
             session.name = trimmed
             session.updatedAt = Date()
             try session.update(db)
@@ -107,7 +107,7 @@ actor SessionStore {
 
     func transitionAssetState(id: UUID, to newState: AssetState) async throws {
         try await database.dbWriter.write { db in
-            guard var asset = try Asset.fetchOne(db, key: id.uuidString) else { return }
+            guard var asset = try Asset.fetchOne(db, key: id.uuidString.uppercased()) else { return }
             asset.state = newState
             asset.updatedAt = Date()
             try asset.update(db)
@@ -122,7 +122,7 @@ actor SessionStore {
         rejected: Bool? = nil
     ) async throws {
         try await database.dbWriter.write { db in
-            guard var asset = try Asset.fetchOne(db, key: id.uuidString) else { return }
+            guard var asset = try Asset.fetchOne(db, key: id.uuidString.uppercased()) else { return }
             if let rating { asset.rating = rating }
             if let colorLabel { asset.colorLabel = colorLabel }
             if let flaggedForClient { asset.flaggedForClient = flaggedForClient }
@@ -134,7 +134,7 @@ actor SessionStore {
 
     func updateAssetSignals(id: UUID, signals: AssetSignals) async throws {
         try await database.dbWriter.write { db in
-            guard var asset = try Asset.fetchOne(db, key: id.uuidString) else { return }
+            guard var asset = try Asset.fetchOne(db, key: id.uuidString.uppercased()) else { return }
             asset.signals = signals
             asset.updatedAt = Date()
             try asset.update(db)
@@ -149,7 +149,7 @@ actor SessionStore {
         sizeBytes: Int64
     ) async throws {
         try await database.dbWriter.write { db in
-            guard var asset = try Asset.fetchOne(db, key: id.uuidString) else { return }
+            guard var asset = try Asset.fetchOne(db, key: id.uuidString.uppercased()) else { return }
             switch kind {
             case .preview: asset.previewKey = key
             case .full:    asset.fullKey = key
@@ -168,7 +168,7 @@ actor SessionStore {
     /// In demo mode the in-process enhancer simulator writes it directly.
     func attachEnhancedKey(id: UUID, key: String) async throws {
         try await database.dbWriter.write { db in
-            guard var asset = try Asset.fetchOne(db, key: id.uuidString) else { return }
+            guard var asset = try Asset.fetchOne(db, key: id.uuidString.uppercased()) else { return }
             asset.enhancedKey = key
             asset.updatedAt = Date()
             try asset.update(db)
@@ -177,14 +177,14 @@ actor SessionStore {
 
     func fetchAsset(id: UUID) async throws -> Asset? {
         try await database.dbWriter.read { db in
-            try Asset.fetchOne(db, key: id.uuidString)
+            try Asset.fetchOne(db, key: id.uuidString.uppercased())
         }
     }
 
     func listAssets(sessionId: UUID) async throws -> [Asset] {
         try await database.dbWriter.read { db in
             try Asset
-                .filter(Column("sessionId") == sessionId.uuidString)
+                .filter(Column("sessionId") == sessionId.uuidString.uppercased())
                 .order(Column("captureTime").asc)
                 .fetchAll(db)
         }
@@ -216,7 +216,7 @@ actor SessionStore {
     func listEvents(sessionId: UUID, limit: Int? = nil) async throws -> [CaptureEvent] {
         try await database.dbWriter.read { db in
             var request = CaptureEvent
-                .filter(Column("sessionId") == sessionId.uuidString)
+                .filter(Column("sessionId") == sessionId.uuidString.uppercased())
                 .order(Column("createdAt").asc)
             if let limit {
                 request = request.limit(limit)
@@ -236,7 +236,7 @@ actor SessionStore {
     func listReviews(assetId: UUID) async throws -> [Review] {
         try await database.dbWriter.read { db in
             try Review
-                .filter(Column("assetId") == assetId.uuidString)
+                .filter(Column("assetId") == assetId.uuidString.uppercased())
                 .order(Column("createdAt").asc)
                 .fetchAll(db)
         }
@@ -267,7 +267,7 @@ actor SessionStore {
         return AsyncStream { continuation in
             let observation = ValueObservation.tracking { db in
                 try Asset
-                    .filter(Column("sessionId") == sessionId.uuidString)
+                    .filter(Column("sessionId") == sessionId.uuidString.uppercased())
                     .order(Column("captureTime").asc)
                     .fetchAll(db)
             }

@@ -37,6 +37,13 @@ actor DeliveryService {
         /// directly so we don't hold the bytes in memory longer than the
         /// part-size buffer.
         let previewPath: String
+        /// Optional linkage back to the project's shot list. When both
+        /// are set and the upload completes, we POST to
+        /// /api/projects/:projectId/shots/:shotId/link-asset so the
+        /// web side of the shot list flips to "completed" in real time.
+        /// Phase 2B Lag D follow-up.
+        var projectId: String? = nil
+        var shotId: String? = nil
     }
 
     struct DeliveryResult: Sendable {
@@ -235,6 +242,29 @@ actor DeliveryService {
                 sizeBytes: Int64(data.count),
             )
         )
+
+        // Phase 2B Lag D follow-up: if this upload satisfies a planned
+        // shot from the project's shot list, flip that shot's
+        // capturedAssetId + isCompleted on the backend so the web
+        // ShotListManager shows progress in real time. Fire-and-forget —
+        // the upload itself already succeeded; a link failure shouldn't
+        // retry the bytes. We just log it so the sync flow stays silent.
+        if let projectId = pick.projectId, let shotId = pick.shotId {
+            do {
+                _ = try await backend.linkShotToAsset(
+                    projectId: projectId,
+                    shotId: shotId,
+                    capturedAssetId: assetUUID,
+                )
+            } catch {
+                // Don't throw — the photo is delivered, only the planning
+                // linkage is stale. Counter reconciliation is idempotent
+                // so a later retry (or a manual mark-complete from the
+                // web) will catch up.
+                print("[DeliveryService] linkShotToAsset failed: \(error)")
+            }
+        }
+
         return assetUUID
     }
 }

@@ -242,10 +242,12 @@ private struct DisconnectedOverlay: View {
     var body: some View {
         VStack(spacing: 24) {
             VStack(spacing: 12) {
-                Image(systemName: "camera.aperture")
-                    .font(.system(size: 64, weight: .light))
-                    .foregroundStyle(.tint)
-                Text("CreatorHub Capture")
+                Image("CreatorHubOneLogo")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 96, height: 96)
+                    .accessibilityLabel("CreatorHub One")
+                Text("CreatorHub One")
                     .font(.largeTitle.weight(.semibold))
                 Text("Tethered shoot over Canon CCAPI")
                     .font(.callout)
@@ -362,7 +364,7 @@ private struct DiscoveredCamerasSection: View {
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: "lock.shield")
                         .foregroundStyle(.yellow)
-                    Text("Local-network permission was denied. Enable it in Settings → CreatorHub Capture → Local Network to find cameras automatically.")
+                    Text("Local-network permission was denied. Enable it in Settings → CreatorHub One → Local Network to find cameras automatically.")
                         .font(.caption)
                         .fixedSize(horizontal: false, vertical: true)
                 }
