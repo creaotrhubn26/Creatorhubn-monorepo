@@ -39,6 +39,7 @@ import {
 import {
   Add as AddIcon,
   Assignment as AssignmentIcon,
+  AutoAwesome as AutoAwesomeIcon,
   Bookmark as BookmarkIcon,
   CalendarMonth as CalendarIcon,
   CameraAlt as CameraAltIcon,
@@ -215,6 +216,7 @@ import {
 import { useSceneHistory } from "./production/useSceneHistory";
 import { useEquipmentInventory } from "./production/useEquipmentInventory";
 import { useScreenTier } from "./production/useScreenTier";
+import { useReadThroughAnalysis } from "../hooks/useReadThroughAnalysis";
 import {
   applyStoryboardCandidateToShot,
   buildSceneStoryboardCandidates,
@@ -881,6 +883,9 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   const [sceneCandidates, setSceneCandidates] = useState<Candidate[]>([]);
   const [projectRoles, setProjectRoles] = useState<Role[]>([]);
 
+  // Read-through scene analysis (Claude-driven subtext + delivery hints + voice casting).
+  const readThroughAnalysis = useReadThroughAnalysis();
+
   // Production notes — normalized 4-type model, per-scene autosave lives in <ProductionNotesPanel>
   const [productionNotes, setProductionNotes] = useState<ProductionNotes>({});
 
@@ -1374,32 +1379,55 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
         ttsPlayingRef.current = true;
         const currentLine = allDialogue[readThroughCurrentLine];
         if (currentLine) {
+          // When a scene analysis is loaded, prefer its voice casting over
+          // the user's manual mapping (user can still disable with
+          // ttsUseCharacterVoices). Manual mapping still wins if the user
+          // explicitly set one for this character.
+          const manualVoice = ttsCharacterVoices[currentLine.characterName];
+          const castingMatch = readThroughAnalysis.voiceCastingByCharacter.get(
+            currentLine.characterName,
+          );
           const characterVoice = ttsUseCharacterVoices
-            ? (ttsCharacterVoices[currentLine.characterName] ?? ttsVoice)
+            ? (manualVoice ?? castingMatch?.suggestedVoice ?? ttsVoice)
             : ttsVoice;
-          ttsSpeak(currentLine.dialogueText, {
-            voice: characterVoice,
-            language: ttsLanguage || undefined,
-            speed: ttsSpeed,
-            model: 'tts-1',
-          })
-            .then(() => {
-              if (ttsPlayingRef.current && readThroughCurrentLine < allDialogue.length - 1) {
-                setReadThroughCurrentLine(prev => prev + 1);
-              } else {
-                setReadThroughPlaying(false);
-                ttsPlayingRef.current = false;
-              }
+          const hint = readThroughAnalysis.lineHintsById.get(currentLine.id);
+          const pauseBefore = hint?.pauseBefore ?? 0;
+          const startSpeaking = () =>
+            ttsSpeak(currentLine.dialogueText, {
+              voice: characterVoice,
+              language: ttsLanguage || undefined,
+              speed: ttsSpeed,
+              model: 'tts-1',
             })
-            .catch((err) => {
-              console.warn('TTS playback error, falling back to timer:', err);
-              // Fallback to timer-based advance
-              setTimeout(() => {
-                if (ttsPlayingRef.current) {
-                  handleReadThroughNext();
+              .then(() => {
+                if (ttsPlayingRef.current && readThroughCurrentLine < allDialogue.length - 1) {
+                  setReadThroughCurrentLine(prev => prev + 1);
+                } else {
+                  setReadThroughPlaying(false);
+                  ttsPlayingRef.current = false;
                 }
-              }, 3000);
-            });
+              })
+              .catch((err) => {
+                console.warn('TTS playback error, falling back to timer:', err);
+                setTimeout(() => {
+                  if (ttsPlayingRef.current) {
+                    handleReadThroughNext();
+                  }
+                }, 3000);
+              });
+          let pauseTimer: ReturnType<typeof setTimeout> | null = null;
+          if (pauseBefore > 0) {
+            pauseTimer = setTimeout(() => {
+              if (ttsPlayingRef.current) void startSpeaking();
+            }, pauseBefore);
+          } else {
+            void startSpeaking();
+          }
+          return () => {
+            ttsPlayingRef.current = false;
+            if (pauseTimer) clearTimeout(pauseTimer);
+            stopTTS();
+          };
         }
         return () => {
           ttsPlayingRef.current = false;
@@ -1413,7 +1441,7 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
         return () => clearTimeout(timer);
       }
     }
-  }, [readThroughMode, readThroughPlaying, readThroughCurrentLine, allDialogue, ttsEnabled, ttsVoice, ttsLanguage, ttsSpeed, ttsUseCharacterVoices, ttsCharacterVoices]);
+  }, [readThroughMode, readThroughPlaying, readThroughCurrentLine, allDialogue, ttsEnabled, ttsVoice, ttsLanguage, ttsSpeed, ttsUseCharacterVoices, ttsCharacterVoices, readThroughAnalysis.lineHintsById, readThroughAnalysis.voiceCastingByCharacter]);
 
   // Auto-scroll to current dialogue line in read-through
   useEffect(() => {
@@ -3475,6 +3503,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
             <IconButton
               onClick={() => setMobileSidebarOpen(true)}
               data-testid="pmv-mobile-scene-drawer-toggle"
+              aria-label="Åpne scene-meny"
               sx={{ color: '#9ca3af', p: 0.5 }}
             >
               <SceneIcon sx={{ fontSize: responsive.iconSize }} />
@@ -3519,6 +3548,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
             <IconButton
               onClick={handleReadThroughToggle}
               data-testid="pmv-read-through-toggle"
+              aria-label={readThroughMode ? 'Avslutt Read Through' : 'Start Read Through'}
               size={responsive.buttonSize}
               sx={{
                 color: readThroughMode ? '#10b981' : '#6b7280',
@@ -3540,6 +3570,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               <IconButton
                 onClick={() => isMobile ? setMobileRightPanelOpen(true) : setShowTalentPanel(!showTalentPanel)}
                 data-testid="pmv-talent-toggle"
+                aria-label={showTalentPanel ? 'Skjul cast' : 'Vis cast'}
                 size={responsive.buttonSize}
                 sx={{
                   color: showTalentPanel ? '#3b82f6' : '#6b7280',
@@ -3561,6 +3592,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
             <Tooltip title="Quick Notes (Ctrl+T)">
               <IconButton
                 onClick={() => setShowQuickNotes(!showQuickNotes)}
+                aria-label="Quick Notes"
                 size={responsive.buttonSize}
                 sx={{
                   color: showQuickNotes ? '#f97316' : '#6b7280',
@@ -3583,6 +3615,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               <IconButton
                 onClick={() => selectedScene && handleDuplicateScene(selectedScene)}
                 disabled={!selectedScene}
+                aria-label="Dupliser scene"
                 size={responsive.buttonSize}
                 sx={{
                   color: '#6b7280',
@@ -3602,6 +3635,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               <IconButton
                 onClick={() => selectedScene && setShowSceneTemplate(true)}
                 disabled={!selectedScene}
+                aria-label="Lagre scene som mal"
                 size={responsive.buttonSize}
                 sx={{
                   color: '#6b7280',
@@ -3620,6 +3654,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
             <IconButton
               onClick={handlePDFExport}
               data-testid="pmv-script-export"
+              aria-label="Eksporter manus som PDF"
               size={responsive.buttonSize}
               sx={{
                 color: '#6b7280',
@@ -3639,6 +3674,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                   void handleGenerateCallSheet();
                 }}
                 data-testid="pmv-call-sheet-json"
+                aria-label="Generer call sheet"
                 size={responsive.buttonSize}
                 sx={{
                   color: '#6b7280',
@@ -3663,6 +3699,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               <IconButton
                 onClick={() => dispatchWorkflow({ type: 'OPEN_STRIPBOARD' })}
                 data-testid="pmv-open-stripboard"
+                aria-label="Åpne stripboard"
                 size={responsive.buttonSize}
                 sx={{
                   color: productionWorkflowTab === 'stripboard' ? '#fbbf24' : '#6b7280',
@@ -3682,6 +3719,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               <IconButton
                 onClick={() => dispatchWorkflow({ type: 'OPEN_SCHEDULE' })}
                 data-testid="pmv-open-shooting-day-planner"
+                aria-label="Åpne opptaksplan"
                 size={responsive.buttonSize}
                 sx={{
                   color: productionWorkflowTab === 'schedule' ? '#34d399' : '#6b7280',
@@ -3700,6 +3738,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
             <IconButton
               onClick={() => dispatchWorkflow({ type: 'OPEN_LIVE', showDaySelector: true })}
               data-testid="pmv-open-live-set"
+              aria-label="Åpne Live Set-modus"
               size={responsive.buttonSize}
               sx={{
                 color: isLiveSetConnected ? '#ef4444' : '#6b7280',
@@ -3733,6 +3772,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                 onClick={() => setIsLiveSetConnected(!isLiveSetConnected)}
                 data-testid="pmv-live-set-connect-toggle"
                 aria-pressed={isLiveSetConnected}
+                aria-label={isLiveSetConnected ? 'Koble fra Live Set' : 'Koble til Live Set'}
                 size={responsive.buttonSize}
                 sx={{
                   color: isLiveSetConnected ? '#10b981' : '#6b7280',
@@ -3795,6 +3835,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
           {onClose && (
             <IconButton
               onClick={onClose}
+              aria-label="Lukk produksjonsmanus"
               size={responsive.buttonSize}
               sx={{
                 color: '#6b7280',
@@ -3950,6 +3991,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                 <IconButton
                   size="small"
                   onClick={() => setSearchQuery('')}
+                  aria-label="Tøm søk"
                   sx={{ p: 0.5, color: '#6b7280', '&:hover': { color: '#fff' } }}
                 >
                   <CloseIcon sx={{ fontSize: 14 }} />
@@ -4141,6 +4183,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
             <Tooltip title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}>
               <IconButton
                 onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+                aria-label={sortOrder === 'asc' ? 'Sorter synkende' : 'Sorter stigende'}
                 size="small"
                 sx={{
                   color: '#6b7280',
@@ -4322,20 +4365,22 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                 </Typography>
                 <Stack direction="row" spacing={0.5}>
                   <Tooltip title="Export selected">
-                    <IconButton 
-                      size="small" 
+                    <IconButton
+                      size="small"
                       onClick={handleBatchExport}
                       data-testid="pmv-batch-export"
+                      aria-label="Eksporter valgte scener"
                       sx={{ color: '#10b981', '&:hover': { bgcolor: 'rgba(16,185,129,0.15)' } }}
                     >
                       <DownloadIcon sx={{ fontSize: 16 }} />
                     </IconButton>
                   </Tooltip>
                   <Tooltip title="Delete selected">
-                    <IconButton 
-                      size="small" 
+                    <IconButton
+                      size="small"
                       onClick={handleBatchDelete}
                       data-testid="pmv-batch-delete"
+                      aria-label="Slett valgte scener"
                       sx={{ color: '#ef4444', '&:hover': { bgcolor: 'rgba(239,68,68,0.15)' } }}
                     >
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -4344,10 +4389,11 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                     </IconButton>
                   </Tooltip>
                   <Tooltip title="Clear selection">
-                    <IconButton 
-                      size="small" 
+                    <IconButton
+                      size="small"
                       onClick={() => { setBatchMode(false); setSelectedScenes(EMPTY_SELECTION); }}
                       data-testid="pmv-batch-clear"
+                      aria-label="Avbryt utvalg"
                       sx={{ color: '#6b7280' }}
                     >
                       <CloseIcon sx={{ fontSize: 16 }} />
@@ -4390,9 +4436,9 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               </Box>
             </Tooltip>
             <Tooltip title="The Role Room">
-              <IconButton sx={{ 
-                color: '#6b7280', 
-                bgcolor: '#1a2230', 
+              <IconButton aria-label="The Role Room" sx={{
+                color: '#6b7280',
+                bgcolor: '#1a2230',
                 border: '1px solid #252d3d',
                 borderRadius: '8px',
                 '&:hover': { bgcolor: '#252d3d', color: '#3b82f6' },
@@ -4401,12 +4447,13 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               </IconButton>
             </Tooltip>
             <Tooltip title="Eksporter produksjonsdata">
-              <IconButton 
+              <IconButton
                 onClick={() => setShowExportDialog(true)}
                 data-testid="pmv-production-data-dialog-button"
-                sx={{ 
-                  color: '#6b7280', 
-                  bgcolor: '#1a2230', 
+                aria-label="Eksporter produksjonsdata"
+                sx={{
+                  color: '#6b7280',
+                  bgcolor: '#1a2230',
                   border: '1px solid #252d3d',
                   borderRadius: '8px',
                   '&:hover': { bgcolor: '#252d3d', color: '#f59e0b' },
@@ -4418,6 +4465,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
             <Tooltip title="Skriv ut manus">
               <IconButton
                 onClick={handlePrintManuscript}
+                aria-label="Skriv ut manus"
                 sx={{
                   color: '#6b7280',
                   bgcolor: '#1a2230',
@@ -4433,6 +4481,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               <IconButton
                 onClick={handlePDFExport}
                 data-testid="pmv-sidebar-script-export"
+                aria-label="Eksporter manus til fil"
                 sx={{
                   color: '#6b7280',
                   bgcolor: '#1a2230',
@@ -4450,6 +4499,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                   void handleDownloadCallSheetPdf();
                 }}
                 data-testid="pmv-call-sheet-pdf"
+                aria-label="Last ned Call Sheet som PDF"
                 sx={{
                   color: '#6b7280',
                   bgcolor: '#1a2230',
@@ -4543,6 +4593,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                       onClick={handleReadThroughPrevious}
                       data-testid="pmv-read-through-prev"
                       disabled={readThroughCurrentLine === 0}
+                      aria-label="Forrige linje"
                       size={responsive.buttonSize}
                       sx={{ color: '#6b7280', '&:hover': { color: '#fff' }, p: isMobile ? 0.5 : 1 }}
                     >
@@ -4551,6 +4602,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                     <IconButton
                       onClick={handleReadThroughPlay}
                       data-testid="pmv-read-through-play"
+                      aria-label={readThroughPlaying ? 'Pause Read Through' : 'Spill av Read Through'}
                       size={responsive.buttonSize}
                       sx={{ 
                         color: readThroughPlaying ? '#10b981' : '#6b7280',
@@ -4563,6 +4615,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                     <IconButton
                       onClick={handleReadThroughNext}
                       data-testid="pmv-read-through-next"
+                      aria-label="Neste linje"
                       size={responsive.buttonSize}
                       sx={{ color: '#6b7280', '&:hover': { color: '#fff' }, p: isMobile ? 0.5 : 1 }}
                     >
@@ -4572,6 +4625,93 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                   <Typography data-testid="pmv-read-through-line-counter" sx={{ fontSize: responsive.bodyFontSize, color: '#6b7280' }}>
                     Linje {readThroughCurrentLine + 1} av {dialogueLines.length}
                   </Typography>
+                  {/* Claude scene analysis — subtext + delivery hints + voice casting */}
+                  {selectedScene && !isMobile && (
+                    <Tooltip
+                      title={
+                        readThroughAnalysis.status === 'ready' &&
+                        readThroughAnalysis.analyzedSceneId === selectedScene.id
+                          ? 'Scene er analysert — klikk for ny analyse'
+                          : readThroughAnalysis.status === 'loading'
+                            ? 'Analyserer scene…'
+                            : 'Analyser scene for subtekst og leveringshint'
+                      }
+                    >
+                      <span>
+                        <IconButton
+                          size="small"
+                          data-testid="pmv-read-through-analyze"
+                          aria-label="Analyser scene"
+                          disabled={readThroughAnalysis.status === 'loading'}
+                          onClick={() => {
+                            const sceneDialogue = dialogueLines.filter(
+                              (d) => d.sceneId === selectedScene.id,
+                            );
+                            if (sceneDialogue.length === 0) return;
+                            const charNames = [
+                              ...new Set(sceneDialogue.map((d) => d.characterName)),
+                            ];
+                            const characters = charNames.map((name) => {
+                              const role = projectRoles.find(
+                                (r) => r.name.toUpperCase() === name.toUpperCase(),
+                              );
+                              return {
+                                name,
+                                description: role?.description,
+                                ageRange: role?.ageRange,
+                              };
+                            });
+                            void readThroughAnalysis.analyze({
+                              projectId,
+                              sceneId: selectedScene.id,
+                              scene: {
+                                sceneNumber: selectedScene.sceneNumber,
+                                heading: selectedScene.heading,
+                                locationName: selectedScene.locationName,
+                                intExt: selectedScene.intExt,
+                                timeOfDay: selectedScene.timeOfDay,
+                                description: selectedScene.description,
+                                characters: charNames,
+                              },
+                              dialogueLines: sceneDialogue.map((d) => ({
+                                id: d.id,
+                                characterName: d.characterName,
+                                dialogueText: d.dialogueText,
+                                parenthetical: d.parenthetical,
+                                emotionTag: d.emotionTag,
+                              })),
+                              characters,
+                            });
+                          }}
+                          sx={{
+                            color:
+                              readThroughAnalysis.status === 'ready' &&
+                              readThroughAnalysis.analyzedSceneId === selectedScene.id
+                                ? '#a78bfa'
+                                : '#6b7280',
+                            bgcolor:
+                              readThroughAnalysis.status === 'ready' &&
+                              readThroughAnalysis.analyzedSceneId === selectedScene.id
+                                ? 'rgba(139,92,246,0.12)'
+                                : 'transparent',
+                            '&:hover': { color: '#a78bfa', bgcolor: 'rgba(139,92,246,0.15)' },
+                            p: 0.5,
+                          }}
+                        >
+                          {readThroughAnalysis.status === 'loading' ? (
+                            <CircularProgress size={14} sx={{ color: '#a78bfa' }} />
+                          ) : (
+                            <AutoAwesomeIcon sx={{ fontSize: responsive.iconSize - 2 }} />
+                          )}
+                        </IconButton>
+                      </span>
+                    </Tooltip>
+                  )}
+                  {readThroughAnalysis.status === 'error' && !isMobile && (
+                    <Typography sx={{ fontSize: 10, color: '#f87171' }}>
+                      Analyse feilet: {readThroughAnalysis.error}
+                    </Typography>
+                  )}
                   {readThroughStartTime && !isMobile && (
                     <Stack direction="row" spacing={1} alignItems="center">
                       <TimerIcon sx={{ fontSize: responsive.iconSize - 4, color: '#6b7280' }} />
@@ -4590,6 +4730,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                           size="small"
                           onClick={() => setTtsEnabled(!ttsEnabled)}
                           data-testid="pmv-tts-toggle"
+                          aria-label={ttsEnabled ? 'Slå av AI-stemme' : 'Slå på AI-stemme'}
                           sx={{
                             color: ttsEnabled ? '#8b5cf6' : '#4b5563',
                             bgcolor: ttsEnabled ? 'rgba(139,92,246,0.1)' : 'transparent',
@@ -4649,6 +4790,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                           <Tooltip title={`Speed: ${ttsSpeed}x`}>
                             <IconButton
                               size="small"
+                              aria-label="Bytt TTS-hastighet"
                               onClick={() => setTtsSpeed(prev => {
                                 const speeds = [0.75, 1.0, 1.25, 1.5, 2.0];
                                 const idx = speeds.indexOf(prev);
@@ -4668,6 +4810,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                           <Tooltip title={isTTSPlaying() ? 'Pause TTS' : 'Resume TTS'}>
                             <IconButton
                               size="small"
+                              aria-label={isTTSPlaying() ? 'Pause TTS' : 'Fortsett TTS'}
                               onClick={() => {
                                 if (isTTSPlaying()) {
                                   pauseTTS();
@@ -4688,6 +4831,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                           <Tooltip title={ttsUseCharacterVoices ? 'Slå av karakterstemmer' : 'Bruk karakterstemmer'}>
                             <IconButton
                               size="small"
+                              aria-label={ttsUseCharacterVoices ? 'Slå av karakterstemmer' : 'Slå på karakterstemmer'}
                               onClick={() => setTtsUseCharacterVoices(prev => !prev)}
                               sx={{
                                 color: ttsUseCharacterVoices ? '#8b5cf6' : '#4b5563',
@@ -4698,6 +4842,31 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                               <TheaterIcon sx={{ fontSize: 14 }} />
                             </IconButton>
                           </Tooltip>
+                          {/* AI voice-casting indicator — lit when Claude analysis is active for this scene */}
+                          {ttsUseCharacterVoices &&
+                            selectedScene &&
+                            readThroughAnalysis.status === 'ready' &&
+                            readThroughAnalysis.analyzedSceneId === selectedScene.id &&
+                            readThroughAnalysis.voiceCastingByCharacter.size > 0 && (
+                              <Tooltip
+                                title={`AI-cast: ${readThroughAnalysis.voiceCastingByCharacter.size} karakter(er) får stemme fra scene-analyse`}
+                              >
+                                <Chip
+                                  data-testid="pmv-ai-cast-badge"
+                                  size="small"
+                                  icon={<AutoAwesomeIcon sx={{ fontSize: 10 }} />}
+                                  label="AI-cast"
+                                  sx={{
+                                    height: 18,
+                                    fontSize: 9,
+                                    bgcolor: 'rgba(139,92,246,0.15)',
+                                    color: '#c4b5fd',
+                                    border: '1px solid rgba(139,92,246,0.4)',
+                                    '& .MuiChip-icon': { color: '#a78bfa', ml: '4px' },
+                                  }}
+                                />
+                              </Tooltip>
+                            )}
                         </>
                       )}
                     </Stack>
@@ -4712,31 +4881,34 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                 </Typography>
               )}
               <Tooltip title="Zoom inn">
-                <IconButton 
+                <IconButton
                   size={responsive.buttonSize}
                   onClick={handleManuscriptZoomIn}
                   disabled={manuscriptZoom >= 2}
+                  aria-label="Zoom inn manus"
                   sx={{ color: '#6b7280', '&:hover': { color: '#fff' }, '&.Mui-disabled': { color: '#374151' }, p: isMobile ? 0.5 : 1 }}
                 >
                   <ZoomInIcon sx={{ fontSize: responsive.iconSize }} />
                 </IconButton>
               </Tooltip>
               <Tooltip title="Zoom ut">
-                <IconButton 
+                <IconButton
                   size={responsive.buttonSize}
                   onClick={handleManuscriptZoomOut}
                   disabled={manuscriptZoom <= 0.5}
+                  aria-label="Zoom ut manus"
                   sx={{ color: '#6b7280', '&:hover': { color: '#fff' }, '&.Mui-disabled': { color: '#374151' }, p: isMobile ? 0.5 : 1 }}
                 >
                   <ZoomOutIcon sx={{ fontSize: responsive.iconSize }} />
                 </IconButton>
               </Tooltip>
               <Tooltip title={isManuscriptFullscreen ? "Avslutt fullskjerm" : "Fullskjerm"}>
-                <IconButton 
+                <IconButton
                   size={responsive.buttonSize}
                   onClick={handleManuscriptFullscreen}
-                  sx={{ 
-                    color: isManuscriptFullscreen ? '#3b82f6' : '#6b7280', 
+                  aria-label={isManuscriptFullscreen ? 'Avslutt fullskjerm' : 'Åpne fullskjerm'}
+                  sx={{
+                    color: isManuscriptFullscreen ? '#3b82f6' : '#6b7280',
                     '&:hover': { color: '#fff' },
                     p: isMobile ? 0.5 : 1,
                   }}
@@ -4746,6 +4918,83 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               </Tooltip>
             </Stack>
           </Box>
+
+          {/* Scene Brief — shown when read-through analysis is ready for the active scene */}
+          {readThroughMode &&
+            selectedScene &&
+            readThroughAnalysis.status === 'ready' &&
+            readThroughAnalysis.analyzedSceneId === selectedScene.id &&
+            readThroughAnalysis.analysis && (
+              <Box
+                data-testid="pmv-read-through-scene-brief"
+                sx={{
+                  px: isMobile ? 1.5 : 3,
+                  py: 1.5,
+                  borderBottom: '1px solid rgba(139,92,246,0.25)',
+                  background:
+                    'linear-gradient(180deg, rgba(88,28,135,0.18), rgba(15,23,42,0.6))',
+                }}
+              >
+                <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.75 }}>
+                  <AutoAwesomeIcon sx={{ fontSize: 14, color: '#a78bfa' }} />
+                  <Typography
+                    sx={{ fontSize: 10, fontWeight: 700, color: '#a78bfa', letterSpacing: 1 }}
+                  >
+                    SCENE BRIEF
+                  </Typography>
+                </Stack>
+                {readThroughAnalysis.analysis.sceneBrief.logline && (
+                  <Typography
+                    data-testid="pmv-scene-brief-logline"
+                    sx={{ fontSize: 13, color: '#e5e7eb', mb: 0.5, fontStyle: 'italic' }}
+                  >
+                    {readThroughAnalysis.analysis.sceneBrief.logline}
+                  </Typography>
+                )}
+                <Stack
+                  direction={isMobile ? 'column' : 'row'}
+                  spacing={isMobile ? 0.5 : 3}
+                  sx={{ mt: 0.5 }}
+                >
+                  {readThroughAnalysis.analysis.sceneBrief.emotionalArc && (
+                    <Typography sx={{ fontSize: 11, color: '#cbd5e1' }}>
+                      <span style={{ color: '#9ca3af', fontWeight: 600 }}>Bue:</span>{' '}
+                      {readThroughAnalysis.analysis.sceneBrief.emotionalArc}
+                    </Typography>
+                  )}
+                  {readThroughAnalysis.analysis.sceneBrief.conflict && (
+                    <Typography sx={{ fontSize: 11, color: '#cbd5e1' }}>
+                      <span style={{ color: '#9ca3af', fontWeight: 600 }}>Konflikt:</span>{' '}
+                      {readThroughAnalysis.analysis.sceneBrief.conflict}
+                    </Typography>
+                  )}
+                </Stack>
+                {readThroughAnalysis.analysis.sceneBrief.beats.length > 0 && (
+                  <Stack
+                    direction="row"
+                    spacing={0.75}
+                    flexWrap="wrap"
+                    useFlexGap
+                    sx={{ mt: 0.75 }}
+                  >
+                    {readThroughAnalysis.analysis.sceneBrief.beats.map((beat, idx) => (
+                      <Chip
+                        key={idx}
+                        size="small"
+                        label={`${idx + 1}. ${beat}`}
+                        sx={{
+                          height: 20,
+                          fontSize: 10,
+                          bgcolor: 'rgba(139,92,246,0.12)',
+                          color: '#c4b5fd',
+                          border: '1px solid rgba(139,92,246,0.3)',
+                        }}
+                      />
+                    ))}
+                  </Stack>
+                )}
+              </Box>
+            )}
 
           {/* Manuscript Content */}
           {centerWorkspace === 'coverage-review' ? (
@@ -5168,6 +5417,80 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                 {/* Production Notes / Read Through Notes */}
                 {readThroughMode && selectedScene ? (
                   <Box sx={{ p: 3, borderBottom: '1px solid #252d3d' }}>
+                    {/* Active-line delivery hint — shown only when scene is analysed */}
+                    {readThroughAnalysis.status === 'ready' &&
+                      readThroughAnalysis.analyzedSceneId === selectedScene.id &&
+                      (() => {
+                        const activeLine = allDialogue[readThroughCurrentLine];
+                        if (!activeLine) return null;
+                        const hint = readThroughAnalysis.lineHintsById.get(activeLine.id);
+                        if (!hint || (!hint.subtext && !hint.delivery)) return null;
+                        const emphasisColor =
+                          hint.emphasis === 'high'
+                            ? '#f87171'
+                            : hint.emphasis === 'low'
+                              ? '#94a3b8'
+                              : '#a78bfa';
+                        return (
+                          <Box
+                            data-testid="pmv-line-hint"
+                            sx={{
+                              mb: 2,
+                              p: 1.5,
+                              borderRadius: '8px',
+                              bgcolor: 'rgba(139,92,246,0.08)',
+                              border: '1px solid rgba(139,92,246,0.25)',
+                            }}
+                          >
+                            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
+                              <AutoAwesomeIcon sx={{ fontSize: 12, color: '#a78bfa' }} />
+                              <Typography
+                                sx={{
+                                  fontSize: 9,
+                                  fontWeight: 700,
+                                  color: '#a78bfa',
+                                  letterSpacing: 1,
+                                }}
+                              >
+                                LEVERING
+                              </Typography>
+                              <Chip
+                                size="small"
+                                label={hint.emphasis}
+                                sx={{
+                                  height: 16,
+                                  fontSize: 9,
+                                  bgcolor: `${emphasisColor}20`,
+                                  color: emphasisColor,
+                                  border: `1px solid ${emphasisColor}55`,
+                                }}
+                              />
+                              {hint.pauseBefore > 0 && (
+                                <Typography sx={{ fontSize: 9, color: '#94a3b8' }}>
+                                  pause {hint.pauseBefore}ms
+                                </Typography>
+                              )}
+                            </Stack>
+                            {hint.subtext && (
+                              <Typography
+                                data-testid="pmv-line-hint-subtext"
+                                sx={{ fontSize: 12, color: '#e5e7eb', mb: 0.5 }}
+                              >
+                                <span style={{ color: '#94a3b8', fontWeight: 600 }}>Subtekst:</span>{' '}
+                                {hint.subtext}
+                              </Typography>
+                            )}
+                            {hint.delivery && (
+                              <Typography
+                                data-testid="pmv-line-hint-delivery"
+                                sx={{ fontSize: 12, color: '#c4b5fd', fontStyle: 'italic' }}
+                              >
+                                {hint.delivery}
+                              </Typography>
+                            )}
+                          </Box>
+                        );
+                      })()}
                     <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
                       <Typography sx={{ fontSize: 12, fontWeight: 600, color: '#9ca3af', letterSpacing: 0.5 }}>
                         READ THROUGH NOTES
@@ -5282,11 +5605,12 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                         {selectedSceneShots.length} shots
                       </Typography>
                       <Tooltip title="Legg til shot">
-                        <IconButton 
-                          size="small" 
+                        <IconButton
+                          size="small"
                           onClick={handleAddNewShot}
                           data-testid="pmv-add-shot-button"
-                          sx={{ 
+                          aria-label="Legg til shot"
+                          sx={{
                             color: '#6b7280',
                             bgcolor: 'rgba(59,130,246,0.1)',
                             '&:hover': { bgcolor: 'rgba(59,130,246,0.2)', color: '#3b82f6' },
@@ -5484,6 +5808,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                 <IconButton
                   size={responsive.buttonSize}
                   onClick={handleTimelinePlay}
+                  aria-label={timelineIsPlaying ? 'Pause timeline' : 'Spill av timeline'}
                   sx={{
                     color: timelineIsPlaying ? '#10b981' : '#6b7280',
                     bgcolor: timelineIsPlaying ? 'rgba(16,185,129,0.15)' : 'rgba(255,255,255,0.05)',
@@ -5499,6 +5824,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                   size={responsive.buttonSize}
                   onClick={handleTimelineZoomIn}
                   disabled={timelineZoom >= 4}
+                  aria-label="Zoom inn timeline"
                   sx={{
                     color: '#6b7280',
                     '&:hover': { color: '#3b82f6' },
@@ -5514,6 +5840,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                   size={responsive.buttonSize}
                   onClick={handleTimelineZoomOut}
                   disabled={timelineZoom <= 0.5}
+                  aria-label="Zoom ut timeline"
                   sx={{
                     color: '#6b7280',
                     '&:hover': { color: '#3b82f6' },
@@ -5725,11 +6052,12 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               {formatTime(getTotalDuration())}
             </Typography>
             <Tooltip title={timelineViewMode === 'grid' ? "Grid view aktiv" : "Grid view"}>
-              <IconButton 
+              <IconButton
                 size={responsive.buttonSize}
                 onClick={() => handleTimelineViewChange('grid')}
-                sx={{ 
-                  color: timelineViewMode === 'grid' ? '#3b82f6' : '#6b7280', 
+                aria-label="Vis timeline som grid"
+                sx={{
+                  color: timelineViewMode === 'grid' ? '#3b82f6' : '#6b7280',
                   bgcolor: timelineViewMode === 'grid' ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.05)',
                   '&:hover': { color: '#fff', bgcolor: 'rgba(255,255,255,0.1)' },
                   p: isTablet ? 0.5 : 1,
@@ -5739,11 +6067,12 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               </IconButton>
             </Tooltip>
             <Tooltip title={timelineViewMode === 'list' ? "List view aktiv" : "List view"}>
-              <IconButton 
+              <IconButton
                 size={responsive.buttonSize}
                 onClick={() => handleTimelineViewChange('list')}
-                sx={{ 
-                  color: timelineViewMode === 'list' ? '#3b82f6' : '#6b7280', 
+                aria-label="Vis timeline som liste"
+                sx={{
+                  color: timelineViewMode === 'list' ? '#3b82f6' : '#6b7280',
                   bgcolor: timelineViewMode === 'list' ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.05)',
                   '&:hover': { color: '#fff', bgcolor: 'rgba(255,255,255,0.1)' },
                   p: isTablet ? 0.5 : 1,
@@ -6147,23 +6476,24 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
           {/* Scene Actions */}
           <Stack direction="row" spacing={0.5} sx={{ mt: 1 }}>
             <Tooltip title="Scene referansebilde">
-              <IconButton size="small" onClick={() => selectedScene && dispatchSearch({ type: 'OPEN' })} sx={{ color: '#6b7280', p: 0.5, '&:hover': { color: '#60a5fa' } }}>
+              <IconButton size="small" onClick={() => selectedScene && dispatchSearch({ type: 'OPEN' })} aria-label="Scene referansebilde" sx={{ color: '#6b7280', p: 0.5, '&:hover': { color: '#60a5fa' } }}>
                 <ImageIcon sx={{ fontSize: 14 }} />
               </IconButton>
             </Tooltip>
             <Tooltip title="Kamera oppsett">
-              <IconButton size="small" onClick={() => selectedScene && dispatchWorkflow({ type: 'OPEN_SCENE_NEEDS', sceneId: selectedScene.id })} sx={{ color: '#6b7280', p: 0.5, '&:hover': { color: '#f97316' } }}>
+              <IconButton size="small" onClick={() => selectedScene && dispatchWorkflow({ type: 'OPEN_SCENE_NEEDS', sceneId: selectedScene.id })} aria-label="Kameraoppsett for scene" sx={{ color: '#6b7280', p: 0.5, '&:hover': { color: '#f97316' } }}>
                 <CameraAltIcon sx={{ fontSize: 14 }} />
               </IconButton>
             </Tooltip>
             <Tooltip title="Utstyr">
-              <IconButton size="small" onClick={() => selectedScene && setShowEstimateDialog(true)} sx={{ color: '#6b7280', p: 0.5, '&:hover': { color: '#10b981' } }}>
+              <IconButton size="small" onClick={() => selectedScene && setShowEstimateDialog(true)} aria-label="Utstyr for scene" sx={{ color: '#6b7280', p: 0.5, '&:hover': { color: '#10b981' } }}>
                 <InventoryIcon sx={{ fontSize: 14 }} />
               </IconButton>
             </Tooltip>
             <Tooltip title="Søk filmreferanser">
               <IconButton
                 size="small"
+                aria-label="Søk filmreferanser"
                 onClick={async () => {
                   if (selectedScene?.locationName) {
                     const results = await searchByCinematographer(selectedScene.locationName);
@@ -6272,6 +6602,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               <IconButton
                 size="small"
                 onClick={() => setSelectedShot(null)}
+                aria-label="Lukk shot inspector"
                 sx={{ color: '#6b7280', p: 0.5 }}
               >
                 <CloseIcon sx={{ fontSize: 14 }} />
@@ -6910,9 +7241,10 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                       </Typography>
                       <Stack direction="row" spacing={1}>
                         <Tooltip title="Kopier innstillinger til neste shot">
-                          <IconButton 
-                            size="small" 
+                          <IconButton
+                            size="small"
                             onClick={handleCopySettingsToNextShot}
+                            aria-label="Kopier innstillinger til neste shot"
                             sx={{ p: 0.5, color: '#6b7280', '&:hover': { color: '#3b82f6' } }}
                           >
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -6922,10 +7254,11 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                           </IconButton>
                         </Tooltip>
                         <Tooltip title="Lagre som preset">
-                          <IconButton 
-                            size="small" 
+                          <IconButton
+                            size="small"
                             onClick={() => setShowSavePresetDialog(true)}
                             data-testid="pmv-save-preset-open"
+                            aria-label="Lagre som preset"
                             sx={{ p: 0.5, color: '#6b7280', '&:hover': { color: '#10b981' } }}
                           >
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -7213,6 +7546,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                               <IconButton
                                 className="delete-btn"
                                 size="small"
+                                aria-label="Fjern opplastet referanse"
                                 onClick={() => dispatchSearch({ type: 'REMOVE_UPLOADED_REF', index: idx })}
                                 sx={{
                                   position: 'absolute',
@@ -7424,7 +7758,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                                 </Box>
                               )}
                             </Stack>
-                            <IconButton size="small" onClick={() => dispatchSearch({ type: 'CLOSE' })} sx={{ color: '#6b7280' }}>
+                            <IconButton size="small" onClick={() => dispatchSearch({ type: 'CLOSE' })} aria-label="Lukk filmreferanse-søk" sx={{ color: '#6b7280' }}>
                               <CloseIcon sx={{ fontSize: 20 }} />
                             </IconButton>
                           </Stack>
@@ -7950,7 +8284,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
             <Typography sx={{ fontSize: 18, fontWeight: 600, color: '#fff' }}>
               <Stack direction="row" spacing={1} alignItems="center"><StripboardIcon sx={{ color: '#60a5fa' }} /> Stripboard - TROLL</Stack>
             </Typography>
-            <IconButton onClick={() => dispatchWorkflow({ type: 'CLOSE_VIEW' })} sx={{ color: '#9ca3af' }}>
+            <IconButton onClick={() => dispatchWorkflow({ type: 'CLOSE_VIEW' })} aria-label="Lukk stripboard" sx={{ color: '#9ca3af' }}>
               <CloseIcon />
             </IconButton>
           </Box>
@@ -8020,7 +8354,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
             <Typography sx={{ fontSize: 18, fontWeight: 600, color: '#fff' }}>
               <Stack direction="row" spacing={1} alignItems="center"><CalendarIcon sx={{ color: '#60a5fa' }} /> Opptaksplan - TROLL</Stack>
             </Typography>
-            <IconButton onClick={() => dispatchWorkflow({ type: 'CLOSE_VIEW' })} sx={{ color: '#9ca3af' }}>
+            <IconButton onClick={() => dispatchWorkflow({ type: 'CLOSE_VIEW' })} aria-label="Lukk opptaksplan" sx={{ color: '#9ca3af' }}>
               <CloseIcon />
             </IconButton>
           </Box>
@@ -8175,7 +8509,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               Call Sheet Preview - TROLL
             </Stack>
           </Typography>
-          <IconButton onClick={() => dispatchWorkflow({ type: 'CLOSE_MODAL' })} sx={{ color: '#4a4a4a' }}>
+          <IconButton onClick={() => dispatchWorkflow({ type: 'CLOSE_MODAL' })} aria-label="Lukk Call Sheet" sx={{ color: '#4a4a4a' }}>
             <CloseIcon />
           </IconButton>
         </DialogTitle>
@@ -8288,6 +8622,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                 setShowTalentPanel(false);
                 setMobileRightPanelOpen(false);
               }}
+              aria-label="Lukk cast-panel"
               size={responsive.buttonSize}
               sx={{ color: '#6b7280', '&:hover': { color: '#fff' } }}
             >
@@ -9662,10 +9997,10 @@ const EditableDetailRow: FC<EditableDetailRowProps> = ({
             },
           }}
         />
-        <IconButton size="small" onClick={onSave} sx={{ color: '#4ade80', p: 0.5 }}>
+        <IconButton size="small" onClick={onSave} aria-label="Lagre endring" sx={{ color: '#4ade80', p: 0.5 }}>
           <CheckIcon sx={{ fontSize: 16 }} />
         </IconButton>
-        <IconButton size="small" onClick={onCancel} sx={{ color: '#f87171', p: 0.5 }}>
+        <IconButton size="small" onClick={onCancel} aria-label="Avbryt redigering" sx={{ color: '#f87171', p: 0.5 }}>
           <CloseIcon sx={{ fontSize: 16 }} />
         </IconButton>
       </Box>
@@ -9700,6 +10035,7 @@ const EditableDetailRow: FC<EditableDetailRowProps> = ({
           <IconButton
             className="edit-icon"
             size="small"
+            aria-label="Rediger verdi"
             onClick={(e) => { e.stopPropagation(); onStartEdit(); }}
             sx={{ 
               opacity: 0, 

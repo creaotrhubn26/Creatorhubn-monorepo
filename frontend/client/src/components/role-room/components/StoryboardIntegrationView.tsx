@@ -1027,7 +1027,7 @@ export const StoryboardIntegrationView: React.FC<StoryboardIntegrationViewProps>
           }}
           action={
             <Tooltip title="Koble frame til denne posisjonen i manus">
-              <IconButton size="small" onClick={linkFrameToCurrentPosition}>
+              <IconButton size="small" onClick={linkFrameToCurrentPosition} aria-label="Koble frame til denne posisjonen i manus">
                 <LinkIcon sx={{ fontSize: 16 }} />
               </IconButton>
             </Tooltip>
@@ -2595,6 +2595,7 @@ const StoryboardView: React.FC<{
                           size="small"
                           color="error"
                           onClick={() => handleDeleteLibraryItem(item.id)}
+                          aria-label="Slett fra bibliotek"
                         >
                           <DeleteIcon fontSize="small" />
                         </IconButton>
@@ -2604,6 +2605,7 @@ const StoryboardView: React.FC<{
                           size="small"
                           color="primary"
                           onClick={() => setCreditHistoryItemId(item.id)}
+                          aria-label="Vis krediteringshistorikk"
                         >
                           <HistoryIcon fontSize="small" />
                         </IconButton>
@@ -2657,6 +2659,7 @@ const StoryboardView: React.FC<{
                             size="small"
                             color="error"
                             onClick={() => handleDeleteLibraryFolder(column.id)}
+                            aria-label={`Slett mappe ${column.name}`}
                           >
                             <DeleteIcon fontSize="small" />
                           </IconButton>
@@ -2762,6 +2765,7 @@ const StoryboardView: React.FC<{
                                       size="small"
                                       color="primary"
                                       onClick={() => setCreditHistoryItemId(item.id)}
+                                      aria-label="Vis krediteringshistorikk"
                                     >
                                       <HistoryIcon fontSize="small" />
                                     </IconButton>
@@ -2769,6 +2773,7 @@ const StoryboardView: React.FC<{
                                       size="small"
                                       color="error"
                                       onClick={() => handleDeleteLibraryItem(item.id)}
+                                      aria-label="Slett fra bibliotek"
                                     >
                                       <DeleteIcon fontSize="small" />
                                     </IconButton>
@@ -3310,6 +3315,7 @@ const StoryboardFrameCard: React.FC<{
           <Tooltip title="Hurtigvisning">
             <IconButton
               size="small"
+              aria-label="Hurtigvisning"
               onClick={(event) => {
                 event.stopPropagation();
                 onSelect?.();
@@ -3338,6 +3344,7 @@ const StoryboardFrameCard: React.FC<{
           <Tooltip title="Rediger tegning">
             <IconButton
               size="small"
+              aria-label="Rediger tegning"
               onClick={(e) => {
                 e.stopPropagation();
                 onSelect?.();
@@ -3369,6 +3376,7 @@ const StoryboardFrameCard: React.FC<{
         >
           <IconButton
             size="small"
+            aria-label="Kamerainnstillinger"
             sx={{
               bgcolor: 'rgba(15,23,42,0.92)',
               color: 'rgba(125,211,252,0.98)',
@@ -3391,6 +3399,7 @@ const StoryboardFrameCard: React.FC<{
           </IconButton>
           <IconButton
             size="small"
+            aria-label="Lysinnstillinger"
             sx={{
               bgcolor: 'rgba(15,23,42,0.92)',
               color: 'rgba(253,230,138,0.98)',
@@ -3464,6 +3473,7 @@ const StoryboardFrameCard: React.FC<{
               <IconButton
                 size="small"
                 color="secondary"
+                aria-label="Lagre i storyboard-bibliotek"
                 onClick={(event) => {
                   event.stopPropagation();
                   onSaveToLibraryClick?.();
@@ -3476,6 +3486,7 @@ const StoryboardFrameCard: React.FC<{
               <IconButton
                 size="small"
                 color="primary"
+                aria-label="Dupliser panel"
                 onClick={(event) => {
                   event.stopPropagation();
                   onDuplicateClick?.();
@@ -3488,6 +3499,7 @@ const StoryboardFrameCard: React.FC<{
               <IconButton
                 size="small"
                 color="primary"
+                aria-label="Lag 3 varianter"
                 onClick={(event) => {
                   event.stopPropagation();
                   onCreateVariantsClick?.();
@@ -3504,13 +3516,14 @@ const StoryboardFrameCard: React.FC<{
                 event.stopPropagation();
                 onEditClick?.();
               }}
+              aria-label="Rediger storyboard-frame"
             >
               <EditIcon fontSize="small" />
             </IconButton>
             <IconButton size="small" color="error" onClick={(event) => {
               event.stopPropagation();
               onDeleteClick?.();
-            }}>
+            }} aria-label="Slett storyboard-frame">
               <DeleteIcon fontSize="small" />
             </IconButton>
           </Stack>
@@ -3656,22 +3669,23 @@ const ShotListView: React.FC<{
                 <Stack direction="row" spacing={1}>
                   {editingFrameId === frame.id ? (
                     <>
-                      <IconButton size="small" color="primary" onClick={commitEdit}>
+                      <IconButton size="small" color="primary" onClick={commitEdit} aria-label="Lagre endringer">
                         <SaveIcon fontSize="small" />
                       </IconButton>
-                      <IconButton size="small" color="inherit" onClick={cancelEdit}>
+                      <IconButton size="small" color="inherit" onClick={cancelEdit} aria-label="Avbryt redigering">
                         <CloseIcon fontSize="small" />
                       </IconButton>
                     </>
                   ) : (
                     <>
-                      <IconButton size="small" color="primary" onClick={() => beginEdit(frame)}>
+                      <IconButton size="small" color="primary" onClick={() => beginEdit(frame)} aria-label="Rediger frame">
                         <EditIcon fontSize="small" />
                       </IconButton>
                       <IconButton
                         size="small"
                         color="error"
                         onClick={() => onUpdate(frames.filter((item) => item.id !== frame.id))}
+                        aria-label="Slett frame"
                       >
                         <DeleteIcon fontSize="small" />
                       </IconButton>
