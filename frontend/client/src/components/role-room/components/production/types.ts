@@ -666,7 +666,7 @@ export interface CenterReference {
   title?: string;
 }
 
-export type SearchSource = 'all' | 'shotcafe' | 'unsplash';
+export type SearchSource = 'all' | 'shotcafe' | 'unsplash' | 'archive';
 
 export interface SearchUIState {
   open: boolean;

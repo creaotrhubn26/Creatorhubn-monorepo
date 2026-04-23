@@ -170,6 +170,7 @@ import {
 import AddShotDialog, { type AddShotDialogCreatePayload } from "./production/AddShotDialog";
 import SceneStoryboardDialog from "./production/SceneStoryboardDialog";
 import ProductionNotesPanel from "./production/ProductionNotesPanel";
+import ReferenceArchivePanel from "./production/ReferenceArchivePanel";
 import {
   DEFAULT_FILTERS,
   DEFAULT_SHOT_PROPERTIES,
@@ -7821,6 +7822,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                                   { id: 'all', label: 'Alle kilder' },
                                   { id: 'shotcafe', label: 'shot.cafe' },
                                   { id: 'unsplash', label: 'Unsplash' },
+                                  { id: 'archive', label: 'Vårt arkiv' },
                                 ].map(source => (
                                   <Box
                                     key={source.id}
@@ -7871,7 +7873,12 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
 
                         {/* Search Results */}
                         <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
-                          {referenceSearchLoading ? (
+                          {searchSource === 'archive' ? (
+                            <ReferenceArchivePanel
+                              projectId={projectId}
+                              onPickFrame={(url) => dispatchSearch({ type: 'ADD_REF_AND_CLOSE', url })}
+                            />
+                          ) : referenceSearchLoading ? (
                             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', py: 8 }}>
                               <Box sx={{ 
                                 width: 40, 
