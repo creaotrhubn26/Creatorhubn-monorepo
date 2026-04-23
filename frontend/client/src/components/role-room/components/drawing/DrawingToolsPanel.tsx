@@ -560,7 +560,7 @@ export const DrawingToolsPanel: React.FC<DrawingToolsPanelProps> = ({
         <Typography variant="subtitle2" sx={{ fontWeight: 600, pl: 1 }}>
           Drawing Tools
         </Typography>
-        <IconButton size="small" onClick={() => setCollapsed(true)}>
+        <IconButton size="small" onClick={() => setCollapsed(true)} aria-label="Skjul verktøyspanel">
           {position === 'right' ? <ExpandMore sx={{ transform: 'rotate(90deg)' }} /> : <ExpandLess sx={{ transform: 'rotate(90deg)' }} />}
         </IconButton>
       </Box>

@@ -544,6 +544,7 @@ export const LayersPanel: React.FC<LayersPanelProps> = ({
                     setMenuAnchor(e.currentTarget);
                     setMenuLayerId(layer.id);
                   }}
+                  aria-label={`Flere handlinger for lag ${layer.name ?? layer.id}`}
                 >
                   <MoreVert sx={{ fontSize: 16 }} />
                 </IconButton>

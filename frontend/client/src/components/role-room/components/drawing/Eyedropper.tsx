@@ -441,6 +441,7 @@ export const Eyedropper: React.FC<EyedropperProps> = ({
             <IconButton
               size="small"
               onClick={() => onActiveChange(!isActive)}
+              aria-label={isActive ? 'Deaktiver pipette' : 'Aktiver pipette'}
               sx={{
                 bgcolor: isActive ? 'primary.main' : 'transparent',
                 '&:hover': { bgcolor: isActive ? 'primary.dark' : 'rgba(255,255,255,0.1)' },

@@ -1013,6 +1013,7 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
                           event.stopPropagation();
                           togglePresetFavorite(preset.id);
                         }}
+                        aria-label={isFavorite ? `Fjern ${preset.name} fra favoritter` : `Legg ${preset.name} til favoritter`}
                         sx={{
                           position: 'absolute',
                           top: -8,
@@ -1084,6 +1085,7 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
                             event.stopPropagation();
                             togglePresetFavorite(preset.id);
                           }}
+                          aria-label={isFavorite ? `Fjern ${preset.name} fra favoritter` : `Legg ${preset.name} til favoritter`}
                           sx={{
                             position: 'absolute',
                             top: -8,
@@ -1163,6 +1165,7 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
                           e.stopPropagation();
                           onTemplateDelete?.(template.id);
                         }}
+                        aria-label={`Slett mal ${template.name}`}
                         sx={{ ml: 0.5, p: 0.25 }}
                       >
                         <Delete sx={{ fontSize: 14, color: 'error.main' }} />

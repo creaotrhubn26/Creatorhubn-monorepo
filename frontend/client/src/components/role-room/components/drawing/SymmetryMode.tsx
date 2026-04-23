@@ -393,6 +393,7 @@ export const SymmetryMode: React.FC<SymmetryModeProps> = ({
             <IconButton
               size="small"
               onClick={() => onSettingsChange({ axisX: 0.5, axisY: 0.5 })}
+              aria-label="Sentrer akse"
             >
               <CenterFocusStrong sx={{ fontSize: 16 }} />
             </IconButton>

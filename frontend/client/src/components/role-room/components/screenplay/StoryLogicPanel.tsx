@@ -1512,7 +1512,7 @@ const ValidationDisplay: React.FC<ValidationDisplayProps> = ({ result, title, on
                       <Typography variant="caption" sx={{ color: '#6b7280' }}>{w.impact}</Typography>
                     </Box>
                     {onJumpToField && (
-                      <IconButton size="small" onClick={() => onJumpToField(w.fieldId)} sx={{ color: '#60a5fa' }}>
+                      <IconButton size="small" onClick={() => onJumpToField(w.fieldId)} aria-label={`Gå til ${getFieldLabelNb(w.fieldId)}`} sx={{ color: '#60a5fa' }}>
                         <GpsFixedIcon sx={{ fontSize: 16 }} />
                       </IconButton>
                     )}

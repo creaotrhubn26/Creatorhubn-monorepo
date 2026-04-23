@@ -634,7 +634,7 @@ export function WarehouseInventoryDialog({
             sx={{ bgcolor: 'rgba(76,175,80,0.2)', color: '#86efac', fontWeight: 700, border: '1px solid rgba(134,239,172,0.32)' }}
           />
         </Box>
-        <IconButton onClick={onClose} sx={{ color: 'rgba(226,232,240,0.8)' }}>
+        <IconButton onClick={onClose} aria-label="Lukk" sx={{ color: 'rgba(226,232,240,0.8)' }}>
           <CloseIcon />
         </IconButton>
       </DialogTitle>
@@ -1248,7 +1248,7 @@ export function WarehouseInventoryDialog({
               </Typography>
             </Box>
           </Stack>
-          <IconButton onClick={() => setQrLabelOpen(false)} sx={{ color: 'rgba(255,255,255,0.7)' }}>
+          <IconButton onClick={() => setQrLabelOpen(false)} aria-label="Lukk QR-etikett" sx={{ color: 'rgba(255,255,255,0.7)' }}>
             <CloseIcon />
           </IconButton>
         </DialogTitle>
@@ -1363,7 +1363,7 @@ export function WarehouseInventoryDialog({
               Skann lager-QR
             </Typography>
           </Stack>
-          <IconButton onClick={() => setQrScanOpen(false)} sx={{ color: 'rgba(255,255,255,0.7)' }}>
+          <IconButton onClick={() => setQrScanOpen(false)} aria-label="Lukk QR-scan" sx={{ color: 'rgba(255,255,255,0.7)' }}>
             <CloseIcon />
           </IconButton>
         </DialogTitle>

@@ -871,9 +871,10 @@ export const BrushLibrary: React.FC<BrushLibraryProps> = ({
               </Typography>
             </Box>
             <Stack direction="row" spacing={0}>
-              <IconButton 
-                size="small" 
+              <IconButton
+                size="small"
                 onClick={(e) => { e.stopPropagation(); toggleFavorite(preset.id); }}
+                aria-label={preset.favorite ? `Fjern ${preset.name} fra favoritter` : `Legg ${preset.name} til i favoritter`}
               >
                 {preset.favorite ? (
                   <Star sx={{ fontSize: 14, color: '#fbbf24' }} />
@@ -888,6 +889,7 @@ export const BrushLibrary: React.FC<BrushLibraryProps> = ({
                   setMenuAnchor(e.currentTarget);
                   setMenuPresetId(preset.id);
                 }}
+                aria-label={`Flere handlinger for ${preset.name}`}
               >
                 <MoreVert sx={{ fontSize: 14 }} />
               </IconButton>
