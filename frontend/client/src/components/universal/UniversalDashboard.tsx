@@ -1278,6 +1278,50 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
     }
   }, [availableTabs.length, tabValue, setTabValue]);
 
+  // Deep-link from iPad (CreatorHub One) + external links:
+  // ``?tab=<id>`` selects the main tab by id (e.g. ``administration``,
+  // ``showcase-admin``). ``?subTab=<id>`` is forwarded to hubs via
+  // the existing ``custom-navigation`` event so sub-sections can
+  // honour it without adding a dozen refs. Runs once per availableTabs
+  // change so profession-switch re-resolves the ids.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (availableTabs.length === 0) return;
+    const params = new URLSearchParams(window.location.search);
+    const targetTab = params.get('tab');
+    if (!targetTab) return;
+    const idx = availableTabs.findIndex(
+      (t) => t.id.toLowerCase() === targetTab.toLowerCase(),
+    );
+    if (idx >= 0 && idx !== tabValue) {
+      setTabValue(idx);
+    }
+    const targetSubTab = params.get('subTab');
+    if (targetSubTab) {
+      // Stash in sessionStorage so the target hub can pick it up
+      // when it mounts — firing a DOM event here would land before
+      // the hub's own listener is attached, since the hub only
+      // mounts once its outer tab is selected.
+      try {
+        sessionStorage.setItem(
+          'creatorhub:pending-subtab',
+          JSON.stringify({ tab: targetTab, subTab: targetSubTab }),
+        );
+      } catch { /* storage disabled: we still select the outer tab */ }
+    }
+    // Eat the query params so internal navigation (e.g. opening a
+    // modal) doesn't keep redirecting. Preserves hash + other params.
+    params.delete('tab');
+    params.delete('subTab');
+    const search = params.toString();
+    const nextUrl = `${window.location.pathname}${search ? `?${search}` : ''}${window.location.hash}`;
+    window.history.replaceState(null, '', nextUrl);
+    // Re-run only when availableTabs identity changes; tabValue is a
+    // read dep and re-evaluating it here would override a user click
+    // after initial mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [availableTabs]);
+
   useEffect(() => {
     const settingsIndex = availableTabs.findIndex((tab) => tab.id === 'settings');
     const enteredSettings = settingsIndex >= 0 && tabValue === settingsIndex && previousMainTabRef.current !== settingsIndex;
@@ -2636,6 +2680,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                     <ProjectProvider>
                       <ProjectCreationWithMemoryCards
                         profession={getComponentProfession(profession)}
+                        userId={currentUser?.id}
                         evendiCoupleId={evendiCoupleId || undefined}
                         initialData={{
                           projectName: uiSettings.submissionProjectData?.projectName,
@@ -2649,7 +2694,15 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                           eventDates: uiSettings.submissionProjectData?.eventDates,
                           location: uiSettings.submissionProjectData?.location,
                           guestCount: uiSettings.submissionProjectData?.guestCount}}
-                        onProjectCreated={() => setShowProjectCreation(false)}
+                        onProjectCreated={async () => {
+                          setShowProjectCreation(false);
+                          // Clear the submission that was being converted
+                          // and refresh dashboard data so the brand-new
+                          // project appears without a manual reload.
+                          setUiSettings(prev => ({ ...prev, submissionProjectData: null }));
+                          await queryClient.invalidateQueries({ queryKey: ['/api/projects'] });
+                          queryClient.invalidateQueries({ queryKey: [`/api/dashboard/${profession}`] });
+                        }}
                       />
                     </ProjectProvider>
                   </SettingsProvider>
