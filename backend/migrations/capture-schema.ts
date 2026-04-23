@@ -45,6 +45,16 @@ export type AssetSignalsJson = {
   eyesOpen?: boolean;
   faceCount?: number;
   duplicateGroupId?: string;
+  /// Written by the Claude Vision analyze route so the review surface can
+  /// sort / filter on AI findings without asking the iPad to re-send them.
+  /// Separate from the on-device signals above so the two never collide.
+  ai?: {
+    subject?: string;
+    confidence?: number;
+    tonality?: string;
+    qualityNotes?: string[];
+    analyzedAt?: string; // ISO timestamp
+  };
 };
 
 export const captureAssets = pgTable(
