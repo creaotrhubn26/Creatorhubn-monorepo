@@ -34,6 +34,8 @@ import * as schema from "../migrations/schema.js";
 import { and, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { createRoleRoomRouter } from "./role-room-routes.js";
 import { createCaptureRouter } from "./capture-routes.js";
+import { createReadThroughAiRouter } from "./read-through-ai-routes.js";
+import { createLiveSetAiRouter } from "./live-set-ai-routes.js";
 import {
   upsertShotListForProject,
   bootstrapCaptureSessionForProject,
@@ -1022,6 +1024,14 @@ registerTidumAdminRoutes(app, pool, requireAdminSession);
 app.use("/api/creatorhub/google", createCreatorHubGoogleRouter(pool, activeSessions));
 app.use("/api/role-room", createRoleRoomRouter(pool, activeSessions));
 app.use("/api/capture", createCaptureRouter(pool, activeSessions));
+app.use(
+  "/api/ai/read-through",
+  createReadThroughAiRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/live-set/ai",
+  createLiveSetAiRouter(pool, { activeSessions }),
+);
 app.use("/api/youtube", createYouTubeRouter(pool));
 app.use("/api/photo-enhancer", createPhotoEnhancerRouter(pool));
 app.use("/api/photo-enhancement", createPhotoEnhancementCompatRouter());
