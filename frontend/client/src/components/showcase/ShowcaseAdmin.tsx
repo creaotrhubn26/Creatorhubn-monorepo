@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { apiRequest } from '@/lib/queryClient';
+import CaptureSessionsPanel from './CaptureSessionsPanel';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useEnhancedMasterIntegration } from "@/integration/EnhancedMasterIntegrationProvider";
 import { useTheming } from '../../utils/theming-helper';
@@ -1551,6 +1552,15 @@ export default function ShowcaseAdmin({
 
   return (
     <Box sx={{ width: '100%', minHeight: '100vh', display: 'flex', flexDirection: 'column', bgcolor: alpha(theme.palette.background.default, 0.5) }}>
+      {/* Capture-session deliver panel — sits at the top of Showcase
+          Admin so photographers coming back from a shoot land
+          directly on their latest sessions + can mint a client
+          gallery in two clicks. Same server endpoint the iPad
+          ``QuickTeaserService`` uses, so desktop + iPad converge. */}
+      <Box sx={{ px: 3, pt: 3 }}>
+        <CaptureSessionsPanel />
+      </Box>
+
       {/* Header with tabs */}
       <Paper sx={{ 
         mb: 0, 
