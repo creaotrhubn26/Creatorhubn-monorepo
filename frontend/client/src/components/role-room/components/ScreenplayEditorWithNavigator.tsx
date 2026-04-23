@@ -620,6 +620,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
           <IconButton
             size={responsive.buttonSize}
             onClick={() => dispatchUi({ type: 'OPEN_LEFT_DRAWER' })}
+            aria-label="Åpne scenenavigator"
             sx={{ color: 'text.secondary' }}
           >
             <MenuIcon sx={{ fontSize: responsive.iconSize }} />
@@ -806,6 +807,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
             onClick={() => dispatchUi({ type: 'OPEN_RIGHT_DRAWER' })}
             disabled={rightPanel === 'none'}
             color={rightPanel !== 'none' ? 'primary' : 'default'}
+            aria-label="Åpne analysepanel"
           >
             <Badge badgeContent={issueCount} color="warning" max={99}>
               <AnalysisIcon sx={{ fontSize: responsive.iconSize }} />
@@ -879,7 +881,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
             }}
           >
             <Box sx={{ p: 1, display: 'flex', justifyContent: 'flex-end' }}>
-              <IconButton onClick={() => dispatchUi({ type: 'CLOSE_LEFT_DRAWER' })} size="small">
+              <IconButton onClick={() => dispatchUi({ type: 'CLOSE_LEFT_DRAWER' })} size="small" aria-label="Lukk scenenavigator">
                 <CloseIcon />
               </IconButton>
             </Box>
@@ -1018,7 +1020,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
                 <ToggleButton value="beatboard"><BeatBoardIcon sx={{ fontSize: 18 }} /></ToggleButton>
                 <ToggleButton value="tableread"><TableReadIcon sx={{ fontSize: 18 }} /></ToggleButton>
               </ToggleButtonGroup>
-              <IconButton onClick={() => dispatchUi({ type: 'CLOSE_RIGHT_DRAWER' })} size="small">
+              <IconButton onClick={() => dispatchUi({ type: 'CLOSE_RIGHT_DRAWER' })} size="small" aria-label="Lukk analysepanel">
                 <CloseIcon />
               </IconButton>
             </Box>

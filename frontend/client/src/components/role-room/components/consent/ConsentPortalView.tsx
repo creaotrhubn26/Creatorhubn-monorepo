@@ -292,6 +292,7 @@ export default function ConsentPortalView({
                 <InputAdornment position="end">
                   <IconButton
                     onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? 'Skjul passord' : 'Vis passord'}
                     sx={{ color: 'rgba(255,255,255,0.87)' }}
                   >
                     {showPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}

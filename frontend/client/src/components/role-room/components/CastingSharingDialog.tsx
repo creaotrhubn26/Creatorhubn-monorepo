@@ -1107,7 +1107,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
             <ShareIcon sx={{ fontSize: '1.5rem', color: '#00d4ff' }} />
             <Typography variant="h6">Del prosjekt</Typography>
           </Box>
-          <IconButton onClick={onClose} sx={{ color: 'rgba(255,255,255,0.87)' }}>
+          <IconButton onClick={onClose} aria-label="Lukk" sx={{ color: 'rgba(255,255,255,0.87)' }}>
             <CloseIcon />
           </IconButton>
         </Box>

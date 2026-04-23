@@ -310,7 +310,7 @@ export const TimelineView: FC<TimelineViewProps> = ({
           </Box>
 
           <Stack direction="row" spacing={1.25} alignItems="center" sx={{ minWidth: 240 }}>
-            <IconButton size="small" onClick={() => setZoom((prev) => Math.max(0.6, prev - 0.1))}>
+            <IconButton size="small" onClick={() => setZoom((prev) => Math.max(0.6, prev - 0.1))} aria-label="Zoom ut">
               <ZoomOutIcon fontSize="small" />
             </IconButton>
             <Slider
@@ -322,7 +322,7 @@ export const TimelineView: FC<TimelineViewProps> = ({
               sx={{ minWidth: 120 }}
               size="small"
             />
-            <IconButton size="small" onClick={() => setZoom((prev) => Math.min(2.4, prev + 0.1))}>
+            <IconButton size="small" onClick={() => setZoom((prev) => Math.min(2.4, prev + 0.1))} aria-label="Zoom inn">
               <ZoomInIcon fontSize="small" />
             </IconButton>
             <Typography variant="caption" sx={{ minWidth: 42, textAlign: 'right', fontWeight: 600 }}>

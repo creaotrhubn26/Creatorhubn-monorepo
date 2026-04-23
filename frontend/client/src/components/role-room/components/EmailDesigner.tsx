@@ -1689,6 +1689,7 @@ export function EmailDesigner({
           Versjonshistorikk
           <IconButton
             onClick={() => setHistoryDialogOpen(false)}
+            aria-label="Lukk versjonshistorikk"
             sx={{ ml: 'auto', color: 'rgba(255,255,255,0.87)' }}
           >
             <CloseIcon />
@@ -1758,6 +1759,7 @@ export function EmailDesigner({
           Velg mottakere
           <IconButton
             onClick={() => setRecipientDialogOpen(false)}
+            aria-label="Lukk mottakere"
             sx={{ ml: 'auto', color: 'rgba(255,255,255,0.87)' }}
           >
             <CloseIcon />
@@ -1864,6 +1866,7 @@ export function EmailDesigner({
           Send e-post
           <IconButton
             onClick={() => setSendOptionsDialogOpen(false)}
+            aria-label="Lukk sendeinnstillinger"
             sx={{ ml: 'auto', color: 'rgba(255,255,255,0.87)' }}
           >
             <CloseIcon />

@@ -434,9 +434,10 @@ export const TutorialEditorPanel: React.FC<TutorialEditorPanelProps> = ({
             sx={{ mr: spacing, fontSize: fontSize.caption, height: chipHeight }}
           />
         )}
-        <IconButton 
-          onClick={onClose} 
-          sx={{ 
+        <IconButton
+          onClick={onClose}
+          aria-label="Lukk veiledningseditor"
+          sx={{
             color: 'rgba(255,255,255,0.87)',
             minWidth: iconButtonSize,
             minHeight: iconButtonSize,
@@ -462,9 +463,10 @@ export const TutorialEditorPanel: React.FC<TutorialEditorPanelProps> = ({
             }}
           >
             <Box sx={{ p: spacing, borderBottom: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', gap: 1 }}>
-              <IconButton 
-                onClick={() => setSidebarOpen(false)} 
-                sx={{ 
+              <IconButton
+                onClick={() => setSidebarOpen(false)}
+                aria-label="Lukk meny"
+                sx={{
                   color: 'rgba(255,255,255,0.87)',
                   minWidth: iconButtonSize,
                   minHeight: iconButtonSize,
@@ -687,6 +689,7 @@ export const TutorialEditorPanel: React.FC<TutorialEditorPanelProps> = ({
                         <IconButton
                           onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleMoveStep(index, 'up'); }}
                           disabled={index === 0}
+                          aria-label="Flytt opp"
                           sx={{ color: 'rgba(255,255,255,0.87)', minWidth: iconButtonSize, minHeight: iconButtonSize }}
                         >
                           <MoveUpIcon sx={{ fontSize: iconSize }} />
@@ -694,18 +697,21 @@ export const TutorialEditorPanel: React.FC<TutorialEditorPanelProps> = ({
                         <IconButton
                           onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleMoveStep(index, 'down'); }}
                           disabled={index === selectedTutorial.steps.length - 1}
+                          aria-label="Flytt ned"
                           sx={{ color: 'rgba(255,255,255,0.87)', minWidth: iconButtonSize, minHeight: iconButtonSize }}
                         >
                           <MoveDownIcon sx={{ fontSize: iconSize }} />
                         </IconButton>
                         <IconButton
                           onClick={(e: React.MouseEvent) => { e.stopPropagation(); startEditingStep(step); }}
+                          aria-label="Rediger steg"
                           sx={{ color: '#00d4ff', minWidth: iconButtonSize, minHeight: iconButtonSize }}
                         >
                           <EditIcon sx={{ fontSize: iconSize }} />
                         </IconButton>
                         <IconButton
                           onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleDeleteStep(step.id); }}
+                          aria-label="Slett steg"
                           sx={{ color: '#f44336', minWidth: iconButtonSize, minHeight: iconButtonSize }}
                         >
                           <DeleteIcon sx={{ fontSize: iconSize }} />

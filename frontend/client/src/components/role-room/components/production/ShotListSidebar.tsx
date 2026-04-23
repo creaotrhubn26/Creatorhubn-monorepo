@@ -307,7 +307,7 @@ export function ShotListSidebar({ crew, loading = false, topAssignees = [] }: Sh
               <Typography variant="caption" sx={{ flex: 1, fontWeight: 700, fontSize: '0.65rem', color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                 On Shot ({withShots.length})
               </Typography>
-              <IconButton size="small" sx={{ p: 0 }}>
+              <IconButton size="small" aria-label={rolesExpanded ? 'Skjul' : 'Utvid'} sx={{ p: 0 }}>
                 {rolesExpanded ? <CollapseIcon sx={{ fontSize: 14, color: 'rgba(255,255,255,0.3)' }} /> : <ExpandIcon sx={{ fontSize: 14, color: 'rgba(255,255,255,0.3)' }} />}
               </IconButton>
             </Box>

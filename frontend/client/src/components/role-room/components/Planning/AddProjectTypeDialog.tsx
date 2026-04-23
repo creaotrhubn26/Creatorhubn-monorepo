@@ -57,7 +57,7 @@ const AddProjectTypeDialog: React.FC<AddProjectTypeDialogProps> = ({
     >
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <Typography variant="h6">Legg til prosjekttype</Typography>
-        <IconButton onClick={onClose} sx={{ color: 'rgba(255,255,255,0.87)' }}>
+        <IconButton onClick={onClose} aria-label="Lukk" sx={{ color: 'rgba(255,255,255,0.87)' }}>
           <CloseIcon />
         </IconButton>
       </DialogTitle>

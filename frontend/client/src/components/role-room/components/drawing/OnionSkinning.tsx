@@ -333,20 +333,22 @@ export const OnionSkinning: React.FC<OnionSkinningProps> = ({
             </Typography>
           </Stack>
           <Stack direction="row" alignItems="center" spacing={0.5}>
-            <IconButton 
-              size="small" 
+            <IconButton
+              size="small"
               onClick={() => updateSettings({ framesBefore: Math.max(0, settings.framesBefore - 1) })}
               disabled={!settings.enabled}
+              aria-label="Færre tidligere rammer"
             >
               <Remove sx={{ fontSize: 14 }} />
             </IconButton>
             <Typography variant="body2" sx={{ minWidth: 20, textAlign: 'center' }}>
               {settings.framesBefore}
             </Typography>
-            <IconButton 
-              size="small" 
+            <IconButton
+              size="small"
               onClick={() => updateSettings({ framesBefore: Math.min(5, settings.framesBefore + 1) })}
               disabled={!settings.enabled}
+              aria-label="Flere tidligere rammer"
             >
               <Add sx={{ fontSize: 14 }} />
             </IconButton>
@@ -362,20 +364,22 @@ export const OnionSkinning: React.FC<OnionSkinningProps> = ({
             </Typography>
           </Stack>
           <Stack direction="row" alignItems="center" spacing={0.5}>
-            <IconButton 
-              size="small" 
+            <IconButton
+              size="small"
               onClick={() => updateSettings({ framesAfter: Math.max(0, settings.framesAfter - 1) })}
               disabled={!settings.enabled}
+              aria-label="Færre neste rammer"
             >
               <Remove sx={{ fontSize: 14 }} />
             </IconButton>
             <Typography variant="body2" sx={{ minWidth: 20, textAlign: 'center' }}>
               {settings.framesAfter}
             </Typography>
-            <IconButton 
-              size="small" 
+            <IconButton
+              size="small"
               onClick={() => updateSettings({ framesAfter: Math.min(5, settings.framesAfter + 1) })}
               disabled={!settings.enabled}
+              aria-label="Flere neste rammer"
             >
               <Add sx={{ fontSize: 14 }} />
             </IconButton>

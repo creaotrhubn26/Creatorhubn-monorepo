@@ -377,7 +377,7 @@ export const ShootModeView: React.FC<ShootModeViewProps> = ({
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
           {/* Title and scene */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <IconButton onClick={onClose} sx={{ color: 'rgba(255,255,255,0.87)' }}>
+            <IconButton onClick={onClose} aria-label="Lukk" sx={{ color: 'rgba(255,255,255,0.87)' }}>
               <Close />
             </IconButton>
             <Box>
@@ -417,6 +417,7 @@ export const ShootModeView: React.FC<ShootModeViewProps> = ({
             </Typography>
             <IconButton
               onClick={() => setIsTimerRunning(!isTimerRunning)}
+              aria-label={isTimerRunning ? 'Pause tidtaker' : 'Start tidtaker'}
               sx={{
                 color: isTimerRunning ? '#9333ea' : '#4caf50',
                 bgcolor: isTimerRunning ? 'rgba(147,51,234,0.1)' : 'rgba(76,175,80,0.1)',
@@ -691,6 +692,7 @@ export const ShootModeView: React.FC<ShootModeViewProps> = ({
               <IconButton
                 onClick={() => setCurrentShotIndex(Math.max(0, currentShotIndex - 1))}
                 disabled={currentShotIndex === 0}
+                aria-label="Forrige shot"
                 sx={{ color: '#fff' }}
               >
                 <SkipPrevious />
@@ -701,6 +703,7 @@ export const ShootModeView: React.FC<ShootModeViewProps> = ({
               <IconButton
                 onClick={() => setCurrentShotIndex(Math.min(filteredShots.length - 1, currentShotIndex + 1))}
                 disabled={currentShotIndex === filteredShots.length - 1}
+                aria-label="Neste shot"
                 sx={{ color: '#fff' }}
               >
                 <SkipNext />

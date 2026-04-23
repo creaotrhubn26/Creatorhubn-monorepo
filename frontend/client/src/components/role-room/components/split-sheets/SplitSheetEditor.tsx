@@ -705,7 +705,7 @@ export default function SplitSheetEditor({
                     NSF (Skuespillerforbundet) • NFF (Filmforbundet) • F©R rettighetsforvaltning • Lønnsatser
                   </Typography>
                 </Box>
-                <IconButton size="small">
+                <IconButton size="small" aria-label={showUnionSettings ? 'Skjul fagforeninger' : 'Utvid fagforeninger'}>
                   <ExpandMoreIcon sx={{ transform: showUnionSettings ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.3s' }} />
                 </IconButton>
               </Box>

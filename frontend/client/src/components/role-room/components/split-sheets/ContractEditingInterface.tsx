@@ -408,6 +408,7 @@ export default function ContractEditingInterface({
                     <IconButton
                       onClick={() => handleRemoveParty(index)}
                       size="small"
+                      aria-label="Fjern part"
                       sx={{
                         color: 'error.main',
                         minWidth: { xs: 44, sm: 46, md: 48, lg: 50, xl: 52 },
@@ -526,6 +527,7 @@ export default function ContractEditingInterface({
                     <IconButton
                       onClick={() => handleRemoveObligation(index)}
                       size="small"
+                      aria-label="Fjern forpliktelse"
                       sx={{
                         color: 'error.main',
                         minWidth: { xs: 44, sm: 46, md: 48, lg: 50, xl: 52 },
@@ -629,6 +631,7 @@ export default function ContractEditingInterface({
                     <IconButton
                       onClick={() => handleRemovePaymentTerm(index)}
                       size="small"
+                      aria-label="Fjern betalingsbetingelse"
                       sx={{
                         color: 'error.main',
                         minWidth: { xs: 44, sm: 46, md: 48, lg: 50, xl: 52 },

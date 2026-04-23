@@ -367,10 +367,11 @@ export const ContinuityLogger: FC<ContinuityLoggerProps> = ({
                                 <CheckIcon />
                               </IconButton>
                             </Tooltip>
-                            <IconButton 
-                              size="small" 
+                            <IconButton
+                              size="small"
                               onClick={() => deleteEntry(entry.id)}
                               color="error"
+                              aria-label="Slett oppføring"
                             >
                               <DeleteIcon fontSize="small" />
                             </IconButton>
@@ -596,6 +597,7 @@ export const ContinuityLogger: FC<ContinuityLoggerProps> = ({
                       />
                       <IconButton
                         size="small"
+                        aria-label="Fjern bilde"
                         sx={{
                           position: 'absolute',
                           top: -8,

@@ -365,10 +365,10 @@ export const VfxNotes: React.FC<VfxNotesProps> = ({
                         </Typography>
                       </Box>
                       <Stack direction="row" spacing={0.5}>
-                        <IconButton size="small" onClick={() => editNote(note)}>
+                        <IconButton size="small" onClick={() => editNote(note)} aria-label="Rediger notat">
                           <EditIcon fontSize="small" />
                         </IconButton>
-                        <IconButton size="small" color="error" onClick={() => deleteNote(note.id)}>
+                        <IconButton size="small" color="error" onClick={() => deleteNote(note.id)} aria-label="Slett notat">
                           <DeleteIcon fontSize="small" />
                         </IconButton>
                       </Stack>

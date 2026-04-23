@@ -574,7 +574,7 @@ export default function RoleRoomGoogleCollaborationWorkspace({
                 Les, last ned, del, oppdater og rydd i prosjektets Google Drive-rotmappe direkte fra Role Room.
               </Typography>
             </Box>
-            <IconButton size="small" onClick={() => { void loadDriveFiles(); }} sx={{ color: '#cbd5e1' }}>
+            <IconButton size="small" onClick={() => { void loadDriveFiles(); }} aria-label="Oppdater Drive-filer" sx={{ color: '#cbd5e1' }}>
               <RefreshOutlined fontSize="small" />
             </IconButton>
           </Stack>
@@ -622,19 +622,20 @@ export default function RoleRoomGoogleCollaborationWorkspace({
                         Detaljer
                       </Button>
                       {file.webViewLink ? (
-                        <IconButton size="small" component="a" href={file.webViewLink} target="_blank" rel="noreferrer" sx={{ color: '#cbd5e1' }}>
+                        <IconButton size="small" component="a" href={file.webViewLink} target="_blank" rel="noreferrer" aria-label="Åpne i Google Drive" sx={{ color: '#cbd5e1' }}>
                           <LaunchOutlined fontSize="small" />
                         </IconButton>
                       ) : null}
                       <IconButton
                         size="small"
                         onClick={() => window.open(buildApiHref(`/api/google/drive/files/${encodeURIComponent(file.id)}/download`), '_blank', 'noopener,noreferrer')}
+                        aria-label="Last ned"
                         sx={{ color: '#cbd5e1' }}
                       >
                         <DownloadOutlined fontSize="small" />
                       </IconButton>
                       {canManageGoogleWorkspace ? (
-                        <IconButton size="small" onClick={() => handleDriveDelete(file.id)} sx={{ color: '#fca5a5' }}>
+                        <IconButton size="small" onClick={() => handleDriveDelete(file.id)} aria-label="Slett fra Drive" sx={{ color: '#fca5a5' }}>
                           <DeleteOutline fontSize="small" />
                         </IconButton>
                       ) : null}
@@ -804,7 +805,7 @@ export default function RoleRoomGoogleCollaborationWorkspace({
                 Les brukerens kalendere, se prosjektkalenderen og del den med samarbeidspartnere via e-post eller domene.
               </Typography>
             </Box>
-            <IconButton size="small" onClick={() => { void loadCalendars(); }} sx={{ color: '#cbd5e1' }}>
+            <IconButton size="small" onClick={() => { void loadCalendars(); }} aria-label="Oppdater kalendere" sx={{ color: '#cbd5e1' }}>
               <RefreshOutlined fontSize="small" />
             </IconButton>
           </Stack>
@@ -970,11 +971,11 @@ export default function RoleRoomGoogleCollaborationWorkspace({
               </Typography>
             </Box>
             <Stack direction="row" spacing={0.4}>
-              <IconButton size="small" onClick={() => { void loadChat(); }} sx={{ color: '#cbd5e1' }}>
+              <IconButton size="small" onClick={() => { void loadChat(); }} aria-label="Oppdater Chat-rom" sx={{ color: '#cbd5e1' }}>
                 <RefreshOutlined fontSize="small" />
               </IconButton>
               {canManageGoogleWorkspace ? (
-                <IconButton size="small" onClick={() => { void handleCreateChatSpace(); }} sx={{ color: '#cbd5e1' }}>
+                <IconButton size="small" onClick={() => { void handleCreateChatSpace(); }} aria-label="Opprett Chat-rom" sx={{ color: '#cbd5e1' }}>
                   <SendOutlined fontSize="small" />
                 </IconButton>
               ) : null}
@@ -1008,7 +1009,7 @@ export default function RoleRoomGoogleCollaborationWorkspace({
                     {selectedSpaceRecord.spaceDetails?.description || 'Google Chat-rom klart for prosjektkommunikasjon.'}
                   </Typography>
                   {selectedSpaceRecord.spaceUri ? (
-                    <IconButton size="small" component="a" href={selectedSpaceRecord.spaceUri} target="_blank" rel="noreferrer" sx={{ color: '#cbd5e1' }}>
+                    <IconButton size="small" component="a" href={selectedSpaceRecord.spaceUri} target="_blank" rel="noreferrer" aria-label="Åpne i Google Chat" sx={{ color: '#cbd5e1' }}>
                       <LaunchOutlined fontSize="small" />
                     </IconButton>
                   ) : null}
@@ -1042,6 +1043,7 @@ export default function RoleRoomGoogleCollaborationWorkspace({
                           size="small"
                           onClick={() => { void handleDeleteChatMessage(message.id); }}
                           disabled={chatBusyKey === `chat-delete:${message.id}`}
+                          aria-label="Slett melding"
                           sx={{ color: '#fca5a5' }}
                         >
                           <DeleteOutline fontSize="small" />

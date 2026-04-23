@@ -34,7 +34,7 @@ export const SceneNavigator = ({
         }}
       >
         <Box sx={{ display: 'flex', justifyContent: 'flex-end', p: 1 }}>
-          <IconButton onClick={onMobileClose} sx={{ color: '#6b7280' }}>
+          <IconButton onClick={onMobileClose} aria-label="Lukk scenenavigator" sx={{ color: '#6b7280' }}>
             <CloseIcon sx={{ fontSize: 20 }} />
           </IconButton>
         </Box>

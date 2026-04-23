@@ -2270,9 +2270,10 @@ export default function AdminDashboard({ open, onClose, projectName = 'Mitt Pros
               </Typography>
             </Box>
           </Box>
-          <IconButton 
-            onClick={onClose} 
-            sx={{ 
+          <IconButton
+            onClick={onClose}
+            aria-label="Lukk admin-dashbord"
+            sx={{
               color: 'rgba(255,255,255,0.87)',
               minWidth: iconButtonSize,
               minHeight: iconButtonSize,
@@ -3250,8 +3251,9 @@ export default function AdminDashboard({ open, onClose, projectName = 'Mitt Pros
             <Typography sx={{ flex: 1, fontFamily: 'monospace', color: '#fff', fontSize: fontSize.body }}>
               {generatedPassword}
             </Typography>
-            <IconButton 
-              onClick={() => copyToClipboard(generatedPassword)} 
+            <IconButton
+              onClick={() => copyToClipboard(generatedPassword)}
+              aria-label="Kopier passord"
               sx={{ color: '#8b5cf6', minWidth: iconButtonSize, minHeight: iconButtonSize }}
             >
               <CopyIcon sx={{ fontSize: iconSize }} />

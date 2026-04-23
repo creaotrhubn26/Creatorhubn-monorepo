@@ -149,6 +149,7 @@ const DraggableSceneCard: FC<DraggableSceneCardProps> = ({
           {/* Drag Handle */}
           <IconButton
             size="small"
+            aria-label="Dra for å endre rekkefølge"
             sx={{
               cursor: 'grab',
               '&:active': { cursor: 'grabbing' },

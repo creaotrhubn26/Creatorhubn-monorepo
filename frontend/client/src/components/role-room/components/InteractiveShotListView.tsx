@@ -417,7 +417,7 @@ export const InteractiveShotListView: FC<InteractiveShotListViewProps> = ({
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <IconButton onClick={onClose} sx={{ color: 'rgba(255,255,255,0.87)' }}>
+          <IconButton onClick={onClose} aria-label="Lukk" sx={{ color: 'rgba(255,255,255,0.87)' }}>
             <Close />
           </IconButton>
           <Typography variant="h6" sx={{ color: '#fff', fontWeight: 600, fontSize: isMobile ? 14 : 18 }}>
@@ -451,10 +451,11 @@ export const InteractiveShotListView: FC<InteractiveShotListViewProps> = ({
           >
             {formatTime(elapsedTime)}
           </Typography>
-          <IconButton 
-            size="small" 
+          <IconButton
+            size="small"
             onClick={isTimerRunning ? pauseSession : startSession}
-            sx={{ 
+            aria-label={isTimerRunning ? 'Pause tidtaker' : 'Start tidtaker'}
+            sx={{
               color: isTimerRunning ? '#4caf50' : '#fff',
               p: 0.5,
             }}
@@ -474,11 +475,11 @@ export const InteractiveShotListView: FC<InteractiveShotListViewProps> = ({
               }}
             />
             
-            <IconButton onClick={() => setShowFilters(!showFilters)} sx={{ color: showFilters ? '#e91e63' : 'rgba(255,255,255,0.7)' }}>
+            <IconButton onClick={() => setShowFilters(!showFilters)} aria-label={showFilters ? 'Skjul filtre' : 'Vis filtre'} sx={{ color: showFilters ? '#e91e63' : 'rgba(255,255,255,0.7)' }}>
               <FilterList />
             </IconButton>
-            
-            <IconButton onClick={toggleFullscreen} sx={{ color: 'rgba(255,255,255,0.87)' }}>
+
+            <IconButton onClick={toggleFullscreen} aria-label={isFullscreen ? 'Avslutt fullskjerm' : 'Fullskjerm'} sx={{ color: 'rgba(255,255,255,0.87)' }}>
               {isFullscreen ? <FullscreenExit /> : <Fullscreen />}
             </IconButton>
           </>
@@ -894,6 +895,7 @@ export const InteractiveShotListView: FC<InteractiveShotListViewProps> = ({
             <Box sx={{ display: 'flex', gap: 2, mt: 4 }}>
               <IconButton
                 onClick={() => navigateShot('prev')}
+                aria-label="Forrige shot"
                 sx={{
                   width: 56,
                   height: 56,
@@ -924,6 +926,7 @@ export const InteractiveShotListView: FC<InteractiveShotListViewProps> = ({
 
               <IconButton
                 onClick={() => navigateShot('next')}
+                aria-label="Neste shot"
                 sx={{
                   width: 56,
                   height: 56,
@@ -995,7 +998,7 @@ export const InteractiveShotListView: FC<InteractiveShotListViewProps> = ({
             flexShrink: 0,
           }}
         >
-          <IconButton onClick={() => setShowFilters(!showFilters)} sx={{ color: showFilters ? '#e91e63' : 'rgba(255,255,255,0.7)' }}>
+          <IconButton onClick={() => setShowFilters(!showFilters)} aria-label={showFilters ? 'Skjul filtre' : 'Vis filtre'} sx={{ color: showFilters ? '#e91e63' : 'rgba(255,255,255,0.7)' }}>
             <FilterList />
           </IconButton>
           

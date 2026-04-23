@@ -1051,8 +1051,8 @@ export default function ProjectCreationWithMemoryCards({
   getTerm
 }: ProjectCreationWithMemoryCardsProps) {
   // Get user and profession context with dynamic system support
-  const { user } = useAuth();
-  
+  const { user, isLoading: authLoading } = useAuth();
+
   // Create auth headers for API requests
   const auth = {
     ...authSessionService.getAuthHeadersSync(),
@@ -1431,8 +1431,10 @@ useEffect(() => {
   return () => controller.abort();
 }, [user, profession, projectData?.meetingOption, projectData?.meetingTime, projectData?.meetingDuration]);
 
-  // Check user authentication status
+  // Check user authentication status (only after auth has finished loading to
+  // avoid spamming a warning during the initial token exchange).
   useEffect(() => {
+    if (authLoading) return;
     if (!user) {
       showWarningToast('No authenticated user found. Some features may not work properly.', 6000);
       log.warn('No authenticated user found. Some features may not work properly.');
@@ -1440,7 +1442,7 @@ useEffect(() => {
       showInfoToast('User authenticated successfully', 2000);
       log.info('User authenticated', user.email || user.id);
   }
-}, [user, log, showWarningToast, showInfoToast]);
+}, [user, authLoading, log, showWarningToast, showInfoToast]);
 
   // Feature system integration - component registration and usage tracking
   useEffect(() => {
@@ -3296,7 +3298,7 @@ useEffect(() => {
             <Drafts sx={{ color: 'primary.main' }} />
             Utkast & Versjoner
           </Typography>
-          <IconButton onClick={() => setDraftSidebarOpen(false)} size="small">
+          <IconButton onClick={() => setDraftSidebarOpen(false)} size="small" aria-label="Lukk utkast-sidepanel">
             <ChevronRight />
           </IconButton>
         </Box>

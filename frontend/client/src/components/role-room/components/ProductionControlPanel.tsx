@@ -78,7 +78,7 @@ export const ProductionControlPanel: React.FC<ProductionControlPanelProps> = ({
               </Typography>
             )}
           </Box>
-          <IconButton size="small" onClick={onClose}>
+          <IconButton size="small" onClick={onClose} aria-label="Lukk">
             <CloseIcon />
           </IconButton>
         </Stack>

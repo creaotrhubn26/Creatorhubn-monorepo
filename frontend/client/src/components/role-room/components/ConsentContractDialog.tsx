@@ -1205,6 +1205,7 @@ return (
         </Box>
         <IconButton
           onClick={onClose}
+          aria-label="Lukk"
           sx={{
             color: 'var(--dialog-text)',
             border: '1px solid var(--dialog-border-color)',

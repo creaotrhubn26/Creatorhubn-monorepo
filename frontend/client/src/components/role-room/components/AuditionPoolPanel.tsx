@@ -335,6 +335,7 @@ export const AuditionPoolPanel: FC<AuditionPoolPanelProps> = ({
                   <IconButton
                     size="small"
                     onClick={() => handleDeleteFromPool(audition.id)}
+                    aria-label="Slett fra pool"
                     sx={{
                       color: 'rgba(255,255,255,0.7)',
                       minWidth: TOUCH_TARGET,

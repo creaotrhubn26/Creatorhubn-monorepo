@@ -2412,6 +2412,7 @@ export default function ProducerClientReviewPanel({
                   size="small"
                   onClick={() => stepMobileReview('prev')}
                   disabled={mobileReviewIndex === 0}
+                  aria-label="Forrige"
                   sx={{ color: '#e2e8f0' }}
                 >
                   <ChevronLeftIcon />
@@ -2428,6 +2429,7 @@ export default function ProducerClientReviewPanel({
                   size="small"
                   onClick={() => stepMobileReview('next')}
                   disabled={mobileReviewIndex >= visibleReviewItems.length - 1}
+                  aria-label="Neste"
                   sx={{ color: '#e2e8f0' }}
                 >
                   <ChevronRightIcon />

@@ -398,7 +398,7 @@ export const ShotProgressTracker: React.FC<ShotProgressTrackerProps> = ({
                   sx={{ cursor: 'pointer' }}
                   onClick={() => toggleSceneExpand(scene.id)}
                 >
-                  <IconButton size="small">
+                  <IconButton size="small" aria-label={isExpanded ? 'Skjul scene' : 'Utvid scene'}>
                     {isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
                   </IconButton>
                   <Box sx={{ flex: 1 }}>
@@ -521,10 +521,11 @@ export const ShotProgressTracker: React.FC<ShotProgressTrackerProps> = ({
                                   >
                                     Take
                                   </Button>
-                                  <IconButton 
-                                    size="small" 
+                                  <IconButton
+                                    size="small"
                                     color="success"
                                     onClick={() => markShotComplete(scene.id, shot.id)}
+                                    aria-label="Marker som fullført"
                                   >
                                     <CheckCircleIcon />
                                   </IconButton>
@@ -541,10 +542,11 @@ export const ShotProgressTracker: React.FC<ShotProgressTrackerProps> = ({
                                   >
                                     Godkjenn
                                   </Button>
-                                  <IconButton 
-                                    size="small" 
+                                  <IconButton
+                                    size="small"
                                     color="error"
                                     onClick={() => markRetakeNeeded(scene.id, shot.id)}
+                                    aria-label="Marker for ny take"
                                   >
                                     <RetakeIcon />
                                   </IconButton>

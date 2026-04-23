@@ -134,6 +134,7 @@ export default function SimpleSplitSheetEditor({
                         size="small"
                         onClick={() => handleRemoveContributor(index)}
                         color="error"
+                        aria-label="Fjern bidragsyter"
                       >
                         <DeleteIcon fontSize="small" />
                       </IconButton>

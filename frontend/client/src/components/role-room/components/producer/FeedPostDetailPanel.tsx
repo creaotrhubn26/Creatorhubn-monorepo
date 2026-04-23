@@ -462,7 +462,7 @@ export default function FeedPostDetailPanel({
             </IconButton>
           </Tooltip>
           {onClose ? (
-            <IconButton size="small" onClick={onClose} sx={{ color: 'rgba(226,232,240,0.7)' }}>
+            <IconButton size="small" onClick={onClose} aria-label="Lukk" sx={{ color: 'rgba(226,232,240,0.7)' }}>
               <CloseIcon fontSize="small" />
             </IconButton>
           ) : null}

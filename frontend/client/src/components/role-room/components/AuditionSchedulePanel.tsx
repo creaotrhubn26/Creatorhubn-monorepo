@@ -2285,6 +2285,7 @@ function AuditionSchedulePanelInner({
                                       event.stopPropagation();
                                       handleToggleCompare(schedule.id);
                                     }}
+                                    aria-label={compareActive ? 'Fjern fra sammenlikning' : 'Legg til i sammenlikning'}
                                     sx={{ p: 0.25, color: compareActive ? roleTabAccent : roleTextMuted }}
                                   >
                                     <CompareIcon sx={{ fontSize: 14 }} />
@@ -2295,6 +2296,7 @@ function AuditionSchedulePanelInner({
                                       event.stopPropagation();
                                       toggleFavorite(schedule.id);
                                     }}
+                                    aria-label={favorites.has(schedule.id) ? 'Fjern favoritt' : 'Legg til favoritt'}
                                     sx={{ p: 0.25, color: favorites.has(schedule.id) ? '#ffc107' : roleTextMuted }}
                                   >
                                     {favorites.has(schedule.id) ? <StarIcon sx={{ fontSize: 15 }} /> : <StarBorderIcon sx={{ fontSize: 15 }} />}
@@ -2633,7 +2635,7 @@ function AuditionSchedulePanelInner({
             input: {
               startAdornment: <SearchIcon sx={{ color: 'rgba(255,255,255,0.5)', mr: 1, fontSize: 18 }} />,
               endAdornment: searchQuery
-                ? <IconButton size="small" onClick={() => setSearchQuery('')} sx={{ color: 'rgba(255,255,255,0.4)', p: 0.25 }}><ClearIcon sx={{ fontSize: 16 }} /></IconButton>
+                ? <IconButton size="small" onClick={() => setSearchQuery('')} aria-label="Tøm filter" sx={{ color: 'rgba(255,255,255,0.4)', p: 0.25 }}><ClearIcon sx={{ fontSize: 16 }} /></IconButton>
                 : null,
               sx: { minHeight: TOUCH_TARGET_SIZE },
             },
@@ -3212,7 +3214,7 @@ function AuditionSchedulePanelInner({
                 </Box>
                 {/* ⭐ */}
                 <Box onClick={(e) => e.stopPropagation()} sx={{ flexShrink: 0 }}>
-                  <IconButton size="small" onClick={() => toggleFavorite(schedule.id)} sx={{ p: 0.25, color: isFav ? roleTabAccent : 'rgba(255,255,255,0.2)', '&:hover': { color: roleTabAccent } }}>
+                  <IconButton size="small" onClick={() => toggleFavorite(schedule.id)} aria-label={isFav ? 'Fjern favoritt' : 'Legg til favoritt'} sx={{ p: 0.25, color: isFav ? roleTabAccent : 'rgba(255,255,255,0.2)', '&:hover': { color: roleTabAccent } }}>
                     {isFav ? <StarIcon sx={{ fontSize: 14 }} /> : <StarBorderIcon sx={{ fontSize: 14 }} />}
                   </IconButton>
                 </Box>
@@ -3369,6 +3371,7 @@ function AuditionSchedulePanelInner({
                       <IconButton
                         size="small"
                         onClick={(e) => { e.stopPropagation(); toggleFavorite(schedule.id); }}
+                        aria-label={favorites.has(schedule.id) ? 'Fjern favoritt' : 'Legg til favoritt'}
                         sx={{
                           color: favorites.has(schedule.id) ? '#ffc107' : 'rgba(255,255,255,0.4)',
                           minWidth: { xs: TOUCH_TARGET_SIZE, md: 48 },

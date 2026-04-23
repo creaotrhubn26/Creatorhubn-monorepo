@@ -143,11 +143,11 @@ export const ProductionToolsPanel: React.FC<ProductionToolsPanelProps> = ({
             </Box>
           </Stack>
           <Stack direction="row" spacing={1}>
-            <IconButton size="small" sx={{ color: '#fff' }} onClick={() => setMinimized(!minimized)}>
+            <IconButton size="small" sx={{ color: '#fff' }} onClick={() => setMinimized(!minimized)} aria-label={minimized ? 'Utvid' : 'Minimer'}>
               {minimized ? <ExpandMore /> : <ExpandLess />}
             </IconButton>
             {onClose && (
-              <IconButton size="small" sx={{ color: '#fff' }} onClick={onClose}>
+              <IconButton size="small" sx={{ color: '#fff' }} onClick={onClose} aria-label="Lukk">
                 <CloseIcon />
               </IconButton>
             )}

@@ -296,6 +296,7 @@ export const CandidatePoolPanel: FC<CandidatePoolPanelProps> = ({
                   <IconButton
                     size="small"
                     onClick={() => handleDeleteFromPool(candidate.id)}
+                    aria-label="Slett fra pool"
                     sx={{
                       color: 'rgba(255,255,255,0.87)',
                       minWidth: TOUCH_TARGET,

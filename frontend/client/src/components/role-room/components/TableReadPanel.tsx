@@ -395,25 +395,25 @@ export const TableReadPanel: React.FC<TableReadPanelProps> = ({
           spacing={1}
           sx={{ mt: 2 }}
         >
-          <IconButton onClick={prev} disabled={currentIndex === 0}>
+          <IconButton onClick={prev} disabled={currentIndex === 0} aria-label="Forrige replikk">
             <PrevIcon />
           </IconButton>
-          
+
           {isPlaying && !isPaused ? (
-            <IconButton onClick={pause} color="primary" size="large">
+            <IconButton onClick={pause} color="primary" size="large" aria-label="Pause">
               <PauseIcon fontSize="large" />
             </IconButton>
           ) : (
-            <IconButton onClick={isPaused ? resume : play} color="primary" size="large">
+            <IconButton onClick={isPaused ? resume : play} color="primary" size="large" aria-label={isPaused ? 'Fortsett' : 'Spill'}>
               <PlayIcon fontSize="large" />
             </IconButton>
           )}
-          
-          <IconButton onClick={stop} disabled={!isPlaying && !isPaused}>
+
+          <IconButton onClick={stop} disabled={!isPlaying && !isPaused} aria-label="Stopp">
             <StopIcon />
           </IconButton>
-          
-          <IconButton onClick={next} disabled={currentIndex >= dialogueLines.length - 1}>
+
+          <IconButton onClick={next} disabled={currentIndex >= dialogueLines.length - 1} aria-label="Neste replikk">
             <NextIcon />
           </IconButton>
         </Stack>

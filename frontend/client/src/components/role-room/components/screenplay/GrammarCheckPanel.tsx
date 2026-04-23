@@ -349,7 +349,7 @@ export const GrammarCheckPanel: React.FC<GrammarCheckPanelProps> = ({
           Grammatikk & Stavekontroll
         </Typography>
         {onClose && (
-          <IconButton size="small" onClick={onClose}>
+          <IconButton size="small" onClick={onClose} aria-label="Lukk">
             <CloseIcon fontSize="small" />
           </IconButton>
         )}
@@ -450,13 +450,13 @@ export const GrammarCheckPanel: React.FC<GrammarCheckPanelProps> = ({
                   borderBottom: `1px solid ${borderColor}`,
                 }}
               >
-                <IconButton size="small" onClick={goToPrevError}>
+                <IconButton size="small" onClick={goToPrevError} aria-label="Forrige feil">
                   <PrevIcon fontSize="small" />
                 </IconButton>
                 <Typography variant="caption" sx={{ opacity: 0.7 }}>
                   {currentErrorIndex + 1} av {result.errors.length}
                 </Typography>
-                <IconButton size="small" onClick={goToNextError}>
+                <IconButton size="small" onClick={goToNextError} aria-label="Neste feil">
                   <NextIcon fontSize="small" />
                 </IconButton>
               </Box>

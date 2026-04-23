@@ -182,7 +182,7 @@ export default function GoogleDriveImagePicker({
             {headerSubtitle}
           </Typography>
         </Stack>
-        <IconButton onClick={onClose} sx={{ color: 'rgba(226,232,240,0.75)' }}>
+        <IconButton onClick={onClose} aria-label="Lukk" sx={{ color: 'rgba(226,232,240,0.75)' }}>
           <CloseIcon />
         </IconButton>
       </Stack>

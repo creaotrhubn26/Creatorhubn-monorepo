@@ -5387,7 +5387,7 @@ export function CastingShotListPanel({
             {editingShotList ? 'Rediger shot list' : 'Opprett shot list'}
           </Typography>
           {isMobile && (
-            <IconButton onClick={handleCloseDialog} sx={{ color: 'rgba(255,255,255,0.87)' }}>
+            <IconButton onClick={handleCloseDialog} aria-label="Lukk" sx={{ color: 'rgba(255,255,255,0.87)' }}>
               <CloseIcon />
             </IconButton>
           )}
@@ -5560,7 +5560,7 @@ export function CastingShotListPanel({
             {editingShot ? 'Rediger shot' : 'Legg til shot'}
           </Typography>
           {isMobile && (
-            <IconButton onClick={handleCloseShotDialog} sx={{ color: 'rgba(255,255,255,0.87)' }}>
+            <IconButton onClick={handleCloseShotDialog} aria-label="Lukk" sx={{ color: 'rgba(255,255,255,0.87)' }}>
               <CloseIcon />
             </IconButton>
           )}
@@ -6373,6 +6373,7 @@ export function CastingShotListPanel({
                           <IconButton
                             size="small"
                             onClick={() => handleToggleCommentResolved(comment.id)}
+                            aria-label={comment.resolved ? 'Marker som uløst' : 'Marker som løst'}
                             sx={{ color: comment.resolved ? '#4caf50' : 'rgba(255,255,255,0.6)' }}
                           >
                             {comment.resolved ? <ResolvedIcon fontSize="small" /> : <UnresolvedIcon fontSize="small" />}
@@ -6380,6 +6381,7 @@ export function CastingShotListPanel({
                           <IconButton
                             size="small"
                             onClick={() => handleStartEditComment(comment)}
+                            aria-label="Rediger kommentar"
                             sx={{ color: 'rgba(255,255,255,0.87)' }}
                           >
                             <EditIcon fontSize="small" />
@@ -6387,6 +6389,7 @@ export function CastingShotListPanel({
                           <IconButton
                             size="small"
                             onClick={() => handleDeleteComment(comment.id)}
+                            aria-label="Slett kommentar"
                             sx={{ color: '#ff4444' }}
                           >
                             <DeleteIcon fontSize="small" />
@@ -6412,6 +6415,7 @@ export function CastingShotListPanel({
                             size="small"
                             onClick={handleSaveEditedComment}
                             disabled={!editingCommentDraft.trim()}
+                            aria-label="Lagre kommentar"
                             sx={{ color: '#4caf50' }}
                           >
                             <CheckIcon fontSize="small" />
@@ -6422,6 +6426,7 @@ export function CastingShotListPanel({
                               setEditingCommentId(null);
                               setEditingCommentDraft('');
                             }}
+                            aria-label="Avbryt"
                             sx={{ color: 'rgba(255,255,255,0.87)' }}
                           >
                             <CloseIcon fontSize="small" />
@@ -6617,7 +6622,7 @@ export function CastingShotListPanel({
             Opprett storyboard fra shot list
           </Typography>
           {isMobile && (
-            <IconButton onClick={handleCloseStoryboardDialog} sx={{ color: 'rgba(255,255,255,0.87)' }}>
+            <IconButton onClick={handleCloseStoryboardDialog} aria-label="Lukk" sx={{ color: 'rgba(255,255,255,0.87)' }}>
               <CloseIcon />
             </IconButton>
           )}
@@ -6837,7 +6842,7 @@ export function CastingShotListPanel({
               Storyboard Viewer
             </Typography>
           </Box>
-          <IconButton onClick={handleCloseStoryboardPanel} sx={{ color: 'rgba(255,255,255,0.87)' }}>
+          <IconButton onClick={handleCloseStoryboardPanel} aria-label="Lukk storyboard-viewer" sx={{ color: 'rgba(255,255,255,0.87)' }}>
             <CloseIcon />
           </IconButton>
         </Box>
@@ -7334,7 +7339,7 @@ export function CastingShotListPanel({
             <StoryboardIcon sx={{ color: '#00d4ff' }} />
             Storyboard Manager
           </Box>
-          <IconButton onClick={() => setShowStoryboardManager(false)} sx={{ color: 'rgba(255,255,255,0.87)' }}>
+          <IconButton onClick={() => setShowStoryboardManager(false)} aria-label="Lukk Storyboard Manager" sx={{ color: 'rgba(255,255,255,0.87)' }}>
             <CloseIcon />
           </IconButton>
         </DialogTitle>
@@ -7538,7 +7543,7 @@ export function CastingShotListPanel({
             <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700 }}>
               Team Dashboard
             </Typography>
-            <IconButton onClick={() => setShowTeamDashboard(false)} sx={{ color: '#fff' }}>
+            <IconButton onClick={() => setShowTeamDashboard(false)} aria-label="Lukk Team Dashboard" sx={{ color: '#fff' }}>
               <CloseIcon />
             </IconButton>
           </Box>
@@ -7838,7 +7843,7 @@ export function CastingShotListPanel({
             <Typography sx={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.7rem' }}>
               {rt.connectionStatus === 'connected' ? 'Live' : rt.connectionStatus === 'offline' ? 'Offline' : 'Kobler til…'}
             </Typography>
-            <IconButton size="small" onClick={() => setShowAuditLog(false)} sx={{ color: 'rgba(255,255,255,0.4)', p: 0.25 }}>
+            <IconButton size="small" onClick={() => setShowAuditLog(false)} aria-label="Lukk aktivitetslogg" sx={{ color: 'rgba(255,255,255,0.4)', p: 0.25 }}>
               <CloseIcon sx={{ fontSize: 16 }} />
             </IconButton>
           </Box>

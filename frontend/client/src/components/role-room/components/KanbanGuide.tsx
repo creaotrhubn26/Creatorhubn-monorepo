@@ -763,7 +763,7 @@ function KanbanGuide({ open, onClose }: KanbanGuideProps) {
             }}
           />
         </Box>
-        <IconButton onClick={onClose} size="small" sx={{ color: 'rgba(255,255,255,0.6)' }}>
+        <IconButton onClick={onClose} size="small" aria-label="Lukk veiledning" sx={{ color: 'rgba(255,255,255,0.6)' }}>
           <CloseIcon />
         </IconButton>
       </DialogTitle>

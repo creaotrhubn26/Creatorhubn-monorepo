@@ -3336,7 +3336,7 @@ export default function ProducerPlannerStudio({
                   Sekundære valg og filtre for mobil.
                 </Typography>
               </Box>
-              <IconButton onClick={() => setMobileActionsOpen(false)} sx={{ color: '#cbd5e1' }}>
+              <IconButton onClick={() => setMobileActionsOpen(false)} aria-label="Lukk mobilhandlinger" sx={{ color: '#cbd5e1' }}>
                 <MoreHorizIcon />
               </IconButton>
             </Stack>

@@ -134,7 +134,7 @@ export default function CrewAvailabilityDrawer({
             <Typography variant="h6" sx={{ color: '#fff' }}>
               Tilgjengelighet: {crewName}
             </Typography>
-            <IconButton onClick={onClose} sx={{ color: 'rgba(255,255,255,0.87)' }}>
+            <IconButton onClick={onClose} aria-label="Lukk" sx={{ color: 'rgba(255,255,255,0.87)' }}>
               <CloseIcon />
             </IconButton>
           </Box>
@@ -224,6 +224,7 @@ export default function CrewAvailabilityDrawer({
                       <IconButton
                         edge="end"
                         onClick={() => handleDeleteEntry(entry.id)}
+                        aria-label="Slett periode"
                         sx={{ color: 'rgba(255,255,255,0.87)', '&:hover': { color: '#ef4444' } }}
                       >
                         <DeleteIcon fontSize="small" />

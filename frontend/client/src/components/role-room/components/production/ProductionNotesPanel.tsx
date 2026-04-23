@@ -313,6 +313,7 @@ const ProductionNotesPanel: FC<ProductionNotesPanelProps> = memo(function Produc
                 <IconButton
                   size="small"
                   onClick={() => handleStartEdit(type)}
+                  aria-label="Rediger notat"
                   sx={{ color: '#4b5563', '&:hover': { color: meta.color } }}
                 >
                   <EditIcon sx={{ fontSize: 14 }} />

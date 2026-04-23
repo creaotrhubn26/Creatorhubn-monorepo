@@ -2314,7 +2314,7 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
               <Button size="small" variant="outlined" startIcon={<SendIcon />} onClick={sendCallSheet} sx={{ borderColor: 'rgba(56,189,248,0.5)', color: '#7dd3fc' }}>
                 Send callsheet
               </Button>
-              <IconButton onClick={() => setShowCallSheetDrawer(false)} sx={{ color: '#f8fafc' }}>
+              <IconButton onClick={() => setShowCallSheetDrawer(false)} aria-label="Lukk callsheet" sx={{ color: '#f8fafc' }}>
                 <CloseIcon />
               </IconButton>
             </Stack>

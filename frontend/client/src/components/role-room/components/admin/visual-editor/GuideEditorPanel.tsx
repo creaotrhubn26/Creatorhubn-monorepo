@@ -1440,7 +1440,7 @@ export function GuideEditorPanel() {
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
           <ImportIcon sx={{ color: '#8b5cf6', fontSize: 18 }} />
           <Typography variant="subtitle1" sx={{ flex: 1, fontWeight: 700, fontSize: '0.9rem' }}>Importer guide-konfigurasjon</Typography>
-          <IconButton size="small" onClick={() => setImportOpen(false)} sx={{ color: 'rgba(255,255,255,0.4)' }}>
+          <IconButton size="small" onClick={() => setImportOpen(false)} aria-label="Lukk importdialog" sx={{ color: 'rgba(255,255,255,0.4)' }}>
             <CloseIcon sx={{ fontSize: 16 }} />
           </IconButton>
         </DialogTitle>

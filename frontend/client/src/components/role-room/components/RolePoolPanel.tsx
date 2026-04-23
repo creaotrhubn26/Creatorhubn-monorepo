@@ -470,6 +470,7 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
                                   event.stopPropagation();
                                   handleImportClick(role);
                                 }}
+                                aria-label="Importer rolle"
                                 sx={{ color: roleTabAccent, minWidth: 30, minHeight: 30 }}
                               >
                                 <DownloadIcon fontSize="small" />
@@ -480,6 +481,7 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
                                   event.stopPropagation();
                                   handleDeleteFromPool(role);
                                 }}
+                                aria-label="Slett fra pool"
                                 sx={{ color: roleTextMuted, minWidth: 30, minHeight: 30 }}
                               >
                                 <DeleteIcon fontSize="small" />
@@ -775,11 +777,12 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
                   <IconButton
                     size="small"
                     onClick={() => handleDeleteFromPool(role)}
+                    aria-label="Slett fra pool"
                     sx={{
                       color: roleTextMuted,
                       minWidth: TOUCH_TARGET,
                       minHeight: TOUCH_TARGET,
-                      '&:hover': { 
+                      '&:hover': {
                         color: '#ef4444',
                         bgcolor: 'rgba(239,68,68,0.1)',
                       },

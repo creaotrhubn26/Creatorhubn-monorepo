@@ -516,10 +516,11 @@ export const ScriptSupervisorNotes: React.FC<ScriptSupervisorNotesProps> = ({
                                   <StarIcon fontSize="small" />
                                 </IconButton>
                               </Tooltip>
-                              <IconButton 
-                                size="small" 
+                              <IconButton
+                                size="small"
                                 color="error"
                                 onClick={() => deleteLog(log.id)}
+                                aria-label="Slett loggoppføring"
                               >
                                 <DeleteIcon fontSize="small" />
                               </IconButton>

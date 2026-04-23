@@ -790,6 +790,7 @@ const NotesTab: React.FC<{ notes: ShotNote[]; onChange: (notes: ShotNote[]) => v
                     size="small"
                     color="error"
                     onClick={() => onChange(notes.filter(n => n.id !== note.id))}
+                    aria-label="Slett notat"
                   >
                     <DeleteIcon fontSize="small" />
                   </IconButton>

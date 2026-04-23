@@ -165,13 +165,13 @@ export const EnhancedTimelineView: FC<EnhancedTimelineViewProps> = ({
         </Typography>
         
         <Stack direction="row" spacing={1} alignItems="center">
-          <IconButton size="small" onClick={() => setZoom(Math.max(0.5, zoom - 0.25))} sx={{ color: '#fff' }}>
+          <IconButton size="small" onClick={() => setZoom(Math.max(0.5, zoom - 0.25))} aria-label="Zoom ut" sx={{ color: '#fff' }}>
             <ZoomOutIcon fontSize="small" />
           </IconButton>
           <Typography variant="caption" sx={{ color: '#fff', minWidth: 40, textAlign: 'center' }}>
             {Math.round(zoom * 100)}%
           </Typography>
-          <IconButton size="small" onClick={() => setZoom(Math.min(3, zoom + 0.25))} sx={{ color: '#fff' }}>
+          <IconButton size="small" onClick={() => setZoom(Math.min(3, zoom + 0.25))} aria-label="Zoom inn" sx={{ color: '#fff' }}>
             <ZoomInIcon fontSize="small" />
           </IconButton>
         </Stack>

@@ -494,7 +494,7 @@ const StripboardPanel: FC<StripboardPanelProps> = ({
 
             {isMobile ? (
               <>
-                <IconButton onClick={handleMobileMenuOpen} size="small"><MoreIcon /></IconButton>
+                <IconButton onClick={handleMobileMenuOpen} size="small" aria-label="Flere handlinger"><MoreIcon /></IconButton>
                 <input ref={importInputRef} type="file" accept="application/json" onChange={handleImportJSON} style={{ display: 'none' }} />
               </>
             ) : (

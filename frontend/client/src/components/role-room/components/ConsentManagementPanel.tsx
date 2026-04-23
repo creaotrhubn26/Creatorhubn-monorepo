@@ -453,6 +453,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
                       <IconButton
                         size="small"
                         onClick={() => handleOpenDialog(consent)}
+                        aria-label="Rediger samtykke"
                         sx={{ color: '#00d4ff' }}
                       >
                         <EditIcon fontSize="small" />
@@ -460,6 +461,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
                       <IconButton
                         size="small"
                         onClick={() => handleDelete(consent.id)}
+                        aria-label="Slett samtykke"
                         sx={{ color: '#ff4444' }}
                       >
                         <DeleteIcon fontSize="small" />
@@ -544,6 +546,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
           </Stack>
           <IconButton
             onClick={handleCloseDialog}
+            aria-label="Lukk"
             sx={{
               color: 'var(--dialog-text)',
               border: '1px solid var(--dialog-border-color)',
@@ -739,6 +742,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
           </Stack>
           <IconButton
             onClick={handleCloseInviteDialog}
+            aria-label="Lukk"
             sx={{
               color: 'var(--dialog-text)',
               border: '1px solid var(--dialog-border-color)',
