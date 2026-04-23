@@ -177,6 +177,15 @@ async function unspotlight(page) {
     log(`[browser pageerror] ${err.message.slice(0, 300)}`);
   });
 
+  // Surface the outgoing request headers for the inspector call so we
+  // can see whether the Authorization token is actually being sent.
+  page.on('request', (request) => {
+    if (request.url().includes('/api/role-room/agent/meta-page-inspect')) {
+      const headers = request.headers();
+      log(`→ meta-page-inspect request: auth=${headers['authorization'] ? headers['authorization'].slice(0, 40) + '…' : '(none)'} x-session=${headers['x-session-token'] || '(none)'}`);
+    }
+  });
+
   // Surface backend responses so we see exactly what Meta Graph API returned.
   page.on('response', async (response) => {
     if (response.url().includes('/api/role-room/agent/meta-page-inspect')) {
@@ -211,7 +220,21 @@ async function unspotlight(page) {
       await page.waitForTimeout(1500);
     }
     if (!agentButton) throw new Error('«The Role Room Agent»-knappen dukket aldri opp innen 10 min.');
-    log('✓ Found agent button. Saving session + opening the dialog.');
+    log('✓ Found agent button. Checking localStorage + cookies for auth state.');
+    const authState = await page.evaluate(() => {
+      const relevant = {};
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (!k) continue;
+        if (/auth|token|session|user/i.test(k)) {
+          const v = localStorage.getItem(k);
+          relevant[k] = typeof v === 'string' ? v.slice(0, 80) : v;
+        }
+      }
+      return { localStorage: relevant, cookieCount: document.cookie.split(';').length, cookies: document.cookie.slice(0, 300) };
+    });
+    log(`auth state: ${JSON.stringify(authState, null, 2)}`);
+    log('Saving session + opening the dialog.');
     await context.storageState({ path: STATE_PATH });
     await beat(page, 1200);
 

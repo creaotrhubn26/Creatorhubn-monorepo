@@ -78,6 +78,57 @@ async function existingSystemDcraw() {
   return null;
 }
 
+/**
+ * Pick the first available C compiler. Render's Node image symlinks
+ * differ between buildpacks — some boxes have `gcc` but no `cc`, others
+ * have `clang` only. Prior version bailed on `cc` alone, which was
+ * silently disabling RAW for most deployments.
+ */
+async function pickCompiler() {
+  for (const c of ["cc", "gcc", "clang"]) {
+    try {
+      await run(c, ["--version"]);
+      return c;
+    } catch {
+      // next
+    }
+  }
+  return null;
+}
+
+/**
+ * Last-resort fallback: `apt-get install -y dcraw`. Works on Render's
+ * Debian-based Node buildpacks when the environment allows apt (which
+ * build containers typically do; runtime containers don't, but this
+ * script runs at build). Non-fatal on any failure — the runtime code
+ * already degrades gracefully to a clear "RAW converter unavailable"
+ * 422 when nothing's installed.
+ */
+async function tryAptInstallDcraw() {
+  try {
+    await run("which", ["apt-get"]);
+  } catch {
+    return false;
+  }
+  try {
+    console.log("[photo-raw-tools] attempting `apt-get install -y dcraw`");
+    await run("apt-get", ["update", "-qq"], { stdio: "inherit" });
+    await run("apt-get", ["install", "-y", "--no-install-recommends", "dcraw"], {
+      stdio: "inherit",
+    });
+    await run("which", ["dcraw"]);
+    console.log("[photo-raw-tools] dcraw installed via apt");
+    return true;
+  } catch (err) {
+    console.warn(
+      `[photo-raw-tools] apt install of dcraw failed: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+    return false;
+  }
+}
+
 async function main() {
   await mkdir(binDir, { recursive: true });
 
@@ -93,14 +144,20 @@ async function main() {
     return;
   }
 
-  try {
-    await run("cc", ["--version"]);
-  } catch {
-    console.warn("[photo-raw-tools] C compiler not available; RAW conversion will stay disabled");
+  const compiler = await pickCompiler();
+  if (!compiler) {
+    console.warn(
+      "[photo-raw-tools] no C compiler (cc/gcc/clang) — trying apt fallback",
+    );
+    if (await tryAptInstallDcraw()) return;
+    console.warn(
+      "[photo-raw-tools] RAW conversion will stay disabled; frontend shows a guided JPEG-fallback alert",
+    );
     return;
   }
 
   try {
+    console.log(`[photo-raw-tools] using ${compiler} compiler`);
     console.log("[photo-raw-tools] downloading dcraw source");
     const source = await download(dcrawSourceUrl);
     await writeFile(sourcePath, source);
@@ -111,7 +168,7 @@ async function main() {
     }
 
     console.log("[photo-raw-tools] compiling dcraw");
-    await run("cc", [
+    await run(compiler, [
       "-O3",
       "-DNO_JASPER",
       "-DNO_LCMS",
@@ -127,10 +184,12 @@ async function main() {
   } catch (error) {
     await rm(dcrawPath, { force: true }).catch(() => undefined);
     console.warn(
-      `[photo-raw-tools] failed to install dcraw: ${
+      `[photo-raw-tools] failed to compile dcraw: ${
         error instanceof Error ? error.message : String(error)
       }`,
     );
+    // Compile failed — try apt before giving up.
+    if (await tryAptInstallDcraw()) return;
   }
 }
 
