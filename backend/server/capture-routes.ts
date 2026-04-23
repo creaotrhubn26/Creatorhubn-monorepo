@@ -514,7 +514,16 @@ export function createCaptureRouter(
     const offset = Math.max(Number(req.query.offset ?? 0), 0);
     try {
       const rows = await listAssets(db, userId, req.params.sessionId, limit, offset);
-      res.json({ assets: rows });
+      // Attach signed preview URLs so the web enhancer can hydrate each
+      // asset into a `SessionImage` without a second round-trip. Matches
+      // the shape the `/client/assets` route already returns.
+      const withUrls = await Promise.all(
+        rows.map(async (row) => ({
+          ...row,
+          previewUrl: row.previewKey ? await signAssetReadUrl(row.previewKey) : null,
+        })),
+      );
+      res.json({ assets: withUrls });
     } catch (err) {
       if (err instanceof CaptureAuthzError) {
         res.status(404).json({ error: 'session_not_found' });
