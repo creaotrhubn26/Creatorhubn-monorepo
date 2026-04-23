@@ -36,6 +36,7 @@ import { createRoleRoomRouter } from "./role-room-routes.js";
 import { createCaptureRouter } from "./capture-routes.js";
 import { createReadThroughAiRouter } from "./read-through-ai-routes.js";
 import { createLiveSetAiRouter } from "./live-set-ai-routes.js";
+import { createReferenceArchiveRouter } from "./reference-archive-routes.js";
 import {
   upsertShotListForProject,
   bootstrapCaptureSessionForProject,
@@ -1031,6 +1032,10 @@ app.use(
 app.use(
   "/api/live-set/ai",
   createLiveSetAiRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/reference-archive",
+  createReferenceArchiveRouter(pool, { activeSessions }),
 );
 app.use("/api/youtube", createYouTubeRouter(pool));
 app.use("/api/photo-enhancer", createPhotoEnhancerRouter(pool));
@@ -57603,6 +57608,55 @@ app.get("/api/projects/:id/change-log", async (req, res) => {
       limit,
       before,
     });
+
+    // Enrich `asset.hearted` / `asset.commented` entries with the
+    // hearted image's thumbnail URL so the photographer's activity
+    // banner can show WHICH image the client liked — not just that
+    // they liked one. Single batched query for every assetId in the
+    // page rather than N round-trips.
+    const assetIds = new Set<string>();
+    for (const entry of entries) {
+      if (entry.kind !== "asset.hearted" && entry.kind !== "asset.commented") continue;
+      const assetId = (entry.payload as Record<string, unknown>)?.assetId;
+      if (typeof assetId === "string" && assetId.trim()) assetIds.add(assetId);
+    }
+    if (assetIds.size > 0) {
+      try {
+        const thumbRows = await pool.query<{
+          id: string;
+          thumbnail_url: string | null;
+          image_title: string | null;
+        }>(
+          `SELECT id, thumbnail_url, image_title
+             FROM client_gallery_images
+            WHERE id = ANY($1::uuid[])`,
+          [Array.from(assetIds)],
+        );
+        const thumbById = new Map<
+          string,
+          { thumbnailUrl: string | null; title: string | null }
+        >();
+        for (const row of thumbRows.rows) {
+          thumbById.set(row.id, {
+            thumbnailUrl: row.thumbnail_url,
+            title: row.image_title,
+          });
+        }
+        for (const entry of entries) {
+          const assetId = (entry.payload as Record<string, unknown>)?.assetId;
+          if (typeof assetId !== "string") continue;
+          const thumb = thumbById.get(assetId);
+          if (!thumb) continue;
+          (entry.payload as Record<string, unknown>).thumbnailUrl = thumb.thumbnailUrl;
+          (entry.payload as Record<string, unknown>).imageTitle = thumb.title;
+        }
+      } catch (err) {
+        // Non-fatal — the banner degrades to text-only if enrichment
+        // fails, which is exactly what it did before this patch.
+        console.warn("[project-change-log] thumbnail enrichment failed", err);
+      }
+    }
+
     res.json({ entries });
   } catch (error) {
     console.error("[project-change-log] fetch failed", error);
