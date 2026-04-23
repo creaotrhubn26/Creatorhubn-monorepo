@@ -263,7 +263,7 @@ class BackupRecoverySystem {
     if (typeof window === 'undefined') return;
 
     try {
-      const stored = localStorage.getItem('backup_data, ');
+      const stored = localStorage.getItem('backup_data');
       if (stored) {
         const data = JSON.parse(stored);
         this.backups = new Map(data.backups || []);
@@ -279,19 +279,46 @@ class BackupRecoverySystem {
   private saveBackups(): void {
     if (typeof window === 'undefined') return;
 
-    try {
-      const data = {
-        backups: Array.from(this.backups.entries()),
-        recoveryPoints: Array.from(this.recoveryPoints.entries()),
-        backupStats: this.backupStats,
-        recoveryStats: this.recoveryStats,
-        timestamp: Date.now()
-};
-      
-      localStorage.setItem('backup_data', JSON.stringify(data));
-} catch (error) {
-      console.error('Failed to save backups:', error);
-}
+    const serialize = () => JSON.stringify({
+      backups: Array.from(this.backups.entries()),
+      recoveryPoints: Array.from(this.recoveryPoints.entries()),
+      backupStats: this.backupStats,
+      recoveryStats: this.recoveryStats,
+      timestamp: Date.now()
+    });
+
+    // Drop oldest backups until the payload fits under localStorage quota.
+    // Browsers cap localStorage at ~5MB so unbounded scheduled backups used
+    // to grow until writes started throwing QuotaExceededError.
+    const MAX_PAYLOAD_BYTES = 3_500_000;
+    const trySave = (): boolean => {
+      const payload = serialize();
+      if (payload.length > MAX_PAYLOAD_BYTES) return false;
+      try {
+        localStorage.setItem('backup_data', payload);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
+    let attempts = 0;
+    while (!trySave() && this.backups.size > 1 && attempts < 50) {
+      const oldestId = Array.from(this.backups.entries())
+        .sort((a, b) => a[1].metadata.timestamp - b[1].metadata.timestamp)[0]?.[0];
+      if (!oldestId) break;
+      this.backups.delete(oldestId);
+      attempts++;
+    }
+
+    if (this.backups.size <= 1 && !trySave()) {
+      try {
+        localStorage.removeItem('backup_data');
+      } catch {
+        /* noop */
+      }
+      console.warn('backup_data exceeded localStorage quota; cleared to recover.');
+    }
 }
 
   private async performScheduledBackup(): Promise<void> {
@@ -457,8 +484,10 @@ class BackupRecoverySystem {
     const data: Record<string, string> = {};
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
-      if (key) {
-        data[key] = localStorage.getItem(key) || ', ';
+      // Never embed the backup blob in its own backup — that caused the
+      // payload to double every scheduled run until localStorage blew up.
+      if (key && key !== 'backup_data') {
+        data[key] = localStorage.getItem(key) || '';
   }
 }
     return data;
