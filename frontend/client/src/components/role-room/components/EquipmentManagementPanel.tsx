@@ -4117,6 +4117,7 @@ export function EquipmentManagementPanel({
             <IconButton
               size="small"
               onClick={() => setSelectedEquipmentIds(new Set())}
+              aria-label="Fjern markering"
               sx={{ color: 'rgba(255,255,255,0.87)' }}
             >
               <CloseIcon sx={{ fontSize: 18 }} />
@@ -5547,7 +5548,7 @@ export function EquipmentManagementPanel({
           </Box>
           <IconButton
             onClick={() => setCreateTypeDialogOpen(false)}
-            sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}
+            aria-label="Lukk" sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}
           >
             <CloseIcon />
           </IconButton>
@@ -5691,7 +5692,7 @@ export function EquipmentManagementPanel({
           </Box>
           <IconButton 
             onClick={handleCloseMainDialog} 
-            sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}
+            aria-label="Lukk" sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}
           >
             <CloseIcon />
           </IconButton>
@@ -5768,10 +5769,11 @@ export function EquipmentManagementPanel({
                               e.stopPropagation();
                               handleRemoveCustomCategory(cat);
                             }}
-                            sx={{ 
-                              p: 0.5, 
-                              color: 'rgba(255,255,255,0.87)', 
-                              '&:hover': { color: '#f44336' } 
+                            aria-label={`Fjern kategori ${cat}`}
+                            sx={{
+                              p: 0.5,
+                              color: 'rgba(255,255,255,0.87)',
+                              '&:hover': { color: '#f44336' }
                             }}
                           >
                             <CloseIcon sx={{ fontSize: 14 }} />
@@ -6586,6 +6588,7 @@ export function EquipmentManagementPanel({
                             <IconButton
                               size="small"
                               onClick={() => setFormData({ ...formData, imageUrl: '' })}
+                              aria-label="Fjern bilde-URL"
                               sx={{ color: 'rgba(255,255,255,0.87)', '&:hover': { color: '#f44336' } }}
                             >
                               <CloseIcon sx={{ fontSize: 16 }} />
@@ -6688,7 +6691,7 @@ export function EquipmentManagementPanel({
           </Box>
           <IconButton 
             onClick={() => setAssignDialogOpen(false)} 
-            sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}
+            aria-label="Lukk" sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}
           >
             <CloseIcon />
           </IconButton>
@@ -6825,7 +6828,7 @@ export function EquipmentManagementPanel({
           </Box>
           <IconButton 
             onClick={() => setBookingsDialogOpen(false)} 
-            sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}
+            aria-label="Lukk" sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}
           >
             <CloseIcon />
           </IconButton>
@@ -6980,7 +6983,7 @@ export function EquipmentManagementPanel({
           </Box>
           <IconButton 
             onClick={() => setTemplatesDialogOpen(false)} 
-            sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}
+            aria-label="Lukk" sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}
           >
             <CloseIcon />
           </IconButton>
@@ -7128,10 +7131,11 @@ export function EquipmentManagementPanel({
                       >
                         Bruk mal
                       </Button>
-                      <IconButton 
-                        size="small" 
+                      <IconButton
+                        size="small"
                         onClick={() => handleDeleteTemplate(template.id)}
-                        sx={{ 
+                        aria-label={`Slett mal ${template.name ?? ''}`.trim()}
+                        sx={{
                           color: 'rgba(244,67,54,0.7)',
                           '&:hover': { color: '#f44336', bgcolor: 'rgba(244,67,54,0.1)' },
                         }}
@@ -7213,7 +7217,7 @@ export function EquipmentManagementPanel({
               </Typography>
             </Box>
           </Box>
-          <IconButton onClick={() => setTemplateFormOpen(false)} sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}>
+          <IconButton onClick={() => setTemplateFormOpen(false)} aria-label="Lukk" sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}>
             <CloseIcon />
           </IconButton>
         </DialogTitle>
@@ -7435,7 +7439,7 @@ export function EquipmentManagementPanel({
           </Box>
           <IconButton 
             onClick={() => setShopDialogOpen(false)} 
-            sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}
+            aria-label="Lukk" sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}
           >
             <CloseIcon />
           </IconButton>
@@ -7728,7 +7732,7 @@ export function EquipmentManagementPanel({
           </Box>
           <IconButton 
             onClick={() => setNewCategoryDialogOpen(false)}
-            sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}
+            aria-label="Lukk" sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}
           >
             <CloseIcon />
           </IconButton>
@@ -7868,7 +7872,7 @@ export function EquipmentManagementPanel({
           </Box>
           <IconButton 
             onClick={() => setImagePickerOpen(false)}
-            sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}
+            aria-label="Lukk" sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}
           >
             <CloseIcon />
           </IconButton>
@@ -8347,7 +8351,7 @@ export function EquipmentManagementPanel({
               </Typography>
             </Box>
           </Box>
-          <IconButton onClick={() => setHistoryDialogOpen(false)} sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}>
+          <IconButton onClick={() => setHistoryDialogOpen(false)} aria-label="Lukk" sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}>
             <CloseIcon />
           </IconButton>
         </DialogTitle>
@@ -8650,7 +8654,7 @@ export function EquipmentManagementPanel({
             <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff' }}>Sjekk ut utstyr</Typography>
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>{checkoutEquipment?.name}</Typography>
           </Box>
-          <IconButton onClick={() => setCheckoutDialogOpen(false)} sx={{ ...ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX, ml: 'auto' }}><CloseIcon /></IconButton>
+          <IconButton onClick={() => setCheckoutDialogOpen(false)} aria-label="Lukk" sx={{ ...ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX, ml: 'auto' }}><CloseIcon /></IconButton>
         </DialogTitle>
         <DialogContent sx={{ pt: 2 }}>
           <Stack spacing={2.5}>
@@ -8698,7 +8702,7 @@ export function EquipmentManagementPanel({
             <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff' }}>Lever inn utstyr</Typography>
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>{checkinEquipment?.name}</Typography>
           </Box>
-          <IconButton onClick={() => setCheckinDialogOpen(false)} sx={{ ...ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX, ml: 'auto' }}><CloseIcon /></IconButton>
+          <IconButton onClick={() => setCheckinDialogOpen(false)} aria-label="Lukk" sx={{ ...ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX, ml: 'auto' }}><CloseIcon /></IconButton>
         </DialogTitle>
         <DialogContent sx={{ pt: 2 }}>
           <Stack spacing={2.5}>
@@ -8781,7 +8785,7 @@ export function EquipmentManagementPanel({
             <Chip size="small" label={`${missingItems.length} mangler ansvarlig`} sx={{ bgcolor: 'rgba(234,179,8,0.15)', color: '#facc15', border: '1px solid rgba(250,204,21,0.3)' }} />
             <Chip size="small" label={`${maintenanceItems.length} vedlikehold`} sx={{ bgcolor: 'rgba(239,68,68,0.15)', color: '#fca5a5', border: '1px solid rgba(252,165,165,0.3)' }} />
           </Stack>
-          <IconButton onClick={() => setReportsDialogOpen(false)} sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}><CloseIcon /></IconButton>
+          <IconButton onClick={() => setReportsDialogOpen(false)} aria-label="Lukk" sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}><CloseIcon /></IconButton>
         </DialogTitle>
 
         <Box
@@ -8934,7 +8938,7 @@ export function EquipmentManagementPanel({
             <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff' }}>Offline-kø</Typography>
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>{offlineQueueCount} operasjon(er) venter</Typography>
           </Box>
-          <IconButton onClick={() => setOfflineOutboxOpen(false)} sx={{ ...ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX, ml: 'auto' }}><CloseIcon /></IconButton>
+          <IconButton onClick={() => setOfflineOutboxOpen(false)} aria-label="Lukk" sx={{ ...ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX, ml: 'auto' }}><CloseIcon /></IconButton>
         </DialogTitle>
         <DialogContent sx={{ pt: 2 }}>
           {offlineQueue.length === 0 ? (
@@ -9009,7 +9013,7 @@ export function EquipmentManagementPanel({
               }}
             />
           </Box>
-          <IconButton onClick={() => { setCatalogBridgeOpen(false); setCatalogDialogTab(0); }} sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}>
+          <IconButton onClick={() => { setCatalogBridgeOpen(false); setCatalogDialogTab(0); }} aria-label="Lukk" sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}>
             <CloseIcon />
           </IconButton>
         </DialogTitle>
@@ -9139,7 +9143,7 @@ export function EquipmentManagementPanel({
                         </CardContent>
                         <Box sx={{ p: 1.5, pt: 0, display: 'flex', justifyContent: 'flex-end' }}>
                           {article.url && (
-                            <IconButton size="small" href={article.url} target="_blank" rel="noopener noreferrer" sx={{ color: '#9333ea' }}>
+                            <IconButton size="small" href={article.url} target="_blank" rel="noopener noreferrer" aria-label={`Åpne artikkel ${article.title ?? article.url}`} sx={{ color: '#9333ea' }}>
                               <OpenInNewIcon fontSize="small" />
                             </IconButton>
                           )}
@@ -9257,7 +9261,7 @@ export function EquipmentManagementPanel({
                           </CardContent>
                           <Box sx={{ p: 1.5, pt: 0, display: 'flex', gap: 1 }}>
                             {item.sourceUrl && (
-                              <IconButton size="small" href={item.sourceUrl} target="_blank" rel="noopener noreferrer" sx={{ color: 'rgba(255,255,255,0.4)' }}>
+                              <IconButton size="small" href={item.sourceUrl} target="_blank" rel="noopener noreferrer" aria-label={`Åpne kilde for ${item.brand} ${item.model}`} sx={{ color: 'rgba(255,255,255,0.4)' }}>
                                 <OpenInNewIcon fontSize="small" />
                               </IconButton>
                             )}
@@ -9727,7 +9731,7 @@ export function EquipmentManagementPanel({
               </Typography>
             </Box>
           </Box>
-          <IconButton onClick={() => setQrLabelDialogOpen(false)} sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}>
+          <IconButton onClick={() => setQrLabelDialogOpen(false)} aria-label="Lukk" sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}>
             <CloseIcon />
           </IconButton>
         </DialogTitle>
@@ -9838,7 +9842,7 @@ export function EquipmentManagementPanel({
               Skann lager-QR
             </Typography>
           </Box>
-          <IconButton onClick={() => setQrScanDialogOpen(false)} sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}>
+          <IconButton onClick={() => setQrScanDialogOpen(false)} aria-label="Lukk" sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}>
             <CloseIcon />
           </IconButton>
         </DialogTitle>
@@ -9944,7 +9948,7 @@ export function EquipmentManagementPanel({
               Skann serienummer
             </Typography>
           </Box>
-          <IconButton onClick={() => setSerialScanDialogOpen(false)} sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}>
+          <IconButton onClick={() => setSerialScanDialogOpen(false)} aria-label="Lukk" sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}>
             <CloseIcon />
           </IconButton>
         </DialogTitle>
@@ -10064,7 +10068,7 @@ export function EquipmentManagementPanel({
             </Box>
             <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff' }}>Fastvare-oppdateringer</Typography>
           </Box>
-          <IconButton onClick={() => setFirmwarePanelOpen(false)} sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}>
+          <IconButton onClick={() => setFirmwarePanelOpen(false)} aria-label="Lukk" sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}>
             <CloseIcon />
           </IconButton>
         </DialogTitle>
