@@ -1023,6 +1023,10 @@ interface ProjectCreationWithMemoryCardsProps {
   onProjectSelect?: (project: ProjectData | { id: string; [key: string]: unknown }) => void;
   // New: open Event Management with prefilled event
   onOpenEventManagement?: (eventData: Record<string, unknown>) => void;
+  // Host dashboard can pass this so the modal can actually move focus to
+  // one of the integration tabs (worklog, storyArc, showcase, ...) instead
+  // of the previous console-log stub.
+  onGoToTab?: (tabName: string) => void;
 }
 
 interface MemoryCardConfig {
@@ -1202,11 +1206,12 @@ export default function ProjectCreationWithMemoryCards({
   onWorklogCreate,
   selectedProject,
   onProjectSelect,
-  onOpenEventManagement
+  onOpenEventManagement,
+  onGoToTab,
 }: ProjectCreationWithMemoryCardsProps) {
   // Get user and profession context with dynamic system support
-  const { user } = useAuth();
-  
+  const { user, isLoading: authLoading } = useAuth();
+
   // Create auth headers for API requests
   const auth = {
     'Authorization': `Bearer ${user?.id || 'anonymous'}`,
@@ -1453,8 +1458,27 @@ export default function ProjectCreationWithMemoryCards({
     weddingTimelineUrl: '' as string,
   });
 
-  // Generate session ID for autosave (hoisted before useAutoSave)
-  const [sessionId] = useState(() => crypto.randomUUID());
+  // Session ID for autosave (hoisted before useAutoSave). Scoped per user and
+  // persisted to localStorage so a draft survives modal close/reopen instead
+  // of being orphaned under a new random UUID every mount.
+  const [sessionId] = useState(() => {
+    const storageKey = user?.id
+      ? `projectCreation.draftSessionId.${user.id}`
+      : 'projectCreation.draftSessionId.anonymous';
+    try {
+      const stored = typeof window !== 'undefined'
+        ? localStorage.getItem(storageKey)
+        : null;
+      if (stored) return stored;
+      const fresh = crypto.randomUUID();
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(storageKey, fresh);
+      }
+      return fresh;
+    } catch {
+      return crypto.randomUUID();
+    }
+  });
 
   // Auto-save hook for project data persistence
   const autoSaveStatus = useAutoSave();
@@ -1490,18 +1514,26 @@ export default function ProjectCreationWithMemoryCards({
           const autoProjectType = data.eventType && data.eventType !== 'wedding'
             ? data.eventType // Use Evendi event type directly (e.g., 'conference', 'birthday')
             : undefined; // Keep user's selection for weddings
-          setProjectData(prev => ({
-            ...prev,
-            weddingCulture: data.primaryCulturalType,
-            eventType: data.eventType || 'wedding',
-            eventCategory: data.eventCategory || 'personal',
-            ...(autoProjectType && { projectType: autoProjectType }),
-            totalDays: (WEDDING_CULTURES as Record<string, any>)[data.primaryCulturalType]?.typical_days || prev.totalDays,
-            activeDays: Array.from(
-              { length: (WEDDING_CULTURES as Record<string, any>)[data.primaryCulturalType]?.typical_days || prev.totalDays },
-              (_, i) => i + 1
-            ),
-          }));
+          setProjectData(prev => {
+            // Only auto-populate totalDays/activeDays when the user hasn't
+            // already picked a wedding culture or explicitly set day counts —
+            // otherwise Evendi's async lookup could silently overwrite the
+            // photographer's manual edit after the bridge resolves.
+            const userHasSetDays = !!prev.weddingCulture || prev.totalDays !== 1;
+            const cultureDays = (WEDDING_CULTURES as Record<string, any>)[data.primaryCulturalType]?.typical_days;
+            const nextTotalDays = userHasSetDays
+              ? prev.totalDays
+              : cultureDays || prev.totalDays;
+            return {
+              ...prev,
+              weddingCulture: data.primaryCulturalType,
+              eventType: data.eventType || 'wedding',
+              eventCategory: data.eventCategory || 'personal',
+              ...(autoProjectType && { projectType: autoProjectType }),
+              totalDays: nextTotalDays,
+              activeDays: Array.from({ length: nextTotalDays }, (_, i) => i + 1),
+            };
+          });
           console.log(`🌍 Traditions bridge: Couple ${evendiCoupleId} → culturalType: ${data.primaryCulturalType}, eventType: ${data.eventType}`, data);
         }
       } catch (error) {
@@ -1643,10 +1675,15 @@ useEffect(() => {
   };
   save();
   return () => controller.abort();
-}, [user, profession, projectData]);
+  // Only the meeting fields should trigger a save — previously this
+  // depended on the entire `projectData`, so every description or shot
+  // list edit re-POSTed the same preferences repeatedly.
+}, [user, profession, projectData.meetingOption, projectData.meetingTime, projectData.meetingDuration]);
 
-  // Check user authentication status
+  // Check user authentication status (only after auth has finished loading to
+  // avoid spamming a warning during the initial token exchange).
   useEffect(() => {
+    if (authLoading) return;
     if (!user) {
       showWarningToast('No authenticated user found. Some features may not work properly.', 6000);
       console.warn('⚠️ No authenticated user found. Some features may not work properly.');
@@ -1654,7 +1691,7 @@ useEffect(() => {
       showInfoToast('User authenticated successfully', 2000);
       console.log('✅ User authenticated:', user.email || user.id);
   }
-}, [user]);
+}, [user, authLoading]);
 
   // Feature system integration - component registration and usage tracking
   useEffect(() => {
@@ -1802,7 +1839,7 @@ useEffect(() => {
     if (selectedContact) {
       setProjectData(prev => ({
         ...prev,
-        clientName: selectedContact.displayName || `${selectedContact.firstName || ''} ${selectedContact.lastName || ','}`.trim(),
+        clientName: selectedContact.displayName || `${selectedContact.firstName || ''} ${selectedContact.lastName || ''}`.trim(),
         clientEmail: selectedContact.email || '',
         clientPhone: selectedContact.phone || ''
       }));
@@ -1915,9 +1952,17 @@ useEffect(() => {
 };
 
   const handleGoToTab = (tabName: string) => {
-    // Navigate to Universal Dashboard tab (would need parent component integration)
-    console.log(`Navigate to tab: ${tabName}`);
-    // TODO: Implement tab navigation to Universal Dashboard
+    // Parent (e.g. UniversalDashboard) can pass onGoToTab to actually
+    // move focus between dashboard tabs. If not provided we fall back
+    // to a hash route so the browser URL still reflects the intent and
+    // back/forward navigation works, but we don't force-reload.
+    if (onGoToTab) {
+      onGoToTab(tabName);
+      return;
+    }
+    if (typeof window !== 'undefined') {
+      window.location.hash = `#tab=${encodeURIComponent(tabName)}`;
+    }
 };
 
   // Map local projectData state to ProjectData shape for createProject context
@@ -1971,6 +2016,13 @@ useEffect(() => {
       const newProject = await createProjectContext(mapToProjectData());
       if (newProject) {
         await WorkflowIntegrationService.orchestrateCompleteWorkflow(newProject);
+        // Bridge to Capture: persist the shot list into the shot_lists
+        // table (the iPad CaptureApp reads from there, not from the
+        // project metadata blob) and bootstrap a capture session so the
+        // iPad sees a ready-to-shoot session without a manual step.
+        await syncProjectToCapture(newProject).catch((err) => {
+          console.warn('Capture bridge sync failed (non-blocking):', err);
+        });
       }
       // Call callback to notify parent component
       if (onProjectCreated && newProject) {
@@ -1982,14 +2034,84 @@ useEffect(() => {
     }
 };
 
-  // Persist memory card plan once a project exists
+  // Push the just-created project into the Capture backend so the iPad
+  // can pick it up. Silent (non-blocking) — the web project creation
+  // itself must not fail if the capture bridge has a hiccup.
+  const syncProjectToCapture = useCallback(async (newProject: { id?: string } & Record<string, unknown>) => {
+    const projectId = newProject?.id;
+    if (!projectId) return;
+    const shots = Array.isArray(projectData.shotList) ? projectData.shotList : [];
+    if (shots.length > 0) {
+      try {
+        await apiRequest(`/api/projects/${encodeURIComponent(String(projectId))}/shot-list`, {
+          method: 'POST',
+          body: {
+            shots,
+            listName: projectData.projectName ? `${projectData.projectName} — shots` : 'Shot list',
+            eventType: projectData.projectType || 'photo_session',
+          },
+        });
+      } catch (err) {
+        console.warn('Shot list sync to capture failed:', err);
+      }
+    }
+    // Only bootstrap a capture session for profession types that
+    // actually use the iPad CaptureApp — avoids noisy sessions for,
+    // e.g., stylists or planners who never shoot.
+    const capturePro = (userProfession || '').toLowerCase();
+    const shouldBootstrapCapture = [
+      'photographer',
+      'videographer',
+      'wedding-photographer',
+      'commercial-photographer',
+    ].some((p) => capturePro.includes(p));
+    if (shouldBootstrapCapture) {
+      try {
+        await apiRequest(`/api/projects/${encodeURIComponent(String(projectId))}/capture-session`, {
+          method: 'POST',
+          body: {
+            name: projectData.projectName || undefined,
+          },
+        });
+      } catch (err) {
+        console.warn('Capture session bootstrap failed:', err);
+      }
+    }
+  }, [projectData.shotList, projectData.projectName, projectData.projectType, userProfession]);
+
+  // Keep the shot_lists table in sync with the web modal so the iPad
+  // always sees the latest plan. Debounced like the memory card save.
   useEffect(() => {
-    const savePlan = async () => {
-      if (!currentProject?.id || memoryPlanSavedRef.current) return;
+    if (!currentProject?.id) return;
+    const shots = Array.isArray(projectData.shotList) ? projectData.shotList : [];
+    const timer = setTimeout(async () => {
+      try {
+        await apiRequest(`/api/projects/${encodeURIComponent(String(currentProject.id))}/shot-list`, {
+          method: 'POST',
+          body: {
+            shots,
+            listName: projectData.projectName ? `${projectData.projectName} — shots` : 'Shot list',
+            eventType: projectData.projectType || 'photo_session',
+          },
+        });
+      } catch (e) {
+        console.warn('Failed to sync shot list:', e);
+      }
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [currentProject?.id, projectData.shotList, projectData.projectName, projectData.projectType]);
+
+  // Persist memory card plan once a project exists. Debounced so rapid edits
+  // don't spam the API, but unguarded on "already saved once" so every change
+  // reaches the backend — previous code stopped persisting after the first
+  // save, silently dropping any further user edits.
+  useEffect(() => {
+    if (!currentProject?.id) return;
+    const timer = setTimeout(async () => {
       try {
         const totalGb = Array.isArray(projectData.selectedMemoryCards)
           ? projectData.selectedMemoryCards.reduce((sum: number, c: SelectedMemoryCard) => {
-              const cap = parseFloat((c.capacity || '').toString().replace(/[^0-9.]/g, ', ')) || 0;
+              const cap = parseFloat((c.capacity || '').toString().replace(/[^0-9.]/g, '')) || 0;
               const count = Number(c.count || 1);
               return sum + cap * count;
             }, 0)
@@ -2010,8 +2132,8 @@ useEffect(() => {
       } catch (e) {
         console.warn('Failed to persist memory card plan:', e);
       }
-    };
-    savePlan();
+    }, 600);
+    return () => clearTimeout(timer);
   }, [currentProject?.id, projectData.selectedMemoryCards, projectData.enhancedMemoryCardSelection, projectData.memoryCardLabeling, projectData.equipmentNotes, userProfession, memoryCardLabeling]);
   
   // Lead import modal states
@@ -2356,16 +2478,20 @@ useEffect(() => {
     }
   }, [currentProject, addProjectComment, showSuccessToast]);
 
+  const [isCreatingBackup, setIsCreatingBackup] = useState(false);
   const handleCreateBackup = useCallback(async () => {
-    if (!currentProject?.id) return;
+    if (!currentProject?.id || isCreatingBackup) return;
+    setIsCreatingBackup(true);
     try {
       await createProjectBackup(currentProject.id);
       showSuccessToast('Sikkerhetskopi opprettet', 2000);
     } catch (err) {
       console.error('Backup failed:', err);
       showErrorToast('Sikkerhetskopi feilet');
+    } finally {
+      setIsCreatingBackup(false);
     }
-  }, [currentProject, createProjectBackup, showSuccessToast, showErrorToast]);
+  }, [currentProject, createProjectBackup, showSuccessToast, showErrorToast, isCreatingBackup]);
 
   const handleSearchProjects = useCallback(async (query: string) => {
     try {
@@ -4595,7 +4721,7 @@ useEffect(() => {
             <Button variant="text" size="small" startIcon={<Refresh />} onClick={handleRefreshProjectCache}>Oppdater cache</Button>
             <Button variant="text" size="small" startIcon={<CloudUpload />} onClick={() => handleUploadFile(new File([], 'placeholder'))}>Last opp fil</Button>
             <Button variant="text" size="small" startIcon={<Notes />} onClick={() => handleAddComment('Oppdatering fra utkast-panel')}>Legg til kommentar</Button>
-            <Button variant="text" size="small" startIcon={<CloudDone />} onClick={handleCreateBackup}>Sikkerhetskopi</Button>
+            <Button variant="text" size="small" startIcon={<CloudDone />} onClick={handleCreateBackup} disabled={isCreatingBackup}>{isCreatingBackup ? 'Lager…' : 'Sikkerhetskopi'}</Button>
             <Button variant="text" size="small" startIcon={<Timeline />} onClick={() => handleProjectsByDateRange(projectData.eventDate || '', projectData.eventDate || '')}>Søk etter dato</Button>
             <Button variant="text" size="small" startIcon={<Videocam />} onClick={() => handleSearchProjects(projectData.projectName)}>Søk prosjekter</Button>
             <Button variant="text" size="small" startIcon={<CloudDone />} onClick={handleSyncOffline}>Synk frakoblet</Button>
