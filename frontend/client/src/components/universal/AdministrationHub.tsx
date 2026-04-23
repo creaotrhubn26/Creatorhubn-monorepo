@@ -1,16 +1,31 @@
-import React, { useState } from 'react';
+import React, { lazy, Suspense, useEffect, useState } from 'react';
 import {
   Box,
   Tabs as MuiTabs,
   Tab,
   Paper,
   Typography,
+  Button,
+  CircularProgress,
 } from '@mui/material';
-import { Article, Payments, AdminPanelSettings, Memory as MemoryIcon } from '@mui/icons-material';
+import {
+  Article,
+  Payments,
+  AdminPanelSettings,
+  Memory as MemoryIcon,
+  Forum as ForumIcon,
+  Receipt as QuoteIcon,
+} from '@mui/icons-material';
 import PriceAdministration from '../PriceAdministration';
 import UniversalContractHub from './contracts/UniversalContractHub';
 import EvendiOfferManager from '../evendi/EvendiOfferManager';
 import MemoryCardPricingAdmin from '../admin/MemoryCardPricingAdmin';
+import CommunicationHub from '../business-intelligence/CommunicationHub';
+import { consumePendingAdministrationDeepLink } from './administrationHubDeepLink';
+
+// Lazy so the ~50kB quote builder (+ Kartverket hooks + MVA helpers)
+// isn't loaded for photographers who never open Admin → Tilbud.
+const QuoteGeneratorModal = lazy(() => import('../modals/QuoteGeneratorModal'));
 
 interface AdministrationHubProps {
   userId: string;
@@ -29,10 +44,27 @@ export default function AdministrationHub({
 }: AdministrationHubProps) {
   const [activeTab, setActiveTab] = useState(0);
   const [pricingTab, setPricingTab] = useState(0);
+  const [showQuoteGenerator, setShowQuoteGenerator] = useState(false);
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);
   };
+
+  // Consume the ``?subTab=`` deep-link UniversalDashboard stashed in
+  // sessionStorage before this hub mounted. sessionStorage rather
+  // than a DOM event because a synchronous event would land before
+  // our listener is attached.
+  useEffect(() => {
+    const target = consumePendingAdministrationDeepLink();
+    if (!target) return;
+    setActiveTab(target.tabIndex);
+    if (target.kind === 'quote') {
+      // ``?subTab=quotes`` = "show me the general quote builder".
+      // Pops QuoteGeneratorModal open over Prisadministrasjon so the
+      // photographer has pricing context one tap away.
+      setShowQuoteGenerator(true);
+    }
+  }, []);
 
   return (
     <Box sx={{ width: '100%' }}>
@@ -101,14 +133,19 @@ export default function AdministrationHub({
             label="PRISADMINISTRASJON" 
             iconPosition="start"
           />
-          <Tab 
-            icon={<Article sx={{ fontSize: 32 }} />} 
-            label="KONTRAKTER" 
+          <Tab
+            icon={<Article sx={{ fontSize: 32 }} />}
+            label="KONTRAKTER"
             iconPosition="start"
           />
-          <Tab 
-            icon={<img src="/evendi-logo.png" alt="" style={{ height: 28 }} />} 
-            label="EVENDI TILBUD" 
+          <Tab
+            icon={<ForumIcon sx={{ fontSize: 32 }} />}
+            label="KOMMUNIKASJON"
+            iconPosition="start"
+          />
+          <Tab
+            icon={<img src="/evendi-logo.png" alt="" style={{ height: 28 }} />}
+            label="EVENDI TILBUD"
             iconPosition="start"
           />
         </MuiTabs>
@@ -119,6 +156,19 @@ export default function AdministrationHub({
         {/* Tab 0: Prisadministrasjon */}
         {activeTab === 0 && (
           <Box sx={{ display: 'grid', gap: 3 }}>
+            {/* Quick-action row: one-tap entry into the general quote
+                builder. Desktop trigger for the same modal the iPad
+                ``?subTab=quotes`` deep-link auto-opens; keeps both
+                flows visually consistent. */}
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <Button
+                variant="contained"
+                startIcon={<QuoteIcon />}
+                onClick={() => setShowQuoteGenerator(true)}
+              >
+                Nytt tilbud
+              </Button>
+            </Box>
             <Paper
               elevation={0}
               sx={{
@@ -185,13 +235,36 @@ export default function AdministrationHub({
           </Box>
         )}
 
-        {/* Tab 2: Evendi Tilbud & Kontrakter */}
+        {/* Tab 2: Kommunikasjon — samler e-post, møter, notater og chat
+            i en inbox slik at fotografen ikke trenger å jonglere Signature,
+            Gmail og WhatsApp for samme jobb. CommunicationHub er allerede
+            koblet til /api/communication/* og /api/emails/* endepunktene. */}
         {activeTab === 2 && (
+          <Box>
+            <CommunicationHub userId={userId} profession={profession} />
+          </Box>
+        )}
+
+        {/* Tab 3: Evendi Tilbud & Kontrakter */}
+        {activeTab === 3 && (
           <Box>
             <EvendiOfferManager evendiCoupleId={evendiCoupleId} />
           </Box>
         )}
       </Box>
+
+      <Suspense fallback={<Box sx={{ p: 4, textAlign: 'center' }}><CircularProgress /></Box>}>
+        {showQuoteGenerator && (
+          <QuoteGeneratorModal
+            open={showQuoteGenerator}
+            onClose={() => setShowQuoteGenerator(false)}
+            packages={[]}
+            pricing={[]}
+            additionalCosts={[]}
+            discounts={[]}
+          />
+        )}
+      </Suspense>
     </Box>
   );
 }
