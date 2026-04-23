@@ -1,0 +1,891 @@
+{
+  "cookies": [
+    {
+      "name": "OTZ",
+      "value": "8573353_48_52_123900_48_436380",
+      "domain": "accounts.google.com",
+      "path": "/",
+      "expires": 1779297169,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "__Secure-ENID",
+      "value": "33.SE=pHxd8hBl1uS8Vro2IB5v018ZzHEF4Ln1O-Xmr8JbQmgY6CfZ4u1emfgO2hPJtZQd_eV1g21byboM65iD0Zw138JaGCgh3S775HE3JNecZXVYAFqDsSvt9N6IL0zWIYs8k88quwRvIFFevmay7hOIxIN1WPq2BTCtfwCWxV8_HAYLY7EO4pu2HW4qeaJydzXrBBbH3gF68nlzIAJrMPsam0cE3Y7fDQ4b-8KwndQYOFKp_afmC0f1hw",
+      "domain": ".google.com",
+      "path": "/",
+      "expires": 1810891877.673418,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "SID",
+      "value": "g.a0009Aj7VMJ_wYaBETGgM-P7VHo_wqJawp-sHAvowOcZDHYRuOTpBvios3aWR51KO1xuhNmTUwACgYKAUwSARISFQHGX2Mi5KNDCKlJEadJhnjnnAbcxxoVAUF8yKqo5mB2CTNQWsYZkHXGMzR80076",
+      "domain": ".google.com",
+      "path": "/",
+      "expires": 1811265226.695513,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "__Secure-1PSID",
+      "value": "g.a0009Aj7VMJ_wYaBETGgM-P7VHo_wqJawp-sHAvowOcZDHYRuOTp8xko_Kp77tLl4ZW4FLaJrQACgYKAc4SARISFQHGX2Mij15qgmT_Zyt45ncO216ELxoVAUF8yKoBN8aLENPzuMM0K8aJ5TMi0076",
+      "domain": ".google.com",
+      "path": "/",
+      "expires": 1811265226.695557,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "__Secure-3PSID",
+      "value": "g.a0009Aj7VMJ_wYaBETGgM-P7VHo_wqJawp-sHAvowOcZDHYRuOTpkCsNwjtrWJXTaEHyTLF4AAACgYKAYYSARISFQHGX2MiHMlhbSm4ocs1zQn3gLgmvBoVAUF8yKoaAlaoV6POjBnMi5U4zLz-0076",
+      "domain": ".google.com",
+      "path": "/",
+      "expires": 1811265226.695574,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "HSID",
+      "value": "AbYIOfoaPfoSlnHqw",
+      "domain": ".google.com",
+      "path": "/",
+      "expires": 1811265226.695628,
+      "httpOnly": true,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "SSID",
+      "value": "ANBhhRXxCyoKJJ_u8",
+      "domain": ".google.com",
+      "path": "/",
+      "expires": 1811265226.695642,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "APISID",
+      "value": "upJsCgn3ro-BfbQ3/AG43t0sBFPkDeqlsf",
+      "domain": ".google.com",
+      "path": "/",
+      "expires": 1811265226.695652,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "SAPISID",
+      "value": "oOR49f7fwFqooNqE/Ae7UoOUGR2z3u0rT9",
+      "domain": ".google.com",
+      "path": "/",
+      "expires": 1811265226.695664,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "__Secure-1PAPISID",
+      "value": "oOR49f7fwFqooNqE/Ae7UoOUGR2z3u0rT9",
+      "domain": ".google.com",
+      "path": "/",
+      "expires": 1811265226.695675,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "__Secure-3PAPISID",
+      "value": "oOR49f7fwFqooNqE/Ae7UoOUGR2z3u0rT9",
+      "domain": ".google.com",
+      "path": "/",
+      "expires": 1811265226.695685,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "__Host-GAPS",
+      "value": "1:ngkpWKbQ25wr9lCVBi8GCj6-flyho2XQNeC-u6LfWtUEJyhrY3C7CIS1fuMGn_AGLo47dSOjZdiFR5btN5R_Z7kldyx4QA:m1t95UJfwftD8zFe",
+      "domain": "accounts.google.com",
+      "path": "/",
+      "expires": 1811265226.695709,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "LSID",
+      "value": "s.NO|s.youtube:g.a0009Aj7VKDZ70YY4NAnUdrjmfidAe9pPa0eRqsJyZjsw2RiUNY5O5Meaiq6PYVE56fqHRFyngACgYKAZcSARISFQHGX2MirOiVZ-JTTzYK50E4xjrSIhoVAUF8yKonWwj5t1sXVZ5U8J8S1aYo0076",
+      "domain": "accounts.google.com",
+      "path": "/",
+      "expires": 1811265226.843869,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "__Host-1PLSID",
+      "value": "s.NO|s.youtube:g.a0009Aj7VKDZ70YY4NAnUdrjmfidAe9pPa0eRqsJyZjsw2RiUNY5xSAUQUN2VwaB0wAEWJSxLwACgYKAXUSARISFQHGX2MimOgFRbo8DkCX_r09F7GjfxoVAUF8yKolyPYwi2VWQU-CdUEtCwVo0076",
+      "domain": "accounts.google.com",
+      "path": "/",
+      "expires": 1811265226.843937,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "__Host-3PLSID",
+      "value": "s.NO|s.youtube:g.a0009Aj7VKDZ70YY4NAnUdrjmfidAe9pPa0eRqsJyZjsw2RiUNY59yNifDIa6L4-XwaaYbbTqgACgYKAb8SARISFQHGX2MifX1Ta0i2dYnBcpaB5I2czhoVAUF8yKrFroIbx3-A7tXQEPGdBrsx0076",
+      "domain": "accounts.google.com",
+      "path": "/",
+      "expires": 1811265226.843968,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "ACCOUNT_CHOOSER",
+      "value": "AFx_qI7yt-02r_gVyqCL8nBMAu5XH4CBC7PLG9JC1IsrWweKKiPu0O_vgSm2NWu8zqU2zjcXUkiV1YUJGwMXA0ykLgdfOaStuQ-TIqZKX9J0KjIVyL-3YZ7ZjqfwhO-QfUF4wpBVts9Q",
+      "domain": "accounts.google.com",
+      "path": "/",
+      "expires": 1811265226.843995,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "__Secure-1PSIDTS",
+      "value": "sidts-CjUBWhotCb34TdtwmEJdkA5L8YfUcRO2fQMWB2Jlh4Is6EZX03WX5Qx8TuR2FpFVQYzAFix_ghAA",
+      "domain": ".youtube.com",
+      "path": "/",
+      "expires": 1808241226.935169,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "__Secure-3PSIDTS",
+      "value": "sidts-CjUBWhotCb34TdtwmEJdkA5L8YfUcRO2fQMWB2Jlh4Is6EZX03WX5Qx8TuR2FpFVQYzAFix_ghAA",
+      "domain": ".youtube.com",
+      "path": "/",
+      "expires": 1808241226.935222,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "HSID",
+      "value": "AUlelh5IsTdbv9Pa5",
+      "domain": ".youtube.com",
+      "path": "/",
+      "expires": 1811265226.935238,
+      "httpOnly": true,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "SSID",
+      "value": "ARion21tUtWgULY0I",
+      "domain": ".youtube.com",
+      "path": "/",
+      "expires": 1811265226.935253,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "APISID",
+      "value": "upJsCgn3ro-BfbQ3/AG43t0sBFPkDeqlsf",
+      "domain": ".youtube.com",
+      "path": "/",
+      "expires": 1811265226.935264,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "SAPISID",
+      "value": "oOR49f7fwFqooNqE/Ae7UoOUGR2z3u0rT9",
+      "domain": ".youtube.com",
+      "path": "/",
+      "expires": 1811265226.935275,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "__Secure-1PAPISID",
+      "value": "oOR49f7fwFqooNqE/Ae7UoOUGR2z3u0rT9",
+      "domain": ".youtube.com",
+      "path": "/",
+      "expires": 1811265226.935287,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "__Secure-3PAPISID",
+      "value": "oOR49f7fwFqooNqE/Ae7UoOUGR2z3u0rT9",
+      "domain": ".youtube.com",
+      "path": "/",
+      "expires": 1811265226.935302,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "SID",
+      "value": "g.a0009Aj7VMJ_wYaBETGgM-P7VHo_wqJawp-sHAvowOcZDHYRuOTpBvios3aWR51KO1xuhNmTUwACgYKAUwSARISFQHGX2Mi5KNDCKlJEadJhnjnnAbcxxoVAUF8yKqo5mB2CTNQWsYZkHXGMzR80076",
+      "domain": ".youtube.com",
+      "path": "/",
+      "expires": 1811265226.935315,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "__Secure-1PSID",
+      "value": "g.a0009Aj7VMJ_wYaBETGgM-P7VHo_wqJawp-sHAvowOcZDHYRuOTp8xko_Kp77tLl4ZW4FLaJrQACgYKAc4SARISFQHGX2Mij15qgmT_Zyt45ncO216ELxoVAUF8yKoBN8aLENPzuMM0K8aJ5TMi0076",
+      "domain": ".youtube.com",
+      "path": "/",
+      "expires": 1811265226.935329,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "__Secure-3PSID",
+      "value": "g.a0009Aj7VMJ_wYaBETGgM-P7VHo_wqJawp-sHAvowOcZDHYRuOTpkCsNwjtrWJXTaEHyTLF4AAACgYKAYYSARISFQHGX2MiHMlhbSm4ocs1zQn3gLgmvBoVAUF8yKoaAlaoV6POjBnMi5U4zLz-0076",
+      "domain": ".youtube.com",
+      "path": "/",
+      "expires": 1811265226.935343,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "HSID",
+      "value": "AUlelh5IsTdbv9Pa5",
+      "domain": ".google.no",
+      "path": "/",
+      "expires": 1811265227.088145,
+      "httpOnly": true,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "SSID",
+      "value": "ARion21tUtWgULY0I",
+      "domain": ".google.no",
+      "path": "/",
+      "expires": 1811265227.088191,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "APISID",
+      "value": "upJsCgn3ro-BfbQ3/AG43t0sBFPkDeqlsf",
+      "domain": ".google.no",
+      "path": "/",
+      "expires": 1811265227.088206,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "SAPISID",
+      "value": "oOR49f7fwFqooNqE/Ae7UoOUGR2z3u0rT9",
+      "domain": ".google.no",
+      "path": "/",
+      "expires": 1811265227.08822,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "__Secure-1PAPISID",
+      "value": "oOR49f7fwFqooNqE/Ae7UoOUGR2z3u0rT9",
+      "domain": ".google.no",
+      "path": "/",
+      "expires": 1811265227.088234,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "__Secure-3PAPISID",
+      "value": "oOR49f7fwFqooNqE/Ae7UoOUGR2z3u0rT9",
+      "domain": ".google.no",
+      "path": "/",
+      "expires": 1811265227.088245,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "NID",
+      "value": "530=W36IVsN3ClJ_0hd0uR1_5BMUvzI8-2mzwILbYGPFAoxqjDky9BVN5mJjZUB4RqptWjL5OEznThpjM0BpDQ40DM4Z7jR4JmAB0uBIbC12h78MxI3E6-GE0V7OSV1Wpmg_Bua4kjOeIRduV51L6dsB_utr5-wLwEC5RCRpUJ7L1qbds3B3_nHbJCdWgS99MntWJ0UhU_fzKKul3mrOXj0m-bGkHpCXqdyst-HnjqYFsUAAhALGHi6af8AYaE_yo8p7zA",
+      "domain": ".google.no",
+      "path": "/",
+      "expires": 1792516427.088256,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "SID",
+      "value": "g.a0009Aj7VMJ_wYaBETGgM-P7VHo_wqJawp-sHAvowOcZDHYRuOTpBvios3aWR51KO1xuhNmTUwACgYKAUwSARISFQHGX2Mi5KNDCKlJEadJhnjnnAbcxxoVAUF8yKqo5mB2CTNQWsYZkHXGMzR80076",
+      "domain": ".google.no",
+      "path": "/",
+      "expires": 1811265227.088271,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "__Secure-1PSID",
+      "value": "g.a0009Aj7VMJ_wYaBETGgM-P7VHo_wqJawp-sHAvowOcZDHYRuOTp8xko_Kp77tLl4ZW4FLaJrQACgYKAc4SARISFQHGX2Mij15qgmT_Zyt45ncO216ELxoVAUF8yKoBN8aLENPzuMM0K8aJ5TMi0076",
+      "domain": ".google.no",
+      "path": "/",
+      "expires": 1811265227.088284,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "__Secure-3PSID",
+      "value": "g.a0009Aj7VMJ_wYaBETGgM-P7VHo_wqJawp-sHAvowOcZDHYRuOTpkCsNwjtrWJXTaEHyTLF4AAACgYKAYYSARISFQHGX2MiHMlhbSm4ocs1zQn3gLgmvBoVAUF8yKoaAlaoV6POjBnMi5U4zLz-0076",
+      "domain": ".google.no",
+      "path": "/",
+      "expires": 1811265227.088296,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "SIDCC",
+      "value": "AKEyXzXVXB2xNa62nK1XelvZi7x2_aralf89CywogzLpb1-KtQgnP2rdnABo6tXA5LLcrVCd",
+      "domain": ".google.com",
+      "path": "/",
+      "expires": 1808241235.025889,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "__Secure-1PSIDCC",
+      "value": "AKEyXzUnwJibEsort51m6b6nP12jvOKM5PG5RKk-j-zD7bhsMimE-K5vA3u_gfSvv7JHOlj3",
+      "domain": ".google.com",
+      "path": "/",
+      "expires": 1808241235.025928,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "__Secure-3PSIDCC",
+      "value": "AKEyXzWqz5JAIrwBxd6lfk2lFJT-yshYW99SB08JvA99v8SSAZpGE_4qHQMq2aA1Am0LxeHO",
+      "domain": ".google.com",
+      "path": "/",
+      "expires": 1808241235.025972,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None"
+    }
+  ],
+  "origins": [
+    {
+      "origin": "https://theroleroom.com",
+      "localStorage": [
+        {
+          "name": "story-logic-data:data:data:data:data:data:data:sync-meta:project-1776765143530",
+          "value": "{\"id\":\"story-logic-data:data:data:data:data:data:sync-meta:project-1776765143530\",\"projectId\":\"data:data:data:data:data:data:sync-meta:project-1776765143530\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:sync-meta:project-1776765143530\",\"projectId\":\"data:data:data:data:data:sync-meta:project-1776765143530\",\"data\":{\"id\":\"story-logic-data:data:data:data:sync-meta:project-1776765143530\",\"projectId\":\"data:data:data:data:sync-meta:project-1776765143530\",\"data\":{\"id\":\"story-logic-data:data:data:sync-meta:project-1776765143530\",\"projectId\":\"data:data:data:sync-meta:project-1776765143530\",\"data\":{\"id\":\"story-logic-data:data:sync-meta:project-1776765143530\",\"projectId\":\"data:data:sync-meta:project-1776765143530\",\"data\":{\"id\":\"story-logic-data:sync-meta:project-1776765143530\",\"projectId\":\"data:sync-meta:project-1776765143530\",\"data\":{\"id\":\"story-logic-sync-meta:project-1776765143530\",\"projectId\":\"sync-meta:project-1776765143530\",\"data\":{\"projectId\":\"project-1776765143530\",\"status\":\"synced\",\"source\":\"server\",\"lastLoadedAt\":\"2026-04-21T09:52:26.417Z\"},\"createdAt\":\"2026-04-21T10:49:17.966Z\",\"updatedAt\":\"2026-04-21T10:49:17.966Z\"},\"createdAt\":\"2026-04-21T15:40:30.146Z\",\"updatedAt\":\"2026-04-21T15:40:30.146Z\"},\"createdAt\":\"2026-04-21T21:52:14.534Z\",\"updatedAt\":\"2026-04-21T21:52:14.534Z\"},\"createdAt\":\"2026-04-21T22:03:05.949Z\",\"updatedAt\":\"2026-04-21T22:03:05.949Z\"},\"createdAt\":\"2026-04-21T22:05:27.822Z\",\"updatedAt\":\"2026-04-21T22:05:27.822Z\"},\"createdAt\":\"2026-04-21T22:47:10.742Z\",\"updatedAt\":\"2026-04-21T22:47:10.742Z\"},\"createdAt\":\"2026-04-22T06:50:50.022Z\",\"updatedAt\":\"2026-04-22T06:50:50.022Z\"}"
+        },
+        {
+          "name": "story-logic-data:data:sync-meta:project-1776809127907",
+          "value": "{\"id\":\"story-logic-data:sync-meta:project-1776809127907\",\"projectId\":\"data:sync-meta:project-1776809127907\",\"data\":{\"id\":\"story-logic-sync-meta:project-1776809127907\",\"projectId\":\"sync-meta:project-1776809127907\",\"data\":{\"projectId\":\"project-1776809127907\",\"status\":\"synced\",\"source\":\"server\",\"lastLoadedAt\":\"2026-04-21T22:05:31.379Z\"},\"createdAt\":\"2026-04-21T22:47:10.742Z\",\"updatedAt\":\"2026-04-21T22:47:10.742Z\"},\"createdAt\":\"2026-04-22T06:50:50.021Z\",\"updatedAt\":\"2026-04-22T06:50:50.022Z\"}"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465:project-1776808336188:virtualStudio_candidateQuickContacts",
+          "value": "[]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-sync-meta-project-1776808986421",
+          "value": "{\"projectId\":\"project-1776808986421\",\"lastLocalSaveAt\":\"2026-04-21T22:03:09.115Z\",\"queuedChangeCount\":0}"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-sync-meta-project-1776808334658",
+          "value": "{\"projectId\":\"project-1776808334658\",\"lastLocalSaveAt\":\"2026-04-21T21:52:14.658Z\",\"queuedChangeCount\":0}"
+        },
+        {
+          "name": "story-logic-sync-meta:project-1776840650138",
+          "value": "{\"projectId\":\"project-1776840650138\",\"status\":\"synced\",\"source\":\"server\",\"lastLoadedAt\":\"2026-04-22T06:50:54.930Z\"}"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465:project-1776786030265:virtualStudio_candidateQuickContacts",
+          "value": "[]"
+        },
+        {
+          "name": "story-logic-data:data:data:data:data:data:data:data:data:data:data:sync-meta:project-1776706002125",
+          "value": "{\"id\":\"story-logic-data:data:data:data:data:data:data:data:data:data:sync-meta:project-1776706002125\",\"projectId\":\"data:data:data:data:data:data:data:data:data:data:sync-meta:project-1776706002125\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:data:data:data:data:sync-meta:project-1776706002125\",\"projectId\":\"data:data:data:data:data:data:data:data:data:sync-meta:project-1776706002125\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:data:data:data:sync-meta:project-1776706002125\",\"projectId\":\"data:data:data:data:data:data:data:data:sync-meta:project-1776706002125\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:data:data:sync-meta:project-1776706002125\",\"projectId\":\"data:data:data:data:data:data:data:sync-meta:project-1776706002125\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:data:sync-meta:project-1776706002125\",\"projectId\":\"data:data:data:data:data:data:sync-meta:project-1776706002125\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:sync-meta:project-1776706002125\",\"projectId\":\"data:data:data:data:data:sync-meta:project-1776706002125\",\"data\":{\"id\":\"story-logic-data:data:data:data:sync-meta:project-1776706002125\",\"projectId\":\"data:data:data:data:sync-meta:project-1776706002125\",\"data\":{\"id\":\"story-logic-data:data:data:sync-meta:project-1776706002125\",\"projectId\":\"data:data:data:sync-meta:project-1776706002125\",\"data\":{\"id\":\"story-logic-data:data:sync-meta:project-1776706002125\",\"projectId\":\"data:data:sync-meta:project-1776706002125\",\"data\":{\"id\":\"story-logic-data:sync-meta:project-1776706002125\",\"projectId\":\"data:sync-meta:project-1776706002125\",\"data\":{\"id\":\"story-logic-sync-meta:project-1776706002125\",\"projectId\":\"sync-meta:project-1776706002125\",\"data\":{\"projectId\":\"project-1776706002125\",\"status\":\"synced\",\"source\":\"server\",\"lastLoadedAt\":\"2026-04-20T17:26:45.579Z\"},\"createdAt\":\"2026-04-20T18:07:19.220Z\",\"updatedAt\":\"2026-04-20T18:07:19.220Z\"},\"createdAt\":\"2026-04-20T19:44:31.137Z\",\"updatedAt\":\"2026-04-20T19:44:31.137Z\"},\"createdAt\":\"2026-04-21T09:36:50.652Z\",\"updatedAt\":\"2026-04-21T09:36:50.652Z\"},\"createdAt\":\"2026-04-21T09:52:21.934Z\",\"updatedAt\":\"2026-04-21T09:52:21.934Z\"},\"createdAt\":\"2026-04-21T10:49:17.967Z\",\"updatedAt\":\"2026-04-21T10:49:17.967Z\"},\"createdAt\":\"2026-04-21T15:40:30.146Z\",\"updatedAt\":\"2026-04-21T15:40:30.146Z\"},\"createdAt\":\"2026-04-21T21:52:14.534Z\",\"updatedAt\":\"2026-04-21T21:52:14.534Z\"},\"createdAt\":\"2026-04-21T22:03:05.949Z\",\"updatedAt\":\"2026-04-21T22:03:05.949Z\"},\"createdAt\":\"2026-04-21T22:05:27.821Z\",\"updatedAt\":\"2026-04-21T22:05:27.821Z\"},\"createdAt\":\"2026-04-21T22:47:10.742Z\",\"updatedAt\":\"2026-04-21T22:47:10.742Z\"},\"createdAt\":\"2026-04-22T06:50:50.022Z\",\"updatedAt\":\"2026-04-22T06:50:50.022Z\"}"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-snapshots-project-1776808336188",
+          "value": "[{\"id\":\"1d765108-6c82-47a7-abe1-b3faf733ad19\",\"projectId\":\"project-1776808336188\",\"createdAt\":\"2026-04-21T21:52:16.546Z\",\"source\":\"local_save\",\"label\":\"Lokal lagring\",\"project\":{\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"createdAt\":\"2026-04-21T21:52:16.188Z\",\"id\":\"project-1776808336188\",\"name\":\"Nytt Role Room prosjekt\",\"description\":\"\",\"roles\":[],\"candidates\":[],\"schedules\":[],\"crew\":[],\"locations\":[],\"props\":[],\"productionDays\":[],\"shotLists\":[],\"userRoles\":[],\"updatedAt\":\"2026-04-21T21:52:16.188Z\"}}]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-sync-meta-project-1776840651298",
+          "value": "{\"projectId\":\"project-1776840651298\",\"queuedChangeCount\":0,\"lastLocalSaveAt\":\"2026-04-22T06:50:54.031Z\"}"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-snapshots-project-1776765142039",
+          "value": "[{\"id\":\"1d33ea81-d63c-43b4-9801-13d148ecb6ac\",\"projectId\":\"project-1776765142039\",\"createdAt\":\"2026-04-21T09:52:27.020Z\",\"source\":\"local_save\",\"label\":\"Lokal lagring · status planning\",\"project\":{\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"createdAt\":\"2026-04-21T09:52:22.039Z\",\"id\":\"project-1776765142039\",\"name\":\"Nytt Role Room prosjekt\",\"description\":\"\",\"roles\":[],\"candidates\":[],\"schedules\":[],\"crew\":[],\"locations\":[],\"props\":[],\"productionDays\":[],\"shotLists\":[],\"userRoles\":[{\"id\":\"userrole-53391080-8437-471e-800b-8b0d01e8b465-project-1776765142039\",\"userId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"projectId\":\"project-1776765142039\",\"role\":\"content_producer\",\"permissions\":{\"canViewAll\":true,\"canEditCasting\":true,\"canEditProduction\":true,\"canEditShots\":true,\"canEditShotLists\":true,\"canManageCrew\":false,\"canManageLocations\":true,\"canApprove\":false,\"canEditScript\":true,\"canLockScript\":false,\"canRunTableRead\":true,\"canComment\":true,\"canRequestChanges\":true,\"canViewEconomy\":true},\"createdAt\":\"2026-04-21T09:52:25.142Z\",\"updatedAt\":\"2026-04-21T09:52:25.142Z\"}],\"updatedAt\":\"2026-04-21T09:52:26.689Z\",\"producerWorkflowStatus\":\"planning\",\"producerWorkflowMeta\":{\"totalReviews\":0,\"pendingReviews\":0,\"approvedReviews\":0,\"rejectedReviews\":0,\"changesRequestedReviews\":0,\"budgetReviewCount\":0,\"agreementReviewCount\":0,\"deliverableReviewCount\":0,\"lastReviewRequestedAt\":null,\"lastDecisionAt\":null,\"lastApprovedReviewId\":null,\"lastPendingReviewId\":null}}},{\"id\":\"c41625c4-bcef-4609-bf0a-c6d026771fdc\",\"label\":\"Lokal lagring\",\"source\":\"local_save\",\"project\":{\"id\":\"project-1776765142039\",\"crew\":[],\"name\":\"Nytt Role Room prosjekt\",\"props\":[],\"roles\":[],\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdAt\":\"2026-04-21T09:52:22.039Z\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"locations\":[],\"schedules\":[],\"shotLists\":[],\"updatedAt\":\"2026-04-21T09:52:22.040Z\",\"userRoles\":[],\"candidates\":[],\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"description\":\"\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"productionDays\":[]},\"createdAt\":\"2026-04-21T09:52:23.593Z\",\"projectId\":\"project-1776765142039\"}]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::roleRoom_castingProfession",
+          "value": "\"videographer\""
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465:project-1776786031461:virtualStudio_candidateQuickContacts",
+          "value": "[]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465:project-1776765143530:virtualStudio_candidateQuickContacts",
+          "value": "[]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465:project-1776714271247:virtualStudio_candidateQuickContacts",
+          "value": "[]"
+        },
+        {
+          "name": "story-logic-data:data:data:sync-meta:project-1776808986421",
+          "value": "{\"id\":\"story-logic-data:data:sync-meta:project-1776808986421\",\"projectId\":\"data:data:sync-meta:project-1776808986421\",\"data\":{\"id\":\"story-logic-data:sync-meta:project-1776808986421\",\"projectId\":\"data:sync-meta:project-1776808986421\",\"data\":{\"id\":\"story-logic-sync-meta:project-1776808986421\",\"projectId\":\"sync-meta:project-1776808986421\",\"data\":{\"projectId\":\"project-1776808986421\",\"status\":\"synced\",\"source\":\"server\",\"lastLoadedAt\":\"2026-04-21T22:03:09.411Z\"},\"createdAt\":\"2026-04-21T22:05:27.822Z\",\"updatedAt\":\"2026-04-21T22:05:27.822Z\"},\"createdAt\":\"2026-04-21T22:47:10.742Z\",\"updatedAt\":\"2026-04-21T22:47:10.742Z\"},\"createdAt\":\"2026-04-22T06:50:50.022Z\",\"updatedAt\":\"2026-04-22T06:50:50.022Z\"}"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-snapshots-project-1776714271247",
+          "value": "[{\"id\":\"238a49f0-7b47-4bd0-8938-59ce0185df6e\",\"projectId\":\"project-1776714271247\",\"createdAt\":\"2026-04-20T19:44:35.445Z\",\"source\":\"local_save\",\"label\":\"Lokal lagring · status planning\",\"project\":{\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"createdAt\":\"2026-04-20T19:44:31.247Z\",\"id\":\"project-1776714271247\",\"name\":\"Nytt Role Room prosjekt\",\"description\":\"\",\"roles\":[],\"candidates\":[],\"schedules\":[],\"crew\":[],\"locations\":[],\"props\":[],\"productionDays\":[],\"shotLists\":[],\"userRoles\":[{\"id\":\"userrole-53391080-8437-471e-800b-8b0d01e8b465-project-1776714271247\",\"userId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"projectId\":\"project-1776714271247\",\"role\":\"content_producer\",\"permissions\":{\"canViewAll\":true,\"canEditCasting\":true,\"canEditProduction\":true,\"canEditShots\":true,\"canEditShotLists\":true,\"canManageCrew\":false,\"canManageLocations\":true,\"canApprove\":false,\"canEditScript\":true,\"canLockScript\":false,\"canRunTableRead\":true,\"canComment\":true,\"canRequestChanges\":true,\"canViewEconomy\":true},\"createdAt\":\"2026-04-20T19:44:33.558Z\",\"updatedAt\":\"2026-04-20T19:44:33.558Z\"}],\"updatedAt\":\"2026-04-20T19:44:35.090Z\",\"producerWorkflowStatus\":\"planning\",\"producerWorkflowMeta\":{\"totalReviews\":0,\"pendingReviews\":0,\"approvedReviews\":0,\"rejectedReviews\":0,\"changesRequestedReviews\":0,\"budgetReviewCount\":0,\"agreementReviewCount\":0,\"deliverableReviewCount\":0,\"lastReviewRequestedAt\":null,\"lastDecisionAt\":null,\"lastApprovedReviewId\":null,\"lastPendingReviewId\":null}}},{\"id\":\"faa9f4a8-f614-4ea2-ae50-b782b043aa9a\",\"label\":\"Lokal lagring\",\"source\":\"local_save\",\"project\":{\"id\":\"project-1776714271247\",\"crew\":[],\"name\":\"Nytt Role Room prosjekt\",\"props\":[],\"roles\":[],\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdAt\":\"2026-04-20T19:44:31.247Z\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"locations\":[],\"schedules\":[],\"shotLists\":[],\"updatedAt\":\"2026-04-20T19:44:31.247Z\",\"userRoles\":[],\"candidates\":[],\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"description\":\"\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"productionDays\":[]},\"createdAt\":\"2026-04-20T19:44:32.419Z\",\"projectId\":\"project-1776714271247\"}]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-sync-meta-project-1776840650138",
+          "value": "{\"projectId\":\"project-1776840650138\",\"lastLocalSaveAt\":\"2026-04-22T06:50:54.597Z\",\"queuedChangeCount\":0}"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-snapshots-project-1776808986421",
+          "value": "[{\"id\":\"b9dec1e8-7b1f-426d-8412-05755d19a4d0\",\"projectId\":\"project-1776808986421\",\"createdAt\":\"2026-04-21T22:03:09.463Z\",\"source\":\"local_save\",\"label\":\"Lokal lagring · status planning\",\"project\":{\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"createdAt\":\"2026-04-21T22:03:06.421Z\",\"id\":\"project-1776808986421\",\"name\":\"Nytt Role Room prosjekt\",\"description\":\"\",\"roles\":[],\"candidates\":[],\"schedules\":[],\"crew\":[],\"locations\":[],\"props\":[],\"productionDays\":[],\"shotLists\":[],\"userRoles\":[{\"id\":\"userrole-53391080-8437-471e-800b-8b0d01e8b465-project-1776808986421\",\"userId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"projectId\":\"project-1776808986421\",\"role\":\"content_producer\",\"permissions\":{\"canViewAll\":true,\"canEditCasting\":true,\"canEditProduction\":true,\"canEditShots\":true,\"canEditShotLists\":true,\"canManageCrew\":false,\"canManageLocations\":true,\"canApprove\":false,\"canEditScript\":true,\"canLockScript\":false,\"canRunTableRead\":true,\"canComment\":true,\"canRequestChanges\":true,\"canViewEconomy\":true},\"createdAt\":\"2026-04-21T22:03:07.878Z\",\"updatedAt\":\"2026-04-21T22:03:07.878Z\"}],\"updatedAt\":\"2026-04-21T22:03:09.115Z\",\"producerWorkflowStatus\":\"planning\",\"producerWorkflowMeta\":{\"totalReviews\":0,\"pendingReviews\":0,\"approvedReviews\":0,\"rejectedReviews\":0,\"changesRequestedReviews\":0,\"budgetReviewCount\":0,\"agreementReviewCount\":0,\"deliverableReviewCount\":0,\"lastReviewRequestedAt\":null,\"lastDecisionAt\":null,\"lastApprovedReviewId\":null,\"lastPendingReviewId\":null}}},{\"id\":\"592f7ea0-b9fe-457b-8bf9-ccdbf5572fba\",\"label\":\"Lokal lagring\",\"source\":\"local_save\",\"project\":{\"id\":\"project-1776808986421\",\"crew\":[],\"name\":\"Nytt Role Room prosjekt\",\"props\":[],\"roles\":[],\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdAt\":\"2026-04-21T22:03:06.421Z\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"locations\":[],\"schedules\":[],\"shotLists\":[],\"updatedAt\":\"2026-04-21T22:03:06.422Z\",\"userRoles\":[],\"candidates\":[],\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"description\":\"\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"productionDays\":[]},\"createdAt\":\"2026-04-21T22:03:06.777Z\",\"projectId\":\"project-1776808986421\"}]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-sync-meta-project-1776764211695",
+          "value": "{\"projectId\":\"project-1776764211695\",\"lastLocalSaveAt\":\"2026-04-21T09:36:51.695Z\",\"queuedChangeCount\":0}"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-sync-meta-project-1776706003276",
+          "value": "{\"projectId\":\"project-1776706003276\",\"lastLocalSaveAt\":\"2026-04-20T17:26:46.021Z\",\"queuedChangeCount\":0}"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465:project-1776705235478:virtualStudio_candidateQuickContacts",
+          "value": "[]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-sync-meta-project-1776708439328",
+          "value": "{\"projectId\":\"project-1776708439328\",\"lastLocalSaveAt\":\"2026-04-20T18:07:23.534Z\",\"queuedChangeCount\":0}"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-sync-meta-project-1776809127907",
+          "value": "{\"projectId\":\"project-1776809127907\",\"queuedChangeCount\":0,\"lastLocalSaveAt\":\"2026-04-21T22:05:31.233Z\"}"
+        },
+        {
+          "name": "story-logic-data:data:data:data:data:data:data:data:data:data:data:data:sync-meta:project-1776705822662",
+          "value": "{\"id\":\"story-logic-data:data:data:data:data:data:data:data:data:data:data:sync-meta:project-1776705822662\",\"projectId\":\"data:data:data:data:data:data:data:data:data:data:data:sync-meta:project-1776705822662\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:data:data:data:data:data:sync-meta:project-1776705822662\",\"projectId\":\"data:data:data:data:data:data:data:data:data:data:sync-meta:project-1776705822662\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:data:data:data:data:sync-meta:project-1776705822662\",\"projectId\":\"data:data:data:data:data:data:data:data:data:sync-meta:project-1776705822662\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:data:data:data:sync-meta:project-1776705822662\",\"projectId\":\"data:data:data:data:data:data:data:data:sync-meta:project-1776705822662\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:data:data:sync-meta:project-1776705822662\",\"projectId\":\"data:data:data:data:data:data:data:sync-meta:project-1776705822662\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:data:sync-meta:project-1776705822662\",\"projectId\":\"data:data:data:data:data:data:sync-meta:project-1776705822662\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:sync-meta:project-1776705822662\",\"projectId\":\"data:data:data:data:data:sync-meta:project-1776705822662\",\"data\":{\"id\":\"story-logic-data:data:data:data:sync-meta:project-1776705822662\",\"projectId\":\"data:data:data:data:sync-meta:project-1776705822662\",\"data\":{\"id\":\"story-logic-data:data:data:sync-meta:project-1776705822662\",\"projectId\":\"data:data:data:sync-meta:project-1776705822662\",\"data\":{\"id\":\"story-logic-data:data:sync-meta:project-1776705822662\",\"projectId\":\"data:data:sync-meta:project-1776705822662\",\"data\":{\"id\":\"story-logic-data:sync-meta:project-1776705822662\",\"projectId\":\"data:sync-meta:project-1776705822662\",\"data\":{\"id\":\"story-logic-sync-meta:project-1776705822662\",\"projectId\":\"sync-meta:project-1776705822662\",\"data\":{\"projectId\":\"project-1776705822662\",\"status\":\"synced\",\"source\":\"server\",\"lastLoadedAt\":\"2026-04-20T17:23:45.705Z\"},\"createdAt\":\"2026-04-20T17:26:42.035Z\",\"updatedAt\":\"2026-04-20T17:26:42.035Z\"},\"createdAt\":\"2026-04-20T18:07:19.220Z\",\"updatedAt\":\"2026-04-20T18:07:19.220Z\"},\"createdAt\":\"2026-04-20T19:44:31.137Z\",\"updatedAt\":\"2026-04-20T19:44:31.137Z\"},\"createdAt\":\"2026-04-21T09:36:50.652Z\",\"updatedAt\":\"2026-04-21T09:36:50.652Z\"},\"createdAt\":\"2026-04-21T09:52:21.934Z\",\"updatedAt\":\"2026-04-21T09:52:21.934Z\"},\"createdAt\":\"2026-04-21T10:49:17.966Z\",\"updatedAt\":\"2026-04-21T10:49:17.967Z\"},\"createdAt\":\"2026-04-21T15:40:30.146Z\",\"updatedAt\":\"2026-04-21T15:40:30.146Z\"},\"createdAt\":\"2026-04-21T21:52:14.534Z\",\"updatedAt\":\"2026-04-21T21:52:14.534Z\"},\"createdAt\":\"2026-04-21T22:03:05.949Z\",\"updatedAt\":\"2026-04-21T22:03:05.949Z\"},\"createdAt\":\"2026-04-21T22:05:27.822Z\",\"updatedAt\":\"2026-04-21T22:05:27.822Z\"},\"createdAt\":\"2026-04-21T22:47:10.742Z\",\"updatedAt\":\"2026-04-21T22:47:10.742Z\"},\"createdAt\":\"2026-04-22T06:50:50.022Z\",\"updatedAt\":\"2026-04-22T06:50:50.022Z\"}"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465:project-1776706002125:virtualStudio_candidateQuickContacts",
+          "value": "[]"
+        },
+        {
+          "name": "story-logic-data:data:data:data:data:data:data:data:data:data:data:data:data:sync-meta:project-1776705236985",
+          "value": "{\"id\":\"story-logic-data:data:data:data:data:data:data:data:data:data:data:data:sync-meta:project-1776705236985\",\"projectId\":\"data:data:data:data:data:data:data:data:data:data:data:data:sync-meta:project-1776705236985\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:data:data:data:data:data:data:sync-meta:project-1776705236985\",\"projectId\":\"data:data:data:data:data:data:data:data:data:data:data:sync-meta:project-1776705236985\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:data:data:data:data:data:sync-meta:project-1776705236985\",\"projectId\":\"data:data:data:data:data:data:data:data:data:data:sync-meta:project-1776705236985\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:data:data:data:data:sync-meta:project-1776705236985\",\"projectId\":\"data:data:data:data:data:data:data:data:data:sync-meta:project-1776705236985\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:data:data:data:sync-meta:project-1776705236985\",\"projectId\":\"data:data:data:data:data:data:data:data:sync-meta:project-1776705236985\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:data:data:sync-meta:project-1776705236985\",\"projectId\":\"data:data:data:data:data:data:data:sync-meta:project-1776705236985\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:data:sync-meta:project-1776705236985\",\"projectId\":\"data:data:data:data:data:data:sync-meta:project-1776705236985\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:sync-meta:project-1776705236985\",\"projectId\":\"data:data:data:data:data:sync-meta:project-1776705236985\",\"data\":{\"id\":\"story-logic-data:data:data:data:sync-meta:project-1776705236985\",\"projectId\":\"data:data:data:data:sync-meta:project-1776705236985\",\"data\":{\"id\":\"story-logic-data:data:data:sync-meta:project-1776705236985\",\"projectId\":\"data:data:data:sync-meta:project-1776705236985\",\"data\":{\"id\":\"story-logic-data:data:sync-meta:project-1776705236985\",\"projectId\":\"data:data:sync-meta:project-1776705236985\",\"data\":{\"id\":\"story-logic-data:sync-meta:project-1776705236985\",\"projectId\":\"data:sync-meta:project-1776705236985\",\"data\":{\"id\":\"story-logic-sync-meta:project-1776705236985\",\"projectId\":\"sync-meta:project-1776705236985\",\"data\":{\"projectId\":\"project-1776705236985\",\"status\":\"synced\",\"source\":\"server\",\"lastLoadedAt\":\"2026-04-20T17:13:59.960Z\"},\"createdAt\":\"2026-04-20T17:23:41.398Z\",\"updatedAt\":\"2026-04-20T17:23:41.398Z\"},\"createdAt\":\"2026-04-20T17:26:42.035Z\",\"updatedAt\":\"2026-04-20T17:26:42.035Z\"},\"createdAt\":\"2026-04-20T18:07:19.220Z\",\"updatedAt\":\"2026-04-20T18:07:19.220Z\"},\"createdAt\":\"2026-04-20T19:44:31.137Z\",\"updatedAt\":\"2026-04-20T19:44:31.137Z\"},\"createdAt\":\"2026-04-21T09:36:50.652Z\",\"updatedAt\":\"2026-04-21T09:36:50.652Z\"},\"createdAt\":\"2026-04-21T09:52:21.933Z\",\"updatedAt\":\"2026-04-21T09:52:21.934Z\"},\"createdAt\":\"2026-04-21T10:49:17.967Z\",\"updatedAt\":\"2026-04-21T10:49:17.967Z\"},\"createdAt\":\"2026-04-21T15:40:30.146Z\",\"updatedAt\":\"2026-04-21T15:40:30.146Z\"},\"createdAt\":\"2026-04-21T21:52:14.534Z\",\"updatedAt\":\"2026-04-21T21:52:14.534Z\"},\"createdAt\":\"2026-04-21T22:03:05.949Z\",\"updatedAt\":\"2026-04-21T22:03:05.949Z\"},\"createdAt\":\"2026-04-21T22:05:27.822Z\",\"updatedAt\":\"2026-04-21T22:05:27.822Z\"},\"createdAt\":\"2026-04-21T22:47:10.742Z\",\"updatedAt\":\"2026-04-21T22:47:10.742Z\"},\"createdAt\":\"2026-04-22T06:50:50.022Z\",\"updatedAt\":\"2026-04-22T06:50:50.022Z\"}"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-snapshots-project-1776808986039",
+          "value": "[{\"id\":\"778d8f76-7b31-442b-a376-c1f372ecd234\",\"projectId\":\"project-1776808986039\",\"createdAt\":\"2026-04-21T22:03:09.348Z\",\"source\":\"local_save\",\"label\":\"Lokal lagring · status planning\",\"project\":{\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"createdAt\":\"2026-04-21T22:03:06.039Z\",\"id\":\"project-1776808986039\",\"name\":\"Nytt Role Room prosjekt\",\"description\":\"\",\"roles\":[],\"candidates\":[],\"schedules\":[],\"crew\":[],\"locations\":[],\"props\":[],\"productionDays\":[],\"shotLists\":[],\"userRoles\":[{\"id\":\"userrole-53391080-8437-471e-800b-8b0d01e8b465-project-1776808986039\",\"userId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"projectId\":\"project-1776808986039\",\"role\":\"content_producer\",\"permissions\":{\"canViewAll\":true,\"canEditCasting\":true,\"canEditProduction\":true,\"canEditShots\":true,\"canEditShotLists\":true,\"canManageCrew\":false,\"canManageLocations\":true,\"canApprove\":false,\"canEditScript\":true,\"canLockScript\":false,\"canRunTableRead\":true,\"canComment\":true,\"canRequestChanges\":true,\"canViewEconomy\":true},\"createdAt\":\"2026-04-21T22:03:07.614Z\",\"updatedAt\":\"2026-04-21T22:03:07.614Z\"}],\"updatedAt\":\"2026-04-21T22:03:08.994Z\",\"producerWorkflowStatus\":\"planning\",\"producerWorkflowMeta\":{\"totalReviews\":0,\"pendingReviews\":0,\"approvedReviews\":0,\"rejectedReviews\":0,\"changesRequestedReviews\":0,\"budgetReviewCount\":0,\"agreementReviewCount\":0,\"deliverableReviewCount\":0,\"lastReviewRequestedAt\":null,\"lastDecisionAt\":null,\"lastApprovedReviewId\":null,\"lastPendingReviewId\":null}}},{\"id\":\"18d625fc-cb8e-47f1-b8e5-fd292156a5fe\",\"label\":\"Lokal lagring\",\"source\":\"local_save\",\"project\":{\"id\":\"project-1776808986039\",\"crew\":[],\"name\":\"Nytt Role Room prosjekt\",\"props\":[],\"roles\":[],\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdAt\":\"2026-04-21T22:03:06.039Z\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"locations\":[],\"schedules\":[],\"shotLists\":[],\"updatedAt\":\"2026-04-21T22:03:06.039Z\",\"userRoles\":[],\"candidates\":[],\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"description\":\"\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"productionDays\":[]},\"createdAt\":\"2026-04-21T22:03:06.492Z\",\"projectId\":\"project-1776808986039\"}]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465:project-1776809129066:virtualStudio_candidateQuickContacts",
+          "value": "[]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465:project-1776705821494:virtualStudio_candidateQuickContacts",
+          "value": "[]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-snapshots-project-1776840650138",
+          "value": "[{\"id\":\"4dfbdc2f-f6d0-43e4-93f8-20e7b7d9b45f\",\"projectId\":\"project-1776840650138\",\"createdAt\":\"2026-04-22T06:50:54.943Z\",\"source\":\"local_save\",\"label\":\"Lokal lagring · status planning\",\"project\":{\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"createdAt\":\"2026-04-22T06:50:50.138Z\",\"id\":\"project-1776840650138\",\"name\":\"Nytt Role Room prosjekt\",\"description\":\"\",\"roles\":[],\"candidates\":[],\"schedules\":[],\"crew\":[],\"locations\":[],\"props\":[],\"productionDays\":[],\"shotLists\":[],\"userRoles\":[{\"id\":\"userrole-53391080-8437-471e-800b-8b0d01e8b465-project-1776840650138\",\"userId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"projectId\":\"project-1776840650138\",\"role\":\"content_producer\",\"permissions\":{\"canViewAll\":true,\"canEditCasting\":true,\"canEditProduction\":true,\"canEditShots\":true,\"canEditShotLists\":true,\"canManageCrew\":false,\"canManageLocations\":true,\"canApprove\":false,\"canEditScript\":true,\"canLockScript\":false,\"canRunTableRead\":true,\"canComment\":true,\"canRequestChanges\":true,\"canViewEconomy\":true},\"createdAt\":\"2026-04-22T06:50:53.398Z\",\"updatedAt\":\"2026-04-22T06:50:53.398Z\"}],\"updatedAt\":\"2026-04-22T06:50:54.597Z\",\"producerWorkflowStatus\":\"planning\",\"producerWorkflowMeta\":{\"totalReviews\":0,\"pendingReviews\":0,\"approvedReviews\":0,\"rejectedReviews\":0,\"changesRequestedReviews\":0,\"budgetReviewCount\":0,\"agreementReviewCount\":0,\"deliverableReviewCount\":0,\"lastReviewRequestedAt\":null,\"lastDecisionAt\":null,\"lastApprovedReviewId\":null,\"lastPendingReviewId\":null}}},{\"id\":\"a515e475-9f77-4331-a846-67a31a4ed6af\",\"label\":\"Lokal lagring\",\"source\":\"local_save\",\"project\":{\"id\":\"project-1776840650138\",\"crew\":[],\"name\":\"Nytt Role Room prosjekt\",\"props\":[],\"roles\":[],\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdAt\":\"2026-04-22T06:50:50.138Z\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"locations\":[],\"schedules\":[],\"shotLists\":[],\"updatedAt\":\"2026-04-22T06:50:50.138Z\",\"userRoles\":[],\"candidates\":[],\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"description\":\"\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"productionDays\":[]},\"createdAt\":\"2026-04-22T06:50:51.442Z\",\"projectId\":\"project-1776840650138\"}]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-snapshots-project-1776764211695",
+          "value": "[{\"id\":\"8b5d88ae-f121-4ce5-9a9a-fdeb22e2c711\",\"projectId\":\"project-1776764211695\",\"createdAt\":\"2026-04-21T09:36:52.073Z\",\"source\":\"local_save\",\"label\":\"Lokal lagring\",\"project\":{\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"createdAt\":\"2026-04-21T09:36:51.695Z\",\"id\":\"project-1776764211695\",\"name\":\"Nytt Role Room prosjekt\",\"description\":\"\",\"roles\":[],\"candidates\":[],\"schedules\":[],\"crew\":[],\"locations\":[],\"props\":[],\"productionDays\":[],\"shotLists\":[],\"userRoles\":[],\"updatedAt\":\"2026-04-21T09:36:51.695Z\"}}]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-sync-meta-project-1776714271247",
+          "value": "{\"projectId\":\"project-1776714271247\",\"queuedChangeCount\":0,\"lastLocalSaveAt\":\"2026-04-20T19:44:35.090Z\"}"
+        },
+        {
+          "name": "story-logic-data:sync-meta:project-1776811631689",
+          "value": "{\"id\":\"story-logic-sync-meta:project-1776811631689\",\"projectId\":\"sync-meta:project-1776811631689\",\"data\":{\"projectId\":\"project-1776811631689\",\"status\":\"synced\",\"source\":\"server\",\"lastLoadedAt\":\"2026-04-21T22:47:14.940Z\"},\"createdAt\":\"2026-04-22T06:50:50.022Z\",\"updatedAt\":\"2026-04-22T06:50:50.022Z\"}"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-sync-meta-project-1776705236985",
+          "value": "{\"projectId\":\"project-1776705236985\",\"lastLocalSaveAt\":\"2026-04-20T17:13:59.887Z\",\"queuedChangeCount\":0}"
+        },
+        {
+          "name": "story-logic-data:data:data:data:data:data:data:data:sync-meta:project-1776764211695",
+          "value": "{\"id\":\"story-logic-data:data:data:data:data:data:data:sync-meta:project-1776764211695\",\"projectId\":\"data:data:data:data:data:data:data:sync-meta:project-1776764211695\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:data:sync-meta:project-1776764211695\",\"projectId\":\"data:data:data:data:data:data:sync-meta:project-1776764211695\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:sync-meta:project-1776764211695\",\"projectId\":\"data:data:data:data:data:sync-meta:project-1776764211695\",\"data\":{\"id\":\"story-logic-data:data:data:data:sync-meta:project-1776764211695\",\"projectId\":\"data:data:data:data:sync-meta:project-1776764211695\",\"data\":{\"id\":\"story-logic-data:data:data:sync-meta:project-1776764211695\",\"projectId\":\"data:data:data:sync-meta:project-1776764211695\",\"data\":{\"id\":\"story-logic-data:data:sync-meta:project-1776764211695\",\"projectId\":\"data:data:sync-meta:project-1776764211695\",\"data\":{\"id\":\"story-logic-data:sync-meta:project-1776764211695\",\"projectId\":\"data:sync-meta:project-1776764211695\",\"data\":{\"id\":\"story-logic-sync-meta:project-1776764211695\",\"projectId\":\"sync-meta:project-1776764211695\",\"data\":{\"projectId\":\"project-1776764211695\",\"status\":\"synced\",\"source\":\"server\",\"lastLoadedAt\":\"2026-04-21T09:36:54.612Z\"},\"createdAt\":\"2026-04-21T09:52:21.934Z\",\"updatedAt\":\"2026-04-21T09:52:21.934Z\"},\"createdAt\":\"2026-04-21T10:49:17.967Z\",\"updatedAt\":\"2026-04-21T10:49:17.967Z\"},\"createdAt\":\"2026-04-21T15:40:30.146Z\",\"updatedAt\":\"2026-04-21T15:40:30.146Z\"},\"createdAt\":\"2026-04-21T21:52:14.534Z\",\"updatedAt\":\"2026-04-21T21:52:14.534Z\"},\"createdAt\":\"2026-04-21T22:03:05.949Z\",\"updatedAt\":\"2026-04-21T22:03:05.949Z\"},\"createdAt\":\"2026-04-21T22:05:27.822Z\",\"updatedAt\":\"2026-04-21T22:05:27.822Z\"},\"createdAt\":\"2026-04-21T22:47:10.742Z\",\"updatedAt\":\"2026-04-21T22:47:10.742Z\"},\"createdAt\":\"2026-04-22T06:50:50.022Z\",\"updatedAt\":\"2026-04-22T06:50:50.022Z\"}"
+        },
+        {
+          "name": "story-logic-data:data:data:data:data:sync-meta:project-1776786030265",
+          "value": "{\"id\":\"story-logic-data:data:data:data:sync-meta:project-1776786030265\",\"projectId\":\"data:data:data:data:sync-meta:project-1776786030265\",\"data\":{\"id\":\"story-logic-data:data:data:sync-meta:project-1776786030265\",\"projectId\":\"data:data:data:sync-meta:project-1776786030265\",\"data\":{\"id\":\"story-logic-data:data:sync-meta:project-1776786030265\",\"projectId\":\"data:data:sync-meta:project-1776786030265\",\"data\":{\"id\":\"story-logic-data:sync-meta:project-1776786030265\",\"projectId\":\"data:sync-meta:project-1776786030265\",\"data\":{\"id\":\"story-logic-sync-meta:project-1776786030265\",\"projectId\":\"sync-meta:project-1776786030265\",\"data\":{\"projectId\":\"project-1776786030265\",\"status\":\"synced\",\"source\":\"server\",\"lastLoadedAt\":\"2026-04-21T15:40:34.578Z\"},\"createdAt\":\"2026-04-21T21:52:14.534Z\",\"updatedAt\":\"2026-04-21T21:52:14.534Z\"},\"createdAt\":\"2026-04-21T22:03:05.949Z\",\"updatedAt\":\"2026-04-21T22:03:05.949Z\"},\"createdAt\":\"2026-04-21T22:05:27.822Z\",\"updatedAt\":\"2026-04-21T22:05:27.822Z\"},\"createdAt\":\"2026-04-21T22:47:10.742Z\",\"updatedAt\":\"2026-04-21T22:47:10.742Z\"},\"createdAt\":\"2026-04-22T06:50:50.022Z\",\"updatedAt\":\"2026-04-22T06:50:50.022Z\"}"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-sync-meta-project-1776765143530",
+          "value": "{\"projectId\":\"project-1776765143530\",\"queuedChangeCount\":0,\"lastLocalSaveAt\":\"2026-04-21T09:52:26.256Z\"}"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-tutorials",
+          "value": "[{\"id\":\"default-casting-planner\",\"name\":\"Produksjonsteam Veiledning\",\"steps\":[{\"id\":\"welcome\",\"tips\":[\"Denne løypen er laget for produksjonsteam, ikke for innholdsprodusent\",\"Bruk stegene for å se hvordan toppfanene henger sammen fra planlegging til opptaksdag\",\"Trykk ESC for å lukke veiledningen når du vil tilbake til prosjektet\"],\"panel\":-1,\"title\":\"Velkommen til produksjonsteam-flyten\",\"duration\":8000,\"description\":\"Denne veiledningen er laget for produksjonsteam som skal samle casting, planlegging, ressurser og opptaksstyring i én sammenhengende arbeidsflyt.\"},{\"id\":\"overview\",\"tips\":[\"Bruk oversikten for å sjekke fremdrift før du går videre i flyten\",\"Her ser du snarveier til de viktigste arbeidsflatene\",\"Varsler og avvik bør normalt håndteres herfra først\"],\"panel\":0,\"title\":\"1. Oversikt - få status på prosjektet\",\"action\":\"click\",\"duration\":9000,\"description\":\"Oversikt samler prosjektstatus, neste steg og nøkkeltall på ett sted, slik at du raskt ser hva som må følges opp.\",\"targetSelector\":\"#tab-oversikt\",\"actionDescription\":\"Åpne \\\"Oversikt\\\" for å se prosjektets nåsituasjon\"},{\"id\":\"studio\",\"tips\":[\"Start her når du skal forme konsept, struktur og visuell retning\",\"Studio brukes før resten av teamet trenger en mer detaljert gjennomføringsplan\",\"Dette er riktig sted å samle kreative beslutninger tidlig\"],\"panel\":1,\"title\":\"2. Role Room Studio - bygg den kreative planen\",\"action\":\"click\",\"duration\":9500,\"description\":\"Role Room Studio samler idéarbeid, manusnære notater, shot-planlegging og øvrig kreativ struktur før produksjonen låses.\",\"targetSelector\":\"#tab-story-arc-studio\",\"actionDescription\":\"Åpne \\\"Role Room Studio\\\" for å jobbe med grunnlaget for produksjonen\"},{\"id\":\"roles\",\"tips\":[\"Legg inn beskrivelse, alder, ferdigheter og prioritet per rolle\",\"Tydelige rollebeskrivelser gir bedre kandidatsøk og vurdering\",\"Hold hovedroller og biroller tydelig adskilt\"],\"panel\":2,\"title\":\"3. Roller - definer hvem du caster til\",\"action\":\"click\",\"duration\":9000,\"description\":\"I Roller setter du opp karakterer, funksjoner og krav, slik at casting og utvelgelse får en tydelig struktur.\",\"targetSelector\":\"#tab-roller\",\"actionDescription\":\"Åpne \\\"Roller\\\" for å definere hvem produksjonen trenger\"},{\"id\":\"candidates\",\"tips\":[\"Bruk status og filtre for å holde oversikt gjennom castingløpet\",\"Knytt kandidater til én eller flere relevante roller\",\"Profiler, notater og kontaktpunkter bør holdes oppdatert her\"],\"panel\":3,\"title\":\"4. Kandidater - samle og vurder riktige personer\",\"action\":\"click\",\"duration\":9000,\"description\":\"Kandidater gir deg oversikt over søkere, inviterte og aktuelle profiler, med status og tilknytning til roller.\",\"targetSelector\":\"#tab-kandidater\",\"actionDescription\":\"Åpne \\\"Kandidater\\\" for å se og følge opp talentbasen\"},{\"id\":\"auditions\",\"tips\":[\"Sett tidspunkt, sted og hvem som deltar i hver audition\",\"Bruk notater konsekvent, så sammenligning i neste steg blir enklere\",\"Kandidater bør flyttes videre først når audition-dataen er på plass\"],\"panel\":4,\"title\":\"5. Auditions - planlegg møter og prøver\",\"action\":\"click\",\"duration\":9000,\"description\":\"Auditions brukes til å sette opp prøver, invitere kandidater og dokumentere vurderinger underveis.\",\"targetSelector\":\"#tab-auditions\",\"actionDescription\":\"Åpne \\\"Auditions\\\" for å koordinere prøver og vurderinger\"},{\"id\":\"selection\",\"tips\":[\"Bruk denne flaten når du skal velge, ikke bare registrere kandidater\",\"Samlet oversikt gir bedre beslutninger enn spredte notater\",\"Sørg for at roller og audition-status er oppdatert først\"],\"panel\":5,\"title\":\"6. Utvelgelse - ta beslutningene samlet\",\"action\":\"click\",\"duration\":9000,\"description\":\"Utvelgelse er arbeidsflaten for å sammenligne kandidater og lande hvem som faktisk går videre eller bookes.\",\"targetSelector\":\"#tab-utvelgelse\",\"actionDescription\":\"Åpne \\\"Utvelgelse\\\" for å beslutte hvem som går videre\"},{\"id\":\"locations\",\"tips\":[\"Legg inn bilder, beskrivelser og logistikk for hver lokasjon\",\"Dokumenter kontaktpersoner og eventuelle begrensninger\",\"Knytt lokasjoner til planlagte opptaksdager så tidlig som mulig\"],\"panel\":6,\"title\":\"7. Lokasjoner - samle steder og praktisk info\",\"action\":\"click\",\"duration\":9000,\"description\":\"Lokasjoner brukes til å registrere opptakssteder, adresser, kontaktpunkter og praktiske forhold som påvirker planen.\",\"targetSelector\":\"#tab-lokasjoner\",\"actionDescription\":\"Åpne \\\"Lokasjoner\\\" for å bygge opptaksgrunnlaget\"},{\"id\":\"production-plan\",\"tips\":[\"Bruk planen til å koble lokasjoner, personer og utstyr til riktige dager\",\"Hold milepæler og kritiske datoer oppdatert\",\"Dette er flaten teamet bruker for å forstå rekkefølge og timing\"],\"panel\":7,\"title\":\"8. Kalender og produksjonsplan - bind sammen dager, scener og milepæler\",\"action\":\"click\",\"duration\":9500,\"description\":\"Produksjonsplanen samler kalender, opptaksdager og avhengigheter, slik at teamet jobber ut fra én felles plan.\",\"targetSelector\":\"#tab-produksjonsplan\",\"actionDescription\":\"Åpne \\\"Kalender\\\" for å styre tid og gjennomføring\"},{\"id\":\"team\",\"tips\":[\"Hold roller og kontaktpunkter oppdatert for alle nøkkelpersoner\",\"Bruk team-flaten når du fordeler ansvar i gjennomføringen\",\"Sjekk tilgang og involvering før prosjektet går i opptak\"],\"panel\":8,\"title\":\"9. Team - organiser ansvar og samarbeid\",\"action\":\"click\",\"duration\":9000,\"description\":\"Team-flaten gir oversikt over crew, ansvar, roller og hvem som skal gjøre hva gjennom prosjektet.\",\"targetSelector\":\"#tab-team\",\"actionDescription\":\"Åpne \\\"Team\\\" for å organisere crew og ansvar\"},{\"id\":\"equipment\",\"tips\":[\"Registrer hva som er klart, mangler eller må skaffes\",\"Koble utstyr til riktig dag, scene eller leveranse\",\"Bruk denne flaten for å unngå siste-liten-feil på opptaksdag\"],\"panel\":9,\"title\":\"10. Utstyr - hold kontroll på det som trengs i produksjonen\",\"action\":\"click\",\"duration\":9000,\"description\":\"Utstyr samler rekvisitter, teknisk utstyr og annet som må være på plass før og under opptak.\",\"targetSelector\":\"#tab-rekvisitter\",\"actionDescription\":\"Åpne \\\"Utstyr\\\" for å se hva produksjonen er avhengig av\"},{\"id\":\"live-set\",\"tips\":[\"Bruk Live Set når du trenger en sanntidsflate for settet\",\"Dette er stedet for tett operativ koordinering under opptak\",\"Sørg for at plan, team og utstyr er oppdatert før du går hit\"],\"panel\":10,\"title\":\"11. Live Set - styr opptaksdagen i sanntid\",\"action\":\"click\",\"duration\":9000,\"description\":\"Live Set brukes når produksjonen faktisk ruller, med status, fremdrift og oppfølging tett på opptaket.\",\"targetSelector\":\"#tab-live-set\",\"actionDescription\":\"Åpne \\\"Live Set\\\" for å se den operative opptaksflaten\"},{\"id\":\"complete\",\"tips\":[\"Bruk \\\"Nytt prosjekt\\\" når du skal starte en ny produksjon fra bunnen av\",\"Hvis prosjektet allerede finnes, fortsetter du i de relevante fanene\",\"Økonomi kan ligge som egen arbeidsflate når det er aktivert for prosjektet\"],\"panel\":-1,\"title\":\"Du er klar til å jobbe videre som produksjonsteam\",\"action\":\"click\",\"duration\":8000,\"description\":\"Nå har du sett hovedflyten for produksjonsteam. Neste steg er å fortsette i prosjektet ditt gjennom casting, planlegging, team og live set.\",\"targetSelector\":\"[data-tutorial-target=\\\"create-project-button\\\"]\",\"actionDescription\":\"Klikk på \\\"Nytt prosjekt\\\" når du vil starte en ny produksjon\"}],\"category\":\"casting-planner\",\"isActive\":true,\"createdAt\":\"2026-04-13T17:15:19.472Z\",\"updatedAt\":\"2026-04-13T17:15:19.472Z\",\"description\":\"Lær hovedflyten for produksjonsteam i The Role Room\"},{\"id\":\"default-content-producer\",\"name\":\"Innholdsprodusent Veiledning\",\"steps\":[{\"id\":\"producer-welcome\",\"tips\":[\"Denne løypen er laget for innholdsprodusent, ikke produksjonsteam\",\"Bruk stegene for å se hvordan kreativt arbeid, media og levering henger sammen\",\"Trykk ESC for å lukke veiledningen når du vil tilbake til prosjektet\"],\"panel\":-1,\"title\":\"Velkommen til innholdsprodusent-flyten\",\"duration\":8000,\"description\":\"Denne veiledningen er laget for innholdsprodusent som skal drive frem kreativ utvikling, produksjonsmateriale, kundedialog og leveranser uten å gå inn i produksjonsteam-flyten.\"},{\"id\":\"producer-studio\",\"tips\":[\"Start her når du skal planlegge fortelling, format og retning\",\"Bruk denne flaten før du går over i gjennomføring og leveranse\",\"Storyboard skal gjøre resten av arbeidsflyten enklere å styre\"],\"panel\":1,\"title\":\"1. Storyboard - bygg den kreative planen\",\"action\":\"click\",\"duration\":9000,\"description\":\"Storyboard samler idéarbeid, disposisjon og kreativ retning, slik at du har et tydelig grunnlag før innholdet produseres.\",\"targetSelector\":\"#tab-story-arc-studio\",\"actionDescription\":\"Åpne \\\"Storyboard\\\" for å forme konsept og struktur\"},{\"id\":\"producer-contributors\",\"tips\":[\"Hold status og kontaktpunkter oppdatert når flere deltar i samme innhold\",\"Bruk denne flaten for å få oversikt over hvem som faktisk er klare\",\"Dette erstatter ikke casting-flyten, men støtter innholdsproduksjon\"],\"panel\":3,\"title\":\"2. Medvirkende - hold oversikt over folk i innholdet\",\"action\":\"click\",\"duration\":9000,\"description\":\"Her samler du medvirkende, statister og profiler som inngår i produksjonen, med tydelig status og tilknytning til prosjektet.\",\"targetSelector\":\"#tab-kandidater\",\"actionDescription\":\"Åpne \\\"Statister/medvirkende\\\" for å se hvem som deltar\"},{\"id\":\"producer-locations\",\"tips\":[\"Legg inn logistikk, kontaktpersoner og begrensninger per sted\",\"God lokasjonskontroll gjør tidslinjen enklere å holde\",\"Bruk lokasjoner aktivt før opptak og leveranse\"],\"panel\":6,\"title\":\"3. Lokasjoner - samle stedene du skal produsere på\",\"action\":\"click\",\"duration\":9000,\"description\":\"Lokasjoner brukes til å holde styr på steder, praktisk info og rammer som påvirker opptaksdagen.\",\"targetSelector\":\"#tab-lokasjoner\",\"actionDescription\":\"Åpne \\\"Lokasjoner\\\" for å planlegge hvor innholdet skal produseres\"},{\"id\":\"producer-equipment\",\"tips\":[\"Registrer hva som er klart, mangler eller må skaffes\",\"Knytt utstyr til produksjonsdager og leveranser\",\"Bruk denne flaten for å unngå praktiske stopp under opptak\"],\"panel\":9,\"title\":\"4. Utstyr og rekvisitter - sikre at produksjonen har det den trenger\",\"action\":\"click\",\"duration\":9000,\"description\":\"Denne flaten samler utstyr og rekvisitter som må være på plass for å gjennomføre innholdet uten stopp eller mangler.\",\"targetSelector\":\"#tab-rekvisitter\",\"actionDescription\":\"Åpne \\\"Utstyr/rekvisitter\\\" for å kontrollere produksjonsbehovene\"},{\"id\":\"producer-media\",\"tips\":[\"Bruk Media som hovedflate for å holde orden på produksjonsmaterialet\",\"Herfra følger du innholdet gjennom resten av flyten\",\"Dette er en kjerneflate for innholdsprodusent\"],\"panel\":11,\"title\":\"5. Media - samle filer, opptak og arbeidsmateriell\",\"action\":\"click\",\"duration\":9500,\"description\":\"Media-flaten er navet for opptak, filer og materiale som produseres, behandles og skal leveres videre.\",\"targetSelector\":\"#tab-producer-media\",\"actionDescription\":\"Åpne \\\"Media\\\" for å jobbe med prosjektets innholdsfiler\"},{\"id\":\"producer-timeline\",\"tips\":[\"Bruk tidslinjen for å forstå hva som haster og hva som kommer etterpå\",\"Dette er riktig flate når du skal planlegge gjennomføring og leveranser\",\"God tidslinje gir færre overraskelser i prosjektet\"],\"panel\":13,\"title\":\"6. Tidslinje - se fremdriften i riktig rekkefølge\",\"action\":\"click\",\"duration\":9000,\"description\":\"Tidslinjen binder sammen produksjon, milepæler og neste leveranser, slik at du ser hva som skjer når.\",\"targetSelector\":\"#tab-producer-tidslinje\",\"actionDescription\":\"Åpne \\\"Tidslinje\\\" for å følge rekkefølge og fremdrift\"},{\"id\":\"producer-reviews\",\"tips\":[\"Samle tilbakemeldinger her i stedet for i spredte meldinger\",\"Bruk denne flaten før du markerer noe som klart for levering\",\"Dette er sentralt for en ryddig godkjenningsflyt\"],\"panel\":14,\"title\":\"7. Klientsamarbeid - få godkjenninger og tilbakemeldinger\",\"action\":\"click\",\"duration\":9000,\"description\":\"Klientsamarbeid brukes til gjennomgang, tilbakemeldinger og godkjenninger før innhold eksporteres eller leveres.\",\"targetSelector\":\"#tab-producer-reviews\",\"actionDescription\":\"Åpne \\\"Klientsamarbeid\\\" for å håndtere gjennomgang og feedback\"},{\"id\":\"producer-export\",\"tips\":[\"Eksporter først når media, tidslinje og godkjenninger er på plass\",\"Hold leveranser samlet her for bedre kontroll\",\"Dette er siste steg i innholdsprodusentens arbeidsflyt\"],\"panel\":15,\"title\":\"8. Eksport - klargjør det som skal leveres\",\"action\":\"click\",\"duration\":9000,\"description\":\"Eksport samler leveranseflaten for filer og materiale som er klart til å sendes videre etter produksjon og godkjenning.\",\"targetSelector\":\"#tab-producer-eksport\",\"actionDescription\":\"Åpne \\\"Eksport\\\" for å gjøre innholdet klart for levering\"},{\"id\":\"producer-complete\",\"tips\":[\"Innholdsprodusent-flyten er egen arbeidsflate og skal ikke blandes med produksjonsteam\",\"Bruk prosjektet videre der du slapp i media, tidslinje eller eksport\",\"Hvis du trenger annen arbeidsflyt, byttes det via riktig modusvalg\"],\"panel\":-1,\"title\":\"Du er klar til å jobbe videre som innholdsprodusent\",\"action\":\"click\",\"duration\":8000,\"description\":\"Nå har du sett hovedflyten for innholdsprodusent. Neste steg er å fortsette i prosjektet ditt gjennom storyboard, media, tidslinje, klientsamarbeid og eksport.\",\"targetSelector\":\"[data-tutorial-target=\\\"create-project-button\\\"]\",\"actionDescription\":\"Fortsett i prosjektet ditt eller opprett et nytt når du er klar\"}],\"category\":\"content-producer\",\"isActive\":true,\"createdAt\":\"2026-04-13T17:15:19.472Z\",\"updatedAt\":\"2026-04-13T17:15:19.472Z\",\"description\":\"Lær hovedflyten for innholdsprodusent i The Role Room\"}]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465:project-1776765142039:virtualStudio_candidateQuickContacts",
+          "value": "[]"
+        },
+        {
+          "name": "story-logic-data:data:data:sync-meta:project-1776808986039",
+          "value": "{\"id\":\"story-logic-data:data:sync-meta:project-1776808986039\",\"projectId\":\"data:data:sync-meta:project-1776808986039\",\"data\":{\"id\":\"story-logic-data:sync-meta:project-1776808986039\",\"projectId\":\"data:sync-meta:project-1776808986039\",\"data\":{\"id\":\"story-logic-sync-meta:project-1776808986039\",\"projectId\":\"sync-meta:project-1776808986039\",\"data\":{\"projectId\":\"project-1776808986039\",\"status\":\"synced\",\"source\":\"server\",\"lastLoadedAt\":\"2026-04-21T22:03:09.142Z\"},\"createdAt\":\"2026-04-21T22:05:27.822Z\",\"updatedAt\":\"2026-04-21T22:05:27.822Z\"},\"createdAt\":\"2026-04-21T22:47:10.742Z\",\"updatedAt\":\"2026-04-21T22:47:10.742Z\"},\"createdAt\":\"2026-04-22T06:50:50.022Z\",\"updatedAt\":\"2026-04-22T06:50:50.022Z\"}"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-sync-meta-project-1776808986039",
+          "value": "{\"projectId\":\"project-1776808986039\",\"queuedChangeCount\":0,\"lastLocalSaveAt\":\"2026-04-21T22:03:08.994Z\"}"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-snapshots-project-1776705822662",
+          "value": "[{\"id\":\"57e06d09-d7c9-4316-b555-a8dc40c50828\",\"projectId\":\"project-1776705822662\",\"createdAt\":\"2026-04-20T17:23:45.816Z\",\"source\":\"local_save\",\"label\":\"Lokal lagring · status planning\",\"project\":{\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"createdAt\":\"2026-04-20T17:23:42.662Z\",\"id\":\"project-1776705822662\",\"name\":\"Nytt Role Room prosjekt\",\"description\":\"\",\"roles\":[],\"candidates\":[],\"schedules\":[],\"crew\":[],\"locations\":[],\"props\":[],\"productionDays\":[],\"shotLists\":[],\"userRoles\":[{\"id\":\"userrole-53391080-8437-471e-800b-8b0d01e8b465-project-1776705822662\",\"userId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"projectId\":\"project-1776705822662\",\"role\":\"content_producer\",\"permissions\":{\"canViewAll\":true,\"canEditCasting\":true,\"canEditProduction\":true,\"canEditShots\":true,\"canEditShotLists\":true,\"canManageCrew\":false,\"canManageLocations\":true,\"canApprove\":false,\"canEditScript\":true,\"canLockScript\":false,\"canRunTableRead\":true,\"canComment\":true,\"canRequestChanges\":true,\"canViewEconomy\":true},\"createdAt\":\"2026-04-20T17:23:44.203Z\",\"updatedAt\":\"2026-04-20T17:23:44.203Z\"}],\"updatedAt\":\"2026-04-20T17:23:45.451Z\",\"producerWorkflowStatus\":\"planning\",\"producerWorkflowMeta\":{\"totalReviews\":0,\"pendingReviews\":0,\"approvedReviews\":0,\"rejectedReviews\":0,\"changesRequestedReviews\":0,\"budgetReviewCount\":0,\"agreementReviewCount\":0,\"deliverableReviewCount\":0,\"lastReviewRequestedAt\":null,\"lastDecisionAt\":null,\"lastApprovedReviewId\":null,\"lastPendingReviewId\":null}}},{\"id\":\"04bac937-f0de-4c76-af63-e6212d5731b0\",\"label\":\"Lokal lagring\",\"source\":\"local_save\",\"project\":{\"id\":\"project-1776705822662\",\"crew\":[],\"name\":\"Nytt Role Room prosjekt\",\"props\":[],\"roles\":[],\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdAt\":\"2026-04-20T17:23:42.662Z\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"locations\":[],\"schedules\":[],\"shotLists\":[],\"updatedAt\":\"2026-04-20T17:23:42.662Z\",\"userRoles\":[],\"candidates\":[],\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"description\":\"\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"productionDays\":[]},\"createdAt\":\"2026-04-20T17:23:43.033Z\",\"projectId\":\"project-1776705822662\"}]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465:project-1776705236985:virtualStudio_candidateQuickContacts",
+          "value": "[]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465:project-1776714272417:virtualStudio_candidateQuickContacts",
+          "value": "[]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465:project-1776768560693:virtualStudio_candidateQuickContacts",
+          "value": "[]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-sync-meta-project-1776768560693",
+          "value": "{\"projectId\":\"project-1776768560693\",\"lastLocalSaveAt\":\"2026-04-21T10:49:26.407Z\",\"queuedChangeCount\":0}"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-sync-meta-project-1776786031461",
+          "value": "{\"projectId\":\"project-1776786031461\",\"lastLocalSaveAt\":\"2026-04-21T15:40:34.255Z\",\"queuedChangeCount\":0}"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465:project-1776811630853:virtualStudio_candidateQuickContacts",
+          "value": "[]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-sync-meta-project-1776705822662",
+          "value": "{\"projectId\":\"project-1776705822662\",\"lastLocalSaveAt\":\"2026-04-20T17:23:45.451Z\",\"queuedChangeCount\":0}"
+        },
+        {
+          "name": "app_settings_cache:role-room-shared::casting-projects",
+          "value": "[]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-snapshots-project-1776808334658",
+          "value": "[{\"id\":\"b394caab-2b52-417c-886c-aaf71e30014e\",\"projectId\":\"project-1776808334658\",\"createdAt\":\"2026-04-21T21:52:18.823Z\",\"source\":\"local_save\",\"label\":\"Lokal lagring · status planning\",\"project\":{\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"createdAt\":\"2026-04-21T21:52:14.658Z\",\"id\":\"project-1776808334658\",\"name\":\"Nytt Role Room prosjekt\",\"description\":\"\",\"roles\":[],\"candidates\":[],\"schedules\":[],\"crew\":[],\"locations\":[],\"props\":[],\"productionDays\":[],\"shotLists\":[],\"userRoles\":[{\"id\":\"userrole-53391080-8437-471e-800b-8b0d01e8b465-project-1776808334658\",\"userId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"projectId\":\"project-1776808334658\",\"role\":\"content_producer\",\"permissions\":{\"canViewAll\":true,\"canEditCasting\":true,\"canEditProduction\":true,\"canEditShots\":true,\"canEditShotLists\":true,\"canManageCrew\":false,\"canManageLocations\":true,\"canApprove\":false,\"canEditScript\":true,\"canLockScript\":false,\"canRunTableRead\":true,\"canComment\":true,\"canRequestChanges\":true,\"canViewEconomy\":true},\"createdAt\":\"2026-04-21T21:52:16.655Z\",\"updatedAt\":\"2026-04-21T21:52:16.655Z\"}],\"updatedAt\":\"2026-04-21T21:52:18.443Z\",\"producerWorkflowStatus\":\"planning\",\"producerWorkflowMeta\":{\"totalReviews\":0,\"pendingReviews\":0,\"approvedReviews\":0,\"rejectedReviews\":0,\"changesRequestedReviews\":0,\"budgetReviewCount\":0,\"agreementReviewCount\":0,\"deliverableReviewCount\":0,\"lastReviewRequestedAt\":null,\"lastDecisionAt\":null,\"lastApprovedReviewId\":null,\"lastPendingReviewId\":null}}},{\"id\":\"6ab2b733-8fcf-48a9-8066-6b961c2d4206\",\"label\":\"Lokal lagring\",\"source\":\"local_save\",\"project\":{\"id\":\"project-1776808334658\",\"crew\":[],\"name\":\"Nytt Role Room prosjekt\",\"props\":[],\"roles\":[],\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdAt\":\"2026-04-21T21:52:14.658Z\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"locations\":[],\"schedules\":[],\"shotLists\":[],\"updatedAt\":\"2026-04-21T21:52:14.658Z\",\"userRoles\":[],\"candidates\":[],\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"description\":\"\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"productionDays\":[]},\"createdAt\":\"2026-04-21T21:52:15.429Z\",\"projectId\":\"project-1776808334658\"}]"
+        },
+        {
+          "name": "story-logic-data:data:data:data:data:data:data:sync-meta:project-1776765142039",
+          "value": "{\"id\":\"story-logic-data:data:data:data:data:data:sync-meta:project-1776765142039\",\"projectId\":\"data:data:data:data:data:data:sync-meta:project-1776765142039\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:sync-meta:project-1776765142039\",\"projectId\":\"data:data:data:data:data:sync-meta:project-1776765142039\",\"data\":{\"id\":\"story-logic-data:data:data:data:sync-meta:project-1776765142039\",\"projectId\":\"data:data:data:data:sync-meta:project-1776765142039\",\"data\":{\"id\":\"story-logic-data:data:data:sync-meta:project-1776765142039\",\"projectId\":\"data:data:data:sync-meta:project-1776765142039\",\"data\":{\"id\":\"story-logic-data:data:sync-meta:project-1776765142039\",\"projectId\":\"data:data:sync-meta:project-1776765142039\",\"data\":{\"id\":\"story-logic-data:sync-meta:project-1776765142039\",\"projectId\":\"data:sync-meta:project-1776765142039\",\"data\":{\"id\":\"story-logic-sync-meta:project-1776765142039\",\"projectId\":\"sync-meta:project-1776765142039\",\"data\":{\"projectId\":\"project-1776765142039\",\"status\":\"synced\",\"source\":\"server\",\"lastLoadedAt\":\"2026-04-21T09:52:26.669Z\"},\"createdAt\":\"2026-04-21T10:49:17.967Z\",\"updatedAt\":\"2026-04-21T10:49:17.967Z\"},\"createdAt\":\"2026-04-21T15:40:30.146Z\",\"updatedAt\":\"2026-04-21T15:40:30.146Z\"},\"createdAt\":\"2026-04-21T21:52:14.534Z\",\"updatedAt\":\"2026-04-21T21:52:14.534Z\"},\"createdAt\":\"2026-04-21T22:03:05.949Z\",\"updatedAt\":\"2026-04-21T22:03:05.949Z\"},\"createdAt\":\"2026-04-21T22:05:27.822Z\",\"updatedAt\":\"2026-04-21T22:05:27.822Z\"},\"createdAt\":\"2026-04-21T22:47:10.742Z\",\"updatedAt\":\"2026-04-21T22:47:10.742Z\"},\"createdAt\":\"2026-04-22T06:50:50.022Z\",\"updatedAt\":\"2026-04-22T06:50:50.022Z\"}"
+        },
+        {
+          "name": "story-logic-data:data:data:data:sync-meta:project-1776808334658",
+          "value": "{\"id\":\"story-logic-data:data:data:sync-meta:project-1776808334658\",\"projectId\":\"data:data:data:sync-meta:project-1776808334658\",\"data\":{\"id\":\"story-logic-data:data:sync-meta:project-1776808334658\",\"projectId\":\"data:data:sync-meta:project-1776808334658\",\"data\":{\"id\":\"story-logic-data:sync-meta:project-1776808334658\",\"projectId\":\"data:sync-meta:project-1776808334658\",\"data\":{\"id\":\"story-logic-sync-meta:project-1776808334658\",\"projectId\":\"sync-meta:project-1776808334658\",\"data\":{\"projectId\":\"project-1776808334658\",\"status\":\"synced\",\"source\":\"server\",\"lastLoadedAt\":\"2026-04-21T21:52:18.508Z\"},\"createdAt\":\"2026-04-21T22:03:05.949Z\",\"updatedAt\":\"2026-04-21T22:03:05.949Z\"},\"createdAt\":\"2026-04-21T22:05:27.822Z\",\"updatedAt\":\"2026-04-21T22:05:27.822Z\"},\"createdAt\":\"2026-04-21T22:47:10.742Z\",\"updatedAt\":\"2026-04-21T22:47:10.742Z\"},\"createdAt\":\"2026-04-22T06:50:50.022Z\",\"updatedAt\":\"2026-04-22T06:50:50.022Z\"}"
+        },
+        {
+          "name": "story-logic-data:data:data:data:data:data:data:data:sync-meta:project-1776764210740",
+          "value": "{\"id\":\"story-logic-data:data:data:data:data:data:data:sync-meta:project-1776764210740\",\"projectId\":\"data:data:data:data:data:data:data:sync-meta:project-1776764210740\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:data:sync-meta:project-1776764210740\",\"projectId\":\"data:data:data:data:data:data:sync-meta:project-1776764210740\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:sync-meta:project-1776764210740\",\"projectId\":\"data:data:data:data:data:sync-meta:project-1776764210740\",\"data\":{\"id\":\"story-logic-data:data:data:data:sync-meta:project-1776764210740\",\"projectId\":\"data:data:data:data:sync-meta:project-1776764210740\",\"data\":{\"id\":\"story-logic-data:data:data:sync-meta:project-1776764210740\",\"projectId\":\"data:data:data:sync-meta:project-1776764210740\",\"data\":{\"id\":\"story-logic-data:data:sync-meta:project-1776764210740\",\"projectId\":\"data:data:sync-meta:project-1776764210740\",\"data\":{\"id\":\"story-logic-data:sync-meta:project-1776764210740\",\"projectId\":\"data:sync-meta:project-1776764210740\",\"data\":{\"id\":\"story-logic-sync-meta:project-1776764210740\",\"projectId\":\"sync-meta:project-1776764210740\",\"data\":{\"projectId\":\"project-1776764210740\",\"status\":\"synced\",\"source\":\"server\",\"lastLoadedAt\":\"2026-04-21T09:36:54.678Z\"},\"createdAt\":\"2026-04-21T09:52:21.934Z\",\"updatedAt\":\"2026-04-21T09:52:21.934Z\"},\"createdAt\":\"2026-04-21T10:49:17.966Z\",\"updatedAt\":\"2026-04-21T10:49:17.966Z\"},\"createdAt\":\"2026-04-21T15:40:30.146Z\",\"updatedAt\":\"2026-04-21T15:40:30.146Z\"},\"createdAt\":\"2026-04-21T21:52:14.534Z\",\"updatedAt\":\"2026-04-21T21:52:14.534Z\"},\"createdAt\":\"2026-04-21T22:03:05.949Z\",\"updatedAt\":\"2026-04-21T22:03:05.949Z\"},\"createdAt\":\"2026-04-21T22:05:27.822Z\",\"updatedAt\":\"2026-04-21T22:05:27.822Z\"},\"createdAt\":\"2026-04-21T22:47:10.742Z\",\"updatedAt\":\"2026-04-21T22:47:10.742Z\"},\"createdAt\":\"2026-04-22T06:50:50.022Z\",\"updatedAt\":\"2026-04-22T06:50:50.022Z\"}"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-sync-meta-project-1776705821494",
+          "value": "{\"projectId\":\"project-1776705821494\",\"queuedChangeCount\":0,\"lastLocalSaveAt\":\"2026-04-20T17:23:44.811Z\"}"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-snapshots-project-1776705235478",
+          "value": "[{\"id\":\"b8b7ee1a-f342-4c1f-9404-fc10f76654fd\",\"projectId\":\"project-1776705235478\",\"createdAt\":\"2026-04-20T17:13:59.826Z\",\"source\":\"local_save\",\"label\":\"Lokal lagring · status planning\",\"project\":{\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"createdAt\":\"2026-04-20T17:13:55.478Z\",\"id\":\"project-1776705235478\",\"name\":\"Nytt Role Room prosjekt\",\"description\":\"\",\"roles\":[],\"candidates\":[],\"schedules\":[],\"crew\":[],\"locations\":[],\"props\":[],\"productionDays\":[],\"shotLists\":[],\"userRoles\":[{\"id\":\"userrole-53391080-8437-471e-800b-8b0d01e8b465-project-1776705235478\",\"userId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"projectId\":\"project-1776705235478\",\"role\":\"content_producer\",\"permissions\":{\"canViewAll\":true,\"canEditCasting\":true,\"canEditProduction\":true,\"canEditShots\":true,\"canEditShotLists\":true,\"canManageCrew\":false,\"canManageLocations\":true,\"canApprove\":false,\"canEditScript\":true,\"canLockScript\":false,\"canRunTableRead\":true,\"canComment\":true,\"canRequestChanges\":true,\"canViewEconomy\":true},\"createdAt\":\"2026-04-20T17:13:57.794Z\",\"updatedAt\":\"2026-04-20T17:13:57.794Z\"}],\"updatedAt\":\"2026-04-20T17:13:59.469Z\",\"producerWorkflowStatus\":\"planning\",\"producerWorkflowMeta\":{\"totalReviews\":0,\"pendingReviews\":0,\"approvedReviews\":0,\"rejectedReviews\":0,\"changesRequestedReviews\":0,\"budgetReviewCount\":0,\"agreementReviewCount\":0,\"deliverableReviewCount\":0,\"lastReviewRequestedAt\":null,\"lastDecisionAt\":null,\"lastApprovedReviewId\":null,\"lastPendingReviewId\":null}}},{\"id\":\"b17d3448-8cef-45b3-8530-d96799c2f29a\",\"label\":\"Lokal lagring\",\"source\":\"local_save\",\"project\":{\"id\":\"project-1776705235478\",\"crew\":[],\"name\":\"Nytt Role Room prosjekt\",\"props\":[],\"roles\":[],\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdAt\":\"2026-04-20T17:13:55.478Z\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"locations\":[],\"schedules\":[],\"shotLists\":[],\"updatedAt\":\"2026-04-20T17:13:55.478Z\",\"userRoles\":[],\"candidates\":[],\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"description\":\"\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"productionDays\":[]},\"createdAt\":\"2026-04-20T17:13:56.634Z\",\"projectId\":\"project-1776705235478\"}]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-snapshots-project-1776764210740",
+          "value": "[{\"id\":\"26be8a3d-f2d7-4107-ba41-e8addc23f4a9\",\"projectId\":\"project-1776764210740\",\"createdAt\":\"2026-04-21T09:36:54.947Z\",\"source\":\"local_save\",\"label\":\"Lokal lagring · status planning\",\"project\":{\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"createdAt\":\"2026-04-21T09:36:50.740Z\",\"id\":\"project-1776764210740\",\"name\":\"Nytt Role Room prosjekt\",\"description\":\"\",\"roles\":[],\"candidates\":[],\"schedules\":[],\"crew\":[],\"locations\":[],\"props\":[],\"productionDays\":[],\"shotLists\":[],\"userRoles\":[{\"id\":\"userrole-53391080-8437-471e-800b-8b0d01e8b465-project-1776764210740\",\"userId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"projectId\":\"project-1776764210740\",\"role\":\"content_producer\",\"permissions\":{\"canViewAll\":true,\"canEditCasting\":true,\"canEditProduction\":true,\"canEditShots\":true,\"canEditShotLists\":true,\"canManageCrew\":false,\"canManageLocations\":true,\"canApprove\":false,\"canEditScript\":true,\"canLockScript\":false,\"canRunTableRead\":true,\"canComment\":true,\"canRequestChanges\":true,\"canViewEconomy\":true},\"createdAt\":\"2026-04-21T09:36:53.321Z\",\"updatedAt\":\"2026-04-21T09:36:53.321Z\"}],\"updatedAt\":\"2026-04-21T09:36:54.606Z\",\"producerWorkflowStatus\":\"planning\",\"producerWorkflowMeta\":{\"totalReviews\":0,\"pendingReviews\":0,\"approvedReviews\":0,\"rejectedReviews\":0,\"changesRequestedReviews\":0,\"budgetReviewCount\":0,\"agreementReviewCount\":0,\"deliverableReviewCount\":0,\"lastReviewRequestedAt\":null,\"lastDecisionAt\":null,\"lastApprovedReviewId\":null,\"lastPendingReviewId\":null}}},{\"id\":\"db3e7b40-a698-40e9-82f2-8d3ec38a86fe\",\"label\":\"Lokal lagring\",\"source\":\"local_save\",\"project\":{\"id\":\"project-1776764210740\",\"crew\":[],\"name\":\"Nytt Role Room prosjekt\",\"props\":[],\"roles\":[],\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdAt\":\"2026-04-21T09:36:50.740Z\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"locations\":[],\"schedules\":[],\"shotLists\":[],\"updatedAt\":\"2026-04-21T09:36:50.740Z\",\"userRoles\":[],\"candidates\":[],\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"description\":\"\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"productionDays\":[]},\"createdAt\":\"2026-04-21T09:36:51.892Z\",\"projectId\":\"project-1776764210740\"}]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465:project-1776808334658:virtualStudio_candidateQuickContacts",
+          "value": "[]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-snapshots-project-1776811630853",
+          "value": "[{\"id\":\"c131f109-dadd-4315-aa7e-d70dc080f492\",\"projectId\":\"project-1776811630853\",\"createdAt\":\"2026-04-21T22:47:14.752Z\",\"source\":\"local_save\",\"label\":\"Lokal lagring · status planning\",\"project\":{\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"createdAt\":\"2026-04-21T22:47:10.854Z\",\"id\":\"project-1776811630853\",\"name\":\"Nytt Role Room prosjekt\",\"description\":\"\",\"roles\":[],\"candidates\":[],\"schedules\":[],\"crew\":[],\"locations\":[],\"props\":[],\"productionDays\":[],\"shotLists\":[],\"userRoles\":[{\"id\":\"userrole-53391080-8437-471e-800b-8b0d01e8b465-project-1776811630853\",\"userId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"projectId\":\"project-1776811630853\",\"role\":\"content_producer\",\"permissions\":{\"canViewAll\":true,\"canEditCasting\":true,\"canEditProduction\":true,\"canEditShots\":true,\"canEditShotLists\":true,\"canManageCrew\":false,\"canManageLocations\":true,\"canApprove\":false,\"canEditScript\":true,\"canLockScript\":false,\"canRunTableRead\":true,\"canComment\":true,\"canRequestChanges\":true,\"canViewEconomy\":true},\"createdAt\":\"2026-04-21T22:47:13.160Z\",\"updatedAt\":\"2026-04-21T22:47:13.160Z\"}],\"updatedAt\":\"2026-04-21T22:47:14.391Z\",\"producerWorkflowStatus\":\"planning\",\"producerWorkflowMeta\":{\"totalReviews\":0,\"pendingReviews\":0,\"approvedReviews\":0,\"rejectedReviews\":0,\"changesRequestedReviews\":0,\"budgetReviewCount\":0,\"agreementReviewCount\":0,\"deliverableReviewCount\":0,\"lastReviewRequestedAt\":null,\"lastDecisionAt\":null,\"lastApprovedReviewId\":null,\"lastPendingReviewId\":null}}},{\"id\":\"5a1b1c62-1955-420d-a47b-6a8bb0f784be\",\"label\":\"Lokal lagring\",\"source\":\"local_save\",\"project\":{\"id\":\"project-1776811630853\",\"crew\":[],\"name\":\"Nytt Role Room prosjekt\",\"props\":[],\"roles\":[],\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdAt\":\"2026-04-21T22:47:10.854Z\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"locations\":[],\"schedules\":[],\"shotLists\":[],\"updatedAt\":\"2026-04-21T22:47:10.854Z\",\"userRoles\":[],\"candidates\":[],\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"description\":\"\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"productionDays\":[]},\"createdAt\":\"2026-04-21T22:47:11.944Z\",\"projectId\":\"project-1776811630853\"}]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465:project-1776840650138:virtualStudio_candidateQuickContacts",
+          "value": "[]"
+        },
+        {
+          "name": "story-logic-data:data:data:data:data:data:data:data:data:sync-meta:project-1776714272417",
+          "value": "{\"id\":\"story-logic-data:data:data:data:data:data:data:data:sync-meta:project-1776714272417\",\"projectId\":\"data:data:data:data:data:data:data:data:sync-meta:project-1776714272417\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:data:data:sync-meta:project-1776714272417\",\"projectId\":\"data:data:data:data:data:data:data:sync-meta:project-1776714272417\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:data:sync-meta:project-1776714272417\",\"projectId\":\"data:data:data:data:data:data:sync-meta:project-1776714272417\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:sync-meta:project-1776714272417\",\"projectId\":\"data:data:data:data:data:sync-meta:project-1776714272417\",\"data\":{\"id\":\"story-logic-data:data:data:data:sync-meta:project-1776714272417\",\"projectId\":\"data:data:data:data:sync-meta:project-1776714272417\",\"data\":{\"id\":\"story-logic-data:data:data:sync-meta:project-1776714272417\",\"projectId\":\"data:data:data:sync-meta:project-1776714272417\",\"data\":{\"id\":\"story-logic-data:data:sync-meta:project-1776714272417\",\"projectId\":\"data:data:sync-meta:project-1776714272417\",\"data\":{\"id\":\"story-logic-data:sync-meta:project-1776714272417\",\"projectId\":\"data:sync-meta:project-1776714272417\",\"data\":{\"id\":\"story-logic-sync-meta:project-1776714272417\",\"projectId\":\"sync-meta:project-1776714272417\",\"data\":{\"projectId\":\"project-1776714272417\",\"status\":\"synced\",\"source\":\"server\",\"lastLoadedAt\":\"2026-04-20T19:44:35.473Z\"},\"createdAt\":\"2026-04-21T09:36:50.652Z\",\"updatedAt\":\"2026-04-21T09:36:50.652Z\"},\"createdAt\":\"2026-04-21T09:52:21.934Z\",\"updatedAt\":\"2026-04-21T09:52:21.934Z\"},\"createdAt\":\"2026-04-21T10:49:17.967Z\",\"updatedAt\":\"2026-04-21T10:49:17.967Z\"},\"createdAt\":\"2026-04-21T15:40:30.144Z\",\"updatedAt\":\"2026-04-21T15:40:30.146Z\"},\"createdAt\":\"2026-04-21T21:52:14.534Z\",\"updatedAt\":\"2026-04-21T21:52:14.534Z\"},\"createdAt\":\"2026-04-21T22:03:05.949Z\",\"updatedAt\":\"2026-04-21T22:03:05.949Z\"},\"createdAt\":\"2026-04-21T22:05:27.822Z\",\"updatedAt\":\"2026-04-21T22:05:27.822Z\"},\"createdAt\":\"2026-04-21T22:47:10.742Z\",\"updatedAt\":\"2026-04-21T22:47:10.742Z\"},\"createdAt\":\"2026-04-22T06:50:50.022Z\",\"updatedAt\":\"2026-04-22T06:50:50.022Z\"}"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-snapshots-project-1776708440484",
+          "value": "[{\"id\":\"45a76ccf-8467-46c2-8fbe-b99294de160d\",\"projectId\":\"project-1776708440484\",\"createdAt\":\"2026-04-20T18:07:23.723Z\",\"source\":\"local_save\",\"label\":\"Lokal lagring · status planning\",\"project\":{\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"createdAt\":\"2026-04-20T18:07:20.484Z\",\"id\":\"project-1776708440484\",\"name\":\"Nytt Role Room prosjekt\",\"description\":\"\",\"roles\":[],\"candidates\":[],\"schedules\":[],\"crew\":[],\"locations\":[],\"props\":[],\"productionDays\":[],\"shotLists\":[],\"userRoles\":[{\"id\":\"userrole-53391080-8437-471e-800b-8b0d01e8b465-project-1776708440484\",\"userId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"projectId\":\"project-1776708440484\",\"role\":\"content_producer\",\"permissions\":{\"canViewAll\":true,\"canEditCasting\":true,\"canEditProduction\":true,\"canEditShots\":true,\"canEditShotLists\":true,\"canManageCrew\":false,\"canManageLocations\":true,\"canApprove\":false,\"canEditScript\":true,\"canLockScript\":false,\"canRunTableRead\":true,\"canComment\":true,\"canRequestChanges\":true,\"canViewEconomy\":true},\"createdAt\":\"2026-04-20T18:07:22.020Z\",\"updatedAt\":\"2026-04-20T18:07:22.020Z\"}],\"updatedAt\":\"2026-04-20T18:07:23.378Z\",\"producerWorkflowStatus\":\"planning\",\"producerWorkflowMeta\":{\"totalReviews\":0,\"pendingReviews\":0,\"approvedReviews\":0,\"rejectedReviews\":0,\"changesRequestedReviews\":0,\"budgetReviewCount\":0,\"agreementReviewCount\":0,\"deliverableReviewCount\":0,\"lastReviewRequestedAt\":null,\"lastDecisionAt\":null,\"lastApprovedReviewId\":null,\"lastPendingReviewId\":null}}},{\"id\":\"97353264-baa1-4e13-a6da-ebb7e3195e7f\",\"label\":\"Lokal lagring\",\"source\":\"local_save\",\"project\":{\"id\":\"project-1776708440484\",\"crew\":[],\"name\":\"Nytt Role Room prosjekt\",\"props\":[],\"roles\":[],\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdAt\":\"2026-04-20T18:07:20.484Z\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"locations\":[],\"schedules\":[],\"shotLists\":[],\"updatedAt\":\"2026-04-20T18:07:20.484Z\",\"userRoles\":[],\"candidates\":[],\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"description\":\"\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"productionDays\":[]},\"createdAt\":\"2026-04-20T18:07:20.912Z\",\"projectId\":\"project-1776708440484\"}]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465:project-1776808986039:virtualStudio_candidateQuickContacts",
+          "value": "[]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-sync-meta-project-1776705235478",
+          "value": "{\"projectId\":\"project-1776705235478\",\"queuedChangeCount\":0,\"lastLocalSaveAt\":\"2026-04-20T17:13:59.469Z\"}"
+        },
+        {
+          "name": "story-logic-data:data:sync-meta:project-1776809129066",
+          "value": "{\"id\":\"story-logic-data:sync-meta:project-1776809129066\",\"projectId\":\"data:sync-meta:project-1776809129066\",\"data\":{\"id\":\"story-logic-sync-meta:project-1776809129066\",\"projectId\":\"sync-meta:project-1776809129066\",\"data\":{\"projectId\":\"project-1776809129066\",\"status\":\"synced\",\"source\":\"server\",\"lastLoadedAt\":\"2026-04-21T22:05:32.142Z\"},\"createdAt\":\"2026-04-21T22:47:10.742Z\",\"updatedAt\":\"2026-04-21T22:47:10.742Z\"},\"createdAt\":\"2026-04-22T06:50:50.022Z\",\"updatedAt\":\"2026-04-22T06:50:50.022Z\"}"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-snapshots-project-1776708439328",
+          "value": "[{\"id\":\"3af5d675-4386-46f7-808a-d96bb9c08a32\",\"projectId\":\"project-1776708439328\",\"createdAt\":\"2026-04-20T18:07:23.890Z\",\"source\":\"local_save\",\"label\":\"Lokal lagring · status planning\",\"project\":{\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"createdAt\":\"2026-04-20T18:07:19.328Z\",\"id\":\"project-1776708439328\",\"name\":\"Nytt Role Room prosjekt\",\"description\":\"\",\"roles\":[],\"candidates\":[],\"schedules\":[],\"crew\":[],\"locations\":[],\"props\":[],\"productionDays\":[],\"shotLists\":[],\"userRoles\":[{\"id\":\"userrole-53391080-8437-471e-800b-8b0d01e8b465-project-1776708439328\",\"userId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"projectId\":\"project-1776708439328\",\"role\":\"content_producer\",\"permissions\":{\"canViewAll\":true,\"canEditCasting\":true,\"canEditProduction\":true,\"canEditShots\":true,\"canEditShotLists\":true,\"canManageCrew\":false,\"canManageLocations\":true,\"canApprove\":false,\"canEditScript\":true,\"canLockScript\":false,\"canRunTableRead\":true,\"canComment\":true,\"canRequestChanges\":true,\"canViewEconomy\":true},\"createdAt\":\"2026-04-20T18:07:22.202Z\",\"updatedAt\":\"2026-04-20T18:07:22.202Z\"}],\"updatedAt\":\"2026-04-20T18:07:23.534Z\",\"producerWorkflowStatus\":\"planning\",\"producerWorkflowMeta\":{\"totalReviews\":0,\"pendingReviews\":0,\"approvedReviews\":0,\"rejectedReviews\":0,\"changesRequestedReviews\":0,\"budgetReviewCount\":0,\"agreementReviewCount\":0,\"deliverableReviewCount\":0,\"lastReviewRequestedAt\":null,\"lastDecisionAt\":null,\"lastApprovedReviewId\":null,\"lastPendingReviewId\":null}}},{\"id\":\"f26558b7-769d-45a2-ad12-ed27cd8efac8\",\"label\":\"Lokal lagring\",\"source\":\"local_save\",\"project\":{\"id\":\"project-1776708439328\",\"crew\":[],\"name\":\"Nytt Role Room prosjekt\",\"props\":[],\"roles\":[],\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdAt\":\"2026-04-20T18:07:19.328Z\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"locations\":[],\"schedules\":[],\"shotLists\":[],\"updatedAt\":\"2026-04-20T18:07:19.329Z\",\"userRoles\":[],\"candidates\":[],\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"description\":\"\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"productionDays\":[]},\"createdAt\":\"2026-04-20T18:07:20.604Z\",\"projectId\":\"project-1776708439328\"}]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-sync-meta-project-1776808336188",
+          "value": "{\"projectId\":\"project-1776808336188\",\"lastLocalSaveAt\":\"2026-04-21T21:52:16.188Z\",\"queuedChangeCount\":0}"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-sync-meta-project-1776706002125",
+          "value": "{\"projectId\":\"project-1776706002125\",\"queuedChangeCount\":0,\"lastLocalSaveAt\":\"2026-04-20T17:26:45.752Z\"}"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-snapshots-project-1776809127907",
+          "value": "[{\"id\":\"1000c2ac-0af1-4962-978a-4ff34b22dcd7\",\"projectId\":\"project-1776809127907\",\"createdAt\":\"2026-04-21T22:05:31.617Z\",\"source\":\"local_save\",\"label\":\"Lokal lagring · status planning\",\"project\":{\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"createdAt\":\"2026-04-21T22:05:27.907Z\",\"id\":\"project-1776809127907\",\"name\":\"Nytt Role Room prosjekt\",\"description\":\"\",\"roles\":[],\"candidates\":[],\"schedules\":[],\"crew\":[],\"locations\":[],\"props\":[],\"productionDays\":[],\"shotLists\":[],\"userRoles\":[{\"id\":\"userrole-53391080-8437-471e-800b-8b0d01e8b465-project-1776809127907\",\"userId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"projectId\":\"project-1776809127907\",\"role\":\"content_producer\",\"permissions\":{\"canViewAll\":true,\"canEditCasting\":true,\"canEditProduction\":true,\"canEditShots\":true,\"canEditShotLists\":true,\"canManageCrew\":false,\"canManageLocations\":true,\"canApprove\":false,\"canEditScript\":true,\"canLockScript\":false,\"canRunTableRead\":true,\"canComment\":true,\"canRequestChanges\":true,\"canViewEconomy\":true},\"createdAt\":\"2026-04-21T22:05:29.921Z\",\"updatedAt\":\"2026-04-21T22:05:29.921Z\"}],\"updatedAt\":\"2026-04-21T22:05:31.233Z\",\"producerWorkflowStatus\":\"planning\",\"producerWorkflowMeta\":{\"totalReviews\":0,\"pendingReviews\":0,\"approvedReviews\":0,\"rejectedReviews\":0,\"changesRequestedReviews\":0,\"budgetReviewCount\":0,\"agreementReviewCount\":0,\"deliverableReviewCount\":0,\"lastReviewRequestedAt\":null,\"lastDecisionAt\":null,\"lastApprovedReviewId\":null,\"lastPendingReviewId\":null}}},{\"id\":\"80c803bf-338f-48a5-a622-f56ced878f90\",\"label\":\"Lokal lagring\",\"source\":\"local_save\",\"project\":{\"id\":\"project-1776809127907\",\"crew\":[],\"name\":\"Nytt Role Room prosjekt\",\"props\":[],\"roles\":[],\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdAt\":\"2026-04-21T22:05:27.907Z\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"locations\":[],\"schedules\":[],\"shotLists\":[],\"updatedAt\":\"2026-04-21T22:05:27.907Z\",\"userRoles\":[],\"candidates\":[],\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"description\":\"\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"productionDays\":[]},\"createdAt\":\"2026-04-21T22:05:28.365Z\",\"projectId\":\"project-1776809127907\"}]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-snapshots-project-1776811631689",
+          "value": "[{\"id\":\"25c06fe5-acd9-4177-8931-5db83957746f\",\"projectId\":\"project-1776811631689\",\"createdAt\":\"2026-04-21T22:47:14.819Z\",\"source\":\"local_save\",\"label\":\"Lokal lagring · status planning\",\"project\":{\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"createdAt\":\"2026-04-21T22:47:11.689Z\",\"id\":\"project-1776811631689\",\"name\":\"Nytt Role Room prosjekt\",\"description\":\"\",\"roles\":[],\"candidates\":[],\"schedules\":[],\"crew\":[],\"locations\":[],\"props\":[],\"productionDays\":[],\"shotLists\":[],\"userRoles\":[{\"id\":\"userrole-53391080-8437-471e-800b-8b0d01e8b465-project-1776811631689\",\"userId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"projectId\":\"project-1776811631689\",\"role\":\"content_producer\",\"permissions\":{\"canViewAll\":true,\"canEditCasting\":true,\"canEditProduction\":true,\"canEditShots\":true,\"canEditShotLists\":true,\"canManageCrew\":false,\"canManageLocations\":true,\"canApprove\":false,\"canEditScript\":true,\"canLockScript\":false,\"canRunTableRead\":true,\"canComment\":true,\"canRequestChanges\":true,\"canViewEconomy\":true},\"createdAt\":\"2026-04-21T22:47:13.345Z\",\"updatedAt\":\"2026-04-21T22:47:13.345Z\"}],\"updatedAt\":\"2026-04-21T22:47:14.456Z\",\"producerWorkflowStatus\":\"planning\",\"producerWorkflowMeta\":{\"totalReviews\":0,\"pendingReviews\":0,\"approvedReviews\":0,\"rejectedReviews\":0,\"changesRequestedReviews\":0,\"budgetReviewCount\":0,\"agreementReviewCount\":0,\"deliverableReviewCount\":0,\"lastReviewRequestedAt\":null,\"lastDecisionAt\":null,\"lastApprovedReviewId\":null,\"lastPendingReviewId\":null}}},{\"id\":\"6f48b3de-55cf-400a-a11b-211777876f32\",\"label\":\"Lokal lagring\",\"source\":\"local_save\",\"project\":{\"id\":\"project-1776811631689\",\"crew\":[],\"name\":\"Nytt Role Room prosjekt\",\"props\":[],\"roles\":[],\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdAt\":\"2026-04-21T22:47:11.689Z\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"locations\":[],\"schedules\":[],\"shotLists\":[],\"updatedAt\":\"2026-04-21T22:47:11.689Z\",\"userRoles\":[],\"candidates\":[],\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"description\":\"\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"productionDays\":[]},\"createdAt\":\"2026-04-21T22:47:12.198Z\",\"projectId\":\"project-1776811631689\"}]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-snapshots-project-1776714272417",
+          "value": "[{\"id\":\"f144847e-3099-4c05-952f-445f5e0e8201\",\"projectId\":\"project-1776714272417\",\"createdAt\":\"2026-04-20T19:44:35.643Z\",\"source\":\"local_save\",\"label\":\"Lokal lagring · status planning\",\"project\":{\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"createdAt\":\"2026-04-20T19:44:32.417Z\",\"id\":\"project-1776714272417\",\"name\":\"Nytt Role Room prosjekt\",\"description\":\"\",\"roles\":[],\"candidates\":[],\"schedules\":[],\"crew\":[],\"locations\":[],\"props\":[],\"productionDays\":[],\"shotLists\":[],\"userRoles\":[{\"id\":\"userrole-53391080-8437-471e-800b-8b0d01e8b465-project-1776714272417\",\"userId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"projectId\":\"project-1776714272417\",\"role\":\"content_producer\",\"permissions\":{\"canViewAll\":true,\"canEditCasting\":true,\"canEditProduction\":true,\"canEditShots\":true,\"canEditShotLists\":true,\"canManageCrew\":false,\"canManageLocations\":true,\"canApprove\":false,\"canEditScript\":true,\"canLockScript\":false,\"canRunTableRead\":true,\"canComment\":true,\"canRequestChanges\":true,\"canViewEconomy\":true},\"createdAt\":\"2026-04-20T19:44:33.957Z\",\"updatedAt\":\"2026-04-20T19:44:33.957Z\"}],\"updatedAt\":\"2026-04-20T19:44:35.275Z\",\"producerWorkflowStatus\":\"planning\",\"producerWorkflowMeta\":{\"totalReviews\":0,\"pendingReviews\":0,\"approvedReviews\":0,\"rejectedReviews\":0,\"changesRequestedReviews\":0,\"budgetReviewCount\":0,\"agreementReviewCount\":0,\"deliverableReviewCount\":0,\"lastReviewRequestedAt\":null,\"lastDecisionAt\":null,\"lastApprovedReviewId\":null,\"lastPendingReviewId\":null}}},{\"id\":\"666bd8f7-0844-4010-8161-123df8731338\",\"label\":\"Lokal lagring\",\"source\":\"local_save\",\"project\":{\"id\":\"project-1776714272417\",\"crew\":[],\"name\":\"Nytt Role Room prosjekt\",\"props\":[],\"roles\":[],\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdAt\":\"2026-04-20T19:44:32.417Z\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"locations\":[],\"schedules\":[],\"shotLists\":[],\"updatedAt\":\"2026-04-20T19:44:32.417Z\",\"userRoles\":[],\"candidates\":[],\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"description\":\"\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"productionDays\":[]},\"createdAt\":\"2026-04-20T19:44:32.796Z\",\"projectId\":\"project-1776714272417\"}]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465:project-1776840651298:virtualStudio_candidateQuickContacts",
+          "value": "[]"
+        },
+        {
+          "name": "role_room_auth_token",
+          "value": "62b7b2d3-c7fe-4a8e-9352-15c44561328f"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465:project-1776764210740:virtualStudio_candidateQuickContacts",
+          "value": "[]"
+        },
+        {
+          "name": "story-logic-data:data:data:data:sync-meta:project-1776808336188",
+          "value": "{\"id\":\"story-logic-data:data:data:sync-meta:project-1776808336188\",\"projectId\":\"data:data:data:sync-meta:project-1776808336188\",\"data\":{\"id\":\"story-logic-data:data:sync-meta:project-1776808336188\",\"projectId\":\"data:data:sync-meta:project-1776808336188\",\"data\":{\"id\":\"story-logic-data:sync-meta:project-1776808336188\",\"projectId\":\"data:sync-meta:project-1776808336188\",\"data\":{\"id\":\"story-logic-sync-meta:project-1776808336188\",\"projectId\":\"sync-meta:project-1776808336188\",\"data\":{\"projectId\":\"project-1776808336188\",\"status\":\"loading\",\"source\":\"server\"},\"createdAt\":\"2026-04-21T22:03:05.949Z\",\"updatedAt\":\"2026-04-21T22:03:05.949Z\"},\"createdAt\":\"2026-04-21T22:05:27.822Z\",\"updatedAt\":\"2026-04-21T22:05:27.822Z\"},\"createdAt\":\"2026-04-21T22:47:10.742Z\",\"updatedAt\":\"2026-04-21T22:47:10.742Z\"},\"createdAt\":\"2026-04-22T06:50:50.022Z\",\"updatedAt\":\"2026-04-22T06:50:50.022Z\"}"
+        },
+        {
+          "name": "story-logic-data:data:data:data:data:data:data:data:data:data:sync-meta:project-1776708440484",
+          "value": "{\"id\":\"story-logic-data:data:data:data:data:data:data:data:data:sync-meta:project-1776708440484\",\"projectId\":\"data:data:data:data:data:data:data:data:data:sync-meta:project-1776708440484\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:data:data:data:sync-meta:project-1776708440484\",\"projectId\":\"data:data:data:data:data:data:data:data:sync-meta:project-1776708440484\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:data:data:sync-meta:project-1776708440484\",\"projectId\":\"data:data:data:data:data:data:data:sync-meta:project-1776708440484\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:data:sync-meta:project-1776708440484\",\"projectId\":\"data:data:data:data:data:data:sync-meta:project-1776708440484\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:sync-meta:project-1776708440484\",\"projectId\":\"data:data:data:data:data:sync-meta:project-1776708440484\",\"data\":{\"id\":\"story-logic-data:data:data:data:sync-meta:project-1776708440484\",\"projectId\":\"data:data:data:data:sync-meta:project-1776708440484\",\"data\":{\"id\":\"story-logic-data:data:data:sync-meta:project-1776708440484\",\"projectId\":\"data:data:data:sync-meta:project-1776708440484\",\"data\":{\"id\":\"story-logic-data:data:sync-meta:project-1776708440484\",\"projectId\":\"data:data:sync-meta:project-1776708440484\",\"data\":{\"id\":\"story-logic-data:sync-meta:project-1776708440484\",\"projectId\":\"data:sync-meta:project-1776708440484\",\"data\":{\"id\":\"story-logic-sync-meta:project-1776708440484\",\"projectId\":\"sync-meta:project-1776708440484\",\"data\":{\"projectId\":\"project-1776708440484\",\"status\":\"synced\",\"source\":\"server\",\"lastLoadedAt\":\"2026-04-20T18:07:23.535Z\"},\"createdAt\":\"2026-04-20T19:44:31.137Z\",\"updatedAt\":\"2026-04-20T19:44:31.137Z\"},\"createdAt\":\"2026-04-21T09:36:50.652Z\",\"updatedAt\":\"2026-04-21T09:36:50.652Z\"},\"createdAt\":\"2026-04-21T09:52:21.934Z\",\"updatedAt\":\"2026-04-21T09:52:21.934Z\"},\"createdAt\":\"2026-04-21T10:49:17.967Z\",\"updatedAt\":\"2026-04-21T10:49:17.967Z\"},\"createdAt\":\"2026-04-21T15:40:30.146Z\",\"updatedAt\":\"2026-04-21T15:40:30.146Z\"},\"createdAt\":\"2026-04-21T21:52:14.534Z\",\"updatedAt\":\"2026-04-21T21:52:14.534Z\"},\"createdAt\":\"2026-04-21T22:03:05.949Z\",\"updatedAt\":\"2026-04-21T22:03:05.949Z\"},\"createdAt\":\"2026-04-21T22:05:27.822Z\",\"updatedAt\":\"2026-04-21T22:05:27.822Z\"},\"createdAt\":\"2026-04-21T22:47:10.742Z\",\"updatedAt\":\"2026-04-21T22:47:10.742Z\"},\"createdAt\":\"2026-04-22T06:50:50.022Z\",\"updatedAt\":\"2026-04-22T06:50:50.022Z\"}"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465:project-1776706003276:virtualStudio_candidateQuickContacts",
+          "value": "[]"
+        },
+        {
+          "name": "casting-theme-mode",
+          "value": "dark"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465:project-1776809127907:virtualStudio_candidateQuickContacts",
+          "value": "[]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-snapshots-project-1776765143530",
+          "value": "[{\"id\":\"e5567914-d051-4c0e-a880-eef66576fe28\",\"projectId\":\"project-1776765143530\",\"createdAt\":\"2026-04-21T09:52:26.658Z\",\"source\":\"local_save\",\"label\":\"Lokal lagring · status planning\",\"project\":{\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"createdAt\":\"2026-04-21T09:52:23.530Z\",\"id\":\"project-1776765143530\",\"name\":\"Nytt Role Room prosjekt\",\"description\":\"\",\"roles\":[],\"candidates\":[],\"schedules\":[],\"crew\":[],\"locations\":[],\"props\":[],\"productionDays\":[],\"shotLists\":[],\"userRoles\":[{\"id\":\"userrole-53391080-8437-471e-800b-8b0d01e8b465-project-1776765143530\",\"userId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"projectId\":\"project-1776765143530\",\"role\":\"content_producer\",\"permissions\":{\"canViewAll\":true,\"canEditCasting\":true,\"canEditProduction\":true,\"canEditShots\":true,\"canEditShotLists\":true,\"canManageCrew\":false,\"canManageLocations\":true,\"canApprove\":false,\"canEditScript\":true,\"canLockScript\":false,\"canRunTableRead\":true,\"canComment\":true,\"canRequestChanges\":true,\"canViewEconomy\":true},\"createdAt\":\"2026-04-21T09:52:24.982Z\",\"updatedAt\":\"2026-04-21T09:52:24.982Z\"}],\"updatedAt\":\"2026-04-21T09:52:26.256Z\",\"producerWorkflowStatus\":\"planning\",\"producerWorkflowMeta\":{\"totalReviews\":0,\"pendingReviews\":0,\"approvedReviews\":0,\"rejectedReviews\":0,\"changesRequestedReviews\":0,\"budgetReviewCount\":0,\"agreementReviewCount\":0,\"deliverableReviewCount\":0,\"lastReviewRequestedAt\":null,\"lastDecisionAt\":null,\"lastApprovedReviewId\":null,\"lastPendingReviewId\":null}}},{\"id\":\"81827ea5-d0f0-49f9-b468-37ccccd53df5\",\"label\":\"Lokal lagring\",\"source\":\"local_save\",\"project\":{\"id\":\"project-1776765143530\",\"crew\":[],\"name\":\"Nytt Role Room prosjekt\",\"props\":[],\"roles\":[],\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdAt\":\"2026-04-21T09:52:23.530Z\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"locations\":[],\"schedules\":[],\"shotLists\":[],\"updatedAt\":\"2026-04-21T09:52:23.530Z\",\"userRoles\":[],\"candidates\":[],\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"description\":\"\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"productionDays\":[]},\"createdAt\":\"2026-04-21T09:52:23.883Z\",\"projectId\":\"project-1776765143530\"}]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-sync-meta-project-1776811630853",
+          "value": "{\"projectId\":\"project-1776811630853\",\"queuedChangeCount\":0,\"lastLocalSaveAt\":\"2026-04-21T22:47:14.391Z\"}"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-snapshots-project-1776786031461",
+          "value": "[{\"id\":\"4ed5a09f-0290-4baf-a7c4-55372e6f98ba\",\"projectId\":\"project-1776786031461\",\"createdAt\":\"2026-04-21T15:40:34.654Z\",\"source\":\"local_save\",\"label\":\"Lokal lagring · status planning\",\"project\":{\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"createdAt\":\"2026-04-21T15:40:31.461Z\",\"id\":\"project-1776786031461\",\"name\":\"Nytt Role Room prosjekt\",\"description\":\"\",\"roles\":[],\"candidates\":[],\"schedules\":[],\"crew\":[],\"locations\":[],\"props\":[],\"productionDays\":[],\"shotLists\":[],\"userRoles\":[{\"id\":\"userrole-53391080-8437-471e-800b-8b0d01e8b465-project-1776786031461\",\"userId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"projectId\":\"project-1776786031461\",\"role\":\"content_producer\",\"permissions\":{\"canViewAll\":true,\"canEditCasting\":true,\"canEditProduction\":true,\"canEditShots\":true,\"canEditShotLists\":true,\"canManageCrew\":false,\"canManageLocations\":true,\"canApprove\":false,\"canEditScript\":true,\"canLockScript\":false,\"canRunTableRead\":true,\"canComment\":true,\"canRequestChanges\":true,\"canViewEconomy\":true},\"createdAt\":\"2026-04-21T15:40:33.012Z\",\"updatedAt\":\"2026-04-21T15:40:33.012Z\"}],\"updatedAt\":\"2026-04-21T15:40:34.255Z\",\"producerWorkflowStatus\":\"planning\",\"producerWorkflowMeta\":{\"totalReviews\":0,\"pendingReviews\":0,\"approvedReviews\":0,\"rejectedReviews\":0,\"changesRequestedReviews\":0,\"budgetReviewCount\":0,\"agreementReviewCount\":0,\"deliverableReviewCount\":0,\"lastReviewRequestedAt\":null,\"lastDecisionAt\":null,\"lastApprovedReviewId\":null,\"lastPendingReviewId\":null}}},{\"id\":\"7a16be0e-d92d-49be-bfb3-2d8b45fa82c7\",\"label\":\"Lokal lagring\",\"source\":\"local_save\",\"project\":{\"id\":\"project-1776786031461\",\"crew\":[],\"name\":\"Nytt Role Room prosjekt\",\"props\":[],\"roles\":[],\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdAt\":\"2026-04-21T15:40:31.461Z\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"locations\":[],\"schedules\":[],\"shotLists\":[],\"updatedAt\":\"2026-04-21T15:40:31.462Z\",\"userRoles\":[],\"candidates\":[],\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"description\":\"\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"productionDays\":[]},\"createdAt\":\"2026-04-21T15:40:31.846Z\",\"projectId\":\"project-1776786031461\"}]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-snapshots-project-1776768560693",
+          "value": "[{\"id\":\"2b8e17f5-9473-4f74-92f0-56e07737d5d4\",\"projectId\":\"project-1776768560693\",\"createdAt\":\"2026-04-21T10:49:26.868Z\",\"source\":\"local_save\",\"label\":\"Lokal lagring · status planning\",\"project\":{\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"createdAt\":\"2026-04-21T10:49:20.693Z\",\"id\":\"project-1776768560693\",\"name\":\"Nytt Role Room prosjekt\",\"description\":\"\",\"roles\":[],\"candidates\":[],\"schedules\":[],\"crew\":[],\"locations\":[],\"props\":[],\"productionDays\":[],\"shotLists\":[],\"userRoles\":[{\"id\":\"userrole-53391080-8437-471e-800b-8b0d01e8b465-project-1776768560693\",\"userId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"projectId\":\"project-1776768560693\",\"role\":\"content_producer\",\"permissions\":{\"canViewAll\":true,\"canEditCasting\":true,\"canEditProduction\":true,\"canEditShots\":true,\"canEditShotLists\":true,\"canManageCrew\":false,\"canManageLocations\":true,\"canApprove\":false,\"canEditScript\":true,\"canLockScript\":false,\"canRunTableRead\":true,\"canComment\":true,\"canRequestChanges\":true,\"canViewEconomy\":true},\"createdAt\":\"2026-04-21T10:49:24.552Z\",\"updatedAt\":\"2026-04-21T10:49:24.552Z\"}],\"updatedAt\":\"2026-04-21T10:49:26.407Z\",\"producerWorkflowStatus\":\"planning\",\"producerWorkflowMeta\":{\"totalReviews\":0,\"pendingReviews\":0,\"approvedReviews\":0,\"rejectedReviews\":0,\"changesRequestedReviews\":0,\"budgetReviewCount\":0,\"agreementReviewCount\":0,\"deliverableReviewCount\":0,\"lastReviewRequestedAt\":null,\"lastDecisionAt\":null,\"lastApprovedReviewId\":null,\"lastPendingReviewId\":null}}},{\"id\":\"979ab191-05b5-4597-98cb-f40848c4dd2c\",\"label\":\"Lokal lagring\",\"source\":\"local_save\",\"project\":{\"id\":\"project-1776768560693\",\"crew\":[],\"name\":\"Nytt Role Room prosjekt\",\"props\":[],\"roles\":[],\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdAt\":\"2026-04-21T10:49:20.693Z\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"locations\":[],\"schedules\":[],\"shotLists\":[],\"updatedAt\":\"2026-04-21T10:49:20.693Z\",\"userRoles\":[],\"candidates\":[],\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"description\":\"\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"productionDays\":[]},\"createdAt\":\"2026-04-21T10:49:22.227Z\",\"projectId\":\"project-1776768560693\"}]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-sync-meta-project-1776765142039",
+          "value": "{\"projectId\":\"project-1776765142039\",\"lastLocalSaveAt\":\"2026-04-21T09:52:26.689Z\",\"queuedChangeCount\":0}"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::casting-projects",
+          "value": "[{\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"createdAt\":\"2026-04-22T06:50:50.138Z\",\"id\":\"project-1776840650138\",\"name\":\"Nytt Role Room prosjekt\",\"description\":\"\",\"roles\":[],\"candidates\":[],\"schedules\":[],\"crew\":[],\"locations\":[],\"props\":[],\"productionDays\":[],\"shotLists\":[],\"userRoles\":[{\"id\":\"userrole-53391080-8437-471e-800b-8b0d01e8b465-project-1776840650138\",\"userId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"projectId\":\"project-1776840650138\",\"role\":\"content_producer\",\"permissions\":{\"canViewAll\":true,\"canEditCasting\":true,\"canEditProduction\":true,\"canEditShots\":true,\"canEditShotLists\":true,\"canManageCrew\":false,\"canManageLocations\":true,\"canApprove\":false,\"canEditScript\":true,\"canLockScript\":false,\"canRunTableRead\":true,\"canComment\":true,\"canRequestChanges\":true,\"canViewEconomy\":true},\"createdAt\":\"2026-04-22T06:50:53.398Z\",\"updatedAt\":\"2026-04-22T06:50:53.398Z\"}],\"updatedAt\":\"2026-04-22T06:50:54.597Z\",\"producerWorkflowStatus\":\"planning\",\"producerWorkflowMeta\":{\"totalReviews\":0,\"pendingReviews\":0,\"approvedReviews\":0,\"rejectedReviews\":0,\"changesRequestedReviews\":0,\"budgetReviewCount\":0,\"agreementReviewCount\":0,\"deliverableReviewCount\":0,\"lastReviewRequestedAt\":null,\"lastDecisionAt\":null,\"lastApprovedReviewId\":null,\"lastPendingReviewId\":null}},{\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"createdAt\":\"2026-04-22T06:50:51.298Z\",\"id\":\"project-1776840651298\",\"name\":\"Nytt Role Room prosjekt\",\"description\":\"\",\"roles\":[],\"candidates\":[],\"schedules\":[],\"crew\":[],\"locations\":[],\"props\":[],\"productionDays\":[],\"shotLists\":[],\"userRoles\":[{\"id\":\"userrole-53391080-8437-471e-800b-8b0d01e8b465-project-1776840651298\",\"userId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"projectId\":\"project-1776840651298\",\"role\":\"content_producer\",\"permissions\":{\"canViewAll\":true,\"canEditCasting\":true,\"canEditProduction\":true,\"canEditShots\":true,\"canEditShotLists\":true,\"canManageCrew\":false,\"canManageLocations\":true,\"canApprove\":false,\"canEditScript\":true,\"canLockScript\":false,\"canRunTableRead\":true,\"canComment\":true,\"canRequestChanges\":true,\"canViewEconomy\":true},\"createdAt\":\"2026-04-22T06:50:52.759Z\",\"updatedAt\":\"2026-04-22T06:50:52.759Z\"}],\"updatedAt\":\"2026-04-22T06:50:54.031Z\",\"producerWorkflowStatus\":\"planning\",\"producerWorkflowMeta\":{\"totalReviews\":0,\"pendingReviews\":0,\"approvedReviews\":0,\"rejectedReviews\":0,\"changesRequestedReviews\":0,\"budgetReviewCount\":0,\"agreementReviewCount\":0,\"deliverableReviewCount\":0,\"lastReviewRequestedAt\":null,\"lastDecisionAt\":null,\"lastApprovedReviewId\":null,\"lastPendingReviewId\":null}}]"
+        },
+        {
+          "name": "story-logic-data:data:data:data:data:sync-meta:project-1776786031461",
+          "value": "{\"id\":\"story-logic-data:data:data:data:sync-meta:project-1776786031461\",\"projectId\":\"data:data:data:data:sync-meta:project-1776786031461\",\"data\":{\"id\":\"story-logic-data:data:data:sync-meta:project-1776786031461\",\"projectId\":\"data:data:data:sync-meta:project-1776786031461\",\"data\":{\"id\":\"story-logic-data:data:sync-meta:project-1776786031461\",\"projectId\":\"data:data:sync-meta:project-1776786031461\",\"data\":{\"id\":\"story-logic-data:sync-meta:project-1776786031461\",\"projectId\":\"data:sync-meta:project-1776786031461\",\"data\":{\"id\":\"story-logic-sync-meta:project-1776786031461\",\"projectId\":\"sync-meta:project-1776786031461\",\"data\":{\"projectId\":\"project-1776786031461\",\"status\":\"synced\",\"source\":\"server\",\"lastLoadedAt\":\"2026-04-21T15:40:34.531Z\"},\"createdAt\":\"2026-04-21T21:52:14.534Z\",\"updatedAt\":\"2026-04-21T21:52:14.534Z\"},\"createdAt\":\"2026-04-21T22:03:05.949Z\",\"updatedAt\":\"2026-04-21T22:03:05.949Z\"},\"createdAt\":\"2026-04-21T22:05:27.822Z\",\"updatedAt\":\"2026-04-21T22:05:27.822Z\"},\"createdAt\":\"2026-04-21T22:47:10.742Z\",\"updatedAt\":\"2026-04-21T22:47:10.742Z\"},\"createdAt\":\"2026-04-22T06:50:50.022Z\",\"updatedAt\":\"2026-04-22T06:50:50.022Z\"}"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465:project-1776764211695:virtualStudio_candidateQuickContacts",
+          "value": "[]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-sync-meta-project-1776768558582",
+          "value": "{\"projectId\":\"project-1776768558582\",\"queuedChangeCount\":0,\"lastLocalSaveAt\":\"2026-04-21T10:49:18.583Z\"}"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465:project-1776808986421:virtualStudio_candidateQuickContacts",
+          "value": "[]"
+        },
+        {
+          "name": "role_room_auth_session",
+          "value": "{\"adminUser\":{\"id\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"email\":\"daniel@creatorhubn.com\",\"role\":\"super_admin\",\"display_name\":\"Daniel Qazi\",\"name\":\"Daniel Qazi\",\"loginAs\":\"content_producer\",\"requestedRole\":\"film_photographer\"},\"currentUserId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"sessionToken\":\"62b7b2d3-c7fe-4a8e-9352-15c44561328f\",\"selectedProfession\":\"film_photographer\",\"lastUpdated\":\"2026-04-20T17:13:55.418Z\"}"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-sync-meta-project-1776764210740",
+          "value": "{\"projectId\":\"project-1776764210740\",\"lastLocalSaveAt\":\"2026-04-21T09:36:54.606Z\",\"queuedChangeCount\":0}"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-snapshots-project-1776705236985",
+          "value": "[{\"id\":\"19973bc4-9db2-4d0d-bd68-74719846b634\",\"projectId\":\"project-1776705236985\",\"createdAt\":\"2026-04-20T17:14:00.620Z\",\"source\":\"local_save\",\"label\":\"Lokal lagring · status planning\",\"project\":{\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"createdAt\":\"2026-04-20T17:13:56.985Z\",\"id\":\"project-1776705236985\",\"name\":\"Nytt Role Room prosjekt\",\"description\":\"\",\"roles\":[],\"candidates\":[],\"schedules\":[],\"crew\":[],\"locations\":[],\"props\":[],\"productionDays\":[],\"shotLists\":[],\"userRoles\":[{\"id\":\"userrole-53391080-8437-471e-800b-8b0d01e8b465-project-1776705236985\",\"userId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"projectId\":\"project-1776705236985\",\"role\":\"content_producer\",\"permissions\":{\"canViewAll\":true,\"canEditCasting\":true,\"canEditProduction\":true,\"canEditShots\":true,\"canEditShotLists\":true,\"canManageCrew\":false,\"canManageLocations\":true,\"canApprove\":false,\"canEditScript\":true,\"canLockScript\":false,\"canRunTableRead\":true,\"canComment\":true,\"canRequestChanges\":true,\"canViewEconomy\":true},\"createdAt\":\"2026-04-20T17:13:58.790Z\",\"updatedAt\":\"2026-04-20T17:13:58.790Z\"}],\"updatedAt\":\"2026-04-20T17:13:59.887Z\",\"producerWorkflowStatus\":\"planning\",\"producerWorkflowMeta\":{\"totalReviews\":0,\"pendingReviews\":0,\"approvedReviews\":0,\"rejectedReviews\":0,\"changesRequestedReviews\":0,\"budgetReviewCount\":0,\"agreementReviewCount\":0,\"deliverableReviewCount\":0,\"lastReviewRequestedAt\":null,\"lastDecisionAt\":null,\"lastApprovedReviewId\":null,\"lastPendingReviewId\":null}}},{\"id\":\"24b7f923-6746-4887-b66b-4a5ecbed29c0\",\"label\":\"Lokal lagring\",\"source\":\"local_save\",\"project\":{\"id\":\"project-1776705236985\",\"crew\":[],\"name\":\"Nytt Role Room prosjekt\",\"props\":[],\"roles\":[],\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdAt\":\"2026-04-20T17:13:56.985Z\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"locations\":[],\"schedules\":[],\"shotLists\":[],\"updatedAt\":\"2026-04-20T17:13:56.985Z\",\"userRoles\":[],\"candidates\":[],\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"description\":\"\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"productionDays\":[]},\"createdAt\":\"2026-04-20T17:13:57.702Z\",\"projectId\":\"project-1776705236985\"}]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-snapshots-project-1776706003276",
+          "value": "[{\"id\":\"8c234278-f28d-4a84-84ea-a063b722b8f7\",\"projectId\":\"project-1776706003276\",\"createdAt\":\"2026-04-20T17:26:46.463Z\",\"source\":\"local_save\",\"label\":\"Lokal lagring · status planning\",\"project\":{\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"createdAt\":\"2026-04-20T17:26:43.276Z\",\"id\":\"project-1776706003276\",\"name\":\"Nytt Role Room prosjekt\",\"description\":\"\",\"roles\":[],\"candidates\":[],\"schedules\":[],\"crew\":[],\"locations\":[],\"props\":[],\"productionDays\":[],\"shotLists\":[],\"userRoles\":[{\"id\":\"userrole-53391080-8437-471e-800b-8b0d01e8b465-project-1776706003276\",\"userId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"projectId\":\"project-1776706003276\",\"role\":\"content_producer\",\"permissions\":{\"canViewAll\":true,\"canEditCasting\":true,\"canEditProduction\":true,\"canEditShots\":true,\"canEditShotLists\":true,\"canManageCrew\":false,\"canManageLocations\":true,\"canApprove\":false,\"canEditScript\":true,\"canLockScript\":false,\"canRunTableRead\":true,\"canComment\":true,\"canRequestChanges\":true,\"canViewEconomy\":true},\"createdAt\":\"2026-04-20T17:26:44.809Z\",\"updatedAt\":\"2026-04-20T17:26:44.809Z\"}],\"updatedAt\":\"2026-04-20T17:26:46.021Z\",\"producerWorkflowStatus\":\"planning\",\"producerWorkflowMeta\":{\"totalReviews\":0,\"pendingReviews\":0,\"approvedReviews\":0,\"rejectedReviews\":0,\"changesRequestedReviews\":0,\"budgetReviewCount\":0,\"agreementReviewCount\":0,\"deliverableReviewCount\":0,\"lastReviewRequestedAt\":null,\"lastDecisionAt\":null,\"lastApprovedReviewId\":null,\"lastPendingReviewId\":null}}},{\"id\":\"bcf3f81a-381f-4e90-95cb-6c338d4cf1e2\",\"label\":\"Lokal lagring\",\"source\":\"local_save\",\"project\":{\"id\":\"project-1776706003276\",\"crew\":[],\"name\":\"Nytt Role Room prosjekt\",\"props\":[],\"roles\":[],\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdAt\":\"2026-04-20T17:26:43.276Z\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"locations\":[],\"schedules\":[],\"shotLists\":[],\"updatedAt\":\"2026-04-20T17:26:43.276Z\",\"userRoles\":[],\"candidates\":[],\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"description\":\"\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"productionDays\":[]},\"createdAt\":\"2026-04-20T17:26:43.658Z\",\"projectId\":\"project-1776706003276\"}]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::virtualStudio_globalTags_v1",
+          "value": "[\"daniel\",\"Daniel Qazi\",\"daniel@creatorhubn.com\"]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-sync-meta-project-1776714272417",
+          "value": "{\"projectId\":\"project-1776714272417\",\"lastLocalSaveAt\":\"2026-04-20T19:44:35.275Z\",\"queuedChangeCount\":0}"
+        },
+        {
+          "name": "story-logic-data:data:data:data:data:data:data:data:data:data:sync-meta:project-1776708439328",
+          "value": "{\"id\":\"story-logic-data:data:data:data:data:data:data:data:data:sync-meta:project-1776708439328\",\"projectId\":\"data:data:data:data:data:data:data:data:data:sync-meta:project-1776708439328\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:data:data:data:sync-meta:project-1776708439328\",\"projectId\":\"data:data:data:data:data:data:data:data:sync-meta:project-1776708439328\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:data:data:sync-meta:project-1776708439328\",\"projectId\":\"data:data:data:data:data:data:data:sync-meta:project-1776708439328\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:data:sync-meta:project-1776708439328\",\"projectId\":\"data:data:data:data:data:data:sync-meta:project-1776708439328\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:sync-meta:project-1776708439328\",\"projectId\":\"data:data:data:data:data:sync-meta:project-1776708439328\",\"data\":{\"id\":\"story-logic-data:data:data:data:sync-meta:project-1776708439328\",\"projectId\":\"data:data:data:data:sync-meta:project-1776708439328\",\"data\":{\"id\":\"story-logic-data:data:data:sync-meta:project-1776708439328\",\"projectId\":\"data:data:data:sync-meta:project-1776708439328\",\"data\":{\"id\":\"story-logic-data:data:sync-meta:project-1776708439328\",\"projectId\":\"data:data:sync-meta:project-1776708439328\",\"data\":{\"id\":\"story-logic-data:sync-meta:project-1776708439328\",\"projectId\":\"data:sync-meta:project-1776708439328\",\"data\":{\"id\":\"story-logic-sync-meta:project-1776708439328\",\"projectId\":\"sync-meta:project-1776708439328\",\"data\":{\"projectId\":\"project-1776708439328\",\"status\":\"synced\",\"source\":\"server\",\"lastLoadedAt\":\"2026-04-20T18:07:23.647Z\"},\"createdAt\":\"2026-04-20T19:44:31.137Z\",\"updatedAt\":\"2026-04-20T19:44:31.137Z\"},\"createdAt\":\"2026-04-21T09:36:50.653Z\",\"updatedAt\":\"2026-04-21T09:36:50.653Z\"},\"createdAt\":\"2026-04-21T09:52:21.934Z\",\"updatedAt\":\"2026-04-21T09:52:21.934Z\"},\"createdAt\":\"2026-04-21T10:49:17.967Z\",\"updatedAt\":\"2026-04-21T10:49:17.967Z\"},\"createdAt\":\"2026-04-21T15:40:30.146Z\",\"updatedAt\":\"2026-04-21T15:40:30.146Z\"},\"createdAt\":\"2026-04-21T21:52:14.534Z\",\"updatedAt\":\"2026-04-21T21:52:14.534Z\"},\"createdAt\":\"2026-04-21T22:03:05.949Z\",\"updatedAt\":\"2026-04-21T22:03:05.949Z\"},\"createdAt\":\"2026-04-21T22:05:27.822Z\",\"updatedAt\":\"2026-04-21T22:05:27.822Z\"},\"createdAt\":\"2026-04-21T22:47:10.742Z\",\"updatedAt\":\"2026-04-21T22:47:10.742Z\"},\"createdAt\":\"2026-04-22T06:50:50.022Z\",\"updatedAt\":\"2026-04-22T06:50:50.022Z\"}"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-sync-meta-project-1776809129066",
+          "value": "{\"projectId\":\"project-1776809129066\",\"lastLocalSaveAt\":\"2026-04-21T22:05:31.847Z\",\"queuedChangeCount\":0}"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-snapshots-project-1776768558582",
+          "value": "[{\"id\":\"7d188b77-6cdf-4d28-90d5-99ba5d606a73\",\"projectId\":\"project-1776768558582\",\"createdAt\":\"2026-04-21T10:49:20.785Z\",\"source\":\"local_save\",\"label\":\"Lokal lagring\",\"project\":{\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"createdAt\":\"2026-04-21T10:49:18.582Z\",\"id\":\"project-1776768558582\",\"name\":\"Nytt Role Room prosjekt\",\"description\":\"\",\"roles\":[],\"candidates\":[],\"schedules\":[],\"crew\":[],\"locations\":[],\"props\":[],\"productionDays\":[],\"shotLists\":[],\"userRoles\":[],\"updatedAt\":\"2026-04-21T10:49:18.583Z\"}}]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465:project-1776811631689:virtualStudio_candidateQuickContacts",
+          "value": "[]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-snapshots-project-1776705821494",
+          "value": "[{\"id\":\"9708947c-46d8-428c-a56d-0fc6eb7fb562\",\"projectId\":\"project-1776705821494\",\"createdAt\":\"2026-04-20T17:23:45.202Z\",\"source\":\"local_save\",\"label\":\"Lokal lagring · status planning\",\"project\":{\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"createdAt\":\"2026-04-20T17:23:41.494Z\",\"id\":\"project-1776705821494\",\"name\":\"Nytt Role Room prosjekt\",\"description\":\"\",\"roles\":[],\"candidates\":[],\"schedules\":[],\"crew\":[],\"locations\":[],\"props\":[],\"productionDays\":[],\"shotLists\":[],\"userRoles\":[{\"id\":\"userrole-53391080-8437-471e-800b-8b0d01e8b465-project-1776705821494\",\"userId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"projectId\":\"project-1776705821494\",\"role\":\"content_producer\",\"permissions\":{\"canViewAll\":true,\"canEditCasting\":true,\"canEditProduction\":true,\"canEditShots\":true,\"canEditShotLists\":true,\"canManageCrew\":false,\"canManageLocations\":true,\"canApprove\":false,\"canEditScript\":true,\"canLockScript\":false,\"canRunTableRead\":true,\"canComment\":true,\"canRequestChanges\":true,\"canViewEconomy\":true},\"createdAt\":\"2026-04-20T17:23:43.383Z\",\"updatedAt\":\"2026-04-20T17:23:43.383Z\"}],\"updatedAt\":\"2026-04-20T17:23:44.811Z\",\"producerWorkflowStatus\":\"planning\",\"producerWorkflowMeta\":{\"totalReviews\":0,\"pendingReviews\":0,\"approvedReviews\":0,\"rejectedReviews\":0,\"changesRequestedReviews\":0,\"budgetReviewCount\":0,\"agreementReviewCount\":0,\"deliverableReviewCount\":0,\"lastReviewRequestedAt\":null,\"lastDecisionAt\":null,\"lastApprovedReviewId\":null,\"lastPendingReviewId\":null}}},{\"id\":\"bf29c822-069c-4dc1-acf6-df4f76149fb5\",\"label\":\"Lokal lagring\",\"source\":\"local_save\",\"project\":{\"id\":\"project-1776705821494\",\"crew\":[],\"name\":\"Nytt Role Room prosjekt\",\"props\":[],\"roles\":[],\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdAt\":\"2026-04-20T17:23:41.494Z\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"locations\":[],\"schedules\":[],\"shotLists\":[],\"updatedAt\":\"2026-04-20T17:23:41.495Z\",\"userRoles\":[],\"candidates\":[],\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"description\":\"\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"productionDays\":[]},\"createdAt\":\"2026-04-20T17:23:42.039Z\",\"projectId\":\"project-1776705821494\"}]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-snapshots-project-1776706002125",
+          "value": "[{\"id\":\"c085ac29-d457-48e6-86d1-e94059b3903e\",\"projectId\":\"project-1776706002125\",\"createdAt\":\"2026-04-20T17:26:46.092Z\",\"source\":\"local_save\",\"label\":\"Lokal lagring · status planning\",\"project\":{\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"createdAt\":\"2026-04-20T17:26:42.125Z\",\"id\":\"project-1776706002125\",\"name\":\"Nytt Role Room prosjekt\",\"description\":\"\",\"roles\":[],\"candidates\":[],\"schedules\":[],\"crew\":[],\"locations\":[],\"props\":[],\"productionDays\":[],\"shotLists\":[],\"userRoles\":[{\"id\":\"userrole-53391080-8437-471e-800b-8b0d01e8b465-project-1776706002125\",\"userId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"projectId\":\"project-1776706002125\",\"role\":\"content_producer\",\"permissions\":{\"canViewAll\":true,\"canEditCasting\":true,\"canEditProduction\":true,\"canEditShots\":true,\"canEditShotLists\":true,\"canManageCrew\":false,\"canManageLocations\":true,\"canApprove\":false,\"canEditScript\":true,\"canLockScript\":false,\"canRunTableRead\":true,\"canComment\":true,\"canRequestChanges\":true,\"canViewEconomy\":true},\"createdAt\":\"2026-04-20T17:26:44.181Z\",\"updatedAt\":\"2026-04-20T17:26:44.181Z\"}],\"updatedAt\":\"2026-04-20T17:26:45.752Z\",\"producerWorkflowStatus\":\"planning\",\"producerWorkflowMeta\":{\"totalReviews\":0,\"pendingReviews\":0,\"approvedReviews\":0,\"rejectedReviews\":0,\"changesRequestedReviews\":0,\"budgetReviewCount\":0,\"agreementReviewCount\":0,\"deliverableReviewCount\":0,\"lastReviewRequestedAt\":null,\"lastDecisionAt\":null,\"lastApprovedReviewId\":null,\"lastPendingReviewId\":null}}},{\"id\":\"6be02ab0-1819-4151-848c-85b06d727f13\",\"label\":\"Lokal lagring\",\"source\":\"local_save\",\"project\":{\"id\":\"project-1776706002125\",\"crew\":[],\"name\":\"Nytt Role Room prosjekt\",\"props\":[],\"roles\":[],\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdAt\":\"2026-04-20T17:26:42.125Z\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"locations\":[],\"schedules\":[],\"shotLists\":[],\"updatedAt\":\"2026-04-20T17:26:42.125Z\",\"userRoles\":[],\"candidates\":[],\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"description\":\"\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"productionDays\":[]},\"createdAt\":\"2026-04-20T17:26:43.002Z\",\"projectId\":\"project-1776706002125\"}]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-sync-meta-project-1776786030265",
+          "value": "{\"projectId\":\"project-1776786030265\",\"queuedChangeCount\":0,\"lastLocalSaveAt\":\"2026-04-21T15:40:33.957Z\"}"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-sync-meta-project-1776708440484",
+          "value": "{\"projectId\":\"project-1776708440484\",\"queuedChangeCount\":0,\"lastLocalSaveAt\":\"2026-04-20T18:07:23.378Z\"}"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465:project-1776708439328:virtualStudio_candidateQuickContacts",
+          "value": "[]"
+        },
+        {
+          "name": "story-logic-data:data:data:data:data:data:data:data:data:data:data:sync-meta:project-1776706003276",
+          "value": "{\"id\":\"story-logic-data:data:data:data:data:data:data:data:data:data:sync-meta:project-1776706003276\",\"projectId\":\"data:data:data:data:data:data:data:data:data:data:sync-meta:project-1776706003276\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:data:data:data:data:sync-meta:project-1776706003276\",\"projectId\":\"data:data:data:data:data:data:data:data:data:sync-meta:project-1776706003276\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:data:data:data:sync-meta:project-1776706003276\",\"projectId\":\"data:data:data:data:data:data:data:data:sync-meta:project-1776706003276\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:data:data:sync-meta:project-1776706003276\",\"projectId\":\"data:data:data:data:data:data:data:sync-meta:project-1776706003276\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:data:sync-meta:project-1776706003276\",\"projectId\":\"data:data:data:data:data:data:sync-meta:project-1776706003276\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:sync-meta:project-1776706003276\",\"projectId\":\"data:data:data:data:data:sync-meta:project-1776706003276\",\"data\":{\"id\":\"story-logic-data:data:data:data:sync-meta:project-1776706003276\",\"projectId\":\"data:data:data:data:sync-meta:project-1776706003276\",\"data\":{\"id\":\"story-logic-data:data:data:sync-meta:project-1776706003276\",\"projectId\":\"data:data:data:sync-meta:project-1776706003276\",\"data\":{\"id\":\"story-logic-data:data:sync-meta:project-1776706003276\",\"projectId\":\"data:data:sync-meta:project-1776706003276\",\"data\":{\"id\":\"story-logic-data:sync-meta:project-1776706003276\",\"projectId\":\"data:sync-meta:project-1776706003276\",\"data\":{\"id\":\"story-logic-sync-meta:project-1776706003276\",\"projectId\":\"sync-meta:project-1776706003276\",\"data\":{\"projectId\":\"project-1776706003276\",\"status\":\"synced\",\"source\":\"server\",\"lastLoadedAt\":\"2026-04-20T17:26:46.332Z\"},\"createdAt\":\"2026-04-20T18:07:19.220Z\",\"updatedAt\":\"2026-04-20T18:07:19.220Z\"},\"createdAt\":\"2026-04-20T19:44:31.137Z\",\"updatedAt\":\"2026-04-20T19:44:31.137Z\"},\"createdAt\":\"2026-04-21T09:36:50.652Z\",\"updatedAt\":\"2026-04-21T09:36:50.652Z\"},\"createdAt\":\"2026-04-21T09:52:21.934Z\",\"updatedAt\":\"2026-04-21T09:52:21.934Z\"},\"createdAt\":\"2026-04-21T10:49:17.967Z\",\"updatedAt\":\"2026-04-21T10:49:17.967Z\"},\"createdAt\":\"2026-04-21T15:40:30.146Z\",\"updatedAt\":\"2026-04-21T15:40:30.146Z\"},\"createdAt\":\"2026-04-21T21:52:14.533Z\",\"updatedAt\":\"2026-04-21T21:52:14.534Z\"},\"createdAt\":\"2026-04-21T22:03:05.949Z\",\"updatedAt\":\"2026-04-21T22:03:05.949Z\"},\"createdAt\":\"2026-04-21T22:05:27.822Z\",\"updatedAt\":\"2026-04-21T22:05:27.822Z\"},\"createdAt\":\"2026-04-21T22:47:10.742Z\",\"updatedAt\":\"2026-04-21T22:47:10.742Z\"},\"createdAt\":\"2026-04-22T06:50:50.022Z\",\"updatedAt\":\"2026-04-22T06:50:50.022Z\"}"
+        },
+        {
+          "name": "story-logic-data:sync-meta:project-1776811630853",
+          "value": "{\"id\":\"story-logic-sync-meta:project-1776811630853\",\"projectId\":\"sync-meta:project-1776811630853\",\"data\":{\"projectId\":\"project-1776811630853\",\"status\":\"synced\",\"source\":\"server\",\"lastLoadedAt\":\"2026-04-21T22:47:14.924Z\"},\"createdAt\":\"2026-04-22T06:50:50.022Z\",\"updatedAt\":\"2026-04-22T06:50:50.022Z\"}"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::roleRoom_onboardingCompleted",
+          "value": "{\"producer\":true}"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465:project-1776708440484:virtualStudio_candidateQuickContacts",
+          "value": "[]"
+        },
+        {
+          "name": "story-logic-data:data:data:data:data:data:sync-meta:project-1776768560693",
+          "value": "{\"id\":\"story-logic-data:data:data:data:data:sync-meta:project-1776768560693\",\"projectId\":\"data:data:data:data:data:sync-meta:project-1776768560693\",\"data\":{\"id\":\"story-logic-data:data:data:data:sync-meta:project-1776768560693\",\"projectId\":\"data:data:data:data:sync-meta:project-1776768560693\",\"data\":{\"id\":\"story-logic-data:data:data:sync-meta:project-1776768560693\",\"projectId\":\"data:data:data:sync-meta:project-1776768560693\",\"data\":{\"id\":\"story-logic-data:data:sync-meta:project-1776768560693\",\"projectId\":\"data:data:sync-meta:project-1776768560693\",\"data\":{\"id\":\"story-logic-data:sync-meta:project-1776768560693\",\"projectId\":\"data:sync-meta:project-1776768560693\",\"data\":{\"id\":\"story-logic-sync-meta:project-1776768560693\",\"projectId\":\"sync-meta:project-1776768560693\",\"data\":{\"projectId\":\"project-1776768560693\",\"status\":\"synced\",\"source\":\"server\",\"lastLoadedAt\":\"2026-04-21T10:49:26.100Z\"},\"createdAt\":\"2026-04-21T15:40:30.146Z\",\"updatedAt\":\"2026-04-21T15:40:30.146Z\"},\"createdAt\":\"2026-04-21T21:52:14.534Z\",\"updatedAt\":\"2026-04-21T21:52:14.534Z\"},\"createdAt\":\"2026-04-21T22:03:05.949Z\",\"updatedAt\":\"2026-04-21T22:03:05.949Z\"},\"createdAt\":\"2026-04-21T22:05:27.822Z\",\"updatedAt\":\"2026-04-21T22:05:27.822Z\"},\"createdAt\":\"2026-04-21T22:47:10.742Z\",\"updatedAt\":\"2026-04-21T22:47:10.742Z\"},\"createdAt\":\"2026-04-22T06:50:50.022Z\",\"updatedAt\":\"2026-04-22T06:50:50.022Z\"}"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-snapshots-project-1776809129066",
+          "value": "[{\"id\":\"256504a7-05e0-4130-855c-68bf404373f8\",\"projectId\":\"project-1776809129066\",\"createdAt\":\"2026-04-21T22:05:32.203Z\",\"source\":\"local_save\",\"label\":\"Lokal lagring · status planning\",\"project\":{\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"createdAt\":\"2026-04-21T22:05:29.066Z\",\"id\":\"project-1776809129066\",\"name\":\"Nytt Role Room prosjekt\",\"description\":\"\",\"roles\":[],\"candidates\":[],\"schedules\":[],\"crew\":[],\"locations\":[],\"props\":[],\"productionDays\":[],\"shotLists\":[],\"userRoles\":[{\"id\":\"userrole-53391080-8437-471e-800b-8b0d01e8b465-project-1776809129066\",\"userId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"projectId\":\"project-1776809129066\",\"role\":\"content_producer\",\"permissions\":{\"canViewAll\":true,\"canEditCasting\":true,\"canEditProduction\":true,\"canEditShots\":true,\"canEditShotLists\":true,\"canManageCrew\":false,\"canManageLocations\":true,\"canApprove\":false,\"canEditScript\":true,\"canLockScript\":false,\"canRunTableRead\":true,\"canComment\":true,\"canRequestChanges\":true,\"canViewEconomy\":true},\"createdAt\":\"2026-04-21T22:05:30.607Z\",\"updatedAt\":\"2026-04-21T22:05:30.607Z\"}],\"updatedAt\":\"2026-04-21T22:05:31.847Z\",\"producerWorkflowStatus\":\"planning\",\"producerWorkflowMeta\":{\"totalReviews\":0,\"pendingReviews\":0,\"approvedReviews\":0,\"rejectedReviews\":0,\"changesRequestedReviews\":0,\"budgetReviewCount\":0,\"agreementReviewCount\":0,\"deliverableReviewCount\":0,\"lastReviewRequestedAt\":null,\"lastDecisionAt\":null,\"lastApprovedReviewId\":null,\"lastPendingReviewId\":null}}},{\"id\":\"38981119-07ab-447e-a76a-87bcbc2ce179\",\"label\":\"Lokal lagring\",\"source\":\"local_save\",\"project\":{\"id\":\"project-1776809129066\",\"crew\":[],\"name\":\"Nytt Role Room prosjekt\",\"props\":[],\"roles\":[],\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdAt\":\"2026-04-21T22:05:29.066Z\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"locations\":[],\"schedules\":[],\"shotLists\":[],\"updatedAt\":\"2026-04-21T22:05:29.066Z\",\"userRoles\":[],\"candidates\":[],\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"description\":\"\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"productionDays\":[]},\"createdAt\":\"2026-04-21T22:05:29.465Z\",\"projectId\":\"project-1776809129066\"}]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-snapshots-project-1776786030265",
+          "value": "[{\"id\":\"3fb3dfe8-4d2b-4255-b42d-eed92ba8798b\",\"projectId\":\"project-1776786030265\",\"createdAt\":\"2026-04-21T15:40:34.339Z\",\"source\":\"local_save\",\"label\":\"Lokal lagring · status planning\",\"project\":{\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"createdAt\":\"2026-04-21T15:40:30.265Z\",\"id\":\"project-1776786030265\",\"name\":\"Nytt Role Room prosjekt\",\"description\":\"\",\"roles\":[],\"candidates\":[],\"schedules\":[],\"crew\":[],\"locations\":[],\"props\":[],\"productionDays\":[],\"shotLists\":[],\"userRoles\":[{\"id\":\"userrole-53391080-8437-471e-800b-8b0d01e8b465-project-1776786030265\",\"userId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"projectId\":\"project-1776786030265\",\"role\":\"content_producer\",\"permissions\":{\"canViewAll\":true,\"canEditCasting\":true,\"canEditProduction\":true,\"canEditShots\":true,\"canEditShotLists\":true,\"canManageCrew\":false,\"canManageLocations\":true,\"canApprove\":false,\"canEditScript\":true,\"canLockScript\":false,\"canRunTableRead\":true,\"canComment\":true,\"canRequestChanges\":true,\"canViewEconomy\":true},\"createdAt\":\"2026-04-21T15:40:32.608Z\",\"updatedAt\":\"2026-04-21T15:40:32.608Z\"}],\"updatedAt\":\"2026-04-21T15:40:33.957Z\",\"producerWorkflowStatus\":\"planning\",\"producerWorkflowMeta\":{\"totalReviews\":0,\"pendingReviews\":0,\"approvedReviews\":0,\"rejectedReviews\":0,\"changesRequestedReviews\":0,\"budgetReviewCount\":0,\"agreementReviewCount\":0,\"deliverableReviewCount\":0,\"lastReviewRequestedAt\":null,\"lastDecisionAt\":null,\"lastApprovedReviewId\":null,\"lastPendingReviewId\":null}}},{\"id\":\"e3c27ced-65d7-4597-a660-d92f390d4465\",\"label\":\"Lokal lagring\",\"source\":\"local_save\",\"project\":{\"id\":\"project-1776786030265\",\"crew\":[],\"name\":\"Nytt Role Room prosjekt\",\"props\":[],\"roles\":[],\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdAt\":\"2026-04-21T15:40:30.265Z\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"locations\":[],\"schedules\":[],\"shotLists\":[],\"updatedAt\":\"2026-04-21T15:40:30.265Z\",\"userRoles\":[],\"candidates\":[],\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"description\":\"\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"productionDays\":[]},\"createdAt\":\"2026-04-21T15:40:31.453Z\",\"projectId\":\"project-1776786030265\"}]"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::roleRoom_workspaceState_content_producer",
+          "value": "{\"projectId\":\"project-1776840650138\",\"lastRealProjectId\":\"project-1776840650138\",\"activeTab\":1,\"storyArcView\":\"main\",\"storyArcFocus\":null,\"contentProducerPlannerSurface\":\"project_room\",\"producerMediaFocus\":{\"workspace\":\"brief\",\"sectionId\":\"workspace-section-foundation\",\"pageId\":\"workspace-page-brief\"},\"contentProducerResumeTarget\":{\"surface\":\"project_room\",\"mediaFocus\":{\"workspace\":\"brief\",\"sectionId\":\"workspace-section-foundation\",\"pageId\":\"workspace-page-brief\"}},\"projectStates\":{\"project-1776840651298\":{\"projectId\":\"project-1776840651298\",\"activeTab\":1,\"storyArcView\":\"main\",\"storyArcFocus\":null,\"contentProducerPlannerSurface\":\"overview\",\"producerMediaFocus\":null,\"contentProducerResumeTarget\":null,\"scrollBySurface\":{},\"filtersBySurface\":{\"story_arc:main\":{\"candidateStatusFilter\":\"all\",\"candidateViewMode\":\"list\",\"selectionPhaseFilter\":\"screening\",\"calendarViewMode\":\"production\",\"contentProducerPlannerSurface\":\"overview\",\"producerMediaWorkspace\":null}},\"sortingBySurface\":{\"story_arc:main\":{\"key\":\"updatedAt\",\"direction\":\"desc\"}},\"updatedAt\":\"2026-04-22T06:50:52.766Z\"},\"project-1776840650138\":{\"projectId\":\"project-1776840650138\",\"activeTab\":1,\"storyArcView\":\"main\",\"storyArcFocus\":null,\"contentProducerPlannerSurface\":\"project_room\",\"producerMediaFocus\":{\"workspace\":\"brief\",\"sectionId\":\"workspace-section-foundation\",\"pageId\":\"workspace-page-brief\"},\"contentProducerResumeTarget\":{\"surface\":\"project_room\",\"mediaFocus\":{\"workspace\":\"brief\",\"sectionId\":\"workspace-section-foundation\",\"pageId\":\"workspace-page-brief\"}},\"scrollBySurface\":{},\"filtersBySurface\":{\"story_arc:main\":{\"candidateStatusFilter\":\"all\",\"candidateViewMode\":\"list\",\"selectionPhaseFilter\":\"screening\",\"calendarViewMode\":\"production\",\"contentProducerPlannerSurface\":\"project_room\",\"producerMediaWorkspace\":\"brief\"}},\"sortingBySurface\":{\"story_arc:main\":{\"key\":\"updatedAt\",\"direction\":\"desc\"}},\"updatedAt\":\"2026-04-22T06:52:14.993Z\"}},\"updatedAt\":\"2026-04-22T06:52:14.993Z\"}"
+        },
+        {
+          "name": "story-logic-data:data:data:data:data:data:data:data:data:data:data:data:data:sync-meta:project-1776705235478",
+          "value": "{\"id\":\"story-logic-data:data:data:data:data:data:data:data:data:data:data:data:sync-meta:project-1776705235478\",\"projectId\":\"data:data:data:data:data:data:data:data:data:data:data:data:sync-meta:project-1776705235478\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:data:data:data:data:data:data:sync-meta:project-1776705235478\",\"projectId\":\"data:data:data:data:data:data:data:data:data:data:data:sync-meta:project-1776705235478\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:data:data:data:data:data:sync-meta:project-1776705235478\",\"projectId\":\"data:data:data:data:data:data:data:data:data:data:sync-meta:project-1776705235478\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:data:data:data:data:sync-meta:project-1776705235478\",\"projectId\":\"data:data:data:data:data:data:data:data:data:sync-meta:project-1776705235478\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:data:data:data:sync-meta:project-1776705235478\",\"projectId\":\"data:data:data:data:data:data:data:data:sync-meta:project-1776705235478\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:data:data:sync-meta:project-1776705235478\",\"projectId\":\"data:data:data:data:data:data:data:sync-meta:project-1776705235478\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:data:sync-meta:project-1776705235478\",\"projectId\":\"data:data:data:data:data:data:sync-meta:project-1776705235478\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:sync-meta:project-1776705235478\",\"projectId\":\"data:data:data:data:data:sync-meta:project-1776705235478\",\"data\":{\"id\":\"story-logic-data:data:data:data:sync-meta:project-1776705235478\",\"projectId\":\"data:data:data:data:sync-meta:project-1776705235478\",\"data\":{\"id\":\"story-logic-data:data:data:sync-meta:project-1776705235478\",\"projectId\":\"data:data:data:sync-meta:project-1776705235478\",\"data\":{\"id\":\"story-logic-data:data:sync-meta:project-1776705235478\",\"projectId\":\"data:data:sync-meta:project-1776705235478\",\"data\":{\"id\":\"story-logic-data:sync-meta:project-1776705235478\",\"projectId\":\"data:sync-meta:project-1776705235478\",\"data\":{\"id\":\"story-logic-sync-meta:project-1776705235478\",\"projectId\":\"sync-meta:project-1776705235478\",\"data\":{\"projectId\":\"project-1776705235478\",\"status\":\"synced\",\"source\":\"server\",\"lastLoadedAt\":\"2026-04-20T17:13:59.258Z\"},\"createdAt\":\"2026-04-20T17:23:41.398Z\",\"updatedAt\":\"2026-04-20T17:23:41.398Z\"},\"createdAt\":\"2026-04-20T17:26:42.035Z\",\"updatedAt\":\"2026-04-20T17:26:42.035Z\"},\"createdAt\":\"2026-04-20T18:07:19.220Z\",\"updatedAt\":\"2026-04-20T18:07:19.220Z\"},\"createdAt\":\"2026-04-20T19:44:31.137Z\",\"updatedAt\":\"2026-04-20T19:44:31.137Z\"},\"createdAt\":\"2026-04-21T09:36:50.652Z\",\"updatedAt\":\"2026-04-21T09:36:50.652Z\"},\"createdAt\":\"2026-04-21T09:52:21.934Z\",\"updatedAt\":\"2026-04-21T09:52:21.934Z\"},\"createdAt\":\"2026-04-21T10:49:17.967Z\",\"updatedAt\":\"2026-04-21T10:49:17.967Z\"},\"createdAt\":\"2026-04-21T15:40:30.146Z\",\"updatedAt\":\"2026-04-21T15:40:30.146Z\"},\"createdAt\":\"2026-04-21T21:52:14.534Z\",\"updatedAt\":\"2026-04-21T21:52:14.534Z\"},\"createdAt\":\"2026-04-21T22:03:05.949Z\",\"updatedAt\":\"2026-04-21T22:03:05.949Z\"},\"createdAt\":\"2026-04-21T22:05:27.822Z\",\"updatedAt\":\"2026-04-21T22:05:27.822Z\"},\"createdAt\":\"2026-04-21T22:47:10.742Z\",\"updatedAt\":\"2026-04-21T22:47:10.742Z\"},\"createdAt\":\"2026-04-22T06:50:50.022Z\",\"updatedAt\":\"2026-04-22T06:50:50.022Z\"}"
+        },
+        {
+          "name": "story-logic-data:data:data:data:data:data:data:data:data:sync-meta:project-1776714271247",
+          "value": "{\"id\":\"story-logic-data:data:data:data:data:data:data:data:sync-meta:project-1776714271247\",\"projectId\":\"data:data:data:data:data:data:data:data:sync-meta:project-1776714271247\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:data:data:sync-meta:project-1776714271247\",\"projectId\":\"data:data:data:data:data:data:data:sync-meta:project-1776714271247\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:data:sync-meta:project-1776714271247\",\"projectId\":\"data:data:data:data:data:data:sync-meta:project-1776714271247\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:sync-meta:project-1776714271247\",\"projectId\":\"data:data:data:data:data:sync-meta:project-1776714271247\",\"data\":{\"id\":\"story-logic-data:data:data:data:sync-meta:project-1776714271247\",\"projectId\":\"data:data:data:data:sync-meta:project-1776714271247\",\"data\":{\"id\":\"story-logic-data:data:data:sync-meta:project-1776714271247\",\"projectId\":\"data:data:data:sync-meta:project-1776714271247\",\"data\":{\"id\":\"story-logic-data:data:sync-meta:project-1776714271247\",\"projectId\":\"data:data:sync-meta:project-1776714271247\",\"data\":{\"id\":\"story-logic-data:sync-meta:project-1776714271247\",\"projectId\":\"data:sync-meta:project-1776714271247\",\"data\":{\"id\":\"story-logic-sync-meta:project-1776714271247\",\"projectId\":\"sync-meta:project-1776714271247\",\"data\":{\"projectId\":\"project-1776714271247\",\"status\":\"synced\",\"source\":\"server\",\"lastLoadedAt\":\"2026-04-20T19:44:34.964Z\"},\"createdAt\":\"2026-04-21T09:36:50.652Z\",\"updatedAt\":\"2026-04-21T09:36:50.652Z\"},\"createdAt\":\"2026-04-21T09:52:21.934Z\",\"updatedAt\":\"2026-04-21T09:52:21.934Z\"},\"createdAt\":\"2026-04-21T10:49:17.964Z\",\"updatedAt\":\"2026-04-21T10:49:17.966Z\"},\"createdAt\":\"2026-04-21T15:40:30.146Z\",\"updatedAt\":\"2026-04-21T15:40:30.146Z\"},\"createdAt\":\"2026-04-21T21:52:14.534Z\",\"updatedAt\":\"2026-04-21T21:52:14.534Z\"},\"createdAt\":\"2026-04-21T22:03:05.949Z\",\"updatedAt\":\"2026-04-21T22:03:05.949Z\"},\"createdAt\":\"2026-04-21T22:05:27.822Z\",\"updatedAt\":\"2026-04-21T22:05:27.822Z\"},\"createdAt\":\"2026-04-21T22:47:10.741Z\",\"updatedAt\":\"2026-04-21T22:47:10.742Z\"},\"createdAt\":\"2026-04-22T06:50:50.022Z\",\"updatedAt\":\"2026-04-22T06:50:50.022Z\"}"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-sync-meta-project-1776811631689",
+          "value": "{\"projectId\":\"project-1776811631689\",\"lastLocalSaveAt\":\"2026-04-21T22:47:14.456Z\",\"queuedChangeCount\":0}"
+        },
+        {
+          "name": "story-logic-sync-meta:project-1776840651298",
+          "value": "{\"projectId\":\"project-1776840651298\",\"status\":\"synced\",\"source\":\"server\",\"lastLoadedAt\":\"2026-04-22T06:50:54.148Z\"}"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465:project-1776705822662:virtualStudio_candidateQuickContacts",
+          "value": "[]"
+        },
+        {
+          "name": "story-logic-data:data:data:data:data:data:data:data:data:data:data:data:sync-meta:project-1776705821494",
+          "value": "{\"id\":\"story-logic-data:data:data:data:data:data:data:data:data:data:data:sync-meta:project-1776705821494\",\"projectId\":\"data:data:data:data:data:data:data:data:data:data:data:sync-meta:project-1776705821494\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:data:data:data:data:data:sync-meta:project-1776705821494\",\"projectId\":\"data:data:data:data:data:data:data:data:data:data:sync-meta:project-1776705821494\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:data:data:data:data:sync-meta:project-1776705821494\",\"projectId\":\"data:data:data:data:data:data:data:data:data:sync-meta:project-1776705821494\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:data:data:data:sync-meta:project-1776705821494\",\"projectId\":\"data:data:data:data:data:data:data:data:sync-meta:project-1776705821494\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:data:data:sync-meta:project-1776705821494\",\"projectId\":\"data:data:data:data:data:data:data:sync-meta:project-1776705821494\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:data:sync-meta:project-1776705821494\",\"projectId\":\"data:data:data:data:data:data:sync-meta:project-1776705821494\",\"data\":{\"id\":\"story-logic-data:data:data:data:data:sync-meta:project-1776705821494\",\"projectId\":\"data:data:data:data:data:sync-meta:project-1776705821494\",\"data\":{\"id\":\"story-logic-data:data:data:data:sync-meta:project-1776705821494\",\"projectId\":\"data:data:data:data:sync-meta:project-1776705821494\",\"data\":{\"id\":\"story-logic-data:data:data:sync-meta:project-1776705821494\",\"projectId\":\"data:data:data:sync-meta:project-1776705821494\",\"data\":{\"id\":\"story-logic-data:data:sync-meta:project-1776705821494\",\"projectId\":\"data:data:sync-meta:project-1776705821494\",\"data\":{\"id\":\"story-logic-data:sync-meta:project-1776705821494\",\"projectId\":\"data:sync-meta:project-1776705821494\",\"data\":{\"id\":\"story-logic-sync-meta:project-1776705821494\",\"projectId\":\"sync-meta:project-1776705821494\",\"data\":{\"projectId\":\"project-1776705821494\",\"status\":\"synced\",\"source\":\"server\",\"lastLoadedAt\":\"2026-04-20T17:23:44.816Z\"},\"createdAt\":\"2026-04-20T17:26:42.035Z\",\"updatedAt\":\"2026-04-20T17:26:42.035Z\"},\"createdAt\":\"2026-04-20T18:07:19.219Z\",\"updatedAt\":\"2026-04-20T18:07:19.220Z\"},\"createdAt\":\"2026-04-20T19:44:31.136Z\",\"updatedAt\":\"2026-04-20T19:44:31.137Z\"},\"createdAt\":\"2026-04-21T09:36:50.652Z\",\"updatedAt\":\"2026-04-21T09:36:50.652Z\"},\"createdAt\":\"2026-04-21T09:52:21.934Z\",\"updatedAt\":\"2026-04-21T09:52:21.934Z\"},\"createdAt\":\"2026-04-21T10:49:17.967Z\",\"updatedAt\":\"2026-04-21T10:49:17.967Z\"},\"createdAt\":\"2026-04-21T15:40:30.146Z\",\"updatedAt\":\"2026-04-21T15:40:30.146Z\"},\"createdAt\":\"2026-04-21T21:52:14.534Z\",\"updatedAt\":\"2026-04-21T21:52:14.534Z\"},\"createdAt\":\"2026-04-21T22:03:05.949Z\",\"updatedAt\":\"2026-04-21T22:03:05.949Z\"},\"createdAt\":\"2026-04-21T22:05:27.822Z\",\"updatedAt\":\"2026-04-21T22:05:27.822Z\"},\"createdAt\":\"2026-04-21T22:47:10.742Z\",\"updatedAt\":\"2026-04-21T22:47:10.742Z\"},\"createdAt\":\"2026-04-22T06:50:50.022Z\",\"updatedAt\":\"2026-04-22T06:50:50.022Z\"}"
+        },
+        {
+          "name": "app_settings_cache:53391080-8437-471e-800b-8b0d01e8b465::role-room-project-snapshots-project-1776840651298",
+          "value": "[{\"id\":\"0e30499b-cba6-404f-ab95-80aca08312c5\",\"projectId\":\"project-1776840651298\",\"createdAt\":\"2026-04-22T06:50:54.372Z\",\"source\":\"local_save\",\"label\":\"Lokal lagring · status planning\",\"project\":{\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"createdAt\":\"2026-04-22T06:50:51.298Z\",\"id\":\"project-1776840651298\",\"name\":\"Nytt Role Room prosjekt\",\"description\":\"\",\"roles\":[],\"candidates\":[],\"schedules\":[],\"crew\":[],\"locations\":[],\"props\":[],\"productionDays\":[],\"shotLists\":[],\"userRoles\":[{\"id\":\"userrole-53391080-8437-471e-800b-8b0d01e8b465-project-1776840651298\",\"userId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"projectId\":\"project-1776840651298\",\"role\":\"content_producer\",\"permissions\":{\"canViewAll\":true,\"canEditCasting\":true,\"canEditProduction\":true,\"canEditShots\":true,\"canEditShotLists\":true,\"canManageCrew\":false,\"canManageLocations\":true,\"canApprove\":false,\"canEditScript\":true,\"canLockScript\":false,\"canRunTableRead\":true,\"canComment\":true,\"canRequestChanges\":true,\"canViewEconomy\":true},\"createdAt\":\"2026-04-22T06:50:52.759Z\",\"updatedAt\":\"2026-04-22T06:50:52.759Z\"}],\"updatedAt\":\"2026-04-22T06:50:54.031Z\",\"producerWorkflowStatus\":\"planning\",\"producerWorkflowMeta\":{\"totalReviews\":0,\"pendingReviews\":0,\"approvedReviews\":0,\"rejectedReviews\":0,\"changesRequestedReviews\":0,\"budgetReviewCount\":0,\"agreementReviewCount\":0,\"deliverableReviewCount\":0,\"lastReviewRequestedAt\":null,\"lastDecisionAt\":null,\"lastApprovedReviewId\":null,\"lastPendingReviewId\":null}}},{\"id\":\"0ebdc920-848c-4584-8486-49c66dc4ced1\",\"label\":\"Lokal lagring\",\"source\":\"local_save\",\"project\":{\"id\":\"project-1776840651298\",\"crew\":[],\"name\":\"Nytt Role Room prosjekt\",\"props\":[],\"roles\":[],\"ownerId\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"createdAt\":\"2026-04-22T06:50:51.298Z\",\"createdBy\":\"53391080-8437-471e-800b-8b0d01e8b465\",\"locations\":[],\"schedules\":[],\"shotLists\":[],\"updatedAt\":\"2026-04-22T06:50:51.298Z\",\"userRoles\":[],\"candidates\":[],\"ownerEmail\":\"daniel@creatorhubn.com\",\"ownerLabel\":\"Daniel Qazi\",\"description\":\"\",\"createdByEmail\":\"daniel@creatorhubn.com\",\"createdByLabel\":\"Daniel Qazi\",\"productionDays\":[]},\"createdAt\":\"2026-04-22T06:50:51.640Z\",\"projectId\":\"project-1776840651298\"}]"
+        }
+      ]
+    }
+  ]
+}
