@@ -114,6 +114,7 @@ import globalTagService from '../../services/globalTagService';
 import settingsService from '../../services/settingsService';
 import GlobalMentionHelper from '../shared/GlobalMentionHelper';
 import { buildLiveSetNotesKey, buildLiveSetNotesNamespace } from './storageKeys';
+import LiveSetAiActions from './LiveSetAiActions';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -781,6 +782,72 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
   const nextSceneId = currentSceneIndex >= 0 && shootingDay?.scenes
     ? shootingDay.scenes[currentSceneIndex + 1] ?? null
     : null;
+  // ── AI action inputs — derived from live state ─────────────────────────────
+  // shotsCompleted: one entry per unique shotId in today's takes, with its
+  // highest-confidence notes concatenated. Enough context for Claude to
+  // reason about coverage and continuity even without the full shot list.
+  const aiShotsCompleted = useMemo(() => {
+    const byShot = new Map<string, { notes: string[]; takeCount: number; sceneId: string; completedAt: string }>();
+    for (const t of liveStatus?.todayTakes ?? []) {
+      if (!t.shotId) continue;
+      const entry = byShot.get(t.shotId) ?? {
+        notes: [],
+        takeCount: 0,
+        sceneId: t.sceneId ?? '',
+        completedAt: t.recordedAt,
+      };
+      if (t.notes) entry.notes.push(t.notes);
+      if (t.techNotes) entry.notes.push(`tech: ${t.techNotes}`);
+      entry.takeCount += 1;
+      entry.completedAt = t.recordedAt;
+      byShot.set(t.shotId, entry);
+    }
+    return Array.from(byShot.entries()).map(([shotId, v]) => ({
+      id: shotId,
+      sceneId: v.sceneId,
+      notes: v.notes.join(' | '),
+      description: `${v.takeCount} take(s)`,
+      completedAt: v.completedAt,
+      status: 'completed',
+    }));
+  }, [liveStatus?.todayTakes]);
+  // newShot for continuity-check = the shot currently rolling / most recent
+  const aiNewShot = useMemo(() => {
+    const latestTake = liveStatus?.todayTakes?.[0];
+    if (!latestTake) return undefined;
+    const shotNotes = continuityNotes
+      .filter((n) => n.shotId === latestTake.shotId)
+      .map((n) => `[${n.type}] ${n.note}`)
+      .join(' | ');
+    return {
+      id: latestTake.shotId,
+      sceneId: latestTake.sceneId,
+      notes: [latestTake.notes, latestTake.techNotes, shotNotes].filter(Boolean).join(' | '),
+      description: latestTake.slate,
+    };
+  }, [liveStatus?.todayTakes, continuityNotes]);
+  // previousShots for continuity-check = other shots in the same scene
+  const aiPreviousShots = useMemo(() => {
+    if (!aiNewShot) return [];
+    return aiShotsCompleted
+      .filter((s) => s.sceneId === aiNewShot.sceneId && s.id !== aiNewShot.id)
+      .map((s) => ({ ...s, notes: s.notes }));
+  }, [aiShotsCompleted, aiNewShot]);
+  // minutesRemaining for replan — wrap time minus now, clamped to 0
+  const aiMinutesRemaining = useMemo(() => {
+    if (!shootingDay?.wrapTime || !shootingDay?.date) return 0;
+    const [h, m] = shootingDay.wrapTime.split(':').map(Number);
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return 0;
+    const wrap = new Date(shootingDay.date);
+    wrap.setHours(h, m, 0, 0);
+    return Math.max(0, Math.round((wrap.getTime() - Date.now()) / 60000));
+  }, [shootingDay?.wrapTime, shootingDay?.date]);
+  // Crew for end-of-day — mapped from crewCallTimes keys
+  const aiCrew = useMemo(() => {
+    if (!shootingDay?.crewCallTimes) return [];
+    return Object.keys(shootingDay.crewCallTimes).map((roleId) => ({ name: roleId, role: roleId }));
+  }, [shootingDay?.crewCallTimes]);
+
   const crewTotal = Object.keys(shootingDay?.crewCallTimes ?? {}).length;
   const crewPresent = activeUsers.length;
   const equipmentTotal = shootingDay?.equipmentNeeded?.length ?? 0;
@@ -1084,6 +1151,37 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
           action={<Button color="inherit" size="small" onClick={() => { setRetryCount(0); loadData(); }}>Prøv igjen</Button>}>
           {error}{!navigator.onLine ? ' — Du er offline. Data lagres lokalt.' : ''}
         </Alert>
+      )}
+
+      {/* ── Claude AI actions ─────────────────────────────────────────────── */}
+      {liveStatus?.currentScene && (
+        <Box sx={{
+          px: topBarPx,
+          py: 0.75,
+          width: '100%',
+          maxWidth: liveSetShellMaxWidth,
+          mx: 'auto',
+          borderBottom: `1px solid ${border}`,
+          bgcolor: '#0a0a0a',
+          flexShrink: 0,
+        }}>
+          <LiveSetAiActions
+            projectId={projectId}
+            sceneId={liveStatus.currentScene}
+            scene={{ sceneNumber: liveStatus.currentScene.replace('scene-', '') }}
+            shotsCompleted={aiShotsCompleted}
+            plannedShots={[]}
+            shotsRemaining={[]}
+            newShot={aiNewShot}
+            previousShots={aiPreviousShots}
+            dayId={shootingDayId}
+            minutesRemaining={aiMinutesRemaining}
+            shotsMissing={[]}
+            crew={aiCrew}
+            nextDayFirstCall={undefined}
+            issues={[]}
+          />
+        </Box>
       )}
 
       {/* ── Main content ──────────────────────────────────────────────────── */}
