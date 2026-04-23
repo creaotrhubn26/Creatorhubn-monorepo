@@ -1004,7 +1004,18 @@ type RoleRoomProjectWorkspaceState = {
   ));
   const [teamDashboardOpenSignal, setTeamDashboardOpenSignal] = useState(0);
   const [teamDashboardDefaultSegment, setTeamDashboardDefaultSegment] = useState<'all' | 'technical'>('all');
-  const [storyArcView, setStoryArcView] = useState<StoryArcView>('main');
+  const [storyArcView, setStoryArcView] = useState<StoryArcView>(() => {
+    // Hydrate from URL so ?view=shot-list / ?view=story-logic etc.
+    // lands on the matching sub-view on hard-refresh + deep-links.
+    if (typeof window === 'undefined') return 'main';
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('portal') === 'client') return 'main';
+    const urlView = params.get('view');
+    if (urlView === 'main' || urlView === 'story-logic' || urlView === 'story-writer' || urlView === 'shot-list' || urlView === 'planning') {
+      return urlView;
+    }
+    return 'main';
+  });
   const [storyArcFocus, setStoryArcFocus] = useState<StoryArcNavigationFocus | null>(null);
   const [selectionPhaseFilter, setSelectionPhaseFilter] = useState<SelectionPhaseFilter>('screening');
   const [selectedSelectionCandidateId, setSelectedSelectionCandidateId] = useState<string | null>(null);
@@ -1016,7 +1027,18 @@ type RoleRoomProjectWorkspaceState = {
   const [selectionNotesDraft, setSelectionNotesDraft] = useState('');
   const [selectionNotesSaving, setSelectionNotesSaving] = useState(false);
   const [selectionNotesTagExclusions, setSelectionNotesTagExclusions] = useState<string[]>([]);
-  const [contentProducerPlannerSurface, setContentProducerPlannerSurface] = useState<ContentProducerPlannerSurface>('overview');
+  const [contentProducerPlannerSurface, setContentProducerPlannerSurface] = useState<ContentProducerPlannerSurface>(() => {
+    // Hydrate content-producer planner surface from URL so ?surface=
+    // project_room / approval / etc. is preserved across refresh.
+    if (typeof window === 'undefined') return 'overview';
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('portal') === 'client') return 'overview';
+    const urlSurface = params.get('surface');
+    if (urlSurface === 'overview' || urlSurface === 'project_room' || urlSurface === 'approval' || urlSurface === 'delivery' || urlSurface === 'economy') {
+      return urlSurface;
+    }
+    return 'overview';
+  });
   const [contentProducerResumeTarget, setContentProducerResumeTarget] = useState<ContentProducerResumeTarget | null>(null);
   const [selectionGoogleStatus, setSelectionGoogleStatus] = useState<RoleRoomGoogleStatusResponse | null>(null);
   const [selectionGoogleStatusLoading, setSelectionGoogleStatusLoading] = useState(false);
@@ -4111,30 +4133,45 @@ type RoleRoomProjectWorkspaceState = {
     projects,
   ]);
 
-  // URL-state sync for activeTab + project. Each tab switch or project
-  // swap writes `?tab=<slug>&project=<id>` via pushState so the browser
-  // back button walks through the in-app navigation instead of jumping
-  // straight to the landing page, and hard-refresh / shared links drop
-  // the user back into the same place. Skipped when client-portal URL
-  // schema owns the query string.
+  // URL-state sync for activeTab + project + storyArcView + plannerSurface.
+  // Each navigation writes `?tab=<slug>&project=<id>&view=<storyArcView>
+  // &surface=<plannerSurface>` via pushState so the browser back button
+  // walks through the in-app navigation instead of jumping straight to
+  // the landing page, and hard-refresh / shared links drop the user back
+  // into the same place. `view` + `surface` are omitted when they're at
+  // their default values ('main' / 'overview') to keep the URL clean.
+  // Skipped entirely when client-portal URL schema owns the query string.
   useEffect(() => {
     if (isExternalClientPortalMode || typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
     const tabId = TAB_IDS[activeTab];
     const desiredTabSlug = tabId ? tabId.replace(/^tabpanel-/, '') : String(activeTab);
     const desiredProject = currentProject?.id ?? '';
+    const desiredView = storyArcView !== 'main' ? storyArcView : '';
+    const desiredSurface = contentProducerPlannerSurface !== 'overview' ? contentProducerPlannerSurface : '';
     const currentTabParam = params.get('tab') ?? '';
     const currentProjectParam = params.get('project') ?? '';
-    if (currentTabParam === desiredTabSlug && currentProjectParam === desiredProject) return;
+    const currentViewParam = params.get('view') ?? '';
+    const currentSurfaceParam = params.get('surface') ?? '';
+    if (
+      currentTabParam === desiredTabSlug
+      && currentProjectParam === desiredProject
+      && currentViewParam === desiredView
+      && currentSurfaceParam === desiredSurface
+    ) return;
     if (desiredTabSlug) params.set('tab', desiredTabSlug);
     else params.delete('tab');
     if (desiredProject) params.set('project', desiredProject);
     else params.delete('project');
+    if (desiredView) params.set('view', desiredView);
+    else params.delete('view');
+    if (desiredSurface) params.set('surface', desiredSurface);
+    else params.delete('surface');
     const nextSearch = params.toString() ? `?${params.toString()}` : '';
     const nextUrl = `${window.location.pathname}${nextSearch}${window.location.hash}`;
     if (nextUrl === `${window.location.pathname}${window.location.search}${window.location.hash}`) return;
     window.history.pushState({ rrStateSync: true }, '', nextUrl);
-  }, [activeTab, currentProject?.id, isExternalClientPortalMode]);
+  }, [activeTab, currentProject?.id, storyArcView, contentProducerPlannerSurface, isExternalClientPortalMode]);
 
   // Rehydrate activeTab + currentProject when the user hits browser
   // back/forward. Without this, pushing URLs only *writes* history
@@ -4184,6 +4221,18 @@ type RoleRoomProjectWorkspaceState = {
           setCurrentProject((previous) => (previous?.id === found.id ? previous : found));
         }
       }
+      const urlView = params.get('view');
+      const nextView: StoryArcView = (
+        urlView === 'main' || urlView === 'story-logic' || urlView === 'story-writer'
+        || urlView === 'shot-list' || urlView === 'planning'
+      ) ? urlView : 'main';
+      setStoryArcView((previous) => (previous === nextView ? previous : nextView));
+      const urlSurface = params.get('surface');
+      const nextSurface: ContentProducerPlannerSurface = (
+        urlSurface === 'overview' || urlSurface === 'project_room' || urlSurface === 'approval'
+        || urlSurface === 'delivery' || urlSurface === 'economy'
+      ) ? urlSurface : 'overview';
+      setContentProducerPlannerSurface((previous) => (previous === nextSurface ? previous : nextSurface));
     };
     window.addEventListener('popstate', applyFromUrl);
     return () => window.removeEventListener('popstate', applyFromUrl);
