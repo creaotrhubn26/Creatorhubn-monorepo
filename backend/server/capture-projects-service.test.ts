@@ -6,6 +6,7 @@ import {
   linkCaptureSessionToProject,
   linkShotToAsset,
   listProjectsForPhotographer,
+  setShotCompletion,
   upsertShotListForProject,
 } from './capture-projects-service.js';
 
@@ -381,6 +382,88 @@ describe('linkShotToAsset', () => {
       .find((s) => s.id === 'shot-1');
     expect(patched.capturedAssetId).toBeNull();
     expect(patched.isCompleted).toBe(false);
+  });
+});
+
+describe('setShotCompletion', () => {
+  it('rejects when the project is not owned', async () => {
+    const { db } = makeDbStub({ projectRows: [] });
+    const result = await setShotCompletion(db, 'attacker', 'proj-stranger', 'shot-1', true);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe('project_not_found');
+  });
+
+  it('returns shot_not_found when there is no shot list row', async () => {
+    const { db } = makeDbStub({
+      projectRows: [{ id: 'proj-1' }],
+      shotListRows: [],
+    });
+    const result = await setShotCompletion(db, 'user-1', 'proj-1', 'shot-1', true);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe('shot_not_found');
+  });
+
+  it('returns shot_not_found when the shot id is not in the list', async () => {
+    const { db } = makeDbStub({
+      projectRows: [{ id: 'proj-1' }],
+      shotListRows: [{
+        id: 'sl-1',
+        shots: [
+          { id: 'shot-a', scene: 'Not the one', priority: 'must-have' },
+        ],
+      }],
+    });
+    const result = await setShotCompletion(db, 'user-1', 'proj-1', 'shot-missing', true);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe('shot_not_found');
+  });
+
+  it('flips isCompleted=true on the matching shot and recomputes counters', async () => {
+    const { db, captured } = makeDbStub({
+      projectRows: [{ id: 'proj-1' }],
+      shotListRows: [{
+        id: 'sl-1',
+        shots: [
+          { id: 'shot-1', scene: 'Bridal portrait', priority: 'must-have' },
+          { id: 'shot-2', scene: 'First kiss',     priority: 'high', isCompleted: false },
+        ],
+      }],
+    });
+    const result = await setShotCompletion(db, 'user-1', 'proj-1', 'shot-2', true);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.totalShots).toBe(2);
+    expect(result.data.completedShots).toBe(1);
+    // Both shots land in MUST_HAVE_PRIORITIES ('must-have' + 'high').
+    expect(result.data.mustHaveShots).toBe(2);
+    expect(result.data.completedMustHave).toBe(1);
+    const update = captured.find((c) => c.kind === 'update');
+    const patched = (update?.values.shots as any[]).find((s) => s.id === 'shot-2');
+    expect(patched.isCompleted).toBe(true);
+    // Other shot is untouched — no accidental fan-out flip.
+    const other = (update?.values.shots as any[]).find((s) => s.id === 'shot-1');
+    expect(other.isCompleted).toBeUndefined();
+  });
+
+  it('flips isCompleted=false without clearing capturedAssetId', async () => {
+    const { db, captured } = makeDbStub({
+      projectRows: [{ id: 'proj-1' }],
+      shotListRows: [{
+        id: 'sl-1',
+        shots: [
+          { id: 'shot-1', scene: 'Bridal portrait', priority: 'high',
+            capturedAssetId: 'asset-xyz', isCompleted: true },
+        ],
+      }],
+    });
+    const result = await setShotCompletion(db, 'user-1', 'proj-1', 'shot-1', false);
+    expect(result.ok).toBe(true);
+    const update = captured.find((c) => c.kind === 'update');
+    const patched = (update?.values.shots as any[]).find((s) => s.id === 'shot-1');
+    expect(patched.isCompleted).toBe(false);
+    // Unlike linkShotToAsset(null), un-completing must NOT drop the link
+    // — the photographer may just be un-ticking a false positive.
+    expect(patched.capturedAssetId).toBe('asset-xyz');
   });
 });
 

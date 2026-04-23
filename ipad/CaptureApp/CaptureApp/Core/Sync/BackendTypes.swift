@@ -232,6 +232,37 @@ struct BackendLinkSessionProjectRequest: Encodable, Sendable {
     let projectId: String?
 }
 
+// MARK: - Shot → asset link (Phase 2B Lag D)
+
+/// Marks a shot in the project's shot list as captured by a specific
+/// uploaded asset. Backend updates `shot_lists.shots[*].capturedAssetId`
+/// and recomputes the must-have / completed counters.
+struct BackendLinkShotToAssetRequest: Encodable, Sendable {
+    /// Pass `null` to unlink (clears the capturedAssetId and marks the
+    /// shot as not-completed again).
+    let capturedAssetId: String?
+}
+
+struct BackendShotLinkResult: Decodable, Sendable {
+    let success: Bool
+    let data: BackendShotLinkCounters?
+}
+
+/// Phase 2B Lag D follow-up: explicit completion toggle from the iPad
+/// `ShotListPanel` that doesn't need a captured asset — the photographer
+/// is just manually ticking a shot done (e.g. "got the group portrait").
+struct BackendSetShotCompletionRequest: Encodable, Sendable {
+    let isCompleted: Bool
+}
+
+struct BackendShotLinkCounters: Decodable, Sendable {
+    let id: String
+    let totalShots: Int
+    let completedShots: Int
+    let mustHaveShots: Int
+    let completedMustHave: Int
+}
+
 // MARK: - UniversalShowcase delivery (Phase 2B)
 
 enum BackendDeliverFilter: String, Encodable, Sendable {

@@ -11,14 +11,20 @@ import SwiftUI
 /// 2. Then high-priority.
 /// 3. Then everything else, ordered as the planner intended.
 ///
-/// `isCompleted` flips show as a strikethrough + tick. The completion
-/// state is local-only for now; pushing back to `shot_lists.shots[]`
-/// is the next iteration (task #74 follow-up).
+/// `isCompleted` flips show as a strikethrough + tick. Taps are pushed
+/// to the backend via `LiveCaptureModel.setShotCompletion` so other
+/// surfaces (dashboard progress, second iPad) see the same picture.
+/// We keep an optimistic override map keyed by shot id so the UI flips
+/// instantly; a failed PATCH rolls the override back.
 struct ShotListPanel: View {
     @Bindable var model: LiveCaptureModel
     @Environment(\.dismiss) private var dismiss
 
-    @State private var locallyCompleted: Set<String> = []
+    /// Local optimistic override — takes precedence over the server's
+    /// `isCompleted` until a refresh. Dict (not Set) because taps can
+    /// flip either way, including un-ticking a shot the server already
+    /// considers completed.
+    @State private var localOverrides: [String: Bool] = [:]
 
     var body: some View {
         NavigationStack {
@@ -43,6 +49,21 @@ struct ShotListPanel: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
+                }
+            }
+            // When the model pulls a fresh detail (after a toggle, or on
+            // first load), drop any override the server now agrees with.
+            // Overrides whose shot isn't in the incoming list, or whose
+            // value still disagrees (e.g. a PATCH still in flight for a
+            // concurrent tap) are left intact so the optimistic flip
+            // stays visible.
+            .onChange(of: model.selectedProjectDetail?.shotList) { _, newList in
+                guard let newList else { return }
+                for shot in newList {
+                    if let override = localOverrides[shot.id],
+                       override == (shot.isCompleted ?? false) {
+                        localOverrides.removeValue(forKey: shot.id)
+                    }
                 }
             }
         }
@@ -106,15 +127,24 @@ struct ShotListPanel: View {
     }
 
     private func isCompleted(_ shot: BackendShotListItem) -> Bool {
-        if locallyCompleted.contains(shot.id) { return true }
+        if let override = localOverrides[shot.id] { return override }
         return shot.isCompleted ?? false
     }
 
     private func toggleCompletion(_ shot: BackendShotListItem) {
-        if locallyCompleted.contains(shot.id) {
-            locallyCompleted.remove(shot.id)
-        } else {
-            locallyCompleted.insert(shot.id)
+        let previous = isCompleted(shot)
+        let next = !previous
+        localOverrides[shot.id] = next
+        Task {
+            do {
+                try await model.setShotCompletion(shotId: shot.id, isCompleted: next)
+            } catch {
+                // Server rejected the toggle — roll the optimistic flip
+                // back so the UI reflects the authoritative state.
+                await MainActor.run {
+                    localOverrides[shot.id] = previous
+                }
+            }
         }
     }
 

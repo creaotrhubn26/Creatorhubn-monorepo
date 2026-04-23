@@ -2760,6 +2760,28 @@ final class LiveCaptureModel {
         }
     }
 
+    /// Push a manual shot-completion toggle from `ShotListPanel` to the
+    /// backend so other surfaces (dashboard progress bar, second iPad,
+    /// photographer's phone) agree on what's left to shoot. Throws on
+    /// failure so the caller can roll back the optimistic UI flip.
+    func setShotCompletion(shotId: String, isCompleted: Bool) async throws {
+        guard let backend = backendClient,
+              let projectId = selectedProject?.id
+        else {
+            throw BackendError.notConfigured
+        }
+        try await backend.setShotCompletion(
+            projectId: projectId,
+            shotId: shotId,
+            isCompleted: isCompleted,
+        )
+        // Pull authoritative post-toggle state so the shot-list panel's
+        // progress bar + must-have counter react to the flip. Server did
+        // the recompute; we just replace our snapshot rather than trying
+        // to patch counters in-place.
+        await loadProjectDetail(projectId: projectId)
+    }
+
     /// Link the live capture session row on the backend to the chosen
     /// project. Called after the DeliveryService has mirrored the
     /// session to the backend. Idempotent — safe to call multiple times

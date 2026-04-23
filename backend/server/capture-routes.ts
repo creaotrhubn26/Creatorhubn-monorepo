@@ -53,6 +53,7 @@ import {
   createMinimalProject,
   fetchProjectDetail,
   linkCaptureSessionToProject,
+  setShotCompletion,
   listProjectsForPhotographer,
 } from './capture-projects-service.js';
 import {
@@ -113,6 +114,10 @@ const createMinimalProjectBody = z.object({
 
 const linkSessionProjectBody = z.object({
   projectId: z.string().uuid().nullable(),
+});
+
+const setShotCompletionBody = z.object({
+  isCompleted: z.boolean(),
 });
 
 const deliverToShowcaseBody = z.object({
@@ -375,6 +380,28 @@ export function createCaptureRouter(
       projectType: parsed.data.projectType,
     });
     res.status(201).json(created);
+  });
+
+  // Mark a shot complete / incomplete. Body is `{ isCompleted: boolean }`.
+  // Lives on /projects so iPad ShotListPanel's local toggle can push
+  // back without inventing a new surface — matches the existing link-
+  // shot-to-asset pattern a few lines down.
+  router.patch('/projects/:projectId/shots/:shotId', auth, async (req, res) => {
+    const parsed = setShotCompletionBody.safeParse(req.body);
+    if (!handleZod(res, parsed)) return;
+    const { userId } = req as AuthedRequest;
+    const result = await setShotCompletion(
+      db,
+      userId,
+      req.params.projectId,
+      req.params.shotId,
+      parsed.data.isCompleted,
+    );
+    if (!result.ok) {
+      res.status(404).json({ error: result.error });
+      return;
+    }
+    res.status(200).json(result.data);
   });
 
   // Link / unlink an existing capture session to a project. Used after

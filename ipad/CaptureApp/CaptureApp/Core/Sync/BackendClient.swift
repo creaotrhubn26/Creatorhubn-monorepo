@@ -87,6 +87,38 @@ actor BackendClient {
         )
     }
 
+    /// Phase 2B Lag D: mark a shot in the project's shot list as
+    /// captured by the just-uploaded asset. Pass `capturedAssetId: nil`
+    /// to unlink. Fire-and-forget from the capture path — the backend
+    /// recomputes completed / must-have counters server-side.
+    func linkShotToAsset(
+        projectId: String,
+        shotId: String,
+        capturedAssetId: UUID?,
+    ) async throws -> BackendShotLinkResult {
+        try await postJSON(
+            path: "/api/projects/\(projectId)/shots/\(shotId)/link-asset",
+            body: BackendLinkShotToAssetRequest(
+                capturedAssetId: capturedAssetId?.uuidString.lowercased(),
+            ),
+        )
+    }
+
+    /// Push a manual completion toggle from `ShotListPanel`. Distinct
+    /// from `linkShotToAsset` because the photographer is ticking a shot
+    /// done without tying it to a specific asset — and un-ticking must
+    /// NOT drop any already-linked asset (server preserves it).
+    func setShotCompletion(
+        projectId: String,
+        shotId: String,
+        isCompleted: Bool,
+    ) async throws {
+        try await patchEmpty(
+            path: "/api/capture/projects/\(projectId)/shots/\(shotId)",
+            body: BackendSetShotCompletionRequest(isCompleted: isCompleted),
+        )
+    }
+
     // MARK: - Client tokens (Deliver flow)
 
     /// Mint a one-time-revealed client token scoped to a session. The

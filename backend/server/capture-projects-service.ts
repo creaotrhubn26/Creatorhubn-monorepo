@@ -386,6 +386,68 @@ export async function linkShotToAsset(
   return { ok: true, data: { id: updated.id, ...counters } };
 }
 
+/// Toggle the `isCompleted` flag on a single shot-list item. Pairs with
+/// the iPad `ShotListPanel` — local completion state moves up to the
+/// backend so other surfaces (dashboard progress bar, second iPad,
+/// photographer's phone) see the same picture.
+///
+/// Kept distinct from `linkShotToAsset` because the iPad typically
+/// ticks a shot done manually (e.g. "got the family-portrait") without
+/// tying it to a specific asset. Mirrors the pattern so counters stay
+/// consistent — shared computation via `computeShotListCounters`.
+export async function setShotCompletion(
+  db: Db,
+  ownerUserId: string,
+  projectId: string,
+  shotId: string,
+  isCompleted: boolean,
+): Promise<
+  | { ok: true; data: UpsertedShotList }
+  | { ok: false; error: 'shot_not_found' | 'project_not_found' }
+> {
+  const ownedProject = await db
+    .select({ id: projects.id })
+    .from(projects)
+    .where(and(eq(projects.id, projectId), eq(projects.userId, ownerUserId)))
+    .limit(1);
+  if (ownedProject.length === 0) return { ok: false, error: 'project_not_found' };
+
+  const rows = await db
+    .select()
+    .from(shotLists)
+    .where(and(eq(shotLists.userId, ownerUserId), eq(shotLists.projectId, projectId)))
+    .limit(1);
+  const existing = rows[0];
+  if (!existing) return { ok: false, error: 'shot_not_found' };
+
+  const shots: ShotListItem[] = Array.isArray(existing.shots)
+    ? (existing.shots as ShotListItem[])
+    : [];
+  let mutated = false;
+  const nextShots = shots.map((shot) => {
+    if (shot.id !== shotId) return shot;
+    mutated = true;
+    return { ...shot, isCompleted };
+  });
+  if (!mutated) return { ok: false, error: 'shot_not_found' };
+
+  const counters = computeShotListCounters(nextShots);
+  const [updated] = await db
+    .update(shotLists)
+    .set({
+      shots: nextShots as unknown as object,
+      totalShots: counters.totalShots,
+      completedShots: counters.completedShots,
+      mustHaveShots: counters.mustHaveShots,
+      completedMustHave: counters.completedMustHave,
+      updatedAt: new Date().toISOString() as any,
+    } as any)
+    .where(and(eq(shotLists.userId, ownerUserId), eq(shotLists.projectId, projectId)))
+    .returning({ id: shotLists.id });
+  if (!updated) return { ok: false, error: 'shot_not_found' };
+  return { ok: true, data: { id: updated.id, ...counters } };
+}
+
 /// Create (or reuse) a capture session that is already linked to the
 /// given project, so the photographer's iPad sees a ready-to-shoot
 /// session right after finishing the web project creation modal.
