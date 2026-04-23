@@ -3,6 +3,7 @@ import {
   DEFAULT_SETTINGS,
   type EditModuleKey,
   type EnhancementSettings,
+  type PerFaceEnhancementPatch,
 } from './module-contract';
 import {
   activeImage,
@@ -20,6 +21,7 @@ import {
 } from './types';
 import { detectBursts } from './burst-detection';
 import { EMPTY_HISTORY, pushHistoryEntry, canUndo, canRedo } from './edit-history';
+import { loadCaptureSessionAssets } from './capture-session-loader';
 
 /**
  * React hook binding `sessionReducer` to component state. The hook owns
@@ -39,6 +41,14 @@ export interface UseEnhancerSession {
   active: SessionImage | null;
   targetIds: string[];
   addFiles: (files: File[]) => SessionImage[];
+  /**
+   * Load every asset from a tethered-capture session and hydrate the
+   * enhancer with each — preserving the iPad's rating / pick / reject
+   * state so cull work doesn't evaporate on device switch. Returns the
+   * created `SessionImage`s on success; rejects on list-fetch failure,
+   * individual broken assets are logged and skipped.
+   */
+  loadCaptureSession: (sessionId: string) => Promise<SessionImage[]>;
   removeImage: (id: string) => void;
   clearAll: () => void;
   selectImage: (id: string) => void;
@@ -65,6 +75,10 @@ export interface UseEnhancerSession {
   redoHistory: (id: string) => void;
   activeCanUndo: boolean;
   activeCanRedo: boolean;
+  setActiveFaceIndex: (faceIndex: number | null) => void;
+  patchFaceSettings: (imageId: string, faceIndex: number, patch: PerFaceEnhancementPatch) => void;
+  clearFaceOverrides: (imageId: string, faceIndex?: number) => void;
+  copyFaceOverride: (imageId: string, sourceFaceIndex: number, targetFaceIndices: number[]) => void;
   dispatch: React.Dispatch<SessionAction>;
 }
 
@@ -133,11 +147,57 @@ export function useEnhancerSession(): UseEnhancerSession {
         burstId: null,
         history,
         faceStatus: 'idle',
+        perFaceOverrides: {},
       };
     });
     dispatch({ type: 'ADD_IMAGES', images: created });
     return created;
   }, []);
+
+  /**
+   * Hydrate the session from a tethered-capture session id. Reuses the
+   * normal `ADD_IMAGES` dispatch path so every downstream surface
+   * (filmstrip, cull view, burst detection, enhance pipeline) sees the
+   * images as normal session images — just with rating / flag / sequence
+   * pre-populated from iPad state.
+   */
+  const loadCaptureSession = useCallback(
+    async (sessionId: string): Promise<SessionImage[]> => {
+      const hydrated = await loadCaptureSessionAssets(sessionId);
+      if (hydrated.length === 0) return [];
+      const created = hydrated.map<SessionImage>((h) => {
+        const previewUrl = URL.createObjectURL(h.file);
+        ownedUrlsRef.current.add(previewUrl);
+        const initialSettings = { ...DEFAULT_SETTINGS };
+        const history = pushHistoryEntry(EMPTY_HISTORY, {
+          at: Date.now(),
+          settings: initialSettings,
+          changedModules: [],
+          label: 'Opprinnelig',
+        });
+        return {
+          id: makeId(),
+          file: h.file,
+          previewUrl,
+          fileName: h.fileName,
+          sizeBytes: h.sizeBytes,
+          mimeType: h.mimeType,
+          lastModified: h.lastModified,
+          settings: initialSettings,
+          rating: h.rating,
+          flag: h.flag,
+          sequence: h.sequence,
+          burstId: null,
+          history,
+          faceStatus: 'idle',
+          perFaceOverrides: {},
+        };
+      });
+      dispatch({ type: 'ADD_IMAGES', images: created });
+      return created;
+    },
+    [],
+  );
 
   const removeImage = useCallback((id: string) => {
     dispatch({ type: 'REMOVE_IMAGE', imageId: id });
@@ -238,6 +298,28 @@ export function useEnhancerSession(): UseEnhancerSession {
     dispatch({ type: 'REDO_HISTORY', imageId: id });
   }, []);
 
+  const setActiveFaceIndex = useCallback((faceIndex: number | null) => {
+    dispatch({ type: 'SET_ACTIVE_FACE_INDEX', faceIndex });
+  }, []);
+
+  const patchFaceSettings = useCallback(
+    (imageId: string, faceIndex: number, patch: PerFaceEnhancementPatch) => {
+      dispatch({ type: 'PATCH_FACE_SETTINGS', imageId, faceIndex, patch });
+    },
+    [],
+  );
+
+  const clearFaceOverrides = useCallback((imageId: string, faceIndex?: number) => {
+    dispatch({ type: 'CLEAR_FACE_OVERRIDES', imageId, faceIndex });
+  }, []);
+
+  const copyFaceOverride = useCallback(
+    (imageId: string, sourceFaceIndex: number, targetFaceIndices: number[]) => {
+      dispatch({ type: 'COPY_FACE_OVERRIDE', imageId, sourceFaceIndex, targetFaceIndices });
+    },
+    [],
+  );
+
   // Re-run burst detection whenever the image set changes. Pure function
   // drives straight from (id, fileName, lastModified) → the ASSIGN_BURSTS
   // action. Guarded so we only dispatch when assignments actually differ.
@@ -268,6 +350,7 @@ export function useEnhancerSession(): UseEnhancerSession {
     active,
     targetIds,
     addFiles,
+    loadCaptureSession,
     removeImage,
     clearAll,
     selectImage,
@@ -294,6 +377,10 @@ export function useEnhancerSession(): UseEnhancerSession {
     redoHistory,
     activeCanUndo,
     activeCanRedo,
+    setActiveFaceIndex,
+    patchFaceSettings,
+    clearFaceOverrides,
+    copyFaceOverride,
     dispatch,
   };
 }

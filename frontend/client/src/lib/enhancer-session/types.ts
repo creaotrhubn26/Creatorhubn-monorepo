@@ -11,10 +11,15 @@
  * has to be unit-testable from Node.
  */
 
-import type { EnhancementSettings, SessionImageFlag, EditModuleKey } from './module-contract';
+import type {
+  EditModuleKey,
+  EnhancementSettings,
+  PerFaceEnhancementPatch,
+  SessionImageFlag,
+} from './module-contract';
 import type { EditHistory } from './edit-history';
 
-export type { EnhancementSettings, SessionImageFlag, EditModuleKey };
+export type { EditModuleKey, EnhancementSettings, PerFaceEnhancementPatch, SessionImageFlag };
 export type { EditHistory };
 
 /** 0 = no rating. 1–5 stars match Lightroom / Evoto semantics. */
@@ -70,6 +75,10 @@ export interface SessionImage {
    *  face-detection hook when the image enters the foreground. */
   faces?: DetectedFace[];
   faceStatus: FaceDetectionStatus;
+  /** Per-face override map keyed by face index. When non-empty, those
+   *  indices receive the override patch instead of the global sliders
+   *  for portrait-region effects. */
+  perFaceOverrides: Record<number, PerFaceEnhancementPatch>;
 }
 
 /** Filmstrip filter states — matches Evoto / Lightroom "Attributes". */
@@ -98,14 +107,67 @@ export interface EditClipboard {
 export interface ExportPreset {
   id: string;
   name: string;
-  format: 'jpeg' | 'png' | 'webp';
-  /** 0–100 quality; ignored for PNG. */
+  /**
+   * Output encoding. `png-16bit` routes through the backend PNG encoder
+   * (see backend/gfpgan-runner/freq_sep_save.py) so archival exports
+   * preserve the editor's Float32 precision through to disk — browser
+   * canvas only supports 8-bit per channel.
+   */
+  format: 'jpeg' | 'png' | 'png-16bit' | 'webp';
+  /** 0–100 quality; ignored for PNG and PNG-16bit (both lossless). */
   quality: number;
   resize: ExportResize;
+  /**
+   * Centre-crop the source to this aspect before resize. Either a
+   * well-known preset string (`'4:5'`, `'9:16'` etc.) or a custom
+   * `{ w, h }` ratio object for arbitrary aspects. `'none'` or missing
+   * keeps the original source aspect. The preset list covers the ratios
+   * that drive 95% of real flows (IG feed, IG reels, print) — custom
+   * handles the rest without needing another enum entry per platform.
+   */
+  crop?: ExportCrop;
+  /**
+   * Output sharpening applied AFTER resize, BEFORE watermark + encode.
+   * Compensates for the resolution loss from downsampling plus the
+   * aggressive re-encode IG/FB/TikTok apply on upload — a light pre-
+   * sharpen on the photographer side keeps the delivered image crisp
+   * on the viewer's feed. Archive-grade exports (PNG 16-bit) should
+   * keep this at `'none'` so they stay pristine for later re-use.
+   */
+  sharpen?: 'none' | 'light' | 'standard' | 'strong';
+  /**
+   * Metadata stamped onto the exported blob via server-side exiftool.
+   * `canvas.toBlob` strips everything, so the export pipeline pipes
+   * the rendered bytes through `/api/photo-enhancer/export/stamp-metadata`
+   * when any of these fields are set. Leave empty for anonymous exports.
+   */
+  metadata?: {
+    copyright?: string;
+    artist?: string;
+    creator?: string;
+    keywords?: string[];
+  };
   colorSpace: 'srgb' | 'display-p3';
   filenameTemplate: string;
   watermark?: ExportWatermark;
 }
+
+/** Named aspect ratios the export dialog lists as quick-picks. */
+export type ExportCropAspect =
+  | 'none'
+  | '1:1'
+  | '4:5'
+  | '5:4'
+  | '3:2'
+  | '2:3'
+  | '4:3'
+  | '3:4'
+  | '16:9'
+  | '9:16';
+
+/** Either a named preset or an arbitrary `w:h` ratio. Internally the
+ *  engine reduces both to a `{ w, h }` pair via `parseCrop()`. */
+export type ExportCrop = ExportCropAspect | { w: number; h: number };
 
 export type ExportResize =
   | { mode: 'none' }
@@ -144,6 +206,10 @@ export interface SessionState {
   exportPresets: ExportPreset[];
   activeExportPresetId: string | null;
   cullFilter: CullFilter;
+  /** When non-null, portrait sliders write to the active face's override
+   *  patch instead of the image's global settings. Clearing the value
+   *  routes sliders back to the whole image. */
+  activeFaceIndex: number | null;
 }
 
 export const SESSION_INITIAL: SessionState = {
@@ -155,4 +221,5 @@ export const SESSION_INITIAL: SessionState = {
   exportPresets: [],
   activeExportPresetId: null,
   cullFilter: 'all',
+  activeFaceIndex: null,
 };

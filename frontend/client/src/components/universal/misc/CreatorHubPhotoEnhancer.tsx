@@ -56,6 +56,8 @@ import { useImagePixelSampler } from '../../photo-enhancer/useImagePixelSampler'
 import { CullView } from '../../photo-enhancer/CullView';
 import { FaceChipStrip, computeFocusTransform } from '../../photo-enhancer/FaceChipStrip';
 import { useFaceDetectionLoader } from '../../photo-enhancer/useFaceDetectionLoader';
+import { FrequencySepDialog } from '../../photo-enhancer/FrequencySepDialog';
+import { ClientActivityBanner } from '../../photo-enhancer/ClientActivityBanner';
 import type { DetectedFace } from '../../../lib/enhancer-session/types';
 import type { SampledPixel } from '../../../lib/enhancer-session/hsl-band-math';
 import type { CompositionAnalysisResult } from '../../../services/composition-analysis';
@@ -64,6 +66,7 @@ import EnhancementRatingDialog from '../../ai-training/EnhancementRatingDialog';
 import { useDynamicProfessions } from '../hooks/useDynamicProfessions';
 import { useDemoMode, useDemoModeData } from '../../../contexts/DemoModeContext';
 import { useEnhancerSession } from '../../../lib/enhancer-session/use-enhancer-session';
+import { serializePerFaceOverrides } from '../../../lib/enhancer-session/session-reducer';
 import type {
   EditModuleKey,
   EnhancementSettings as EnhancementSettingsContract,
@@ -429,6 +432,11 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
   const [uploadedImage, setUploadedImage] = useState<File | null>(null);
   const [originalImageUrl, setOriginalImageUrl] = useState('');
   const [enhancedImageUrl, setEnhancedImageUrl] = useState('');
+  const [frequencySepOpen, setFrequencySepOpen] = useState(false);
+  /** Pulled from `?projectId=...` URL param at mount. When present, the
+   *  ClientActivityBanner surfaces recent hearts/comments from the bakery /
+   *  client. Null = hide the banner entirely. */
+  const [projectIdFromUrl, setProjectIdFromUrl] = useState<string | null>(null);
   const [analysisResult, setAnalysisResult] = useState<Record<string, unknown> | null>(null);
   const [compositionAnalysis, setCompositionAnalysis] = useState<CompositionAnalysisResult | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('single');
@@ -450,6 +458,40 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
   const [focusedFace, setFocusedFace] = useState<DetectedFace | null>(null);
 
   const session = useEnhancerSession();
+
+  // Auto-hydrate from an iPad capture session when the URL carries
+  // `?captureSessionId=...`. Typical flow: photographer finishes the
+  // shoot on iPad → iPad pushes the session URL into the dashboard via
+  // the Showcase bridge → tapping it opens the enhancer with every
+  // rating / pick / reject already in place.
+  //
+  // `?projectId=...` (optional, same URL) enables the ClientActivityBanner.
+  const loadCaptureSessionRef = useRef(session.loadCaptureSession);
+  loadCaptureSessionRef.current = session.loadCaptureSession;
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const projectIdParam = params.get('projectId');
+    if (projectIdParam) setProjectIdFromUrl(projectIdParam);
+    const captureSessionId = params.get('captureSessionId');
+    if (!captureSessionId) return;
+    let cancelled = false;
+    loadCaptureSessionRef.current(captureSessionId).then(
+      (created) => {
+        if (cancelled || created.length === 0) return;
+        const first = created[0];
+        setUploadedImage(first.file);
+        setOriginalImageUrl(first.previewUrl);
+        session.selectImage(first.id);
+      },
+      (err) => {
+        console.warn('[enhancer] capture-session hydrate failed:', err);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const faceLoader = useFaceDetectionLoader({
     setStatus: (imageId, status) =>
@@ -908,7 +950,16 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
       const formData = new FormData();
       formData.append('image', file);
       formData.append('preset', activePreset);
-      formData.append('settings', JSON.stringify(settings));
+      // Merge the active image's per-face overrides into the settings
+      // payload so the runner sees the full scoping contract in a single
+      // shape.
+      const perFaceOverrides = session.active
+        ? serializePerFaceOverrides(session.active.perFaceOverrides)
+        : [];
+      formData.append(
+        'settings',
+        JSON.stringify({ ...settings, perFaceOverrides }),
+      );
 
       return apiRequest('/api/photo-enhancer/enhance', {
         method: 'POST',
@@ -1001,6 +1052,33 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
     setAiSuggestion(null);
     setAiSuggestedRecipe(null);
     session.selectImage(first.id);
+  };
+
+  /**
+   * Swap the enhance-pipeline input to a freshly retouched File. Invoked
+   * by `FrequencySepDialog` after the user commits a frequency-sep edit.
+   *
+   * - Revokes the prior legacy blob URL when we own it (session-owned
+   *   URLs are left alone so filmstrip thumbs stay valid).
+   * - Drops the current enhanced-image preview — it was rendered from
+   *   the pre-retouch source and no longer matches.
+   * - Leaves slider settings intact: the retouch is an input swap, so
+   *   every HSL/LUT/AI tweak should re-apply on top of the cleaner base.
+   * - Does NOT mutate the session image; the session keeps a handle to
+   *   the original upload for comparison. Callers that want the retouch
+   *   to survive thumb switches should save out to storage first.
+   */
+  const handleFrequencySepApply = (retouchedFile: File) => {
+    if (
+      originalImageUrl.startsWith('blob:') &&
+      !session.state.images.some((i) => i.previewUrl === originalImageUrl)
+    ) {
+      URL.revokeObjectURL(originalImageUrl);
+    }
+    const nextUrl = URL.createObjectURL(retouchedFile);
+    setUploadedImage(retouchedFile);
+    setOriginalImageUrl(nextUrl);
+    setEnhancedImageUrl('');
   };
 
   // Syncs the active session image into the legacy per-image state fields
@@ -1175,6 +1253,54 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
     [session],
   );
 
+  // When a face chip is selected, portrait-region sliders write to that
+  // face's override patch instead of the global settings. Reads fall back
+  // to global when the face hasn't overridden that particular key yet —
+  // a fresh chip defaults to the image's current look.
+  const activeFaceIndex = session.state.activeFaceIndex;
+  const activeFaceOverride: Partial<EnhancementSettings> =
+    activeFaceIndex != null && session.active
+      ? session.active.perFaceOverrides[activeFaceIndex] ?? {}
+      : {};
+  type PortraitKey =
+    | 'teethWhiteness'
+    | 'eyeBrightness'
+    | 'eyeWhiteness'
+    | 'blemishRemoval'
+    | 'skinTextureGuard'
+    | 'faceEnhancement';
+  type ProfileKey =
+    | 'teethProfile'
+    | 'eyeBrightnessProfile'
+    | 'eyeWhitenessProfile'
+    | 'blemishProfile';
+
+  function readPortraitValue<K extends PortraitKey>(key: K): number {
+    const override = activeFaceOverride[key];
+    return typeof override === 'number' ? override : (settings[key] as number);
+  }
+
+  function readProfileValue<K extends ProfileKey>(key: K): IntensityProfile {
+    const override = activeFaceOverride[key];
+    return (override as IntensityProfile | undefined) ?? (settings[key] as IntensityProfile);
+  }
+
+  const writePortraitValue = (key: PortraitKey, value: number) => {
+    if (activeFaceIndex != null && session.active) {
+      session.patchFaceSettings(session.active.id, activeFaceIndex, { [key]: value });
+    } else {
+      setSettings((previous) => ({ ...previous, [key]: value }));
+    }
+  };
+
+  const writeProfileValue = (key: ProfileKey, value: IntensityProfile) => {
+    if (activeFaceIndex != null && session.active) {
+      session.patchFaceSettings(session.active.id, activeFaceIndex, { [key]: value });
+    } else {
+      setSettings((previous) => ({ ...previous, [key]: value }));
+    }
+  };
+
   // When compare-held is true, force the preview to show the original so
   // the photographer can tap \ and see before/after without mouse work.
   const compareOverrideUrl = compareHeld && enhancedImageUrl ? originalImageUrl : '';
@@ -1238,6 +1364,10 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                     </Typography>
                   </Stack>
                 </Paper>
+
+                {projectIdFromUrl && (
+                  <ClientActivityBanner projectId={projectIdFromUrl} />
+                )}
 
                 <Button component="label" variant="contained" startIcon={<CloudUploadIcon />}>
                   Last opp bilde
@@ -1314,21 +1444,32 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                   { key: 'faceEnhancement', label: 'Face Enhancement' },
                 ].map((slider) => {
                   const key = slider.key as 'brightness' | 'contrast' | 'saturation' | 'sharpness' | 'denoising' | 'faceEnhancement';
+                  // Only faceEnhancement is face-scopable in this block.
+                  const faceScoped = key === 'faceEnhancement' && activeFaceIndex != null;
+                  const currentValue = faceScoped ? readPortraitValue('faceEnhancement') : settings[key];
                   return (
                     <Box key={slider.key}>
                       <Stack direction="row" justifyContent="space-between">
                         <Typography variant="caption">{slider.label}</Typography>
-                        <Typography variant="caption">{settings[key]}</Typography>
+                        <Typography variant="caption">{currentValue}</Typography>
                       </Stack>
                       <Slider
-                        value={settings[key]}
+                        value={currentValue}
                         min={slider.key === 'brightness' || slider.key === 'contrast' || slider.key === 'saturation' || slider.key === 'sharpness' ? -100 : 0}
                         max={100}
                         onChange={(_, value) => {
                           const numericValue = Array.isArray(value) ? value[0] : value;
-                          setSettings((previous) => ({ ...previous, [key]: numericValue }));
+                          if (faceScoped) {
+                            writePortraitValue('faceEnhancement', numericValue);
+                          } else {
+                            setSettings((previous) => ({ ...previous, [key]: numericValue }));
+                          }
                         }}
-                        onChangeCommitted={() => commitActiveHistory('Justering')}
+                        onChangeCommitted={() =>
+                          commitActiveHistory(
+                            faceScoped ? `Ansikt #${(activeFaceIndex ?? 0) + 1}` : 'Justering',
+                          )
+                        }
                       />
                     </Box>
                   );
@@ -1371,6 +1512,18 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                     | 'eyeBrightness'
                     | 'eyeWhiteness';
                   const profileKey = slider.profileKey;
+                  // gfpganQuality and codeformerFidelity stay global even
+                  // when a face is active — they are whole-image face-
+                  // restoration knobs, not per-face portrait sliders.
+                  const isFaceScopable =
+                    key !== 'gfpganQuality' && key !== 'codeformerFidelity';
+                  const faceScoped = isFaceScopable && activeFaceIndex != null;
+                  const currentValue = faceScoped
+                    ? readPortraitValue(key as PortraitKey)
+                    : (settings[key] as number);
+                  const currentProfile = profileKey
+                    ? (faceScoped ? readProfileValue(profileKey) : settings[profileKey])
+                    : undefined;
                   return (
                     <Box key={slider.key}>
                       <Stack direction="row" justifyContent="space-between" alignItems="center">
@@ -1379,10 +1532,7 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                           {profileKey && (
                             <Stack direction="row" spacing={0.25}>
                               {INTENSITY_PROFILES.map((p) => {
-                                const active = settings[profileKey] === p;
-                                // Tight one-letter chip per profile keeps the
-                                // row single-line on 360px screens. Title
-                                // attribute spells it out for keyboard users.
+                                const active = currentProfile === p;
                                 const label = p === 'subtle' ? 'S' : p === 'normal' ? 'N' : '+';
                                 return (
                                   <Chip
@@ -1394,24 +1544,38 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                                     color={active ? 'primary' : 'default'}
                                     variant={active ? 'filled' : 'outlined'}
                                     sx={{ height: 20, minWidth: 24, '& .MuiChip-label': { px: 0.75, fontSize: 11 } }}
-                                    onClick={() => setSettings((previous) => ({ ...previous, [profileKey]: p }))}
+                                    onClick={() => {
+                                      if (faceScoped) {
+                                        writeProfileValue(profileKey, p);
+                                      } else {
+                                        setSettings((previous) => ({ ...previous, [profileKey]: p }));
+                                      }
+                                    }}
                                   />
                                 );
                               })}
                             </Stack>
                           )}
-                          <Typography variant="caption">{settings[key]}</Typography>
+                          <Typography variant="caption">{currentValue}</Typography>
                         </Stack>
                       </Stack>
                       <Slider
-                        value={typeof settings[key] === 'number' ? settings[key] : 0}
+                        value={currentValue}
                         min={0}
                         max={100}
                         onChange={(_, value) => {
                           const numericValue = Array.isArray(value) ? value[0] : value;
-                          setSettings((previous) => ({ ...previous, [key]: numericValue }));
+                          if (faceScoped) {
+                            writePortraitValue(key as PortraitKey, numericValue);
+                          } else {
+                            setSettings((previous) => ({ ...previous, [key]: numericValue }));
+                          }
                         }}
-                        onChangeCommitted={() => commitActiveHistory('Portrett')}
+                        onChangeCommitted={() =>
+                          commitActiveHistory(
+                            faceScoped ? `Ansikt #${(activeFaceIndex ?? 0) + 1}` : 'Portrett',
+                          )
+                        }
                       />
                     </Box>
                   );
@@ -1585,6 +1749,14 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                     {suggestRecipeMutation.isPending ? 'Spør AI…' : 'AI-forslag'}
                   </Button>
                   <Button
+                    variant="outlined"
+                    onClick={() => setFrequencySepOpen(true)}
+                    disabled={!uploadedImage}
+                    title="Åpne frekvens-separert retusj (pore-bevarende, stylus + trykk)"
+                  >
+                    Frekvens-retusj
+                  </Button>
+                  <Button
                     variant="contained"
                     onClick={() => void runEnhancement()}
                     disabled={!uploadedImage || enhanceMutation.isPending}
@@ -1728,17 +1900,9 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                   </Paper>
                 ) : null}
 
-                {analyzeMutation.isError ? (
-                  <Alert severity="error">
-                    {analyzeMutation.error instanceof Error ? analyzeMutation.error.message : 'Analyse feilet.'}
-                  </Alert>
-                ) : null}
+                {analyzeMutation.isError ? renderEnhancerError(analyzeMutation.error, 'Analyse') : null}
 
-                {enhanceMutation.isError ? (
-                  <Alert severity="error">
-                    {enhanceMutation.error instanceof Error ? enhanceMutation.error.message : 'Forbedring feilet.'}
-                  </Alert>
-                ) : null}
+                {enhanceMutation.isError ? renderEnhancerError(enhanceMutation.error, 'Forbedring') : null}
 
                 {analysisResult ? (
                   <Alert severity="success" icon={<AssessmentIcon />}>
@@ -1799,8 +1963,12 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                 <FaceChipStrip
                   faces={session.active?.faces}
                   status={session.active?.faceStatus ?? 'idle'}
-                  activeFaceIndex={focusedFace?.index ?? null}
-                  onSelect={(face) => setFocusedFace(face)}
+                  activeFaceIndex={session.state.activeFaceIndex}
+                  faceIndicesWithOverrides={Object.keys(session.active?.perFaceOverrides ?? {}).map(Number)}
+                  onSelect={(face) => {
+                    setFocusedFace(face);
+                    session.setActiveFaceIndex(face?.index ?? null);
+                  }}
                 />
               </Box>
 
@@ -2025,6 +2193,11 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
         images={session.state.images}
         projectName={projects.find((p) => p.id === selectedProjectId)?.name}
         clientName={undefined}
+        photographerId={
+          typeof window !== 'undefined'
+            ? localStorage.getItem('userId') || undefined
+            : undefined
+        }
         onSavePreset={(preset: ExportPreset) => {
           const exists = session.state.exportPresets.some((p) => p.id === preset.id);
           if (exists) session.dispatch({ type: 'UPDATE_EXPORT_PRESET', preset });
@@ -2110,10 +2283,51 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
         enhancedUrl={enhancedImageUrl}
         onSubmitRating={handleSubmitRating}
         title="Vurder bildeforbedringen"
-        description="Tilbakemeldingen brukes til å forbedre AI-modellene i CreatorHub." 
+        description="Tilbakemeldingen brukes til å forbedre AI-modellene i CreatorHub."
+      />
+
+      <FrequencySepDialog
+        open={frequencySepOpen}
+        source={uploadedImage}
+        originalFilename={uploadedImage?.name}
+        onApply={handleFrequencySepApply}
+        onClose={() => setFrequencySepOpen(false)}
       />
     </Box>
   );
+}
+
+/**
+ * Turn a mutation error into a user-facing alert. Detects the specific
+ * RAW-conversion-unavailable case (the Render deployment is missing
+ * dcraw — see A4 audit) and routes it to a friendlier message with
+ * actionable guidance instead of exposing the 422 status string.
+ */
+function renderEnhancerError(err: unknown, action: string): React.ReactNode {
+  const message = err instanceof Error ? err.message : `${action} feilet.`;
+  const lower = message.toLowerCase();
+
+  // RAW-specific path. The backend returns 422 with body
+  // `{error: "raw_conversion_unavailable"}` when dcraw / ImageMagick /
+  // darktable are all missing on the server — which is the current
+  // Render state (A4 audit 2026-04-22). Guide Daniel to re-upload as
+  // JPEG so he isn't stuck on a blank error.
+  if (lower.includes('raw_conversion_unavailable') || lower.includes('raw_image_required')) {
+    return (
+      <Alert severity="warning">
+        <Typography variant="body2" fontWeight={600}>
+          RAW-konvertering er ikke aktivert på serveren
+        </Typography>
+        <Typography variant="body2">
+          Last opp en JPEG eller PNG i stedet — kameraet produserer
+          en JPEG-sidecar ved siden av CR3-filen som du kan bruke.
+          RAW-støtte kommer når backend-boksen får dcraw installert.
+        </Typography>
+      </Alert>
+    );
+  }
+
+  return <Alert severity="error">{message}</Alert>;
 }
 
 function FormControlLabelSwitch(props: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {

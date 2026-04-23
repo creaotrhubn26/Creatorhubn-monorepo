@@ -11,13 +11,14 @@ import boto3
 import cv2
 import numpy as np
 from botocore.config import Config
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from cube_lut import apply_lut as apply_cube_lut
+from freq_sep_save import encode_png_16bit, parse_payload as parse_freq_sep_save_payload
 from hsl_retouch import apply_hsl
 from lut_library import get_builtin_lut, list_builtin_luts
-from portrait_retouch import apply_portrait_retouch
+from portrait_retouch import apply_portrait_retouch, apply_portrait_retouch_multi, detect_all_face_regions
 from subject_retouch import apply_subject_look
 
 
@@ -312,6 +313,61 @@ def health() -> dict[str, Any]:
     }
 
 
+class FrequencySepSavePayload(BaseModel):
+    """Wire format for the frequency-sep 16-bit save endpoint.
+
+    The browser converts its Float32 [0,1] edited buffer to little-endian
+    Uint16 per channel (so 16-bit = multiply by 65535, round) and sends
+    the raw bytes base64-encoded. We validate length strictly server-side
+    so a truncated upload fails fast instead of producing a corrupt PNG.
+    """
+
+    width: int
+    height: int
+    # 3 = RGB, 4 = RGBA. Alpha is preserved; the editor doesn't touch
+    # coverage but some downstream consumers (export masks) expect alpha.
+    channels: int
+    pixelsBase64: str
+
+
+@app.post("/frequency-sep/save-16bit")
+@app.post("/api/frequency-sep/save-16bit")
+def save_frequency_sep_16bit(payload: FrequencySepSavePayload) -> Response:
+    """Encode the editor's edited buffer as a 16-bit-per-channel PNG.
+
+    Responds with the binary PNG directly (Content-Type: image/png) so
+    the frontend can turn it into a Blob without a base64 unwrap hop.
+    """
+    global _requests_total, _errors_total, _last_error
+    _requests_total += 1
+    try:
+        parsed = parse_freq_sep_save_payload(
+            width=payload.width,
+            height=payload.height,
+            channels=payload.channels,
+            pixels_base64=payload.pixelsBase64,
+        )
+        png_bytes = encode_png_16bit(parsed)
+        return Response(
+            content=png_bytes,
+            media_type="image/png",
+            headers={
+                "Content-Length": str(len(png_bytes)),
+                # Ephemeral artefact — each save is a fresh stroke state
+                # and must not be cached by proxies / browsers.
+                "Cache-Control": "no-store",
+            },
+        )
+    except ValueError as exc:
+        _errors_total += 1
+        _last_error = str(exc)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        _errors_total += 1
+        _last_error = str(exc)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @app.post("/")
 @app.post("/enhance")
 @app.post("/api/gfpgan/enhance")
@@ -358,8 +414,22 @@ def enhance(payload: EnhancePayload) -> dict[str, Any]:
                 "blemishRemoval", payload.settings.get("blemishRemoval", 0)
             ),
         }
+        # Per-face overrides arrive as a list of { faceIndex, controls }
+        # from the web layer. When absent or empty the single-face path
+        # (apply_portrait_retouch) is used so the cheap detector call is
+        # not duplicated. With overrides we detect all faces once and
+        # orchestrate the global + per-face application via
+        # apply_portrait_retouch_multi.
+        per_face_overrides = controls.get("perFaceOverrides") or payload.settings.get("perFaceOverrides")
         try:
-            restored = apply_portrait_retouch(restored, merged_controls)
+            if isinstance(per_face_overrides, list) and per_face_overrides:
+                restored = apply_portrait_retouch_multi(
+                    restored,
+                    merged_controls,
+                    per_face_overrides=per_face_overrides,
+                )
+            else:
+                restored = apply_portrait_retouch(restored, merged_controls)
         except Exception as retouch_err:  # noqa: BLE001
             # Retouch failing must never break the enhance response —
             # the user's already-restored GFPGAN output is useful on its

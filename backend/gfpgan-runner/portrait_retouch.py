@@ -478,23 +478,49 @@ def build_regions_from_points(
 
 def detect_face_regions(image: np.ndarray) -> Optional[FaceRegions]:
     """Production entry point: run MediaPipe Face Mesh and return the
-    region masks, or ``None`` if the detector is unavailable or failed
-    to land on a face."""
+    region masks for the largest detected face, or ``None`` if the
+    detector is unavailable or no face was found.
+
+    Preserved for single-face callers (the default enhance path). Use
+    :func:`detect_all_face_regions` to get one FaceRegions per face.
+    """
+    all_regions = detect_all_face_regions(image)
+    return all_regions[0] if all_regions else None
+
+
+def detect_all_face_regions(image: np.ndarray) -> list[FaceRegions]:
+    """Run Face Mesh over the image and return one :class:`FaceRegions`
+    per detected face, sorted by face-oval area descending (largest
+    subject first — matches the frontend chip picker order).
+
+    Empty list on detector unavailable / no faces.
+    """
     mesh = _lazy_face_mesh()
     if mesh is None:
-        return None
+        return []
     height, width = image.shape[:2]
     try:
         rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         result = mesh.process(rgb)
     except Exception as exc:  # noqa: BLE001
         logger.warning("mediapipe process() failed: %s", exc)
-        return None
+        return []
     if not result.multi_face_landmarks:
-        return None
-    landmarks = result.multi_face_landmarks[0].landmark
-    points = _landmarks_to_points(landmarks, width, height)
-    return build_regions_from_points(points, (height, width))
+        return []
+
+    regions: list[tuple[float, FaceRegions]] = []
+    for face in result.multi_face_landmarks:
+        points = _landmarks_to_points(face.landmark, width, height)
+        faceregions = build_regions_from_points(points, (height, width))
+        # Area of the face oval — None-safe fallback to 0 when the oval
+        # landmarks were out of frame.
+        if faceregions.skin is not None:
+            area = float(np.count_nonzero(faceregions.skin))
+        else:
+            area = 0.0
+        regions.append((area, faceregions))
+    regions.sort(key=lambda t: t[0], reverse=True)
+    return [r for _, r in regions]
 
 
 # ─────────────────────── Public orchestrator ────────────────────────
@@ -579,9 +605,63 @@ def apply_portrait_retouch(
     return out
 
 
+def apply_portrait_retouch_multi(
+    image: np.ndarray,
+    global_controls: dict[str, Any],
+    per_face_overrides: list[dict[str, Any]] | None = None,
+    regions_list: Optional[list[FaceRegions]] = None,
+) -> np.ndarray:
+    """Run portrait retouch over every detected face, honouring per-face
+    override controls when provided.
+
+    Contract:
+        - ``global_controls`` applies to every face whose index is NOT
+          present in ``per_face_overrides``. This is the dagens "apply to
+          everyone" flow.
+        - Each entry in ``per_face_overrides`` is a dict with an integer
+          ``faceIndex`` and a ``controls`` sub-dict that fully replaces
+          the slider values for that face. Intensity profiles inherit
+          from global_controls when omitted from the override.
+
+    The two-phase approach matches the UX: you can set a gallery-wide
+    look and then tweak one person's teeth-whitening without the fiddle
+    leaking to the couple next to them.
+    """
+    if regions_list is None:
+        regions_list = detect_all_face_regions(image)
+    if not regions_list:
+        # No faces — nothing to scope, drop to the single-face path so
+        # we still get the GFPGAN-only output through cleanly.
+        return apply_portrait_retouch(image, global_controls, regions=None)
+
+    overrides_by_index: dict[int, dict[str, Any]] = {}
+    for entry in per_face_overrides or []:
+        if not isinstance(entry, dict):
+            continue
+        idx_raw = entry.get("faceIndex")
+        try:
+            idx = int(idx_raw)
+        except (TypeError, ValueError):
+            continue
+        controls = entry.get("controls")
+        if isinstance(controls, dict):
+            overrides_by_index[idx] = controls
+
+    out = image
+    for idx, regions in enumerate(regions_list):
+        if idx in overrides_by_index:
+            face_controls = {**global_controls, **overrides_by_index[idx]}
+        else:
+            face_controls = global_controls
+        out = apply_portrait_retouch(out, face_controls, regions=regions)
+    return out
+
+
 __all__ = [
     "FaceRegions",
     "apply_portrait_retouch",
+    "apply_portrait_retouch_multi",
+    "detect_all_face_regions",
     "brighten_eyes",
     "build_regions_from_points",
     "detect_face_regions",

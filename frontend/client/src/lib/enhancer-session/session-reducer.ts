@@ -2,6 +2,7 @@ import {
   DEFAULT_SETTINGS,
   type EditModuleKey,
   type EnhancementSettings,
+  type PerFaceEnhancementPatch,
 } from './module-contract';
 import { applyClipboardToSettings, diffModules } from './edit-clipboard';
 import {
@@ -64,7 +65,11 @@ export type SessionAction =
   | { type: 'UNDO_HISTORY'; imageId: string }
   | { type: 'REDO_HISTORY'; imageId: string }
   | { type: 'SET_FACE_STATUS'; imageId: string; status: FaceDetectionStatus }
-  | { type: 'SET_FACES'; imageId: string; faces: DetectedFace[] };
+  | { type: 'SET_FACES'; imageId: string; faces: DetectedFace[] }
+  | { type: 'SET_ACTIVE_FACE_INDEX'; faceIndex: number | null }
+  | { type: 'PATCH_FACE_SETTINGS'; imageId: string; faceIndex: number; patch: PerFaceEnhancementPatch }
+  | { type: 'CLEAR_FACE_OVERRIDES'; imageId: string; faceIndex?: number }
+  | { type: 'COPY_FACE_OVERRIDE'; imageId: string; sourceFaceIndex: number; targetFaceIndices: number[] };
 
 export function sessionReducer(state: SessionState, action: SessionAction): SessionState {
   switch (action.type) {
@@ -296,6 +301,7 @@ export function sessionReducer(state: SessionState, action: SessionAction): Sess
         const entry: EditHistoryEntry = {
           at: action.now ?? Date.now(),
           settings: image.settings,
+          perFaceOverrides: clonePerFaceOverrides(image.perFaceOverrides),
           changedModules,
           label: action.label,
         };
@@ -308,14 +314,28 @@ export function sessionReducer(state: SessionState, action: SessionAction): Sess
       return patchImage(state, action.imageId, (image) => {
         const { history, snapshot } = stepUndo(image.history);
         if (history === image.history || !snapshot) return image;
-        return { ...image, history, settings: snapshot.settings };
+        return {
+          ...image,
+          history,
+          settings: snapshot.settings,
+          perFaceOverrides: snapshot.perFaceOverrides
+            ? clonePerFaceOverrides(snapshot.perFaceOverrides)
+            : {},
+        };
       });
 
     case 'REDO_HISTORY':
       return patchImage(state, action.imageId, (image) => {
         const { history, snapshot } = stepRedo(image.history);
         if (history === image.history || !snapshot) return image;
-        return { ...image, history, settings: snapshot.settings };
+        return {
+          ...image,
+          history,
+          settings: snapshot.settings,
+          perFaceOverrides: snapshot.perFaceOverrides
+            ? clonePerFaceOverrides(snapshot.perFaceOverrides)
+            : {},
+        };
       });
 
     case 'SET_FACE_STATUS':
@@ -330,6 +350,47 @@ export function sessionReducer(state: SessionState, action: SessionAction): Sess
         faces: action.faces,
         faceStatus: action.faces.length > 0 ? 'ready' : 'none',
       }));
+
+    case 'SET_ACTIVE_FACE_INDEX':
+      if (state.activeFaceIndex === action.faceIndex) return state;
+      return { ...state, activeFaceIndex: action.faceIndex };
+
+    case 'PATCH_FACE_SETTINGS':
+      return patchImage(state, action.imageId, (image) => {
+        const prev = image.perFaceOverrides[action.faceIndex] ?? {};
+        const next = { ...prev, ...action.patch };
+        return {
+          ...image,
+          perFaceOverrides: {
+            ...image.perFaceOverrides,
+            [action.faceIndex]: next,
+          },
+        };
+      });
+
+    case 'COPY_FACE_OVERRIDE':
+      return patchImage(state, action.imageId, (image) => {
+        const source = image.perFaceOverrides[action.sourceFaceIndex];
+        if (!source || action.targetFaceIndices.length === 0) return image;
+        const nextOverrides = { ...image.perFaceOverrides };
+        for (const target of action.targetFaceIndices) {
+          if (target === action.sourceFaceIndex) continue;
+          nextOverrides[target] = { ...source };
+        }
+        return { ...image, perFaceOverrides: nextOverrides };
+      });
+
+    case 'CLEAR_FACE_OVERRIDES':
+      return patchImage(state, action.imageId, (image) => {
+        if (action.faceIndex === undefined) {
+          if (Object.keys(image.perFaceOverrides).length === 0) return image;
+          return { ...image, perFaceOverrides: {} };
+        }
+        if (image.perFaceOverrides[action.faceIndex] === undefined) return image;
+        const nextOverrides = { ...image.perFaceOverrides };
+        delete nextOverrides[action.faceIndex];
+        return { ...image, perFaceOverrides: nextOverrides };
+      });
 
     default:
       return state;
@@ -382,4 +443,31 @@ export function filterVisibleImages(state: SessionState): SessionImage[] {
 export function burstSiblings(state: SessionState, burstId: string | null): SessionImage[] {
   if (!burstId) return [];
   return state.images.filter((i) => i.burstId === burstId);
+}
+
+/** Serialize an image's per-face override map for the enhance request.
+ *  Runner contract is an array of ``{ faceIndex, controls }`` so we
+ *  walk the record deterministically by index for stable JSON output. */
+function clonePerFaceOverrides(
+  overrides: Record<number, PerFaceEnhancementPatch>,
+): Record<number, PerFaceEnhancementPatch> {
+  const out: Record<number, PerFaceEnhancementPatch> = {};
+  for (const key of Object.keys(overrides)) {
+    const n = Number(key);
+    out[n] = { ...overrides[n] };
+  }
+  return out;
+}
+
+export function serializePerFaceOverrides(
+  overrides: SessionImage['perFaceOverrides'],
+): Array<{ faceIndex: number; controls: PerFaceEnhancementPatch }> {
+  const indices = Object.keys(overrides)
+    .map((k) => Number(k))
+    .filter((n) => Number.isFinite(n))
+    .sort((a, b) => a - b);
+  return indices.map((faceIndex) => ({
+    faceIndex,
+    controls: overrides[faceIndex],
+  }));
 }

@@ -23,6 +23,7 @@ import pytest
 from portrait_retouch import (
     FaceRegions,
     apply_portrait_retouch,
+    apply_portrait_retouch_multi,
     brighten_eyes,
     build_regions_from_points,
     feather_mask,
@@ -501,3 +502,101 @@ def test_build_regions_from_points_returns_region_masks():
     # Skin must not overlap eyes or mouth (we exclude features so
     # blemish removal can't smear them).
     assert cv2.bitwise_and(regions.skin, regions.teeth).max() == 0
+
+
+# ──────────────────── Per-face orchestration ─────────────────────────
+
+def _synthetic_face_regions(
+    shape: tuple[int, int],
+    teeth_center: tuple[int, int],
+    skin_center: tuple[int, int],
+) -> FaceRegions:
+    """Build minimal regions for orchestration tests without MediaPipe."""
+    return FaceRegions(
+        teeth=_disc_mask(shape, teeth_center, 6),
+        left_iris=None,
+        right_iris=None,
+        left_sclera=None,
+        right_sclera=None,
+        skin=_disc_mask(shape, skin_center, 18),
+    )
+
+
+def test_apply_portrait_retouch_multi_returns_image_unchanged_when_no_regions():
+    image = np.full((60, 60, 3), 180, dtype=np.uint8)
+    out = apply_portrait_retouch_multi(
+        image,
+        {"teethWhiteness": 80, "blemishRemoval": 0},
+        per_face_overrides=None,
+        regions_list=[],
+    )
+    # Without faces we fall through to apply_portrait_retouch(None) which
+    # silently returns the input — GFPGAN-only output keeps shipping.
+    assert np.array_equal(out, image)
+
+
+def test_apply_portrait_retouch_multi_applies_global_to_every_face():
+    # Two distinct faces with their own teeth/skin regions.
+    shape = (80, 160)
+    image = np.full((*shape, 3), (70, 130, 220), dtype=np.uint8)  # warm skin
+    face_a = _synthetic_face_regions(shape, teeth_center=(30, 40), skin_center=(30, 50))
+    face_b = _synthetic_face_regions(shape, teeth_center=(130, 40), skin_center=(130, 50))
+
+    out = apply_portrait_retouch_multi(
+        image,
+        {"teethWhiteness": 90, "teethProfile": "normal"},
+        per_face_overrides=None,
+        regions_list=[face_a, face_b],
+    )
+
+    # Teeth regions on BOTH faces should have brightened — mean luminance
+    # in each teeth mask goes up, while elsewhere the image stays as-is.
+    teeth_a_before = image[face_a.teeth > 0].astype(int).mean()
+    teeth_a_after = out[face_a.teeth > 0].astype(int).mean()
+    teeth_b_before = image[face_b.teeth > 0].astype(int).mean()
+    teeth_b_after = out[face_b.teeth > 0].astype(int).mean()
+    assert teeth_a_after > teeth_a_before
+    assert teeth_b_after > teeth_b_before
+
+
+def test_apply_portrait_retouch_multi_honours_per_face_override():
+    shape = (80, 160)
+    image = np.full((*shape, 3), (70, 130, 220), dtype=np.uint8)
+    face_a = _synthetic_face_regions(shape, teeth_center=(30, 40), skin_center=(30, 50))
+    face_b = _synthetic_face_regions(shape, teeth_center=(130, 40), skin_center=(130, 50))
+
+    # Global: no teeth whiten. Override face 1 with heavy teeth whiten.
+    out = apply_portrait_retouch_multi(
+        image,
+        {"teethWhiteness": 0},
+        per_face_overrides=[{"faceIndex": 1, "controls": {"teethWhiteness": 90}}],
+        regions_list=[face_a, face_b],
+    )
+
+    teeth_a_after = out[face_a.teeth > 0].astype(int).mean()
+    teeth_b_after = out[face_b.teeth > 0].astype(int).mean()
+    teeth_a_before = image[face_a.teeth > 0].astype(int).mean()
+    teeth_b_before = image[face_b.teeth > 0].astype(int).mean()
+    # Face A (no override) stays put; Face B (override) brightens.
+    assert abs(teeth_a_after - teeth_a_before) <= 1
+    assert teeth_b_after - teeth_b_before > 5
+
+
+def test_apply_portrait_retouch_multi_ignores_malformed_overrides():
+    shape = (60, 60)
+    face_a = _synthetic_face_regions(shape, teeth_center=(30, 25), skin_center=(30, 35))
+    image = np.full((*shape, 3), 150, dtype=np.uint8)
+    # Garbage entries shouldn't blow up the run — they're silently
+    # filtered out.
+    out = apply_portrait_retouch_multi(
+        image,
+        {"teethWhiteness": 50},
+        per_face_overrides=[
+            "not a dict",
+            {"faceIndex": "oops"},
+            {"faceIndex": 99, "controls": {"teethWhiteness": 10}},  # out of range
+        ],
+        regions_list=[face_a],
+    )
+    assert out.shape == image.shape
+    assert out.dtype == np.uint8

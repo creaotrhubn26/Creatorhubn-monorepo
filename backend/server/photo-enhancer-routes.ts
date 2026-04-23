@@ -238,6 +238,30 @@ type PhotoEnhancerSettings = {
   // Contract mirrors backend/gfpgan-runner/lut_library.py — the slug set
   // is authoritative on the runner side; this layer is just a pass-through.
   lut: LutSelection;
+  // Per-face scoping: when non-empty, the runner detects every face in
+  // the image and applies the override controls on that face's masks
+  // only. Faces whose index is NOT listed inherit the global sliders.
+  // ``faceIndex`` matches the index returned by POST /faces.
+  perFaceOverrides: PerFaceOverride[];
+};
+
+type PerFaceOverride = {
+  faceIndex: number;
+  controls: Partial<
+    Pick<
+      PhotoEnhancerSettings,
+      | "teethWhiteness"
+      | "eyeBrightness"
+      | "eyeWhiteness"
+      | "blemishRemoval"
+      | "teethProfile"
+      | "eyeBrightnessProfile"
+      | "eyeWhitenessProfile"
+      | "blemishProfile"
+      | "skinTextureGuard"
+      | "faceEnhancement"
+    >
+  >;
 };
 
 type LutSelection = {
@@ -1179,7 +1203,55 @@ const defaultSettings: PhotoEnhancerSettings = {
     magenta: { h: 0, s: 0, l: 0 },
   },
   lut: { name: null, strength: 0 },
+  perFaceOverrides: [],
 };
+
+const PER_FACE_OVERRIDE_KEYS: ReadonlyArray<keyof PerFaceOverride["controls"]> = [
+  "teethWhiteness",
+  "eyeBrightness",
+  "eyeWhiteness",
+  "blemishRemoval",
+  "teethProfile",
+  "eyeBrightnessProfile",
+  "eyeWhitenessProfile",
+  "blemishProfile",
+  "skinTextureGuard",
+  "faceEnhancement",
+];
+
+function normalizePerFaceOverrides(raw: unknown): PerFaceOverride[] {
+  if (!Array.isArray(raw)) return [];
+  const out: PerFaceOverride[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") continue;
+    const source = entry as Record<string, unknown>;
+    const idxRaw = source.faceIndex;
+    const idx = typeof idxRaw === "number" ? idxRaw : Number(idxRaw);
+    if (!Number.isFinite(idx) || idx < 0 || idx > 32) continue;
+    const controlsRaw = source.controls;
+    if (!controlsRaw || typeof controlsRaw !== "object") continue;
+    const rawControls = controlsRaw as Record<string, unknown>;
+    const normalized: PerFaceOverride["controls"] = {};
+    for (const key of PER_FACE_OVERRIDE_KEYS) {
+      const v = rawControls[key];
+      if (v === undefined) continue;
+      if (key === "teethProfile" || key === "eyeBrightnessProfile" || key === "eyeWhitenessProfile" || key === "blemishProfile") {
+        normalized[key] = normalizeIntensityProfile(v);
+      } else {
+        const n = readNumber(v);
+        if (n !== null) {
+          const clamped = key === "skinTextureGuard" || key === "faceEnhancement"
+            ? clampNumber(n, 0, 100)
+            : clampNumber(n, 0, 100);
+          (normalized as Record<string, number | IntensityProfile>)[key] = clamped;
+        }
+      }
+    }
+    if (Object.keys(normalized).length === 0) continue;
+    out.push({ faceIndex: Math.round(idx), controls: normalized });
+  }
+  return out;
+}
 
 /** Sanitise a LUT selection. Unknown name shape → no-LUT. Strength is
  *  clamped to [0, 100]. Doesn't validate the slug against the runner
@@ -1632,6 +1704,7 @@ function normalizeSettings(
     subjectLookStrength: clampNumber(merged.subjectLookStrength, 0, 100),
     hsl: normalizeHsl(raw.hsl ?? merged.hsl),
     lut: normalizeLut(raw.lut ?? merged.lut),
+    perFaceOverrides: normalizePerFaceOverrides(raw.perFaceOverrides ?? merged.perFaceOverrides),
   };
 }
 
@@ -3501,6 +3574,10 @@ async function runGfpganService(params: {
           // backend inlines the float table so the runner doesn't need
           // R2 credentials.
           lut: resolvedLut,
+          // Per-face sliders — the runner detects every face once and
+          // applies these override controls on the matching face mask
+          // only. Faces without an override inherit the global sliders.
+          perFaceOverrides: params.settings.perFaceOverrides,
           requestedModel: params.settings.modelPreference,
         },
         model: {
@@ -4578,6 +4655,256 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
     }
     return res.json({ success: true, luts: [...builtIn, ...userLuts], source });
   });
+
+  // Frequency-sep 16-bit save proxy. Frontend POSTs raw little-endian
+  // Uint16 bytes for its (width × height × channels) edited buffer; the
+  // runner returns a binary PNG which we pipe straight back. Bypasses
+  // the global 50MB json limit via per-route `express.raw` — typical
+  // retouch crops (3–24MP × 3–4 channels × 2 bytes) land between 20
+  // and 200MB raw. A 512MB ceiling covers even 60MP RGBA.
+  router.post(
+    "/frequency-sep/save-16bit",
+    express.raw({ type: "application/octet-stream", limit: "512mb" }),
+    async (req, res) => {
+      const width = Number.parseInt(readString(req.query.width) || "", 10);
+      const height = Number.parseInt(readString(req.query.height) || "", 10);
+      const channels = Number.parseInt(readString(req.query.channels) || "", 10);
+      if (!Number.isFinite(width) || !Number.isFinite(height) || !Number.isFinite(channels)) {
+        return res
+          .status(400)
+          .json({ success: false, error: "width_height_channels_required" });
+      }
+      if (channels !== 3 && channels !== 4) {
+        return res
+          .status(400)
+          .json({ success: false, error: "channels_must_be_3_or_4" });
+      }
+      const bytes = req.body as Buffer;
+      const expected = width * height * channels * 2;
+      if (!Buffer.isBuffer(bytes) || bytes.length !== expected) {
+        return res.status(400).json({
+          success: false,
+          error: "pixel_length_mismatch",
+          got: Buffer.isBuffer(bytes) ? bytes.length : 0,
+          expected,
+        });
+      }
+
+      const runnerEndpoint = resolvePhotoEnhancerRunnerEndpoint({
+        runnerEnvKeys: ["PHOTO_ENHANCER_GFPGAN_URL", "GFPGAN_SERVICE_URL"],
+        defaultRunnerUrl:
+          process.env.RENDER === "true"
+            ? "https://creatorhub-gfpgan-runner.onrender.com/enhance"
+            : null,
+      });
+      if (!runnerEndpoint) {
+        return res
+          .status(503)
+          .json({ success: false, error: "runner_not_configured" });
+      }
+
+      // Rewrite /enhance (or empty) → /frequency-sep/save-16bit on the runner.
+      const url = new URL(runnerEndpoint);
+      url.pathname =
+        url.pathname.replace(/\/(enhance|)$/, "/frequency-sep/save-16bit") ||
+        "/frequency-sep/save-16bit";
+
+      const controller = new AbortController();
+      // 30s upper bound — 60MP save through the runner is ~5–8s real; the
+      // rest is margin for cold starts on the Render box.
+      const timer = setTimeout(() => controller.abort(), 30_000);
+      try {
+        const runnerResponse = await fetch(url.toString(), {
+          method: "POST",
+          signal: controller.signal,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            width,
+            height,
+            channels,
+            pixelsBase64: bytes.toString("base64"),
+          }),
+        });
+        if (!runnerResponse.ok) {
+          const errorText = await runnerResponse.text();
+          return res.status(runnerResponse.status).json({
+            success: false,
+            error: "runner_error",
+            detail: errorText.slice(0, 500),
+          });
+        }
+        const pngBuffer = Buffer.from(await runnerResponse.arrayBuffer());
+        res.setHeader("Content-Type", "image/png");
+        res.setHeader("Content-Length", pngBuffer.length.toString());
+        res.setHeader("Cache-Control", "no-store");
+        return res.status(200).end(pngBuffer);
+      } catch (err) {
+        const aborted = (err as { name?: string })?.name === "AbortError";
+        return res.status(aborted ? 504 : 502).json({
+          success: false,
+          error: aborted ? "runner_timeout" : "runner_unreachable",
+        });
+      } finally {
+        clearTimeout(timer);
+      }
+    },
+  );
+
+  // Stamp EXIF/IPTC/XMP metadata onto an exported image blob. Frontend
+  // pipes its canvas.toBlob output through this when the preset carries
+  // copyright / artist / keywords — canvas strips all metadata and
+  // there's no way to re-embed client-side without shipping a JPEG
+  // APP1 encoder. exiftool on the Render box is already available
+  // (installed by install-photo-raw-tools.mjs).
+  router.post(
+    "/export/stamp-metadata",
+    photoEnhancerUpload.single("image"),
+    async (req, res) => {
+      if (!req.file) {
+        return res.status(400).json({ success: false, error: "image_required" });
+      }
+      const copyright = readString(req.body?.copyright);
+      const artist = readString(req.body?.artist);
+      const creator = readString(req.body?.creator);
+      const keywordsRaw = req.body?.keywords;
+      const keywords = Array.isArray(keywordsRaw)
+        ? keywordsRaw.map(String)
+        : typeof keywordsRaw === "string" && keywordsRaw.trim()
+        ? keywordsRaw.split(",").map((s) => s.trim()).filter(Boolean)
+        : [];
+
+      if (!copyright && !artist && !creator && keywords.length === 0) {
+        // Nothing to stamp — send the input back unchanged so the
+        // frontend can use the same code path whether or not the user
+        // configured metadata.
+        res.setHeader("Content-Type", req.file.mimetype || "application/octet-stream");
+        return res.status(200).end(req.file.buffer);
+      }
+
+      const { stampExif } = await import("./photo-enhancer-exif-stamp.js");
+      const ext = (req.file.originalname.match(/\.[^.]+$/) || [".bin"])[0];
+      const result = await stampExif(
+        req.file.buffer,
+        {
+          copyright: copyright ?? undefined,
+          artist: artist ?? undefined,
+          creator: creator ?? undefined,
+          keywords,
+        },
+        ext,
+      );
+      if (!result.ok) {
+        // Don't fail the export just because exiftool isn't on the
+        // dev box — fall back to passing through untouched.
+        if (result.error === "exiftool_unavailable") {
+          res.setHeader(
+            "Content-Type",
+            req.file.mimetype || "application/octet-stream",
+          );
+          res.setHeader("X-Exif-Stamp", "skipped_exiftool_unavailable");
+          return res.status(200).end(req.file.buffer);
+        }
+        return res.status(500).json({
+          success: false,
+          error: result.error,
+          detail: result.detail,
+        });
+      }
+      res.setHeader("Content-Type", req.file.mimetype || "application/octet-stream");
+      res.setHeader("Content-Length", result.bytes.length.toString());
+      res.setHeader("X-Exif-Stamp", "applied");
+      return res.status(200).end(result.bytes);
+    },
+  );
+
+  // Photographer → client-gallery delivery for already-enhanced blobs.
+  // Pairs with photo-delivery-service.ts's `createClientGalleryFromBlobs`;
+  // see that module's header for why this path is separate from the
+  // iPad capture-showcase bridge.
+  router.post(
+    "/deliveries/client-gallery",
+    photoEnhancerUpload.array("images", 500),
+    async (req, res) => {
+      if (!pool) {
+        return res.status(503).json({ success: false, error: "db_unavailable" });
+      }
+      const files = (req.files as Express.Multer.File[] | undefined) ?? [];
+      if (files.length === 0) {
+        return res.status(400).json({ success: false, error: "images_required" });
+      }
+
+      const ownerUserId = readString(req.body?.ownerUserId);
+      const clientName = readString(req.body?.clientName);
+      const clientEmail = readString(req.body?.clientEmail);
+      const projectTitle = readString(req.body?.projectTitle);
+      const existingGalleryId = readString(req.body?.existingGalleryId);
+
+      if (!ownerUserId || !clientName || !clientEmail || !projectTitle) {
+        return res.status(400).json({
+          success: false,
+          error: "metadata_required",
+          need: ["ownerUserId", "clientName", "clientEmail", "projectTitle"],
+        });
+      }
+
+      // Titles arrive parallel-indexed to `images` as repeated form fields;
+      // multer flattens them into an array on req.body. Fall back to the
+      // filename minus extension when a caller omits them.
+      const rawTitles = req.body?.titles;
+      const titles: string[] = Array.isArray(rawTitles)
+        ? rawTitles.map(String)
+        : typeof rawTitles === "string"
+        ? [rawTitles]
+        : [];
+
+      const { drizzle } = await import("drizzle-orm/node-postgres");
+      const { createClientGalleryFromBlobs } = await import(
+        "./photo-delivery-service.js"
+      );
+      const db = drizzle(pool);
+      const result = await createClientGalleryFromBlobs({
+        db,
+        photographerId: ownerUserId,
+        clientName,
+        clientEmail,
+        projectTitle,
+        existingGalleryId: existingGalleryId ?? undefined,
+        images: files.map((file, i) => ({
+          title: titles[i] || file.originalname.replace(/\.[^.]+$/, ""),
+          filename: file.originalname,
+          mimeType: file.mimetype || "application/octet-stream",
+          bytes: file.buffer,
+          metadata: {
+            originalSize: file.size,
+          },
+        })),
+      });
+
+      if (!result.ok) {
+        const status =
+          result.error === "r2_not_configured"
+            ? 503
+            : result.error === "existing_gallery_not_found"
+            ? 404
+            : result.error === "no_images"
+            ? 400
+            : 500;
+        return res.status(status).json({
+          success: false,
+          error: result.error,
+          detail: result.detail,
+        });
+      }
+      return res.status(200).json({
+        success: true,
+        galleryId: result.galleryId,
+        accessToken: result.accessToken,
+        shareUrl: result.shareUrl,
+        uploadedImageCount: result.uploadedImageCount,
+        reusedExisting: result.reusedExisting,
+      });
+    },
+  );
 
   router.post(
     "/luts",

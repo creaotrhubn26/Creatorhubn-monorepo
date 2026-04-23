@@ -32,6 +32,7 @@ function makeImage(id: string, overrides: Partial<SessionImage> = {}): SessionIm
       changedModules: [],
     }),
     faceStatus: 'idle',
+    perFaceOverrides: {},
     ...overrides,
   };
 }
@@ -351,6 +352,125 @@ describe('sessionReducer — history', () => {
     const undone = sessionReducer(committed, { type: 'UNDO_HISTORY', imageId: 'a' });
     const redone = sessionReducer(undone, { type: 'REDO_HISTORY', imageId: 'a' });
     expect(redone.images[0].settings.brightness).toBe(42);
+  });
+});
+
+describe('sessionReducer — per-face overrides', () => {
+  const seeded = apply(SESSION_INITIAL, {
+    type: 'ADD_IMAGES',
+    images: [makeImage('a'), makeImage('b')],
+  });
+
+  it('PATCH_FACE_SETTINGS stores override under the correct face index', () => {
+    const state = sessionReducer(seeded, {
+      type: 'PATCH_FACE_SETTINGS',
+      imageId: 'a',
+      faceIndex: 1,
+      patch: { teethWhiteness: 60, teethProfile: 'strong' },
+    });
+    expect(state.images[0].perFaceOverrides[1]).toEqual({
+      teethWhiteness: 60,
+      teethProfile: 'strong',
+    });
+    expect(state.images[0].perFaceOverrides[0]).toBeUndefined();
+    expect(state.images[1].perFaceOverrides).toEqual({});
+  });
+
+  it('PATCH_FACE_SETTINGS merges onto an existing face override', () => {
+    const state = apply(
+      seeded,
+      { type: 'PATCH_FACE_SETTINGS', imageId: 'a', faceIndex: 0, patch: { teethWhiteness: 30 } },
+      { type: 'PATCH_FACE_SETTINGS', imageId: 'a', faceIndex: 0, patch: { eyeBrightness: 20 } },
+    );
+    expect(state.images[0].perFaceOverrides[0]).toEqual({
+      teethWhiteness: 30,
+      eyeBrightness: 20,
+    });
+  });
+
+  it('CLEAR_FACE_OVERRIDES removes a single index when provided', () => {
+    const state = apply(
+      seeded,
+      { type: 'PATCH_FACE_SETTINGS', imageId: 'a', faceIndex: 0, patch: { teethWhiteness: 30 } },
+      { type: 'PATCH_FACE_SETTINGS', imageId: 'a', faceIndex: 2, patch: { eyeBrightness: 40 } },
+      { type: 'CLEAR_FACE_OVERRIDES', imageId: 'a', faceIndex: 0 },
+    );
+    expect(state.images[0].perFaceOverrides[0]).toBeUndefined();
+    expect(state.images[0].perFaceOverrides[2]).toEqual({ eyeBrightness: 40 });
+  });
+
+  it('CLEAR_FACE_OVERRIDES without index wipes the whole map', () => {
+    const state = apply(
+      seeded,
+      { type: 'PATCH_FACE_SETTINGS', imageId: 'a', faceIndex: 0, patch: { teethWhiteness: 30 } },
+      { type: 'PATCH_FACE_SETTINGS', imageId: 'a', faceIndex: 1, patch: { eyeBrightness: 20 } },
+      { type: 'CLEAR_FACE_OVERRIDES', imageId: 'a' },
+    );
+    expect(state.images[0].perFaceOverrides).toEqual({});
+  });
+
+  it('SET_ACTIVE_FACE_INDEX updates session-level state', () => {
+    const state = sessionReducer(SESSION_INITIAL, {
+      type: 'SET_ACTIVE_FACE_INDEX',
+      faceIndex: 3,
+    });
+    expect(state.activeFaceIndex).toBe(3);
+    expect(
+      sessionReducer(state, { type: 'SET_ACTIVE_FACE_INDEX', faceIndex: null }).activeFaceIndex,
+    ).toBeNull();
+  });
+
+  it('COPY_FACE_OVERRIDE replicates the source override to target indices, skipping source', () => {
+    const state = apply(
+      seeded,
+      {
+        type: 'PATCH_FACE_SETTINGS',
+        imageId: 'a',
+        faceIndex: 0,
+        patch: { teethWhiteness: 50, eyeBrightness: 20 },
+      },
+      { type: 'COPY_FACE_OVERRIDE', imageId: 'a', sourceFaceIndex: 0, targetFaceIndices: [0, 1, 2] },
+    );
+    expect(state.images[0].perFaceOverrides[0]).toEqual({
+      teethWhiteness: 50,
+      eyeBrightness: 20,
+    });
+    expect(state.images[0].perFaceOverrides[1]).toEqual({
+      teethWhiteness: 50,
+      eyeBrightness: 20,
+    });
+    expect(state.images[0].perFaceOverrides[2]).toEqual({
+      teethWhiteness: 50,
+      eyeBrightness: 20,
+    });
+  });
+
+  it('history snapshot captures per-face overrides for undo', () => {
+    const state = apply(
+      seeded,
+      {
+        type: 'PATCH_FACE_SETTINGS',
+        imageId: 'a',
+        faceIndex: 1,
+        patch: { teethWhiteness: 42 },
+      },
+      { type: 'COMMIT_HISTORY', imageId: 'a' },
+      { type: 'CLEAR_FACE_OVERRIDES', imageId: 'a' },
+      { type: 'COMMIT_HISTORY', imageId: 'a' },
+      { type: 'UNDO_HISTORY', imageId: 'a' },
+    );
+    expect(state.images[0].perFaceOverrides[1]).toEqual({ teethWhiteness: 42 });
+  });
+
+  it('serializePerFaceOverrides orders by face index for stable output', async () => {
+    const { serializePerFaceOverrides } = await import('../session-reducer');
+    const overrides = {
+      2: { teethWhiteness: 10 },
+      0: { teethWhiteness: 5 },
+      1: { eyeBrightness: 20 },
+    };
+    const out = serializePerFaceOverrides(overrides);
+    expect(out.map((o) => o.faceIndex)).toEqual([0, 1, 2]);
   });
 });
 

@@ -7,6 +7,10 @@ export interface FaceChipStripProps {
   status: FaceDetectionStatus;
   activeFaceIndex: number | null;
   onSelect: (face: DetectedFace | null) => void;
+  /** Face indices that already have override slider values — shown with
+   *  a small dot on the chip so the photographer can see which people
+   *  have bespoke edits without clicking through. */
+  faceIndicesWithOverrides?: number[];
 }
 
 /**
@@ -19,7 +23,11 @@ export interface FaceChipStripProps {
  * a short status line when no faces were found.
  */
 export function FaceChipStrip(props: FaceChipStripProps) {
-  const { faces, status, activeFaceIndex, onSelect } = props;
+  const { faces, status, activeFaceIndex, onSelect, faceIndicesWithOverrides } = props;
+  const overrideSet = React.useMemo(
+    () => new Set(faceIndicesWithOverrides ?? []),
+    [faceIndicesWithOverrides],
+  );
 
   const ordered = useMemo(() => {
     if (!faces) return [] as DetectedFace[];
@@ -75,25 +83,49 @@ export function FaceChipStrip(props: FaceChipStripProps) {
               size="small"
               label={face.index + 1}
               onClick={() => onSelect(isActive ? null : face)}
-              color={isActive ? 'primary' : 'default'}
-              variant={isActive ? 'filled' : 'outlined'}
+              color={isActive ? 'primary' : overrideSet.has(face.index) ? 'secondary' : 'default'}
+              variant={isActive ? 'filled' : overrideSet.has(face.index) ? 'filled' : 'outlined'}
               sx={{
                 minWidth: 28,
                 cursor: 'pointer',
                 fontWeight: 700,
+                position: 'relative',
+                '&::after': overrideSet.has(face.index)
+                  ? {
+                      content: '""',
+                      position: 'absolute',
+                      top: -2,
+                      right: -2,
+                      width: 8,
+                      height: 8,
+                      borderRadius: '50%',
+                      bgcolor: 'warning.main',
+                      border: '1.5px solid',
+                      borderColor: 'background.paper',
+                    }
+                  : undefined,
               }}
             />
           </Tooltip>
         );
       })}
       {activeFaceIndex != null && (
-        <Chip
-          size="small"
-          label="Tilpass"
-          variant="outlined"
-          onClick={() => onSelect(null)}
-          sx={{ ml: 0.5 }}
-        />
+        <>
+          <Chip
+            size="small"
+            color="info"
+            variant="filled"
+            label={`Redigerer ansikt #${activeFaceIndex + 1}`}
+            sx={{ ml: 1, fontWeight: 600 }}
+          />
+          <Chip
+            size="small"
+            label="Tilbake til hele bildet"
+            variant="outlined"
+            onClick={() => onSelect(null)}
+            sx={{ ml: 0.5 }}
+          />
+        </>
       )}
     </Stack>
   );

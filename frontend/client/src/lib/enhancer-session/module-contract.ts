@@ -156,6 +156,42 @@ export const LUT_IDENTITY: LutSelection = {
   tonalMix: 'all',
 };
 
+/**
+ * Override slice that can be applied to a single detected face. Mirrors
+ * the runner contract at backend/gfpgan-runner/portrait_retouch.py
+ * ``apply_portrait_retouch_multi``. Only portrait-region sliders are
+ * allowed here — global sliders (brightness, LUT, HSL, …) remain image-
+ * scoped because there's no meaningful per-face interpretation.
+ */
+export type PerFaceEnhancementPatch = Partial<
+  Pick<
+    EnhancementSettings,
+    | 'teethWhiteness'
+    | 'eyeBrightness'
+    | 'eyeWhiteness'
+    | 'blemishRemoval'
+    | 'teethProfile'
+    | 'eyeBrightnessProfile'
+    | 'eyeWhitenessProfile'
+    | 'blemishProfile'
+    | 'skinTextureGuard'
+    | 'faceEnhancement'
+  >
+>;
+
+export const PER_FACE_SETTINGS_KEYS: ReadonlyArray<keyof PerFaceEnhancementPatch> = [
+  'teethWhiteness',
+  'eyeBrightness',
+  'eyeWhiteness',
+  'blemishRemoval',
+  'teethProfile',
+  'eyeBrightnessProfile',
+  'eyeWhitenessProfile',
+  'blemishProfile',
+  'skinTextureGuard',
+  'faceEnhancement',
+];
+
 export interface EnhancementSettings {
   brightness: number;
   contrast: number;
