@@ -17,10 +17,33 @@ const serviceMocks = vi.hoisted(() => ({
   createReview: vi.fn(),
   addReviewComment: vi.fn(),
   setReviewDecision: vi.fn(),
+  setReviewDecisionWithTimeline: vi.fn(),
 }));
 
 vi.mock('../services/producerWorkflowService', () => ({
   producerWorkflowService: serviceMocks,
+  // Inline reimplementation of the pure helper so useProducerReviews
+  // can derive summary counters without the test pulling in the entire
+  // service module (doing so would reach for browser-only globals
+  // during hook render). Mirrors the shape the hook consumes.
+  summarizeProducerReviewStatuses: (reviews: Array<{ status?: string }>) => {
+    const summary = {
+      pendingReviews: 0,
+      approvedReviews: 0,
+      rejectedReviews: 0,
+      changesRequestedReviews: 0,
+      totalReviews: reviews.length,
+    };
+    for (const r of reviews) {
+      switch (r.status) {
+        case 'approved':          summary.approvedReviews += 1; break;
+        case 'rejected':          summary.rejectedReviews += 1; break;
+        case 'changes_requested': summary.changesRequestedReviews += 1; break;
+        default:                  summary.pendingReviews += 1; break;
+      }
+    }
+    return summary;
+  },
 }));
 
 describe('producer workflow hooks', () => {
@@ -200,7 +223,10 @@ describe('producer workflow hooks', () => {
       created_at: '2026-03-01T00:00:00.000Z',
       updated_at: '2026-03-01T00:00:00.000Z',
     });
-    serviceMocks.setReviewDecision.mockResolvedValue({
+    // Hook dispatches through setReviewDecisionWithTimeline now (the
+    // timeline side-effect variant); the plain setReviewDecision was
+    // renamed. Stub both so the suite stays tolerant to either wiring.
+    const approvedReview = {
       id: 'r-1',
       project_id: 'p-1',
       review_type: 'shotlist',
@@ -210,7 +236,9 @@ describe('producer workflow hooks', () => {
       created_at: '2026-03-01T00:00:00.000Z',
       updated_at: '2026-03-01T01:00:00.000Z',
       comments: [],
-    });
+    };
+    serviceMocks.setReviewDecision.mockResolvedValue(approvedReview);
+    serviceMocks.setReviewDecisionWithTimeline.mockResolvedValue(approvedReview);
 
     const { result } = renderHook(() => useProducerReviews('p-1'));
 
