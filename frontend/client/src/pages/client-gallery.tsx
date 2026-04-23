@@ -4,7 +4,7 @@
  * Using Universal Showcase design and profession adapter integration
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
@@ -65,6 +65,13 @@ import {
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { useClientSession } from '@/contexts/ClientSessionContext';
+import {
+  isErgonomicsEnabled,
+  setErgonomicsEnabled,
+  useErgonomicsTelemetry,
+} from '@/hooks/useErgonomicsTelemetry';
+import ReflectPromptModal from '@/components/ReflectPromptModal';
+import PostSessionInsightsCard from '@/components/PostSessionInsightsCard';
 import ExtraImagePricingDialog from '@/components/ExtraImagePricingDialog';
 import ImageSelectionWarning from '@/components/ImageSelectionWarning';
 import ContractPreviewModal from '@/components/ContractPreviewModal';
@@ -141,6 +148,22 @@ export default function ClientGallery({}: ClientGalleryProps) {
   const [contractPreviewOpen, setContractPreviewOpen] = useState(false);
   const [termsAcceptanceOpen, setTermsAcceptanceOpen] = useState(false);
   const [hasAcceptedTerms, setHasAcceptedTerms] = useState(false);
+  // Ergonomics telemetry — opt-in hook that tracks the cognitive
+  // cost of the culling/selection flow so CreatorHub can remove the
+  // parts that drain photographers. Does nothing when disabled.
+  const telemetry = useErgonomicsTelemetry();
+  const [telemetryEnabled, setTelemetryEnabledState] = useState<boolean>(
+    () => isErgonomicsEnabled(),
+  );
+  const [reflectPromptOpen, setReflectPromptOpen] = useState(false);
+  const [insightsSessionId, setInsightsSessionId] = useState<string | null>(null);
+  // Prior selection state per image — used to detect reversals
+  // (heart → unheart → heart). We compare last known state to new
+  // state inside the favourite/select handlers and emit a 'reverse'
+  // event when they disagree.
+  const priorStateRef = useRef<Map<string, { favorite: boolean; selected: boolean }>>(
+    new Map(),
+  );
 
   // Profession adapter configuration
   const profession = 'photographer';
@@ -168,13 +191,35 @@ export default function ClientGallery({}: ClientGalleryProps) {
     enabled: !!accessToken,
 });
 
-  // Fetch existing selections (linked to project and client)
-  const { data: selections = [] } = useQuery({
-    queryKey: ['/api/client/gallery', accessToken, 'selections', gallery?.clientEmail],
+  // Fetch existing selections (linked to project and client). Backend
+  // returns { galleryId, selections: [...] } for the whole gallery;
+  // clientEmail filtering is done locally.
+  const { data: selections = { selections: [] } } = useQuery({
+    queryKey: ['/api/client/gallery', accessToken, 'selections'],
     queryFn: () =>
-      apiRequest(`/api/client/gallery/${accessToken}/selections/${gallery?.clientEmail}`),
-    enabled: !!accessToken && !!gallery?.clientEmail,
+      apiRequest(`/api/client/gallery/${accessToken}/selections`),
+    enabled: !!accessToken,
 });
+
+  // Fetch existing comments so the gallery can show prior notes on the
+  // image detail view + comment counts. Mirrors the selections query
+  // shape; both come back as { galleryId, <collection>: [...] }.
+  const { data: commentsData = { comments: [] } } = useQuery({
+    queryKey: ['/api/client/gallery', accessToken, 'comments'],
+    queryFn: () =>
+      apiRequest(`/api/client/gallery/${accessToken}/comments`),
+    enabled: !!accessToken,
+});
+  const allComments: Array<{
+    id: string; imageId: string; clientName: string; comment: string;
+    commentType: string; createdAt: string;
+  }> = Array.isArray((commentsData as any)?.comments)
+    ? (commentsData as any).comments
+    : [];
+  const commentCountByImage = allComments.reduce<Record<string, number>>((acc, c) => {
+    acc[c.imageId] = (acc[c.imageId] || 0) + 1;
+    return acc;
+  }, {});
 
   // Fetch project details for integration
   const { data: projectDetails } = useQuery({
@@ -190,6 +235,30 @@ export default function ClientGallery({}: ClientGalleryProps) {
     events.forEach((event) => document.addEventListener(event, handleActivity));
     return () => events.forEach((event) => document.removeEventListener(event, handleActivity));
 }, [updateActivity]);
+
+  // Telemetry: emit a ``pause`` event when the tab has been hidden
+  // for at least 2 minutes, so the fatigue-curve analysis can reset
+  // its drift baseline. 2 minutes is long enough to filter out brief
+  // tab switches (checking a contract, opening a Slack link) while
+  // still catching real breaks.
+  useEffect(() => {
+    if (!telemetry.enabled) return;
+    let hiddenAt: number | null = null;
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        hiddenAt = Date.now();
+      } else if (hiddenAt !== null) {
+        const awayMs = Date.now() - hiddenAt;
+        hiddenAt = null;
+        if (awayMs >= 2 * 60 * 1000) {
+          telemetry.trackPause();
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () =>
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+  }, [telemetry]);
 
   // Load existing selections into state
   useEffect(() => {
@@ -256,8 +325,13 @@ export default function ClientGallery({}: ClientGalleryProps) {
   },
     onSuccess: () => {
       setCommentDialogOpen(false);
-      setNewComment(', ');
+      setNewComment('');
       setCommentImageId(null);
+      // Refresh the comment list so the one we just posted shows up
+      // immediately in the dialog / image card badge without a reload.
+      queryClient.invalidateQueries({
+        queryKey: ['/api/client/gallery', accessToken, 'comments'],
+      });
   },
 });
 
@@ -288,15 +362,26 @@ export default function ClientGallery({}: ClientGalleryProps) {
   },
     onSuccess: () => {
       setPricingDialogOpen(false);
-      // Could redirect to confirmation page
+      // Session ends — emit session_end, flush the telemetry buffer,
+      // and prompt the reflect modal + insights card. Both are only
+      // visible when the user opted in, since the hook is a noop
+      // otherwise. We capture the sessionId BEFORE ending (endSession
+      // rotates the id) so the insights card can fetch its stats.
+      const endedSessionId = telemetry.sessionId;
+      telemetry.endSession();
+      if (telemetry.enabled && endedSessionId) {
+        setInsightsSessionId(endedSessionId);
+        setReflectPromptOpen(true);
+      }
   },
 });
 
   const handleImageSelect = (imageId: string) => {
     const newSelected = new Set(selectedImages);
     const contractedImages = gallery?.gallerySettings?.contractedImages || 0;
+    const wasSelected = newSelected.has(imageId);
 
-    if (newSelected.has(imageId)) {
+    if (wasSelected) {
       newSelected.delete(imageId);
       updateSelectionMutation.mutate({ imageId, selectionType: 'rejected' });
       setSelectedImages(newSelected);
@@ -320,6 +405,22 @@ export default function ClientGallery({}: ClientGalleryProps) {
       updateSelectionMutation.mutate({ imageId, selectionType: 'selected' });
       setSelectedImages(newSelected);
   }
+
+    // Telemetry: log as decision or reversal depending on prior state.
+    const prior = priorStateRef.current.get(imageId) ?? {
+      favorite: false,
+      selected: false,
+    };
+    const nextSelected = !wasSelected;
+    const newAction = nextSelected ? 'selected' : 'rejected';
+    if (prior.selected !== nextSelected) {
+      if (prior.selected) {
+        telemetry.trackReversal(imageId, 'selected', newAction);
+      } else {
+        telemetry.trackDecision(imageId, newAction);
+      }
+    }
+    priorStateRef.current.set(imageId, { ...prior, selected: nextSelected });
 };
 
   const handleKeepAllImages = () => {
@@ -416,8 +517,9 @@ export default function ClientGallery({}: ClientGalleryProps) {
 
   const handleImageFavorite = (imageId: string) => {
     const newFavorites = new Set(favoriteImages);
+    const wasFavorite = newFavorites.has(imageId);
 
-    if (newFavorites.has(imageId)) {
+    if (wasFavorite) {
       newFavorites.delete(imageId);
       updateSelectionMutation.mutate({ imageId, selectionType: 'rejected' });
   } else {
@@ -426,11 +528,39 @@ export default function ClientGallery({}: ClientGalleryProps) {
   }
 
     setFavoriteImages(newFavorites);
+
+    // Telemetry: emit a ``decide`` event on first toggle, and a
+    // ``reverse`` event when the photographer flips a previously
+    // set state. priorStateRef is the source of truth here — we
+    // compare against it explicitly rather than inferring from
+    // favoriteImages (which is about to update asynchronously).
+    const prior = priorStateRef.current.get(imageId) ?? {
+      favorite: false,
+      selected: false,
+    };
+    const nextFavorite = !wasFavorite;
+    if (prior.favorite !== nextFavorite) {
+      const newAction = nextFavorite ? 'favorite' : 'rejected';
+      if (prior.favorite) {
+        telemetry.trackReversal(imageId, 'favorite', newAction);
+      } else {
+        telemetry.trackDecision(imageId, newAction);
+      }
+    }
+    priorStateRef.current.set(imageId, { ...prior, favorite: nextFavorite });
 };
 
   const handleImageView = (image: GalleryImage) => {
     setSelectedImageForView(image);
     setImageDialogOpen(true);
+    // Telemetry: the photographer is looking at this asset. firstView
+    // is true when we've never tracked a view for this id before —
+    // lets the backend distinguish initial triage from re-visits.
+    const prior = priorStateRef.current.get(image.id);
+    telemetry.trackView(image.id, !prior);
+    if (!prior) {
+      priorStateRef.current.set(image.id, { favorite: false, selected: false });
+    }
 };
 
   const handleAddComment = (imageId: string) => {
@@ -655,6 +785,34 @@ export default function ClientGallery({}: ClientGalleryProps) {
                 <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
                   Vis kun valgte
                 </Typography>
+            }
+            />
+
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={telemetryEnabled}
+                  onChange={(e) => {
+                    setErgonomicsEnabled(e.target.checked);
+                    setTelemetryEnabledState(e.target.checked);
+                  }}
+                  size="small"
+                  sx={{
+                    '& .MuiSwitch-switchBase.Mui-checked': {
+                      color: config.primaryColor,
+                  },
+                    '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                      backgroundColor: config.primaryColor,
+                  },
+                }}
+                />
+            }
+              label={
+                <Tooltip title="Logger anonymisert hvor lenge du ser på hvert bilde og hvor mange ganger du ombestemmer deg. Vi bruker det kun til å fjerne det du hater mest. Du kan skru av når som helst.">
+                  <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
+                    Ergonomi-innsikter (opt-in)
+                  </Typography>
+                </Tooltip>
             }
             />
 
@@ -913,16 +1071,23 @@ export default function ClientGallery({}: ClientGalleryProps) {
                       Se stort
                     </Button>
                     {gallery?.gallerySettings?.allowComments && (
-                      <Button
-                        size="small"
-                        startIcon={<Comment />}
-                        onClick={() => handleAddComment(image.id)}
-                        sx={{
-                          color: 'rgba(255,255,255,0.7)','&:hover': { color: config.primaryColor },
-                      }}
+                      <Badge
+                        badgeContent={commentCountByImage[image.id] || 0}
+                        color="primary"
+                        overlap="rectangular"
+                        sx={{ '& .MuiBadge-badge': { right: 6, top: 10 } }}
                       >
-                        Kommentar
-                      </Button>
+                        <Button
+                          size="small"
+                          startIcon={<Comment />}
+                          onClick={() => handleAddComment(image.id)}
+                          sx={{
+                            color: 'rgba(255,255,255,0.7)','&:hover': { color: config.primaryColor },
+                        }}
+                        >
+                          Kommentar
+                        </Button>
+                      </Badge>
                     )}
                   </CardActions>
                 </MuiCard>
@@ -1069,6 +1234,39 @@ export default function ClientGallery({}: ClientGalleryProps) {
       >
         <DialogTitle sx={{ color: '#fff' }}>Legg til kommentar</DialogTitle>
         <DialogContent sx={{ bgcolor: '#0a0f1a' }}>
+          {(() => {
+            const priorComments = commentImageId
+              ? allComments.filter((c) => c.imageId === commentImageId)
+              : [];
+            if (priorComments.length === 0) return null;
+            return (
+              <Box sx={{ mb: 2, maxHeight: 240, overflowY: 'auto' }}>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>
+                  Tidligere kommentarer
+                </Typography>
+                <Stack spacing={1} sx={{ mt: 1 }}>
+                  {priorComments.map((c) => (
+                    <Paper
+                      key={c.id}
+                      elevation={0}
+                      sx={{
+                        p: 1.25,
+                        bgcolor: 'rgba(255,255,255,0.04)',
+                        border: '1px solid rgba(255,255,255,0.08)',
+                      }}
+                    >
+                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.55)' }}>
+                        {c.clientName || 'Klient'} · {new Date(c.createdAt).toLocaleString('nb-NO')}
+                      </Typography>
+                      <Typography variant="body2" sx={{ color: '#fff', whiteSpace: 'pre-wrap' }}>
+                        {c.comment}
+                      </Typography>
+                    </Paper>
+                  ))}
+                </Stack>
+              </Box>
+            );
+          })()}
           <TextField
             autoFocus
             margin="dense"
@@ -1255,6 +1453,21 @@ export default function ClientGallery({}: ClientGalleryProps) {
         projectType={projectDetails?.projectType ||'bryllup'}
         contractId={gallery?.projectId}
       />
+
+      <ReflectPromptModal
+        open={reflectPromptOpen}
+        sessionId={insightsSessionId || telemetry.sessionId}
+        onClose={() => setReflectPromptOpen(false)}
+      />
+
+      {insightsSessionId && (
+        <Box sx={{ position: 'fixed', bottom: 16, right: 16, maxWidth: 420, zIndex: 1300 }}>
+          <PostSessionInsightsCard
+            sessionId={insightsSessionId}
+            onClose={() => setInsightsSessionId(null)}
+          />
+        </Box>
+      )}
     </Box>
   );
 }
