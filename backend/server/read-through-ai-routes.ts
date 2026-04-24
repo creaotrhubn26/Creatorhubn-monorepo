@@ -25,6 +25,8 @@ import { z } from 'zod';
 import { loadPersistedAuthSession } from './auth-session-store.js';
 import { callClaudeForJson, ClaudeJsonParseError } from './claude-json-helper.js';
 import { logAiCall } from './role-room-ai-audit.js';
+import { aiRateLimit } from './ai-rate-limiter.js';
+import { requireActiveConsent, RoleRoomAiConsentError } from './role-room-ai-consent.js';
 
 interface SessionData {
   userId: string;
@@ -300,9 +302,10 @@ export function createReadThroughAiRouter(
 ): ExpressRouter {
   const router = Router();
   const auth = requireAuth(pool, deps.activeSessions);
+  const limit = aiRateLimit({ windowMs: 60_000, max: 20, label: 'Read-through analyze' });
   const call = deps.callClaude ?? callClaudeForJson;
 
-  router.post('/analyze', auth, async (req: Request, res: Response): Promise<void> => {
+  router.post('/analyze', auth, limit, async (req: Request, res: Response): Promise<void> => {
     const parsed = analyzeBody.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: 'invalid_request', details: parsed.error.format() });
@@ -310,6 +313,31 @@ export function createReadThroughAiRouter(
     }
     const { userId } = req as AuthedRequest;
     const input = parsed.data;
+
+    // GDPR Art. 6.1a — every Claude call re-verifies active consent at the
+    // project scope. The frontend also gates the UI on aiConsentService, but
+    // the server is the source of truth.
+    let consentId: string | null = null;
+    try {
+      const consent = await requireActiveConsent(pool, input.projectId, 'anthropic', 'full_context');
+      consentId = consent.id;
+    } catch (err) {
+      if (err instanceof RoleRoomAiConsentError) {
+        void logAiCall(pool, {
+          projectId: input.projectId,
+          userId,
+          processor: 'anthropic',
+          model: process.env.ROLE_ROOM_AGENT_CLAUDE_MODEL || 'claude-sonnet-4-5',
+          action: 'read_through.analyze',
+          status: 'blocked_by_consent',
+          errorCode: err.code,
+          errorMessage: err.message,
+        });
+        res.status(403).json({ error: err.code, message: err.message });
+        return;
+      }
+      throw err;
+    }
 
     try {
       const result = await call<unknown>({
@@ -321,6 +349,7 @@ export function createReadThroughAiRouter(
       void logAiCall(pool, {
         projectId: input.projectId,
         userId,
+        consentId,
         processor: 'anthropic',
         model: result.model,
         action: 'read_through.analyze',
@@ -337,6 +366,7 @@ export function createReadThroughAiRouter(
       void logAiCall(pool, {
         projectId: input.projectId,
         userId,
+        consentId,
         processor: 'anthropic',
         model: process.env.ROLE_ROOM_AGENT_CLAUDE_MODEL || 'claude-sonnet-4-5',
         action: 'read_through.analyze',

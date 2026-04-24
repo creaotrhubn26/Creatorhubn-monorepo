@@ -30,8 +30,10 @@ import {
   searchReferenceFrames,
   updateReferenceFrame,
   sanitiseTags,
+  uploadFrameToR2,
   type ReferenceFrameTagsShotType,
 } from './reference-archive-service.js';
+import { aiRateLimit } from './ai-rate-limiter.js';
 
 interface SessionData {
   userId: string;
@@ -95,17 +97,26 @@ const claudeTagsShape = z.object({
   keywords: z.array(z.string()),
 });
 
-const createBody = z.object({
-  sourceUrl: z.string().url(),
-  thumbnailUrl: z.string().url().nullable().optional(),
-  filmTitle: z.string().max(300).nullable().optional(),
-  cinematographer: z.string().max(200).nullable().optional(),
-  year: z.number().int().min(1890).max(2100).nullable().optional(),
-  notes: z.string().max(2000).nullable().optional(),
-  claudeTags: claudeTagsShape,
-  userTags: z.array(z.string().max(60)).max(30).default([]),
-  usedOnProjectIds: z.array(z.string().max(120)).max(50).default([]),
-});
+// Either supply an already-hosted URL or let the backend stash the image
+// in R2. At least one is required.
+const createBody = z
+  .object({
+    sourceUrl: z.string().url().optional(),
+    imageBase64: z.string().min(100).optional(),
+    mime: z.enum(ALLOWED_MIME).optional(),
+    thumbnailUrl: z.string().url().nullable().optional(),
+    filmTitle: z.string().max(300).nullable().optional(),
+    cinematographer: z.string().max(200).nullable().optional(),
+    year: z.number().int().min(1890).max(2100).nullable().optional(),
+    notes: z.string().max(2000).nullable().optional(),
+    claudeTags: claudeTagsShape,
+    userTags: z.array(z.string().max(60)).max(30).default([]),
+    usedOnProjectIds: z.array(z.string().max(120)).max(50).default([]),
+  })
+  .refine(
+    (b) => Boolean(b.sourceUrl) || (Boolean(b.imageBase64) && Boolean(b.mime)),
+    { message: 'Either sourceUrl OR (imageBase64 + mime) is required', path: ['sourceUrl'] },
+  );
 
 const patchBody = z.object({
   sourceUrl: z.string().url().optional(),
@@ -139,9 +150,13 @@ export function createReferenceArchiveRouter(
 ): ExpressRouter {
   const router = Router();
   const auth = requireAuth(pool, deps.activeSessions);
+  // Only the /analyze route needs throttling — it hits Claude Vision. The
+  // DB-backed list/create/update endpoints are cheap and self-rate-limiting
+  // by way of normal query latency.
+  const analyzeLimit = aiRateLimit({ windowMs: 60_000, max: 20, label: 'Reference-archive analyze' });
   const analyze = deps.analyze ?? analyseFrame;
 
-  router.post('/analyze', auth, async (req: Request, res: Response): Promise<void> => {
+  router.post('/analyze', auth, analyzeLimit, async (req: Request, res: Response): Promise<void> => {
     const parsed = analyzeBody.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: 'invalid_request', details: parsed.error.format() });
@@ -163,10 +178,32 @@ export function createReferenceArchiveRouter(
       return;
     }
     const { userId } = req as AuthedRequest;
+
+    // Resolve sourceUrl: either pre-hosted (caller provided URL) or fresh-
+    // uploaded to R2 from the base64 payload we were given.
+    let sourceUrl = parsed.data.sourceUrl;
+    if (!sourceUrl && parsed.data.imageBase64 && parsed.data.mime) {
+      const uploaded = await uploadFrameToR2({
+        ownerUserId: userId,
+        imageBase64: parsed.data.imageBase64,
+        mime: parsed.data.mime,
+      });
+      if (!uploaded.ok) {
+        const status = uploaded.error === 'storage_not_configured' ? 503 : 502;
+        res.status(status).json({ error: uploaded.error, message: uploaded.detail });
+        return;
+      }
+      sourceUrl = uploaded.sourceUrl;
+    }
+    if (!sourceUrl) {
+      res.status(400).json({ error: 'invalid_request', message: 'sourceUrl resolution failed' });
+      return;
+    }
+
     const frame = await createReferenceFrame(pool, {
       ownerUserId: userId,
       uploadedByUserId: userId,
-      sourceUrl: parsed.data.sourceUrl,
+      sourceUrl,
       thumbnailUrl: parsed.data.thumbnailUrl ?? null,
       filmTitle: parsed.data.filmTitle ?? null,
       cinematographer: parsed.data.cinematographer ?? null,

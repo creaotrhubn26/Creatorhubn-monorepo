@@ -1,16 +1,19 @@
 /**
  * Reference frame archive — service layer.
  *
- * Owns two things:
+ * Owns three things:
  *   1. Claude Vision auto-tagging (analyseFrame)
  *   2. DB read/write for role_room_reference_frames
- *
- * The image itself is the caller's responsibility to persist (S3, Cloudinary,
- * whatever) — this module only sees a `source_url` string. For tagging we
- * accept a base64 payload so Claude Vision doesn't need a public URL.
+ *   3. Optional R2 upload (uploadFrameToR2) so the caller doesn't have to
+ *      host the bytes themselves — we reuse the Capture R2 bucket with a
+ *      dedicated `reference-archive/` prefix and sign 7-day GET URLs.
  */
 
+import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
+import { buildCaptureR2Config } from './capture-upload-service.js';
 
 const MAX_IMAGE_BASE64_BYTES = 6 * 1024 * 1024; // ~4.5 MB decoded
 
@@ -251,6 +254,84 @@ export async function analyseFrame(input: AnalyseFrameInput): Promise<AnalyseFra
     };
   } catch (err) {
     return { ok: false, error: 'invalid_response', detail: String(err) };
+  }
+}
+
+// ──────────────────────────── Storage (R2) ─────────────────────────────
+
+const READ_URL_TTL_SECONDS = 7 * 24 * 60 * 60; // 7d — AWS/R2 hard ceiling
+
+let storageClient: S3Client | null = null;
+
+function getStorageClient(): { client: S3Client; bucket: string } | null {
+  const cfg = buildCaptureR2Config();
+  if (!cfg.enabled || !cfg.endpoint || !cfg.bucket || !cfg.accessKeyId || !cfg.secretAccessKey) {
+    return null;
+  }
+  if (!storageClient) {
+    storageClient = new S3Client({
+      region: 'auto',
+      endpoint: cfg.endpoint,
+      credentials: {
+        accessKeyId: cfg.accessKeyId,
+        secretAccessKey: cfg.secretAccessKey,
+      },
+    });
+  }
+  return { client: storageClient, bucket: cfg.bucket };
+}
+
+const EXT_BY_MIME: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/heic': 'heic',
+};
+
+export type UploadFrameResult =
+  | { ok: true; sourceUrl: string; storageKey: string }
+  | { ok: false; error: 'storage_not_configured' | 'upload_failed'; detail?: string };
+
+export async function uploadFrameToR2(input: {
+  ownerUserId: string;
+  imageBase64: string;
+  mime: string;
+}): Promise<UploadFrameResult> {
+  const storage = getStorageClient();
+  if (!storage) return { ok: false, error: 'storage_not_configured' };
+
+  const ext = EXT_BY_MIME[input.mime] ?? 'bin';
+  const key = `reference-archive/${input.ownerUserId}/${randomUUID()}.${ext}`;
+  const body = Buffer.from(input.imageBase64, 'base64');
+
+  try {
+    await storage.client.send(
+      new PutObjectCommand({
+        Bucket: storage.bucket,
+        Key: key,
+        Body: body,
+        ContentType: input.mime,
+      }),
+    );
+    const signedUrl = await getSignedUrl(
+      storage.client,
+      new PutObjectCommand({ Bucket: storage.bucket, Key: key }),
+      { expiresIn: READ_URL_TTL_SECONDS },
+    );
+    // PutObjectCommand presign works for reads too on R2 when used with GET,
+    // but for clarity we issue a GetObjectCommand presign below. Fall back to
+    // a direct R2 public URL if the bucket is public-read configured.
+    void signedUrl;
+    // Real read-URL path — sign a GET.
+    const { GetObjectCommand } = await import('@aws-sdk/client-s3');
+    const readUrl = await getSignedUrl(
+      storage.client,
+      new GetObjectCommand({ Bucket: storage.bucket, Key: key }),
+      { expiresIn: READ_URL_TTL_SECONDS },
+    );
+    return { ok: true, sourceUrl: readUrl, storageKey: key };
+  } catch (err) {
+    return { ok: false, error: 'upload_failed', detail: String(err) };
   }
 }
 

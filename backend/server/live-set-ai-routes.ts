@@ -23,6 +23,8 @@ import { z } from 'zod';
 import { loadPersistedAuthSession } from './auth-session-store.js';
 import { callClaudeForJson, ClaudeJsonParseError } from './claude-json-helper.js';
 import { logAiCall } from './role-room-ai-audit.js';
+import { aiRateLimit } from './ai-rate-limiter.js';
+import { requireActiveConsent, RoleRoomAiConsentError } from './role-room-ai-consent.js';
 
 interface SessionData {
   userId: string;
@@ -508,6 +510,7 @@ export function createLiveSetAiRouter(
 ): ExpressRouter {
   const router = Router();
   const auth = requireAuth(pool, deps.activeSessions);
+  const limit = aiRateLimit({ windowMs: 60_000, max: 20, label: 'Live-set AI' });
   const call = deps.callClaude ?? callClaudeForJson;
 
   const model = (): string =>
@@ -529,6 +532,31 @@ export function createLiveSetAiRouter(
     }
     const { userId } = req as AuthedRequest;
     const input = parse.data;
+
+    // GDPR Art. 6.1a — verify active consent for Anthropic at full_context
+    // scope before any scene/shot/crew data crosses to Claude.
+    let consentId: string | null = null;
+    try {
+      const consent = await requireActiveConsent(pool, input.projectId, 'anthropic', 'full_context');
+      consentId = consent.id;
+    } catch (err) {
+      if (err instanceof RoleRoomAiConsentError) {
+        void logAiCall(pool, {
+          projectId: input.projectId,
+          userId,
+          processor: 'anthropic',
+          model: model(),
+          action,
+          status: 'blocked_by_consent',
+          errorCode: err.code,
+          errorMessage: err.message,
+        });
+        res.status(403).json({ error: err.code, message: err.message });
+        return;
+      }
+      throw err;
+    }
+
     try {
       const result = await call<unknown>({
         cachedSystem: systemPrompt,
@@ -539,6 +567,7 @@ export function createLiveSetAiRouter(
       void logAiCall(pool, {
         projectId: input.projectId,
         userId,
+        consentId,
         processor: 'anthropic',
         model: result.model,
         action,
@@ -555,6 +584,7 @@ export function createLiveSetAiRouter(
       void logAiCall(pool, {
         projectId: input.projectId,
         userId,
+        consentId,
         processor: 'anthropic',
         model: model(),
         action,
@@ -566,7 +596,7 @@ export function createLiveSetAiRouter(
     }
   };
 
-  router.post('/coverage-check', auth, (req, res) =>
+  router.post('/coverage-check', auth, limit, (req, res) =>
     runRoute(
       req,
       res,
@@ -579,7 +609,7 @@ export function createLiveSetAiRouter(
     ),
   );
 
-  router.post('/replan-day', auth, (req, res) =>
+  router.post('/replan-day', auth, limit, (req, res) =>
     runRoute(
       req,
       res,
@@ -592,7 +622,7 @@ export function createLiveSetAiRouter(
     ),
   );
 
-  router.post('/continuity-check', auth, (req, res) =>
+  router.post('/continuity-check', auth, limit, (req, res) =>
     runRoute(
       req,
       res,
@@ -605,7 +635,7 @@ export function createLiveSetAiRouter(
     ),
   );
 
-  router.post('/end-of-day', auth, (req, res) =>
+  router.post('/end-of-day', auth, limit, (req, res) =>
     runRoute(
       req,
       res,

@@ -71,7 +71,11 @@ export async function analyzeFramePreview(input: {
 }
 
 export async function createReferenceFrame(input: {
-  sourceUrl: string;
+  /** Pre-hosted URL. Either this or (imageBase64 + mime) is required. */
+  sourceUrl?: string;
+  /** Base64-encoded image — backend uploads to R2 and derives sourceUrl. */
+  imageBase64?: string;
+  mime?: 'image/jpeg' | 'image/png' | 'image/webp' | 'image/heic';
   thumbnailUrl?: string | null;
   filmTitle?: string | null;
   cinematographer?: string | null;

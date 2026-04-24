@@ -53,11 +53,11 @@ const INITIAL_UPLOAD_STATE = {
   file: null as File | null,
   previewUrl: null as string | null,
   mime: '' as string,
+  imageBase64: '' as string,
   filmTitle: '',
   cinematographer: '',
   year: '',
   notes: '',
-  sourceUrl: '',
   userTagsRaw: '',
   analyzedTags: null as ReferenceFrameClaudeTags | null,
   analyzing: false,
@@ -115,6 +115,7 @@ export const ReferenceArchivePanel: React.FC<Props> = ({ projectId, onPickFrame 
         file,
         previewUrl,
         mime: file.type || 'image/jpeg',
+        imageBase64: '',
         analyzing: true,
         analyzeError: null,
         analyzedTags: null,
@@ -127,7 +128,8 @@ export const ReferenceArchivePanel: React.FC<Props> = ({ projectId, onPickFrame 
           hintFilmTitle: upload.filmTitle || undefined,
           hintCinematographer: upload.cinematographer || undefined,
         });
-        setUpload((s) => ({ ...s, analyzing: false, analyzedTags: tags }));
+        // Keep the base64 on state so the save step doesn't re-read the file
+        setUpload((s) => ({ ...s, analyzing: false, analyzedTags: tags, imageBase64: base64 }));
       } catch (err) {
         setUpload((s) => ({ ...s, analyzing: false, analyzeError: (err as Error).message }));
       }
@@ -136,15 +138,12 @@ export const ReferenceArchivePanel: React.FC<Props> = ({ projectId, onPickFrame 
   );
 
   const handleSave = useCallback(async () => {
-    if (!upload.analyzedTags) return;
-    if (!upload.sourceUrl.trim()) {
-      setUpload((s) => ({ ...s, saveError: 'Lim inn URL til bildet (S3/Cloudinary/osv.) før du lagrer.' }));
-      return;
-    }
+    if (!upload.analyzedTags || !upload.imageBase64) return;
     setUpload((s) => ({ ...s, saving: true, saveError: null }));
     try {
       await createReferenceFrame({
-        sourceUrl: upload.sourceUrl.trim(),
+        imageBase64: upload.imageBase64,
+        mime: upload.mime as 'image/jpeg' | 'image/png' | 'image/webp' | 'image/heic',
         filmTitle: upload.filmTitle || null,
         cinematographer: upload.cinematographer || null,
         year: upload.year ? Number(upload.year) || null : null,
@@ -518,18 +517,6 @@ export const ReferenceArchivePanel: React.FC<Props> = ({ projectId, onPickFrame 
               placeholder="f.eks. interior, warm-highlights, practicals"
             />
             <TextField
-              label="Bilde-URL (S3/Cloudinary/osv)"
-              size="small"
-              fullWidth
-              required
-              value={upload.sourceUrl}
-              onChange={(e) => setUpload((s) => ({ ...s, sourceUrl: e.target.value }))}
-              helperText="MVP: Last opp til CDN først og lim inn URL-en. Direkteopplasting kommer i v2."
-              InputLabelProps={{ sx: { color: '#9ca3af' } }}
-              FormHelperTextProps={{ sx: { color: '#6b7280' } }}
-              sx={{ '& .MuiInputBase-input': { color: '#e5e7eb' } }}
-            />
-            <TextField
               label="Notater"
               size="small"
               fullWidth
@@ -556,11 +543,11 @@ export const ReferenceArchivePanel: React.FC<Props> = ({ projectId, onPickFrame 
           <Button
             variant="contained"
             onClick={handleSave}
-            disabled={upload.saving || !upload.analyzedTags || !upload.sourceUrl.trim()}
+            disabled={upload.saving || !upload.analyzedTags || !upload.imageBase64}
             data-testid="pmv-archive-upload-save"
             startIcon={upload.saving ? <CircularProgress size={14} /> : null}
           >
-            Lagre i arkivet
+            {upload.saving ? 'Laster opp…' : 'Lagre i arkivet'}
           </Button>
         </DialogActions>
       </Dialog>
