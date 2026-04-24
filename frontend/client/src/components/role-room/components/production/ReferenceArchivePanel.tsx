@@ -25,9 +25,11 @@ import {
   createReferenceFrame,
   fileToBase64,
   searchReferenceFrames,
+  suggestFramesForScene,
   type ReferenceFrame,
   type ReferenceFrameClaudeTags,
   type ReferenceFrameShotType,
+  type SuggestedFrame,
 } from '../../services/referenceArchiveService';
 
 const SHOT_TYPE_OPTIONS: ReadonlyArray<{ value: ReferenceFrameShotType | ''; label: string }> = [
@@ -46,6 +48,22 @@ const TIME_OF_DAY_OPTIONS = ['', 'day', 'night', 'dusk', 'dawn', 'interior'] as 
 
 interface Props {
   projectId?: string;
+  /**
+   * Optional scene context — when present, enables "Foreslå fra scene"
+   * which runs a semantic search against the owner's archive and
+   * returns the top-ranked frames.
+   */
+  sceneContext?: {
+    sceneNumber?: string | number;
+    heading?: string;
+    locationName?: string;
+    intExt?: string;
+    timeOfDay?: string;
+    description?: string;
+    characters?: string[];
+    mood?: string;
+    beats?: string[];
+  };
   onPickFrame: (url: string) => void;
 }
 
@@ -68,7 +86,7 @@ const INITIAL_UPLOAD_STATE = {
 
 type UploadState = typeof INITIAL_UPLOAD_STATE;
 
-export const ReferenceArchivePanel: React.FC<Props> = ({ projectId, onPickFrame }) => {
+export const ReferenceArchivePanel: React.FC<Props> = ({ projectId, sceneContext, onPickFrame }) => {
   const [query, setQuery] = useState('');
   const [shotType, setShotType] = useState<ReferenceFrameShotType | ''>('');
   const [timeOfDay, setTimeOfDay] = useState<'' | (typeof TIME_OF_DAY_OPTIONS)[number]>('');
@@ -78,6 +96,12 @@ export const ReferenceArchivePanel: React.FC<Props> = ({ projectId, onPickFrame 
   const [uploadOpen, setUploadOpen] = useState(false);
   const [upload, setUpload] = useState<UploadState>(INITIAL_UPLOAD_STATE);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  // Scene-suggest mode — when active, the grid renders suggested frames
+  // with similarity scores instead of filter-based search results.
+  const [suggestMode, setSuggestMode] = useState(false);
+  const [suggestions, setSuggestions] = useState<SuggestedFrame[]>([]);
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
 
   const runSearch = useCallback(async () => {
     setLoading(true);
@@ -96,10 +120,31 @@ export const ReferenceArchivePanel: React.FC<Props> = ({ projectId, onPickFrame 
     }
   }, [query, shotType, timeOfDay]);
 
-  // Initial load + re-search when facets change
+  const runSuggest = useCallback(async () => {
+    if (!sceneContext) return;
+    setSuggesting(true);
+    setSuggestError(null);
+    setSuggestMode(true);
+    try {
+      const rows = await suggestFramesForScene({ scene: sceneContext, limit: 12 });
+      setSuggestions(rows);
+    } catch (err) {
+      setSuggestError((err as Error).message);
+    } finally {
+      setSuggesting(false);
+    }
+  }, [sceneContext]);
+
+  const exitSuggestMode = useCallback(() => {
+    setSuggestMode(false);
+    setSuggestions([]);
+    setSuggestError(null);
+  }, []);
+
+  // Initial load + re-search when facets change (only in filter mode).
   useEffect(() => {
-    void runSearch();
-  }, [runSearch]);
+    if (!suggestMode) void runSearch();
+  }, [runSearch, suggestMode]);
 
   const resetUpload = useCallback(() => {
     if (upload.previewUrl) URL.revokeObjectURL(upload.previewUrl);
@@ -211,6 +256,39 @@ export const ReferenceArchivePanel: React.FC<Props> = ({ projectId, onPickFrame 
             </MenuItem>
           ))}
         </Select>
+        {sceneContext && !suggestMode && (
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<AutoAwesomeIcon sx={{ fontSize: 16 }} />}
+            onClick={() => void runSuggest()}
+            disabled={suggesting}
+            data-testid="pmv-archive-suggest-from-scene"
+            sx={{
+              whiteSpace: 'nowrap',
+              textTransform: 'none',
+              color: '#c4b5fd',
+              borderColor: 'rgba(139,92,246,0.4)',
+            }}
+          >
+            Foreslå fra scene
+          </Button>
+        )}
+        {suggestMode && (
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={exitSuggestMode}
+            sx={{
+              whiteSpace: 'nowrap',
+              textTransform: 'none',
+              color: '#9ca3af',
+              borderColor: '#374151',
+            }}
+          >
+            ← Tilbake til søk
+          </Button>
+        )}
         <Button
           size="small"
           variant="contained"
@@ -223,26 +301,55 @@ export const ReferenceArchivePanel: React.FC<Props> = ({ projectId, onPickFrame 
         </Button>
       </Stack>
 
-      {loading && (
-        <Stack direction="row" spacing={1} alignItems="center" sx={{ py: 3 }}>
-          <CircularProgress size={16} />
-          <Typography sx={{ fontSize: 12, color: '#9ca3af' }}>Henter frames…</Typography>
-        </Stack>
-      )}
-      {error && (
-        <Typography sx={{ fontSize: 12, color: '#f87171', py: 2 }}>Feil: {error}</Typography>
-      )}
-      {!loading && !error && results.length === 0 && (
-        <Typography
-          data-testid="pmv-archive-empty"
-          sx={{ fontSize: 13, color: '#9ca3af', textAlign: 'center', py: 4 }}
-        >
-          {query || shotType || timeOfDay
-            ? 'Ingen frames i arkivet matcher søket.'
-            : 'Arkivet er tomt. Last opp din første referanseframe.'}
-        </Typography>
+      {suggestMode ? (
+        <>
+          {suggesting && (
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ py: 3 }}>
+              <CircularProgress size={16} sx={{ color: '#a78bfa' }} />
+              <Typography sx={{ fontSize: 12, color: '#c4b5fd' }}>
+                Finner frames som matcher scenen…
+              </Typography>
+            </Stack>
+          )}
+          {suggestError && (
+            <Typography sx={{ fontSize: 12, color: '#f87171', py: 2 }}>
+              Foreslag feilet: {suggestError}
+            </Typography>
+          )}
+          {!suggesting && !suggestError && suggestions.length === 0 && (
+            <Typography
+              data-testid="pmv-archive-suggestions-empty"
+              sx={{ fontSize: 13, color: '#9ca3af', textAlign: 'center', py: 4 }}
+            >
+              Ingen matchende frames. Last opp flere referanser eller bytt tilbake til søk.
+            </Typography>
+          )}
+        </>
+      ) : (
+        <>
+          {loading && (
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ py: 3 }}>
+              <CircularProgress size={16} />
+              <Typography sx={{ fontSize: 12, color: '#9ca3af' }}>Henter frames…</Typography>
+            </Stack>
+          )}
+          {error && (
+            <Typography sx={{ fontSize: 12, color: '#f87171', py: 2 }}>Feil: {error}</Typography>
+          )}
+          {!loading && !error && results.length === 0 && (
+            <Typography
+              data-testid="pmv-archive-empty"
+              sx={{ fontSize: 13, color: '#9ca3af', textAlign: 'center', py: 4 }}
+            >
+              {query || shotType || timeOfDay
+                ? 'Ingen frames i arkivet matcher søket.'
+                : 'Arkivet er tomt. Last opp din første referanseframe.'}
+            </Typography>
+          )}
+        </>
       )}
       <Box
+        data-testid={suggestMode ? 'pmv-archive-suggestions-grid' : 'pmv-archive-results-grid'}
         sx={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
@@ -251,7 +358,74 @@ export const ReferenceArchivePanel: React.FC<Props> = ({ projectId, onPickFrame 
           overflowY: 'auto',
         }}
       >
-        {results.map((frame) => (
+        {suggestMode
+          ? suggestions.map(({ frame, similarity }) => (
+              <Box
+                key={frame.id}
+                data-testid={`pmv-archive-suggestion-${frame.id}`}
+                onClick={() => onPickFrame(frame.sourceUrl)}
+                sx={{
+                  position: 'relative',
+                  borderRadius: 1,
+                  overflow: 'hidden',
+                  bgcolor: '#0f1318',
+                  border: '1px solid rgba(139,92,246,0.4)',
+                  cursor: 'pointer',
+                  '&:hover': { borderColor: '#a78bfa' },
+                  '&:hover .archive-overlay': { opacity: 1 },
+                }}
+              >
+                <Box
+                  sx={{
+                    aspectRatio: '16/9',
+                    backgroundImage: `url(${frame.thumbnailUrl || frame.sourceUrl})`,
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center',
+                  }}
+                />
+                <Chip
+                  size="small"
+                  label={`${Math.round(similarity * 100)}%`}
+                  sx={{
+                    position: 'absolute',
+                    top: 4,
+                    right: 4,
+                    height: 18,
+                    fontSize: 10,
+                    bgcolor: 'rgba(139,92,246,0.8)',
+                    color: '#fff',
+                  }}
+                />
+                <Box
+                  className="archive-overlay"
+                  sx={{
+                    position: 'absolute',
+                    inset: 0,
+                    bgcolor: 'rgba(2,6,23,0.85)',
+                    opacity: 0,
+                    transition: 'opacity 0.15s',
+                    p: 1,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'flex-end',
+                    gap: 0.5,
+                  }}
+                >
+                  {frame.filmTitle && (
+                    <Typography sx={{ fontSize: 11, color: '#fff', fontWeight: 600 }}>
+                      {frame.filmTitle}
+                      {frame.year ? ` (${frame.year})` : ''}
+                    </Typography>
+                  )}
+                  {frame.cinematographer && (
+                    <Typography sx={{ fontSize: 10, color: '#cbd5e1' }}>
+                      DP: {frame.cinematographer}
+                    </Typography>
+                  )}
+                </Box>
+              </Box>
+            ))
+          : results.map((frame) => (
           <Box
             key={frame.id}
             data-testid={`pmv-archive-frame-${frame.id}`}
@@ -319,7 +493,7 @@ export const ReferenceArchivePanel: React.FC<Props> = ({ projectId, onPickFrame 
               </Stack>
             </Box>
           </Box>
-        ))}
+            ))}
       </Box>
 
       {/* Upload dialog */}

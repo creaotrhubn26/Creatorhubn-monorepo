@@ -34,6 +34,13 @@ import {
   type ReferenceFrameTagsShotType,
 } from './reference-archive-service.js';
 import { aiRateLimit } from './ai-rate-limiter.js';
+import {
+  buildFrameText,
+  buildSceneQueryText,
+  embedText,
+  searchByEmbedding,
+  setFrameEmbedding,
+} from './reference-archive-embeddings.js';
 
 interface SessionData {
   userId: string;
@@ -213,7 +220,69 @@ export function createReferenceArchiveRouter(
       userTags: parsed.data.userTags,
       usedOnProjectIds: parsed.data.usedOnProjectIds,
     });
+
+    // v2: generate semantic embedding for the frame so it's searchable by
+    // scene context. Failure here should NOT block the frame save — the
+    // suggest endpoint filters out null embeddings, and a backfill script
+    // can fill them later. We fire-and-forget after the response is sent.
+    void (async () => {
+      const text = buildFrameText(frame);
+      if (!text.trim()) return;
+      const result = await embedText(text);
+      if ('embedding' in result) {
+        await setFrameEmbedding(pool, frame.id, result.embedding).catch((err) => {
+          console.warn('[reference-archive] embedding persist failed', err);
+        });
+      } else {
+        console.warn('[reference-archive] embedding skipped:', result.error);
+      }
+    })();
+
     res.status(201).json({ success: true, data: frame });
+  });
+
+  // v2: "Foreslå referanser fra scene" — embed the scene description and
+  // return the owner's top-ranked frames by cosine similarity. Rate-limited
+  // because each call hits OpenAI embeddings.
+  const suggestBody = z.object({
+    scene: z.object({
+      sceneNumber: z.union([z.string(), z.number()]).optional(),
+      heading: z.string().max(300).optional(),
+      locationName: z.string().max(200).optional(),
+      intExt: z.string().max(20).optional(),
+      timeOfDay: z.string().max(40).optional(),
+      description: z.string().max(5000).optional(),
+      characters: z.array(z.string().max(120)).max(40).optional(),
+      mood: z.string().max(200).optional(),
+      beats: z.array(z.string().max(240)).max(20).optional(),
+    }),
+    limit: z.number().int().min(1).max(20).optional(),
+  });
+  const suggestLimit = aiRateLimit({ windowMs: 60_000, max: 20, label: 'Reference-archive suggest' });
+  router.post('/suggest', auth, suggestLimit, async (req: Request, res: Response): Promise<void> => {
+    const parsed = suggestBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'invalid_request', details: parsed.error.format() });
+      return;
+    }
+    const { userId } = req as AuthedRequest;
+    const text = buildSceneQueryText(parsed.data.scene);
+    if (!text.trim()) {
+      res.json({ success: true, data: [] });
+      return;
+    }
+    const embedded = await embedText(text);
+    if ('error' in embedded) {
+      const status = embedded.error === 'not_configured' ? 503 : 502;
+      res.status(status).json({ error: embedded.error });
+      return;
+    }
+    const rows = await searchByEmbedding(pool, {
+      ownerUserId: userId,
+      embedding: embedded.embedding,
+      limit: parsed.data.limit ?? 8,
+    });
+    res.json({ success: true, data: rows });
   });
 
   router.get('/frames', auth, async (req: Request, res: Response): Promise<void> => {

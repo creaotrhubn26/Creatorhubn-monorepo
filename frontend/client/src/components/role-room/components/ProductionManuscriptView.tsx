@@ -7876,6 +7876,30 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                           {searchSource === 'archive' ? (
                             <ReferenceArchivePanel
                               projectId={projectId}
+                              sceneContext={
+                                selectedScene
+                                  ? {
+                                      sceneNumber: selectedScene.sceneNumber,
+                                      heading: selectedScene.heading,
+                                      locationName: selectedScene.locationName,
+                                      intExt: selectedScene.intExt,
+                                      timeOfDay: selectedScene.timeOfDay,
+                                      description: selectedScene.description,
+                                      characters: [
+                                        ...new Set(
+                                          dialogueLines
+                                            .filter((d) => d.sceneId === selectedScene.id)
+                                            .map((d) => d.characterName),
+                                        ),
+                                      ],
+                                      beats:
+                                        readThroughAnalysis.status === 'ready' &&
+                                        readThroughAnalysis.analyzedSceneId === selectedScene.id
+                                          ? readThroughAnalysis.analysis?.sceneBrief.beats
+                                          : undefined,
+                                    }
+                                  : undefined
+                              }
                               onPickFrame={(url) => dispatchSearch({ type: 'ADD_REF_AND_CLOSE', url })}
                             />
                           ) : referenceSearchLoading ? (

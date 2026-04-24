@@ -142,6 +142,35 @@ export async function updateReferenceFrame(
   return body.data;
 }
 
+export interface SuggestedFrame {
+  frame: ReferenceFrame;
+  similarity: number;
+}
+
+export async function suggestFramesForScene(input: {
+  scene: {
+    sceneNumber?: string | number;
+    heading?: string;
+    locationName?: string;
+    intExt?: string;
+    timeOfDay?: string;
+    description?: string;
+    characters?: string[];
+    mood?: string;
+    beats?: string[];
+  };
+  limit?: number;
+}): Promise<SuggestedFrame[]> {
+  const res = await fetch('/api/reference-archive/suggest', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(input),
+  });
+  const body = await json<{ success: boolean; data: SuggestedFrame[] }>(res);
+  return body.data;
+}
+
 export async function deleteReferenceFrame(id: string): Promise<void> {
   const res = await fetch(`/api/reference-archive/frames/${encodeURIComponent(id)}`, {
     method: 'DELETE',
