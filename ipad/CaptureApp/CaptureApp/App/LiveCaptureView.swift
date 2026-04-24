@@ -97,9 +97,22 @@ struct LiveCaptureView: View {
                 .presentationDetents([.large])
         }
         .sheet(isPresented: $isSignInPresented) {
-            SignInView()
-                .environment(auth)
-                .presentationDetents([.large])
+            // SignInView is navigation-free by design — wrap it in our
+            // own NavigationStack here so the sheet presentation gets a
+            // title bar + a close affordance. The onboarding sign-in
+            // step supplies its own title and doesn't need this wrapper.
+            NavigationStack {
+                SignInView()
+                    .navigationTitle("Logg inn")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Lukk") { isSignInPresented = false }
+                        }
+                    }
+            }
+            .environment(auth)
+            .presentationDetents([.large])
         }
         .sheet(isPresented: $isProjectSelectionPresented) {
             ProjectSelectionView { summary in
