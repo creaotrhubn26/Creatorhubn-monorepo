@@ -106,5 +106,10 @@ Camera Agreement*.pdf
 .meta-playwright-state.json
 **/.meta-playwright-state.json
 
+# Playwright auth state for Google Cloud Console — contains Google session
+# cookies + 2FA device-trust. Must NEVER be committed.
+.google-cloud-playwright-state.json
+**/.google-cloud-playwright-state.json
+
 # Editor / backup files
 *.bak

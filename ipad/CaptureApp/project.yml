@@ -51,12 +51,12 @@ targets:
         # Until both are filled in, `GoogleOAuthCoordinator.isConfigured`
         # returns false and `SignInView` falls back to the paste-token
         # flow so builds stay usable pre-setup.
-        GoogleOAuthClientID: REPLACE_WITH_IOS_OAUTH_CLIENT_ID
+        GoogleOAuthClientID: 256648631702-s96ihgei36g0pgc11t4o27arcjoc35g5.apps.googleusercontent.com
         CFBundleURLTypes:
           - CFBundleTypeRole: Editor
             CFBundleURLName: com.creatorhubn.capture.google-oauth
             CFBundleURLSchemes:
-              - com.googleusercontent.apps.REPLACE_WITH_REVERSED_CLIENT_ID
+              - com.googleusercontent.apps.256648631702-s96ihgei36g0pgc11t4o27arcjoc35g5
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.creatorhubn.capture
