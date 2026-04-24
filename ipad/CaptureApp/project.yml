@@ -31,13 +31,32 @@ targets:
     info:
       path: CaptureApp/Generated/Info.plist
       properties:
-        CFBundleDisplayName: CreatorHub Capture
-        UILaunchScreen: {}
+        CFBundleDisplayName: CreatorHub One
+        UILaunchScreen:
+          UIColorName: LaunchSplashBackground
+          UIImageName: CreatorHubOneLogo
+          UIImageRespectsSafeAreaInsets: true
         UIRequiredDeviceCapabilities: [arm64]
         NSLocalNetworkUsageDescription: Used to discover and communicate with your Canon camera over the local network during a shoot.
         NSBonjourServices: [_http._tcp]
         NSCameraUsageDescription: Not used. Present only to satisfy App Store review when tethering to external cameras.
         NSPhotoLibraryAddUsageDescription: Used only when you explicitly export a captured session to Photos.
+        # Google OAuth — one-time setup per Google Cloud project:
+        #   1. Register an OAuth 2.0 Client ID of type "iOS" with bundle
+        #      identifier `com.creatorhubn.capture`.
+        #   2. Paste the resulting client ID below (format:
+        #      `<num>-<hash>.apps.googleusercontent.com`).
+        #   3. Replace the URL scheme with the reversed client ID
+        #      (`com.googleusercontent.apps.<num>-<hash>`).
+        # Until both are filled in, `GoogleOAuthCoordinator.isConfigured`
+        # returns false and `SignInView` falls back to the paste-token
+        # flow so builds stay usable pre-setup.
+        GoogleOAuthClientID: REPLACE_WITH_IOS_OAUTH_CLIENT_ID
+        CFBundleURLTypes:
+          - CFBundleTypeRole: Editor
+            CFBundleURLName: com.creatorhubn.capture.google-oauth
+            CFBundleURLSchemes:
+              - com.googleusercontent.apps.REPLACE_WITH_REVERSED_CLIENT_ID
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.creatorhubn.capture

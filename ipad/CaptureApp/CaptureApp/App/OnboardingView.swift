@@ -78,6 +78,22 @@ struct OnboardingView: View {
                 .accessibilityLabel("CreatorHub One")
             Text("CreatorHub One")
                 .font(.system(size: 44, weight: .bold))
+            // Parent-brand attribution: CreatorHub One is one product
+            // in the CreatorHub family (alongside Academy + Community).
+            // The small master logo keeps the relationship visible on
+            // first launch without competing with the C1 primary mark.
+            HStack(spacing: 8) {
+                Image("CreatorHubLogo")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 20, height: 20)
+                    .accessibilityHidden(true)
+                Text("av CreatorHub")
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(.secondary)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Et produkt fra CreatorHub")
             Text("Én app for hele fotograf-arbeidsdagen — fra shoot til levert.")
                 .font(.title3)
                 .foregroundStyle(.secondary)

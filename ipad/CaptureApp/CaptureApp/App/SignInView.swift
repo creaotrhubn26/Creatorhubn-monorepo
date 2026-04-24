@@ -1,18 +1,19 @@
 import SwiftUI
 
-/// MVP sign-in surface. Two paths:
-/// 1. **Google ID token** — paste an ID token (e.g. from Google OAuth
-///    Playground or the GoogleSignIn SDK once integrated). Backend
-///    exchanges via /api/auth/google/token and returns a CreatorHub
-///    bearer.
-/// 2. **CreatorHub bearer** — paste an already-issued session bearer
-///    directly. Useful for staging environments where Google OAuth isn't
-///    wired yet.
-///
-/// Once GoogleSignIn-Swift SPM is added (task #73), this view collapses
-/// to a single "Sign in with Google" button and the SDK handles the
-/// rest. The service contract stays identical so nothing downstream
-/// needs to change.
+/// Sign-in surface. Three paths, in preference order:
+/// 1. **Sign in with Google** (primary) — opens Google's OAuth flow in
+///    ``ASWebAuthenticationSession`` via ``GoogleOAuthCoordinator``.
+///    Returns an ID token that the backend exchanges via
+///    ``/api/auth/google/token``. Only shown when the Info.plist
+///    contains a ``GoogleOAuthClientID`` (see
+///    ``GoogleOAuthCoordinator`` for the one-time setup steps).
+/// 2. **Paste Google ID token** — fallback for builds without an iOS
+///    OAuth client registered yet; paste a token from Google OAuth
+///    Playground or any ID-token source. Same backend route as (1).
+/// 3. **CreatorHub bearer** — paste an already-issued session bearer
+///    directly. Useful for staging environments where Google OAuth
+///    isn't wired yet or for running tests against a pre-issued
+///    session.
 struct SignInView: View {
     @Environment(SignInService.self) private var auth
     @Environment(\.dismiss) private var dismiss
@@ -28,6 +29,7 @@ struct SignInView: View {
     @State private var manualName: String = ""
     @State private var isWorking: Bool = false
     @State private var errorMessage: String?
+    @State private var googleOAuth = GoogleOAuthCoordinator()
 
     enum Mode: String, CaseIterable, Hashable {
         case googleIdToken = "Google ID token"
@@ -52,9 +54,28 @@ struct SignInView: View {
 
                     switch mode {
                     case .googleIdToken:
-                        Text("Paste a Google ID token. The backend exchanges it via /api/auth/google/token. The native GoogleSignIn SDK lands in a follow-up; for now this lets us validate end-to-end with a token from Google's OAuth Playground.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
+                        if googleOAuth.isConfigured {
+                            Button {
+                                Task { await signInWithGoogleNative() }
+                            } label: {
+                                HStack(spacing: 10) {
+                                    Image(systemName: "g.circle.fill")
+                                        .font(.title3)
+                                    Text("Sign in with Google")
+                                        .fontWeight(.semibold)
+                                }
+                                .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(isWorking)
+                            Text("Opens Google in a secure system sheet. No credentials touch the app — only the resulting ID token, which the backend exchanges for a CreatorHub session.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Text("Native Google sign-in isn't configured on this build. Set `GoogleOAuthClientID` in Info.plist (see GoogleOAuthCoordinator for the one-time Google Cloud Console steps), or paste a Google ID token below — backend exchanges it via /api/auth/google/token.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
                         TextEditor(text: $googleIdToken)
                             .frame(minHeight: 80)
                             .font(.caption.monospaced())
@@ -129,6 +150,32 @@ struct SignInView: View {
             return !googleIdToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         case .manualBearer:
             return !bearer.isEmpty && !manualUserId.isEmpty && !manualEmail.isEmpty
+        }
+    }
+
+    /// Kick off the native Google OAuth flow. We obtain a Google
+    /// ``id_token`` from ``GoogleOAuthCoordinator`` + pipe it into the
+    /// existing ``signInWithGoogleIDToken`` pipeline — so the backend
+    /// contract is identical to the paste flow.
+    private func signInWithGoogleNative() async {
+        errorMessage = nil
+        isWorking = true
+        defer { isWorking = false }
+        guard let baseURL = URL(string: backendBaseURLString) else {
+            errorMessage = "Invalid backend URL"
+            return
+        }
+        do {
+            let idToken = try await googleOAuth.obtainIDToken()
+            try await auth.signInWithGoogleIDToken(
+                backendBaseURL: baseURL,
+                googleIDToken: idToken,
+            )
+            dismiss()
+        } catch GoogleOAuthCoordinator.OAuthError.userCancelled {
+            // Silent — cancelling isn't a failure worth a banner.
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 
