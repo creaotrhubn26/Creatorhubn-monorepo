@@ -17,16 +17,31 @@ actor CCAPIClient {
     private let baseURL: URL
     private let session: URLSession
     private let decoder: JSONDecoder
+    private let recorder: CCAPISessionRecorder?
     private var inventory: CCAPIInventory?
 
     init(
         baseURL: URL,
         session: URLSession = .shared,
         decoder: JSONDecoder = JSONDecoder(),
+        recorder: CCAPISessionRecorder? = CCAPISessionRecorder.shared,
     ) {
         self.baseURL = baseURL
         self.session = session
         self.decoder = decoder
+        self.recorder = recorder
+    }
+
+    /// Strip the camera's base URL out of an absolute URL so the logged
+    /// path is relative (``/ccapi/ver100/shooting/...``). Keeps the log
+    /// portable across cameras with different IPs.
+    private func relativePath(_ url: URL) -> String {
+        let abs = url.absoluteString
+        let base = baseURL.absoluteString
+        if abs.hasPrefix(base) {
+            return String(abs.dropFirst(base.count))
+        }
+        return url.path
     }
 
     /// Build a `URLSession` that trusts the self-signed certificate served by
@@ -131,10 +146,31 @@ actor CCAPIClient {
             request.setValue("bytes=\(range.lowerBound)-\(range.upperBound - 1)",
                               forHTTPHeaderField: "Range")
         }
-        let (data, response) = try await session.data(for: request)
+        let path = relativePath(contentURL)
+        let started = Date()
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            await recorder?.recordError(method: "GET", relativePath: path, error: String(describing: error))
+            throw error
+        }
         guard let http = response as? HTTPURLResponse else {
+            await recorder?.recordError(method: "GET", relativePath: path, error: "not HTTPURLResponse")
             throw CCAPIError.invalidResponse("not HTTPURLResponse")
         }
+        // Content downloads are JPEG/RAW bytes — too large to log and
+        // would leak image data. Record metadata only: size, range,
+        // status, duration. ``nil`` responseBody hints the replay side
+        // that actual bytes are elsewhere (or synthetic).
+        await recorder?.recordHTTP(
+            method: "GET",
+            relativePath: path + (range.map { " (range=\($0.lowerBound)-\($0.upperBound - 1))" } ?? " (\(data.count) bytes)"),
+            requestBody: nil,
+            statusCode: http.statusCode,
+            responseBody: nil,
+            durationMs: Date().timeIntervalSince(started) * 1000,
+        )
         guard (200..<300).contains(http.statusCode) else {
             throw CCAPIError.httpStatus(
                 code: http.statusCode,
@@ -163,19 +199,32 @@ actor CCAPIClient {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let requestBody = try JSONSerialization.data(withJSONObject: body)
+        request.httpBody = requestBody
+        let started = Date()
         let data: Data
         let response: URLResponse
         do {
             (data, response) = try await session.data(for: request)
         } catch let urlError as URLError where urlError.code == .timedOut {
+            await recorder?.recordError(method: "POST", relativePath: path, error: "timedOut")
             throw CCAPIError.timedOut
         } catch let urlError as URLError {
+            await recorder?.recordError(method: "POST", relativePath: path, error: String(describing: urlError.code))
             throw CCAPIError.network(String(describing: urlError.code))
         }
         guard let http = response as? HTTPURLResponse else {
+            await recorder?.recordError(method: "POST", relativePath: path, error: "not HTTPURLResponse")
             throw CCAPIError.invalidResponse("not HTTPURLResponse")
         }
+        await recorder?.recordHTTP(
+            method: "POST",
+            relativePath: path,
+            requestBody: requestBody,
+            statusCode: http.statusCode,
+            responseBody: data,
+            durationMs: Date().timeIntervalSince(started) * 1000,
+        )
         if http.statusCode == 503 { throw CCAPIError.cameraBusy }
         guard (200..<300).contains(http.statusCode) else {
             throw CCAPIError.httpStatus(
@@ -267,18 +316,31 @@ actor CCAPIClient {
         if let timeout {
             request.timeoutInterval = timeout
         }
+        let path = relativePath(url)
+        let started = Date()
         let data: Data
         let response: URLResponse
         do {
             (data, response) = try await session.data(for: request)
         } catch let urlError as URLError where urlError.code == .timedOut {
+            await recorder?.recordError(method: "GET", relativePath: path, error: "timedOut")
             throw CCAPIError.timedOut
         } catch let urlError as URLError {
+            await recorder?.recordError(method: "GET", relativePath: path, error: String(describing: urlError.code))
             throw CCAPIError.network(String(describing: urlError.code))
         }
         guard let http = response as? HTTPURLResponse else {
+            await recorder?.recordError(method: "GET", relativePath: path, error: "not HTTPURLResponse")
             throw CCAPIError.invalidResponse("not HTTPURLResponse")
         }
+        await recorder?.recordHTTP(
+            method: "GET",
+            relativePath: path,
+            requestBody: nil,
+            statusCode: http.statusCode,
+            responseBody: data,
+            durationMs: Date().timeIntervalSince(started) * 1000,
+        )
         if http.statusCode == 503 {
             throw CCAPIError.cameraBusy
         }

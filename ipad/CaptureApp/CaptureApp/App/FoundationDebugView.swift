@@ -26,6 +26,11 @@ struct FoundationDebugView: View {
     @State private var lastError: String?
     @State private var workerRunning = false
 
+    @State private var recorderActive: Bool = false
+    @State private var recorderFileURL: URL?
+    @State private var recorderError: String?
+    @State private var isShareSheetPresented: Bool = false
+
     private let database: AppDatabase?
     private let outbox: Outbox?
     private let worker: OutboxWorker?
@@ -64,6 +69,7 @@ struct FoundationDebugView: View {
                 schemaSection
                 rowCountsSection
                 outboxSection
+                recorderSection
             }
             .navigationTitle("Foundation")
             .toolbar {
@@ -75,7 +81,12 @@ struct FoundationDebugView: View {
                     }
                 }
             }
-            .task { await reload() }
+            .task { await reload(); await refreshRecorderState() }
+            .sheet(isPresented: $isShareSheetPresented) {
+                if let url = recorderFileURL {
+                    ActivityShareSheet(items: [url])
+                }
+            }
             .task(id: workerRunning) {
                 // While the worker is running, poll the UI every 1s
                 // so you can watch pending → syncing → succeeded
@@ -317,6 +328,103 @@ struct FoundationDebugView: View {
             }
         }
     }
+
+    // MARK: - CCAPI session recorder
+
+    /// Records every CCAPI HTTP round-trip to a JSONL file so we can
+    /// replay a photographer's session against a future adapter for a
+    /// camera brand we don't own. See ``CCAPISessionRecorder`` + the
+    /// multi-brand roadmap in docs.
+    private var recorderSection: some View {
+        Section {
+            if recorderActive {
+                HStack {
+                    Image(systemName: "record.circle.fill")
+                        .foregroundStyle(.red)
+                    Text("Tar opp")
+                        .font(.body.weight(.semibold))
+                    Spacer()
+                    if let url = recorderFileURL {
+                        Text(url.lastPathComponent)
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                }
+                Button(role: .destructive) {
+                    Task { await stopRecording() }
+                } label: {
+                    Label("Stopp + lagre", systemImage: "stop.circle")
+                }
+            } else {
+                Text("Registrerer alle CCAPI-anrop til en JSONL-fil — del med support-teamet for å avdekke kantcases mot kameraer vi ikke eier.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                Button {
+                    Task { await startRecording() }
+                } label: {
+                    Label("Start opptak", systemImage: "record.circle")
+                }
+            }
+            if let url = recorderFileURL, !recorderActive {
+                Button {
+                    isShareSheetPresented = true
+                } label: {
+                    Label("Del loggfil", systemImage: "square.and.arrow.up")
+                }
+            }
+            if let recorderError {
+                Label(recorderError, systemImage: "exclamationmark.triangle.fill")
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+            }
+        } header: {
+            Text("Sesjonsopptak (CCAPI)")
+        } footer: {
+            Text("Loggen havner i Documents/CreatorHubSessions/. Den inneholder HTTP-metode + URI + JSON-body, men aldri bildedata.")
+                .font(.caption)
+        }
+    }
+
+    private func startRecording() async {
+        recorderError = nil
+        do {
+            let url = try await CCAPISessionRecorder.shared.start(label: "debug")
+            recorderFileURL = url
+            recorderActive = true
+        } catch {
+            recorderError = "Kunne ikke starte opptak: \(error.localizedDescription)"
+        }
+    }
+
+    private func stopRecording() async {
+        // Preserve the URL across the stop() call so the share sheet
+        // can still reach the finalized file.
+        let preserved = await CCAPISessionRecorder.shared.currentFileURL
+        _ = await CCAPISessionRecorder.shared.stop()
+        recorderFileURL = preserved
+        recorderActive = false
+    }
+
+    private func refreshRecorderState() async {
+        recorderActive = await CCAPISessionRecorder.shared.isActive
+        if let url = await CCAPISessionRecorder.shared.currentFileURL {
+            recorderFileURL = url
+        }
+    }
+}
+
+/// UIKit share-sheet bridge for Files-app export. Kept minimal so the
+/// debug view doesn't need to pull in Core/Share infrastructure.
+private struct ActivityShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }
 
 // MARK: - Small view helpers

@@ -14,6 +14,17 @@ struct CaptureAppMain: App {
         WindowGroup {
             RootView()
                 .environment(SignInService.shared)
+                .task {
+                    // `--record-session` turns on the CCAPI HTTP log
+                    // (see ``CCAPISessionRecorder``). Used by the
+                    // community-validation loaner program — photographer
+                    // runs a diagnostic shoot, sends us the JSONL log,
+                    // we replay it against new adapters without ever
+                    // holding their camera. Off by default.
+                    if ProcessInfo.processInfo.arguments.contains("--record-session") {
+                        _ = try? await CCAPISessionRecorder.shared.start(label: "launch")
+                    }
+                }
         }
     }
 }
