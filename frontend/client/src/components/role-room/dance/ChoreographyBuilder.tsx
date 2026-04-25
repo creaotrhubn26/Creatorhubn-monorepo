@@ -97,6 +97,11 @@ export interface ChoreographyBuilderProps {
   onSave?: (choreography: Choreography) => void;
   /** Hvis satt, autosaver hver endring etter 1.5s debounce. */
   onAutosave?: (choreography: Choreography) => Promise<void> | void;
+  /**
+   * Hvis satt, vises en liten "Profil"-knapp ved siden av hver danser i
+   * inspector-panelet. Default `undefined` → ingen visuell endring.
+   */
+  onOpenDancerProfile?: (dancerId: string) => void;
 }
 
 // ─── Hovedkomponent ─────────────────────────────────────────────────────
@@ -105,6 +110,7 @@ export const ChoreographyBuilder: React.FC<ChoreographyBuilderProps> = ({
   initialChoreography,
   onSave,
   onAutosave,
+  onOpenDancerProfile,
 }) => {
   const branding = useBrandingSettings();
   const labels = branding.tokens.labels;
@@ -452,6 +458,7 @@ export const ChoreographyBuilder: React.FC<ChoreographyBuilderProps> = ({
               labels={labels}
               onChange={(patch) => updateSegment(selectedSegment.id, patch)}
               onDelete={() => deleteSegment(selectedSegment.id)}
+              onOpenDancerProfile={onOpenDancerProfile}
             />
           ) : (
             <Typography sx={{ fontSize: 12, color: '#6b7280' }}>
@@ -910,9 +917,12 @@ interface SegmentInspectorProps {
   labels: ReturnType<typeof useBrandingSettings>['tokens']['labels'];
   onChange: (patch: Partial<Segment>) => void;
   onDelete: () => void;
+  onOpenDancerProfile?: (dancerId: string) => void;
 }
 
-const SegmentInspector: React.FC<SegmentInspectorProps> = ({ segment, labels, onChange, onDelete }) => {
+const SegmentInspector: React.FC<SegmentInspectorProps> = ({
+  segment, labels, onChange, onDelete, onOpenDancerProfile,
+}) => {
   const meta = getSegmentMeta(segment.kind);
   const energyMeta = getEnergyMeta(segment.energy);
   const approvalMeta = getApprovalMeta(segment.approval);
@@ -1060,12 +1070,19 @@ const SegmentInspector: React.FC<SegmentInspectorProps> = ({ segment, labels, on
                 size="small"
                 icon={<PersonIcon sx={{ fontSize: 11 }} />}
                 label={d}
+                onClick={onOpenDancerProfile ? () => onOpenDancerProfile(d) : undefined}
+                clickable={!!onOpenDancerProfile}
+                data-testid={`choreo-inspector-dancer-${d}`}
                 sx={{
                   height: 20,
                   fontSize: 10,
                   bgcolor: 'rgba(59,130,246,0.18)',
                   color: '#93c5fd',
                   border: '1px solid rgba(59,130,246,0.4)',
+                  cursor: onOpenDancerProfile ? 'pointer' : 'default',
+                  '&:hover': onOpenDancerProfile
+                    ? { bgcolor: 'rgba(59,130,246,0.28)' }
+                    : undefined,
                 }}
               />
             ))

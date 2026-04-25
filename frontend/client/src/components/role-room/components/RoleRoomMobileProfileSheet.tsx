@@ -1,12 +1,13 @@
 // @ts-nocheck
 /**
- * RoleRoomMobileProfileSheet — profile + workspace info for mobile + iPad.
+ * RoleRoomMobileProfileSheet — profile + workspace info for mobile + iPad + desktop.
  *
  * Covers backlog items:
  *  - 039/040: workspace + Google status inside profile modal on mobile
  *  - 045: logout as secondary action with extra spacing (destructive-gap)
+ *  - Dans-vertikal: admin-only profession-mode switcher inside profile modal.
  *
- * Phone: fullscreen bottom sheet. iPad: popover anchored to profile button.
+ * Phone: fullscreen bottom sheet. iPad/desktop: popover anchored to profile button.
  */
 
 import React from 'react';
@@ -27,9 +28,12 @@ import {
   Close as CloseIcon,
   Logout as LogoutIcon,
   Person as PersonIcon,
+  SwapHoriz as ModeIcon,
 } from '@mui/icons-material';
 
 import type { RoleRoomViewportMode } from '../hooks/useRoleRoomViewportMode';
+import ProfessionModeSwitcher from './ProfessionModeSwitcher';
+import { getActiveProfessionMode } from '../config/professionMode';
 
 interface ProfileWorkspaceSummary {
   companyName?: string | null;
@@ -47,6 +51,8 @@ interface RoleRoomMobileProfileSheetProps {
   roleLabel?: string | null;
   workspaceSummary?: ProfileWorkspaceSummary | null;
   onLogout?: () => void;
+  /** Admin-only: vis profession-mode-switcher i profilen. */
+  isAdmin?: boolean;
 }
 
 function initialsOf(name?: string | null, email?: string | null): string {
@@ -67,11 +73,15 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
   roleLabel,
   workspaceSummary,
   onLogout,
+  isAdmin,
 }) => {
-  const usePopover = mode === 'tabletPortrait' || mode === 'tabletLandscape';
+  const usePopover =
+    mode === 'tabletPortrait' || mode === 'tabletLandscape' || mode === 'desktop';
   const showWorkspace = Boolean(
     workspaceSummary?.statusLabel || workspaceSummary?.planName || workspaceSummary?.companyName,
   );
+  const [modeSwitcherOpen, setModeSwitcherOpen] = React.useState(false);
+  const activeProfessionMode = getActiveProfessionMode();
 
   const body = (
     <Stack spacing={2} sx={{ p: 2 }}>
@@ -120,6 +130,33 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
         </>
       ) : null}
 
+      {isAdmin ? (
+        <>
+          <Divider />
+          <Stack spacing={1}>
+            <Typography variant="overline" color="text.secondary">
+              Profesjonsmodus (admin)
+            </Typography>
+            <Button
+              fullWidth
+              variant="outlined"
+              startIcon={<ModeIcon />}
+              onClick={() => setModeSwitcherOpen(true)}
+              sx={{
+                minHeight: 'var(--rr-touch-target-min, 44px)',
+                justifyContent: 'flex-start',
+                borderColor: 'rgba(124,58,237,0.35)',
+                color: '#6d28d9',
+                textTransform: 'none',
+                fontWeight: 600,
+              }}
+            >
+              Bytt modus (nå: {activeProfessionMode})
+            </Button>
+          </Stack>
+        </>
+      ) : null}
+
       {onLogout ? (
         <>
           <Divider />
@@ -147,70 +184,93 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
     </Stack>
   );
 
+  const modeSwitcherDialog = isAdmin ? (
+    <Dialog
+      open={modeSwitcherOpen}
+      onClose={() => setModeSwitcherOpen(false)}
+      maxWidth="md"
+      fullWidth
+    >
+      <DialogTitle>Bytt profesjonsmodus</DialogTitle>
+      <DialogContent dividers>
+        <ProfessionModeSwitcher />
+      </DialogContent>
+      <Box sx={{ p: 2, display: 'flex', justifyContent: 'flex-end' }}>
+        <Button onClick={() => setModeSwitcherOpen(false)}>Lukk</Button>
+      </Box>
+    </Dialog>
+  ) : null;
+
   if (usePopover) {
     return (
-      <Popover
-        open={open}
-        anchorEl={anchorEl ?? null}
-        onClose={onClose}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-        slotProps={{
-          paper: {
-            sx: {
-              mt: 0.5,
-              width: 'min(340px, 90vw)',
-              borderRadius: 2,
+      <>
+        <Popover
+          open={open}
+          anchorEl={anchorEl ?? null}
+          onClose={onClose}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+          transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+          slotProps={{
+            paper: {
+              sx: {
+                mt: 0.5,
+                width: 'min(340px, 90vw)',
+                borderRadius: 2,
+              },
             },
-          },
-        }}
-      >
-        {body}
-      </Popover>
+          }}
+        >
+          {body}
+        </Popover>
+        {modeSwitcherDialog}
+      </>
     );
   }
 
   return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      fullScreen
-      aria-labelledby="rr-profile-title"
-      PaperProps={{
-        className: 'rr-mobile-sheet',
-        sx: {
-          margin: 0,
-          borderTopLeftRadius: 'var(--rr-bottom-sheet-radius, 16px)',
-          borderTopRightRadius: 'var(--rr-bottom-sheet-radius, 16px)',
-        },
-      }}
-    >
-      <DialogTitle
-        id="rr-profile-title"
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          pt: 'calc(var(--rr-safe-top, 0px) + 12px)',
+    <>
+      <Dialog
+        open={open}
+        onClose={onClose}
+        fullScreen
+        aria-labelledby="rr-profile-title"
+        PaperProps={{
+          className: 'rr-mobile-sheet',
+          sx: {
+            margin: 0,
+            borderTopLeftRadius: 'var(--rr-bottom-sheet-radius, 16px)',
+            borderTopRightRadius: 'var(--rr-bottom-sheet-radius, 16px)',
+          },
         }}
       >
-        <Typography variant="h6" fontWeight={700}>
-          Profil
-        </Typography>
-        <IconButton
-          onClick={onClose}
-          aria-label="Lukk profil"
+        <DialogTitle
+          id="rr-profile-title"
           sx={{
-            width: 'var(--rr-touch-target-min, 44px)',
-            height: 'var(--rr-touch-target-min, 44px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            pt: 'calc(var(--rr-safe-top, 0px) + 12px)',
           }}
         >
-          <CloseIcon />
-        </IconButton>
-      </DialogTitle>
-      <Divider />
-      <DialogContent sx={{ p: 0, pb: 'var(--rr-safe-bottom, 0px)' }}>{body}</DialogContent>
-    </Dialog>
+          <Typography variant="h6" fontWeight={700}>
+            Profil
+          </Typography>
+          <IconButton
+            onClick={onClose}
+            aria-label="Lukk profil"
+            sx={{
+              width: 'var(--rr-touch-target-min, 44px)',
+              height: 'var(--rr-touch-target-min, 44px)',
+            }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <Divider />
+        <DialogContent sx={{ p: 0, pb: 'var(--rr-safe-bottom, 0px)' }}>{body}</DialogContent>
+      </Dialog>
+      {modeSwitcherDialog}
+    </>
   );
 };
 

@@ -1447,7 +1447,29 @@ export type BrandingTextTokenKey =
   | 'choreographyApprovalDraft'
   | 'choreographyApprovalReview'
   | 'choreographyApprovalApproved'
-  | 'choreographyApprovalLocked';
+  | 'choreographyApprovalLocked'
+
+  // ─── Booking / crew-gjenbruk for dans (PR #5, lagt til 2026-04-25) ───────
+  // Brukes av DanceProjectCalendar + DancerAvailabilityPanel som wrapper
+  // den eksisterende crew/booking-infrastrukturen for dans.
+  | 'danceBookingHeader'
+  | 'danceBookingCalendarLabel'
+  | 'danceBookingAvailabilityLabel'
+  | 'danceBookingFromCrewNote'
+
+  // ─── Dancer Profiles (PR #6, lagt til 2026-04-25) ────────────────────────
+  // Owner-scoped profiler for hver danser — brukes av DancerProfileGrid,
+  // DancerProfileCard og DancerProfileEditor.
+  | 'dancerProfileHeader'
+  | 'dancerProfileEditTitle'
+  | 'dancerProfileNewTitle'
+  | 'dancerProfileSkillsLabel'
+  | 'dancerProfileBodyLabel'
+  | 'dancerProfileAvailabilityLabel'
+  | 'dancerProfileInjuryLabel'
+  | 'dancerProfileReelLabel'
+  | 'dancerProfileNotesLabel'
+  | 'dancerProfileEmptyState';
 
 export type BrandingIdentity = {
   appName: string;
@@ -3040,6 +3062,25 @@ const DEFAULT_TOKENS: BrandingTokens = {
     choreographyApprovalReview: 'Til gjennomgang',
     choreographyApprovalApproved: 'Godkjent',
     choreographyApprovalLocked: 'Låst (klar til forestilling)',
+
+    // Booking / crew-gjenbruk for dans (PR #5)
+    danceBookingHeader: 'Booking',
+    danceBookingCalendarLabel: 'Danser-kalender',
+    danceBookingAvailabilityLabel: 'Tilgjengelighet',
+    danceBookingFromCrewNote:
+      'Bygd på samme infrastruktur som Crew-modulen — danse-spesifikk visning.',
+
+    // Dancer Profiles (PR #6)
+    dancerProfileHeader: 'Danserprofiler',
+    dancerProfileEditTitle: 'Rediger profil',
+    dancerProfileNewTitle: 'Ny danserprofil',
+    dancerProfileSkillsLabel: 'Ferdigheter',
+    dancerProfileBodyLabel: 'Kropp',
+    dancerProfileAvailabilityLabel: 'Tilgjengelighet',
+    dancerProfileInjuryLabel: 'Skadestatus',
+    dancerProfileReelLabel: 'Reel',
+    dancerProfileNotesLabel: 'Notater',
+    dancerProfileEmptyState: 'Ingen danserprofiler enda — legg til den første',
   },
 };
 

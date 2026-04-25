@@ -17,6 +17,7 @@ import type {
 export interface ChoreographyHeader {
   id: string;
   ownerUserId: string;
+  projectId: string | null;
   title: string;
   choreographer: string | null;
   totalDurationSec: number;
@@ -44,6 +45,7 @@ interface RawSegment {
 
 interface RawChoreography {
   id: string;
+  projectId: string | null;
   title: string;
   choreographer: string | null;
   musicTitle: string | null;
@@ -71,6 +73,7 @@ function toClient(raw: RawChoreography): Choreography {
     bpm: raw.bpm ?? undefined,
     musicalKey: raw.musicalKey ?? undefined,
     totalDurationSec: raw.totalDurationSec,
+    projectId: raw.projectId ?? null,
     segments: raw.segments.map((s): Segment => ({
       id: s.id,
       kind: s.kind,
@@ -91,8 +94,12 @@ function toClient(raw: RawChoreography): Choreography {
   };
 }
 
-export async function listChoreographies(): Promise<ChoreographyHeader[]> {
-  const res = await fetch('/api/dance/choreography', { credentials: 'include' });
+export async function listChoreographies(projectId?: string): Promise<ChoreographyHeader[]> {
+  const url =
+    typeof projectId === 'string' && projectId.length > 0
+      ? `/api/dance/choreography?projectId=${encodeURIComponent(projectId)}`
+      : '/api/dance/choreography';
+  const res = await fetch(url, { credentials: 'include' });
   const body = await json<{ success: boolean; data: ChoreographyHeader[] }>(res);
   return body.data;
 }
@@ -104,6 +111,7 @@ export async function createChoreography(input: {
   bpm?: number | null;
   musicalKey?: string | null;
   totalDurationSec?: number;
+  projectId?: string | null;
 }): Promise<Choreography> {
   const res = await fetch('/api/dance/choreography', {
     method: 'POST',
@@ -134,6 +142,7 @@ export async function updateChoreographyHeader(
     totalDurationSec: number;
     musicUrl: string | null;
     musicStorageKey: string | null;
+    projectId: string | null;
   }>,
 ): Promise<Choreography> {
   const res = await fetch(`/api/dance/choreography/${encodeURIComponent(id)}`, {

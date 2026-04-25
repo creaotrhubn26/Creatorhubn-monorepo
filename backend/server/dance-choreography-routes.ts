@@ -82,6 +82,10 @@ const SEGMENT_KINDS = [
 const ENERGY_LEVELS = ['low', 'controlled', 'medium', 'high', 'sharp', 'explosive'] as const;
 const APPROVAL_STATUSES = ['draft', 'review', 'approved', 'locked'] as const;
 
+// Project-id holdes som fri string (1-200 tegn). Vi krever ikke UUID-format
+// fordi CreatorHub sin nåværende prosjekt-modell ikke garanterer det.
+const projectIdSchema = z.string().min(1).max(200);
+
 const createBody = z.object({
   title: z.string().min(1).max(300),
   choreographer: z.string().max(200).nullable().optional(),
@@ -89,6 +93,7 @@ const createBody = z.object({
   bpm: z.number().int().min(40).max(300).nullable().optional(),
   musicalKey: z.string().max(40).nullable().optional(),
   totalDurationSec: z.number().int().min(0).max(7200).optional(),
+  projectId: projectIdSchema.optional(),
 });
 
 const patchHeaderBody = z.object({
@@ -100,6 +105,7 @@ const patchHeaderBody = z.object({
   totalDurationSec: z.number().int().min(0).max(7200).optional(),
   musicUrl: z.string().url().nullable().optional(),
   musicStorageKey: z.string().max(500).nullable().optional(),
+  projectId: projectIdSchema.nullable().optional(),
 });
 
 const segmentInputSchema = z.object({
@@ -142,7 +148,17 @@ export function createDanceChoreographyRouter(
   router.get('/', auth, async (req: Request, res: Response): Promise<void> => {
     const { userId } = req as AuthedRequest;
     const limitRaw = req.query.limit ? Number(req.query.limit) : undefined;
-    const rows = await listChoreographies(pool, userId, limitRaw);
+    const rawProjectId = req.query.projectId;
+    let projectId: string | undefined;
+    if (typeof rawProjectId === 'string' && rawProjectId.trim().length > 0) {
+      const parsed = projectIdSchema.safeParse(rawProjectId.trim());
+      if (!parsed.success) {
+        res.status(400).json({ error: 'invalid_project_id' });
+        return;
+      }
+      projectId = parsed.data;
+    }
+    const rows = await listChoreographies(pool, userId, { projectId, limit: limitRaw });
     res.json({ success: true, data: rows });
   });
 

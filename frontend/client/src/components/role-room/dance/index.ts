@@ -46,3 +46,50 @@ export {
   type SegmentKind,
   type TimelineLayerKind,
 } from './choreographyTypes';
+
+// ─── PR #5: prosjekt-scoping + booking/crew-gjenbruk ─────────────────────
+export {
+  toDancerProfile,
+  getInitials,
+  crewMemberToDancer,
+  type DancerProfile,
+  type DancerProfileExtras,
+  type DancerAvailabilityWindow,
+  type DanceStyle,
+  type InjuryStatus,
+} from './dancerProfile';
+export {
+  DanceProjectCalendar,
+  type DanceProjectCalendarProps,
+} from './DanceProjectCalendar';
+export {
+  DancerAvailabilityPanel,
+  type DancerAvailabilityPanelProps,
+} from './DancerAvailabilityPanel';
+
+// ─── PR #6: Dancer Profiles (lagt til 2026-04-25) ─────────────────────────
+export {
+  DancerProfileCard,
+  type DancerProfileCardProps,
+} from './DancerProfileCard';
+export {
+  DancerProfileEditor,
+  type DancerProfileEditorProps,
+} from './DancerProfileEditor';
+export {
+  DancerProfileGrid,
+  type DancerProfileGridProps,
+} from './DancerProfileGrid';
+export {
+  listDancerProfiles,
+  getDancerProfile,
+  upsertDancerProfile,
+  deleteDancerProfile,
+  type DancerProfile as DancerProfileRecord,
+  type DancerProfileExtras as DancerProfileExtrasFields,
+  type DancerAvailabilityWindow as DancerProfileAvailabilityWindow,
+  type DancerBodyMeasurements,
+  type SkillLevel,
+  type SkillCategory,
+} from './dancerProfileService';
+export { DEMO_DANCER_PROFILES } from './dancerProfileDemo';

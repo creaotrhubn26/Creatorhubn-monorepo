@@ -50,6 +50,7 @@ import {
   Movie as VideoIcon,
   ChevronRight as ChevronRightIcon,
   Edit as EditIcon,
+  PersonOutline as ProfileIcon,
 } from '@mui/icons-material';
 import {
   buildDemoRehearsal,
@@ -85,6 +86,11 @@ export interface RehearsalPlannerProps {
   onJumpToFormation?: (formationId: string) => void;
   /** Persistent endring (autosave). */
   onChange?: (rehearsal: Rehearsal) => void;
+  /**
+   * Hvis satt, vises en liten "Profil"-knapp ved siden av hver danser i
+   * follow-up-listen. Default `undefined` → ingen visuell endring.
+   */
+  onOpenDancerProfile?: (dancerId: string) => void;
 }
 
 // ─── Komponent ──────────────────────────────────────────────────────────
@@ -97,6 +103,7 @@ export const RehearsalPlanner: React.FC<RehearsalPlannerProps> = ({
   onJumpToSegment,
   onJumpToFormation,
   onChange,
+  onOpenDancerProfile,
 }) => {
   const [choreography] = useState<Choreography>(() => initialChoreo ?? buildDemoChoreography());
   const [rehearsal, setRehearsal] = useState<Rehearsal>(
@@ -331,9 +338,24 @@ export const RehearsalPlanner: React.FC<RehearsalPlannerProps> = ({
                         border: '1px solid #1e2536', bgcolor: 'rgba(251,191,36,0.04)',
                       }}
                     >
-                      <Typography sx={{ fontSize: 11, fontWeight: 600, color: '#fde68a' }}>
-                        {d?.name ?? fu.dancerId}
-                      </Typography>
+                      <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+                        <Typography sx={{ fontSize: 11, fontWeight: 600, color: '#fde68a', flex: 1 }} noWrap>
+                          {d?.name ?? fu.dancerId}
+                        </Typography>
+                        {onOpenDancerProfile && (
+                          <Tooltip title="Åpne danser-profil">
+                            <IconButton
+                              size="small"
+                              aria-label="Åpne danser-profil"
+                              data-testid={`rehearsal-followup-profile-${fu.dancerId}`}
+                              onClick={() => onOpenDancerProfile(fu.dancerId)}
+                              sx={{ color: '#a78bfa', p: 0.25 }}
+                            >
+                              <ProfileIcon sx={{ fontSize: 14 }} />
+                            </IconButton>
+                          </Tooltip>
+                        )}
+                      </Stack>
                       <Typography sx={{ fontSize: 10.5, color: '#cbd5e1' }}>
                         {fu.followUp}
                       </Typography>

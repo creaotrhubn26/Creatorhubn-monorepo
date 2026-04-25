@@ -85,7 +85,10 @@ import {
   Link as LinkIcon,
   YouTube as YouTubeIcon,
   AutoFixHigh as AutoFixHighIcon,
+  AccountCircle as AccountCircleIcon,
 } from '@mui/icons-material';
+import { getActiveProfessionMode, isDanceMode } from './config/professionMode';
+import { DanceDashboard } from './dance';
 
 import {
   useRoleRoomProjects,
@@ -276,6 +279,8 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
 
   const viewport = useRoleRoomViewportMode();
   const auth = useAuth();
+  const isAdminUser = auth.user?.role === 'admin' || auth.user?.role === 'super_admin';
+  const activeProfessionMode = getActiveProfessionMode();
   const [roleRoomAgentAccess, setRoleRoomAgentAccess] = useState<RoleRoomAgentAccess | null>(null);
   const [roleRoomAgentSnapshot, setRoleRoomAgentSnapshot] = useState<RoleRoomAgentProducerBootstrapResult | null>(null);
 
@@ -572,6 +577,48 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
     );
   }
 
+  if (isDanceMode(activeProfessionMode)) {
+    return (
+      <Box className="role-room-route role-room-route--dance" sx={{ position: 'relative', minHeight: '100vh' }}>
+        <DanceDashboard />
+        <Box sx={{ position: 'fixed', top: 16, right: 16, zIndex: 1200 }}>
+          <Tooltip title="Profil">
+            <IconButton
+              onClick={(event) => handleOpenProfile(event.currentTarget)}
+              aria-label="Åpne profil"
+              sx={{
+                bgcolor: 'rgba(139,92,246,0.95)',
+                color: '#fff',
+                boxShadow: '0 6px 18px rgba(0,0,0,0.35)',
+                '&:hover': { bgcolor: 'rgba(124,58,237,1)' },
+              }}
+            >
+              {profileInitials ? (
+                <Avatar sx={{ width: 28, height: 28, bgcolor: 'transparent', fontSize: '0.78rem', fontWeight: 700, color: '#fff' }}>
+                  {profileInitials}
+                </Avatar>
+              ) : (
+                <AccountCircleIcon />
+              )}
+            </IconButton>
+          </Tooltip>
+        </Box>
+        <RoleRoomMobileProfileSheet
+          open={profileOpen}
+          onClose={handleCloseProfile}
+          mode={viewport.mode}
+          anchorEl={profileAnchor}
+          displayName={profileDisplayName}
+          email={profileEmail}
+          roleLabel={activeRoleLabel}
+          workspaceSummary={workspaceSummary ?? null}
+          onLogout={auth.logout ? () => { void auth.logout(); } : undefined}
+          isAdmin={isAdminUser}
+        />
+      </Box>
+    );
+  }
+
   return (
     <Box className="role-room-route" sx={{ p: { xs: 1, sm: 2, md: 3 }, maxWidth: 1400, mx: 'auto' }}>
       {/* ── Mobile/iPad topbar (items 026-050) ─────────── */}
@@ -610,17 +657,6 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
             loading={inboxLoading}
             error={inboxErrorRaw}
             onItemClick={handleInboxItemClick}
-          />
-          <RoleRoomMobileProfileSheet
-            open={profileOpen}
-            onClose={handleCloseProfile}
-            mode={viewport.mode}
-            anchorEl={profileAnchor}
-            displayName={profileDisplayName}
-            email={profileEmail}
-            roleLabel={activeRoleLabel}
-            workspaceSummary={workspaceSummary ?? null}
-            onLogout={auth.logout ? () => { void auth.logout(); } : undefined}
           />
         </>
       ) : null}
@@ -679,7 +715,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
             />
           </Box>
         </Box>
-        <Stack direction="row" spacing={1}>
+        <Stack direction="row" spacing={1} alignItems="center">
           <Tooltip title="Oppdater">
             <IconButton onClick={() => refetchProjects()}>
               <RefreshIcon />
@@ -693,6 +729,21 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
           >
             Nytt prosjekt
           </Button>
+          <Tooltip title="Profil">
+            <IconButton
+              onClick={(event) => handleOpenProfile(event.currentTarget)}
+              sx={{ ml: 0.5 }}
+              aria-label="Åpne profil"
+            >
+              {profileInitials ? (
+                <Avatar sx={{ width: 32, height: 32, bgcolor: '#6366f1', fontSize: '0.85rem', fontWeight: 700 }}>
+                  {profileInitials}
+                </Avatar>
+              ) : (
+                <AccountCircleIcon />
+              )}
+            </IconButton>
+          </Tooltip>
         </Stack>
       </Box>
 
@@ -1087,6 +1138,20 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Profil-sheet (også på desktop) — admin-only modus-switcher er innebygget. */}
+      <RoleRoomMobileProfileSheet
+        open={profileOpen}
+        onClose={handleCloseProfile}
+        mode={viewport.mode}
+        anchorEl={profileAnchor}
+        displayName={profileDisplayName}
+        email={profileEmail}
+        roleLabel={activeRoleLabel}
+        workspaceSummary={workspaceSummary ?? null}
+        onLogout={auth.logout ? () => { void auth.logout(); } : undefined}
+        isAdmin={isAdminUser}
+      />
     </Box>
   );
 };

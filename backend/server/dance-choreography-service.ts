@@ -2,8 +2,11 @@
  * Dance choreography service — DB-laget for Choreography Builder.
  *
  * Eier `dance_choreography` + `dance_choreography_segment` (migration 0059).
- * Scoping: per `owner_user_id`. Når prosjekt-modellen får dans-støtte
- * legges `project_id` til som nullable kolonne uten å bryte denne API-en.
+ * Scoping: per `owner_user_id`. Prosjekt-scoping er additiv via
+ * `project_id` (migration 0060) — eksisterende rader er NULL og
+ * fortsetter å fungere som "frie" koreografier. Når listing filtreres
+ * på et prosjekt, returneres både prosjektets egne rader OG NULL-rader
+ * (frie koreografier følger alltid med så de er synlige i alle scoper).
  */
 
 import type { Pool } from 'pg';
@@ -47,6 +50,7 @@ export interface ChoreographySegment {
 export interface Choreography {
   id: string;
   ownerUserId: string;
+  projectId: string | null;
   title: string;
   choreographer: string | null;
   musicTitle: string | null;
@@ -63,6 +67,7 @@ export interface Choreography {
 export interface ChoreographyHeader {
   id: string;
   ownerUserId: string;
+  projectId: string | null;
   title: string;
   choreographer: string | null;
   totalDurationSec: number;
@@ -88,6 +93,7 @@ function mapHeader(row: Record<string, unknown>, segmentCount: number): Choreogr
   return {
     id: String(row.id),
     ownerUserId: String(row.owner_user_id),
+    projectId: row.project_id == null ? null : String(row.project_id),
     title: String(row.title),
     choreographer: row.choreographer == null ? null : String(row.choreographer),
     totalDurationSec: Number(row.total_duration_sec) || 0,
@@ -100,6 +106,7 @@ function mapChoreographyRow(row: Record<string, unknown>): Omit<Choreography, 's
   return {
     id: String(row.id),
     ownerUserId: String(row.owner_user_id),
+    projectId: row.project_id == null ? null : String(row.project_id),
     title: String(row.title),
     choreographer: row.choreographer == null ? null : String(row.choreographer),
     musicTitle: row.music_title == null ? null : String(row.music_title),
@@ -147,6 +154,7 @@ export interface CreateChoreographyInput {
   bpm?: number | null;
   musicalKey?: string | null;
   totalDurationSec?: number;
+  projectId?: string | null;
 }
 
 export async function createChoreography(
@@ -155,8 +163,8 @@ export async function createChoreography(
 ): Promise<Choreography> {
   const { rows } = await pool.query(
     `INSERT INTO dance_choreography (
-      owner_user_id, title, choreographer, music_title, bpm, musical_key, total_duration_sec
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+      owner_user_id, title, choreographer, music_title, bpm, musical_key, total_duration_sec, project_id
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
     RETURNING *`,
     [
       input.ownerUserId,
@@ -166,18 +174,51 @@ export async function createChoreography(
       input.bpm ?? null,
       input.musicalKey ?? null,
       input.totalDurationSec ?? 0,
+      input.projectId ?? null,
     ],
   );
   const header = mapChoreographyRow(rows[0]);
   return { ...header, segments: [] };
 }
 
+export interface ListChoreographiesOptions {
+  /**
+   * Hvis satt, filtrer på `project_id = $projectId OR project_id IS NULL`.
+   * Frie koreografier (uten prosjekt) følger alltid med så de er
+   * synlige i alle scoper. Hvis utelatt returneres alle for owner.
+   */
+  projectId?: string | null;
+  limit?: number;
+}
+
 export async function listChoreographies(
   pool: Pool,
   ownerUserId: string,
-  limit = 50,
+  optionsOrLimit: ListChoreographiesOptions | number = {},
 ): Promise<ChoreographyHeader[]> {
-  const safeLimit = Math.max(1, Math.min(200, limit));
+  const opts: ListChoreographiesOptions =
+    typeof optionsOrLimit === 'number' ? { limit: optionsOrLimit } : optionsOrLimit;
+  const safeLimit = Math.max(1, Math.min(200, opts.limit ?? 50));
+  const filterProject = typeof opts.projectId === 'string' && opts.projectId.length > 0;
+
+  if (filterProject) {
+    const { rows } = await pool.query(
+      `SELECT c.*, COALESCE(s.cnt, 0)::int AS segment_count
+       FROM dance_choreography c
+       LEFT JOIN (
+         SELECT choreography_id, COUNT(*) AS cnt
+         FROM dance_choreography_segment
+         GROUP BY choreography_id
+       ) s ON s.choreography_id = c.id
+       WHERE c.owner_user_id = $1
+         AND (c.project_id = $2 OR c.project_id IS NULL)
+       ORDER BY c.updated_at DESC
+       LIMIT $3`,
+      [ownerUserId, opts.projectId, safeLimit],
+    );
+    return rows.map((r) => mapHeader(r, Number(r.segment_count) || 0));
+  }
+
   const { rows } = await pool.query(
     `SELECT c.*, COALESCE(s.cnt, 0)::int AS segment_count
      FROM dance_choreography c
@@ -225,6 +266,7 @@ export interface UpdateChoreographyHeaderPatch {
   totalDurationSec?: number;
   musicUrl?: string | null;
   musicStorageKey?: string | null;
+  projectId?: string | null;
 }
 
 export async function updateChoreographyHeader(
@@ -247,6 +289,7 @@ export async function updateChoreographyHeader(
   if (patch.totalDurationSec !== undefined) push('total_duration_sec', patch.totalDurationSec);
   if (patch.musicUrl !== undefined) push('music_url', patch.musicUrl);
   if (patch.musicStorageKey !== undefined) push('music_storage_key', patch.musicStorageKey);
+  if (patch.projectId !== undefined) push('project_id', patch.projectId);
   if (sets.length === 0) return getChoreography(pool, ownerUserId, id);
   sets.push(`updated_at = now()`);
   params.push(ownerUserId);

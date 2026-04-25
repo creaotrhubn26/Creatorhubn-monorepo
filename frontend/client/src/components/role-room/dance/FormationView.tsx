@@ -64,6 +64,12 @@ export interface FormationViewProps {
   initialFormations?: readonly Formation[];
   /** Kalles når en formasjon lagres/oppdateres. */
   onFormationsChange?: (formations: Formation[]) => void;
+  /**
+   * Kalles når brukeren dobbeltklikker på en dancer-puck. Brukes f.eks.
+   * for å åpne danser-profilen. Default `undefined` → ingen visuell eller
+   * funksjonell endring (eksisterende drag/click-flyt urørt).
+   */
+  onDancerClick?: (dancerId: string) => void;
 }
 
 // ─── Komponent ────────────────────────────────────────────────────────────
@@ -72,6 +78,7 @@ export const FormationView: React.FC<FormationViewProps> = ({
   dancers = DEMO_DANCERS,
   initialFormations = DEMO_FORMATIONS,
   onFormationsChange,
+  onDancerClick,
 }) => {
   const canvasElRef = useRef<HTMLCanvasElement | null>(null);
   const fabricRef = useRef<Canvas | null>(null);
@@ -111,18 +118,9 @@ export const FormationView: React.FC<FormationViewProps> = ({
     };
   }, []);
 
-  // ─── Tegn aktiv formasjon når den endres ──────────
-
-  useEffect(() => {
-    const canvas = fabricRef.current;
-    if (!canvas || !activeFormation) return;
-    drawFormation(canvas, activeFormation, dancersById, (dancerId, x, y) => {
-      // Persistert posisjons-endring fra drag — oppdater state
-      updateDancerPosition(dancerId, x, y);
-    });
-  }, [activeFormation, dancersById]);
-
   // ─── Hjelpefunksjoner ──────────────────────────────
+  // Definert før useEffect som bruker den, slik at TS-strict ikke
+  // klager på "used before declaration".
 
   const updateDancerPosition = useCallback((dancerId: string, x: number, y: number) => {
     setFormations((prev) =>
@@ -137,6 +135,33 @@ export const FormationView: React.FC<FormationViewProps> = ({
       }),
     );
   }, [activeFormationId]);
+
+  // ─── Tegn aktiv formasjon når den endres ──────────
+  // onDancerClick lagres i en ref slik at vi ikke trenger å re-tegne
+  // formasjonen når kun callbacken endres.
+  const onDancerClickRef = useRef<typeof onDancerClick>(onDancerClick);
+  useEffect(() => {
+    onDancerClickRef.current = onDancerClick;
+  }, [onDancerClick]);
+
+  useEffect(() => {
+    const canvas = fabricRef.current;
+    if (!canvas || !activeFormation) return;
+    drawFormation(
+      canvas,
+      activeFormation,
+      dancersById,
+      (dancerId, x, y) => {
+        // Persistert posisjons-endring fra drag — oppdater state
+        updateDancerPosition(dancerId, x, y);
+      },
+      (dancerId) => {
+        // Dobbeltklikk på en puck — bruk ref slik at den alltid har
+        // siste callback uten å trigge re-tegning.
+        onDancerClickRef.current?.(dancerId);
+      },
+    );
+  }, [activeFormation, dancersById, updateDancerPosition]);
 
   // Persister via callback når formations endres
   useEffect(() => {
@@ -536,6 +561,7 @@ function drawFormation(
   formation: Formation,
   dancersById: Map<string, Dancer>,
   onPositionChange: (dancerId: string, x: number, y: number) => void,
+  onDancerDoubleClick?: (dancerId: string) => void,
 ): void {
   // Fjern alle eksisterende dancer-pucker (men behold stage-bakgrunnen)
   const objectsToRemove = canvas.getObjects().filter((o) => (o as { dancerId?: string }).dancerId);
@@ -658,6 +684,14 @@ function drawFormation(
       const newY = ((group.top ?? cy) - STAGE_PADDING) / innerHeight;
       onPositionChange(dancer.id, Math.max(0, Math.min(1, newX)), Math.max(0, Math.min(1, newY)));
     });
+
+    // Dobbeltklikk = åpne profil. Vi bruker mousedblclick som er trygg
+    // mot pågående drag (drag bruker mousedown/move/up).
+    if (onDancerDoubleClick) {
+      group.on('mousedblclick', () => {
+        onDancerDoubleClick(dancer.id);
+      });
+    }
 
     // Hvis dancer.photoUrl finnes, last bildet og bytt ut sirkel-fillet med en pattern
     if (dancer.photoUrl) {

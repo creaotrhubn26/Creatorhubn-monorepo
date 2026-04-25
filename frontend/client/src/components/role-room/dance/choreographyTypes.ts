@@ -173,6 +173,9 @@ export interface Choreography {
   musicTitle?: string;
   /** Sortert sekvens av segmenter, ikke-overlappende, dekker [0, totalDurationSec]. */
   segments: Segment[];
+  /** CreatorHub-prosjekt denne koreografien tilhører. `null` = fri (synlig
+   *  i alle scoper). Lagt til i PR #5 for prosjekt-scoping. */
+  projectId?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }
