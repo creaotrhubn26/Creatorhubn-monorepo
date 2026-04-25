@@ -14,6 +14,8 @@ struct LiveSetDashboardView: View {
     /// coverage" flow) without rebuilding the surface.
     @State var model: LiveSetDashboardModel
 
+    @State private var isCollagePresented: Bool = false
+
     private let columns: [GridItem] = [
         GridItem(.adaptive(minimum: 140, maximum: 220), spacing: 12),
     ]
@@ -30,6 +32,14 @@ struct LiveSetDashboardView: View {
         .navigationTitle(model.projectTitle ?? "Live Set")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .secondaryAction) {
+                Button {
+                    isCollagePresented = true
+                } label: {
+                    Label("Collage", systemImage: "photo.stack")
+                }
+                .disabled(capturedTiles.isEmpty)
+            }
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     Task { await model.runCoverageCheck() }
@@ -43,8 +53,36 @@ struct LiveSetDashboardView: View {
                 .disabled(model.tiles.isEmpty || model.coverageCheckState == .running)
             }
         }
-        .task { await model.refresh() }
+        .task {
+            // Initial fetch + start the 15-s polling loop. Auto-refresh
+            // catches changes a teammate made on a second iPad until
+            // backend grows shot-event push (Slice 3.5).
+            await model.refresh()
+            model.startAutoRefresh()
+        }
+        .onDisappear { model.stopAutoRefresh() }
         .refreshable { await model.refresh() }
+        .sheet(isPresented: $isCollagePresented) {
+            NavigationStack {
+                LiveSetCollageView(tiles: capturedTiles)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Lukk") { isCollagePresented = false }
+                        }
+                    }
+            }
+            .presentationDetents([.large])
+        }
+    }
+
+    /// Subset of tiles the collage actually has thumbnails for.
+    /// Captured-state-only — missing-state tiles have no preview to
+    /// show, so excluding them keeps the grid dense + meaningful.
+    private var capturedTiles: [CoverageTile] {
+        model.tiles.filter { tile in
+            if case .captured = tile.state { return true }
+            return false
+        }
     }
 
     // MARK: - Summary bar

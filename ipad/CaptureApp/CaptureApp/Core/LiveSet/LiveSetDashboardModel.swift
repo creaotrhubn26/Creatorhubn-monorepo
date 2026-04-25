@@ -53,6 +53,31 @@ final class LiveSetDashboardModel {
         self.sessionId = sessionId
     }
 
+    // MARK: - Auto-refresh (poor-man's team sync)
+
+    /// Background task that polls `refresh()` every ``intervalSeconds``
+    /// while the dashboard is on screen. Until backend grows shot-list
+    /// realtime events (Slice 3.5), this is how the dashboard picks up
+    /// changes a teammate made on a second iPad — the next poll fetches
+    /// the latest shot-list + asset state.
+    private var pollTask: Task<Void, Never>?
+
+    func startAutoRefresh(intervalSeconds: UInt64 = 15) {
+        stopAutoRefresh()
+        pollTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: intervalSeconds * 1_000_000_000)
+                if Task.isCancelled { break }
+                await self?.refresh()
+            }
+        }
+    }
+
+    func stopAutoRefresh() {
+        pollTask?.cancel()
+        pollTask = nil
+    }
+
     // MARK: - Load
 
     /// Fetch project detail (for the shot list) and the current session's

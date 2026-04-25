@@ -199,6 +199,19 @@ final class LiveSetDashboardModelTests: XCTestCase {
         XCTAssertNil(result.topMissing)
     }
 
+    // MARK: - State.isDone
+
+    func test_state_isDone_capturedAlwaysTrue_missingDependsOnCompletion() {
+        // The AI request builder + summary aggregation both lean on
+        // this — keep them in lockstep with the dashboard rendering.
+        let captured: CoverageTile.State = .captured(
+            previewUrl: nil, rating: 0, isFlagged: false, isRejected: false,
+        )
+        XCTAssertTrue(captured.isDone)
+        XCTAssertTrue(CoverageTile.State.missing(isCompleted: true).isDone)
+        XCTAssertFalse(CoverageTile.State.missing(isCompleted: false).isDone)
+    }
+
     // MARK: - Priority parsing
 
     func test_priority_handlesVariants_andDefaultsToUnknown() {
