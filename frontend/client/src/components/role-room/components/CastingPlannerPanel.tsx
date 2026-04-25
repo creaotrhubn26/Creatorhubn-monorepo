@@ -4,6 +4,7 @@ import { flushSync } from 'react-dom';
 import { Z_INDEX } from '../config/zIndex';
 import { useToast } from './ToastStack';
 import { useBrandingSettings } from '../hooks/useBrandingSettings.ts';
+import { getActiveProfessionMode as getActiveProfessionModeForDance, isDanceMode as isDanceModeCheck } from '../config/professionMode';
 import { getRoleRoomCanonicalPath, shouldUseRoleRoomLocalFallback } from '../utils/runtime';
 import {
   Box,
@@ -193,6 +194,9 @@ const CandidateManagementPanel = lazy(() => import('./CandidateManagementPanel')
 const DashboardPanel = lazy(() => import('./DashboardPanel').then(m => ({ default: m.DashboardPanel })));
 const SharingPanel = lazy(() => import('./SharingPanel').then(m => ({ default: m.SharingPanel })));
 const LiveSetMode = lazy(() => import('./LiveSetMode').then(m => ({ default: m.LiveSetMode })));
+
+// Dance vertical opt-in — full workspace replacement when professionMode = dance_*.
+const DanceWorkspace = lazy(() => import('../dance/DanceWorkspace').then(m => ({ default: m.DanceWorkspace })));
 
 // Import ErrorBoundary for robustness
 import { ErrorBoundary } from './ErrorBoundary';
@@ -608,6 +612,21 @@ export function CastingPlannerPanel({
   isStandalone = false,
   isGuestMode = false,
 }: CastingPlannerPanelProps) {
+  // ─── Dance-vertical short-circuit ──────────────────────────────────
+  // Read the active profession-mode synchronously (URL/localStorage). When
+  // it's a dance mode we render the parallel DanceWorkspace and exit
+  // before ANY of the production-side hooks/state below run. This keeps
+  // the existing film/photo flow bit-for-bit identical for every other
+  // mode and avoids spinning up production data fetches we don't need.
+  const __activeProfessionMode = getActiveProfessionModeForDance();
+  if (isDanceModeCheck(__activeProfessionMode)) {
+    return (
+      <Suspense fallback={<Box sx={{ p: 4, color: '#fff', bgcolor: '#0a0a0a', minHeight: '100vh' }}>Laster dans-modus…</Box>}>
+        <DanceWorkspace />
+      </Suspense>
+    );
+  }
+
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const isTablet = useMediaQuery(theme.breakpoints.down('md'));

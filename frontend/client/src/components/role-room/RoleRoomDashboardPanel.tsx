@@ -88,7 +88,7 @@ import {
   AccountCircle as AccountCircleIcon,
 } from '@mui/icons-material';
 import { getActiveProfessionMode, isDanceMode } from './config/professionMode';
-import { DanceDashboard } from './dance';
+import { DanceWorkspace } from './dance';
 
 import {
   useRoleRoomProjects,
@@ -580,7 +580,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
   if (isDanceMode(activeProfessionMode)) {
     return (
       <Box className="role-room-route role-room-route--dance" sx={{ position: 'relative', minHeight: '100vh' }}>
-        <DanceDashboard />
+        <DanceWorkspace projectId={selectedProjectId ?? undefined} />
         <Box sx={{ position: 'fixed', top: 16, right: 16, zIndex: 1200 }}>
           <Tooltip title="Profil">
             <IconButton

@@ -7,6 +7,7 @@
  */
 
 export { DanceDashboard, type DanceDashboardProps } from './DanceDashboard';
+export { DanceWorkspace, type DanceWorkspaceProps } from './DanceWorkspace';
 export { ChoreographyBuilder, type ChoreographyBuilderProps } from './ChoreographyBuilder';
 export { FormationView, type FormationViewProps } from './FormationView';
 export {
