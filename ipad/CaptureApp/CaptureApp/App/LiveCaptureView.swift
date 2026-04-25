@@ -12,6 +12,8 @@ struct LiveCaptureView: View {
     @State private var auth = SignInService.shared
     @State private var isProjectSelectionPresented = false
     @State private var isShotListPresented = false
+    @State private var isCoverageDashboardPresented = false
+    @State private var coverageDashboardSessionId: UUID?
     @AppStorage("capture.lastCameraURL") private var lastCameraURL: String = "https://192.168.1.2"
     @State private var isSettingsPresented = false
     @State private var isTunePresented = false
@@ -125,6 +127,30 @@ struct LiveCaptureView: View {
             ShotListPanel(model: model)
                 .presentationDetents([.large])
         }
+        .sheet(isPresented: $isCoverageDashboardPresented) {
+            // Build the dashboard model fresh per-presentation so it
+            // re-fetches when re-opened (catches assets uploaded since
+            // last time). Project ID + (lazy) backend session ID flow
+            // straight from LiveCaptureModel — no manual paste-fields.
+            if let projectId = model.selectedProject?.id,
+               let backend = model.currentBackendClient {
+                NavigationStack {
+                    LiveSetDashboardView(
+                        model: LiveSetDashboardModel(
+                            backend: backend,
+                            projectId: projectId,
+                            sessionId: coverageDashboardSessionId,
+                        ),
+                    )
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Lukk") { isCoverageDashboardPresented = false }
+                        }
+                    }
+                }
+                .presentationDetents([.large])
+            }
+        }
         .animation(.spring(duration: 0.35, bounce: 0.1), value: model.phase)
     }
 
@@ -144,6 +170,17 @@ struct LiveCaptureView: View {
                 onTogglePin: { model.pinnedFocus.toggle() },
                 onPickProject: { isProjectSelectionPresented = true },
                 onShotList: { isShotListPresented = true },
+                onCoverageDashboard: {
+                    // Resolve the (possibly-nil) backend session ID
+                    // before presenting so the dashboard receives the
+                    // freshest value — DeliveryService.backendSessionId
+                    // can flip from nil → set the moment a delivery
+                    // starts, even mid-shoot.
+                    Task {
+                        coverageDashboardSessionId = await model.currentBackendSessionId()
+                        isCoverageDashboardPresented = true
+                    }
+                },
                 onDeliver: { isDeliverPresented = true },
                 onArchive: { isArchivePresented = true },
                 onSettings: { isSettingsPresented = true }
@@ -572,6 +609,7 @@ private struct StatusBar: View {
     let onTogglePin: () -> Void
     let onPickProject: () -> Void
     let onShotList: () -> Void
+    let onCoverageDashboard: () -> Void
     let onDeliver: () -> Void
     let onArchive: () -> Void
     let onSettings: () -> Void
@@ -650,6 +688,20 @@ private struct StatusBar: View {
                 }
                 .buttonStyle(.plain)
                 .help("Open shot list")
+            }
+
+            // Coverage dashboard — visual grid of shot-list vs. captured
+            // assets. Only meaningful when a project is picked, since
+            // the dashboard joins shot-list against the project.
+            if projectTitle != nil {
+                Button(action: onCoverageDashboard) {
+                    Image(systemName: "square.grid.3x3")
+                        .font(.body)
+                        .frame(width: 36, height: 36)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Live Set dekningsgrid")
             }
 
             if let files = telemetry.totalContentsCount {
@@ -2779,6 +2831,21 @@ final class LiveCaptureModel {
     /// backend so other surfaces (dashboard progress bar, second iPad,
     /// photographer's phone) agree on what's left to shoot. Throws on
     /// failure so the caller can roll back the optimistic UI flip.
+    /// Backend session UUID, if a delivery has run for this shoot
+    /// (DeliveryService creates it lazily on first `deliver()`). Used
+    /// by the Live Set dashboard to fetch captured-asset thumbnails;
+    /// `nil` before any delivery means the dashboard renders the
+    /// shot-list as all-missing tiles, which is correct — those assets
+    /// haven't been mirrored to backend yet.
+    func currentBackendSessionId() async -> UUID? {
+        await deliveryService?.backendSessionId
+    }
+
+    /// The backend client used by SignInService — exposed read-only so
+    /// the dashboard sheet can build its own LiveSetDashboardModel
+    /// without re-instantiating signing config.
+    var currentBackendClient: BackendClient? { backendClient }
+
     func setShotCompletion(shotId: String, isCompleted: Bool) async throws {
         guard let backend = backendClient,
               let projectId = selectedProject?.id

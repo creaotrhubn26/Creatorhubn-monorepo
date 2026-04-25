@@ -19,8 +19,12 @@ actor DeliveryService {
     /// delivered. Carried across retries so a partial failure doesn't
     /// double-upload assets that already landed.
     private var idMap: [UUID: UUID] = [:]
-    /// Backend session id once the session row is mirrored.
-    private var backendSessionId: UUID?
+    /// Backend session id once the session row is mirrored. Read by the
+    /// Live Set dashboard so it can fetch the captured-asset listing
+    /// from /api/capture/sessions/:id/assets — nil before the first
+    /// `deliver()` call (lazy creation), at which point the dashboard
+    /// gracefully falls back to "all-shots-missing" rendering.
+    private(set) var backendSessionId: UUID?
 
     init(backend: BackendClient) {
         self.backend = backend
