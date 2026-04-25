@@ -65,7 +65,7 @@ interface LoginDialogProps {
   initialPersona?: LoginPersona;
 }
 
-type LoginPersona = '' | 'production_team' | 'content_producer' | 'education_institution';
+type LoginPersona = '' | 'production_team' | 'content_producer' | 'education_institution' | 'dance_studio';
 type EducationInstitutionType = '' | 'upper_secondary' | 'folk_high_school' | 'vocational_college' | 'higher_education' | 'private_school';
 type EducationSeatRange = '' | 'up_to_15' | 'up_to_30' | 'up_to_60' | 'up_to_120' | 'more_than_120';
 type EducationStartWindow = '' | 'this_semester' | 'next_semester' | 'next_academic_year' | 'exploring';
@@ -933,9 +933,9 @@ const LOGIN_PERSONA_OPTIONS: ReadonlyArray<{
     description: 'For innhold, storyboard og leveranser',
   },
   {
-    id: 'education_institution',
-    label: 'Utdanningsinstitusjon',
-    description: 'For skoler, kull og praksisnære produksjoner',
+    id: 'dance_studio',
+    label: 'Dansestudio',
+    description: 'For studioeier eller frilansdanser',
   },
 ];
 
@@ -1863,8 +1863,15 @@ export default function LoginDialog({
   const loginSubtitle = ROLE_ROOM_LANDING_CONFIG.login.subtitle;
   const educationTurnstileSiteKey = getRoleRoomTurnstileSiteKey();
   const educationTurnstileEnabled = Boolean(educationTurnstileSiteKey);
+  // Dans-personaen hopper over hele commercial-setup-flyten (org-oppslag,
+  // Stripe, team-onboarding) inntil intervjuene avgjør pricing-modellen.
+  // Brukeren lander rett i DanceWorkspace etter standard e-post-/Google-
+  // innlogging.
   const requiresCommercialSetup =
-    isLandingPage && !clientPortalIntent && !talentPortalIntent;
+    isLandingPage
+    && !clientPortalIntent
+    && !talentPortalIntent
+    && loginPersona !== 'dance_studio';
   const isStepwiseContentProducerFlow = Boolean(
     isLandingPage
     && requiresCommercialSetup
@@ -2582,7 +2589,7 @@ export default function LoginDialog({
       return true;
     }
     if (!persona) {
-      setError('Velg om dette er Produksjonsteam, Innholdsprodusent eller Utdanningsinstitusjon');
+      setError('Velg om dette er Produksjonsteam, Innholdsprodusent eller Dansestudio');
       return false;
     }
     if (!hasVerifiedOrganization) {
@@ -3036,7 +3043,7 @@ export default function LoginDialog({
     // (including Meta App Review reviewer accounts).
     if (isLandingPage) {
       if (!effectiveLoginPersona) {
-        setError('Velg om du logger inn som Produksjonsteam, Innholdsprodusent eller Utdanningsinstitusjon');
+        setError('Velg om du logger inn som Produksjonsteam, Innholdsprodusent eller Dansestudio');
         return;
       }
       if (effectiveLoginPersona === 'education_institution') {
@@ -3169,7 +3176,7 @@ export default function LoginDialog({
     if (loading) return;
     const effectiveLoginPersona = getEffectiveLoginPersona(selectedRole, loginPersona);
     if (!effectiveLoginPersona) {
-      setError('Velg om du logger inn som Produksjonsteam, Innholdsprodusent eller Utdanningsinstitusjon');
+      setError('Velg om du logger inn som Produksjonsteam, Innholdsprodusent eller Dansestudio');
       return;
     }
     if (isLandingPage && !selectedRole) {
@@ -3457,9 +3464,21 @@ export default function LoginDialog({
                 setLoginPersona(option.id);
                 setContentProducerStep('company');
                 setProductionTeamStep('company');
-                if (option.id === 'content_producer' && !clientPortalIntent) {
+                if (option.id === 'dance_studio') {
+                  // Default til studio når personaen velges. Brukeren kan
+                  // bytte til frilansdanser i undervalg-raden under.
+                  setSelectedProfessionMode('dance_studio');
+                  setActiveProfessionMode('dance_studio');
+                  setSelectedRole('');
+                } else if (option.id === 'content_producer' && !clientPortalIntent) {
+                  // Tilbakestill til standard produksjon hvis brukeren
+                  // bytter ut av dans-modus midt i flyten.
+                  setActiveProfessionMode('production');
+                  setSelectedProfessionMode('production');
                   setSelectedRole('');
                 } else {
+                  setActiveProfessionMode('production');
+                  setSelectedProfessionMode('production');
                   setSelectedRole(getDefaultRoleForPersona(option.id, {
                     clientPortalIntent: Boolean(clientPortalIntent),
                     talentPortalIntent: Boolean(talentPortalIntent),
@@ -3524,6 +3543,60 @@ export default function LoginDialog({
           );
         })}
       </Box>
+
+      {loginPersona === 'dance_studio' ? (
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+            gap: 0.8,
+            mt: 0.4,
+          }}
+        >
+          {([
+            { mode: 'dance_studio',    label: 'Studio',          desc: 'Drift, klasser, koreografier' },
+            { mode: 'dance_freelance', label: 'Frilansdanser',   desc: 'Auditions, gigs, reel' },
+          ] as const).map((opt) => {
+            const active = selectedProfessionMode === opt.mode;
+            return (
+              <Button
+                key={opt.mode}
+                type="button"
+                onClick={() => {
+                  setSelectedProfessionMode(opt.mode);
+                  setActiveProfessionMode(opt.mode);
+                }}
+                aria-pressed={active}
+                sx={{
+                  textTransform: 'none',
+                  borderRadius: '12px',
+                  py: 0.7,
+                  px: 1,
+                  justifyContent: 'flex-start',
+                  alignItems: 'flex-start',
+                  textAlign: 'left',
+                  border: `1px solid ${active ? 'rgba(139,92,246,0.55)' : 'rgba(255,255,255,0.1)'}`,
+                  bgcolor: active ? 'rgba(139,92,246,0.18)' : 'rgba(255,255,255,0.04)',
+                  color: active ? '#fff' : 'rgba(235,235,245,0.78)',
+                  '&:hover': {
+                    bgcolor: active ? 'rgba(139,92,246,0.24)' : 'rgba(255,255,255,0.08)',
+                    borderColor: active ? 'rgba(139,92,246,0.7)' : 'rgba(255,255,255,0.18)',
+                  },
+                }}
+              >
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.15 }}>
+                  <Typography sx={{ fontSize: '0.78rem', fontWeight: 700, lineHeight: 1.2 }}>
+                    {opt.label}
+                  </Typography>
+                  <Typography sx={{ fontSize: '0.62rem', color: active ? 'rgba(255,255,255,0.85)' : 'rgba(185,185,200,0.65)' }}>
+                    {opt.desc}
+                  </Typography>
+                </Box>
+              </Button>
+            );
+          })}
+        </Box>
+      ) : null}
     </Box>
   );
   const contentProducerStepNavigation = isStepwiseContentProducerFlow ? (
@@ -5817,84 +5890,6 @@ export default function LoginDialog({
                   {commercialPaymentPending ? 'Starter Stripe Checkout…' : 'Gå til sikker betaling'}
                 </Button>
               )}
-            </Box>
-          )}
-
-          {/* ── profession mode picker — kun spesialiserte profesjoner.
-                  Produksjonsteam og innholdsprodusent dekkes av persona-
-                  velgeren over, så vi viser dem ikke her. ── */}
-          {shouldShowAuthFields && (
-            <Box sx={{ mb: 1 }}>
-              <Typography
-                sx={{
-                  fontSize: '0.72rem',
-                  fontWeight: 600,
-                  letterSpacing: '0.06em',
-                  textTransform: 'uppercase',
-                  color: `rgba(${aR},${aG},${aB},0.62)`,
-                  mb: 0.8,
-                }}
-              >
-                Spesialiserte profesjoner
-              </Typography>
-              <Box
-                sx={{
-                  display: 'grid',
-                  gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(2, 1fr)' },
-                  gap: 0.8,
-                }}
-              >
-                {LANDING_PROFESSION_PICKER_MODES.map((mode) => {
-                  const meta = PROFESSION_PICKER_META[mode];
-                  const isSelected = selectedProfessionMode === mode;
-                  return (
-                    <Button
-                      key={mode}
-                      onClick={() => {
-                        setSelectedProfessionMode(mode);
-                        setActiveProfessionMode(mode);
-                      }}
-                      disableRipple
-                      sx={{
-                        textTransform: 'none',
-                        fontWeight: 600,
-                        fontSize: '0.78rem',
-                        justifyContent: 'flex-start',
-                        gap: 0.7,
-                        px: 1.2,
-                        py: 0.9,
-                        borderRadius: '12px',
-                        border: '1px solid',
-                        borderColor: isSelected
-                          ? meta.accent
-                          : `rgba(${aR},${aG},${aB},0.18)`,
-                        bgcolor: isSelected
-                          ? `${meta.accent}1f`
-                          : `rgba(${aR},${aG},${aB},0.04)`,
-                        color: isSelected
-                          ? meta.accent
-                          : `rgba(${aR},${aG},${aB},0.82)`,
-                        '&:hover': {
-                          bgcolor: isSelected
-                            ? `${meta.accent}2a`
-                            : `rgba(${aR},${aG},${aB},0.08)`,
-                          borderColor: meta.accent,
-                        },
-                      }}
-                    >
-                      <Box component="span" sx={{ fontSize: '1rem', lineHeight: 1 }}>{meta.glyph}</Box>
-                      <Box component="span" sx={{ flex: 1, textAlign: 'left', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {meta.label}
-                      </Box>
-                      {meta.beta ? (
-                        <Box component="span" sx={{ fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.08em', color: meta.accent }}>
-                          BETA
-                        </Box>
-                      ) : null}
-                    </Button>
-                  );
-                })}
-              </Box>
             </Box>
           )}
 
