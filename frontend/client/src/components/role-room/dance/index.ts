@@ -7,3 +7,22 @@
  */
 
 export { DanceDashboard, type DanceDashboardProps } from './DanceDashboard';
+export { ChoreographyBuilder, type ChoreographyBuilderProps } from './ChoreographyBuilder';
+export {
+  buildDemoChoreography,
+  formatTime as formatChoreographyTime,
+  getApprovalMeta,
+  getEnergyMeta,
+  getSegmentMeta,
+  segmentDuration,
+  SEGMENT_KINDS,
+  ENERGY_LEVELS,
+  APPROVAL_STATUSES,
+  TIMELINE_LAYERS,
+  type ApprovalStatus,
+  type Choreography,
+  type EnergyLevel,
+  type Segment,
+  type SegmentKind,
+  type TimelineLayerKind,
+} from './choreographyTypes';

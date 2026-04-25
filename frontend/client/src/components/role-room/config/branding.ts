@@ -1401,7 +1401,53 @@ export type BrandingTextTokenKey =
   | 'danceEmptyRehearsalsTitle'           // 'Ingen øvinger logget'
   | 'danceEmptyClassesTitle'              // 'Ingen klasser i sesongen ennå'
   | 'danceEmptyGigsTitle'                 // 'Ingen gigs registrert ennå'
-  | 'danceEmptyReelTitle'                 // 'Reel-portefølgen er tom — last opp første klipp';
+  | 'danceEmptyReelTitle'                 // 'Reel-portefølgen er tom — last opp første klipp'
+
+  // ─── Choreography Builder (PR #4, lagt til 2026-04-25) ───────────────────
+  | 'choreographyBuilderTitle'
+  | 'choreographyBuilderSubtitle'
+  | 'choreographyBuilderAddSegment'
+  | 'choreographyBuilderSaveLabel'
+  | 'choreographyBuilderPlayLabel'
+  | 'choreographyBuilderTotalDuration'
+  | 'choreographyBuilderBpmLabel'
+  | 'choreographyBuilderKeyLabel'
+  | 'choreographyBuilderEmpty'
+  | 'choreographySegmentIntro'
+  | 'choreographySegmentVerse'
+  | 'choreographySegmentChorus'
+  | 'choreographySegmentBridge'
+  | 'choreographySegmentBreak'
+  | 'choreographySegmentOutro'
+  | 'choreographySegmentFreestyle'
+  | 'choreographySegmentLift'
+  | 'choreographySegmentFormationChange'
+  | 'choreographyLayerMusic'
+  | 'choreographyLayerChoreography'
+  | 'choreographyLayerFormation'
+  | 'choreographyLayerCamera'
+  | 'choreographyLayerLighting'
+  | 'choreographyLayerCostumes'
+  | 'choreographyLayerNotes'
+  | 'choreographyInspectorTitle'
+  | 'choreographyInspectorTimingLabel'
+  | 'choreographyInspectorDurationLabel'
+  | 'choreographyInspectorDancersLabel'
+  | 'choreographyInspectorFormationLabel'
+  | 'choreographyInspectorMovementLabel'
+  | 'choreographyInspectorEnergyLabel'
+  | 'choreographyInspectorVideoRefLabel'
+  | 'choreographyInspectorApprovalLabel'
+  | 'choreographyEnergyLow'
+  | 'choreographyEnergyControlled'
+  | 'choreographyEnergyMedium'
+  | 'choreographyEnergyHigh'
+  | 'choreographyEnergySharp'
+  | 'choreographyEnergyExplosive'
+  | 'choreographyApprovalDraft'
+  | 'choreographyApprovalReview'
+  | 'choreographyApprovalApproved'
+  | 'choreographyApprovalLocked';
 
 export type BrandingIdentity = {
   appName: string;
@@ -2949,6 +2995,51 @@ const DEFAULT_TOKENS: BrandingTokens = {
     danceEmptyClassesTitle: 'Ingen klasser i sesongen ennå',
     danceEmptyGigsTitle: 'Ingen gigs registrert ennå',
     danceEmptyReelTitle: 'Reel-portefølgen er tom — last opp første klipp',
+
+    choreographyBuilderTitle: 'Choreography Builder',
+    choreographyBuilderSubtitle: 'Bygg koreografien som musikalske segmenter',
+    choreographyBuilderAddSegment: 'Legg til segment',
+    choreographyBuilderSaveLabel: 'Lagre koreografi',
+    choreographyBuilderPlayLabel: 'Spill av med musikk',
+    choreographyBuilderTotalDuration: 'Total varighet',
+    choreographyBuilderBpmLabel: 'BPM',
+    choreographyBuilderKeyLabel: 'Toneart',
+    choreographyBuilderEmpty: 'Ingen segmenter ennå — legg til ditt første segment for å starte',
+    choreographySegmentIntro: 'Intro',
+    choreographySegmentVerse: 'Vers',
+    choreographySegmentChorus: 'Refreng',
+    choreographySegmentBridge: 'Bridge',
+    choreographySegmentBreak: 'Break',
+    choreographySegmentOutro: 'Outro',
+    choreographySegmentFreestyle: 'Freestyle',
+    choreographySegmentLift: 'Lift / partner-arbeid',
+    choreographySegmentFormationChange: 'Formasjons-skifte',
+    choreographyLayerMusic: 'Musikk',
+    choreographyLayerChoreography: 'Koreografi',
+    choreographyLayerFormation: 'Formasjon',
+    choreographyLayerCamera: 'Kamera / video',
+    choreographyLayerLighting: 'Lys',
+    choreographyLayerCostumes: 'Kostyme / props',
+    choreographyLayerNotes: 'Notater',
+    choreographyInspectorTitle: 'Segment-detaljer',
+    choreographyInspectorTimingLabel: 'Tidsrom',
+    choreographyInspectorDurationLabel: 'Varighet',
+    choreographyInspectorDancersLabel: 'Dansere involvert',
+    choreographyInspectorFormationLabel: 'Formasjon',
+    choreographyInspectorMovementLabel: 'Bevegelses-notater',
+    choreographyInspectorEnergyLabel: 'Energi / intensitet',
+    choreographyInspectorVideoRefLabel: 'Video-referanse',
+    choreographyInspectorApprovalLabel: 'Godkjenningsstatus',
+    choreographyEnergyLow: 'Lav',
+    choreographyEnergyControlled: 'Kontrollert',
+    choreographyEnergyMedium: 'Medium',
+    choreographyEnergyHigh: 'Høy',
+    choreographyEnergySharp: 'Skarp',
+    choreographyEnergyExplosive: 'Eksplosiv',
+    choreographyApprovalDraft: 'Utkast',
+    choreographyApprovalReview: 'Til gjennomgang',
+    choreographyApprovalApproved: 'Godkjent',
+    choreographyApprovalLocked: 'Låst (klar til forestilling)',
   },
 };
 
