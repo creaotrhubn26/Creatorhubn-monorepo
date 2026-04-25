@@ -53,6 +53,21 @@ struct BackendAsset: Decodable, Sendable {
     let rawKey: String?
     let state: String?
     let checksumSha256: String?
+    /// Signed read URL for the preview, attached by
+    /// ``GET /api/capture/sessions/:id/assets`` since 23d3375. Nil when
+    /// the asset has been registered but no preview has been uploaded
+    /// yet, or when the endpoint was hit on an older backend.
+    let previewUrl: String?
+    /// Optional review fields — populated on the listing endpoint so
+    /// the Live Set dashboard can render star-count + pick state
+    /// without a second round-trip per asset.
+    let rating: Int?
+    let flaggedForClient: Bool?
+    let rejected: Bool?
+}
+
+struct BackendListSessionAssetsResponse: Decodable, Sendable {
+    let assets: [BackendAsset]
 }
 
 // MARK: - Multipart upload

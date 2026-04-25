@@ -31,6 +31,10 @@ struct FoundationDebugView: View {
     @State private var recorderError: String?
     @State private var isShareSheetPresented: Bool = false
 
+    @AppStorage("liveset.previewProjectId") private var previewProjectId: String = ""
+    @AppStorage("liveset.previewSessionId") private var previewSessionId: String = ""
+    @State private var isDashboardPresented: Bool = false
+
     private let database: AppDatabase?
     private let outbox: Outbox?
     private let worker: OutboxWorker?
@@ -70,6 +74,7 @@ struct FoundationDebugView: View {
                 rowCountsSection
                 outboxSection
                 recorderSection
+                liveSetDashboardSection
             }
             .navigationTitle("Foundation")
             .toolbar {
@@ -85,6 +90,44 @@ struct FoundationDebugView: View {
             .sheet(isPresented: $isShareSheetPresented) {
                 if let url = recorderFileURL {
                     ActivityShareSheet(items: [url])
+                }
+            }
+            .sheet(isPresented: $isDashboardPresented) {
+                if let backend = makeBackendClient(),
+                   let sessionUUID = UUID(uuidString: previewSessionId) {
+                    NavigationStack {
+                        LiveSetDashboardView(
+                            model: LiveSetDashboardModel(
+                                backend: backend,
+                                projectId: previewProjectId,
+                                sessionId: sessionUUID,
+                            ),
+                        )
+                        .toolbar {
+                            ToolbarItem(placement: .topBarTrailing) {
+                                Button("Lukk") { isDashboardPresented = false }
+                            }
+                        }
+                    }
+                } else if let backend = makeBackendClient(),
+                          previewSessionId.trimmingCharacters(in: .whitespaces).isEmpty {
+                    // No session ID yet — still useful: shot list renders
+                    // entirely as missing tiles so the planner can pre-
+                    // visualise coverage before the shoot starts.
+                    NavigationStack {
+                        LiveSetDashboardView(
+                            model: LiveSetDashboardModel(
+                                backend: backend,
+                                projectId: previewProjectId,
+                                sessionId: nil,
+                            ),
+                        )
+                        .toolbar {
+                            ToolbarItem(placement: .topBarTrailing) {
+                                Button("Lukk") { isDashboardPresented = false }
+                            }
+                        }
+                    }
                 }
             }
             .task(id: workerRunning) {
@@ -405,6 +448,60 @@ struct FoundationDebugView: View {
         _ = await CCAPISessionRecorder.shared.stop()
         recorderFileURL = preserved
         recorderActive = false
+    }
+
+    // MARK: - Live Set dashboard preview
+
+    /// Manual entry point for the Slice 1 dashboard until it's wired
+    /// into the production capture flow. Lets you paste a project ID
+    /// + (optional) session ID and present the dashboard as a sheet,
+    /// so the surface can be exercised end-to-end against a real
+    /// backend before the LiveCaptureView integration lands.
+    private var liveSetDashboardSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Project ID")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                TextField("UUID-en til prosjektet", text: $previewProjectId)
+                    .textFieldStyle(.roundedBorder)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Session ID (valgfritt)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                TextField("UUID — la stå tom for å se kun shot-list", text: $previewSessionId)
+                    .textFieldStyle(.roundedBorder)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+            }
+            Button {
+                isDashboardPresented = true
+            } label: {
+                Label("Vis dekningsgrid", systemImage: "square.grid.3x3")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(previewProjectId.trimmingCharacters(in: .whitespaces).isEmpty)
+        } header: {
+            Text("Live Set dashboard (Slice 1 preview)")
+        } footer: {
+            Text("Henter shot-list fra prosjektet + thumbnails fra sesjonen, joiner dem til en dekningsgrid. Krever at du er logget inn (token kommer fra SignInService).")
+                .font(.caption)
+        }
+    }
+
+    /// Build a transient BackendClient from the persisted SignInService
+    /// state. Returns nil if not signed in — the dashboard sheet bails
+    /// gracefully in that case.
+    private func makeBackendClient() -> BackendClient? {
+        guard let session = SignInService.shared.session else { return nil }
+        return BackendClient(
+            baseURL: session.backendBaseURL,
+            authHeaders: ["Authorization": "Bearer \(session.bearer)"],
+        )
     }
 
     private func refreshRecorderState() async {

@@ -152,6 +152,21 @@ actor BackendClient {
         )
     }
 
+    /// Fetch every asset that's been registered against a capture
+    /// session — rating, pick-state, and signed `previewUrl` included.
+    /// Used by ``LiveSetDashboardModel`` to join captured thumbnails
+    /// against the project's shot list.
+    func listSessionAssets(
+        sessionId: UUID,
+        limit: Int = 500,
+        offset: Int = 0,
+    ) async throws -> [BackendAsset] {
+        let response: BackendListSessionAssetsResponse = try await getJSON(
+            path: "/api/capture/sessions/\(sessionId.uuidString.lowercased())/assets?limit=\(limit)&offset=\(offset)",
+        )
+        return response.assets
+    }
+
     // MARK: - Multipart upload
 
     func startUpload(
