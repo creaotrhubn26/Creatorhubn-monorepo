@@ -1249,7 +1249,159 @@ export type BrandingTextTokenKey =
   | 'storyWriterSubtitle'
   | 'storyWriterChip'
   | 'storyLogicHeader'
-  | 'storyWriterHeader';
+  | 'storyWriterHeader'
+
+  // ─── Dans-vertikal (PR #1, lagt til 2026-04-25) ───────────────────────────
+  // Disse token-verdiene leses kun når professionMode === 'dance_studio' eller
+  // 'dance_freelance'. Eksisterende komponenter for film/foto er upåvirket;
+  // de leser fortsatt sine vante token-keys.
+  //
+  // Naming convention: prefiks 'dance' for fellesbruk, 'danceStudio' og
+  // 'danceFreelance' for arketype-spesifikke termer.
+  | 'danceProfessionStudioName'
+  | 'danceProfessionFreelanceName'
+
+  // Domene-grunnvokabular (mapper PMV-primitiver mot dans-domenet)
+  | 'danceTermPiece'              // 'Stykke' (mapper til scene)
+  | 'danceTermPiecePlural'        // 'Stykker'
+  | 'danceTermSection'            // 'Seksjon' (mapper til shot)
+  | 'danceTermSectionPlural'      // 'Seksjoner'
+  | 'danceTermRun'                // 'Kjøring' (mapper til take)
+  | 'danceTermRunPlural'          // 'Kjøringer'
+  | 'danceTermRehearsal'          // 'Øving'
+  | 'danceTermRehearsalPlural'    // 'Øvinger'
+  | 'danceTermPerformance'        // 'Forestilling'
+  | 'danceTermPerformancePlural'  // 'Forestillinger'
+  | 'danceTermShow'               // 'Show' (alternativ til forestilling, brukes for kortere intern bruk)
+  | 'danceTermDancer'             // 'Danser'
+  | 'danceTermDancerPlural'       // 'Dansere'
+  | 'danceTermChoreographer'      // 'Koreograf'
+  | 'danceTermChoreographerPlural'// 'Koreografer'
+  | 'danceTermInstructor'         // 'Instruktør'
+  | 'danceTermInstructorPlural'   // 'Instruktører'
+  | 'danceTermStudent'            // 'Elev'
+  | 'danceTermStudentPlural'      // 'Elever'
+  | 'danceTermClass'              // 'Klasse'
+  | 'danceTermClassPlural'        // 'Klasser'
+  | 'danceTermStudioRoom'         // 'Sal'
+  | 'danceTermStudioRoomPlural'   // 'Saler'
+  | 'danceTermSeason'             // 'Sesong'
+  | 'danceTermSeasonPlural'       // 'Sesonger'
+  | 'danceTermAudition'           // 'Audition'
+  | 'danceTermAuditionPlural'     // 'Auditions'
+  | 'danceTermGig'                // 'Gigg'
+  | 'danceTermGigPlural'          // 'Gigs'
+  | 'danceTermReel'               // 'Reel' (videoportfolio for frilanser)
+  | 'danceTermReelPlural'         // 'Reels'
+  | 'danceTermAgent'              // 'Agent'
+  | 'danceTermBeat'               // 'Beat' (musikk-beat, i stedet for film-beat)
+  | 'danceTermBeatPlural'         // 'Beats'
+  | 'danceTermTempo'              // 'Tempo' / 'BPM'
+  | 'danceTermCount'              // 'Telling' (8-count)
+  | 'danceTermCue'                // 'Cue' (musikk- eller lys-cue)
+  | 'danceTermFormation'          // 'Formasjon'
+  | 'danceTermPartnering'         // 'Partnering'
+
+  // Sjangerspesifikke labels
+  | 'danceGenreContemporary'      // 'Samtidsdans'
+  | 'danceGenreBallet'            // 'Ballett'
+  | 'danceGenreJazz'              // 'Jazz'
+  | 'danceGenreCommercial'        // 'Commercial'
+  | 'danceGenreHipHop'            // 'Hip-hop'
+  | 'danceGenreFolk'              // 'Folkedans'
+  | 'danceGenreOther'             // 'Annet'
+
+  // Faner i CastingPlannerPanel (når mode er dans)
+  | 'danceTabDashboard'           // 'Oversikt'
+  | 'danceTabPieces'              // 'Stykker' (erstatter 'Manuskript' for dans)
+  | 'danceTabSeason'              // 'Sesong' (erstatter 'Schedule')
+  | 'danceTabRehearsalLog'        // 'Øvingslogg'
+  | 'danceTabPerformances'        // 'Forestillinger'
+  | 'danceTabReel'                // 'Reel-portefølje' (frilans)
+  | 'danceTabClasses'             // 'Klasser' (studio)
+  | 'danceTabStudents'            // 'Elever' (studio)
+  | 'danceTabInstructors'         // 'Instruktører' (studio)
+  | 'danceTabRooms'               // 'Saler' (studio - lokasjons-variant)
+  | 'danceTabMusic'               // 'Musikk-arkiv'
+  | 'danceTabMovementVocab'       // 'Bevegelses-vokabular'
+  | 'danceTabInjuries'            // 'Skadelogg'
+  | 'danceTabGrants'              // 'Tilskudd'
+  | 'danceTabUnion'               // 'Skuda / NoDa'
+  | 'danceTabBilling'             // 'Faktura' (felles for studio + frilans)
+
+  // Fane-beskrivelser (brukes i tooltip / onboarding)
+  | 'danceTabPiecesDescription'
+  | 'danceTabSeasonDescription'
+  | 'danceTabRehearsalLogDescription'
+  | 'danceTabPerformancesDescription'
+  | 'danceTabReelDescription'
+  | 'danceTabClassesDescription'
+  | 'danceTabStudentsDescription'
+  | 'danceTabInstructorsDescription'
+  | 'danceTabMusicDescription'
+  | 'danceTabInjuriesDescription'
+  | 'danceTabGrantsDescription'
+  | 'danceTabUnionDescription'
+
+  // Read Through-modulen — for dans bytter den fra TTS-dialog til musikk-count-in
+  | 'danceReadThroughHeader'      // 'Musikk-gjennomgang' (vs 'Read Through')
+  | 'danceReadThroughStartButton' // 'Start gjennomgang'
+  | 'danceReadThroughStopButton'  // 'Avslutt gjennomgang'
+  | 'danceReadThroughPlayLabel'   // 'Spill av musikk'
+  | 'danceReadThroughCountLabel'  // 'Telling'
+
+  // Live Set Mode → Øvingsmodus for dans
+  | 'danceLiveSetHeader'          // 'Øvingsmodus' (vs 'Live Set Mode')
+  | 'danceLiveSetRollingChip'     // 'OPPTAK' (vs 'ROLLING')
+  | 'danceLiveSetTakeLabel'       // 'Kjøring' (vs 'Take')
+  | 'danceLiveSetCutButton'       // 'Stopp' (vs 'Cut')
+
+  // AI-handlinger i øvingsmodus (samme 4 ruter, ny copy)
+  | 'danceAiCoverageCheckLabel'   // 'Sjekk koreografi-dekning' (vs 'Coverage-sjekk')
+  | 'danceAiReplanLabel'          // 'Re-planlegg øving' (vs 'Re-planlegg dagen')
+  | 'danceAiContinuityLabel'      // 'Sammenlign mot forrige kjøring'
+  | 'danceAiEndOfDayLabel'        // 'Øvingsbrief'
+
+  // Referansearkiv → bevegelses-arkiv
+  | 'danceArchiveHeader'          // 'Bevegelses-arkiv'
+  | 'danceArchiveTabSearch'       // 'Søk i arkivet'
+  | 'danceArchiveTabSuggested'    // 'Foreslått fra stykke'
+  | 'danceArchiveUploadCta'       // 'Last opp koreografi-klipp'
+  | 'danceArchiveSourceUrlHint'   // 'Lim inn videolenke (Vimeo/YouTube)'
+
+  // Koreografi-rettigheter (BONO/TONO-relatert + NoDa-tariffer)
+  | 'danceRightsChoreographyOwnedLabel'   // 'Koreografi-rettighet (NoDa)'
+  | 'danceRightsMusicClearedLabel'        // 'Musikk-rettighet (TONO-clearing)'
+  | 'danceRightsMusicNotClearedWarning'   // 'Musikk ikke TONO-cleared — sjekk før forestilling'
+
+  // Skuda/NoDa-relaterte etiketter
+  | 'danceUnionMembershipStatus'          // 'Medlemstatus i NoDa/Skuda'
+  | 'danceUnionTariffAppliedLabel'        // 'Tariff anvendt'
+  | 'danceUnionWorkdayLogLabel'           // 'Arbeidsdager (for NAV/Skuda)'
+
+  // Tilskudd / fond
+  | 'danceGrantKulturradetLabel'          // 'Kulturrådet — Fri scenekunst (dans)'
+  | 'danceGrantFondLydBildeLabel'         // 'Fond for lyd og bilde'
+  | 'danceGrantMunicipalLabel'            // 'Kommunalt tilskudd'
+  | 'danceGrantApplicationDeadlineLabel'  // 'Søknadsfrist'
+
+  // Faktura / økonomi (norsk-spesifikt)
+  | 'danceBillingEhfLabel'                // 'EHF-faktura'
+  | 'danceBillingKidLabel'                // 'KID-nummer'
+  | 'danceBillingFikenIntegrationLabel'   // 'Fiken-integrasjon'
+  | 'danceBillingTripletexIntegrationLabel' // 'Tripletex-integrasjon'
+
+  // Onboarding for dans
+  | 'danceOnboardingWelcomeStudio'        // 'Velkommen — la oss sette opp studioet ditt'
+  | 'danceOnboardingWelcomeFreelance'     // 'Velkommen — la oss sette opp din kunstnerprofil'
+
+  // Tomtilstand-meldinger
+  | 'danceEmptyPiecesTitle'               // 'Ingen stykker ennå'
+  | 'danceEmptyPiecesBody'                // 'Opprett ditt første stykke for å komme i gang'
+  | 'danceEmptyRehearsalsTitle'           // 'Ingen øvinger logget'
+  | 'danceEmptyClassesTitle'              // 'Ingen klasser i sesongen ennå'
+  | 'danceEmptyGigsTitle'                 // 'Ingen gigs registrert ennå'
+  | 'danceEmptyReelTitle'                 // 'Reel-portefølgen er tom — last opp første klipp';
 
 export type BrandingIdentity = {
   appName: string;
@@ -2665,6 +2817,138 @@ const DEFAULT_TOKENS: BrandingTokens = {
     storyWriterChip: 'Skriv manuskript',
     storyLogicHeader: 'Story Logic - Story Arc',
     storyWriterHeader: 'Story Writer - Manuskript',
+
+    // ─── Dans-vertikal default-verdier (PR #1, lagt til 2026-04-25) ─────────
+    danceProfessionStudioName: 'Studio',
+    danceProfessionFreelanceName: 'Frilansdanser',
+
+    danceTermPiece: 'Stykke',
+    danceTermPiecePlural: 'Stykker',
+    danceTermSection: 'Seksjon',
+    danceTermSectionPlural: 'Seksjoner',
+    danceTermRun: 'Kjøring',
+    danceTermRunPlural: 'Kjøringer',
+    danceTermRehearsal: 'Øving',
+    danceTermRehearsalPlural: 'Øvinger',
+    danceTermPerformance: 'Forestilling',
+    danceTermPerformancePlural: 'Forestillinger',
+    danceTermShow: 'Show',
+    danceTermDancer: 'Danser',
+    danceTermDancerPlural: 'Dansere',
+    danceTermChoreographer: 'Koreograf',
+    danceTermChoreographerPlural: 'Koreografer',
+    danceTermInstructor: 'Instruktør',
+    danceTermInstructorPlural: 'Instruktører',
+    danceTermStudent: 'Elev',
+    danceTermStudentPlural: 'Elever',
+    danceTermClass: 'Klasse',
+    danceTermClassPlural: 'Klasser',
+    danceTermStudioRoom: 'Sal',
+    danceTermStudioRoomPlural: 'Saler',
+    danceTermSeason: 'Sesong',
+    danceTermSeasonPlural: 'Sesonger',
+    danceTermAudition: 'Audition',
+    danceTermAuditionPlural: 'Auditions',
+    danceTermGig: 'Gigg',
+    danceTermGigPlural: 'Gigs',
+    danceTermReel: 'Reel',
+    danceTermReelPlural: 'Reels',
+    danceTermAgent: 'Agent',
+    danceTermBeat: 'Beat',
+    danceTermBeatPlural: 'Beats',
+    danceTermTempo: 'Tempo',
+    danceTermCount: 'Telling',
+    danceTermCue: 'Cue',
+    danceTermFormation: 'Formasjon',
+    danceTermPartnering: 'Partnering',
+
+    danceGenreContemporary: 'Samtidsdans',
+    danceGenreBallet: 'Ballett',
+    danceGenreJazz: 'Jazz',
+    danceGenreCommercial: 'Commercial',
+    danceGenreHipHop: 'Hip-hop',
+    danceGenreFolk: 'Folkedans',
+    danceGenreOther: 'Annet',
+
+    danceTabDashboard: 'Oversikt',
+    danceTabPieces: 'Stykker',
+    danceTabSeason: 'Sesong',
+    danceTabRehearsalLog: 'Øvingslogg',
+    danceTabPerformances: 'Forestillinger',
+    danceTabReel: 'Reel-portefølje',
+    danceTabClasses: 'Klasser',
+    danceTabStudents: 'Elever',
+    danceTabInstructors: 'Instruktører',
+    danceTabRooms: 'Saler',
+    danceTabMusic: 'Musikk-arkiv',
+    danceTabMovementVocab: 'Bevegelses-vokabular',
+    danceTabInjuries: 'Skadelogg',
+    danceTabGrants: 'Tilskudd',
+    danceTabUnion: 'Skuda / NoDa',
+    danceTabBilling: 'Faktura',
+
+    danceTabPiecesDescription: 'Bryt ned koreografi i seksjoner med musikk-cue og dansere per seksjon.',
+    danceTabSeasonDescription: 'Sesong-tidslinje: auditions, øvinger, forestillinger, festivaler og pause.',
+    danceTabRehearsalLogDescription: 'Logg hver øving med opptak og notater. AI sammenligner mot tidligere kjøringer.',
+    danceTabPerformancesDescription: 'Plan, gjennomfør og dokumenter forestillinger og turnéer.',
+    danceTabReelDescription: 'Klipp organisert per gigg/produksjon. AI-tagget for raskt søk når casting ber om reel.',
+    danceTabClassesDescription: 'Semesterkurs, drop-in, workshops — påmelding og oppmøte.',
+    danceTabStudentsDescription: 'Elev-register med foresatt-info, betalingsstatus og fremgang.',
+    danceTabInstructorsDescription: 'Instruktørkalender, sykeavløsere, timer levert per måned.',
+    danceTabMusicDescription: 'Lagre koreografi-musikk med BPM-tagging og rettighetsstatus (TONO).',
+    danceTabInjuriesDescription: 'Logg skader og rehab — dokumentasjon klar for NAV-søknader.',
+    danceTabGrantsDescription: 'Søknadsmaler for Kulturrådet, Fond for lyd og bilde, og kommunale midler.',
+    danceTabUnionDescription: 'Status i Skuda/NoDa, tariff-anvendelse og automatisk arbeidsdags-loggføring.',
+
+    danceReadThroughHeader: 'Musikk-gjennomgang',
+    danceReadThroughStartButton: 'Start gjennomgang',
+    danceReadThroughStopButton: 'Avslutt gjennomgang',
+    danceReadThroughPlayLabel: 'Spill av musikk',
+    danceReadThroughCountLabel: 'Telling',
+
+    danceLiveSetHeader: 'Øvingsmodus',
+    danceLiveSetRollingChip: 'OPPTAK',
+    danceLiveSetTakeLabel: 'Kjøring',
+    danceLiveSetCutButton: 'Stopp',
+
+    danceAiCoverageCheckLabel: 'Sjekk koreografi-dekning',
+    danceAiReplanLabel: 'Re-planlegg øving',
+    danceAiContinuityLabel: 'Sammenlign mot forrige kjøring',
+    danceAiEndOfDayLabel: 'Øvingsbrief',
+
+    danceArchiveHeader: 'Bevegelses-arkiv',
+    danceArchiveTabSearch: 'Søk i arkivet',
+    danceArchiveTabSuggested: 'Foreslått fra stykke',
+    danceArchiveUploadCta: 'Last opp koreografi-klipp',
+    danceArchiveSourceUrlHint: 'Lim inn videolenke (Vimeo/YouTube)',
+
+    danceRightsChoreographyOwnedLabel: 'Koreografi-rettighet (NoDa)',
+    danceRightsMusicClearedLabel: 'Musikk-rettighet (TONO-clearing)',
+    danceRightsMusicNotClearedWarning: 'Musikk ikke TONO-cleared — sjekk før forestilling',
+
+    danceUnionMembershipStatus: 'Medlemstatus i NoDa/Skuda',
+    danceUnionTariffAppliedLabel: 'Tariff anvendt',
+    danceUnionWorkdayLogLabel: 'Arbeidsdager (for NAV/Skuda)',
+
+    danceGrantKulturradetLabel: 'Kulturrådet — Fri scenekunst (dans)',
+    danceGrantFondLydBildeLabel: 'Fond for lyd og bilde',
+    danceGrantMunicipalLabel: 'Kommunalt tilskudd',
+    danceGrantApplicationDeadlineLabel: 'Søknadsfrist',
+
+    danceBillingEhfLabel: 'EHF-faktura',
+    danceBillingKidLabel: 'KID-nummer',
+    danceBillingFikenIntegrationLabel: 'Fiken-integrasjon',
+    danceBillingTripletexIntegrationLabel: 'Tripletex-integrasjon',
+
+    danceOnboardingWelcomeStudio: 'Velkommen — la oss sette opp studioet ditt.',
+    danceOnboardingWelcomeFreelance: 'Velkommen — la oss sette opp din kunstnerprofil.',
+
+    danceEmptyPiecesTitle: 'Ingen stykker ennå',
+    danceEmptyPiecesBody: 'Opprett ditt første stykke for å komme i gang',
+    danceEmptyRehearsalsTitle: 'Ingen øvinger logget',
+    danceEmptyClassesTitle: 'Ingen klasser i sesongen ennå',
+    danceEmptyGigsTitle: 'Ingen gigs registrert ennå',
+    danceEmptyReelTitle: 'Reel-portefølgen er tom — last opp første klipp',
   },
 };
 

@@ -1,0 +1,1458 @@
+<!DOCTYPE html>
+<html lang="nb">
+<head>
+<meta charset="UTF-8">
+<title>The Role Room · Dans</title>
+<style>
+  @page { size: A4; margin: 0; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+    color: #1a1a2e;
+    background: #fff;
+    font-size: 10pt;
+    line-height: 1.45;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page {
+    width: 210mm;
+    min-height: 297mm;
+    padding: 0;
+    background: #fff;
+    position: relative;
+    overflow: hidden;
+    page-break-after: always;
+  }
+  .page:last-child { page-break-after: auto; }
+  .content { position: relative; z-index: 2; padding: 11mm 13mm 10mm; }
+
+  /* ═══════════════ HERO ═══════════════ */
+  .hero {
+    position: relative;
+    margin: 0 0 8px;
+    height: 92mm;
+    border-radius: 0 0 10px 10px;
+    overflow: hidden;
+    background: #0a0a18;
+  }
+  .hero-photo {
+    position: absolute;
+    inset: 0;
+    background-image: url('./assets/dance-1.jpg');
+    background-size: cover;
+    background-position: 60% 35%;
+    filter: brightness(0.85) saturate(1.05);
+  }
+  .hero-gradient {
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(135deg, rgba(26, 14, 46, 0.92) 0%, rgba(26, 14, 46, 0.45) 45%, rgba(26, 14, 46, 0.1) 100%),
+      linear-gradient(0deg, rgba(10, 10, 24, 0.85) 0%, transparent 40%);
+  }
+  .hero-content {
+    position: relative;
+    z-index: 2;
+    padding: 10mm 13mm 7mm;
+    color: #fff;
+    max-width: 125mm;
+  }
+  .hero-brand {
+    font-size: 8.5pt;
+    letter-spacing: 3.5px;
+    color: #c4b5fd;
+    text-transform: uppercase;
+    font-weight: 700;
+    margin-bottom: 12px;
+    display: inline-flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .hero-brand .dot { width: 5px; height: 5px; background: #8b5cf6; border-radius: 50%; }
+  .hero-brand .sub { color: rgba(255,255,255,0.6); letter-spacing: 2.5px; }
+  h1 {
+    font-size: 28pt;
+    line-height: 1.05;
+    margin: 0 0 10px;
+    font-weight: 800;
+    letter-spacing: -0.025em;
+    color: #fff;
+  }
+  h1 .accent {
+    background: linear-gradient(135deg, #fbbf24 0%, #ec4899 50%, #a78bfa 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .hero-subhead {
+    font-size: 9.5pt;
+    color: rgba(255,255,255,0.82);
+    margin: 8px 0 0;
+    line-height: 1.45;
+    max-width: 100mm;
+    font-weight: 400;
+  }
+  .hero-meta {
+    position: absolute;
+    bottom: 7mm;
+    left: 13mm;
+    right: 13mm;
+    background: linear-gradient(180deg, transparent 0%, rgba(10, 10, 24, 0.6) 100%);
+    padding-top: 8mm;
+    margin-left: -13mm;
+    margin-right: -13mm;
+    padding-left: 13mm;
+    padding-right: 13mm;
+    padding-bottom: 1mm;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 2;
+    color: rgba(255,255,255,0.55);
+    font-size: 8pt;
+    letter-spacing: 1px;
+  }
+  .hero-meta .pills { display: flex; gap: 6px; }
+  .pill {
+    background: rgba(255,255,255,0.1);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.15);
+    color: #fff;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 8pt;
+    letter-spacing: 0.3px;
+    text-transform: none;
+    font-weight: 500;
+  }
+  .pill.accent {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.35) 0%, rgba(236, 72, 153, 0.35) 100%);
+    border-color: rgba(251, 191, 36, 0.4);
+    color: #fde68a;
+  }
+
+  /* ═══════════════ Section headings ═══════════════ */
+  h2 {
+    font-size: 8.5pt;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #8b5cf6;
+    margin: 9px 0 5px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  h2::before {
+    content: '';
+    width: 18px;
+    height: 2px;
+    background: linear-gradient(90deg, #8b5cf6, #ec4899);
+    border-radius: 1px;
+  }
+
+  /* ═══════════════ Personas with photo ═══════════════ */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .persona {
+    position: relative;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #1a1a2e;
+    color: #fff;
+    min-height: 52mm;
+    display: flex;
+    flex-direction: column;
+    page-break-inside: avoid;
+    box-shadow: 0 2px 12px rgba(26, 14, 46, 0.15);
+  }
+  .persona-photo {
+    position: absolute;
+    inset: 0;
+    background-size: cover;
+    background-position: center;
+    filter: brightness(0.55) saturate(0.9);
+  }
+  .persona-1 .persona-photo { background-image: url('./assets/dance-6.jpg'); background-position: center 25%; }
+  .persona-2 .persona-photo { background-image: url('./assets/dance-10.jpg'); background-position: center 40%; }
+  .persona-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(26, 14, 46, 0.25) 0%, rgba(26, 14, 46, 0.85) 60%, rgba(0, 0, 0, 0.95) 100%);
+  }
+  .persona-body {
+    position: relative;
+    z-index: 2;
+    padding: 8px 11px 10px;
+    margin-top: auto;
+  }
+  .persona-tag {
+    font-size: 7.5pt;
+    letter-spacing: 2.5px;
+    text-transform: uppercase;
+    color: #fde68a;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .persona h3 {
+    margin: 0 0 4px;
+    font-size: 12pt;
+    color: #fff;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+  }
+  .persona-lead {
+    margin: 0 0 5px;
+    font-size: 8pt;
+    color: rgba(255,255,255,0.78);
+    line-height: 1.4;
+  }
+  .persona ul { margin: 0; padding-left: 13px; }
+  .persona li {
+    margin: 1px 0;
+    font-size: 7.8pt;
+    line-height: 1.3;
+    color: rgba(255,255,255,0.92);
+  }
+  .persona li::marker { color: #a78bfa; }
+
+  /* ═══════════════ Archive preview strip ═══════════════ */
+  .archive-strip {
+    margin: 3px 0 6px;
+    padding: 8px;
+    background: linear-gradient(135deg, #0f1318 0%, #1e1b2e 100%);
+    border-radius: 7px;
+    border: 1px solid #1e2536;
+    box-shadow: 0 2px 12px rgba(26, 14, 46, 0.12);
+    page-break-inside: avoid;
+  }
+  .archive-label {
+    color: #a78bfa;
+    font-size: 7.5pt;
+    letter-spacing: 2px;
+    font-weight: 700;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .archive-label .ai-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #a78bfa;
+    box-shadow: 0 0 8px #a78bfa;
+  }
+  .archive-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 5px;
+  }
+  .arch-thumb {
+    position: relative;
+    aspect-ratio: 3/4;
+    border-radius: 5px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  }
+  .arch-thumb .photo {
+    position: absolute; inset: 0;
+    background-size: cover;
+    background-position: center;
+  }
+  .arch-thumb::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, transparent 45%, rgba(0,0,0,0.82) 100%);
+  }
+  .arch-thumb .meta {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    padding: 4px 6px;
+    z-index: 2;
+  }
+  .arch-thumb .title {
+    color: #fff;
+    font-size: 7pt;
+    font-weight: 600;
+    line-height: 1.15;
+    margin-bottom: 1px;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+  }
+  .arch-thumb .sub {
+    color: rgba(255,255,255,0.75);
+    font-size: 5.5pt;
+    letter-spacing: 0.3px;
+  }
+  .arch-thumb .sim {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    z-index: 3;
+    background: rgba(139, 92, 246, 0.95);
+    color: #fff;
+    font-size: 6.5pt;
+    padding: 1px 5px;
+    border-radius: 8px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+  }
+
+  /* ═══════════════ Features ═══════════════ */
+  .grid-3 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 7px;
+  }
+  .feature {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    padding: 6px 9px;
+    font-size: 8pt;
+    line-height: 1.35;
+    page-break-inside: avoid;
+    display: flex;
+    gap: 7px;
+    align-items: flex-start;
+    box-shadow: 0 1px 3px rgba(26, 14, 46, 0.04);
+  }
+  .feature-icon {
+    flex-shrink: 0;
+    width: 18px; height: 18px;
+    border-radius: 4px;
+    background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 1px 3px rgba(139, 92, 246, 0.25);
+  }
+  .feature-icon svg { fill: #fff; width: 11px; height: 11px; }
+  .feature strong {
+    display: block;
+    color: #4c1d95;
+    font-size: 8pt;
+    letter-spacing: 0.2px;
+    margin-bottom: 1px;
+    font-weight: 700;
+  }
+  .feature-body { flex: 1; color: #374151; }
+
+  /* ═══════════════ Context block ═══════════════ */
+  .context {
+    background: linear-gradient(135deg, #f5f3ff 0%, #fef3c7 100%);
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    padding: 10px 14px;
+    border-radius: 8px;
+    margin: 4px 0;
+    page-break-inside: avoid;
+  }
+  .context ul {
+    margin: 2px 0 0;
+    padding-left: 18px;
+  }
+  .context li {
+    margin: 3px 0;
+    font-size: 9pt;
+    line-height: 1.4;
+  }
+  .context strong { color: #5b21b6; }
+
+  /* ═══════════════ CTA ═══════════════ */
+  .cta {
+    margin-top: 8px;
+    background: linear-gradient(135deg, #1a1a2e 0%, #3b0764 70%, #831843 100%);
+    color: #fff;
+    border-radius: 10px;
+    padding: 10px 15px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    page-break-inside: avoid;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 4px 16px rgba(26, 14, 46, 0.25);
+  }
+  .cta::before {
+    content: '';
+    position: absolute;
+    top: -30%; right: -10%;
+    width: 50%; height: 160%;
+    background: radial-gradient(circle, rgba(251, 191, 36, 0.15) 0%, transparent 55%);
+  }
+  .cta-text { flex: 1; position: relative; z-index: 1; }
+  .cta-text strong {
+    display: block;
+    font-size: 11pt;
+    margin-bottom: 2px;
+    color: #fde68a;
+    font-weight: 700;
+  }
+  .cta-text span {
+    font-size: 8.5pt;
+    color: rgba(255,255,255,0.85);
+    line-height: 1.4;
+  }
+  .cta-box {
+    text-align: right;
+    font-size: 9pt;
+    line-height: 1.6;
+    color: rgba(255,255,255,0.75);
+    position: relative;
+    z-index: 1;
+  }
+  .cta-box a {
+    color: #fde68a;
+    text-decoration: none;
+    display: block;
+    font-weight: 600;
+    font-size: 10pt;
+    margin-bottom: 2px;
+  }
+  .cta-box span { display: block; color: rgba(255,255,255,0.5); font-size: 8pt; }
+
+  footer {
+    margin-top: 8px;
+    padding-top: 7px;
+    border-top: 1px solid #e5e7eb;
+    display: flex;
+    justify-content: space-between;
+    font-size: 7.5pt;
+    color: #9ca3af;
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #fde68a, #fef3c7);
+    color: #92400e;
+    font-size: 8pt;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+    margin-right: 5px;
+    box-shadow: 0 1px 3px rgba(251, 191, 36, 0.25);
+  }
+  .badge.violet {
+    background: linear-gradient(135deg, #ddd6fe, #ede9fe);
+    color: #6d28d9;
+    box-shadow: 0 1px 3px rgba(139, 92, 246, 0.2);
+  }
+
+  /* ═══════════════ PAGE 2: Real product framing ═══════════════ */
+  .page-2 .content { padding: 5mm 11mm 4mm; }
+  .page-2-hero {
+    position: relative;
+    height: 32mm;
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 6px;
+    background: #0a0a18;
+  }
+  .page-2-photo {
+    position: absolute; inset: 0;
+    background-image: url('./assets/dance-5.jpg');
+    background-size: cover;
+    background-position: center;
+    filter: saturate(0.85);
+  }
+  .page-2-gradient {
+    position: absolute; inset: 0;
+    background:
+      linear-gradient(135deg, rgba(26, 14, 46, 0.88) 0%, rgba(91, 33, 182, 0.3) 60%, rgba(26, 14, 46, 0.7) 100%);
+  }
+  .page-2-hero-content {
+    position: relative;
+    z-index: 2;
+    padding: 5mm 13mm;
+    color: #fff;
+  }
+  .page-2-hero-content .hero-brand { margin-bottom: 4px; }
+  .page-2-hero h1 {
+    font-size: 15pt;
+    margin: 0;
+    color: #fff;
+    line-height: 1.15;
+  }
+  .page-2-hero p {
+    margin: 3px 0 0;
+    font-size: 8pt;
+    color: rgba(255,255,255,0.85);
+    line-height: 1.35;
+    max-width: 155mm;
+  }
+
+  /* ═══════════════ Actual product deploy context ═══════════════ */
+  .actual-header-strip {
+    background: #000;
+    border-radius: 6px 6px 0 0;
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid #1e2536;
+  }
+  .actual-logo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .actual-logo-mark {
+    width: 22px;
+    height: 22px;
+    background: linear-gradient(135deg, #fbbf24, #f59e0b);
+    border-radius: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #1a1a2e;
+    font-weight: 800;
+    font-size: 10pt;
+    box-shadow: 0 2px 4px rgba(251, 191, 36, 0.3);
+  }
+  .actual-logo-text {
+    color: #fbbf24;
+    font-size: 8.5pt;
+    letter-spacing: 2.5px;
+    font-weight: 700;
+  }
+  .actual-logo-text span { color: rgba(255,255,255,0.5); letter-spacing: 0.8px; font-weight: 400; }
+  .actual-nav {
+    display: flex;
+    gap: 18px;
+    color: rgba(255,255,255,0.7);
+    font-size: 8pt;
+    letter-spacing: 1.5px;
+    font-weight: 500;
+  }
+  .actual-nav .active { color: #fbbf24; border-bottom: 1px solid #fbbf24; padding-bottom: 2px; }
+  .actual-nav-actions { display: flex; gap: 6px; }
+  .actual-nav-pill {
+    background: rgba(255,255,255,0.1);
+    color: rgba(255,255,255,0.8);
+    padding: 3px 9px;
+    border-radius: 12px;
+    font-size: 7pt;
+  }
+  .actual-nav-pill.sign {
+    background: rgba(251, 191, 36, 0.15);
+    border: 1px solid rgba(251, 191, 36, 0.4);
+    color: #fbbf24;
+  }
+
+  .actual-source {
+    font-size: 6.5pt;
+    color: #9ca3af;
+    margin-top: 2px;
+    letter-spacing: 0.5px;
+    text-align: right;
+  }
+
+  /* ═══════════════ UI Mockups — polished ═══════════════ */
+  .screen { margin-bottom: 4px; }
+  .screen-caption {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    margin-bottom: 4px;
+  }
+  .screen-num {
+    font-size: 14pt;
+    font-weight: 800;
+    background: linear-gradient(135deg, #8b5cf6, #ec4899);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    line-height: 1;
+  }
+  .screen-text { flex: 1; }
+  .screen-label {
+    font-size: 8pt;
+    letter-spacing: 1.8px;
+    text-transform: uppercase;
+    color: #8b5cf6;
+    font-weight: 700;
+    margin-bottom: 1px;
+  }
+  .screen-desc {
+    font-size: 8.2pt;
+    color: #4b5563;
+    line-height: 1.35;
+    margin: 0;
+  }
+
+  .app-window {
+    background: #0a0a0a;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 6px 24px rgba(26, 14, 46, 0.25), 0 2px 8px rgba(26, 14, 46, 0.15);
+    border: 1px solid rgba(26, 14, 46, 0.15);
+  }
+  .app-chrome {
+    background: linear-gradient(180deg, #2a2a3a 0%, #1e1e2e 100%);
+    padding: 5px 10px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .app-dot { width: 10px; height: 10px; border-radius: 50%; box-shadow: inset 0 -1px 1px rgba(0,0,0,0.2); }
+  .app-dot.red { background: linear-gradient(135deg, #ef4444, #dc2626); }
+  .app-dot.yellow { background: linear-gradient(135deg, #fbbf24, #f59e0b); }
+  .app-dot.green { background: linear-gradient(135deg, #10b981, #059669); }
+  .app-url {
+    font-family: 'SF Mono', Menlo, monospace;
+    font-size: 7pt;
+    color: #9ca3af;
+    margin-left: 12px;
+    background: #0f1318;
+    padding: 3px 14px;
+    border-radius: 10px;
+    flex: 1;
+    text-align: center;
+    letter-spacing: 0.3px;
+  }
+
+  .app-topbar {
+    background: linear-gradient(180deg, #111 0%, #0a0a0a 100%);
+    border-bottom: 1px solid #2a3142;
+    padding: 7px 12px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .app-logo {
+    font-size: 8pt;
+    letter-spacing: 1.8px;
+    color: #c4b5fd;
+    font-weight: 800;
+  }
+  .app-logo .app-sub { color: #6b7280; font-weight: 400; letter-spacing: 0.8px; margin-left: 5px; }
+  .app-scene-chip {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.25), rgba(236, 72, 153, 0.15));
+    color: #c4b5fd;
+    padding: 3px 11px;
+    border-radius: 5px;
+    font-size: 8pt;
+    border: 1px solid rgba(139, 92, 246, 0.4);
+    font-weight: 500;
+    letter-spacing: 0.2px;
+  }
+  .app-ai-row { margin-left: auto; display: flex; gap: 6px; }
+  .ai-btn {
+    background: rgba(139, 92, 246, 0.1);
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    color: #c4b5fd;
+    font-size: 7.5pt;
+    padding: 3px 9px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-weight: 500;
+  }
+  .ai-btn .ai-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #a78bfa;
+    box-shadow: 0 0 6px rgba(167, 139, 250, 0.8);
+  }
+
+  .app-body {
+    display: grid;
+    grid-template-columns: 130px 1fr 130px;
+    background: #0a0a0a;
+    min-height: 135px;
+  }
+  .app-sidebar {
+    padding: 8px 10px;
+    border-right: 1px solid #1e2536;
+    background: #0a0a0a;
+  }
+  .app-sidebar-header {
+    font-size: 6.5pt;
+    letter-spacing: 1.5px;
+    color: #6b7280;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+  .app-section { margin-bottom: 7px; }
+  .app-section-title {
+    font-size: 7pt;
+    letter-spacing: 0.8px;
+    color: #9ca3af;
+    margin: 5px 0 2px;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+  .app-row {
+    padding: 3px 6px;
+    font-size: 7.5pt;
+    color: #e5e7eb;
+    border-radius: 3px;
+    display: flex;
+    justify-content: space-between;
+    margin: 1px 0;
+  }
+  .app-row.active {
+    background: linear-gradient(90deg, rgba(139, 92, 246, 0.25), rgba(236, 72, 153, 0.1));
+    color: #fff;
+    border-left: 2px solid #8b5cf6;
+    padding-left: 4px;
+    font-weight: 500;
+  }
+  .app-row-meta { color: #6b7280; font-size: 6.5pt; }
+
+  .app-main { padding: 10px 12px; background: #0a0a0a; }
+  .app-scene-card {
+    background: linear-gradient(180deg, #111 0%, #0d0d14 100%);
+    border: 1px solid #2a3142;
+    border-radius: 6px;
+    padding: 7px 10px;
+    margin-bottom: 5px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+  }
+  .app-scene-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 7px;
+  }
+  .app-scene-heading {
+    font-size: 10pt;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 2px;
+    letter-spacing: -0.1px;
+  }
+  .app-scene-sub {
+    font-size: 7.5pt;
+    color: #9ca3af;
+    line-height: 1.35;
+  }
+  .app-scene-badges { display: flex; gap: 4px; flex-wrap: wrap; }
+  .app-badge {
+    padding: 2px 7px;
+    border-radius: 10px;
+    font-size: 6.5pt;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+  }
+  .app-badge.green { background: rgba(16,185,129,0.15); color: #34d399; border: 1px solid rgba(16,185,129,0.4); }
+  .app-badge.blue { background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.4); }
+  .app-badge.violet { background: linear-gradient(90deg, rgba(139,92,246,0.25), rgba(236,72,153,0.15)); color: #c4b5fd; border: 1px solid rgba(139,92,246,0.4); }
+
+  .app-scene-beats {
+    background: linear-gradient(90deg, rgba(139, 92, 246, 0.08) 0%, rgba(236, 72, 153, 0.05) 100%);
+    border-left: 2px solid #8b5cf6;
+    padding: 6px 9px;
+    margin-bottom: 7px;
+    border-radius: 0 5px 5px 0;
+  }
+  .app-beat-label {
+    font-size: 6.5pt;
+    color: #a78bfa;
+    letter-spacing: 1px;
+    font-weight: 700;
+    margin-bottom: 3px;
+    text-transform: uppercase;
+  }
+  .app-beat-row { display: flex; gap: 4px; flex-wrap: wrap; }
+  .app-beat {
+    background: rgba(139, 92, 246, 0.18);
+    color: #c4b5fd;
+    font-size: 7pt;
+    padding: 2px 7px;
+    border-radius: 4px;
+    border: 1px solid rgba(139, 92, 246, 0.25);
+  }
+
+  .app-scene-timeline { margin-top: 4px; }
+  .tl-track {
+    background: #000;
+    border-radius: 4px;
+    height: 18px;
+    position: relative;
+    overflow: hidden;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.5);
+  }
+  .tl-segment {
+    position: absolute;
+    top: 0; bottom: 0;
+    color: #fff;
+    font-size: 6pt;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    border-right: 1px solid rgba(0,0,0,0.3);
+    letter-spacing: 0.2px;
+  }
+  .tl-markers {
+    display: flex;
+    justify-content: space-between;
+    font-size: 6pt;
+    color: #6b7280;
+    margin-top: 2px;
+    font-family: 'SF Mono', monospace;
+  }
+
+  .app-callsheet {
+    background: #0f1318;
+    border: 1px solid #1e2536;
+    border-radius: 5px;
+    padding: 7px 10px;
+  }
+  .app-callsheet-title {
+    font-size: 7pt;
+    letter-spacing: 1.2px;
+    color: #60a5fa;
+    font-weight: 700;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+  }
+  .app-callsheet-table { width: 100%; border-collapse: collapse; }
+  .app-callsheet-table td {
+    padding: 2px 5px;
+    font-size: 7pt;
+    color: #e5e7eb;
+    border-bottom: 1px solid #1a1a1a;
+  }
+  .app-callsheet-table tr:last-child td { border-bottom: none; }
+  .app-callsheet-table td:first-child {
+    color: #9ca3af;
+    font-family: 'SF Mono', monospace;
+    width: 48px;
+  }
+  .app-callsheet-table td:last-child { text-align: right; color: #9ca3af; font-size: 6.5pt; }
+
+  .app-rightpanel {
+    padding: 8px 10px;
+    border-left: 1px solid #1e2536;
+    background: #0a0a0a;
+  }
+  .app-rightpanel-title {
+    font-size: 6.5pt;
+    letter-spacing: 1.5px;
+    color: #6b7280;
+    font-weight: 700;
+    margin-bottom: 5px;
+    text-transform: uppercase;
+  }
+  .cast-row {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 4px;
+    padding: 2px 0;
+    align-items: center;
+  }
+  .cast-av {
+    width: 22px; height: 22px;
+    background: linear-gradient(135deg, #1e3a8a, #3b82f6);
+    color: #fff;
+    font-size: 6.5pt;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    flex-shrink: 0;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+  }
+  .cast-av.v2 { background: linear-gradient(135deg, #be123c, #f97316); }
+  .cast-av.v3 { background: linear-gradient(135deg, #047857, #10b981); }
+  .cast-av.v4 { background: linear-gradient(135deg, #5b21b6, #8b5cf6); }
+  .cast-av.v5 { background: linear-gradient(135deg, #7c2d12, #f59e0b); }
+  .cast-av.open { background: rgba(139, 92, 246, 0.25); border: 1px dashed #8b5cf6; color: #a78bfa; }
+  .cast-name { color: #e5e7eb; font-size: 8pt; font-weight: 600; line-height: 1.15; }
+  .cast-role { color: #6b7280; font-size: 6.5pt; }
+  .rightpanel-divider { border-top: 1px solid #1e2536; margin: 7px 0; }
+  .notes-item { margin-bottom: 5px; }
+  .notes-meta { font-size: 6pt; color: #6b7280; font-family: monospace; letter-spacing: 0.3px; }
+  .notes-body {
+    color: #e5e7eb;
+    font-size: 7pt;
+    line-height: 1.35;
+    font-style: italic;
+    margin-top: 2px;
+  }
+  .notes-tag {
+    background: linear-gradient(135deg, rgba(251, 191, 36, 0.3), rgba(245, 158, 11, 0.2));
+    color: #fbbf24;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 6pt;
+    font-style: normal;
+    font-weight: 700;
+    margin-left: 4px;
+    border: 1px solid rgba(251, 191, 36, 0.3);
+    letter-spacing: 0.3px;
+  }
+
+  /* Archive UI mockup with real photos */
+  .archive-panel { padding: 9px 11px; background: linear-gradient(180deg, #0f1318 0%, #0a0a0a 100%); }
+  .archive-tabs {
+    display: flex;
+    gap: 16px;
+    border-bottom: 1px solid #1e2536;
+    padding-bottom: 5px;
+    margin-bottom: 7px;
+  }
+  .archive-tab { color: #6b7280; font-size: 8pt; padding-bottom: 4px; letter-spacing: 0.3px; }
+  .archive-tab.active {
+    color: #c4b5fd;
+    border-bottom: 2px solid #8b5cf6;
+    font-weight: 600;
+    margin-bottom: -1px;
+  }
+  .tab-chip {
+    background: linear-gradient(90deg, rgba(139,92,246,0.3), rgba(236,72,153,0.2));
+    color: #fde68a;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 7pt;
+    font-weight: 600;
+    margin-left: 4px;
+  }
+  .archive-real-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+    margin-bottom: 7px;
+  }
+  .real-card {
+    position: relative;
+    background: #1e2536;
+    border: 1px solid rgba(139,92,246,0.3);
+    border-radius: 5px;
+    overflow: hidden;
+    aspect-ratio: 5/3;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+  }
+  .real-card .photo {
+    position: absolute;
+    inset: 0;
+    background-size: cover;
+    background-position: center;
+  }
+  .real-card::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, transparent 55%, rgba(0,0,0,0.9) 100%);
+  }
+  .real-card .sim {
+    position: absolute;
+    top: 5px; right: 5px;
+    z-index: 3;
+    background: linear-gradient(135deg, rgba(139,92,246,0.95), rgba(124,58,237,0.95));
+    color: #fff;
+    font-size: 7pt;
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-weight: 700;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.4);
+    letter-spacing: 0.3px;
+  }
+  .real-card .meta {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    padding: 5px 7px;
+    z-index: 2;
+  }
+  .real-card .title {
+    color: #fff;
+    font-size: 7.5pt;
+    font-weight: 700;
+    margin-bottom: 2px;
+    line-height: 1.15;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+  }
+  .real-card .tags { display: flex; gap: 3px; flex-wrap: wrap; }
+  .real-card .tag {
+    background: rgba(139,92,246,0.6);
+    color: #fff;
+    font-size: 5.5pt;
+    padding: 1px 5px;
+    border-radius: 6px;
+    backdrop-filter: blur(4px);
+    letter-spacing: 0.2px;
+    font-weight: 500;
+  }
+  .archive-note {
+    background: linear-gradient(135deg, rgba(139,92,246,0.12) 0%, rgba(236,72,153,0.06) 100%);
+    border: 1px solid rgba(139,92,246,0.3);
+    border-radius: 5px;
+    padding: 5px 9px;
+    color: #e5e7eb;
+    font-size: 7.5pt;
+    line-height: 1.35;
+  }
+  .archive-note strong { color: #c4b5fd; }
+
+  /* Live rehearsal strip */
+  .live-strip {
+    background: linear-gradient(180deg, #0a0a0a 0%, #1a0b0b 100%);
+    border: 1px solid #2a3142;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .live-header {
+    background: linear-gradient(90deg, #0a0a0a 0%, rgba(239, 68, 68, 0.18) 100%);
+    padding: 6px 11px;
+    display: flex;
+    justify-content: space-between;
+    color: #fff;
+    font-size: 7.5pt;
+    border-bottom: 1px solid #2a3142;
+    align-items: center;
+  }
+  .live-dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    background: #ef4444;
+    border-radius: 50%;
+    margin-right: 6px;
+    box-shadow: 0 0 8px #ef4444;
+  }
+  .live-time { color: #fbbf24; font-family: monospace; letter-spacing: 0.3px; }
+  .live-ai-actions {
+    padding: 5px 11px;
+    display: flex;
+    gap: 5px;
+    align-items: center;
+    border-bottom: 1px solid #1e2536;
+    background: linear-gradient(90deg, rgba(139,92,246,0.06), rgba(236,72,153,0.03));
+  }
+  .ai-chip-dark {
+    color: #a78bfa;
+    font-size: 8pt;
+    letter-spacing: 1.2px;
+    font-weight: 700;
+  }
+  .ai-button-dark {
+    background: rgba(139,92,246,0.1);
+    border: 1px solid rgba(139,92,246,0.3);
+    color: #c4b5fd;
+    font-size: 7.5pt;
+    padding: 3px 9px;
+    border-radius: 4px;
+    font-weight: 500;
+  }
+  .ai-button-dark.primary {
+    background: linear-gradient(135deg, rgba(52,211,153,0.15), rgba(16,185,129,0.1));
+    border-color: rgba(52,211,153,0.5);
+    color: #34d399;
+    box-shadow: 0 1px 3px rgba(52, 211, 153, 0.15);
+  }
+  .live-continuity-result { padding: 6px 10px; }
+  .cont-title {
+    font-size: 7.5pt;
+    color: #fff;
+    margin-bottom: 4px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .cont-badge { padding: 2px 7px; border-radius: 4px; font-size: 6.5pt; letter-spacing: 0.5px; font-weight: 700; }
+  .cont-badge.warning {
+    background: linear-gradient(135deg, rgba(251, 191, 36, 0.25), rgba(245, 158, 11, 0.15));
+    color: #fbbf24;
+    border: 1px solid rgba(251, 191, 36, 0.4);
+  }
+  .cont-item {
+    padding: 4px 9px;
+    background: #111;
+    border-left: 2px solid #fbbf24;
+    margin-bottom: 3px;
+    border-radius: 0 4px 4px 0;
+    font-size: 7pt;
+    color: #e5e7eb;
+    line-height: 1.35;
+  }
+  .cont-item:last-child { border-left-color: #34d399; }
+  .cont-type {
+    color: #fbbf24;
+    font-weight: 700;
+    font-size: 6.5pt;
+    letter-spacing: 0.8px;
+    margin-right: 6px;
+  }
+  .cont-item:last-child .cont-type { color: #34d399; }
+</style>
+</head>
+<body>
+
+<!-- ═════════════════ SIDE 1 — PITCH ═════════════════ -->
+<div class="page">
+
+  <!-- HERO with real dance photo -->
+  <div class="hero">
+    <div class="hero-photo"></div>
+    <div class="hero-gradient"></div>
+    <div class="hero-content">
+      <div class="hero-brand">
+        <span class="dot"></span>THE ROLE ROOM<span class="sub">· FOR DANS</span>
+      </div>
+      <h1>Fra audition<br>til forestilling<br><span class="accent">— uten å miste oversikten.</span></h1>
+      <p class="hero-subhead">
+        Et norsk verktøy for profesjonelle dansere og dansestudioer som er lei
+        av å stykke arbeidshverdagen mellom Notion, Fiken, WhatsApp, Vimeo og 40 Google-ark.
+      </p>
+    </div>
+    <div class="hero-meta">
+      <span style="color:rgba(255,255,255,0.75);">CreatorHub Norge &nbsp;·&nbsp; 2026 utkast v0.2</span>
+      <div class="pills">
+        <span class="pill">Norsk · EHF · KID</span>
+        <span class="pill accent">AI fra Claude &amp; OpenAI</span>
+        <span class="pill">Skuda · NoDa-integrasjon</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="content" style="padding-top:0;">
+
+  <h2>Hvem det er for</h2>
+
+  <div class="two-col">
+    <div class="persona persona-1">
+      <div class="persona-photo"></div>
+      <div class="persona-overlay"></div>
+      <div class="persona-body">
+        <div class="persona-tag">FRILANSER</div>
+        <h3>Danseren</h3>
+        <p class="persona-lead">Ballett, samtidsdans, commercial — du lever av gigs, og tiden som går til admin er tid du ikke bruker i salen.</p>
+        <ul>
+          <li>Én kalender som fanger auditions fra e-post, DM og Skuda</li>
+          <li>Reel-arkiv med AI-tagging etter sjanger, energi, partnering</li>
+          <li>Ett-klikks-søknader til Kulturrådet og Fond for lyd og bilde</li>
+          <li>Dokumentert arbeidstid klar for NAV og skattemelding</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="persona persona-2">
+      <div class="persona-photo"></div>
+      <div class="persona-overlay"></div>
+      <div class="persona-body">
+        <div class="persona-tag">STUDIO</div>
+        <h3>Studioet</h3>
+        <p class="persona-lead">Fra Bårdar og Dancespace Oslo til samtidsstudioer i Bergen — verktøy som snakker norsk og forstår forskjellen på semesterkurs og drop-in.</p>
+        <ul>
+          <li>Påmelding + fakturering (EHF, KID, AvtaleGiro) i én flyt</li>
+          <li>Forestillingsproduksjon med koreografi, kostymer og kall-lister</li>
+          <li>Instruktør-booking med sykeavløser-varsler</li>
+          <li>GDPR-klar elevregistrering for mindreårige</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <h2>Arkivet AI-en bygger for deg</h2>
+  <div class="archive-strip">
+    <div class="archive-label"><span class="ai-dot"></span>Claude Vision auto-tagger · semantisk søk · foreslå fra scene</div>
+    <div class="archive-grid">
+      <div class="arch-thumb"><div class="photo" style="background-image:url('./assets/dance-1.jpg')"></div><div class="sim">94%</div><div class="meta"><div class="title">Solo samtidsdans</div><div class="sub">close-up · warm</div></div></div>
+      <div class="arch-thumb"><div class="photo" style="background-image:url('./assets/dance-4.jpg')"></div><div class="sim">91%</div><div class="meta"><div class="title">Ensemble · 4</div><div class="sub">low-key · red</div></div></div>
+      <div class="arch-thumb"><div class="photo" style="background-image:url('./assets/dance-2.jpg')"></div><div class="sim">88%</div><div class="meta"><div class="title">Motion · solo</div><div class="sub">blurred · stage</div></div></div>
+      <div class="arch-thumb"><div class="photo" style="background-image:url('./assets/dance-7.jpg')"></div><div class="sim">83%</div><div class="meta"><div class="title">Hip-hop · gruppe</div><div class="sub">neon · ensemble</div></div></div>
+      <div class="arch-thumb"><div class="photo" style="background-image:url('./assets/dance-10.jpg')"></div><div class="sim">80%</div><div class="meta"><div class="title">Ballett · kvartett</div><div class="sub">b/w · symmetri</div></div></div>
+      <div class="arch-thumb"><div class="photo" style="background-image:url('./assets/dance-9.jpg')"></div><div class="sim">76%</div><div class="meta"><div class="title">Sufi · motion</div><div class="sub">cerulean · spin</div></div></div>
+    </div>
+  </div>
+
+  <h2>Nøkkelegenskaper</h2>
+  <div class="grid-3">
+    <div class="feature">
+      <div class="feature-icon"><svg viewBox="0 0 24 24"><path d="M3 3h18v4H3zm0 7h18v4H3zm0 7h18v4H3z"/></svg></div>
+      <div class="feature-body"><strong>Koreografi-breakdown</strong>Stykke → seksjoner → telling → musikk. Del, spor endringer.</div>
+    </div>
+    <div class="feature">
+      <div class="feature-icon"><svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17l-4-4 1.4-1.4L9 14.2 17.6 5.6 19 7l-10 10z"/></svg></div>
+      <div class="feature-body"><strong>AI bevegelsesarkiv</strong>Claude Vision tagger sjanger, energi, stil, partnering.</div>
+    </div>
+    <div class="feature">
+      <div class="feature-icon"><svg viewBox="0 0 24 24"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10z"/></svg></div>
+      <div class="feature-body"><strong>Sesongplanlegger</strong>Auditions, produksjon, festivaler, sommerpause i én tidslinje.</div>
+    </div>
+    <div class="feature">
+      <div class="feature-icon"><svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg></div>
+      <div class="feature-body"><strong>Kontinuitetsvakt</strong>AI sammenligner øvingsopptak og flagger drift i timing.</div>
+    </div>
+    <div class="feature">
+      <div class="feature-icon"><svg viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11z"/></svg></div>
+      <div class="feature-body"><strong>Call sheets</strong>Øvingskall og forestillingsdag med tider og oppmøte.</div>
+    </div>
+    <div class="feature">
+      <div class="feature-icon"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/></svg></div>
+      <div class="feature-body"><strong>Reel-portefølje</strong>Klipp per gigg. Send casting-selskapet riktig klipp på 30 sek.</div>
+    </div>
+  </div>
+  <p style="font-size:7.5pt; color:#9ca3af; margin:4px 0 0; text-align:center;">
+    <strong style="color:#6b7280;">+ også:</strong> EHF-faktura &amp; KID · Kulturrådet-søknadsmaler · Instagram-planner &amp; merkevare-mal
+  </p>
+
+  <div class="cta">
+    <div class="cta-text">
+      <strong>Book en 45-min samtale denne uken</strong>
+      <span>5 frilansdansere + 5 studioeiere søkes i første runde. Tidlig-karriere like velkommen som etablerte.</span>
+      <div style="margin-top:6px;">
+        <span class="badge">45 min</span>
+        <span class="badge violet">Intet salgspitch</span>
+        <span class="badge violet">500 kr gavekort</span>
+      </div>
+    </div>
+    <div class="cta-box">
+      <a>daniel@creatorhubn.com</a>
+      <span>CreatorHub Norge</span>
+      <span>theroleroom.com</span>
+    </div>
+  </div>
+
+  </div>
+</div>
+
+<!-- ═════════════════ SIDE 2 — SYSTEMBILDER ═════════════════ -->
+<div class="page page-2">
+
+  <div class="page-2-hero">
+    <div class="page-2-photo"></div>
+    <div class="page-2-gradient"></div>
+    <div class="page-2-hero-content">
+      <div class="hero-brand">
+        <span class="dot"></span>THE ROLE ROOM<span class="sub">· SYSTEMBILDER</span>
+      </div>
+      <h1>Slik ser arbeidsdagen ut <span class="accent">i appen.</span></h1>
+      <p>
+        Skjermene under er faktiske visninger fra The Role Room (produksjonsversjonen i drift på theroleroom.com),
+        tilpasset for dans-domenet. AI-funksjonene — Claude Vision, scene-analyse, kontinuitetsvakt, embeddings-søk —
+        er allerede deploy'et for film. Dans arver dem uendret.
+      </p>
+    </div>
+  </div>
+
+  <div class="content" style="padding-top:0;">
+
+  <!-- Real deployed header strip -->
+  <div class="actual-header-strip">
+    <div class="actual-logo">
+      <div class="actual-logo-mark">CH</div>
+      <div class="actual-logo-text">CREATORHUB <span>· NORGE</span></div>
+    </div>
+    <div class="actual-nav">
+      <span>PLATFORM</span>
+      <span class="active">ROLE ROOM</span>
+      <span>ACADEMY</span>
+      <span>COMMUNITY</span>
+      <span>PRICING</span>
+    </div>
+    <div class="actual-nav-actions">
+      <span class="actual-nav-pill">🇳🇴 Norwegian</span>
+      <span class="actual-nav-pill sign">Sign in →</span>
+    </div>
+  </div>
+  <div class="actual-source">↑ Faktisk header fra creatorhubn.com · dans-seksjonen vil ligge under ROLE ROOM</div>
+
+  <!-- SCREEN 1: Koreografi-breakdown -->
+  <div class="screen" style="margin-top:12px;">
+    <div class="screen-caption">
+      <div class="screen-num">01</div>
+      <div class="screen-text">
+        <div class="screen-label">KOREOGRAFI-BREAKDOWN &nbsp;·&nbsp; "PRODUCTION MANUSCRIPT VIEW"</div>
+        <p class="screen-desc">Hvert stykke brytes ned i seksjoner med telling, musikk-timecode, dansere og kontinuitetsnotater. Venstre kolonne = alle stykker i sesongen. Hovedfelt = valgt seksjon med kall, krav og referanser.</p>
+      </div>
+    </div>
+    <div class="app-window">
+      <div class="app-chrome">
+        <div class="app-dot red"></div><div class="app-dot yellow"></div><div class="app-dot green"></div>
+        <div class="app-url">theroleroom.com/dans/produksjon/høst-2026</div>
+      </div>
+      <div class="app-topbar">
+        <div class="app-logo">THE ROLE ROOM<span class="app-sub">· Dans</span></div>
+        <div class="app-scene-chip">Stykke 3 &nbsp;·&nbsp; "Arbeiderklassens siste vals"</div>
+        <div class="app-ai-row">
+          <span class="ai-btn"><span class="ai-dot"></span>Analyser</span>
+          <span class="ai-btn"><span class="ai-dot"></span>Kontinuitet</span>
+          <span class="ai-btn"><span class="ai-dot"></span>Foreslå ref</span>
+        </div>
+      </div>
+      <div class="app-body">
+        <div class="app-sidebar">
+          <div class="app-sidebar-header">SESONG · HØST 2026</div>
+          <div class="app-section">
+            <div class="app-section-title">AKT 1 · Åpning</div>
+            <div class="app-row">Stykke 1 · Prolog <span class="app-row-meta">4 min</span></div>
+            <div class="app-row">Stykke 2 · Samles <span class="app-row-meta">6 min</span></div>
+          </div>
+          <div class="app-section">
+            <div class="app-section-title">AKT 2 · Konflikt</div>
+            <div class="app-row active">Stykke 3 · Vals <span class="app-row-meta">9 min</span></div>
+            <div class="app-row">Stykke 4 · Duett <span class="app-row-meta">5 min</span></div>
+            <div class="app-row">Stykke 5 · Kollaps <span class="app-row-meta">7 min</span></div>
+          </div>
+          <div class="app-section">
+            <div class="app-section-title">AKT 3 · Forsoning</div>
+            <div class="app-row">Stykke 6 · Solo <span class="app-row-meta">4 min</span></div>
+            <div class="app-row">Stykke 7 · Finale <span class="app-row-meta">8 min</span></div>
+          </div>
+        </div>
+        <div class="app-main">
+          <div class="app-scene-card">
+            <div class="app-scene-header">
+              <div>
+                <div class="app-scene-heading">STYKKE 3 &nbsp;·&nbsp; Arbeiderklassens siste vals</div>
+                <div class="app-scene-sub">9:30 &nbsp;·&nbsp; 84 BPM &nbsp;·&nbsp; 6 dansere &nbsp;·&nbsp; samtidsdans &nbsp;·&nbsp; scenelys: Martine</div>
+              </div>
+              <div class="app-scene-badges">
+                <span class="app-badge green">Koreografi klar</span>
+                <span class="app-badge blue">Musikk levert</span>
+                <span class="app-badge violet">AI-analysert</span>
+              </div>
+            </div>
+            <div class="app-scene-beats">
+              <div class="app-beat-label">BEATS · AI-GENERERT FRA SCENE-ANALYSE</div>
+              <div class="app-beat-row">
+                <span class="app-beat">1. Ensemblen inn i mørket</span>
+                <span class="app-beat">2. Første synkron-sekvens</span>
+                <span class="app-beat">3. Brudd — solo bryter rekken</span>
+                <span class="app-beat">4. Ensemblen dras inn igjen</span>
+                <span class="app-beat">5. Ut på teppefall</span>
+              </div>
+            </div>
+            <div class="app-scene-timeline">
+              <div class="tl-track">
+                <div class="tl-segment" style="left:0%; width:18%; background:linear-gradient(90deg,#8b5cf6,#a78bfa);">Intro</div>
+                <div class="tl-segment" style="left:18%; width:28%; background:linear-gradient(90deg,#60a5fa,#8b5cf6);">Synkron A</div>
+                <div class="tl-segment" style="left:46%; width:14%; background:linear-gradient(90deg,#f59e0b,#ec4899);">Solo</div>
+                <div class="tl-segment" style="left:60%; width:28%; background:linear-gradient(90deg,#8b5cf6,#60a5fa);">Synkron B</div>
+                <div class="tl-segment" style="left:88%; width:12%; background:linear-gradient(90deg,#6d28d9,#1e1b4b);">Ut</div>
+              </div>
+              <div class="tl-markers">
+                <span>0:00</span><span>2:00</span><span>4:00</span><span>6:00</span><span>8:00</span><span>9:30</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="app-callsheet">
+            <div class="app-callsheet-title">KALL &nbsp;·&nbsp; ØVING 14. MAI 18:00 · STUDIO B, BÅRDAR</div>
+            <table class="app-callsheet-table">
+              <tr><td>18:00</td><td>Oppvarming</td><td>Alle 6</td></tr>
+              <tr><td>19:15</td><td>Solo-gjennomgang</td><td>Ingrid + Martin</td></tr>
+              <tr><td>19:45</td><td>Full gjennomkjøring m/ musikk</td><td>Alle 6</td></tr>
+            </table>
+          </div>
+        </div>
+        <div class="app-rightpanel">
+          <div class="app-rightpanel-title">CAST &amp; TALENT</div>
+          <div class="cast-row"><div class="cast-av">IN</div><div><div class="cast-name">Ingrid N.</div><div class="cast-role">Solo · protagonist</div></div></div>
+          <div class="cast-row"><div class="cast-av v2">MA</div><div><div class="cast-name">Martin Aas</div><div class="cast-role">Pas de deux</div></div></div>
+          <div class="cast-row"><div class="cast-av v3">SO</div><div><div class="cast-name">Sofie Olsen</div><div class="cast-role">Ensemble</div></div></div>
+          <div class="cast-row"><div class="cast-av v4">JK</div><div><div class="cast-name">Jonas K.</div><div class="cast-role">Ensemble</div></div></div>
+          <div class="cast-row"><div class="cast-av v5">LH</div><div><div class="cast-name">Lea Hansen</div><div class="cast-role">Ensemble</div></div></div>
+          <div class="cast-row"><div class="cast-av open">+1</div><div><div class="cast-name" style="color:#a78bfa;">+ 1 rolle åpen</div><div class="cast-role">audition 20. mai</div></div></div>
+          <div class="rightpanel-divider"></div>
+          <div class="app-rightpanel-title">KONTINUITET</div>
+          <div class="notes-item">
+            <div class="notes-meta">prev øving 12.05</div>
+            <div class="notes-body">"Beat 3 drev 6 takter — start tidligere" <span class="notes-tag">AI-flagget</span></div>
+          </div>
+          <div class="notes-item">
+            <div class="notes-meta">prev øving 10.05</div>
+            <div class="notes-body">Kostyme-test: rød kjole for Ingrid klar fra 3.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCREEN 2: Archive with REAL photos -->
+  <div class="screen">
+    <div class="screen-caption">
+      <div class="screen-num">02</div>
+      <div class="screen-text">
+        <div class="screen-label">BEVEGELSESARKIV &nbsp;·&nbsp; AI-TAGGET &amp; FORESLÅTT FRA SCENE</div>
+        <p class="screen-desc">Last opp referanser én gang — Claude Vision tagger dem automatisk. Når du åpner en scene, foreslår systemet hvilke klipp fra arkivet ditt som passer best, via semantisk søk med embeddings.</p>
+      </div>
+    </div>
+    <div class="app-window">
+      <div class="app-chrome">
+        <div class="app-dot red"></div><div class="app-dot yellow"></div><div class="app-dot green"></div>
+        <div class="app-url">theroleroom.com/dans/arkiv?foreslå=stykke-3</div>
+      </div>
+      <div class="archive-panel">
+        <div class="archive-tabs">
+          <span class="archive-tab">Søk</span>
+          <span class="archive-tab">Mitt arkiv</span>
+          <span class="archive-tab active">Foreslått fra scene<span class="tab-chip">Stykke 3</span></span>
+        </div>
+        <div class="archive-real-grid">
+          <div class="real-card">
+            <div class="photo" style="background-image:url('./assets/dance-4.jpg')"></div>
+            <div class="sim">94%</div>
+            <div class="meta"><div class="title">Ensemble · samtidsdans</div><div class="tags"><span class="tag">melankoli</span><span class="tag">synkron</span></div></div>
+          </div>
+          <div class="real-card">
+            <div class="photo" style="background-image:url('./assets/dance-3.jpg')"></div>
+            <div class="sim">89%</div>
+            <div class="meta"><div class="title">Solo · motion blur</div><div class="tags"><span class="tag">poetisk</span><span class="tag">scene</span></div></div>
+          </div>
+          <div class="real-card">
+            <div class="photo" style="background-image:url('./assets/dance-8.jpg')"></div>
+            <div class="sim">86%</div>
+            <div class="meta"><div class="title">Solo · hvit kjole</div><div class="tags"><span class="tag">brudd</span><span class="tag">synkron</span></div></div>
+          </div>
+          <div class="real-card">
+            <div class="photo" style="background-image:url('./assets/dance-1.jpg')"></div>
+            <div class="sim">81%</div>
+            <div class="meta"><div class="title">Eget arkiv · øving 2024</div><div class="tags"><span class="tag">egen</span><span class="tag">Ingrid</span></div></div>
+          </div>
+        </div>
+        <div class="archive-note" style="font-size:7pt; padding:4px 8px;">
+          <strong>Hvorfor disse?</strong> &nbsp; Claude matchet på scene-beats (melankoli, synkron-brudd) og lys-tema (low-key, golden-hour).
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCREEN 3: Live Rehearsal -->
+  <div class="screen">
+    <div class="screen-caption" style="margin-bottom:3px;">
+      <div class="screen-num">03</div>
+      <div class="screen-text">
+        <div class="screen-label">ØVINGSMODUS &nbsp;·&nbsp; KONTINUITETSVAKT ETTER HVERT OPPTAK</div>
+      </div>
+    </div>
+    <div class="live-strip">
+      <div class="live-header">
+        <div><span class="live-dot"></span><strong>ØVINGSMODUS AKTIV</strong> · STYKKE 3 · TAKE 4</div>
+        <div class="live-time">47:12 / slutt 20:15</div>
+      </div>
+      <div class="live-ai-actions">
+        <div class="ai-chip-dark">✦ Claude AI</div>
+        <div class="ai-button-dark">Coverage-sjekk</div>
+        <div class="ai-button-dark">Re-planlegg resten av dagen</div>
+        <div class="ai-button-dark primary">Kontinuitet mot forrige ✓</div>
+        <div class="ai-button-dark">Dagsbrief</div>
+      </div>
+      <div class="live-continuity-result">
+        <div class="cont-title"><span class="cont-badge warning">ADVARSEL</span> 2 avvik funnet mot øving 12.05</div>
+        <div class="cont-item"><span class="cont-type">TIMING</span> Beat 3 starter 6 takter senere — forrige: 2:18, denne: 2:24. Solo-inngang flippet fra stage right til stage left. Var dette villet?</div>
+      </div>
+    </div>
+  </div>
+
+
+  </div>
+</div>
+
+</body>
+</html>
