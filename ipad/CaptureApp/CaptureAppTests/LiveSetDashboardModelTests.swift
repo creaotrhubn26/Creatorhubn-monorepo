@@ -106,6 +106,99 @@ final class LiveSetDashboardModelTests: XCTestCase {
         XCTAssertEqual(LiveSetDashboardModel.summarize(tiles: []), .empty)
     }
 
+    // MARK: - buildCoverageRequest()
+
+    func test_buildCoverageRequest_splitsTilesByDoneState() {
+        let tiles: [CoverageTile] = [
+            captured(scene: "A", rating: 5),
+            captured(scene: "B", rating: 0),
+            missing(scene: "C", priority: .critical),
+            missing(scene: "D", priority: .high, isCompleted: true), // marked done w/o asset
+            missing(scene: "E", priority: .low),
+        ]
+        let req = LiveSetDashboardModel.buildCoverageRequest(
+            projectId: "proj-uuid",
+            projectTitle: "Holy Crust",
+            tiles: tiles,
+        )
+        // captured + manual-completion both count as completed.
+        XCTAssertEqual(req.shotsCompleted.map(\.id), ["A", "B", "D"])
+        XCTAssertEqual(req.plannedShots.map(\.id), ["C", "E"])
+    }
+
+    func test_buildCoverageRequest_synthesisesSceneFromProject() {
+        let req = LiveSetDashboardModel.buildCoverageRequest(
+            projectId: "proj-uuid",
+            projectTitle: "Holy Crust",
+            tiles: [missing(scene: "A", priority: .high)],
+        )
+        XCTAssertEqual(req.projectId, "proj-uuid")
+        // Slice 2 rolls all shots up under one synthetic scene per
+        // project — verify the scene-id stays stable + carries the
+        // project title as the heading.
+        XCTAssertEqual(req.sceneId, "project:proj-uuid")
+        XCTAssertEqual(req.scene.id, "project:proj-uuid")
+        XCTAssertEqual(req.scene.heading, "Holy Crust")
+    }
+
+    func test_buildCoverageRequest_mapsPriorityToBackendVocab() {
+        let tiles: [CoverageTile] = [
+            missing(scene: "crit",  priority: .critical),
+            missing(scene: "must",  priority: .mustHave),
+            missing(scene: "high",  priority: .high),
+            missing(scene: "med",   priority: .medium),
+            missing(scene: "low",   priority: .low),
+            missing(scene: "unk",   priority: .unknown),
+        ]
+        let req = LiveSetDashboardModel.buildCoverageRequest(
+            projectId: "p", projectTitle: nil, tiles: tiles,
+        )
+        XCTAssertEqual(req.plannedShots.map(\.priority), [
+            "critical", "must-have", "high", "medium", "low", nil,
+        ])
+    }
+
+    func test_buildCoverageRequest_descriptionFallsBackToScene() {
+        let withDescription = CoverageTile(
+            shotId: "x", scene: "Bridal portrait",
+            description: "Two-shot, soft window light",
+            priority: .high, state: .missing(isCompleted: false),
+        )
+        let withoutDescription = CoverageTile(
+            shotId: "y", scene: "Cake closeup",
+            description: nil,
+            priority: .high, state: .missing(isCompleted: false),
+        )
+        let req = LiveSetDashboardModel.buildCoverageRequest(
+            projectId: "p", projectTitle: nil,
+            tiles: [withDescription, withoutDescription],
+        )
+        XCTAssertEqual(req.plannedShots[0].description, "Two-shot, soft window light")
+        XCTAssertEqual(req.plannedShots[1].description, "Cake closeup")
+    }
+
+    // MARK: - CoverageCheckResult.topMissing
+
+    func test_topMissing_picksMostSevereEntryFirst() {
+        let result = CoverageCheckResult(
+            status: .gaps,
+            summary: "",
+            missingCoverage: [
+                .init(type: "insert", reason: "x", severity: .niceToHave),
+                .init(type: "reaction", reason: "y", severity: .critical),
+                .init(type: "OTS", reason: "z", severity: .recommended),
+            ],
+        )
+        XCTAssertEqual(result.topMissing?.type, "reaction")
+    }
+
+    func test_topMissing_returnsNilWhenEmpty() {
+        let result = CoverageCheckResult(
+            status: .complete, summary: "", missingCoverage: [],
+        )
+        XCTAssertNil(result.topMissing)
+    }
+
     // MARK: - Priority parsing
 
     func test_priority_handlesVariants_andDefaultsToUnknown() {

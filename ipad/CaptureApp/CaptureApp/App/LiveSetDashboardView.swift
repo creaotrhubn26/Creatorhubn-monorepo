@@ -21,11 +21,28 @@ struct LiveSetDashboardView: View {
     var body: some View {
         VStack(spacing: 0) {
             summaryBar
+            if model.coverageCheck != nil || model.coverageCheckState == .running {
+                coverageBanner
+            }
             Divider()
             content
         }
         .navigationTitle(model.projectTitle ?? "Live Set")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    Task { await model.runCoverageCheck() }
+                } label: {
+                    if model.coverageCheckState == .running {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Label("AI-sjekk", systemImage: "sparkles")
+                    }
+                }
+                .disabled(model.tiles.isEmpty || model.coverageCheckState == .running)
+            }
+        }
         .task { await model.refresh() }
         .refreshable { await model.refresh() }
     }
@@ -62,6 +79,112 @@ struct LiveSetDashboardView: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
+    }
+
+    // MARK: - AI coverage banner
+
+    @ViewBuilder
+    private var coverageBanner: some View {
+        if case .failed(let message) = model.coverageCheckState {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                Text(message)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 10)
+            .background(Color.orange.opacity(0.08))
+        } else if model.coverageCheckState == .running {
+            HStack(spacing: 10) {
+                ProgressView().controlSize(.small)
+                Text("Claude analyserer dekning…")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 10)
+        } else if let result = model.coverageCheck {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: bannerIcon(for: result.status))
+                    .foregroundStyle(bannerColor(for: result.status))
+                    .font(.body)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(bannerHeadline(for: result))
+                        .font(.subheadline.weight(.semibold))
+                    if !result.summary.isEmpty {
+                        Text(result.summary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if let top = result.topMissing {
+                        HStack(spacing: 6) {
+                            severityChip(top.severity)
+                            Text(top.type)
+                                .font(.caption.weight(.semibold))
+                            Text("—").font(.caption).foregroundStyle(.secondary)
+                            Text(top.reason)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+            .background(bannerColor(for: result.status).opacity(0.08))
+        }
+    }
+
+    private func bannerIcon(for status: CoverageStatus) -> String {
+        switch status {
+        case .complete: return "checkmark.seal.fill"
+        case .gaps:     return "exclamationmark.circle.fill"
+        case .critical: return "exclamationmark.triangle.fill"
+        }
+    }
+
+    private func bannerColor(for status: CoverageStatus) -> Color {
+        switch status {
+        case .complete: return .green
+        case .gaps:     return .orange
+        case .critical: return .red
+        }
+    }
+
+    private func bannerHeadline(for result: CoverageCheckResult) -> String {
+        switch result.status {
+        case .complete: return "Dekningen er komplett"
+        case .gaps:
+            let n = result.missingCoverage.count
+            return n == 1 ? "1 manglende shot" : "\(n) manglende shots"
+        case .critical:
+            let n = result.missingCoverage.count
+            return n == 1 ? "Kritisk: 1 missende shot" : "Kritisk: \(n) missende shots"
+        }
+    }
+
+    @ViewBuilder
+    private func severityChip(_ severity: CoverageSeverity) -> some View {
+        let (label, color): (String, Color) = {
+            switch severity {
+            case .critical:    return ("kritisk",      .red)
+            case .recommended: return ("anbefalt",     .orange)
+            case .niceToHave:  return ("nice-to-have", .secondary)
+            }
+        }()
+        Text(label)
+            .font(.caption2.weight(.bold))
+            .foregroundStyle(color)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(color.opacity(0.15)))
     }
 
     @ViewBuilder

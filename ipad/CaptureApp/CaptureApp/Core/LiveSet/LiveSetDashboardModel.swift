@@ -25,14 +25,30 @@ final class LiveSetDashboardModel {
     private(set) var summary: CoverageSummary = .empty
     private(set) var projectTitle: String?
 
+    /// Latest coverage-check result, if the photographer has run one.
+    /// Slice 2 exposes a manual "AI-sjekk dekning"-button on the view
+    /// rather than auto-firing, since each call is a Claude credit +
+    /// 3-10s of latency we don't want to burn on every refresh.
+    private(set) var coverageCheck: CoverageCheckResult?
+    private(set) var coverageCheckState: CoverageCheckState = .idle
+
+    enum CoverageCheckState: Equatable {
+        case idle
+        case running
+        case completed
+        case failed(String)
+    }
+
     // MARK: - Dependencies
 
     private let backend: BackendClient
+    private let aiService: LiveSetAIService
     private let projectId: String
     private let sessionId: UUID?
 
     init(backend: BackendClient, projectId: String, sessionId: UUID?) {
         self.backend = backend
+        self.aiService = LiveSetAIService(backend: backend)
         self.projectId = projectId
         self.sessionId = sessionId
     }
@@ -59,6 +75,92 @@ final class LiveSetDashboardModel {
             self.loadState = .loaded
         } catch {
             self.loadState = .error(error.localizedDescription)
+        }
+    }
+
+    // MARK: - AI coverage check
+
+    /// Trigger the Claude-backed coverage analysis. Reads the current
+    /// tile state to figure out what's planned vs. captured, sends to
+    /// the backend, stores the result for the view to render.
+    /// Photographer triggers manually (button on the dashboard) since
+    /// each call is ~3-10s of latency + a Claude credit; we don't
+    /// auto-fire on refresh.
+    func runCoverageCheck() async {
+        guard !tiles.isEmpty else { return } // Nothing to analyse yet.
+        coverageCheckState = .running
+        let request = Self.buildCoverageRequest(
+            projectId: projectId,
+            projectTitle: projectTitle,
+            tiles: tiles,
+        )
+        do {
+            let result = try await aiService.checkCoverage(request: request)
+            self.coverageCheck = result
+            self.coverageCheckState = .completed
+        } catch {
+            self.coverageCheckState = .failed(error.localizedDescription)
+        }
+    }
+
+    /// Pure builder — separate so it can be unit-tested without spinning
+    /// up MainActor. Translates the iPad-side ``CoverageTile`` shapes
+    /// into the film/script-supervisor schema the backend AI expects:
+    /// each captured/manually-completed tile becomes a ``shotsCompleted``
+    /// entry, the rest go into ``plannedShots``.
+    nonisolated static func buildCoverageRequest(
+        projectId: String,
+        projectTitle: String?,
+        tiles: [CoverageTile],
+    ) -> CoverageCheckRequest {
+        var completed: [CoverageCheckRequest.ShotShape] = []
+        var planned: [CoverageCheckRequest.ShotShape] = []
+        for tile in tiles {
+            let shape = CoverageCheckRequest.ShotShape(
+                id: tile.shotId,
+                shotType: nil,
+                cameraAngle: nil,
+                description: tile.description ?? tile.scene,
+                notes: nil,
+                priority: priorityWord(tile.priority),
+                status: tile.state.isDone ? "completed" : "planned",
+                completedAt: nil,
+            )
+            if tile.state.isDone {
+                completed.append(shape)
+            } else {
+                planned.append(shape)
+            }
+        }
+        return CoverageCheckRequest(
+            projectId: projectId,
+            // Slice 2 treats the entire project as one synthetic
+            // "scene" — coverage-check rolls up across all shots.
+            // Per-scene rollups land when iPad gets scene-grouping
+            // in the shot list (Slice 3+).
+            sceneId: "project:\(projectId)",
+            scene: .init(
+                id: "project:\(projectId)",
+                sceneNumber: nil,
+                heading: projectTitle,
+                description: nil,
+                intExt: nil,
+                timeOfDay: nil,
+                characters: nil,
+            ),
+            shotsCompleted: completed,
+            plannedShots: planned,
+        )
+    }
+
+    private nonisolated static func priorityWord(_ priority: Priority) -> String? {
+        switch priority {
+        case .critical: return "critical"
+        case .mustHave: return "must-have"
+        case .high:     return "high"
+        case .medium:   return "medium"
+        case .low:      return "low"
+        case .unknown:  return nil
         }
     }
 
@@ -154,6 +256,16 @@ struct CoverageTile: Identifiable, Hashable, Sendable {
     enum State: Hashable, Sendable {
         case captured(previewUrl: String?, rating: Int, isFlagged: Bool, isRejected: Bool)
         case missing(isCompleted: Bool)
+
+        /// Coverage-aware "is this shot done from the photographer's
+        /// perspective?" — matches the summary-aggregation logic so
+        /// the AI receives the same view the dashboard renders.
+        var isDone: Bool {
+            switch self {
+            case .captured: return true
+            case .missing(let isCompleted): return isCompleted
+            }
+        }
     }
 }
 

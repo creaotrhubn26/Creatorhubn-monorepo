@@ -167,6 +167,19 @@ actor BackendClient {
         return response.assets
     }
 
+    /// Run the Claude-backed Live Set coverage check. Backend lives at
+    /// ``POST /api/live-set/ai/coverage-check``; the rest of the
+    /// LiveSet AI suite (replan-day, continuity-check, end-of-day)
+    /// will get sibling methods as Slice 2/3 unfolds.
+    func checkLiveSetCoverage(
+        request: CoverageCheckRequest,
+    ) async throws -> CoverageCheckResult {
+        try await postJSON(
+            path: "/api/live-set/ai/coverage-check",
+            body: request,
+        )
+    }
+
     // MARK: - Multipart upload
 
     func startUpload(
