@@ -79,17 +79,25 @@ export async function exchangeGoogleIdToken(
     return { ok: false, status: 400, error: "idToken_required" };
   }
 
-  // Accept tokens issued for either the dedicated CreatorHub Google
-  // project or the shared Role Room one — Render currently only has the
-  // Role Room credentials populated, and a single Google project is fine
-  // for both products. Listing both means we'll keep working even when
-  // operations adds a separate CreatorHub client id later.
+  // Accept tokens issued for any of the configured CreatorHub OAuth
+  // clients. Each platform registers its own client ID in Google Cloud
+  // (web client for the dashboard, iOS client for the iPad CaptureApp,
+  // shared Role Room client where applicable), and tokens carry the
+  // issuing client's ID in their `aud` claim. We need ALL active
+  // platform IDs in the audience list — otherwise the iPad's id-token
+  // (audience = iOS client) gets rejected against just the web one.
+  //
+  // Multi-value support via comma-separated env var is intentional: a
+  // single `CAPTUREAPP_GOOGLE_CLIENT_ID="A,B"` is easier for ops to
+  // manage on Render than provisioning a new env var per future native
+  // client (Android, macOS, etc.).
   const audiences = (
     input.clientIdOverride
       ? [input.clientIdOverride]
       : [
-          process.env.CREATORHUB_GOOGLE_CLIENT_ID,
-          process.env.ROLE_ROOM_GOOGLE_CLIENT_ID,
+          ...splitClientIds(process.env.CREATORHUB_GOOGLE_CLIENT_ID),
+          ...splitClientIds(process.env.ROLE_ROOM_GOOGLE_CLIENT_ID),
+          ...splitClientIds(process.env.CAPTUREAPP_GOOGLE_CLIENT_ID),
         ]
   ).filter((v): v is string => typeof v === "string" && v.length > 0);
 
@@ -165,6 +173,23 @@ export async function exchangeGoogleIdToken(
       profileImageUrl: profileImage,
     },
   };
+}
+
+/// Split a comma-separated client-ID env value into individual IDs,
+/// trimming whitespace + dropping empties. Single-value envs work
+/// unchanged ("abc.googleusercontent.com" → ["abc.googleusercontent.com"]),
+/// multi-value envs let ops add iOS / Android client IDs without
+/// provisioning new env vars per platform.
+///
+/// Exported for direct unit testing — the integration path goes
+/// through `exchangeGoogleIdToken` whose verifyOverride contract
+/// makes audience-list assertions awkward.
+export function splitClientIds(raw: string | undefined): string[] {
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((id) => id.trim())
+    .filter((id) => id.length > 0);
 }
 
 async function defaultVerify(

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   exchangeGoogleIdToken,
+  splitClientIds,
   type ActiveSessionLike,
   type GoogleTokenPayload,
 } from './google-id-token-service.js';
@@ -170,5 +171,50 @@ describe('exchangeGoogleIdToken', () => {
     });
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.user.role).toBe('admin');
+  });
+
+  it('accepts a token via the iPad-specific CAPTUREAPP_GOOGLE_CLIENT_ID', async () => {
+    // The iPad CaptureApp's id-tokens carry the iOS OAuth-client ID
+    // in their `aud` claim — different from the web client ID. Without
+    // this env var the iPad got 401 invalid_id_token because the
+    // audience mismatched the web/role-room ones.
+    delete process.env.CREATORHUB_GOOGLE_CLIENT_ID;
+    delete process.env.ROLE_ROOM_GOOGLE_CLIENT_ID;
+    process.env.CAPTUREAPP_GOOGLE_CLIENT_ID =
+      'ios-256648.apps.googleusercontent.com';
+    const { stub } = makePoolStub();
+    const result = await exchangeGoogleIdToken({
+      idToken: 'token',
+      pool: stub,
+      activeSessions: new Map(),
+      verifyOverride: async () => goodPayload,
+      tokenFactory: () => 't',
+    });
+    delete process.env.CAPTUREAPP_GOOGLE_CLIENT_ID;
+    expect(result.ok).toBe(true);
+  });
+});
+
+describe('splitClientIds', () => {
+  it('returns [] for missing or empty values', () => {
+    expect(splitClientIds(undefined)).toEqual([]);
+    expect(splitClientIds('')).toEqual([]);
+    expect(splitClientIds('   ')).toEqual([]);
+  });
+
+  it('returns single-value envs unchanged', () => {
+    expect(splitClientIds('abc.apps.googleusercontent.com'))
+      .toEqual(['abc.apps.googleusercontent.com']);
+  });
+
+  it('splits comma-separated values + trims whitespace + drops empties', () => {
+    // Accepts ops-friendly formats: ``A,B``, ``A, B``, trailing/leading
+    // whitespace, empty trailing entries (`A,B,`).
+    expect(
+      splitClientIds(' ios-1.apps.googleusercontent.com , ios-2.apps.googleusercontent.com ,  '),
+    ).toEqual([
+      'ios-1.apps.googleusercontent.com',
+      'ios-2.apps.googleusercontent.com',
+    ]);
   });
 });
