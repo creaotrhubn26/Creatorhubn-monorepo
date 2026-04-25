@@ -8,14 +8,14 @@ services:
     branch: main
     autoDeploy: true
     healthCheckPath: /api/health
-    # Run SQL migrations against Neon before swapping the live container
-    # over to the new build. Failure here aborts the deploy → broken
-    # schemas can never reach prod-running code. ``backend/migrate.sh``
-    # detects the Render runtime env and skips Drizzle push + seeding
-    # by default; only the ``migrations/*.sql`` runner + tracker fire.
-    # Path is `cd /app/backend &&` because the Dockerfile sets WORKDIR
-    # to /app, but the migrate-script + SQL files live under backend/.
-    preDeployCommand: cd /app/backend && ./migrate.sh
+    # Migrate-on-deploy lever i `backend/package.json`'s ``start``-script
+    # (``./migrate.sh && node server.js``), ikke som preDeployCommand —
+    # preDeployCommand krever Standard-plan ($25/md), denne servicen
+    # er på Starter. Hvis vi oppgraderer til Standard, flytt
+    # migreringen tilbake hit som ``preDeployCommand: cd /app/backend
+    # && ./migrate.sh`` og fjern prefix fra start-scriptet, slik at
+    # migrasjonen aborterer deployen før live-trafikken swappes
+    # istedenfor å feile på første container-restart.
     envVars:
       - key: DATABASE_URL
         sync: false
