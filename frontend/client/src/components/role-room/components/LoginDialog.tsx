@@ -34,6 +34,11 @@ import {
 } from '@mui/icons-material';
 import { ROLE_ROOM_BRAND_ASSETS } from '../config/branding';
 import { ROLE_ROOM_LANDING_CONFIG } from '../config/landing';
+import {
+  getActiveProfessionMode,
+  setActiveProfessionMode,
+  type ProfessionMode,
+} from '../config/professionMode';
 import authSessionService from '../services/authSessionService';
 import { googleWorkspaceApi } from '../services/castingApiService';
 import { parseClientPortalIntentFromWindow } from '../utils/clientPortal';
@@ -1633,6 +1638,35 @@ function glassInputSx(focused?: boolean) {
   } as const;
 }
 
+/* ─── Profession mode picker — kompakt meta brukt i landingens login-dialog ─── */
+
+interface ProfessionPickerMeta {
+  label: string;
+  glyph: string;
+  accent: string;
+  beta?: boolean;
+}
+
+const PROFESSION_PICKER_META: Record<ProfessionMode, ProfessionPickerMeta> = {
+  production:       { label: 'Film/video',       glyph: '🎬', accent: '#60a5fa' },
+  photographer:     { label: 'Fotograf',         glyph: '📷', accent: '#22d3ee' },
+  content_producer: { label: 'Innholdsprodusent', glyph: '✍️', accent: '#a855f7' },
+  content_creator:  { label: 'Innholdsskaper',   glyph: '⚡', accent: '#f59e0b' },
+  dance_studio:     { label: 'Dansestudio',      glyph: '🎓', accent: '#8b5cf6', beta: true },
+  dance_freelance:  { label: 'Dans — frilans',   glyph: '💫', accent: '#8b5cf6', beta: true },
+};
+
+// Landing-velgeren viser kun profesjoner som IKKE allerede dekkes av
+// persona-velgeren (production_team / content_producer / education_institution).
+// Det forhindrer dobbel-presentasjon av "produksjonsteam" og "innholds-
+// produsent" som allerede er kjernen av onboarding-flyten over.
+const LANDING_PROFESSION_PICKER_MODES: readonly ProfessionMode[] = [
+  'photographer',
+  'content_creator',
+  'dance_studio',
+  'dance_freelance',
+] as const;
+
 /* ════════════════════════ LoginDialog ═════════════════════════════ */
 
 export default function LoginDialog({
@@ -1650,6 +1684,12 @@ export default function LoginDialog({
   const [password, setPassword] = useState('');
   const [selectedRole, setSelectedRole] = useState('');
   const [loginPersona, setLoginPersona] = useState<LoginPersona>('');
+  // Profesjonsvalg på landingssiden — settes i localStorage så Role Room
+  // post-login lander i riktig vertikal (DanceWorkspace ved dans, ellers
+  // standard produksjons-flyt).
+  const [selectedProfessionMode, setSelectedProfessionMode] = useState<ProfessionMode>(
+    () => getActiveProfessionMode(),
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [emailFocused, setEmailFocused] = useState(false);
@@ -5777,6 +5817,84 @@ export default function LoginDialog({
                   {commercialPaymentPending ? 'Starter Stripe Checkout…' : 'Gå til sikker betaling'}
                 </Button>
               )}
+            </Box>
+          )}
+
+          {/* ── profession mode picker — kun spesialiserte profesjoner.
+                  Produksjonsteam og innholdsprodusent dekkes av persona-
+                  velgeren over, så vi viser dem ikke her. ── */}
+          {shouldShowAuthFields && (
+            <Box sx={{ mb: 1 }}>
+              <Typography
+                sx={{
+                  fontSize: '0.72rem',
+                  fontWeight: 600,
+                  letterSpacing: '0.06em',
+                  textTransform: 'uppercase',
+                  color: `rgba(${aR},${aG},${aB},0.62)`,
+                  mb: 0.8,
+                }}
+              >
+                Spesialiserte profesjoner
+              </Typography>
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(2, 1fr)' },
+                  gap: 0.8,
+                }}
+              >
+                {LANDING_PROFESSION_PICKER_MODES.map((mode) => {
+                  const meta = PROFESSION_PICKER_META[mode];
+                  const isSelected = selectedProfessionMode === mode;
+                  return (
+                    <Button
+                      key={mode}
+                      onClick={() => {
+                        setSelectedProfessionMode(mode);
+                        setActiveProfessionMode(mode);
+                      }}
+                      disableRipple
+                      sx={{
+                        textTransform: 'none',
+                        fontWeight: 600,
+                        fontSize: '0.78rem',
+                        justifyContent: 'flex-start',
+                        gap: 0.7,
+                        px: 1.2,
+                        py: 0.9,
+                        borderRadius: '12px',
+                        border: '1px solid',
+                        borderColor: isSelected
+                          ? meta.accent
+                          : `rgba(${aR},${aG},${aB},0.18)`,
+                        bgcolor: isSelected
+                          ? `${meta.accent}1f`
+                          : `rgba(${aR},${aG},${aB},0.04)`,
+                        color: isSelected
+                          ? meta.accent
+                          : `rgba(${aR},${aG},${aB},0.82)`,
+                        '&:hover': {
+                          bgcolor: isSelected
+                            ? `${meta.accent}2a`
+                            : `rgba(${aR},${aG},${aB},0.08)`,
+                          borderColor: meta.accent,
+                        },
+                      }}
+                    >
+                      <Box component="span" sx={{ fontSize: '1rem', lineHeight: 1 }}>{meta.glyph}</Box>
+                      <Box component="span" sx={{ flex: 1, textAlign: 'left', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {meta.label}
+                      </Box>
+                      {meta.beta ? (
+                        <Box component="span" sx={{ fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.08em', color: meta.accent }}>
+                          BETA
+                        </Box>
+                      ) : null}
+                    </Button>
+                  );
+                })}
+              </Box>
             </Box>
           )}
 
