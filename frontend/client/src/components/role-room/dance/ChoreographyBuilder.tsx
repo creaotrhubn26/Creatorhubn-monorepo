@@ -13,7 +13,7 @@
  * Persistens og samarbeid kommer i en senere PR. Ingen backend-kall.
  */
 
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import {
   Box,
   Card,
@@ -63,10 +63,13 @@ import {
 
 // ─── Sub-helpers ────────────────────────────────────────────────────────
 
-const ROW_HEIGHT_BLOCK = 38;
+const ROW_HEIGHT_BLOCK = 44;        // litt høyere for å gi plass til drag-handles
 const ROW_HEIGHT_TEXT = 30;
 const ROW_HEIGHT_WAVEFORM = 28;
 const TIMELINE_LEFT_LABEL_WIDTH = 110;
+const DRAG_HANDLE_WIDTH = 6;
+const SNAP_INTERVAL_SEC = 1;        // snap til nærmeste hele sekund
+const MIN_SEGMENT_DURATION_SEC = 1;
 
 function rowHeightFor(layer: TimelineLayerMeta): number {
   switch (layer.variant) {
@@ -92,6 +95,8 @@ export interface ChoreographyBuilderProps {
   initialChoreography?: Choreography;
   /** Kalles når brukeren trykker "Lagre". MVP gjør ingenting hvis udefinert. */
   onSave?: (choreography: Choreography) => void;
+  /** Hvis satt, autosaver hver endring etter 1.5s debounce. */
+  onAutosave?: (choreography: Choreography) => Promise<void> | void;
 }
 
 // ─── Hovedkomponent ─────────────────────────────────────────────────────
@@ -99,6 +104,7 @@ export interface ChoreographyBuilderProps {
 export const ChoreographyBuilder: React.FC<ChoreographyBuilderProps> = ({
   initialChoreography,
   onSave,
+  onAutosave,
 }) => {
   const branding = useBrandingSettings();
   const labels = branding.tokens.labels;
@@ -109,7 +115,17 @@ export const ChoreographyBuilder: React.FC<ChoreographyBuilderProps> = ({
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(
     () => choreography.segments[0]?.id ?? null,
   );
+
+  // ─── Audio playback state ──────────────────────────
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [playheadSec, setPlayheadSec] = useState(0);
+
+  // ─── Autosave state ────────────────────────────────
+  const [autosaveStatus, setAutosaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isFirstRenderRef = useRef(true);
 
   const selectedSegment = useMemo(
     () => choreography.segments.find((s) => s.id === selectedSegmentId) ?? null,
@@ -118,6 +134,75 @@ export const ChoreographyBuilder: React.FC<ChoreographyBuilderProps> = ({
 
   // Total varighet — brukes for prosent-utregning på timeline.
   const totalDur = Math.max(choreography.totalDurationSec, 1);
+
+  // ─── Audio playback effect ─────────────────────────
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    const onTime = () => setPlayheadSec(audio.currentTime);
+    const onEnd = () => setIsPlaying(false);
+    audio.addEventListener('timeupdate', onTime);
+    audio.addEventListener('ended', onEnd);
+    return () => {
+      audio.removeEventListener('timeupdate', onTime);
+      audio.removeEventListener('ended', onEnd);
+    };
+  }, [audioUrl]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (isPlaying) void audio.play().catch(() => setIsPlaying(false));
+    else audio.pause();
+  }, [isPlaying]);
+
+  // Cleanup blob URL when unmounting / replacing audio
+  useEffect(() => {
+    return () => {
+      if (audioUrl?.startsWith('blob:')) URL.revokeObjectURL(audioUrl);
+    };
+  }, [audioUrl]);
+
+  const handleAudioFile = useCallback((file: File) => {
+    const url = URL.createObjectURL(file);
+    setAudioUrl((prev) => {
+      if (prev?.startsWith('blob:')) URL.revokeObjectURL(prev);
+      return url;
+    });
+    setIsPlaying(false);
+    setPlayheadSec(0);
+    setChoreography((c) => ({ ...c, musicTitle: c.musicTitle ?? file.name }));
+  }, []);
+
+  const seekTo = useCallback((sec: number) => {
+    const audio = audioRef.current;
+    const clamped = Math.max(0, Math.min(totalDur, sec));
+    setPlayheadSec(clamped);
+    if (audio) audio.currentTime = clamped;
+  }, [totalDur]);
+
+  // ─── Autosave effect ───────────────────────────────
+  useEffect(() => {
+    if (isFirstRenderRef.current) {
+      isFirstRenderRef.current = false;
+      return;
+    }
+    if (!onAutosave) return;
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    setAutosaveStatus('saving');
+    autosaveTimerRef.current = setTimeout(async () => {
+      try {
+        await onAutosave(choreography);
+        setAutosaveStatus('saved');
+        setTimeout(() => setAutosaveStatus('idle'), 1500);
+      } catch {
+        setAutosaveStatus('error');
+      }
+    }, 1500);
+    return () => {
+      if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    };
+  }, [choreography, onAutosave]);
 
   // ─── Mutators ──────────────────────────────────────
 
@@ -213,20 +298,31 @@ export const ChoreographyBuilder: React.FC<ChoreographyBuilderProps> = ({
             label={`${labels.choreographyBuilderBpmLabel}: ${choreography.bpm ?? '–'}`} />
           <MetaPill label={`${labels.choreographyBuilderKeyLabel}: ${choreography.musicalKey ?? '–'}`} />
           <MetaPill label={`${labels.choreographyBuilderTotalDuration}: ${formatTime(choreography.totalDurationSec)}`} accent />
-          <Tooltip title={labels.choreographyBuilderPlayLabel}>
-            <IconButton
-              data-testid="choreo-play-toggle"
-              onClick={() => setIsPlaying((v) => !v)}
-              sx={{
-                bgcolor: isPlaying ? 'rgba(52,211,153,0.15)' : 'rgba(139,92,246,0.12)',
-                color: isPlaying ? '#34d399' : '#c4b5fd',
-                border: `1px solid ${isPlaying ? 'rgba(52,211,153,0.4)' : 'rgba(139,92,246,0.4)'}`,
-                '&:hover': { bgcolor: isPlaying ? 'rgba(52,211,153,0.22)' : 'rgba(139,92,246,0.2)' },
-              }}
-            >
-              {isPlaying ? <PauseIcon /> : <PlayIcon />}
-            </IconButton>
+          <AudioFileButton onFile={handleAudioFile} hasAudio={!!audioUrl} />
+          <Tooltip title={audioUrl ? labels.choreographyBuilderPlayLabel : 'Last opp musikkfil først'}>
+            <span>
+              <IconButton
+                data-testid="choreo-play-toggle"
+                disabled={!audioUrl}
+                onClick={() => setIsPlaying((v) => !v)}
+                sx={{
+                  bgcolor: isPlaying ? 'rgba(52,211,153,0.15)' : 'rgba(139,92,246,0.12)',
+                  color: isPlaying ? '#34d399' : '#c4b5fd',
+                  border: `1px solid ${isPlaying ? 'rgba(52,211,153,0.4)' : 'rgba(139,92,246,0.4)'}`,
+                  '&:hover': { bgcolor: isPlaying ? 'rgba(52,211,153,0.22)' : 'rgba(139,92,246,0.2)' },
+                  '&.Mui-disabled': { opacity: 0.45 },
+                }}
+              >
+                {isPlaying ? <PauseIcon /> : <PlayIcon />}
+              </IconButton>
+            </span>
           </Tooltip>
+          {playheadSec > 0 && (
+            <Typography sx={{ fontSize: 11, color: '#a78bfa', fontFamily: 'monospace', minWidth: 50 }}>
+              {formatTime(playheadSec)}
+            </Typography>
+          )}
+          <AutosaveBadge status={autosaveStatus} />
           <Button
             data-testid="choreo-save"
             variant="contained"
@@ -238,6 +334,11 @@ export const ChoreographyBuilder: React.FC<ChoreographyBuilderProps> = ({
           </Button>
         </Stack>
       </Box>
+
+      {/* Hidden audio element — playback drives playhead via timeupdate */}
+      {audioUrl && (
+        <audio ref={audioRef} src={audioUrl} preload="metadata" data-testid="choreo-audio" />
+      )}
 
       {/* ─── Body — 3 kolonner ───────────────────────── */}
       <Box
@@ -327,7 +428,10 @@ export const ChoreographyBuilder: React.FC<ChoreographyBuilderProps> = ({
               choreography={choreography}
               selectedSegmentId={selectedSegmentId}
               onSelectSegment={setSelectedSegmentId}
+              onUpdateSegment={updateSegment}
               labels={labels}
+              playheadSec={playheadSec}
+              onSeek={seekTo}
             />
           )}
         </Box>
@@ -366,14 +470,20 @@ interface TimelineCanvasProps {
   choreography: Choreography;
   selectedSegmentId: string | null;
   onSelectSegment: (id: string) => void;
+  onUpdateSegment: (id: string, patch: Partial<Segment>) => void;
   labels: ReturnType<typeof useBrandingSettings>['tokens']['labels'];
+  playheadSec: number;
+  onSeek: (sec: number) => void;
 }
 
 const TimelineCanvas: React.FC<TimelineCanvasProps> = ({
   choreography,
   selectedSegmentId,
   onSelectSegment,
+  onUpdateSegment,
   labels,
+  playheadSec,
+  onSeek,
 }) => {
   const totalDur = Math.max(choreography.totalDurationSec, 1);
   // Tids-markører hvert 10. sekund — gir leselig tids-skala uavhengig av lengde
@@ -382,12 +492,35 @@ const TimelineCanvas: React.FC<TimelineCanvasProps> = ({
   for (let t = 0; t <= totalDur; t += tickInterval) ticks.push(t);
   if (ticks[ticks.length - 1] !== totalDur) ticks.push(totalDur);
 
+  // Bevar referanse til timeline-tracket for å konvertere klikk-pos → sekunder
+  const trackRef = useRef<HTMLDivElement | null>(null);
+
+  const handleRulerClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const pct = (e.clientX - rect.left) / rect.width;
+      onSeek(Math.max(0, Math.min(totalDur, pct * totalDur)));
+    },
+    [onSeek, totalDur],
+  );
+
   return (
-    <Box sx={{ minWidth: 600 }}>
+    <Box sx={{ minWidth: 600, position: 'relative' }}>
       {/* ─── Time-ruler ────────────────────────────── */}
       <Box sx={{ display: 'flex', alignItems: 'flex-end', mb: 1 }}>
         <Box sx={{ width: TIMELINE_LEFT_LABEL_WIDTH }} />
-        <Box sx={{ flex: 1, position: 'relative', height: 24, borderBottom: '1px solid #2a3142' }}>
+        <Box
+          ref={trackRef}
+          onClick={handleRulerClick}
+          data-testid="choreo-time-ruler"
+          sx={{
+            flex: 1,
+            position: 'relative',
+            height: 24,
+            borderBottom: '1px solid #2a3142',
+            cursor: 'pointer',
+          }}
+        >
           {ticks.map((t) => {
             const pct = (t / totalDur) * 100;
             return (
@@ -421,7 +554,9 @@ const TimelineCanvas: React.FC<TimelineCanvasProps> = ({
             choreography={choreography}
             selectedSegmentId={selectedSegmentId}
             onSelectSegment={onSelectSegment}
+            onUpdateSegment={onUpdateSegment}
             labels={labels}
+            playheadSec={playheadSec}
           />
         ))}
       </Stack>
@@ -431,8 +566,14 @@ const TimelineCanvas: React.FC<TimelineCanvasProps> = ({
 
 // ─── Én layer-rad ────────────────────────────────────────────────────────
 
-interface TimelineLayerRowProps extends TimelineCanvasProps {
+interface TimelineLayerRowProps {
   layer: TimelineLayerMeta;
+  choreography: Choreography;
+  selectedSegmentId: string | null;
+  onSelectSegment: (id: string) => void;
+  onUpdateSegment: (id: string, patch: Partial<Segment>) => void;
+  labels: ReturnType<typeof useBrandingSettings>['tokens']['labels'];
+  playheadSec: number;
 }
 
 const TimelineLayerRow: React.FC<TimelineLayerRowProps> = ({
@@ -440,10 +581,13 @@ const TimelineLayerRow: React.FC<TimelineLayerRowProps> = ({
   choreography,
   selectedSegmentId,
   onSelectSegment,
+  onUpdateSegment,
   labels,
+  playheadSec,
 }) => {
   const totalDur = Math.max(choreography.totalDurationSec, 1);
   const rowH = rowHeightFor(layer);
+  const trackRef = useRef<HTMLDivElement | null>(null);
 
   return (
     <Box sx={{ display: 'flex', alignItems: 'stretch' }}>
@@ -467,6 +611,7 @@ const TimelineLayerRow: React.FC<TimelineLayerRowProps> = ({
 
       {/* ─── Track ────────────────────────────────── */}
       <Box
+        ref={trackRef}
         sx={{
           flex: 1,
           position: 'relative',
@@ -498,7 +643,7 @@ const TimelineLayerRow: React.FC<TimelineLayerRowProps> = ({
           <WaveformOverlay totalDur={totalDur} bpm={choreography.bpm ?? 120} />
         )}
 
-        {/* Segment-blokker */}
+        {/* Segment-blokker — block-laget får drag-handles */}
         {choreography.segments.map((seg) => {
           const leftPct = (seg.startSec / totalDur) * 100;
           const widthPct = ((seg.endSec - seg.startSec) / totalDur) * 100;
@@ -513,9 +658,31 @@ const TimelineLayerRow: React.FC<TimelineLayerRowProps> = ({
               isSelected={isSel}
               labels={labels}
               onSelect={() => onSelectSegment(seg.id)}
+              onResize={(patch) => onUpdateSegment(seg.id, patch)}
+              trackRef={trackRef}
+              totalDur={totalDur}
+              segments={choreography.segments}
             />
           );
         })}
+
+        {/* ─── Playhead — vertikal linje gjennom track ─── */}
+        {playheadSec > 0 && (
+          <Box
+            data-testid={`choreo-playhead-${layer.kind}`}
+            sx={{
+              position: 'absolute',
+              left: `${(playheadSec / totalDur) * 100}%`,
+              top: 0,
+              bottom: 0,
+              width: 2,
+              bgcolor: '#fbbf24',
+              boxShadow: '0 0 6px rgba(251,191,36,0.6)',
+              pointerEvents: 'none',
+              zIndex: 5,
+            }}
+          />
+        )}
       </Box>
     </Box>
   );
@@ -531,10 +698,17 @@ interface SegmentBlockProps {
   isSelected: boolean;
   labels: ReturnType<typeof useBrandingSettings>['tokens']['labels'];
   onSelect: () => void;
+  onResize: (patch: Partial<Segment>) => void;
+  trackRef: React.RefObject<HTMLDivElement | null>;
+  totalDur: number;
+  segments: Segment[];
 }
+
+type DragMode = 'move' | 'resize-left' | 'resize-right' | null;
 
 const SegmentBlock: React.FC<SegmentBlockProps> = ({
   segment, layer, leftPct, widthPct, isSelected, labels, onSelect,
+  onResize, trackRef, totalDur, segments,
 }) => {
   const meta = getSegmentMeta(segment.kind);
   const text = layer.variant === 'block'
@@ -549,9 +723,74 @@ const SegmentBlock: React.FC<SegmentBlockProps> = ({
     : `${layer.color}24`;
   const border = isSelected ? `2px solid ${meta.color}` : `1px solid ${layer.color}55`;
 
+  // ─── Drag-resize (kun på block-lag, dvs. koreografi-laget) ───
+  const dragModeRef = useRef<DragMode>(null);
+  const dragStartRef = useRef<{ pxX: number; startSec: number; endSec: number; trackWidth: number } | null>(null);
+
+  const isDraggable = layer.variant === 'block';
+
+  const beginDrag = useCallback((mode: DragMode) => (e: React.PointerEvent) => {
+    if (!isDraggable) return;
+    if (!trackRef.current) return;
+    const rect = trackRef.current.getBoundingClientRect();
+    e.stopPropagation();
+    e.preventDefault();
+    onSelect();
+    dragModeRef.current = mode;
+    dragStartRef.current = {
+      pxX: e.clientX,
+      startSec: segment.startSec,
+      endSec: segment.endSec,
+      trackWidth: rect.width,
+    };
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  }, [isDraggable, trackRef, onSelect, segment.startSec, segment.endSec]);
+
+  const handleMove = useCallback((e: React.PointerEvent) => {
+    const mode = dragModeRef.current;
+    const start = dragStartRef.current;
+    if (!mode || !start) return;
+    const deltaSec = ((e.clientX - start.pxX) / start.trackWidth) * totalDur;
+    const snap = (n: number) => Math.round(n / SNAP_INTERVAL_SEC) * SNAP_INTERVAL_SEC;
+
+    // Find naboer for clamping (no overlap)
+    const sorted = [...segments].sort((a, b) => a.startSec - b.startSec);
+    const idx = sorted.findIndex((s) => s.id === segment.id);
+    const prev = idx > 0 ? sorted[idx - 1] : null;
+    const next = idx < sorted.length - 1 ? sorted[idx + 1] : null;
+    const lowerBound = prev ? prev.endSec : 0;
+    const upperBound = next ? next.startSec : totalDur;
+
+    if (mode === 'resize-left') {
+      const newStart = snap(Math.max(lowerBound, Math.min(start.endSec - MIN_SEGMENT_DURATION_SEC, start.startSec + deltaSec)));
+      if (newStart !== segment.startSec) onResize({ startSec: newStart });
+    } else if (mode === 'resize-right') {
+      const newEnd = snap(Math.max(start.startSec + MIN_SEGMENT_DURATION_SEC, Math.min(upperBound, start.endSec + deltaSec)));
+      if (newEnd !== segment.endSec) onResize({ endSec: newEnd });
+    } else if (mode === 'move') {
+      const dur = start.endSec - start.startSec;
+      const newStart = snap(Math.max(lowerBound, Math.min(upperBound - dur, start.startSec + deltaSec)));
+      if (newStart !== segment.startSec) {
+        onResize({ startSec: newStart, endSec: newStart + dur });
+      }
+    }
+  }, [totalDur, segments, segment.id, segment.startSec, segment.endSec, onResize]);
+
+  const endDrag = useCallback((e: React.PointerEvent) => {
+    if (dragModeRef.current) {
+      try { (e.target as HTMLElement).releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+    }
+    dragModeRef.current = null;
+    dragStartRef.current = null;
+  }, []);
+
   return (
     <Box
-      onClick={onSelect}
+      onClick={(e) => { if (!dragModeRef.current) onSelect(); e.stopPropagation(); }}
+      onPointerDown={isDraggable ? beginDrag('move') : undefined}
+      onPointerMove={isDraggable ? handleMove : undefined}
+      onPointerUp={isDraggable ? endDrag : undefined}
+      onPointerCancel={isDraggable ? endDrag : undefined}
       data-testid={`segment-block-${segment.id}-${layer.kind}`}
       sx={{
         position: 'absolute',
@@ -562,13 +801,16 @@ const SegmentBlock: React.FC<SegmentBlockProps> = ({
         background: bg,
         border,
         borderRadius: 0.75,
-        cursor: 'pointer',
+        cursor: isDraggable ? 'grab' : 'pointer',
+        '&:active': isDraggable ? { cursor: 'grabbing' } : undefined,
         overflow: 'hidden',
         display: 'flex',
         alignItems: 'center',
-        px: 0.75,
+        px: isDraggable ? 1.5 : 0.75,  // ekstra padding for å unngå overlap med handles
         boxShadow: isSelected ? `0 0 0 1px ${meta.color}88, 0 2px 8px rgba(0,0,0,0.4)` : 'none',
-        transition: 'all 0.12s',
+        transition: dragModeRef.current ? 'none' : 'all 0.12s',
+        userSelect: 'none',
+        touchAction: 'none',
         '&:hover': { filter: 'brightness(1.15)' },
       }}
     >
@@ -580,10 +822,49 @@ const SegmentBlock: React.FC<SegmentBlockProps> = ({
           color: layer.variant === 'block' ? '#fff' : '#cbd5e1',
           letterSpacing: layer.variant === 'block' ? 0.2 : 0,
           textShadow: layer.variant === 'block' ? '0 1px 2px rgba(0,0,0,0.4)' : 'none',
+          flex: 1,
         }}
       >
         {text}
       </Typography>
+
+      {/* Drag-handles — venstre og høyre */}
+      {isDraggable && (
+        <>
+          <Box
+            data-testid={`segment-resize-left-${segment.id}`}
+            onPointerDown={beginDrag('resize-left')}
+            onPointerMove={handleMove}
+            onPointerUp={endDrag}
+            onPointerCancel={endDrag}
+            sx={{
+              position: 'absolute',
+              left: 0, top: 0, bottom: 0,
+              width: DRAG_HANDLE_WIDTH,
+              cursor: 'ew-resize',
+              touchAction: 'none',
+              '&:hover': { bgcolor: 'rgba(255,255,255,0.25)' },
+              borderRight: isSelected ? '2px solid rgba(255,255,255,0.4)' : 'none',
+            }}
+          />
+          <Box
+            data-testid={`segment-resize-right-${segment.id}`}
+            onPointerDown={beginDrag('resize-right')}
+            onPointerMove={handleMove}
+            onPointerUp={endDrag}
+            onPointerCancel={endDrag}
+            sx={{
+              position: 'absolute',
+              right: 0, top: 0, bottom: 0,
+              width: DRAG_HANDLE_WIDTH,
+              cursor: 'ew-resize',
+              touchAction: 'none',
+              '&:hover': { bgcolor: 'rgba(255,255,255,0.25)' },
+              borderLeft: isSelected ? '2px solid rgba(255,255,255,0.4)' : 'none',
+            }}
+          />
+        </>
+      )}
     </Box>
   );
 };
@@ -1005,6 +1286,67 @@ const AddSegmentMenu: React.FC<{
         </Stack>
       )}
     </Box>
+  );
+};
+
+// ─── Audio file picker button ────────────────────────────────────────────
+
+const AudioFileButton: React.FC<{ onFile: (file: File) => void; hasAudio: boolean }> = ({ onFile, hasAudio }) => {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  return (
+    <>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="audio/*"
+        style={{ display: 'none' }}
+        data-testid="choreo-audio-file-input"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) onFile(f);
+          if (e.target) e.target.value = '';
+        }}
+      />
+      <Tooltip title={hasAudio ? 'Bytt musikkfil' : 'Last opp musikkfil'}>
+        <IconButton
+          data-testid="choreo-audio-file-trigger"
+          onClick={() => inputRef.current?.click()}
+          sx={{
+            bgcolor: hasAudio ? 'rgba(167,139,250,0.18)' : '#1e2536',
+            color: hasAudio ? '#a78bfa' : '#9ca3af',
+            border: `1px solid ${hasAudio ? 'rgba(167,139,250,0.4)' : '#2a3142'}`,
+          }}
+        >
+          <MusicIcon />
+        </IconButton>
+      </Tooltip>
+    </>
+  );
+};
+
+// ─── Autosave-status-badge ───────────────────────────────────────────────
+
+const AutosaveBadge: React.FC<{ status: 'idle' | 'saving' | 'saved' | 'error' }> = ({ status }) => {
+  if (status === 'idle') return null;
+  const cfg = {
+    saving: { label: 'Lagrer…', color: '#a78bfa', bg: 'rgba(167,139,250,0.12)' },
+    saved:  { label: '✓ Lagret', color: '#34d399', bg: 'rgba(52,211,153,0.12)' },
+    error:  { label: '⚠ Lagring feilet', color: '#f87171', bg: 'rgba(248,113,113,0.12)' },
+  }[status];
+  return (
+    <Chip
+      data-testid={`choreo-autosave-${status}`}
+      label={cfg.label}
+      size="small"
+      sx={{
+        height: 22,
+        fontSize: 10,
+        bgcolor: cfg.bg,
+        color: cfg.color,
+        border: `1px solid ${cfg.color}55`,
+        fontWeight: 600,
+      }}
+    />
   );
 };
 
