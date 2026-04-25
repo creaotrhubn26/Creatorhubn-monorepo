@@ -199,6 +199,48 @@ final class LiveSetDashboardModelTests: XCTestCase {
         XCTAssertNil(result.topMissing)
     }
 
+    // MARK: - Realtime event filtering
+
+    func test_matches_returnsTrue_forShotEventsInSameProject() {
+        let shotCaptured = UserEvent.shotCaptured(.init(
+            projectId: "p-1", shotId: "s-1",
+            capturedAssetId: "a-1", timestamp: Date(),
+        ))
+        let shotToggled = UserEvent.shotCompletionToggled(.init(
+            projectId: "p-1", shotId: "s-2",
+            isCompleted: true, timestamp: Date(),
+        ))
+        XCTAssertTrue(LiveSetDashboardModel.matches(projectId: "p-1", event: shotCaptured))
+        XCTAssertTrue(LiveSetDashboardModel.matches(projectId: "p-1", event: shotToggled))
+    }
+
+    func test_matches_returnsFalse_forShotEventsInOtherProject() {
+        // Photographer with two parallel shoots — events from project B
+        // shouldn't refetch project A's dashboard.
+        let event = UserEvent.shotCaptured(.init(
+            projectId: "other-project", shotId: "s",
+            capturedAssetId: nil, timestamp: Date(),
+        ))
+        XCTAssertFalse(LiveSetDashboardModel.matches(projectId: "p-1", event: event))
+    }
+
+    func test_matches_returnsFalse_forUnrelatedEventKinds() {
+        // Hearts/comments/signing don't change shot-list coverage —
+        // observer should ignore them so we don't refetch on every
+        // client interaction.
+        let hearted = UserEvent.assetHearted(.init(
+            assetId: "a", sessionId: "s", clientName: nil,
+            hearted: true, timestamp: Date(),
+        ))
+        let signed = UserEvent.contractSigned(.init(
+            documentId: "d", clientName: nil,
+            signerKind: .client, timestamp: Date(),
+        ))
+        XCTAssertFalse(LiveSetDashboardModel.matches(projectId: "p-1", event: hearted))
+        XCTAssertFalse(LiveSetDashboardModel.matches(projectId: "p-1", event: signed))
+        XCTAssertFalse(LiveSetDashboardModel.matches(projectId: "p-1", event: .unknown(kind: "future")))
+    }
+
     // MARK: - State.isDone
 
     func test_state_isDone_capturedAlwaysTrue_missingDependsOnCompletion() {

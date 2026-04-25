@@ -37,6 +37,7 @@ import { createCaptureRouter } from "./capture-routes.js";
 import { createReadThroughAiRouter } from "./read-through-ai-routes.js";
 import { createLiveSetAiRouter } from "./live-set-ai-routes.js";
 import { createReferenceArchiveRouter } from "./reference-archive-routes.js";
+import { createDanceChoreographyRouter } from "./dance-choreography-routes.js";
 import {
   upsertShotListForProject,
   bootstrapCaptureSessionForProject,
@@ -1036,6 +1037,10 @@ app.use(
 app.use(
   "/api/reference-archive",
   createReferenceArchiveRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/dance/choreography",
+  createDanceChoreographyRouter(pool, { activeSessions }),
 );
 app.use("/api/youtube", createYouTubeRouter(pool));
 app.use("/api/photo-enhancer", createPhotoEnhancerRouter(pool));
@@ -58930,6 +58935,16 @@ app.post(
       if (!result.ok) {
         return res.status(404).json({ error: result.error });
       }
+      // Push the link change to every iPad/web surface signed in as
+      // this photographer so their Live Set dashboards swap the
+      // missing-tile for a thumbnail without polling. Best-effort.
+      broadcastUserEvent(userId, {
+        kind: "shot.captured",
+        projectId,
+        shotId,
+        capturedAssetId,
+        timestamp: new Date().toISOString(),
+      });
       res.json({ success: true, data: result.data });
     } catch (error) {
       console.error("Error linking shot to asset:", error);

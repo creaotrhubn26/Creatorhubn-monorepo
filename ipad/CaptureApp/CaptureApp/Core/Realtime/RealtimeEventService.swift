@@ -23,7 +23,9 @@ actor RealtimeEventService {
     /// Subscriber closure: called on the cooperative thread the
     /// actor runs on (main? depends on caller). Callers should hop
     /// to @MainActor inside the closure if they're updating UI.
-    typealias Observer = (UserEvent) -> Void
+    /// `@Sendable` so subscribers can capture `Sendable`-bound state
+    /// (typical SwiftUI use is `[weak self] event in Task { @MainActor in … }`).
+    typealias Observer = @Sendable (UserEvent) -> Void
 
     enum Status: Equatable {
         case idle

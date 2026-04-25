@@ -76,6 +76,27 @@ export type UserEvent =
       clientName: string | null;
       signerKind: "client" | "photographer";
       timestamp: string;
+    }
+  /// Shot-list item gained or lost a captured asset link (via the
+  /// iPad ``linkShotToAsset`` PATCH). Live Set dashboards observe to
+  /// refresh thumbnails without polling.
+  | {
+      kind: "shot.captured";
+      projectId: string;
+      shotId: string;
+      capturedAssetId: string | null;
+      timestamp: string;
+    }
+  /// Photographer manually toggled a shot's completion flag (without
+  /// linking an asset — e.g. "got it on the backup body"). Same
+  /// audience as ``shot.captured``: dashboards refresh their summary
+  /// counters + tile state.
+  | {
+      kind: "shot.completion-toggled";
+      projectId: string;
+      shotId: string;
+      isCompleted: boolean;
+      timestamp: string;
     };
 
 export const USER_EVENTS_WS_PATH = "/api/ipad/ws/events";

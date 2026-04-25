@@ -53,16 +53,21 @@ final class LiveSetDashboardModel {
         self.sessionId = sessionId
     }
 
-    // MARK: - Auto-refresh (poor-man's team sync)
+    // MARK: - Live updates
 
-    /// Background task that polls `refresh()` every ``intervalSeconds``
-    /// while the dashboard is on screen. Until backend grows shot-list
-    /// realtime events (Slice 3.5), this is how the dashboard picks up
-    /// changes a teammate made on a second iPad — the next poll fetches
-    /// the latest shot-list + asset state.
+    /// Background poll task — fallback for when the realtime socket
+    /// isn't subscribed (e.g. dashboard opened from a screenshot test
+    /// run without realtime config). Once Slice 3.5 wires the socket
+    /// the poll interval can be relaxed to 60s+ since pushes carry the
+    /// fast path.
     private var pollTask: Task<Void, Never>?
 
-    func startAutoRefresh(intervalSeconds: UInt64 = 15) {
+    /// Realtime subscription handle — observer ID returned by
+    /// ``RealtimeEventService.addObserver``. Cleared on stop so a re-
+    /// open doesn't leak a duplicate subscription.
+    private var realtimeSubscription: (service: RealtimeEventService, id: UUID)?
+
+    func startAutoRefresh(intervalSeconds: UInt64 = 30) {
         stopAutoRefresh()
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -76,6 +81,53 @@ final class LiveSetDashboardModel {
     func stopAutoRefresh() {
         pollTask?.cancel()
         pollTask = nil
+    }
+
+    /// Subscribe to the realtime socket so shot.captured + shot.
+    /// completion-toggled events trigger an immediate `refresh()`.
+    /// Filters by `projectId` so events from another project (the same
+    /// photographer might be running multiple shoots in parallel) don't
+    /// trigger unnecessary fetches here.
+    func subscribeToRealtime(_ service: RealtimeEventService) async {
+        await unsubscribeFromRealtime()
+        let projectId = self.projectId
+        let id = await service.addObserver { [weak self] event in
+            guard let self else { return }
+            // Hop to MainActor — observer closure runs on the actor's
+            // cooperative thread, but our refresh + state mutation
+            // require @MainActor isolation.
+            Task { @MainActor in
+                guard self.matches(projectId: projectId, event: event) else { return }
+                await self.refresh()
+            }
+        }
+        self.realtimeSubscription = (service, id)
+    }
+
+    func unsubscribeFromRealtime() async {
+        guard let sub = realtimeSubscription else { return }
+        await sub.service.removeObserver(sub.id)
+        realtimeSubscription = nil
+    }
+
+    /// Pure filter — exposed nonisolated so it stays trivially testable
+    /// without spinning up MainActor + RealtimeEventService.
+    nonisolated static func matches(projectId: String, event: UserEvent) -> Bool {
+        switch event {
+        case .shotCaptured(let payload):
+            return payload.projectId == projectId
+        case .shotCompletionToggled(let payload):
+            return payload.projectId == projectId
+        // Hearts/comments/signing don't change shot-list coverage so
+        // we ignore them here — the photographer's separate Galleri /
+        // Admin tabs handle those.
+        case .assetHearted, .assetCommented, .quoteSigned, .contractSigned, .unknown:
+            return false
+        }
+    }
+
+    private func matches(projectId: String, event: UserEvent) -> Bool {
+        Self.matches(projectId: projectId, event: event)
     }
 
     // MARK: - Load

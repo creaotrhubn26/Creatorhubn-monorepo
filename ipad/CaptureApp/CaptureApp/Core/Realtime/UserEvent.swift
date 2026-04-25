@@ -14,6 +14,8 @@ enum UserEvent: Equatable {
     case assetCommented(AssetCommented)
     case quoteSigned(Signed)
     case contractSigned(Signed)
+    case shotCaptured(ShotCaptured)
+    case shotCompletionToggled(ShotCompletionToggled)
     case unknown(kind: String)
 
     struct AssetHearted: Equatable {
@@ -45,6 +47,28 @@ enum UserEvent: Equatable {
     enum SignerKind: String, Equatable {
         case client
         case photographer
+    }
+
+    /// Photographer's iPad linked (or unlinked) a captured asset to a
+    /// shot via PATCH /api/projects/:projectId/shots/:shotId/link-asset.
+    /// Live Set dashboards observe to refresh the affected tile from
+    /// missing → captured (or vice versa) without polling.
+    struct ShotCaptured: Equatable {
+        let projectId: String
+        let shotId: String
+        let capturedAssetId: String?
+        let timestamp: Date
+    }
+
+    /// Photographer manually toggled a shot's completion (without
+    /// linking an asset — e.g. shot it on a backup body, or undo'd a
+    /// previous mark). Counterpart to ShotCaptured for the manual
+    /// completion path.
+    struct ShotCompletionToggled: Equatable {
+        let projectId: String
+        let shotId: String
+        let isCompleted: Bool
+        let timestamp: Date
     }
 
     /// Decode the on-the-wire frame:
@@ -104,6 +128,35 @@ enum UserEvent: Equatable {
                 documentId: id,
                 clientName: (event["clientName"] as? String).flatMap { $0.isEmpty ? nil : $0 },
                 signerKind: signer,
+                timestamp: ts,
+            ))
+        case "shot.captured":
+            guard let projectId = event["projectId"] as? String, !projectId.isEmpty,
+                  let shotId = event["shotId"] as? String, !shotId.isEmpty,
+                  let ts = decodeTimestamp(event["timestamp"])
+            else { return nil }
+            // capturedAssetId is nullable — a "shot.captured" with
+            // null payload means the photographer un-linked an asset.
+            let capturedAssetId: String? = {
+                if let s = event["capturedAssetId"] as? String, !s.isEmpty { return s }
+                return nil
+            }()
+            return .shotCaptured(.init(
+                projectId: projectId,
+                shotId: shotId,
+                capturedAssetId: capturedAssetId,
+                timestamp: ts,
+            ))
+        case "shot.completion-toggled":
+            guard let projectId = event["projectId"] as? String, !projectId.isEmpty,
+                  let shotId = event["shotId"] as? String, !shotId.isEmpty,
+                  let isCompleted = event["isCompleted"] as? Bool,
+                  let ts = decodeTimestamp(event["timestamp"])
+            else { return nil }
+            return .shotCompletionToggled(.init(
+                projectId: projectId,
+                shotId: shotId,
+                isCompleted: isCompleted,
                 timestamp: ts,
             ))
         default:

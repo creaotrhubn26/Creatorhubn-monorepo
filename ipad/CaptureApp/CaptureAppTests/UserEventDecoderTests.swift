@@ -84,6 +84,61 @@ final class UserEventDecoderTests: XCTestCase {
         XCTAssertEqual(s.signerKind, .photographer)
     }
 
+    // MARK: - Slice 3.5: shot lifecycle
+
+    func testDecodesShotCaptured_withAssetId() throws {
+        let json = """
+        {"type":"user_event","event":{"kind":"shot.captured","projectId":"p-1","shotId":"s-7","capturedAssetId":"a-42","timestamp":"2026-04-25T10:00:00Z"}}
+        """
+        let event = try XCTUnwrap(UserEvent.decode(jsonText: json))
+        guard case .shotCaptured(let payload) = event else {
+            XCTFail("expected .shotCaptured, got \(event)")
+            return
+        }
+        XCTAssertEqual(payload.projectId, "p-1")
+        XCTAssertEqual(payload.shotId, "s-7")
+        XCTAssertEqual(payload.capturedAssetId, "a-42")
+    }
+
+    func testDecodesShotCaptured_withNullAssetId_unlink() throws {
+        // Photographer un-linked an asset — payload nulls capturedAssetId.
+        // The decoder treats both `null` and missing as "unlinked".
+        let json = """
+        {"type":"user_event","event":{"kind":"shot.captured","projectId":"p-1","shotId":"s-7","capturedAssetId":null,"timestamp":"2026-04-25T10:00:00Z"}}
+        """
+        let event = try XCTUnwrap(UserEvent.decode(jsonText: json))
+        guard case .shotCaptured(let payload) = event else {
+            XCTFail("expected .shotCaptured")
+            return
+        }
+        XCTAssertNil(payload.capturedAssetId)
+    }
+
+    func testDecodesShotCompletionToggled() throws {
+        let json = """
+        {"type":"user_event","event":{"kind":"shot.completion-toggled","projectId":"p-1","shotId":"s-3","isCompleted":true,"timestamp":"2026-04-25T10:00:00Z"}}
+        """
+        let event = try XCTUnwrap(UserEvent.decode(jsonText: json))
+        guard case .shotCompletionToggled(let payload) = event else {
+            XCTFail("expected .shotCompletionToggled")
+            return
+        }
+        XCTAssertEqual(payload.projectId, "p-1")
+        XCTAssertEqual(payload.shotId, "s-3")
+        XCTAssertTrue(payload.isCompleted)
+    }
+
+    func testShotCaptured_missingProjectId_returnsNil() throws {
+        // Defensive: if backend ever forgets to include projectId
+        // (regression guard) the decoder should drop the frame rather
+        // than crash or silently mis-route. Same posture as the rest
+        // of the decoder for missing required fields.
+        let json = """
+        {"type":"user_event","event":{"kind":"shot.captured","shotId":"s","capturedAssetId":"a","timestamp":"2026-04-25T10:00:00Z"}}
+        """
+        XCTAssertNil(UserEvent.decode(jsonText: json))
+    }
+
     // MARK: - Unknown + forward-compat
 
     func testUnknownKindDecodesToUnknown() throws {

@@ -19,6 +19,7 @@ import {
   CaptureAuthzError,
 } from './capture-assets-service.js';
 import { appendEvents, listEvents } from './capture-events-service.js';
+import { broadcastUserEvent } from './realtime-user-events.js';
 import { addReview, listReviews } from './capture-reviews-service.js';
 import {
   abortMultipartUpload,
@@ -401,6 +402,17 @@ export function createCaptureRouter(
       res.status(404).json({ error: result.error });
       return;
     }
+    // Push to every iPad/web surface signed in as this photographer so
+    // their Live Set dashboards refresh without polling. No-op when no
+    // sockets are bound (lunch break, photographer offline) — fully
+    // best-effort, mutation already persisted at this point.
+    broadcastUserEvent(userId, {
+      kind: 'shot.completion-toggled',
+      projectId: req.params.projectId,
+      shotId: req.params.shotId,
+      isCompleted: parsed.data.isCompleted,
+      timestamp: new Date().toISOString(),
+    });
     res.status(200).json(result.data);
   });
 
