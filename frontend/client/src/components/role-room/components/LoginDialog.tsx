@@ -196,6 +196,9 @@ const ROLE_CARDS: Record<string, {
   icon?:          string;
   video?:         string;
   videoPosition?: string;
+  /** Emoji-glyph rendret når icon/video mangler. Brukes for dans-roller
+   *  (ikke SVG, ikke webp — bare unicode-emoji). */
+  glyph?:         string;
 }> = {
   admin:             { label: 'Admin',         icon: '/role-room-assets/roleroom_dashboard.webp' },
   photographer:      { label: 'Fotograf',      icon: '/role-room-assets/roleroom_photographer.webp', video: '/role-room-assets/roleroom_photographer.mov' },
@@ -218,6 +221,14 @@ const ROLE_CARDS: Record<string, {
   boom_operator:     { label: 'Bom-operator', video: '/role-room-assets/roleroom_boom_operator.mp4' },
   composer:          { label: 'Komponist'    , video: '/role-room-assets/roleroom_composer.mp4' },
 
+  // ── Dans-vertikalen (glyph-emojis, ingen webp/svg) ───────────────────
+  dance_studio_owner:    { label: 'Studio-eier',     glyph: '🏛️' },
+  dance_choreographer:   { label: 'Koreograf',       glyph: '👯' },
+  dance_instructor:      { label: 'Instruktør',      glyph: '🩰' },
+  dance_company_dancer:  { label: 'Kompani-danser',  glyph: '💃' },
+  dance_freelance:       { label: 'Frilansdanser',   glyph: '🕺' },
+  dance_pianist:         { label: 'Pianist',         glyph: '🎹' },
+
   // ── HOW TO ADD A NEW CARD ────────────────────────────────────────────
   // 1. Add an entry below (copy any line above as a template)
   // 2. Add its id to a category in professionCategories below
@@ -226,8 +237,9 @@ const ROLE_CARDS: Record<string, {
   // my_role: { label: 'My Role', icon: '/role-room-assets/roleroom_myrole.webp', video: '/role-room-assets/roleroom_myrole.mp4', videoPosition: '40% 20%' },
 };
 
-/* ── derived lookup map used internally by the card renderer ───────── */
+/* ── derived lookup maps used internally by the card renderer ─────── */
 const roleIcons = Object.fromEntries(Object.entries(ROLE_CARDS).filter(([, v]) => v.icon).map(([k, v]) => [k, v.icon!]));
+const roleGlyphs = Object.fromEntries(Object.entries(ROLE_CARDS).filter(([, v]) => v.glyph).map(([k, v]) => [k, v.glyph!]));
 
 const ROLE_ROOM_TURNSTILE_VERIFY_ACTION = 'role_room_education_inquiry';
 const ROLE_ROOM_TURNSTILE_SCRIPT_ID = 'role-room-turnstile-script';
@@ -578,6 +590,14 @@ const PRODUCTION_TEAM_ROLE_IDS = [
   'boom_operator',
   'composer',
 ] as const;
+const DANCE_STUDIO_ROLE_IDS = [
+  'dance_studio_owner',
+  'dance_choreographer',
+  'dance_instructor',
+  'dance_company_dancer',
+  'dance_freelance',
+  'dance_pianist',
+] as const;
 const EDUCATION_INSTITUTION_TYPES: ReadonlyArray<{
   id: Exclude<EducationInstitutionType, ''>;
   label: string;
@@ -912,6 +932,26 @@ const productionTeamCategories = [
     label: 'Lyd & musikk',
     description: 'Aktiver spesialiserte lydroller når produksjonen trenger miks, boom eller originalmusikk.',
     roleIds: ['sound_designer', 'sound_mixer', 'boom_operator', 'composer'],
+  },
+] as const;
+const danceStudioCategories = [
+  {
+    id: 'kjerne',
+    label: 'Kjerne',
+    description: 'Hvilken rolle har du i studioet? Start med inngangen som best beskriver hvordan du jobber med dans til daglig.',
+    roleIds: ['dance_studio_owner', 'dance_choreographer', 'dance_instructor'],
+  },
+  {
+    id: 'utovere',
+    label: 'Utøvere',
+    description: 'Dansere kan både være ansatt i studioets kompani og ta inn frilans-jobber utenfor.',
+    roleIds: ['dance_company_dancer', 'dance_freelance'],
+  },
+  {
+    id: 'utvid',
+    label: 'Utvid ved behov',
+    description: 'Legg til når studioet trenger akkompagnement til klasser eller forestillinger.',
+    roleIds: ['dance_pianist'],
   },
 ] as const;
 
@@ -1289,6 +1329,35 @@ function RoleChip({
             transition: `filter 0.3s ${easing}`,
           }}
         />
+      ) : roleGlyphs[role.id] ? (
+        <Box
+          className="card-icon"
+          aria-hidden="true"
+          sx={{
+            position: 'absolute', inset: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 0,
+            // Lilla gradient som matcher dans-vertikalens branding-tokens.
+            background: selected
+              ? 'radial-gradient(circle at 50% 40%, rgba(167,139,250,0.35) 0%, rgba(76,29,149,0.85) 70%, #0a0a0a 100%)'
+              : 'radial-gradient(circle at 50% 40%, rgba(139,92,246,0.18) 0%, rgba(30,18,52,0.92) 70%, #0a0a0a 100%)',
+            transition: `background 0.3s ${easing}`,
+            // Glyph-tegnet sentrert.
+            fontSize: 'clamp(48px, 18vw, 96px)',
+            lineHeight: 1,
+            color: '#fff',
+            textShadow: selected
+              ? '0 0 18px rgba(167,139,250,0.7), 0 0 8px rgba(255,255,255,0.4)'
+              : '0 4px 12px rgba(0,0,0,0.6)',
+            filter: selected
+              ? `brightness(1.1) drop-shadow(0 0 14px ${DESIGN.p.iconDropSelected})`
+              : 'brightness(0.92)',
+          }}
+        >
+          <span style={{ display: 'inline-block', transform: 'translateY(-4%)' }}>
+            {roleGlyphs[role.id]}
+          </span>
+        </Box>
       ) : null}
 
       {/* ── dark vignette ── */}
@@ -1896,14 +1965,18 @@ export default function LoginDialog({
             ? [...PRODUCTION_TEAM_ROLE_IDS, 'talent']
             : PRODUCTION_TEAM_ROLE_IDS,
         )
-      : null;
+      : effectiveLoginPersona === 'dance_studio'
+        ? new Set<string>(DANCE_STUDIO_ROLE_IDS)
+        : null;
   const visibleProfessionCategories = allowedRoleIds
     ? (
       isStepwiseContentProducerFlow
         ? contentProducerCategories
         : isStepwiseProductionTeamFlow
           ? productionTeamCategories
-          : professionCategories
+          : effectiveLoginPersona === 'dance_studio'
+            ? danceStudioCategories
+            : professionCategories
     )
         .map((category) => ({
           ...category,
