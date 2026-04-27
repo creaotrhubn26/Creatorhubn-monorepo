@@ -44,6 +44,20 @@ import { DanceProjectCalendar } from './DanceProjectCalendar';
 import { DancerInjuryLogPanel } from './DancerInjuryLogPanel';
 import { FormationViewConnected } from './FormationViewConnected';
 import { VideoLibrary } from './VideoLibrary';
+import {
+  ClassesPanel,
+  InstructorsPanel,
+  RoomsPanel,
+  MovementVocabPanel,
+} from './StudioOpsPanels';
+import {
+  PerformancesPanel,
+  MusicArchivePanel,
+  ReelPanel,
+  GrantsPanel,
+  InvoicesPanel,
+  UnionPanel,
+} from './AdminOpsPanels';
 import { authSessionService } from '../services/authSessionService';
 
 export interface DanceWorkspaceProps {
@@ -181,6 +195,26 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
           ?? (session.adminUser?.id != null ? String(session.adminUser.id) : 'default-user');
         return <VideoLibrary projectId={projectId ?? null} currentUserId={userId} />;
       }
+      case 'classes':
+        return <ClassesPanel projectId={projectId ?? null} />;
+      case 'instructors':
+        return <InstructorsPanel projectId={projectId ?? null} />;
+      case 'rooms':
+        return <RoomsPanel projectId={projectId ?? null} />;
+      case 'movement_vocab':
+        return <MovementVocabPanel projectId={projectId ?? null} />;
+      case 'performances':
+        return <PerformancesPanel projectId={projectId ?? null} />;
+      case 'music':
+        return <MusicArchivePanel projectId={projectId ?? null} />;
+      case 'reel':
+        return <ReelPanel projectId={projectId ?? null} />;
+      case 'grants':
+        return <GrantsPanel projectId={projectId ?? null} />;
+      case 'billing':
+        return <InvoicesPanel projectId={projectId ?? null} />;
+      case 'union':
+        return <UnionPanel projectId={projectId ?? null} />;
       default:
         return (
           <ComingSoonCard
