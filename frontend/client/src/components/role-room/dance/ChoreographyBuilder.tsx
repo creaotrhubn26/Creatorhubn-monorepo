@@ -55,11 +55,15 @@ import {
   TIMELINE_LAYERS,
   type ApprovalStatus,
   type Choreography,
+  type CountGrid as CountGridState,
   type EnergyLevel,
   type Segment,
   type SegmentKind,
   type TimelineLayerMeta,
 } from './choreographyTypes';
+import { CountGrid } from './CountGrid';
+import { MusicWaveform } from './MusicWaveform';
+import { VideoRefPlayer } from './VideoRefPlayer';
 
 // ─── Sub-helpers ────────────────────────────────────────────────────────
 
@@ -98,6 +102,12 @@ export interface ChoreographyBuilderProps {
   /** Hvis satt, autosaver hver endring etter 1.5s debounce. */
   onAutosave?: (choreography: Choreography) => Promise<void> | void;
   /**
+   * Hvis satt, lastes musikkfila opp via callbacken. Når null/undefined
+   * faller komponenten tilbake til lokal blob-URL (demo/test-modus).
+   * Returverdien er den oppdaterte koreografien (med signed musicUrl).
+   */
+  onUploadMusic?: (file: File) => Promise<Choreography>;
+  /**
    * Hvis satt, vises en liten "Profil"-knapp ved siden av hver danser i
    * inspector-panelet. Default `undefined` → ingen visuell endring.
    */
@@ -110,6 +120,7 @@ export const ChoreographyBuilder: React.FC<ChoreographyBuilderProps> = ({
   initialChoreography,
   onSave,
   onAutosave,
+  onUploadMusic,
   onOpenDancerProfile,
 }) => {
   const branding = useBrandingSettings();
@@ -124,9 +135,25 @@ export const ChoreographyBuilder: React.FC<ChoreographyBuilderProps> = ({
 
   // ─── Audio playback state ──────────────────────────
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  // Mirror the audio element in state so children (e.g. MusicWaveform) can
+  // re-render when it mounts.
+  const [audioEl, setAudioEl] = useState<HTMLAudioElement | null>(null);
+  const audioRefCallback = useCallback((el: HTMLAudioElement | null) => {
+    audioRef.current = el;
+    setAudioEl(el);
+  }, []);
+  // Local blob URL — used in demo/test mode (no onUploadMusic provided)
+  // and as a fallback while a real upload is in flight.
+  const [localBlobUrl, setLocalBlobUrl] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playheadSec, setPlayheadSec] = useState(0);
+  const [musicUploading, setMusicUploading] = useState(false);
+  const [musicError, setMusicError] = useState<string | null>(null);
+
+  // The audio src is either: (1) the active local blob (just-picked file or
+  // demo mode), or (2) the persisted server-signed musicUrl. When upload
+  // succeeds, we switch from blob → signed URL automatically.
+  const audioUrl = localBlobUrl ?? choreography.musicUrl ?? null;
 
   // ─── Autosave state ────────────────────────────────
   const [autosaveStatus, setAutosaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -162,23 +189,50 @@ export const ChoreographyBuilder: React.FC<ChoreographyBuilderProps> = ({
     else audio.pause();
   }, [isPlaying]);
 
-  // Cleanup blob URL when unmounting / replacing audio
+  // Cleanup local blob URL when unmounting / replacing audio
   useEffect(() => {
     return () => {
-      if (audioUrl?.startsWith('blob:')) URL.revokeObjectURL(audioUrl);
+      if (localBlobUrl) URL.revokeObjectURL(localBlobUrl);
     };
-  }, [audioUrl]);
+  }, [localBlobUrl]);
 
-  const handleAudioFile = useCallback((file: File) => {
-    const url = URL.createObjectURL(file);
-    setAudioUrl((prev) => {
-      if (prev?.startsWith('blob:')) URL.revokeObjectURL(prev);
-      return url;
-    });
-    setIsPlaying(false);
-    setPlayheadSec(0);
-    setChoreography((c) => ({ ...c, musicTitle: c.musicTitle ?? file.name }));
-  }, []);
+  const handleAudioFile = useCallback(
+    async (file: File) => {
+      // 1) Show the file immediately via blob URL so the user gets instant
+      //    playback while we upload in the background.
+      const localUrl = URL.createObjectURL(file);
+      setLocalBlobUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return localUrl;
+      });
+      setIsPlaying(false);
+      setPlayheadSec(0);
+      setMusicError(null);
+      setChoreography((c) => ({ ...c, musicTitle: c.musicTitle ?? file.name }));
+
+      // 2) If a backend upload handler is provided, push the file to R2.
+      //    On success, swap to the signed URL and drop the blob.
+      if (onUploadMusic) {
+        setMusicUploading(true);
+        try {
+          const updated = await onUploadMusic(file);
+          // Adopt the persisted choreography (musicUrl, storageKey, title).
+          setChoreography(updated);
+          // Drop the blob now that we have a real signed URL.
+          setLocalBlobUrl((prev) => {
+            if (prev) URL.revokeObjectURL(prev);
+            return null;
+          });
+        } catch (err) {
+          setMusicError(err instanceof Error ? err.message : 'Opplasting feilet');
+          // Keep the blob URL so the user can still preview locally.
+        } finally {
+          setMusicUploading(false);
+        }
+      }
+    },
+    [onUploadMusic],
+  );
 
   const seekTo = useCallback((sec: number) => {
     const audio = audioRef.current;
@@ -304,7 +358,23 @@ export const ChoreographyBuilder: React.FC<ChoreographyBuilderProps> = ({
             label={`${labels.choreographyBuilderBpmLabel}: ${choreography.bpm ?? '–'}`} />
           <MetaPill label={`${labels.choreographyBuilderKeyLabel}: ${choreography.musicalKey ?? '–'}`} />
           <MetaPill label={`${labels.choreographyBuilderTotalDuration}: ${formatTime(choreography.totalDurationSec)}`} accent />
-          <AudioFileButton onFile={handleAudioFile} hasAudio={!!audioUrl} />
+          <AudioFileButton
+            onFile={handleAudioFile}
+            hasAudio={!!audioUrl}
+            uploading={musicUploading}
+          />
+          {musicError ? (
+            <Chip
+              size="small"
+              label={musicError}
+              sx={{
+                bgcolor: 'rgba(239,68,68,0.18)',
+                color: '#fca5a5',
+                fontWeight: 600,
+                maxWidth: 240,
+              }}
+            />
+          ) : null}
           <Tooltip title={audioUrl ? labels.choreographyBuilderPlayLabel : 'Last opp musikkfil først'}>
             <span>
               <IconButton
@@ -343,8 +413,21 @@ export const ChoreographyBuilder: React.FC<ChoreographyBuilderProps> = ({
 
       {/* Hidden audio element — playback drives playhead via timeupdate */}
       {audioUrl && (
-        <audio ref={audioRef} src={audioUrl} preload="metadata" data-testid="choreo-audio" />
+        <audio ref={audioRefCallback} src={audioUrl} preload="metadata" data-testid="choreo-audio" />
       )}
+
+      {/* Waveform — visuell representasjon av musikken med segment-ticks */}
+      {audioUrl ? (
+        <Box sx={{ px: 2, pt: 1, pb: 0.5 }}>
+          <MusicWaveform
+            audioUrl={audioUrl}
+            mediaElement={audioEl}
+            totalDurationSec={choreography.totalDurationSec}
+            segments={choreography.segments}
+            onSeek={seekTo}
+          />
+        </Box>
+      ) : null}
 
       {/* ─── Body — 3 kolonner ───────────────────────── */}
       <Box
@@ -455,10 +538,12 @@ export const ChoreographyBuilder: React.FC<ChoreographyBuilderProps> = ({
           {selectedSegment ? (
             <SegmentInspector
               segment={selectedSegment}
+              bpm={choreography.bpm}
               labels={labels}
               onChange={(patch) => updateSegment(selectedSegment.id, patch)}
               onDelete={() => deleteSegment(selectedSegment.id)}
               onOpenDancerProfile={onOpenDancerProfile}
+              onSeekToCount={seekTo}
             />
           ) : (
             <Typography sx={{ fontSize: 12, color: '#6b7280' }}>
@@ -914,14 +999,16 @@ const WaveformOverlay: React.FC<{ totalDur: number; bpm: number }> = ({ totalDur
 
 interface SegmentInspectorProps {
   segment: Segment;
+  bpm: number | undefined;
   labels: ReturnType<typeof useBrandingSettings>['tokens']['labels'];
   onChange: (patch: Partial<Segment>) => void;
   onDelete: () => void;
   onOpenDancerProfile?: (dancerId: string) => void;
+  onSeekToCount?: (sec: number) => void;
 }
 
 const SegmentInspector: React.FC<SegmentInspectorProps> = ({
-  segment, labels, onChange, onDelete, onOpenDancerProfile,
+  segment, bpm, labels, onChange, onDelete, onOpenDancerProfile, onSeekToCount,
 }) => {
   const meta = getSegmentMeta(segment.kind);
   const energyMeta = getEnergyMeta(segment.energy);
@@ -1103,11 +1190,21 @@ const SegmentInspector: React.FC<SegmentInspectorProps> = ({
             sx={inspectorFieldSx}
           />
           {segment.videoRefUrl && (
-            <IconButton size="small" sx={{ color: '#a78bfa' }}>
+            <IconButton
+              size="small"
+              component="a"
+              href={segment.videoRefUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              sx={{ color: '#a78bfa' }}
+            >
               <VideoIcon sx={{ fontSize: 16 }} />
             </IconButton>
           )}
         </Stack>
+        {segment.videoRefUrl ? (
+          <VideoRefPlayer url={segment.videoRefUrl} />
+        ) : null}
       </Box>
 
       {/* Godkjenning */}
@@ -1137,6 +1234,23 @@ const SegmentInspector: React.FC<SegmentInspectorProps> = ({
             );
           })}
         </Stack>
+      </Box>
+
+      <Divider sx={{ borderColor: '#1e2536', my: 0.5 }} />
+
+      {/* 8-count nedbrytning */}
+      <Box>
+        <FieldLabel>8-counts</FieldLabel>
+        <CountGrid
+          // Force remount when segment changes — så CountGrids interne state
+          // resets til den nye segmentets countGrid.
+          key={segment.id}
+          segment={segment}
+          bpm={bpm}
+          initialState={segment.countGrid ?? { includeLeadup: true, entries: [] }}
+          onChange={(next: CountGridState) => onChange({ countGrid: next })}
+          onSeekToCount={onSeekToCount}
+        />
       </Box>
 
       <Divider sx={{ borderColor: '#1e2536', my: 0.5 }} />
@@ -1308,8 +1422,17 @@ const AddSegmentMenu: React.FC<{
 
 // ─── Audio file picker button ────────────────────────────────────────────
 
-const AudioFileButton: React.FC<{ onFile: (file: File) => void; hasAudio: boolean }> = ({ onFile, hasAudio }) => {
+const AudioFileButton: React.FC<{
+  onFile: (file: File) => void;
+  hasAudio: boolean;
+  uploading?: boolean;
+}> = ({ onFile, hasAudio, uploading }) => {
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const tooltip = uploading
+    ? 'Laster opp…'
+    : hasAudio
+      ? 'Bytt musikkfil'
+      : 'Last opp musikkfil';
   return (
     <>
       <input
@@ -1324,18 +1447,22 @@ const AudioFileButton: React.FC<{ onFile: (file: File) => void; hasAudio: boolea
           if (e.target) e.target.value = '';
         }}
       />
-      <Tooltip title={hasAudio ? 'Bytt musikkfil' : 'Last opp musikkfil'}>
-        <IconButton
-          data-testid="choreo-audio-file-trigger"
-          onClick={() => inputRef.current?.click()}
-          sx={{
-            bgcolor: hasAudio ? 'rgba(167,139,250,0.18)' : '#1e2536',
-            color: hasAudio ? '#a78bfa' : '#9ca3af',
-            border: `1px solid ${hasAudio ? 'rgba(167,139,250,0.4)' : '#2a3142'}`,
-          }}
-        >
-          <MusicIcon />
-        </IconButton>
+      <Tooltip title={tooltip}>
+        <span>
+          <IconButton
+            data-testid="choreo-audio-file-trigger"
+            onClick={() => inputRef.current?.click()}
+            disabled={uploading}
+            sx={{
+              bgcolor: hasAudio ? 'rgba(167,139,250,0.18)' : '#1e2536',
+              color: hasAudio ? '#a78bfa' : '#9ca3af',
+              border: `1px solid ${hasAudio ? 'rgba(167,139,250,0.4)' : '#2a3142'}`,
+              '&.Mui-disabled': { opacity: 0.6 },
+            }}
+          >
+            <MusicIcon />
+          </IconButton>
+        </span>
       </Tooltip>
     </>
   );

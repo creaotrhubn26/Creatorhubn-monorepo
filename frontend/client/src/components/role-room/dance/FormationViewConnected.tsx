@@ -1,0 +1,248 @@
+/**
+ * FormationViewConnected — wraps FormationView with backend persistence.
+ *
+ * On mount: fetch the project's formation list. If none exist, seed with
+ * one empty starter formation so the editor is usable immediately.
+ *
+ * On change: debounce 1.2s, then call replaceFormations to atomic-replace
+ * the (owner, project) scope. The save status is surfaced as a small
+ * indicator pill at the top of the editor.
+ *
+ * Dancers are sourced from the project's dancer profiles, so the puck
+ * names/colors match the rest of the dance vertical.
+ */
+
+import React from 'react';
+import {
+  Box,
+  Stack,
+  Typography,
+  CircularProgress,
+  Alert,
+  Chip,
+} from '@mui/material';
+import {
+  CloudDone as SavedIcon,
+  CloudOff as ErrorIcon,
+  CloudSync as SavingIcon,
+} from '@mui/icons-material';
+import { FormationView } from './FormationView';
+import {
+  listFormations,
+  replaceFormations,
+  recordToFormation,
+  type FormationRecord,
+} from './danceFormationService';
+import {
+  listDancerProfiles,
+  type DancerProfile,
+} from './dancerProfileService';
+import type { Dancer, Formation } from './formationTypes';
+import { getInitials } from './dancerProfile';
+
+const PURPLE = '#8b5cf6';
+const AUTOSAVE_DEBOUNCE_MS = 1200;
+
+export interface FormationViewConnectedProps {
+  /** Når null, jobber editoren mot eierens "frie" formasjoner (project_id IS NULL). */
+  projectId: string | null;
+  /** Valgfri callback for double-click på en danser-puck. */
+  onDancerClick?: (dancerId: string) => void;
+}
+
+type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
+
+interface LoadState {
+  phase: 'loading' | 'ready' | 'error';
+  message?: string;
+}
+
+const PALETTE = [
+  '#3b82f6', '#f59e0b', '#10b981', '#8b5cf6', '#ec4899',
+  '#06b6d4', '#f97316', '#84cc16', '#a855f7', '#f43f5e',
+];
+
+function profilesToDancers(profiles: DancerProfile[]): Dancer[] {
+  return profiles.map((p, idx) => {
+    const name = p.displayName ?? p.dancerId;
+    return {
+      id: p.dancerId,
+      name,
+      initials: getInitials(name),
+      color: PALETTE[idx % PALETTE.length],
+      role: p.primaryStyle ?? undefined,
+    };
+  });
+}
+
+function emptyStarterFormation(): Formation {
+  return {
+    id: `f-tmp-${Date.now()}`,
+    name: 'Formasjon A',
+    notes: 'Startformasjon — flytt dansere fra rosteren inn på scenen.',
+    positions: [],
+    createdAt: new Date().toISOString(),
+  };
+}
+
+export function FormationViewConnected({
+  projectId,
+  onDancerClick,
+}: FormationViewConnectedProps): React.ReactElement {
+  const [load, setLoad] = React.useState<LoadState>({ phase: 'loading' });
+  const [dancers, setDancers] = React.useState<Dancer[]>([]);
+  const [initialFormations, setInitialFormations] = React.useState<Formation[] | null>(null);
+  const [saveStatus, setSaveStatus] = React.useState<SaveStatus>('idle');
+  const [saveError, setSaveError] = React.useState<string | null>(null);
+
+  const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isFirstChangeRef = React.useRef(true);
+
+  // Load profiles + formations in parallel.
+  const refresh = React.useCallback(async (): Promise<void> => {
+    setLoad({ phase: 'loading' });
+    try {
+      const [profiles, records] = await Promise.all([
+        listDancerProfiles(projectId ?? undefined),
+        listFormations(projectId ?? undefined),
+      ]);
+      setDancers(profilesToDancers(profiles));
+      const sorted = [...records].sort((a, b) => a.displayOrder - b.displayOrder);
+      setInitialFormations(
+        sorted.length > 0
+          ? sorted.map(recordToFormation)
+          : [emptyStarterFormation()],
+      );
+      setLoad({ phase: 'ready' });
+    } catch (err) {
+      setLoad({
+        phase: 'error',
+        message: err instanceof Error ? err.message : 'Kunne ikke laste formasjoner',
+      });
+    }
+  }, [projectId]);
+
+  React.useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const handleFormationsChange = React.useCallback(
+    (next: Formation[]) => {
+      // FormationView fires this on every state change including initial mount.
+      // Skip the very first call to avoid a redundant save when nothing
+      // changed yet.
+      if (isFirstChangeRef.current) {
+        isFirstChangeRef.current = false;
+        return;
+      }
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      setSaveStatus('saving');
+      setSaveError(null);
+      debounceRef.current = setTimeout(async () => {
+        try {
+          const written = await replaceFormations({
+            projectId: projectId ?? null,
+            formations: next.map((f, i) => ({
+              // Strip "f-tmp-…" client-only IDs; backend assigns stable ones.
+              id: f.id.startsWith('f-tmp-') ? undefined : f.id,
+              label: f.name,
+              notes: f.notes ?? null,
+              positions: f.positions.map((p) => ({ ...p })),
+              displayOrder: i,
+            })),
+          });
+          // Note: we don't replace local state with the server response
+          // here, because the user may already be dragging the next change.
+          // The next reload (e.g. tab switch) will reconcile IDs. This is
+          // the same pattern the choreography autosave uses.
+          if (written.length > 0) {
+            setSaveStatus('saved');
+            setTimeout(() => setSaveStatus('idle'), 1800);
+          }
+        } catch (err) {
+          setSaveStatus('error');
+          setSaveError(err instanceof Error ? err.message : 'Kunne ikke lagre');
+        }
+      }, AUTOSAVE_DEBOUNCE_MS);
+    },
+    [projectId],
+  );
+
+  React.useEffect(() => () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+  }, []);
+
+  if (load.phase === 'loading') {
+    return (
+      <Stack
+        alignItems="center"
+        justifyContent="center"
+        spacing={2}
+        sx={{ minHeight: 320, color: '#a78bfa' }}
+      >
+        <CircularProgress size={28} sx={{ color: PURPLE }} />
+        <Typography variant="body2" sx={{ color: 'rgba(229,231,235,0.7)' }}>
+          Laster formasjoner…
+        </Typography>
+      </Stack>
+    );
+  }
+
+  if (load.phase === 'error') {
+    return (
+      <Box sx={{ p: 2 }}>
+        <Alert severity="error">{load.message}</Alert>
+      </Box>
+    );
+  }
+
+  return (
+    <Box sx={{ position: 'relative' }}>
+      <Stack
+        direction="row"
+        alignItems="center"
+        spacing={1}
+        sx={{ position: 'absolute', top: 12, right: 16, zIndex: 5 }}
+      >
+        {saveStatus === 'saving' ? (
+          <Chip
+            icon={<SavingIcon sx={{ fontSize: 16 }} />}
+            label="Lagrer…"
+            size="small"
+            sx={{ bgcolor: 'rgba(139,92,246,0.18)', color: '#a78bfa', fontWeight: 600 }}
+          />
+        ) : null}
+        {saveStatus === 'saved' ? (
+          <Chip
+            icon={<SavedIcon sx={{ fontSize: 16 }} />}
+            label="Lagret"
+            size="small"
+            sx={{ bgcolor: 'rgba(16,185,129,0.18)', color: '#10b981', fontWeight: 600 }}
+          />
+        ) : null}
+        {saveStatus === 'error' ? (
+          <Chip
+            icon={<ErrorIcon sx={{ fontSize: 16 }} />}
+            label={saveError ?? 'Lagring feilet'}
+            size="small"
+            sx={{ bgcolor: 'rgba(239,68,68,0.18)', color: '#ef4444', fontWeight: 600 }}
+          />
+        ) : null}
+      </Stack>
+      {dancers.length === 0 ? (
+        <Alert severity="info" sx={{ m: 2 }}>
+          Ingen danserprofiler i prosjektet ennå. Legg til dansere under "Studenter"-fanen
+          så kan du plassere dem på scenen her.
+        </Alert>
+      ) : null}
+      <FormationView
+        dancers={dancers}
+        initialFormations={initialFormations ?? []}
+        onFormationsChange={handleFormationsChange}
+        onDancerClick={onDancerClick}
+      />
+    </Box>
+  );
+}
+
+export default FormationViewConnected;

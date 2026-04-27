@@ -39,6 +39,9 @@ import { createLiveSetAiRouter } from "./live-set-ai-routes.js";
 import { createReferenceArchiveRouter } from "./reference-archive-routes.js";
 import { createDanceChoreographyRouter } from "./dance-choreography-routes.js";
 import { createDancerProfileRouter } from "./dancer-profile-routes.js";
+import { createDancerInjuryLogRouter } from "./dancer-injury-log-routes.js";
+import { createDanceFormationRouter } from "./dance-formation-routes.js";
+import { createDanceRehearsalRouter } from "./dance-rehearsal-routes.js";
 import {
   upsertShotListForProject,
   bootstrapCaptureSessionForProject,
@@ -1046,6 +1049,18 @@ app.use(
 app.use(
   "/api/dance/profiles",
   createDancerProfileRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/dance/injuries",
+  createDancerInjuryLogRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/dance/formations",
+  createDanceFormationRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/dance/rehearsals",
+  createDanceRehearsalRouter(pool, { activeSessions }),
 );
 app.use("/api/youtube", createYouTubeRouter(pool));
 app.use("/api/photo-enhancer", createPhotoEnhancerRouter(pool));

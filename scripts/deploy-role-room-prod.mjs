@@ -103,8 +103,8 @@ const ensureTools = () => {
       fail(`${tool} mangler i PATH`);
     }
   });
-  if (!existsSync(path.join(frontendDir, '.vercel', 'project.json'))) {
-    fail('frontend/.vercel/project.json mangler, kan ikke deploye riktig Vercel-prosjekt');
+  if (!existsSync(path.join(repoRoot, '.vercel', 'project.json'))) {
+    fail('.vercel/project.json mangler i repo-rot, kan ikke deploye riktig Vercel-prosjekt');
   }
 };
 
@@ -222,7 +222,7 @@ const deployVercel = (sha, branch) => {
     '-m',
     `gitSha=${sha}`,
   ], {
-    cwd: frontendDir,
+    cwd: repoRoot,
   });
 };
 

@@ -9,6 +9,7 @@
 import type {
   ApprovalStatus,
   Choreography,
+  CountGrid,
   EnergyLevel,
   Segment,
   SegmentKind,
@@ -41,6 +42,7 @@ interface RawSegment {
   dancers: string[];
   videoRefUrl: string | null;
   approval: ApprovalStatus;
+  countGrid: CountGrid | null;
 }
 
 interface RawChoreography {
@@ -50,6 +52,7 @@ interface RawChoreography {
   choreographer: string | null;
   musicTitle: string | null;
   musicUrl: string | null;
+  musicStorageKey: string | null;
   bpm: number | null;
   musicalKey: string | null;
   totalDurationSec: number;
@@ -70,6 +73,8 @@ function toClient(raw: RawChoreography): Choreography {
     title: raw.title,
     choreographer: raw.choreographer ?? undefined,
     musicTitle: raw.musicTitle ?? undefined,
+    musicUrl: raw.musicUrl ?? null,
+    musicStorageKey: raw.musicStorageKey ?? null,
     bpm: raw.bpm ?? undefined,
     musicalKey: raw.musicalKey ?? undefined,
     totalDurationSec: raw.totalDurationSec,
@@ -90,6 +95,7 @@ function toClient(raw: RawChoreography): Choreography {
       dancers: s.dancers,
       videoRefUrl: s.videoRefUrl ?? undefined,
       approval: s.approval,
+      countGrid: s.countGrid ?? undefined,
     })),
   };
 }
@@ -175,6 +181,7 @@ export async function replaceSegments(
       dancers: s.dancers,
       videoRefUrl: s.videoRefUrl ?? null,
       approval: s.approval,
+      countGrid: s.countGrid ?? null,
     })),
   };
   const res = await fetch(`/api/dance/choreography/${encodeURIComponent(id)}/segments`, {
@@ -182,6 +189,26 @@ export async function replaceSegments(
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
     body: JSON.stringify(payload),
+  });
+  const body = await json<{ success: boolean; data: RawChoreography }>(res);
+  return toClient(body.data);
+}
+
+/**
+ * Upload an audio file to R2 and patch the choreography's music_url +
+ * music_storage_key in a single round-trip. Returns the updated
+ * choreography so the caller can replace its local state.
+ */
+export async function uploadChoreographyMusic(
+  id: string,
+  file: File,
+): Promise<Choreography> {
+  const form = new FormData();
+  form.append('file', file, file.name);
+  const res = await fetch(`/api/dance/choreography/${encodeURIComponent(id)}/music`, {
+    method: 'POST',
+    credentials: 'include',
+    body: form,
   });
   const body = await json<{ success: boolean; data: RawChoreography }>(res);
   return toClient(body.data);

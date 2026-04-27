@@ -37,11 +37,12 @@ import {
   type TabConfig,
 } from '../config/professionTabs';
 import { DanceDashboard } from './DanceDashboard';
-import { ChoreographyBuilder } from './ChoreographyBuilder';
-import { RehearsalPlanner } from './RehearsalPlanner';
-import { DancerProfileGrid } from './DancerProfileGrid';
+import { ChoreographyBuilderConnected } from './ChoreographyBuilderConnected';
+import { RehearsalPlannerConnected } from './RehearsalPlannerConnected';
+import { DancerProfileGridConnected } from './DancerProfileGridConnected';
 import { DanceProjectCalendar } from './DanceProjectCalendar';
-import { DEMO_DANCERS } from './formationTypes';
+import { DancerInjuryLogPanel } from './DancerInjuryLogPanel';
+import { FormationViewConnected } from './FormationViewConnected';
 
 export interface DanceWorkspaceProps {
   /** Override mode (mostly for tests). Falls back to URL/storage. */
@@ -143,33 +144,35 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
       case 'pieces':
         return (
           <Box sx={{ p: { xs: 1, md: 2 }, bgcolor: '#0a0a0a', minHeight: '100%' }}>
-            <ChoreographyBuilder />
+            <ChoreographyBuilderConnected projectId={projectId ?? null} />
+          </Box>
+        );
+      case 'formations':
+        return (
+          <Box sx={{ p: { xs: 1, md: 2 }, bgcolor: '#0a0a0a', minHeight: '100%' }}>
+            <FormationViewConnected projectId={projectId ?? null} />
           </Box>
         );
       case 'rehearsal_log':
         return (
           <Box sx={{ p: { xs: 1, md: 2 }, bgcolor: '#0a0a0a', minHeight: '100%' }}>
-            <RehearsalPlanner dancers={DEMO_DANCERS} />
+            <RehearsalPlannerConnected projectId={projectId ?? null} />
           </Box>
         );
       case 'students':
         return (
           <Box sx={{ p: { xs: 2, md: 3 }, bgcolor: '#0a0a0a', minHeight: '100%' }}>
-            <DancerProfileGrid dancers={DEMO_DANCERS} projectId={projectId} />
+            <DancerProfileGridConnected projectId={projectId ?? null} />
           </Box>
         );
       case 'season':
-        return projectId ? (
+        return (
           <Box sx={{ p: { xs: 2, md: 3 }, bgcolor: '#0a0a0a', minHeight: '100%' }}>
-            <DanceProjectCalendar projectId={projectId} professionMode={mode} />
+            <DanceProjectCalendar projectId={projectId ?? null} professionMode={mode} />
           </Box>
-        ) : (
-          <ComingSoonCard
-            title={labels[tab.labelToken] ?? tab.id}
-            body="Sesongplanlegger — opprett eller velg et prosjekt for å se kalenderen scopet til det prosjektet."
-            feature={tab.feature}
-          />
         );
+      case 'injuries':
+        return <DancerInjuryLogPanel projectId={projectId ?? null} />;
       default:
         return (
           <ComingSoonCard

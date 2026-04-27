@@ -40,7 +40,13 @@ import {
   Delete as DeleteIcon,
   PhotoCamera as CameraIcon,
   Star as StarIcon,
+  GridOn as GridIcon,
+  GridOff as GridOffIcon,
+  Sync as SymmetryIcon,
+  ViewColumn as DistributeXIcon,
+  ViewStream as DistributeYIcon,
 } from '@mui/icons-material';
+import { ToggleButton, ToggleButtonGroup, MenuItem } from '@mui/material';
 import { Canvas, Circle, Rect, Textbox, Line, Group, FabricImage } from 'fabric';
 import {
   DEMO_DANCERS,
@@ -51,6 +57,25 @@ import {
 } from './formationTypes';
 
 // ─── Stage-dimensjoner (interne canvas-piksler — uavhengig av render-størrelse) ─
+
+export type StageType = 'proscenium' | 'black_box' | 'runway' | 'in_the_round';
+
+interface StagePresetMeta {
+  type: StageType;
+  label: string;
+  description: string;
+}
+
+const STAGE_PRESETS: readonly StagePresetMeta[] = [
+  { type: 'proscenium',   label: 'Proscenium',  description: '12×8m — speil bak, publikum foran' },
+  { type: 'black_box',    label: 'Black box',   description: '10×10m — kvadratisk, ingen fast publikumsvegg' },
+  { type: 'runway',       label: 'Runway',      description: '6×14m — smal og dyp, lange linjer' },
+  { type: 'in_the_round', label: 'In the round', description: 'Sirkulær — publikum hele veien rundt' },
+] as const;
+
+const SNAP_OFF = 0;
+const SNAP_COARSE = 1 / 8;     // ~1.5m cells på 12m proscenium
+const SNAP_FINE = 1 / 16;      // ~75cm cells
 
 const STAGE_WIDTH = 720;
 const STAGE_HEIGHT = 480;
@@ -90,6 +115,11 @@ export const FormationView: React.FC<FormationViewProps> = ({
   const [newFormationName, setNewFormationName] = useState('');
   const [animationProgress, setAnimationProgress] = useState<{ from: string; to: string } | null>(null);
 
+  // Stage + manipulasjons-verktøy (Slice 6)
+  const [stageType, setStageType] = useState<StageType>('proscenium');
+  const [snapStep, setSnapStep] = useState<number>(SNAP_OFF);
+  const [symmetry, setSymmetry] = useState<boolean>(false);
+
   const dancersById = useMemo(
     () => new Map(dancers.map((d) => [d.id, d])),
     [dancers],
@@ -110,13 +140,23 @@ export const FormationView: React.FC<FormationViewProps> = ({
     });
     fabricRef.current = canvas;
 
-    drawStageBackground(canvas);
-
     return () => {
       void canvas.dispose();
       fabricRef.current = null;
     };
   }, []);
+
+  // Re-tegn stage-bakgrunn når preset eller snap-grid endres.
+  useEffect(() => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    // Fjern eksisterende stage-bakgrunn (alt som ikke har dancerId).
+    const stageObjects = canvas.getObjects().filter((o) => !(o as { dancerId?: string }).dancerId);
+    stageObjects.forEach((o) => canvas.remove(o));
+    drawStageBackground(canvas, stageType, snapStep);
+    // Sørg for at dancers ligger over stage-bakgrunnen.
+    canvas.requestRenderAll();
+  }, [stageType, snapStep]);
 
   // ─── Hjelpefunksjoner ──────────────────────────────
   // Definert før useEffect som bruker den, slik at TS-strict ikke
@@ -160,8 +200,9 @@ export const FormationView: React.FC<FormationViewProps> = ({
         // siste callback uten å trigge re-tegning.
         onDancerClickRef.current?.(dancerId);
       },
+      { snapStep, symmetry },
     );
-  }, [activeFormation, dancersById, updateDancerPosition]);
+  }, [activeFormation, dancersById, updateDancerPosition, snapStep, symmetry]);
 
   // Persister via callback når formations endres
   useEffect(() => {
@@ -239,6 +280,37 @@ export const FormationView: React.FC<FormationViewProps> = ({
       setActiveFormationId(targetId);
     });
   }, [activeFormation, formations, dancersById]);
+
+  // ─── Distribuer dansere jevnt på horisontal/vertikal linje ─────
+  const distributeEvenly = useCallback(
+    (axis: 'x' | 'y') => {
+      if (!activeFormationId) return;
+      setFormations((prev) =>
+        prev.map((f) => {
+          if (f.id !== activeFormationId) return f;
+          const sorted = [...f.positions].sort((a, b) => a[axis] - b[axis]);
+          const n = sorted.length;
+          if (n === 0) return f;
+          // Snap step honoreres slik at distribuerte posisjoner havner på grid.
+          const margin = 0.1;
+          const span = 1 - 2 * margin;
+          const positions = sorted.map((p, i) => {
+            let value = n === 1 ? 0.5 : margin + (i / (n - 1)) * span;
+            if (snapStep > 0) value = Math.round(value / snapStep) * snapStep;
+            return axis === 'x' ? { ...p, x: value } : { ...p, y: value };
+          });
+          // Returnér i original-rekkefølge så formation.positions ikke
+          // re-sorteres uventet for resten av appen.
+          const byId = new Map(positions.map((p) => [p.dancerId, p]));
+          return {
+            ...f,
+            positions: f.positions.map((p) => byId.get(p.dancerId) ?? p),
+          };
+        }),
+      );
+    },
+    [activeFormationId, snapStep],
+  );
 
   // ─── Render ────────────────────────────────────────
 
@@ -347,6 +419,110 @@ export const FormationView: React.FC<FormationViewProps> = ({
           {animationProgress && (
             <Chip size="small" label="Animerer…" sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(251,191,36,0.18)', color: '#fbbf24' }} />
           )}
+        </Stack>
+
+        {/* ─── Stage-verktøylinje (Slice 6) ──────────────── */}
+        <Stack
+          direction="row"
+          spacing={1}
+          alignItems="center"
+          flexWrap="wrap"
+          useFlexGap
+          sx={{ width: '100%' }}
+          data-testid="formation-toolbar"
+        >
+          <TextField
+            select
+            size="small"
+            value={stageType}
+            onChange={(e) => setStageType(e.target.value as StageType)}
+            sx={{
+              minWidth: 160,
+              '& .MuiInputBase-root': {
+                bgcolor: '#0d1218',
+                color: '#e5e7eb',
+                fontSize: 12,
+              },
+              '& .MuiOutlinedInput-notchedOutline': { borderColor: '#2a3142' },
+            }}
+            data-testid="formation-stage-type"
+          >
+            {STAGE_PRESETS.map((p) => (
+              <MenuItem key={p.type} value={p.type}>
+                {p.label}
+              </MenuItem>
+            ))}
+          </TextField>
+          <ToggleButtonGroup
+            size="small"
+            value={snapStep}
+            exclusive
+            onChange={(_, v: number | null) => v !== null && setSnapStep(v)}
+            sx={{
+              '& .MuiToggleButton-root': {
+                color: '#9ca3af',
+                borderColor: '#2a3142',
+                fontSize: 11,
+                px: 1,
+                '&.Mui-selected': { color: '#fff', bgcolor: 'rgba(167,139,250,0.18)' },
+              },
+            }}
+          >
+            <ToggleButton value={SNAP_OFF} aria-label="Snap av" data-testid="formation-snap-off">
+              <GridOffIcon sx={{ fontSize: 14, mr: 0.5 }} /> Av
+            </ToggleButton>
+            <ToggleButton value={SNAP_COARSE} aria-label="Grovt grid (1/8)" data-testid="formation-snap-coarse">
+              <GridIcon sx={{ fontSize: 14, mr: 0.5 }} /> 1/8
+            </ToggleButton>
+            <ToggleButton value={SNAP_FINE} aria-label="Fint grid (1/16)" data-testid="formation-snap-fine">
+              <GridIcon sx={{ fontSize: 14, mr: 0.5 }} /> 1/16
+            </ToggleButton>
+          </ToggleButtonGroup>
+          <Tooltip title="Symmetri — speile partner-danser over senter-aksen">
+            <ToggleButton
+              size="small"
+              value="symmetry"
+              selected={symmetry}
+              onChange={() => setSymmetry((v) => !v)}
+              sx={{
+                color: symmetry ? '#fff' : '#9ca3af',
+                borderColor: '#2a3142',
+                bgcolor: symmetry ? 'rgba(167,139,250,0.18)' : 'transparent',
+                fontSize: 11,
+                px: 1,
+              }}
+              data-testid="formation-symmetry-toggle"
+            >
+              <SymmetryIcon sx={{ fontSize: 14, mr: 0.5 }} /> Symmetri
+            </ToggleButton>
+          </Tooltip>
+          <Box sx={{ flex: 1 }} />
+          <Tooltip title="Fordel jevnt horisontalt">
+            <span>
+              <IconButton
+                size="small"
+                onClick={() => distributeEvenly('x')}
+                disabled={!activeFormation || activeFormation.positions.length < 2}
+                sx={{ color: '#a78bfa' }}
+                data-testid="formation-distribute-x"
+              >
+                <DistributeXIcon sx={{ fontSize: 18 }} />
+              </IconButton>
+            </span>
+          </Tooltip>
+          <Tooltip title="Fordel jevnt vertikalt">
+            <span>
+              <IconButton
+                size="small"
+                onClick={() => distributeEvenly('y')}
+                disabled={!activeFormation || activeFormation.positions.length < 2}
+                sx={{ color: '#a78bfa' }}
+                data-testid="formation-distribute-y"
+              >
+                <DistributeYIcon sx={{ fontSize: 18 }} />
+              </IconButton>
+            </span>
+          </Tooltip>
         </Stack>
 
         <Box
@@ -498,62 +674,161 @@ export const FormationView: React.FC<FormationViewProps> = ({
 
 // ═══════════════════════ FABRIC HELPERS ═══════════════════════
 
-function drawStageBackground(canvas: Canvas): void {
-  // Stage rectangle
-  const stage = new Rect({
-    left: STAGE_PADDING,
-    top: STAGE_PADDING,
-    width: STAGE_WIDTH - 2 * STAGE_PADDING,
-    height: STAGE_HEIGHT - 2 * STAGE_PADDING,
-    fill: '#11151c',
-    stroke: '#2a3142',
-    strokeWidth: 1.5,
-    rx: 6,
-    ry: 6,
-    selectable: false,
-    evented: false,
-  });
-  canvas.add(stage);
+function drawStageBackground(
+  canvas: Canvas,
+  stageType: StageType = 'proscenium',
+  snapStep: number = 0,
+): void {
+  const innerLeft = STAGE_PADDING;
+  const innerTop = STAGE_PADDING;
+  const innerWidth = STAGE_WIDTH - 2 * STAGE_PADDING;
+  const innerHeight = STAGE_HEIGHT - 2 * STAGE_PADDING;
 
-  // Mirror line (back wall)
-  const mirror = new Line(
-    [STAGE_PADDING, STAGE_PADDING, STAGE_WIDTH - STAGE_PADDING, STAGE_PADDING],
-    {
-      stroke: '#a78bfa',
-      strokeWidth: 2,
-      strokeDashArray: [4, 4],
+  if (stageType === 'in_the_round') {
+    // Sirkulær scene — diameter = mindre av bredde/høyde.
+    const radius = Math.min(innerWidth, innerHeight) / 2 - 4;
+    const cx = STAGE_WIDTH / 2;
+    const cy = STAGE_HEIGHT / 2;
+    const stage = new Circle({
+      left: cx - radius,
+      top: cy - radius,
+      radius,
+      fill: '#11151c',
+      stroke: '#2a3142',
+      strokeWidth: 1.5,
       selectable: false,
       evented: false,
-    },
-  );
-  canvas.add(mirror);
-
-  // Audience marker (front edge)
-  const audience = new Line(
-    [STAGE_PADDING, STAGE_HEIGHT - STAGE_PADDING, STAGE_WIDTH - STAGE_PADDING, STAGE_HEIGHT - STAGE_PADDING],
-    {
+    });
+    canvas.add(stage);
+    // Publikums-ring (gul)
+    const audience = new Circle({
+      left: cx - radius - 6,
+      top: cy - radius - 6,
+      radius: radius + 6,
+      fill: 'transparent',
       stroke: '#fbbf24',
-      strokeWidth: 3,
+      strokeWidth: 2,
+      strokeDashArray: [6, 6],
       selectable: false,
       evented: false,
-    },
-  );
-  canvas.add(audience);
+    });
+    canvas.add(audience);
+  } else {
+    // Rektangulær variant — proscenium / black_box / runway varierer i
+    // proporsjoner, men deler grunnform.
+    let stageW = innerWidth;
+    let stageH = innerHeight;
+    if (stageType === 'runway') {
+      stageW = innerWidth * 0.5;
+      stageH = innerHeight;
+    } else if (stageType === 'black_box') {
+      const side = Math.min(innerWidth, innerHeight);
+      stageW = side;
+      stageH = side;
+    }
+    const left = STAGE_WIDTH / 2 - stageW / 2;
+    const top = STAGE_HEIGHT / 2 - stageH / 2;
 
-  // Center line (vertical, dashed)
-  const centerLine = new Line(
-    [STAGE_WIDTH / 2, STAGE_PADDING, STAGE_WIDTH / 2, STAGE_HEIGHT - STAGE_PADDING],
-    {
-      stroke: 'rgba(255,255,255,0.06)',
-      strokeWidth: 1,
-      strokeDashArray: [3, 6],
+    const stage = new Rect({
+      left,
+      top,
+      width: stageW,
+      height: stageH,
+      fill: '#11151c',
+      stroke: '#2a3142',
+      strokeWidth: 1.5,
+      rx: 6,
+      ry: 6,
       selectable: false,
       evented: false,
-    },
-  );
-  canvas.add(centerLine);
+    });
+    canvas.add(stage);
+
+    if (stageType === 'proscenium' || stageType === 'runway') {
+      // Mirror line (back wall) — lilla, dash
+      const mirror = new Line([left, top, left + stageW, top], {
+        stroke: '#a78bfa',
+        strokeWidth: 2,
+        strokeDashArray: [4, 4],
+        selectable: false,
+        evented: false,
+      });
+      canvas.add(mirror);
+      // Publikum (gul, foran)
+      const audience = new Line(
+        [left, top + stageH, left + stageW, top + stageH],
+        {
+          stroke: '#fbbf24',
+          strokeWidth: 3,
+          selectable: false,
+          evented: false,
+        },
+      );
+      canvas.add(audience);
+    } else if (stageType === 'black_box') {
+      // Black box — ingen klar foran/bak; tynne grønne markeringer på alle 4 sider.
+      [
+        [left, top, left + stageW, top],
+        [left + stageW, top, left + stageW, top + stageH],
+        [left + stageW, top + stageH, left, top + stageH],
+        [left, top + stageH, left, top],
+      ].forEach((coords) => {
+        canvas.add(new Line(coords as [number, number, number, number], {
+          stroke: 'rgba(52,211,153,0.55)',
+          strokeWidth: 1.5,
+          strokeDashArray: [4, 4],
+          selectable: false,
+          evented: false,
+        }));
+      });
+    }
+
+    // Senterlinje vertikalt
+    const centerLine = new Line(
+      [STAGE_WIDTH / 2, top, STAGE_WIDTH / 2, top + stageH],
+      {
+        stroke: 'rgba(255,255,255,0.06)',
+        strokeWidth: 1,
+        strokeDashArray: [3, 6],
+        selectable: false,
+        evented: false,
+      },
+    );
+    canvas.add(centerLine);
+  }
+
+  // Snap-grid — tegnes oppå scenen som svake gule linjer hvis snap er aktiv.
+  if (snapStep > 0) {
+    const gridX = Math.round(1 / snapStep);
+    const gridY = Math.round(1 / snapStep);
+    for (let i = 1; i < gridX; i += 1) {
+      const xx = innerLeft + (i / gridX) * innerWidth;
+      canvas.add(new Line([xx, innerTop, xx, innerTop + innerHeight], {
+        stroke: 'rgba(167,139,250,0.10)',
+        strokeWidth: 1,
+        selectable: false,
+        evented: false,
+      }));
+    }
+    for (let i = 1; i < gridY; i += 1) {
+      const yy = innerTop + (i / gridY) * innerHeight;
+      canvas.add(new Line([innerLeft, yy, innerLeft + innerWidth, yy], {
+        stroke: 'rgba(167,139,250,0.10)',
+        strokeWidth: 1,
+        selectable: false,
+        evented: false,
+      }));
+    }
+  }
 
   canvas.requestRenderAll();
+}
+
+interface DrawFormationOptions {
+  /** Round x/y to nearest snapStep on drag end. 0 = no snap. */
+  snapStep?: number;
+  /** When true, dragging a dancer also mirrors the closest opposite dancer. */
+  symmetry?: boolean;
 }
 
 function drawFormation(
@@ -562,6 +837,7 @@ function drawFormation(
   dancersById: Map<string, Dancer>,
   onPositionChange: (dancerId: string, x: number, y: number) => void,
   onDancerDoubleClick?: (dancerId: string) => void,
+  options: DrawFormationOptions = {},
 ): void {
   // Fjern alle eksisterende dancer-pucker (men behold stage-bakgrunnen)
   const objectsToRemove = canvas.getObjects().filter((o) => (o as { dancerId?: string }).dancerId);
@@ -680,9 +956,45 @@ function drawFormation(
     });
 
     group.on('modified', () => {
-      const newX = ((group.left ?? cx) - STAGE_PADDING) / innerWidth;
-      const newY = ((group.top ?? cy) - STAGE_PADDING) / innerHeight;
-      onPositionChange(dancer.id, Math.max(0, Math.min(1, newX)), Math.max(0, Math.min(1, newY)));
+      let newX = ((group.left ?? cx) - STAGE_PADDING) / innerWidth;
+      let newY = ((group.top ?? cy) - STAGE_PADDING) / innerHeight;
+      newX = Math.max(0, Math.min(1, newX));
+      newY = Math.max(0, Math.min(1, newY));
+      const snap = options.snapStep ?? 0;
+      if (snap > 0) {
+        newX = Math.round(newX / snap) * snap;
+        newY = Math.round(newY / snap) * snap;
+      }
+      onPositionChange(dancer.id, newX, newY);
+
+      // Symmetry: speil partner-danseren over senter-aksen (x = 0.5).
+      // Partner = den andre danseren med original-x nærmest (1 - pos.x).
+      if (options.symmetry) {
+        const targetMirrorX = 1 - pos.x;
+        let nearestId: string | null = null;
+        let nearestDist = Infinity;
+        for (const p of formation.positions) {
+          if (p.dancerId === dancer.id) continue;
+          // Manhattan-avstand mellom partner-kandidatens nåværende pos og
+          // den dragsubjektets speilbilde.
+          const d = Math.abs(p.x - targetMirrorX) + Math.abs(p.y - pos.y);
+          if (d < nearestDist) {
+            nearestDist = d;
+            nearestId = p.dancerId;
+          }
+        }
+        // Krev en rimelig nær partner (innenfor 40% Manhattan-avstand) så
+        // vi ikke griper tilfeldige dansere når ingen god match finnes.
+        if (nearestId && nearestDist < 0.4) {
+          let mirrorX = 1 - newX;
+          let mirrorY = newY;
+          if (snap > 0) {
+            mirrorX = Math.round(mirrorX / snap) * snap;
+            mirrorY = Math.round(mirrorY / snap) * snap;
+          }
+          onPositionChange(nearestId, mirrorX, mirrorY);
+        }
+      }
     });
 
     // Dobbeltklikk = åpne profil. Vi bruker mousedblclick som er trygg

@@ -38,6 +38,7 @@ export interface TabConfig {
 export const DANCE_STUDIO_TABS: readonly TabConfig[] = [
   { id: 'dashboard',     labelToken: 'danceTabDashboard',       feature: 'core' },
   { id: 'pieces',        labelToken: 'danceTabPieces',          descriptionToken: 'danceTabPiecesDescription',          requiresProject: true, feature: 'core' },
+  { id: 'formations',    labelToken: 'danceTabFormations',      descriptionToken: 'danceTabFormationsDescription',      feature: 'core' },
   { id: 'season',        labelToken: 'danceTabSeason',          descriptionToken: 'danceTabSeasonDescription',          feature: 'production' },
   { id: 'classes',       labelToken: 'danceTabClasses',         descriptionToken: 'danceTabClassesDescription',         feature: 'production' },
   { id: 'students',      labelToken: 'danceTabStudents',        descriptionToken: 'danceTabStudentsDescription',        feature: 'resources' },
@@ -62,6 +63,7 @@ export const DANCE_STUDIO_TABS: readonly TabConfig[] = [
 export const DANCE_FREELANCE_TABS: readonly TabConfig[] = [
   { id: 'dashboard',     labelToken: 'danceTabDashboard',       feature: 'core' },
   { id: 'pieces',        labelToken: 'danceTabPieces',          descriptionToken: 'danceTabPiecesDescription',          requiresProject: true, feature: 'core' },
+  { id: 'formations',    labelToken: 'danceTabFormations',      descriptionToken: 'danceTabFormationsDescription',      feature: 'core' },
   { id: 'season',        labelToken: 'danceTabSeason',          descriptionToken: 'danceTabSeasonDescription',          feature: 'production' },
   { id: 'reel',          labelToken: 'danceTabReel',            descriptionToken: 'danceTabReelDescription',            feature: 'production' },
   { id: 'rehearsal_log', labelToken: 'danceTabRehearsalLog',    descriptionToken: 'danceTabRehearsalLogDescription',    feature: 'on_set' },

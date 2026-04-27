@@ -1314,6 +1314,7 @@ export type BrandingTextTokenKey =
   // Faner i CastingPlannerPanel (når mode er dans)
   | 'danceTabDashboard'           // 'Oversikt'
   | 'danceTabPieces'              // 'Stykker' (erstatter 'Manuskript' for dans)
+  | 'danceTabFormations'          // 'Formasjoner'
   | 'danceTabSeason'              // 'Sesong' (erstatter 'Schedule')
   | 'danceTabRehearsalLog'        // 'Øvingslogg'
   | 'danceTabPerformances'        // 'Forestillinger'
@@ -1331,6 +1332,7 @@ export type BrandingTextTokenKey =
 
   // Fane-beskrivelser (brukes i tooltip / onboarding)
   | 'danceTabPiecesDescription'
+  | 'danceTabFormationsDescription'
   | 'danceTabSeasonDescription'
   | 'danceTabRehearsalLogDescription'
   | 'danceTabPerformancesDescription'
@@ -2940,6 +2942,7 @@ const DEFAULT_TOKENS: BrandingTokens = {
 
     danceTabDashboard: 'Oversikt',
     danceTabPieces: 'Stykker',
+    danceTabFormations: 'Formasjoner',
     danceTabSeason: 'Sesong',
     danceTabRehearsalLog: 'Øvingslogg',
     danceTabPerformances: 'Forestillinger',
@@ -2956,6 +2959,7 @@ const DEFAULT_TOKENS: BrandingTokens = {
     danceTabBilling: 'Faktura',
 
     danceTabPiecesDescription: 'Bryt ned koreografi i seksjoner med musikk-cue og dansere per seksjon.',
+    danceTabFormationsDescription: 'Tegn scene-formasjoner og animer overganger A→B. Lagres per prosjekt.',
     danceTabSeasonDescription: 'Sesong-tidslinje: auditions, øvinger, forestillinger, festivaler og pause.',
     danceTabRehearsalLogDescription: 'Logg hver øving med opptak og notater. AI sammenligner mot tidligere kjøringer.',
     danceTabPerformancesDescription: 'Plan, gjennomfør og dokumenter forestillinger og turnéer.',

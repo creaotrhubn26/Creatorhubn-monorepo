@@ -19,6 +19,7 @@ import {
   type Response,
   type Router as ExpressRouter,
 } from 'express';
+import multer from 'multer';
 import type { Pool } from 'pg';
 import { z } from 'zod';
 import { loadPersistedAuthSession } from './auth-session-store.js';
@@ -29,6 +30,7 @@ import {
   listChoreographies,
   replaceSegments,
   updateChoreographyHeader,
+  uploadChoreographyMusicToR2,
 } from './dance-choreography-service.js';
 
 interface SessionData {
@@ -108,6 +110,22 @@ const patchHeaderBody = z.object({
   projectId: projectIdSchema.nullable().optional(),
 });
 
+const countEntrySchema = z.object({
+  count: z.number().int().min(0).max(500),
+  movement: z.string().max(200).optional(),
+  position: z.string().max(200).optional(),
+  formation: z.string().max(200).optional(),
+  direction: z.string().max(200).optional(),
+  energy: z.enum(ENERGY_LEVELS).optional(),
+  note: z.string().max(500).optional(),
+  videoRefUrl: z.string().url().optional(),
+});
+
+const countGridSchema = z.object({
+  includeLeadup: z.boolean().default(false),
+  entries: z.array(countEntrySchema).max(500).default([]),
+});
+
 const segmentInputSchema = z.object({
   kind: z.enum(SEGMENT_KINDS),
   label: z.string().max(120).nullable().optional(),
@@ -123,6 +141,7 @@ const segmentInputSchema = z.object({
   dancers: z.array(z.string().max(120)).max(50).default([]),
   videoRefUrl: z.string().url().nullable().optional(),
   approval: z.enum(APPROVAL_STATUSES).default('draft'),
+  countGrid: countGridSchema.nullable().optional(),
 }).refine((s) => s.endSec > s.startSec, {
   message: 'endSec must be greater than startSec',
   path: ['endSec'],
@@ -222,6 +241,65 @@ export function createDanceChoreographyRouter(
     }
     res.json({ success: true });
   });
+
+  // ─── Music upload (R2) ─────────────────────────────────────────────────
+  // POST /:id/music — multipart/form-data with field "file"; max 30MB.
+  // Verifies ownership, streams to R2, patches dance_choreography
+  // (music_url + music_storage_key), returns the updated choreography.
+  const musicUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 30 * 1024 * 1024 },
+  });
+
+  router.post(
+    '/:id/music',
+    auth,
+    musicUpload.single('file'),
+    async (req: Request, res: Response): Promise<void> => {
+      const { userId } = req as AuthedRequest;
+      const id = req.params.id;
+      // Verify ownership before touching R2.
+      const existing = await getChoreography(pool, userId, id);
+      if (!existing) {
+        res.status(404).json({ error: 'not_found' });
+        return;
+      }
+      const file = (req as Request & { file?: Express.Multer.File }).file;
+      if (!file) {
+        res.status(400).json({ error: 'missing_file' });
+        return;
+      }
+      const result = await uploadChoreographyMusicToR2({
+        ownerUserId: userId,
+        choreographyId: id,
+        body: file.buffer,
+        mime: file.mimetype,
+      });
+      if (!result.ok) {
+        const status = result.error === 'storage_not_configured' ? 503
+          : result.error === 'unsupported_mime' ? 415
+          : 500;
+        res.status(status).json({ error: result.error, detail: result.detail });
+        return;
+      }
+      // Persist storage key + URL on the choreography. Optionally also
+      // capture the original filename as music_title if the user hasn't
+      // set one yet.
+      const titlePatch = existing.musicTitle == null && typeof file.originalname === 'string'
+        ? { musicTitle: file.originalname }
+        : {};
+      const updated = await updateChoreographyHeader(pool, userId, id, {
+        musicUrl: result.signedUrl,
+        musicStorageKey: result.storageKey,
+        ...titlePatch,
+      });
+      if (!updated) {
+        res.status(500).json({ error: 'patch_failed' });
+        return;
+      }
+      res.json({ success: true, data: updated });
+    },
+  );
 
   return router;
 }

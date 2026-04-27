@@ -9,7 +9,11 @@
  * (frie koreografier følger alltid med så de er synlige i alle scoper).
  */
 
+import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
+import { buildCaptureR2Config } from './capture-upload-service.js';
 
 export type SegmentKind =
   | 'intro'
@@ -24,6 +28,22 @@ export type SegmentKind =
 
 export type EnergyLevel = 'low' | 'controlled' | 'medium' | 'high' | 'sharp' | 'explosive';
 export type ApprovalStatus = 'draft' | 'review' | 'approved' | 'locked';
+
+export interface CountEntry {
+  count: number;
+  movement?: string;
+  position?: string;
+  formation?: string;
+  direction?: string;
+  energy?: EnergyLevel;
+  note?: string;
+  videoRefUrl?: string;
+}
+
+export interface CountGrid {
+  includeLeadup: boolean;
+  entries: CountEntry[];
+}
 
 export interface ChoreographySegment {
   id: string;
@@ -43,6 +63,7 @@ export interface ChoreographySegment {
   dancers: string[];
   videoRefUrl: string | null;
   approval: ApprovalStatus;
+  countGrid: CountGrid | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -120,6 +141,31 @@ function mapChoreographyRow(row: Record<string, unknown>): Omit<Choreography, 's
   };
 }
 
+function asCountGrid(value: unknown): CountGrid | null {
+  if (!value || typeof value !== 'object') return null;
+  const r = value as Record<string, unknown>;
+  if (!Array.isArray(r.entries)) return null;
+  const entries: CountEntry[] = [];
+  for (const raw of r.entries) {
+    if (!raw || typeof raw !== 'object') continue;
+    const e = raw as Record<string, unknown>;
+    if (typeof e.count !== 'number') continue;
+    const entry: CountEntry = { count: e.count };
+    if (typeof e.movement === 'string') entry.movement = e.movement;
+    if (typeof e.position === 'string') entry.position = e.position;
+    if (typeof e.formation === 'string') entry.formation = e.formation;
+    if (typeof e.direction === 'string') entry.direction = e.direction;
+    if (typeof e.energy === 'string') entry.energy = e.energy as EnergyLevel;
+    if (typeof e.note === 'string') entry.note = e.note;
+    if (typeof e.videoRefUrl === 'string') entry.videoRefUrl = e.videoRefUrl;
+    entries.push(entry);
+  }
+  return {
+    includeLeadup: r.includeLeadup === true,
+    entries,
+  };
+}
+
 function mapSegmentRow(row: Record<string, unknown>): ChoreographySegment {
   return {
     id: String(row.id),
@@ -139,6 +185,7 @@ function mapSegmentRow(row: Record<string, unknown>): ChoreographySegment {
     dancers: Array.isArray(row.dancers) ? (row.dancers as string[]) : [],
     videoRefUrl: row.video_ref_url == null ? null : String(row.video_ref_url),
     approval: String(row.approval || 'draft') as ApprovalStatus,
+    countGrid: asCountGrid(row.count_grid),
     createdAt: isoFrom(row.created_at),
     updatedAt: isoFrom(row.updated_at),
   };
@@ -324,6 +371,7 @@ export interface SegmentInput {
   dancers: string[];
   videoRefUrl?: string | null;
   approval: ApprovalStatus;
+  countGrid?: CountGrid | null;
 }
 
 export async function replaceSegments(
@@ -352,8 +400,8 @@ export async function replaceSegments(
         `INSERT INTO dance_choreography_segment (
           choreography_id, sequence, kind, label, start_sec, end_sec,
           music_cue, formation, camera, lighting, costume, movement_notes,
-          energy, dancers, video_ref_url, approval
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+          energy, dancers, video_ref_url, approval, count_grid
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
         [
           choreographyId,
           i,
@@ -371,6 +419,7 @@ export async function replaceSegments(
           s.dancers,
           s.videoRefUrl ?? null,
           s.approval,
+          JSON.stringify(s.countGrid ?? {}),
         ],
       );
     }
@@ -399,4 +448,101 @@ export async function deleteChoreography(
     [id, ownerUserId],
   );
   return (rowCount ?? 0) > 0;
+}
+
+// ─── Music upload (R2) ──────────────────────────────────────────────────
+
+const MUSIC_READ_URL_TTL_SECONDS = 7 * 24 * 60 * 60; // 7d — R2 hard ceiling
+
+let musicStorageClient: S3Client | null = null;
+
+function getMusicStorage(): { client: S3Client; bucket: string } | null {
+  const cfg = buildCaptureR2Config();
+  if (!cfg.enabled || !cfg.endpoint || !cfg.bucket || !cfg.accessKeyId || !cfg.secretAccessKey) {
+    return null;
+  }
+  if (!musicStorageClient) {
+    musicStorageClient = new S3Client({
+      region: 'auto',
+      endpoint: cfg.endpoint,
+      credentials: {
+        accessKeyId: cfg.accessKeyId,
+        secretAccessKey: cfg.secretAccessKey,
+      },
+    });
+  }
+  return { client: musicStorageClient, bucket: cfg.bucket };
+}
+
+const AUDIO_EXT_BY_MIME: Record<string, string> = {
+  'audio/mpeg': 'mp3',
+  'audio/mp3': 'mp3',
+  'audio/wav': 'wav',
+  'audio/x-wav': 'wav',
+  'audio/wave': 'wav',
+  'audio/m4a': 'm4a',
+  'audio/mp4': 'm4a',
+  'audio/x-m4a': 'm4a',
+  'audio/aac': 'aac',
+  'audio/ogg': 'ogg',
+  'audio/flac': 'flac',
+  'audio/x-flac': 'flac',
+  'audio/webm': 'webm',
+};
+
+export type UploadMusicResult =
+  | { ok: true; storageKey: string; signedUrl: string }
+  | { ok: false; error: 'storage_not_configured' | 'unsupported_mime' | 'upload_failed'; detail?: string };
+
+export async function uploadChoreographyMusicToR2(input: {
+  ownerUserId: string;
+  choreographyId: string;
+  body: Buffer;
+  mime: string;
+}): Promise<UploadMusicResult> {
+  const storage = getMusicStorage();
+  if (!storage) return { ok: false, error: 'storage_not_configured' };
+
+  const mime = input.mime.toLowerCase();
+  const ext = AUDIO_EXT_BY_MIME[mime];
+  if (!ext) return { ok: false, error: 'unsupported_mime', detail: `Got ${input.mime}` };
+
+  const key = `dance-music/${input.ownerUserId}/${input.choreographyId}/${randomUUID()}.${ext}`;
+
+  try {
+    await storage.client.send(
+      new PutObjectCommand({
+        Bucket: storage.bucket,
+        Key: key,
+        Body: input.body,
+        ContentType: input.mime,
+      }),
+    );
+    const signedUrl = await getSignedUrl(
+      storage.client,
+      new GetObjectCommand({ Bucket: storage.bucket, Key: key }),
+      { expiresIn: MUSIC_READ_URL_TTL_SECONDS },
+    );
+    return { ok: true, storageKey: key, signedUrl };
+  } catch (err) {
+    return { ok: false, error: 'upload_failed', detail: String(err) };
+  }
+}
+
+/**
+ * Re-sign an existing storageKey when the URL is close to expiry. Returns
+ * null if storage isn't configured.
+ */
+export async function signMusicUrl(storageKey: string): Promise<string | null> {
+  const storage = getMusicStorage();
+  if (!storage) return null;
+  try {
+    return await getSignedUrl(
+      storage.client,
+      new GetObjectCommand({ Bucket: storage.bucket, Key: storageKey }),
+      { expiresIn: MUSIC_READ_URL_TTL_SECONDS },
+    );
+  } catch {
+    return null;
+  }
 }

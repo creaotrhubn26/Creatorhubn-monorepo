@@ -61,6 +61,7 @@ Frameworks/
 *.dylib
 *.framework/
 .wrangler/
+.vercel/
 .npm-cache/
 .playwright-cli/
 frontend/.playwright-cli/

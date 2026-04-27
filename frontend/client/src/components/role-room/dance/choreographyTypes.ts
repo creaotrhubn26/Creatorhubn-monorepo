@@ -155,6 +155,25 @@ export interface Segment {
   videoRefUrl?: string;
   /** Godkjenningsstatus. */
   approval: ApprovalStatus;
+  /** 8-count nedbrytning — bygges i CountGrid-komponenten. Persisteres som
+   *  JSONB på DB-segmentet (count_grid, migration 0064). */
+  countGrid?: CountGrid;
+}
+
+export interface CountEntry {
+  count: number;
+  movement?: string;
+  position?: string;
+  formation?: string;
+  direction?: string;
+  energy?: EnergyLevel;
+  note?: string;
+  videoRefUrl?: string;
+}
+
+export interface CountGrid {
+  includeLeadup: boolean;
+  entries: CountEntry[];
 }
 
 export interface Choreography {
@@ -171,6 +190,11 @@ export interface Choreography {
   musicalKey?: string;
   /** Musikk-tittel + komponist. */
   musicTitle?: string;
+  /** Signert R2-URL for opplastet musikk. Forfaller (7-dagers TTL); be om
+   *  ny signert URL via `getChoreography` når den er nær utløp. */
+  musicUrl?: string | null;
+  /** R2-objekt-nøkkel — stabil referanse vi kan re-signere senere. */
+  musicStorageKey?: string | null;
   /** Sortert sekvens av segmenter, ikke-overlappende, dekker [0, totalDurationSec]. */
   segments: Segment[];
   /** CreatorHub-prosjekt denne koreografien tilhører. `null` = fri (synlig
