@@ -63,6 +63,7 @@ import {
   PlanAdminPanel,
   TesterAdminPanel,
   AdminSettingsPanel,
+  TrialBanner,
 } from './BillingPanels';
 import { authSessionService } from '../services/authSessionService';
 
@@ -242,6 +243,9 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', bgcolor: '#050505' }}>
+      <Box sx={{ px: 1, py: 0.5 }}>
+        <TrialBanner />
+      </Box>
       <Box
         sx={{
           position: 'sticky',
