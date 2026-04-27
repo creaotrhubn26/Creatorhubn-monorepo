@@ -22,7 +22,7 @@ type ValidProfession = 'photographer' | 'videographer' | 'music_producer' | 'ven
 // Valid profession types for file manager (subset of ValidProfession)
 type FileManagerProfession = 'photographer' | 'videographer' | 'music_producer' | 'designer';
 import { ThemeProvider } from '@mui/material/styles';
-import { CssBaseline, Box, Typography } from '@mui/material';
+import { CssBaseline, Box, Typography, CircularProgress } from '@mui/material';
 import { creatorHubTheme } from './theme/creatorHubTheme';
 import { LanguageProvider } from '@/components/language-provider';
 import { DemoModeProvider } from './contexts/DemoModeContext';
@@ -552,6 +552,27 @@ function App() {
                 <Switch>
                   {/* Login route */}
                   <Route path="/login" component={LoginPageSimple} />
+                  {/* Dans tester-invite landing */}
+                  <Route path="/invite/:token">
+                    {(params: { token: string }) => {
+                      const InviteLanding = React.lazy(() =>
+                        import('./components/role-room/dance/BillingPanels').then((m) => ({
+                          default: m.TesterInviteLanding,
+                        })),
+                      );
+                      return (
+                        <React.Suspense
+                          fallback={
+                            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+                              <CircularProgress />
+                            </Box>
+                          }
+                        >
+                          <InviteLanding token={params.token} />
+                        </React.Suspense>
+                      );
+                    }}
+                  </Route>
                   {/* <Route path="/test" component={TestMinimal} /> */}
                   {/* TEMPORARY: Demo route for Evendi Timeline Admin - bypasses auth */}
                   <Route path="/wedding-timeline-admin-demo" component={() => (

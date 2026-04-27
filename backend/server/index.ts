@@ -45,6 +45,7 @@ import { createDanceRehearsalRouter } from "./dance-rehearsal-routes.js";
 import { createDanceVideoRouter } from "./dance-video-routes.js";
 import { createDanceStudioOpsRouter } from "./dance-studio-ops-routes.js";
 import { createDanceAdminOpsRouter } from "./dance-admin-ops-routes.js";
+import { createDanceBillingRouter } from "./dance-billing-routes.js";
 import {
   upsertShotListForProject,
   bootstrapCaptureSessionForProject,
@@ -1076,6 +1077,10 @@ app.use(
 app.use(
   "/api/dance/ops",
   createDanceAdminOpsRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/dance/billing",
+  createDanceBillingRouter(pool, { activeSessions }),
 );
 app.use("/api/youtube", createYouTubeRouter(pool));
 app.use("/api/photo-enhancer", createPhotoEnhancerRouter(pool));

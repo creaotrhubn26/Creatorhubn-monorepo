@@ -1318,6 +1318,10 @@ export type BrandingTextTokenKey =
   | 'danceTabSeason'              // 'Sesong' (erstatter 'Schedule')
   | 'danceTabRehearsalLog'        // 'Øvingslogg'
   | 'danceTabVideo'               // 'Video' — review-rom + sync-instruksjoner
+  | 'danceTabPricing'             // 'Pris/abonnement' — bruker-vendt
+  | 'danceTabAdminPlans'          // 'Admin · Planer'
+  | 'danceTabAdminTesters'        // 'Admin · Testere'
+  | 'danceTabAdminSettings'       // 'Admin · Innstillinger'
   | 'danceTabPerformances'        // 'Forestillinger'
   | 'danceTabReel'                // 'Reel-portefølje' (frilans)
   | 'danceTabClasses'             // 'Klasser' (studio)
@@ -2948,6 +2952,10 @@ const DEFAULT_TOKENS: BrandingTokens = {
     danceTabSeason: 'Sesong',
     danceTabRehearsalLog: 'Øvingslogg',
     danceTabVideo: 'Video',
+    danceTabPricing: 'Pris',
+    danceTabAdminPlans: 'Admin · Planer',
+    danceTabAdminTesters: 'Admin · Testere',
+    danceTabAdminSettings: 'Admin · Innstillinger',
     danceTabPerformances: 'Forestillinger',
     danceTabReel: 'Reel-portefølje',
     danceTabClasses: 'Klasser',

@@ -58,6 +58,12 @@ import {
   InvoicesPanel,
   UnionPanel,
 } from './AdminOpsPanels';
+import {
+  DancePricingPage,
+  PlanAdminPanel,
+  TesterAdminPanel,
+  AdminSettingsPanel,
+} from './BillingPanels';
 import { authSessionService } from '../services/authSessionService';
 
 export interface DanceWorkspaceProps {
@@ -215,6 +221,14 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
         return <InvoicesPanel projectId={projectId ?? null} />;
       case 'union':
         return <UnionPanel projectId={projectId ?? null} />;
+      case 'pricing':
+        return <DancePricingPage persona={mode === 'dance_studio' ? 'dance_studio' : mode === 'dance_freelance' ? 'dance_freelance' : 'both'} />;
+      case 'admin_plans':
+        return <PlanAdminPanel />;
+      case 'admin_testers':
+        return <TesterAdminPanel />;
+      case 'admin_settings':
+        return <AdminSettingsPanel />;
       default:
         return (
           <ComingSoonCard

@@ -52,6 +52,10 @@ export const DANCE_STUDIO_TABS: readonly TabConfig[] = [
   { id: 'grants',        labelToken: 'danceTabGrants',          descriptionToken: 'danceTabGrantsDescription',          feature: 'finance' },
   { id: 'billing',       labelToken: 'danceTabBilling',                                                                  feature: 'finance' },
   { id: 'union',         labelToken: 'danceTabUnion',           descriptionToken: 'danceTabUnionDescription',           feature: 'union' },
+  { id: 'pricing',       labelToken: 'danceTabPricing',                                                                  feature: 'finance' },
+  { id: 'admin_plans',   labelToken: 'danceTabAdminPlans',                                                               feature: 'finance' },
+  { id: 'admin_testers', labelToken: 'danceTabAdminTesters',                                                             feature: 'finance' },
+  { id: 'admin_settings',labelToken: 'danceTabAdminSettings',                                                            feature: 'finance' },
 ] as const;
 
 // ─── DANS — FRILANS ─────────────────────────────────────────────────────────
@@ -75,6 +79,10 @@ export const DANCE_FREELANCE_TABS: readonly TabConfig[] = [
   { id: 'grants',        labelToken: 'danceTabGrants',          descriptionToken: 'danceTabGrantsDescription',          feature: 'finance' },
   { id: 'billing',       labelToken: 'danceTabBilling',                                                                  feature: 'finance' },
   { id: 'union',         labelToken: 'danceTabUnion',           descriptionToken: 'danceTabUnionDescription',           feature: 'union' },
+  { id: 'pricing',       labelToken: 'danceTabPricing',                                                                  feature: 'finance' },
+  { id: 'admin_plans',   labelToken: 'danceTabAdminPlans',                                                               feature: 'finance' },
+  { id: 'admin_testers', labelToken: 'danceTabAdminTesters',                                                             feature: 'finance' },
+  { id: 'admin_settings',labelToken: 'danceTabAdminSettings',                                                            feature: 'finance' },
 ] as const;
 
 /**
