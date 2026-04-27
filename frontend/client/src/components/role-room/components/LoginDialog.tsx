@@ -11,7 +11,7 @@
  * • Palette: near-black base, white/10 glass, indigo-violet accents
  */
 
-import { useState, useEffect, useCallback, useRef, type KeyboardEvent } from 'react';
+import { useState, useEffect, useCallback, useRef, type KeyboardEvent, type ReactNode } from 'react';
 import { keyframes } from '@mui/system';
 import {
   Dialog,
@@ -31,6 +31,11 @@ import {
   Close as CloseIcon,
   EmailOutlined as EmailIcon,
   LockOutlined as LockIcon,
+  AccountBalanceOutlined as DanceStudioOwnerIcon,
+  AutoAwesomeOutlined as DanceChoreographerIcon,
+  SchoolOutlined as DanceInstructorIcon,
+  GroupsOutlined as DanceCoDancerIcon,
+  AccessibilityNewOutlined as DanceFreelanceIcon,
 } from '@mui/icons-material';
 import { ROLE_ROOM_BRAND_ASSETS } from '../config/branding';
 import { ROLE_ROOM_LANDING_CONFIG } from '../config/landing';
@@ -196,9 +201,9 @@ const ROLE_CARDS: Record<string, {
   icon?:          string;
   video?:         string;
   videoPosition?: string;
-  /** Emoji-glyph rendret når icon/video mangler. Brukes for dans-roller
-   *  (ikke SVG, ikke webp — bare unicode-emoji). */
-  glyph?:         string;
+  /** Inline-ikon rendret når icon/video mangler. Brukes for dans-roller
+   *  (MUI SVG-ikon med fontSize: 'inherit' — skaleres av parent-Box). */
+  glyph?:         ReactNode;
 }> = {
   admin:             { label: 'Admin',         icon: '/role-room-assets/roleroom_dashboard.webp' },
   photographer:      { label: 'Fotograf',      icon: '/role-room-assets/roleroom_photographer.webp', video: '/role-room-assets/roleroom_photographer.mov' },
@@ -221,13 +226,12 @@ const ROLE_CARDS: Record<string, {
   boom_operator:     { label: 'Bom-operator', video: '/role-room-assets/roleroom_boom_operator.mp4' },
   composer:          { label: 'Komponist'    , video: '/role-room-assets/roleroom_composer.mp4' },
 
-  // ── Dans-vertikalen (glyph-emojis, ingen webp/svg) ───────────────────
-  dance_studio_owner:    { label: 'Studio-eier',     glyph: '🏛️' },
-  dance_choreographer:   { label: 'Koreograf',       glyph: '👯' },
-  dance_instructor:      { label: 'Instruktør',      glyph: '🩰' },
-  dance_company_dancer:  { label: 'Kompani-danser',  glyph: '💃' },
-  dance_freelance:       { label: 'Frilansdanser',   glyph: '🕺' },
-  dance_pianist:         { label: 'Pianist',         glyph: '🎹' },
+  // ── Dans-vertikalen (MUI outlined SVG-ikoner, fontSize: inherit) ────
+  dance_studio_owner:    { label: 'Studio-eier',    glyph: <DanceStudioOwnerIcon   sx={{ fontSize: 'inherit' }} /> },
+  dance_choreographer:   { label: 'Koreograf',      glyph: <DanceChoreographerIcon sx={{ fontSize: 'inherit' }} /> },
+  dance_instructor:      { label: 'Instruktør',     glyph: <DanceInstructorIcon    sx={{ fontSize: 'inherit' }} /> },
+  dance_company_dancer:  { label: 'Co-danser',      glyph: <DanceCoDancerIcon      sx={{ fontSize: 'inherit' }} /> },
+  dance_freelance:       { label: 'Frilansdanser',  glyph: <DanceFreelanceIcon     sx={{ fontSize: 'inherit' }} /> },
 
   // ── HOW TO ADD A NEW CARD ────────────────────────────────────────────
   // 1. Add an entry below (copy any line above as a template)
@@ -596,7 +600,6 @@ const DANCE_STUDIO_ROLE_IDS = [
   'dance_instructor',
   'dance_company_dancer',
   'dance_freelance',
-  'dance_pianist',
 ] as const;
 const EDUCATION_INSTITUTION_TYPES: ReadonlyArray<{
   id: Exclude<EducationInstitutionType, ''>;
@@ -944,14 +947,8 @@ const danceStudioCategories = [
   {
     id: 'utovere',
     label: 'Utøvere',
-    description: 'Dansere kan både være ansatt i studioets kompani og ta inn frilans-jobber utenfor.',
+    description: 'Dansere som er en del av studioets team, og frilansere som tar enkeltprosjekter.',
     roleIds: ['dance_company_dancer', 'dance_freelance'],
-  },
-  {
-    id: 'utvid',
-    label: 'Utvid ved behov',
-    description: 'Legg til når studioet trenger akkompagnement til klasser eller forestillinger.',
-    roleIds: ['dance_pianist'],
   },
 ] as const;
 
@@ -1342,21 +1339,16 @@ function RoleChip({
               ? 'radial-gradient(circle at 50% 40%, rgba(167,139,250,0.35) 0%, rgba(76,29,149,0.85) 70%, #0a0a0a 100%)'
               : 'radial-gradient(circle at 50% 40%, rgba(139,92,246,0.18) 0%, rgba(30,18,52,0.92) 70%, #0a0a0a 100%)',
             transition: `background 0.3s ${easing}`,
-            // Glyph-tegnet sentrert.
-            fontSize: 'clamp(48px, 18vw, 96px)',
+            // SVG-ikon arver fontSize fra parent.
+            fontSize: 'clamp(40px, 14vw, 76px)',
             lineHeight: 1,
-            color: '#fff',
-            textShadow: selected
-              ? '0 0 18px rgba(167,139,250,0.7), 0 0 8px rgba(255,255,255,0.4)'
-              : '0 4px 12px rgba(0,0,0,0.6)',
+            color: selected ? 'rgba(237,233,254,0.98)' : 'rgba(221,214,254,0.88)',
             filter: selected
-              ? `brightness(1.1) drop-shadow(0 0 14px ${DESIGN.p.iconDropSelected})`
-              : 'brightness(0.92)',
+              ? `drop-shadow(0 0 14px rgba(167,139,250,0.7)) drop-shadow(0 0 6px rgba(255,255,255,0.35))`
+              : 'drop-shadow(0 2px 8px rgba(0,0,0,0.6))',
           }}
         >
-          <span style={{ display: 'inline-block', transform: 'translateY(-4%)' }}>
-            {roleGlyphs[role.id]}
-          </span>
+          {roleGlyphs[role.id]}
         </Box>
       ) : null}
 
