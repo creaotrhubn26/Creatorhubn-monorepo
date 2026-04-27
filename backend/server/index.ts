@@ -42,6 +42,7 @@ import { createDancerProfileRouter } from "./dancer-profile-routes.js";
 import { createDancerInjuryLogRouter } from "./dancer-injury-log-routes.js";
 import { createDanceFormationRouter } from "./dance-formation-routes.js";
 import { createDanceRehearsalRouter } from "./dance-rehearsal-routes.js";
+import { createDanceVideoRouter } from "./dance-video-routes.js";
 import {
   upsertShotListForProject,
   bootstrapCaptureSessionForProject,
@@ -1061,6 +1062,10 @@ app.use(
 app.use(
   "/api/dance/rehearsals",
   createDanceRehearsalRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/dance",
+  createDanceVideoRouter(pool, { activeSessions }),
 );
 app.use("/api/youtube", createYouTubeRouter(pool));
 app.use("/api/photo-enhancer", createPhotoEnhancerRouter(pool));

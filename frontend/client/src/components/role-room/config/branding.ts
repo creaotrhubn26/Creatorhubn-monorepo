@@ -1317,6 +1317,7 @@ export type BrandingTextTokenKey =
   | 'danceTabFormations'          // 'Formasjoner'
   | 'danceTabSeason'              // 'Sesong' (erstatter 'Schedule')
   | 'danceTabRehearsalLog'        // 'Øvingslogg'
+  | 'danceTabVideo'               // 'Video' — review-rom + sync-instruksjoner
   | 'danceTabPerformances'        // 'Forestillinger'
   | 'danceTabReel'                // 'Reel-portefølje' (frilans)
   | 'danceTabClasses'             // 'Klasser' (studio)
@@ -1335,6 +1336,7 @@ export type BrandingTextTokenKey =
   | 'danceTabFormationsDescription'
   | 'danceTabSeasonDescription'
   | 'danceTabRehearsalLogDescription'
+  | 'danceTabVideoDescription'
   | 'danceTabPerformancesDescription'
   | 'danceTabReelDescription'
   | 'danceTabClassesDescription'
@@ -2945,6 +2947,7 @@ const DEFAULT_TOKENS: BrandingTokens = {
     danceTabFormations: 'Formasjoner',
     danceTabSeason: 'Sesong',
     danceTabRehearsalLog: 'Øvingslogg',
+    danceTabVideo: 'Video',
     danceTabPerformances: 'Forestillinger',
     danceTabReel: 'Reel-portefølje',
     danceTabClasses: 'Klasser',
@@ -2962,6 +2965,7 @@ const DEFAULT_TOKENS: BrandingTokens = {
     danceTabFormationsDescription: 'Tegn scene-formasjoner og animer overganger A→B. Lagres per prosjekt.',
     danceTabSeasonDescription: 'Sesong-tidslinje: auditions, øvinger, forestillinger, festivaler og pause.',
     danceTabRehearsalLogDescription: 'Logg hver øving med opptak og notater. AI sammenligner mot tidligere kjøringer.',
+    danceTabVideoDescription: 'Last opp prøvevideo, kommenter på sekund + count, tegn oppå frame, ta opp voice-instruksjoner — alt i én tråd.',
     danceTabPerformancesDescription: 'Plan, gjennomfør og dokumenter forestillinger og turnéer.',
     danceTabReelDescription: 'Klipp organisert per gigg/produksjon. AI-tagget for raskt søk når casting ber om reel.',
     danceTabClassesDescription: 'Semesterkurs, drop-in, workshops — påmelding og oppmøte.',

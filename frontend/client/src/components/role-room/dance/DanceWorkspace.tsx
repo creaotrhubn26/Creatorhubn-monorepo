@@ -43,6 +43,8 @@ import { DancerProfileGridConnected } from './DancerProfileGridConnected';
 import { DanceProjectCalendar } from './DanceProjectCalendar';
 import { DancerInjuryLogPanel } from './DancerInjuryLogPanel';
 import { FormationViewConnected } from './FormationViewConnected';
+import { VideoLibrary } from './VideoLibrary';
+import { authSessionService } from '../services/authSessionService';
 
 export interface DanceWorkspaceProps {
   /** Override mode (mostly for tests). Falls back to URL/storage. */
@@ -173,6 +175,12 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
         );
       case 'injuries':
         return <DancerInjuryLogPanel projectId={projectId ?? null} />;
+      case 'video': {
+        const session = authSessionService.getSessionSync();
+        const userId = session.currentUserId
+          ?? (session.adminUser?.id != null ? String(session.adminUser.id) : 'default-user');
+        return <VideoLibrary projectId={projectId ?? null} currentUserId={userId} />;
+      }
       default:
         return (
           <ComingSoonCard
