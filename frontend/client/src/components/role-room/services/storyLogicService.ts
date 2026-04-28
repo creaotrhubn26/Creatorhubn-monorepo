@@ -258,7 +258,18 @@ export const storyLogicService = {
       });
       const payload = await readApiPayload(response);
 
-      if (response.status === 404 && payload.error === 'story_logic_not_found') {
+      // 404 = "ingen data ennå" for begge scenarioer:
+      //   • story_logic_not_found  → prosjektet finnes, men ingen story-logic-rad
+      //   • project_not_found      → prosjektet er nyopprettet på frontend og
+      //     ikke persistert til casting_projects ennå (typisk for fresh
+      //     content-producer projects før første save). Backend bootstrap-
+      //     funksjonen krever write-scope og kan ikke seede prosjektet på
+      //     en GET. Vi behandler det som tom state — workspace renderer
+      //     defaults og første save vil opprette prosjektet via POST.
+      if (response.status === 404 && (
+        payload.error === 'story_logic_not_found'
+        || payload.error === 'project_not_found'
+      )) {
         writeSyncMeta(normalizedProjectId, {
           status: 'synced',
           source: 'server',
