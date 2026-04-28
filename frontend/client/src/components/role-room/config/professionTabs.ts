@@ -52,6 +52,7 @@ export const DANCE_STUDIO_TABS: readonly TabConfig[] = [
   { id: 'grants',        labelToken: 'danceTabGrants',          descriptionToken: 'danceTabGrantsDescription',          feature: 'finance' },
   { id: 'billing',       labelToken: 'danceTabBilling',                                                                  feature: 'finance' },
   { id: 'union',         labelToken: 'danceTabUnion',           descriptionToken: 'danceTabUnionDescription',           feature: 'union' },
+  { id: 'team',          labelToken: 'danceTabTeam',            descriptionToken: 'danceTabTeamDescription',            feature: 'resources' },
   { id: 'pricing',       labelToken: 'danceTabPricing',                                                                  feature: 'finance' },
   { id: 'admin_plans',   labelToken: 'danceTabAdminPlans',                                                               feature: 'finance' },
   { id: 'admin_testers', labelToken: 'danceTabAdminTesters',                                                             feature: 'finance' },

@@ -65,6 +65,7 @@ import {
   AdminSettingsPanel,
   TrialBanner,
 } from './BillingPanels';
+import { TeamAdminPanel } from './TeamAdminPanel';
 import { authSessionService } from '../services/authSessionService';
 
 export interface DanceWorkspaceProps {
@@ -222,6 +223,8 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
         return <InvoicesPanel projectId={projectId ?? null} />;
       case 'union':
         return <UnionPanel projectId={projectId ?? null} />;
+      case 'team':
+        return <TeamAdminPanel />;
       case 'pricing':
         return <DancePricingPage persona={mode === 'dance_studio' ? 'dance_studio' : mode === 'dance_freelance' ? 'dance_freelance' : 'both'} />;
       case 'admin_plans':

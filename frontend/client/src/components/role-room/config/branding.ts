@@ -1334,6 +1334,8 @@ export type BrandingTextTokenKey =
   | 'danceTabGrants'              // 'Tilskudd'
   | 'danceTabUnion'               // 'Skuda / NoDa'
   | 'danceTabBilling'             // 'Faktura' (felles for studio + frilans)
+  | 'danceTabTeam'                // 'Team' (studio — medlemmer + roller + invites)
+  | 'danceTabTeamDescription'
 
   // Fane-beskrivelser (brukes i tooltip / onboarding)
   | 'danceTabPiecesDescription'
@@ -2968,6 +2970,8 @@ const DEFAULT_TOKENS: BrandingTokens = {
     danceTabGrants: 'Tilskudd',
     danceTabUnion: 'Skuda / NoDa',
     danceTabBilling: 'Faktura',
+    danceTabTeam: 'Team',
+    danceTabTeamDescription: 'Inviter medlemmer, lag roller og styr hva hver rolle får tilgang til.',
 
     danceTabPiecesDescription: 'Bryt ned koreografi i seksjoner med musikk-cue og dansere per seksjon.',
     danceTabFormationsDescription: 'Tegn scene-formasjoner og animer overganger A→B. Lagres per prosjekt.',

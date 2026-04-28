@@ -573,6 +573,27 @@ function App() {
                       );
                     }}
                   </Route>
+                  {/* Dans team-invite landing — separat fra tester-invite */}
+                  <Route path="/dance/invite/:token">
+                    {(params: { token: string }) => {
+                      const TeamInviteLanding = React.lazy(() =>
+                        import('./components/role-room/dance/InviteLandingPage').then((m) => ({
+                          default: m.InviteLandingPage,
+                        })),
+                      );
+                      return (
+                        <React.Suspense
+                          fallback={
+                            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+                              <CircularProgress />
+                            </Box>
+                          }
+                        >
+                          <TeamInviteLanding token={params.token} />
+                        </React.Suspense>
+                      );
+                    }}
+                  </Route>
                   {/* <Route path="/test" component={TestMinimal} /> */}
                   {/* TEMPORARY: Demo route for Evendi Timeline Admin - bypasses auth */}
                   <Route path="/wedding-timeline-admin-demo" component={() => (
