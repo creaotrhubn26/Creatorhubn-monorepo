@@ -2283,9 +2283,32 @@ const StoryboardView: React.FC<{
           mode="dialog"
           sceneId={sceneId}
           referenceImage={drawingFrameReferenceImage}
-          onSave={(drawingData, imageUrl) => {
+          onSave={async (drawingData, imageUrl) => {
+            // Lokalt callback (oppdaterer frame-state i parent)
             onFrameDrawingComplete(drawingFrame.id, drawingData, imageUrl);
             setDrawingFrameId(null);
+
+            // Persistens til backend — "fire and forget", logger feil men
+            // blokkerer ikke UI. Bruker upsert via frame_id slik at samme
+            // frame ikke duplikat-lagres ved gjentatte save.
+            if (projectId) {
+              try {
+                const { upsertStoryboard } = await import('../services/storyboardApiService');
+                const drawingObj = drawingData as { strokes?: unknown[]; width?: number; height?: number } | null;
+                await upsertStoryboard(projectId, {
+                  sceneId: sceneId ?? null,
+                  frameId: drawingFrame.id,
+                  title: drawingFrame.title ?? null,
+                  strokes: drawingObj?.strokes ?? [],
+                  imageData: imageUrl ?? null,
+                  width: drawingObj?.width ?? null,
+                  height: drawingObj?.height ?? null,
+                  workflowLevel: drawingFrame.detailLevel ?? 'idea',
+                });
+              } catch (err) {
+                console.warn('[Storyboard] Persist to API failed (frame still saved locally):', err);
+              }
+            }
           }}
           onCancel={() => setDrawingFrameId(null)}
         />
