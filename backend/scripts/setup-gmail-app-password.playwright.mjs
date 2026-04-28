@@ -30,6 +30,10 @@ import { stdin, stdout } from 'node:process';
 const RENDER_SERVICE_ID = 'srv-d76ob60ule4c73dv2p60';
 const RENDER_API_KEY = process.env.RENDER_API_KEY;
 const PROVIDED_GMAIL = process.env.GMAIL_ADDRESS;
+// --dry-run flagg: viser EKSAKT hva scriptet ville gjort uten å sende noe
+// til Render. Tar et snapshot av env-vars før, simulerer per-key PUT,
+// og rapporterer hvilke vars som ville endret seg.
+const DRY_RUN = process.argv.includes('--dry-run');
 
 if (!RENDER_API_KEY) {
   console.error('❌ RENDER_API_KEY mangler i miljøet. Sett den først:');
@@ -47,6 +51,64 @@ const ask = (q) => rl.question(`${c.cyan}? ${q}${c.reset} `);
 
 async function main() {
   console.log(`${c.bold}${c.cyan}━━━ Gmail App Password Setup ━━━${c.reset}`);
+
+  // ─── DRY-RUN: hopp helt over browser, simulér API-kallene ──────────
+  if (DRY_RUN) {
+    console.log(`${c.yellow}[DRY-RUN MODE] — ingen browser åpnes, ingen API-kall sendes til Render${c.reset}\n`);
+
+    // Snapshot env-vars
+    const snap = await fetch(
+      `https://api.render.com/v1/services/${RENDER_SERVICE_ID}/env-vars?limit=100`,
+      { headers: { Authorization: `Bearer ${RENDER_API_KEY}` } },
+    );
+    if (!snap.ok) {
+      throw new Error(`Kunne ikke hente env-var-snapshot (HTTP ${snap.status})`);
+    }
+    const list = await snap.json();
+    const keys = list.map((x) => x.envVar?.key).filter(Boolean);
+    const keysSet = new Set(keys);
+
+    console.log(`${c.cyan}Snapshot av Render env-vars NÅ:${c.reset} ${list.length} totalt`);
+    console.log(`${c.dim}Keys: ${keys.sort().join(', ')}${c.reset}`);
+    console.log('');
+
+    const fakeEmail = PROVIDED_GMAIL ?? 'din@example.com';
+    const fakePassword = 'XXXXXXXXXXXXXXXX'; // 16 placeholder
+    console.log(`${c.cyan}Hvis du kjørte scriptet med EKTE password, ville disse API-kallene skjedd:${c.reset}`);
+    for (const [key, value] of [
+      ['GMAIL_USER', fakeEmail],
+      ['GMAIL_APP_PASSWORD', fakePassword],
+    ]) {
+      const exists = keysSet.has(key);
+      const action = exists ? `OPPDATER eksisterende verdi` : `OPPRETT ny env-var`;
+      console.log(`  ${c.green}1.${c.reset} PUT  /v1/services/${RENDER_SERVICE_ID}/env-vars/${key}`);
+      console.log(`         body: {"value": "${'*'.repeat(value.length)}"} (${value.length} tegn) → ${action}`);
+    }
+    console.log(`  ${c.green}2.${c.reset} POST /v1/services/${RENDER_SERVICE_ID}/deploys`);
+    console.log(`         body: {"clearCache": "do_not_clear"} → trigger redeploy`);
+    console.log('');
+
+    // Forventet etter-state
+    const projected = new Set(keysSet);
+    projected.add('GMAIL_USER');
+    projected.add('GMAIL_APP_PASSWORD');
+    const droppedCheck = Array.from(keysSet).filter((k) => !projected.has(k));
+    console.log(`${c.cyan}Projisert etter-state:${c.reset}`);
+    console.log(`  • Antall env-vars FØR : ${list.length}`);
+    console.log(`  • Antall env-vars ETTER: ${projected.size} (=${list.length} ${keysSet.has('GMAIL_USER') && keysSet.has('GMAIL_APP_PASSWORD') ? '+ 0' : keysSet.has('GMAIL_USER') || keysSet.has('GMAIL_APP_PASSWORD') ? '+ 1' : '+ 2'})`);
+    console.log(`  • Vars som ville bli DROPPET: ${droppedCheck.length === 0 ? c.green + 'INGEN' + c.reset : c.red + droppedCheck.join(', ') + c.reset}`);
+    console.log('');
+
+    if (droppedCheck.length === 0) {
+      console.log(`${c.green}✅ DRY-RUN BEKREFTER: Per-key PUT bevarer ALLE eksisterende env-vars.${c.reset}`);
+      console.log(`${c.dim}Ingen risiko for at DATABASE_URL, STRIPE_*, META_* osv. droppes.${c.reset}`);
+    } else {
+      console.log(`${c.red}❌ ADVARSEL: ${droppedCheck.length} vars ville droppet — script-bug!${c.reset}`);
+      process.exitCode = 1;
+    }
+    return;
+  }
+
   console.log(`${c.dim}Åpner Chromium synlig. Logg inn med Google-kontoen som skal være avsender.${c.reset}\n`);
 
   const browser = await chromium.launch({
@@ -136,54 +198,77 @@ async function main() {
     console.log(`  GMAIL_APP_PASSWORD = ${'*'.repeat(16)} (16 tegn lest)`);
     console.log('');
 
+    // ─── Snapshot av eksisterende env-vars (safety-net) ──────────────
+    // Vi MÅ vite at vi ikke dropper andre env-vars. Hent listen FØR vi
+    // gjør noe, og verifiser etterpå at antallet kun har endret seg med
+    // ≤2 (de to vi setter selv).
+    const snapBefore = await fetch(
+      `https://api.render.com/v1/services/${RENDER_SERVICE_ID}/env-vars?limit=100`,
+      { headers: { Authorization: `Bearer ${RENDER_API_KEY}` } },
+    );
+    if (!snapBefore.ok) {
+      throw new Error(`Kunne ikke hente env-var-snapshot (HTTP ${snapBefore.status})`);
+    }
+    const beforeList = await snapBefore.json();
+    const beforeKeys = new Set(beforeList.map((x) => x.envVar?.key).filter(Boolean));
+    console.log(`${c.dim}Snapshot før: ${beforeList.length} env-vars (inkl. ${beforeKeys.has('GMAIL_USER') ? 'EKSISTERENDE' : 'INGEN'} GMAIL_USER, ${beforeKeys.has('GMAIL_APP_PASSWORD') ? 'EKSISTERENDE' : 'INGEN'} GMAIL_APP_PASSWORD)${c.reset}`);
+    console.log(`${c.dim}  Eksisterende keys: ${Array.from(beforeKeys).slice(0, 8).join(', ')}…${c.reset}`);
+
+    // (DRY_RUN håndteres på toppnivå før browser-launch — ingen ekstra
+    // sjekk her. Kun reell setup når DRY_RUN er false.)
+
     const confirm = await ask('Skal jeg sette disse på Render og redeploy? [Y/n]:');
     if (confirm.toLowerCase() === 'n' || confirm.toLowerCase() === 'no') {
       console.log(`${c.yellow}Avbryter — du kan kjøre setup på nytt senere.${c.reset}`);
       return;
     }
 
-    // PUT env-vars (oppdaterer eksisterende eller oppretter nye)
-    const setRes = await fetch(
-      `https://api.render.com/v1/services/${RENDER_SERVICE_ID}/env-vars`,
-      {
-        method: 'PUT',
-        headers: {
-          Authorization: `Bearer ${RENDER_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify([
-          { key: 'GMAIL_USER', value: gmailAddress },
-          { key: 'GMAIL_APP_PASSWORD', value: appPassword },
-        ]),
-      },
-    );
-
-    if (!setRes.ok) {
-      // PUT replaces ALL env vars. Vi vil heller MERGE — bruk POST per nøkkel.
-      console.log(`${c.dim}PUT failed (${setRes.status}), prøver POST per env-var…${c.reset}`);
-      for (const [key, value] of [
-        ['GMAIL_USER', gmailAddress],
-        ['GMAIL_APP_PASSWORD', appPassword],
-      ]) {
-        const r = await fetch(
-          `https://api.render.com/v1/services/${RENDER_SERVICE_ID}/env-vars/${key}`,
-          {
-            method: 'PUT',
-            headers: {
-              Authorization: `Bearer ${RENDER_API_KEY}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ value }),
+    // ─── PER-KEY PUT (UPSERT-semantikk) ───────────────────────────────
+    // VIKTIG: Vi bruker IKKE bulk-PUT mot /env-vars (uten key) — den
+    // ERSTATTER hele env-listen og dropper alle andre vars. Per-key PUT
+    // mot /env-vars/<key> er UPSERT (oppretter eller oppdaterer kun den
+    // ene nøkkelen). Dette er kritisk for å bevare DATABASE_URL,
+    // STRIPE_*, META_* osv.
+    for (const [key, value] of [
+      ['GMAIL_USER', gmailAddress],
+      ['GMAIL_APP_PASSWORD', appPassword],
+    ]) {
+      const r = await fetch(
+        `https://api.render.com/v1/services/${RENDER_SERVICE_ID}/env-vars/${key}`,
+        {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${RENDER_API_KEY}`,
+            'Content-Type': 'application/json',
           },
-        );
-        if (!r.ok) {
-          const t = await r.text();
-          throw new Error(`Failed to set ${key}: HTTP ${r.status} ${t.slice(0, 200)}`);
-        }
-        console.log(`${c.green}✓ ${key} satt${c.reset}`);
+          body: JSON.stringify({ value }),
+        },
+      );
+      if (!r.ok) {
+        const t = await r.text();
+        throw new Error(`Failed to set ${key}: HTTP ${r.status} ${t.slice(0, 200)}`);
       }
-    } else {
-      console.log(`${c.green}✓ Begge env-vars satt på Render${c.reset}`);
+      console.log(`${c.green}✓ ${key} satt (per-key PUT)${c.reset}`);
+    }
+
+    // ─── Safety-verifikasjon: tell env-vars etter for å være SIKKER ──
+    const snapAfter = await fetch(
+      `https://api.render.com/v1/services/${RENDER_SERVICE_ID}/env-vars?limit=100`,
+      { headers: { Authorization: `Bearer ${RENDER_API_KEY}` } },
+    );
+    if (snapAfter.ok) {
+      const afterList = await snapAfter.json();
+      const afterKeys = new Set(afterList.map((x) => x.envVar?.key).filter(Boolean));
+      const expected = new Set(beforeKeys);
+      expected.add('GMAIL_USER');
+      expected.add('GMAIL_APP_PASSWORD');
+      const missing = Array.from(expected).filter((k) => !afterKeys.has(k));
+      if (missing.length > 0) {
+        console.log(`${c.red}✗ ADVARSEL: ${missing.length} env-vars mangler nå:${c.reset}`);
+        missing.forEach((k) => console.log(`    - ${k}`));
+        throw new Error('Env-vars dropped — bulk-PUT ble brukt ved et uhell?');
+      }
+      console.log(`${c.green}✓ Snapshot etter: ${afterList.length} env-vars (forventet ${expected.size}). Ingen vars droppet.${c.reset}`);
     }
 
     // Trigger deploy
