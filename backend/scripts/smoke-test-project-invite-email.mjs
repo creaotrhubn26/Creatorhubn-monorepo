@@ -85,7 +85,8 @@ async function getAuthToken() {
   console.log(`${c.dim}Hent den slik:`);
   console.log(`  1. Logg inn på https://creatorhubn.com${c.reset}`);
   console.log(`${c.dim}  2. Åpne Devtools → Application → Local Storage${c.reset}`);
-  console.log(`${c.dim}  3. Kopier verdien av 'authToken'${c.reset}`);
+  console.log(`${c.dim}  3. Kopier verdien av nøkkelen 'role_room_auth_token'${c.reset}`);
+  console.log(`${c.dim}     (om denne mangler — du er ikke logget inn i Role Room ennå)${c.reset}`);
   console.log('');
   const rl = readline.createInterface({ input: stdin, output: stdout });
   const t = await rl.question(`${c.cyan}? Lim inn authToken: ${c.reset}`);
