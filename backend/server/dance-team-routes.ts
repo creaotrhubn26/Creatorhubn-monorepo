@@ -17,7 +17,7 @@ import {
 } from 'express';
 import type { Pool } from 'pg';
 import { z } from 'zod';
-import { loadPersistedAuthSession } from './auth-session-store.js';
+import { loadPersistedAuthSession, persistAuthSession } from './auth-session-store.js';
 import * as svc from './dance-team-service.js';
 
 interface SessionData {
@@ -100,6 +100,14 @@ const inviteBody = z.object({
 
 const memberRolePatchBody = z.object({
   danceRoleId: z.string().uuid(),
+});
+
+// PIN-flow validation
+const pinDigitsSchema = z.string().regex(/^\d{6}$/);
+const fullNameSchema = z.string().trim().min(2).max(120);
+const acceptWithPinBody = z.object({
+  pin: pinDigitsSchema,
+  fullName: fullNameSchema,
 });
 
 // ─── Router ─────────────────────────────────────────────────────────────
@@ -298,7 +306,12 @@ export function createDanceTeamRouter(
   return router;
 }
 
-// ─── Separat router for /api/dance/invites/:token (auth, ikke owner-only) ─
+// ─── Separat router for /api/dance/invites/:token ────────────────────
+//
+// Blanding av auth-required og public routes. Public routes (info,
+// request-pin, accept-with-pin) trenger IKKE auth — de er en del av
+// magic-link + PIN GDPR-flyten der mottaker ikke nødvendigvis har
+// konto ennå.
 
 export function createDanceInviteAcceptRouter(
   pool: Pool,
@@ -307,8 +320,101 @@ export function createDanceInviteAcceptRouter(
   const router = Router();
   const auth = requireAuth(pool, deps.activeSessions);
 
-  // GET — slår opp invite (auth-only, men ikke owner-only — alle brukere kan
-  // se hvem som har invitert dem).
+  // ─── PUBLIC routes (no auth) — magic-link + PIN flow ────────────────
+  //
+  // GDPR: returnerer kun maskert e-post + rolle-label. Full e-post avsløres
+  // ikke før PIN er bekreftet. Audit-data (IP/user-agent) logges på aksept.
+
+  router.get('/:token/info', async (req, res) => {
+    const info = await svc.getInvitePublicInfo(pool, String(req.params.token));
+    if (!info) { res.status(404).json({ error: 'not_found' }); return; }
+    if (info.status === 'revoked')    { res.status(410).json({ error: 'revoked' }); return; }
+    if (info.status === 'expired')    { res.status(410).json({ error: 'expired' }); return; }
+    if (info.status === 'pin_locked') { res.status(423).json({ error: 'pin_locked', data: info }); return; }
+    if (info.status === 'accepted')   { res.status(409).json({ error: 'already_accepted' }); return; }
+    res.json({ success: true, data: info });
+  });
+
+  router.post('/:token/request-pin', async (req, res) => {
+    const token = String(req.params.token);
+    // Bygger inviteUrl fra request — beholder samme origin
+    const proto = (req.headers['x-forwarded-proto'] as string | undefined) || req.protocol || 'https';
+    const host = (req.headers['x-forwarded-host'] as string | undefined) || req.headers.host || 'creatorhubn.com';
+    const inviteUrl = `${proto}://${host}/dance/invite/${encodeURIComponent(token)}`;
+    try {
+      const r = await svc.requestPinForInvite(pool, token, inviteUrl);
+      if (!r.sent) {
+        const status = r.reason === 'rate_limited' ? 429
+          : r.reason === 'mailer_not_configured' ? 503
+          : r.reason === 'not_found' ? 404
+          : 409;
+        res.status(status).json({ error: r.reason, throttledUntil: r.throttledUntil });
+        return;
+      }
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: 'request_pin_failed', detail: String(err) });
+    }
+  });
+
+  router.post('/:token/accept-with-pin', async (req, res) => {
+    const parsed = acceptWithPinBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'invalid_request', details: parsed.error.format() });
+      return;
+    }
+    try {
+      // Audit-data (GDPR Article 30)
+      const ip = (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim()
+        || req.socket.remoteAddress
+        || null;
+      const userAgent = req.headers['user-agent'] ?? null;
+
+      const r = await svc.acceptInviteWithPin(pool, {
+        token: String(req.params.token),
+        pin: parsed.data.pin,
+        fullName: parsed.data.fullName,
+        acceptingIp: ip,
+        acceptingUserAgent: typeof userAgent === 'string' ? userAgent : null,
+      });
+      if (!r.accepted) {
+        const status = r.reason === 'pin_invalid' ? 401
+          : r.reason === 'pin_expired' || r.reason === 'expired' ? 410
+          : r.reason === 'pin_locked' ? 423
+          : r.reason === 'already_accepted' ? 409
+          : r.reason === 'revoked' ? 410
+          : 400;
+        res.status(status).json({ error: r.reason });
+        return;
+      }
+      // Registrer session i activeSessions + persistAuthSession
+      const sessionData = {
+        userId: r.userId!,
+        email: r.email!,
+        name: r.fullName!,
+        role: r.role!,
+        loginAt: new Date().toISOString(),
+      };
+      deps.activeSessions?.set(r.sessionToken!, sessionData);
+      await persistAuthSession(pool, r.sessionToken!, sessionData);
+
+      res.json({
+        success: true,
+        data: {
+          sessionToken: r.sessionToken,
+          user: sessionData,
+          teamOrganizationId: r.teamOrganizationId,
+          danceRoleId: r.danceRoleId,
+        },
+      });
+    } catch (err) {
+      res.status(500).json({ error: 'accept_failed', detail: String(err) });
+    }
+  });
+
+  // ─── AUTH-required routes (eksisterende, for innloggede brukere) ────
+
+  // GET — slår opp full invite-info (krever auth).
   router.get('/:token', auth, async (req, res) => {
     const inv = await svc.getInviteByToken(pool, String(req.params.token));
     if (!inv) { res.status(404).json({ error: 'not_found' }); return; }
@@ -320,7 +426,7 @@ export function createDanceInviteAcceptRouter(
     res.json({ success: true, data: inv });
   });
 
-  // POST /:token/accept — binder caller til teamet
+  // POST /:token/accept — binder caller til teamet (auth-required path)
   router.post('/:token/accept', auth, async (req, res) => {
     const { userId, userEmail } = req as AuthedRequest;
     try {

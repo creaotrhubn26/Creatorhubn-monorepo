@@ -13,8 +13,14 @@
  * frontend/client/src/components/role-room/dance/danceTeamService.ts.
  */
 
-import { randomBytes } from 'node:crypto';
-import type { Pool, PoolClient } from 'pg';
+import { randomBytes, createHash, randomUUID, timingSafeEqual } from 'node:crypto';
+import type { Pool } from 'pg';
+import nodemailer, { type Transporter } from 'nodemailer';
+
+// ── PIN-flow constants (magic-link + PIN, GDPR-compliant invite) ──────
+export const INVITE_PIN_TTL_MS = 15 * 60 * 1000;       // PIN gyldig i 15 min
+export const INVITE_PIN_MAX_ATTEMPTS = 3;              // Lås etter 3 mislykkede forsøk
+export const INVITE_PIN_REQUEST_THROTTLE_MS = 60_000;  // Minst 60s mellom pin-requests
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Capability-katalog
@@ -850,6 +856,401 @@ export async function resolveUserCapabilities(
 // ═══════════════════════════════════════════════════════════════════════
 //  SEATS — utleder fra dance_subscription.plan.limits.maxTeamSeats
 // ═══════════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════════
+//  MAGIC-LINK + PIN INVITE (GDPR-modus)
+// ═══════════════════════════════════════════════════════════════════════
+//
+// Flyt:
+//   1. Mottaker klikker /dance/invite/<token>-lenken (magic link)
+//   2. Frontend henter public-info via getInvitePublicInfo (ingen auth)
+//   3. Frontend kaller requestPinForInvite → 6-sifret PIN sendes til
+//      invited_email
+//   4. Mottaker leser PIN, paste i frontend
+//   5. Frontend kaller acceptInviteWithPin → user + session opprettes,
+//      invite markeres accepted_at + IP/user-agent loggføres for audit
+
+function hashInvitePin(token: string, pin: string): string {
+  // Token-prefix brukes som salt — så PIN-hash er bundet til token
+  const salt = token.slice(0, 16);
+  return createHash('sha256').update(`${salt}:${pin}`).digest('hex');
+}
+
+function verifyInvitePin(token: string, pin: string, expectedHash: string): boolean {
+  const computed = hashInvitePin(token, pin);
+  // Constant-time compare for å unngå timing-leakage
+  if (computed.length !== expectedHash.length) return false;
+  try {
+    return timingSafeEqual(Buffer.from(computed, 'hex'), Buffer.from(expectedHash, 'hex'));
+  } catch {
+    return false;
+  }
+}
+
+function generateNumericPin(digits = 6): string {
+  // 6 sifre = 1.000.000 muligheter; med 3-forsøks-lås er gjettings-risiko 3 × 10⁻⁶
+  const max = Math.pow(10, digits);
+  const r = randomBytes(4).readUInt32BE(0) % max;
+  return String(r).padStart(digits, '0');
+}
+
+function maskEmail(email: string): string {
+  // GDPR: ikke eksponer full e-post på public landing-side før PIN er bekreftet
+  const [local, domain] = email.split('@');
+  if (!local || !domain) return email;
+  const visible = local.slice(0, Math.min(2, local.length));
+  const stars = '*'.repeat(Math.max(1, local.length - visible.length));
+  return `${visible}${stars}@${domain}`;
+}
+
+// ─── Email-sender for PIN-mail ──────────────────────────────────────────
+
+interface DanceMailerHandle {
+  user: string;
+  transporter: Transporter;
+}
+
+let mailerCache: DanceMailerHandle | null = null;
+function getDanceMailer(): DanceMailerHandle | null {
+  if (mailerCache) return mailerCache;
+  const user = (
+    process.env.GMAIL_USER
+    || process.env.GOOGLE_WORKSPACE_EMAIL
+    || process.env.GOOGLE_ADMIN_EMAIL
+    || ''
+  ).trim();
+  const password = (process.env.GMAIL_APP_PASSWORD || '').replace(/\s+/g, '');
+  if (!user || !password) return null;
+  mailerCache = {
+    user,
+    transporter: nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user, pass: password },
+    }),
+  };
+  return mailerCache;
+}
+
+async function sendInvitePinEmail(input: {
+  recipientEmail: string;
+  pin: string;
+  teamLabel: string;
+  roleLabel: string;
+  inviteUrl: string;
+}): Promise<{ sent: boolean; reason?: string; messageId?: string }> {
+  const mailer = getDanceMailer();
+  if (!mailer) return { sent: false, reason: 'mailer_not_configured' };
+
+  const expiresMin = Math.floor(INVITE_PIN_TTL_MS / 60000);
+  const subject = `Din PIN for ${input.teamLabel} på CreatorHub`;
+  const text = [
+    `Hei!`,
+    ``,
+    `Du har fått en invitasjon til ${input.teamLabel} som ${input.roleLabel}.`,
+    ``,
+    `Din engangs-PIN: ${input.pin}`,
+    `(gyldig i ${expiresMin} minutter)`,
+    ``,
+    `Lim PIN-koden inn på ${input.inviteUrl}`,
+    ``,
+    `Hvis du ikke har bedt om denne, kan du trygt ignorere denne e-posten.`,
+    ``,
+    `— CreatorHub`,
+  ].join('\n');
+  const html = `
+    <div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px; color: #1a1a1a;">
+      <h2 style="margin: 0 0 12px; font-weight: 700;">Bekreft invitasjonen</h2>
+      <p style="margin: 0 0 20px; color: #555; line-height: 1.5;">
+        Du er invitert til <strong>${input.teamLabel}</strong> som <strong>${input.roleLabel}</strong>.
+      </p>
+      <div style="background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 12px; padding: 20px; text-align: center; margin: 20px 0;">
+        <div style="font-size: 11px; color: #6d28d9; letter-spacing: 1.5px; font-weight: 700; text-transform: uppercase; margin-bottom: 8px;">Din PIN-kode</div>
+        <div style="font-size: 36px; font-weight: 800; letter-spacing: 6px; color: #4c1d95; font-variant-numeric: tabular-nums;">${input.pin}</div>
+        <div style="font-size: 11px; color: #888; margin-top: 12px;">Gyldig i ${expiresMin} minutter</div>
+      </div>
+      <p style="margin: 20px 0; color: #555; line-height: 1.5;">
+        Lim PIN-koden inn på siden du ble sendt til,
+        eller åpne lenken på nytt: <a href="${input.inviteUrl}" style="color: #6d28d9;">${input.inviteUrl}</a>
+      </p>
+      <p style="margin: 32px 0 0; color: #999; font-size: 12px;">
+        Hvis du ikke har bedt om denne, kan du trygt ignorere denne e-posten.
+        Ingen konto blir opprettet uten at du bekrefter med PIN.
+      </p>
+    </div>
+  `;
+
+  try {
+    const info = await mailer.transporter.sendMail({
+      from: mailer.user,
+      to: input.recipientEmail,
+      subject,
+      text,
+      html,
+    });
+    return { sent: true, messageId: info.messageId };
+  } catch (err) {
+    return { sent: false, reason: String(err instanceof Error ? err.message : err) };
+  }
+}
+
+// ─── Public lookup (ingen auth — viser bare maskert info) ──────────────
+
+export interface InvitePublicInfo {
+  token: string;
+  invitedEmailMasked: string;
+  invitedRoleLabel: string;
+  teamOrganizationId: string;
+  expiresAt: string;
+  pinSentAt: string | null;        // For UI: viser om PIN allerede er sendt
+  pinLockedAt: string | null;      // Hvis låst, må Studio-eier generere ny invite
+  status: 'pending' | 'accepted' | 'revoked' | 'expired' | 'pin_locked';
+}
+
+export async function getInvitePublicInfo(
+  pool: Pool,
+  token: string,
+): Promise<InvitePublicInfo | null> {
+  const r = await pool.query(
+    `SELECT i.token, i.team_organization_id, i.invited_email, i.expires_at,
+            i.accepted_at, i.revoked_at, i.pin_sent_at, i.pin_locked_at,
+            r.label AS role_label
+       FROM dance_team_invite i
+       LEFT JOIN dance_team_role r ON r.id = i.invited_role_id
+      WHERE i.token = $1`,
+    [token],
+  );
+  if (!r.rowCount) return null;
+  const row = r.rows[0];
+  const now = Date.now();
+  const status: InvitePublicInfo['status'] =
+    row.accepted_at ? 'accepted'
+    : row.revoked_at ? 'revoked'
+    : row.pin_locked_at ? 'pin_locked'
+    : new Date(row.expires_at).getTime() <= now ? 'expired'
+    : 'pending';
+  return {
+    token: String(row.token),
+    invitedEmailMasked: maskEmail(String(row.invited_email)),
+    invitedRoleLabel: String(row.role_label ?? '—'),
+    teamOrganizationId: String(row.team_organization_id),
+    expiresAt: isoTs(row.expires_at),
+    pinSentAt: isoTsOrNull(row.pin_sent_at),
+    pinLockedAt: isoTsOrNull(row.pin_locked_at),
+    status,
+  };
+}
+
+// ─── Request PIN (sender PIN til invited_email) ─────────────────────────
+
+export async function requestPinForInvite(
+  pool: Pool,
+  token: string,
+  inviteUrl: string,
+): Promise<{ sent: boolean; reason?: string; throttledUntil?: string }> {
+  const r = await pool.query(
+    `SELECT i.token, i.invited_email, i.expires_at, i.accepted_at, i.revoked_at,
+            i.pin_sent_at, i.pin_locked_at, i.team_organization_id,
+            r.label AS role_label
+       FROM dance_team_invite i
+       LEFT JOIN dance_team_role r ON r.id = i.invited_role_id
+      WHERE i.token = $1`,
+    [token],
+  );
+  if (!r.rowCount) return { sent: false, reason: 'not_found' };
+  const row = r.rows[0];
+
+  if (row.accepted_at) return { sent: false, reason: 'already_accepted' };
+  if (row.revoked_at)  return { sent: false, reason: 'revoked' };
+  if (row.pin_locked_at) return { sent: false, reason: 'pin_locked' };
+  if (new Date(row.expires_at) <= new Date()) return { sent: false, reason: 'expired' };
+
+  // Rate-limit: minst 60s mellom requests per token
+  if (row.pin_sent_at) {
+    const elapsed = Date.now() - new Date(row.pin_sent_at).getTime();
+    if (elapsed < INVITE_PIN_REQUEST_THROTTLE_MS) {
+      const throttledUntil = new Date(
+        new Date(row.pin_sent_at).getTime() + INVITE_PIN_REQUEST_THROTTLE_MS,
+      ).toISOString();
+      return { sent: false, reason: 'rate_limited', throttledUntil };
+    }
+  }
+
+  const pin = generateNumericPin(6);
+  const pinHash = hashInvitePin(token, pin);
+
+  // Send først — bare oppdater DB hvis email kommer ut
+  const recipientEmail = String(row.invited_email);
+  const teamLabel = `dansestudio`;          // Vi har ikke separate team-navn — bruk generisk
+  const roleLabel = String(row.role_label ?? 'medlem');
+  const sendResult = await sendInvitePinEmail({
+    recipientEmail,
+    pin,
+    teamLabel,
+    roleLabel,
+    inviteUrl,
+  });
+  if (!sendResult.sent) {
+    return { sent: false, reason: sendResult.reason ?? 'send_failed' };
+  }
+
+  // Reset attempts på ny PIN — gammel PIN er overskrevet
+  await pool.query(
+    `UPDATE dance_team_invite
+        SET pin_hash = $1, pin_sent_at = now(), pin_attempts = 0
+      WHERE token = $2`,
+    [pinHash, token],
+  );
+
+  return { sent: true };
+}
+
+// ─── Accept invite med PIN (oppretter user + session) ──────────────────
+
+export interface AcceptWithPinResult {
+  accepted: boolean;
+  reason?: string;
+  // Kun satt ved success — routes-laget bruker disse til å registrere
+  // session i activeSessions + persistAuthSession.
+  sessionToken?: string;
+  userId?: string;
+  email?: string;
+  fullName?: string;
+  role?: string;
+  teamOrganizationId?: string;
+  danceRoleId?: string;
+}
+
+export async function acceptInviteWithPin(
+  pool: Pool,
+  input: {
+    token: string;
+    pin: string;
+    fullName: string;
+    acceptingIp: string | null;
+    acceptingUserAgent: string | null;
+  },
+): Promise<AcceptWithPinResult> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const inv = await client.query(
+      `SELECT * FROM dance_team_invite WHERE token = $1 FOR UPDATE`,
+      [input.token],
+    );
+    if (!inv.rowCount) {
+      await client.query('ROLLBACK');
+      return { accepted: false, reason: 'not_found' };
+    }
+    const row = inv.rows[0];
+
+    if (row.accepted_at)    { await client.query('ROLLBACK'); return { accepted: false, reason: 'already_accepted' }; }
+    if (row.revoked_at)     { await client.query('ROLLBACK'); return { accepted: false, reason: 'revoked' }; }
+    if (row.pin_locked_at)  { await client.query('ROLLBACK'); return { accepted: false, reason: 'pin_locked' }; }
+    if (new Date(row.expires_at) <= new Date()) {
+      await client.query('ROLLBACK');
+      return { accepted: false, reason: 'expired' };
+    }
+    if (!row.pin_hash || !row.pin_sent_at) {
+      await client.query('ROLLBACK');
+      return { accepted: false, reason: 'pin_not_requested' };
+    }
+    if (Date.now() - new Date(row.pin_sent_at).getTime() > INVITE_PIN_TTL_MS) {
+      await client.query('ROLLBACK');
+      return { accepted: false, reason: 'pin_expired' };
+    }
+
+    if (!verifyInvitePin(input.token, input.pin, String(row.pin_hash))) {
+      const newAttempts = Number(row.pin_attempts ?? 0) + 1;
+      if (newAttempts >= INVITE_PIN_MAX_ATTEMPTS) {
+        await client.query(
+          `UPDATE dance_team_invite
+              SET pin_attempts = $1, pin_locked_at = now()
+            WHERE token = $2`,
+          [newAttempts, input.token],
+        );
+        await client.query('COMMIT');
+        return { accepted: false, reason: 'pin_locked' };
+      }
+      await client.query(
+        `UPDATE dance_team_invite SET pin_attempts = $1 WHERE token = $2`,
+        [newAttempts, input.token],
+      );
+      await client.query('COMMIT');
+      return { accepted: false, reason: 'pin_invalid' };
+    }
+
+    // ─── PIN OK — opprett/oppdater user-konto ────────────────────────
+    const email = String(row.invited_email);
+    const nameParts = input.fullName.trim().split(/\s+/);
+    const firstName = nameParts[0] ?? '';
+    const lastName = nameParts.slice(1).join(' ') || null;
+
+    const userUpsert = await client.query<{ id: string; role: string | null }>(
+      `INSERT INTO users (email, first_name, last_name, role, last_login_at, created_at, updated_at)
+       VALUES ($1, $2, $3, 'user', NOW(), NOW(), NOW())
+       ON CONFLICT (email) DO UPDATE SET
+         first_name = COALESCE(EXCLUDED.first_name, users.first_name),
+         last_name  = COALESCE(EXCLUDED.last_name,  users.last_name),
+         last_login_at = NOW(),
+         updated_at = NOW()
+       RETURNING id, role`,
+      [email, firstName, lastName],
+    );
+    const userId = String(userUpsert.rows[0].id);
+    const userRole = String(userUpsert.rows[0].role ?? 'user');
+
+    const teamOrgId = String(row.team_organization_id);
+    const danceRoleId = String(row.invited_role_id);
+
+    // Opprett team-membership
+    await client.query(
+      `INSERT INTO enterprise_team_members
+         (organization_id, user_id, email, role, status, joined_at, org_kind, dance_role_id)
+       VALUES ($1, $2, $3, 'member', 'active', now(), 'dance_studio', $4)
+       ON CONFLICT (organization_id, email)
+       DO UPDATE SET
+         user_id = COALESCE(EXCLUDED.user_id, enterprise_team_members.user_id),
+         status = 'active',
+         joined_at = COALESCE(enterprise_team_members.joined_at, EXCLUDED.joined_at),
+         dance_role_id = EXCLUDED.dance_role_id,
+         org_kind = 'dance_studio'`,
+      [teamOrgId, userId, email, danceRoleId],
+    );
+
+    // Marker invite akseptert + audit-data
+    await client.query(
+      `UPDATE dance_team_invite
+          SET accepted_at = now(),
+              accepted_user_id = $1,
+              accepting_ip = $2,
+              accepting_user_agent = $3
+        WHERE token = $4`,
+      [userId, input.acceptingIp, input.acceptingUserAgent, input.token],
+    );
+
+    await client.query('COMMIT');
+
+    // Generer session-token. Routes-laget tar den og kaller persistAuthSession
+    // + activeSessions.set — vi gjør ikke dette her for å unngå tett kobling.
+    const sessionToken = randomUUID();
+    return {
+      accepted: true,
+      sessionToken,
+      userId,
+      email,
+      fullName: input.fullName.trim(),
+      role: userRole,
+      teamOrganizationId: teamOrgId,
+      danceRoleId,
+    };
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
 
 export async function getMaxTeamSeats(
   pool: Pool,

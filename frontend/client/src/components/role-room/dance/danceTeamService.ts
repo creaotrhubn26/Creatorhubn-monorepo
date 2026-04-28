@@ -273,7 +273,7 @@ export async function revokeInvite(teamOrgId: string, token: string): Promise<vo
   await readJson<{ success: boolean }>(res);
 }
 
-// ── invite-accept ──
+// ── invite-accept (innlogget bruker) ──
 export async function getInviteByToken(token: string): Promise<DanceTeamInvite> {
   const res = await fetch(`${INVITES_BASE}/${encodeURIComponent(token)}`, { headers: authHeaders() });
   const w = await readJson<{ success: boolean; data: DanceTeamInvite }>(res);
@@ -286,5 +286,75 @@ export async function acceptInvite(token: string): Promise<{ teamOrganizationId:
     headers: authHeaders(),
   });
   const w = await readJson<{ success: boolean; data: { teamOrganizationId: string; danceRoleId: string } }>(res);
+  return w.data;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  Magic-link + PIN-flyt (PUBLIC — ingen auth, brukes av InviteLandingPage)
+// ═══════════════════════════════════════════════════════════════════════
+
+export interface InvitePublicInfo {
+  token: string;
+  invitedEmailMasked: string;
+  invitedRoleLabel: string;
+  teamOrganizationId: string;
+  expiresAt: string;
+  pinSentAt: string | null;
+  pinLockedAt: string | null;
+  status: 'pending' | 'accepted' | 'revoked' | 'expired' | 'pin_locked';
+}
+
+export interface AcceptWithPinResponse {
+  sessionToken: string;
+  user: {
+    userId: string;
+    email: string;
+    name: string;
+    role: string;
+    loginAt: string;
+  };
+  teamOrganizationId: string;
+  danceRoleId: string;
+}
+
+async function readJsonOrError<T>(res: Response): Promise<T> {
+  // Skiller seg fra readJson — returnerer body også på 4xx/5xx så caller
+  // kan vise spesifikke error-meldinger ved PIN-feil osv.
+  const body = await res.json().catch(() => ({} as Record<string, unknown>));
+  if (!res.ok) {
+    const err = (body as { error?: string }).error || `HTTP ${res.status}`;
+    const e = new Error(err) as Error & { status: number; payload: unknown };
+    e.status = res.status;
+    e.payload = body;
+    throw e;
+  }
+  return body as T;
+}
+
+export async function getInvitePublicInfo(token: string): Promise<InvitePublicInfo> {
+  const res = await fetch(`${INVITES_BASE}/${encodeURIComponent(token)}/info`);
+  const w = await readJsonOrError<{ success: boolean; data: InvitePublicInfo }>(res);
+  return w.data;
+}
+
+export async function requestPinForInvite(token: string): Promise<void> {
+  const res = await fetch(`${INVITES_BASE}/${encodeURIComponent(token)}/request-pin`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  await readJsonOrError<{ success: boolean }>(res);
+}
+
+export async function acceptInviteWithPin(
+  token: string,
+  pin: string,
+  fullName: string,
+): Promise<AcceptWithPinResponse> {
+  const res = await fetch(`${INVITES_BASE}/${encodeURIComponent(token)}/accept-with-pin`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pin, fullName }),
+  });
+  const w = await readJsonOrError<{ success: boolean; data: AcceptWithPinResponse }>(res);
   return w.data;
 }

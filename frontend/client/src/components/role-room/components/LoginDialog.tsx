@@ -32,10 +32,8 @@ import {
   EmailOutlined as EmailIcon,
   LockOutlined as LockIcon,
   AccountBalanceOutlined as DanceStudioOwnerIcon,
-  AutoAwesomeOutlined as DanceChoreographerIcon,
-  SchoolOutlined as DanceInstructorIcon,
-  GroupsOutlined as DanceCoDancerIcon,
   AccessibilityNewOutlined as DanceFreelanceIcon,
+  MailOutlineOutlined as DanceInviteHolderIcon,
 } from '@mui/icons-material';
 import { ROLE_ROOM_BRAND_ASSETS } from '../config/branding';
 import { ROLE_ROOM_LANDING_CONFIG } from '../config/landing';
@@ -226,12 +224,13 @@ const ROLE_CARDS: Record<string, {
   boom_operator:     { label: 'Bom-operator', video: '/role-room-assets/roleroom_boom_operator.mp4' },
   composer:          { label: 'Komponist'    , video: '/role-room-assets/roleroom_composer.mp4' },
 
-  // ── Dans-vertikalen (MUI outlined SVG-ikoner, fontSize: inherit) ────
+  // ── Dans-vertikalen — 3 path-valg (Studio-eier / Frilansdanser / Har invitasjon)
+  // De gamle 5 dance-rollekortene (Koreograf/Instruktør/Co-danser/Pianist) er
+  // droppet — de er nå custom roller som Studio-eier definerer per studio og
+  // tildeler ved invite, ikke noe brukeren selv-velger ved signup.
   dance_studio_owner:    { label: 'Studio-eier',    glyph: <DanceStudioOwnerIcon   sx={{ fontSize: 'inherit' }} /> },
-  dance_choreographer:   { label: 'Koreograf',      glyph: <DanceChoreographerIcon sx={{ fontSize: 'inherit' }} /> },
-  dance_instructor:      { label: 'Instruktør',     glyph: <DanceInstructorIcon    sx={{ fontSize: 'inherit' }} /> },
-  dance_company_dancer:  { label: 'Co-danser',      glyph: <DanceCoDancerIcon      sx={{ fontSize: 'inherit' }} /> },
   dance_freelance:       { label: 'Frilansdanser',  glyph: <DanceFreelanceIcon     sx={{ fontSize: 'inherit' }} /> },
+  dance_invite_holder:   { label: 'Har invitasjon', glyph: <DanceInviteHolderIcon  sx={{ fontSize: 'inherit' }} /> },
 
   // ── HOW TO ADD A NEW CARD ────────────────────────────────────────────
   // 1. Add an entry below (copy any line above as a template)
@@ -596,10 +595,8 @@ const PRODUCTION_TEAM_ROLE_IDS = [
 ] as const;
 const DANCE_STUDIO_ROLE_IDS = [
   'dance_studio_owner',
-  'dance_choreographer',
-  'dance_instructor',
-  'dance_company_dancer',
   'dance_freelance',
+  'dance_invite_holder',
 ] as const;
 const EDUCATION_INSTITUTION_TYPES: ReadonlyArray<{
   id: Exclude<EducationInstitutionType, ''>;
@@ -939,16 +936,10 @@ const productionTeamCategories = [
 ] as const;
 const danceStudioCategories = [
   {
-    id: 'kjerne',
-    label: 'Kjerne',
-    description: 'Hvilken rolle har du i studioet? Start med inngangen som best beskriver hvordan du jobber med dans til daglig.',
-    roleIds: ['dance_studio_owner', 'dance_choreographer', 'dance_instructor'],
-  },
-  {
-    id: 'utovere',
-    label: 'Utøvere',
-    description: 'Dansere som er en del av studioets team, og frilansere som tar enkeltprosjekter.',
-    roleIds: ['dance_company_dancer', 'dance_freelance'],
+    id: 'velg_vei',
+    label: 'Velg din vei',
+    description: 'Driver du eget studio, jobber du som frilanser, eller har du fått en invitasjon fra et studio? Velg det som passer deg best — du kan endre senere.',
+    roleIds: ['dance_studio_owner', 'dance_freelance', 'dance_invite_holder'],
   },
 ] as const;
 
@@ -1127,6 +1118,75 @@ const hintBounce = keyframes`
   0%, 100% { transform: translateY(0); }
   50%       { transform: translateY(6px); }
 `;
+
+/* ──────────────────── DanceInvitePasteEntry ─────────────────────
+ * Vises i stedet for email/password-feltene når brukeren klikker
+ * "Har invitasjon" i dance-flyten. Tar imot enten en hel invite-URL
+ * (https://creatorhubn.com/dance/invite/<token>) eller bare token.
+ * Navigerer til /dance/invite/<token> der mottakeren kan logge inn
+ * og akseptere. Trenger ingen email/password — selve invite-token er
+ * nok for å identifisere mottakeren.
+ */
+function DanceInvitePasteEntry(): React.ReactElement {
+  const [raw, setRaw] = useState('');
+  const [err, setErr] = useState<string | null>(null);
+
+  const submit = () => {
+    const trimmed = raw.trim();
+    if (!trimmed) { setErr('Lim inn en invite-lenke eller -token først.'); return; }
+    // Hent token-delen — enten siste path-segment fra URL eller hele input
+    let token = trimmed;
+    try {
+      const url = new URL(trimmed);
+      const m = url.pathname.match(/\/dance\/invite\/([^/]+)/);
+      if (m) token = decodeURIComponent(m[1]);
+      else {
+        const segs = url.pathname.split('/').filter(Boolean);
+        token = segs[segs.length - 1] ?? trimmed;
+      }
+    } catch {
+      // Ikke URL — bruk som token direkte
+    }
+    if (!/^[A-Za-z0-9_-]{20,}$/.test(token)) {
+      setErr('Token-formatet ser ikke gyldig ut. Sjekk e-post-lenken.');
+      return;
+    }
+    window.location.href = `/dance/invite/${encodeURIComponent(token)}`;
+  };
+
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
+      <Typography sx={{ fontSize: 12, color: 'rgba(229,231,235,0.7)', mb: 0.5 }}>
+        Lim inn invite-lenken fra e-posten din nedenfor — vi tar deg videre
+        til siden der du godkjenner invitasjonen.
+      </Typography>
+      {err ? <Alert severity="error">{err}</Alert> : null}
+      <TextField
+        label="Invite-lenke eller -token"
+        value={raw}
+        onChange={(e) => { setRaw(e.target.value); setErr(null); }}
+        fullWidth
+        autoFocus
+        placeholder="https://creatorhubn.com/dance/invite/abc123…"
+        sx={{ '& .MuiInputLabel-root, & .MuiOutlinedInput-root': { color: 'rgba(237,233,254,0.9)' } }}
+      />
+      <Button
+        variant="contained"
+        onClick={submit}
+        sx={{
+          bgcolor: '#8b5cf6',
+          '&:hover': { bgcolor: '#4c1d95' },
+          textTransform: 'none',
+          fontWeight: 600,
+          alignSelf: 'flex-start',
+          mt: 0.5,
+        }}
+      >
+        Fortsett til invitasjon
+      </Button>
+    </Box>
+  );
+}
 
 /* ──────────────────── RoleChip sub-component ───────────────────── */
 
@@ -5958,8 +6018,13 @@ export default function LoginDialog({
             </Box>
           )}
 
+          {/* ── Dans invite-holder: paste-flow i stedet for email/password ── */}
+          {shouldShowAuthFields && selectedRole === 'dance_invite_holder' && (
+            <DanceInvitePasteEntry />
+          )}
+
           {/* ── email ── */}
-          {shouldShowAuthFields && (
+          {shouldShowAuthFields && selectedRole !== 'dance_invite_holder' && (
             <>
           <TextField
             id="login-email"
