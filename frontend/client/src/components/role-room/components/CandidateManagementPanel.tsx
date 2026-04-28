@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { useState, useId, useMemo, useEffect, memo, useRef } from 'react';
+import React, { useState, useId, useMemo, useEffect, memo, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -70,6 +70,7 @@ import {
   CompareArrows as CompareArrowsIcon,
   Timeline as TimelineIcon,
   Collections as CollectionsIcon,
+  Videocam as VideocamIcon,
   Gavel as GavelIcon,
   Tune as TuneIcon,
   DoneAll as DoneAllIcon,
@@ -228,7 +229,7 @@ type StatusFilter = 'all' | 'pending' | 'requested' | 'shortlist' | 'selected' |
 type ProSortField = 'fitScore' | 'name' | 'status' | 'updatedAt' | 'createdAt';
 type ProGroupBy = 'none' | 'status';
 type ProPreset = 'casting' | 'compliance' | 'final' | 'custom';
-type ProDetailTab = 'overview' | 'media' | 'consent' | 'history' | 'actions' | 'compare';
+type ProDetailTab = 'overview' | 'media' | 'videos' | 'consent' | 'history' | 'actions' | 'compare';
 
 type CandidateConsent = {
   id?: string;
@@ -2534,6 +2535,7 @@ function CandidateManagementPanelInner({
                   >
                     <Tab value="overview" icon={<ViewCarouselIcon fontSize="small" />} iconPosition="start" label="Oversikt" />
                     <Tab value="media" icon={<CollectionsIcon fontSize="small" />} iconPosition="start" label="Bilder" />
+                    <Tab value="videos" icon={<VideocamIcon fontSize="small" />} iconPosition="start" label="Video" />
                     <Tab value="consent" icon={<GavelIcon fontSize="small" />} iconPosition="start" label="Samtykke" />
                     <Tab value="history" icon={<TimelineIcon fontSize="small" />} iconPosition="start" label="Historikk" />
                     <Tab value="actions" icon={<TuneIcon fontSize="small" />} iconPosition="start" label="Handlinger" />
@@ -2705,6 +2707,25 @@ function CandidateManagementPanelInner({
                       ) : (
                         <Typography sx={{ color: roleTextMuted }}>Ingen bilder lastet opp for kandidaten.</Typography>
                       )}
+                    </Box>
+                  )}
+
+                  {proDetailTab === 'videos' && projectId && (
+                    <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                      <React.Suspense fallback={<Box sx={{ p: 3, textAlign: 'center' }}><Typography sx={{ color: roleTextMuted }}>Laster video-review…</Typography></Box>}>
+                        {(() => {
+                          const LazyCandidateVideoReview = React.lazy(() =>
+                            import('./casting/CandidateVideoReview').then((m) => ({ default: m.CandidateVideoReview })),
+                          );
+                          return (
+                            <LazyCandidateVideoReview
+                              candidateId={selectedCandidate.id}
+                              projectId={projectId}
+                              candidateName={selectedCandidate.name}
+                            />
+                          );
+                        })()}
+                      </React.Suspense>
                     </Box>
                   )}
 
