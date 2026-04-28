@@ -157,6 +157,21 @@ export function createDanceTeamRouter(
     res.json({ success: true, data: { capabilities: Array.from(caps) } });
   });
 
+  // Alle team-medlemskap for innlogget bruker (multi-team)
+  router.get('/me/all', auth, async (req, res) => {
+    const { userId } = req as AuthedRequest;
+    const memberships = await svc.listMembershipsForUser(pool, userId);
+    res.json({ success: true, data: memberships });
+  });
+
+  // Markér at upgrade-dialogen er sett for et gitt medlemskap
+  router.post('/me/memberships/:memberRowId/dismiss-upgrade', auth, async (req, res) => {
+    const { userId } = req as AuthedRequest;
+    const ok = await svc.markUpgradeOfferSeen(pool, String(req.params.memberRowId), userId);
+    if (!ok) { res.status(404).json({ error: 'not_found' }); return; }
+    res.json({ success: true });
+  });
+
   // ─── Create / ensure team ───────────────────────────────────────────
   router.post('/', auth, async (req, res) => {
     const parsed = createTeamBody.safeParse(req.body ?? {});

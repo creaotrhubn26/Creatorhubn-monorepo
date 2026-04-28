@@ -50,6 +50,7 @@ import {
   createDanceTeamRouter,
   createDanceInviteAcceptRouter,
 } from "./dance-team-routes.js";
+import { createDanceAddonRouter } from "./dance-addon-routes.js";
 import {
   upsertShotListForProject,
   bootstrapCaptureSessionForProject,
@@ -1093,6 +1094,10 @@ app.use(
 app.use(
   "/api/dance/invites",
   createDanceInviteAcceptRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/dance/addons",
+  createDanceAddonRouter(pool, { activeSessions }),
 );
 app.use("/api/youtube", createYouTubeRouter(pool));
 app.use("/api/photo-enhancer", createPhotoEnhancerRouter(pool));

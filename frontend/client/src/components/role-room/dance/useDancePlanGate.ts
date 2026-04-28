@@ -15,17 +15,20 @@
 import { useEffect, useState } from 'react';
 import * as billing from './danceBillingService';
 import * as team from './danceTeamService';
+import * as addon from './danceAddonService';
 
 interface PlanGateState {
   loading: boolean;
   subscription: billing.DanceSubscription | null;
   plan: billing.DancePlan | null;
-  /** Sjekker om planen inkluderer en gitt feature-streng. */
+  /** Sjekker om feature er inkludert i plan ELLER aktiv add-on. */
   has: (feature: string) => boolean;
   /** Sjekker om brukeren har en team-capability via custom-rolle. */
   hasCapability: (capability: string) => boolean;
   /** Alle resolvede team-capabilities. Tom hvis ikke i team. */
   capabilities: ReadonlySet<string>;
+  /** Feature-flags fra brukerens aktive add-ons (Frilansdanser). */
+  addonFeatureFlags: ReadonlySet<string>;
   /** Team-membership info (null hvis ikke i et dans-team). */
   membership: team.MyMembership | null;
   /** Sjekker om abonnementet er aktivt (active/trialing/comp). */
@@ -41,6 +44,7 @@ interface CachedState {
   plan: billing.DancePlan | null;
   capabilities: Set<string>;
   membership: team.MyMembership | null;
+  addonFeatureFlags: Set<string>;
   fetchedAt: number;
 }
 
@@ -75,11 +79,19 @@ async function loadGate(force = false): Promise<CachedState> {
       membership = await team.getMyMembership();
     } catch { membership = null; }
 
+    // Add-on feature flags — for Frilansdansere på addon_eligible-plan
+    let addonFlags = new Set<string>();
+    try {
+      const flags = await addon.getMyAddonFeatureFlags();
+      addonFlags = new Set(flags);
+    } catch { /* ignore — bruker uten add-ons */ }
+
     const next: CachedState = {
       subscription: sub,
       plan,
       capabilities: caps,
       membership,
+      addonFeatureFlags: addonFlags,
       fetchedAt: Date.now(),
     };
     cache = next;
@@ -112,6 +124,7 @@ export function useDancePlanGate(): PlanGateState {
   const sub = state.data?.subscription ?? null;
   const plan = state.data?.plan ?? null;
   const caps = state.data?.capabilities ?? new Set<string>();
+  const addonFlags = state.data?.addonFeatureFlags ?? new Set<string>();
   const membership = state.data?.membership ?? null;
   const isActive = billing.isPlanActive(sub);
   const daysRemaining = billing.daysUntil(
@@ -122,9 +135,14 @@ export function useDancePlanGate(): PlanGateState {
     loading: state.loading,
     subscription: sub,
     plan,
-    has: (feature: string): boolean => billing.hasFeature(plan, feature),
+    // has: union av plan-features og aktive add-on feature_flags. Slik at
+    // en Frilansdanser med 'video_review_pro'-add-on får hasFeature('video_review_pro')=true
+    // selv om grunnplanen ikke inneholder den.
+    has: (feature: string): boolean =>
+      billing.hasFeature(plan, feature) || addonFlags.has(feature),
     hasCapability: (capability: string): boolean => caps.has(capability),
     capabilities: caps,
+    addonFeatureFlags: addonFlags,
     membership,
     isActive,
     daysRemaining,

@@ -80,6 +80,7 @@ export const DANCE_FREELANCE_TABS: readonly TabConfig[] = [
   { id: 'grants',        labelToken: 'danceTabGrants',          descriptionToken: 'danceTabGrantsDescription',          feature: 'finance' },
   { id: 'billing',       labelToken: 'danceTabBilling',                                                                  feature: 'finance' },
   { id: 'union',         labelToken: 'danceTabUnion',           descriptionToken: 'danceTabUnionDescription',           feature: 'union' },
+  { id: 'addons',        labelToken: 'danceTabAddons',          descriptionToken: 'danceTabAddonsDescription',          feature: 'finance' },
   { id: 'pricing',       labelToken: 'danceTabPricing',                                                                  feature: 'finance' },
   { id: 'admin_plans',   labelToken: 'danceTabAdminPlans',                                                               feature: 'finance' },
   { id: 'admin_testers', labelToken: 'danceTabAdminTesters',                                                             feature: 'finance' },

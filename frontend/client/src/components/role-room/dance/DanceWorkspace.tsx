@@ -66,6 +66,9 @@ import {
   TrialBanner,
 } from './BillingPanels';
 import { TeamAdminPanel } from './TeamAdminPanel';
+import { MyTeamsHeader, useMyMemberships } from './MyTeamsHeader';
+import { UpgradeToFreelanceDialog } from './UpgradeToFreelanceDialog';
+import { AddonsPanel } from './AddonsPanel';
 import { authSessionService } from '../services/authSessionService';
 
 export interface DanceWorkspaceProps {
@@ -157,6 +160,26 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
   const tabs = useMemo(() => getTabsForProfession(mode), [mode]);
   const [activeTabId, setActiveTabId] = useState<string>(tabs[0]?.id ?? 'dashboard');
 
+  // Multi-team membership + active-team-bytter (URL ?team=<orgId>)
+  const { memberships, refresh: refreshMemberships } = useMyMemberships();
+  const initialActiveTeam = useMemo(() => {
+    if (typeof window === 'undefined') return null;
+    return new URLSearchParams(window.location.search).get('team');
+  }, []);
+  const [activeTeamOrgId, setActiveTeamOrgId] = useState<string | null>(initialActiveTeam);
+
+  // Konverterings-dialog: vises ÉN gang for team-medlemmer (ikke eier)
+  // som ikke har sett tilbudet ennå.
+  const upgradeOfferTarget = useMemo(() => {
+    return memberships.find(
+      (m) => m.role && !m.role.isOwnerRole && m.upgradeOfferSeenAt === null && m.member.status === 'active',
+    ) ?? null;
+  }, [memberships]);
+  const [upgradeDialogOpen, setUpgradeDialogOpen] = useState(false);
+  React.useEffect(() => {
+    if (upgradeOfferTarget) setUpgradeDialogOpen(true);
+  }, [upgradeOfferTarget?.member.memberRowId]);
+
   if (!isDanceMode(mode) || tabs.length === 0) return null;
 
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? tabs[0];
@@ -225,6 +248,8 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
         return <UnionPanel projectId={projectId ?? null} />;
       case 'team':
         return <TeamAdminPanel />;
+      case 'addons':
+        return <AddonsPanel />;
       case 'pricing':
         return <DancePricingPage persona={mode === 'dance_studio' ? 'dance_studio' : mode === 'dance_freelance' ? 'dance_freelance' : 'both'} />;
       case 'admin_plans':
@@ -249,6 +274,29 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
       <Box sx={{ px: 1, py: 0.5 }}>
         <TrialBanner />
       </Box>
+      {memberships.length > 0 ? (
+        <Box sx={{ px: 1.5, py: 0.75, display: 'flex', justifyContent: 'flex-end' }}>
+          <MyTeamsHeader
+            memberships={memberships}
+            activeTeamOrgId={activeTeamOrgId ?? memberships[0]?.team.teamOrganizationId ?? null}
+            onSwitchTeam={(orgId) => {
+              setActiveTeamOrgId(orgId);
+              const url = new URL(window.location.href);
+              url.searchParams.set('team', orgId);
+              window.history.replaceState(null, '', url.toString());
+            }}
+          />
+        </Box>
+      ) : null}
+      {upgradeDialogOpen && upgradeOfferTarget ? (
+        <UpgradeToFreelanceDialog
+          membership={upgradeOfferTarget}
+          onClose={() => {
+            setUpgradeDialogOpen(false);
+            void refreshMemberships();
+          }}
+        />
+      ) : null}
       <Box
         sx={{
           position: 'sticky',

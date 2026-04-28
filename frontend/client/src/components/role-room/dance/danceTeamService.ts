@@ -150,12 +150,33 @@ export interface MyMembership {
   role: DanceTeamRole | null;
 }
 
+export interface DanceTeamMembershipDetail {
+  team: DanceTeamSummary;
+  member: DanceTeamMember;
+  role: DanceTeamRole | null;
+  upgradeOfferSeenAt: string | null;
+}
+
 // ─── API ────────────────────────────────────────────────────────────────
 
 export async function getMyMembership(): Promise<MyMembership | null> {
   const res = await fetch(`${TEAMS_BASE}/me`, { headers: authHeaders() });
   const wrapped = await readJson<{ success: boolean; data: MyMembership | null }>(res);
   return wrapped.data;
+}
+
+export async function listMyMemberships(): Promise<DanceTeamMembershipDetail[]> {
+  const res = await fetch(`${TEAMS_BASE}/me/all`, { headers: authHeaders() });
+  const wrapped = await readJson<{ success: boolean; data: DanceTeamMembershipDetail[] }>(res);
+  return wrapped.data;
+}
+
+export async function dismissUpgradeOffer(memberRowId: string): Promise<void> {
+  const res = await fetch(`${TEAMS_BASE}/me/memberships/${encodeURIComponent(memberRowId)}/dismiss-upgrade`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  await readJson<{ success: boolean }>(res);
 }
 
 export async function getMyCapabilities(): Promise<string[]> {

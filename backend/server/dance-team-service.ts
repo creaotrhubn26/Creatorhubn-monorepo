@@ -418,6 +418,68 @@ export async function getTeamSummary(
   };
 }
 
+export interface DanceTeamMembershipDetail {
+  team: DanceTeamSummary;
+  member: DanceTeamMember;
+  role: DanceTeamRole | null;
+  upgradeOfferSeenAt: string | null;
+}
+
+/** Returnerer ALLE team-medlemskap for en bruker (multi-team støtte). */
+export async function listMembershipsForUser(
+  pool: Pool,
+  userId: string,
+): Promise<DanceTeamMembershipDetail[]> {
+  const r = await pool.query(
+    `SELECT
+       m.id, m.organization_id, m.user_id, m.email, m.status, m.role,
+       m.dance_role_id, m.invited_at, m.joined_at, m.upgrade_offer_seen_at,
+       rl.label AS dance_role_label
+     FROM enterprise_team_members m
+     LEFT JOIN dance_team_role rl ON rl.id = m.dance_role_id
+     WHERE m.org_kind = 'dance_studio'
+       AND m.user_id = $1
+       AND m.status IN ('active','pending')
+     ORDER BY m.joined_at DESC NULLS LAST, m.invited_at DESC`,
+    [userId],
+  );
+  if (!r.rowCount) return [];
+
+  const out: DanceTeamMembershipDetail[] = [];
+  for (const row of r.rows) {
+    const member = mapMemberRow(row);
+    const team = await getTeamSummary(pool, member.teamOrganizationId);
+    let role: DanceTeamRole | null = null;
+    if (member.danceRoleId) {
+      const rr = await pool.query(`SELECT * FROM dance_team_role WHERE id = $1`, [member.danceRoleId]);
+      if (rr.rowCount) role = mapRoleRow(rr.rows[0]);
+    }
+    out.push({
+      team,
+      member,
+      role,
+      upgradeOfferSeenAt: isoTsOrNull(row.upgrade_offer_seen_at),
+    });
+  }
+  return out;
+}
+
+/** Markerer at brukeren har sett upgrade-dialogen for et gitt medlemskap. */
+export async function markUpgradeOfferSeen(
+  pool: Pool,
+  memberRowId: string,
+  userId: string,
+): Promise<boolean> {
+  const r = await pool.query(
+    `UPDATE enterprise_team_members
+        SET upgrade_offer_seen_at = COALESCE(upgrade_offer_seen_at, now())
+      WHERE id = $1 AND user_id = $2 AND org_kind = 'dance_studio'
+      RETURNING id`,
+    [memberRowId, userId],
+  );
+  return (r.rowCount ?? 0) > 0;
+}
+
 /** Returnerer team-membership for en user, hvilket som helst team de er i. */
 export async function getMembershipForUser(
   pool: Pool,
