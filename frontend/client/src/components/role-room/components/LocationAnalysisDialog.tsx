@@ -63,6 +63,7 @@ import {
 import { LocationsIcon as LocationIcon } from './icons/CastingIcons';
 import type { Location } from '../models/casting';
 import { externalDataService } from '@/services/ExternalDataService';
+import { analyzeLocation as analyzeLocationApi, type LocationAnalysis as LocationPermitAnalysis } from '../services/locationAnalysisService';
 import { LocationAnalysisGuide } from './production/LocationAnalysisGuide';
 import GlobalMentionHelper from './shared/GlobalMentionHelper';
 
@@ -305,7 +306,10 @@ const inferPermitOperations = (location: Location, analysis: Location['propertyA
 const buildPermitContacts = (
   location: Location,
   operations: PermitOperationFlags,
-  municipalityName: string | null
+  municipalityName: string | null,
+  /** Permit-info fra analyzeLocation (Kartverket + kommune-database).
+   *  Hvis tilstede brukes ekte URL/email/telefon i stedet for placeholder. */
+  liveKommuneInfo?: { kommune?: string; filmingPermitUrl?: string; generalContactUrl?: string; generalContactPhone?: string; filmContactName?: string; filmContactEmail?: string; filmContactPhone?: string; noiseLimits?: string } | null,
 ): PermitContact[] => {
   const contacts = new Map<string, PermitContact>();
 
@@ -315,22 +319,38 @@ const buildPermitContacts = (
     }
   };
 
-  const municipalityLabel = municipalityName ? `${municipalityName} kommune` : 'Kommunen';
+  const liveName = liveKommuneInfo?.kommune ?? null;
+  const effectiveMunicipalityName = liveName ?? municipalityName;
+  const municipalityLabel = effectiveMunicipalityName ? `${effectiveMunicipalityName} kommune` : 'Kommunen';
 
   if (operations.publicArea) {
+    // Hvis vi har ekte data fra Kartverket+kommune-DB → bruk den
+    const filmingUrl = liveKommuneInfo?.filmingPermitUrl
+      ?? liveKommuneInfo?.generalContactUrl
+      ?? 'https://www.norge.no';
+    const filmContactEmail = liveKommuneInfo?.filmContactEmail;
+    const phone = liveKommuneInfo?.filmContactPhone ?? liveKommuneInfo?.generalContactPhone;
+    const filmName = liveKommuneInfo?.filmContactName;
+    const hint = filmContactEmail
+      ? `Send e-post til ${filmContactEmail}${filmName ? ` (${filmName})` : ''}${phone ? ` eller ring ${phone}` : ''}.`
+      : phone
+        ? `Ring ${phone}${filmName ? ` (${filmName})` : ' (servicetorg)'}.`
+        : effectiveMunicipalityName
+          ? `Sjekk kommunens side for filming-tillatelse: ${filmingUrl}`
+          : 'Søk etter kommunens film-/arrangementskontor.';
     addContact({
       id: 'kommune',
       authority: municipalityLabel,
-      unit: 'Filming / bruk av offentlig grunn',
-      reason: 'Avklar bruk av offentlig areal, støygrenser og lokal tillatelse.',
+      unit: filmName ?? 'Filming / bruk av offentlig grunn',
+      reason: liveKommuneInfo?.noiseLimits
+        ? `Avklar bruk av offentlig areal og lokal tillatelse. Støygrenser: ${liveKommuneInfo.noiseLimits}`
+        : 'Avklar bruk av offentlig areal, støygrenser og lokal tillatelse.',
       processingDays: 10,
       leadDays: 14,
       openingHours: 'Hverdager 08:00-15:30',
       priority: 'hoy',
-      website: 'https://www.norge.no',
-      contactHint: municipalityName
-        ? `Søk etter "${municipalityName} kommune filming tillatelse".`
-        : 'Søk etter kommunens film-/arrangementskontor.',
+      website: filmingUrl,
+      contactHint: hint,
     });
   }
 
@@ -875,6 +895,28 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
   }, [analysis, location?.assignedScenes, location?.capacity]);
 
   const municipalityName = useMemo(() => extractMunicipalityName(location?.address), [location?.address]);
+
+  // ── Live analyse via Kartverket + kommune-permit-database ────────────
+  const [permitAnalysis, setPermitAnalysis] = useState<LocationPermitAnalysis | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    if (!location?.address) {
+      setPermitAnalysis(null);
+      return;
+    }
+    void (async () => {
+      try {
+        const result = await analyzeLocationApi(location.address!);
+        if (!cancelled) setPermitAnalysis(result);
+      } catch (err) {
+        // Stille fallback — beholder regex-basert kommune-extraction
+        console.warn('[LocationAnalysisDialog] analyzeLocation failed:', err);
+        if (!cancelled) setPermitAnalysis(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [location?.address]);
+
   const inferredOperations = useMemo<PermitOperationFlags>(() => {
     if (!location) {
       return {
@@ -896,8 +938,8 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
   );
 
   const permitContacts = useMemo(
-    () => (location ? buildPermitContacts(location, operationFlags, municipalityName) : []),
-    [location, operationFlags, municipalityName]
+    () => (location ? buildPermitContacts(location, operationFlags, municipalityName, permitAnalysis?.permitInfo ?? null) : []),
+    [location, operationFlags, municipalityName, permitAnalysis]
   );
 
   const mentionCandidates = useMemo(() => {

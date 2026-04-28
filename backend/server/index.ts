@@ -52,6 +52,7 @@ import {
 } from "./dance-team-routes.js";
 import { createDanceAddonRouter } from "./dance-addon-routes.js";
 import { createStoryboardRouter } from "./storyboard-routes.js";
+import { createLocationAnalysisRouter } from "./location-analysis-routes.js";
 import {
   upsertShotListForProject,
   bootstrapCaptureSessionForProject,
@@ -1103,6 +1104,10 @@ app.use(
 app.use(
   "/api/role-room",
   createStoryboardRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/role-room/locations/analysis",
+  createLocationAnalysisRouter(pool, { activeSessions }),
 );
 app.use("/api/youtube", createYouTubeRouter(pool));
 app.use("/api/photo-enhancer", createPhotoEnhancerRouter(pool));
