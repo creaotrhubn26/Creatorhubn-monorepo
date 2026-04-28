@@ -2182,10 +2182,17 @@ export default function NewProjectCreationModal({
         return;
       }
 
-      // Call the comprehensive TROLL initialization endpoint
-      const response = await fetch('/api/demo/troll/initialize-all', {
+      // Call the comprehensive TROLL seed endpoint — én DB-transaksjon
+      // som persisterer prosjekt + roles + candidates + crew + locations
+      // + manuscript + scenes + shotLists + equipment + production days
+      // + consents. Idempotent (DELETE før INSERT). Erstatter den gamle
+      // /initialize-all-stuben som bare returnerte tom JSON.
+      const response = await fetch('/api/demo/troll/seed-all', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...((authSessionService.getAuthHeadersSync() ?? {}) as Record<string, string>),
+        },
         body: JSON.stringify({})
       });
       

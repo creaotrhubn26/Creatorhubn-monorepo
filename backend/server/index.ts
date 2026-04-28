@@ -19491,63 +19491,98 @@ app.get("/api/casting/demo/troll/offers-contracts", (_req, res) => {
   res.json({ success: true, offers: [], contracts: [] });
 });
 
-app.post("/api/demo/troll/initialize-all", (_req, res) => {
-  const fallbackProject = {
-    id: "troll-project-2026",
-    name: "TROLL",
-    description: "Norsk eventyrfilm regissert av Roar Uthaug",
-    crew: [],
-    locations: [],
-  };
-  const project =
-    legacyCastingProjects.get("troll-project-2026") ||
-    legacyCastingProjects.get("troll") ||
-    Array.from(legacyCastingProjects.values())[0] ||
-    fallbackProject;
+// Comprehensive TROLL demo seed — kjører i én DB-transaksjon, idempotent
+// (DELETE før INSERT). Oppretter prosjekt + roles + candidates + crew +
+// locations + manuscript + scenes + shotLists + equipment + production
+// days + consents. Trigger via "Last TROLL Demo-prosjekt"-knapp.
+app.post("/api/demo/troll/seed-all", async (req, res) => {
+  try {
+    const ownerUserId = (req as { userId?: string }).userId
+      ?? readString(req.headers["x-user-id"] as string | undefined)
+      ?? "demo-user";
+    const { seedTrollDemo } = await import("./troll-demo-seed-service.js");
+    const report = await seedTrollDemo(pool, ownerUserId);
 
-  const crew = Array.isArray(project?.crew) ? project.crew : [];
-  const locations = Array.isArray(project?.locations) ? project.locations : [];
+    // Hent faktiske rader fra DB for å bygge frontend-kompatibel "areas"-respons
+    const [crewRes, locsRes] = await Promise.all([
+      pool.query("SELECT * FROM casting_crew WHERE project_id = $1", [report.project.id]),
+      pool.query("SELECT * FROM casting_locations WHERE project_id = $1", [report.project.id]),
+    ]);
 
-  res.json({
-    success: true,
-    areas: {
-      project: {
-        status: "loaded",
-        count: 1,
-        items: [project],
+    res.json({
+      success: true,
+      areas: {
+        project: { status: "loaded", count: 1, items: [report.project] },
+        crew: { status: "loaded", count: crewRes.rowCount ?? 0, items: crewRes.rows },
+        locations: { status: "loaded", count: locsRes.rowCount ?? 0, items: locsRes.rows },
+        roles: { status: "loaded", count: report.counts.roles, items: [] },
+        candidates: { status: "loaded", count: report.counts.candidates, items: [] },
+        scenes: { status: "loaded", count: report.counts.scenes, items: [] },
+        shot_lists: { status: "loaded", count: report.counts.shotLists, items: [] },
+        equipment: { status: "loaded", count: report.counts.equipment, items: [] },
+        production_days: { status: "loaded", count: report.counts.productionDays, items: [] },
+        manuscripts: { status: "loaded", count: report.counts.manuscripts, items: [] },
+        consents: { status: "loaded", count: report.counts.consents, items: [] },
+        // Kompatibilitet med eksisterende frontend som forventer disse feltene:
+        split_sheets: { status: "loaded", count: 0, items: [] },
+        offers: { status: "loaded", count: 0, items: [] },
+        contracts: { status: "loaded", count: 0, items: [] },
       },
-      crew: {
-        status: "loaded",
-        count: crew.length,
-        items: crew,
+      counts: report.counts,
+    });
+  } catch (err) {
+    console.error("TROLL demo seed-all error:", err);
+    res.status(500).json({
+      success: false,
+      error: "seed_failed",
+      detail: String(err instanceof Error ? err.message : err).slice(0, 300),
+    });
+  }
+});
+
+// Bakoverkompatibel alias — eldre frontend-versjoner kaller denne pathen.
+// Bare videre-kaller seed-all-handleren.
+app.post("/api/demo/troll/initialize-all", async (req, res) => {
+  try {
+    const ownerUserId = (req as { userId?: string }).userId
+      ?? readString(req.headers["x-user-id"] as string | undefined)
+      ?? "demo-user";
+    const { seedTrollDemo } = await import("./troll-demo-seed-service.js");
+    const report = await seedTrollDemo(pool, ownerUserId);
+
+    const [crewRes, locsRes] = await Promise.all([
+      pool.query("SELECT * FROM casting_crew WHERE project_id = $1", [report.project.id]),
+      pool.query("SELECT * FROM casting_locations WHERE project_id = $1", [report.project.id]),
+    ]);
+
+    res.json({
+      success: true,
+      areas: {
+        project: { status: "loaded", count: 1, items: [report.project] },
+        crew: { status: "loaded", count: crewRes.rowCount ?? 0, items: crewRes.rows },
+        locations: { status: "loaded", count: locsRes.rowCount ?? 0, items: locsRes.rows },
+        roles: { status: "loaded", count: report.counts.roles, items: [] },
+        candidates: { status: "loaded", count: report.counts.candidates, items: [] },
+        scenes: { status: "loaded", count: report.counts.scenes, items: [] },
+        shot_lists: { status: "loaded", count: report.counts.shotLists, items: [] },
+        equipment: { status: "loaded", count: report.counts.equipment, items: [] },
+        production_days: { status: "loaded", count: report.counts.productionDays, items: [] },
+        manuscripts: { status: "loaded", count: report.counts.manuscripts, items: [] },
+        consents: { status: "loaded", count: report.counts.consents, items: [] },
+        split_sheets: { status: "loaded", count: 0, items: [] },
+        offers: { status: "loaded", count: 0, items: [] },
+        contracts: { status: "loaded", count: 0, items: [] },
       },
-      locations: {
-        status: "loaded",
-        count: locations.length,
-        items: locations,
-      },
-      split_sheets: {
-        status: "loaded",
-        count: 0,
-        items: [],
-      },
-      offers: {
-        status: "loaded",
-        count: 0,
-        items: [],
-      },
-      contracts: {
-        status: "loaded",
-        count: 0,
-        items: [],
-      },
-      consents: {
-        status: "loaded",
-        count: 0,
-        items: [],
-      },
-    },
-  });
+      counts: report.counts,
+    });
+  } catch (err) {
+    console.error("TROLL demo initialize-all error:", err);
+    res.status(500).json({
+      success: false,
+      error: "seed_failed",
+      detail: String(err instanceof Error ? err.message : err).slice(0, 300),
+    });
+  }
 });
 
 type FirmwarePriority = "critical" | "high" | "medium" | "low";

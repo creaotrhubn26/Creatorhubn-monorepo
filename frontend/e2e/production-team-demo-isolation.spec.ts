@@ -29,6 +29,7 @@ test.describe('Produksjonsteam — demo-leak-regresjon (15× stabil)', () => {
   const DEMO_ENDPOINTS = [
     '**/api/casting/demo/troll/offers-contracts',
     '**/api/demo/troll/initialize-all',
+    '**/api/demo/troll/seed-all',          // NYE comprehensive seed-endepunkt
     '**/api/split-sheets/demo/troll',
     '**/api/casting/demo/**',
   ];
