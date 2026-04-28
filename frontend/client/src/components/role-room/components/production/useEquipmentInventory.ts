@@ -71,13 +71,8 @@ export function useEquipmentInventory(projectId: string): UseEquipmentInventoryR
 
     setLoading(true);
     try {
-      // Ensure mock data is initialized
-      try {
-        await castingService.initializeMockData();
-      } catch (_error) {
-        console.warn('Could not initialize mock data:', _error);
-      }
-
+      // Demo-data seedes IKKE her — kun via eksplisitt "Last Demo"-knapp.
+      // Henter kun ekte prosjekt-data fra server.
       const project = await castingService.getProject(projectId);
       if (!mountedRef.current) return;
 

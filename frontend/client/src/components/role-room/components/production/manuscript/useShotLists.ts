@@ -8,9 +8,10 @@ export const useShotLists = (projectId: string) => {
   useEffect(() => {
     let cancelled = false;
 
+    // Demo-data seedes IKKE her — kun via eksplisitt "Last Demo"-knapp i
+    // ProjectCreationModal. Henter kun reelle shot-lists for prosjektet.
     const loadShotLists = async () => {
       try {
-        await castingService.initializeMockData();
         const lists = await castingService.getShotLists(projectId);
         if (!cancelled) {
           setShotLists(Array.isArray(lists) ? lists : []);

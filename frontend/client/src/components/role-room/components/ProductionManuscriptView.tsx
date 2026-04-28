@@ -1238,14 +1238,13 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
     resetHistory();
   }, [scenes.length, resetHistory]);
 
-  // Load equipment-related data (candidates, roles) from project
+  // Load equipment-related data (candidates, roles) from project.
+  // Demo-data (TROLL) seedes IKKE her — kun via eksplisitt "Last Demo"-knapp.
   useEffect(() => {
     const loadProjectData = async () => {
       try {
-        // initializeMockData is singleton-safe — multiple callers share one in-flight promise
-        await castingService.initializeMockData();
         const project = await castingService.getProject(projectId);
-        
+
         // Load candidates and roles for talent panel
         if (project) {
           const confirmedCandidates = (project.candidates || []).filter(

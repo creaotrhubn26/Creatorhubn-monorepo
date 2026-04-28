@@ -5046,58 +5046,18 @@ type RoleRoomProjectWorkspaceState = {
   useEffect(() => {
     if (!adminUser) return;
 
-    // Use async function to handle async getProjects
+    // Demo-data (TROLL) seedes IKKE automatisk lenger — bruker må eksplisitt
+    // klikke "Last Demo"-knappen i ProjectCreationModal. Dette panelet laster
+    // kun reelle prosjekter brukeren faktisk har. Ingen auto-init = ingen
+    // demo-leak inn i fersk produksjonsteam-konto.
     const initializeData = async () => {
       setProjectsLoading(true);
       try {
         const loadedProjectsRaw = await castingService.getProjects();
         setPublishedTemplates(loadedProjectsRaw.filter((project) => castingService.isTemplateProject(project)));
-        const projects = filterProjectsForSession(loadedProjectsRaw);
-        
-        const shouldInitializeMock = !isProducerWorkspaceSession
-          && (
-            projects.length === 0
-            || !projects.some((project) => isTrollProject(project))
-          );
-        
-        if (shouldInitializeMock) {
-          try {
-            if (!isProducerWorkspaceSession) {
-              await castingService.initializeMockData();
-
-              // Also initialize offers, contracts and consents for complete demo
-              try {
-                await fetch('/api/casting/demo/troll/offers-contracts', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({})
-                });
-                // Offers initialized successfully
-              } catch (_e) {
-                // Offers/contracts may already exist or API unavailable
-              }
-            }
-            
-            // Reload projects after mock data initialization
-            const mockProjects = filterProjectsForSession(await castingService.getProjects());
-            if (mockProjects.length > 0) {
-              setProjects(mockProjects);
-              const preferredProject = mockProjects.find((project) => isTrollProject(project)) ?? mockProjects[0];
-              const fullProject = preferredProject
-                ? await castingService.getProject(preferredProject.id)
-                : null;
-              setCurrentProject(fullProject ?? preferredProject ?? null);
-            }
-            loadAvailableScenes();
-            loadUserRole();
-          } catch (error) {
-            console.error('❌ Failed to initialize TROLL project:', error);
-          }
-        } else {
-          await loadProjects();
-          loadAvailableScenes();
-          loadUserRole();
-        }
+        await loadProjects();
+        loadAvailableScenes();
+        loadUserRole();
       } catch (error) {
         console.error('❌ Error initializing data:', error);
       } finally {

@@ -11691,6 +11691,81 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     }
   });
 
+  // Lett team-member-invite-email — sender enklere mail enn klient-invite
+  // (uten access-duration / portal-form-fields). Brukes når et nytt prosjekt
+  // opprettes og collaborators-arrayen inneholder e-poster.
+  async function sendRoleRoomTeamMemberInviteEmail(opts: {
+    recipientEmail: string;
+    recipientName?: string | null;
+    role?: string | null;
+    projectName: string;
+    inviterName?: string | null;
+    inviterEmail?: string | null;
+    inviteUrl: string;
+  }): Promise<{ sent: boolean; reason?: string; messageId?: string | null }> {
+    const mailer = getRoleRoomClientInviteMailer();
+    if (!mailer) return { sent: false, reason: 'mailer_not_configured', messageId: null };
+
+    const recipientLabel = readStringValue(opts.recipientName) ?? 'der';
+    const roleLabel = readStringValue(opts.role);
+    const inviterLabel = readStringValue(opts.inviterName) ?? 'En kollega';
+    const subject = `Du er invitert til ${opts.projectName} på The Role Room`;
+    const text = [
+      `Hei ${recipientLabel}!`,
+      '',
+      `${inviterLabel} har invitert deg til prosjektet "${opts.projectName}"${roleLabel ? ` som ${roleLabel}` : ''}.`,
+      '',
+      'Klikk lenken under for å åpne prosjektet:',
+      opts.inviteUrl,
+      '',
+      'Lenken sender deg til The Role Room. Hvis du ikke har konto, kan du opprette en der.',
+      '',
+      'Hilsen,',
+      'CreatorHub / The Role Room',
+    ].join('\n');
+    const html = `
+      <div style="margin:0;background:#0b1020;padding:32px 16px;font-family:Inter,Segoe UI,Arial,sans-serif;color:#e8ecf4">
+        <div style="max-width:560px;margin:0 auto;background:#111827;border:1px solid rgba(255,255,255,0.08);border-radius:24px;overflow:hidden">
+          <div style="padding:28px 28px 20px;background:linear-gradient(135deg,#1c2438 0%,#0f172a 100%)">
+            <div style="font-size:12px;letter-spacing:0.16em;text-transform:uppercase;color:#8dd3ff;font-weight:700;margin-bottom:12px">The Role Room</div>
+            <h1 style="margin:0;font-size:24px;line-height:1.2;color:#ffffff">Du er invitert til ${escapeRoleRoomClientInviteEmailHtml(opts.projectName)}</h1>
+          </div>
+          <div style="padding:24px 28px">
+            <p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:#cbd5e1">
+              Hei ${escapeRoleRoomClientInviteEmailHtml(recipientLabel)}!
+            </p>
+            <p style="margin:0 0 18px;font-size:14px;line-height:1.7;color:#cbd5e1">
+              <strong>${escapeRoleRoomClientInviteEmailHtml(inviterLabel)}</strong> har invitert deg til prosjektet
+              <strong>${escapeRoleRoomClientInviteEmailHtml(opts.projectName)}</strong>${roleLabel ? ` som <strong>${escapeRoleRoomClientInviteEmailHtml(roleLabel)}</strong>` : ''}.
+            </p>
+            <div style="margin:24px 0">
+              <a href="${escapeRoleRoomClientInviteEmailHtml(opts.inviteUrl)}" style="display:inline-block;padding:14px 22px;border-radius:14px;background:#00d4ff;color:#031019;text-decoration:none;font-weight:800">Åpne prosjektet</a>
+            </div>
+            <div style="margin:14px 0 0;font-size:12px;line-height:1.6;color:#94a3b8;word-break:break-word">
+              Hvis knappen ikke virker, kopier denne lenken inn i nettleseren:<br />
+              <a href="${escapeRoleRoomClientInviteEmailHtml(opts.inviteUrl)}" style="color:#93c5fd">${escapeRoleRoomClientInviteEmailHtml(opts.inviteUrl)}</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    const replyTo = normalizeEmailValue(opts.inviterEmail) ?? mailer.user;
+    try {
+      const info = await mailer.transporter.sendMail({
+        from: `"The Role Room" <${mailer.user}>`,
+        to: opts.recipientEmail,
+        replyTo,
+        subject,
+        text,
+        html,
+      });
+      return { sent: true, messageId: info.messageId ?? null };
+    } catch (err) {
+      console.error('Team-member invite email send failed:', err);
+      return { sent: false, reason: String(err instanceof Error ? err.message : err), messageId: null };
+    }
+  }
+
   router.post('/projects', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     if (!requireScope(req, 'write')) {
       res.status(403).json({ error: 'Skrive-tilgang kreves' });
@@ -11803,6 +11878,49 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
 
       await client.query('COMMIT');
       roleRoomProjectAccessCache.add(id);
+
+      // ── Send invite-email til collaborators når prosjektet OPPRETTES ──
+      // Best-effort: e-post-feil skal IKKE feile project-creation. Vi sender
+      // kun på første opprettelse (existingProject == null) for å unngå
+      // duplikater ved oppdatering av eksisterende prosjekt.
+      if (!existingProject) {
+        const collaboratorsRaw = readRoleRoomArrayMetadata(body.collaborators) ?? [];
+        const proto = (req.headers['x-forwarded-proto'] as string | undefined)
+          ?? (req.protocol === 'http' ? 'http' : 'https');
+        const host = (req.headers['x-forwarded-host'] as string | undefined)
+          ?? req.headers.host
+          ?? 'creatorhubn.com';
+        const inviteUrl = `${proto}://${host}/role-room/projects/${encodeURIComponent(id)}`;
+        const sendResults: Array<{ email: string; sent: boolean; reason?: string }> = [];
+        for (const rawCollaborator of collaboratorsRaw) {
+          const collaborator = readRecordValue(rawCollaborator) ?? {};
+          const email = normalizeEmailValue(readStringValue(collaborator.email));
+          if (!email) continue;
+          const result = await sendRoleRoomTeamMemberInviteEmail({
+            recipientEmail: email,
+            recipientName: readStringValue(collaborator.name),
+            role: readStringValue(collaborator.role)
+              ?? readStringValue(collaborator.roleLabel)
+              ?? readStringValue(collaborator.position),
+            projectName: name,
+            inviterName: requestUser?.email ?? null,
+            inviterEmail: requestUser?.email ?? null,
+            inviteUrl,
+          });
+          sendResults.push({ email, sent: result.sent, reason: result.reason });
+          if (!result.sent) {
+            console.warn('Project invite email skipped:', { projectId: id, email, reason: result.reason });
+          }
+        }
+        // Logg total-resultatet til console for debugging — dukker opp i Render-logs.
+        if (sendResults.length > 0) {
+          console.log(
+            `Project ${id} invite emails: ${sendResults.filter((r) => r.sent).length}/${sendResults.length} sent`,
+            sendResults,
+          );
+        }
+      }
+
       res.status(existingProject ? 200 : 201).json({
         ...buildCastingProjectResponse(savedProject),
         ownerId: savedProject.created_by ?? userId,
