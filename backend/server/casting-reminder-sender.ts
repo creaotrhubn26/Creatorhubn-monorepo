@@ -15,6 +15,8 @@ export interface ReminderPrefs {
   sms1h: boolean;
   email24h: boolean;
   email1h: boolean;
+  whatsapp24h: boolean;
+  whatsapp1h: boolean;
 }
 
 export const DEFAULT_REMINDER_PREFS: ReminderPrefs = {
@@ -22,6 +24,8 @@ export const DEFAULT_REMINDER_PREFS: ReminderPrefs = {
   sms1h: true,
   email24h: true,
   email1h: true,
+  whatsapp24h: true,
+  whatsapp1h: true,
 };
 
 export function parseReminderPrefs(raw: unknown): ReminderPrefs {
@@ -32,6 +36,10 @@ export function parseReminderPrefs(raw: unknown): ReminderPrefs {
     sms1h: typeof r.sms1h === "boolean" ? r.sms1h : DEFAULT_REMINDER_PREFS.sms1h,
     email24h: typeof r.email24h === "boolean" ? r.email24h : DEFAULT_REMINDER_PREFS.email24h,
     email1h: typeof r.email1h === "boolean" ? r.email1h : DEFAULT_REMINDER_PREFS.email1h,
+    whatsapp24h:
+      typeof r.whatsapp24h === "boolean" ? r.whatsapp24h : DEFAULT_REMINDER_PREFS.whatsapp24h,
+    whatsapp1h:
+      typeof r.whatsapp1h === "boolean" ? r.whatsapp1h : DEFAULT_REMINDER_PREFS.whatsapp1h,
   };
 }
 
