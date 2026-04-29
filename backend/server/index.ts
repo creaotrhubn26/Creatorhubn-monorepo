@@ -72,6 +72,7 @@ import {
   deleteWhatsAppOrgConfig,
   pingWhatsAppPhoneNumber,
 } from "./role-room-whatsapp-config-service.js";
+import { persistWebhookEvents } from "./role-room-whatsapp-events-service.js";
 import { createCaptureRouter } from "./capture-routes.js";
 import { createReadThroughAiRouter } from "./read-through-ai-routes.js";
 import { createLiveSetAiRouter } from "./live-set-ai-routes.js";
@@ -31189,64 +31190,27 @@ app.post(
       return res.status(200).send("ok");
     }
 
-    // Process whatsapp_business_account events. Structure per Meta:
-    //   { object: "whatsapp_business_account",
-    //     entry: [{ id, changes: [{ field, value }] }] }
-    if (parsed?.object === "whatsapp_business_account" && Array.isArray(parsed.entry)) {
-      for (const entry of parsed.entry as Array<Record<string, unknown>>) {
-        const changes = Array.isArray(entry.changes) ? entry.changes : [];
-        for (const change of changes as Array<Record<string, unknown>>) {
-          const field = String(change.field || "");
-          const value = (change.value || {}) as Record<string, unknown>;
-
-          if (field === "messages") {
-            // Status updates for outbound + incoming messages
-            const statuses = Array.isArray(value.statuses) ? value.statuses : [];
-            for (const status of statuses as Array<Record<string, unknown>>) {
-              const messageId = String(status.id || "");
-              const statusValue = String(status.status || "");
-              const conversation =
-                (status.conversation as Record<string, unknown> | undefined) ?? {};
-              const conversationId = String(conversation.id || "") || null;
-              if (messageId && statusValue) {
-                console.log(
-                  `[wa-webhook] status msg=${messageId} status=${statusValue} conv=${conversationId ?? "?"}`,
-                );
-                try {
-                  await pool.query(
-                    `UPDATE casting_whatsapp_usage
-                       SET conversation_id = COALESCE(conversation_id, $2)
-                     WHERE whatsapp_message_id = $1`,
-                    [messageId, conversationId],
-                  );
-                } catch (err) {
-                  console.warn(
-                    "[wa-webhook] failed to update usage row for status update",
-                    err,
-                  );
-                }
-              }
-            }
-
-            const messages = Array.isArray(value.messages) ? value.messages : [];
-            for (const message of messages as Array<Record<string, unknown>>) {
-              console.log(
-                `[wa-webhook] inbound from=${message.from} type=${message.type} id=${message.id}`,
-              );
-              // Future: persist inbound for two-way chat. v1 just logs.
-            }
-          } else if (field === "message_template_status_update") {
-            console.log(
-              `[wa-webhook] template-status name=${value.message_template_name} status=${value.event} reason=${value.reason ?? ""}`,
-            );
-          } else if (field === "phone_number_quality_update") {
-            console.log(
-              `[wa-webhook] phone-quality num=${value.display_phone_number} rating=${value.event}`,
-            );
-          } else {
-            console.log(`[wa-webhook] field=${field} value=${JSON.stringify(value).slice(0, 200)}`);
-          }
+    // Persister + dispatch til domain-handlers for ALLE 13 field-typer.
+    // Hver entry.changes-element blir én rad i role_room_whatsapp_events
+    // for audit + BSP-review-bevis. Domain-handlers oppdaterer
+    // casting_whatsapp_usage og casting_team_whatsapp_invites.
+    if (parsed?.object === "whatsapp_business_account") {
+      try {
+        const summary = await persistWebhookEvents(pool, parsed);
+        if (summary.totalRows > 0) {
+          const fields = Object.entries(summary.byField)
+            .map(([f, n]) => `${f}=${n}`)
+            .join(" ");
+          console.log(`[wa-webhook] persisted ${summary.totalRows} rows: ${fields}`);
         }
+        if (summary.errors.length) {
+          console.warn(
+            `[wa-webhook] ${summary.errors.length} persistence errors:`,
+            summary.errors.slice(0, 3),
+          );
+        }
+      } catch (error) {
+        console.warn("[wa-webhook] persist failed", error);
       }
     }
 
