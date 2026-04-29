@@ -5,7 +5,7 @@
  */
 
 import type { Pool } from 'pg';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 export interface CastingVideo {
@@ -224,6 +224,56 @@ export async function createVideoUploadUrl(
   };
 }
 
+// ── Presign-read helper ─────────────────────────────────────────────────
+// R2 er privat — vi kan ikke servere video_url direkte til <video>-tag.
+// Konverterer den lagrede full-URL til en presigned GET-URL gyldig 1 time.
+
+const READ_URL_TTL = 3600;
+let readUrlCache = new Map<string, { url: string; expiresAt: number }>();
+
+async function presignReadUrl(storedUrl: string): Promise<string> {
+  const handle = getClient();
+  if (!handle) return storedUrl; // R2 ikke konfigurert — returner som er
+
+  // Cache: spar API-rountrip på identiske playback-requester innen TTL
+  const cached = readUrlCache.get(storedUrl);
+  if (cached && cached.expiresAt > Date.now()) return cached.url;
+
+  const { client, cfg } = handle;
+  // Stored URL er: ${endpoint}/${bucket}/${key} — vi trenger key
+  // Eksempel: https://abc.r2.cloudflarestorage.com/ml-models/casting/<projectId>/<candidateId>/<filename>
+  const marker = `/${cfg.bucket}/`;
+  const idx = storedUrl.indexOf(marker);
+  if (idx === -1) return storedUrl; // ukjent format eller annen bucket — returnerer
+  const key = storedUrl.slice(idx + marker.length);
+  if (!key) return storedUrl;
+
+  try {
+    const cmd = new GetObjectCommand({ Bucket: cfg.bucket, Key: key });
+    const signed = await getSignedUrl(client, cmd, { expiresIn: READ_URL_TTL });
+    // Cache 50% av TTL for å unngå at signerte URLs utløper midt i playback
+    readUrlCache.set(storedUrl, {
+      url: signed,
+      expiresAt: Date.now() + (READ_URL_TTL * 1000) / 2,
+    });
+    // Begrens cache-størrelse — clear hvis > 500
+    if (readUrlCache.size > 500) {
+      readUrlCache.clear();
+    }
+    return signed;
+  } catch (err) {
+    console.warn('[casting-video] presign-read failed:', err);
+    return storedUrl;
+  }
+}
+
+async function presignVideoForRead(video: CastingVideo): Promise<CastingVideo> {
+  if (video.status !== 'ready' || !video.videoUrl || video.videoUrl.startsWith('stub://')) {
+    return video;
+  }
+  return { ...video, videoUrl: await presignReadUrl(video.videoUrl) };
+}
+
 // ── Confirm + queries + delete ──────────────────────────────────────────
 
 export async function confirmVideoUpload(
@@ -251,7 +301,8 @@ export async function listVideosForCandidate(pool: Pool, candidateId: string): P
       ORDER BY created_at DESC`,
     [candidateId],
   );
-  return r.rows.map(mapVideo);
+  // Presign read-URL for hver video slik at <video>-tag kan spille av
+  return Promise.all(r.rows.map(mapVideo).map(presignVideoForRead));
 }
 
 export async function listVideosForProject(pool: Pool, projectId: string): Promise<CastingVideo[]> {
@@ -261,12 +312,13 @@ export async function listVideosForProject(pool: Pool, projectId: string): Promi
       ORDER BY created_at DESC`,
     [projectId],
   );
-  return r.rows.map(mapVideo);
+  return Promise.all(r.rows.map(mapVideo).map(presignVideoForRead));
 }
 
 export async function getVideo(pool: Pool, videoId: string): Promise<CastingVideo | null> {
   const r = await pool.query(`SELECT * FROM casting_candidate_videos WHERE id = $1`, [videoId]);
-  return r.rowCount ? mapVideo(r.rows[0]) : null;
+  if (!r.rowCount) return null;
+  return presignVideoForRead(mapVideo(r.rows[0]));
 }
 
 export async function updateVideo(
