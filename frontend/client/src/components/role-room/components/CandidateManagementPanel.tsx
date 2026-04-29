@@ -58,6 +58,9 @@ import {
   PersonSearch as PersonSearchIcon,
   Email as EmailIcon,
   Phone as PhoneIcon,
+  SmsOutlined as SmsOutlinedIcon,
+  MarkEmailReadOutlined as MarkEmailReadOutlinedIcon,
+  NotificationsOffOutlined as NotificationsOffOutlinedIcon,
   ViewInAr as ViewInArIcon,
   Close as CloseIcon,
   Check as CheckIcon,
@@ -3349,6 +3352,40 @@ function CandidateManagementPanelInner({
                           <PhoneIcon sx={{ fontSize: { xs: 12, sm: 14, md: 13, lg: 15, xl: 18 } }} /> {contactInfo.phone}
                         </Typography>
                       )}
+                      {(() => {
+                        const prefs = (candidate.reminderPrefs ?? candidate.reminder_prefs) as
+                          | { sms24h?: boolean; sms1h?: boolean; email24h?: boolean; email1h?: boolean }
+                          | undefined;
+                        const smsOn =
+                          (prefs?.sms24h ?? true) || (prefs?.sms1h ?? true);
+                        const emailOn =
+                          (prefs?.email24h ?? true) || (prefs?.email1h ?? true);
+                        const hasPhone = Boolean(contactInfo.phone);
+                        const hasEmail = Boolean(contactInfo.email);
+                        const smsActive = smsOn && hasPhone;
+                        const emailActive = emailOn && hasEmail;
+                        if (!smsActive && !emailActive) {
+                          return (
+                            <Tooltip title="Audition-påminnelser slått av">
+                              <NotificationsOffOutlinedIcon sx={{ fontSize: 14, color: 'rgba(255,255,255,0.45)' }} />
+                            </Tooltip>
+                          );
+                        }
+                        return (
+                          <Box sx={{ display: 'flex', gap: 0.6, alignItems: 'center', mt: 0.2 }}>
+                            {smsActive && (
+                              <Tooltip title="Mottar audition-SMS">
+                                <SmsOutlinedIcon sx={{ fontSize: 14, color: '#7dd3fc' }} />
+                              </Tooltip>
+                            )}
+                            {emailActive && (
+                              <Tooltip title="Mottar audition-e-post">
+                                <MarkEmailReadOutlinedIcon sx={{ fontSize: 14, color: '#a3e635' }} />
+                              </Tooltip>
+                            )}
+                          </Box>
+                        );
+                      })()}
                     </Stack>
                   </TableCell>
                   <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>

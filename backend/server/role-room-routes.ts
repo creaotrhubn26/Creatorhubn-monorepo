@@ -444,6 +444,7 @@ interface RoleRoomTalentPortalCandidateRow {
   metadata: Record<string, unknown> | null;
   emergency_contact: Record<string, unknown> | null;
   consent_status: string | null;
+  reminder_prefs: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
   project_name?: string;
@@ -750,6 +751,33 @@ function normalizeEmailValue(value: unknown): string | null {
 
 function readBooleanValue(value: unknown): boolean | null {
   return typeof value === 'boolean' ? value : null;
+}
+
+interface CandidateReminderPrefs {
+  sms24h: boolean;
+  sms1h: boolean;
+  email24h: boolean;
+  email1h: boolean;
+}
+
+const DEFAULT_CANDIDATE_REMINDER_PREFS: CandidateReminderPrefs = {
+  sms24h: true,
+  sms1h: true,
+  email24h: true,
+  email1h: true,
+};
+
+function normalizeReminderPrefs(value: unknown): CandidateReminderPrefs {
+  if (!value || typeof value !== 'object') {
+    return { ...DEFAULT_CANDIDATE_REMINDER_PREFS };
+  }
+  const r = value as Record<string, unknown>;
+  return {
+    sms24h: typeof r.sms24h === 'boolean' ? r.sms24h : DEFAULT_CANDIDATE_REMINDER_PREFS.sms24h,
+    sms1h: typeof r.sms1h === 'boolean' ? r.sms1h : DEFAULT_CANDIDATE_REMINDER_PREFS.sms1h,
+    email24h: typeof r.email24h === 'boolean' ? r.email24h : DEFAULT_CANDIDATE_REMINDER_PREFS.email24h,
+    email1h: typeof r.email1h === 'boolean' ? r.email1h : DEFAULT_CANDIDATE_REMINDER_PREFS.email1h,
+  };
 }
 
 function normalizeRoleRoomClientInviteAccessDuration(
@@ -7796,6 +7824,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         showreelUrl: readExternalUrlValue(talentProfile.showreelUrl),
         languages: toStringArray(talentProfile.languages),
       },
+      reminderPrefs: normalizeReminderPrefs(row.reminder_prefs),
       metadata,
       createdAt: readStringValue(row.created_at),
       updatedAt: readStringValue(row.updated_at),
@@ -17101,20 +17130,46 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       const agency = readStringValue(req.body?.agency) ?? readStringValue(candidateRow.agency);
       const requestUser = getOptionalRequestUser(req);
 
+      const currentReminderPrefs = normalizeReminderPrefs(candidateRow.reminder_prefs);
+      const inboundReminderPrefs = req.body?.reminderPrefs;
+      const nextReminderPrefs: CandidateReminderPrefs =
+        inboundReminderPrefs && typeof inboundReminderPrefs === 'object'
+          ? {
+              sms24h:
+                typeof (inboundReminderPrefs as Record<string, unknown>).sms24h === 'boolean'
+                  ? Boolean((inboundReminderPrefs as Record<string, unknown>).sms24h)
+                  : currentReminderPrefs.sms24h,
+              sms1h:
+                typeof (inboundReminderPrefs as Record<string, unknown>).sms1h === 'boolean'
+                  ? Boolean((inboundReminderPrefs as Record<string, unknown>).sms1h)
+                  : currentReminderPrefs.sms1h,
+              email24h:
+                typeof (inboundReminderPrefs as Record<string, unknown>).email24h === 'boolean'
+                  ? Boolean((inboundReminderPrefs as Record<string, unknown>).email24h)
+                  : currentReminderPrefs.email24h,
+              email1h:
+                typeof (inboundReminderPrefs as Record<string, unknown>).email1h === 'boolean'
+                  ? Boolean((inboundReminderPrefs as Record<string, unknown>).email1h)
+                  : currentReminderPrefs.email1h,
+            }
+          : currentReminderPrefs;
+
       await pool.query(
         `UPDATE casting_candidates
             SET phone = $1,
                 agency = $2,
                 emergency_contact = $3::jsonb,
                 metadata = $4::jsonb,
+                reminder_prefs = $5::jsonb,
                 updated_at = NOW()
-          WHERE id = $5
-            AND project_id = $6`,
+          WHERE id = $6
+            AND project_id = $7`,
         [
           phone,
           agency,
           JSON.stringify(nextEmergencyContact),
           JSON.stringify(nextMetadata),
+          JSON.stringify(nextReminderPrefs),
           candidateId,
           projectId,
         ],

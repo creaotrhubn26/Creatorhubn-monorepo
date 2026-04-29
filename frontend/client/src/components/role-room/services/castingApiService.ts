@@ -382,6 +382,17 @@ export interface RoleRoomCommercialBillingAccount {
     email?: string | null;
   };
   members: RoleRoomCommercialBillingMember[];
+  smsUsage?: RoleRoomCommercialSmsUsage | null;
+}
+
+export interface RoleRoomCommercialSmsUsage {
+  billingPeriod: string;
+  smsCount: number;
+  totalNokExVat: number;
+  totalNokInclVat: number;
+  unitPriceNokExVat: number;
+  unitPriceNokInclVat: number;
+  vatRate: number;
 }
 
 export interface RoleRoomCommercialBillingPortalResponse {
@@ -400,6 +411,20 @@ export interface RoleRoomCommercialRetryPaymentResponse {
   stripeSubscriptionId?: string | null;
 }
 
+export interface RoleRoomTalentReminderPrefs {
+  sms24h: boolean;
+  sms1h: boolean;
+  email24h: boolean;
+  email1h: boolean;
+}
+
+export const DEFAULT_TALENT_REMINDER_PREFS: RoleRoomTalentReminderPrefs = {
+  sms24h: true,
+  sms1h: true,
+  email24h: true,
+  email1h: true,
+};
+
 export interface RoleRoomTalentPortalCandidate {
   id: string;
   projectId: string;
@@ -416,6 +441,7 @@ export interface RoleRoomTalentPortalCandidate {
   photos: RoleRoomTalentPortalMediaItem[];
   videos: RoleRoomTalentPortalMediaItem[];
   profile: RoleRoomTalentPortalCandidateProfile;
+  reminderPrefs?: RoleRoomTalentReminderPrefs;
   metadata: Record<string, unknown>;
   createdAt?: string | null;
   updatedAt?: string | null;
@@ -908,6 +934,7 @@ export const talentPortalApi = {
       phone?: string;
       relationship?: string;
     };
+    reminderPrefs?: RoleRoomTalentReminderPrefs;
   }): Promise<RoleRoomTalentPortalCandidate | null> => {
     const result = await apiRequest<{ success: boolean; candidate: RoleRoomTalentPortalCandidate | null }>(
       '/talent/portal/profile',

@@ -196,6 +196,38 @@ services:
         sync: false
       - key: PHOTO_ENHANCER_GFPGAN_URL
         value: https://creatorhub-gfpgan-runner.onrender.com/enhance
+      # ── Audition reminders (Twilio + Gmail fallback) ──────────────
+      # Branded SMS for The Role Room and CreatorHub. Each brand has
+      # its own Messaging Service SID with an alphanumeric sender ID
+      # registered with Telenor / Telia. Generic TWILIO_* are fallbacks.
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: ROLE_ROOM_TWILIO_ACCOUNT_SID
+        sync: false
+      - key: ROLE_ROOM_TWILIO_AUTH_TOKEN
+        sync: false
+      - key: ROLE_ROOM_TWILIO_MESSAGING_SERVICE_SID
+        sync: false
+      - key: CREATORHUB_TWILIO_ACCOUNT_SID
+        sync: false
+      - key: CREATORHUB_TWILIO_AUTH_TOKEN
+        sync: false
+      - key: CREATORHUB_TWILIO_MESSAGING_SERVICE_SID
+        sync: false
+      - key: AUDITION_REMINDER_RUNNER_ENABLED
+        value: "true"
+      - key: AUDITION_REMINDER_INTERVAL_MINUTES
+        value: "15"
+      # SMS billing — pris stemples per rad i casting_sms_usage,
+      # endringer her påvirker kun nye SMS, ikke historiske fakturaer.
+      - key: CASTING_SMS_RETAIL_PRICE_NOK_EX_VAT
+        value: "2.00"
+      - key: CASTING_SMS_VAT_RATE
+        value: "0.25"
+      - key: CASTING_SMS_COST_NOK
+        value: "0.65"
   - type: web
     name: creatorhub-gfpgan-runner
     runtime: docker

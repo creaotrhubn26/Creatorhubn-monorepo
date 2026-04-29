@@ -32,6 +32,7 @@ import {
   Person as PersonIcon,
   People as PeopleIcon,
   Refresh as RefreshIcon,
+  SmsOutlined as SmsOutlinedIcon,
   SupervisorAccount as SupervisorAccountIcon,
 } from '@mui/icons-material';
 
@@ -1362,6 +1363,61 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                   </Box>
                 ))}
               </Stack>
+            </Stack>
+
+            <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
+
+            <Stack spacing={1}>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <SmsOutlinedIcon sx={{ color: '#7dd3fc', fontSize: 18 }} />
+                <Typography sx={{ fontWeight: 700 }}>
+                  Forbruk denne måneden
+                </Typography>
+              </Stack>
+
+              <Box
+                sx={{
+                  p: 1.6,
+                  borderRadius: 2,
+                  border: '1px solid rgba(125,211,252,0.18)',
+                  background: 'rgba(125,211,252,0.06)',
+                }}
+              >
+                <Stack
+                  direction={{ xs: 'column', md: 'row' }}
+                  spacing={1.4}
+                  justifyContent="space-between"
+                  alignItems={{ xs: 'flex-start', md: 'center' }}
+                >
+                  <Stack spacing={0.4}>
+                    <Typography sx={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.62)', textTransform: 'uppercase', letterSpacing: '0.16em' }}>
+                      Audition-SMS · {account.smsUsage?.billingPeriod ?? '—'}
+                    </Typography>
+                    <Typography sx={{ fontWeight: 700, fontSize: '1.1rem' }}>
+                      {(account.smsUsage?.smsCount ?? 0).toLocaleString('nb-NO')} SMS sendt
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.82rem' }}>
+                      {formatMoney(account.smsUsage?.unitPriceNokExVat ?? 0)} per SMS eks. mva.
+                      {account.smsUsage?.vatRate ? ` (+ ${Math.round((account.smsUsage.vatRate ?? 0) * 100)}% mva.)` : ''}
+                    </Typography>
+                  </Stack>
+
+                  <Stack spacing={0.3} alignItems={{ xs: 'flex-start', md: 'flex-end' }}>
+                    <Typography sx={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.62)' }}>
+                      Tillegg på neste faktura
+                    </Typography>
+                    <Typography sx={{ fontWeight: 700, fontSize: '1.05rem' }}>
+                      {formatMoney(account.smsUsage?.totalNokExVat ?? 0)} eks. mva.
+                    </Typography>
+                    <Typography sx={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.7)' }}>
+                      {formatMoney(account.smsUsage?.totalNokInclVat ?? 0)} inkl. mva.
+                    </Typography>
+                  </Stack>
+                </Stack>
+                <Typography sx={{ mt: 1, fontSize: '0.78rem', color: 'rgba(255,255,255,0.55)', lineHeight: 1.55 }}>
+                  Branded SMS via The Role Room (Twilio). E-post-påminnelser er inkludert i abonnementet. Kandidater kan slå av SMS i Talent Portal.
+                </Typography>
+              </Box>
             </Stack>
           </Stack>
         ) : null}

@@ -33,6 +33,15 @@ import { Pool } from "pg";
 import * as schema from "../migrations/schema.js";
 import { and, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { createRoleRoomRouter } from "./role-room-routes.js";
+import {
+  maybeStartAuditionReminderSweep,
+  readAuditionReminderStatus,
+  runAuditionReminderSweep,
+} from "./casting-reminder-runner.js";
+import {
+  readMonthlySmsUsageForUserEmails,
+  readSmsBillingPricing,
+} from "./casting-sms-billing.js";
 import { createCaptureRouter } from "./capture-routes.js";
 import { createReadThroughAiRouter } from "./read-through-ai-routes.js";
 import { createLiveSetAiRouter } from "./live-set-ai-routes.js";
@@ -39292,6 +39301,33 @@ app.post("/api/role-room/billing/reminders/trigger", async (req, res) => {
   }
 });
 
+app.post("/api/role-room/casting/reminders/sweep", async (req, res) => {
+  if (!requireAdminSession(req, res)) {
+    return;
+  }
+
+  try {
+    const summary = await runAuditionReminderSweep("manual", { pool });
+    return res.json({ success: true, summary });
+  } catch (error) {
+    console.error("Error triggering audition reminder sweep:", error);
+    return res.status(500).json({
+      error: "Kunne ikke trigge audition-reminder-sweep.",
+    });
+  }
+});
+
+app.get("/api/role-room/casting/reminders/status", async (req, res) => {
+  if (!requireAdminSession(req, res)) {
+    return;
+  }
+
+  return res.json({
+    success: true,
+    summary: readAuditionReminderStatus(),
+  });
+});
+
 app.get("/api/role-room/billing/session-status", async (req, res) => {
   try {
     const sessionId = normalizeMailConfigValue(req.query?.sessionId);
@@ -39414,6 +39450,13 @@ app.get("/api/role-room/billing/account", async (req, res) => {
       };
     });
 
+    const memberEmails = account.snapshot.members
+      .map((member) => member.email)
+      .filter((email): email is string => Boolean(email));
+    if (currentEmail) memberEmails.push(currentEmail);
+    const smsUsage = await readMonthlySmsUsageForUserEmails(pool, memberEmails);
+    const smsPricing = readSmsBillingPricing();
+
     const paymentStatusLabel =
       account.paymentStatus === "active"
         ? "Aktivt abonnement"
@@ -39491,6 +39534,15 @@ app.get("/api/role-room/billing/account", async (req, res) => {
           email: account.snapshot.teamLeadEmail,
         },
         members,
+        smsUsage: {
+          billingPeriod: smsUsage.billingPeriod,
+          smsCount: smsUsage.smsCount,
+          totalNokExVat: smsUsage.totalNokExVat,
+          totalNokInclVat: smsUsage.totalNokInclVat,
+          unitPriceNokExVat: smsPricing.retailPriceNokExVat,
+          unitPriceNokInclVat: smsPricing.retailPriceNokInclVat,
+          vatRate: smsPricing.vatRate,
+        },
       },
     });
   } catch (error) {
@@ -112120,6 +112172,7 @@ httpServer.listen(PORT, "0.0.0.0", () => {
   maybeStartRoleRoomGoogleRedirectBridge();
   maybeStartRoleRoomLinkedInRedirectBridge();
   maybeStartRoleRoomCommercialReminderSweep();
+  maybeStartAuditionReminderSweep({ pool });
   maybeStartRoleRoomAiAuditPrune();
   maybeStartRoleRoomAgentDailyScan();
   // Scheduled-publish worker: scan role_room_instagram_publish_jobs

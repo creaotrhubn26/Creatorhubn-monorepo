@@ -6,9 +6,12 @@ import {
   Chip,
   CircularProgress,
   Divider,
+  FormControlLabel,
   Link,
   Stack,
+  Switch,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import {
@@ -27,6 +30,7 @@ import {
   UploadFile as UploadFileIcon,
 } from '@mui/icons-material';
 import {
+  DEFAULT_TALENT_REMINDER_PREFS,
   talentPortalApi,
   type RoleRoomTalentPortalActivity,
   type RoleRoomTalentPortalAssignment,
@@ -35,6 +39,7 @@ import {
   type RoleRoomTalentPortalMediaItem,
   type RoleRoomTalentPortalResponse,
   type RoleRoomTalentPortalSchedule,
+  type RoleRoomTalentReminderPrefs,
 } from '../services/castingApiService';
 import type { TalentPortalIntent, TalentPortalSection } from '../utils/talentPortal';
 import { buildTalentPortalUrl } from '../utils/talentPortal';
@@ -59,6 +64,7 @@ type ProfileDraft = {
   emergencyContactName: string;
   emergencyContactPhone: string;
   emergencyContactRelationship: string;
+  reminderPrefs: RoleRoomTalentReminderPrefs;
 };
 
 type SelfTapeDraft = {
@@ -226,6 +232,7 @@ const buildProfileDraft = (candidate: RoleRoomTalentPortalCandidate): ProfileDra
     typeof candidate.emergencyContact.relationship === 'string'
       ? candidate.emergencyContact.relationship
       : '',
+  reminderPrefs: candidate.reminderPrefs ?? { ...DEFAULT_TALENT_REMINDER_PREFS },
 });
 
 const emptyProfileDraft = (): ProfileDraft => ({
@@ -242,6 +249,7 @@ const emptyProfileDraft = (): ProfileDraft => ({
   emergencyContactName: '',
   emergencyContactPhone: '',
   emergencyContactRelationship: '',
+  reminderPrefs: { ...DEFAULT_TALENT_REMINDER_PREFS },
 });
 
 const emptySelfTapeDraft = (): SelfTapeDraft => ({
@@ -539,6 +547,7 @@ export default function TalentPortalView({ intent, onClose }: TalentPortalViewPr
           phone: profileDraft.emergencyContactPhone,
           relationship: profileDraft.emergencyContactRelationship,
         },
+        reminderPrefs: profileDraft.reminderPrefs,
       });
       setSuccessMessage('Profilen din er oppdatert.');
       await loadPortal({ background: true });
@@ -1853,6 +1862,87 @@ export default function TalentPortalView({ intent, onClose }: TalentPortalViewPr
                             fullWidth
                             InputLabelProps={{ shrink: true }}
                             sx={{ '& .MuiOutlinedInput-root': { color: TEXT_PRIMARY, borderRadius: 3 } }}
+                          />
+                        </Box>
+                        <Divider sx={{ borderColor: BORDER }} />
+                        <Typography sx={{ fontSize: '0.9rem', color: TEXT_SECONDARY, fontWeight: 700 }}>
+                          Pamminnelser om audition
+                        </Typography>
+                        <Typography sx={{ fontSize: '0.8rem', color: TEXT_MUTED, lineHeight: 1.6 }}>
+                          Du far automatisk pamminnelse 24 timer og 1 time for audition. SMS sendes fra The Role Room. Du kan sla av kanaler du ikke onsker.
+                        </Typography>
+                        <Box
+                          sx={{
+                            display: 'grid',
+                            gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' },
+                            gap: 0.6,
+                          }}
+                        >
+                          <Tooltip title={profileDraft.phone.trim() ? '' : 'Legg til telefonnummer for a aktivere SMS'} placement="top" arrow>
+                            <FormControlLabel
+                              control={
+                                <Switch
+                                  checked={profileDraft.reminderPrefs.sms24h && Boolean(profileDraft.phone.trim())}
+                                  disabled={!profileDraft.phone.trim()}
+                                  onChange={(event) =>
+                                    setProfileDraft((current) => ({
+                                      ...current,
+                                      reminderPrefs: { ...current.reminderPrefs, sms24h: event.target.checked },
+                                    }))
+                                  }
+                                />
+                              }
+                              label="SMS 24 timer for"
+                              sx={{ color: TEXT_SECONDARY }}
+                            />
+                          </Tooltip>
+                          <Tooltip title={profileDraft.phone.trim() ? '' : 'Legg til telefonnummer for a aktivere SMS'} placement="top" arrow>
+                            <FormControlLabel
+                              control={
+                                <Switch
+                                  checked={profileDraft.reminderPrefs.sms1h && Boolean(profileDraft.phone.trim())}
+                                  disabled={!profileDraft.phone.trim()}
+                                  onChange={(event) =>
+                                    setProfileDraft((current) => ({
+                                      ...current,
+                                      reminderPrefs: { ...current.reminderPrefs, sms1h: event.target.checked },
+                                    }))
+                                  }
+                                />
+                              }
+                              label="SMS 1 time for"
+                              sx={{ color: TEXT_SECONDARY }}
+                            />
+                          </Tooltip>
+                          <FormControlLabel
+                            control={
+                              <Switch
+                                checked={profileDraft.reminderPrefs.email24h}
+                                onChange={(event) =>
+                                  setProfileDraft((current) => ({
+                                    ...current,
+                                    reminderPrefs: { ...current.reminderPrefs, email24h: event.target.checked },
+                                  }))
+                                }
+                              />
+                            }
+                            label="E-post 24 timer for"
+                            sx={{ color: TEXT_SECONDARY }}
+                          />
+                          <FormControlLabel
+                            control={
+                              <Switch
+                                checked={profileDraft.reminderPrefs.email1h}
+                                onChange={(event) =>
+                                  setProfileDraft((current) => ({
+                                    ...current,
+                                    reminderPrefs: { ...current.reminderPrefs, email1h: event.target.checked },
+                                  }))
+                                }
+                              />
+                            }
+                            label="E-post 1 time for"
+                            sx={{ color: TEXT_SECONDARY }}
                           />
                         </Box>
                         <Button

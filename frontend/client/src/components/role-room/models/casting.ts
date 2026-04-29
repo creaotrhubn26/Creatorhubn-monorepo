@@ -467,6 +467,13 @@ export interface Role {
   [key: string]: unknown;
 }
 
+export interface CandidateReminderPrefs {
+  sms24h?: boolean;
+  sms1h?: boolean;
+  email24h?: boolean;
+  email1h?: boolean;
+}
+
 export interface Candidate {
   id: string;
   projectId?: string;
@@ -491,6 +498,8 @@ export interface Candidate {
   consent?: Array<Record<string, unknown>>;
   modelUrl?: string;
   personality?: string;
+  reminderPrefs?: CandidateReminderPrefs;
+  reminder_prefs?: CandidateReminderPrefs;
   createdAt?: string;
   created_at?: string;
   updatedAt?: string;
