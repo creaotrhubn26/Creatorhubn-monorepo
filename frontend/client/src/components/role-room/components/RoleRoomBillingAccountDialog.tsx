@@ -43,6 +43,7 @@ import {
   type RoleRoomGoogleStatusResponse,
 } from '../services/castingApiService';
 import { castingService, type RoleRoomProjectSnapshot, type RoleRoomProjectSyncMeta, type RoleRoomQueuedProjectChange } from '../services/castingService';
+import WorkspaceWhatsAppSettings from './WorkspaceWhatsAppSettings';
 import type { CastingProject } from '../models/casting';
 import { useRoleRoomPwa } from '../hooks/useRoleRoomPwa';
 import { getRoleRoomReturnPath } from '../utils/runtime';
@@ -1467,6 +1468,16 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                 </Typography>
               </Box>
             </Stack>
+
+            <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
+
+            <WorkspaceWhatsAppSettings
+              orgKey={
+                account.teamLead?.email
+                  || account.currentUser?.email
+                  || null
+              }
+            />
           </Stack>
         ) : null}
 

@@ -39595,6 +39595,63 @@ app.put("/api/role-room/whatsapp/config", async (req, res) => {
   }
 });
 
+app.get("/api/role-room/whatsapp/health", async (req, res) => {
+  if (!requireAdminSession(req, res)) return;
+  const orgKey = String(req.query?.orgKey || "").trim();
+  if (!orgKey) return res.status(400).json({ error: "orgKey er påkrevd." });
+  try {
+    const safe = await getWhatsAppOrgConfigSafe(pool, orgKey);
+    const eventCountResult = await pool.query<{ events_last_24h: string | number }>(
+      `SELECT COUNT(*)::bigint AS events_last_24h
+         FROM role_room_whatsapp_events
+        WHERE received_at >= NOW() - INTERVAL '24 hours'`,
+    );
+    const lastEventResult = await pool.query<{ received_at: string | null }>(
+      `SELECT received_at FROM role_room_whatsapp_events
+        ORDER BY received_at DESC LIMIT 1`,
+    );
+    const qualityResult = await pool.query<{
+      event_subtype: string | null;
+      received_at: string;
+    }>(
+      `SELECT event_subtype, received_at
+         FROM role_room_whatsapp_events
+        WHERE event_field = 'phone_number_quality_update'
+        ORDER BY received_at DESC LIMIT 1`,
+    );
+    const templateStatusResult = await pool.query<{
+      template_name: string | null;
+      event_subtype: string | null;
+      received_at: string;
+    }>(
+      `SELECT template_name, event_subtype, received_at
+         FROM role_room_whatsapp_events
+        WHERE event_field = 'message_template_status_update'
+        ORDER BY received_at DESC LIMIT 1`,
+    );
+
+    return res.json({
+      success: true,
+      health: {
+        hasConfig: safe.hasConfig,
+        eventsLast24h: Number(eventCountResult.rows[0]?.events_last_24h) || 0,
+        qualityRating: qualityResult.rows[0]?.event_subtype ?? null,
+        lastEventAt: lastEventResult.rows[0]?.received_at ?? null,
+        lastTemplateStatusEvent: templateStatusResult.rows[0]
+          ? {
+              templateName: templateStatusResult.rows[0].template_name,
+              status: templateStatusResult.rows[0].event_subtype,
+              at: templateStatusResult.rows[0].received_at,
+            }
+          : null,
+      },
+    });
+  } catch (error) {
+    console.error("WhatsApp health failed:", error);
+    return res.status(500).json({ error: "Kunne ikke hente WhatsApp-helse." });
+  }
+});
+
 app.delete("/api/role-room/whatsapp/config", async (req, res) => {
   if (!requireAdminSession(req, res)) return;
   const orgKey = String(req.query?.orgKey || "").trim();

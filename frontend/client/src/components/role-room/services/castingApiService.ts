@@ -2608,6 +2608,113 @@ export const roleRoomBillingApi = {
   ),
 };
 
+export interface RoleRoomWhatsAppConfig {
+  hasConfig: boolean;
+  displayName: string | null;
+  phoneNumberMasked: string | null;
+  templateLanguage: string | null;
+  lastValidatedAt: string | null;
+  lastValidationError: string | null;
+}
+
+export interface RoleRoomWhatsAppHealth {
+  hasConfig: boolean;
+  eventsLast24h: number;
+  qualityRating: string | null;
+  lastEventAt: string | null;
+  lastTemplateStatusEvent: {
+    templateName: string | null;
+    status: string | null;
+    at: string | null;
+  } | null;
+}
+
+export interface RoleRoomWhatsAppGroupConfig {
+  projectId: string;
+  groupInviteLink: string;
+  groupName?: string | null;
+  adminUserId?: string | null;
+  adminEmail?: string | null;
+  orgKey?: string | null;
+  autoInviteEnabled: boolean;
+}
+
+export const roleRoomWhatsAppApi = {
+  getConfig: async (orgKey: string): Promise<RoleRoomWhatsAppConfig | null> => {
+    const result = await apiRequest<{ success: boolean; config: RoleRoomWhatsAppConfig | null }>(
+      `/whatsapp/config?orgKey=${encodeURIComponent(orgKey)}`,
+    );
+    return result.config ?? null;
+  },
+
+  upsertConfig: async (payload: {
+    orgKey: string;
+    businessAccountId: string;
+    phoneNumberId: string;
+    accessToken: string;
+    displayName: string;
+    templateLanguage?: string;
+    template24hName?: string;
+    template1hName?: string;
+  }): Promise<RoleRoomWhatsAppConfig | null> => {
+    const result = await apiRequest<{ success: boolean; config: RoleRoomWhatsAppConfig | null; error?: string }>(
+      '/whatsapp/config',
+      { method: 'PUT', body: JSON.stringify(payload) },
+    );
+    if (!result.success) {
+      throw new Error(result.error ?? 'Kunne ikke lagre WhatsApp-config');
+    }
+    return result.config ?? null;
+  },
+
+  deleteConfig: async (orgKey: string): Promise<void> => {
+    await apiRequest<{ success: boolean }>(
+      `/whatsapp/config?orgKey=${encodeURIComponent(orgKey)}`,
+      { method: 'DELETE' },
+    );
+  },
+
+  getHealth: async (orgKey: string): Promise<RoleRoomWhatsAppHealth | null> => {
+    const result = await apiRequest<{ success: boolean; health: RoleRoomWhatsAppHealth | null }>(
+      `/whatsapp/health?orgKey=${encodeURIComponent(orgKey)}`,
+    );
+    return result.health ?? null;
+  },
+
+  getGroupConfig: async (projectId: string): Promise<RoleRoomWhatsAppGroupConfig | null> => {
+    const result = await apiRequest<{ success: boolean; config: RoleRoomWhatsAppGroupConfig | null }>(
+      `/whatsapp/group/${encodeURIComponent(projectId)}`,
+    );
+    return result.config ?? null;
+  },
+
+  upsertGroupConfig: async (payload: {
+    projectId: string;
+    groupInviteLink: string;
+    groupName?: string | null;
+    adminEmail?: string | null;
+    orgKey?: string | null;
+    autoInviteEnabled?: boolean;
+  }): Promise<RoleRoomWhatsAppGroupConfig> => {
+    const result = await apiRequest<{ success: boolean; config: RoleRoomWhatsAppGroupConfig }>(
+      `/whatsapp/group/${encodeURIComponent(payload.projectId)}`,
+      { method: 'PUT', body: JSON.stringify(payload) },
+    );
+    return result.config;
+  },
+
+  triggerTeamInviteSweep: async (): Promise<unknown> => (
+    apiRequest('/whatsapp/team-invite/sweep', { method: 'POST', body: JSON.stringify({}) })
+  ),
+
+  resendTeamInvite: async (projectId: string, crewId: string): Promise<unknown> => (
+    apiRequest(
+      `/whatsapp/team-invite/resend/${encodeURIComponent(projectId)}/${encodeURIComponent(crewId)}`,
+      { method: 'POST', body: JSON.stringify({}) },
+    )
+  ),
+};
+
 export const roleRoomAccessVaultApi = {
   getVault: async (projectId: string): Promise<RoleRoomAccessVaultState> => (
     apiRequest<RoleRoomAccessVaultState>(`/projects/${encodeURIComponent(projectId)}/producer/access-vault`)
