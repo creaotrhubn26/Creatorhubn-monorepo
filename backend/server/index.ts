@@ -31132,6 +31132,128 @@ app.post(
   },
 );
 
+// ── WhatsApp Cloud API webhook ──────────────────────────────────────────
+// Meta POSTs events: outbound message status updates (delivered, read,
+// failed), incoming messages from candidates, template status changes.
+// Same X-Hub-Signature-256 pattern as Instagram webhook. Verify-token
+// separat fra IG så de kan roteres uavhengig.
+
+app.get("/api/role-room/whatsapp/webhook", (req, res) => {
+  const expectedToken =
+    (process.env.META_WHATSAPP_WEBHOOK_VERIFY_TOKEN || "").trim() ||
+    (process.env.META_WEBHOOK_VERIFY_TOKEN || "").trim();
+  const mode = req.query["hub.mode"];
+  const token = req.query["hub.verify_token"];
+  const challenge = req.query["hub.challenge"];
+  if (mode === "subscribe" && expectedToken && token === expectedToken) {
+    return res.status(200).send(String(challenge ?? ""));
+  }
+  return res.status(403).send("verify token mismatch");
+});
+
+app.post(
+  "/api/role-room/whatsapp/webhook",
+  express.raw({ type: "application/json", limit: "1mb" }),
+  async (req, res) => {
+    const appSecret = process.env.META_APP_SECRET;
+    if (!appSecret) {
+      if (process.env.NODE_ENV === "production") {
+        console.error(
+          "[wa-webhook] META_APP_SECRET unset — cannot verify signature",
+        );
+        return res.status(503).send("webhook not configured");
+      }
+      console.warn(
+        "[wa-webhook] accepting unsigned event (META_APP_SECRET unset, non-prod)",
+      );
+    }
+
+    const rawBody: Buffer = Buffer.isBuffer(req.body)
+      ? req.body
+      : Buffer.from(String(req.body ?? ""), "utf8");
+
+    if (appSecret) {
+      const signatureHeader = req.headers["x-hub-signature-256"];
+      const valid = verifyMetaWebhookSignature(rawBody, signatureHeader, appSecret);
+      if (!valid) {
+        console.warn("[wa-webhook] signature mismatch — rejecting");
+        return res.status(401).send("invalid signature");
+      }
+    }
+
+    let parsed: Record<string, unknown> | null = null;
+    try {
+      parsed = JSON.parse(rawBody.toString("utf8")) as Record<string, unknown>;
+    } catch {
+      console.warn("[wa-webhook] body was not valid JSON");
+      return res.status(200).send("ok");
+    }
+
+    // Process whatsapp_business_account events. Structure per Meta:
+    //   { object: "whatsapp_business_account",
+    //     entry: [{ id, changes: [{ field, value }] }] }
+    if (parsed?.object === "whatsapp_business_account" && Array.isArray(parsed.entry)) {
+      for (const entry of parsed.entry as Array<Record<string, unknown>>) {
+        const changes = Array.isArray(entry.changes) ? entry.changes : [];
+        for (const change of changes as Array<Record<string, unknown>>) {
+          const field = String(change.field || "");
+          const value = (change.value || {}) as Record<string, unknown>;
+
+          if (field === "messages") {
+            // Status updates for outbound + incoming messages
+            const statuses = Array.isArray(value.statuses) ? value.statuses : [];
+            for (const status of statuses as Array<Record<string, unknown>>) {
+              const messageId = String(status.id || "");
+              const statusValue = String(status.status || "");
+              const conversation =
+                (status.conversation as Record<string, unknown> | undefined) ?? {};
+              const conversationId = String(conversation.id || "") || null;
+              if (messageId && statusValue) {
+                console.log(
+                  `[wa-webhook] status msg=${messageId} status=${statusValue} conv=${conversationId ?? "?"}`,
+                );
+                try {
+                  await pool.query(
+                    `UPDATE casting_whatsapp_usage
+                       SET conversation_id = COALESCE(conversation_id, $2)
+                     WHERE whatsapp_message_id = $1`,
+                    [messageId, conversationId],
+                  );
+                } catch (err) {
+                  console.warn(
+                    "[wa-webhook] failed to update usage row for status update",
+                    err,
+                  );
+                }
+              }
+            }
+
+            const messages = Array.isArray(value.messages) ? value.messages : [];
+            for (const message of messages as Array<Record<string, unknown>>) {
+              console.log(
+                `[wa-webhook] inbound from=${message.from} type=${message.type} id=${message.id}`,
+              );
+              // Future: persist inbound for two-way chat. v1 just logs.
+            }
+          } else if (field === "message_template_status_update") {
+            console.log(
+              `[wa-webhook] template-status name=${value.message_template_name} status=${value.event} reason=${value.reason ?? ""}`,
+            );
+          } else if (field === "phone_number_quality_update") {
+            console.log(
+              `[wa-webhook] phone-quality num=${value.display_phone_number} rating=${value.event}`,
+            );
+          } else {
+            console.log(`[wa-webhook] field=${field} value=${JSON.stringify(value).slice(0, 200)}`);
+          }
+        }
+      }
+    }
+
+    return res.status(200).send("ok");
+  },
+);
+
 app.post("/api/role-room/agent/feed-plan/strategy/refresh", async (req, res) => {
   const featureId = "role-room-agent-producer";
   if (!isCompatAdminFeatureEnabled(featureId)) {
