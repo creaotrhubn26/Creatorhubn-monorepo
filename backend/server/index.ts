@@ -39585,6 +39585,160 @@ app.get("/api/role-room/whatsapp/team-invite/status", async (req, res) => {
   return res.json({ success: true, summary: readTeamInviteSweepStatus() });
 });
 
+// App Review demo — Role Room sender en hello_world-template via
+// Meta Cloud API for å demonstrere whatsapp_business_messaging-bruk.
+// Krever admin-session, tar phone + accessToken + phoneNumberId i body
+// så reviewer ser at appen vår er det som faktisk kaller Meta.
+app.post("/api/role-room/whatsapp/test-send", async (req, res) => {
+  if (!requireAdminSession(req, res)) return;
+  const body = (req.body || {}) as Record<string, unknown>;
+  const to = String(body.to || "").trim();
+  const accessToken =
+    (typeof body.accessToken === "string" && body.accessToken.trim()) ||
+    (process.env.META_APP_ACCESS_TOKEN || "").trim();
+  const phoneNumberId =
+    (typeof body.phoneNumberId === "string" && body.phoneNumberId.trim()) ||
+    (process.env.WHATSAPP_PHONE_NUMBER_ID || "").trim();
+  const templateName = String(body.templateName || "hello_world").trim();
+  const languageCode = String(body.languageCode || "en_US").trim();
+  if (!to) return res.status(400).json({ error: "to (telefonnummer) er påkrevd." });
+  if (!accessToken || !phoneNumberId) {
+    return res.status(503).json({
+      error:
+        "WhatsApp API ikke konfigurert. Sett META_APP_ACCESS_TOKEN + WHATSAPP_PHONE_NUMBER_ID.",
+    });
+  }
+
+  const url = `https://graph.facebook.com/v22.0/${phoneNumberId}/messages`;
+  const payload = {
+    messaging_product: "whatsapp",
+    to: to.replace(/^\+/, ""),
+    type: "template",
+    template: {
+      name: templateName,
+      language: { code: languageCode },
+    },
+  };
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    const text = await response.text();
+    let parsed: Record<string, unknown> = {};
+    try {
+      parsed = JSON.parse(text) as Record<string, unknown>;
+    } catch {}
+    if (!response.ok) {
+      return res.status(response.status).json({
+        success: false,
+        status: response.status,
+        body: parsed,
+      });
+    }
+    return res.json({
+      success: true,
+      messageId:
+        Array.isArray(parsed.messages) &&
+        parsed.messages[0] &&
+        typeof (parsed.messages[0] as Record<string, unknown>).id === "string"
+          ? (parsed.messages[0] as Record<string, string>).id
+          : null,
+      response: parsed,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+// App Review demo HTML — selvstendig admin-side som viser "appen min
+// sender en WhatsApp-melding via Meta API". Brukes av Playwright-
+// recordingen til Meta App Review.
+app.get("/admin/whatsapp-app-review-demo", async (req, res) => {
+  if (!requireAdminSession(req, res)) return;
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(`<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/><title>WhatsApp App Review Demo — The Role Room</title>
+<style>
+  *{box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+  body{margin:0;background:#0f1729;color:#f1f5f9;padding:32px;min-height:100vh}
+  .card{max-width:640px;margin:48px auto;background:#1e293b;border:1px solid #334155;border-radius:14px;padding:32px;box-shadow:0 22px 80px rgba(0,0,0,.4)}
+  h1{margin:0 0 8px;font-size:26px;font-weight:800;color:#e0f2fe}
+  h2{margin:0 0 24px;font-size:14px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.18em}
+  label{display:block;font-size:13px;font-weight:600;color:#cbd5e1;margin:18px 0 6px}
+  input,textarea{width:100%;padding:12px;border-radius:8px;border:1px solid #475569;background:#0f1729;color:#f1f5f9;font-size:14px;font-family:inherit}
+  button{display:inline-flex;align-items:center;gap:8px;background:#22c55e;color:#0f1729;border:none;padding:14px 22px;border-radius:10px;font-weight:700;font-size:15px;cursor:pointer;margin-top:18px;transition:transform .12s}
+  button:hover{transform:translateY(-1px);background:#34d399}
+  button:disabled{opacity:.5;cursor:wait}
+  pre{background:#0f1729;border:1px solid #334155;padding:14px;border-radius:8px;overflow-x:auto;font-size:12px;line-height:1.55;color:#bfdbfe;margin-top:18px}
+  .status-ok{color:#22c55e}
+  .status-err{color:#f87171}
+  .badge{display:inline-block;background:rgba(34,197,94,.18);color:#86efac;padding:4px 10px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+</style></head>
+<body>
+<div class="card" data-testid="whatsapp-demo-root">
+  <span class="badge">whatsapp_business_messaging</span>
+  <h1 style="margin-top:14px">WhatsApp Cloud API — Live Send Demo</h1>
+  <h2>The Role Room · Meta App Review</h2>
+  <p style="color:#cbd5e1;line-height:1.6">This page is the admin-only demo surface for The Role Room platform. Clicking <strong>Send Test Message</strong> below makes our backend call the Meta WhatsApp Cloud API <code style="color:#fbbf24">/{phone_number_id}/messages</code> endpoint to deliver a hello_world template to the recipient phone — proving end-to-end use of the <code style="color:#86efac">whatsapp_business_messaging</code> permission.</p>
+
+  <label for="phone">Recipient phone (E.164)</label>
+  <input id="phone" data-testid="phone-input" type="tel" placeholder="+47XXXXXXXX" />
+
+  <label for="phoneNumberId">WhatsApp Phone Number ID (sender)</label>
+  <input id="phoneNumberId" data-testid="phone-number-id-input" type="text" placeholder="1169284516262990" />
+
+  <label for="accessToken">Access Token</label>
+  <input id="accessToken" data-testid="access-token-input" type="password" placeholder="EAAG..." />
+
+  <button id="send-btn" data-testid="send-button" type="button">📤 Send Test Message</button>
+
+  <div data-testid="result"></div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const result = document.querySelector('[data-testid="result"]');
+$('send-btn').addEventListener('click', async () => {
+  const btn = $('send-btn');
+  btn.disabled = true;
+  result.innerHTML = '<pre>⏳ Calling Meta WhatsApp Cloud API…</pre>';
+  try {
+    const resp = await fetch('/api/role-room/whatsapp/test-send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        to: $('phone').value,
+        phoneNumberId: $('phoneNumberId').value,
+        accessToken: $('accessToken').value,
+      }),
+    });
+    const data = await resp.json();
+    if (resp.ok && data.success) {
+      result.innerHTML = '<pre class="status-ok" data-testid="result-ok">✓ Message sent successfully\\n\\nmessageId: ' + (data.messageId || '(none)') + '\\n\\nFull response:\\n' + JSON.stringify(data.response, null, 2) + '</pre>';
+    } else {
+      result.innerHTML = '<pre class="status-err" data-testid="result-err">✗ Error\\n\\n' + JSON.stringify(data, null, 2) + '</pre>';
+    }
+  } catch (err) {
+    result.innerHTML = '<pre class="status-err">✗ Network error: ' + err.message + '</pre>';
+  } finally {
+    btn.disabled = false;
+  }
+});
+</script>
+</body></html>`);
+});
+
 app.post(
   "/api/role-room/whatsapp/team-invite/resend/:projectId/:crewId",
   async (req, res) => {

@@ -2,6 +2,11 @@ node_modules/
 dist/
 build/
 .env
+.env.whatsapp.demo.local
+.role-room-admin-state.json
+.role-room-demo-state.json
+.whatsapp-web-state.json
+.meta-business-state.json
 *.log
 .DS_Store
 uploads/
