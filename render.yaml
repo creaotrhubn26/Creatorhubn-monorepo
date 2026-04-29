@@ -228,6 +228,12 @@ services:
         value: "0.25"
       - key: CASTING_SMS_COST_NOK
         value: "0.65"
+      # Stripe-faktura-sync — daglig sweep som pusher uavfakturerte
+      # SMS-rader som invoice line-items på neste månedsfaktura.
+      - key: CASTING_SMS_INVOICE_RUNNER_ENABLED
+        value: "true"
+      - key: CASTING_SMS_INVOICE_INTERVAL_HOURS
+        value: "24"
   - type: web
     name: creatorhub-gfpgan-runner
     runtime: docker

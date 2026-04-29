@@ -42,6 +42,12 @@ import {
   readMonthlySmsUsageForUserEmails,
   readSmsBillingPricing,
 } from "./casting-sms-billing.js";
+import {
+  maybeStartSmsInvoiceSweep,
+  readSmsInvoiceStatus,
+  runSmsInvoiceSweep,
+  type ProjectCustomerResolver,
+} from "./casting-sms-invoice-runner.js";
 import { createCaptureRouter } from "./capture-routes.js";
 import { createReadThroughAiRouter } from "./read-through-ai-routes.js";
 import { createLiveSetAiRouter } from "./live-set-ai-routes.js";
@@ -38378,6 +38384,39 @@ function getStripeInvoiceSubscriptionId(invoice: unknown) {
   return "";
 }
 
+const resolveStripeCustomerForCastingProject: ProjectCustomerResolver = async (
+  projectId,
+) => {
+  try {
+    const ownerResult = await pool.query<{ email: string | null }>(
+      `SELECT LOWER(COALESCE(u.email, '')) AS email
+         FROM casting_projects cp
+         LEFT JOIN users u ON u.id::text = cp.created_by
+        WHERE cp.id = $1
+        LIMIT 1`,
+      [projectId],
+    );
+    const ownerEmail = ownerResult.rows[0]?.email?.trim() || "";
+    if (!ownerEmail) return { stripeCustomerId: null };
+
+    const allRows = await listRoleRoomCommercialReminderInviteRequests();
+    for (const row of allRows) {
+      const rowEmail = toAdminString(row.email)?.trim().toLowerCase() || "";
+      if (rowEmail !== ownerEmail) continue;
+      const snapshot = parseRoleRoomCommercialAccessSnapshot(row.message);
+      const customerId = snapshot?.stripeCustomerId?.trim() || "";
+      if (customerId) return { stripeCustomerId: customerId };
+    }
+    return { stripeCustomerId: null };
+  } catch (error) {
+    console.warn("[casting-sms-invoice] customer resolve failed", {
+      projectId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { stripeCustomerId: null };
+  }
+};
+
 async function resolveRoleRoomCommercialAccountForRequest(
   req: express.Request,
 ): Promise<RoleRoomCommercialResolvedAccount | null> {
@@ -39326,6 +39365,38 @@ app.get("/api/role-room/casting/reminders/status", async (req, res) => {
     success: true,
     summary: readAuditionReminderStatus(),
   });
+});
+
+app.post("/api/role-room/casting/sms-invoice/sweep", async (req, res) => {
+  if (!requireAdminSession(req, res)) {
+    return;
+  }
+  const stripe = getRoleRoomStripeClient();
+  if (!stripe) {
+    return res.status(503).json({
+      error: "Stripe Billing er ikke konfigurert på serveren.",
+    });
+  }
+  try {
+    const summary = await runSmsInvoiceSweep("manual", {
+      pool,
+      stripe,
+      resolveCustomer: resolveStripeCustomerForCastingProject,
+    });
+    return res.json({ success: true, summary });
+  } catch (error) {
+    console.error("Error triggering SMS invoice sweep:", error);
+    return res.status(500).json({
+      error: "Kunne ikke trigge SMS-faktura-sweep.",
+    });
+  }
+});
+
+app.get("/api/role-room/casting/sms-invoice/status", async (req, res) => {
+  if (!requireAdminSession(req, res)) {
+    return;
+  }
+  return res.json({ success: true, summary: readSmsInvoiceStatus() });
 });
 
 app.get("/api/role-room/billing/session-status", async (req, res) => {
@@ -112173,6 +112244,14 @@ httpServer.listen(PORT, "0.0.0.0", () => {
   maybeStartRoleRoomLinkedInRedirectBridge();
   maybeStartRoleRoomCommercialReminderSweep();
   maybeStartAuditionReminderSweep({ pool });
+  const stripeForInvoiceRunner = getRoleRoomStripeClient();
+  if (stripeForInvoiceRunner) {
+    maybeStartSmsInvoiceSweep({
+      pool,
+      stripe: stripeForInvoiceRunner,
+      resolveCustomer: resolveStripeCustomerForCastingProject,
+    });
+  }
   maybeStartRoleRoomAiAuditPrune();
   maybeStartRoleRoomAgentDailyScan();
   // Scheduled-publish worker: scan role_room_instagram_publish_jobs
