@@ -234,6 +234,35 @@ services:
         value: "true"
       - key: CASTING_SMS_INVOICE_INTERVAL_HOURS
         value: "24"
+      # ── WhatsApp Cloud API (multi-tenant BYO Meta) ──────────────
+      # Hver bedrift kobler egen Meta-konto via settings; disse er
+      # fallback for demo / The Role Room-egen-konto. Hemmeligheter
+      # settes i UI (sync: false). Template-navn kan oppdateres når
+      # Meta godkjenner med andre navn enn default.
+      - key: META_APP_ACCESS_TOKEN
+        sync: false
+      - key: META_WHATSAPP_TEMPLATE_LANGUAGE
+        value: "nb_NO"
+      - key: META_WHATSAPP_TEMPLATE_24H_NAME
+        value: "audition_reminder_24h_no"
+      - key: META_WHATSAPP_TEMPLATE_1H_NAME
+        value: "audition_reminder_1h_no"
+      - key: META_WHATSAPP_TEMPLATE_TEAM_INVITE_NAME
+        value: "production_team_invite_no"
+      - key: CASTING_TEAM_INVITE_RUNNER_ENABLED
+        value: "true"
+      - key: CASTING_TEAM_INVITE_INTERVAL_MINUTES
+        value: "10"
+      - key: CASTING_WHATSAPP_RETAIL_PRICE_NOK_EX_VAT
+        value: "0.80"
+      - key: CASTING_WHATSAPP_VAT_RATE
+        value: "0.25"
+      - key: CASTING_WHATSAPP_COST_NOK
+        value: "0.34"
+      - key: CASTING_WHATSAPP_INVOICE_RUNNER_ENABLED
+        value: "true"
+      - key: CASTING_WHATSAPP_INVOICE_INTERVAL_HOURS
+        value: "24"
   - type: web
     name: creatorhub-gfpgan-runner
     runtime: docker

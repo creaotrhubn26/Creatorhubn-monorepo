@@ -59,6 +59,7 @@ import {
   Email as EmailIcon,
   Phone as PhoneIcon,
   SmsOutlined as SmsOutlinedIcon,
+  WhatsApp as WhatsAppIcon,
   MarkEmailReadOutlined as MarkEmailReadOutlinedIcon,
   NotificationsOffOutlined as NotificationsOffOutlinedIcon,
   ViewInAr as ViewInArIcon,
@@ -3354,17 +3355,27 @@ function CandidateManagementPanelInner({
                       )}
                       {(() => {
                         const prefs = (candidate.reminderPrefs ?? candidate.reminder_prefs) as
-                          | { sms24h?: boolean; sms1h?: boolean; email24h?: boolean; email1h?: boolean }
+                          | {
+                              sms24h?: boolean;
+                              sms1h?: boolean;
+                              email24h?: boolean;
+                              email1h?: boolean;
+                              whatsapp24h?: boolean;
+                              whatsapp1h?: boolean;
+                            }
                           | undefined;
                         const smsOn =
                           (prefs?.sms24h ?? true) || (prefs?.sms1h ?? true);
                         const emailOn =
                           (prefs?.email24h ?? true) || (prefs?.email1h ?? true);
+                        const whatsappOn =
+                          (prefs?.whatsapp24h ?? true) || (prefs?.whatsapp1h ?? true);
                         const hasPhone = Boolean(contactInfo.phone);
                         const hasEmail = Boolean(contactInfo.email);
                         const smsActive = smsOn && hasPhone;
                         const emailActive = emailOn && hasEmail;
-                        if (!smsActive && !emailActive) {
+                        const whatsappActive = whatsappOn && hasPhone;
+                        if (!smsActive && !emailActive && !whatsappActive) {
                           return (
                             <Tooltip title="Audition-påminnelser slått av">
                               <NotificationsOffOutlinedIcon sx={{ fontSize: 14, color: 'rgba(255,255,255,0.45)' }} />
@@ -3373,6 +3384,11 @@ function CandidateManagementPanelInner({
                         }
                         return (
                           <Box sx={{ display: 'flex', gap: 0.6, alignItems: 'center', mt: 0.2 }}>
+                            {whatsappActive && (
+                              <Tooltip title="Mottar audition-WhatsApp">
+                                <WhatsAppIcon sx={{ fontSize: 14, color: '#22c55e' }} />
+                              </Tooltip>
+                            )}
                             {smsActive && (
                               <Tooltip title="Mottar audition-SMS">
                                 <SmsOutlinedIcon sx={{ fontSize: 14, color: '#7dd3fc' }} />

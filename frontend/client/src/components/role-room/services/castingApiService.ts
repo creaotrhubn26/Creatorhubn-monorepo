@@ -383,11 +383,22 @@ export interface RoleRoomCommercialBillingAccount {
   };
   members: RoleRoomCommercialBillingMember[];
   smsUsage?: RoleRoomCommercialSmsUsage | null;
+  whatsappUsage?: RoleRoomCommercialWhatsAppUsage | null;
 }
 
 export interface RoleRoomCommercialSmsUsage {
   billingPeriod: string;
   smsCount: number;
+  totalNokExVat: number;
+  totalNokInclVat: number;
+  unitPriceNokExVat: number;
+  unitPriceNokInclVat: number;
+  vatRate: number;
+}
+
+export interface RoleRoomCommercialWhatsAppUsage {
+  billingPeriod: string;
+  whatsappCount: number;
   totalNokExVat: number;
   totalNokInclVat: number;
   unitPriceNokExVat: number;
@@ -416,6 +427,8 @@ export interface RoleRoomTalentReminderPrefs {
   sms1h: boolean;
   email24h: boolean;
   email1h: boolean;
+  whatsapp24h: boolean;
+  whatsapp1h: boolean;
 }
 
 export const DEFAULT_TALENT_REMINDER_PREFS: RoleRoomTalentReminderPrefs = {
@@ -423,6 +436,8 @@ export const DEFAULT_TALENT_REMINDER_PREFS: RoleRoomTalentReminderPrefs = {
   sms1h: true,
   email24h: true,
   email1h: true,
+  whatsapp24h: true,
+  whatsapp1h: true,
 };
 
 export interface RoleRoomTalentPortalCandidate {

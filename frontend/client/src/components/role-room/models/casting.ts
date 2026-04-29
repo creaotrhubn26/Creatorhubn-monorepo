@@ -472,6 +472,8 @@ export interface CandidateReminderPrefs {
   sms1h?: boolean;
   email24h?: boolean;
   email1h?: boolean;
+  whatsapp24h?: boolean;
+  whatsapp1h?: boolean;
 }
 
 export interface Candidate {

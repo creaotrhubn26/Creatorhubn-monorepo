@@ -40,37 +40,35 @@ describe("normalizePhoneE164", () => {
 });
 
 describe("parseReminderPrefs", () => {
+  const ALL_TRUE = {
+    sms24h: true,
+    sms1h: true,
+    email24h: true,
+    email1h: true,
+    whatsapp24h: true,
+    whatsapp1h: true,
+  };
+
   it("returns full defaults when input is null/undefined", () => {
-    expect(parseReminderPrefs(null)).toEqual({
-      sms24h: true,
-      sms1h: true,
-      email24h: true,
-      email1h: true,
-    });
-    expect(parseReminderPrefs(undefined)).toEqual({
-      sms24h: true,
-      sms1h: true,
-      email24h: true,
-      email1h: true,
-    });
+    expect(parseReminderPrefs(null)).toEqual(ALL_TRUE);
+    expect(parseReminderPrefs(undefined)).toEqual(ALL_TRUE);
   });
 
   it("merges partial prefs with defaults", () => {
     expect(parseReminderPrefs({ sms24h: false })).toEqual({
+      ...ALL_TRUE,
       sms24h: false,
-      sms1h: true,
-      email24h: true,
-      email1h: true,
+    });
+    expect(parseReminderPrefs({ whatsapp1h: false })).toEqual({
+      ...ALL_TRUE,
+      whatsapp1h: false,
     });
   });
 
   it("ignores non-boolean fields", () => {
-    expect(parseReminderPrefs({ sms24h: "no" as unknown as boolean })).toEqual({
-      sms24h: true,
-      sms1h: true,
-      email24h: true,
-      email1h: true,
-    });
+    expect(parseReminderPrefs({ sms24h: "no" as unknown as boolean })).toEqual(
+      ALL_TRUE,
+    );
   });
 });
 

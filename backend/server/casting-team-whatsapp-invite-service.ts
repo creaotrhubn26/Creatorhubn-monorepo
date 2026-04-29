@@ -217,6 +217,164 @@ export async function dispatchTeamWhatsAppInvite(
     : { status: "failed", reason: result.error ?? "unknown" };
 }
 
+export interface TeamInviteSweepSummary {
+  reason: "startup" | "interval" | "manual";
+  startedAt: string;
+  finishedAt: string;
+  isRunning: boolean;
+  scanned: number;
+  delivered: number;
+  skipped: number;
+  failed: number;
+  notes: string[];
+}
+
+let sweepPromise: Promise<TeamInviteSweepSummary> | null = null;
+let lastSweepSummary: TeamInviteSweepSummary | null = null;
+let schedulerStarted = false;
+
+const TEAM_INVITE_INTERVAL_MS = (() => {
+  const minutes = Number(process.env.CASTING_TEAM_INVITE_INTERVAL_MINUTES || 10);
+  if (!Number.isFinite(minutes) || minutes <= 0) return 10 * 60 * 1000;
+  return Math.max(1, Math.floor(minutes)) * 60 * 1000;
+})();
+
+export function readTeamInviteSweepStatus(): TeamInviteSweepSummary | null {
+  return lastSweepSummary;
+}
+
+export async function runTeamInviteSweep(
+  reason: TeamInviteSweepSummary["reason"],
+  deps: { pool: Pool; fetchImpl?: typeof fetch },
+): Promise<TeamInviteSweepSummary> {
+  if (sweepPromise) {
+    return (
+      lastSweepSummary || {
+        reason,
+        startedAt: new Date().toISOString(),
+        finishedAt: new Date().toISOString(),
+        isRunning: true,
+        scanned: 0,
+        delivered: 0,
+        skipped: 0,
+        failed: 0,
+        notes: ["En team-invite-sweep pågår allerede."],
+      }
+    );
+  }
+
+  const ts = new Date().toISOString();
+  const summary: TeamInviteSweepSummary = {
+    reason,
+    startedAt: ts,
+    finishedAt: ts,
+    isRunning: true,
+    scanned: 0,
+    delivered: 0,
+    skipped: 0,
+    failed: 0,
+    notes: [],
+  };
+  lastSweepSummary = summary;
+
+  const task = (async () => {
+    try {
+      const result = await deps.pool.query<{
+        crew_id: string;
+        project_id: string;
+        crew_name: string | null;
+        crew_phone: string | null;
+        crew_email: string | null;
+      }>(
+        `SELECT
+           cc.id          AS crew_id,
+           cc.project_id  AS project_id,
+           cc.name        AS crew_name,
+           cc.phone       AS crew_phone,
+           cc.email       AS crew_email
+         FROM casting_crew cc
+         INNER JOIN casting_project_whatsapp_group g ON g.project_id = cc.project_id
+         LEFT JOIN casting_team_whatsapp_invites i
+           ON i.project_id = cc.project_id AND i.crew_id = cc.id
+         WHERE g.auto_invite_enabled = TRUE
+           AND cc.phone IS NOT NULL
+           AND cc.phone <> ''
+           AND (
+             i.id IS NULL
+             OR (i.delivery_status = 'failed' AND i.retry_count < 3)
+           )
+         LIMIT 100`,
+      );
+      summary.scanned = result.rows.length;
+
+      for (const row of result.rows) {
+        try {
+          const dispatchResult = await dispatchTeamWhatsAppInvite({
+            pool: deps.pool,
+            projectId: row.project_id,
+            crewId: row.crew_id,
+            recipientName: row.crew_name?.trim() || "Crew-medlem",
+            recipientPhone: row.crew_phone,
+            recipientEmail: row.crew_email,
+            fetchImpl: deps.fetchImpl,
+          });
+          if (dispatchResult.status === "delivered") summary.delivered += 1;
+          else if (dispatchResult.status === "skipped") summary.skipped += 1;
+          else {
+            summary.failed += 1;
+            summary.notes.push(
+              `crew=${row.crew_id} reason=${dispatchResult.reason ?? "unknown"}`,
+            );
+          }
+        } catch (error) {
+          summary.failed += 1;
+          summary.notes.push(
+            `crew=${row.crew_id} ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
+    } catch (error) {
+      summary.failed += 1;
+      summary.notes.push(
+        `sweep_error: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    } finally {
+      summary.isRunning = false;
+      summary.finishedAt = new Date().toISOString();
+      lastSweepSummary = summary;
+    }
+    return summary;
+  })();
+
+  sweepPromise = task;
+  try {
+    return await task;
+  } finally {
+    sweepPromise = null;
+  }
+}
+
+export function maybeStartTeamInviteSweep(deps: { pool: Pool }): void {
+  if (schedulerStarted) return;
+  const enabled = (process.env.CASTING_TEAM_INVITE_RUNNER_ENABLED || "true")
+    .trim()
+    .toLowerCase();
+  if (enabled === "false" || enabled === "0" || enabled === "off") return;
+  schedulerStarted = true;
+
+  setTimeout(() => {
+    void runTeamInviteSweep("startup", deps).catch((err) => {
+      console.error("[team-invite] startup sweep failed", err);
+    });
+  }, 45_000).unref();
+
+  setInterval(() => {
+    void runTeamInviteSweep("interval", deps).catch((err) => {
+      console.error("[team-invite] interval sweep failed", err);
+    });
+  }, TEAM_INVITE_INTERVAL_MS).unref();
+}
+
 async function recordInviteAttempt(
   pool: Pool,
   input: {

@@ -20,6 +20,13 @@ import {
   type ReminderThreshold,
 } from "./casting-reminder-sender.js";
 import { recordSmsUsage } from "./casting-sms-billing.js";
+import {
+  readEnvFallbackConfig as readWhatsAppEnvFallback,
+  sendWhatsAppAuditionReminder,
+  type WhatsAppSenderConfig,
+} from "./casting-whatsapp-sender.js";
+import { getWhatsAppOrgConfig } from "./role-room-whatsapp-config-service.js";
+import { recordWhatsAppUsage } from "./casting-whatsapp-billing.js";
 
 const AUDITION_REMINDER_BRAND: ReminderBrand = "role-room";
 const AUDITION_REMINDER_BRAND_LABEL = "The Role Room";
@@ -32,6 +39,7 @@ export interface AuditionReminderSweepSummary {
   finishedAt: string;
   isRunning: boolean;
   scanned: number;
+  whatsappSent: number;
   smsSent: number;
   emailSent: number;
   skipped: number;
@@ -133,6 +141,7 @@ function buildSummary(reason: AuditionReminderSweepSummary["reason"]): AuditionR
     finishedAt: ts,
     isRunning: true,
     scanned: 0,
+    whatsappSent: 0,
     smsSent: 0,
     emailSent: 0,
     skipped: 0,
@@ -272,13 +281,67 @@ async function processScheduleRow(input: {
     brandLabel: AUDITION_REMINDER_BRAND_LABEL,
   };
 
+  const whatsappAllowed =
+    decision.threshold === "24h" ? prefs.whatsapp24h : prefs.whatsapp1h;
   const smsAllowed =
     decision.threshold === "24h" ? prefs.sms24h : prefs.sms1h;
   const emailAllowed =
     decision.threshold === "24h" ? prefs.email24h : prefs.email1h;
 
-  let delivered = false;
+  let anyDelivered = false;
 
+  // ── Kanal 1: WhatsApp (per-org config, fallback til env) ──────────────
+  if (whatsappAllowed && row.candidate_phone) {
+    const config = await resolveWhatsAppConfigForProject(deps.pool, row.project_id);
+    if (config) {
+      const result = await sendWhatsAppAuditionReminder({
+        config,
+        to: row.candidate_phone,
+        context: {
+          candidateName: ctx.candidateName,
+          projectName: ctx.projectName,
+          date: ctx.date,
+          startTime: ctx.startTime,
+          location: ctx.location,
+          threshold: decision.threshold,
+        },
+        fetchImpl: deps.fetchImpl,
+      });
+
+      await logDelivery(deps.pool, {
+        scheduleId: row.id,
+        candidateId: row.candidate_id,
+        threshold: decision.threshold,
+        method: "whatsapp",
+        success: result.success,
+        messageRef: result.messageId,
+        errorMessage: result.error,
+      });
+
+      if (result.success) {
+        summary.whatsappSent += 1;
+        anyDelivered = true;
+        await recordWhatsAppUsage({
+          pool: deps.pool,
+          projectId: row.project_id,
+          scheduleId: row.id,
+          candidateId: row.candidate_id,
+          threshold: decision.threshold,
+          brand: AUDITION_REMINDER_BRAND,
+          templateName: result.templateName ?? null,
+          whatsappMessageId: result.messageId ?? null,
+          conversationId: result.conversationId ?? null,
+        });
+      } else {
+        summary.failures += 1;
+        summary.notes.push(
+          `whatsapp_failed schedule=${row.id} reason=${result.error ?? "unknown"}`,
+        );
+      }
+    }
+  }
+
+  // ── Kanal 2: SMS (Twilio) ─────────────────────────────────────────────
   if (
     smsAllowed &&
     row.candidate_phone &&
@@ -304,7 +367,7 @@ async function processScheduleRow(input: {
 
     if (result.success) {
       summary.smsSent += 1;
-      delivered = true;
+      anyDelivered = true;
       await recordSmsUsage({
         pool: deps.pool,
         projectId: row.project_id,
@@ -322,12 +385,8 @@ async function processScheduleRow(input: {
     }
   }
 
-  if (
-    !delivered &&
-    emailAllowed &&
-    row.candidate_email &&
-    isEmailConfigured()
-  ) {
+  // ── Kanal 3: E-post (Gmail) ────────────────────────────────────────────
+  if (emailAllowed && row.candidate_email && isEmailConfigured()) {
     const built = buildAuditionReminderEmail(ctx);
     const result = await sendEmail({
       to: row.candidate_email,
@@ -349,7 +408,7 @@ async function processScheduleRow(input: {
 
     if (result.success) {
       summary.emailSent += 1;
-      delivered = true;
+      anyDelivered = true;
     } else {
       summary.failures += 1;
       summary.notes.push(
@@ -358,18 +417,47 @@ async function processScheduleRow(input: {
     }
   }
 
-  if (delivered) {
+  if (anyDelivered) {
     await markReminderSent(deps.pool, row.id, decision.threshold);
-  } else if (
-    !smsAllowed && !emailAllowed
-  ) {
-    summary.skipped += 1;
-  } else if (
-    (!row.candidate_phone || !smsAllowed) &&
-    (!row.candidate_email || !emailAllowed)
-  ) {
+  } else {
     summary.skipped += 1;
   }
+}
+
+async function resolveWhatsAppConfigForProject(
+  pool: Pool,
+  projectId: string,
+): Promise<WhatsAppSenderConfig | null> {
+  try {
+    const ownerResult = await pool.query<{ email: string | null }>(
+      `SELECT LOWER(COALESCE(u.email, '')) AS email
+         FROM casting_projects cp
+         LEFT JOIN users u ON u.id::text = cp.created_by
+        WHERE cp.id = $1
+        LIMIT 1`,
+      [projectId],
+    );
+    const orgKey = ownerResult.rows[0]?.email?.trim() || "";
+    if (orgKey) {
+      const orgConfig = await getWhatsAppOrgConfig(pool, orgKey);
+      if (orgConfig) {
+        return {
+          accessToken: orgConfig.accessToken,
+          phoneNumberId: orgConfig.phoneNumberId,
+          displayName: orgConfig.displayName,
+          templateLanguage: orgConfig.templateLanguage,
+          template24hName: orgConfig.template24hName,
+          template1hName: orgConfig.template1hName,
+        };
+      }
+    }
+  } catch (error) {
+    console.warn("[audition-reminder] whatsapp config resolve failed", {
+      projectId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+  return readWhatsAppEnvFallback();
 }
 
 async function markReminderSent(
@@ -393,7 +481,7 @@ async function logDelivery(
     scheduleId: string;
     candidateId: string;
     threshold: ReminderThreshold;
-    method: "sms" | "email";
+    method: "sms" | "email" | "whatsapp";
     success: boolean;
     messageRef?: string;
     errorMessage?: string;

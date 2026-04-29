@@ -43,11 +43,35 @@ import {
   readSmsBillingPricing,
 } from "./casting-sms-billing.js";
 import {
+  readMonthlyWhatsAppUsageForUserEmails,
+  readWhatsAppBillingPricing,
+} from "./casting-whatsapp-billing.js";
+import { currentBillingPeriod } from "./casting-sms-billing.js";
+import {
   maybeStartSmsInvoiceSweep,
   readSmsInvoiceStatus,
   runSmsInvoiceSweep,
   type ProjectCustomerResolver,
 } from "./casting-sms-invoice-runner.js";
+import {
+  maybeStartWhatsAppInvoiceSweep,
+  readWhatsAppInvoiceStatus,
+  runWhatsAppInvoiceSweep,
+} from "./casting-whatsapp-invoice-runner.js";
+import {
+  maybeStartTeamInviteSweep,
+  readTeamInviteSweepStatus,
+  runTeamInviteSweep,
+  upsertProjectGroupConfig,
+  getProjectGroupConfig,
+  dispatchTeamWhatsAppInvite,
+} from "./casting-team-whatsapp-invite-service.js";
+import {
+  validateAndUpsertWhatsAppOrgConfig,
+  getWhatsAppOrgConfigSafe,
+  deleteWhatsAppOrgConfig,
+  pingWhatsAppPhoneNumber,
+} from "./role-room-whatsapp-config-service.js";
 import { createCaptureRouter } from "./capture-routes.js";
 import { createReadThroughAiRouter } from "./read-through-ai-routes.js";
 import { createLiveSetAiRouter } from "./live-set-ai-routes.js";
@@ -39399,6 +39423,201 @@ app.get("/api/role-room/casting/sms-invoice/status", async (req, res) => {
   return res.json({ success: true, summary: readSmsInvoiceStatus() });
 });
 
+app.post("/api/role-room/casting/whatsapp-invoice/sweep", async (req, res) => {
+  if (!requireAdminSession(req, res)) return;
+  const stripe = getRoleRoomStripeClient();
+  if (!stripe) {
+    return res
+      .status(503)
+      .json({ error: "Stripe Billing er ikke konfigurert på serveren." });
+  }
+  try {
+    const summary = await runWhatsAppInvoiceSweep("manual", {
+      pool,
+      stripe,
+      resolveCustomer: resolveStripeCustomerForCastingProject,
+    });
+    return res.json({ success: true, summary });
+  } catch (error) {
+    console.error("WhatsApp invoice sweep failed:", error);
+    return res
+      .status(500)
+      .json({ error: "Kunne ikke trigge WhatsApp-faktura-sweep." });
+  }
+});
+
+app.get("/api/role-room/casting/whatsapp-invoice/status", async (req, res) => {
+  if (!requireAdminSession(req, res)) return;
+  return res.json({ success: true, summary: readWhatsAppInvoiceStatus() });
+});
+
+// ── WhatsApp config + team-invite-admin ────────────────────────────────
+
+app.get("/api/role-room/whatsapp/config", async (req, res) => {
+  if (!requireAdminSession(req, res)) return;
+  const orgKey = String(req.query?.orgKey || "").trim();
+  if (!orgKey) return res.status(400).json({ error: "orgKey er påkrevd." });
+  try {
+    const safe = await getWhatsAppOrgConfigSafe(pool, orgKey);
+    return res.json({ success: true, config: safe });
+  } catch (error) {
+    console.error("WhatsApp config GET failed:", error);
+    return res.status(500).json({ error: "Kunne ikke lese WhatsApp-config." });
+  }
+});
+
+app.put("/api/role-room/whatsapp/config", async (req, res) => {
+  if (!requireAdminSession(req, res)) return;
+  const body = (req.body || {}) as Record<string, unknown>;
+  const orgKey = String(body.orgKey || "").trim();
+  const businessAccountId = String(body.businessAccountId || "").trim();
+  const phoneNumberId = String(body.phoneNumberId || "").trim();
+  const accessToken = String(body.accessToken || "").trim();
+  const displayName = String(body.displayName || "").trim();
+  if (!orgKey || !businessAccountId || !phoneNumberId || !accessToken || !displayName) {
+    return res.status(400).json({
+      error:
+        "orgKey, businessAccountId, phoneNumberId, accessToken og displayName er påkrevd.",
+    });
+  }
+  try {
+    const result = await validateAndUpsertWhatsAppOrgConfig(pool, {
+      orgKey,
+      businessAccountId,
+      phoneNumberId,
+      accessToken,
+      displayName,
+      templateLanguage:
+        typeof body.templateLanguage === "string" ? body.templateLanguage : undefined,
+      template24hName:
+        typeof body.template24hName === "string" ? body.template24hName : undefined,
+      template1hName:
+        typeof body.template1hName === "string" ? body.template1hName : undefined,
+      configuredByUserId:
+        typeof body.configuredByUserId === "string"
+          ? body.configuredByUserId
+          : null,
+    });
+    if (!result.success) {
+      return res.status(400).json({ success: false, error: result.error });
+    }
+    const safe = await getWhatsAppOrgConfigSafe(pool, orgKey);
+    return res.json({ success: true, config: safe });
+  } catch (error) {
+    console.error("WhatsApp config PUT failed:", error);
+    return res.status(500).json({ error: "Kunne ikke lagre WhatsApp-config." });
+  }
+});
+
+app.delete("/api/role-room/whatsapp/config", async (req, res) => {
+  if (!requireAdminSession(req, res)) return;
+  const orgKey = String(req.query?.orgKey || "").trim();
+  if (!orgKey) return res.status(400).json({ error: "orgKey er påkrevd." });
+  try {
+    await deleteWhatsAppOrgConfig(pool, orgKey);
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("WhatsApp config DELETE failed:", error);
+    return res.status(500).json({ error: "Kunne ikke slette WhatsApp-config." });
+  }
+});
+
+app.get("/api/role-room/whatsapp/group/:projectId", async (req, res) => {
+  if (!requireAdminSession(req, res)) return;
+  try {
+    const config = await getProjectGroupConfig(pool, req.params.projectId);
+    return res.json({ success: true, config });
+  } catch (error) {
+    console.error("WhatsApp group GET failed:", error);
+    return res.status(500).json({ error: "Kunne ikke lese gruppe-config." });
+  }
+});
+
+app.put("/api/role-room/whatsapp/group/:projectId", async (req, res) => {
+  if (!requireAdminSession(req, res)) return;
+  const body = (req.body || {}) as Record<string, unknown>;
+  const groupInviteLink = String(body.groupInviteLink || "").trim();
+  if (!groupInviteLink) {
+    return res.status(400).json({ error: "groupInviteLink er påkrevd." });
+  }
+  try {
+    const config = await upsertProjectGroupConfig(pool, {
+      projectId: req.params.projectId,
+      groupInviteLink,
+      groupName: typeof body.groupName === "string" ? body.groupName : null,
+      adminUserId: typeof body.adminUserId === "string" ? body.adminUserId : null,
+      adminEmail: typeof body.adminEmail === "string" ? body.adminEmail : null,
+      orgKey: typeof body.orgKey === "string" ? body.orgKey : null,
+      autoInviteEnabled:
+        typeof body.autoInviteEnabled === "boolean"
+          ? body.autoInviteEnabled
+          : true,
+    });
+    return res.json({ success: true, config });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    if (msg === "invalid_invite_link") {
+      return res.status(400).json({
+        error:
+          "Ugyldig invite-lenke. Forventer https://chat.whatsapp.com/<kode>.",
+      });
+    }
+    console.error("WhatsApp group PUT failed:", error);
+    return res.status(500).json({ error: "Kunne ikke lagre gruppe-config." });
+  }
+});
+
+app.post("/api/role-room/whatsapp/team-invite/sweep", async (req, res) => {
+  if (!requireAdminSession(req, res)) return;
+  try {
+    const summary = await runTeamInviteSweep("manual", { pool });
+    return res.json({ success: true, summary });
+  } catch (error) {
+    console.error("Team-invite sweep failed:", error);
+    return res
+      .status(500)
+      .json({ error: "Kunne ikke trigge team-invite-sweep." });
+  }
+});
+
+app.get("/api/role-room/whatsapp/team-invite/status", async (req, res) => {
+  if (!requireAdminSession(req, res)) return;
+  return res.json({ success: true, summary: readTeamInviteSweepStatus() });
+});
+
+app.post(
+  "/api/role-room/whatsapp/team-invite/resend/:projectId/:crewId",
+  async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
+    try {
+      const crewResult = await pool.query<{
+        name: string | null;
+        phone: string | null;
+        email: string | null;
+      }>(
+        `SELECT name, phone, email FROM casting_crew WHERE id = $1 AND project_id = $2 LIMIT 1`,
+        [req.params.crewId, req.params.projectId],
+      );
+      const crew = crewResult.rows[0];
+      if (!crew) return res.status(404).json({ error: "Crew-medlem ikke funnet." });
+      const result = await dispatchTeamWhatsAppInvite({
+        pool,
+        projectId: req.params.projectId,
+        crewId: req.params.crewId,
+        recipientName: crew.name?.trim() || "Crew-medlem",
+        recipientPhone: crew.phone,
+        recipientEmail: crew.email,
+      });
+      return res.json({ success: true, result });
+    } catch (error) {
+      console.error("Team-invite resend failed:", error);
+      return res
+        .status(500)
+        .json({ error: "Kunne ikke sende team-invitasjon på nytt." });
+    }
+  },
+);
+
 app.get("/api/role-room/billing/session-status", async (req, res) => {
   try {
     const sessionId = normalizeMailConfigValue(req.query?.sessionId);
@@ -39527,6 +39746,12 @@ app.get("/api/role-room/billing/account", async (req, res) => {
     if (currentEmail) memberEmails.push(currentEmail);
     const smsUsage = await readMonthlySmsUsageForUserEmails(pool, memberEmails);
     const smsPricing = readSmsBillingPricing();
+    const whatsappUsage = await readMonthlyWhatsAppUsageForUserEmails(
+      pool,
+      memberEmails,
+      currentBillingPeriod(),
+    );
+    const whatsappPricing = readWhatsAppBillingPricing();
 
     const paymentStatusLabel =
       account.paymentStatus === "active"
@@ -39613,6 +39838,15 @@ app.get("/api/role-room/billing/account", async (req, res) => {
           unitPriceNokExVat: smsPricing.retailPriceNokExVat,
           unitPriceNokInclVat: smsPricing.retailPriceNokInclVat,
           vatRate: smsPricing.vatRate,
+        },
+        whatsappUsage: {
+          billingPeriod: whatsappUsage.billingPeriod,
+          whatsappCount: whatsappUsage.whatsappCount,
+          totalNokExVat: whatsappUsage.totalNokExVat,
+          totalNokInclVat: whatsappUsage.totalNokInclVat,
+          unitPriceNokExVat: whatsappPricing.retailPriceNokExVat,
+          unitPriceNokInclVat: whatsappPricing.retailPriceNokInclVat,
+          vatRate: whatsappPricing.vatRate,
         },
       },
     });
@@ -112244,9 +112478,15 @@ httpServer.listen(PORT, "0.0.0.0", () => {
   maybeStartRoleRoomLinkedInRedirectBridge();
   maybeStartRoleRoomCommercialReminderSweep();
   maybeStartAuditionReminderSweep({ pool });
+  maybeStartTeamInviteSweep({ pool });
   const stripeForInvoiceRunner = getRoleRoomStripeClient();
   if (stripeForInvoiceRunner) {
     maybeStartSmsInvoiceSweep({
+      pool,
+      stripe: stripeForInvoiceRunner,
+      resolveCustomer: resolveStripeCustomerForCastingProject,
+    });
+    maybeStartWhatsAppInvoiceSweep({
       pool,
       stripe: stripeForInvoiceRunner,
       resolveCustomer: resolveStripeCustomerForCastingProject,

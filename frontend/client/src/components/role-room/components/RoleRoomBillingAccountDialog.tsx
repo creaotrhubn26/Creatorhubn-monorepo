@@ -33,6 +33,7 @@ import {
   People as PeopleIcon,
   Refresh as RefreshIcon,
   SmsOutlined as SmsOutlinedIcon,
+  WhatsApp as WhatsAppIcon,
   SupervisorAccount as SupervisorAccountIcon,
 } from '@mui/icons-material';
 
@@ -1416,6 +1417,53 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                 </Stack>
                 <Typography sx={{ mt: 1, fontSize: '0.78rem', color: 'rgba(255,255,255,0.55)', lineHeight: 1.55 }}>
                   Branded SMS via The Role Room (Twilio). E-post-påminnelser er inkludert i abonnementet. Kandidater kan slå av SMS i Talent Portal.
+                </Typography>
+              </Box>
+
+              <Box
+                sx={{
+                  p: 1.6,
+                  borderRadius: 2,
+                  border: '1px solid rgba(34,197,94,0.18)',
+                  background: 'rgba(34,197,94,0.06)',
+                }}
+              >
+                <Stack
+                  direction={{ xs: 'column', md: 'row' }}
+                  spacing={1.4}
+                  justifyContent="space-between"
+                  alignItems={{ xs: 'flex-start', md: 'center' }}
+                >
+                  <Stack spacing={0.4}>
+                    <Stack direction="row" spacing={0.6} alignItems="center">
+                      <WhatsAppIcon sx={{ fontSize: 14, color: '#22c55e' }} />
+                      <Typography sx={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.62)', textTransform: 'uppercase', letterSpacing: '0.16em' }}>
+                        Audition-WhatsApp · {account.whatsappUsage?.billingPeriod ?? '—'}
+                      </Typography>
+                    </Stack>
+                    <Typography sx={{ fontWeight: 700, fontSize: '1.1rem' }}>
+                      {(account.whatsappUsage?.whatsappCount ?? 0).toLocaleString('nb-NO')} meldinger sendt
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.82rem' }}>
+                      {formatMoney(account.whatsappUsage?.unitPriceNokExVat ?? 0)} per melding eks. mva.
+                      {account.whatsappUsage?.vatRate ? ` (+ ${Math.round((account.whatsappUsage.vatRate ?? 0) * 100)}% mva.)` : ''}
+                    </Typography>
+                  </Stack>
+
+                  <Stack spacing={0.3} alignItems={{ xs: 'flex-start', md: 'flex-end' }}>
+                    <Typography sx={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.62)' }}>
+                      Tillegg på neste faktura
+                    </Typography>
+                    <Typography sx={{ fontWeight: 700, fontSize: '1.05rem' }}>
+                      {formatMoney(account.whatsappUsage?.totalNokExVat ?? 0)} eks. mva.
+                    </Typography>
+                    <Typography sx={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.7)' }}>
+                      {formatMoney(account.whatsappUsage?.totalNokInclVat ?? 0)} inkl. mva.
+                    </Typography>
+                  </Stack>
+                </Stack>
+                <Typography sx={{ mt: 1, fontSize: '0.78rem', color: 'rgba(255,255,255,0.55)', lineHeight: 1.55 }}>
+                  WhatsApp via Meta Cloud API. Bedriften kobler eget WhatsApp Business-nummer i innstillinger; kandidaten ser bedriftens display-navn som avsender.
                 </Typography>
               </Box>
             </Stack>

@@ -1944,6 +1944,42 @@ export default function TalentPortalView({ intent, onClose }: TalentPortalViewPr
                             label="E-post 1 time for"
                             sx={{ color: TEXT_SECONDARY }}
                           />
+                          <Tooltip title={profileDraft.phone.trim() ? '' : 'Legg til telefonnummer for a aktivere WhatsApp'} placement="top" arrow>
+                            <FormControlLabel
+                              control={
+                                <Switch
+                                  checked={(profileDraft.reminderPrefs.whatsapp24h ?? true) && Boolean(profileDraft.phone.trim())}
+                                  disabled={!profileDraft.phone.trim()}
+                                  onChange={(event) =>
+                                    setProfileDraft((current) => ({
+                                      ...current,
+                                      reminderPrefs: { ...current.reminderPrefs, whatsapp24h: event.target.checked },
+                                    }))
+                                  }
+                                />
+                              }
+                              label="WhatsApp 24 timer for"
+                              sx={{ color: TEXT_SECONDARY }}
+                            />
+                          </Tooltip>
+                          <Tooltip title={profileDraft.phone.trim() ? '' : 'Legg til telefonnummer for a aktivere WhatsApp'} placement="top" arrow>
+                            <FormControlLabel
+                              control={
+                                <Switch
+                                  checked={(profileDraft.reminderPrefs.whatsapp1h ?? true) && Boolean(profileDraft.phone.trim())}
+                                  disabled={!profileDraft.phone.trim()}
+                                  onChange={(event) =>
+                                    setProfileDraft((current) => ({
+                                      ...current,
+                                      reminderPrefs: { ...current.reminderPrefs, whatsapp1h: event.target.checked },
+                                    }))
+                                  }
+                                />
+                              }
+                              label="WhatsApp 1 time for"
+                              sx={{ color: TEXT_SECONDARY }}
+                            />
+                          </Tooltip>
                         </Box>
                         <Button
                           variant="contained"
