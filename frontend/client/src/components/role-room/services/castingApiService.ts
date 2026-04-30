@@ -2635,6 +2635,17 @@ export interface RoleRoomWhatsAppHealth {
   } | null;
 }
 
+export interface RoleRoomTeamInviteStatus {
+  crewId: string;
+  recipientPhone: string | null;
+  recipientEmail: string | null;
+  invitedAt: string;
+  whatsappMessageId: string | null;
+  deliveryStatus: 'pending' | 'delivered' | 'failed' | string;
+  deliveryError: string | null;
+  retryCount: number;
+}
+
 export interface RoleRoomWhatsAppGroupConfig {
   projectId: string;
   groupInviteLink: string;
@@ -2728,6 +2739,13 @@ export const roleRoomWhatsAppApi = {
       throw new Error(result.error ?? 'Kunne ikke lagre gruppe-standard');
     }
     return result.config ?? null;
+  },
+
+  getTeamInviteStatus: async (projectId: string): Promise<RoleRoomTeamInviteStatus[]> => {
+    const result = await apiRequest<{ success: boolean; invites: RoleRoomTeamInviteStatus[] }>(
+      `/whatsapp/team-invite/by-project/${encodeURIComponent(projectId)}`,
+    );
+    return result.invites ?? [];
   },
 
   triggerTeamInviteSweep: async (): Promise<unknown> => (

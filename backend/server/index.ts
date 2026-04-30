@@ -39932,6 +39932,49 @@ $('send-btn').addEventListener('click', async () => {
 </body></html>`);
 });
 
+app.get(
+  "/api/role-room/whatsapp/team-invite/by-project/:projectId",
+  async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
+    try {
+      const result = await pool.query<{
+        crew_id: string;
+        recipient_phone_e164: string | null;
+        recipient_email: string | null;
+        invited_at: string;
+        whatsapp_message_id: string | null;
+        delivery_status: string;
+        delivery_error: string | null;
+        retry_count: number;
+      }>(
+        `SELECT crew_id, recipient_phone_e164, recipient_email, invited_at,
+                whatsapp_message_id, delivery_status, delivery_error, retry_count
+           FROM casting_team_whatsapp_invites
+          WHERE project_id = $1`,
+        [req.params.projectId],
+      );
+      return res.json({
+        success: true,
+        invites: result.rows.map((row) => ({
+          crewId: row.crew_id,
+          recipientPhone: row.recipient_phone_e164,
+          recipientEmail: row.recipient_email,
+          invitedAt: row.invited_at,
+          whatsappMessageId: row.whatsapp_message_id,
+          deliveryStatus: row.delivery_status,
+          deliveryError: row.delivery_error,
+          retryCount: row.retry_count,
+        })),
+      });
+    } catch (error) {
+      console.error("Team-invite status fetch failed:", error);
+      return res
+        .status(500)
+        .json({ error: "Kunne ikke hente team-invite-status." });
+    }
+  },
+);
+
 app.post(
   "/api/role-room/whatsapp/team-invite/resend/:projectId/:crewId",
   async (req, res) => {

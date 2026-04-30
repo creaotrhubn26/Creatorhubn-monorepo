@@ -14,7 +14,13 @@ import {
   IconButton,
   Stack,
   Switch,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import {
@@ -22,10 +28,15 @@ import {
   WhatsApp as WhatsAppIcon,
   Refresh as RefreshIcon,
   Save as SaveIcon,
+  CheckCircle as CheckCircleIcon,
+  ErrorOutline as ErrorOutlineIcon,
+  HourglassEmpty as PendingIcon,
+  Send as SendIcon,
 } from '@mui/icons-material';
 import {
   roleRoomWhatsAppApi,
   type RoleRoomWhatsAppGroupConfig,
+  type RoleRoomTeamInviteStatus,
 } from '../services/castingApiService';
 
 type ProjectWhatsAppGroupDialogProps = {
@@ -53,18 +64,24 @@ const ProjectWhatsAppGroupDialog: FC<ProjectWhatsAppGroupDialogProps> = ({
   const [groupName, setGroupName] = useState('');
   const [autoInvite, setAutoInvite] = useState(true);
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [inviteStatus, setInviteStatus] = useState<RoleRoomTeamInviteStatus[]>([]);
+  const [resendingFor, setResendingFor] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!projectId || !open) return;
     setLoading(true);
     setError(null);
     try {
-      const result = await roleRoomWhatsAppApi.getGroupConfig(projectId);
-      setConfig(result);
-      if (result) {
-        setGroupInviteLink(result.groupInviteLink ?? '');
-        setGroupName(result.groupName ?? '');
-        setAutoInvite(result.autoInviteEnabled ?? true);
+      const [cfg, statuses] = await Promise.all([
+        roleRoomWhatsAppApi.getGroupConfig(projectId),
+        roleRoomWhatsAppApi.getTeamInviteStatus(projectId).catch(() => [] as RoleRoomTeamInviteStatus[]),
+      ]);
+      setConfig(cfg);
+      setInviteStatus(statuses);
+      if (cfg) {
+        setGroupInviteLink(cfg.groupInviteLink ?? '');
+        setGroupName(cfg.groupName ?? '');
+        setAutoInvite(cfg.autoInviteEnabled ?? true);
       } else {
         setGroupInviteLink('');
         setGroupName('');
@@ -76,6 +93,29 @@ const ProjectWhatsAppGroupDialog: FC<ProjectWhatsAppGroupDialogProps> = ({
       setLoading(false);
     }
   }, [open, projectId]);
+
+  const handleResend = async (crewId: string) => {
+    setResendingFor(crewId);
+    try {
+      await roleRoomWhatsAppApi.resendTeamInvite(projectId, crewId);
+      const statuses = await roleRoomWhatsAppApi.getTeamInviteStatus(projectId);
+      setInviteStatus(statuses);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Resend feilet');
+    } finally {
+      setResendingFor(null);
+    }
+  };
+
+  const counts = inviteStatus.reduce(
+    (acc, row) => {
+      if (row.deliveryStatus === 'delivered') acc.delivered += 1;
+      else if (row.deliveryStatus === 'failed') acc.failed += 1;
+      else acc.pending += 1;
+      return acc;
+    },
+    { delivered: 0, pending: 0, failed: 0 },
+  );
 
   useEffect(() => {
     void load();
@@ -257,6 +297,120 @@ const ProjectWhatsAppGroupDialog: FC<ProjectWhatsAppGroupDialogProps> = ({
                   Trigge invitasjons-sweep nå
                 </Button>
               </Stack>
+            ) : null}
+
+            {inviteStatus.length > 0 ? (
+              <Box sx={{ pt: 1 }}>
+                <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)', mb: 1.5 }} />
+                <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                  <Typography sx={{ fontWeight: 700, flex: 1 }}>Crew-invitasjoner</Typography>
+                  <Chip
+                    size="small"
+                    icon={<CheckCircleIcon sx={{ color: '#86efac !important', fontSize: 14 }} />}
+                    label={`${counts.delivered} levert`}
+                    sx={{ bgcolor: 'rgba(34,197,94,0.14)', color: '#86efac' }}
+                  />
+                  {counts.pending > 0 ? (
+                    <Chip
+                      size="small"
+                      icon={<PendingIcon sx={{ color: '#fde047 !important', fontSize: 14 }} />}
+                      label={`${counts.pending} venter`}
+                      sx={{ bgcolor: 'rgba(250,204,21,0.14)', color: '#fde047' }}
+                    />
+                  ) : null}
+                  {counts.failed > 0 ? (
+                    <Chip
+                      size="small"
+                      icon={<ErrorOutlineIcon sx={{ color: '#fecaca !important', fontSize: 14 }} />}
+                      label={`${counts.failed} feilet`}
+                      sx={{ bgcolor: 'rgba(248,113,113,0.14)', color: '#fecaca' }}
+                    />
+                  ) : null}
+                </Stack>
+
+                <Box sx={{ maxHeight: 240, overflow: 'auto', borderRadius: 1.5, border: '1px solid rgba(255,255,255,0.08)' }}>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell sx={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.1em', borderBottomColor: 'rgba(255,255,255,0.08)' }}>
+                          Crew
+                        </TableCell>
+                        <TableCell sx={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.1em', borderBottomColor: 'rgba(255,255,255,0.08)' }}>
+                          Status
+                        </TableCell>
+                        <TableCell sx={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.1em', borderBottomColor: 'rgba(255,255,255,0.08)' }}>
+                          Forsøk
+                        </TableCell>
+                        <TableCell align="right" sx={{ borderBottomColor: 'rgba(255,255,255,0.08)' }}></TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {inviteStatus.map((row) => {
+                        const isDelivered = row.deliveryStatus === 'delivered';
+                        const isFailed = row.deliveryStatus === 'failed';
+                        return (
+                          <TableRow key={row.crewId}>
+                            <TableCell sx={{ borderBottomColor: 'rgba(255,255,255,0.05)' }}>
+                              <Typography sx={{ fontSize: '0.82rem', fontFamily: 'monospace', color: '#bfdbfe' }}>
+                                {row.crewId.slice(0, 8)}…
+                              </Typography>
+                              <Typography sx={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.55)' }}>
+                                {row.recipientPhone || row.recipientEmail || '—'}
+                              </Typography>
+                            </TableCell>
+                            <TableCell sx={{ borderBottomColor: 'rgba(255,255,255,0.05)' }}>
+                              <Chip
+                                size="small"
+                                label={row.deliveryStatus}
+                                sx={{
+                                  bgcolor: isDelivered
+                                    ? 'rgba(34,197,94,0.18)'
+                                    : isFailed
+                                      ? 'rgba(248,113,113,0.18)'
+                                      : 'rgba(250,204,21,0.18)',
+                                  color: isDelivered ? '#86efac' : isFailed ? '#fecaca' : '#fde047',
+                                  fontWeight: 700,
+                                  fontSize: '0.7rem',
+                                }}
+                              />
+                              {row.deliveryError ? (
+                                <Tooltip title={row.deliveryError}>
+                                  <Typography sx={{ fontSize: '0.7rem', color: '#fecaca', mt: 0.4 }}>
+                                    {row.deliveryError.slice(0, 40)}…
+                                  </Typography>
+                                </Tooltip>
+                              ) : null}
+                            </TableCell>
+                            <TableCell sx={{ borderBottomColor: 'rgba(255,255,255,0.05)' }}>
+                              <Typography sx={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.7)' }}>
+                                {row.retryCount}
+                              </Typography>
+                            </TableCell>
+                            <TableCell align="right" sx={{ borderBottomColor: 'rgba(255,255,255,0.05)' }}>
+                              <Tooltip title="Send invitasjon på nytt">
+                                <span>
+                                  <IconButton
+                                    size="small"
+                                    onClick={() => handleResend(row.crewId)}
+                                    disabled={Boolean(resendingFor)}
+                                    sx={{ color: '#7dd3fc' }}
+                                  >
+                                    {resendingFor === row.crewId ? (
+                                      <CircularProgress size={14} />
+                                    ) : (
+                                      <SendIcon fontSize="small" />
+                                    )}
+                                  </IconButton>
+                                </span>
+                              </Tooltip>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </Box>
+              </Box>
             ) : null}
           </Stack>
         )}

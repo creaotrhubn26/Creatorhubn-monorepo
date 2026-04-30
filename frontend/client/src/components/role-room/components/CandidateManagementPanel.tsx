@@ -62,6 +62,7 @@ import {
   WhatsApp as WhatsAppIcon,
   MarkEmailReadOutlined as MarkEmailReadOutlinedIcon,
   NotificationsOffOutlined as NotificationsOffOutlinedIcon,
+  WarningAmber as WarningAmberIcon,
   ViewInAr as ViewInArIcon,
   Close as CloseIcon,
   Check as CheckIcon,
@@ -3351,6 +3352,16 @@ function CandidateManagementPanelInner({
                       {contactInfo.phone && (
                         <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', display: 'flex', alignItems: 'center', gap: 0.5, fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>
                           <PhoneIcon sx={{ fontSize: { xs: 12, sm: 14, md: 13, lg: 15, xl: 18 } }} /> {contactInfo.phone}
+                          {!/^\+?\d[\d\s\-()]{6,18}$/.test(String(contactInfo.phone).trim()) && (
+                            <Tooltip title="Telefonnummer er ikke i gyldig format — WhatsApp/SMS kan ikke leveres til denne kandidaten">
+                              <WarningAmberIcon sx={{ fontSize: 13, color: '#fbbf24', ml: 0.4 }} />
+                            </Tooltip>
+                          )}
+                          {!/^\+/.test(String(contactInfo.phone).trim()) && /^\d/.test(String(contactInfo.phone).trim()) && (
+                            <Tooltip title="Mangler landskode (+47, +1, …) — WhatsApp/SMS krever internasjonalt format">
+                              <WarningAmberIcon sx={{ fontSize: 13, color: '#fbbf24', ml: 0.4 }} />
+                            </Tooltip>
+                          )}
                         </Typography>
                       )}
                       {(() => {
