@@ -76,6 +76,7 @@ async function loadEnv() {
     APP_BASE_URL: process.env.APP_BASE_URL || DEFAULT_APP_BASE,
     META_APP_ACCESS_TOKEN: process.env.META_APP_ACCESS_TOKEN || '',
     WHATSAPP_PHONE_NUMBER_ID: process.env.WHATSAPP_PHONE_NUMBER_ID || '',
+    WHATSAPP_BUSINESS_ACCOUNT_ID: process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || '',
     DEMO_RECIPIENT_PHONE_E164: process.env.DEMO_RECIPIENT_PHONE_E164 || '',
   };
   try {
@@ -97,6 +98,7 @@ async function saveEnv(env) {
     `APP_BASE_URL=${env.APP_BASE_URL}`,
     `META_APP_ACCESS_TOKEN=${env.META_APP_ACCESS_TOKEN}`,
     `WHATSAPP_PHONE_NUMBER_ID=${env.WHATSAPP_PHONE_NUMBER_ID}`,
+    `WHATSAPP_BUSINESS_ACCOUNT_ID=${env.WHATSAPP_BUSINESS_ACCOUNT_ID}`,
     `DEMO_RECIPIENT_PHONE_E164=${env.DEMO_RECIPIENT_PHONE_E164}`,
   ];
   await fs.writeFile(ENV_FILE, lines.join('\n') + '\n', { mode: 0o600 });
@@ -269,12 +271,12 @@ async function recordMessagingDemo(env) {
       page,
       'WhatsApp Business Messaging',
       'The Role Room — Meta App Review Demo',
-      'This screencast demonstrates The Role Room calling the Meta WhatsApp Cloud API to send a template message to a verified recipient phone, proving end-to-end use of the whatsapp_business_messaging permission to deliver audition reminders and production team notifications.',
-      7500,
+      'This screencast demonstrates the complete send + receive loop for the whatsapp_business_messaging permission. Step 1: The Role Room sends a template message to a candidate via Meta Cloud API. Step 2: candidate replies on WhatsApp. Step 3: the inbound reply lands in The Role Room casting director inbox.',
+      8000,
     );
 
     await beat(page, 600);
-    await showCaption(page, 'Step 1 of 4', 'Admin operator opens The Role Room test interface that triggers a real Meta Cloud API call.');
+    await showCaption(page, 'Step 1 of 5', 'Casting director opens The Role Room admin demo. Pre-filled with WABA credentials from settings.');
     await beat(page, 3000);
 
     await page.locator('[data-testid="phone-input"]').fill(env.DEMO_RECIPIENT_PHONE_E164);
@@ -286,7 +288,7 @@ async function recordMessagingDemo(env) {
 
     await hideCaption(page);
     await beat(page, 400);
-    await showCaption(page, 'Step 2 of 4', 'Backend POST /api/role-room/whatsapp/test-send → graph.facebook.com /{phone_number_id}/messages with hello_world template.');
+    await showCaption(page, 'Step 2 of 5', 'The Role Room backend calls graph.facebook.com /{phone_number_id}/messages with hello_world template.');
     await beat(page, 2800);
 
     const sendBtn = page.locator('[data-testid="send-button"]');
@@ -303,8 +305,8 @@ async function recordMessagingDemo(env) {
 
     await hideCaption(page);
     await beat(page, 400);
-    await showCaption(page, 'Step 3 of 4', isOk
-      ? 'Meta Graph API confirms message delivery. messageId returned.'
+    await showCaption(page, 'Step 3 of 5', isOk
+      ? 'Meta Graph API confirms delivery. wamid (Meta message ID) returned.'
       : 'Error response shown — see text below.');
     await beat(page, 4500);
 
@@ -314,18 +316,32 @@ async function recordMessagingDemo(env) {
       await unspotlight(page);
     }
 
-    // Switch to WhatsApp Web to show receiving end
+    // Step 4: WhatsApp Web shows the message arrived
     await hideCaption(page);
     await beat(page, 400);
-    await showCaption(page, 'Step 4 of 4', 'Switching to WhatsApp Web to verify the message was delivered to the recipient.');
-    await beat(page, 3000);
+    await showCaption(page, 'Step 4 of 5', 'WhatsApp Web — the candidate receives the message from The Role Room sender. They reply.');
+    await beat(page, 2000);
 
-    log('Navigating to web.whatsapp.com to show receipt — operator may need to scan QR if first time.');
+    log('Navigating to web.whatsapp.com — operator may need to scan QR if first time.');
+    log('IMPORTANT: while WhatsApp Web is open, operator should reply to the message from their phone or web — that reply is what we show in the inbox in the next step.');
     await page.goto('https://web.whatsapp.com/', { waitUntil: 'domcontentloaded' });
-    await beat(page, 6000);
+    await beat(page, 12_000);
 
-    await showCaption(page, 'Step 4 of 4', 'WhatsApp client receiving the hello_world message from The Role Room test number.');
-    await beat(page, 8000);
+    // Step 5: Switch to The Role Room inbox to show the reply arrived
+    await hideCaption(page);
+    await beat(page, 400);
+    await showCaption(page, 'Step 5 of 5', 'Switching back to The Role Room — the candidate reply lands in the casting director inbox in real time via webhook.');
+    await beat(page, 2500);
+
+    const inboxUrl = `${env.APP_BASE_URL}/admin/whatsapp-inbox`;
+    log(`Opening inbox: ${inboxUrl}`);
+    await page.goto(inboxUrl, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('[data-testid="whatsapp-inbox-root"]', { timeout: 30_000 });
+    await beat(page, 1500);
+
+    await installStyles(page).catch(() => {});
+    await showCaption(page, 'Step 5 of 5', 'Live inbox auto-refreshes every 5 seconds. Candidate reply appears here, complete with timestamp + Meta message ID.');
+    await beat(page, 9000);
 
     await hideCaption(page);
     await beat(page, 600);
@@ -333,9 +349,9 @@ async function recordMessagingDemo(env) {
     await showTitleCard(
       page,
       'whatsapp_business_messaging — Use Case',
-      'Why The Role Room needs this permission',
-      'The Role Room is a SaaS platform for casting and production teams. Audition reminders sent to candidates and notifications sent to production team members rely on WhatsApp template messages. The permission allows our customers to deliver these messages to their candidates and crew via Meta Cloud API.',
-      8000,
+      'The Role Room — SaaS Casting Platform',
+      'The Role Room is a SaaS casting + production platform. Casting directors onboard their own WhatsApp Business Account via Embedded Signup and use The Role Room to send pre-approved template messages (audition invitations, callback confirmations, schedule updates) to candidates, AND to receive candidate replies in their casting director inbox.',
+      8500,
     );
 
     log('Video 1 complete — closing context to flush.');
@@ -365,12 +381,12 @@ async function recordMessagingDemo(env) {
 
 // ── Video 2: whatsapp_business_management ─────────────────────────────────
 
-async function recordTemplateDemo() {
+async function recordTemplateDemo(env) {
   log('=== Video 2: whatsapp_business_management ===');
 
   const browser = await chromium.launch({ headless: HEADLESS, args: ['--no-sandbox'] });
   const context = await browser.newContext({
-    storageState: await loadState(META_BUSINESS_STATE),
+    storageState: await loadState(ROLE_ROOM_STATE),
     locale: 'en-US',
     viewport: VIEWPORT,
     recordVideo: { dir: VIDEO_DIR, size: VIEWPORT },
@@ -379,56 +395,98 @@ async function recordTemplateDemo() {
 
   let videoPath = null;
   try {
-    log('Opening business.facebook.com — operator may need to authenticate (up to 5 min).');
-    await page.goto('https://business.facebook.com/wa/manage/message-templates/', {
-      waitUntil: 'domcontentloaded',
-    });
+    const tplUrl = `${env.APP_BASE_URL}/admin/whatsapp-create-template`;
+    log(`Opening template-create page: ${tplUrl}`);
+    await page.goto(tplUrl, { waitUntil: 'domcontentloaded' });
 
-    // Wait for login completion
-    const deadline = Date.now() + 5 * 60 * 1000;
-    while (Date.now() < deadline) {
-      const url = page.url();
-      if (url.includes('wa/manage/message-templates') && !url.includes('login')) break;
-      await page.waitForTimeout(2000);
+    if (!page.url().includes('whatsapp-create-template')) {
+      log('Redirected — operator must log in as admin. Pausing up to 5 min.');
+      const deadline = Date.now() + 5 * 60 * 1000;
+      while (Date.now() < deadline && !page.url().includes('whatsapp-create-template')) {
+        await page.waitForTimeout(2000);
+        if (!page.url().includes('whatsapp-create-template')) {
+          await page.goto(tplUrl, { waitUntil: 'domcontentloaded' }).catch(() => {});
+        }
+      }
+      await context.storageState({ path: ROLE_ROOM_STATE });
     }
-    await context.storageState({ path: META_BUSINESS_STATE });
-    await beat(page, 2000);
 
-    await installStyles(page).catch(() => {});
+    await page.waitForSelector('[data-testid="whatsapp-template-root"]', { timeout: 30_000 });
+    await installStyles(page);
 
     await showTitleCard(
       page,
       'WhatsApp Business Management',
       'The Role Room — Meta App Review Demo',
-      'This screencast demonstrates creating a WhatsApp message template via the WhatsApp Manager. The Role Room uses the whatsapp_business_management permission to onboard customer accounts and create the message templates that audition reminders and team notifications rely on.',
-      8000,
+      'This screencast demonstrates The Role Room calling Meta Graph API directly to create a WhatsApp message template on behalf of a casting director, proving end-to-end use of the whatsapp_business_management permission.',
+      8500,
     );
 
-    await showCaption(page, 'Step 1 of 4', 'WhatsApp Manager → Message Templates page opened. Operator clicks Create Template.');
+    await beat(page, 600);
+    await showCaption(page, 'Step 1 of 5', 'Casting director opens The Role Room template-create workspace.');
+    await beat(page, 3000);
+
+    // Fill in the form
+    const tplName = 'audition_reminder_24h_no';
+    const tplBody = 'Hi {{1}}, this is a reminder for your audition for {{2}} on {{3}} at {{4}}. Location: {{5}}.';
+
+    await page.locator('[data-testid="waba-id-input"]').fill(env.WHATSAPP_BUSINESS_ACCOUNT_ID);
+    await beat(page, 500);
+    await page.locator('[data-testid="access-token-input"]').fill(env.META_APP_ACCESS_TOKEN);
+    await beat(page, 500);
+
+    await hideCaption(page);
+    await beat(page, 300);
+    await showCaption(page, 'Step 2 of 5', 'Casting director enters template name (lowercase snake_case), category, language, and body with 5 variables.');
+    await beat(page, 2500);
+
+    await page.locator('[data-testid="template-name-input"]').fill(tplName);
+    await beat(page, 600);
+    await page.locator('[data-testid="template-body-input"]').fill(tplBody);
+    await beat(page, 1800);
+
+    await hideCaption(page);
+    await beat(page, 400);
+    await showCaption(page, 'Step 3 of 5', 'The Role Room backend calls POST /v22.0/{waba_id}/message_templates on the Meta Graph API.');
+    await beat(page, 2800);
+
+    const submitBtn = page.locator('[data-testid="submit-button"]');
+    await spotlight(page, submitBtn);
+    await beat(page, 1200);
+    await submitBtn.click();
+    await unspotlight(page);
+
+    await page.waitForSelector('[data-testid="result-ok"], [data-testid="result-err"]', { timeout: 30_000 });
+    await beat(page, 1500);
+
+    const isOk = (await page.locator('[data-testid="result-ok"]').count()) > 0;
+    log(isOk ? '✓ Meta accepted template' : '⚠ Meta returned error (template likely already exists or rate-limited)');
+
+    await hideCaption(page);
+    await beat(page, 400);
+    await showCaption(page, 'Step 4 of 5', isOk
+      ? 'Meta returns 200 OK with template ID and PENDING_APPROVAL status. Webhook will fire message_template_status_update when Meta approves or rejects.'
+      : 'Meta API error response shown. Common reasons: duplicate template name or rate limit.');
     await beat(page, 5000);
 
-    log('NOTE: business.facebook.com DOM is volatile. Operator may need to navigate manually.');
-    log('Pausing 60s for operator to click "Create Template" → fill in the form → submit.');
-    log('  Recommended template fields:');
-    log('    Name: audition_reminder_24h_no');
-    log('    Category: Utility');
-    log('    Language: Norwegian (nb)');
-    log('    Body: "Hei {{1}}, dette er en pamminnelse om audition for {{2}} {{3}} kl {{4}}. Sted: {{5}}."');
+    if (isOk) {
+      await spotlight(page, page.locator('[data-testid="result-ok"]'));
+      await beat(page, 5500);
+      await unspotlight(page);
+    }
 
+    // Step 5: navigate to Meta WhatsApp Manager to show the template now exists there
     await hideCaption(page);
-    await beat(page, 1000);
-    await showCaption(page, 'Step 2 of 4', 'Operator fills in template details: name, category Utility, language Norwegian, and body with 5 variables.');
-    await beat(page, 28_000);
+    await beat(page, 400);
+    await showCaption(page, 'Step 5 of 5', 'Verify in Meta WhatsApp Manager — the template created via our API call now appears in the catalogue with status PENDING_APPROVAL.');
+    await beat(page, 3000);
 
-    await hideCaption(page);
-    await beat(page, 500);
-    await showCaption(page, 'Step 3 of 4', 'Operator clicks Submit — template enters Meta review queue with status In Review.');
-    await beat(page, 18_000);
-
-    await hideCaption(page);
-    await beat(page, 500);
-    await showCaption(page, 'Step 4 of 4', 'Template appears in the table with status In Review. Once approved, The Role Room can send audition reminders using this template.');
+    log('Opening Meta WhatsApp Manager to show the template appearing — operator may need to authenticate.');
+    await page.goto('https://business.facebook.com/wa/manage/message-templates/', { waitUntil: 'domcontentloaded' });
     await beat(page, 8000);
+
+    await showCaption(page, 'Step 5 of 5', `Template "${tplName}" appears in WhatsApp Manager — created programmatically by The Role Room, not manually by the casting director.`);
+    await beat(page, 7000);
 
     await hideCaption(page);
     await beat(page, 600);
@@ -436,9 +494,9 @@ async function recordTemplateDemo() {
     await showTitleCard(
       page,
       'whatsapp_business_management — Use Case',
-      'Why The Role Room needs this permission',
-      'The Role Room programmatically manages customer WhatsApp Business accounts: registers phone numbers, creates and submits message templates for utility (transactional) reminders and team notifications, and monitors delivery quality. The permission lets our platform onboard customers without manual Meta UI work for each.',
-      8000,
+      'The Role Room — SaaS Casting Platform',
+      'The Role Room programmatically creates and submits WhatsApp message templates on behalf of casting directors (audition invite, callback confirmation, schedule update) and reads template approval + WABA analytics events via webhooks. Casting directors onboard their own WABA via Embedded Signup; The Role Room handles all template lifecycle automatically.',
+      8500,
     );
 
     log('Video 2 complete — closing context to flush.');
@@ -448,7 +506,7 @@ async function recordTemplateDemo() {
     if (!HEADLESS) await page.waitForTimeout(20_000);
   } finally {
     videoPath = await page.video()?.path();
-    await context.storageState({ path: META_BUSINESS_STATE }).catch(() => {});
+    await context.storageState({ path: ROLE_ROOM_STATE }).catch(() => {});
     await context.close();
     await browser.close();
   }
@@ -480,6 +538,11 @@ async function recordTemplateDemo() {
   if (!env.WHATSAPP_PHONE_NUMBER_ID) {
     env.WHATSAPP_PHONE_NUMBER_ID = (await ask('WhatsApp Phone Number ID (sender): ')).trim();
   }
+  if (!env.WHATSAPP_BUSINESS_ACCOUNT_ID) {
+    env.WHATSAPP_BUSINESS_ACCOUNT_ID = (
+      await ask('WhatsApp Business Account ID (WABA ID, e.g. 1526002049163077): ')
+    ).trim();
+  }
   if (!env.DEMO_RECIPIENT_PHONE_E164) {
     env.DEMO_RECIPIENT_PHONE_E164 = (
       await ask('Recipient phone in E.164 (your verified test number): ')
@@ -490,15 +553,21 @@ async function recordTemplateDemo() {
   await saveEnv(env);
   log(`env saved to ${ENV_FILE} (mode 0600)`);
 
-  await ask(
-    '\n>> Klar til Video 1 (whatsapp_business_messaging)? Logg inn som admin på The Role Room når browseren åpnes. Trykk Enter for å starte... ',
-  );
+  console.log('\n=== Video 1: whatsapp_business_messaging (send + receive loop) ===');
+  console.log('Operator action checklist for video 1:');
+  console.log('  1. When browser opens, log into The Role Room as admin (one-time)');
+  console.log('  2. When script switches to web.whatsapp.com: scan QR (one-time) AND reply to the hello_world message from your phone');
+  console.log('  3. Stay quiet — captions explain each step on screen for the reviewer');
+  await ask('\n>> Press Enter to start Video 1... ');
   const v1 = await recordMessagingDemo(env);
 
-  await ask(
-    '\n>> Klar til Video 2 (whatsapp_business_management)? Du må klikke gjennom Create Template i Meta Business Manager mens scriptet ruller. Trykk Enter for å starte... ',
-  );
-  const v2 = await recordTemplateDemo();
+  console.log('\n=== Video 2: whatsapp_business_management (create template via API) ===');
+  console.log('Operator action checklist for video 2:');
+  console.log('  1. The Role Room template-create form is filled and submitted automatically');
+  console.log('  2. Browser then opens Meta WhatsApp Manager — log in if asked, then let captions roll');
+  console.log('  3. Reviewer will see the template (created by our API call) appear in Meta\'s template catalogue');
+  await ask('\n>> Press Enter to start Video 2... ');
+  const v2 = await recordTemplateDemo(env);
 
   console.log('\n=== Sammendrag ===');
   if (v1) console.log(`Video 1: ${v1}`);

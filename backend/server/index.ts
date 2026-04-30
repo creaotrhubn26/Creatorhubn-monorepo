@@ -39852,6 +39852,287 @@ app.post("/api/role-room/whatsapp/test-send", async (req, res) => {
   }
 });
 
+// App Review demo: inbox-API for incoming WhatsApp-meldinger.
+// Brukes av Playwright-recordingen for å demonstrere send+receive-
+// loopen Meta krever for whatsapp_business_messaging.
+app.get("/api/role-room/whatsapp/inbox", async (req, res) => {
+  if (!requireAdminSession(req, res)) return;
+  try {
+    const limit = Math.min(Number(req.query?.limit) || 25, 100);
+    const result = await pool.query<{
+      id: string;
+      received_at: string;
+      phone_number_id: string | null;
+      message_id: string | null;
+      payload: Record<string, unknown>;
+    }>(
+      `SELECT id, received_at, phone_number_id, message_id, payload
+         FROM role_room_whatsapp_events
+        WHERE event_field = 'messages' AND event_subtype = 'inbound'
+        ORDER BY received_at DESC
+        LIMIT $1`,
+      [limit],
+    );
+    return res.json({
+      success: true,
+      messages: result.rows.map((row) => ({
+        id: row.id,
+        receivedAt: row.received_at,
+        phoneNumberId: row.phone_number_id,
+        messageId: row.message_id,
+        from:
+          (row.payload?.from as string | undefined) ??
+          (row.payload?.contacts as Array<Record<string, unknown>> | undefined)?.[0]?.wa_id ??
+          null,
+        type:
+          (row.payload?.type as string | undefined) ?? null,
+        text:
+          ((row.payload?.text as Record<string, unknown> | undefined)?.body as string | undefined) ?? null,
+      })),
+    });
+  } catch (error) {
+    console.error("Inbox fetch failed:", error);
+    return res.status(500).json({ error: "Kunne ikke hente innboks." });
+  }
+});
+
+// App Review demo: create-template-API som POST'er til Meta Graph API.
+// Brukes av Playwright-recordingen for whatsapp_business_management.
+app.post("/api/role-room/whatsapp/create-template", async (req, res) => {
+  if (!requireAdminSession(req, res)) return;
+  const body = (req.body || {}) as Record<string, unknown>;
+  const wabaId = String(body.wabaId || "").trim();
+  const accessToken =
+    (typeof body.accessToken === "string" && body.accessToken.trim()) ||
+    (process.env.META_APP_ACCESS_TOKEN || "").trim();
+  const name = String(body.name || "").trim();
+  const category = String(body.category || "UTILITY").trim();
+  const language = String(body.language || "nb_NO").trim();
+  const bodyText = String(body.bodyText || "").trim();
+
+  if (!wabaId || !accessToken || !name || !bodyText) {
+    return res.status(400).json({
+      error: "wabaId, accessToken, name og bodyText er påkrevd.",
+    });
+  }
+
+  const url = `https://graph.facebook.com/v22.0/${wabaId}/message_templates`;
+  const payload = {
+    name,
+    category,
+    language,
+    components: [
+      {
+        type: "BODY",
+        text: bodyText,
+      },
+    ],
+  };
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    const text = await response.text();
+    let parsed: Record<string, unknown> = {};
+    try {
+      parsed = JSON.parse(text) as Record<string, unknown>;
+    } catch {}
+    if (!response.ok) {
+      return res.status(response.status).json({
+        success: false,
+        status: response.status,
+        body: parsed,
+      });
+    }
+    return res.json({ success: true, response: parsed });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+// App Review demo: WhatsApp inbox-side. Self-contained admin HTML.
+app.get("/admin/whatsapp-inbox", async (req, res) => {
+  if (!requireAdminSession(req, res)) return;
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(`<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/><title>WhatsApp Inbox — The Role Room</title>
+<style>
+  *{box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+  body{margin:0;background:#0f1729;color:#f1f5f9;padding:24px;min-height:100vh}
+  .card{max-width:780px;margin:24px auto;background:#1e293b;border:1px solid #334155;border-radius:14px;padding:28px;box-shadow:0 22px 80px rgba(0,0,0,.4)}
+  h1{margin:0 0 8px;font-size:24px;font-weight:800;color:#e0f2fe}
+  h2{margin:0 0 18px;font-size:13px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.18em}
+  .badge{display:inline-block;background:rgba(34,197,94,.18);color:#86efac;padding:4px 10px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+  .msg{background:#0f1729;border:1px solid #334155;border-radius:10px;padding:14px;margin-bottom:10px}
+  .msg-from{color:#7dd3fc;font-family:monospace;font-size:13px;font-weight:600}
+  .msg-text{margin-top:6px;color:#f1f5f9;font-size:15px;line-height:1.5}
+  .msg-meta{margin-top:8px;color:#64748b;font-size:11px;display:flex;gap:12px}
+  .empty{text-align:center;padding:40px;color:#64748b}
+  .live{display:inline-block;width:8px;height:8px;border-radius:50%;background:#22c55e;margin-right:6px;animation:pulse 1.5s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+  button{background:#22c55e;color:#0f1729;border:none;padding:10px 18px;border-radius:8px;font-weight:700;cursor:pointer;font-size:14px}
+</style></head>
+<body>
+<div class="card" data-testid="whatsapp-inbox-root">
+  <span class="badge">whatsapp_business_messaging — receive</span>
+  <h1 style="margin-top:14px">Live WhatsApp Inbox</h1>
+  <h2>The Role Room · Casting Director View</h2>
+  <p style="color:#cbd5e1;line-height:1.6;font-size:14px;">
+    Incoming WhatsApp messages from audition candidates appear here in real time.
+    Webhook events arrive at <code style="color:#fbbf24">/api/role-room/whatsapp/webhook</code>,
+    are persisted to <code style="color:#fbbf24">role_room_whatsapp_events</code>,
+    and rendered below within ~10 seconds of being sent.
+  </p>
+  <div style="margin:16px 0;display:flex;align-items:center;gap:12px;">
+    <span class="live"></span>
+    <span style="color:#86efac;font-size:13px;font-weight:600;">Live · Auto-refresh every 5 seconds</span>
+    <button onclick="loadMessages()" data-testid="refresh-button">Refresh now</button>
+  </div>
+  <div data-testid="message-list" id="message-list"></div>
+</div>
+<script>
+async function loadMessages() {
+  const list = document.getElementById('message-list');
+  try {
+    const resp = await fetch('/api/role-room/whatsapp/inbox?limit=25', { credentials: 'include' });
+    const data = await resp.json();
+    const msgs = data.messages || [];
+    if (!msgs.length) {
+      list.innerHTML = '<div class="empty"><p>No incoming messages yet.</p><p style="font-size:13px;">Reply to a hello_world template message from your test phone — it will appear here.</p></div>';
+      return;
+    }
+    list.innerHTML = msgs.map(m => \`
+      <div class="msg" data-testid="inbox-message">
+        <div class="msg-from">From: +\${m.from || 'unknown'}</div>
+        <div class="msg-text">\${(m.text || '(' + m.type + ' message)').replace(/</g, '&lt;')}</div>
+        <div class="msg-meta">
+          <span>\${new Date(m.receivedAt).toLocaleString('en-US')}</span>
+          <span>msg ID: \${(m.messageId || '').slice(0, 24)}\${m.messageId && m.messageId.length > 24 ? '…' : ''}</span>
+        </div>
+      </div>
+    \`).join('');
+  } catch (err) {
+    list.innerHTML = '<div class="empty">Error: ' + err.message + '</div>';
+  }
+}
+loadMessages();
+setInterval(loadMessages, 5000);
+</script>
+</body></html>`);
+});
+
+// App Review demo: WhatsApp create-template-side. Self-contained admin HTML.
+app.get("/admin/whatsapp-create-template", async (req, res) => {
+  if (!requireAdminSession(req, res)) return;
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(`<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/><title>Create WhatsApp Template — The Role Room</title>
+<style>
+  *{box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+  body{margin:0;background:#0f1729;color:#f1f5f9;padding:32px;min-height:100vh}
+  .card{max-width:680px;margin:32px auto;background:#1e293b;border:1px solid #334155;border-radius:14px;padding:32px;box-shadow:0 22px 80px rgba(0,0,0,.4)}
+  h1{margin:0 0 8px;font-size:24px;font-weight:800;color:#e0f2fe}
+  h2{margin:0 0 24px;font-size:13px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.18em}
+  label{display:block;font-size:13px;font-weight:600;color:#cbd5e1;margin:18px 0 6px}
+  input,textarea,select{width:100%;padding:11px;border-radius:8px;border:1px solid #475569;background:#0f1729;color:#f1f5f9;font-size:14px;font-family:inherit}
+  textarea{resize:vertical;min-height:90px}
+  button{display:inline-flex;align-items:center;gap:8px;background:#22c55e;color:#0f1729;border:none;padding:14px 22px;border-radius:10px;font-weight:700;font-size:15px;cursor:pointer;margin-top:18px;transition:transform .12s}
+  button:hover{transform:translateY(-1px);background:#34d399}
+  button:disabled{opacity:.5;cursor:wait}
+  pre{background:#0f1729;border:1px solid #334155;padding:14px;border-radius:8px;overflow-x:auto;font-size:12px;line-height:1.55;color:#bfdbfe;margin-top:18px}
+  .status-ok{color:#22c55e}
+  .status-err{color:#f87171}
+  .badge{display:inline-block;background:rgba(125,211,252,.18);color:#bfdbfe;padding:4px 10px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+</style></head>
+<body>
+<div class="card" data-testid="whatsapp-template-root">
+  <span class="badge">whatsapp_business_management — create</span>
+  <h1 style="margin-top:14px">Create WhatsApp Message Template</h1>
+  <h2>The Role Room · Casting Director Workspace</h2>
+  <p style="color:#cbd5e1;line-height:1.6;font-size:14px;">
+    The Role Room creates WhatsApp message templates programmatically on behalf of casting directors.
+    Submitting this form calls <code style="color:#fbbf24">POST /v22.0/{waba_id}/message_templates</code>
+    on the Meta Graph API, then renders the response and template-status updates from our webhook event store.
+  </p>
+
+  <label for="wabaId">WhatsApp Business Account ID</label>
+  <input id="wabaId" data-testid="waba-id-input" type="text" placeholder="1526002049163077" />
+
+  <label for="accessToken">Access Token</label>
+  <input id="accessToken" data-testid="access-token-input" type="password" placeholder="EAA..." />
+
+  <label for="tplName">Template name (lowercase, snake_case)</label>
+  <input id="tplName" data-testid="template-name-input" type="text" placeholder="audition_reminder_24h_no" />
+
+  <label for="tplCategory">Category</label>
+  <select id="tplCategory" data-testid="template-category-input">
+    <option value="UTILITY">Utility (transactional)</option>
+    <option value="MARKETING">Marketing</option>
+    <option value="AUTHENTICATION">Authentication</option>
+  </select>
+
+  <label for="tplLanguage">Language</label>
+  <select id="tplLanguage" data-testid="template-language-input">
+    <option value="nb_NO">Norwegian (Bokmål)</option>
+    <option value="en_US">English</option>
+    <option value="sv_SE">Swedish</option>
+  </select>
+
+  <label for="tplBody">Body text (use {{1}}, {{2}} etc. for variables)</label>
+  <textarea id="tplBody" data-testid="template-body-input" placeholder="Hi {{1}}, this is a reminder for {{2}} on {{3}} at {{4}}. Location: {{5}}."></textarea>
+
+  <button id="submit-btn" data-testid="submit-button" type="button">Submit template to Meta</button>
+
+  <div data-testid="result"></div>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+const result = document.querySelector('[data-testid="result"]');
+$('submit-btn').addEventListener('click', async () => {
+  const btn = $('submit-btn');
+  btn.disabled = true;
+  result.innerHTML = '<pre>⏳ Calling Meta Graph API: POST /message_templates…</pre>';
+  try {
+    const resp = await fetch('/api/role-room/whatsapp/create-template', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        wabaId: $('wabaId').value,
+        accessToken: $('accessToken').value,
+        name: $('tplName').value,
+        category: $('tplCategory').value,
+        language: $('tplLanguage').value,
+        bodyText: $('tplBody').value,
+      }),
+    });
+    const data = await resp.json();
+    if (resp.ok && data.success) {
+      result.innerHTML = '<pre class="status-ok" data-testid="result-ok">✓ Template submitted to Meta · status PENDING_APPROVAL\\n\\nMeta response:\\n' + JSON.stringify(data.response, null, 2) + '\\n\\nWebhook will fire message_template_status_update event when Meta approves or rejects (1–24h typical).</pre>';
+    } else {
+      result.innerHTML = '<pre class="status-err" data-testid="result-err">✗ Error\\n\\n' + JSON.stringify(data, null, 2) + '</pre>';
+    }
+  } catch (err) {
+    result.innerHTML = '<pre class="status-err">✗ Network error: ' + err.message + '</pre>';
+  } finally {
+    btn.disabled = false;
+  }
+});
+</script>
+</body></html>`);
+});
+
 // App Review demo HTML — selvstendig admin-side som viser "appen min
 // sender en WhatsApp-melding via Meta API". Brukes av Playwright-
 // recordingen til Meta App Review.
