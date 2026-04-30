@@ -2608,6 +2608,8 @@ export const roleRoomBillingApi = {
   ),
 };
 
+export type RoleRoomWhatsAppGroupStrategy = 'workspace' | 'per_project';
+
 export interface RoleRoomWhatsAppConfig {
   hasConfig: boolean;
   displayName: string | null;
@@ -2615,6 +2617,10 @@ export interface RoleRoomWhatsAppConfig {
   templateLanguage: string | null;
   lastValidatedAt: string | null;
   lastValidationError: string | null;
+  groupStrategy: RoleRoomWhatsAppGroupStrategy;
+  defaultGroupInviteLink: string | null;
+  defaultGroupName: string | null;
+  defaultGroupAdminEmail: string | null;
 }
 
 export interface RoleRoomWhatsAppHealth {
@@ -2701,6 +2707,27 @@ export const roleRoomWhatsAppApi = {
       { method: 'PUT', body: JSON.stringify(payload) },
     );
     return result.config;
+  },
+
+  updateGroupDefaults: async (payload: {
+    orgKey: string;
+    groupStrategy?: RoleRoomWhatsAppGroupStrategy;
+    defaultGroupInviteLink?: string | null;
+    defaultGroupName?: string | null;
+    defaultGroupAdminEmail?: string | null;
+  }): Promise<RoleRoomWhatsAppConfig | null> => {
+    const result = await apiRequest<{
+      success: boolean;
+      config: RoleRoomWhatsAppConfig | null;
+      error?: string;
+    }>(
+      '/whatsapp/group-defaults',
+      { method: 'PUT', body: JSON.stringify(payload) },
+    );
+    if (!result.success) {
+      throw new Error(result.error ?? 'Kunne ikke lagre gruppe-standard');
+    }
+    return result.config ?? null;
   },
 
   triggerTeamInviteSweep: async (): Promise<unknown> => (

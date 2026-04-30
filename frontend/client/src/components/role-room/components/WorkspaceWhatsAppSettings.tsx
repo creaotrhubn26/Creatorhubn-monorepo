@@ -5,7 +5,12 @@ import {
   Button,
   Chip,
   CircularProgress,
+  FormControl,
+  FormControlLabel,
+  Radio,
+  RadioGroup,
   Stack,
+  TextField,
   Tooltip,
   Typography,
 } from '@mui/material';
@@ -15,10 +20,13 @@ import {
   ErrorOutline as ErrorOutlineIcon,
   LinkOff as LinkOffIcon,
   Refresh as RefreshIcon,
+  Groups as GroupsIcon,
+  Save as SaveIcon,
 } from '@mui/icons-material';
 import {
   roleRoomWhatsAppApi,
   type RoleRoomWhatsAppConfig,
+  type RoleRoomWhatsAppGroupStrategy,
   type RoleRoomWhatsAppHealth,
 } from '../services/castingApiService';
 import ConnectWhatsAppDialog from './ConnectWhatsAppDialog';
@@ -68,6 +76,14 @@ const WorkspaceWhatsAppSettings: FC<WorkspaceWhatsAppSettingsProps> = ({ orgKey 
   const [error, setError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
 
+  // Group-strategy form state
+  const [groupStrategy, setGroupStrategy] = useState<RoleRoomWhatsAppGroupStrategy>('workspace');
+  const [groupInviteLink, setGroupInviteLink] = useState('');
+  const [groupName, setGroupName] = useState('');
+  const [groupSaving, setGroupSaving] = useState(false);
+  const [groupSavedAt, setGroupSavedAt] = useState<string | null>(null);
+  const [groupError, setGroupError] = useState<string | null>(null);
+
   const load = useCallback(
     async (mode: 'initial' | 'refresh') => {
       if (!orgKey) {
@@ -85,6 +101,11 @@ const WorkspaceWhatsAppSettings: FC<WorkspaceWhatsAppSettingsProps> = ({ orgKey 
         ]);
         setConfig(cfg);
         setHealth(hlt);
+        if (cfg) {
+          setGroupStrategy(cfg.groupStrategy);
+          setGroupInviteLink(cfg.defaultGroupInviteLink ?? '');
+          setGroupName(cfg.defaultGroupName ?? '');
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Kunne ikke hente WhatsApp-status');
       } finally {
@@ -98,6 +119,35 @@ const WorkspaceWhatsAppSettings: FC<WorkspaceWhatsAppSettingsProps> = ({ orgKey 
   useEffect(() => {
     void load('initial');
   }, [load]);
+
+  const handleSaveGroup = async () => {
+    if (!orgKey) return;
+    if (groupStrategy === 'workspace' && groupInviteLink.trim() === '') {
+      setGroupError('Lim inn invite-lenken når strategi er workspace.');
+      return;
+    }
+    setGroupSaving(true);
+    setGroupError(null);
+    try {
+      const updated = await roleRoomWhatsAppApi.updateGroupDefaults({
+        orgKey,
+        groupStrategy,
+        defaultGroupInviteLink:
+          groupStrategy === 'workspace' && groupInviteLink.trim()
+            ? groupInviteLink.trim()
+            : groupStrategy === 'per_project'
+              ? null
+              : groupInviteLink.trim(),
+        defaultGroupName: groupName.trim() ? groupName.trim() : null,
+      });
+      setConfig(updated);
+      setGroupSavedAt(new Date().toISOString());
+    } catch (err) {
+      setGroupError(err instanceof Error ? err.message : 'Lagring feilet');
+    } finally {
+      setGroupSaving(false);
+    }
+  };
 
   const handleDisconnect = async () => {
     if (!orgKey) return;
@@ -254,6 +304,105 @@ const WorkspaceWhatsAppSettings: FC<WorkspaceWhatsAppSettingsProps> = ({ orgKey 
                 Koble fra
               </Button>
             </Stack>
+
+            {/* ── Produksjonsteam-gruppe-strategi ───────────────────────── */}
+            <Box sx={{ pt: 1.5, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+              <Stack direction="row" spacing={1} alignItems="center" sx={{ pt: 1.5, mb: 1.2 }}>
+                <GroupsIcon sx={{ color: '#7dd3fc', fontSize: 18 }} />
+                <Typography sx={{ fontWeight: 700 }}>Produksjonsteam-chat</Typography>
+              </Stack>
+              <Typography sx={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.7)', mb: 1.5, lineHeight: 1.55 }}>
+                Velg om alle prosjekt deler én WhatsApp-gruppe, eller om hvert prosjekt har sin egen.
+                Crew som legges til prosjekt får automatisk WhatsApp-invitasjon.
+              </Typography>
+
+              <FormControl sx={{ mb: 1.5 }}>
+                <RadioGroup
+                  value={groupStrategy}
+                  onChange={(_, value) => setGroupStrategy(value as RoleRoomWhatsAppGroupStrategy)}
+                >
+                  <FormControlLabel
+                    value="workspace"
+                    control={<Radio size="small" sx={{ color: 'rgba(255,255,255,0.5)', '&.Mui-checked': { color: '#22c55e' } }} />}
+                    label={
+                      <Box>
+                        <Typography sx={{ fontSize: '0.9rem', fontWeight: 600 }}>Én sentral gruppe for hele teamet</Typography>
+                        <Typography sx={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.55)' }}>
+                          Alle crew på alle prosjekt inviteres til samme WhatsApp-gruppe. Lett å vedlikeholde.
+                        </Typography>
+                      </Box>
+                    }
+                  />
+                  <FormControlLabel
+                    value="per_project"
+                    control={<Radio size="small" sx={{ color: 'rgba(255,255,255,0.5)', '&.Mui-checked': { color: '#22c55e' } }} />}
+                    label={
+                      <Box>
+                        <Typography sx={{ fontSize: '0.9rem', fontWeight: 600 }}>Egen gruppe per prosjekt</Typography>
+                        <Typography sx={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.55)' }}>
+                          Hvert prosjekt har sin egen gruppe. Sett invite-lenke i hvert prosjekts innstillinger.
+                        </Typography>
+                      </Box>
+                    }
+                  />
+                </RadioGroup>
+              </FormControl>
+
+              {groupStrategy === 'workspace' ? (
+                <Stack spacing={1.2}>
+                  <TextField
+                    label="WhatsApp gruppe-invite-link"
+                    value={groupInviteLink}
+                    onChange={(e) => setGroupInviteLink(e.target.value)}
+                    placeholder="https://chat.whatsapp.com/AbCdEf123…"
+                    helperText="Lag gruppen i din egen WhatsApp først, hent deretter invite-lenken via Group info → Invite to group via link."
+                    fullWidth
+                    size="small"
+                    FormHelperTextProps={{ sx: { color: 'rgba(255,255,255,0.55)' } }}
+                    InputProps={{ sx: { color: '#f1f5f9' } }}
+                    InputLabelProps={{ sx: { color: 'rgba(255,255,255,0.7)' } }}
+                  />
+                  <TextField
+                    label="Gruppenavn (valgfritt)"
+                    value={groupName}
+                    onChange={(e) => setGroupName(e.target.value)}
+                    placeholder="The Role Room Production"
+                    fullWidth
+                    size="small"
+                    InputProps={{ sx: { color: '#f1f5f9' } }}
+                    InputLabelProps={{ sx: { color: 'rgba(255,255,255,0.7)' } }}
+                  />
+                </Stack>
+              ) : (
+                <Alert severity="info" sx={{ bgcolor: 'rgba(125,211,252,0.08)', color: '#bfdbfe' }}>
+                  Per-prosjekt-modus aktiv. Sett invite-lenke individuelt i hvert prosjekts innstillinger.
+                </Alert>
+              )}
+
+              {groupError ? (
+                <Alert severity="error" sx={{ mt: 1, bgcolor: 'rgba(248,113,113,0.1)', color: '#fecaca' }}>
+                  {groupError}
+                </Alert>
+              ) : null}
+
+              <Stack direction="row" spacing={1} justifyContent="flex-end" sx={{ mt: 1.5 }}>
+                {groupSavedAt && !groupSaving ? (
+                  <Typography sx={{ fontSize: '0.78rem', color: '#86efac', alignSelf: 'center', mr: 1 }}>
+                    ✓ Lagret {relativeTime(groupSavedAt)}
+                  </Typography>
+                ) : null}
+                <Button
+                  variant="contained"
+                  size="small"
+                  onClick={handleSaveGroup}
+                  disabled={groupSaving}
+                  startIcon={groupSaving ? <CircularProgress size={12} sx={{ color: '#0f1729' }} /> : <SaveIcon fontSize="small" />}
+                  sx={{ bgcolor: '#22c55e', color: '#0f1729', fontWeight: 700, '&:hover': { bgcolor: '#34d399' } }}
+                >
+                  Lagre gruppe-strategi
+                </Button>
+              </Stack>
+            </Box>
           </Stack>
         ) : (
           <Stack spacing={1.2} sx={{ mt: 1.5 }}>

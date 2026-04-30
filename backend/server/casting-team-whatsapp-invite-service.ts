@@ -123,15 +123,68 @@ export interface DispatchTeamInviteResult {
   whatsappMessageId?: string;
 }
 
+async function resolveOrgKeyForProject(
+  pool: Pool,
+  projectId: string,
+): Promise<string | null> {
+  try {
+    const result = await pool.query<{ email: string | null }>(
+      `SELECT LOWER(COALESCE(u.email, '')) AS email
+         FROM casting_projects cp
+         LEFT JOIN users u ON u.id::text = cp.created_by
+        WHERE cp.id = $1
+        LIMIT 1`,
+      [projectId],
+    );
+    return result.rows[0]?.email?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function dispatchTeamWhatsAppInvite(
   input: DispatchTeamInviteInput,
 ): Promise<DispatchTeamInviteResult> {
-  const groupConfig = await getProjectGroupConfig(input.pool, input.projectId);
+  let groupConfig = await getProjectGroupConfig(input.pool, input.projectId);
+
+  // Hvis prosjektet ikke har egen gruppe, sjekk om bedriften har
+  // workspace-default som dekker det
+  let resolvedInviteLink: string | null = groupConfig?.groupInviteLink ?? null;
+  let resolvedAutoInvite: boolean = groupConfig?.autoInviteEnabled ?? true;
+  let effectiveOrgKey: string | null = groupConfig?.orgKey ?? null;
+
   if (!groupConfig) {
-    return { status: "skipped", reason: "no_group_config" };
+    const orgKey = await resolveOrgKeyForProject(input.pool, input.projectId);
+    if (!orgKey) {
+      return { status: "skipped", reason: "no_org_key" };
+    }
+    effectiveOrgKey = orgKey;
+    const orgRow = await input.pool.query<{
+      group_strategy: string | null;
+      default_group_invite_link: string | null;
+    }>(
+      `SELECT group_strategy, default_group_invite_link
+         FROM role_room_org_whatsapp_config
+        WHERE org_key = $1 LIMIT 1`,
+      [orgKey],
+    );
+    const org = orgRow.rows[0];
+    if (
+      !org ||
+      org.group_strategy !== "workspace" ||
+      !org.default_group_invite_link
+    ) {
+      return { status: "skipped", reason: "no_group_config" };
+    }
+    resolvedInviteLink = org.default_group_invite_link;
+    resolvedAutoInvite = true;
   }
-  if (!groupConfig.autoInviteEnabled) {
+
+  if (!resolvedAutoInvite) {
     return { status: "skipped", reason: "auto_invite_disabled" };
+  }
+  if (!resolvedInviteLink) {
+    return { status: "skipped", reason: "no_group_config" };
   }
   if (!input.recipientPhone) {
     return { status: "skipped", reason: "no_phone" };
@@ -144,8 +197,8 @@ export async function dispatchTeamWhatsAppInvite(
   const projectName = projectResult.rows[0]?.name ?? input.projectId;
 
   let senderConfig: WhatsAppOrgConfig | { fallback: true } | null = null;
-  if (groupConfig.orgKey) {
-    senderConfig = await getWhatsAppOrgConfig(input.pool, groupConfig.orgKey);
+  if (effectiveOrgKey) {
+    senderConfig = await getWhatsAppOrgConfig(input.pool, effectiveOrgKey);
   }
   let runtimeConfig: {
     accessToken: string;
@@ -197,7 +250,7 @@ export async function dispatchTeamWhatsAppInvite(
     to: input.recipientPhone,
     recipientName: input.recipientName,
     projectName,
-    inviteLink: groupConfig.groupInviteLink,
+    inviteLink: resolvedInviteLink,
     templateName: TEAM_INVITE_TEMPLATE_NAME,
     fetchImpl: input.fetchImpl,
   });
@@ -279,6 +332,9 @@ export async function runTeamInviteSweep(
 
   const task = (async () => {
     try {
+      // Scanner alle crew med telefon — dispatchTeamWhatsAppInvite
+      // sjekker selv om project-spesifikk eller workspace-default-gruppe
+      // dekker, og returnerer skipped hvis ingen.
       const result = await deps.pool.query<{
         crew_id: string;
         project_id: string;
@@ -293,17 +349,15 @@ export async function runTeamInviteSweep(
            cc.phone       AS crew_phone,
            cc.email       AS crew_email
          FROM casting_crew cc
-         INNER JOIN casting_project_whatsapp_group g ON g.project_id = cc.project_id
          LEFT JOIN casting_team_whatsapp_invites i
            ON i.project_id = cc.project_id AND i.crew_id = cc.id
-         WHERE g.auto_invite_enabled = TRUE
-           AND cc.phone IS NOT NULL
+         WHERE cc.phone IS NOT NULL
            AND cc.phone <> ''
            AND (
              i.id IS NULL
              OR (i.delivery_status = 'failed' AND i.retry_count < 3)
            )
-         LIMIT 100`,
+         LIMIT 200`,
       );
       summary.scanned = result.rows.length;
 

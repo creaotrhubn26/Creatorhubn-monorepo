@@ -9,6 +9,8 @@ import type { Pool } from "pg";
 
 const META_GRAPH_VERSION = "v22.0";
 
+export type WhatsAppGroupStrategy = "workspace" | "per_project";
+
 export interface WhatsAppOrgConfig {
   orgKey: string;
   businessAccountId: string;
@@ -21,6 +23,10 @@ export interface WhatsAppOrgConfig {
   configuredByUserId: string | null;
   lastValidatedAt: string | null;
   lastValidationError: string | null;
+  groupStrategy: WhatsAppGroupStrategy;
+  defaultGroupInviteLink: string | null;
+  defaultGroupName: string | null;
+  defaultGroupAdminEmail: string | null;
 }
 
 interface RawRow {
@@ -35,6 +41,10 @@ interface RawRow {
   configured_by_user_id: string | null;
   last_validated_at: string | null;
   last_validation_error: string | null;
+  group_strategy: string | null;
+  default_group_invite_link: string | null;
+  default_group_name: string | null;
+  default_group_admin_email: string | null;
 }
 
 function deriveEncryptionKey(): Buffer | null {
@@ -86,6 +96,7 @@ export function decryptWhatsAppToken(value: string | null | undefined): string |
 function rowToConfig(row: RawRow): WhatsAppOrgConfig | null {
   const accessToken = decryptWhatsAppToken(row.access_token_encrypted);
   if (!accessToken) return null;
+  const strategy = (row.group_strategy === "per_project" ? "per_project" : "workspace") as WhatsAppGroupStrategy;
   return {
     orgKey: row.org_key,
     businessAccountId: row.business_account_id,
@@ -98,6 +109,10 @@ function rowToConfig(row: RawRow): WhatsAppOrgConfig | null {
     configuredByUserId: row.configured_by_user_id,
     lastValidatedAt: row.last_validated_at,
     lastValidationError: row.last_validation_error,
+    groupStrategy: strategy,
+    defaultGroupInviteLink: row.default_group_invite_link,
+    defaultGroupName: row.default_group_name,
+    defaultGroupAdminEmail: row.default_group_admin_email,
   };
 }
 
@@ -113,17 +128,23 @@ export async function getWhatsAppOrgConfig(
   return row ? rowToConfig(row) : null;
 }
 
-export async function getWhatsAppOrgConfigSafe(
-  pool: Pool,
-  orgKey: string,
-): Promise<{
+export interface SafeWhatsAppOrgConfig {
   hasConfig: boolean;
   displayName: string | null;
   phoneNumberMasked: string | null;
   templateLanguage: string | null;
   lastValidatedAt: string | null;
   lastValidationError: string | null;
-}> {
+  groupStrategy: WhatsAppGroupStrategy;
+  defaultGroupInviteLink: string | null;
+  defaultGroupName: string | null;
+  defaultGroupAdminEmail: string | null;
+}
+
+export async function getWhatsAppOrgConfigSafe(
+  pool: Pool,
+  orgKey: string,
+): Promise<SafeWhatsAppOrgConfig> {
   const result = await pool.query<RawRow>(
     `SELECT * FROM role_room_org_whatsapp_config WHERE org_key = $1 LIMIT 1`,
     [orgKey],
@@ -137,8 +158,13 @@ export async function getWhatsAppOrgConfigSafe(
       templateLanguage: null,
       lastValidatedAt: null,
       lastValidationError: null,
+      groupStrategy: "workspace",
+      defaultGroupInviteLink: null,
+      defaultGroupName: null,
+      defaultGroupAdminEmail: null,
     };
   }
+  const strategy = (row.group_strategy === "per_project" ? "per_project" : "workspace") as WhatsAppGroupStrategy;
   return {
     hasConfig: true,
     displayName: row.display_name,
@@ -146,6 +172,10 @@ export async function getWhatsAppOrgConfigSafe(
     templateLanguage: row.template_language,
     lastValidatedAt: row.last_validated_at,
     lastValidationError: row.last_validation_error,
+    groupStrategy: strategy,
+    defaultGroupInviteLink: row.default_group_invite_link,
+    defaultGroupName: row.default_group_name,
+    defaultGroupAdminEmail: row.default_group_admin_email,
   };
 }
 
@@ -278,5 +308,64 @@ export async function deleteWhatsAppOrgConfig(
   await pool.query(
     `DELETE FROM role_room_org_whatsapp_config WHERE org_key = $1`,
     [orgKey],
+  );
+}
+
+export interface UpdateGroupDefaultsInput {
+  orgKey: string;
+  groupStrategy?: WhatsAppGroupStrategy;
+  defaultGroupInviteLink?: string | null;
+  defaultGroupName?: string | null;
+  defaultGroupAdminEmail?: string | null;
+}
+
+export async function updateOrgGroupDefaults(
+  pool: Pool,
+  input: UpdateGroupDefaultsInput,
+): Promise<void> {
+  if (
+    input.defaultGroupInviteLink !== undefined &&
+    input.defaultGroupInviteLink !== null &&
+    input.defaultGroupInviteLink.trim().length > 0 &&
+    !/^https:\/\/chat\.whatsapp\.com\/[A-Za-z0-9]+$/.test(
+      input.defaultGroupInviteLink.trim(),
+    )
+  ) {
+    throw new Error("invalid_invite_link");
+  }
+
+  await pool.query(
+    `UPDATE role_room_org_whatsapp_config
+       SET group_strategy           = COALESCE($2, group_strategy),
+           default_group_invite_link = CASE WHEN $3::text = '__null__' THEN NULL
+                                            WHEN $3 IS NULL THEN default_group_invite_link
+                                            ELSE $3 END,
+           default_group_name        = CASE WHEN $4::text = '__null__' THEN NULL
+                                            WHEN $4 IS NULL THEN default_group_name
+                                            ELSE $4 END,
+           default_group_admin_email = CASE WHEN $5::text = '__null__' THEN NULL
+                                            WHEN $5 IS NULL THEN default_group_admin_email
+                                            ELSE $5 END,
+           updated_at                = NOW()
+     WHERE org_key = $1`,
+    [
+      input.orgKey,
+      input.groupStrategy ?? null,
+      input.defaultGroupInviteLink === null
+        ? "__null__"
+        : input.defaultGroupInviteLink === undefined
+          ? null
+          : input.defaultGroupInviteLink.trim(),
+      input.defaultGroupName === null
+        ? "__null__"
+        : input.defaultGroupName === undefined
+          ? null
+          : input.defaultGroupName,
+      input.defaultGroupAdminEmail === null
+        ? "__null__"
+        : input.defaultGroupAdminEmail === undefined
+          ? null
+          : input.defaultGroupAdminEmail,
+    ],
   );
 }

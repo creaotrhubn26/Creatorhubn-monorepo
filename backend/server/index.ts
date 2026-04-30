@@ -71,6 +71,7 @@ import {
   getWhatsAppOrgConfigSafe,
   deleteWhatsAppOrgConfig,
   pingWhatsAppPhoneNumber,
+  updateOrgGroupDefaults,
 } from "./role-room-whatsapp-config-service.js";
 import { persistWebhookEvents } from "./role-room-whatsapp-events-service.js";
 import { createCaptureRouter } from "./capture-routes.js";
@@ -39649,6 +39650,55 @@ app.get("/api/role-room/whatsapp/health", async (req, res) => {
   } catch (error) {
     console.error("WhatsApp health failed:", error);
     return res.status(500).json({ error: "Kunne ikke hente WhatsApp-helse." });
+  }
+});
+
+app.put("/api/role-room/whatsapp/group-defaults", async (req, res) => {
+  if (!requireAdminSession(req, res)) return;
+  const body = (req.body || {}) as Record<string, unknown>;
+  const orgKey = String(body.orgKey || "").trim();
+  if (!orgKey) return res.status(400).json({ error: "orgKey er påkrevd." });
+  const groupStrategy =
+    body.groupStrategy === "per_project" || body.groupStrategy === "workspace"
+      ? body.groupStrategy
+      : undefined;
+  const defaultGroupInviteLink =
+    body.defaultGroupInviteLink === null
+      ? null
+      : typeof body.defaultGroupInviteLink === "string"
+        ? body.defaultGroupInviteLink
+        : undefined;
+  const defaultGroupName =
+    body.defaultGroupName === null
+      ? null
+      : typeof body.defaultGroupName === "string"
+        ? body.defaultGroupName
+        : undefined;
+  const defaultGroupAdminEmail =
+    body.defaultGroupAdminEmail === null
+      ? null
+      : typeof body.defaultGroupAdminEmail === "string"
+        ? body.defaultGroupAdminEmail
+        : undefined;
+  try {
+    await updateOrgGroupDefaults(pool, {
+      orgKey,
+      groupStrategy,
+      defaultGroupInviteLink,
+      defaultGroupName,
+      defaultGroupAdminEmail,
+    });
+    const safe = await getWhatsAppOrgConfigSafe(pool, orgKey);
+    return res.json({ success: true, config: safe });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    if (msg === "invalid_invite_link") {
+      return res.status(400).json({
+        error: "Ugyldig invite-lenke. Forventer https://chat.whatsapp.com/<kode>.",
+      });
+    }
+    console.error("WhatsApp group-defaults PUT failed:", error);
+    return res.status(500).json({ error: "Kunne ikke lagre gruppe-standard." });
   }
 });
 
