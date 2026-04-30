@@ -109,6 +109,7 @@ import {
   Palette as ArtDeptIcon,
   Checkroom as WardrobeDeptIcon,
   Category as OtherDeptIcon,
+  WhatsApp as WhatsAppIcon,
 } from '@mui/icons-material';
 import settingsService from '../services/settingsService';
 import globalTagService from '../services/globalTagService';
@@ -125,6 +126,7 @@ import type { CrewMember, CrewRole, CrewStatus, ProductionDay, SceneBreakdown, C
 import { castingService } from '../services/castingService';
 import { useToast } from './ToastStack';
 import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
+import ProjectWhatsAppGroupDialog from './ProjectWhatsAppGroupDialog';
 import { CallSheetGenerator } from './CallSheetGenerator';
 import { detectConflicts, getCrewOfflineQueueStorageKey } from '../hooks/useCrewData';
 import { useAuth } from '../../../hooks/useAuth';
@@ -1066,6 +1068,7 @@ export function CrewManagementPanel({
   // Core state
   const [crewMembers, setCrewMembers] = useState<CrewMember[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [whatsAppGroupDialogOpen, setWhatsAppGroupDialogOpen] = useState(false);
   const mentionCandidates = useMemo(
     () =>
       crewMembers
@@ -2888,6 +2891,21 @@ export function CrewManagementPanel({
 
         {/* Header actions */}
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+          <Button
+            variant="outlined"
+            size="small"
+            onClick={() => setWhatsAppGroupDialogOpen(true)}
+            startIcon={<WhatsAppIcon sx={{ color: '#22c55e' }} />}
+            sx={{
+              minHeight: 34,
+              color: '#86efac',
+              borderColor: 'rgba(34,197,94,0.4)',
+              bgcolor: 'rgba(34,197,94,0.06)',
+              '&:hover': { bgcolor: 'rgba(34,197,94,0.12)', borderColor: '#22c55e' },
+            }}
+          >
+            WhatsApp-gruppe
+          </Button>
           <Button
             variant={workspaceView === 'standard' ? 'contained' : 'outlined'}
             size="small"
@@ -4818,6 +4836,13 @@ export function CrewManagementPanel({
         onInvite={handleInviteCrew}
         getRoleLabel={getRoleLabel}
         crewRoles={crewRoles}
+      />
+
+      {/* ── PROJECT WHATSAPP GROUP DIALOG ── */}
+      <ProjectWhatsAppGroupDialog
+        open={whatsAppGroupDialogOpen}
+        projectId={projectId}
+        onClose={() => setWhatsAppGroupDialogOpen(false)}
       />
 
       {/* ── ASSIGN TO SHOOT DAY DIALOG ── */}
