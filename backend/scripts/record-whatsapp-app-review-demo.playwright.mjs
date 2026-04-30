@@ -58,6 +58,15 @@ const DEFAULT_APP_BASE = 'https://creatorhub-backend-rtbl.onrender.com';
 const HEADLESS = process.env.HEADLESS === '1';
 const VIEWPORT = { width: 1440, height: 900 };
 
+// USE_USER_CHROME=1: bruk Daniels eksisterende Chrome-profil med
+// daniel@creatorhubn.com allerede innlogget. Krever at Chrome er
+// HELT lukket (cmd+Q), ellers låser profilen og Playwright feiler.
+const USE_USER_CHROME = process.env.USE_USER_CHROME === '1';
+const USER_CHROME_PROFILE =
+  process.env.CHROME_PROFILE_PATH ||
+  `${process.env.HOME}/Library/Application Support/Google/Chrome`;
+const USER_CHROME_PROFILE_DIR = process.env.CHROME_PROFILE_DIR || 'Default';
+
 // ── Utilities ─────────────────────────────────────────────────────────────
 
 const rl = readline.createInterface({ input, output });
@@ -78,6 +87,7 @@ async function loadEnv() {
     WHATSAPP_PHONE_NUMBER_ID: process.env.WHATSAPP_PHONE_NUMBER_ID || '',
     WHATSAPP_BUSINESS_ACCOUNT_ID: process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || '',
     DEMO_RECIPIENT_PHONE_E164: process.env.DEMO_RECIPIENT_PHONE_E164 || '',
+    WHATSAPP_DEMO_BYPASS_TOKEN: process.env.WHATSAPP_DEMO_BYPASS_TOKEN || '',
   };
   try {
     const raw = await fs.readFile(ENV_FILE, 'utf8');
@@ -100,8 +110,15 @@ async function saveEnv(env) {
     `WHATSAPP_PHONE_NUMBER_ID=${env.WHATSAPP_PHONE_NUMBER_ID}`,
     `WHATSAPP_BUSINESS_ACCOUNT_ID=${env.WHATSAPP_BUSINESS_ACCOUNT_ID}`,
     `DEMO_RECIPIENT_PHONE_E164=${env.DEMO_RECIPIENT_PHONE_E164}`,
+    `WHATSAPP_DEMO_BYPASS_TOKEN=${env.WHATSAPP_DEMO_BYPASS_TOKEN}`,
   ];
   await fs.writeFile(ENV_FILE, lines.join('\n') + '\n', { mode: 0o600 });
+}
+
+function appendBypassToken(url, token) {
+  if (!token) return url;
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}token=${encodeURIComponent(token)}`;
 }
 
 async function loadState(filepath) {
@@ -110,6 +127,45 @@ async function loadState(filepath) {
     return filepath;
   } catch {
     return undefined;
+  }
+}
+
+/**
+ * Returnerer { context, browser?, ownsBrowser } basert på modus:
+ * - USE_USER_CHROME=1 → launchPersistentContext med Daniels Chrome-profil
+ * - default → launch + newContext med saved storage state
+ */
+async function openBrowser(opts) {
+  if (USE_USER_CHROME) {
+    log(`Using existing Chrome profile: ${USER_CHROME_PROFILE} (profile-directory=${USER_CHROME_PROFILE_DIR})`);
+    log('NOTE: Chrome must be FULLY quit (cmd+Q) before running, or this will fail with "profile locked".');
+    const context = await chromium.launchPersistentContext(USER_CHROME_PROFILE, {
+      headless: HEADLESS,
+      args: [
+        '--no-sandbox',
+        `--profile-directory=${USER_CHROME_PROFILE_DIR}`,
+        '--disable-blink-features=AutomationControlled',
+      ],
+      locale: 'en-US',
+      viewport: VIEWPORT,
+      recordVideo: { dir: VIDEO_DIR, size: VIEWPORT },
+    });
+    return { context, browser: null, ownsBrowser: false };
+  }
+  const browser = await chromium.launch({ headless: HEADLESS, args: ['--no-sandbox'] });
+  const context = await browser.newContext({
+    storageState: await loadState(opts.storageStatePath),
+    locale: 'en-US',
+    viewport: VIEWPORT,
+    recordVideo: { dir: VIDEO_DIR, size: VIEWPORT },
+  });
+  return { context, browser, ownsBrowser: true };
+}
+
+async function closeBrowserBundle(bundle) {
+  await bundle.context.close().catch(() => {});
+  if (bundle.ownsBrowser && bundle.browser) {
+    await bundle.browser.close().catch(() => {});
   }
 }
 
@@ -229,14 +285,9 @@ async function unspotlight(page) {
 async function recordMessagingDemo(env) {
   log('=== Video 1: whatsapp_business_messaging ===');
 
-  const browser = await chromium.launch({ headless: HEADLESS, args: ['--no-sandbox'] });
-  const context = await browser.newContext({
-    storageState: await loadState(ROLE_ROOM_STATE),
-    locale: 'en-US',
-    viewport: VIEWPORT,
-    recordVideo: { dir: VIDEO_DIR, size: VIEWPORT },
-  });
-  const page = await context.newPage();
+  const bundle = await openBrowser({ storageStatePath: ROLE_ROOM_STATE });
+  const { context } = bundle;
+  const page = context.pages()[0] || await context.newPage();
 
   page.on('console', (msg) => {
     if (['error', 'warning'].includes(msg.type())) {
@@ -246,8 +297,11 @@ async function recordMessagingDemo(env) {
 
   let videoPath = null;
   try {
-    const demoUrl = `${env.APP_BASE_URL}/admin/whatsapp-app-review-demo`;
-    log(`Opening demo page: ${demoUrl}`);
+    const demoUrl = appendBypassToken(
+      `${env.APP_BASE_URL}/admin/whatsapp-app-review-demo`,
+      env.WHATSAPP_DEMO_BYPASS_TOKEN,
+    );
+    log(`Opening demo page: ${demoUrl.replace(/token=[^&]+/, 'token=***')}`);
     await page.goto(demoUrl, { waitUntil: 'domcontentloaded' });
 
     // If we get redirected to login, wait for operator
@@ -333,8 +387,11 @@ async function recordMessagingDemo(env) {
     await showCaption(page, 'Step 5 of 5', 'Switching back to The Role Room — the candidate reply lands in the casting director inbox in real time via webhook.');
     await beat(page, 2500);
 
-    const inboxUrl = `${env.APP_BASE_URL}/admin/whatsapp-inbox`;
-    log(`Opening inbox: ${inboxUrl}`);
+    const inboxUrl = appendBypassToken(
+      `${env.APP_BASE_URL}/admin/whatsapp-inbox`,
+      env.WHATSAPP_DEMO_BYPASS_TOKEN,
+    );
+    log(`Opening inbox: ${inboxUrl.replace(/token=[^&]+/, 'token=***')}`);
     await page.goto(inboxUrl, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('[data-testid="whatsapp-inbox-root"]', { timeout: 30_000 });
     await beat(page, 1500);
@@ -360,10 +417,11 @@ async function recordMessagingDemo(env) {
     await page.screenshot({ path: path.join(VIDEO_DIR, `messaging-fail-${Date.now()}.png`), fullPage: true }).catch(() => {});
     if (!HEADLESS) await page.waitForTimeout(20_000);
   } finally {
-    videoPath = await page.video()?.path();
-    await context.storageState({ path: ROLE_ROOM_STATE }).catch(() => {});
-    await context.close();
-    await browser.close();
+    try { videoPath = await page.video()?.path(); } catch {}
+    if (!USE_USER_CHROME) {
+      await context.storageState({ path: ROLE_ROOM_STATE }).catch(() => {});
+    }
+    await closeBrowserBundle(bundle);
   }
 
   if (videoPath) {
@@ -384,19 +442,17 @@ async function recordMessagingDemo(env) {
 async function recordTemplateDemo(env) {
   log('=== Video 2: whatsapp_business_management ===');
 
-  const browser = await chromium.launch({ headless: HEADLESS, args: ['--no-sandbox'] });
-  const context = await browser.newContext({
-    storageState: await loadState(ROLE_ROOM_STATE),
-    locale: 'en-US',
-    viewport: VIEWPORT,
-    recordVideo: { dir: VIDEO_DIR, size: VIEWPORT },
-  });
-  const page = await context.newPage();
+  const bundle = await openBrowser({ storageStatePath: ROLE_ROOM_STATE });
+  const { context } = bundle;
+  const page = context.pages()[0] || await context.newPage();
 
   let videoPath = null;
   try {
-    const tplUrl = `${env.APP_BASE_URL}/admin/whatsapp-create-template`;
-    log(`Opening template-create page: ${tplUrl}`);
+    const tplUrl = appendBypassToken(
+      `${env.APP_BASE_URL}/admin/whatsapp-create-template`,
+      env.WHATSAPP_DEMO_BYPASS_TOKEN,
+    );
+    log(`Opening template-create page: ${tplUrl.replace(/token=[^&]+/, 'token=***')}`);
     await page.goto(tplUrl, { waitUntil: 'domcontentloaded' });
 
     if (!page.url().includes('whatsapp-create-template')) {
@@ -505,10 +561,11 @@ async function recordTemplateDemo(env) {
     await page.screenshot({ path: path.join(VIDEO_DIR, `template-fail-${Date.now()}.png`), fullPage: true }).catch(() => {});
     if (!HEADLESS) await page.waitForTimeout(20_000);
   } finally {
-    videoPath = await page.video()?.path();
-    await context.storageState({ path: ROLE_ROOM_STATE }).catch(() => {});
-    await context.close();
-    await browser.close();
+    try { videoPath = await page.video()?.path(); } catch {}
+    if (!USE_USER_CHROME) {
+      await context.storageState({ path: ROLE_ROOM_STATE }).catch(() => {});
+    }
+    await closeBrowserBundle(bundle);
   }
 
   if (videoPath) {
@@ -546,6 +603,17 @@ async function recordTemplateDemo(env) {
   if (!env.DEMO_RECIPIENT_PHONE_E164) {
     env.DEMO_RECIPIENT_PHONE_E164 = (
       await ask('Recipient phone in E.164 (your verified test number): ')
+    ).trim();
+  }
+  if (!env.WHATSAPP_DEMO_BYPASS_TOKEN) {
+    console.log(
+      '\nDemo bypass-token (matches WHATSAPP_DEMO_BYPASS_TOKEN i Render).',
+    );
+    console.log(
+      'La tom hvis du IKKE har satt env-varen — da må du logge inn manuelt i Playwright-Chrome.',
+    );
+    env.WHATSAPP_DEMO_BYPASS_TOKEN = (
+      await ask('Demo bypass token (or empty): ')
     ).trim();
   }
   if (!env.APP_BASE_URL) env.APP_BASE_URL = DEFAULT_APP_BASE;

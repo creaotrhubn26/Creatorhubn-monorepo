@@ -39783,7 +39783,7 @@ app.get("/api/role-room/whatsapp/team-invite/status", async (req, res) => {
 // Krever admin-session, tar phone + accessToken + phoneNumberId i body
 // så reviewer ser at appen vår er det som faktisk kaller Meta.
 app.post("/api/role-room/whatsapp/test-send", async (req, res) => {
-  if (!requireAdminSession(req, res)) return;
+  if (!requireAdminOrDemoBypass(req, res)) return;
   const body = (req.body || {}) as Record<string, unknown>;
   const to = String(body.to || "").trim();
   const accessToken =
@@ -39852,11 +39852,34 @@ app.post("/api/role-room/whatsapp/test-send", async (req, res) => {
   }
 });
 
+// App Review demo bypass: når WHATSAPP_DEMO_BYPASS_TOKEN env-var er satt
+// og request har ?token=<den-verdien>, hopper vi over admin-auth-en.
+// Brukes KUN av Playwright-recordingen for App Review. Sett én sterk
+// random verdi i Render og fjern env-varen igjen etter godkjenning.
+function isDemoBypassed(req: express.Request): boolean {
+  const expected = (process.env.WHATSAPP_DEMO_BYPASS_TOKEN || "").trim();
+  if (!expected) return false;
+  const provided =
+    String(req.query?.token || "").trim() ||
+    (typeof req.headers["x-demo-token"] === "string"
+      ? (req.headers["x-demo-token"] as string).trim()
+      : "");
+  return provided === expected;
+}
+
+function requireAdminOrDemoBypass(
+  req: express.Request,
+  res: express.Response,
+): boolean {
+  if (isDemoBypassed(req)) return true;
+  return Boolean(requireAdminSession(req, res));
+}
+
 // App Review demo: inbox-API for incoming WhatsApp-meldinger.
 // Brukes av Playwright-recordingen for å demonstrere send+receive-
 // loopen Meta krever for whatsapp_business_messaging.
 app.get("/api/role-room/whatsapp/inbox", async (req, res) => {
-  if (!requireAdminSession(req, res)) return;
+  if (!requireAdminOrDemoBypass(req, res)) return;
   try {
     const limit = Math.min(Number(req.query?.limit) || 25, 100);
     const result = await pool.query<{
@@ -39899,7 +39922,7 @@ app.get("/api/role-room/whatsapp/inbox", async (req, res) => {
 // App Review demo: create-template-API som POST'er til Meta Graph API.
 // Brukes av Playwright-recordingen for whatsapp_business_management.
 app.post("/api/role-room/whatsapp/create-template", async (req, res) => {
-  if (!requireAdminSession(req, res)) return;
+  if (!requireAdminOrDemoBypass(req, res)) return;
   const body = (req.body || {}) as Record<string, unknown>;
   const wabaId = String(body.wabaId || "").trim();
   const accessToken =
@@ -39961,7 +39984,7 @@ app.post("/api/role-room/whatsapp/create-template", async (req, res) => {
 
 // App Review demo: WhatsApp inbox-side. Self-contained admin HTML.
 app.get("/admin/whatsapp-inbox", async (req, res) => {
-  if (!requireAdminSession(req, res)) return;
+  if (!requireAdminOrDemoBypass(req, res)) return;
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.send(`<!doctype html>
 <html lang="en"><head>
@@ -40003,8 +40026,10 @@ app.get("/admin/whatsapp-inbox", async (req, res) => {
 <script>
 async function loadMessages() {
   const list = document.getElementById('message-list');
+  const tokenMatch = window.location.search.match(/[?&]token=([^&]+)/);
+  const tokenSuffix = tokenMatch ? '&token=' + tokenMatch[1] : '';
   try {
-    const resp = await fetch('/api/role-room/whatsapp/inbox?limit=25', { credentials: 'include' });
+    const resp = await fetch('/api/role-room/whatsapp/inbox?limit=25' + tokenSuffix, { credentials: 'include' });
     const data = await resp.json();
     const msgs = data.messages || [];
     if (!msgs.length) {
@@ -40033,7 +40058,7 @@ setInterval(loadMessages, 5000);
 
 // App Review demo: WhatsApp create-template-side. Self-contained admin HTML.
 app.get("/admin/whatsapp-create-template", async (req, res) => {
-  if (!requireAdminSession(req, res)) return;
+  if (!requireAdminOrDemoBypass(req, res)) return;
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.send(`<!doctype html>
 <html lang="en"><head>
@@ -40104,7 +40129,9 @@ $('submit-btn').addEventListener('click', async () => {
   btn.disabled = true;
   result.innerHTML = '<pre>⏳ Calling Meta Graph API: POST /message_templates…</pre>';
   try {
-    const resp = await fetch('/api/role-room/whatsapp/create-template', {
+    const tokenMatch = window.location.search.match(/[?&]token=([^&]+)/);
+    const tokenSuffix = tokenMatch ? '?token=' + tokenMatch[1] : '';
+    const resp = await fetch('/api/role-room/whatsapp/create-template' + tokenSuffix, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -40137,7 +40164,7 @@ $('submit-btn').addEventListener('click', async () => {
 // sender en WhatsApp-melding via Meta API". Brukes av Playwright-
 // recordingen til Meta App Review.
 app.get("/admin/whatsapp-app-review-demo", async (req, res) => {
-  if (!requireAdminSession(req, res)) return;
+  if (!requireAdminOrDemoBypass(req, res)) return;
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.send(`<!doctype html>
 <html lang="en"><head>
@@ -40187,7 +40214,9 @@ $('send-btn').addEventListener('click', async () => {
   btn.disabled = true;
   result.innerHTML = '<pre>⏳ Calling Meta WhatsApp Cloud API…</pre>';
   try {
-    const resp = await fetch('/api/role-room/whatsapp/test-send', {
+    const tokenMatch = window.location.search.match(/[?&]token=([^&]+)/);
+    const tokenSuffix = tokenMatch ? '?token=' + tokenMatch[1] : '';
+    const resp = await fetch('/api/role-room/whatsapp/test-send' + tokenSuffix, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
