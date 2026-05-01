@@ -39881,6 +39881,44 @@ function requireAdminOrDemoBypass(
 
 // Debug: ALLE events (ikke bare inbound). Brukes for å sjekke at
 // webhook fyrer ved status-updates / template-events / etc.
+// Inject syntetisk inbound-event for demo. Brukes når Meta sandbox-
+// test-nummer ikke fyrer webhooks. Henter samme persistensvei som ekte
+// webhook → inbox-side viser samme UI uten endring av handler-koden.
+app.post("/api/role-room/whatsapp/inject-test-inbound", async (req, res) => {
+  if (!requireAdminOrDemoBypass(req, res)) return;
+  const body = (req.body || {}) as Record<string, unknown>;
+  const fromNumber = String(body.from || "4797959294").trim();
+  const messageText = String(body.text || "Tusen takk for innkallingen — jeg kommer på audition!").trim();
+  const phoneNumberId = String(body.phoneNumberId || "1169284516262990").trim();
+  const wabaId = String(body.wabaId || "1526002049163077").trim();
+  const messageId = `wamid.demo${Date.now().toString(36)}`;
+
+  try {
+    await pool.query(
+      `INSERT INTO role_room_whatsapp_events
+         (event_field, event_subtype, waba_id, phone_number_id,
+          message_id, template_name, payload)
+       VALUES ('messages', 'inbound', $1, $2, $3, NULL, $4::jsonb)`,
+      [
+        wabaId,
+        phoneNumberId,
+        messageId,
+        JSON.stringify({
+          from: fromNumber,
+          id: messageId,
+          timestamp: String(Math.floor(Date.now() / 1000)),
+          type: "text",
+          text: { body: messageText },
+        }),
+      ],
+    );
+    return res.json({ success: true, messageId, text: messageText });
+  } catch (error) {
+    console.error("Inject inbound failed:", error);
+    return res.status(500).json({ error: "Kunne ikke injecte event." });
+  }
+});
+
 app.get("/api/role-room/whatsapp/events-debug", async (req, res) => {
   if (!requireAdminOrDemoBypass(req, res)) return;
   try {

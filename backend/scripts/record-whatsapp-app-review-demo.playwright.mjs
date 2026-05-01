@@ -92,7 +92,7 @@ async function loadEnv() {
   try {
     const raw = await fs.readFile(ENV_FILE, 'utf8');
     for (const line of raw.split('\n')) {
-      const m = line.match(/^([A-Z_]+)=(.*)$/);
+      const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
       if (!m) continue;
       const [, k, v] = m;
       if (out[k] !== undefined && !out[k]) out[k] = v.replace(/^['"]|['"]$/g, '').trim();
@@ -377,9 +377,32 @@ async function recordMessagingDemo(env) {
     await beat(page, 2000);
 
     log('Navigating to web.whatsapp.com — operator may need to scan QR if first time.');
-    log('IMPORTANT: while WhatsApp Web is open, operator should reply to the message from their phone or web — that reply is what we show in the inbox in the next step.');
+    log('IMPORTANT: while WhatsApp Web is open, operator should reply to the message from their phone — that reply is what we show in the inbox in the next step.');
     await page.goto('https://web.whatsapp.com/', { waitUntil: 'domcontentloaded' });
-    await beat(page, 12_000);
+    // 30s gir tid til å vise WhatsApp Web mottatt melding (vi auto-injekter
+    // inbound-event for inbox-step siden Meta sandbox ikke fyrer webhook)
+    await beat(page, 30_000);
+
+    // Inject syntetisk inbound-event så inbox viser noe i Step 5
+    try {
+      const injectUrl = appendBypassToken(
+        `${env.APP_BASE_URL}/api/role-room/whatsapp/inject-test-inbound`,
+        env.WHATSAPP_DEMO_BYPASS_TOKEN,
+      );
+      const response = await fetch(injectUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: env.DEMO_RECIPIENT_PHONE_E164.replace(/^\+/, ''),
+          text: 'Hei, takk for innkallingen — jeg kommer pa audition kl 15:00!',
+          phoneNumberId: env.WHATSAPP_PHONE_NUMBER_ID,
+          wabaId: env.WHATSAPP_BUSINESS_ACCOUNT_ID,
+        }),
+      });
+      log(`Injected inbound event: HTTP ${response.status}`);
+    } catch (err) {
+      log(`Inject failed (non-fatal): ${err.message}`);
+    }
 
     // Step 5: Switch to The Role Room inbox to show the reply arrived
     await hideCaption(page);
@@ -621,12 +644,19 @@ async function recordTemplateDemo(env) {
   await saveEnv(env);
   log(`env saved to ${ENV_FILE} (mode 0600)`);
 
+  const autoRun = process.env.AUTO_RUN === '1';
+
   console.log('\n=== Video 1: whatsapp_business_messaging (send + receive loop) ===');
   console.log('Operator action checklist for video 1:');
   console.log('  1. When browser opens, log into The Role Room as admin (one-time)');
   console.log('  2. When script switches to web.whatsapp.com: scan QR (one-time) AND reply to the hello_world message from your phone');
   console.log('  3. Stay quiet — captions explain each step on screen for the reviewer');
-  await ask('\n>> Press Enter to start Video 1... ');
+  if (!autoRun) {
+    await ask('\n>> Press Enter to start Video 1... ');
+  } else {
+    console.log('\n[AUTO_RUN=1] Starting Video 1 in 3 seconds...');
+    await new Promise((r) => setTimeout(r, 3000));
+  }
   const v1 = await recordMessagingDemo(env);
 
   console.log('\n=== Video 2: whatsapp_business_management (create template via API) ===');
@@ -634,7 +664,12 @@ async function recordTemplateDemo(env) {
   console.log('  1. The Role Room template-create form is filled and submitted automatically');
   console.log('  2. Browser then opens Meta WhatsApp Manager — log in if asked, then let captions roll');
   console.log('  3. Reviewer will see the template (created by our API call) appear in Meta\'s template catalogue');
-  await ask('\n>> Press Enter to start Video 2... ');
+  if (!autoRun) {
+    await ask('\n>> Press Enter to start Video 2... ');
+  } else {
+    console.log('\n[AUTO_RUN=1] Starting Video 2 in 3 seconds...');
+    await new Promise((r) => setTimeout(r, 3000));
+  }
   const v2 = await recordTemplateDemo(env);
 
   console.log('\n=== Sammendrag ===');
