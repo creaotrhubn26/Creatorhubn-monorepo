@@ -337,7 +337,8 @@ async function recordMessagingDemo(env) {
     await beat(page, 600);
     await page.locator('[data-testid="phone-number-id-input"]').fill(env.WHATSAPP_PHONE_NUMBER_ID);
     await beat(page, 600);
-    await page.locator('[data-testid="access-token-input"]').fill(env.META_APP_ACCESS_TOKEN);
+    // access-token-feltet fylles IKKE — backend bruker META_APP_ACCESS_TOKEN
+    // env-var. Unngår Playwright .fill() race-condition på lange tokens.
     await beat(page, 1200);
 
     await hideCaption(page);
@@ -511,7 +512,7 @@ async function recordTemplateDemo(env) {
 
     await page.locator('[data-testid="waba-id-input"]').fill(env.WHATSAPP_BUSINESS_ACCOUNT_ID);
     await beat(page, 500);
-    await page.locator('[data-testid="access-token-input"]').fill(env.META_APP_ACCESS_TOKEN);
+    // access-token-feltet fylles IKKE — backend bruker env-var-fallback
     await beat(page, 500);
 
     await hideCaption(page);

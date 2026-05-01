@@ -39889,8 +39889,21 @@ app.post("/api/role-room/whatsapp/inject-test-inbound", async (req, res) => {
   const body = (req.body || {}) as Record<string, unknown>;
   const fromNumber = String(body.from || "4797959294").trim();
   const messageText = String(body.text || "Tusen takk for innkallingen — jeg kommer på audition!").trim();
-  const phoneNumberId = String(body.phoneNumberId || "1169284516262990").trim();
-  const wabaId = String(body.wabaId || "1526002049163077").trim();
+  // WABA-ID + phone-number-id leses fra env hvis ikke spesifisert i body.
+  // Tidligere hardkodet, men det knyttet endepunktet til én spesifikk
+  // WABA — env-vars gjør det portabelt mellom dev/staging/prod.
+  const phoneNumberId =
+    (typeof body.phoneNumberId === "string" && body.phoneNumberId.trim()) ||
+    (process.env.WHATSAPP_PHONE_NUMBER_ID || "").trim();
+  const wabaId =
+    (typeof body.wabaId === "string" && body.wabaId.trim()) ||
+    (process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || "").trim();
+  if (!phoneNumberId || !wabaId) {
+    return res.status(400).json({
+      error:
+        "phoneNumberId og wabaId er påkrevd (kan settes i body, eller via WHATSAPP_PHONE_NUMBER_ID + WHATSAPP_BUSINESS_ACCOUNT_ID env-vars).",
+    });
+  }
   const messageId = `wamid.demo${Date.now().toString(36)}`;
 
   try {
@@ -39996,7 +40009,9 @@ app.get("/api/role-room/whatsapp/inbox", async (req, res) => {
 app.post("/api/role-room/whatsapp/create-template", async (req, res) => {
   if (!requireAdminOrDemoBypass(req, res)) return;
   const body = (req.body || {}) as Record<string, unknown>;
-  const wabaId = String(body.wabaId || "").trim();
+  const wabaId =
+    (typeof body.wabaId === "string" && body.wabaId.trim()) ||
+    (process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || "").trim();
   const accessToken =
     (typeof body.accessToken === "string" && body.accessToken.trim()) ||
     (process.env.META_APP_ACCESS_TOKEN || "").trim();
@@ -40007,7 +40022,9 @@ app.post("/api/role-room/whatsapp/create-template", async (req, res) => {
 
   if (!wabaId || !accessToken || !name || !bodyText) {
     return res.status(400).json({
-      error: "wabaId, accessToken, name og bodyText er påkrevd.",
+      error:
+        "wabaId, accessToken, name og bodyText er påkrevd " +
+        "(wabaId/accessToken kan også settes via WHATSAPP_BUSINESS_ACCOUNT_ID + META_APP_ACCESS_TOKEN env-vars).",
     });
   }
 
@@ -40123,7 +40140,10 @@ async function loadMessages() {
   }
 }
 loadMessages();
-setInterval(loadMessages, 5000);
+// Pause poll når fanen ikke er synlig (sparer Render-CPU + DB-queries
+// mens reviewer kanskje har fanen i bakgrunnen).
+setInterval(() => { if (!document.hidden) loadMessages(); }, 5000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) loadMessages(); });
 </script>
 </body></html>`);
 });
@@ -40131,6 +40151,17 @@ setInterval(loadMessages, 5000);
 // App Review demo: WhatsApp create-template-side. Self-contained admin HTML.
 app.get("/admin/whatsapp-create-template", async (req, res) => {
   if (!requireAdminOrDemoBypass(req, res)) return;
+  // I demo-bypass-modus erstatter vi access-token-input med en
+  // server-managed indikator. Da slipper Playwright-recordingen å
+  // .fill() et 250+ tegn-langt token (browser autocomplete-race),
+  // og reviewer ser et rent "loaded from server"-felt isf et tomt input.
+  const bypass = isDemoBypassed(req);
+  const tokenField = bypass
+    ? `<div data-testid="access-token-indicator" style="display:flex;align-items:center;gap:8px;padding:11px;border-radius:8px;border:1px solid #475569;background:#0f1729;color:#86efac;font-family:monospace;font-size:12px;">
+        <span style="font-size:14px">🔒</span>
+        <span>•••••••••••••••••••• (loaded from server META_APP_ACCESS_TOKEN)</span>
+      </div>`
+    : `<input id="accessToken" data-testid="access-token-input" type="password" autocomplete="off" placeholder="EAA..." style="font-family:monospace;font-size:11px" />`;
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.send(`<!doctype html>
 <html lang="en"><head>
@@ -40167,7 +40198,7 @@ app.get("/admin/whatsapp-create-template", async (req, res) => {
   <input id="wabaId" data-testid="waba-id-input" type="text" placeholder="1526002049163077" />
 
   <label for="accessToken">Access Token</label>
-  <input id="accessToken" data-testid="access-token-input" type="text" autocomplete="off" placeholder="EAA..." style="font-family:monospace;font-size:11px" />
+  ${tokenField}
 
   <label for="tplName">Template name (lowercase, snake_case)</label>
   <input id="tplName" data-testid="template-name-input" type="text" placeholder="audition_reminder_24h_no" />
@@ -40203,18 +40234,22 @@ $('submit-btn').addEventListener('click', async () => {
   try {
     const tokenMatch = window.location.search.match(/[?&]token=([^&]+)/);
     const tokenSuffix = tokenMatch ? '?token=' + tokenMatch[1] : '';
+    // Hvis access-token-input ikke finnes (server kjører i bypass-modus),
+    // sender vi ikke accessToken — backend faller tilbake til env-var.
+    const tokenInput = $('accessToken');
+    const submitBody = {
+      wabaId: $('wabaId').value,
+      name: $('tplName').value,
+      category: $('tplCategory').value,
+      language: $('tplLanguage').value,
+      bodyText: $('tplBody').value,
+    };
+    if (tokenInput && tokenInput.value) submitBody.accessToken = tokenInput.value;
     const resp = await fetch('/api/role-room/whatsapp/create-template' + tokenSuffix, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({
-        wabaId: $('wabaId').value,
-        accessToken: $('accessToken').value,
-        name: $('tplName').value,
-        category: $('tplCategory').value,
-        language: $('tplLanguage').value,
-        bodyText: $('tplBody').value,
-      }),
+      body: JSON.stringify(submitBody),
     });
     const data = await resp.json();
     if (resp.ok && data.success) {
@@ -40237,6 +40272,14 @@ $('submit-btn').addEventListener('click', async () => {
 // recordingen til Meta App Review.
 app.get("/admin/whatsapp-app-review-demo", async (req, res) => {
   if (!requireAdminOrDemoBypass(req, res)) return;
+  // Samme bypass-mønster som /admin/whatsapp-create-template — se note der.
+  const bypass = isDemoBypassed(req);
+  const tokenField = bypass
+    ? `<div data-testid="access-token-indicator" style="display:flex;align-items:center;gap:8px;padding:12px;border-radius:8px;border:1px solid #475569;background:#0f1729;color:#86efac;font-family:monospace;font-size:12px;">
+        <span style="font-size:14px">🔒</span>
+        <span>•••••••••••••••••••• (loaded from server META_APP_ACCESS_TOKEN)</span>
+      </div>`
+    : `<input id="accessToken" data-testid="access-token-input" type="password" autocomplete="off" placeholder="EAA..." style="font-family:monospace;font-size:11px" />`;
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.send(`<!doctype html>
 <html lang="en"><head>
@@ -40271,7 +40314,7 @@ app.get("/admin/whatsapp-app-review-demo", async (req, res) => {
   <input id="phoneNumberId" data-testid="phone-number-id-input" type="text" placeholder="1169284516262990" />
 
   <label for="accessToken">Access Token</label>
-  <input id="accessToken" data-testid="access-token-input" type="text" autocomplete="off" placeholder="EAA..." style="font-family:monospace;font-size:11px" />
+  ${tokenField}
 
   <button id="send-btn" data-testid="send-button" type="button">📤 Send Test Message</button>
 
@@ -40288,15 +40331,18 @@ $('send-btn').addEventListener('click', async () => {
   try {
     const tokenMatch = window.location.search.match(/[?&]token=([^&]+)/);
     const tokenSuffix = tokenMatch ? '?token=' + tokenMatch[1] : '';
+    // Bypass-modus: token-feltet finnes ikke, server faller til env-var.
+    const tokenInput = $('accessToken');
+    const submitBody = {
+      to: $('phone').value,
+      phoneNumberId: $('phoneNumberId').value,
+    };
+    if (tokenInput && tokenInput.value) submitBody.accessToken = tokenInput.value;
     const resp = await fetch('/api/role-room/whatsapp/test-send' + tokenSuffix, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({
-        to: $('phone').value,
-        phoneNumberId: $('phoneNumberId').value,
-        accessToken: $('accessToken').value,
-      }),
+      body: JSON.stringify(submitBody),
     });
     const data = await resp.json();
     if (resp.ok && data.success) {
