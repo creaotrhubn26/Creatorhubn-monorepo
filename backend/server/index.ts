@@ -40151,7 +40151,7 @@ $('submit-btn').addEventListener('click', async () => {
       result.innerHTML = '<pre class="status-err" data-testid="result-err">✗ Error\\n\\n' + JSON.stringify(data, null, 2) + '</pre>';
     }
   } catch (err) {
-    result.innerHTML = '<pre class="status-err">✗ Network error: ' + err.message + '</pre>';
+    result.innerHTML = '<pre class="status-err" data-testid="result-err">✗ Network error: ' + err.message + '</pre>';
   } finally {
     btn.disabled = false;
   }
@@ -40233,7 +40233,7 @@ $('send-btn').addEventListener('click', async () => {
       result.innerHTML = '<pre class="status-err" data-testid="result-err">✗ Error\\n\\n' + JSON.stringify(data, null, 2) + '</pre>';
     }
   } catch (err) {
-    result.innerHTML = '<pre class="status-err">✗ Network error: ' + err.message + '</pre>';
+    result.innerHTML = '<pre class="status-err" data-testid="result-err">✗ Network error: ' + err.message + '</pre>';
   } finally {
     btn.disabled = false;
   }
