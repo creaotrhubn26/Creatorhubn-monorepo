@@ -40167,7 +40167,7 @@ app.get("/admin/whatsapp-create-template", async (req, res) => {
   <input id="wabaId" data-testid="waba-id-input" type="text" placeholder="1526002049163077" />
 
   <label for="accessToken">Access Token</label>
-  <input id="accessToken" data-testid="access-token-input" type="password" placeholder="EAA..." />
+  <input id="accessToken" data-testid="access-token-input" type="text" autocomplete="off" placeholder="EAA..." style="font-family:monospace;font-size:11px" />
 
   <label for="tplName">Template name (lowercase, snake_case)</label>
   <input id="tplName" data-testid="template-name-input" type="text" placeholder="audition_reminder_24h_no" />
@@ -40271,7 +40271,7 @@ app.get("/admin/whatsapp-app-review-demo", async (req, res) => {
   <input id="phoneNumberId" data-testid="phone-number-id-input" type="text" placeholder="1169284516262990" />
 
   <label for="accessToken">Access Token</label>
-  <input id="accessToken" data-testid="access-token-input" type="password" placeholder="EAAG..." />
+  <input id="accessToken" data-testid="access-token-input" type="text" autocomplete="off" placeholder="EAA..." style="font-family:monospace;font-size:11px" />
 
   <button id="send-btn" data-testid="send-button" type="button">📤 Send Test Message</button>
 
