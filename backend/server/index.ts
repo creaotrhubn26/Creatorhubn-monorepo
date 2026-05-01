@@ -40017,7 +40017,7 @@ app.post("/api/role-room/whatsapp/create-template", async (req, res) => {
     (process.env.META_APP_ACCESS_TOKEN || "").trim();
   const name = String(body.name || "").trim();
   const category = String(body.category || "UTILITY").trim();
-  const language = String(body.language || "nb_NO").trim();
+  const language = String(body.language || "en_US").trim();
   const bodyText = String(body.bodyText || "").trim();
 
   if (!wabaId || !accessToken || !name || !bodyText) {
@@ -40212,9 +40212,9 @@ app.get("/admin/whatsapp-create-template", async (req, res) => {
 
   <label for="tplLanguage">Language</label>
   <select id="tplLanguage" data-testid="template-language-input">
-    <option value="nb_NO">Norwegian (Bokmål)</option>
     <option value="en_US">English</option>
-    <option value="sv_SE">Swedish</option>
+    <option value="nb">Norwegian (Bokmål)</option>
+    <option value="sv">Swedish</option>
   </select>
 
   <label for="tplBody">Body text (use {{1}}, {{2}} etc. for variables)</label>

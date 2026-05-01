@@ -507,7 +507,13 @@ async function recordTemplateDemo(env) {
     await beat(page, 3000);
 
     // Fill in the form
-    const tplName = 'audition_reminder_24h_no';
+    // Tidsbasert suffix gjør re-runs idempotente — Meta avviser duplicate
+    // template-navn, og siden vi tar opp på nytt for hver iterasjon må
+    // navnet være unikt. Suffix-en (YYYYMMDD_HHmm) er liten og ser ut som
+    // en versjons-tag, ikke som en script-feil.
+    const now = new Date();
+    const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+    const tplName = `audition_reminder_24h_v${stamp}`;
     const tplBody = 'Hi {{1}}, this is a reminder for your audition for {{2}} on {{3}} at {{4}}. Location: {{5}}.';
 
     await page.locator('[data-testid="waba-id-input"]').fill(env.WHATSAPP_BUSINESS_ACCOUNT_ID);
