@@ -1495,7 +1495,7 @@ function getRoleRoomGoogleFolderKeyForFile(fileRecord: Record<string, unknown>):
 
 // ── CORS Configuration ──────────────────────────────────────
 
-function buildCorsOptions(): cors.CorsOptions {
+function buildCorsOptions(): cors.CorsOptionsDelegate<Request> {
   const raw = process.env.CORS_ALLOW_ORIGINS ?? '';
   const configuredOrigins = raw
     .split(',')
@@ -1522,30 +1522,39 @@ function buildCorsOptions(): cors.CorsOptions {
     ),
   );
 
-  if (allowList.length === 0) {
-    // Default: allow same-origin only (no wildcard) 
-    return {
-      origin: false,
-      methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key'],
-      credentials: true,
-      maxAge: 600,
-    };
-  }
-
-  return {
-    origin(origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
-      // Allow requests with no origin (server-to-server, curl, etc.)
-      if (!origin) return callback(null, true);
-      if (allowList.includes(origin) || allowList.includes('*')) {
-        return callback(null, true);
-      }
-      callback(new Error(`Origin ${origin} blocked by CORS_ALLOW_ORIGINS policy`));
-    },
+  const baseOptions: cors.CorsOptions = {
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key'],
     credentials: true,
     maxAge: 600,
+  };
+
+  return (req, callback) => {
+    const origin =
+      typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
+
+    // Server-to-server / curl / no-origin → allow
+    if (!origin) return callback(null, { ...baseOptions, origin: true });
+
+    // Same-origin requests must always be allowed. Browseren sender Origin-
+    // header på POST selv når det er same-origin (f.eks. fra admin-pages som
+    // ligger på selve backend-en), og uten denne sjekken vil
+    // serverens egen origin bli avvist hvis den ikke er i allowlist-en.
+    const proto =
+      (req.headers['x-forwarded-proto'] as string | undefined) ??
+      (req.protocol === 'http' ? 'http' : 'https');
+    const host =
+      (req.headers['x-forwarded-host'] as string | undefined) ??
+      (typeof req.headers.host === 'string' ? req.headers.host : undefined);
+    if (host && origin === `${proto}://${host}`) {
+      return callback(null, { ...baseOptions, origin: true });
+    }
+
+    if (allowList.includes(origin) || allowList.includes('*')) {
+      return callback(null, { ...baseOptions, origin: true });
+    }
+
+    callback(new Error(`Origin ${origin} blocked by CORS_ALLOW_ORIGINS policy`));
   };
 }
 
@@ -15076,7 +15085,10 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       res.status(403).json({ error: 'Skrive-tilgang kreves' });
       return;
     }
-    const { name, role, email, phone, department, rate } = req.body as Record<string, unknown>;
+    const body = req.body as Record<string, unknown>;
+    const { name, role, email, phone, department, rate } = body;
+    // Klient kan opt-out via { sendEmail: false } — default ER å sende.
+    const shouldSendEmail = body.sendEmail !== false;
     const id = makeId();
     try {
       await pool.query(
@@ -15084,7 +15096,48 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [id, req.params.projectId, name, role, email ?? null, phone ?? null, department ?? null, rate ?? null]
       );
-      res.status(201).json({ id, name });
+
+      // ── Send invitasjons-email til crew-medlem (best-effort) ──
+      // Krever email + GMAIL_USER + GMAIL_APP_PASSWORD i Render env.
+      // Logger feil men feiler IKKE crew-create.
+      let emailStatus: { sent: boolean; reason?: string } = { sent: false, reason: 'no_email' };
+      const recipientEmail = readStringValue(email);
+      if (shouldSendEmail && recipientEmail) {
+        try {
+          // Hent prosjekt-navn for invitasjons-mail
+          const projRes = await pool.query<{ name: string }>(
+            'SELECT name FROM casting_projects WHERE id = $1 LIMIT 1',
+            [req.params.projectId],
+          );
+          const projectName = projRes.rows[0]?.name ?? req.params.projectId;
+          const proto = (req.headers['x-forwarded-proto'] as string | undefined)
+            ?? (req.protocol === 'http' ? 'http' : 'https');
+          const host = (req.headers['x-forwarded-host'] as string | undefined)
+            ?? req.headers.host
+            ?? 'creatorhubn.com';
+          const inviteUrl = `${proto}://${host}/role-room/projects/${encodeURIComponent(req.params.projectId)}`;
+          const requestUser = getOptionalRequestUser(req);
+          const result = await sendRoleRoomTeamMemberInviteEmail({
+            recipientEmail,
+            recipientName: readStringValue(name) ?? null,
+            role: readStringValue(role) ?? readStringValue(department) ?? 'crew',
+            projectName,
+            inviterName: requestUser?.email ?? null,
+            inviterEmail: requestUser?.email ?? null,
+            inviteUrl,
+          });
+          emailStatus = { sent: result.sent, reason: result.reason };
+          console.log(
+            `Crew invite email for ${id} (${recipientEmail}): ${result.sent ? 'sent' : 'skipped'}${
+              result.reason ? ` (${result.reason})` : ''
+            }`,
+          );
+        } catch (err) {
+          console.warn('Crew invite email failed (non-fatal):', err);
+          emailStatus = { sent: false, reason: String(err instanceof Error ? err.message : err) };
+        }
+      }
+      res.status(201).json({ id, name, emailStatus });
     } catch (err) {
       res.status(500).json({ error: 'Kunne ikke legge til crew-medlem' });
     }
