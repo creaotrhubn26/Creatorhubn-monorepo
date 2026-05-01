@@ -39878,6 +39878,40 @@ function requireAdminOrDemoBypass(
 // App Review demo: inbox-API for incoming WhatsApp-meldinger.
 // Brukes av Playwright-recordingen for å demonstrere send+receive-
 // loopen Meta krever for whatsapp_business_messaging.
+
+// Debug: ALLE events (ikke bare inbound). Brukes for å sjekke at
+// webhook fyrer ved status-updates / template-events / etc.
+app.get("/api/role-room/whatsapp/events-debug", async (req, res) => {
+  if (!requireAdminOrDemoBypass(req, res)) return;
+  try {
+    const limit = Math.min(Number(req.query?.limit) || 25, 100);
+    const result = await pool.query<{
+      id: string;
+      received_at: string;
+      event_field: string;
+      event_subtype: string | null;
+      phone_number_id: string | null;
+      message_id: string | null;
+      template_name: string | null;
+    }>(
+      `SELECT id, received_at, event_field, event_subtype,
+              phone_number_id, message_id, template_name
+         FROM role_room_whatsapp_events
+        ORDER BY received_at DESC
+        LIMIT $1`,
+      [limit],
+    );
+    return res.json({
+      success: true,
+      total: result.rows.length,
+      events: result.rows,
+    });
+  } catch (error) {
+    console.error("Events debug fetch failed:", error);
+    return res.status(500).json({ error: "Kunne ikke hente events." });
+  }
+});
+
 app.get("/api/role-room/whatsapp/inbox", async (req, res) => {
   if (!requireAdminOrDemoBypass(req, res)) return;
   try {
