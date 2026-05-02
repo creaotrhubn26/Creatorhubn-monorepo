@@ -48,6 +48,8 @@ import type {
 import { CONCEPT_LABELS, FEED_POST_CONCEPT_ORDER, buildFeedPost } from '../../utils/feedPlanner';
 import FeedPostTile from './FeedPostTile';
 import GoogleDriveImagePicker from './GoogleDriveImagePicker';
+import FeedPostApprovalActions from './FeedPostApprovalActions';
+import LinkedInPublishAsSelector from './LinkedInPublishAsSelector';
 
 type FeedPostDetailPanelProps = {
   projectId: string;
@@ -472,6 +474,26 @@ export default function FeedPostDetailPanel({
       <Box sx={{ mx: 'auto', width: 180 }}>
         <FeedPostTile post={post} index={postIndex} brandSnapshot={brandSnapshot} />
       </Box>
+
+      <FeedPostApprovalActions
+        projectId={projectId}
+        platform={platform}
+        post={post}
+        onStateChanged={(nextState, note) =>
+          onUpdate({
+            approvalState: nextState,
+            approvalChangedAt: new Date().toISOString(),
+            approvalNote: note ?? null,
+          })
+        }
+      />
+
+      {platform === 'linkedin' ? (
+        <LinkedInPublishAsSelector
+          value={post.linkedInOrganizationUrn ?? null}
+          onChange={(urn) => onUpdate({ linkedInOrganizationUrn: urn })}
+        />
+      ) : null}
 
       {/* Media picker — reacts to the post's mediaType: image = single
           picker, carousel = multi-pick (2-10), reel = video picker. All

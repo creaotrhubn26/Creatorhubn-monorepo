@@ -43,6 +43,9 @@ import {
 import AgentPaywallDialog from '../ai/AgentPaywallDialog';
 import RoleRoomTierIcon, { ROLE_ROOM_TIERS, tierForEntitlementSource, type RoleRoomTierSlug } from './RoleRoomTierIcon';
 import InstagramConnectionCard from './InstagramConnectionCard';
+import YouTubeChannelSetup from './YouTubeChannelSetup';
+import LinkedInConnectionCard from './LinkedInConnectionCard';
+import TikTokConnectionCard from './TikTokConnectionCard';
 import type { RoleRoomInstagramConnection } from '../../services/roleRoomAgentService';
 import FeedPostDetailPanel from './FeedPostDetailPanel';
 import FeedPlanTimeline from './FeedPlanTimeline';
@@ -189,6 +192,46 @@ export default function RoleRoomFeedPlannerPanel({
     }, 1500);
     return () => window.clearTimeout(handle);
   }, [dirty, posts, projectId, platform, brandSnapshot, bootstrap]);
+
+  // Bulk-godkjenning: alle utkast (state='draft' eller 'needs_changes')
+  // settes til 'approved'. Brukes av producer som har gått gjennom
+  // forslagene én etter én og vil signere av hele batchen på én gang.
+  const draftCount = useMemo(
+    () =>
+      posts.filter((p) => !p.approvalState || p.approvalState === 'draft' || p.approvalState === 'needs_changes')
+        .length,
+    [posts],
+  );
+  const [bulkApproving, setBulkApproving] = useState(false);
+  const approveAllDrafts = async () => {
+    const ids = posts
+      .filter(
+        (p) => !p.approvalState || p.approvalState === 'draft' || p.approvalState === 'needs_changes',
+      )
+      .map((p) => p.id);
+    if (ids.length === 0) return;
+    setBulkApproving(true);
+    try {
+      const result = await roleRoomAgentService.setFeedPostApproval({
+        projectId,
+        platform,
+        postIds: ids,
+        approvalState: 'approved',
+      });
+      if (result.success) {
+        const now = new Date().toISOString();
+        setPosts((current) =>
+          current.map((p) =>
+            ids.includes(p.id)
+              ? { ...p, approvalState: 'approved', approvalChangedAt: now, approvalNote: null }
+              : p,
+          ),
+        );
+      }
+    } finally {
+      setBulkApproving(false);
+    }
+  };
 
   const regenerateAll = () => {
     if (!bootstrap) return;
@@ -468,6 +511,10 @@ export default function RoleRoomFeedPlannerPanel({
         />
       ) : null}
 
+      {platform === 'youtube' ? <YouTubeChannelSetup projectId={projectId} /> : null}
+      {platform === 'linkedin' ? <LinkedInConnectionCard projectId={projectId} /> : null}
+      {platform === 'tiktok' ? <TikTokConnectionCard projectId={projectId} /> : null}
+
       <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
         <Stack direction="row" spacing={1} alignItems="center">
           <Typography sx={{ color: 'rgba(226,232,240,0.68)', fontSize: '0.82rem' }}>
@@ -526,6 +573,27 @@ export default function RoleRoomFeedPlannerPanel({
           >
             Regenerer alle forslag
           </Button>
+          {draftCount > 0 ? (
+            <Button
+              size="small"
+              variant="contained"
+              startIcon={
+                bulkApproving ? <CircularProgress size={14} color="inherit" /> : null
+              }
+              onClick={approveAllDrafts}
+              disabled={bulkApproving}
+              data-testid="bulk-approve-button"
+              sx={{
+                textTransform: 'none',
+                fontWeight: 700,
+                bgcolor: '#22c55e',
+                color: '#0f172a',
+                '&:hover': { bgcolor: '#16a34a' },
+              }}
+            >
+              {bulkApproving ? 'Godkjenner…' : `Godkjenn alle (${draftCount})`}
+            </Button>
+          ) : null}
         </Stack>
       </Stack>
 

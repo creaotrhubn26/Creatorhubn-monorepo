@@ -420,6 +420,134 @@ export type RoleRoomFeedLogoPlacement =
   | 'bottom-right'
   | 'center';
 
+/**
+ * Approval-flyt for feed-posts:
+ *   draft        — agent-generert eller manuelt opprettet, ikke godkjent
+ *   approved     — godkjent av producer/reviewer, klar for å scheduleres/publiseres
+ *   scheduled    — godkjent OG har en scheduled_for tid satt; publish-worker fyrer
+ *   published    — publisert, har externalPostId
+ *   rejected     — eksplisitt avvist; ikke i pending-køen
+ *   needs_changes— reviewer ber om endringer; tilbake i draft etter edit
+ *
+ * Default for nye posts er 'draft'. Single-user flows kan velge "auto-approve"
+ * via bulk-action; agency-flows kan låse til reviewer-rolle senere.
+ */
+export interface RoleRoomLinkedInCompany {
+  urn: string; // urn:li:organization:12345
+  id: string;
+  name: string | null;
+  vanityName: string | null;
+  logoUrl: string | null;
+  role: string;
+}
+
+export interface RoleRoomTikTokConnection {
+  connected: boolean;
+  openId: string | null;
+  username: string | null;
+  displayName: string | null;
+  avatarUrl: string | null;
+  scopes: string[];
+  expiryDate: string | null;
+}
+
+export type RoleRoomAccessRequestPlatform =
+  | 'youtube'
+  | 'instagram'
+  | 'facebook_page'
+  | 'linkedin'
+  | 'tiktok'
+  | 'x'
+  | 'threads'
+  | 'pinterest';
+
+export interface RoleRoomSocialAccessRequest {
+  subject: string;
+  greeting: string;
+  body: string;
+  signoff: string;
+  steps: string[];
+  adminUrl: string;
+  requiredRole: string;
+  fullText: string;
+  mailtoUrl: string | null;
+  source: 'claude' | 'fallback';
+}
+
+export interface RoleRoomYouTubeChannel {
+  id: string;
+  title: string;
+  description: string | null;
+  customUrl: string | null;
+  thumbnailUrl: string | null;
+  subscriberCount: number | null;
+  viewCount: number | null;
+  videoCount: number | null;
+  isBrandAccount: boolean;
+}
+
+export interface RoleRoomYouTubeChannelPlan {
+  channelName: string;
+  alternativeNames: string[];
+  handleSuggestion: string;
+  tagline: string;
+  description: string;
+  keywords: string[];
+  contentPillars: Array<{
+    name: string;
+    description: string;
+    exampleTopics: string[];
+  }>;
+  firstVideoIdeas: Array<{
+    title: string;
+    hook: string;
+    description: string;
+    durationSeconds: number;
+    contentPillar: string;
+    callToAction: string;
+  }>;
+  channelTrailerConcept: {
+    hook: string;
+    storyBeats: string[];
+    durationSeconds: number;
+    callToAction: string;
+  };
+  postingCadence: {
+    frequency: string;
+    bestDays: string[];
+    bestTimeWindows: string[];
+    rationale: string;
+  };
+  visualIdentity: {
+    bannerConcept: string;
+    avatarConcept: string;
+    thumbnailStyle: string;
+    colorPaletteHint: string;
+  };
+  growthAdvice: string[];
+  generatedAt: string;
+  source: 'claude' | 'fallback';
+}
+
+export interface RoleRoomPendingApproval {
+  projectId: string;
+  platform: string;
+  postId: string;
+  title: string;
+  caption: string;
+  scheduledFor: string | null;
+  approvalState: 'draft' | 'needs_changes';
+  approvalChangedAt: string | null;
+}
+
+export type RoleRoomFeedApprovalState =
+  | 'draft'
+  | 'approved'
+  | 'scheduled'
+  | 'published'
+  | 'rejected'
+  | 'needs_changes';
+
 export interface RoleRoomFeedPost {
   id: string;
   concept: RoleRoomFeedPostConcept | string;
@@ -444,6 +572,26 @@ export interface RoleRoomFeedPost {
   /** Single video data URL for reels (video/mp4 or video/quicktime). */
   customVideoDataUrl?: string | null;
   customVideoName?: string | null;
+  /** Approval-status. Mangler på legacy-rader → tolkes som 'draft'. */
+  approvalState?: RoleRoomFeedApprovalState;
+  /** ISO timestamp på siste state-endring (audit). */
+  approvalChangedAt?: string | null;
+  /** UserId/email på den som approved/rejected (audit). */
+  approvalChangedBy?: string | null;
+  /** Notat fra reviewer ved needs_changes / rejected. */
+  approvalNote?: string | null;
+  /** LinkedIn-spesifikk: hvis satt, publiser som bedrift i stedet for
+   *  personlig profil. Format: 'urn:li:organization:12345'. Null =
+   *  publiser som @bruker. */
+  linkedInOrganizationUrn?: string | null;
+}
+
+export interface RoleRoomFeedBrandSocialProfile {
+  platform: string; // youtube | instagram | linkedin | facebook | tiktok | x | threads | pinterest | vimeo
+  url: string;
+  handle?: string | null;
+  status: 'verified' | 'likely' | 'needs_review' | 'rejected';
+  confidence?: number;
 }
 
 export interface RoleRoomFeedBrandSnapshot {
@@ -454,6 +602,18 @@ export interface RoleRoomFeedBrandSnapshot {
   accentColor?: string | null;
   toneOfVoice?: string | null;
   visualStyle?: string | null;
+  /** Eksisterende sosiale profiler oppdaget under bootstrap (fra
+   *  nettside-scrape). Brukes av kanal-plan-generator og andre
+   *  plattform-rådgivere for å forstå nåværende tilstedeværelse. */
+  existingSocialProfiles?: RoleRoomFeedBrandSocialProfile[];
+  /** Bransje + B2B/B2C så plan-generatorer slipper å hoppe gjennom
+   *  bootstrap-strukturen. */
+  industry?: string | null;
+  subIndustry?: string | null;
+  businessModel?: string | null;
+  targetAudience?: string[];
+  offerings?: string[];
+  websiteUrl?: string | null;
 }
 
 export interface RoleRoomFeedPlan {
@@ -505,6 +665,129 @@ interface DriveImportResponse {
   image?: RoleRoomDriveImportedImage;
 }
 
+export type RoleRoomIgAccountType = 'BUSINESS' | 'CREATOR' | 'PERSONAL';
+
+export type RoleRoomSocialPlatform =
+  | 'instagram'
+  | 'facebook_page'
+  | 'tiktok'
+  | 'linkedin'
+  | 'youtube'
+  | 'x'
+  | 'threads'
+  | 'pinterest';
+
+export type RoleRoomSocialEventKind =
+  | 'comment'
+  | 'reply'
+  | 'mention'
+  | 'dm'
+  | 'reaction'
+  | 'review'
+  | 'tag'
+  | 'share'
+  | 'other';
+
+export type RoleRoomSentimentLabel = 'negative' | 'neutral' | 'positive' | 'mixed';
+
+export interface RoleRoomAgentFeedbackInsights {
+  totalEvents30d: number;
+  netSentiment30d: number;
+  sentimentDistribution: {
+    positive: number;
+    neutral: number;
+    negative: number;
+    mixed: number;
+  };
+  topPlatforms: Array<{ platform: string; events: number }>;
+  topPosts: Array<{
+    platform: string;
+    externalPostId: string;
+    metric: string;
+    value: number;
+  }>;
+  reachTrend: {
+    last30dAvg: number | null;
+    prev30dAvg: number | null;
+    deltaPct: number | null;
+  };
+  flags: string[];
+  promptSummary: string;
+  generatedAt: string;
+}
+
+export interface RoleRoomSocialAnalyticsSummary {
+  last7d: {
+    perPlatform: Array<{ platform: string; total: number; unread: number }>;
+    totalEvents: number;
+    totalUnread: number;
+  };
+  last30d: {
+    perPlatform: Array<{ platform: string; total: number }>;
+    totalEvents: number;
+  };
+}
+
+export interface RoleRoomSentimentBreakdownEntry {
+  platform: string;
+  sentiment: RoleRoomSentimentLabel;
+  count: number;
+}
+
+export interface RoleRoomDailyEventEntry {
+  day: string;
+  platform: string;
+  count: number;
+}
+
+export interface RoleRoomDailySentimentEntry {
+  day: string;
+  sentiment: RoleRoomSentimentLabel;
+  count: number;
+}
+
+export interface RoleRoomAccountMetric {
+  platform: string;
+  accountId: string;
+  metricName: string;
+  metricValue: number | null;
+  recordedAt: string;
+}
+
+export interface RoleRoomTopPostMetric {
+  platform: string;
+  externalPostId: string;
+  metricName: string;
+  metricValue: number;
+  recordedAt: string;
+}
+
+export interface RoleRoomPublishCountEntry {
+  platform: string;
+  published: number;
+  scheduled: number;
+}
+
+export interface RoleRoomSocialEvent {
+  id: string;
+  platform: RoleRoomSocialPlatform | string;
+  accountId: string;
+  externalPostId: string | null;
+  kind: RoleRoomSocialEventKind | string;
+  authorUsername: string | null;
+  authorDisplayName: string | null;
+  /** URL til avatar fra plattformen (LinkedIn /v2/people, IG profile,
+   *  etc). Null hvis vi ikke fikk hentet den. UI faller tilbake til
+   *  initial-letter i en farget Avatar-komponent. */
+  authorAvatarUrl: string | null;
+  body: string | null;
+  sentimentScore: number | null;
+  sentimentLabel: RoleRoomSentimentLabel | null;
+  isRead: boolean;
+  occurredAt: string | null;
+  receivedAt: string;
+}
+
 export interface RoleRoomInstagramConnection {
   id: string;
   igBusinessAccountId: string;
@@ -512,6 +795,13 @@ export interface RoleRoomInstagramConnection {
   facebookPageName: string | null;
   tokenExpiresAt: string | null;
   scopes: string[];
+  // Profile metadata fra Meta Graph API (instagram_business_basic),
+  // hentes ved oppkobling og oppdateres ved token-refresh.
+  accountType: RoleRoomIgAccountType | null;
+  profilePictureUrl: string | null;
+  followersCount: number | null;
+  mediaCount: number | null;
+  profileRefreshedAt: string | null;
 }
 
 export type RoleRoomInstagramJobStatus =
@@ -818,6 +1108,366 @@ export const roleRoomAgentService = {
     });
     const payload = await response.json().catch(() => null);
     return Boolean(payload?.success);
+  },
+
+  // ── Cross-platform unified social inbox ────────────────────────────────
+  async listSocialInbox(filter: {
+    platform?: string;
+    kind?: string;
+    unread?: boolean;
+    sentiment?: 'negative' | 'neutral' | 'positive' | 'mixed';
+    limit?: number;
+  } = {}): Promise<{ events: RoleRoomSocialEvent[]; error?: string }> {
+    const qs = new URLSearchParams();
+    if (filter.platform) qs.set('platform', filter.platform);
+    if (filter.kind) qs.set('kind', filter.kind);
+    if (filter.unread) qs.set('unread', 'true');
+    if (filter.sentiment) qs.set('sentiment', filter.sentiment);
+    if (filter.limit) qs.set('limit', String(filter.limit));
+    const url = `/api/role-room/social/inbox${qs.toString() ? `?${qs}` : ''}`;
+    try {
+      const response = await fetch(url, { headers: readRoleRoomAgentHeaders() });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.success) {
+        return { events: [], error: payload?.error || 'Kunne ikke hente inbox.' };
+      }
+      return { events: Array.isArray(payload.events) ? payload.events : [] };
+    } catch (err) {
+      return { events: [], error: (err as Error).message };
+    }
+  },
+
+  async markSocialEventRead(eventId: string): Promise<boolean> {
+    try {
+      const response = await fetch(
+        `/api/role-room/social/inbox/${encodeURIComponent(eventId)}/read`,
+        { method: 'POST', headers: readRoleRoomAgentHeaders() },
+      );
+      const payload = await response.json().catch(() => null);
+      return Boolean(payload?.success);
+    } catch {
+      return false;
+    }
+  },
+
+  async listLinkedInCompanies(): Promise<{
+    companies: RoleRoomLinkedInCompany[];
+    scopeMissing: boolean;
+    error?: string;
+  }> {
+    try {
+      const response = await fetch('/api/role-room/linkedin/companies', {
+        headers: readRoleRoomAgentHeaders(),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.success) {
+        return {
+          companies: [],
+          scopeMissing: false,
+          error: payload?.error || 'Kunne ikke hente LinkedIn-bedrifter.',
+        };
+      }
+      return {
+        companies: Array.isArray(payload.companies) ? payload.companies : [],
+        scopeMissing: Boolean(payload.scopeMissing),
+      };
+    } catch (err) {
+      return { companies: [], scopeMissing: false, error: (err as Error).message };
+    }
+  },
+
+  async fetchLinkedInProfile(): Promise<{
+    connected: boolean;
+    memberId?: string;
+    email?: string | null;
+    name?: string | null;
+    profilePictureUrl?: string | null;
+  }> {
+    try {
+      const response = await fetch('/api/role-room/linkedin/profile', {
+        headers: readRoleRoomAgentHeaders(),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.success) {
+        return { connected: false };
+      }
+      return {
+        connected: Boolean(payload.connected),
+        memberId: payload.memberId,
+        email: payload.email,
+        name: payload.name,
+        profilePictureUrl: payload.profilePictureUrl,
+      };
+    } catch {
+      return { connected: false };
+    }
+  },
+
+  async listYouTubeChannels(): Promise<{
+    channels: RoleRoomYouTubeChannel[];
+    scopeMissing: boolean;
+    noConnection: boolean;
+    error?: string;
+  }> {
+    try {
+      const response = await fetch('/api/role-room/youtube/channels', {
+        headers: readRoleRoomAgentHeaders(),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.success) {
+        return {
+          channels: [],
+          scopeMissing: false,
+          noConnection: false,
+          error: payload?.error || 'Kunne ikke hente YouTube-kanaler.',
+        };
+      }
+      return {
+        channels: Array.isArray(payload.channels) ? payload.channels : [],
+        scopeMissing: Boolean(payload.scopeMissing),
+        noConnection: Boolean(payload.noConnection),
+      };
+    } catch (err) {
+      return {
+        channels: [],
+        scopeMissing: false,
+        noConnection: false,
+        error: (err as Error).message,
+      };
+    }
+  },
+
+  async fetchTikTokConnection(): Promise<RoleRoomTikTokConnection> {
+    try {
+      const response = await fetch('/api/role-room/tiktok/connection', {
+        headers: readRoleRoomAgentHeaders(),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.success) {
+        return {
+          connected: false,
+          openId: null,
+          username: null,
+          displayName: null,
+          avatarUrl: null,
+          scopes: [],
+          expiryDate: null,
+        };
+      }
+      return {
+        connected: Boolean(payload.connected),
+        openId: payload.openId ?? null,
+        username: payload.username ?? null,
+        displayName: payload.displayName ?? null,
+        avatarUrl: payload.avatarUrl ?? null,
+        scopes: Array.isArray(payload.scopes) ? payload.scopes : [],
+        expiryDate: payload.expiryDate ?? null,
+      };
+    } catch {
+      return {
+        connected: false,
+        openId: null,
+        username: null,
+        displayName: null,
+        avatarUrl: null,
+        scopes: [],
+        expiryDate: null,
+      };
+    }
+  },
+
+  async startTikTokOauth(input: {
+    projectId: string;
+  }): Promise<{ authorizationUrl: string | null; error?: string }> {
+    try {
+      const response = await fetch('/api/role-room/tiktok/oauth/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...readRoleRoomAgentHeaders() },
+        body: JSON.stringify({
+          projectId: input.projectId,
+          returnPath: window.location.pathname + window.location.search,
+          browserOrigin: window.location.origin,
+        }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.success) {
+        return {
+          authorizationUrl: null,
+          error: payload?.error || 'Kunne ikke starte TikTok OAuth.',
+        };
+      }
+      return { authorizationUrl: payload.authorizationUrl };
+    } catch (err) {
+      return { authorizationUrl: null, error: (err as Error).message };
+    }
+  },
+
+  async disconnectTikTok(): Promise<{ success: boolean; error?: string }> {
+    try {
+      const response = await fetch('/api/role-room/tiktok/disconnect', {
+        method: 'POST',
+        headers: readRoleRoomAgentHeaders(),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.success) {
+        return { success: false, error: payload?.error };
+      }
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: (err as Error).message };
+    }
+  },
+
+  async generateSocialAccessRequest(input: {
+    projectId: string;
+    platform: RoleRoomAccessRequestPlatform;
+    recipientName?: string | null;
+    recipientEmail?: string | null;
+  }): Promise<{ request: RoleRoomSocialAccessRequest | null; error?: string }> {
+    try {
+      const response = await fetch('/api/role-room/social/access-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...readRoleRoomAgentHeaders() },
+        body: JSON.stringify({
+          projectId: input.projectId,
+          platform: input.platform,
+          recipientName: input.recipientName ?? null,
+          recipientEmail: input.recipientEmail ?? null,
+        }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.success) {
+        return { request: null, error: payload?.error || 'Kunne ikke lage e-post-utkast.' };
+      }
+      return { request: (payload.request as RoleRoomSocialAccessRequest) ?? null };
+    } catch (err) {
+      return { request: null, error: (err as Error).message };
+    }
+  },
+
+  async generateYouTubeChannelPlan(input: {
+    projectId: string;
+  }): Promise<{ plan: RoleRoomYouTubeChannelPlan | null; error?: string }> {
+    try {
+      const response = await fetch('/api/role-room/youtube/channel-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...readRoleRoomAgentHeaders() },
+        body: JSON.stringify({ projectId: input.projectId }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.success) {
+        return { plan: null, error: payload?.error || 'Kunne ikke generere kanal-plan.' };
+      }
+      return { plan: (payload.plan as RoleRoomYouTubeChannelPlan) ?? null };
+    } catch (err) {
+      return { plan: null, error: (err as Error).message };
+    }
+  },
+
+  async listPendingApprovals(): Promise<{
+    pending: RoleRoomPendingApproval[];
+    totalPending: number;
+    error?: string;
+  }> {
+    try {
+      const response = await fetch('/api/role-room/agent/feed-plan/approvals/pending', {
+        headers: readRoleRoomAgentHeaders(),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.success) {
+        return {
+          pending: [],
+          totalPending: 0,
+          error: payload?.error || 'Kunne ikke hente posts som venter på godkjenning.',
+        };
+      }
+      return {
+        pending: Array.isArray(payload.pending) ? payload.pending : [],
+        totalPending: Number(payload.totalPending ?? 0),
+      };
+    } catch (err) {
+      return { pending: [], totalPending: 0, error: (err as Error).message };
+    }
+  },
+
+  async setFeedPostApproval(input: {
+    projectId: string;
+    platform: string;
+    postIds: string[];
+    approvalState: 'draft' | 'approved' | 'scheduled' | 'published' | 'rejected' | 'needs_changes';
+    approvalNote?: string | null;
+  }): Promise<{ success: boolean; touched?: number; error?: string }> {
+    try {
+      const response = await fetch(
+        `/api/role-room/agent/feed-plan/${encodeURIComponent(input.projectId)}/${encodeURIComponent(input.platform)}/approve`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...readRoleRoomAgentHeaders() },
+          body: JSON.stringify({
+            postIds: input.postIds,
+            approvalState: input.approvalState,
+            approvalNote: input.approvalNote ?? null,
+          }),
+        },
+      );
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.success) {
+        return { success: false, error: payload?.error || 'Kunne ikke oppdatere approval-status.' };
+      }
+      return { success: true, touched: Number(payload.touched ?? 0) };
+    } catch (err) {
+      return { success: false, error: (err as Error).message };
+    }
+  },
+
+  async fetchAgentFeedbackInsights(): Promise<{
+    insights: RoleRoomAgentFeedbackInsights | null;
+    error?: string;
+  }> {
+    try {
+      const response = await fetch('/api/role-room/social/agent-insights', {
+        headers: readRoleRoomAgentHeaders(),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.success) {
+        return { insights: null, error: payload?.error };
+      }
+      return { insights: payload.insights ?? null };
+    } catch (err) {
+      return { insights: null, error: (err as Error).message };
+    }
+  },
+
+  async fetchSocialAnalytics(): Promise<{
+    summary?: RoleRoomSocialAnalyticsSummary;
+    sentimentBreakdown?: RoleRoomSentimentBreakdownEntry[];
+    dailyEvents?: RoleRoomDailyEventEntry[];
+    dailySentiment?: RoleRoomDailySentimentEntry[];
+    accountMetrics?: RoleRoomAccountMetric[];
+    topPosts?: RoleRoomTopPostMetric[];
+    publishesPerPlatform?: RoleRoomPublishCountEntry[];
+    error?: string;
+  }> {
+    try {
+      const response = await fetch('/api/role-room/social/analytics', {
+        headers: readRoleRoomAgentHeaders(),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.success) {
+        return { error: payload?.error || 'Kunne ikke hente analytics.' };
+      }
+      return {
+        summary: payload.summary,
+        sentimentBreakdown: payload.sentimentBreakdown,
+        dailyEvents: payload.dailyEvents,
+        dailySentiment: payload.dailySentiment,
+        accountMetrics: payload.accountMetrics,
+        topPosts: payload.topPosts,
+        publishesPerPlatform: payload.publishesPerPlatform,
+      };
+    } catch (err) {
+      return { error: (err as Error).message };
+    }
   },
 
   async publishInstagram(input: {

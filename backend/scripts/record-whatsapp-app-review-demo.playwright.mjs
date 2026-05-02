@@ -139,8 +139,13 @@ async function openBrowser(opts) {
   if (USE_USER_CHROME) {
     log(`Using existing Chrome profile: ${USER_CHROME_PROFILE} (profile-directory=${USER_CHROME_PROFILE_DIR})`);
     log('NOTE: Chrome must be FULLY quit (cmd+Q) before running, or this will fail with "profile locked".');
+    // channel: 'chrome' — bruker brukerens installerte Chrome.app
+    // (samme versjon som skrev profil-dataen) i stedet for Playwrights
+    // bundled Chrome for Testing. Hindrer crash pga. profile-schema-mismatch
+    // når brukerens stable-Chrome er nyere enn Playwright-bundle.
     const context = await chromium.launchPersistentContext(USER_CHROME_PROFILE, {
       headless: HEADLESS,
+      channel: 'chrome',
       args: [
         '--no-sandbox',
         `--profile-directory=${USER_CHROME_PROFILE_DIR}`,
@@ -514,7 +519,10 @@ async function recordTemplateDemo(env) {
     const now = new Date();
     const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
     const tplName = `audition_reminder_24h_v${stamp}`;
-    const tplBody = 'Hi {{1}}, this is a reminder for your audition for {{2}} on {{3}} at {{4}}. Location: {{5}}.';
+    // Meta avviser variabler ved start eller slutt av template-body —
+    // {{5}} kan ikke følges av kun ".". Sikrer at både første og siste
+    // variabel har faktisk tekst rundt seg.
+    const tplBody = 'Hi {{1}}, this is a reminder for your audition for {{2}} on {{3}} at {{4}} at the location {{5}}. We look forward to seeing you!';
 
     await page.locator('[data-testid="waba-id-input"]').fill(env.WHATSAPP_BUSINESS_ACCOUNT_ID);
     await beat(page, 500);
@@ -652,32 +660,47 @@ async function recordTemplateDemo(env) {
   log(`env saved to ${ENV_FILE} (mode 0600)`);
 
   const autoRun = process.env.AUTO_RUN === '1';
+  // VIDEO=1 → kun Video 1, VIDEO=2 → kun Video 2, unset → begge
+  const videoFilter = (process.env.VIDEO || '').trim();
+  const runV1 = !videoFilter || videoFilter === '1';
+  const runV2 = !videoFilter || videoFilter === '2';
 
-  console.log('\n=== Video 1: whatsapp_business_messaging (send + receive loop) ===');
-  console.log('Operator action checklist for video 1:');
-  console.log('  1. When browser opens, log into The Role Room as admin (one-time)');
-  console.log('  2. When script switches to web.whatsapp.com: scan QR (one-time) AND reply to the hello_world message from your phone');
-  console.log('  3. Stay quiet — captions explain each step on screen for the reviewer');
-  if (!autoRun) {
-    await ask('\n>> Press Enter to start Video 1... ');
-  } else {
-    console.log('\n[AUTO_RUN=1] Starting Video 1 in 3 seconds...');
-    await new Promise((r) => setTimeout(r, 3000));
-  }
-  const v1 = await recordMessagingDemo(env);
+  let v1 = null;
+  let v2 = null;
 
-  console.log('\n=== Video 2: whatsapp_business_management (create template via API) ===');
-  console.log('Operator action checklist for video 2:');
-  console.log('  1. The Role Room template-create form is filled and submitted automatically');
-  console.log('  2. Browser then opens Meta WhatsApp Manager — log in if asked, then let captions roll');
-  console.log('  3. Reviewer will see the template (created by our API call) appear in Meta\'s template catalogue');
-  if (!autoRun) {
-    await ask('\n>> Press Enter to start Video 2... ');
+  if (runV1) {
+    console.log('\n=== Video 1: whatsapp_business_messaging (send + receive loop) ===');
+    console.log('Operator action checklist for video 1:');
+    console.log('  1. When browser opens, log into The Role Room as admin (one-time)');
+    console.log('  2. When script switches to web.whatsapp.com: scan QR (one-time) AND reply to the hello_world message from your phone');
+    console.log('  3. Stay quiet — captions explain each step on screen for the reviewer');
+    if (!autoRun) {
+      await ask('\n>> Press Enter to start Video 1... ');
+    } else {
+      console.log('\n[AUTO_RUN=1] Starting Video 1 in 3 seconds...');
+      await new Promise((r) => setTimeout(r, 3000));
+    }
+    v1 = await recordMessagingDemo(env);
   } else {
-    console.log('\n[AUTO_RUN=1] Starting Video 2 in 3 seconds...');
-    await new Promise((r) => setTimeout(r, 3000));
+    console.log('\n[VIDEO=2] Hopper over Video 1.');
   }
-  const v2 = await recordTemplateDemo(env);
+
+  if (runV2) {
+    console.log('\n=== Video 2: whatsapp_business_management (create template via API) ===');
+    console.log('Operator action checklist for video 2:');
+    console.log('  1. The Role Room template-create form is filled and submitted automatically');
+    console.log('  2. Browser then opens Meta WhatsApp Manager — log in if asked, then let captions roll');
+    console.log('  3. Reviewer will see the template (created by our API call) appear in Meta\'s template catalogue');
+    if (!autoRun) {
+      await ask('\n>> Press Enter to start Video 2... ');
+    } else {
+      console.log('\n[AUTO_RUN=1] Starting Video 2 in 3 seconds...');
+      await new Promise((r) => setTimeout(r, 3000));
+    }
+    v2 = await recordTemplateDemo(env);
+  } else {
+    console.log('\n[VIDEO=1] Hopper over Video 2.');
+  }
 
   console.log('\n=== Sammendrag ===');
   if (v1) console.log(`Video 1: ${v1}`);

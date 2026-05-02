@@ -211,10 +211,8 @@ describe('fetchMetaUserId', () => {
 // ── Page / IG account discovery ─────────────────────────────────────────
 
 describe('discoverIgBusinessAccounts', () => {
-  it('returns one entry per page that has an IG account attached', async () => {
-    const calls: string[] = [];
+  it('returns one entry per page that has a BUSINESS/CREATOR IG account attached', async () => {
     fetchHandler = async (url) => {
-      calls.push(url);
       if (url.includes('/me/accounts')) {
         return {
           status: 200,
@@ -234,7 +232,16 @@ describe('discoverIgBusinessAccounts', () => {
         return { status: 200, body: {} };
       }
       if (url.includes('/ig-1?')) {
-        return { status: 200, body: { username: 'studio_official' } };
+        return {
+          status: 200,
+          body: {
+            username: 'studio_official',
+            account_type: 'BUSINESS',
+            profile_picture_url: 'https://cdn.meta.example/avatar.jpg',
+            followers_count: 1240,
+            media_count: 87,
+          },
+        };
       }
       return { status: 404, body: {} };
     };
@@ -247,9 +254,36 @@ describe('discoverIgBusinessAccounts', () => {
       igBusinessAccountId: 'ig-1',
       igUsername: 'studio_official',
     });
+    expect(accounts[0].profile).toMatchObject({
+      username: 'studio_official',
+      accountType: 'BUSINESS',
+      profilePictureUrl: 'https://cdn.meta.example/avatar.jpg',
+      followersCount: 1240,
+      mediaCount: 87,
+    });
   });
 
-  it('treats username fetch failures as best-effort (null username)', async () => {
+  it('rejects PERSONAL Instagram accounts (Meta App Review policy)', async () => {
+    fetchHandler = async (url) => {
+      if (url.includes('/me/accounts')) {
+        return { status: 200, body: { data: [{ id: 'p1', name: 'P', access_token: 'pat' }] } };
+      }
+      if (url.includes('/p1?')) {
+        return { status: 200, body: { instagram_business_account: { id: 'ig-9' } } };
+      }
+      if (url.includes('/ig-9?')) {
+        return {
+          status: 200,
+          body: { username: 'me', account_type: 'PERSONAL' },
+        };
+      }
+      return { status: 404, body: {} };
+    };
+    const accounts = await discoverIgBusinessAccounts('token');
+    expect(accounts).toHaveLength(0);
+  });
+
+  it('skips IG accounts when profile metadata fetch fails (no account_type to gate on)', async () => {
     fetchHandler = async (url) => {
       if (url.includes('/me/accounts')) {
         return { status: 200, body: { data: [{ id: 'p1', name: 'P', access_token: 'pat' }] } };
@@ -263,8 +297,7 @@ describe('discoverIgBusinessAccounts', () => {
       return { status: 404, body: {} };
     };
     const accounts = await discoverIgBusinessAccounts('token');
-    expect(accounts).toHaveLength(1);
-    expect(accounts[0].igUsername).toBeNull();
+    expect(accounts).toHaveLength(0);
   });
 
   it('returns an empty array when the user has no FB pages', async () => {
@@ -316,6 +349,13 @@ describe('upsertInstagramConnection', () => {
         pageAccessToken: 'pat',
         igBusinessAccountId: 'ig-9',
         igUsername: 'studio',
+        profile: {
+          username: 'studio',
+          accountType: 'BUSINESS',
+          profilePictureUrl: null,
+          followersCount: 100,
+          mediaCount: 5,
+        },
       },
       longLivedToken: 'long-tok',
       expiresInSeconds: 5_184_000,
@@ -344,6 +384,13 @@ describe('upsertInstagramConnection', () => {
         pageAccessToken: 'pat',
         igBusinessAccountId: 'ig-9',
         igUsername: null,
+        profile: {
+          username: null,
+          accountType: 'BUSINESS',
+          profilePictureUrl: null,
+          followersCount: null,
+          mediaCount: null,
+        },
       },
       longLivedToken: 't',
       expiresInSeconds: 60,
@@ -369,10 +416,38 @@ describe('listInstagramConnections + getConnection + revokeConnection', () => {
     expect(await getConnection(pool as never, 'conn-1', 'other-user')).toBeNull();
   });
 
-  it('revokeConnection returns true when a row was updated, false otherwise', async () => {
-    const yes = makePool(async () => ({ rows: [], rowCount: 1 }));
-    const no = makePool(async () => ({ rows: [], rowCount: 0 }));
+  it('revokeConnection returns true when row exists, was connected, and UPDATE succeeds', async () => {
+    // revokeConnection fetcher først (SELECT), så UPDATE.
+    // For SELECT-spørringen returnerer vi en connected row;
+    // for UPDATE returnerer vi rowCount=1.
+    const yes = makePool(async (sql) => {
+      if (sql.includes('SELECT')) {
+        return {
+          rows: [
+            {
+              id: 'c',
+              user_id: 'u',
+              project_id: null,
+              ig_business_account_id: 'ig',
+              ig_username: 'u',
+              facebook_page_id: 'p',
+              facebook_page_name: null,
+              fb_user_id: null,
+              access_token_encrypted: 'v1.aa.bb.cc',
+              token_expires_at: null,
+              scopes: [],
+              connection_state: 'connected',
+              last_error: null,
+            },
+          ],
+        };
+      }
+      return { rows: [], rowCount: 1 };
+    });
     expect(await revokeConnection(yes as never, 'c', 'u')).toBe(true);
+
+    // No row found → returns false uten å forsøke UPDATE.
+    const no = makePool(async () => ({ rows: [] }));
     expect(await revokeConnection(no as never, 'c', 'u')).toBe(false);
   });
 });
@@ -394,6 +469,11 @@ function makeConnection(override: Partial<InstagramConnectionRow> = {}): Instagr
     scopes: [],
     connectionState: 'connected',
     lastError: null,
+    accountType: 'BUSINESS',
+    profilePictureUrl: null,
+    followersCount: null,
+    mediaCount: null,
+    profileRefreshedAt: null,
     ...override,
   };
 }

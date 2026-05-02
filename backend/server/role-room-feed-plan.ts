@@ -16,6 +16,23 @@ export const SUPPORTED_FEED_PLATFORMS: readonly RoleRoomFeedPlatform[] = [
   'linkedin',
 ] as const;
 
+export type RoleRoomFeedApprovalState =
+  | 'draft'
+  | 'approved'
+  | 'scheduled'
+  | 'published'
+  | 'rejected'
+  | 'needs_changes';
+
+const APPROVAL_STATES: ReadonlyArray<RoleRoomFeedApprovalState> = [
+  'draft',
+  'approved',
+  'scheduled',
+  'published',
+  'rejected',
+  'needs_changes',
+];
+
 export interface RoleRoomFeedPostInput {
   id: string;
   concept: string;
@@ -33,6 +50,15 @@ export interface RoleRoomFeedPostInput {
   locked?: boolean;
   customImageUrl?: string | null;
   customImageName?: string | null;
+  // Approval-flyt — bevarer state mellom save-rounds. Default 'draft'.
+  approvalState?: RoleRoomFeedApprovalState;
+  approvalChangedAt?: string | null;
+  approvalChangedBy?: string | null;
+  approvalNote?: string | null;
+  // LinkedIn-spesifikk: hvis satt, publiser som bedrift i stedet for
+  // som personlig profil. Format: 'urn:li:organization:12345'. Null
+  // = publiser som @bruker. Settes via "Publiser som"-dropdown i UI.
+  linkedInOrganizationUrn?: string | null;
 }
 
 export interface RoleRoomFeedPlanRow {
@@ -86,6 +112,12 @@ function normalizePost(raw: unknown, fallbackIndex: number): RoleRoomFeedPostInp
       ? clipString(record.customImageName, MAX_CUSTOM_IMAGE_NAME_LENGTH)
       : null;
 
+  const approvalState =
+    typeof record.approvalState === 'string' &&
+    (APPROVAL_STATES as readonly string[]).includes(record.approvalState)
+      ? (record.approvalState as RoleRoomFeedApprovalState)
+      : 'draft';
+
   return {
     id,
     concept: clipString(record.concept, 120),
@@ -103,6 +135,18 @@ function normalizePost(raw: unknown, fallbackIndex: number): RoleRoomFeedPostInp
     locked: Boolean(record.locked),
     customImageUrl,
     customImageName,
+    approvalState,
+    approvalChangedAt:
+      typeof record.approvalChangedAt === 'string' ? clipString(record.approvalChangedAt, 40) : null,
+    approvalChangedBy:
+      typeof record.approvalChangedBy === 'string' ? clipString(record.approvalChangedBy, 200) : null,
+    approvalNote:
+      typeof record.approvalNote === 'string' ? clipString(record.approvalNote, 1000) : null,
+    linkedInOrganizationUrn:
+      typeof record.linkedInOrganizationUrn === 'string' &&
+      record.linkedInOrganizationUrn.startsWith('urn:li:organization:')
+        ? clipString(record.linkedInOrganizationUrn, 200)
+        : null,
   };
 }
 
@@ -181,4 +225,56 @@ export async function saveFeedPlan(
 
 export function isSupportedPlatform(value: unknown): value is RoleRoomFeedPlatform {
   return typeof value === 'string' && SUPPORTED_FEED_PLATFORMS.includes(value as RoleRoomFeedPlatform);
+}
+
+/**
+ * Marker en feed-plan-post som "trenger endring" fordi publish feilet
+ * permanent (etter alle retry-forsøk). Setter approvalState='needs_changes'
+ * + approvalNote med error-årsaken. Idempotent — kjøres trygt uansett om
+ * planen finnes.
+ *
+ * Brukes av publish-worker for å lukke visibility-loopen: når en post
+ * feiler å publiseres, dukker den opp i Approvals-widgeten med en tydelig
+ * forklaring brukeren kan handle på.
+ */
+export async function markFeedPlanPostFailed(
+  pool: Pool,
+  projectId: string,
+  feedPlanPostId: string,
+  errorMessage: string,
+): Promise<{ touched: boolean }> {
+  if (!projectId || !feedPlanPostId) return { touched: false };
+  // Vi prøver alle støttede plattformer fordi posten kan ligge under
+  // hvilken som helst (IG og FB-Page deler 'instagram'-key i tabellen).
+  for (const platform of SUPPORTED_FEED_PLATFORMS) {
+    try {
+      const plan = await loadFeedPlan(pool, projectId, platform);
+      if (!plan) continue;
+      const idx = plan.posts.findIndex((p) => p.id === feedPlanPostId);
+      if (idx === -1) continue;
+      const now = new Date().toISOString();
+      const nextPosts = plan.posts.map((p, i) =>
+        i === idx
+          ? {
+              ...p,
+              approvalState: 'needs_changes' as RoleRoomFeedApprovalState,
+              approvalChangedAt: now,
+              approvalChangedBy: 'system:publish-worker',
+              approvalNote: `Publisering feilet: ${errorMessage.slice(0, 800)}`,
+            }
+          : p,
+      );
+      await saveFeedPlan(pool, projectId, platform, nextPosts, {
+        brandSnapshot: plan.brandSnapshot,
+        updatedBy: 'system:publish-worker',
+      });
+      return { touched: true };
+    } catch (error) {
+      console.warn(
+        `[feed-plan] markFeedPlanPostFailed failed for ${projectId}/${platform}/${feedPlanPostId}`,
+        error,
+      );
+    }
+  }
+  return { touched: false };
 }

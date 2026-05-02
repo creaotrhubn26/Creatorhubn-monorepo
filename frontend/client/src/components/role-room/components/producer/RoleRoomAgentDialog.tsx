@@ -25,6 +25,7 @@ import {
   FactCheck as FactCheckIcon,
   GridView as GridViewIcon,
   Language as LanguageIcon,
+  MoveToInbox as InboxIcon,
   QueryStats as QueryStatsIcon,
   Rocket as RocketIcon,
   Tag as TagIcon,
@@ -33,12 +34,17 @@ import MetaPagePublicMetadataInspector from './MetaPagePublicMetadataInspector';
 import AdsAttributionInspector from './AdsAttributionInspector';
 import FacebookVideoPublisher from './FacebookVideoPublisher';
 import FacebookPageMentionPublisher from './FacebookPageMentionPublisher';
+import SocialInboxPanel from './SocialInboxPanel';
+import SocialAnalyticsPanel from './SocialAnalyticsPanel';
+import RoleRoomAgentWorkflowStepper from './RoleRoomAgentWorkflowStepper';
+import RoleRoomAgentConnectionsBar from './RoleRoomAgentConnectionsBar';
+import SocialAccessRequestDialog from './SocialAccessRequestDialog';
 import IgHashtagInspector from './IgHashtagInspector';
 import PagePublicContentInspector from './PagePublicContentInspector';
 import { Tab, Tabs } from '@mui/material';
-import type {
-  RoleRoomAgentAccess,
-  RoleRoomAgentProducerBootstrapResult,
+import roleRoomAgentService, {
+  type RoleRoomAgentAccess,
+  type RoleRoomAgentProducerBootstrapResult,
 } from '../../services/roleRoomAgentService';
 import RoleRoomAgentChatPanel from '../ai/RoleRoomAgentChatPanel';
 import RoleRoomFeedPlannerPanel from './RoleRoomFeedPlannerPanel';
@@ -142,6 +148,38 @@ const SOCIAL_PLATFORM_LABELS: Record<string, string> = {
   vimeo: 'Vimeo',
   pinterest: 'Pinterest',
 };
+
+// Bootstrap-detekteringen bruker korte plattform-koder ('facebook', 'x'),
+// mens access-request-endepunktet bruker normaliserte publisher-koder
+// ('facebook_page'). Vimeo har ingen tilgangs-flow ennå (egen invitasjon
+// per video), så vi maper den til null og skjuler CTA-en.
+function toAccessRequestPlatform(
+  platform: string,
+):
+  | 'youtube'
+  | 'instagram'
+  | 'facebook_page'
+  | 'linkedin'
+  | 'tiktok'
+  | 'x'
+  | 'threads'
+  | 'pinterest'
+  | null {
+  switch (platform) {
+    case 'youtube':
+    case 'instagram':
+    case 'linkedin':
+    case 'tiktok':
+    case 'x':
+    case 'threads':
+    case 'pinterest':
+      return platform;
+    case 'facebook':
+      return 'facebook_page';
+    default:
+      return null;
+  }
+}
 
 const LOCAL_OPPORTUNITY_LABELS: Record<string, string> = {
   school: 'Skole',
@@ -314,6 +352,10 @@ export default function RoleRoomAgentDialog({
   );
   const agreementSuggestions = result?.agreementSuggestions ?? [];
   const socialProfileCandidates = result?.socialProfileCandidates ?? [];
+  const [accessRequestPlatform, setAccessRequestPlatform] = useState<{
+    platform: 'youtube' | 'instagram' | 'facebook_page' | 'linkedin' | 'tiktok' | 'x' | 'threads' | 'pinterest';
+    label: string;
+  } | null>(null);
   const usableSocialProfileCandidates = useMemo(
     () => socialProfileCandidates.filter((candidate) => candidate.status === 'verified' || candidate.status === 'likely'),
     [socialProfileCandidates],
@@ -492,6 +534,19 @@ export default function RoleRoomAgentDialog({
           </Stack>
         </Stack>
       </DialogTitle>
+      <RoleRoomAgentWorkflowStepper
+        activeTab={activeTab}
+        onJump={(firstTab) => setActiveTab(firstTab as typeof activeTab)}
+      />
+      <RoleRoomAgentConnectionsBar
+        projectId={projectId}
+        onConnectInstagram={async () => {
+          const result = await roleRoomAgentService.startInstagramOauth(projectId);
+          if ('url' in result) {
+            window.open(result.url, '_blank', 'width=600,height=720,noopener');
+          }
+        }}
+      />
       <Tabs
         value={activeTab}
         onChange={(_, next) => setActiveTab(next as typeof activeTab)}
@@ -567,6 +622,20 @@ export default function RoleRoomAgentDialog({
           label="IG Hashtags"
           icon={<TagIcon fontSize="small" />}
           iconPosition="start"
+        />
+        <Tab
+          value="social-inbox"
+          label="Inbox"
+          icon={<InboxIcon fontSize="small" />}
+          iconPosition="start"
+          data-testid="agent-tab-social-inbox"
+        />
+        <Tab
+          value="social-analytics"
+          label="Analytics"
+          icon={<QueryStatsIcon fontSize="small" />}
+          iconPosition="start"
+          data-testid="agent-tab-social-analytics"
         />
         {currentUserId ? (
           <Tab value="chat" label="Chat" icon={<ChatIcon fontSize="small" />} iconPosition="start" />
@@ -674,6 +743,14 @@ export default function RoleRoomAgentDialog({
         ) : activeTab === 'ig-hashtag' ? (
           <Box sx={{ p: { xs: 1, md: 2 } }}>
             <IgHashtagInspector />
+          </Box>
+        ) : activeTab === 'social-inbox' ? (
+          <Box sx={{ p: { xs: 1, md: 2 } }}>
+            <SocialInboxPanel />
+          </Box>
+        ) : activeTab === 'social-analytics' ? (
+          <Box sx={{ p: { xs: 1, md: 2 } }}>
+            <SocialAnalyticsPanel />
           </Box>
         ) : (
         <Stack spacing={1.4}>
@@ -1034,16 +1111,45 @@ export default function RoleRoomAgentDialog({
                                 {profile.evidence.slice(0, 2).map((entry) => entry.label).join(' · ')}
                               </Typography>
                             ) : null}
-                            <Button
-                              href={profile.url}
-                              target="_blank"
-                              rel="noreferrer"
-                              size="small"
-                              variant="outlined"
-                              sx={{ alignSelf: 'flex-start', textTransform: 'none', fontWeight: 700 }}
-                            >
-                              Åpne konto
-                            </Button>
+                            <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap>
+                              <Button
+                                href={profile.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                size="small"
+                                variant="outlined"
+                                sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.74rem' }}
+                              >
+                                Åpne konto
+                              </Button>
+                              {(() => {
+                                const accessPlatform = toAccessRequestPlatform(profile.platform);
+                                if (!accessPlatform) return null;
+                                return (
+                                  <Button
+                                    size="small"
+                                    variant="outlined"
+                                    onClick={() =>
+                                      setAccessRequestPlatform({
+                                        platform: accessPlatform,
+                                        label:
+                                          SOCIAL_PLATFORM_LABELS[profile.platform] ||
+                                          profile.platform,
+                                      })
+                                    }
+                                    sx={{
+                                      textTransform: 'none',
+                                      fontWeight: 700,
+                                      fontSize: '0.74rem',
+                                      color: '#93c5fd',
+                                      borderColor: 'rgba(59,130,246,0.4)',
+                                    }}
+                                  >
+                                    Be kunden om tilgang
+                                  </Button>
+                                );
+                              })()}
+                            </Stack>
                           </Stack>
                         </Box>
                       ))}
@@ -1634,6 +1740,13 @@ export default function RoleRoomAgentDialog({
           </Button>
         </DialogActions>
       </Dialog>
+      <SocialAccessRequestDialog
+        open={accessRequestPlatform != null}
+        onClose={() => setAccessRequestPlatform(null)}
+        projectId={projectId}
+        platform={accessRequestPlatform?.platform ?? 'youtube'}
+        platformLabel={accessRequestPlatform?.label ?? ''}
+      />
     </Dialog>
   );
 }

@@ -1,14 +1,23 @@
 import { useEffect, useState } from 'react';
-import { Alert, Box, Button, Chip, IconButton, Stack, Tooltip, Typography } from '@mui/material';
+import { Alert, Avatar, Box, Button, Chip, IconButton, Stack, Tooltip, Typography } from '@mui/material';
 import {
   CheckCircle as CheckCircleIcon,
   LinkOff as LinkOffIcon,
   OpenInNew as OpenInNewIcon,
+  Email as EmailIcon,
 } from '@mui/icons-material';
 import roleRoomAgentService, {
   type RoleRoomInstagramConnection,
 } from '../../services/roleRoomAgentService';
 import { InstagramBrandLogo } from './SocialBrandLogo';
+import SocialAccessRequestDialog from './SocialAccessRequestDialog';
+
+function formatCount(n: number | null | undefined): string {
+  if (n == null) return '—';
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
 
 type InstagramConnectionCardProps = {
   projectId: string;
@@ -28,6 +37,7 @@ export default function InstagramConnectionCard({
   const [connections, setConnections] = useState<RoleRoomInstagramConnection[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
+  const [accessDialogOpen, setAccessDialogOpen] = useState(false);
 
   const refresh = async () => {
     setLoading(true);
@@ -141,26 +151,49 @@ export default function InstagramConnectionCard({
           R2 image hosting er ikke konfigurert (mangler R2_ENDPOINT/BUCKET/keys). Bilder må hostes offentlig før Meta kan hente dem.
         </Alert>
       ) : connections.length === 0 ? (
-        <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+        <Stack spacing={1}>
           <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.8rem' }}>
-            Koble en Instagram Business-konto (linket til en Facebook Page) for å publisere direkte fra feed-planneren.
+            Koble en Instagram Business-konto (linket til en Facebook Page) for å publisere direkte fra feed-planneren. Hvis kunden eier kontoen, kan vi sende dem en e-post som inviterer deg som Innholdsskaper.
           </Typography>
-          <Button
-            variant="contained"
-            size="small"
-            startIcon={<OpenInNewIcon fontSize="small" />}
-            onClick={startOauth}
-            disabled={connecting || loading}
-            sx={{
-              textTransform: 'none',
-              fontWeight: 700,
-              background: 'linear-gradient(135deg, #f58529 0%, #DD2A7B 50%, #515BD4 100%)',
-              boxShadow: 'none',
-              '&:hover': { boxShadow: '0 4px 16px rgba(221,42,123,0.3)' },
-            }}
-          >
-            Koble Instagram
-          </Button>
+          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+            <Button
+              variant="contained"
+              size="small"
+              startIcon={<OpenInNewIcon fontSize="small" />}
+              onClick={startOauth}
+              disabled={connecting || loading}
+              sx={{
+                textTransform: 'none',
+                fontWeight: 700,
+                background: 'linear-gradient(135deg, #f58529 0%, #DD2A7B 50%, #515BD4 100%)',
+                boxShadow: 'none',
+                '&:hover': { boxShadow: '0 4px 16px rgba(221,42,123,0.3)' },
+              }}
+            >
+              Koble Instagram
+            </Button>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<EmailIcon sx={{ fontSize: '0.95rem' }} />}
+              onClick={() => setAccessDialogOpen(true)}
+              sx={{
+                textTransform: 'none',
+                fontSize: '0.82rem',
+                color: '#93c5fd',
+                borderColor: 'rgba(59,130,246,0.4)',
+              }}
+            >
+              Be kunden om tilgang
+            </Button>
+          </Stack>
+          <SocialAccessRequestDialog
+            open={accessDialogOpen}
+            onClose={() => setAccessDialogOpen(false)}
+            projectId={projectId}
+            platform="instagram"
+            platformLabel="Instagram"
+          />
         </Stack>
       ) : (
         <Stack spacing={0.6}>
@@ -168,25 +201,91 @@ export default function InstagramConnectionCard({
             <Stack
               key={c.id}
               direction="row"
-              spacing={1}
+              spacing={1.2}
               alignItems="center"
               sx={{
-                p: 0.8,
+                p: 0.9,
                 borderRadius: 1.4,
                 bgcolor: 'rgba(15,23,42,0.65)',
                 border: '1px solid rgba(148,163,184,0.18)',
               }}
+              data-testid="instagram-connection-row"
             >
+              <Avatar
+                src={c.profilePictureUrl ?? undefined}
+                alt={c.igUsername ?? 'Instagram'}
+                sx={{
+                  width: 38,
+                  height: 38,
+                  bgcolor: 'rgba(236,72,153,0.18)',
+                  color: '#f9a8d4',
+                  fontSize: '0.95rem',
+                  fontWeight: 700,
+                  border: '1px solid rgba(236,72,153,0.4)',
+                }}
+              >
+                {(c.igUsername ?? '?')[0]?.toUpperCase()}
+              </Avatar>
               <Box sx={{ flex: 1, minWidth: 0 }}>
-                <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.86rem' }}>
-                  @{c.igUsername ?? c.igBusinessAccountId}
-                </Typography>
-                <Typography sx={{ color: 'rgba(226,232,240,0.55)', fontSize: '0.7rem' }}>
-                  Page: {c.facebookPageName ?? '—'}{c.tokenExpiresAt ? ` · token utløper ${new Date(c.tokenExpiresAt).toLocaleDateString('nb-NO')}` : ''}
+                <Stack direction="row" spacing={0.6} alignItems="center" sx={{ minWidth: 0 }}>
+                  <Typography
+                    sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.86rem' }}
+                    data-testid="instagram-username"
+                  >
+                    @{c.igUsername ?? c.igBusinessAccountId}
+                  </Typography>
+                  {c.accountType ? (
+                    <Chip
+                      size="small"
+                      label={c.accountType.toLowerCase()}
+                      data-testid="instagram-account-type"
+                      sx={{
+                        height: 16,
+                        fontSize: '0.62rem',
+                        fontWeight: 700,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.05em',
+                        bgcolor:
+                          c.accountType === 'BUSINESS'
+                            ? 'rgba(34,197,94,0.18)'
+                            : 'rgba(236,72,153,0.18)',
+                        color:
+                          c.accountType === 'BUSINESS' ? '#86efac' : '#f9a8d4',
+                        '& .MuiChip-label': { px: 0.6 },
+                      }}
+                    />
+                  ) : null}
+                </Stack>
+                <Stack direction="row" spacing={1.2} sx={{ mt: 0.2 }}>
+                  <Typography sx={{ color: 'rgba(226,232,240,0.7)', fontSize: '0.68rem' }}>
+                    <strong style={{ color: '#e2e8f0' }} data-testid="instagram-followers-count">
+                      {formatCount(c.followersCount)}
+                    </strong>{' '}
+                    followers
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(226,232,240,0.7)', fontSize: '0.68rem' }}>
+                    <strong style={{ color: '#e2e8f0' }} data-testid="instagram-media-count">
+                      {formatCount(c.mediaCount)}
+                    </strong>{' '}
+                    posts
+                  </Typography>
+                </Stack>
+                <Typography
+                  sx={{ color: 'rgba(226,232,240,0.45)', fontSize: '0.62rem', mt: 0.1 }}
+                >
+                  Page: {c.facebookPageName ?? '—'}
+                  {c.tokenExpiresAt
+                    ? ` · token utløper ${new Date(c.tokenExpiresAt).toLocaleDateString('nb-NO')}`
+                    : ''}
                 </Typography>
               </Box>
               <Tooltip title="Koble fra">
-                <IconButton size="small" onClick={() => revoke(c.id)} sx={{ color: 'rgba(248,113,113,0.85)' }}>
+                <IconButton
+                  size="small"
+                  onClick={() => revoke(c.id)}
+                  sx={{ color: 'rgba(248,113,113,0.85)' }}
+                  data-testid="instagram-disconnect-button"
+                >
                   <LinkOffIcon fontSize="small" />
                 </IconButton>
               </Tooltip>

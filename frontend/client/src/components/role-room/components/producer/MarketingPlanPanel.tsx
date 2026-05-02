@@ -39,6 +39,8 @@ import roleRoomAgentService, {
 import TextField from '@mui/material/TextField';
 import Snackbar from '@mui/material/Snackbar';
 import type { RoleRoomAgentProducerBootstrapResult } from '../../services/roleRoomAgentService';
+import RoleRoomAgentInsightsBanner from './RoleRoomAgentInsightsBanner';
+import RoleRoomAgentApprovalsWidget from './RoleRoomAgentApprovalsWidget';
 
 interface MarketingPlanPanelProps {
   projectId: string;
@@ -222,6 +224,8 @@ export default function MarketingPlanPanel({
 
   return (
     <Stack spacing={1.6}>
+      <RoleRoomAgentInsightsBanner />
+      <RoleRoomAgentApprovalsWidget />
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'flex-start' }} justifyContent="space-between">
         <Box sx={{ minWidth: 0 }}>
           <Typography sx={{ color: '#f8fafc', fontWeight: 800, fontSize: '1.1rem' }}>

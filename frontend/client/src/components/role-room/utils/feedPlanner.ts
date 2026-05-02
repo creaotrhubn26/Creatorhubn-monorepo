@@ -75,6 +75,24 @@ export function deriveBrandSnapshot(
 ): RoleRoomFeedBrandSnapshot {
   const brandGuide = bootstrap.planningDraft?.brandGuide;
   const colors = Array.isArray(brandGuide?.colors) ? brandGuide.colors : [];
+
+  // Trekk ut sosiale profiler funnet under bootstrap (nettside-scrape +
+  // schema sameAs). Vi tar med kandidater med høyest tillit slik at
+  // plan-generatorer kan se "kunden har allerede Instagram + LinkedIn,
+  // men ikke YouTube" og bygge planen ut fra det.
+  const candidates = Array.isArray(bootstrap.socialProfileCandidates)
+    ? bootstrap.socialProfileCandidates
+    : [];
+  const existingSocialProfiles = candidates
+    .filter((c) => c.status === 'verified' || c.status === 'likely')
+    .map((c) => ({
+      platform: c.platform,
+      url: c.canonicalUrl || c.url,
+      handle: c.handle ?? null,
+      status: c.status,
+      confidence: c.confidence,
+    }));
+
   return {
     companyName: bootstrap.companyProfile?.companyName ?? null,
     logoUrl: brandGuide?.logoUrl || bootstrap.companyProfile?.logoUrl || null,
@@ -83,6 +101,17 @@ export function deriveBrandSnapshot(
     accentColor: colors[2]?.hex ?? null,
     toneOfVoice: brandGuide?.toneOfVoice ?? null,
     visualStyle: brandGuide?.visualStyle ?? null,
+    existingSocialProfiles,
+    industry: bootstrap.companyProfile?.industry ?? null,
+    subIndustry: bootstrap.companyProfile?.subIndustry ?? null,
+    businessModel: bootstrap.companyProfile?.businessModel ?? null,
+    targetAudience: Array.isArray(bootstrap.companyProfile?.targetAudience)
+      ? bootstrap.companyProfile.targetAudience.filter(hasText)
+      : [],
+    offerings: Array.isArray(bootstrap.companyProfile?.offerings)
+      ? bootstrap.companyProfile.offerings.filter(hasText)
+      : [],
+    websiteUrl: bootstrap.companyProfile?.websiteUrl ?? null,
   };
 }
 

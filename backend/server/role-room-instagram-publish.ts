@@ -27,6 +27,8 @@ import {
   type InstagramHostedImage,
 } from './role-room-instagram-image-upload.js';
 import { normalizeReelDataUrl } from './role-room-video-normalize.js';
+import { markFeedPlanPostFailed } from './role-room-feed-plan.js';
+import { notifyPublishFailure } from './social-publish-failure-notifier.js';
 
 const META_GRAPH_BASE = `https://graph.facebook.com/${META_GRAPH_API_VERSION}`;
 const META_RATE_LIMIT_PER_24H = 50;
@@ -224,6 +226,7 @@ async function updateJob(
   if (patch.lastError !== undefined) push('last_error', patch.lastError);
   if (patch.publishedAt !== undefined) push('published_at', patch.publishedAt);
   if (patch.attemptedCount !== undefined) push('attempted_count', patch.attemptedCount);
+  if (patch.scheduledFor !== undefined) push('scheduled_for', patch.scheduledFor);
 
   if (setParts.length === 0) return;
   setParts.push('last_attempt_at = now()');
@@ -394,8 +397,59 @@ async function executePublishJob(
     return { ...job, status: 'published', igMediaId: mediaId, publishedAt: new Date() };
   } catch (error) {
     const message = error instanceof Error ? error.message.slice(0, 500) : 'unknown';
-    await updateJob(pool, job.id, { status: 'failed', lastError: message });
-    // Keep images in R2 so a retry can re-use them.
+    // Retry-with-backoff: hvis vi er innenfor MAX_PUBLISH_ATTEMPTS, sett
+    // jobben tilbake til 'queued' med en scheduled_for-tid lengre frem så
+    // worker plukker den igjen etter eksponentielt voksende intervall.
+    // Etter siste forsøk → permanent 'failed'.
+    const nextAttempts = (job.attemptedCount ?? 0) + 1;
+    const retryAt = computeRetryAt(nextAttempts);
+    if (retryAt) {
+      await updateJob(pool, job.id, {
+        status: 'queued',
+        attemptedCount: nextAttempts,
+        scheduledFor: retryAt,
+        lastError: `Forsøk ${nextAttempts}/${MAX_PUBLISH_ATTEMPTS} feilet: ${message}. Retry om ${Math.round((retryAt.getTime() - Date.now()) / 60000)}m.`,
+      });
+      // Keep images in R2 so retry kan re-bruke dem.
+      return { ...job, status: 'queued', attemptedCount: nextAttempts, lastError: message };
+    }
+    await updateJob(pool, job.id, {
+      status: 'failed',
+      attemptedCount: nextAttempts,
+      lastError: `Permanent feilet etter ${MAX_PUBLISH_ATTEMPTS} forsøk: ${message}`,
+    });
+    // Lukker visibility-loopen: marker den linkede feed-plan-posten som
+    // 'needs_changes' med error som note. Da dukker den opp i Approvals-
+    // widgeten i Markedsplan og brukeren får handlingsbar feedback uten
+    // å måtte sjekke /health-endepunktet.
+    if (job.projectId && job.feedPlanPostId) {
+      void markFeedPlanPostFailed(pool, job.projectId, job.feedPlanPostId, message).catch(
+        (err) => {
+          console.warn('[ig-publish] markFeedPlanPostFailed threw', err);
+        },
+      );
+      // Wake-up loop: e-post-varsel til brukeren slik at de ikke trenger
+      // å være pålogget Role Room når en post feiler. Best-effort —
+      // feiler stille hvis Gmail-config mangler eller send-en feiler.
+      void notifyPublishFailure(pool, {
+        userId: job.userId,
+        projectId: job.projectId,
+        feedPlanPostId: job.feedPlanPostId,
+        postTitle: job.caption ? job.caption.slice(0, 60) : 'Uten tittel',
+        platform: 'instagram',
+        errorMessage: message,
+      })
+        .then((r) => {
+          if (!r.sent) {
+            console.log(
+              `[ig-publish] failure-notifier skipped: ${r.reason ?? 'unknown'}`,
+            );
+          }
+        })
+        .catch((err) => {
+          console.warn('[ig-publish] notifyPublishFailure threw', err);
+        });
+    }
     return { ...job, status: 'failed', lastError: message };
   }
 }
@@ -516,6 +570,130 @@ export async function queueAndPublish(
 
 // ── Scheduled-publish worker ────────────────────────────────────────────
 
+/** Maks antall publish-forsøk per jobb før vi gir opp permanent. */
+export const MAX_PUBLISH_ATTEMPTS = 4;
+/** Stuck-job detection: jobs i mellomstadium >N minutter resetter til 'queued'. */
+const STUCK_JOB_THRESHOLD_MS = 10 * 60 * 1000;
+/** Exponential backoff i minutter per attempt-nummer. */
+const BACKOFF_MINUTES_BY_ATTEMPT: Record<number, number> = {
+  1: 1, // 1 min etter første feil
+  2: 5, // 5 min etter andre
+  3: 15, // 15 min etter tredje
+};
+
+/**
+ * Reset jobs som har stått fast i 'uploading' / 'container' / 'publishing'
+ * lenger enn STUCK_JOB_THRESHOLD_MS. Kjøres før hver due-sweep så worker
+ * gjenoppdager jobs som server-crash-et midt i pipelinen.
+ */
+export async function recoverStuckPublishJobs(pool: Pool): Promise<number> {
+  try {
+    const result = await pool.query(
+      `UPDATE role_room_instagram_publish_jobs
+          SET status = 'queued',
+              last_error = COALESCE(last_error, '') || ' [auto-recovered from stuck state]',
+              updated_at = now()
+        WHERE status IN ('uploading', 'container', 'publishing')
+          AND last_attempt_at < now() - ($1 || ' milliseconds')::interval
+        RETURNING id`,
+      [String(STUCK_JOB_THRESHOLD_MS)],
+    );
+    if ((result.rowCount ?? 0) > 0) {
+      console.log(
+        `[ig-publish-worker] recovered ${result.rowCount} stuck jobs → queued`,
+      );
+    }
+    return result.rowCount ?? 0;
+  } catch (error) {
+    console.warn('[ig-publish-worker] stuck-job recovery failed', error);
+    return 0;
+  }
+}
+
+/**
+ * Beregn exponential-backoff-tidspunkt for en jobb basert på antall
+ * tidligere forsøk. attempts=1 → +1m, attempts=2 → +5m, attempts=3 → +15m.
+ * attempts >= MAX_PUBLISH_ATTEMPTS → returner null (gi opp).
+ */
+export function computeRetryAt(attempts: number): Date | null {
+  if (attempts >= MAX_PUBLISH_ATTEMPTS) return null;
+  const minutes = BACKOFF_MINUTES_BY_ATTEMPT[attempts] ?? 60;
+  return new Date(Date.now() + minutes * 60 * 1000);
+}
+
+/**
+ * Aggregat-stats om publish-køen for /health-endepunktet.
+ */
+export async function getPublishQueueStats(pool: Pool): Promise<{
+  queued: number;
+  inFlight: number;
+  rateLimited: number;
+  failedLast24h: number;
+  publishedLast24h: number;
+  oldestQueuedAt: Date | null;
+}> {
+  try {
+    const [byStatus, oldest, recent] = await Promise.all([
+      pool.query<{ status: string; count: string }>(
+        `SELECT status, count(*)::text AS count
+           FROM role_room_instagram_publish_jobs
+          WHERE status IN ('queued', 'uploading', 'container', 'publishing', 'rate_limited')
+          GROUP BY status`,
+      ),
+      pool.query<{ scheduled_for: Date | null; created_at: Date }>(
+        `SELECT scheduled_for, created_at FROM role_room_instagram_publish_jobs
+          WHERE status = 'queued'
+          ORDER BY COALESCE(scheduled_for, created_at) ASC
+          LIMIT 1`,
+      ),
+      pool.query<{ status: string; count: string }>(
+        `SELECT status, count(*)::text AS count
+           FROM role_room_instagram_publish_jobs
+          WHERE updated_at >= now() - interval '24 hours'
+            AND status IN ('failed', 'published')
+          GROUP BY status`,
+      ),
+    ]);
+
+    let queued = 0;
+    let inFlight = 0;
+    let rateLimited = 0;
+    for (const row of byStatus.rows) {
+      const n = Number(row.count);
+      if (row.status === 'queued') queued = n;
+      else if (row.status === 'rate_limited') rateLimited = n;
+      else inFlight += n;
+    }
+    let failedLast24h = 0;
+    let publishedLast24h = 0;
+    for (const row of recent.rows) {
+      const n = Number(row.count);
+      if (row.status === 'failed') failedLast24h = n;
+      else if (row.status === 'published') publishedLast24h = n;
+    }
+    const oldestQueuedAt =
+      oldest.rows[0]?.scheduled_for ?? oldest.rows[0]?.created_at ?? null;
+    return {
+      queued,
+      inFlight,
+      rateLimited,
+      failedLast24h,
+      publishedLast24h,
+      oldestQueuedAt,
+    };
+  } catch (error) {
+    console.warn('[ig-publish-worker] getPublishQueueStats failed', error);
+    return {
+      queued: 0,
+      inFlight: 0,
+      rateLimited: 0,
+      failedLast24h: 0,
+      publishedLast24h: 0,
+      oldestQueuedAt: null,
+    };
+  }
+}
+
 /**
  * Pick up to `batchSize` jobs that are due (scheduled_for in the past
  * or unset) and execute each. `FOR UPDATE SKIP LOCKED` means two worker
@@ -526,8 +704,12 @@ export async function queueAndPublish(
 export async function processDuePublishJobs(
   pool: Pool,
   batchSize = 10,
-): Promise<{ picked: number; published: number; failed: number; rateLimited: number }> {
-  const stats = { picked: 0, published: 0, failed: 0, rateLimited: 0 };
+): Promise<{ picked: number; published: number; failed: number; rateLimited: number; recovered: number }> {
+  const stats = { picked: 0, published: 0, failed: 0, rateLimited: 0, recovered: 0 };
+  // Stuck-job recovery først — så jobs som server-crashet midt i pipelinen
+  // blir queued igjen og plukkes i denne sweep-en.
+  stats.recovered = await recoverStuckPublishJobs(pool);
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');

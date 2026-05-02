@@ -184,6 +184,7 @@ import {
   loadFeedPlan,
   normalizeFeedPostsPayload,
   saveFeedPlan,
+  type RoleRoomFeedApprovalState,
 } from "./role-room-feed-plan.js";
 import { recommendFeedPost } from "./role-room-feed-recommend.js";
 import {
@@ -214,21 +215,64 @@ import {
   META_REQUIRED_SCOPES,
   revokeConnection as revokeIgConnection,
   signOauthState,
+  subscribeFbPageWebhookFields,
+  subscribeIgWebhookFields,
   upsertInstagramConnection,
   verifyOauthState,
 } from "./role-room-instagram-oauth.js";
 import {
+  getPublishQueueStats,
   IG_RATE_LIMIT_PER_24H,
   listPublishJobs as listIgPublishJobs,
   queueAndPublish as queueAndPublishIg,
   startInstagramPublishWorker,
 } from "./role-room-instagram-publish.js";
+import { registerInstagramPublisher } from "./social-publisher-instagram.js";
+import { registerFacebookPagePublisher } from "./social-publisher-facebook-page.js";
+import {
+  listManagedCompaniesForUser,
+  registerLinkedInPublisher,
+} from "./social-publisher-linkedin.js";
+import {
+  listYouTubeChannels,
+  registerYouTubePublisher,
+} from "./social-publisher-youtube.js";
+import { generateYouTubeChannelPlan } from "./social-publisher-youtube-channel-plan.js";
+import {
+  generateSocialAccessRequest,
+  isSupportedAccessRequestPlatform,
+} from "./social-access-request.js";
+import {
+  registerTikTokPublisher,
+  getTikTokConnectionSummary,
+} from "./social-publisher-tiktok.js";
+import {
+  startTikTokOauth,
+  completeTikTokOauthCallback,
+  disconnectTikTok,
+  getTikTokConfig,
+} from "./role-room-tiktok-oauth.js";
+import { startSentimentWorker } from "./social-events-sentiment-worker.js";
+import { startTokenRefreshWorker } from "./social-token-refresh-worker.js";
+import { startLinkedInInsightsWorker } from "./social-linkedin-insights-worker.js";
+import { startYouTubeInsightsWorker } from "./social-youtube-insights-worker.js";
+import {
+  dispatchPublish,
+  dispatchFetchInsights,
+  listRegisteredPlatforms,
+} from "./social-publisher.js";
+import { buildAgentFeedbackInsights } from "./role-room-agent-feedback-insights.js";
 import { isInstagramImageUploadConfigured } from "./role-room-instagram-image-upload.js";
 import {
   parseMetaWebhookEvent,
   summariseEvent as summariseMetaWebhookEvent,
   verifyMetaWebhookSignature,
 } from "./role-room-instagram-webhook.js";
+import {
+  flattenFacebookPageWebhookEvent,
+  flattenIgWebhookEvent,
+  persistSocialEvent,
+} from "./social-events.js";
 import {
   fetchDataDeletionRequest,
   parseSignedRequest,
@@ -29510,7 +29554,31 @@ app.get("/api/role-room/instagram/oauth/callback", async (req, res) => {
         scopes: META_REQUIRED_SCOPES,
         fbUserId,
       });
-      if (row) saved.push({ igUsername: row.igUsername, igBusinessAccountId: row.igBusinessAccountId });
+      if (row) {
+        saved.push({ igUsername: row.igUsername, igBusinessAccountId: row.igBusinessAccountId });
+        // Best-effort: abonner appen vår på IG webhook-felter
+        // (comments, mentions, live_comments). Feiler ikke connect-flyt
+        // hvis Meta avviser — bruker vil bare ikke få real-time events.
+        subscribeIgWebhookFields(acct.igBusinessAccountId, acct.pageAccessToken).then(
+          (ok) => {
+            if (!ok) {
+              console.warn(
+                `[ig-oauth] webhook subscription not active for ${acct.igBusinessAccountId} — comments/mentions will not stream.`,
+              );
+            }
+          },
+        );
+        // FB Page-abonnement parallelt — siden samme Page nå brukes både
+        // som IG-broer og som direkte publish-target (FacebookVideoPublisher),
+        // er det fornuftig å fange feed/mention/messages-events sammen.
+        subscribeFbPageWebhookFields(acct.pageId, acct.pageAccessToken).then((ok) => {
+          if (!ok) {
+            console.warn(
+              `[fb-oauth] webhook subscription not active for Page ${acct.pageId} — comments/mentions will not stream.`,
+            );
+          }
+        });
+      }
     }
     return res.send(
       `<html><body style="font-family:system-ui;padding:40px;background:#0b1220;color:#e2e8f0;">` +
@@ -29525,6 +29593,965 @@ app.get("/api/role-room/instagram/oauth/callback", async (req, res) => {
     return res.status(500).send(
       `<html><body><h1>Innlogging feilet</h1><p>${(oauthError as Error).message}</p></body></html>`,
     );
+  }
+});
+
+// LinkedIn-orgs som brukeren har ADMINISTRATOR-rolle på. Brukes av
+// Feed Planner-UI for "Publish as"-dropdown og av publish-flyten for
+// å sende riktig organization-URN. Krever w_organization_social i scope —
+// hvis tokenet ikke har det, returnerer vi scopeMissing=true og UI-en
+// kan be brukeren om å reconnecte.
+app.get("/api/role-room/linkedin/companies", async (req, res) => {
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+  try {
+    const result = await listManagedCompaniesForUser(pool, session.userId);
+    return res.json({
+      success: true,
+      scopeMissing: result.scopeMissing,
+      companies: result.companies,
+    });
+  } catch (error) {
+    console.error("[linkedin-companies] failed", error);
+    return res.status(500).json({ success: false, error: "Kunne ikke hente LinkedIn-bedrifter." });
+  }
+});
+
+// LinkedIn profile-status — eksponert til Connections Bar slik at vi kan
+// rendre brukerens LinkedIn-konto med navn + avatar (samme nivå som IG).
+// Bruker eksisterende role_room_linkedin_connections-tabell.
+app.get("/api/role-room/linkedin/profile", async (req, res) => {
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+  try {
+    const result = await pool.query<{
+      linkedin_member_id: string | null;
+      linkedin_email: string | null;
+      linkedin_name: string | null;
+      connection_state: string;
+      profile: Record<string, unknown> | null;
+      expiry_date: Date | null;
+    }>(
+      `SELECT linkedin_member_id, linkedin_email, linkedin_name,
+              connection_state, profile, expiry_date
+         FROM role_room_linkedin_connections
+        WHERE user_id = $1 LIMIT 1`,
+      [session.userId],
+    );
+    const row = result.rows[0] ?? null;
+    if (!row || !row.linkedin_member_id) {
+      return res.json({ success: true, connected: false });
+    }
+    const profile = row.profile ?? {};
+    const profilePictureUrl =
+      typeof (profile as Record<string, unknown>).profilePictureUrl === 'string'
+        ? ((profile as Record<string, unknown>).profilePictureUrl as string)
+        : typeof (profile as Record<string, unknown>).picture === 'string'
+          ? ((profile as Record<string, unknown>).picture as string)
+          : null;
+    return res.json({
+      success: true,
+      connected: row.connection_state === 'connected' || row.connection_state === 'active',
+      memberId: row.linkedin_member_id,
+      email: row.linkedin_email,
+      name: row.linkedin_name,
+      profilePictureUrl,
+      tokenExpiresAt: row.expiry_date,
+    });
+  } catch (error) {
+    console.error("[linkedin-profile] query failed", error);
+    return res.status(500).json({ success: false, error: "Kunne ikke hente LinkedIn-profil." });
+  }
+});
+
+// YouTube-kanaler som er tilgjengelige via Google-tilkoblingen til
+// brukeren. Brukes av Feed Planner-UI for å (a) bekrefte at en kanal
+// finnes før upload-forsøk, og (b) la brukeren velge mellom personlig
+// kanal og Brand-kontoer hvis flere finnes (managedByMe). Returnerer
+// scopeMissing=true hvis Google-tokenet mangler youtube/youtube.readonly,
+// noConnection=true hvis brukeren ikke har Google-tilkoblet ennå.
+app.get("/api/role-room/youtube/channels", async (req, res) => {
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+  try {
+    const result = await listYouTubeChannels(pool, session.userId);
+    return res.json({
+      success: true,
+      scopeMissing: result.scopeMissing,
+      noConnection: result.noConnection,
+      channels: result.channels,
+    });
+  } catch (error) {
+    console.error("[youtube-channels] failed", error);
+    return res.status(500).json({ success: false, error: "Kunne ikke hente YouTube-kanaler." });
+  }
+});
+
+// Proaktiv tilgangsforespørsel — når produsenten ikke har admin-tilgang
+// til en plattform kunden eier, lager Claude en konkret e-post produsenten
+// kan kopiere/sende. Plattform-spesifikke trinn (Studio → Tillatelser →
+// Inviter rolle X) er deterministiske; selve e-post-teksten skreddersys
+// til kunden + bransje. Dette lukker det vanligste blokk-hullet i e2e-
+// publish-flyten ("vi har det teknisk klart, men venter på tilgang").
+app.post("/api/role-room/social/access-request", async (req, res) => {
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+  const projectId = typeof req.body?.projectId === 'string' ? req.body.projectId.trim() : '';
+  const platformInput = typeof req.body?.platform === 'string' ? req.body.platform.trim() : '';
+  if (!projectId) {
+    return res.status(400).json({ success: false, error: "projectId mangler." });
+  }
+  if (!isSupportedAccessRequestPlatform(platformInput)) {
+    return res.status(400).json({
+      success: false,
+      error: `Plattform "${platformInput}" støttes ikke for tilgangsforespørsel.`,
+    });
+  }
+  const recipientName =
+    typeof req.body?.recipientName === 'string' ? req.body.recipientName.trim() : '';
+  const recipientEmail =
+    typeof req.body?.recipientEmail === 'string' ? req.body.recipientEmail.trim() : '';
+  try {
+    const result = await generateSocialAccessRequest(pool, {
+      projectId,
+      platform: platformInput,
+      producerEmail: session.email,
+      producerName: session.name || session.email.split('@')[0],
+      recipientName: recipientName || null,
+      recipientEmail: recipientEmail || null,
+    });
+    return res.json({ success: true, request: result });
+  } catch (error) {
+    console.error("[social-access-request] failed", error);
+    return res
+      .status(500)
+      .json({ success: false, error: "Kunne ikke generere tilgangsforespørsel." });
+  }
+});
+
+// ── TikTok OAuth + connection-status ─────────────────────────────────
+// Følger samme mønster som LinkedIn: produsent klikker «Koble TikTok» →
+// frontend gjør POST /tiktok/oauth/start → vi returnerer authorizationUrl
+// → popup → TikTok callback til /tiktok/oauth/callback → vi lagrer
+// kryptert token. Vi støtter inbox-modus (video.upload-scope) for første
+// versjon; direct publish krever ekstra TikTok App Review.
+app.post("/api/role-room/tiktok/oauth/start", async (req, res) => {
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+  const config = getTikTokConfig();
+  if (!config.configured) {
+    return res
+      .status(400)
+      .json({ success: false, error: "TikTok ikke konfigurert", missing: config.missing });
+  }
+  try {
+    const result = startTikTokOauth({
+      userId: session.userId,
+      projectId: typeof req.body?.projectId === "string" ? req.body.projectId : null,
+      returnPath: typeof req.body?.returnPath === "string" ? req.body.returnPath : null,
+      browserOrigin: typeof req.body?.browserOrigin === "string" ? req.body.browserOrigin : null,
+    });
+    return res.json({ success: true, authorizationUrl: result.authorizationUrl });
+  } catch (error) {
+    console.error("[tiktok-oauth-start] failed", error);
+    return res
+      .status(500)
+      .json({ success: false, error: (error as Error).message || "Kunne ikke starte TikTok OAuth." });
+  }
+});
+
+app.get("/api/role-room/tiktok/oauth/callback", async (req, res) => {
+  const code = typeof req.query.code === "string" ? req.query.code : "";
+  const state = typeof req.query.state === "string" ? req.query.state : "";
+  if (!code || !state) {
+    return res.status(400).send("Missing code or state");
+  }
+  try {
+    await completeTikTokOauthCallback(pool, code, state);
+    // Pop-up flow: returner enkel HTML som postMessage'er til parent og lukker.
+    return res.send(`<!doctype html><html><body><script>
+      try { window.opener?.postMessage({ type: 'tiktok-connected' }, '*'); } catch (e) {}
+      window.close();
+    </script><p>TikTok koblet. Du kan lukke dette vinduet.</p></body></html>`);
+  } catch (error) {
+    console.error("[tiktok-oauth-callback] failed", error);
+    return res
+      .status(500)
+      .send(`TikTok OAuth feilet: ${(error as Error).message}`);
+  }
+});
+
+app.get("/api/role-room/tiktok/connection", async (req, res) => {
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+  try {
+    const summary = await getTikTokConnectionSummary(pool, session.userId);
+    return res.json({ success: true, ...summary });
+  } catch (error) {
+    console.error("[tiktok-connection] failed", error);
+    return res.status(500).json({ success: false, error: "Kunne ikke hente TikTok-status." });
+  }
+});
+
+app.post("/api/role-room/tiktok/disconnect", async (req, res) => {
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+  try {
+    await disconnectTikTok(pool, session.userId);
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("[tiktok-disconnect] failed", error);
+    return res.status(500).json({ success: false, error: "Kunne ikke koble fra TikTok." });
+  }
+});
+
+// AI-generert kanal-plan for produsenter som skal bygge ny YouTube-kanal.
+// Tar projectId som input og henter brand_snapshot fra eksisterende
+// feed-plan (samme datakilde som brukes til Feed Planner). Claude bruker
+// brand-info, bransje og målgruppe til å foreslå kanal-navn, handle,
+// beskrivelse, content pillars, første 5 video-ideer, publiseringskadens
+// og channel-trailer-konsept. Returnerer alltid en strukturert plan slik
+// at frontend kan rendre den ryddig uten å parse fri tekst.
+app.post("/api/role-room/youtube/channel-plan", async (req, res) => {
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+  const projectId = typeof req.body?.projectId === 'string' ? req.body.projectId.trim() : '';
+  if (!projectId) {
+    return res.status(400).json({ success: false, error: "projectId mangler." });
+  }
+  try {
+    const plan = await generateYouTubeChannelPlan(pool, projectId, session.userId);
+    if (!plan) {
+      return res.status(500).json({
+        success: false,
+        error: "Kunne ikke generere kanal-plan. Prøv igjen om litt.",
+      });
+    }
+    return res.json({ success: true, plan });
+  } catch (error) {
+    console.error("[youtube-channel-plan] failed", error);
+    return res.status(500).json({ success: false, error: "Kunne ikke generere kanal-plan." });
+  }
+});
+
+// ── Cross-platform unified inbox API ─────────────────────────────────────
+// Henter social_events på tvers av alle plattformer for innlogget bruker,
+// med valgfri filter på platform / kind / unread / sentiment.
+app.get("/api/role-room/social/inbox", async (req, res) => {
+  const featureId = "role-room-agent-producer";
+  if (!isCompatAdminFeatureEnabled(featureId)) {
+    return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
+  }
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+
+  const platform = typeof req.query.platform === "string" ? req.query.platform : null;
+  const kind = typeof req.query.kind === "string" ? req.query.kind : null;
+  const unreadOnly = req.query.unread === "true" || req.query.unread === "1";
+  const sentiment = typeof req.query.sentiment === "string" ? req.query.sentiment : null;
+  const limit = Math.min(Number(req.query.limit) || 50, 200);
+
+  // Bygg WHERE-clause dynamisk basert på filter.
+  const where: string[] = [];
+  const params: unknown[] = [];
+  // Scope til brukerens egne tilkoblinger. Inkluderer IG-business-id +
+  // FB-page-id + LinkedIn-member-id + YouTube-channel-ids (sistnevnte
+  // via Google-connection-link på social_metrics-raden).
+  where.push(
+    `account_id IN (
+       SELECT ig_business_account_id FROM role_room_instagram_connections WHERE user_id = $${params.length + 1}
+       UNION
+       SELECT facebook_page_id FROM role_room_instagram_connections
+        WHERE user_id = $${params.length + 1} AND facebook_page_id IS NOT NULL
+       UNION
+       SELECT linkedin_member_id FROM role_room_linkedin_connections
+        WHERE user_id = $${params.length + 1} AND linkedin_member_id IS NOT NULL
+       UNION
+       SELECT DISTINCT account_id FROM social_metrics
+        WHERE platform = 'youtube'
+          AND connection_id IN (SELECT id FROM role_room_google_connections WHERE user_id = $${params.length + 1})
+     )`,
+  );
+  params.push(session.userId);
+  if (platform) {
+    where.push(`platform = $${params.length + 1}`);
+    params.push(platform);
+  }
+  if (kind) {
+    where.push(`kind = $${params.length + 1}`);
+    params.push(kind);
+  }
+  if (unreadOnly) where.push(`is_read = false`);
+  if (sentiment) {
+    where.push(`sentiment_label = $${params.length + 1}`);
+    params.push(sentiment);
+  }
+  params.push(limit);
+
+  try {
+    const result = await pool.query<{
+      id: string;
+      platform: string;
+      account_id: string;
+      external_post_id: string | null;
+      kind: string;
+      author_username: string | null;
+      author_display_name: string | null;
+      author_avatar_url: string | null;
+      body: string | null;
+      sentiment_score: number | null;
+      sentiment_label: string | null;
+      is_read: boolean;
+      occurred_at: Date | null;
+      received_at: Date;
+    }>(
+      `SELECT id, platform, account_id, external_post_id, kind,
+              author_username, author_display_name, author_avatar_url, body,
+              sentiment_score, sentiment_label, is_read,
+              occurred_at, received_at
+         FROM social_events
+        WHERE ${where.join(" AND ")}
+        ORDER BY received_at DESC
+        LIMIT $${params.length}`,
+      params,
+    );
+    return res.json({
+      success: true,
+      events: result.rows.map((r) => ({
+        id: r.id,
+        platform: r.platform,
+        accountId: r.account_id,
+        externalPostId: r.external_post_id,
+        kind: r.kind,
+        authorUsername: r.author_username,
+        authorDisplayName: r.author_display_name,
+        authorAvatarUrl: r.author_avatar_url,
+        body: r.body,
+        sentimentScore: r.sentiment_score != null ? Number(r.sentiment_score) : null,
+        sentimentLabel: r.sentiment_label,
+        isRead: r.is_read,
+        occurredAt: r.occurred_at,
+        receivedAt: r.received_at,
+      })),
+    });
+  } catch (error) {
+    console.error("[social-inbox] query failed", error);
+    return res.status(500).json({ success: false, error: "Kunne ikke hente inbox." });
+  }
+});
+
+app.post("/api/role-room/social/inbox/:eventId/read", async (req, res) => {
+  if (!requireAdminSession(req, res)) return;
+  try {
+    await pool.query(
+      `UPDATE social_events SET is_read = true WHERE id = $1`,
+      [req.params.eventId],
+    );
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("[social-inbox] mark read failed", error);
+    return res.status(500).json({ success: false, error: "Kunne ikke merke som lest." });
+  }
+});
+
+// Unified cross-platform publish-endepunkt. Router via dispatcher til
+// riktig SocialPublisher-implementasjon basert på platform-felt i body.
+app.post("/api/role-room/social/publish", async (req, res) => {
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+  const body = (req.body || {}) as Record<string, unknown>;
+  const platform = String(body.platform || "").trim();
+  if (!platform) {
+    return res.status(400).json({ success: false, error: "platform er påkrevd" });
+  }
+  const post = body.post as Record<string, unknown> | undefined;
+  if (!post || !post.connectionId) {
+    return res.status(400).json({ success: false, error: "post.connectionId er påkrevd" });
+  }
+
+  const projectId = String(post.projectId || "").trim();
+  const feedPlanPostId =
+    typeof post.feedPlanPostId === "string" ? post.feedPlanPostId : undefined;
+
+  // Approval-gate: hvis posten er knyttet til en feed-plan, må den være
+  // godkjent eller scheduled før vi får publisere. Vi finner posten ved
+  // å lese feed-planen for samme prosjekt + en plattform som matcher
+  // dispatcher-targeten:
+  //   instagram      → feed-plan key 'instagram'
+  //   facebook_page  → feed-plan key 'instagram' (deler row med IG)
+  //   linkedin       → feed-plan key 'linkedin'
+  //   tiktok         → feed-plan key 'tiktok'
+  // Hvis feedPlanPostId mangler, hopper vi over gate-en (one-off
+  // publish via FB-Mention osv).
+  if (projectId && feedPlanPostId) {
+    const feedPlatform = platform === "facebook_page" ? "instagram" : platform;
+    if (isSupportedFeedPlatform(feedPlatform)) {
+      try {
+        const plan = await loadFeedPlan(pool, projectId, feedPlatform);
+        const matchedPost = plan?.posts.find((p) => p.id === feedPlanPostId);
+        if (matchedPost) {
+          const state = matchedPost.approvalState ?? "draft";
+          if (state !== "approved" && state !== "scheduled") {
+            return res.status(409).json({
+              success: false,
+              error:
+                state === "rejected"
+                  ? "Denne posten er avvist og kan ikke publiseres. Endre statusen først."
+                  : state === "needs_changes"
+                    ? "Posten venter på endringer. Godkjenn på nytt etter at du har redigert."
+                    : "Posten må godkjennes før den kan publiseres.",
+              approvalState: state,
+              gate: "approval_required",
+            });
+          }
+        }
+      } catch (gateError) {
+        // Ikke fatalt — gate-feil skal ikke blokkere publish hvis feed-
+        // planen ikke kan leses (f.eks. permission-feil på en spesifikk
+        // pool-tilkobling). Logger og fortsetter.
+        console.warn("[social-publish] approval-gate lookup failed", gateError);
+      }
+    }
+  }
+
+  try {
+    const result = await dispatchPublish(
+      platform as Parameters<typeof dispatchPublish>[0],
+      {
+        connectionId: String(post.connectionId),
+        userId: session.userId,
+        projectId,
+        feedPlanPostId,
+        mediaKind: (post.mediaKind as Parameters<typeof dispatchPublish>[1]["mediaKind"]) ?? "image",
+        caption: String(post.caption || ""),
+        imageUrl: typeof post.imageUrl === "string" ? post.imageUrl : undefined,
+        imageUrls: Array.isArray(post.imageUrls) ? (post.imageUrls as string[]) : undefined,
+        videoUrl: typeof post.videoUrl === "string" ? post.videoUrl : undefined,
+        extras: (post.extras as Record<string, unknown>) ?? undefined,
+        scheduledFor: post.scheduledFor ? new Date(String(post.scheduledFor)) : null,
+      },
+    );
+
+    // Record publish-event til social_metrics for cross-platform analytics.
+    // Dette gir Measure-fasen visibility på publish-rytme også for plattformer
+    // som ikke har webhooks (LinkedIn) eller hvor /insights krever flere
+    // scopes vi ikke har enda. Best-effort — feiler stille.
+    if (result.ok && (result.status === 'published' || result.status === 'scheduled')) {
+      try {
+        // Resolve account_id. Foretrekk det publisheren returnerte
+        // (result.accountId) — sparer en DB round-trip og dekker
+        // plattformer (YouTube) som ikke har dedikert connection-tabell.
+        let accountId: string | null = result.accountId ?? null;
+        // For analytics-scope må vi også vite hvilken connection_id
+        // som skal lagres på social_metrics-raden. For IG/FB bruker vi
+        // post.connectionId (rad-id i IG-tabellen). For LinkedIn er det
+        // user_id-koblingen. For YouTube må vi finne google-connection.
+        let metricConnectionId: string = String(post.connectionId);
+        if (!accountId && (platform === 'instagram' || platform === 'facebook_page')) {
+          const accountRow = await pool.query<{
+            account_id: string | null;
+          }>(
+            `SELECT CASE WHEN $1 = 'facebook_page' THEN facebook_page_id
+                         ELSE ig_business_account_id END AS account_id
+               FROM role_room_instagram_connections WHERE id = $2 LIMIT 1`,
+            [platform, post.connectionId],
+          );
+          accountId = accountRow.rows[0]?.account_id ?? null;
+        } else if (!accountId && platform === 'linkedin') {
+          const accountRow = await pool.query<{
+            linkedin_member_id: string | null;
+          }>(
+            `SELECT linkedin_member_id FROM role_room_linkedin_connections
+              WHERE user_id = $1 LIMIT 1`,
+            [session.userId],
+          );
+          accountId = accountRow.rows[0]?.linkedin_member_id ?? null;
+        }
+        if (platform === 'youtube') {
+          // Erstatt connection_id med Google-connection-rad slik at
+          // analytics scope-SQL kan UNION-e channel_ids via user_id-join
+          // mot role_room_google_connections.
+          const gcRow = await pool.query<{ id: string }>(
+            `SELECT id::text AS id FROM role_room_google_connections
+              WHERE user_id = $1
+              ORDER BY last_used_at DESC NULLS LAST, updated_at DESC NULLS LAST
+              LIMIT 1`,
+            [session.userId],
+          );
+          if (gcRow.rows[0]?.id) metricConnectionId = gcRow.rows[0].id;
+        }
+        if (accountId) {
+          await pool.query(
+            `INSERT INTO social_metrics
+               (connection_id, platform, account_id, external_post_id, scope,
+                metric_name, metric_value, recorded_at, raw)
+             VALUES ($1, $2, $3, $4, 'account', $5, 1, now(), $6::jsonb)`,
+            [
+              metricConnectionId,
+              platform,
+              accountId,
+              result.externalPostId ?? null,
+              result.status === 'published' ? 'publish_count' : 'scheduled_count',
+              JSON.stringify({
+                feedPlanPostId,
+                permalink: result.permalink,
+                status: result.status,
+              }),
+            ],
+          );
+        }
+      } catch (metricErr) {
+        console.warn('[social-publish] publish-metric record failed', metricErr);
+      }
+    }
+
+    // Auto-transition: oppdater feed-plan-postens approvalState etter
+    // suksessrik publish/scheduling, slik at UI-en reflekterer ny tilstand
+    // uten egen API-rundtur. Best-effort — feiler ikke responsen.
+    if (result.ok && projectId && feedPlanPostId) {
+      const feedPlatform = platform === "facebook_page" ? "instagram" : platform;
+      if (isSupportedFeedPlatform(feedPlatform)) {
+        try {
+          const plan = await loadFeedPlan(pool, projectId, feedPlatform);
+          if (plan) {
+            const now = new Date().toISOString();
+            const nextState: RoleRoomFeedApprovalState =
+              result.status === "published" ? "published" : "scheduled";
+            const nextPosts = plan.posts.map((p) =>
+              p.id === feedPlanPostId
+                ? {
+                    ...p,
+                    approvalState: nextState,
+                    approvalChangedAt: now,
+                    approvalChangedBy: session.email ?? session.userId ?? null,
+                    approvalNote: null,
+                  }
+                : p,
+            );
+            await saveFeedPlan(pool, projectId, feedPlatform, nextPosts, {
+              brandSnapshot: plan.brandSnapshot,
+              updatedBy: session.email ?? session.userId ?? null,
+            });
+          }
+        } catch (postPublishErr) {
+          console.warn(
+            "[social-publish] auto-transition approval state failed",
+            postPublishErr,
+          );
+        }
+      }
+    }
+
+    return res.status(result.ok ? 200 : 422).json({ success: result.ok, ...result });
+  } catch (error) {
+    console.error("[social-publish] dispatch threw", error);
+    return res.status(500).json({
+      success: false,
+      error: (error as Error).message,
+    });
+  }
+});
+
+// Hent insights for en gitt connection + scope (page-level eller post-id).
+// Resultatet blir også INSERTet i social_metrics for tidsserie-tracking.
+app.post("/api/role-room/social/metrics/snapshot", async (req, res) => {
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+  const body = (req.body || {}) as Record<string, unknown>;
+  const platform = String(body.platform || "").trim();
+  const connectionId = String(body.connectionId || "").trim();
+  const scope = String(body.scope || "account").trim();
+  const externalPostId = typeof body.externalPostId === "string" ? body.externalPostId : undefined;
+  if (!platform || !connectionId) {
+    return res.status(400).json({ success: false, error: "platform + connectionId påkrevd" });
+  }
+  try {
+    const snapshots = await dispatchFetchInsights(
+      platform as Parameters<typeof dispatchFetchInsights>[0],
+      {
+        connectionId,
+        externalPostId,
+        scope: scope as Parameters<typeof dispatchFetchInsights>[1]["scope"],
+      },
+    );
+    // Persistér til social_metrics for tidsserie-historikk.
+    if (snapshots.length > 0) {
+      const accountIdRow = await pool.query<{ account_id: string }>(
+        `SELECT CASE WHEN $1 = 'facebook_page' THEN facebook_page_id
+                     ELSE ig_business_account_id END AS account_id
+           FROM role_room_instagram_connections WHERE id = $2 LIMIT 1`,
+        [platform, connectionId],
+      );
+      const accountId = accountIdRow.rows[0]?.account_id;
+      if (accountId) {
+        for (const s of snapshots) {
+          try {
+            await pool.query(
+              `INSERT INTO social_metrics
+                 (connection_id, platform, account_id, external_post_id, scope,
+                  metric_name, metric_value, metric_value_text, recorded_at, raw)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)`,
+              [
+                connectionId,
+                platform,
+                accountId,
+                externalPostId ?? null,
+                s.scope,
+                s.metricName,
+                s.metricValue,
+                s.metricValueText ?? null,
+                s.recordedAt,
+                JSON.stringify(s.raw ?? {}),
+              ],
+            );
+          } catch (insertErr) {
+            console.warn("[social-metrics] insert failed", insertErr);
+          }
+        }
+      }
+    }
+    return res.json({
+      success: true,
+      snapshots: snapshots.map((s) => ({
+        metricName: s.metricName,
+        metricValue: s.metricValue,
+        scope: s.scope,
+        recordedAt: s.recordedAt,
+      })),
+    });
+  } catch (error) {
+    console.error("[social-metrics] snapshot failed", error);
+    return res.status(500).json({ success: false, error: (error as Error).message });
+  }
+});
+
+// Cross-platform analytics aggregator. Powers the Measure-fasen i Role
+// Room Agent. Returnerer summary KPIs (siste 7 + 30 dager), daglig
+// time-series for events/sentiment, og latest account-level metrics-
+// snapshot per platform. Bruker brukerens egne tilkoblinger som scope.
+app.get("/api/role-room/social/analytics", async (req, res) => {
+  const featureId = "role-room-agent-producer";
+  if (!isCompatAdminFeatureEnabled(featureId)) {
+    return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
+  }
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+
+  // Bygg bruker-scoped account_id-set fra IG-tabellen (IG-id + FB-page-id),
+  // LinkedIn-tabellen, og YouTube-channel-ids via Google-connection-link.
+  // YouTube har ingen dedikert connection-tabell — vi linker via
+  // social_metrics.connection_id som peker til role_room_google_connections.
+  const scopeSql = `(
+    SELECT ig_business_account_id AS account_id FROM role_room_instagram_connections WHERE user_id = $1
+    UNION
+    SELECT facebook_page_id FROM role_room_instagram_connections
+     WHERE user_id = $1 AND facebook_page_id IS NOT NULL
+    UNION
+    SELECT linkedin_member_id FROM role_room_linkedin_connections
+     WHERE user_id = $1 AND linkedin_member_id IS NOT NULL
+    UNION
+    SELECT DISTINCT account_id FROM social_metrics
+     WHERE platform = 'youtube'
+       AND connection_id IN (SELECT id FROM role_room_google_connections WHERE user_id = $1)
+  )`;
+
+  try {
+    const [
+      summary7d,
+      summary30d,
+      sentimentBreakdown,
+      dailyEvents,
+      dailySentiment,
+      latestAccountMetrics,
+      topPostMetrics,
+      publishesPerPlatform,
+    ] = await Promise.all([
+      pool.query<{ platform: string; total: string; unread: string }>(
+        `SELECT platform,
+                count(*)::text AS total,
+                count(*) FILTER (WHERE NOT is_read)::text AS unread
+           FROM social_events
+          WHERE account_id IN ${scopeSql}
+            AND received_at >= now() - interval '7 days'
+          GROUP BY platform`,
+        [session.userId],
+      ),
+      pool.query<{ platform: string; total: string }>(
+        `SELECT platform, count(*)::text AS total
+           FROM social_events
+          WHERE account_id IN ${scopeSql}
+            AND received_at >= now() - interval '30 days'
+          GROUP BY platform`,
+        [session.userId],
+      ),
+      pool.query<{ platform: string; sentiment_label: string; count: string }>(
+        `SELECT platform, sentiment_label, count(*)::text AS count
+           FROM social_events
+          WHERE account_id IN ${scopeSql}
+            AND received_at >= now() - interval '30 days'
+            AND sentiment_label IS NOT NULL
+          GROUP BY platform, sentiment_label`,
+        [session.userId],
+      ),
+      pool.query<{ day: string; platform: string; count: string }>(
+        `SELECT to_char(date_trunc('day', received_at), 'YYYY-MM-DD') AS day,
+                platform, count(*)::text AS count
+           FROM social_events
+          WHERE account_id IN ${scopeSql}
+            AND received_at >= now() - interval '30 days'
+          GROUP BY day, platform
+          ORDER BY day ASC`,
+        [session.userId],
+      ),
+      pool.query<{ day: string; sentiment_label: string; count: string }>(
+        `SELECT to_char(date_trunc('day', received_at), 'YYYY-MM-DD') AS day,
+                sentiment_label, count(*)::text AS count
+           FROM social_events
+          WHERE account_id IN ${scopeSql}
+            AND received_at >= now() - interval '30 days'
+            AND sentiment_label IS NOT NULL
+          GROUP BY day, sentiment_label
+          ORDER BY day ASC`,
+        [session.userId],
+      ),
+      // Siste account-level snapshot per platform/account/metric_name
+      pool.query<{
+        platform: string;
+        account_id: string;
+        metric_name: string;
+        metric_value: string | null;
+        recorded_at: Date;
+      }>(
+        `SELECT DISTINCT ON (platform, account_id, metric_name)
+                platform, account_id, metric_name, metric_value, recorded_at
+           FROM social_metrics
+          WHERE account_id IN ${scopeSql}
+            AND scope IN ('account', 'page')
+          ORDER BY platform, account_id, metric_name, recorded_at DESC`,
+        [session.userId],
+      ),
+      // Top 10 posts ranked by reach over 30d
+      pool.query<{
+        platform: string;
+        external_post_id: string;
+        metric_name: string;
+        metric_value: string;
+        recorded_at: Date;
+      }>(
+        `SELECT DISTINCT ON (platform, external_post_id, metric_name)
+                platform, external_post_id, metric_name, metric_value, recorded_at
+           FROM social_metrics
+          WHERE account_id IN ${scopeSql}
+            AND scope IN ('post', 'reel', 'video')
+            AND external_post_id IS NOT NULL
+            AND recorded_at >= now() - interval '30 days'
+            AND metric_name IN ('reach', 'impressions', 'post_impressions', 'post_impressions_unique')
+          ORDER BY platform, external_post_id, metric_name, recorded_at DESC
+          LIMIT 100`,
+        [session.userId],
+      ),
+      // Publish-rytme per plattform — teller publish_count + scheduled_count
+      // events siste 30 dager. Gir cross-platform synlighet på "hvor mye
+      // har vi publisert hvor".
+      pool.query<{ platform: string; published: string; scheduled: string }>(
+        `SELECT platform,
+                count(*) FILTER (WHERE metric_name = 'publish_count')::text AS published,
+                count(*) FILTER (WHERE metric_name = 'scheduled_count')::text AS scheduled
+           FROM social_metrics
+          WHERE account_id IN ${scopeSql}
+            AND scope = 'account'
+            AND metric_name IN ('publish_count', 'scheduled_count')
+            AND recorded_at >= now() - interval '30 days'
+          GROUP BY platform`,
+        [session.userId],
+      ),
+    ]);
+
+    return res.json({
+      success: true,
+      summary: {
+        last7d: {
+          perPlatform: summary7d.rows.map((r) => ({
+            platform: r.platform,
+            total: Number(r.total),
+            unread: Number(r.unread),
+          })),
+          totalEvents: summary7d.rows.reduce((sum, r) => sum + Number(r.total), 0),
+          totalUnread: summary7d.rows.reduce((sum, r) => sum + Number(r.unread), 0),
+        },
+        last30d: {
+          perPlatform: summary30d.rows.map((r) => ({
+            platform: r.platform,
+            total: Number(r.total),
+          })),
+          totalEvents: summary30d.rows.reduce((sum, r) => sum + Number(r.total), 0),
+        },
+      },
+      sentimentBreakdown: sentimentBreakdown.rows.map((r) => ({
+        platform: r.platform,
+        sentiment: r.sentiment_label,
+        count: Number(r.count),
+      })),
+      dailyEvents: dailyEvents.rows.map((r) => ({
+        day: r.day,
+        platform: r.platform,
+        count: Number(r.count),
+      })),
+      dailySentiment: dailySentiment.rows.map((r) => ({
+        day: r.day,
+        sentiment: r.sentiment_label,
+        count: Number(r.count),
+      })),
+      accountMetrics: latestAccountMetrics.rows.map((r) => ({
+        platform: r.platform,
+        accountId: r.account_id,
+        metricName: r.metric_name,
+        metricValue: r.metric_value != null ? Number(r.metric_value) : null,
+        recordedAt: r.recorded_at,
+      })),
+      topPosts: topPostMetrics.rows.map((r) => ({
+        platform: r.platform,
+        externalPostId: r.external_post_id,
+        metricName: r.metric_name,
+        metricValue: Number(r.metric_value),
+        recordedAt: r.recorded_at,
+      })),
+      publishesPerPlatform: publishesPerPlatform.rows.map((r) => ({
+        platform: r.platform,
+        published: Number(r.published),
+        scheduled: Number(r.scheduled),
+      })),
+    });
+  } catch (error) {
+    console.error("[social-analytics] aggregate failed", error);
+    return res.status(500).json({
+      success: false,
+      error: "Kunne ikke hente analytics. Sjekk at social_events-tabellen finnes.",
+    });
+  }
+});
+
+// Agent feedback-insights: destillerer Listen + Measure-data tilbake til
+// strategiske signaler som kan vises i Plan-fasen og feed-es inn i agent-
+// prompts ved neste markedsplan-iterasjon.
+app.get("/api/role-room/social/agent-insights", async (req, res) => {
+  const featureId = "role-room-agent-producer";
+  if (!isCompatAdminFeatureEnabled(featureId)) {
+    return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
+  }
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+  try {
+    const insights = await buildAgentFeedbackInsights(pool, session.userId);
+    return res.json({ success: true, insights });
+  } catch (error) {
+    console.error("[agent-insights] failed", error);
+    return res.status(500).json({ success: false, error: "Kunne ikke bygge insights." });
+  }
+});
+
+// Pipeline-observability — bruk fra dashboard / monitoring til å bekrefte
+// at e2e-flyten (webhook → social_events → sentiment-worker → inbox) er
+// alive. Returnerer aggregat-statistikk siste 24 timer.
+app.get("/api/role-room/social/health", async (req, res) => {
+  if (!requireAdminSession(req, res)) return;
+  try {
+    const [
+      eventsByPlatform,
+      sentimentBacklog,
+      lastEvent,
+      lastScored,
+      tokenStatus,
+      publishQueue,
+    ] = await Promise.all([
+      pool.query<{ platform: string; total: string; unread: string; with_sentiment: string }>(
+        `SELECT platform,
+                count(*)::text AS total,
+                count(*) FILTER (WHERE NOT is_read)::text AS unread,
+                count(*) FILTER (WHERE sentiment_processed_at IS NOT NULL)::text AS with_sentiment
+           FROM social_events
+          WHERE received_at >= now() - interval '24 hours'
+          GROUP BY platform`,
+      ),
+      pool.query<{ count: string }>(
+        `SELECT count(*)::text AS count FROM social_events
+          WHERE sentiment_processed_at IS NULL AND body IS NOT NULL`,
+      ),
+      pool.query<{ received_at: Date | null }>(
+        `SELECT received_at FROM social_events ORDER BY received_at DESC LIMIT 1`,
+      ),
+      pool.query<{ sentiment_processed_at: Date | null }>(
+        `SELECT sentiment_processed_at FROM social_events
+          WHERE sentiment_processed_at IS NOT NULL
+          ORDER BY sentiment_processed_at DESC LIMIT 1`,
+      ),
+      pool.query<{
+        connection_state: string;
+        bucket: string;
+        count: string;
+      }>(
+        `SELECT connection_state,
+                CASE
+                  WHEN token_expires_at IS NULL THEN 'unknown'
+                  WHEN token_expires_at < now() THEN 'expired'
+                  WHEN token_expires_at < now() + interval '7 days' THEN 'expiring_7d'
+                  WHEN token_expires_at < now() + interval '30 days' THEN 'expiring_30d'
+                  ELSE 'healthy'
+                END AS bucket,
+                count(*)::text AS count
+           FROM role_room_instagram_connections
+          GROUP BY connection_state, bucket`,
+      ),
+      getPublishQueueStats(pool),
+    ]);
+
+    // Aggregér token-status på tvers av buckets.
+    const tokenSummary = {
+      connected: 0,
+      expired: 0,
+      expiring7d: 0,
+      expiring30d: 0,
+      healthy: 0,
+      revoked: 0,
+      otherStates: 0,
+    };
+    for (const row of tokenStatus.rows) {
+      const n = Number(row.count);
+      if (row.connection_state === 'revoked') {
+        tokenSummary.revoked += n;
+        continue;
+      }
+      if (row.connection_state !== 'connected') {
+        tokenSummary.otherStates += n;
+        continue;
+      }
+      tokenSummary.connected += n;
+      if (row.bucket === 'expired') tokenSummary.expired += n;
+      else if (row.bucket === 'expiring_7d') tokenSummary.expiring7d += n;
+      else if (row.bucket === 'expiring_30d') tokenSummary.expiring30d += n;
+      else if (row.bucket === 'healthy') tokenSummary.healthy += n;
+    }
+
+    return res.json({
+      success: true,
+      anthropicConfigured: Boolean(process.env.ANTHROPIC_API_KEY),
+      metaSecretConfigured: Boolean(process.env.META_APP_SECRET),
+      metaAppConfigured: Boolean(process.env.META_APP_ID && process.env.META_APP_SECRET),
+      perPlatform24h: eventsByPlatform.rows.map((r) => ({
+        platform: r.platform,
+        total: Number(r.total),
+        unread: Number(r.unread),
+        withSentiment: Number(r.with_sentiment),
+      })),
+      sentimentBacklog: Number(sentimentBacklog.rows[0]?.count ?? 0),
+      lastEventReceivedAt: lastEvent.rows[0]?.received_at ?? null,
+      lastSentimentScoredAt: lastScored.rows[0]?.sentiment_processed_at ?? null,
+      tokenSummary,
+      publishQueue,
+    });
+  } catch (error) {
+    console.error("[social-health] query failed", error);
+    return res.status(500).json({ success: false, error: "Kunne ikke hente pipeline-status." });
   }
 });
 
@@ -29548,6 +30575,12 @@ app.get("/api/role-room/instagram/connections", async (req, res) => {
       facebookPageName: c.facebookPageName,
       tokenExpiresAt: c.tokenExpiresAt,
       scopes: c.scopes,
+      // Profil-metadata for UI-rendering (avatar, follower-tall, etc.)
+      accountType: c.accountType,
+      profilePictureUrl: c.profilePictureUrl,
+      followersCount: c.followersCount,
+      mediaCount: c.mediaCount,
+      profileRefreshedAt: c.profileRefreshedAt,
     })),
   });
 });
@@ -31129,7 +32162,98 @@ app.post(
     }
 
     console.log("[ig-webhook]", summariseMetaWebhookEvent(event));
+
+    // Persistér events til social_events for unified inbox + sentiment.
+    // Best-effort — feiler ikke webhook-acket hvis storage feiler.
+    try {
+      const flattened = flattenIgWebhookEvent(
+        event as Parameters<typeof flattenIgWebhookEvent>[0],
+      );
+      let inserted = 0;
+      for (const e of flattened) {
+        const r = await persistSocialEvent(pool, e);
+        if (r.inserted) inserted += 1;
+      }
+      if (flattened.length > 0) {
+        console.log(
+          `[ig-webhook] persisted ${inserted}/${flattened.length} events to social_events`,
+        );
+      }
+    } catch (err) {
+      console.warn("[ig-webhook] persist failed (non-fatal)", err);
+    }
+
     // Ack quickly — Meta treats >10s as a failure and will retry.
+    return res.status(200).send("ok");
+  },
+);
+
+// ── Facebook Pages webhook (samme Meta-app, separat callback URL for at
+//    verify-tokens kan roteres uavhengig av IG og WhatsApp) ──────────────
+
+app.get("/api/role-room/facebook/webhook", (req, res) => {
+  const expectedToken =
+    (process.env.META_FB_WEBHOOK_VERIFY_TOKEN || "").trim() ||
+    (process.env.META_WEBHOOK_VERIFY_TOKEN || "").trim();
+  const mode = req.query["hub.mode"];
+  const token = req.query["hub.verify_token"];
+  const challenge = req.query["hub.challenge"];
+  if (mode === "subscribe" && expectedToken && token === expectedToken) {
+    return res.status(200).send(String(challenge ?? ""));
+  }
+  return res.status(403).send("verify token mismatch");
+});
+
+app.post(
+  "/api/role-room/facebook/webhook",
+  express.raw({ type: "application/json", limit: "1mb" }),
+  async (req, res) => {
+    const appSecret = process.env.META_APP_SECRET;
+    if (!appSecret) {
+      if (process.env.NODE_ENV === "production") {
+        console.error("[fb-webhook] META_APP_SECRET unset — cannot verify signature");
+        return res.status(503).send("webhook not configured");
+      }
+      console.warn("[fb-webhook] accepting unsigned event (META_APP_SECRET unset, non-prod)");
+    }
+
+    const rawBody: Buffer = Buffer.isBuffer(req.body)
+      ? req.body
+      : Buffer.from(String(req.body ?? ""), "utf8");
+
+    if (appSecret) {
+      const signatureHeader = req.headers["x-hub-signature-256"];
+      const valid = verifyMetaWebhookSignature(rawBody, signatureHeader, appSecret);
+      if (!valid) {
+        console.warn("[fb-webhook] signature mismatch — rejecting");
+        return res.status(401).send("invalid signature");
+      }
+    }
+
+    const event = parseMetaWebhookEvent(rawBody);
+    if (!event) {
+      console.warn("[fb-webhook] body was not valid JSON");
+      return res.status(200).send("ok");
+    }
+
+    try {
+      const flattened = flattenFacebookPageWebhookEvent(
+        event as Parameters<typeof flattenFacebookPageWebhookEvent>[0],
+      );
+      let inserted = 0;
+      for (const e of flattened) {
+        const r = await persistSocialEvent(pool, e);
+        if (r.inserted) inserted += 1;
+      }
+      if (flattened.length > 0) {
+        console.log(
+          `[fb-webhook] persisted ${inserted}/${flattened.length} events to social_events`,
+        );
+      }
+    } catch (err) {
+      console.warn("[fb-webhook] persist failed (non-fatal)", err);
+    }
+
     return res.status(200).send("ok");
   },
 );
@@ -31714,6 +32838,142 @@ app.put("/api/role-room/agent/feed-plan/:projectId/:platform", async (req, res) 
       updatedBy: saved.updatedBy,
     },
   });
+});
+
+// ── Approval-flyt for feed-posts ─────────────────────────────────────────
+// Patcher approvalState (+ audit-felter) på en eller flere poster i
+// gjeldende feed-plan. Posten må eksistere i planen — ukjente IDs
+// returnerer 404. State-overgang er ikke streng (vi tillater alle
+// transisjoner), men UI styrer hvilke knapper som vises i hver tilstand.
+app.post("/api/role-room/agent/feed-plan/:projectId/:platform/approve", async (req, res) => {
+  const featureId = "role-room-agent-producer";
+  if (!isCompatAdminFeatureEnabled(featureId)) {
+    return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
+  }
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+
+  const { projectId, platform } = req.params;
+  if (!projectId || !isSupportedFeedPlatform(platform)) {
+    return res.status(400).json({ success: false, error: "projectId og støttet plattform er påkrevd." });
+  }
+
+  const body = (req.body || {}) as Record<string, unknown>;
+  const postIds = Array.isArray(body.postIds) ? (body.postIds as unknown[]) : [];
+  const newState = String(body.approvalState || '').trim();
+  const note = typeof body.approvalNote === 'string' ? body.approvalNote : null;
+
+  const validStates = ['draft', 'approved', 'scheduled', 'published', 'rejected', 'needs_changes'];
+  if (!validStates.includes(newState)) {
+    return res.status(400).json({
+      success: false,
+      error: `approvalState må være en av: ${validStates.join(', ')}`,
+    });
+  }
+  if (postIds.length === 0) {
+    return res.status(400).json({ success: false, error: "postIds[] kan ikke være tom" });
+  }
+
+  const plan = await loadFeedPlan(pool, projectId, platform);
+  if (!plan) {
+    return res.status(404).json({ success: false, error: "Feed-plan ikke funnet" });
+  }
+
+  const wantedIds = new Set(postIds.map((id) => String(id)));
+  const now = new Date().toISOString();
+  let touched = 0;
+  const nextPosts = plan.posts.map((post) => {
+    if (!wantedIds.has(post.id)) return post;
+    touched += 1;
+    return {
+      ...post,
+      approvalState: newState as RoleRoomFeedApprovalState,
+      approvalChangedAt: now,
+      approvalChangedBy: session.email ?? session.userId ?? null,
+      approvalNote: newState === 'rejected' || newState === 'needs_changes' ? note : null,
+    };
+  });
+
+  if (touched === 0) {
+    return res.status(404).json({
+      success: false,
+      error: "Ingen av de oppgitte postIds finnes i planen",
+    });
+  }
+
+  const saved = await saveFeedPlan(pool, projectId, platform, nextPosts, {
+    brandSnapshot: plan.brandSnapshot,
+    updatedBy: session.email ?? session.userId ?? null,
+  });
+
+  return res.json({
+    success: true,
+    touched,
+    posts: saved?.posts ?? nextPosts,
+  });
+});
+
+// Aggregert pending-approvals-API: lister alle posts som venter på review
+// på tvers av brukerens prosjekter. Brukes av en fremtidig "Approvals"-
+// dashboard-widget.
+app.get("/api/role-room/agent/feed-plan/approvals/pending", async (req, res) => {
+  const featureId = "role-room-agent-producer";
+  if (!isCompatAdminFeatureEnabled(featureId)) {
+    return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
+  }
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+
+  try {
+    const result = await pool.query<{
+      project_id: string;
+      platform: string;
+      posts: Array<Record<string, unknown>>;
+      updated_at: Date;
+    }>(
+      `SELECT project_id, platform, posts, updated_at
+         FROM role_room_feed_plans
+        WHERE updated_by = $1 OR updated_by IS NULL
+        ORDER BY updated_at DESC
+        LIMIT 50`,
+      [session.email ?? session.userId],
+    );
+
+    const pending: Array<{
+      projectId: string;
+      platform: string;
+      postId: string;
+      title: string;
+      caption: string;
+      scheduledFor: string | null;
+      approvalState: string;
+      approvalChangedAt: string | null;
+    }> = [];
+
+    for (const plan of result.rows) {
+      for (const post of plan.posts ?? []) {
+        const state = String(post.approvalState ?? 'draft');
+        if (state === 'draft' || state === 'needs_changes') {
+          pending.push({
+            projectId: plan.project_id,
+            platform: plan.platform,
+            postId: String(post.id ?? ''),
+            title: String(post.title ?? ''),
+            caption: String(post.caption ?? '').slice(0, 200),
+            scheduledFor: typeof post.scheduledFor === 'string' ? post.scheduledFor : null,
+            approvalState: state,
+            approvalChangedAt:
+              typeof post.approvalChangedAt === 'string' ? post.approvalChangedAt : null,
+          });
+        }
+      }
+    }
+
+    return res.json({ success: true, pending, totalPending: pending.length });
+  } catch (error) {
+    console.error('[approval-pending] query failed', error);
+    return res.status(500).json({ success: false, error: "Kunne ikke hente pending-approvals." });
+  }
 });
 
 app.get("/api/admin/features", (req, res) => {
@@ -40218,7 +41478,7 @@ app.get("/admin/whatsapp-create-template", async (req, res) => {
   </select>
 
   <label for="tplBody">Body text (use {{1}}, {{2}} etc. for variables)</label>
-  <textarea id="tplBody" data-testid="template-body-input" placeholder="Hi {{1}}, this is a reminder for {{2}} on {{3}} at {{4}}. Location: {{5}}."></textarea>
+  <textarea id="tplBody" data-testid="template-body-input" placeholder="Hi {{1}}, this is a reminder for {{2}} on {{3}} at {{4}} at location {{5}}. See you there!"></textarea>
 
   <button id="submit-btn" data-testid="submit-button" type="button">Submit template to Meta</button>
 
@@ -113316,6 +114576,32 @@ httpServer.listen(PORT, "0.0.0.0", () => {
   // every 30s for due rows and run them. No-op until a job actually
   // becomes due, so it's safe to always start.
   startInstagramPublishWorker(pool);
+  // Cross-platform publisher registry: registrer alle plattform-implementa-
+  // sjoner i social-publisher-modulen. Feed Planner / Marketing Plan
+  // dispatchPublish() ruter til riktig publisher basert på platform-felt.
+  registerInstagramPublisher(pool);
+  registerFacebookPagePublisher(pool);
+  registerLinkedInPublisher(pool);
+  registerYouTubePublisher(pool);
+  registerTikTokPublisher(pool);
+  // Sentiment-worker for unified inbox: skanner social_events hvert 60s
+  // og scorer pending events via Claude Haiku. Disabled hvis
+  // ANTHROPIC_API_KEY ikke er satt.
+  startSentimentWorker(pool);
+  // Proaktiv token-refresh: timely sweep gjennom alle connections for å
+  // refresh-e tokens innen 7 dager av expiry. Hindrer at en konto som
+  // ikke brukes regelmessig ender opp med expired token. Disabled hvis
+  // META_APP_ID/SECRET ikke er satt.
+  startTokenRefreshWorker(pool);
+  // LinkedIn-insights polling: 1-time sweep mot /v2/socialActions for
+  // post-level engagement (likes + comments). LinkedIn har ingen webhooks
+  // for member-level posts, så polling er eneste vei.
+  startLinkedInInsightsWorker(pool);
+  // YouTube-insights polling: samme mønster som LinkedIn. Henter views,
+  // likes, comments-counts via youtube.videos.list og kommentar-bodies
+  // via youtube.commentThreads.list. Ingen YouTube-webhooks for member-
+  // channels, så polling er eneste vei.
+  startYouTubeInsightsWorker(pool);
   // One-off probe so the boot log makes ffmpeg presence/absence
   // obvious without hitting /api/health. Dockerfile installs ffmpeg
   // on the Render image, so this should always log "available".

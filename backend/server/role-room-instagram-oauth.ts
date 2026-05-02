@@ -234,12 +234,65 @@ export async function fetchMetaUserId(userAccessToken: string): Promise<string |
   }
 }
 
+export type IgAccountType = 'BUSINESS' | 'CREATOR' | 'PERSONAL';
+
+export interface IgProfileMetadata {
+  username: string | null;
+  accountType: IgAccountType | null;
+  profilePictureUrl: string | null;
+  followersCount: number | null;
+  mediaCount: number | null;
+}
+
 export interface MetaPageWithIgAccount {
   pageId: string;
   pageName: string;
   pageAccessToken: string;
   igBusinessAccountId: string;
   igUsername: string | null;
+  profile: IgProfileMetadata;
+}
+
+/**
+ * Hent IG profile metadata. Returnerer null hvis kontoen ikke er
+ * BUSINESS eller CREATOR (Personal IG kan ikke bruke Graph API publish
+ * og er derfor ekskludert per Meta-policy).
+ */
+export async function fetchIgProfileMetadata(
+  igBusinessAccountId: string,
+  pageAccessToken: string,
+): Promise<IgProfileMetadata | null> {
+  try {
+    const url =
+      `${META_GRAPH_BASE}/${igBusinessAccountId}?` +
+      new URLSearchParams({
+        fields: 'username,account_type,profile_picture_url,followers_count,media_count',
+        access_token: pageAccessToken,
+      }).toString();
+    const resp = (await metaGet(url)) as {
+      username?: string;
+      account_type?: string;
+      profile_picture_url?: string;
+      followers_count?: number;
+      media_count?: number;
+    };
+    const accountType = ((): IgAccountType | null => {
+      const t = (resp.account_type ?? '').toUpperCase();
+      if (t === 'BUSINESS' || t === 'CREATOR' || t === 'PERSONAL') return t;
+      return null;
+    })();
+    return {
+      username: resp.username ?? null,
+      accountType,
+      profilePictureUrl: resp.profile_picture_url ?? null,
+      followersCount:
+        typeof resp.followers_count === 'number' ? resp.followers_count : null,
+      mediaCount: typeof resp.media_count === 'number' ? resp.media_count : null,
+    };
+  } catch (error) {
+    console.warn('[ig-oauth] fetchIgProfileMetadata failed', error);
+    return null;
+  }
 }
 
 export async function discoverIgBusinessAccounts(
@@ -274,19 +327,17 @@ export async function discoverIgBusinessAccounts(
       const igId = igResp.instagram_business_account?.id;
       if (!igId) continue;
 
-      // Step 3: fetch IG account username for display.
-      let username: string | null = null;
-      try {
-        const userUrl =
-          `${META_GRAPH_BASE}/${igId}?` +
-          new URLSearchParams({
-            fields: 'username',
-            access_token: page.access_token,
-          }).toString();
-        const userResp = (await metaGet(userUrl)) as { username?: string };
-        username = userResp.username ?? null;
-      } catch {
-        // username is best-effort
+      // Step 3: fetch full profile metadata.
+      const profile = await fetchIgProfileMetadata(igId, page.access_token);
+      if (!profile) continue;
+
+      // Step 4: gate on account_type — Meta-policy krever BUSINESS eller
+      // CREATOR for Graph API content publish. Personal IG avvises.
+      if (profile.accountType !== 'BUSINESS' && profile.accountType !== 'CREATOR') {
+        console.warn(
+          `[ig-oauth] rejecting IG ${igId} on Page ${page.id}: account_type=${profile.accountType ?? 'unknown'} (only BUSINESS/CREATOR supported)`,
+        );
+        continue;
       }
 
       accounts.push({
@@ -294,7 +345,8 @@ export async function discoverIgBusinessAccounts(
         pageName: page.name,
         pageAccessToken: page.access_token,
         igBusinessAccountId: igId,
-        igUsername: username,
+        igUsername: profile.username,
+        profile,
       });
     } catch {
       // Skip pages without IG accounts attached.
@@ -321,9 +373,21 @@ export interface InstagramConnectionRow {
   scopes: string[];
   connectionState: 'connected' | 'expired' | 'revoked' | 'error';
   lastError: string | null;
+  // Profil-metadata for App Review + UI-rendering. Hentes ved oppkobling
+  // og oppdateres hver gang token blir refreshet.
+  accountType: IgAccountType | null;
+  profilePictureUrl: string | null;
+  followersCount: number | null;
+  mediaCount: number | null;
+  profileRefreshedAt: Date | null;
 }
 
 function mapRow(row: Record<string, unknown>): InstagramConnectionRow {
+  const accountTypeRaw = (row.account_type as string | null) ?? null;
+  const accountType: IgAccountType | null =
+    accountTypeRaw === 'BUSINESS' || accountTypeRaw === 'CREATOR' || accountTypeRaw === 'PERSONAL'
+      ? accountTypeRaw
+      : null;
   return {
     id: String(row.id),
     userId: String(row.user_id),
@@ -338,6 +402,21 @@ function mapRow(row: Record<string, unknown>): InstagramConnectionRow {
     scopes: Array.isArray(row.scopes) ? (row.scopes as string[]) : [],
     connectionState: (row.connection_state as InstagramConnectionRow['connectionState']) ?? 'connected',
     lastError: (row.last_error as string | null) ?? null,
+    accountType,
+    profilePictureUrl: (row.profile_picture_url as string | null) ?? null,
+    followersCount:
+      typeof row.followers_count === 'number'
+        ? (row.followers_count as number)
+        : row.followers_count != null
+          ? Number(row.followers_count) || null
+          : null,
+    mediaCount:
+      typeof row.media_count === 'number'
+        ? (row.media_count as number)
+        : row.media_count != null
+          ? Number(row.media_count) || null
+          : null,
+    profileRefreshedAt: (row.profile_refreshed_at as Date | null) ?? null,
   };
 }
 
@@ -358,14 +437,18 @@ export async function upsertInstagramConnection(
     throw new Error('Klarer ikke kryptere token — sett ROLE_ROOM_TOKEN_ENCRYPTION_KEY eller AUTH_SECRET.');
   }
   const expiresAt = new Date(Date.now() + input.expiresInSeconds * 1000);
+  const profile = input.page.profile;
   try {
     const result = await pool.query(
       `INSERT INTO role_room_instagram_connections (
          user_id, project_id, ig_business_account_id, ig_username,
          facebook_page_id, facebook_page_name, fb_user_id,
          access_token_encrypted, token_expires_at, scopes, connection_state,
-         last_refreshed_at, last_error
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::text[], 'connected', now(), NULL)
+         last_refreshed_at, last_error,
+         account_type, profile_picture_url, followers_count, media_count,
+         profile_refreshed_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::text[], 'connected', now(), NULL,
+                 $11, $12, $13, $14, now())
        ON CONFLICT (user_id, ig_business_account_id)
          WHERE connection_state = 'connected'
        DO UPDATE SET
@@ -379,6 +462,11 @@ export async function upsertInstagramConnection(
          connection_state = 'connected',
          last_refreshed_at = now(),
          last_error = NULL,
+         account_type = EXCLUDED.account_type,
+         profile_picture_url = EXCLUDED.profile_picture_url,
+         followers_count = EXCLUDED.followers_count,
+         media_count = EXCLUDED.media_count,
+         profile_refreshed_at = now(),
          updated_at = now()
        RETURNING *`,
       [
@@ -392,6 +480,10 @@ export async function upsertInstagramConnection(
         encrypted,
         expiresAt,
         input.scopes,
+        profile.accountType,
+        profile.profilePictureUrl,
+        profile.followersCount,
+        profile.mediaCount,
       ],
     );
     return result.rows[0] ? mapRow(result.rows[0]) : null;
@@ -478,11 +570,42 @@ export async function ensureFreshConnection(
   }
 }
 
+/**
+ * Kall Meta sin /me/permissions DELETE for å revokere appens permission
+ * fra brukerens Meta-konto. Best-effort — vi marker connection som revoked
+ * uansett, men logger feil for å hjelpe debugging hvis Meta-revoke feiler.
+ */
+async function revokeMetaPermission(accessToken: string): Promise<boolean> {
+  try {
+    const url = `${META_GRAPH_BASE}/me/permissions?access_token=${encodeURIComponent(accessToken)}`;
+    const response = await fetch(url, { method: 'DELETE' });
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      console.warn(`[ig-oauth] Meta /me/permissions revoke returned ${response.status}: ${text.slice(0, 200)}`);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.warn('[ig-oauth] Meta /me/permissions revoke failed', error);
+    return false;
+  }
+}
+
 export async function revokeConnection(
   pool: Pool,
   connectionId: string,
   userId: string,
 ): Promise<boolean> {
+  // Hent connection først så vi har access_token til Meta-revoke.
+  const connection = await getConnection(pool, connectionId, userId);
+  if (!connection || connection.connectionState !== 'connected') return false;
+
+  // Best-effort revoke på Meta-siden FØR vi merker rad-en som revoked,
+  // for at tokenet skal være ugyldiggjort umiddelbart hos Meta også.
+  if (connection.accessToken) {
+    await revokeMetaPermission(connection.accessToken);
+  }
+
   try {
     const result = await pool.query(
       `UPDATE role_room_instagram_connections
@@ -495,6 +618,73 @@ export async function revokeConnection(
     console.error('[ig-oauth] revoke connection failed', error);
     return false;
   }
+}
+
+/**
+ * Generic helper: abonner appen vår på Meta webhook-felter for et
+ * gitt asset (IG Business Account ELLER FB Page) via /{asset_id}/subscribed_apps.
+ * Brukes av både subscribeIgWebhookFields og subscribeFbPageWebhookFields.
+ */
+async function subscribeAssetWebhookFields(
+  assetId: string,
+  pageAccessToken: string,
+  fields: string[],
+  logTag: string,
+): Promise<boolean> {
+  try {
+    const url = `${META_GRAPH_BASE}/${assetId}/subscribed_apps`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        subscribed_fields: fields.join(','),
+        access_token: pageAccessToken,
+      }).toString(),
+    });
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      console.warn(
+        `[${logTag}] subscribe to webhook fields failed for ${assetId}: ${response.status} ${text.slice(0, 200)}`,
+      );
+      return false;
+    }
+    const body = (await response.json().catch(() => ({}))) as { success?: boolean };
+    return body.success === true;
+  } catch (error) {
+    console.warn(`[${logTag}] subscribeAssetWebhookFields threw`, error);
+    return false;
+  }
+}
+
+/**
+ * Abonner appen vår på webhook-felter for IG Business Account.
+ * Krever at Meta-app-konfigen har webhook callback URL satt + at
+ * appen har 'instagram_manage_comments' scope (for comments-feltet).
+ *
+ * Default-felter: 'comments' + 'mentions' + 'live_comments'.
+ *
+ * Best-effort — feiler ikke connect-flyt om Meta avviser. Returnerer
+ * true hvis subscription gikk gjennom.
+ */
+export async function subscribeIgWebhookFields(
+  igBusinessAccountId: string,
+  pageAccessToken: string,
+  fields: string[] = ['comments', 'mentions', 'live_comments'],
+): Promise<boolean> {
+  return subscribeAssetWebhookFields(igBusinessAccountId, pageAccessToken, fields, 'ig-oauth');
+}
+
+/**
+ * Abonner appen vår på webhook-felter for FB Page (feed, mention, messages).
+ * Default-felter dekker comments + reactions (via 'feed'), tags ('mention'),
+ * og DMs ('messages'). Best-effort.
+ */
+export async function subscribeFbPageWebhookFields(
+  pageId: string,
+  pageAccessToken: string,
+  fields: string[] = ['feed', 'mention', 'messages'],
+): Promise<boolean> {
+  return subscribeAssetWebhookFields(pageId, pageAccessToken, fields, 'fb-oauth');
 }
 
 export const META_REQUIRED_SCOPES = REQUIRED_SCOPES;
