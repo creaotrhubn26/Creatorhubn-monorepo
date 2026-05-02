@@ -844,6 +844,10 @@ export const StoryboardIntegrationView: React.FC<StoryboardIntegrationViewProps>
   const [splitDragging, setSplitDragging] = useState(false);
   const device = useDeviceDetection();
   const latestSceneRef = useRef(scene);
+  const onUpdateRef = useRef(onUpdate);
+  useEffect(() => {
+    onUpdateRef.current = onUpdate;
+  }, [onUpdate]);
   const splitContainerRef = useRef<HTMLDivElement | null>(null);
   
   // Try to use script-storyboard context if available
@@ -888,14 +892,14 @@ export const StoryboardIntegrationView: React.FC<StoryboardIntegrationViewProps>
 
     const timeoutId = window.setTimeout(() => {
       const modelFrames = toModelFrames(storyboardFrames, latestSceneRef.current.id);
-      onUpdate({
+      onUpdateRef.current({
         ...latestSceneRef.current,
         storyboardFrames: modelFrames,
       });
     }, FRAME_SYNC_DEBOUNCE_MS);
 
     return () => window.clearTimeout(timeoutId);
-  }, [storyboardFrames, onUpdate]);
+  }, [storyboardFrames]);
 
   const handleSplitResizeStart = useCallback((event: React.MouseEvent) => {
     event.preventDefault();

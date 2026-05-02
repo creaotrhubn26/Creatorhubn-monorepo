@@ -60,7 +60,7 @@ import {
   Brush,
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
-import { useScriptStoryboard, SceneContext, type FountainElement } from '../contexts/ScriptStoryboardContext';
+import { useScriptStoryboardOptional, SceneContext, type FountainElement } from '../contexts/ScriptStoryboardContext';
 import type { SceneBreakdown } from '../models/casting';
 
 // =============================================================================
@@ -247,14 +247,7 @@ export const ScriptStoryboardSplitView: React.FC<ScriptStoryboardSplitViewProps>
   const [storyboardCollapsed, setStoryboardCollapsed] = useState(false);
   const [settingsAnchor, setSettingsAnchor] = useState<HTMLElement | null>(null);
   
-  // Try to use context if available
-  const scriptStoryboard = (() => {
-    try {
-      return useScriptStoryboard();
-    } catch {
-      return null;
-    }
-  })();
+  const scriptStoryboard = useScriptStoryboardOptional();
   
   const syncEnabled = scriptStoryboard?.syncEnabled ?? true;
   const currentScene = scriptStoryboard?.currentScene;

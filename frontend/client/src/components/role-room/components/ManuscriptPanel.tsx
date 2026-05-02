@@ -1351,6 +1351,13 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     }
   }, [projectId, castingLocations, scheduleAutoCreatedEntitiesToast]);
 
+  const handleSceneUpdateFromStoryboard = useCallback((updatedScene: SceneBreakdown) => {
+    setScenes((current) =>
+      current.map((scene) => (scene.id === updatedScene.id ? updatedScene : scene))
+    );
+    setSelectedScene(updatedScene);
+  }, []);
+
   // Stable callback for editor content changes
   const handleEditorContentChange = useCallback((content: string) => {
     // Store in ref immediately (no re-render)
@@ -1411,6 +1418,18 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       }
     }, 2000);
   }, [selectedManuscript?.id]);
+
+  const handleScriptChangeFromSplitView = useCallback((content: string) => {
+    setSelectedManuscript((previous) => {
+      if (!previous) return previous;
+      const updated = { ...previous, content, updatedAt: new Date().toISOString() };
+      setManuscripts((entries) =>
+        entries.map((entry) => (entry.id === updated.id ? updated : entry))
+      );
+      return updated;
+    });
+    handleEditorContentChange(content);
+  }, [handleEditorContentChange]);
 
   // Memoized handler for parsing screenplay content to scenes
   const handleParseToScenes = useCallback((content: string) => {
@@ -2629,25 +2648,9 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                       {productionWorkspaceMode === 'split' ? (
                         <ScriptStoryboardSplitView
                           scriptContent={selectedManuscript.content || ''}
-                          onScriptChange={(content) => {
-                            const updatedManuscript = {
-                              ...selectedManuscript,
-                              content,
-                              updatedAt: new Date().toISOString(),
-                            };
-                            setSelectedManuscript(updatedManuscript);
-                            setManuscripts((current) =>
-                              current.map((entry) => (entry.id === updatedManuscript.id ? updatedManuscript : entry))
-                            );
-                            handleEditorContentChange(content);
-                          }}
+                          onScriptChange={handleScriptChangeFromSplitView}
                           scene={selectedScene}
-                          onSceneUpdate={(updatedScene) => {
-                            setScenes((current) =>
-                              current.map((scene) => (scene.id === updatedScene.id ? updatedScene : scene))
-                            );
-                            setSelectedScene(updatedScene);
-                          }}
+                          onSceneUpdate={handleSceneUpdateFromStoryboard}
                           renderScriptEditor={({ content, onChange }) => (
                             <React.Suspense fallback={<Box sx={{ p: 2 }}><CircularProgress size={20} /></Box>}>
                               <LazyScreenplayEditorWithNavigator
@@ -2711,12 +2714,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                       ) : (
                         <StoryboardIntegrationView
                           scene={selectedScene}
-                          onUpdate={(updatedScene) => {
-                            setScenes((current) =>
-                              current.map((scene) => (scene.id === updatedScene.id ? updatedScene : scene))
-                            );
-                            setSelectedScene(updatedScene);
-                          }}
+                          onUpdate={handleSceneUpdateFromStoryboard}
                           storyboardOnly={true}
                           onFrameSelect={(index) => {
                             const shot = String(
