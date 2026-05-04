@@ -1324,12 +1324,42 @@ private struct HeroImage: View {
     var preferMagic: Bool = true
 
     @State private var loupePoint: CGPoint?
+    /// **Phase 5.4** — When the server-AI-enhanced version has been
+    /// downloaded (`asset.serverEnhancedKey` populated), default to
+    /// showing it because it's higher quality than the iPad-rendered
+    /// `enhancedKey` (full resolution, server has more compute headroom
+    /// + can use Adobe DNG profiles + larger Bilateral radius). Toggle
+    /// on the hero overlay lets the photographer flip back to the iPad
+    /// version for comparison.
+    @State private var preferServerAI: Bool = true
 
     /// Re-render token: changes every time the underlying enhanced file is
     /// rewritten (MagicPipeline.retune writes to the same path, so without
     /// this SwiftUI caches the stale image).
     private var reloadToken: String {
-        "\(asset.id.uuidString)-\(asset.updatedAt.timeIntervalSince1970)"
+        // Include the chosen-enhanced-key in the token so SwiftUI rebuilds
+        // when the photographer flips preferServerAI.
+        let chosen = chosenEnhancedKey ?? "none"
+        return "\(asset.id.uuidString)-\(asset.updatedAt.timeIntervalSince1970)-\(chosen.suffix(40))"
+    }
+
+    /// Resolves which enhanced-image path to show. When the server-AI
+    /// variant is available AND the photographer hasn't flipped the
+    /// toggle off, prefer it. Otherwise fall back to the iPad-rendered
+    /// `enhancedKey` (always present once Magic has run). Returns nil
+    /// when no enhanced version exists yet.
+    private var chosenEnhancedKey: String? {
+        if preferServerAI, let server = asset.serverEnhancedKey {
+            return server
+        }
+        return asset.enhancedKey
+    }
+
+    /// Both versions are populated → show the toggle chip. iPad-only
+    /// or server-only doesn't expose the toggle (nothing to flip
+    /// between).
+    private var bothEnhancedAvailable: Bool {
+        asset.enhancedKey != nil && asset.serverEnhancedKey != nil
     }
 
     var body: some View {
@@ -1343,11 +1373,16 @@ private struct HeroImage: View {
             // fall back to the single-image display.
             if preferMagic,
                let originalKey = asset.previewKey,
-               let enhancedKey = asset.enhancedKey {
+               let enhancedKey = chosenEnhancedKey {
                 ComparisonSlider(originalPath: originalKey, enhancedPath: enhancedKey)
                     .id(reloadToken)  // rebuild when bytes on disk change
                     .clipShape(RoundedRectangle(cornerRadius: 14))
                     .shadow(radius: 20, y: 8)
+                    .overlay(alignment: .topTrailing) {
+                        if bothEnhancedAvailable {
+                            serverAIToggleChip
+                        }
+                    }
             } else {
             let key = asset.previewKey
             if let key, let image = UIImage(contentsOfFile: key) {
@@ -1398,6 +1433,31 @@ private struct HeroImage: View {
             }
             }
         }
+    }
+
+    /// **Phase 5.4** — Toggle chip overlay shown when both iPad-rendered
+    /// and server-AI-rendered enhanced versions exist. Tap flips
+    /// `preferServerAI` which triggers a re-render via the reloadToken.
+    /// Visual: small pill in the top-right corner with "Server AI" or
+    /// "iPad" label + a flip icon, matching the rest of the chip
+    /// vocabulary in the live capture surface.
+    private var serverAIToggleChip: some View {
+        Button {
+            preferServerAI.toggle()
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: preferServerAI ? "cloud.fill" : "iphone")
+                    .font(.system(size: 11, weight: .semibold))
+                Text(preferServerAI ? "Server AI" : "iPad")
+                    .font(.system(size: 11, weight: .semibold))
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(.ultraThinMaterial, in: Capsule())
+            .foregroundStyle(.primary)
+        }
+        .buttonStyle(.plain)
+        .padding(8)
     }
 }
 
