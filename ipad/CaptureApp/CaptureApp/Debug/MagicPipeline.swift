@@ -310,14 +310,32 @@ final class MagicPipeline {
             .map(\.identifier)
             .map { $0.lowercased() }
 
-        if labels.contains(where: Self.aviationHints.contains) { return .aviation }
-        if labels.contains(where: Self.vehicleHints.contains)  { return .vehicle }
-        if labels.contains(where: Self.foodHints.contains)     { return .food }
-        if labels.contains(where: Self.landscapeHints.contains){ return .landscape }
-        if labels.contains(where: Self.productHints.contains)  { return .product }
+        // Substring match instead of exact set membership: Apple's
+        // classifier returns compound identifiers like
+        // "strawberry_ice_cream" / "french_bulldog" / "sports_car";
+        // pre-fix exact matching missed almost every compound. Now
+        // any label containing a hint substring counts.
+        if Self.matchesAny(labels, in: Self.aviationHints)  { return .aviation }
+        if Self.matchesAny(labels, in: Self.vehicleHints)   { return .vehicle }
+        if Self.matchesAny(labels, in: Self.foodHints)      { return .food }
+        if Self.matchesAny(labels, in: Self.landscapeHints) { return .landscape }
+        if Self.matchesAny(labels, in: Self.productHints)   { return .product }
 
         // No confident scene match — try faces with a strict floor.
         return faceFallback(cgImage: cgImage)
+    }
+
+    /// Substring match — any classifier label containing any hint
+    /// counts. Apple's bundled scene classifier returns compound
+    /// identifiers like "french_bulldog" / "strawberry_ice_cream" /
+    /// "sports_car" that won't match a flat set of base nouns.
+    private static func matchesAny(_ labels: [String], in hints: Set<String>) -> Bool {
+        for label in labels {
+            for hint in hints {
+                if label.contains(hint) { return true }
+            }
+        }
+        return false
     }
 
     private static func faceFallback(cgImage: CGImage) -> MagicRecipe {
@@ -343,9 +361,25 @@ final class MagicPipeline {
         "racer", "jeep", "motorcycle", "motor_scooter", "truck", "bus"
     ]
     private static let foodHints: Set<String> = [
-        "food", "meal", "plate", "pizza", "hamburger", "burger", "pasta", "sushi",
-        "salad", "dessert", "cake", "bread", "pancake", "soup", "steak", "cocktail",
-        "wine_glass", "coffee", "beer_glass"
+        // Substring-matched, so "strawberry_ice_cream" matches "ice"
+        // and "french_loaf" matches "loaf". Coverage tilted toward
+        // common iPad-shoot food categories.
+        "food", "meal", "dish", "appetizer", "snack", "plate",
+        "pizza", "burger", "hamburger", "cheeseburger", "sandwich",
+        "burrito", "taco", "hot_dog", "hotdog",
+        "pasta", "spaghetti", "ravioli", "lasagna", "carbonara",
+        "sushi", "ramen", "soup", "consomme", "stew", "hotpot",
+        "salad", "dessert", "cake", "pie", "tart", "pastry", "donut", "doughnut",
+        "bread", "bun", "loaf", "bagel", "roll", "pretzel", "scone", "biscuit",
+        "pancake", "waffle", "crepe", "toast",
+        "ice", "cream", "popsicle", "lolly", "icecream",
+        "chocolate", "candy", "sweet",
+        "steak", "chop", "ribs", "roast", "meatloaf",
+        "cocktail", "wine", "beer", "espresso", "cappuccino", "latte",
+        "coffee", "tea_cup", "teacup",
+        "fruit", "vegetable", "tomato", "apple", "orange", "banana", "lemon",
+        "strawberry", "broccoli", "carrot", "cucumber", "pepper", "mushroom",
+        "egg", "omelet", "bacon",
     ]
     private static let landscapeHints: Set<String> = [
         "landscape", "mountain", "beach", "seashore", "valley", "lake", "river",
