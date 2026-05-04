@@ -84,6 +84,42 @@ struct MagicRecipe: Sendable, Equatable, Codable {
     /// looking crunchy / halo-ridden per Lightroom community advice).
     var texture: Double = 0
 
+    /// **Phase 7D (Evoto parity)** — Teeth whitening, masked to the
+    /// `innerLips` polygon from `VNDetectFaceLandmarksRequest`. Inside
+    /// the mask: cool the white point ~800 K + saturation drop +
+    /// luminance lift, scaled by amount. Industry rule (Adobe Phlearn
+    /// SLR Lounge, 2026 consensus): never max out — teeth naturally
+    /// have some yellow; pure white reads "TV-anchor plastic". Pros
+    /// stay 0.20–0.40. Default portrait preset = 0.20.
+    /// Range 0…1: 0 = no whitening, 1 = aggressive.
+    var teethWhiten: Double = 0
+
+    /// **Phase 7E (Evoto parity)** — Subject-type variant. Layered on
+    /// top of the portrait base via `subjectTypeAdjustment`. Per
+    /// industry retouching guides (Retouching Academy / Fstoppers /
+    /// Imagen 2026):
+    ///   - male: less smoothing, more midtone clarity ("rugged")
+    ///   - female: more smoothing, mild warmth
+    ///   - child: light smoothing, mild vibrance lift
+    ///   - elderly: minimal smoothing (preserve wisdom-lines), more
+    ///              skin-tone unify, mild warmth
+    ///   - none: no overlay (default)
+    var subjectType: SubjectType = .none
+
+    enum SubjectType: String, Sendable, Codable, CaseIterable {
+        case none, male, female, child, elderly
+    }
+
+    /// **Phase 7F (Evoto parity)** — Skin-tone unify (face↔body).
+    /// Samples mean skin tone in the face Vision rect + samples
+    /// non-face skin pixels (neck/hands/arms), computes the colour
+    /// delta, and applies a partial correction to bring body skin
+    /// into line with face skin. Particularly useful when hands
+    /// read redder than face (cold-hand bias) or neck reads more
+    /// yellow than face. Range 0…1: 0 = no correction, 1 = full
+    /// shift toward face reference (industry: 0.30–0.50 typical).
+    var skinUnify: Double = 0
+
     /// **Phase 7C** — Auto-straighten via `VNDetectHorizonRequest`.
     /// When true, detection runs on a 1024-px-downsample of the image
     /// and `CIStraightenFilter` applies the result. When detection
@@ -174,7 +210,8 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         warmth: 0.10, skinHighFreq: 0.15, skinLowFreq: 0.30, shadowLift: 0.20,
         contrast: 0.05, saturation: 0.05,
         highlightRecovery: 0.10, vibrance: 0.10, texture: 0.05, dehaze: 0,
-        eyeSharpen: 0.30, eyeCatchlight: 0.20
+        eyeSharpen: 0.30, eyeCatchlight: 0.20,
+        teethWhiten: 0.20, skinUnify: 0.30
     )
 
     /// Aviation: dehaze is the canonical primary tool for aviation
@@ -247,6 +284,59 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         highlightRecovery: 0.25, vibrance: 0.10, texture: 0.10, dehaze: 0.05
     )
 
+    /// **Phase 7E** — Subject-type modifier deltas. Returned as a
+    /// `MagicRecipe`-shaped overlay that callers add to a portrait
+    /// base via `merging(baseline:)`. Values calibrated to industry
+    /// retouching guides (Retouching Academy / Fstoppers / Imagen
+    /// 2026) — small magnitude, just enough to nudge the look.
+    var subjectTypeAdjustment: MagicRecipe {
+        switch subjectType {
+        case .none:
+            return MagicRecipe()
+        case .male:
+            // Less smoothing (preserve texture/character lines), more
+            // midtone clarity, slightly cooler — "rugged not pretty".
+            return MagicRecipe(
+                warmth: -0.03,
+                skinHighFreq: 0.10,   // restore pore detail
+                skinLowFreq: -0.10,   // less tone smoothing
+                contrast: 0.05,
+                texture: 0.10,
+                teethWhiten: -0.05,   // pros say less aggressive on men
+                skinUnify: -0.05      // skin variation reads as character
+            )
+        case .female:
+            // More tone smoothing, slight extra warmth, softer skin.
+            return MagicRecipe(
+                warmth: 0.03,
+                skinLowFreq: 0.05,    // extra tone smoothing
+                vibrance: 0.05,       // lift makeup colours subtly
+                skinUnify: 0.10
+            )
+        case .child:
+            // Light touch — preserve childhood character, mild
+            // vibrance lift for skin, no aggressive smoothing.
+            return MagicRecipe(
+                warmth: 0.02,
+                skinLowFreq: -0.05,   // children's skin is already smooth
+                vibrance: 0.05,
+                eyeCatchlight: 0.05,  // bright catch-lights pop on kids
+                teethWhiten: -0.05    // baby teeth are naturally white
+            )
+        case .elderly:
+            // Preserve wisdom-lines (less smoothing), more skin-tone
+            // unify (older skin often has uneven blotches), mild
+            // warmth, less aggressive teeth (yellowing is age-natural).
+            return MagicRecipe(
+                warmth: 0.04,
+                skinHighFreq: 0.05,   // keep pore detail
+                skinLowFreq: -0.10,   // KEEP wrinkles
+                teethWhiten: -0.10,   // don't over-whiten elderly teeth
+                skinUnify: 0.20       // even out blotchy areas
+            )
+        }
+    }
+
     /// Short chip-strings for the recipe display under the hero. Hides
     /// parameters that are at neutral so we don't clutter the UI with
     /// "Warmth +0%".
@@ -307,6 +397,15 @@ struct MagicRecipe: Sendable, Equatable, Codable {
             let deg = straightenAngle * 180.0 / .pi
             chips.append(String(format: "Straighten %+.1f°", deg))
         }
+        if teethWhiten >= 0.05 {
+            chips.append("Teeth +\(Int((teethWhiten * 100).rounded()))%")
+        }
+        if skinUnify >= 0.05 {
+            chips.append("Skin Unify +\(Int((skinUnify * 100).rounded()))%")
+        }
+        if subjectType != .none {
+            chips.append("Type: \(subjectType.rawValue.capitalized)")
+        }
         return chips
     }
 
@@ -316,6 +415,7 @@ struct MagicRecipe: Sendable, Equatable, Codable {
             && highlightRecovery == 0 && vibrance == 0 && texture == 0
             && dehaze == 0 && eyeSharpen == 0 && eyeCatchlight == 0
             && !autoStraighten && straightenAngle == 0
+            && teethWhiten == 0 && subjectType == .none && skinUnify == 0
     }
 
     // MARK: - Codable (forward-compat decode)
@@ -342,6 +442,9 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         eyeCatchlight = try c.decodeIfPresent(Double.self, forKey: .eyeCatchlight) ?? 0
         autoStraighten = try c.decodeIfPresent(Bool.self, forKey: .autoStraighten) ?? false
         straightenAngle = try c.decodeIfPresent(Double.self, forKey: .straightenAngle) ?? 0
+        teethWhiten = try c.decodeIfPresent(Double.self, forKey: .teethWhiten) ?? 0
+        subjectType = try c.decodeIfPresent(SubjectType.self, forKey: .subjectType) ?? .none
+        skinUnify = try c.decodeIfPresent(Double.self, forKey: .skinUnify) ?? 0
     }
 
     /// Memberwise init — synthesized Codable would consume this slot, so
@@ -362,7 +465,10 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         eyeSharpen: Double = 0,
         eyeCatchlight: Double = 0,
         autoStraighten: Bool = false,
-        straightenAngle: Double = 0
+        straightenAngle: Double = 0,
+        teethWhiten: Double = 0,
+        subjectType: SubjectType = .none,
+        skinUnify: Double = 0
     ) {
         self.warmth = warmth
         self.skinHighFreq = skinHighFreq
@@ -379,6 +485,9 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         self.eyeCatchlight = eyeCatchlight
         self.autoStraighten = autoStraighten
         self.straightenAngle = straightenAngle
+        self.teethWhiten = teethWhiten
+        self.subjectType = subjectType
+        self.skinUnify = skinUnify
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -386,5 +495,6 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         case contrast, saturation, highlightRecovery, vibrance, texture, dehaze
         case eyeSharpen, eyeCatchlight
         case autoStraighten, straightenAngle
+        case teethWhiten, subjectType, skinUnify
     }
 }

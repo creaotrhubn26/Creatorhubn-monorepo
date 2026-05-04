@@ -3152,7 +3152,15 @@ struct TunePanel: View {
     }
 
     private var peopleSection: some View {
-        section(title: "Personer", subtitle: "Hud + øyne — frekvens-separasjon + maskert sharpen") {
+        section(title: "Personer", subtitle: "Hud · øyne · tenner · subject-type — Evoto-style decomposition") {
+            Picker("Subject", selection: $recipe.subjectType) {
+                Text("Auto").tag(MagicRecipe.SubjectType.none)
+                Text("Mann").tag(MagicRecipe.SubjectType.male)
+                Text("Kvinne").tag(MagicRecipe.SubjectType.female)
+                Text("Barn").tag(MagicRecipe.SubjectType.child)
+                Text("Eldre").tag(MagicRecipe.SubjectType.elderly)
+            }
+            .pickerStyle(.segmented)
             TuneSlider(
                 title: "Skin Tone", icon: "drop.fill",
                 value: $recipe.skinLowFreq, range: -1...1,
@@ -3164,6 +3172,11 @@ struct TunePanel: View {
                 format: signedPercent,
             )
             TuneSlider(
+                title: "Skin Unify", icon: "person.crop.rectangle",
+                value: $recipe.skinUnify, range: 0...1,
+                format: percentFormat,
+            )
+            TuneSlider(
                 title: "Eye Sharpen", icon: "eye",
                 value: $recipe.eyeSharpen, range: 0...1,
                 format: percentFormat,
@@ -3171,6 +3184,11 @@ struct TunePanel: View {
             TuneSlider(
                 title: "Catch-light", icon: "sparkle",
                 value: $recipe.eyeCatchlight, range: 0...1,
+                format: percentFormat,
+            )
+            TuneSlider(
+                title: "Teeth Whiten", icon: "mouth",
+                value: $recipe.teethWhiten, range: 0...1,
                 format: percentFormat,
             )
         }
@@ -3394,6 +3412,9 @@ private struct PresetChipRow: View {
             && abs(r1.eyeCatchlight - r2.eyeCatchlight) < tolerance
             && r1.autoStraighten == r2.autoStraighten
             && abs(r1.straightenAngle - r2.straightenAngle) < tolerance
+            && abs(r1.teethWhiten - r2.teethWhiten) < tolerance
+            && r1.subjectType == r2.subjectType
+            && abs(r1.skinUnify - r2.skinUnify) < tolerance
     }
 }
 
@@ -6229,7 +6250,10 @@ final class LiveCaptureModel {
             eyeSharpen: wire.eyeSharpen ?? 0,
             eyeCatchlight: wire.eyeCatchlight ?? 0,
             autoStraighten: wire.autoStraighten ?? false,
-            straightenAngle: wire.straightenAngle ?? 0
+            straightenAngle: wire.straightenAngle ?? 0,
+            teethWhiten: wire.teethWhiten ?? 0,
+            subjectType: wire.subjectType.flatMap { MagicRecipe.SubjectType(rawValue: $0) } ?? .none,
+            skinUnify: wire.skinUnify ?? 0
         )
     }
 

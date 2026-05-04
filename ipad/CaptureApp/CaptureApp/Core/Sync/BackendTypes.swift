@@ -446,6 +446,13 @@ struct BackendSuggestedRecipe: Decodable, Sendable {
     /// Optional for backwards-compat with older Claude Vision builds.
     let autoStraighten: Bool?
     let straightenAngle: Double?
+    /// Phase 7D — teeth whitening 0…1.
+    let teethWhiten: Double?
+    /// Phase 7E — subject-type variant ("none" / "male" / "female"
+    /// / "child" / "elderly"). Optional for backwards-compat.
+    let subjectType: String?
+    /// Phase 7F — face↔body skin-tone unify 0…1.
+    let skinUnify: Double?
 
     private enum CodingKeys: String, CodingKey {
         case warmth, skinSmooth, shadowLift, contrast, saturation
@@ -456,6 +463,9 @@ struct BackendSuggestedRecipe: Decodable, Sendable {
         case eyeCatchlight = "eye_catchlight"
         case autoStraighten = "auto_straighten"
         case straightenAngle = "straighten_angle"
+        case teethWhiten = "teeth_whiten"
+        case subjectType = "subject_type"
+        case skinUnify = "skin_unify"
     }
 }
 

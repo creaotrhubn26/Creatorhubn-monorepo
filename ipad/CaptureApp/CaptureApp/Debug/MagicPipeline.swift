@@ -181,11 +181,15 @@ final class MagicPipeline {
         // embedded Picture Style from the source JPEG and merge its
         // baseline. Photographer's slider edits trump everything.
         let effectiveRecipe: MagicRecipe = {
-            guard recipe.isNeutral,
-                  let data = try? Data(contentsOf: URL(fileURLWithPath: source))
-            else { return recipe }
-            let style = CanonPictureStyle.read(fromImageData: data) ?? .unknown
-            return recipe.merging(baseline: style.baselineRecipeAdjustment)
+            let withStyle: MagicRecipe = {
+                guard recipe.isNeutral,
+                      let data = try? Data(contentsOf: URL(fileURLWithPath: source))
+                else { return recipe }
+                let style = CanonPictureStyle.read(fromImageData: data) ?? .unknown
+                return recipe.merging(baseline: style.baselineRecipeAdjustment)
+            }()
+            // Phase 7E — subject-type overlay on top of style baseline.
+            return withStyle.merging(baseline: withStyle.subjectTypeAdjustment)
         }()
 
         // Phase 7C — auto-straighten / horizon levelling. Apply early
@@ -342,6 +346,12 @@ final class MagicPipeline {
         // sees the fully-toned image so the masked filters apply on top
         // of all upstream adjustments. No-op when no faces detected.
         current = EyeEffectFilter.apply(recipe: effectiveRecipe, to: current)
+
+        // Phase 7D — teeth whitening (innerLips-polygon-masked).
+        current = TeethWhiteningFilter.apply(recipe: effectiveRecipe, to: current)
+
+        // Phase 7F — face↔body skin-tone unify.
+        current = SkinToneUnifyFilter.apply(recipe: effectiveRecipe, to: current)
 
         guard !Task.isCancelled,
               let cgImage = ColorManagement.renderCGImage(

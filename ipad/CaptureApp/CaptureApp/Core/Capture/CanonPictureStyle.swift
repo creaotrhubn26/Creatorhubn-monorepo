@@ -235,6 +235,11 @@ extension MagicRecipe {
             straightenAngle: max(-AutoStraightenFilter.maxAngle,
                                  min(AutoStraightenFilter.maxAngle,
                                      straightenAngle + baseline.straightenAngle)),
+            teethWhiten: clampUnit(teethWhiten + baseline.teethWhiten),
+            // SubjectType doesn't merge — the recipe's choice wins.
+            // Picture-Style baseline shouldn't impose a subject type.
+            subjectType: subjectType != .none ? subjectType : baseline.subjectType,
+            skinUnify: clampUnit(skinUnify + baseline.skinUnify),
         )
     }
 

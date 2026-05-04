@@ -66,10 +66,16 @@ enum RAWExportPipeline {
         // their explicit choice trumps everything and we skip — see
         // the doc comment on `CanonPictureStyle` for the rationale +
         // double-counting risk with `CIRAWFilter`.
-        let effectiveRecipe: MagicRecipe = recipe.isNeutral
+        // Layer Picture Style baseline (when recipe is neutral) and
+        // subject-type overlay (always, when subjectType != .none) on
+        // top of the user's recipe. SubjectType applies even on
+        // explicit recipes — Male/Female/Child/Elderly modifiers are
+        // intentional structural choices, not "soft defaults".
+        let withStyle: MagicRecipe = recipe.isNeutral
             ? recipe.merging(baseline: (CanonPictureStyle.read(fromImageData: rawData)
                 ?? .unknown).baselineRecipeAdjustment)
             : recipe
+        let effectiveRecipe = withStyle.merging(baseline: withStyle.subjectTypeAdjustment)
 
         applyRecipe(effectiveRecipe, to: filter)
 
@@ -335,11 +341,17 @@ enum RAWExportPipeline {
             current = toneCurve.outputImage ?? current
         }
 
-        // Phase 7B — eye-region sharpen + catch-light boost. Runs last
-        // so detection sees the fully-toned image (white-balance and
-        // exposure correct) and the masked filters apply on top of all
-        // upstream adjustments. No-op when no faces detected.
+        // Phase 7B — eye-region sharpen + catch-light boost.
         current = EyeEffectFilter.apply(recipe: recipe, to: current)
+
+        // Phase 7D — teeth whitening, masked to innerLips polygon.
+        current = TeethWhiteningFilter.apply(recipe: recipe, to: current)
+
+        // Phase 7F — face↔body skin-tone unify. Runs last among the
+        // face-detection chain because it samples averages, which
+        // benefits from the post-tone state. No-op when no face
+        // detected or delta is tiny.
+        current = SkinToneUnifyFilter.apply(recipe: recipe, to: current)
 
         return current
     }
