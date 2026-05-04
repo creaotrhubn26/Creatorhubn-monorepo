@@ -240,7 +240,11 @@ export async function generateMerchCooperationDraft(
       cachedSystem: SYSTEM_PROMPT,
       userMessage,
       tools: [COOPERATION_TOOL],
-      maxTokens: 1800,
+      // Empirically: Claude Sonnet 4-6 needs ~3000 tokens to fully fill
+      // the cooperation tool with Norwegian (long words) including 6
+      // §-paragrafer + 5 risk + 5 next-steps. 1800 truncated mid-output
+      // and triggered the "manglende fyldighet" 502.
+      maxTokens: 3500,
     });
   } catch (err) {
     await logAiCall(input.pool, {
