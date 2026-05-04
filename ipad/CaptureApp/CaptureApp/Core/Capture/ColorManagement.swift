@@ -49,30 +49,55 @@ enum ColorManagement {
 
     /// What the rendered image will be consumed by. Drives the
     /// color-space + ICC choice — no other knob needed at call sites.
+    /// Photographer-selectable for delivery; in-app preview is fixed
+    /// to Display P3 since the iPad's screen is wide-gamut.
     enum Purpose {
         /// Hero preview displayed inside the app on the iPad's
         /// Display P3 screen. Wide gamut survives end-to-end.
         case appPreview
         /// JPEG uploaded to the client gallery for cross-device,
         /// cross-browser viewing. sRGB + ICC tag for compatibility.
-        case clientDelivery
+        /// Default for `.web` delivery — universal denominator.
+        case webDelivery
+        /// JPEG for clients viewing in the modern Apple ecosystem
+        /// (web on Safari/Chrome macOS+iOS) where Display P3 is
+        /// honored. Wider gamut than sRGB but partial Windows
+        /// support. Use when the photographer knows the client is
+        /// on Apple devices (e.g. iCloud Photos handoff, AirDrop).
+        case wideGamutDelivery
+        /// JPEG bound for a print workflow — Adobe RGB (1998) tag.
+        /// 50% wider gamut than sRGB; well-supported by RIP software
+        /// + photo lab pre-press (sRGB→CMYK conversion drops more
+        /// saturation than AdobeRGB→CMYK). NOT for web — uncolor-
+        /// managed browsers strip the profile and the result looks
+        /// desaturated.
+        case printDelivery
     }
 
     /// CGColorSpace to use as both the CIContext working space AND
     /// the output CGImage's color space when rendering for `purpose`.
     static func outputColorSpace(for purpose: Purpose) -> CGColorSpace {
         switch purpose {
-        case .appPreview:
+        case .appPreview, .wideGamutDelivery:
             // Display P3 covers ~25% more of the visible spectrum
             // than sRGB, especially in saturated reds/greens. iPad
-            // Pro screens render in P3 natively.
+            // Pro screens render in P3 natively. Web Safari + modern
+            // Chrome honor Display P3 ICC tag.
             return CGColorSpace(name: CGColorSpace.displayP3)
                 ?? CGColorSpaceCreateDeviceRGB()
-        case .clientDelivery:
+        case .webDelivery:
             // sRGB is the universal denominator. Browsers without
             // color management assume sRGB; browsers with color
             // management round-trip sRGB → display correctly.
             return CGColorSpace(name: CGColorSpace.sRGB)
+                ?? CGColorSpaceCreateDeviceRGB()
+        case .printDelivery:
+            // Adobe RGB (1998). ~50% wider gamut than sRGB; the
+            // industry-standard exchange profile for photo labs +
+            // RIP software. Browsers without color management
+            // strip the profile and the result LOOKS DESATURATED —
+            // never use this for web galleries; only print.
+            return CGColorSpace(name: CGColorSpace.adobeRGB1998)
                 ?? CGColorSpaceCreateDeviceRGB()
         }
     }

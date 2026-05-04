@@ -65,6 +65,15 @@ actor DeliveryService {
         /// when no RAW source exists or rendering fails — delivery
         /// silently degrades to "preview-quality" rather than failing.
         var renderRecipe: MagicRecipe? = nil
+        /// Phase 5 — output color space + ICC profile for the rendered
+        /// JPEG. Default `.webDelivery` (sRGB) matches the universal
+        /// gallery-upload case. Photographer can switch to
+        /// `.wideGamutDelivery` (Display P3) for Apple-ecosystem
+        /// clients OR `.printDelivery` (Adobe RGB) for photo-lab /
+        /// RIP-software workflows. Has no effect when render falls
+        /// back to `previewPath` (the camera-baked JPEG carries
+        /// whatever profile Canon embedded).
+        var colorPurpose: ColorManagement.Purpose = .webDelivery
         /// Dual RAW+JPG shoots — when set, RAW bytes are read from this
         /// asset's `rawKey` instead of the picked asset's. The output
         /// upload still carries `localId`'s filename and metadata. Use
@@ -226,6 +235,7 @@ actor DeliveryService {
                 assetId: pick.localId,
                 sourceAssetId: pick.rawSourceAssetId,
                 recipe: recipe,
+                colorPurpose: pick.colorPurpose,
             )
             return url.path
         } catch {

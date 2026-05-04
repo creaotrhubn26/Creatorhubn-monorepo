@@ -134,7 +134,12 @@ final class RAWExportService: Sendable {
     /// task so the caller's actor (typically MainActor for UI flows) is
     /// never blocked by the demosaic, which can take 1–3 s per CR3 on
     /// iPad Pro M-series.
-    func render(assetId: UUID, sourceAssetId: UUID? = nil, recipe: MagicRecipe) async throws -> URL {
+    func render(
+        assetId: UUID,
+        sourceAssetId: UUID? = nil,
+        recipe: MagicRecipe,
+        colorPurpose: ColorManagement.Purpose = .webDelivery,
+    ) async throws -> URL {
         let resolvedSourceId = sourceAssetId ?? assetId
         guard let sourceAsset = try await store.fetchAsset(id: resolvedSourceId) else {
             throw Error.assetNotFound
@@ -167,6 +172,7 @@ final class RAWExportService: Sendable {
                     rawData: rawData,
                     recipe: recipe,
                     identifierHint: identifierHint.isEmpty ? nil : identifierHint,
+                    colorPurpose: colorPurpose,
                 )
             } catch {
                 throw Error.renderFailed(String(describing: error))

@@ -126,15 +126,27 @@ struct MagicRecipe: Sendable, Equatable, Codable {
     )
 
     /// Fallback when subject classification doesn't confidently fire.
-    /// Mild-warm bias (most snapshots benefit from a small golden
-    /// nudge), conservative on every other axis. Goal: never make
-    /// any photo objectively worse, while giving most photos a
-    /// gentle lift. Highlight recovery is the most universal axis —
-    /// almost every consumer photo has at least one near-clipped
-    /// highlight worth pulling.
+    /// **Audit-calibrated 2026-05-04** against Canon's embedded JPEG
+    /// preview (the camera's own ground-truth bake) for the Holy
+    /// Crust CR3 reference fixture: Apple's `CIRAWFilter` already
+    /// runs +5-15 RGB warmer + ~5-9 RGB more saturated than Canon's
+    /// in-camera intent (mean delta 4.16/255 = ~1.6%, max single-
+    /// pixel delta 77/255). So our pre-audit `warmth +0.20` was
+    /// *adding* to Apple's warm bias, pushing further away from
+    /// Canon's intent. Calibrated values now slightly cool +
+    /// slightly desaturate to compensate, with shadowLift held
+    /// because Apple's localToneMap doesn't lift shadows aggressively
+    /// enough for indoor mixed lighting.
+    ///
+    /// Ground-truth methodology: extract Canon-baked preview via
+    /// `exiftool -PreviewImage -b file.CR3 > canon.jpg`, render
+    /// `.CR3` through Apple `sips -s format jpeg`, sample 5 pixel
+    /// positions with ImageMagick, compute mean RGB delta. Repeat
+    /// when calibrating against new bodies (R5 / R5 mkII may have
+    /// different defaults).
     static let neutral = MagicRecipe(
-        warmth: 0.20, skinSmooth: 0, shadowLift: 0.25, contrast: 0.20, saturation: 0.20,
-        highlightRecovery: 0.30
+        warmth: -0.05, skinSmooth: 0, shadowLift: 0.20, contrast: 0.10, saturation: -0.05,
+        highlightRecovery: 0.25
     )
 
     /// Short chip-strings for the recipe display under the hero. Hides

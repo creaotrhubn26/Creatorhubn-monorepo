@@ -42,11 +42,10 @@ enum RAWExportPipeline {
     ///     in-app hero previews (saves RAM + render time vs. the 5088×
     ///     full demosaic) while keeping the same color-science path.
     ///   - colorPurpose: drives the working color space + output ICC
-    ///     profile via ``ColorManagement``. `.clientDelivery` (default)
+    ///     profile via ``ColorManagement``. `.webDelivery` (default)
     ///     = sRGB-tagged JPEG for the gallery upload (cross-browser-
-    ///     safe). `.appPreview` = Display P3-tagged JPEG for the
-    ///     in-app hero so the iPad Pro's wide-gamut screen actually
-    ///     gets the gamut.
+    ///     safe). `.appPreview` / `.wideGamutDelivery` = Display P3.
+    ///     `.printDelivery` = Adobe RGB (for photo lab / RIP software).
     /// - Returns: JPEG bytes the photographer can hand off / upload.
     static func render(
         rawData: Data,
@@ -54,7 +53,7 @@ enum RAWExportPipeline {
         identifierHint: String? = nil,
         jpegCompressionQuality: CGFloat = 0.92,
         targetMaxDimension: CGFloat? = nil,
-        colorPurpose: ColorManagement.Purpose = .clientDelivery,
+        colorPurpose: ColorManagement.Purpose = .webDelivery,
     ) throws -> Data {
         guard let filter = makeRawFilter(rawData: rawData, identifierHint: identifierHint) else {
             throw Error.decodeFailed

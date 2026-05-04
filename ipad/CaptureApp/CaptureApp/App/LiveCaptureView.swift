@@ -65,6 +65,10 @@ struct LiveCaptureView: View {
                 onToggleHUD: { model.showHUD.toggle() },
                 clientReviewsEnabled: model.clientReviewsEnabled,
                 onToggleClientReviews: { model.clientReviewsEnabled.toggle() },
+                deliveryColorProfileTag: model.deliveryColorProfileTag,
+                onSetDeliveryColorProfile: { tag in
+                    model.deliveryColorProfileTag = tag
+                },
                 onRename: { newName in
                     Task { await model.renameSession(newName) }
                 },
@@ -3968,6 +3972,8 @@ private struct SettingsSheet: View {
     let onToggleHUD: () -> Void
     let clientReviewsEnabled: Bool
     let onToggleClientReviews: () -> Void
+    let deliveryColorProfileTag: String
+    let onSetDeliveryColorProfile: (String) -> Void
     let onRename: (String) -> Void
     let onDisconnect: () -> Void
     let onSignIn: () -> Void
@@ -4007,6 +4013,40 @@ private struct SettingsSheet: View {
                             Image(systemName: "chart.bar.xaxis")
                         }
                     }
+                }
+
+                Section("Leverings-fargerom") {
+                    Picker("Profil", selection: .init(
+                        get: { deliveryColorProfileTag },
+                        set: { onSetDeliveryColorProfile($0) }
+                    )) {
+                        Label {
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("Web (sRGB)")
+                                Text("Universal — browsers + sosiale medier")
+                                    .font(.caption2).foregroundStyle(.secondary)
+                            }
+                        } icon: { Image(systemName: "globe") }
+                            .tag("web")
+                        Label {
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("Wide-gamut (Display P3)")
+                                Text("Apple-økosystem — Safari, iOS, macOS")
+                                    .font(.caption2).foregroundStyle(.secondary)
+                            }
+                        } icon: { Image(systemName: "rectangle.fill.on.rectangle.fill") }
+                            .tag("wide")
+                        Label {
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("Print (Adobe RGB)")
+                                Text("Foto-lab + RIP-software — IKKE for web")
+                                    .font(.caption2).foregroundStyle(.secondary)
+                            }
+                        } icon: { Image(systemName: "printer.fill") }
+                            .tag("print")
+                    }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
                 }
 
                 Section("Klient-tilbakemeldinger") {
@@ -4901,6 +4941,28 @@ final class LiveCaptureModel {
     /// blue=client-favorite, purple=portfolio. Pass `nil` to clear.
     /// Re-tapping the same color via the hero swatch row clears (handled
     /// by the caller comparing current vs new before invoking).
+    /// Phase 5 — photographer-selectable delivery color profile.
+    /// Persisted via UserDefaults so it survives app restart, and
+    /// flows into every `DeliverableAsset.colorPurpose` so each
+    /// pick gets demosaiced + tagged with the chosen ICC profile.
+    /// Three options:
+    ///   * `web` (default) → sRGB, universal browser compatibility
+    ///   * `wide` → Display P3, Apple-ecosystem-honored wider gamut
+    ///   * `print` → Adobe RGB (1998), photo-lab + RIP standard
+    /// String-backed for AppStorage; conversion to
+    /// `ColorManagement.Purpose` happens at render time.
+    var deliveryColorProfileTag: String {
+        get { UserDefaults.standard.string(forKey: "capture.deliveryColorProfile") ?? "web" }
+        set { UserDefaults.standard.set(newValue, forKey: "capture.deliveryColorProfile") }
+    }
+    var deliveryColorPurpose: ColorManagement.Purpose {
+        switch deliveryColorProfileTag {
+        case "wide": return .wideGamutDelivery
+        case "print": return .printDelivery
+        default:     return .webDelivery
+        }
+    }
+
     /// Master gate for the entire client-review surface — bell badge,
     /// per-tile indicators, inbox sheet, review-mode side rail, and
     /// inbound event recording. When false the photographer never sees
@@ -5618,6 +5680,7 @@ final class LiveCaptureModel {
                     mime: "image/jpeg",
                     previewPath: previewKey,
                     renderRecipe: recipe(for: asset.id),
+                    colorPurpose: deliveryColorPurpose,
                     rawSourceAssetId: rawSibling?.id,
                 )
             }
@@ -5771,6 +5834,7 @@ final class LiveCaptureModel {
                     mime: "image/jpeg",
                     previewPath: previewKey,
                     renderRecipe: recipe(for: asset.id),
+                    colorPurpose: deliveryColorPurpose,
                     rawSourceAssetId: rawSibling?.id,
                 )
             }
