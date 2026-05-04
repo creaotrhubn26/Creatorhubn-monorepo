@@ -319,6 +319,11 @@ final class MagicPipeline {
             }
         }
 
+        // Phase 7B — eye-region sharpen + catch-light boost. Detection
+        // sees the fully-toned image so the masked filters apply on top
+        // of all upstream adjustments. No-op when no faces detected.
+        current = EyeEffectFilter.apply(recipe: effectiveRecipe, to: current)
+
         guard !Task.isCancelled,
               let cgImage = ColorManagement.renderCGImage(
                 from: current, context: ctx, purpose: .appPreview,

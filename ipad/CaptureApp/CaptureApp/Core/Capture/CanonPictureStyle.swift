@@ -229,6 +229,8 @@ extension MagicRecipe {
             vibrance: clampSigned(vibrance + baseline.vibrance),
             texture: clampUnit(texture + baseline.texture),
             dehaze: clampUnit(dehaze + baseline.dehaze),
+            eyeSharpen: clampUnit(eyeSharpen + baseline.eyeSharpen),
+            eyeCatchlight: clampUnit(eyeCatchlight + baseline.eyeCatchlight),
         )
     }
 

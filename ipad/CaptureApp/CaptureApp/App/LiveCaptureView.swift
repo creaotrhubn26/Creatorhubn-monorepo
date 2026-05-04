@@ -3131,7 +3131,7 @@ struct TunePanel: View {
     }
 
     private var peopleSection: some View {
-        section(title: "Personer", subtitle: "Hud — frekvens-separasjon (Evoto-style)") {
+        section(title: "Personer", subtitle: "Hud + øyne — frekvens-separasjon + maskert sharpen") {
             TuneSlider(
                 title: "Skin Tone", icon: "drop.fill",
                 value: $recipe.skinLowFreq, range: -1...1,
@@ -3141,6 +3141,16 @@ struct TunePanel: View {
                 title: "Skin Detail", icon: "circle.grid.cross",
                 value: $recipe.skinHighFreq, range: -1...1,
                 format: signedPercent,
+            )
+            TuneSlider(
+                title: "Eye Sharpen", icon: "eye",
+                value: $recipe.eyeSharpen, range: 0...1,
+                format: percentFormat,
+            )
+            TuneSlider(
+                title: "Catch-light", icon: "sparkle",
+                value: $recipe.eyeCatchlight, range: 0...1,
+                format: percentFormat,
             )
         }
     }
@@ -3359,6 +3369,8 @@ private struct PresetChipRow: View {
             && abs(r1.contrast - r2.contrast) < tolerance
             && abs(r1.saturation - r2.saturation) < tolerance
             && abs(r1.highlightRecovery - r2.highlightRecovery) < tolerance
+            && abs(r1.eyeSharpen - r2.eyeSharpen) < tolerance
+            && abs(r1.eyeCatchlight - r2.eyeCatchlight) < tolerance
     }
 }
 
@@ -6190,7 +6202,9 @@ final class LiveCaptureModel {
             shadowLift: wire.shadowLift,
             contrast: wire.contrast,
             saturation: wire.saturation,
-            highlightRecovery: wire.highlightRecovery ?? 0
+            highlightRecovery: wire.highlightRecovery ?? 0,
+            eyeSharpen: wire.eyeSharpen ?? 0,
+            eyeCatchlight: wire.eyeCatchlight ?? 0
         )
     }
 

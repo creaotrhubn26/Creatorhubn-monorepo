@@ -437,12 +437,19 @@ struct BackendSuggestedRecipe: Decodable, Sendable {
     /// single-slider behaviour.
     let skinHighFreq: Double?
     let skinLowFreq: Double?
+    /// Phase 7B — eye axes. Optional for backwards-compat with older
+    /// Claude Vision builds. When the analysis suggests
+    /// "subject is portrait", the prompt should set both > 0.
+    let eyeSharpen: Double?
+    let eyeCatchlight: Double?
 
     private enum CodingKeys: String, CodingKey {
         case warmth, skinSmooth, shadowLift, contrast, saturation
         case highlightRecovery = "highlight_recovery"
         case skinHighFreq = "skin_high_freq"
         case skinLowFreq = "skin_low_freq"
+        case eyeSharpen = "eye_sharpen"
+        case eyeCatchlight = "eye_catchlight"
     }
 }
 

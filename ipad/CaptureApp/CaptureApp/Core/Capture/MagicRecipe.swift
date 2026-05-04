@@ -84,6 +84,29 @@ struct MagicRecipe: Sendable, Equatable, Codable {
     /// looking crunchy / halo-ridden per Lightroom community advice).
     var texture: Double = 0
 
+    /// **Phase 7B (Evoto parity)** — Eye sharpening. Detects eyes via
+    /// `CIDetector` face landmarks (`leftEyePosition` + `rightEyePosition`),
+    /// builds a soft radial-gradient mask around each, applies a
+    /// narrow-radius `CIUnsharpMask` (radius 2.5px) limited to that
+    /// region via `CIBlendWithMask`. Iris detail + lash definition pop
+    /// without sharpening the rest of the face.
+    /// Range 0…1: 0 = no eye sharpening, 1 = aggressive (>0.5 reads
+    /// "crispy / artificial"; pros usually 0.20–0.40 for portraits).
+    /// No-op when no faces are detected (eyes closed, deep shadow,
+    /// extreme angle) — never sharpens at the wrong location.
+    var eyeSharpen: Double = 0
+
+    /// **Phase 7B (Evoto parity)** — Catch-light boost. Same detection
+    /// + masking path as `eyeSharpen`, but applies `CIExposureAdjust`
+    /// (up to ~+0.4 EV inside the eye region) to brighten specular
+    /// highlights and lift the iris colour. Photographers reach for
+    /// this when window-light catch-lights are weak (overcast outdoor,
+    /// indoor mixed light).
+    /// Range 0…1: 0 = no boost, 1 = strong (>0.6 starts looking
+    /// flashlight-in-the-eye; pros stick to 0.15–0.30).
+    /// No-op when no faces detected.
+    var eyeCatchlight: Double = 0
+
     /// **Phase 6** — Dehaze proxy. Apple has no native dehaze CIFilter,
     /// so we approximate via coordinated nudges to contrast + saturation
     /// + shadow lift, all inside this single axis. Range 0…1: 0 = no
@@ -131,7 +154,8 @@ struct MagicRecipe: Sendable, Equatable, Codable {
     static let portrait = MagicRecipe(
         warmth: 0.10, skinHighFreq: 0.15, skinLowFreq: 0.30, shadowLift: 0.20,
         contrast: 0.05, saturation: 0.05,
-        highlightRecovery: 0.10, vibrance: 0.10, texture: 0.05, dehaze: 0
+        highlightRecovery: 0.10, vibrance: 0.10, texture: 0.05, dehaze: 0,
+        eyeSharpen: 0.30, eyeCatchlight: 0.20
     )
 
     /// Aviation: dehaze is the canonical primary tool for aviation
@@ -247,6 +271,12 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         if dehaze >= 0.05 {
             chips.append("Dehaze +\(Int((dehaze * 100).rounded()))%")
         }
+        if eyeSharpen >= 0.05 {
+            chips.append("Eye Sharpen +\(Int((eyeSharpen * 100).rounded()))%")
+        }
+        if eyeCatchlight >= 0.05 {
+            chips.append("Catch-light +\(Int((eyeCatchlight * 100).rounded()))%")
+        }
         return chips
     }
 
@@ -254,7 +284,7 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         warmth == 0 && skinHighFreq == 0 && skinLowFreq == 0 && skinSmooth == 0
             && shadowLift == 0 && contrast == 0 && saturation == 0
             && highlightRecovery == 0 && vibrance == 0 && texture == 0
-            && dehaze == 0
+            && dehaze == 0 && eyeSharpen == 0 && eyeCatchlight == 0
     }
 
     // MARK: - Codable (forward-compat decode)
@@ -277,6 +307,8 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         vibrance = try c.decodeIfPresent(Double.self, forKey: .vibrance) ?? 0
         texture = try c.decodeIfPresent(Double.self, forKey: .texture) ?? 0
         dehaze = try c.decodeIfPresent(Double.self, forKey: .dehaze) ?? 0
+        eyeSharpen = try c.decodeIfPresent(Double.self, forKey: .eyeSharpen) ?? 0
+        eyeCatchlight = try c.decodeIfPresent(Double.self, forKey: .eyeCatchlight) ?? 0
     }
 
     /// Memberwise init — synthesized Codable would consume this slot, so
@@ -293,7 +325,9 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         highlightRecovery: Double = 0,
         vibrance: Double = 0,
         texture: Double = 0,
-        dehaze: Double = 0
+        dehaze: Double = 0,
+        eyeSharpen: Double = 0,
+        eyeCatchlight: Double = 0
     ) {
         self.warmth = warmth
         self.skinHighFreq = skinHighFreq
@@ -306,10 +340,13 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         self.vibrance = vibrance
         self.texture = texture
         self.dehaze = dehaze
+        self.eyeSharpen = eyeSharpen
+        self.eyeCatchlight = eyeCatchlight
     }
 
     private enum CodingKeys: String, CodingKey {
         case warmth, skinHighFreq, skinLowFreq, skinSmooth, shadowLift
         case contrast, saturation, highlightRecovery, vibrance, texture, dehaze
+        case eyeSharpen, eyeCatchlight
     }
 }

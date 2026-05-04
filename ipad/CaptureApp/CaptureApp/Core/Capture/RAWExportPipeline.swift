@@ -319,6 +319,13 @@ enum RAWExportPipeline {
             toneCurve.point4 = CGPoint(x: 1.00, y: 0.92 - 0.08 * r)
             current = toneCurve.outputImage ?? current
         }
+
+        // Phase 7B — eye-region sharpen + catch-light boost. Runs last
+        // so detection sees the fully-toned image (white-balance and
+        // exposure correct) and the masked filters apply on top of all
+        // upstream adjustments. No-op when no faces detected.
+        current = EyeEffectFilter.apply(recipe: recipe, to: current)
+
         return current
     }
 
