@@ -93,7 +93,11 @@ import { findCustomerLegalEntityCandidates } from './role-room-legal-entity.js';
 import {
   sendMerchPartnerEmail,
   listMerchPartnerEmails,
+  logMerchPartnerReply,
+  listMerchPartnerReplies,
+  type MerchReplySentiment,
 } from './role-room-merch-partner-email.js';
+import { pollPartnerReplies } from './role-room-merch-partner-reply-poller.js';
 import {
   getAiGovernanceOverview,
   getAuditTrail,
@@ -20444,6 +20448,94 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       } catch (error) {
         res.status(500).json({
           error: 'partner_email_send_failed',
+          detail: error instanceof Error ? error.message : String(error),
+        });
+      }
+    },
+  );
+
+  // Slice 7c: log a partner reply for a previously sent cooperation email.
+  // Producer-driven for now (paste 1-3 setninger summary + sentiment).
+  // IMAP-poller will reuse the same endpoint with autoDetectedMessageId
+  // populated.
+  router.post(
+    '/projects/:projectId/agent/merch-partner-email/:emailId/reply',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const { replySummary, replyFullText, sentiment, repliedAt, autoDetectedMessageId } = req.body ?? {};
+        if (typeof replySummary !== 'string' || replySummary.trim().length === 0) {
+          return res.status(400).json({ error: 'invalid_reply_summary' });
+        }
+        const allowed = new Set<MerchReplySentiment>(['positive', 'neutral', 'negative']);
+        const finalSentiment: MerchReplySentiment = allowed.has(sentiment as MerchReplySentiment)
+          ? (sentiment as MerchReplySentiment)
+          : 'neutral';
+        const entry = await logMerchPartnerReply({
+          pool,
+          sentEmailId: req.params.emailId,
+          projectId: req.params.projectId,
+          userId,
+          replySummary: replySummary.trim().slice(0, 2000),
+          replyFullText: typeof replyFullText === 'string' ? replyFullText.slice(0, 20000) : null,
+          sentiment: finalSentiment,
+          repliedAt: typeof repliedAt === 'string' ? repliedAt : null,
+          autoDetectedMessageId: typeof autoDetectedMessageId === 'string' ? autoDetectedMessageId : null,
+        });
+        if (!entry) return res.status(500).json({ error: 'reply_log_failed' });
+        res.json(entry);
+      } catch (error) {
+        res.status(500).json({
+          error: 'reply_log_failed',
+          detail: error instanceof Error ? error.message : String(error),
+        });
+      }
+    },
+  );
+
+  // Slice 7c+: trigger IMAP poll to auto-detect partner replies. Reads
+  // GMAIL_USER's INBOX, searches for mail whose In-Reply-To/References
+  // header matches one of our sent gmail_message_id values, logs new
+  // replies. Idempotent. Producer hits "Sjekk for svar nå"-button in UI.
+  router.post(
+    '/projects/:projectId/agent/merch-partner-email/poll-replies',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const lookbackDays = typeof req.body?.lookbackDays === 'number' ? req.body.lookbackDays : undefined;
+        const result = await pollPartnerReplies(pool, { lookbackDays });
+        if (!result.ok) {
+          return res.status(result.reason === 'missing_email_config' ? 503 : 502).json(result);
+        }
+        res.json(result);
+      } catch (error) {
+        res.status(500).json({
+          error: 'reply_poll_failed',
+          detail: error instanceof Error ? error.message : String(error),
+        });
+      }
+    },
+  );
+
+  router.get(
+    '/projects/:projectId/agent/merch-partner-email/replies',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const partnerOrgnr = typeof req.query.partnerOrgnr === 'string'
+          ? req.query.partnerOrgnr.trim()
+          : null;
+        const limit = typeof req.query.limit === 'string' ? Number(req.query.limit) : undefined;
+        const entries = await listMerchPartnerReplies(pool, {
+          projectId: req.params.projectId,
+          partnerOrgnr: partnerOrgnr || null,
+          limit,
+        });
+        res.json({ entries });
+      } catch (error) {
+        res.status(500).json({
+          error: 'replies_list_failed',
           detail: error instanceof Error ? error.message : String(error),
         });
       }

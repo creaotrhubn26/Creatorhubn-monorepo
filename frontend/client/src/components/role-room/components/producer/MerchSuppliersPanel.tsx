@@ -16,6 +16,7 @@ import {
   Box,
   Button,
   Chip,
+  CircularProgress,
   Stack,
   Typography,
 } from '@mui/material';
@@ -43,8 +44,12 @@ import CustomerEntityConfirmationDialog, {
 } from './CustomerEntityConfirmationDialog';
 import {
   listMerchPartnerEmailHistory,
+  listMerchPartnerReplies,
+  pollPartnerRepliesNow,
   type MerchPartnerEmailLogEntry,
+  type MerchPartnerReplyEntry,
 } from '../../services/roleRoomAgentClaudeApi';
+import MerchPartnerReplyDialog from './MerchPartnerReplyDialog';
 
 interface MerchSuppliersPanelProps {
   projectId: string | null;
@@ -107,10 +112,18 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
   // surface "Sendt 4. mai" badges. Refreshes whenever a cooperation
   // dialog closes (cheapest hook to detect "user just sent").
   const [emailHistory, setEmailHistory] = useState<MerchPartnerEmailLogEntry[]>([]);
+  const [emailReplies, setEmailReplies] = useState<MerchPartnerReplyEntry[]>([]);
+  const [polling, setPolling] = useState(false);
+  const [pollResultMessage, setPollResultMessage] = useState<string | null>(null);
+  const [replyDialogTarget, setReplyDialogTarget] = useState<MerchPartnerEmailLogEntry | null>(null);
+
   const reloadEmailHistory = React.useCallback(() => {
     if (!projectId) return;
     void listMerchPartnerEmailHistory({ projectId, limit: 100 }).then((res) => {
       setEmailHistory(res.entries ?? []);
+    });
+    void listMerchPartnerReplies({ projectId, limit: 200 }).then((res) => {
+      setEmailReplies(res.entries ?? []);
     });
   }, [projectId]);
   React.useEffect(() => {
@@ -121,6 +134,31 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
   React.useEffect(() => {
     if (!cooperationOpen) reloadEmailHistory();
   }, [cooperationOpen, reloadEmailHistory]);
+
+  const handlePollReplies = React.useCallback(async () => {
+    if (!projectId) return;
+    setPolling(true);
+    setPollResultMessage(null);
+    try {
+      const r = await pollPartnerRepliesNow({ projectId, lookbackDays: 30 });
+      if (r.ok) {
+        setPollResultMessage(
+          r.newReplies > 0
+            ? `Fant ${r.newReplies} nye svar (skannet ${r.scanned} mail).`
+            : `Ingen nye svar funnet (skannet ${r.scanned} mail mot ${r.pollableSentEmails} sendte forslag).`,
+        );
+        reloadEmailHistory();
+      } else {
+        setPollResultMessage(
+          r.reason === 'missing_email_config'
+            ? 'Gmail-konfig mangler i backend-env. Be admin sette GMAIL_USER + GMAIL_APP_PASSWORD.'
+            : `IMAP-poll feilet: ${r.reason ?? 'ukjent feil'}`,
+        );
+      }
+    } finally {
+      setPolling(false);
+    }
+  }, [projectId, reloadEmailHistory]);
 
   const selectedSupplier = useMemo(() => {
     if (!merch || !selectedSupplierKey) return null;
@@ -242,6 +280,18 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
               label={`${merch.verifiedSupplierCount}/${merch.suppliers.length} klare for forespørsel`}
               sx={{ bgcolor: 'rgba(34,197,94,0.14)', color: '#bbf7d0', fontWeight: 700 }}
             />
+            {emailHistory.length > 0 ? (
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={polling ? <CircularProgress size={12} /> : <MailIcon fontSize="small" />}
+                onClick={() => void handlePollReplies()}
+                disabled={polling}
+                sx={{ textTransform: 'none', fontWeight: 700 }}
+              >
+                {polling ? 'Sjekker …' : 'Sjekk for svar'}
+              </Button>
+            ) : null}
             <Button
               size="small"
               variant="contained"
@@ -258,6 +308,11 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
             </Button>
           </Stack>
         </Stack>
+        {pollResultMessage ? (
+          <Alert severity="info" onClose={() => setPollResultMessage(null)} sx={{ mt: 1, fontSize: '0.82rem' }}>
+            {pollResultMessage}
+          </Alert>
+        ) : null}
       </Box>
 
       {/* Mockup-preview — fotorealistisk render via Printful. Shows logo
@@ -338,9 +393,15 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
           // Slice 7b history per partner — shown as a small "Sendt X
           // ganger"-badge in the card so producer immediately sees if
           // they've already pitched this supplier.
-          const sentCount = supplier.organizationNumber
-            ? emailHistory.filter((e) => e.partnerOrgnr === supplier.organizationNumber).length
-            : 0;
+          const partnerSentEmails = supplier.organizationNumber
+            ? emailHistory.filter((e) => e.partnerOrgnr === supplier.organizationNumber)
+            : [];
+          const sentCount = partnerSentEmails.length;
+          const partnerReplies = partnerSentEmails.flatMap((sent) =>
+            emailReplies.filter((rep) => rep.sentEmailId === sent.id),
+          );
+          const latestReply = partnerReplies[0] ?? null;
+          const latestSent = partnerSentEmails[0] ?? null;
           return (
             <Box
               key={key}
@@ -525,19 +586,51 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
                     Send tilbudsforespørsel
                   </Button>
                 </Stack>
-                {/* Slice 7b: send-history badge */}
+                {/* Slice 7b/c: send + reply history */}
                 {sentCount > 0 ? (
-                  <Chip
-                    size="small"
-                    label={`Sendt ${sentCount} ${sentCount === 1 ? 'gang' : 'ganger'} fra dette prosjektet`}
-                    sx={{
-                      alignSelf: 'flex-start',
-                      bgcolor: 'rgba(99,102,241,0.16)',
-                      color: '#c7d2fe',
-                      fontSize: '0.7rem',
-                      height: 22,
-                    }}
-                  />
+                  <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap alignItems="center" onClick={(e) => e.stopPropagation()}>
+                    <Chip
+                      size="small"
+                      label={`Sendt ${sentCount} ${sentCount === 1 ? 'gang' : 'ganger'}`}
+                      sx={{ bgcolor: 'rgba(99,102,241,0.16)', color: '#c7d2fe', fontSize: '0.7rem', height: 22 }}
+                    />
+                    {latestReply ? (
+                      <Chip
+                        size="small"
+                        label={`Svar mottatt ${new Date(latestReply.repliedAt).toLocaleDateString('nb-NO')} · ${
+                          latestReply.sentiment === 'positive' ? 'positivt' :
+                          latestReply.sentiment === 'negative' ? 'negativt' : 'nøytralt'
+                        }`}
+                        sx={{
+                          bgcolor:
+                            latestReply.sentiment === 'positive' ? 'rgba(34,197,94,0.16)' :
+                            latestReply.sentiment === 'negative' ? 'rgba(239,68,68,0.14)' :
+                            'rgba(250,204,21,0.14)',
+                          color:
+                            latestReply.sentiment === 'positive' ? '#bbf7d0' :
+                            latestReply.sentiment === 'negative' ? '#fecaca' :
+                            '#fde68a',
+                          fontSize: '0.7rem',
+                          height: 22,
+                        }}
+                      />
+                    ) : latestSent ? (
+                      <Button
+                        size="small"
+                        variant="text"
+                        onClick={() => setReplyDialogTarget(latestSent)}
+                        sx={{ textTransform: 'none', fontSize: '0.72rem', minWidth: 0, p: 0.4 }}
+                      >
+                        Marker svar
+                      </Button>
+                    ) : null}
+                  </Stack>
+                ) : null}
+                {/* Reply summary tooltip — shown inline when present */}
+                {latestReply ? (
+                  <Typography sx={{ color: 'rgba(226,232,240,0.7)', fontSize: '0.74rem', fontStyle: 'italic', lineHeight: 1.4 }}>
+                    «{latestReply.replySummary.slice(0, 160)}{latestReply.replySummary.length > 160 ? '…' : ''}»
+                  </Typography>
                 ) : null}
                 {/* Scraped contact info — chip row only when something was found */}
                 {(supplier.contact?.email || supplier.contact?.phone) ? (
@@ -602,6 +695,15 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
         projectId={projectId}
         bootstrap={bootstrap}
         onConfirm={(entity) => setConfirmedEntity(entity)}
+      />
+
+      {/* Slice 7c reply marker */}
+      <MerchPartnerReplyDialog
+        open={Boolean(replyDialogTarget)}
+        onClose={() => setReplyDialogTarget(null)}
+        onSaved={reloadEmailHistory}
+        projectId={projectId}
+        sentEmail={replyDialogTarget}
       />
 
       {/* Cooperation angles + outreach checklist */}

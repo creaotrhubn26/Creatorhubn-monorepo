@@ -232,6 +232,120 @@ export async function sendMerchPartnerEmail(
   }
 }
 
+// =============================================================================
+// Slice 7c — partner replies to sent cooperation emails.
+// Manual entries from producer + (later) IMAP-polled auto-detection.
+// =============================================================================
+
+export type MerchReplySentiment = "positive" | "neutral" | "negative";
+
+export interface LogPartnerReplyInput {
+  pool: Pool;
+  sentEmailId: string;
+  projectId: string;
+  userId: string | null;
+  replySummary: string;
+  replyFullText?: string | null;
+  sentiment: MerchReplySentiment;
+  repliedAt?: string | null;
+  autoDetectedMessageId?: string | null;
+}
+
+export interface MerchPartnerReplyEntry {
+  id: string;
+  sentEmailId: string;
+  projectId: string;
+  replySummary: string;
+  replyFullText: string | null;
+  sentiment: MerchReplySentiment;
+  autoDetectedMessageId: string | null;
+  repliedAt: string;
+  markedByUserId: string | null;
+  markedAt: string;
+}
+
+export async function logMerchPartnerReply(
+  input: LogPartnerReplyInput,
+): Promise<MerchPartnerReplyEntry | null> {
+  try {
+    const r = await input.pool.query(
+      `INSERT INTO role_room_merch_partner_email_replies (
+         sent_email_id, project_id, reply_summary, reply_full_text,
+         sentiment, auto_detected_message_id, replied_at, marked_by_user_id
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING id, sent_email_id, project_id, reply_summary, reply_full_text,
+                 sentiment, auto_detected_message_id, replied_at, marked_by_user_id, marked_at`,
+      [
+        input.sentEmailId,
+        input.projectId,
+        input.replySummary,
+        input.replyFullText ?? null,
+        input.sentiment,
+        input.autoDetectedMessageId ?? null,
+        input.repliedAt ? new Date(input.repliedAt) : new Date(),
+        input.userId,
+      ],
+    );
+    const row = r.rows[0];
+    if (!row) return null;
+    return {
+      id: row.id,
+      sentEmailId: row.sent_email_id,
+      projectId: row.project_id,
+      replySummary: row.reply_summary,
+      replyFullText: row.reply_full_text,
+      sentiment: row.sentiment,
+      autoDetectedMessageId: row.auto_detected_message_id,
+      repliedAt: row.replied_at instanceof Date ? row.replied_at.toISOString() : String(row.replied_at),
+      markedByUserId: row.marked_by_user_id,
+      markedAt: row.marked_at instanceof Date ? row.marked_at.toISOString() : String(row.marked_at),
+    };
+  } catch (err) {
+    console.error("[merch-partner-email] reply log failure:", err);
+    return null;
+  }
+}
+
+export async function listMerchPartnerReplies(
+  pool: Pool,
+  options: { projectId: string; partnerOrgnr?: string | null; limit?: number },
+): Promise<MerchPartnerReplyEntry[]> {
+  const limit = Math.min(Math.max(1, options.limit ?? 100), 500);
+  const params: unknown[] = [options.projectId];
+  let query = `SELECT r.id, r.sent_email_id, r.project_id, r.reply_summary, r.reply_full_text,
+                      r.sentiment, r.auto_detected_message_id, r.replied_at,
+                      r.marked_by_user_id, r.marked_at
+                 FROM role_room_merch_partner_email_replies r
+                 WHERE r.project_id = $1`;
+  if (options.partnerOrgnr) {
+    params.push(options.partnerOrgnr);
+    query += ` AND r.sent_email_id IN (
+                 SELECT id FROM role_room_merch_partner_emails
+                 WHERE project_id = $1 AND partner_orgnr = $${params.length}
+               )`;
+  }
+  params.push(limit);
+  query += ` ORDER BY r.replied_at DESC LIMIT $${params.length}`;
+  try {
+    const r = await pool.query(query, params);
+    return r.rows.map((row) => ({
+      id: row.id,
+      sentEmailId: row.sent_email_id,
+      projectId: row.project_id,
+      replySummary: row.reply_summary,
+      replyFullText: row.reply_full_text,
+      sentiment: row.sentiment,
+      autoDetectedMessageId: row.auto_detected_message_id,
+      repliedAt: row.replied_at instanceof Date ? row.replied_at.toISOString() : String(row.replied_at),
+      markedByUserId: row.marked_by_user_id,
+      markedAt: row.marked_at instanceof Date ? row.marked_at.toISOString() : String(row.marked_at),
+    }));
+  } catch (err) {
+    console.error("[merch-partner-email] list replies failure:", err);
+    return [];
+  }
+}
+
 export async function listMerchPartnerEmails(
   pool: Pool,
   options: { projectId: string; partnerOrgnr?: string | null; limit?: number },

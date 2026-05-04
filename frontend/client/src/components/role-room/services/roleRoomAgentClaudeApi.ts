@@ -623,6 +623,91 @@ export interface MerchPartnerEmailLogEntry {
   sentAt: string;
 }
 
+// Slice 7c — partner replies (manual mark + IMAP-detected).
+
+export type MerchReplySentiment = 'positive' | 'neutral' | 'negative';
+
+export interface MerchPartnerReplyEntry {
+  id: string;
+  sentEmailId: string;
+  projectId: string;
+  replySummary: string;
+  replyFullText: string | null;
+  sentiment: MerchReplySentiment;
+  autoDetectedMessageId: string | null;
+  repliedAt: string;
+  markedByUserId: string | null;
+  markedAt: string;
+}
+
+export async function logMerchPartnerReply(input: {
+  projectId: string;
+  emailId: string;
+  replySummary: string;
+  replyFullText?: string | null;
+  sentiment: MerchReplySentiment;
+  repliedAt?: string | null;
+}): Promise<MerchPartnerReplyEntry | null> {
+  const r = await fetch(
+    `${API_BASE}/projects/${encodeURIComponent(input.projectId)}/agent/merch-partner-email/${encodeURIComponent(input.emailId)}/reply`,
+    {
+      method: 'POST',
+      headers: buildHeaders(),
+      body: JSON.stringify({
+        replySummary: input.replySummary,
+        replyFullText: input.replyFullText ?? null,
+        sentiment: input.sentiment,
+        repliedAt: input.repliedAt ?? null,
+      }),
+    },
+  );
+  if (!r.ok) return null;
+  return r.json();
+}
+
+export async function listMerchPartnerReplies(input: {
+  projectId: string;
+  partnerOrgnr?: string | null;
+  limit?: number;
+}): Promise<{ entries: MerchPartnerReplyEntry[] }> {
+  const params = new URLSearchParams();
+  if (input.partnerOrgnr) params.set('partnerOrgnr', input.partnerOrgnr);
+  if (input.limit) params.set('limit', String(input.limit));
+  const qs = params.toString();
+  const r = await fetch(
+    `${API_BASE}/projects/${encodeURIComponent(input.projectId)}/agent/merch-partner-email/replies${qs ? `?${qs}` : ''}`,
+    { headers: buildHeaders() },
+  );
+  if (!r.ok) return { entries: [] };
+  return r.json();
+}
+
+export interface PollRepliesResult {
+  ok: boolean;
+  reason?: string;
+  pollableSentEmails: number;
+  scanned: number;
+  newReplies: number;
+  alreadyLoggedSkipped: number;
+}
+
+export async function pollPartnerRepliesNow(input: {
+  projectId: string;
+  lookbackDays?: number;
+}): Promise<PollRepliesResult> {
+  const r = await fetch(
+    `${API_BASE}/projects/${encodeURIComponent(input.projectId)}/agent/merch-partner-email/poll-replies`,
+    {
+      method: 'POST',
+      headers: buildHeaders(),
+      body: JSON.stringify({ lookbackDays: input.lookbackDays }),
+    },
+  );
+  const body = (await r.json().catch(() => null)) as PollRepliesResult | null;
+  if (!body) return { ok: false, reason: `HTTP ${r.status}`, pollableSentEmails: 0, scanned: 0, newReplies: 0, alreadyLoggedSkipped: 0 };
+  return body;
+}
+
 export async function listMerchPartnerEmailHistory(input: {
   projectId: string;
   partnerOrgnr?: string | null;
