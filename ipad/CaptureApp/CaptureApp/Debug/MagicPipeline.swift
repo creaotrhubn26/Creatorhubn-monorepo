@@ -269,29 +269,53 @@ final class MagicPipeline {
             }
         }
 
-        if effectiveRecipe.skinSmooth > 0 {
-            // Edge-preserving smoothing, not a global Gaussian blur.
-            // CINoiseReduction is Apple's built-in bilateral filter —
-            // smooths flat tonal areas (skin tone variation) while
-            // preserving edge detail (eyelashes, lip edges, hair
-            // strands, individual pores). This is what the pro-retouch
-            // "frequency separation" workflow achieves; Apple ships an
-            // approximation as a single filter, robust and cheap.
+        // Phase 7 — frequency-separated skin retouch. Low-freq (tone)
+        // and high-freq (detail) treated independently, matching
+        // Evoto's split-slider model. Legacy `skinSmooth` folds into
+        // the low-freq positive direction so old recipes still smooth.
+        let lowFreqPos = max(0, effectiveRecipe.skinLowFreq)
+            + max(0, effectiveRecipe.skinSmooth)
+        if lowFreqPos > 0 {
+            // Edge-preserving smoothing for tone — CINoiseReduction is
+            // Apple's bilateral filter; smooths flat tonal areas while
+            // preserving edges (eyelashes, lip edges, hair strands).
+            // Sharpness raised from 0.5 → 0.7 vs pre-Phase-7 because
+            // the dedicated high-freq axis now owns detail-rebuild;
+            // we no longer need the sharpen-after-blur kludge.
             if let nr = CIFilter(name: "CINoiseReduction") {
                 nr.setValue(current, forKey: kCIInputImageKey)
-                nr.setValue(effectiveRecipe.skinSmooth * 0.06, forKey: "inputNoiseLevel")
-                nr.setValue(0.5, forKey: "inputSharpness")
+                nr.setValue(min(1, lowFreqPos) * 0.06, forKey: "inputNoiseLevel")
+                nr.setValue(0.7, forKey: "inputSharpness")
                 if let reduced = nr.outputImage {
                     current = reduced
                 }
             }
-            // Restore micro-detail in the rest of the frame so clothing /
-            // hair / background stay crisp.
-            if let sharpen = CIFilter(name: "CIUnsharpMask") {
-                sharpen.setValue(current, forKey: kCIInputImageKey)
-                sharpen.setValue(1.5, forKey: kCIInputRadiusKey)
-                sharpen.setValue(0.25, forKey: kCIInputIntensityKey)
-                if let out = sharpen.outputImage { current = out }
+        }
+        if effectiveRecipe.skinLowFreq < 0 {
+            // Enhance facial structure (subtle broad-tonal contrast).
+            if let cc = CIFilter(name: "CIColorControls") {
+                cc.setValue(current, forKey: kCIInputImageKey)
+                cc.setValue(1.0 + (-effectiveRecipe.skinLowFreq) * 0.15,
+                            forKey: kCIInputContrastKey)
+                if let out = cc.outputImage { current = out }
+            }
+        }
+        if effectiveRecipe.skinHighFreq > 0 {
+            // Sharpen pore detail (narrow-radius unsharp mask).
+            if let s = CIFilter(name: "CIUnsharpMask") {
+                s.setValue(current, forKey: kCIInputImageKey)
+                s.setValue(1.5, forKey: kCIInputRadiusKey)
+                s.setValue(effectiveRecipe.skinHighFreq * 0.5,
+                           forKey: kCIInputIntensityKey)
+                if let out = s.outputImage { current = out }
+            }
+        } else if effectiveRecipe.skinHighFreq < 0 {
+            // Blur micro-texture (gentle gaussian for portrait soften).
+            if let blur = CIFilter(name: "CIGaussianBlur") {
+                blur.setValue(current, forKey: kCIInputImageKey)
+                blur.setValue((-effectiveRecipe.skinHighFreq) * 1.2,
+                              forKey: kCIInputRadiusKey)
+                if let out = blur.outputImage { current = out }
             }
         }
 

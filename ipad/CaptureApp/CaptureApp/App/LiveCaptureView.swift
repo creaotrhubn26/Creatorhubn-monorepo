@@ -110,7 +110,20 @@ struct LiveCaptureView: View {
                         entireSession: LiveCaptureModel.RecipeApplyScope.entireSession.count(in: model.assets),
                     ),
                 )
-                .presentationDetents([.medium, .large])
+                // Drawer-style presentation: small detent (35%) lets
+                // the photographer keep the hero photo visible while
+                // dragging sliders, medium (~50%) gives more room when
+                // diving into many axes, large covers full-screen for
+                // full preset browsing. Interaction-passthrough means
+                // the photo behind responds to swipes/zoom in the small
+                // and medium detents — so colour-tweak feedback is
+                // immediately visible without dismissing the panel.
+                .presentationDetents([.fraction(0.35), .medium, .large])
+                .presentationBackgroundInteraction(
+                    .enabled(upThrough: .medium)
+                )
+                .presentationDragIndicator(.visible)
+                .interactiveDismissDisabled(false)
             }
         }
         .sheet(isPresented: $isDeliverPresented) {
@@ -3118,11 +3131,16 @@ struct TunePanel: View {
     }
 
     private var peopleSection: some View {
-        section(title: "Personer", subtitle: "Hud · poreutjevning") {
+        section(title: "Personer", subtitle: "Hud — frekvens-separasjon (Evoto-style)") {
             TuneSlider(
-                title: "Skin smoothing", icon: "face.smiling",
-                value: $recipe.skinSmooth, range: 0...1,
-                format: percentFormat,
+                title: "Skin Tone", icon: "drop.fill",
+                value: $recipe.skinLowFreq, range: -1...1,
+                format: signedPercent,
+            )
+            TuneSlider(
+                title: "Skin Detail", icon: "circle.grid.cross",
+                value: $recipe.skinHighFreq, range: -1...1,
+                format: signedPercent,
             )
         }
     }
@@ -3334,6 +3352,8 @@ private struct PresetChipRow: View {
         let r2 = preset.recipe
         let tolerance = 0.05
         return abs(r1.warmth - r2.warmth) < tolerance
+            && abs(r1.skinHighFreq - r2.skinHighFreq) < tolerance
+            && abs(r1.skinLowFreq - r2.skinLowFreq) < tolerance
             && abs(r1.skinSmooth - r2.skinSmooth) < tolerance
             && abs(r1.shadowLift - r2.shadowLift) < tolerance
             && abs(r1.contrast - r2.contrast) < tolerance
@@ -6164,6 +6184,8 @@ final class LiveCaptureModel {
     private func magicRecipe(from wire: BackendSuggestedRecipe) -> MagicRecipe {
         MagicRecipe(
             warmth: wire.warmth,
+            skinHighFreq: wire.skinHighFreq ?? 0,
+            skinLowFreq: wire.skinLowFreq ?? 0,
             skinSmooth: wire.skinSmooth,
             shadowLift: wire.shadowLift,
             contrast: wire.contrast,

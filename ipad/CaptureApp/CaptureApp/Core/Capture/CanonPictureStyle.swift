@@ -166,39 +166,42 @@ enum CanonPictureStyle: String, Sendable, Equatable {
         case .standard:
             // Canon's pleasing default. Tiny additive nudge.
             return MagicRecipe(
-                warmth: 0.05, skinSmooth: 0, shadowLift: 0.05,
+                warmth: 0.05, shadowLift: 0.05,
                 contrast: 0.05, saturation: 0.05, highlightRecovery: 0.05,
             )
         case .portrait:
             // Skin-friendly direction, halved from pre-audit values.
+            // Phase 7: split skin into freq-sep axes (low-freq smooth
+            // tone, no high-freq nudge — let recipe decide detail).
             return MagicRecipe(
-                warmth: 0.10, skinSmooth: 0.10, shadowLift: 0.05,
-                contrast: 0, saturation: 0.03, highlightRecovery: 0.08,
+                warmth: 0.10, skinHighFreq: 0, skinLowFreq: 0.10,
+                shadowLift: 0.05, contrast: 0, saturation: 0.03,
+                highlightRecovery: 0.08,
             )
         case .landscape:
             // Cool + saturation direction, halved.
             return MagicRecipe(
-                warmth: -0.05, skinSmooth: 0, shadowLift: 0.08,
+                warmth: -0.05, shadowLift: 0.08,
                 contrast: 0.10, saturation: 0.10, highlightRecovery: 0.10,
             )
         case .neutral, .faithful:
             // Photographer explicitly chose "don't touch colors".
             return MagicRecipe(
-                warmth: 0, skinSmooth: 0, shadowLift: 0,
+                warmth: 0, shadowLift: 0,
                 contrast: 0, saturation: 0, highlightRecovery: 0,
             )
         case .monochrome:
             // TODO Phase 6: actual greyscale conversion via
             // CIPhotoEffectMono / CIColorMonochrome. Currently no-op.
             return MagicRecipe(
-                warmth: 0, skinSmooth: 0, shadowLift: 0,
+                warmth: 0, shadowLift: 0,
                 contrast: 0, saturation: 0, highlightRecovery: 0,
             )
         case .auto, .custom, .unknown:
             // Can't replicate auto / custom / missing metadata —
             // let the user's recipe drive without baseline.
             return MagicRecipe(
-                warmth: 0, skinSmooth: 0, shadowLift: 0,
+                warmth: 0, shadowLift: 0,
                 contrast: 0, saturation: 0, highlightRecovery: 0,
             )
         }
@@ -216,6 +219,8 @@ extension MagicRecipe {
     func merging(baseline: MagicRecipe) -> MagicRecipe {
         MagicRecipe(
             warmth: clampSigned(warmth + baseline.warmth),
+            skinHighFreq: clampSigned(skinHighFreq + baseline.skinHighFreq),
+            skinLowFreq: clampSigned(skinLowFreq + baseline.skinLowFreq),
             skinSmooth: clampUnit(skinSmooth + baseline.skinSmooth),
             shadowLift: clampUnit(shadowLift + baseline.shadowLift),
             contrast: clampSigned(contrast + baseline.contrast),

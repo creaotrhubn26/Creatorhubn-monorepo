@@ -430,10 +430,19 @@ struct BackendSuggestedRecipe: Decodable, Sendable {
     let contrast: Double
     let saturation: Double
     let highlightRecovery: Double?
+    /// Phase 7 — Evoto-parity skin freq-sep axes. Optional because
+    /// older Claude Vision builds emit only `skin_smooth`. When
+    /// present, `skin_smooth` is expected to be 0 (the new shape
+    /// supersedes it). When absent, iPad falls back to legacy
+    /// single-slider behaviour.
+    let skinHighFreq: Double?
+    let skinLowFreq: Double?
 
     private enum CodingKeys: String, CodingKey {
         case warmth, skinSmooth, shadowLift, contrast, saturation
         case highlightRecovery = "highlight_recovery"
+        case skinHighFreq = "skin_high_freq"
+        case skinLowFreq = "skin_low_freq"
     }
 }
 

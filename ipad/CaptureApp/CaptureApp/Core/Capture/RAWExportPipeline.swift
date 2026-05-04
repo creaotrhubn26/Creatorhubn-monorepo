@@ -135,12 +135,15 @@ enum RAWExportPipeline {
     ///     same perceptual change.
     ///   - `shadowLift` 0…1 → `boostShadowAmount` 1.0…2.0 (lighten only;
     ///     CIRAWFilter clamps the range to 0…2 with 1.0 = neutral).
-    ///   - `skinSmooth` 0…1 → `luminanceNoiseReductionAmount` 0.2…0.7 (RAW
+    ///   - `skinLowFreq` ≥0 → `luminanceNoiseReductionAmount` 0.2…0.7 (RAW
     ///     carries more sensor noise than the in-camera JPEG, so the floor
-    ///     is biased up). Skin softening on RAW happens through luminance
-    ///     NR rather than a dedicated bilateral filter; for portrait-grade
-    ///     softening the photographer would still reach for the retouch
-    ///     pipeline (frequency-separation) downstream.
+    ///     is biased up). Low-freq skin smoothing on RAW happens natively
+    ///     here so it stacks correctly against the demosaic.
+    ///   - `skinHighFreq` is applied post-output in `applyToneAdjustments`
+    ///     because it needs the demosaiced display-RGB image (CIUnsharpMask
+    ///     for sharpen direction, CIBilateralFilter for blur direction).
+    ///   - `skinSmooth` (legacy) folds into `luminanceNoiseReductionAmount`
+    ///     identically to the pre-Phase-7 mapping when present.
     ///
     /// White balance + shadow lift + skin smoothing land natively on
     /// `CIRAWFilter` (pre-demosaic, full sensor precision). Highlight
@@ -158,8 +161,16 @@ enum RAWExportPipeline {
             filter.boostShadowAmount = 1.0 + Float(recipe.shadowLift)
         }
 
-        if recipe.skinSmooth > 0, filter.isLuminanceNoiseReductionSupported {
-            filter.luminanceNoiseReductionAmount = 0.2 + Float(recipe.skinSmooth) * 0.5
+        // Phase 7: low-freq skin smoothing folds in here (CIRAWFilter
+        // luminance NR runs pre-demosaic at full sensor precision —
+        // best place for tone smoothing). Clamp the input to 0…1 since
+        // this axis is bidirectional but luminance NR is unidirectional;
+        // negative skinLowFreq (enhance structure) is handled post-output.
+        // Legacy `skinSmooth` adds in identically for backwards compat.
+        let lowFreqAmt = max(0, recipe.skinLowFreq) + max(0, recipe.skinSmooth)
+        if lowFreqAmt > 0, filter.isLuminanceNoiseReductionSupported {
+            let clamped = Float(min(1, lowFreqAmt))
+            filter.luminanceNoiseReductionAmount = 0.2 + clamped * 0.5
         }
 
         // Lens correction (vignette, distortion, chromatic aberration)
@@ -258,6 +269,43 @@ enum RAWExportPipeline {
             t.radius = 25  // wide (vs skin-smooth restore's 1.5)
             t.intensity = Float(recipe.texture) * 0.6
             current = t.outputImage ?? current
+        }
+
+        // Phase 7 — skinHighFreq (post-demosaic, since Apple's
+        // CIBilateralFilter / CIUnsharpMask both need display-RGB).
+        // Bidirectional: positive = sharpen pore detail, negative =
+        // blur micro-texture. Narrow radius (1.5) so it ONLY touches
+        // sub-skin texture without bleeding into hair/eye edges. Pair
+        // with skinLowFreq for true frequency-separation behaviour:
+        // smooth tone via low-freq + restore detail via high-freq +.
+        // Negative direction applies a gentle gaussian blur with
+        // radius matched to typical skin micro-texture (~2-3 px on
+        // 5088×3392 sensor, ≈1.5 in CIFilter units after downscale).
+        if recipe.skinHighFreq > 0 {
+            let s = CIFilter.unsharpMask()
+            s.inputImage = current
+            s.radius = 1.5
+            s.intensity = Float(recipe.skinHighFreq) * 0.5
+            current = s.outputImage ?? current
+        } else if recipe.skinHighFreq < 0 {
+            let blur = CIFilter.gaussianBlur()
+            blur.inputImage = current
+            blur.radius = Float(-recipe.skinHighFreq) * 1.2
+            current = blur.outputImage ?? current
+        }
+
+        // Phase 7 — skinLowFreq negative direction (enhance facial
+        // structure). Positive direction was handled in applyRecipe
+        // via luminance NR. Negative direction is a subtle contrast
+        // boost on broad tonal areas, matching Evoto's "decrease low
+        // frequency = enhance facial structure and depth" guidance.
+        if recipe.skinLowFreq < 0 {
+            let controls = CIFilter.colorControls()
+            controls.inputImage = current
+            controls.contrast = 1.0 + Float(-recipe.skinLowFreq) * 0.15
+            controls.saturation = 1.0
+            controls.brightness = 0
+            current = controls.outputImage ?? current
         }
 
         if recipe.highlightRecovery > 0 {

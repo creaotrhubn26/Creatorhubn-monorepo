@@ -15,9 +15,38 @@ struct MagicRecipe: Sendable, Equatable, Codable {
     /// Real-world range: -500K…+500K. We display as "Warmth ±%".
     var warmth: Double
 
-    /// Skin-softening strength. 0 = no softening, 1 = heavy.
-    /// Below 0.1 is visually inert; above 0.6 is usually too much.
-    var skinSmooth: Double
+    /// **Phase 7 (Evoto parity)** — High-frequency skin axis. Controls
+    /// pore + micro-texture *detail* independent of tone smoothing.
+    /// Bidirectional like Evoto's "High Frequency" slider:
+    ///   -1 → blur micro-texture (CIBilateralFilter narrow radius)
+    ///    0 → preserve as-shot
+    ///   +1 → enhance pore/skin-detail (CIUnsharpMask radius ≈1.5px)
+    /// Pair with `skinLowFreq` for true frequency-separation control:
+    /// e.g. `skinLowFreq +0.4, skinHighFreq +0.2` = smooth tone with
+    /// pore detail preserved (industry "natural retouch" recipe).
+    var skinHighFreq: Double = 0
+
+    /// **Phase 7 (Evoto parity)** — Low-frequency skin axis. Controls
+    /// tone smoothing + colour-blotch evenness without touching pore
+    /// texture. Bidirectional like Evoto's "Low Frequency" slider:
+    ///   -1 → enhance facial structure (subtle contrast bump on
+    ///        broad tonal areas)
+    ///    0 → preserve as-shot
+    ///   +1 → smooth tone (CIRAWFilter luminanceNoiseReduction +
+    ///        CINoiseReduction sharpness=0.7 to keep edges)
+    /// Industry consensus (Evoto support, Jana Kukebal review,
+    /// Fstoppers): keep this ≤0.5 for natural look. >0.7 reads
+    /// "plastic / cartoon".
+    var skinLowFreq: Double = 0
+
+    /// Legacy axis — single-slider skin softening. Pre-Phase-7 shape;
+    /// retained for JSON-wire backwards-compat with backend builds
+    /// that still emit `skinSmooth`. Reads as `skinLowFreq` only
+    /// (no high-freq detail preservation), so legacy recipes get the
+    /// pre-Phase-7 behaviour: tone smoothing without texture rebuild.
+    /// New code paths set `skinSmooth = 0` and use the two new axes
+    /// directly. UI does not expose this slider any more.
+    var skinSmooth: Double = 0
 
     /// Shadow-lift strength. 0 = no lift, 1 = full recovery.
     var shadowLift: Double
@@ -94,8 +123,14 @@ struct MagicRecipe: Sendable, Equatable, Codable {
     /// background/clothing without overdriving lip/cheek redness).
     /// Mild texture for hair/fabric; zero dehaze (no atmospheric
     /// haze indoors).
+    /// **Phase 7**: skin uses bidirectional freq-sep — `skinLowFreq
+    /// +0.30` smooths tone (acne / blotchy areas) while `skinHighFreq
+    /// +0.15` rebuilds pore detail so the result reads as "natural"
+    /// rather than "plastic", matching Evoto's "Textured Smoothing"
+    /// approach (preserves natural highlights/shadows).
     static let portrait = MagicRecipe(
-        warmth: 0.10, skinSmooth: 0.30, shadowLift: 0.20, contrast: 0.05, saturation: 0.05,
+        warmth: 0.10, skinHighFreq: 0.15, skinLowFreq: 0.30, shadowLift: 0.20,
+        contrast: 0.05, saturation: 0.05,
         highlightRecovery: 0.10, vibrance: 0.10, texture: 0.05, dehaze: 0
     )
 
@@ -104,7 +139,7 @@ struct MagicRecipe: Sendable, Equatable, Codable {
     /// definition. Vibrance instead of saturation to lift washed sky
     /// without making airframe colors cartoonish.
     static let aviation = MagicRecipe(
-        warmth: -0.30, skinSmooth: 0, shadowLift: 0.25, contrast: 0.30, saturation: 0.05,
+        warmth: -0.30, shadowLift: 0.25, contrast: 0.30, saturation: 0.05,
         highlightRecovery: 0.30, vibrance: 0.20, texture: 0.30, dehaze: 0.45
     )
 
@@ -113,7 +148,7 @@ struct MagicRecipe: Sendable, Equatable, Codable {
     /// Modest vibrance over saturation so paint reads accurate.
     /// Dehaze for outdoor/parking-lot atmospheric softness.
     static let vehicle = MagicRecipe(
-        warmth: -0.10, skinSmooth: 0, shadowLift: 0.20, contrast: 0.25, saturation: 0.10,
+        warmth: -0.10, shadowLift: 0.20, contrast: 0.25, saturation: 0.10,
         highlightRecovery: 0.20, vibrance: 0.15, texture: 0.25, dehaze: 0.20
     )
 
@@ -122,7 +157,7 @@ struct MagicRecipe: Sendable, Equatable, Codable {
     /// Light texture for crispy/crusty surfaces. Zero dehaze
     /// (interior food has no atmospheric haze).
     static let food = MagicRecipe(
-        warmth: 0.20, skinSmooth: 0, shadowLift: 0.20, contrast: 0.15, saturation: 0.10,
+        warmth: 0.20, shadowLift: 0.20, contrast: 0.15, saturation: 0.10,
         highlightRecovery: 0.10, vibrance: 0.20, texture: 0.10, dehaze: 0
     )
 
@@ -130,7 +165,7 @@ struct MagicRecipe: Sendable, Equatable, Codable {
     /// vibrance for sky/water without going neon, moderate dehaze
     /// for distance haze.
     static let landscape = MagicRecipe(
-        warmth: -0.25, skinSmooth: 0, shadowLift: 0.30, contrast: 0.25, saturation: 0.20,
+        warmth: -0.25, shadowLift: 0.30, contrast: 0.25, saturation: 0.20,
         highlightRecovery: 0.40, vibrance: 0.20, texture: 0.30, dehaze: 0.30
     )
 
@@ -138,7 +173,7 @@ struct MagicRecipe: Sendable, Equatable, Codable {
     /// both small. Zero texture (catalog products want clean, not
     /// crunchy). Zero dehaze (studio).
     static let product = MagicRecipe(
-        warmth: -0.10, skinSmooth: 0, shadowLift: 0.10, contrast: 0.10, saturation: -0.05,
+        warmth: -0.10, shadowLift: 0.10, contrast: 0.10, saturation: -0.05,
         highlightRecovery: 0.10, vibrance: 0.05, texture: 0, dehaze: 0
     )
 
@@ -162,7 +197,7 @@ struct MagicRecipe: Sendable, Equatable, Codable {
     /// when calibrating against new bodies (R5 / R5 mkII may have
     /// different defaults).
     static let neutral = MagicRecipe(
-        warmth: -0.05, skinSmooth: 0, shadowLift: 0.20, contrast: 0.10, saturation: -0.05,
+        warmth: -0.05, shadowLift: 0.20, contrast: 0.10, saturation: -0.05,
         highlightRecovery: 0.25, vibrance: 0.10, texture: 0.10, dehaze: 0.05
     )
 
@@ -175,7 +210,17 @@ struct MagicRecipe: Sendable, Equatable, Codable {
             let pct = Int((warmth * 100).rounded())
             chips.append("Warmth \(pct > 0 ? "+" : "")\(pct)%")
         }
+        if abs(skinHighFreq) >= 0.05 {
+            let pct = Int((skinHighFreq * 100).rounded())
+            chips.append("Skin Detail \(pct > 0 ? "+" : "")\(pct)%")
+        }
+        if abs(skinLowFreq) >= 0.05 {
+            let pct = Int((skinLowFreq * 100).rounded())
+            chips.append("Skin Tone \(pct > 0 ? "+" : "")\(pct)%")
+        }
         if skinSmooth >= 0.05 {
+            // Legacy axis — only fires when wire payload still uses
+            // the pre-Phase-7 single skinSmooth field.
             chips.append("Skin \(Int((skinSmooth * 100).rounded()))%")
         }
         if shadowLift >= 0.05 {
@@ -206,8 +251,65 @@ struct MagicRecipe: Sendable, Equatable, Codable {
     }
 
     var isNeutral: Bool {
-        warmth == 0 && skinSmooth == 0 && shadowLift == 0
-            && contrast == 0 && saturation == 0 && highlightRecovery == 0
-            && vibrance == 0 && texture == 0 && dehaze == 0
+        warmth == 0 && skinHighFreq == 0 && skinLowFreq == 0 && skinSmooth == 0
+            && shadowLift == 0 && contrast == 0 && saturation == 0
+            && highlightRecovery == 0 && vibrance == 0 && texture == 0
+            && dehaze == 0
+    }
+
+    // MARK: - Codable (forward-compat decode)
+
+    /// Custom decoder so old persisted recipes (pre-Phase-6 + pre-Phase-7)
+    /// don't fail to load when their JSON lacks the newer fields.
+    /// Synthesized Codable rejects missing keys even when the property has
+    /// a default — we explicitly use `decodeIfPresent` so missing fields
+    /// fall back to the property's default value (0 for the new axes).
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        warmth = try c.decode(Double.self, forKey: .warmth)
+        shadowLift = try c.decode(Double.self, forKey: .shadowLift)
+        contrast = try c.decode(Double.self, forKey: .contrast)
+        saturation = try c.decode(Double.self, forKey: .saturation)
+        skinHighFreq = try c.decodeIfPresent(Double.self, forKey: .skinHighFreq) ?? 0
+        skinLowFreq = try c.decodeIfPresent(Double.self, forKey: .skinLowFreq) ?? 0
+        skinSmooth = try c.decodeIfPresent(Double.self, forKey: .skinSmooth) ?? 0
+        highlightRecovery = try c.decodeIfPresent(Double.self, forKey: .highlightRecovery) ?? 0
+        vibrance = try c.decodeIfPresent(Double.self, forKey: .vibrance) ?? 0
+        texture = try c.decodeIfPresent(Double.self, forKey: .texture) ?? 0
+        dehaze = try c.decodeIfPresent(Double.self, forKey: .dehaze) ?? 0
+    }
+
+    /// Memberwise init — synthesized Codable would consume this slot, so
+    /// we restore an explicit memberwise init for call-sites (presets,
+    /// `magicRecipe(from wire:)`, `merging`) that build recipes directly.
+    init(
+        warmth: Double = 0,
+        skinHighFreq: Double = 0,
+        skinLowFreq: Double = 0,
+        skinSmooth: Double = 0,
+        shadowLift: Double = 0,
+        contrast: Double = 0,
+        saturation: Double = 0,
+        highlightRecovery: Double = 0,
+        vibrance: Double = 0,
+        texture: Double = 0,
+        dehaze: Double = 0
+    ) {
+        self.warmth = warmth
+        self.skinHighFreq = skinHighFreq
+        self.skinLowFreq = skinLowFreq
+        self.skinSmooth = skinSmooth
+        self.shadowLift = shadowLift
+        self.contrast = contrast
+        self.saturation = saturation
+        self.highlightRecovery = highlightRecovery
+        self.vibrance = vibrance
+        self.texture = texture
+        self.dehaze = dehaze
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case warmth, skinHighFreq, skinLowFreq, skinSmooth, shadowLift
+        case contrast, saturation, highlightRecovery, vibrance, texture, dehaze
     }
 }
