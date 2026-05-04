@@ -223,6 +223,92 @@ export type RoleRoomAgentWebsiteInsights = {
   selectedPageSnippets: RoleRoomAgentWebsitePageSnippet[];
 };
 
+// =============================================================================
+// Merch suppliers — Slice 1 of the merch-integration feature.
+// Same NACE-first pattern as competitor analysis: Brreg gives verifiable
+// Norwegian companies in merch-related industry codes; Google Places
+// fills in shop-floor businesses (screen printers, embroiderers) that
+// may not be classified that strictly in Brreg.
+// =============================================================================
+
+export type RoleRoomAgentMerchTechnique =
+  | "screen_print"
+  | "dtg"
+  | "embroidery"
+  | "sublimation"
+  | "vinyl"
+  | "promo_products"
+  | "unknown";
+
+export type RoleRoomAgentMerchProductCategory =
+  | "apparel"
+  | "headwear"
+  | "bags"
+  | "drinkware"
+  | "stationery"
+  | "sports_kits"
+  | "promotional"
+  | "unknown";
+
+export type RoleRoomAgentMerchSupplierEvidence = {
+  type:
+    | "brreg_nace_match"
+    | "google_places_match"
+    | "same_municipality"
+    | "website_available"
+    | "review_signal"
+    | "manual_review_needed";
+  label: string;
+  weight: number;
+};
+
+export type RoleRoomAgentMerchSupplier = {
+  source: "brreg_nace" | "google_places";
+  /** Brregs naeringskode1.kode when source = brreg_nace. */
+  naceCode?: string | null;
+  /** Brreg organisasjonsnummer when source = brreg_nace. */
+  organizationNumber?: string | null;
+  /** Google Places place_id when source = google_places. */
+  placeId?: string | null;
+  name: string;
+  websiteUrl?: string | null;
+  googleMapsUri?: string | null;
+  formattedAddress?: string | null;
+  primaryTypeDisplayName?: string | null;
+  rating?: number | null;
+  userRatingCount?: number | null;
+  /** Inferred from category text + name keywords; producer/agent should
+   *  verify before committing to a quote. */
+  techniques: RoleRoomAgentMerchTechnique[];
+  productCategories: RoleRoomAgentMerchProductCategory[];
+  confidence: number;
+  status: "verified" | "likely" | "needs_review" | "rejected";
+  evidence: RoleRoomAgentMerchSupplierEvidence[];
+  relevanceReason: string;
+  /** Hint the producer can use when reaching out. Short, single sentence. */
+  outreachHint: string;
+  requiresManualConfirmation: boolean;
+};
+
+export type RoleRoomAgentMerchSuppliers = {
+  status: "ready" | "limited" | "unavailable";
+  source: "brreg+google_places" | "fallback";
+  generatedAt: string;
+  marketContext: string;
+  suppliers: RoleRoomAgentMerchSupplier[];
+  verifiedSupplierCount: number;
+  /** Counts per inferred technique so the UI can build filter chips. */
+  techniqueCounts: Record<RoleRoomAgentMerchTechnique, number>;
+  /** Counts per inferred product category for the same purpose. */
+  productCounts: Record<RoleRoomAgentMerchProductCategory, number>;
+  /** Cooperation-deal angles (sponsorship / kit-supplier / give-aways)
+   *  the producer can offer to a partner — generated heuristically in
+   *  Slice 1; Claude-powered version comes in Slice 3. */
+  cooperationAngles: string[];
+  outreachChecklist: string[];
+  limitations: string[];
+};
+
 type RoleRoomAgentWebsitePageSnippet = {
   url: string;
   title?: string | null;
@@ -362,6 +448,7 @@ type RoleRoomAgentNormalizedPayload = {
   socialProfileCandidates: RoleRoomAgentSocialProfileCandidate[];
   competitorAnalysis: RoleRoomAgentCompetitorAnalysis;
   localPresencePlan: RoleRoomAgentLocalPresencePlan;
+  merchSuppliers?: RoleRoomAgentMerchSuppliers | null;
   retrievalMeta?: RoleRoomAgentRetrievalMeta;
   companyProfile: {
     companyName: string;
@@ -2960,6 +3047,554 @@ async function fetchGooglePlacesCompetitorAnalysis(
   };
 }
 
+// =============================================================================
+// MERCH SUPPLIERS — Slice 1.
+// Two sources, merged with the same dedupe-by-key pattern as competitors:
+//   1. Brreg Enhetsregister, narrowed by NACE codes that map to merch
+//      production (apparel + textile printing + promo).
+//   2. Google Places text search for screen printing / embroidery / promo
+//      shops in the customer's market area.
+// Each supplier is heuristically classified by technique (screen print,
+// DTG, embroidery, sublimation, etc.) and product category (apparel,
+// headwear, bags, drinkware, ...) using name + category text. Producer
+// must verify before using; classification is a hint, not a contract.
+// =============================================================================
+
+/** NACE codes that map to merch production. Verified empirically against
+ *  Brreg's Oslo dataset (2026-05): 18.12 / 14.13 / 14.19 are tight and
+ *  return real suppliers as-is. 13.92 (textile products) is broad and
+ *  picks up single-person sewing studios — gated behind keyword match.
+ *  32.99 (other industrial production) was tested and dropped: it
+ *  returned machinery, seed retailers, balloon shops; signal-to-noise
+ *  was unusable. Promo products come from Google Places "promo
+ *  produkter" query instead, where classification is more precise. */
+const MERCH_NACE_CODES: ReadonlyArray<{
+  code: string;
+  label: string;
+  defaultTechnique: RoleRoomAgentMerchTechnique;
+  /** When true, only include results whose name has a merch-related keyword.
+   *  Used to filter overly-broad NACE buckets. */
+  requireKeywordMatch: boolean;
+}> = [
+  { code: "18.12", label: "Trykking ellers (inkl. tekstiltrykk)", defaultTechnique: "screen_print", requireKeywordMatch: false },
+  { code: "13.92", label: "Produksjon av andre tekstilvarer", defaultTechnique: "unknown", requireKeywordMatch: true },
+  { code: "14.13", label: "Produksjon av annen yttertøy", defaultTechnique: "unknown", requireKeywordMatch: false },
+  { code: "14.19", label: "Produksjon av andre klær og tilbehør", defaultTechnique: "unknown", requireKeywordMatch: false },
+];
+
+const MERCH_PLACES_QUERIES: ReadonlyArray<{ query: string; technique: RoleRoomAgentMerchTechnique }> = [
+  { query: "trykkeri tekstil", technique: "screen_print" },
+  { query: "broderi", technique: "embroidery" },
+  { query: "profilklær", technique: "unknown" },
+  { query: "sublimering tekstil", technique: "sublimation" },
+  { query: "promo produkter", technique: "promo_products" },
+  { query: "merch leverandør", technique: "unknown" },
+];
+
+/** Keyword → technique inference. Order doesn't matter; multiple matches
+ *  produce a deduped union. Lowercase comparison only. */
+const MERCH_TECHNIQUE_KEYWORDS: Record<RoleRoomAgentMerchTechnique, string[]> = {
+  screen_print: ["silketrykk", "screen print", "serigrafi", "tekstiltrykk", "stencil"],
+  dtg: ["dtg", "direct to garment", "direkte på plagg"],
+  embroidery: ["broder", "embroidery", "stickerei"],
+  sublimation: ["sublim", "sublimasjon", "sublimering"],
+  vinyl: ["vinyl", "tape print", "transfer"],
+  promo_products: ["promo", "merchandise", "merch", "give-away", "giveaway", "profilprodukt", "reklameartikler"],
+  unknown: [],
+};
+
+/** Keyword → product category inference. */
+const MERCH_PRODUCT_KEYWORDS: Record<RoleRoomAgentMerchProductCategory, string[]> = {
+  apparel: ["t-skjorte", "tee", "shirt", "hettegens", "hoodie", "genser", "klær", "plagg", "uniform"],
+  headwear: ["caps", "lue", "hat", "snapback"],
+  bags: ["totebag", "sekk", "bag", "ryggsekk", "veske"],
+  drinkware: ["krus", "mug", "flaske", "drink"],
+  stationery: ["notatbok", "penn", "blokk", "kalender"],
+  sports_kits: ["draktsett", "fotballdrakt", "sportsdrakt", "trikot", "drakt"],
+  promotional: ["promo", "merch", "give-away", "giveaway", "profilprodukt"],
+  unknown: [],
+};
+
+function inferTechniques(...textSources: Array<string | null | undefined>): RoleRoomAgentMerchTechnique[] {
+  const haystack = textSources.filter(Boolean).join(" ").toLowerCase();
+  const techniques: RoleRoomAgentMerchTechnique[] = [];
+  for (const [technique, keywords] of Object.entries(MERCH_TECHNIQUE_KEYWORDS) as Array<[RoleRoomAgentMerchTechnique, string[]]>) {
+    if (technique === "unknown") continue;
+    if (keywords.some((kw) => haystack.includes(kw))) {
+      techniques.push(technique);
+    }
+  }
+  return techniques.length > 0 ? techniques : ["unknown"];
+}
+
+function inferProductCategories(...textSources: Array<string | null | undefined>): RoleRoomAgentMerchProductCategory[] {
+  const haystack = textSources.filter(Boolean).join(" ").toLowerCase();
+  const categories: RoleRoomAgentMerchProductCategory[] = [];
+  for (const [category, keywords] of Object.entries(MERCH_PRODUCT_KEYWORDS) as Array<[RoleRoomAgentMerchProductCategory, string[]]>) {
+    if (category === "unknown") continue;
+    if (keywords.some((kw) => haystack.includes(kw))) {
+      categories.push(category);
+    }
+  }
+  return categories.length > 0 ? categories : ["unknown"];
+}
+
+function emptyTechniqueCounts(): Record<RoleRoomAgentMerchTechnique, number> {
+  return {
+    screen_print: 0,
+    dtg: 0,
+    embroidery: 0,
+    sublimation: 0,
+    vinyl: 0,
+    promo_products: 0,
+    unknown: 0,
+  };
+}
+
+function emptyProductCounts(): Record<RoleRoomAgentMerchProductCategory, number> {
+  return {
+    apparel: 0,
+    headwear: 0,
+    bags: 0,
+    drinkware: 0,
+    stationery: 0,
+    sports_kits: 0,
+    promotional: 0,
+    unknown: 0,
+  };
+}
+
+async function fetchBrregMerchSuppliers(
+  brregCompany: RoleRoomAgentBrregCompany | null,
+  options?: { limit?: number; municipalityNumber?: string | null },
+): Promise<RoleRoomAgentMerchSupplier[]> {
+  const municipalityNumber = hasText(options?.municipalityNumber)
+    ? normalizeWhitespace(options!.municipalityNumber as string)
+    : null;
+  const perCodeLimit = Math.max(5, Math.min(options?.limit ?? 8, 25));
+  const selfOrgNumber = brregCompany?.organizationNumber ?? null;
+
+  const all: RoleRoomAgentMerchSupplier[] = [];
+  const seenOrgs = new Set<string>();
+
+  for (const naceEntry of MERCH_NACE_CODES) {
+    const params = new URLSearchParams();
+    params.set("naeringskode", naceEntry.code);
+    params.set("size", String(perCodeLimit));
+    if (municipalityNumber) {
+      params.set("kommunenummer", municipalityNumber);
+    }
+    params.set("konkurs", "false");
+    params.set("underAvvikling", "false");
+
+    const url = `${BRREG_API_BASE_URL}/enheter?${params.toString()}`;
+
+    let payload: Record<string, unknown> | null = null;
+    try {
+      const response = await fetch(url, {
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!response.ok) {
+        console.error(`[brreg-merch] nace=${naceEntry.code} status=${response.status}`);
+        continue;
+      }
+      payload = (await response.json().catch(() => null)) as Record<string, unknown> | null;
+    } catch (err) {
+      console.error(`[brreg-merch] nace=${naceEntry.code} threw: ${err instanceof Error ? err.message : String(err)}`);
+      continue;
+    }
+
+    const embedded = payload && typeof payload === "object" && !Array.isArray(payload)
+      ? (payload._embedded as Record<string, unknown> | undefined)
+      : undefined;
+    const units = embedded && Array.isArray(embedded.enheter)
+      ? (embedded.enheter as Array<Record<string, unknown>>)
+      : [];
+
+    for (const unit of units) {
+      const orgNumber = hasText(unit.organisasjonsnummer)
+        ? normalizeWhitespace(unit.organisasjonsnummer)
+        : null;
+      if (!orgNumber || orgNumber === selfOrgNumber || seenOrgs.has(orgNumber)) continue;
+      seenOrgs.add(orgNumber);
+
+      const name = hasText(unit.navn) ? normalizeWhitespace(unit.navn) : null;
+      if (!name) continue;
+
+      const businessAddress = unit.forretningsadresse && typeof unit.forretningsadresse === "object" && !Array.isArray(unit.forretningsadresse)
+        ? (unit.forretningsadresse as Record<string, unknown>)
+        : null;
+      const formattedAddress = formatBrregAddress(businessAddress);
+      const websiteUrl = hasText(unit.hjemmeside) ? normalizeWebsiteUrl(unit.hjemmeside) : null;
+      const sameMunicipality = Boolean(
+        municipalityNumber
+          && businessAddress
+          && readBrregNestedText(businessAddress, "kommunenummer") === municipalityNumber,
+      );
+
+      const inferredTechniques = inferTechniques(name, naceEntry.label);
+      const productCategories = inferProductCategories(name, naceEntry.label);
+      const hasNameKeywordMatch =
+        inferredTechniques[0] !== "unknown" || productCategories[0] !== "unknown";
+      // Skip noisy entries where the NACE is broad and the name doesn't
+      // hint at merch (e.g. NACE 13.92 returning generic sewing studios
+      // with no merch capability). Tight NACE codes (18.12 printing,
+      // 14.13/14.19 clothing) skip this gate.
+      if (naceEntry.requireKeywordMatch && !hasNameKeywordMatch) {
+        seenOrgs.delete(orgNumber);
+        continue;
+      }
+      // The default-technique is added when nothing else matched. This
+      // gives 18.12 (printing) a sensible "screen_print" fallback even
+      // when the company name is uninformative.
+      const techniques: RoleRoomAgentMerchTechnique[] =
+        inferredTechniques[0] === "unknown" ? [naceEntry.defaultTechnique] : inferredTechniques;
+
+      const evidence: RoleRoomAgentMerchSupplierEvidence[] = [
+        {
+          type: "brreg_nace_match",
+          label: `Brreg-bekreftet NACE ${naceEntry.code} (${naceEntry.label})`,
+          weight: 50,
+        },
+      ];
+      if (sameMunicipality) {
+        evidence.push({
+          type: "same_municipality",
+          label: "Samme kommune som kunden",
+          weight: 25,
+        });
+      }
+      if (websiteUrl) {
+        evidence.push({
+          type: "website_available",
+          label: "Har egen nettside for tilbudsforespørsel",
+          weight: 10,
+        });
+      }
+      const confidence = Math.min(100, evidence.reduce((total, entry) => total + entry.weight, 0));
+      const status: RoleRoomAgentMerchSupplier["status"] =
+        confidence >= 80 ? "verified" : confidence >= 55 ? "likely" : confidence >= 35 ? "needs_review" : "rejected";
+
+      all.push({
+        source: "brreg_nace",
+        naceCode: naceEntry.code,
+        organizationNumber: orgNumber,
+        name,
+        websiteUrl,
+        googleMapsUri: null,
+        formattedAddress,
+        primaryTypeDisplayName: naceEntry.label,
+        rating: null,
+        userRatingCount: null,
+        techniques,
+        productCategories,
+        confidence,
+        status,
+        evidence,
+        relevanceReason: `Brreg-registrert i ${naceEntry.label} (NACE ${naceEntry.code}).`,
+        outreachHint: websiteUrl
+          ? "Send tilbudsforespørsel via nettsiden med antall, plagg-type, trykkfarger og leveringsfrist."
+          : "Slå opp kontaktinfo i Brreg / 1881 før tilbudsforespørsel.",
+        requiresManualConfirmation: status !== "verified",
+      });
+    }
+  }
+
+  return all;
+}
+
+async function fetchGooglePlacesMerchSuppliers(
+  input: RoleRoomAgentProducerBootstrapInput,
+  websiteInsights: RoleRoomAgentWebsiteInsights,
+  businessSignals: RoleRoomAgentBusinessSignals | null,
+  brregCompany: RoleRoomAgentBrregCompany | null,
+): Promise<RoleRoomAgentMerchSupplier[]> {
+  const apiKey = process.env.GOOGLE_PLACES_API_KEY;
+  if (!hasText(apiKey)) return [];
+  const marketLocation = extractMarketLocation(businessSignals?.formattedAddress || brregCompany?.businessAddress || "");
+  const municipality = brregCompany?.municipality || "";
+  // Anchor each query in the customer's local market when known. Pure
+  // category alone returns city-agnostic results that a producer can't
+  // act on. When neither is known we fall back to the bare query, which
+  // (with regionCode=NO) still biases toward Norwegian results.
+  const anchor = marketLocation || municipality || "";
+
+  const fieldMask =
+    "places.id,places.displayName,places.formattedAddress,places.websiteUri,places.rating,places.userRatingCount,places.primaryType,places.primaryTypeDisplayName,places.googleMapsUri";
+
+  const all: RoleRoomAgentMerchSupplier[] = [];
+  const seen = new Set<string>();
+
+  for (const queryEntry of MERCH_PLACES_QUERIES) {
+    const textQuery = anchor ? `${queryEntry.query} ${anchor}` : queryEntry.query;
+    let payload: { places?: Array<Record<string, unknown>> } | null = null;
+    try {
+      const response = await fetch("https://places.googleapis.com/v1/places:searchText", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": apiKey,
+          "X-Goog-FieldMask": fieldMask,
+        },
+        body: JSON.stringify({
+          textQuery,
+          pageSize: 8,
+          languageCode: "nb",
+          regionCode: "NO",
+        }),
+        signal: AbortSignal.timeout(12_000),
+      });
+      if (!response.ok) {
+        console.error(`[places-merch] query="${textQuery}" status=${response.status}`);
+        continue;
+      }
+      payload = (await response.json().catch(() => null)) as
+        | { places?: Array<Record<string, unknown>> }
+        | null;
+    } catch (err) {
+      console.error(`[places-merch] query="${textQuery}" threw: ${err instanceof Error ? err.message : String(err)}`);
+      continue;
+    }
+
+    const places = Array.isArray(payload?.places) ? payload.places : [];
+    for (const place of places) {
+      const placeId = hasText(place.id) ? normalizeWhitespace(place.id) : null;
+      const name = readGooglePlaceDisplayName(place);
+      if (!name || !placeId || seen.has(placeId)) continue;
+      seen.add(placeId);
+
+      const websiteUri = hasText(place.websiteUri) ? normalizeWebsiteUrl(place.websiteUri) : null;
+      const formattedAddress = hasText(place.formattedAddress) ? normalizeWhitespace(place.formattedAddress) : null;
+      const primaryTypeDisplayName = readGooglePlacePrimaryTypeDisplayName(place);
+      const rating = asNumber(place.rating);
+      const userRatingCount = asNumber(place.userRatingCount);
+
+      const techniques = inferTechniques(name, primaryTypeDisplayName, queryEntry.query);
+      const productCategories = inferProductCategories(name, primaryTypeDisplayName);
+      // The query that hit also adds its own technique signal even when
+      // the name doesn't include it (e.g. an embroidery shop that calls
+      // itself "Profilkompaniet AS" still came from the broderi-query).
+      const finalTechniques = techniques[0] === "unknown" && queryEntry.technique !== "unknown"
+        ? [queryEntry.technique]
+        : Array.from(new Set([...techniques, ...(queryEntry.technique !== "unknown" ? [queryEntry.technique] : [])]));
+
+      const evidence: RoleRoomAgentMerchSupplierEvidence[] = [
+        { type: "google_places_match", label: `Funnet via Google Places-søk: "${textQuery}"`, weight: 30 },
+      ];
+      if (anchor && formattedAddress && formattedAddress.toLowerCase().includes(anchor.toLowerCase())) {
+        evidence.push({ type: "same_municipality", label: `Samme marked: ${anchor}`, weight: 20 });
+      }
+      if (websiteUri) {
+        evidence.push({ type: "website_available", label: "Har nettside for tilbudsforespørsel", weight: 10 });
+      }
+      if ((rating && rating >= 4) || (userRatingCount && userRatingCount >= 20)) {
+        evidence.push({ type: "review_signal", label: "Har Google-rating eller anmeldelser som tillitssignal", weight: 10 });
+      }
+      const confidence = Math.min(100, evidence.reduce((t, e) => t + e.weight, 0));
+      const status: RoleRoomAgentMerchSupplier["status"] =
+        confidence >= 80 ? "verified" : confidence >= 55 ? "likely" : confidence >= 35 ? "needs_review" : "rejected";
+
+      all.push({
+        source: "google_places",
+        placeId,
+        naceCode: null,
+        organizationNumber: null,
+        name,
+        websiteUrl: websiteUri,
+        googleMapsUri: hasText(place.googleMapsUri) ? normalizeWhitespace(place.googleMapsUri) : null,
+        formattedAddress,
+        primaryTypeDisplayName,
+        rating,
+        userRatingCount,
+        techniques: finalTechniques,
+        productCategories,
+        confidence,
+        status,
+        evidence,
+        relevanceReason: primaryTypeDisplayName
+          ? `Google Places-kategori: ${primaryTypeDisplayName}; treff på "${queryEntry.query}".`
+          : `Treff på Google Places-søk "${queryEntry.query}".`,
+        outreachHint: websiteUri
+          ? "Be om pris, leveringstid og prøvetrykk via nettsiden — oppgi antall, plagg-type, plassering og fargekode."
+          : "Ring direkte for tilbud; nettside mangler, så pris-svar tar lengre tid.",
+        requiresManualConfirmation: status !== "verified",
+      });
+    }
+  }
+
+  return all;
+}
+
+function buildMerchCooperationAngles(
+  supplierCount: number,
+  techniqueCounts: Record<RoleRoomAgentMerchTechnique, number>,
+): string[] {
+  const angles: string[] = [];
+  if (supplierCount >= 3) {
+    angles.push(
+      "Sammenlign 3 tilbud før valg av leverandør — pris pr. plagg, set-up-kost og leveringstid varierer mye mellom trykkerier.",
+    );
+  }
+  if (techniqueCounts.embroidery > 0) {
+    angles.push(
+      "Broderi gir høyere oppfattet kvalitet på caps og polo; vurder broderi for klubblogo + trykk for kampanje-tee.",
+    );
+  }
+  if (techniqueCounts.sublimation > 0 || techniqueCounts.dtg > 0) {
+    angles.push(
+      "Sublimering/DTG passer til kampanjer med mange forskjellige design og lave volum (10-50 stk per design).",
+    );
+  }
+  if (techniqueCounts.screen_print > 0) {
+    angles.push(
+      "Silketrykk er rimeligst når antall per design er over 50 og fargekartet er enkelt — bruk dette for sponsor-/event-merch.",
+    );
+  }
+  if (techniqueCounts.promo_products > 0) {
+    angles.push(
+      "Promo-produkter (krus, flasker, totebag) supplerer apparel og senker kost-per-touch i give-away-kampanjer.",
+    );
+  }
+  // Generic partnership-deal angles, always included — these are what
+  // the producer can actually offer when reaching out.
+  angles.push(
+    "Sponsoravtale: tilby logo-plassering på spillertrøye/event-merch i bytte mot rabatt, prøvetrykk eller lager-stilling.",
+    "Kit-supplier-avtale: lever full draktsett (hjemme/borte/keeper) over 1-2 sesonger i bytte mot eksklusivitet og synlighet i klubbens kanaler.",
+    "Cross-promo: kunden lager innhold (foto/video) for leverandøren i bytte mot reduserte priser eller co-branded merch-linje.",
+  );
+  return angles;
+}
+
+function buildMerchOutreachChecklist(): string[] {
+  return [
+    "Antall plagg per størrelse (S/M/L/XL fordelt prosentvis)",
+    "Plagg-type og kvalitet (180g basic vs. 220g organic vs. tekniske drakt)",
+    "Plassering og maks-størrelse for trykk/broder (cm)",
+    "Antall trykkfarger og PMS-/HEX-kode for hver",
+    "Bekreftet logo-fil (vektor: AI/EPS/SVG; ikke JPG)",
+    "Leveringsfrist og leveringsadresse (samme/splittet)",
+    "Prisbekreftelse skriftlig (e-post) før produksjon starter",
+    "Krav om prøvetrykk på 1 plagg før hele kjøringen",
+  ];
+}
+
+function buildLimitedMerchSuppliers(reason: string): RoleRoomAgentMerchSuppliers {
+  return {
+    status: "limited",
+    source: "fallback",
+    generatedAt: new Date().toISOString(),
+    marketContext: reason,
+    suppliers: [],
+    verifiedSupplierCount: 0,
+    techniqueCounts: emptyTechniqueCounts(),
+    productCounts: emptyProductCounts(),
+    cooperationAngles: [
+      "Be kunden navngi 1-2 leverandører de allerede bruker — start med dem før vi automatiserer søket.",
+      "Tilby en sponsor- eller kit-supplier-avtale med en lokal klubb eller event for å åpne første samarbeid.",
+    ],
+    outreachChecklist: buildMerchOutreachChecklist(),
+    limitations: [reason],
+  };
+}
+
+async function fetchMerchSuppliersAnalysis(
+  input: RoleRoomAgentProducerBootstrapInput,
+  websiteInsights: RoleRoomAgentWebsiteInsights,
+  businessSignals: RoleRoomAgentBusinessSignals | null,
+  brregCompany: RoleRoomAgentBrregCompany | null,
+): Promise<RoleRoomAgentMerchSuppliers> {
+  const [brregSuppliers, placesSuppliers] = await Promise.all([
+    fetchBrregMerchSuppliers(brregCompany, {
+      limit: 8,
+      municipalityNumber: brregCompany?.municipalityNumber ?? null,
+    }),
+    fetchGooglePlacesMerchSuppliers(input, websiteInsights, businessSignals, brregCompany),
+  ]);
+
+  if (brregSuppliers.length === 0 && placesSuppliers.length === 0) {
+    return buildLimitedMerchSuppliers(
+      "Fant ingen merch-leverandører automatisk i kundens marked. Be kunden oppgi 1-2 trykkerier de allerede bruker før vi anbefaler nye.",
+    );
+  }
+
+  // Dedupe across sources by website host / orgnr / normalized name —
+  // same shop sometimes shows up in both Brreg and Google Places.
+  const byKey = new Map<string, RoleRoomAgentMerchSupplier>();
+  const keyFor = (s: RoleRoomAgentMerchSupplier): string => {
+    const host = normalizeHost(s.websiteUrl ?? null);
+    if (host) return `host:${host}`;
+    if (s.organizationNumber) return `orgnr:${s.organizationNumber}`;
+    if (s.placeId) return `placeId:${s.placeId}`;
+    return `name:${normalizeIdentity(s.name)}`;
+  };
+
+  for (const s of [...brregSuppliers, ...placesSuppliers]) {
+    const key = keyFor(s);
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, s);
+      continue;
+    }
+    const winner = s.confidence >= existing.confidence ? s : existing;
+    const loser = winner === s ? existing : s;
+    // Cross-link metadata so the kept record carries both sources' info.
+    if (!winner.naceCode && loser.naceCode) winner.naceCode = loser.naceCode;
+    if (!winner.organizationNumber && loser.organizationNumber) {
+      winner.organizationNumber = loser.organizationNumber;
+    }
+    if (!winner.placeId && loser.placeId) winner.placeId = loser.placeId;
+    if (!winner.googleMapsUri && loser.googleMapsUri) winner.googleMapsUri = loser.googleMapsUri;
+    if (!winner.rating && loser.rating) winner.rating = loser.rating;
+    if (!winner.userRatingCount && loser.userRatingCount) winner.userRatingCount = loser.userRatingCount;
+    // Merge inferred categories — different sources see different keywords.
+    winner.techniques = Array.from(new Set([...winner.techniques, ...loser.techniques])).filter(
+      (t) => !(t === "unknown" && winner.techniques.length > 1),
+    );
+    winner.productCategories = Array.from(
+      new Set([...winner.productCategories, ...loser.productCategories]),
+    ).filter((c) => !(c === "unknown" && winner.productCategories.length > 1));
+    byKey.set(key, winner);
+  }
+
+  const suppliers = Array.from(byKey.values()).sort((a, b) => b.confidence - a.confidence);
+  const verifiedCount = suppliers.filter(
+    (s) => s.status === "verified" || s.status === "likely",
+  ).length;
+
+  const techniqueCounts = emptyTechniqueCounts();
+  const productCounts = emptyProductCounts();
+  for (const s of suppliers) {
+    for (const t of s.techniques) techniqueCounts[t] = (techniqueCounts[t] ?? 0) + 1;
+    for (const c of s.productCategories) productCounts[c] = (productCounts[c] ?? 0) + 1;
+  }
+
+  const marketArea = extractMarketLocation(
+    businessSignals?.formattedAddress || brregCompany?.businessAddress || "",
+  )
+    || brregCompany?.municipality
+    || "Norge";
+
+  return {
+    status: verifiedCount > 0 ? "ready" : "limited",
+    source: "brreg+google_places",
+    generatedAt: new Date().toISOString(),
+    marketContext: verifiedCount > 0
+      ? `${verifiedCount} verifiserbare merch-leverandører i ${marketArea}, klare for tilbudsforespørsel.`
+      : `Fant ${suppliers.length} mulige leverandører i ${marketArea}, men ingen scoret høyt nok til å anbefales uten manuell sjekk.`,
+    suppliers,
+    verifiedSupplierCount: verifiedCount,
+    techniqueCounts,
+    productCounts,
+    cooperationAngles: buildMerchCooperationAngles(suppliers.length, techniqueCounts),
+    outreachChecklist: buildMerchOutreachChecklist(),
+    limitations: [
+      "Tekniker og produktkategorier er heuristisk klassifisert fra navn/kategori — bekreft med leverandøren.",
+      "Brreg-treff er ikke garanti for at leverandøren leverer merch til volum/tidsfrist du trenger.",
+    ],
+  };
+}
+
 async function fetchGooglePlacesLocalPresencePlan(
   input: RoleRoomAgentProducerBootstrapInput,
   websiteInsights: RoleRoomAgentWebsiteInsights,
@@ -3201,6 +3836,7 @@ function buildFallbackBootstrap(
   agreementSuggestions: RoleRoomAgentAgreementSuggestion[],
   competitorAnalysis: RoleRoomAgentCompetitorAnalysis,
   localPresencePlan: RoleRoomAgentLocalPresencePlan,
+  merchSuppliers?: RoleRoomAgentMerchSuppliers | null,
 ): RoleRoomAgentNormalizedPayload {
   const websiteUrl = normalizeWebsiteUrl(input.websiteUrl)
     || websiteInsights.finalUrl
@@ -3266,6 +3902,7 @@ function buildFallbackBootstrap(
     socialProfileCandidates,
     competitorAnalysis,
     localPresencePlan,
+    merchSuppliers: merchSuppliers ?? null,
     companyProfile: {
       companyName,
       websiteUrl,
@@ -3721,6 +4358,7 @@ function normalizeBootstrapPayload(
     socialProfileCandidates: fallback.socialProfileCandidates,
     competitorAnalysis: fallback.competitorAnalysis,
     localPresencePlan: fallback.localPresencePlan,
+    merchSuppliers: fallback.merchSuppliers,
     retrievalMeta: fallback.retrievalMeta,
     companyProfile: {
       companyName: hasText(companyProfile.companyName)
@@ -3945,6 +4583,16 @@ export async function generateRoleRoomAgentProducerBootstrap(
     businessSignals,
     initialBrregCompany,
   );
+  // Merch suppliers (Slice 1) — Brreg same-NACE for printing/apparel/promo
+  // codes + Google Places shop search, deduped by host/orgnr/name.
+  // Independent of competitorAnalysis: a customer can have lots of
+  // competitors and zero merch suppliers (or vice versa).
+  const merchSuppliers = await fetchMerchSuppliersAnalysis(
+    enrichedInput,
+    websiteInsights,
+    businessSignals,
+    initialBrregCompany,
+  );
   const fallback = buildFallbackBootstrap(
     {
       ...enrichedInput,
@@ -3957,6 +4605,7 @@ export async function generateRoleRoomAgentProducerBootstrap(
     agreementSuggestions,
     competitorAnalysis,
     localPresencePlan,
+    merchSuppliers,
   );
   // Model dispatcher. `ROLE_ROOM_BOOTSTRAP_MODEL=claude` routes synthesis
   // through Anthropic; anything else (default) keeps the existing OpenAI

@@ -241,6 +241,74 @@ export interface RoleRoomAgentLocalPresencePlan {
   limitations: string[];
 }
 
+// Merch suppliers — Slice 1 (frontend mirror of backend types).
+export type RoleRoomAgentMerchTechnique =
+  | 'screen_print'
+  | 'dtg'
+  | 'embroidery'
+  | 'sublimation'
+  | 'vinyl'
+  | 'promo_products'
+  | 'unknown';
+
+export type RoleRoomAgentMerchProductCategory =
+  | 'apparel'
+  | 'headwear'
+  | 'bags'
+  | 'drinkware'
+  | 'stationery'
+  | 'sports_kits'
+  | 'promotional'
+  | 'unknown';
+
+export interface RoleRoomAgentMerchSupplierEvidence {
+  type:
+    | 'brreg_nace_match'
+    | 'google_places_match'
+    | 'same_municipality'
+    | 'website_available'
+    | 'review_signal'
+    | 'manual_review_needed';
+  label: string;
+  weight: number;
+}
+
+export interface RoleRoomAgentMerchSupplier {
+  source: 'brreg_nace' | 'google_places';
+  naceCode?: string | null;
+  organizationNumber?: string | null;
+  placeId?: string | null;
+  name: string;
+  websiteUrl?: string | null;
+  googleMapsUri?: string | null;
+  formattedAddress?: string | null;
+  primaryTypeDisplayName?: string | null;
+  rating?: number | null;
+  userRatingCount?: number | null;
+  techniques: RoleRoomAgentMerchTechnique[];
+  productCategories: RoleRoomAgentMerchProductCategory[];
+  confidence: number;
+  status: 'verified' | 'likely' | 'needs_review' | 'rejected';
+  evidence: RoleRoomAgentMerchSupplierEvidence[];
+  relevanceReason: string;
+  outreachHint: string;
+  requiresManualConfirmation: boolean;
+}
+
+export interface RoleRoomAgentMerchSuppliers {
+  status: 'ready' | 'limited' | 'unavailable';
+  source: 'brreg+google_places' | 'fallback';
+  generatedAt: string;
+  marketContext: string;
+  suppliers: RoleRoomAgentMerchSupplier[];
+  verifiedSupplierCount: number;
+  techniqueCounts: Record<RoleRoomAgentMerchTechnique, number>;
+  productCounts: Record<RoleRoomAgentMerchProductCategory, number>;
+  cooperationAngles: string[];
+  outreachChecklist: string[];
+  limitations: string[];
+}
+
 export interface RoleRoomAgentProducerBootstrapResult {
   generatedAt: string;
   provider: 'openai' | 'anthropic' | 'fallback';
@@ -252,6 +320,7 @@ export interface RoleRoomAgentProducerBootstrapResult {
   socialProfileCandidates: RoleRoomAgentSocialProfileCandidate[];
   competitorAnalysis: RoleRoomAgentCompetitorAnalysis;
   localPresencePlan: RoleRoomAgentLocalPresencePlan;
+  merchSuppliers?: RoleRoomAgentMerchSuppliers | null;
   retrievalMeta?: {
     cohereRerankUsed: boolean;
     rerankerModel?: string;
@@ -965,6 +1034,7 @@ export const roleRoomAgentService = {
         kpis: [],
         limitations: ['Backend returnerte ikke localPresencePlan.'],
       },
+      merchSuppliers: payload.result.merchSuppliers ?? null,
       projectCreationDraft: payload.result.projectCreationDraft ?? {
         projectName: `${payload.result.companyProfile?.companyName || input.projectName || 'Kunde'} · Innholdsproduksjon`,
         description: payload.result.companyProfile?.summary || '',

@@ -25,6 +25,7 @@ import {
   FactCheck as FactCheckIcon,
   GridView as GridViewIcon,
   Language as LanguageIcon,
+  LocalMall as MerchIcon,
   MoveToInbox as InboxIcon,
   QueryStats as QueryStatsIcon,
   Rocket as RocketIcon,
@@ -49,6 +50,7 @@ import roleRoomAgentService, {
 import RoleRoomAgentChatPanel from '../ai/RoleRoomAgentChatPanel';
 import RoleRoomFeedPlannerPanel from './RoleRoomFeedPlannerPanel';
 import MarketingPlanPanel from './MarketingPlanPanel';
+import MerchSuppliersPanel from './MerchSuppliersPanel';
 
 type RoleRoomAgentDialogProps = {
   open: boolean;
@@ -224,7 +226,7 @@ export default function RoleRoomAgentDialog({
   // full correction trail as the newest source of truth.
   const [refinementDraft, setRefinementDraft] = useState('');
   const [refinementHistory, setRefinementHistory] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState<'research' | 'chat' | 'feed-planner' | 'marketing-plan' | 'meta-page' | 'page-content' | 'ads-attribution' | 'fb-publish' | 'fb-mention' | 'ig-hashtag' | 'social-inbox' | 'social-analytics'>('research');
+  const [activeTab, setActiveTab] = useState<'research' | 'chat' | 'merch' | 'feed-planner' | 'marketing-plan' | 'meta-page' | 'page-content' | 'ads-attribution' | 'fb-publish' | 'fb-mention' | 'ig-hashtag' | 'social-inbox' | 'social-analytics'>('research');
   const [systemStatusOpen, setSystemStatusOpen] = useState(false);
 
   // Track whether the current generated result has already been turned
@@ -576,6 +578,12 @@ export default function RoleRoomAgentDialog({
       >
         <Tab value="research" label="Research" icon={<AutoFixHighIcon fontSize="small" />} iconPosition="start" />
         <Tab
+          value="merch"
+          label="Merch"
+          icon={<MerchIcon fontSize="small" />}
+          iconPosition="start"
+        />
+        <Tab
           value="marketing-plan"
           label="Markedsplan"
           icon={<RocketIcon fontSize="small" />}
@@ -708,6 +716,13 @@ export default function RoleRoomAgentDialog({
               context={{
                 briefSummary: initialExtraContext ?? undefined,
               }}
+            />
+          </Box>
+        ) : activeTab === 'merch' ? (
+          <Box sx={{ p: { xs: 1.4, md: 2 } }}>
+            <MerchSuppliersPanel
+              bootstrap={result}
+              onRequestBootstrap={() => setActiveTab('research')}
             />
           </Box>
         ) : activeTab === 'feed-planner' ? (
