@@ -39,6 +39,13 @@ struct ClientReview: Identifiable, Equatable {
         /// review row server-side. For photographer replies, the full
         /// text is kept locally since we just composed it.
         case comment(preview: String)
+        /// Phase 5.1 — voice-memo reply. `localPath` points at the
+        /// session-local m4a file (lives under `tempDir/reply-memos/`
+        /// and survives across stream re-emits). `durationSeconds`
+        /// drives the play-button label ("▶ 0:08"). Photographer-only
+        /// for now — clients receive these as audio playback widgets
+        /// in the web gallery (Phase 5.1 frontend follow-up).
+        case audio(localPath: String, durationSeconds: Double)
     }
 
     /// Who authored this entry. Drives chat-bubble alignment + tinting:

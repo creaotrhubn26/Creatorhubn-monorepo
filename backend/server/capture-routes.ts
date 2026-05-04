@@ -1,4 +1,6 @@
 import { Router, type NextFunction, type Request, type Response } from 'express';
+import multer from 'multer';
+import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { z } from 'zod';
@@ -27,6 +29,7 @@ import {
   signAssetReadUrl,
   signPartUrls,
   startMultipartUpload,
+  uploadCaptureObject,
   type UploadError,
 } from './capture-upload-service.js';
 import { broadcastCaptureEvent } from './capture-websocket.js';
@@ -66,7 +69,7 @@ import {
   type CaptureAssetForCulling,
   type CullingStrictness,
 } from './capture-culling-service.js';
-import { captureAssets, captureSessions } from '../migrations/capture-schema.js';
+import { captureAssets, captureReviews, captureSessions } from '../migrations/capture-schema.js';
 import { and, asc, eq } from 'drizzle-orm';
 
 interface SessionData {
@@ -742,6 +745,89 @@ export function createCaptureRouter(
     }
     res.status(201).json(row);
   });
+
+  // Phase 5.1 — voice-memo reply attachment.
+  // Multipart body: `audio` file part + `duration` text field. Bytes
+  // land in capture R2 under `reviews/<reviewId>/audio.m4a` (key
+  // computed with the inserted review row's id so we never have to
+  // rename objects after the fact). Body cap 10 MB — generous for a
+  // 60s mono AAC m4a (~2 MB at 256 kbps); larger uploads are
+  // rejected at the multer layer.
+  const captureAudioUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024 },
+  });
+  router.post(
+    '/assets/:id/reviews/audio',
+    auth,
+    captureAudioUpload.single('audio'),
+    async (req, res) => {
+      const { userId } = req as AuthedRequest;
+      const audioFile = (req as Request & { file?: Express.Multer.File }).file;
+      if (!audioFile) {
+        res.status(400).json({ error: 'audio_required' });
+        return;
+      }
+      // Validate mime — only AAC/m4a today; web client gallery may
+      // post webm/opus later (Phase 6 follow-up).
+      const allowed = new Set([
+        'audio/m4a',
+        'audio/mp4',
+        'audio/aac',
+        'audio/x-m4a',
+      ]);
+      const mime = audioFile.mimetype || 'application/octet-stream';
+      if (!allowed.has(mime)) {
+        res.status(415).json({ error: 'audio_mime_unsupported', mime });
+        return;
+      }
+      const durationRaw = (req.body?.duration ?? '').toString();
+      const duration = Number(durationRaw);
+      if (!Number.isFinite(duration) || duration <= 0 || duration > 120) {
+        res.status(400).json({ error: 'duration_invalid' });
+        return;
+      }
+      // Pre-allocate the review id so the R2 key path is stable
+      // before INSERT — keeps the FS-key the only source of truth
+      // even if a race fails the INSERT (we'll just orphan the blob
+      // on R2; cleanup is Phase 6).
+      const reviewId = randomUUID();
+      const r2Key = `reviews/${reviewId}/audio.m4a`;
+      const stored = await uploadCaptureObject({
+        key: r2Key,
+        buffer: audioFile.buffer,
+        contentType: mime,
+      });
+      if (!stored) {
+        res.status(503).json({ error: 'r2_not_configured' });
+        return;
+      }
+      // INSERT with the explicit id so the row's id matches the R2
+      // key prefix. Drizzle's `returning()` gives us the canonical
+      // row regardless of any defaults that fired.
+      try {
+        const [row] = await db
+          .insert(captureReviews)
+          .values({
+            id: reviewId,
+            assetId: req.params.id,
+            reviewerId: userId,
+            reviewerType: 'photographer',
+            audioKey: stored,
+            audioDurationSeconds: Math.round(duration),
+            audioMimeType: mime,
+          })
+          .returning();
+        if (!row) {
+          res.status(500).json({ error: 'insert_failed' });
+          return;
+        }
+        res.status(201).json(row);
+      } catch (err) {
+        res.status(500).json({ error: 'insert_threw' });
+      }
+    },
+  );
 
   router.get('/assets/:id/reviews', auth, async (req, res) => {
     const { userId } = req as AuthedRequest;

@@ -103,6 +103,13 @@ export const captureReviews = pgTable(
     heart: boolean('heart'),
     rating: integer('rating'),
     comment: text('comment'),
+    /// Phase 5.1 — voice-memo reply attachments. R2 key under
+    /// `reviews/<reviewId>/audio.m4a`. Read-back via signed URL.
+    audioKey: varchar('audio_key', { length: 512 }),
+    /// Float seconds (server-trusted; iPad supplies measured value
+    /// from AVAudioRecorder, server doesn't independently measure).
+    audioDurationSeconds: integer('audio_duration_seconds'),
+    audioMimeType: varchar('audio_mime_type', { length: 64 }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

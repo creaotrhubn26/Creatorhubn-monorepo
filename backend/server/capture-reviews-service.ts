@@ -37,6 +37,9 @@ export async function addReview(
     heart?: boolean;
     rating?: number;
     comment?: string;
+    audioKey?: string;
+    audioDurationSeconds?: number;
+    audioMimeType?: string;
   },
 ): Promise<CaptureReview | null> {
   const allowed = await canReviewAsset(db, input.assetId, input.reviewerId, input.reviewerType);
@@ -52,6 +55,9 @@ export async function addReview(
       heart: input.heart,
       rating: input.rating,
       comment: input.comment,
+      audioKey: input.audioKey,
+      audioDurationSeconds: input.audioDurationSeconds,
+      audioMimeType: input.audioMimeType,
     })
     .returning();
   return row;

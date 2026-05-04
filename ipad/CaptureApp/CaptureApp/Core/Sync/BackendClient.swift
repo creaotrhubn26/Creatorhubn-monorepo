@@ -120,6 +120,57 @@ actor BackendClient {
         )
     }
 
+    /// Phase 5.1 — voice-memo reply upload. Multipart body so audio
+    /// bytes don't have to base64-encode (≈33% bloat). Server stores
+    /// to R2, persists the key on the review row, and broadcasts the
+    /// `client_review` WebSocket event with `audioKey` so other iPads
+    /// + the web client gallery can stream the playback.
+    func submitAssetVoiceReview(
+        assetId: UUID,
+        audioData: Data,
+        audioMimeType: String,
+        durationSeconds: Double,
+    ) async throws -> BackendCreatedReview {
+        let boundary = "boundary-\(UUID().uuidString)"
+        let path = "/api/capture/assets/\(assetId.uuidString.lowercased())/reviews/audio"
+        var request = URLRequest(url: baseURL.appendingPathComponent(path))
+        request.httpMethod = "POST"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        for (name, value) in authHeaders {
+            request.setValue(value, forHTTPHeaderField: name)
+        }
+        var body = Data()
+        body.appendMultipartField(name: "duration", value: "\(durationSeconds)", boundary: boundary)
+        body.appendMultipartFile(
+            name: "audio",
+            filename: "reply.m4a",
+            mimeType: audioMimeType,
+            fileData: audioData,
+            boundary: boundary,
+        )
+        body.append("--\(boundary)--\r\n".data(using: .utf8) ?? Data())
+        request.httpBody = body
+
+        let (data, response) = try await self.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw BackendError.transport("not HTTPURLResponse")
+        }
+        if http.statusCode == 401 || http.statusCode == 403 {
+            throw BackendError.unauthorized
+        }
+        if http.statusCode == 404 {
+            throw BackendError.notFound
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw BackendError.httpStatus(http.statusCode, body: String(data: data, encoding: .utf8))
+        }
+        do {
+            return try JSONDecoder().decode(BackendCreatedReview.self, from: data)
+        } catch {
+            throw BackendError.decode(String(describing: error))
+        }
+    }
+
     /// Phase 5.4 — kick off server-side AI enhancement for a list of
     /// already-delivered backend asset ids. Returns the photo-enhancer
     /// job mapping; caller polls `fetchEnhancementStatus` to discover
@@ -409,5 +460,33 @@ actor BackendClient {
         } catch let urlError as URLError {
             throw BackendError.transport(String(describing: urlError.code))
         }
+    }
+}
+
+/// Phase 5.1 — multipart helpers for the voice-memo upload path.
+/// Kept as Data extensions so other multipart-using callsites
+/// (showcase delivery preview-PUT path uses different machinery) can
+/// reuse without re-implementing.
+private extension Data {
+    mutating func appendMultipartField(name: String, value: String, boundary: String) {
+        append("--\(boundary)\r\n".data(using: .utf8) ?? Data())
+        append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n".data(using: .utf8) ?? Data())
+        append(value.data(using: .utf8) ?? Data())
+        append("\r\n".data(using: .utf8) ?? Data())
+    }
+
+    mutating func appendMultipartFile(
+        name: String,
+        filename: String,
+        mimeType: String,
+        fileData: Data,
+        boundary: String,
+    ) {
+        append("--\(boundary)\r\n".data(using: .utf8) ?? Data())
+        append("Content-Disposition: form-data; name=\"\(name)\"; filename=\"\(filename)\"\r\n"
+            .data(using: .utf8) ?? Data())
+        append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8) ?? Data())
+        append(fileData)
+        append("\r\n".data(using: .utf8) ?? Data())
     }
 }

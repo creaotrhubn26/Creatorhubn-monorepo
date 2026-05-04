@@ -4,6 +4,7 @@ import {
   CreateMultipartUploadCommand,
   GetObjectCommand,
   HeadObjectCommand,
+  PutObjectCommand,
   S3Client,
   UploadPartCommand,
 } from '@aws-sdk/client-s3';
@@ -349,6 +350,40 @@ const DELIVERY_URL_TTL_SECONDS = 7 * 24 * 60 * 60;
  * Used by client review mode so browsers can render thumbnails without
  * direct R2 credentials.
  */
+/// Phase 5.1 — direct put for non-multipart objects (voice-memo
+/// reply audio uploads bypass the deliver/multipart pipeline because
+/// they're small ~50-200KB blobs uploaded once from the iPad on
+/// each reply). The key follows a reviews-scoped prefix so audio
+/// blobs live alongside review rows logically:
+///   reviews/<reviewId>/audio.m4a
+/// Returns the full R2 key on success or null when capture R2 isn't
+/// configured (env vars missing — same path as other capture R2
+/// failure modes).
+export async function uploadCaptureObject(params: {
+  key: string;
+  buffer: Buffer;
+  contentType: string;
+}): Promise<string | null> {
+  const cfg = buildCaptureR2Config();
+  const client = getClient(cfg);
+  if (!cfg.enabled || !cfg.bucket || !client) {
+    return null;
+  }
+  try {
+    await client.send(
+      new PutObjectCommand({
+        Bucket: cfg.bucket,
+        Key: params.key,
+        Body: params.buffer,
+        ContentType: params.contentType,
+      }),
+    );
+    return params.key;
+  } catch {
+    return null;
+  }
+}
+
 export async function signAssetReadUrl(
   key: string | null,
 ): Promise<string | null> {

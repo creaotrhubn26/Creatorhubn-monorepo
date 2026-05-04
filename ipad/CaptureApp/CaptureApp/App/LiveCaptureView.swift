@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import AVFoundation
 
 // MARK: - Root
 
@@ -339,6 +340,8 @@ struct LiveCaptureView: View {
                         reviewsForAsset: model.recentClientReviews
                             .filter { $0.assetId == focused.id },
                         allReviews: model.recentClientReviews,
+                        replyMemosDirectory: model.replyMemosDirectory
+                            ?? FileManager.default.temporaryDirectory,
                         onSelectAnotherAsset: { id in
                             model.focusedAssetId = id
                         },
@@ -346,6 +349,11 @@ struct LiveCaptureView: View {
                         onOpenFullscreen: { asset in viewerAsset = asset },
                         onSendReply: { text in
                             model.sendPhotographerReply(assetId: focused.id, comment: text)
+                        },
+                        onSendVoiceReply: { url, duration in
+                            model.sendPhotographerVoiceReply(
+                                assetId: focused.id, audioURL: url, durationSeconds: duration,
+                            )
                         }
                     )
                 } else if model.isComparing,
@@ -1666,6 +1674,10 @@ private struct ReviewInboxRow: View {
                     Text(preview)
                         .font(.callout)
                         .lineLimit(3)
+                case .audio(_, let duration):
+                    Label(formatDuration(duration), systemImage: "waveform")
+                        .font(.callout)
+                        .foregroundStyle(.blue)
                 }
             }
         }
@@ -1676,6 +1688,7 @@ private struct ReviewInboxRow: View {
         switch review.kind {
         case .heart: return .pink
         case .comment: return .orange
+        case .audio: return .blue
         }
     }
 
@@ -1683,7 +1696,13 @@ private struct ReviewInboxRow: View {
         switch review.kind {
         case .heart(let on): return on ? "heart.fill" : "heart.slash"
         case .comment: return "bubble.left.fill"
+        case .audio: return "mic.fill"
         }
+    }
+
+    private func formatDuration(_ seconds: Double) -> String {
+        let s = Int(seconds.rounded())
+        return String(format: "Stemme-svar · %d:%02d", s / 60, s % 60)
     }
 }
 
@@ -1698,10 +1717,12 @@ private struct ReviewModeStage: View {
     let asset: Asset
     let reviewsForAsset: [ClientReview]
     let allReviews: [ClientReview]
+    let replyMemosDirectory: URL
     let onSelectAnotherAsset: (UUID) -> Void
     let onExit: () -> Void
     let onOpenFullscreen: (Asset) -> Void
     let onSendReply: (String) -> Void
+    let onSendVoiceReply: (URL, Double) -> Void
 
     var body: some View {
         HStack(spacing: 16) {
@@ -1716,9 +1737,11 @@ private struct ReviewModeStage: View {
                 asset: asset,
                 reviewsForAsset: reviewsForAsset,
                 allReviews: allReviews,
+                replyMemosDirectory: replyMemosDirectory,
                 onSelectAnotherAsset: onSelectAnotherAsset,
                 onExit: onExit,
                 onSendReply: onSendReply,
+                onSendVoiceReply: onSendVoiceReply,
             )
             .frame(width: 380)
         }
@@ -1730,9 +1753,11 @@ private struct ReviewSideRail: View {
     let asset: Asset
     let reviewsForAsset: [ClientReview]
     let allReviews: [ClientReview]
+    let replyMemosDirectory: URL
     let onSelectAnotherAsset: (UUID) -> Void
     let onExit: () -> Void
     let onSendReply: (String) -> Void
+    let onSendVoiceReply: (URL, Double) -> Void
 
     @State private var draftReply: String = ""
     @FocusState private var replyFieldFocused: Bool
@@ -1874,6 +1899,9 @@ private struct ReviewSideRail: View {
             // thumb has a stable target. Send button enables on
             // non-whitespace text. Multi-line capable; max 4 lines
             // before scrolling so the rail doesn't crowd the thread.
+            // Voice-memo button (hold-to-record) sits between the
+            // text field and send so the photographer can choose
+            // their input modality at the moment of replying.
             HStack(alignment: .bottom, spacing: 8) {
                 TextField("Skriv et svar…", text: $draftReply, axis: .vertical)
                     .lineLimit(1...4)
@@ -1884,6 +1912,12 @@ private struct ReviewSideRail: View {
                     .focused($replyFieldFocused)
                     .submitLabel(.send)
                     .onSubmit { commit() }
+                AudioRecorderButton(
+                    outputDirectory: replyMemosDirectory,
+                    onCommit: { url, duration in
+                        onSendVoiceReply(url, duration)
+                    }
+                )
                 Button(action: commit) {
                     Image(systemName: "arrow.up.circle.fill")
                         .font(.title2)
@@ -1979,6 +2013,27 @@ private struct ReviewBubble: View {
                 }
                 if isPhotographer { Spacer(minLength: 32) }
             }
+
+        case .audio(let path, let duration):
+            HStack(alignment: .bottom, spacing: 8) {
+                if !isPhotographer { Spacer(minLength: 32) }
+                VStack(alignment: isPhotographer ? .leading : .trailing, spacing: 4) {
+                    Text(senderName)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 4)
+                    AudioPlaybackBubble(
+                        path: path,
+                        durationSeconds: duration,
+                        isPhotographer: isPhotographer,
+                    )
+                    Text(review.timestamp, style: .relative)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .padding(.horizontal, 4)
+                }
+                if isPhotographer { Spacer(minLength: 32) }
+            }
         }
     }
 
@@ -1988,6 +2043,269 @@ private struct ReviewBubble: View {
 
     private var senderName: String {
         review.displayName ?? (isPhotographer ? "Du" : "Klient")
+    }
+}
+
+/// Pill-shaped audio playback control inside a chat bubble. Owns its
+/// own `AVAudioPlayer` lifecycle: tap to start, tap-while-playing to
+/// pause, tap-while-paused to resume. Auto-resets to play state when
+/// the underlying player hits end-of-file. Visual: progress bar
+/// behind the duration label so the photographer / client gets a
+/// glance-able sense of how far through the message they are.
+private struct AudioPlaybackBubble: View {
+    let path: String
+    let durationSeconds: Double
+    let isPhotographer: Bool
+
+    @State private var player: AVAudioPlayer?
+    @State private var isPlaying: Bool = false
+    @State private var elapsed: Double = 0
+    @State private var progressTimer: Timer?
+
+    private var tint: Color { isPhotographer ? .secondary : .orange }
+
+    var body: some View {
+        Button(action: toggle) {
+            HStack(spacing: 8) {
+                Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(tint)
+                    .frame(width: 16)
+                ProgressView(value: progressValue)
+                    .progressViewStyle(.linear)
+                    .frame(width: 100)
+                    .tint(tint)
+                Text(formatTime(displayTime))
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                tint.opacity(0.18),
+                in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(tint.opacity(0.35), lineWidth: 0.5)
+            )
+        }
+        .buttonStyle(.plain)
+        .onDisappear { stop() }
+    }
+
+    private var displayTime: Double {
+        if isPlaying { return elapsed }
+        return durationSeconds
+    }
+
+    private var progressValue: Double {
+        guard durationSeconds > 0 else { return 0 }
+        return min(1, elapsed / durationSeconds)
+    }
+
+    private func toggle() {
+        if isPlaying {
+            player?.pause()
+            isPlaying = false
+            stopTimer()
+            return
+        }
+        if player == nil {
+            do {
+                try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
+                try AVAudioSession.sharedInstance().setActive(true)
+                let p = try AVAudioPlayer(contentsOf: URL(fileURLWithPath: path))
+                p.prepareToPlay()
+                player = p
+            } catch {
+                return
+            }
+        }
+        guard let player else { return }
+        if player.play() {
+            isPlaying = true
+            startTimer()
+        }
+    }
+
+    private func startTimer() {
+        stopTimer()
+        progressTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
+            Task { @MainActor in
+                guard let player else { return }
+                elapsed = player.currentTime
+                if !player.isPlaying {
+                    isPlaying = false
+                    elapsed = 0
+                    stopTimer()
+                }
+            }
+        }
+    }
+
+    private func stopTimer() {
+        progressTimer?.invalidate()
+        progressTimer = nil
+    }
+
+    private func stop() {
+        player?.stop()
+        player = nil
+        isPlaying = false
+        elapsed = 0
+        stopTimer()
+    }
+
+    private func formatTime(_ seconds: Double) -> String {
+        let s = Int(seconds.rounded())
+        return String(format: "%d:%02d", s / 60, s % 60)
+    }
+}
+
+/// Hold-to-record voice-memo button for ReviewSideRail. Owns its own
+/// `AVAudioRecorder` lifecycle: press-and-hold starts recording (1-15s
+/// cap; pulsing red dot + elapsed counter while held), release commits
+/// + invokes the closure with (URL, duration). Cancels gracefully if
+/// the user drags off-button mid-record. AAC m4a at 44.1kHz mono medium
+/// quality — small file size + clear voice is the priority over
+/// audiophile fidelity.
+private struct AudioRecorderButton: View {
+    let outputDirectory: URL
+    let onCommit: (URL, Double) -> Void
+
+    @State private var recorder: AVAudioRecorder?
+    @State private var isRecording: Bool = false
+    @State private var startedAt: Date?
+    @State private var pulseOn: Bool = false
+    @State private var displayElapsed: Double = 0
+    @State private var pulseTimer: Timer?
+    @State private var permissionDenied: Bool = false
+
+    /// Hard cap matches `VoiceMemoService.maxRecordingDuration` (60s)
+    /// for chat replies — short voice notes vs. long-form per-asset
+    /// memos. UI limits to 15s for terseness.
+    static let maxDuration: TimeInterval = 15
+
+    var body: some View {
+        ZStack {
+            Image(systemName: isRecording ? "stop.circle.fill" : "mic.circle.fill")
+                .font(.title2)
+                .foregroundStyle(isRecording ? Color.red : Color.accentColor)
+                .scaleEffect(pulseOn ? 1.1 : 1.0)
+                .animation(
+                    .easeInOut(duration: 0.5).repeatForever(autoreverses: true),
+                    value: pulseOn,
+                )
+            if isRecording {
+                Text(formatElapsed(displayElapsed))
+                    .font(.caption2.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(.red, in: Capsule())
+                    .offset(x: 28, y: 0)
+            }
+        }
+        .frame(width: 36, height: 36)
+        .contentShape(Rectangle())
+        .gesture(
+            LongPressGesture(minimumDuration: 0.2)
+                .onEnded { _ in startRecording() }
+                .sequenced(before: DragGesture(minimumDistance: 0))
+                .onEnded { _ in finishRecording() }
+        )
+        .alert("Mikrofon-tilgang", isPresented: $permissionDenied) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Slå på mikrofon-tilgang i Innstillinger for å spille inn lyd-svar.")
+        }
+        .accessibilityLabel("Hold for å spille inn lyd-svar")
+    }
+
+    private func startRecording() {
+        guard !isRecording else { return }
+        AVAudioSession.sharedInstance().requestRecordPermission { granted in
+            Task { @MainActor in
+                guard granted else { permissionDenied = true; return }
+                beginRecorder()
+            }
+        }
+    }
+
+    private func beginRecorder() {
+        try? FileManager.default.createDirectory(
+            at: outputDirectory, withIntermediateDirectories: true,
+        )
+        let url = outputDirectory.appendingPathComponent("\(UUID().uuidString).m4a")
+        let settings: [String: Any] = [
+            AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+            AVSampleRateKey: 44_100,
+            AVNumberOfChannelsKey: 1,
+            AVEncoderAudioQualityKey: AVAudioQuality.medium.rawValue,
+        ]
+        do {
+            try AVAudioSession.sharedInstance().setCategory(
+                .playAndRecord, mode: .default, options: [.defaultToSpeaker],
+            )
+            try AVAudioSession.sharedInstance().setActive(true)
+            let r = try AVAudioRecorder(url: url, settings: settings)
+            r.record(forDuration: Self.maxDuration)
+            recorder = r
+            isRecording = true
+            startedAt = Date()
+            pulseOn = true
+            startElapsedTimer()
+        } catch {
+            isRecording = false
+            recorder = nil
+        }
+    }
+
+    private func startElapsedTimer() {
+        pulseTimer?.invalidate()
+        pulseTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
+            Task { @MainActor in
+                guard let started = startedAt else { return }
+                displayElapsed = Date().timeIntervalSince(started)
+                if displayElapsed >= Self.maxDuration {
+                    finishRecording()
+                }
+            }
+        }
+    }
+
+    private func finishRecording() {
+        guard isRecording, let recorder, let started = startedAt else {
+            cleanupTimer()
+            return
+        }
+        let url = recorder.url
+        let duration = Date().timeIntervalSince(started)
+        recorder.stop()
+        self.recorder = nil
+        isRecording = false
+        pulseOn = false
+        startedAt = nil
+        cleanupTimer()
+        // Discard < 0.5 s recordings (accidental tap, not intent).
+        guard duration >= 0.5,
+              FileManager.default.fileExists(atPath: url.path) else {
+            try? FileManager.default.removeItem(at: url)
+            return
+        }
+        onCommit(url, duration)
+    }
+
+    private func cleanupTimer() {
+        pulseTimer?.invalidate()
+        pulseTimer = nil
+        displayElapsed = 0
+    }
+
+    private func formatElapsed(_ seconds: Double) -> String {
+        let total = Int(seconds.rounded())
+        return String(format: "%d:%02d", total / 60, total % 60)
     }
 }
 
@@ -2038,6 +2356,7 @@ private struct ReviewSwitcherChip: View {
         switch review.kind {
         case .heart(let on): return on ? "heart.fill" : "heart.slash"
         case .comment: return "bubble.left.fill"
+        case .audio: return "waveform"
         }
     }
 
@@ -2045,6 +2364,7 @@ private struct ReviewSwitcherChip: View {
         switch review.kind {
         case .heart: return .pink
         case .comment: return .orange
+        case .audio: return .blue
         }
     }
 
@@ -4069,6 +4389,13 @@ final class LiveCaptureModel {
     /// so SwiftUI views can observe `.state` directly for record/play
     /// button affordances.
     var voiceMemoService: VoiceMemoService?
+    /// Directory for chat-reply voice memos (distinct from per-asset
+    /// memos so the two never collide). Lives under
+    /// `tempDir/reply-memos/`. Built at connect time alongside
+    /// `voiceMemoService`. Reply memo files outlive the
+    /// `recentClientReviews` array because reviews can be re-emitted
+    /// from server WebSocket while the file ID stays stable.
+    var replyMemosDirectory: URL?
 
     /// Phase 5.4 — server-side AI enhancement job tracking. Keyed by
     /// LOCAL asset UUID (the picked asset's id on this iPad), value
@@ -4347,6 +4674,11 @@ final class LiveCaptureModel {
             )
             self.voiceMemoService = VoiceMemoService(
                 outputDirectory: tempDir.appendingPathComponent("voice-memos"),
+            )
+            self.replyMemosDirectory = tempDir.appendingPathComponent("reply-memos")
+            try? FileManager.default.createDirectory(
+                at: tempDir.appendingPathComponent("reply-memos"),
+                withIntermediateDirectories: true,
             )
 
             // Phase 4 — start the user-scoped realtime socket so
@@ -4828,6 +5160,63 @@ final class LiveCaptureModel {
     /// `recordClientReview(_:)` could double-insert; we dedupe by
     /// sender+timestamp+text in a TODO follow-up. For now the local
     /// insert is the source of truth on this iPad.
+    /// Phase 5.1 — voice-memo reply. Same fire-and-forget split as
+    /// the text reply: local insert immediately so the side rail
+    /// updates on send, then a detached upload-and-POST task that
+    /// pushes the m4a to backend R2 + records the review with
+    /// `audioKey` set. Backend POST is best-effort; if it fails the
+    /// local bubble stays so the photographer can retry by sending
+    /// again. Echo-dedup in `recordClientReview` matches incoming
+    /// audio events back against this local insert via `(senderKind,
+    /// timestamp window, audio path)`.
+    func sendPhotographerVoiceReply(
+        assetId: UUID,
+        audioURL: URL,
+        durationSeconds: Double,
+    ) {
+        guard clientReviewsEnabled,
+              let asset = assets.first(where: { $0.id == assetId })
+        else { return }
+        let displayName = SignInService.shared.session?.displayName
+            ?? SignInService.shared.session?.email
+        let review = ClientReview(
+            id: UUID(),
+            assetId: assetId,
+            assetFilename: asset.originalFilename,
+            kind: .audio(localPath: audioURL.path, durationSeconds: durationSeconds),
+            senderKind: .photographer,
+            displayName: displayName,
+            timestamp: Date(),
+            unread: false,
+        )
+        recentClientReviews.insert(review, at: 0)
+        if recentClientReviews.count > 50 {
+            recentClientReviews.removeLast(recentClientReviews.count - 50)
+        }
+
+        guard let backend = backendClient,
+              let delivery = deliveryService
+        else { return }
+        Task { [weak self] in
+            guard let backendAssetId = await delivery.backendAssetId(forLocal: assetId) else {
+                return
+            }
+            do {
+                let data = try Data(contentsOf: audioURL)
+                _ = try await backend.submitAssetVoiceReview(
+                    assetId: backendAssetId,
+                    audioData: data,
+                    audioMimeType: "audio/m4a",
+                    durationSeconds: durationSeconds,
+                )
+            } catch {
+                await MainActor.run {
+                    self?.errorMessage = "Stemme-svar lagret lokalt — backend nektet (\(error.localizedDescription))"
+                }
+            }
+        }
+    }
+
     func sendPhotographerReply(assetId: UUID, comment: String) {
         let trimmed = comment.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty,
@@ -5579,6 +5968,7 @@ final class LiveCaptureModel {
         rawExportService = nil
         voiceMemoService?.reset()
         voiceMemoService = nil
+        replyMemosDirectory = nil
         if let realtime = realtimeService, let observerId = realtimeObserverId {
             Task { await realtime.removeObserver(observerId) }
         }
