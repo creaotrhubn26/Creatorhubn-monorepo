@@ -88,6 +88,7 @@ actor SessionStore {
             fullKey: nil,
             rawKey: nil,
             voiceMemoKey: nil,
+            serverEnhancedKey: nil,
             checksumSha256: nil,
             mime: descriptor.mime,
             sizeBytes: descriptor.sizeBytes,
@@ -185,6 +186,21 @@ actor SessionStore {
         try await database.dbWriter.write { db in
             guard var asset = try Asset.fetchOne(db, key: id.uuidString.uppercased()) else { return }
             asset.voiceMemoKey = key
+            asset.updatedAt = Date()
+            try asset.update(db)
+        }
+    }
+
+    /// Phase 5.4 — attach the local path to a server-side AI-enhanced
+    /// JPEG once the photo-enhancer job completes + the bytes have
+    /// been downloaded back to the iPad. Distinct from
+    /// `attachEnhancedKey` (in-app Magic preview) so the comparison
+    /// slider can offer both alongside the camera-baked original.
+    /// Pass nil to clear (job failed, photographer revoked, etc).
+    func attachServerEnhancedKey(id: UUID, key: String?) async throws {
+        try await database.dbWriter.write { db in
+            guard var asset = try Asset.fetchOne(db, key: id.uuidString.uppercased()) else { return }
+            asset.serverEnhancedKey = key
             asset.updatedAt = Date()
             try asset.update(db)
         }

@@ -251,6 +251,18 @@ extension AppDatabase {
                 t.add(column: "voiceMemoKey", .text)
             }
         }
+        migrator.registerMigration("v5_asset_server_enhanced") { db in
+            // Phase 5.4 — server-side AI enhancement key. After deliver,
+            // the iPad asks the backend's photo-enhancer service to
+            // process the picks; when a job completes we download the
+            // resulting JPEG and stash its local path here. Distinct
+            // from `enhancedKey` (in-app Magic / WYSIWYG RAW preview)
+            // so the comparison-slider chip can toggle between them.
+            // nil = enhancement not requested or not yet complete.
+            try db.alter(table: "asset") { t in
+                t.add(column: "serverEnhancedKey", .text)
+            }
+        }
 
         return migrator
     }()

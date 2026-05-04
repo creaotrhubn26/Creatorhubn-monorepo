@@ -292,6 +292,41 @@ struct BackendCreatedReview: Decodable, Sendable {
     let createdAt: String
 }
 
+/// Phase 5.4 — server-side enhancer round-trip.
+struct BackendEnhancePicksRequest: Encodable, Sendable {
+    let assetIds: [String]
+    let preset: String?
+}
+
+struct BackendEnhancePicksResponse: Decodable, Sendable {
+    /// Map from local asset id (string-form UUID, lowercase) to the
+    /// photo-enhancer job id. Used to poll status without re-listing
+    /// every asset.
+    let jobs: [BackendEnhancementJobMapping]
+}
+
+struct BackendEnhancementJobMapping: Decodable, Sendable {
+    let assetId: String
+    let jobId: String
+}
+
+struct BackendEnhancementStatusResponse: Decodable, Sendable {
+    let jobs: [BackendEnhancementJobStatus]
+}
+
+struct BackendEnhancementJobStatus: Decodable, Sendable {
+    let assetId: String
+    let jobId: String
+    /// One of: queued / running / done / failed. Anything else from
+    /// the server is treated as "queued" defensively (newer status
+    /// kinds don't break older iPad builds).
+    let state: String
+    /// Pre-signed download URL for the enhanced JPEG when state ==
+    /// "done". Otherwise nil. The iPad downloads + caches locally,
+    /// then attaches the path via `SessionStore.attachServerEnhancedKey`.
+    let enhancedUrl: String?
+}
+
 struct BackendShotLinkCounters: Decodable, Sendable {
     let id: String
     let totalShots: Int

@@ -999,5 +999,78 @@ export function createCaptureRouter(
     res.status(201).json(row);
   });
 
+  // ── Phase 5.4 — server-side AI enhancer round-trip ──────────────────
+  //
+  // The iPad's `LiveCaptureModel.kickEnhancementForLastDelivery` posts
+  // here after `deliver()` succeeds. Each pick's bytes already live in
+  // capture R2 (the upload step of deliver wrote them). Conceptually
+  // we'd:
+  //   1. Read each asset's previewKey from captureAssets
+  //   2. Cross-bucket copy (or pre-signed read) capture R2 → PE R2
+  //   3. Construct a PhotoEnhancerQueuedJob via the existing
+  //      photoEnhancerJobs registry + schedulePhotoEnhancerQueue()
+  //   4. Track sessionId → assetId → jobId so the status route can
+  //      answer "where's job for asset X" without scanning all jobs
+  //
+  // The cross-bucket move + photo-enhancer R2 allowlist update is
+  // non-trivial (blocked on R2 IAM / bucket policy configuration);
+  // shipping these routes today as **MVP stubs** with the correct
+  // response shape so the iPad-side polling + UI plumbing works end-
+  // to-end. Real PE integration lands as Phase 5.4.1 once the bucket
+  // crossing is configured.
+  const enhancementMap = new Map<string, Map<string, string>>();
+
+  router.post('/sessions/:sessionId/enhance-picks', auth, async (req, res) => {
+    const sessionId = req.params.sessionId;
+    const body = (req.body ?? {}) as { assetIds?: unknown; preset?: unknown };
+    const assetIds = Array.isArray(body.assetIds)
+      ? body.assetIds.filter((v): v is string => typeof v === 'string' && v.length > 0)
+      : [];
+    if (assetIds.length === 0) {
+      res.status(400).json({ error: 'asset_ids_required' });
+      return;
+    }
+    let perSession = enhancementMap.get(sessionId);
+    if (!perSession) {
+      perSession = new Map();
+      enhancementMap.set(sessionId, perSession);
+    }
+    const jobs = assetIds.map((assetId) => {
+      // Reuse existing job id for the same asset within a session so
+      // re-runs from the iPad don't duplicate jobs.
+      let jobId = perSession!.get(assetId);
+      if (!jobId) {
+        // TODO Phase 5.4.1: call enqueuePhotoEnhancerJobFromBuffer()
+        // (to be exported from photo-enhancer-routes.ts) once the
+        // capture-R2-to-PE-R2 bridge is configured. For now, a
+        // synthetic job id keeps the iPad's polling state machine
+        // alive (jobs forever stay "queued" until the real wire lands).
+        jobId = `pending-${sessionId.slice(0, 8)}-${assetId.slice(0, 8)}-${Date.now()}`;
+        perSession!.set(assetId, jobId);
+      }
+      return { assetId, jobId };
+    });
+    res.status(202).json({ jobs });
+  });
+
+  router.get('/sessions/:sessionId/enhance-status', auth, async (req, res) => {
+    const sessionId = req.params.sessionId;
+    const perSession = enhancementMap.get(sessionId);
+    if (!perSession) {
+      res.json({ jobs: [] });
+      return;
+    }
+    const jobs = [...perSession.entries()].map(([assetId, jobId]) => ({
+      assetId,
+      jobId,
+      // Phase 5.4.1 will read state from the real photoEnhancerJobs
+      // map. Until then every job is "queued" forever so the iPad
+      // polling cycle stops after its 10-min cap.
+      state: 'queued',
+      enhancedUrl: null as string | null,
+    }));
+    res.json({ jobs });
+  });
+
   return router;
 }

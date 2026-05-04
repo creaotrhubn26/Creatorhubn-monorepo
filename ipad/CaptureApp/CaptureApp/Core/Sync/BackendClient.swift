@@ -120,6 +120,33 @@ actor BackendClient {
         )
     }
 
+    /// Phase 5.4 — kick off server-side AI enhancement for a list of
+    /// already-delivered backend asset ids. Returns the photo-enhancer
+    /// job mapping; caller polls `fetchEnhancementStatus` to discover
+    /// when each job completes. Idempotent on the backend (same
+    /// assetId enqueued twice in quick succession returns the existing
+    /// jobId).
+    func requestEnhancement(
+        sessionId: UUID,
+        body: BackendEnhancePicksRequest,
+    ) async throws -> BackendEnhancePicksResponse {
+        try await postJSON(
+            path: "/api/capture/sessions/\(sessionId.uuidString.lowercased())/enhance-picks",
+            body: body,
+        )
+    }
+
+    /// Phase 5.4 — poll all enhancement jobs queued for `sessionId`.
+    /// Caller should compare against locally-tracked job state and
+    /// download bytes for any jobs that just transitioned to "done".
+    func fetchEnhancementStatus(
+        sessionId: UUID,
+    ) async throws -> BackendEnhancementStatusResponse {
+        try await getJSON(
+            path: "/api/capture/sessions/\(sessionId.uuidString.lowercased())/enhance-status",
+        )
+    }
+
     /// Push a manual completion toggle from `ShotListPanel`. Distinct
     /// from `linkShotToAsset` because the photographer is ticking a shot
     /// done without tying it to a specific asset — and un-ticking must

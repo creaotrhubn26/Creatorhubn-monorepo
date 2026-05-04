@@ -17,6 +17,12 @@ struct Asset: Identifiable, Hashable, Sendable, Codable {
     /// photographer mid-shoot. nil = no memo. Session-local — cleared
     /// when the session's tempDir is torn down on disconnect.
     var voiceMemoKey: String?
+    /// Phase 5.4 — local path to the AI-enhanced JPEG produced by the
+    /// server-side photo-enhancer service after deliver. nil =
+    /// enhancement not requested or still processing. Distinct from
+    /// `enhancedKey` (in-app Magic preview) so the hero comparison
+    /// slider can offer both alongside the camera-baked original.
+    var serverEnhancedKey: String?
     var checksumSha256: String?
     var mime: String
     var sizeBytes: Int64?

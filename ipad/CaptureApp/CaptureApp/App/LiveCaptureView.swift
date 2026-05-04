@@ -4069,6 +4069,21 @@ final class LiveCaptureModel {
     /// so SwiftUI views can observe `.state` directly for record/play
     /// button affordances.
     var voiceMemoService: VoiceMemoService?
+
+    /// Phase 5.4 — server-side AI enhancement job tracking. Keyed by
+    /// LOCAL asset UUID (the picked asset's id on this iPad), value
+    /// is the backend job id + last-known state. Populated after
+    /// `deliver()` returns by `kickEnhancementForLastDelivery`; polled
+    /// every ~5s by `enhancementPollTask` until all jobs reach a
+    /// terminal state. UI surfaces "AI Enhanced" toggle in the hero
+    /// when an asset's job hits "done" and we've downloaded the bytes.
+    struct EnhancementJob: Equatable {
+        let backendJobId: String
+        var state: String
+        var enhancedKey: String?
+    }
+    var enhancementJobs: [UUID: EnhancementJob] = [:]
+    private var enhancementPollTask: Task<Void, Never>?
     /// User-scoped WebSocket subscription for client review events
     /// (`asset.hearted` / `asset.commented`). Built when both connect
     /// fires AND a backend session exists (signed-in). Carries the
@@ -4679,6 +4694,125 @@ final class LiveCaptureModel {
         }
     }
 
+    /// Phase 5.4 — after `deliver` (or `deliverToShowcase`) returns,
+    /// resolve the local→backend asset id mapping for each pick and
+    /// fire `requestEnhancement` for the lot. Then start the poll
+    /// task. Idempotent: re-running with the same picks gets the same
+    /// job IDs back from the backend dedup, and we only seed
+    /// `enhancementJobs` for assetIds we don't already track.
+    func kickEnhancementForLastDelivery(_ result: DeliveryService.DeliveryResult) async {
+        guard let backend = backendClient,
+              let delivery = deliveryService
+        else { return }
+        // Reverse the delivery's idMap (local UUID → backend UUID) so
+        // we can submit the backend ids to enhance-picks.
+        var localToBackend: [UUID: String] = [:]
+        for asset in assets where asset.flaggedForClient && !asset.rejected {
+            if let backendId = await delivery.backendAssetId(forLocal: asset.id) {
+                localToBackend[asset.id] = backendId.uuidString.lowercased()
+            }
+        }
+        guard !localToBackend.isEmpty else { return }
+        do {
+            let response = try await backend.requestEnhancement(
+                sessionId: result.backendSessionId,
+                body: BackendEnhancePicksRequest(
+                    assetIds: Array(localToBackend.values),
+                    preset: nil,
+                ),
+            )
+            // Map backend asset id (lowercase string) back to local
+            // UUID so enhancementJobs stays keyed by local id.
+            let backendToLocal = Dictionary(uniqueKeysWithValues:
+                localToBackend.map { ($0.value, $0.key) })
+            for mapping in response.jobs {
+                guard let localId = backendToLocal[mapping.assetId] else { continue }
+                if enhancementJobs[localId] == nil {
+                    enhancementJobs[localId] = EnhancementJob(
+                        backendJobId: mapping.jobId,
+                        state: "queued",
+                        enhancedKey: nil,
+                    )
+                }
+            }
+            startEnhancementPolling(sessionId: result.backendSessionId)
+        } catch {
+            // Non-fatal — picks are already delivered. Surface a quiet
+            // hint so the photographer knows AI-enhanced versions
+            // won't appear, but no toast (deliver-success was the
+            // load-bearing UX).
+            print("[LiveCaptureModel] Enhancement kickoff failed: \(error)")
+        }
+    }
+
+    private func startEnhancementPolling(sessionId: UUID) {
+        enhancementPollTask?.cancel()
+        let serverDownloadDir = downloadDirectory?
+            .appendingPathComponent("server-enhanced")
+        try? serverDownloadDir.map {
+            try FileManager.default.createDirectory(at: $0, withIntermediateDirectories: true)
+        }
+        enhancementPollTask = Task { [weak self] in
+            // Poll every 5 s until all tracked jobs hit a terminal
+            // state (done/failed/cancelled). Cap the loop at ~10 min
+            // (120 cycles) so we don't burn battery on stuck jobs.
+            for _ in 0..<120 {
+                try? await Task.sleep(for: .seconds(5))
+                guard let self else { return }
+                if Task.isCancelled { return }
+                if await self.allEnhancementJobsTerminal() { return }
+                await self.tickEnhancementPoll(sessionId: sessionId, downloadDir: serverDownloadDir)
+            }
+        }
+    }
+
+    private func allEnhancementJobsTerminal() -> Bool {
+        let terminal: Set<String> = ["done", "failed", "cancelled"]
+        return enhancementJobs.values.allSatisfy { terminal.contains($0.state) }
+    }
+
+    private func tickEnhancementPoll(sessionId: UUID, downloadDir: URL?) async {
+        guard let backend = backendClient, let store else { return }
+        let response: BackendEnhancementStatusResponse
+        do {
+            response = try await backend.fetchEnhancementStatus(sessionId: sessionId)
+        } catch {
+            return  // transient network — try again next tick
+        }
+        // Build backendId → localId reverse map from current state.
+        let reverseMap: [String: UUID] = Dictionary(
+            uniqueKeysWithValues: enhancementJobs.compactMap { local, job -> (String, UUID)? in
+                response.jobs.first(where: { $0.jobId == job.backendJobId })
+                    .map { ($0.assetId, local) }
+            },
+        )
+        for status in response.jobs {
+            guard let localId = reverseMap[status.assetId] else { continue }
+            var job = enhancementJobs[localId] ?? EnhancementJob(
+                backendJobId: status.jobId, state: status.state, enhancedKey: nil,
+            )
+            let stateChanged = job.state != status.state
+            job.state = status.state
+            // If just transitioned to "done", download the bytes +
+            // attach as serverEnhancedKey so the hero comparison
+            // slider can offer the AI version alongside Magic.
+            if status.state == "done", job.enhancedKey == nil,
+               let urlString = status.enhancedUrl,
+               let url = URL(string: urlString),
+               let downloadDir {
+                let dest = downloadDir.appendingPathComponent("\(localId.uuidString).jpg")
+                if let data = try? await URLSession.shared.data(from: url).0 {
+                    try? data.write(to: dest, options: .atomic)
+                    job.enhancedKey = dest.path
+                    try? await store.attachServerEnhancedKey(id: localId, key: dest.path)
+                }
+            }
+            if stateChanged || job.enhancedKey != nil {
+                enhancementJobs[localId] = job
+            }
+        }
+    }
+
     /// Photographer-side reply to a client conversation. Locally
     /// inserts the message immediately so the side rail updates
     /// in-step with the send action, then POSTs to the backend in a
@@ -4939,6 +5073,13 @@ final class LiveCaptureModel {
             ttlMinutes: ttlMinutes,
         )
         await MainActor.run { self.lastDelivery = result }
+        // Phase 5.4 — fire-and-forget AI enhancement for the just-
+        // delivered picks. Failures don't block the deliver result;
+        // the gallery URL is what matters for the photographer in
+        // the moment, AI-enhanced versions land minutes later.
+        Task { [weak self] in
+            await self?.kickEnhancementForLastDelivery(result)
+        }
         return result
     }
 
@@ -5432,6 +5573,9 @@ final class LiveCaptureModel {
         deviceSummary = nil
         for task in rawPreviewRetuneTasks.values { task.cancel() }
         rawPreviewRetuneTasks.removeAll()
+        enhancementPollTask?.cancel()
+        enhancementPollTask = nil
+        enhancementJobs.removeAll()
         rawExportService = nil
         voiceMemoService?.reset()
         voiceMemoService = nil
