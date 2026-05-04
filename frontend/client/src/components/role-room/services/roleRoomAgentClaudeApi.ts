@@ -230,6 +230,38 @@ export async function archiveAgentThread(projectId: string, threadId: string): P
   return response.ok;
 }
 
+/**
+ * Posts a tool-execution audit row. Fire-and-forget — never throws so a
+ * logging failure can't mask a successful tool execution. Use this after
+ * the user confirms a tool_use and the resulting write either succeeds
+ * or fails.
+ */
+export async function logAgentToolResult(input: {
+  projectId: string;
+  toolName: string;
+  toolUseId?: string | null;
+  status: 'ok' | 'error' | 'invalid_input';
+  errorMessage?: string;
+}): Promise<void> {
+  try {
+    await fetch(
+      `${API_BASE}/projects/${encodeURIComponent(input.projectId)}/agent/tool-result`,
+      {
+        method: 'POST',
+        headers: buildHeaders(),
+        body: JSON.stringify({
+          toolName: input.toolName,
+          toolUseId: input.toolUseId ?? null,
+          status: input.status,
+          errorMessage: input.errorMessage ?? null,
+        }),
+      },
+    );
+  } catch {
+    /* audit failures are advisory */
+  }
+}
+
 export async function renameAgentThread(
   projectId: string,
   threadId: string,
@@ -249,10 +281,12 @@ export async function renameAgentThread(
 export interface AgentStreamEvents {
   onStart?: (payload: { model: string; threadId: string | null }) => void;
   onDelta?: (chunk: string) => void;
+  onToolUse?: (tool: RoleRoomAgentToolUse) => void;
   onDone?: (payload: {
     model: string;
     threadId: string | null;
     usage: { inputTokens: number; outputTokens: number };
+    toolUses?: RoleRoomAgentToolUse[];
     transparency: RoleRoomAgentResponse['transparency'];
   }) => void;
   onError?: (message: string) => void;
@@ -336,6 +370,15 @@ export async function streamAgentQuery(
     }
     if (eventName === 'start') events.onStart?.(payload);
     else if (eventName === 'delta') events.onDelta?.(payload.text ?? '');
+    else if (eventName === 'tool_use') {
+      if (payload && typeof payload.id === 'string' && typeof payload.name === 'string') {
+        events.onToolUse?.({
+          id: payload.id,
+          name: payload.name,
+          input: (payload.input ?? {}) as Record<string, unknown>,
+        });
+      }
+    }
     else if (eventName === 'done') events.onDone?.(payload);
     else if (eventName === 'error') events.onError?.(payload.message ?? 'stream_error');
   };

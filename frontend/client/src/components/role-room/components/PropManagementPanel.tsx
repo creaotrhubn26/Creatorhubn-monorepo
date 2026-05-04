@@ -412,7 +412,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
   useEffect(() => {
     const loadFavorites = async () => {
       try {
-        const { favoritesApi } = await import('@/services/castingApiService');
+        const { favoritesApi } = await import('../services/castingApiService');
         const dbFavorites = await favoritesApi.get(projectId, 'prop');
         if (dbFavorites.length > 0) {
           setFavorites(new Set(dbFavorites));
@@ -432,7 +432,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
     const saveFavorites = async () => {
       localStorage.setItem(`prop-favorites-${projectId}`, JSON.stringify([...favorites]));
       try {
-        const { favoritesApi } = await import('@/services/castingApiService');
+        const { favoritesApi } = await import('../services/castingApiService');
         await favoritesApi.set(projectId, 'prop', [...favorites]);
       } catch (error) {
         console.warn('Database save failed:', error);

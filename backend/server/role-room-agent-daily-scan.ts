@@ -165,7 +165,7 @@ async function scanOneProject(pool: Pool, row: DailyScanProjectRow): Promise<voi
       userId: row.userId,
       consentId: row.consentId,
       processor: 'anthropic',
-      model: process.env.ROLE_ROOM_AGENT_CLAUDE_MODEL || 'claude-sonnet-4-5',
+      model: process.env.ROLE_ROOM_AGENT_CLAUDE_MODEL || 'claude-sonnet-4-6',
       action: 'daily_scan',
       status: 'error',
       errorMessage: err instanceof Error ? err.message : String(err),

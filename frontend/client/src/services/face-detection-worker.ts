@@ -5,7 +5,7 @@
  * Runs in background, processes clips in batches, stores results in clip metadata
  */
 
-import { faceXFormerService, type FaceAnalysisResult } from '../components/creatorhubvirtualstudio/src/services/FaceXFormerService';
+import { faceXFormerService, type FaceAnalysisResult } from './faceXFormerService';
 import { webWorkerEngine } from './web-worker-engine';
 
 export interface FaceDetectionResult {

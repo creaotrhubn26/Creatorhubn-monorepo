@@ -167,7 +167,6 @@ import AcademyAccessGate from '@/components/academy/AcademyAccessGate';
 import CommunityHub from '@/components/community/CommunityHub';
 import ReceiptsManager from '@/components/accounting/ReceiptsManager';
 import ShowcaseAmazonDesign from '@/components/universal/misc/ShowcaseAmazonDesign';
-import VirtualStudioPage from '@/pages/VirtualStudioPage';
 
 import { BringPhotographerDashboard } from './components/bring/BringPhotographerDashboard';
 import { EnhancedMasterIntegrationProvider } from './integration/EnhancedMasterIntegrationProvider';
@@ -748,17 +747,6 @@ function App() {
                   <Route path="/showcase/:projectId" component={ShowcaseClient} />
                   <Route path="/showcase-enhanced/:projectId" component={ShowcaseClientEnhancedRouteWrapper as React.ComponentType<any>} />
                   <Route path="/showcase-enhanced-demo" component={() => <ShowcaseClientEnhancedRouteWrapper />} />
-                  <Route path="/virtual-studio-test" component={() => {
-                    return <div style={{ padding: '40px', backgroundColor: 'green', color: 'white', minHeight: '100vh', fontSize: '24px' }}>TEST ROUTE WORKS!</div>;
-                  }} />
-                  <Route path="/virtual-studio" component={() => {
-                    try {
-                      return <VirtualStudioPage />;
-                    } catch (error) {
-                      console.error('[App.tsx] Error rendering VirtualStudioPage:', error);
-                      return <div style={{ padding: '20px', backgroundColor: 'red', color: 'white' }}>Error: {String(error)}</div>;
-                    }
-                  }} />
                   <Route path="/wedding-timeline" component={WeddingTimelineClientResponsive} />
                   <Route
                     path="/wedding-timeline/:timelineId/:accessCode"

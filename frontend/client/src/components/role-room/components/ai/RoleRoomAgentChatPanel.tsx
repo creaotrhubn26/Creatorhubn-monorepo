@@ -33,6 +33,7 @@ import {
 } from '@mui/material';
 import {
   AutoFixHigh as AutoFixIcon,
+  CheckCircleOutline as CheckCircleIcon,
   ErrorOutline as ErrorIcon,
   Send as SendIcon,
 } from '@mui/icons-material';
@@ -59,8 +60,15 @@ interface RoleRoomAgentChatPanelProps {
   context?: RoleRoomAgentContext;
   /** Called when the user confirms a tool_use. The parent is responsible
    *  for executing the real write (e.g. creating a review, updating a
-   *  brief field). Returning undefined/void closes the dialog silently. */
-  onConfirmToolUse?: (tool: RoleRoomAgentToolUse) => Promise<void> | void;
+   *  brief field). Return a string to render an inline success message
+   *  in the chat thread. Throw to render an inline error. */
+  onConfirmToolUse?: (tool: RoleRoomAgentToolUse) => Promise<string | void> | string | void;
+}
+
+/** Per-tool execution feedback rendered inline in the message thread. */
+interface ToolFeedback {
+  status: 'ok' | 'error';
+  message: string;
 }
 
 const SUGGESTED_PROMPTS: string[] = [
@@ -79,6 +87,9 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
   const [input, setInput] = useState('');
   const [pendingTool, setPendingTool] = useState<RoleRoomAgentToolUse | null>(null);
   const [toolExecuting, setToolExecuting] = useState(false);
+  // Map of tool_use.id -> latest feedback. Lives in the panel (not the
+  // message) so re-renders from streaming deltas don't blow it away.
+  const [toolFeedback, setToolFeedback] = useState<Record<string, ToolFeedback>>({});
   const { messages, pending, send, reset, threadId, loadThread, startNewThread, lastError } = useRoleRoomAgentClaude(projectId);
   const [historyAnchor, setHistoryAnchor] = useState<HTMLElement | null>(null);
   const [paywallOpen, setPaywallOpen] = useState(false);
@@ -321,24 +332,58 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
                       Agenten foreslår {message.response.toolUses.length} handling
                       {message.response.toolUses.length === 1 ? '' : 'er'} — bekreft for å utføre:
                     </Typography>
-                    {message.response.toolUses.map((tool) => (
-                      <Button
-                        key={tool.id}
-                        size="small"
-                        variant="outlined"
-                        startIcon={<AutoFixIcon />}
-                        onClick={() => setPendingTool(tool)}
-                        sx={{
-                          alignSelf: 'flex-start',
-                          textTransform: 'none',
-                          color: '#a5f3fc',
-                          borderColor: 'rgba(34,211,238,0.4)',
-                          '&:hover': { borderColor: 'rgba(34,211,238,0.7)', bgcolor: 'rgba(8,47,73,0.3)' },
-                        }}
-                      >
-                        {tool.name.replace(/_/g, ' ')}
-                      </Button>
-                    ))}
+                    {message.response.toolUses.map((tool) => {
+                      const feedback = toolFeedback[tool.id];
+                      return (
+                        <Stack key={tool.id} spacing={0.5}>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            startIcon={<AutoFixIcon />}
+                            onClick={() => setPendingTool(tool)}
+                            disabled={feedback?.status === 'ok'}
+                            sx={{
+                              alignSelf: 'flex-start',
+                              textTransform: 'none',
+                              color: '#a5f3fc',
+                              borderColor: 'rgba(34,211,238,0.4)',
+                              '&:hover': { borderColor: 'rgba(34,211,238,0.7)', bgcolor: 'rgba(8,47,73,0.3)' },
+                              '&.Mui-disabled': {
+                                color: 'rgba(165,243,252,0.4)',
+                                borderColor: 'rgba(34,211,238,0.16)',
+                              },
+                            }}
+                          >
+                            {tool.name.replace(/_/g, ' ')}
+                          </Button>
+                          {feedback ? (
+                            <Alert
+                              severity={feedback.status === 'ok' ? 'success' : 'error'}
+                              icon={feedback.status === 'ok' ? <CheckCircleIcon /> : <ErrorIcon />}
+                              sx={{
+                                py: 0.4,
+                                fontSize: '0.78rem',
+                                bgcolor: feedback.status === 'ok'
+                                  ? 'rgba(34,197,94,0.12)'
+                                  : 'rgba(239,68,68,0.12)',
+                                color: feedback.status === 'ok' ? '#bbf7d0' : '#fecaca',
+                                border: feedback.status === 'ok'
+                                  ? '1px solid rgba(34,197,94,0.28)'
+                                  : '1px solid rgba(239,68,68,0.28)',
+                                '& .MuiAlert-icon': {
+                                  color: feedback.status === 'ok' ? '#bbf7d0' : '#fecaca',
+                                  fontSize: '1rem',
+                                  py: 0.4,
+                                },
+                                whiteSpace: 'pre-wrap',
+                              }}
+                            >
+                              {feedback.message}
+                            </Alert>
+                          ) : null}
+                        </Stack>
+                      );
+                    })}
                   </Stack>
                 ) : null}
               </Box>
@@ -371,7 +416,7 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
         </Alert>
       ) : null}
     </Stack>
-  ), [messages, pending, handleSend, handleRevokeConsent, projectId, lastError, threadId, startNewThread, trialBannerDays]);
+  ), [messages, pending, handleSend, handleRevokeConsent, projectId, lastError, threadId, startNewThread, trialBannerDays, toolFeedback]);
 
   const composer = (
     <Box
@@ -515,7 +560,21 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
           }
           setToolExecuting(true);
           try {
-            await onConfirmToolUse(tool);
+            const result = await onConfirmToolUse(tool);
+            const successMessage = typeof result === 'string' && result.length > 0
+              ? result
+              : `Utført: ${tool.name.replace(/_/g, ' ')}`;
+            setToolFeedback((prev) => ({
+              ...prev,
+              [tool.id]: { status: 'ok', message: successMessage },
+            }));
+            setPendingTool(null);
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            setToolFeedback((prev) => ({
+              ...prev,
+              [tool.id]: { status: 'error', message },
+            }));
             setPendingTool(null);
           } finally {
             setToolExecuting(false);

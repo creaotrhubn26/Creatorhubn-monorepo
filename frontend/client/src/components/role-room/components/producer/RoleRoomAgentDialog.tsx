@@ -224,7 +224,7 @@ export default function RoleRoomAgentDialog({
   // full correction trail as the newest source of truth.
   const [refinementDraft, setRefinementDraft] = useState('');
   const [refinementHistory, setRefinementHistory] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState<'research' | 'chat' | 'feed-planner' | 'marketing-plan' | 'meta-page' | 'page-content' | 'ads-attribution' | 'fb-publish' | 'fb-mention' | 'ig-hashtag'>('research');
+  const [activeTab, setActiveTab] = useState<'research' | 'chat' | 'feed-planner' | 'marketing-plan' | 'meta-page' | 'page-content' | 'ads-attribution' | 'fb-publish' | 'fb-mention' | 'ig-hashtag' | 'social-inbox' | 'social-analytics'>('research');
   const [systemStatusOpen, setSystemStatusOpen] = useState(false);
 
   // Track whether the current generated result has already been turned
@@ -1216,26 +1216,56 @@ export default function RoleRoomAgentDialog({
                                 </Typography>
                                 <Chip
                                   size="small"
-                                  label={`${competitor.confidence}%`}
+                                  // Semantic status pill instead of raw "67%". Confidence is
+                                  // surfaced via the dotted tooltip for users who care.
+                                  label={
+                                    competitor.status === 'verified'
+                                      ? 'Verifisert'
+                                      : competitor.status === 'likely'
+                                        ? 'Sannsynlig'
+                                        : competitor.status === 'needs_review'
+                                          ? 'Manuell sjekk'
+                                          : 'Avvist'
+                                  }
+                                  title={`Konfidens: ${competitor.confidence}%`}
                                   sx={{
-                                    bgcolor: competitor.status === 'verified' ? 'rgba(16,185,129,0.18)' : 'rgba(250,204,21,0.14)',
-                                    color: competitor.status === 'verified' ? '#bbf7d0' : '#fde68a',
+                                    bgcolor: competitor.status === 'verified'
+                                      ? 'rgba(16,185,129,0.18)'
+                                      : competitor.status === 'likely'
+                                        ? 'rgba(59,130,246,0.16)'
+                                        : 'rgba(250,204,21,0.14)',
+                                    color: competitor.status === 'verified'
+                                      ? '#bbf7d0'
+                                      : competitor.status === 'likely'
+                                        ? '#bfdbfe'
+                                        : '#fde68a',
+                                    fontWeight: 700,
                                   }}
                                 />
                               </Stack>
-                              <Typography sx={{ color: 'rgba(226,232,240,0.74)', fontSize: '0.84rem', lineHeight: 1.45 }}>
-                                {competitor.relevanceReason}
-                              </Typography>
+                              {/* Single combined chip row: source + category + rating + reviews. */}
                               {renderClassificationChips([
-                                competitor.primaryTypeDisplayName ? `Kategori: ${competitor.primaryTypeDisplayName}` : null,
-                                typeof competitor.rating === 'number' ? `${competitor.rating.toFixed(1)} stjerner` : null,
-                                typeof competitor.userRatingCount === 'number' ? `${competitor.userRatingCount} reviews` : null,
+                                (competitor as any).source === 'brreg_nace' && (competitor as any).naceCode
+                                  ? `Brreg NACE ${(competitor as any).naceCode}`
+                                  : (competitor as any).source === 'brreg_nace'
+                                    ? 'Brreg-bekreftet'
+                                    : null,
+                                competitor.primaryTypeDisplayName,
+                                typeof competitor.rating === 'number' && typeof competitor.userRatingCount === 'number'
+                                  ? `★ ${competitor.rating.toFixed(1)} (${competitor.userRatingCount})`
+                                  : typeof competitor.rating === 'number'
+                                    ? `★ ${competitor.rating.toFixed(1)}`
+                                    : null,
                               ])}
-                              <Typography sx={{ color: 'rgba(226,232,240,0.62)', fontSize: '0.78rem', lineHeight: 1.45 }}>
-                                {competitor.evidence.slice(0, 2).map((entry) => entry.label).join(' · ')}
-                              </Typography>
-                              <Typography sx={{ color: '#cbd5e1', fontSize: '0.82rem', lineHeight: 1.45 }}>
+                              {/* Position hint reads as a complete short sentence — keep
+                                  it as the headline reason. The raw scoring evidence used
+                                  to render here too but duplicated rating/reviews already
+                                  shown in the chips above, so it was removed. */}
+                              <Typography sx={{ color: '#cbd5e1', fontSize: '0.82rem', lineHeight: 1.5 }}>
                                 {competitor.marketingSignals.positionHint}
+                              </Typography>
+                              <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.76rem', lineHeight: 1.45 }}>
+                                {competitor.relevanceReason}
                               </Typography>
                               {(competitor as any).metaPage ? (
                                 <Box

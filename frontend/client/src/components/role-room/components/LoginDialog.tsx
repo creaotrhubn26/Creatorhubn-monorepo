@@ -961,6 +961,11 @@ const LOGIN_PERSONA_OPTIONS: ReadonlyArray<{
     description: 'For innhold, storyboard og leveranser',
   },
   {
+    id: 'education_institution',
+    label: 'Utdanningsinstitusjon',
+    description: 'For studenter, lærere og bransje i samme produksjonsflyt',
+  },
+  {
     id: 'dance_studio',
     label: 'Dansestudio',
     description: 'For studioeier eller frilansdanser',
@@ -3219,7 +3224,13 @@ export default function LoginDialog({
     }
 
     try {
-      await persistCommercialSetup(effectiveLoginPersona);
+      if (
+        effectiveLoginPersona === 'production_team' ||
+        effectiveLoginPersona === 'content_producer' ||
+        effectiveLoginPersona === 'dance_studio'
+      ) {
+        await persistCommercialSetup(effectiveLoginPersona);
+      }
       const timeout = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('timeout')), 5000)
       );
@@ -3324,7 +3335,13 @@ export default function LoginDialog({
     setError('');
 
     try {
-      await persistCommercialSetup(effectiveLoginPersona);
+      if (
+        effectiveLoginPersona === 'production_team' ||
+        effectiveLoginPersona === 'content_producer' ||
+        effectiveLoginPersona === 'dance_studio'
+      ) {
+        await persistCommercialSetup(effectiveLoginPersona);
+      }
       const browserOrigin = typeof window !== 'undefined' ? window.location.origin : undefined;
       const currentPath = typeof window !== 'undefined'
         ? getRoleRoomReturnPath(window.location)

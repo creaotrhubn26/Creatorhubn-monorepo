@@ -6,7 +6,7 @@
  */
 
 import { faceDetectionWorker, type FaceDetectionResult } from './face-detection-worker';
-import { faceXFormerService } from '../components/creatorhubvirtualstudio/src/services/FaceXFormerService';
+import { faceXFormerService } from './faceXFormerService';
 
 /**
  * Test face detection on a single video file

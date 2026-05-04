@@ -1277,7 +1277,7 @@ export function CrewManagementPanel({
   useEffect(() => {
     const loadFavorites = async () => {
       try {
-        const { favoritesApi } = await import('@/services/castingApiService');
+        const { favoritesApi } = await import('../services/castingApiService');
         const dbFavorites = await favoritesApi.get(projectId, 'crew');
         if (dbFavorites.length > 0) {
           setFavorites(new Set(dbFavorites));
@@ -2180,7 +2180,7 @@ export function CrewManagementPanel({
       await settingsService.setSetting(FAVORITES_NAMESPACE, [...newFavorites], { projectId });
     }
     try {
-      const { favoritesApi } = await import('@/services/castingApiService');
+      const { favoritesApi } = await import('../services/castingApiService');
       if (isAdding) {
         await favoritesApi.add(projectId, 'crew', id);
       } else {

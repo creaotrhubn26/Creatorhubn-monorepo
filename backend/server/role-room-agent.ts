@@ -68,7 +68,12 @@ type RoleRoomAgentCompetitorEvidence = {
     | "location_overlap"
     | "website_available"
     | "review_signal"
-    | "manual_review_needed";
+    | "manual_review_needed"
+    // Brreg same-NACE / same-municipality signals — verifiable Norwegian
+    // SMB classification, more reliable than Google primaryType for many
+    // categories (esp. trades, retail, craft producers).
+    | "same_nace_code"
+    | "same_municipality";
   label: string;
   weight: number;
 };
@@ -86,8 +91,14 @@ type RoleRoomAgentCompetitorMetaPage = {
 };
 
 type RoleRoomAgentCompetitorCandidate = {
-  source: "google_places";
+  source: "google_places" | "brreg_nace";
   placeId?: string | null;
+  /** Norwegian NACE/SBB industry code (Brregs `naeringskode1.kode`). Set
+   *  for both Brreg-sourced competitors AND Google Places competitors
+   *  that share the customer's NACE — useful as a verifiable cross-link. */
+  naceCode?: string | null;
+  /** Brreg organisasjonsnummer when source = brreg_nace. */
+  organizationNumber?: string | null;
   name: string;
   websiteUrl?: string | null;
   googleMapsUri?: string | null;
@@ -289,6 +300,9 @@ export type RoleRoomAgentBrregCompany = {
   businessAddress?: string | null;
   postalAddress?: string | null;
   municipality?: string | null;
+  /** Brregs `kommunenummer` (4 digits, e.g. "0301" for Oslo). Used to
+   *  narrow same-NACE competitor lookups to the same municipality. */
+  municipalityNumber?: string | null;
   website?: string | null;
   statusFlags: {
     bankrupt?: boolean;
@@ -646,6 +660,7 @@ function mapBrregUnit(
     businessAddress: formatBrregAddress(unit.forretningsadresse),
     postalAddress: formatBrregAddress(unit.postadresse),
     municipality: readBrregNestedText(businessAddress, "kommune"),
+    municipalityNumber: readBrregNestedText(businessAddress, "kommunenummer"),
     website: hasText(unit.hjemmeside) ? normalizeWebsiteUrl(unit.hjemmeside) : null,
     statusFlags: {
       bankrupt: unit.konkurs === true,
@@ -675,6 +690,7 @@ function buildBrregUnavailable(status: RoleRoomAgentBrregLookupStatus, input: st
     businessAddress: null,
     postalAddress: null,
     municipality: null,
+    municipalityNumber: null,
     website: null,
     statusFlags: {},
     statusMessage,
@@ -1033,23 +1049,35 @@ function buildCompetitorSearchQueries(
   businessSignals: RoleRoomAgentBusinessSignals | null,
   brregCompany: RoleRoomAgentBrregCompany | null,
 ): string[] {
-  const companyName = hasText(input.companyName)
-    ? normalizeWhitespace(input.companyName)
-    : brregCompany?.name || websiteInsights.siteName || "";
+  // Category sources, in order of trust. Note: we deliberately do NOT
+  // fall back to websiteInsights.siteName here. siteName is the customer's
+  // own brand — querying "<Customer Name> Oslo" returns the customer
+  // themselves, who is then filtered out, leaving zero competitors.
   const category = businessSignals?.primaryTypeDisplayName
     || brregCompany?.industryCode?.description
-    || websiteInsights.siteName
     || "";
   const location = extractMarketLocation(businessSignals?.formattedAddress || brregCompany?.businessAddress || "");
   const municipality = brregCompany?.municipality || "";
+
+  // For SMBs without a clear municipality, "i Norge" anchors the query
+  // to the local market; bare-category Google Places queries with
+  // regionCode=NO already bias toward Norway, but the explicit phrasing
+  // improves recall for multi-language category names like "Bakery".
+  const norwayAnchor = "i Norge";
 
   return Array.from(
     new Set(
       [
         category && location ? `${category} ${location}` : "",
         category && municipality && municipality !== location ? `${category} ${municipality}` : "",
-        brregCompany?.industryCode?.description && location ? `${brregCompany.industryCode.description} ${location}` : "",
-        companyName && location ? `${companyName} alternativer ${location}` : "",
+        brregCompany?.industryCode?.description && location
+          ? `${brregCompany.industryCode.description} ${location}`
+          : "",
+        // Anchor a national-scope fallback when neither municipality nor
+        // address is known; pure category alone returns too generic
+        // results. The "alternativer" phrasing was removed because Google
+        // Places matches names/addresses, not "alternatives" semantics.
+        category && !location && !municipality ? `${category} ${norwayAnchor}` : "",
         category,
       ]
         .map((entry) => normalizeWhitespace(entry))
@@ -2503,6 +2531,232 @@ async function enrichCompetitorsWithMetaPages(
   }
 }
 
+/**
+ * Fetches direct NACE-code competitors from Brreg's Enhetsregister.
+ *
+ * The NACE code (e.g. "10.71" for "Produksjon av brød og ferske bakervarer")
+ * is the most reliable competitor signal we have for Norwegian SMBs:
+ * Brreg classifies every active enterprise, so a same-NACE query returns
+ * a verifiable list without depending on Google Places' less complete
+ * primaryType taxonomy.
+ *
+ * Returns up to `limit` competitors, optionally narrowed to the same
+ * municipality. Self is filtered out. Best-effort — returns empty on
+ * any HTTP/parse failure so the caller can fall back to Google Places.
+ */
+async function fetchBrregCompetitorsByNace(
+  brregCompany: RoleRoomAgentBrregCompany | null,
+  options?: { limit?: number; municipalityNumber?: string | null },
+): Promise<RoleRoomAgentCompetitorCandidate[]> {
+  const naceCode = brregCompany?.industryCode?.code ?? null;
+  if (!naceCode) return [];
+  const naceDescription = brregCompany?.industryCode?.description ?? null;
+  const limit = Math.min(Math.max(options?.limit ?? 20, 1), 100);
+  const municipalityNumber = hasText(options?.municipalityNumber)
+    ? normalizeWhitespace(options!.municipalityNumber as string)
+    : null;
+  const selfOrgNumber = brregCompany?.organizationNumber ?? null;
+
+  const params = new URLSearchParams();
+  params.set("naeringskode", naceCode);
+  params.set("size", String(limit));
+  if (municipalityNumber) {
+    params.set("kommunenummer", municipalityNumber);
+  }
+  // Filter out enterprises in liquidation, bankruptcy or struck off so
+  // we don't recommend dead companies as competitors.
+  params.set("konkurs", "false");
+  params.set("underAvvikling", "false");
+
+  const url = `${BRREG_API_BASE_URL}/enheter?${params.toString()}`;
+
+  let payload: Record<string, unknown> | null = null;
+  try {
+    const response = await fetch(url, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) {
+      console.error(`[brreg-nace-competitors] status=${response.status} url=${url}`);
+      return [];
+    }
+    payload = (await response.json().catch(() => null)) as Record<string, unknown> | null;
+  } catch (err) {
+    console.error(
+      `[brreg-nace-competitors] threw: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return [];
+  }
+
+  // Brreg embeds units under _embedded.enheter.
+  const embedded = payload && typeof payload === "object" && !Array.isArray(payload)
+    ? (payload._embedded as Record<string, unknown> | undefined)
+    : undefined;
+  const units = embedded && Array.isArray(embedded.enheter)
+    ? (embedded.enheter as Array<Record<string, unknown>>)
+    : [];
+
+  if (units.length === 0) return [];
+
+  const competitors: RoleRoomAgentCompetitorCandidate[] = [];
+  const seenOrgs = new Set<string>();
+  for (const unit of units) {
+    const orgNumber = hasText(unit.organisasjonsnummer)
+      ? normalizeWhitespace(unit.organisasjonsnummer)
+      : null;
+    if (!orgNumber || orgNumber === selfOrgNumber || seenOrgs.has(orgNumber)) continue;
+    seenOrgs.add(orgNumber);
+
+    const name = hasText(unit.navn) ? normalizeWhitespace(unit.navn) : null;
+    if (!name) continue;
+
+    const businessAddress = unit.forretningsadresse && typeof unit.forretningsadresse === "object" && !Array.isArray(unit.forretningsadresse)
+      ? (unit.forretningsadresse as Record<string, unknown>)
+      : null;
+    const formattedAddress = formatBrregAddress(businessAddress);
+    const websiteUrl = hasText(unit.hjemmeside) ? normalizeWebsiteUrl(unit.hjemmeside) : null;
+    const sameMunicipality = Boolean(
+      municipalityNumber
+        && businessAddress
+        && readBrregNestedText(businessAddress, "kommunenummer") === municipalityNumber,
+    );
+
+    // Brreg-confirmed same-NACE is a strong, verifiable signal — start
+    // higher than Google Places (which only contributes 30 baseline).
+    const evidence: RoleRoomAgentCompetitorEvidence[] = [
+      {
+        type: "same_nace_code",
+        label: naceDescription
+          ? `Brreg-bekreftet NACE ${naceCode} (${naceDescription})`
+          : `Brreg-bekreftet NACE ${naceCode}`,
+        weight: 50,
+      },
+    ];
+    if (sameMunicipality) {
+      evidence.push({
+        type: "same_municipality",
+        label: "Samme kommune som kunden",
+        weight: 25,
+      });
+    }
+    if (websiteUrl) {
+      evidence.push({
+        type: "website_available",
+        label: "Har egen nettside for manuell posisjonering-sjekk",
+        weight: 10,
+      });
+    }
+    const confidence = Math.min(100, evidence.reduce((total, entry) => total + entry.weight, 0));
+    const status: RoleRoomAgentCompetitorCandidate["status"] =
+      confidence >= 80 ? "verified" : confidence >= 55 ? "likely" : confidence >= 35 ? "needs_review" : "rejected";
+
+    competitors.push({
+      source: "brreg_nace",
+      naceCode,
+      organizationNumber: orgNumber,
+      name,
+      websiteUrl,
+      googleMapsUri: null,
+      formattedAddress,
+      primaryType: null,
+      primaryTypeDisplayName: naceDescription,
+      rating: null,
+      userRatingCount: null,
+      confidence,
+      status,
+      evidence,
+      relevanceReason: naceDescription
+        ? `Brreg-registrert med samme NACE-kode (${naceCode} – ${naceDescription}).`
+        : `Brreg-registrert med samme NACE-kode (${naceCode}).`,
+      marketingSignals: {
+        positionHint: sameMunicipality
+          ? `${name} driver i samme kommune og NACE-kategori — direkte konkurrent å sjekke manuelt.`
+          : `${name} driver i samme NACE-kategori, men i et annet område — bredt sammenlikningsgrunnlag.`,
+        contentAngles: [
+          "Sjekk om konkurrenten har egen nettside; sammenlikn hero-budskap, leveransevisning og kundeloggegninger",
+          "Bruk Brreg-data (alder, ansatte, omsetning) til å forstå om kunden konkurrerer mot etablert eller ny aktør",
+        ],
+        ctaOpportunities: [
+          websiteUrl
+            ? "Sjekk om konkurrenten driver mot booking, kontakt, kjøp eller befaring"
+            : "Avklar CTA manuelt siden nettside mangler i Brreg",
+        ],
+        riskNotes: [
+          "Ikke bruk konkurrentnavn i kundemateriell uten eksplisitt godkjenning",
+          status === "needs_review"
+            ? "NACE-match er bredt; verifiser at konkurrenten faktisk treffer samme produktkategori før den brukes i pitch"
+            : "",
+        ].filter(Boolean),
+      },
+      requiresManualConfirmation: status !== "verified",
+    });
+  }
+  return competitors;
+}
+
+/**
+ * Merges Google-Places- and Brreg-sourced competitor candidates,
+ * preferring the higher-confidence record when both surface the same
+ * company (matched by website host or normalized name).
+ *
+ * Re-sorts by descending confidence and recomputes the analysis-level
+ * verifiedCompetitorCount + averageRating + averageReviewCount over the
+ * merged set.
+ */
+function mergeCompetitorAnalyses(
+  primary: RoleRoomAgentCompetitorAnalysis,
+  brregCompetitors: RoleRoomAgentCompetitorCandidate[],
+): RoleRoomAgentCompetitorAnalysis {
+  if (brregCompetitors.length === 0) return primary;
+
+  const byKey = new Map<string, RoleRoomAgentCompetitorCandidate>();
+  const keyFor = (c: RoleRoomAgentCompetitorCandidate): string => {
+    const host = normalizeHost(c.websiteUrl ?? null);
+    if (host) return `host:${host}`;
+    if (c.organizationNumber) return `orgnr:${c.organizationNumber}`;
+    return `name:${normalizeIdentity(c.name)}`;
+  };
+
+  for (const c of primary.competitors) byKey.set(keyFor(c), c);
+  for (const c of brregCompetitors) {
+    const key = keyFor(c);
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, c);
+      continue;
+    }
+    // Same company found via both sources — keep whichever is more
+    // confident, but cross-link the NACE info onto the kept record so
+    // the UI can surface "Brreg-bekreftet" alongside the Google data.
+    const winner = c.confidence >= existing.confidence ? c : existing;
+    const loser = winner === c ? existing : c;
+    if (!winner.naceCode && loser.naceCode) winner.naceCode = loser.naceCode;
+    if (!winner.organizationNumber && loser.organizationNumber) {
+      winner.organizationNumber = loser.organizationNumber;
+    }
+    byKey.set(key, winner);
+  }
+
+  const merged = Array.from(byKey.values()).sort((a, b) => b.confidence - a.confidence);
+  const verified = merged.filter((c) => c.status === "verified" || c.status === "likely");
+  const ratings = merged.map((c) => c.rating).filter((r): r is number => typeof r === "number");
+  const reviewCounts = merged
+    .map((c) => c.userRatingCount)
+    .filter((r): r is number => typeof r === "number");
+
+  return {
+    ...primary,
+    competitors: merged,
+    verifiedCompetitorCount: verified.length,
+    averageRating:
+      ratings.length > 0 ? Number((ratings.reduce((a, b) => a + b, 0) / ratings.length).toFixed(2)) : null,
+    averageReviewCount:
+      reviewCounts.length > 0
+        ? Math.round(reviewCounts.reduce((a, b) => a + b, 0) / reviewCounts.length)
+        : null,
+  };
+}
+
 async function fetchGooglePlacesCompetitorAnalysis(
   input: RoleRoomAgentProducerBootstrapInput,
   websiteInsights: RoleRoomAgentWebsiteInsights,
@@ -3663,12 +3917,22 @@ export async function generateRoleRoomAgentProducerBootstrap(
   const websiteUrl = normalizeWebsiteUrl(enrichedInput.websiteUrl);
   const websiteInsights = await fetchWebsiteInsights(websiteUrl, enrichedInput, initialBrregCompany);
   const businessSignals = await fetchGooglePlacesBusinessSignals(enrichedInput, websiteInsights);
-  const competitorAnalysis = await fetchGooglePlacesCompetitorAnalysis(
+  const placesCompetitorAnalysis = await fetchGooglePlacesCompetitorAnalysis(
     enrichedInput,
     websiteInsights,
     businessSignals,
     initialBrregCompany,
   );
+  // Brreg same-NACE competitors: pulls verified Norwegian companies in
+  // the same industry classification, narrowed to the same kommune when
+  // available. This is the most reliable competitor signal for SMBs and
+  // is merged with the Google Places list (deduped by website host /
+  // org-nr / normalized name; higher-confidence record wins).
+  const brregNaceCompetitors = await fetchBrregCompetitorsByNace(initialBrregCompany, {
+    limit: 25,
+    municipalityNumber: initialBrregCompany?.municipalityNumber ?? null,
+  });
+  const competitorAnalysis = mergeCompetitorAnalyses(placesCompetitorAnalysis, brregNaceCompetitors);
   // Meta Pages Public Metadata enrichment: for each verified/likely
   // competitor, try to resolve their public Facebook Page and attach
   // follower/category/about data. All calls are best-effort — if Meta

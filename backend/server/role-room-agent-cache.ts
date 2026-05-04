@@ -230,5 +230,5 @@ export function modelIdForTier(tier: RoleRoomAgentModelTier): string {
   if (tier === 'haiku') {
     return process.env.ROLE_ROOM_AGENT_HAIKU_MODEL || 'claude-haiku-4-5-20251001';
   }
-  return process.env.ROLE_ROOM_AGENT_CLAUDE_MODEL || 'claude-sonnet-4-5';
+  return process.env.ROLE_ROOM_AGENT_CLAUDE_MODEL || 'claude-sonnet-4-6';
 }

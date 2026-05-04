@@ -8,7 +8,7 @@
  *
  * Usage is feature-flagged:
  *   ROLE_ROOM_AGENT_CLAUDE_ENABLED=true   enables this module
- *   ROLE_ROOM_AGENT_CLAUDE_MODEL=claude-sonnet-4-5   (default)
+ *   ROLE_ROOM_AGENT_CLAUDE_MODEL=claude-sonnet-4-6   (default)
  *   ANTHROPIC_API_KEY=...
  *
  * GDPR contract: callers MUST
@@ -72,7 +72,7 @@ function isEnabled(): boolean {
 }
 
 function defaultModel(): string {
-  return process.env.ROLE_ROOM_AGENT_CLAUDE_MODEL || 'claude-sonnet-4-5';
+  return process.env.ROLE_ROOM_AGENT_CLAUDE_MODEL || 'claude-sonnet-4-6';
 }
 
 async function getClaudeClient(): Promise<any> {

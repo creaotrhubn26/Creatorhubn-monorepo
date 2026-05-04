@@ -742,7 +742,7 @@ export function LocationManagementPanel({
   useEffect(() => {
     const loadFavorites = async () => {
       try {
-        const { favoritesApi } = await import('@/services/castingApiService');
+        const { favoritesApi } = await import('../services/castingApiService');
         const dbFavorites = await favoritesApi.get(projectId, 'location');
         if (dbFavorites.length > 0) {
           setFavorites(new Set(dbFavorites));
@@ -834,7 +834,7 @@ export function LocationManagementPanel({
       const values = [...favorites];
       await settingsService.setSetting(FAVORITES_NAMESPACE, values, { projectId });
       try {
-        const { favoritesApi } = await import('@/services/castingApiService');
+        const { favoritesApi } = await import('../services/castingApiService');
         await favoritesApi.set(projectId, 'location', values);
       } catch (error) {
         console.warn('Database save failed:', error);

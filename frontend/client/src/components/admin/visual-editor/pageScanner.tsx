@@ -96,7 +96,6 @@ const PAGE_ICONS: Record<string, React.ReactNode> = {
 
 // List of all pages found in your pages folder
 const ALL_PAGES = [
-  'VirtualStudioPage.tsx',
   'VisualEditorPage.tsx',
   'AdminPage.tsx',
   'BusinessBrandingPage.tsx',

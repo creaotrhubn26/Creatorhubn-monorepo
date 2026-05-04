@@ -150,6 +150,10 @@ export function useRoleRoomAgentClaude(projectId: string | null): UseRoleRoomAge
         ]);
         setStreaming(true);
         abortRef.current = new AbortController();
+        // Tool_use events arrive between deltas and `done`; collect them so
+        // both the per-message response *and* the running confirmation
+        // dialogs see the same set.
+        const collectedTools: RoleRoomAgentResponse['toolUses'] = [];
         try {
           let finalResponse: RoleRoomAgentResponse | null = null;
           await streamAgentQuery(
@@ -172,13 +176,37 @@ export function useRoleRoomAgentClaude(projectId: string | null): UseRoleRoomAge
                   prev.map((m) => (m.id === assistantId ? { ...m, text: m.text + chunk } : m)),
                 );
               },
+              onToolUse: (tool) => {
+                // Dedupe by id in case the backend emits the same tool
+                // both as a `tool_use` event and inside `done.toolUses`.
+                if (!collectedTools.some((t) => t.id === tool.id)) {
+                  collectedTools.push(tool);
+                }
+                setMessages((prev) =>
+                  prev.map((m) => {
+                    if (m.id !== assistantId) return m;
+                    const existing = m.response;
+                    const merged = existing
+                      ? { ...existing, toolUses: [...collectedTools] }
+                      : undefined;
+                    return merged ? { ...m, response: merged } : m;
+                  }),
+                );
+              },
               onDone: (payload) => {
+                // Merge tool_uses from the done payload (authoritative)
+                // with anything we already collected from streaming events.
+                for (const tool of payload.toolUses ?? []) {
+                  if (!collectedTools.some((t) => t.id === tool.id)) {
+                    collectedTools.push(tool);
+                  }
+                }
                 // Build a minimal RoleRoomAgentResponse so the UI can render
                 // the transparency banner. Cached/non-cached token fields
                 // are approximations from the stream payload.
                 finalResponse = {
                   text: '', // filled below from accumulated
-                  toolUses: [],
+                  toolUses: [...collectedTools],
                   model: payload.model,
                   latencyMs: 0,
                   usage: {

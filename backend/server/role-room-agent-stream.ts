@@ -1,15 +1,11 @@
 /**
  * SSE streaming handler for the Role Room Agent.
  *
- * Only handles the NON-TOOL-USE case — streaming through a tool-use loop
- * would require event ordering guarantees we don't need yet. When the
- * agent wants to call tools, the frontend retries via the non-streaming
- * /agent/query endpoint, which is atomic.
- *
- * Reuses the consent + pseudonymize + audit pipeline from the runner so
- * this path is just as safe as the synchronous one. Response cache is
- * skipped (streaming to cache would add complexity for marginal benefit;
- * identical queries hit cache on the sync path).
+ * Streams text deltas live, then emits a `tool_use` event for any tool
+ * blocks Claude returns in the same turn. The frontend collects them and
+ * surfaces the same per-tool confirmation dialog as the non-streaming
+ * /agent/query path. Both endpoints share the consent + pseudonymize +
+ * audit pipeline.
  */
 
 import type { Request, Response } from 'express';
@@ -28,6 +24,7 @@ import {
 } from './role-room-pseudonymize.js';
 import {
   ROLE_ROOM_AGENT_SYSTEM_PROMPT,
+  ROLE_ROOM_AGENT_TOOLS,
 } from './role-room-agent-definition.js';
 import { modelIdForTier, pickModelForMessage } from './role-room-agent-cache.js';
 import {
@@ -134,7 +131,7 @@ export async function handleAgentStream(
         projectId,
         userId,
         processor: 'anthropic',
-        model: process.env.ROLE_ROOM_AGENT_CLAUDE_MODEL || 'claude-sonnet-4-5',
+        model: process.env.ROLE_ROOM_AGENT_CLAUDE_MODEL || 'claude-sonnet-4-6',
         action: 'stream',
         status: 'blocked_by_consent',
         errorCode: err.code,
@@ -222,7 +219,36 @@ export async function handleAgentStream(
   let accumulatedText = '';
   let inputTokens = 0;
   let outputTokens = 0;
+  let finalToolUses: Array<{ id: string; name: string; input: Record<string, unknown> }> = [];
+  let streamFinalised = false;
   const startedAt = Date.now();
+
+  // De-pseudonymize a text fragment using the combined assignments.
+  const depseudonymize = (value: string): string => {
+    let out = value;
+    for (const { placeholder, real } of combinedAssignments) {
+      const escaped = placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      out = out.replace(new RegExp(escaped, 'g'), real);
+    }
+    return out;
+  };
+
+  // De-pseudonymize string values inside a tool input, recursively. Only
+  // strings are touched — numbers/booleans/arrays-of-objects pass through
+  // unchanged. The agent's tool inputs are small JSON blobs, so the
+  // recursion depth is bounded by the schema.
+  const depseudonymizeToolInput = (value: unknown): unknown => {
+    if (typeof value === 'string') return depseudonymize(value);
+    if (Array.isArray(value)) return value.map(depseudonymizeToolInput);
+    if (value && typeof value === 'object') {
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(value)) {
+        out[k] = depseudonymizeToolInput(v);
+      }
+      return out;
+    }
+    return value;
+  };
 
   // Throttle checkpoint writes so we don't hammer the DB on every token.
   // 1.5 s cadence is enough to survive a dropped connection while keeping
@@ -248,14 +274,30 @@ export async function handleAgentStream(
 
   // If the client disconnects (tab closed, laptop lid, proxy timeout) we
   // still want the partial text persisted. Node's Express surfaces this
-  // via the 'close' event on the response's underlying socket.
+  // via the 'close' event on the response's underlying socket. Skip if
+  // the stream already finalised cleanly (the success path persists the
+  // full payload itself).
   req.on('close', () => {
-    if (!streamingMessageId) return;
-    void updateStreamingMessage(pool, {
-      messageId: streamingMessageId,
-      text: accumulatedText,
-      partial: true,
-    });
+    if (streamFinalised) return;
+    if (streamingMessageId) {
+      void updateStreamingMessage(pool, {
+        messageId: streamingMessageId,
+        text: accumulatedText,
+        partial: true,
+      });
+      return;
+    }
+    // Placeholder creation never returned an id but we still have a
+    // thread — flush the partial text into a fresh assistant row so the
+    // user can scroll back and see what they got before the drop.
+    if (threadId && accumulatedText.length > 0) {
+      void appendMessage(pool, {
+        threadId,
+        role: 'assistant',
+        text: accumulatedText,
+        response: { streaming: true, partial: true, droppedConnection: true },
+      });
+    }
   });
 
   try {
@@ -269,17 +311,14 @@ export async function handleAgentStream(
           cache_control: { type: 'ephemeral' },
         },
       ],
+      tools: ROLE_ROOM_AGENT_TOOLS,
       messages: [{ role: 'user', content: pseudonymizedMessage }],
     });
 
     stream.on('text', (delta: string) => {
       // De-pseudonymize deltas inline so the user sees real names in the
       // live stream, not {{candidate_1}} placeholders.
-      let out = delta;
-      for (const { placeholder, real } of combinedAssignments) {
-        const escaped = placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        out = out.replace(new RegExp(escaped, 'g'), real);
-      }
+      const out = depseudonymize(delta);
       accumulatedText += out;
       writeEvent(res, 'delta', { text: out });
       maybeCheckpoint();
@@ -288,6 +327,25 @@ export async function handleAgentStream(
     const finalMessage = await stream.finalMessage();
     inputTokens = finalMessage?.usage?.input_tokens ?? 0;
     outputTokens = finalMessage?.usage?.output_tokens ?? 0;
+
+    // Extract tool_use blocks from the final message. Anthropic returns
+    // these alongside any text the agent produced before deciding to
+    // call a tool — the text part is already streamed above.
+    for (const block of finalMessage?.content ?? []) {
+      if (block?.type === 'tool_use') {
+        finalToolUses.push({
+          id: String(block.id),
+          name: String(block.name),
+          input: depseudonymizeToolInput(block.input ?? {}) as Record<string, unknown>,
+        });
+      }
+    }
+    // Surface each tool the moment the model chose it so the frontend
+    // can render the confirmation buttons immediately, even if the
+    // `done` event is delayed by the audit/persistence work below.
+    for (const tool of finalToolUses) {
+      writeEvent(res, 'tool_use', tool);
+    }
 
     await logAiCall(pool, {
       projectId,
@@ -307,6 +365,7 @@ export async function handleAgentStream(
         ...(context.openReviews?.length ? ['review_metadata'] : []),
         ...candidateMap.categoriesTouched,
         ...crewMap.categoriesTouched,
+        ...finalToolUses.map((t) => `proposed_tool:${t.name}`),
       ],
       entityCount: candidates.length + crew.length,
       emailsScrubbed: scrubbedFromUser.emails,
@@ -322,7 +381,7 @@ export async function handleAgentStream(
         partial: false,
         response: {
           text: accumulatedText,
-          toolUses: [],
+          toolUses: finalToolUses,
           model: modelId,
           latencyMs: Date.now() - startedAt,
           usage: { inputTokens, outputTokens },
@@ -344,7 +403,7 @@ export async function handleAgentStream(
         text: accumulatedText,
         response: {
           text: accumulatedText,
-          toolUses: [],
+          toolUses: finalToolUses,
           model: modelId,
           latencyMs: Date.now() - startedAt,
           usage: { inputTokens, outputTokens },
@@ -364,6 +423,7 @@ export async function handleAgentStream(
       model: modelId,
       threadId,
       usage: { inputTokens, outputTokens },
+      toolUses: finalToolUses,
       transparency: {
         model: modelId,
         fields: candidateMap.categoriesTouched.concat(crewMap.categoriesTouched),
@@ -371,6 +431,7 @@ export async function handleAgentStream(
         piiScrubbedFromInput: scrubbedFromUser,
       },
     });
+    streamFinalised = true;
     res.end();
   } catch (err) {
     await logAiCall(pool, {
@@ -393,7 +454,7 @@ export async function handleAgentStream(
         partial: true,
         response: {
           text: accumulatedText,
-          toolUses: [],
+          toolUses: finalToolUses,
           model: modelId,
           latencyMs: Date.now() - startedAt,
           usage: { inputTokens, outputTokens },
@@ -404,6 +465,7 @@ export async function handleAgentStream(
       });
     }
     writeEvent(res, 'error', { message: err instanceof Error ? err.message : String(err) });
+    streamFinalised = true;
     res.end();
   }
 }

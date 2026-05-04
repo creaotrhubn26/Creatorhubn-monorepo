@@ -29,7 +29,7 @@ services:
       - key: ROLE_ROOM_AGENT_CLAUDE_ENABLED
         value: "false"
       - key: ROLE_ROOM_AGENT_CLAUDE_MODEL
-        value: claude-sonnet-4-5
+        value: claude-sonnet-4-6
       # Producer-bootstrap synthesis routing. Default = OpenAI; set this to
       # "claude" to route the bootstrap agent through Anthropic instead.
       # Falls back to OpenAI automatically on Claude failures.

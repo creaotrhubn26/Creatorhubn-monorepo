@@ -44,7 +44,7 @@ import {
   type RoleRoomAiConsentScope,
   type RoleRoomAiProcessor,
 } from './role-room-ai-consent.js';
-import { listAiCallsForUser } from './role-room-ai-audit.js';
+import { listAiCallsForUser, logAiCall } from './role-room-ai-audit.js';
 import {
   invokeRoleRoomAgent,
   RoleRoomAgentDisabledError,
@@ -20080,8 +20080,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     },
   );
 
-  // Streaming agent endpoint (SSE). Non-tool-use only — tool_use queries
-  // still go through the atomic /agent/query endpoint.
+  // Streaming agent endpoint (SSE). Streams text deltas and emits a
+  // `tool_use` event per tool the agent decides to call; the frontend
+  // collects them and surfaces the same confirmation flow as /agent/query.
   router.post(
     '/projects/:projectId/agent/stream',
     apiKeyAuth(pool, activeSessions),
@@ -20095,6 +20096,45 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         } else {
           res.end();
         }
+      }
+    },
+  );
+
+  // Tool-execution audit hook. Frontend POSTs after the user confirms a
+  // tool_use so the audit log captures which proposals actually fired.
+  // Body: { toolName, toolUseId?, status: 'ok' | 'error' | 'invalid_input', errorMessage? }
+  router.post(
+    '/projects/:projectId/agent/tool-result',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const { toolName, toolUseId, status, errorMessage } = req.body ?? {};
+        if (typeof toolName !== 'string' || toolName.trim().length === 0) {
+          return res.status(400).json({ error: 'toolName required' });
+        }
+        const allowedStatus = new Set(['ok', 'error', 'invalid_input']);
+        const normalisedStatus = typeof status === 'string' && allowedStatus.has(status)
+          ? status
+          : 'ok';
+        await logAiCall(pool, {
+          projectId: req.params.projectId,
+          userId,
+          processor: 'anthropic',
+          model: process.env.ROLE_ROOM_AGENT_CLAUDE_MODEL || 'claude-sonnet-4-6',
+          action: 'tool_executed',
+          status: normalisedStatus === 'ok' ? 'ok' : 'error',
+          fieldCategories: [
+            `executed_tool:${toolName}`,
+            ...(toolUseId ? [`tool_use_id:${String(toolUseId).slice(0, 64)}`] : []),
+            ...(normalisedStatus !== 'ok' ? [`tool_result:${normalisedStatus}`] : []),
+          ],
+          errorCode: normalisedStatus !== 'ok' ? normalisedStatus : null,
+          errorMessage: typeof errorMessage === 'string' ? errorMessage.slice(0, 500) : null,
+        });
+        res.json({ ok: true });
+      } catch (error) {
+        res.status(500).json({ error: 'tool_result_log_failed', detail: String(error) });
       }
     },
   );

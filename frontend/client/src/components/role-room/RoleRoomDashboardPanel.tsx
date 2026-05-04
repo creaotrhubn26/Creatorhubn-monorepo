@@ -29,6 +29,8 @@ import RoleRoomMobileShotListView from './components/production-mobile/RoleRoomM
 import RoleRoomMobileCrewView from './components/production-mobile/RoleRoomMobileCrewView';
 import RoleRoomAgentChatPanel from './components/ai/RoleRoomAgentChatPanel';
 import { useRoleRoomAgentContext } from './hooks/useRoleRoomAgentContext';
+import { validateAgentToolInput } from './services/roleRoomAgentToolSchemas';
+import { logAgentToolResult } from './services/roleRoomAgentClaudeApi';
 import {
   readLastWorkspace,
   saveLastWorkspace,
@@ -1182,56 +1184,107 @@ const AgentChatMount: React.FC<AgentChatMountProps> = ({
   const { createItem } = useProducerTimeline(projectId ?? undefined);
 
   const handleConfirmToolUse = React.useCallback(
-    async (tool: { name: string; input: Record<string, any> }) => {
+    async (tool: { name: string; input: Record<string, any>; id?: string }): Promise<string | void> => {
       if (!projectId) return;
-      switch (tool.name) {
-        case 'draft_review_request': {
-          const input = tool.input || {};
-          const dueDays = typeof input.suggested_due_days_from_now === 'number'
-            ? Math.max(0, Math.min(60, input.suggested_due_days_from_now))
-            : undefined;
-          const dueAt = dueDays !== undefined
-            ? new Date(Date.now() + dueDays * 24 * 60 * 60 * 1000).toISOString()
-            : undefined;
-          await createReview({
-            review_type: String(input.review_type ?? 'storyboard'),
-            title: String(input.title ?? 'Agent-foreslått review'),
-            description: input.description ? String(input.description) : undefined,
-            target_entity_type: input.target_entity_type
-              ? String(input.target_entity_type)
-              : undefined,
-            target_entity_id: input.target_entity_id
-              ? String(input.target_entity_id)
-              : undefined,
-            due_at: dueAt,
-          } as any);
-          break;
+
+      // Validate first — agent occasionally returns enums outside the
+      // declared set (e.g. review_type "custom"). The backend write
+      // endpoints don't re-validate, so we'd silently persist garbage.
+      const validation = validateAgentToolInput(tool.name, tool.input ?? {});
+      if (!validation.ok) {
+        const message = `Agentens forslag har ugyldig input:\n${validation.errors.join('\n')}`;
+        void logAgentToolResult({
+          projectId,
+          toolName: tool.name,
+          toolUseId: tool.id,
+          status: 'invalid_input',
+          errorMessage: message,
+        });
+        throw new Error(message);
+      }
+
+      try {
+        switch (tool.name) {
+          case 'draft_review_request': {
+            const input = validation.data as {
+              review_type: string;
+              title: string;
+              description?: string;
+              target_entity_type?: string;
+              target_entity_id?: string;
+              suggested_due_days_from_now?: number;
+            };
+            const dueAt = input.suggested_due_days_from_now !== undefined
+              ? new Date(Date.now() + input.suggested_due_days_from_now * 24 * 60 * 60 * 1000).toISOString()
+              : undefined;
+            await createReview({
+              review_type: input.review_type,
+              title: input.title,
+              description: input.description,
+              target_entity_type: input.target_entity_type,
+              target_entity_id: input.target_entity_id,
+              due_at: dueAt,
+            } as any);
+            void logAgentToolResult({
+              projectId,
+              toolName: tool.name,
+              toolUseId: tool.id,
+              status: 'ok',
+            });
+            return `Opprettet review «${input.title}» (${input.review_type}).`;
+          }
+          case 'propose_timeline_item': {
+            const input = validation.data as {
+              phase: 'preproduction' | 'production' | 'postproduction';
+              entry_type: string;
+              title: string;
+              description?: string;
+              suggested_due_days_from_now?: number;
+              rationale: string;
+            };
+            const dueAt = input.suggested_due_days_from_now !== undefined
+              ? new Date(Date.now() + input.suggested_due_days_from_now * 24 * 60 * 60 * 1000).toISOString()
+              : undefined;
+            await createItem({
+              phase: input.phase as any,
+              title: input.title,
+              description: input.description,
+              dueAt,
+              status: 'planned',
+              metadata: {
+                entryType: input.entry_type,
+                agentRationale: input.rationale,
+              },
+            });
+            void logAgentToolResult({
+              projectId,
+              toolName: tool.name,
+              toolUseId: tool.id,
+              status: 'ok',
+            });
+            return `La til timeline-oppgave «${input.title}» i ${input.phase}.`;
+          }
+          default:
+            // summarize_brief_gaps / flag_scope_impact / suggest_next_decision are
+            // read-only; their input is the "answer" and needs no write.
+            void logAgentToolResult({
+              projectId,
+              toolName: tool.name,
+              toolUseId: tool.id,
+              status: 'ok',
+            });
+            return;
         }
-        case 'propose_timeline_item': {
-          const input = tool.input || {};
-          const dueDays = typeof input.suggested_due_days_from_now === 'number'
-            ? Math.max(0, Math.min(365, input.suggested_due_days_from_now))
-            : undefined;
-          const dueAt = dueDays !== undefined
-            ? new Date(Date.now() + dueDays * 24 * 60 * 60 * 1000).toISOString()
-            : undefined;
-          await createItem({
-            phase: (input.phase ?? 'preproduction') as any,
-            title: String(input.title ?? 'Agent-foreslått oppgave'),
-            description: input.description ? String(input.description) : undefined,
-            dueAt,
-            status: 'planned',
-            metadata: {
-              entryType: input.entry_type,
-              agentRationale: input.rationale,
-            },
-          });
-          break;
-        }
-        default:
-          // summarize_brief_gaps / flag_scope_impact / suggest_next_decision are
-          // read-only; their input is the "answer" and needs no write.
-          break;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        void logAgentToolResult({
+          projectId,
+          toolName: tool.name,
+          toolUseId: tool.id,
+          status: 'error',
+          errorMessage: message,
+        });
+        throw err;
       }
     },
     [projectId, createReview, createItem],

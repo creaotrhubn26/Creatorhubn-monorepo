@@ -1,9 +1,0 @@
-<svg width="512" height="512" xmlns="http://www.w3.org/2000/svg">
-  <rect width="512" height="512" fill="white"/>
-  <g stroke="black" stroke-width="20" fill="none">
-    <rect x="50" y="50" width="412" height="412"/>
-    <line x1="256" y1="50" x2="256" y2="462"/>
-    <line x1="50" y1="256" x2="462" y2="256"/>
-  </g>
-</svg>
-
