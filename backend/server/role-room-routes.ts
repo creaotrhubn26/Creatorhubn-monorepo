@@ -20158,7 +20158,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         if (!isPrintfulConfigured()) {
           return res.status(503).json({
             error: 'mockup_provider_unconfigured',
-            detail: 'PRINTFUL_API_KEY not set in backend env. Set the key in Render to enable photorealistic mockups.',
+            detail: 'Printful is not fully configured. Both PRINTFUL_API_KEY and PRINTFUL_STORE_ID must be set in Render env. Create a free Printful store under Stores → Add store, then add the numeric store id to env.',
           });
         }
         const { productId, designImageUrl } = req.body ?? {};

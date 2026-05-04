@@ -36,36 +36,92 @@ export type MerchMockupProductId =
   | "totebag"
   | "mug";
 
-/** Hardcoded Printful product + variant + placement defaults per product.
- *  Variant IDs picked as the most photogenic neutral colour (white / black
- *  for caps where white isn't a stocked variant). Producers can later
- *  override variants once we add a variant picker. */
+/** Hardcoded Printful product + variant + placement + print-area
+ *  defaults per product. All IDs and placements verified against
+ *  Printful's live Catalog + Mockup-Generator APIs (2026-05). The
+ *  position is computed server-side from these dims so the logo
+ *  lands centred, scaled to ~half the area width.
+ *
+ *  Placement list per product comes from
+ *  GET /mockup-generator/printfiles/{product_id} → available_placements.
+ *  Polo 670 has ONLY embroidery placements — no flat-print "front" — so
+ *  we use embroidery_chest_left, the standard polo logo spot. */
 const PRINTFUL_PRODUCT_MAP: Record<
   MerchMockupProductId,
   {
     productId: number;
     variantId: number;
     placement: string;
+    /** Printable area dimensions, in pixels at the product's native dpi.
+     *  Source: /mockup-generator/printfiles/{id} → printfiles[*]. */
+    areaWidth: number;
+    areaHeight: number;
     label: string;
   }
 > = {
-  // Bella + Canvas 3001 Unisex Jersey — white S
-  tshirt: { productId: 71, variantId: 4011, placement: "front", label: "T-skjorte" },
-  // Gildan 18500 Heavy Blend Hoodie — white S
-  hoodie: { productId: 146, variantId: 5530, placement: "front", label: "Hettegenser" },
-  // Polo Shirt — white S
-  polo: { productId: 167, variantId: 7762, placement: "front", label: "Polo" },
-  // Snapback Hat — black
-  cap: { productId: 92, variantId: 4459, placement: "embroidery_front", label: "Caps" },
-  // All-Over Print Tote Bag (Liberty Bags 8804) — natural
-  totebag: { productId: 84, variantId: 6318, placement: "default", label: "Totebag" },
-  // White Glossy Mug 11oz
-  mug: { productId: 19, variantId: 1320, placement: "default", label: "Krus" },
+  // Bella + Canvas 3001 Unisex Short Sleeve Jersey T-Shirt — White S
+  tshirt: { productId: 71, variantId: 4011, placement: "front", areaWidth: 1800, areaHeight: 2400, label: "T-skjorte" },
+  // Gildan 18500 Unisex Heavy Blend Hooded Sweatshirt — White M
+  hoodie: { productId: 146, variantId: 5523, placement: "front", areaWidth: 1800, areaHeight: 2400, label: "Hettegenser" },
+  // Gildan 64800 Unisex Pique Polo Shirt — Black M. Polo 670's printfiles
+  // are embroidery-only; use the standard chest-left placement.
+  polo: { productId: 670, variantId: 16753, placement: "embroidery_chest_left", areaWidth: 1200, areaHeight: 1200, label: "Polo" },
+  // Yupoong 7005 5-Panel Cap — Black, one size. Cap printfile is 600x300
+  // (front panel), so logo must be wider than tall to look right.
+  cap: { productId: 92, variantId: 4622, placement: "embroidery_front", areaWidth: 600, areaHeight: 300, label: "Caps" },
+  // All-Over Print Tote Bag — Black 15"×15"
+  totebag: { productId: 84, variantId: 4533, placement: "default", areaWidth: 2550, areaHeight: 2475, label: "Totebag" },
+  // White Glossy Mug 11oz — wraparound print area is 2700x1050
+  mug: { productId: 19, variantId: 1320, placement: "default", areaWidth: 2700, areaHeight: 1050, label: "Krus" },
 };
 
+/** Compute a centred logo position that fills ~50% of the area's
+ *  shorter dimension, kept square. Top is offset 20% from top so chest
+ *  logos land high rather than mid-torso. */
+function computeLogoPosition(map: { areaWidth: number; areaHeight: number }): {
+  area_width: number;
+  area_height: number;
+  width: number;
+  height: number;
+  top: number;
+  left: number;
+} {
+  const shorter = Math.min(map.areaWidth, map.areaHeight);
+  const logoSide = Math.round(shorter * 0.5);
+  const left = Math.round((map.areaWidth - logoSide) / 2);
+  const top = Math.round(map.areaHeight * 0.2);
+  return {
+    area_width: map.areaWidth,
+    area_height: map.areaHeight,
+    width: logoSide,
+    height: logoSide,
+    top,
+    left,
+  };
+}
+
 export function isPrintfulConfigured(): boolean {
-  return typeof process.env.PRINTFUL_API_KEY === "string"
+  const hasKey = typeof process.env.PRINTFUL_API_KEY === "string"
     && process.env.PRINTFUL_API_KEY.trim().length > 0;
+  const hasStore = typeof process.env.PRINTFUL_STORE_ID === "string"
+    && process.env.PRINTFUL_STORE_ID.trim().length > 0;
+  // Printful's mockup-generator endpoints ALL require a store_id, even
+  // for account-level tokens. We require both env vars to be set so
+  // the route can fail fast with a clear 503 instead of confusing the
+  // producer with a 400 from Printful at render time.
+  return hasKey && hasStore;
+}
+
+/** Build the auth + store-context headers Printful's mockup-generator
+ *  requires. Returns the headers and a friendly error if PRINTFUL_STORE_ID
+ *  is missing — caller should check before issuing the request. */
+function buildPrintfulHeaders(): Record<string, string> {
+  const apiKey = process.env.PRINTFUL_API_KEY?.trim() ?? "";
+  const storeId = process.env.PRINTFUL_STORE_ID?.trim() ?? "";
+  return {
+    Authorization: `Bearer ${apiKey}`,
+    "X-PF-Store-Id": storeId,
+  };
 }
 
 export class PrintfulMockupError extends Error {
@@ -137,13 +193,14 @@ async function storeCachedMockup(
   }
 }
 
-async function pollPrintfulTask(taskKey: string, apiKey: string): Promise<string> {
+async function pollPrintfulTask(taskKey: string): Promise<string> {
+  const headers = buildPrintfulHeaders();
   const startedAt = Date.now();
   while (Date.now() - startedAt < POLL_TIMEOUT_MS) {
     const response = await fetch(
       `${PRINTFUL_API_BASE}/mockup-generator/task?task_key=${encodeURIComponent(taskKey)}`,
       {
-        headers: { Authorization: `Bearer ${apiKey}` },
+        headers,
         signal: AbortSignal.timeout(8_000),
       },
     );
@@ -192,9 +249,11 @@ export async function generateMerchMockup(
   if (!params.designImageUrl || !/^https?:\/\//i.test(params.designImageUrl)) {
     throw new PrintfulMockupError(400, "designImageUrl must be a public http(s) URL");
   }
-  const apiKey = process.env.PRINTFUL_API_KEY;
-  if (!apiKey || apiKey.trim().length === 0) {
-    throw new PrintfulMockupError(503, "PRINTFUL_API_KEY not configured");
+  if (!isPrintfulConfigured()) {
+    throw new PrintfulMockupError(
+      503,
+      "PRINTFUL_API_KEY and PRINTFUL_STORE_ID must both be set in backend env",
+    );
   }
 
   const cacheKey = buildCacheKey(params.productId, params.designImageUrl);
@@ -211,7 +270,7 @@ export async function generateMerchMockup(
     {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        ...buildPrintfulHeaders(),
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -221,6 +280,9 @@ export async function generateMerchMockup(
           {
             placement: map.placement,
             image_url: params.designImageUrl,
+            // Printful errors with MG-4 "Position field is missing" if
+            // we omit this. Centred logo, 50% of shorter side, chest-high.
+            position: computeLogoPosition(map),
           },
         ],
       }),
@@ -242,7 +304,7 @@ export async function generateMerchMockup(
     throw new PrintfulMockupError(502, "Printful create-task did not return task_key");
   }
 
-  const mockupUrl = await pollPrintfulTask(taskKey, apiKey);
+  const mockupUrl = await pollPrintfulTask(taskKey);
   await storeCachedMockup(pool, {
     cacheKey,
     mockupUrl,

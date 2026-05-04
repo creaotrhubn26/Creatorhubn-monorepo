@@ -300,8 +300,10 @@ const MerchMockupPreview: React.FC<MerchMockupPreviewProps> = ({
               >
                 {error.code === 'mockup_provider_unconfigured' ? (
                   <>
-                    Printful er ikke konfigurert. Be admin sette
-                    <code> PRINTFUL_API_KEY</code> i backend-env (Render → environment).
+                    Printful er ikke fullt konfigurert. Be admin sette både
+                    <code> PRINTFUL_API_KEY</code> og <code>PRINTFUL_STORE_ID</code> i
+                    backend-env (Render → environment). Store-ID hentes fra Printful
+                    → Stores etter at en gratis "Manual / API"-store er opprettet.
                   </>
                 ) : (
                   error.detail

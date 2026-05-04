@@ -65,6 +65,12 @@ services:
       # returns 503 and the UI shows a "wire Printful first" message.
       - key: PRINTFUL_API_KEY
         sync: false
+      # Numeric Printful store id. Mockup-generator endpoints require
+      # X-PF-Store-Id even with an account-level token. Create a free
+      # "manual order platform / API" store in Printful → Stores, then
+      # paste the numeric id here.
+      - key: PRINTFUL_STORE_ID
+        sync: false
       # Proactive daily scan — runs once a day and pushes risk findings
       # into producer_project_notifications. Default off; enable after
       # you've validated costs with a small pilot group.
