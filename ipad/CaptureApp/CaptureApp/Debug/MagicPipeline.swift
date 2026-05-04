@@ -165,6 +165,18 @@ final class MagicPipeline {
         // working space so we don't down-gamut to sRGB before display.
         let ctx = ColorManagement.makeContext(for: .appPreview)
 
+        // Phase 5.2 — Picture Style baseline (same logic as the RAW
+        // pipeline). Only when recipe is fully neutral do we read the
+        // embedded Picture Style from the source JPEG and merge its
+        // baseline. Photographer's slider edits trump everything.
+        let effectiveRecipe: MagicRecipe = {
+            guard recipe.isNeutral,
+                  let data = try? Data(contentsOf: URL(fileURLWithPath: source))
+            else { return recipe }
+            let style = CanonPictureStyle.read(fromImageData: data) ?? .unknown
+            return recipe.merging(baseline: style.baselineRecipeAdjustment)
+        }()
+
         // 1. Apple's auto-adjustment filters: white balance, tone curve,
         //    red-eye. These analyse the scene, so they give us a clean
         //    colour-neutral baseline before we apply subject-specific
@@ -182,8 +194,9 @@ final class MagicPipeline {
         // 2. Recipe adjustments in stable order: warmth → shadows → tone →
         //    skin. Warmth first because it interacts with white balance
         //    that the auto pass just set.
-        if recipe.warmth != 0 {
-            let target = 6500.0 + recipe.warmth * 900.0
+
+        if effectiveRecipe.warmth != 0 {
+            let target = 6500.0 + effectiveRecipe.warmth * 900.0
             let f = CIFilter(name: "CITemperatureAndTint")!
             f.setValue(current, forKey: kCIInputImageKey)
             f.setValue(CIVector(x: 6500, y: 0), forKey: "inputNeutral")
@@ -191,28 +204,34 @@ final class MagicPipeline {
             if let out = f.outputImage { current = out }
         }
 
-        if recipe.shadowLift > 0 || recipe.highlightRecovery > 0 {
-            // CIHighlightShadowAdjust handles both axes in one pass so
-            // we don't double-process the image. inputHighlightAmount
-            // is in the range -1...1 where negative values pull bright
-            // pixels down (recovery) — same direction as the slider so
-            // we negate `recipe.highlightRecovery` for the input.
+        if effectiveRecipe.shadowLift > 0 || effectiveRecipe.highlightRecovery > 0 {
+            // CIHighlightShadowAdjust handles both axes in one pass.
+            // **Audit fix 2026-05-04**: per Apple Core Image Filter
+            // Reference, `inputHighlightAmount` is range [0, 1] = "by
+            // how much to dampen highlights": 0 = no dampening (no
+            // recovery), 1 = max dampening (full recovery). Default
+            // is 1 so the filter does something out-of-the-box, but
+            // *identity* (image unchanged) is at 0. Pre-audit code
+            // used `-recipe.highlightRecovery` which Core Image
+            // clamped to 0 → no dampening → the slider was DEAD at
+            // every value. Sky/glaze highlights never recovered.
+            // Fixed: pass the slider directly so 0 = identity, 1 = max.
             let f = CIFilter(name: "CIHighlightShadowAdjust")!
             f.setValue(current, forKey: kCIInputImageKey)
-            f.setValue(recipe.shadowLift, forKey: "inputShadowAmount")
-            f.setValue(-recipe.highlightRecovery, forKey: "inputHighlightAmount")
+            f.setValue(effectiveRecipe.shadowLift, forKey: "inputShadowAmount")
+            f.setValue(effectiveRecipe.highlightRecovery, forKey: "inputHighlightAmount")
             if let out = f.outputImage { current = out }
         }
 
-        if recipe.contrast != 0 || recipe.saturation != 0 {
+        if effectiveRecipe.contrast != 0 || effectiveRecipe.saturation != 0 {
             let f = CIFilter(name: "CIColorControls")!
             f.setValue(current, forKey: kCIInputImageKey)
-            f.setValue(1.0 + recipe.saturation * 0.45, forKey: kCIInputSaturationKey)
-            f.setValue(1.0 + recipe.contrast * 0.45, forKey: kCIInputContrastKey)
+            f.setValue(1.0 + effectiveRecipe.saturation * 0.45, forKey: kCIInputSaturationKey)
+            f.setValue(1.0 + effectiveRecipe.contrast * 0.45, forKey: kCIInputContrastKey)
             if let out = f.outputImage { current = out }
         }
 
-        if recipe.skinSmooth > 0 {
+        if effectiveRecipe.skinSmooth > 0 {
             // Edge-preserving smoothing, not a global Gaussian blur.
             // CINoiseReduction is Apple's built-in bilateral filter —
             // smooths flat tonal areas (skin tone variation) while
@@ -222,7 +241,7 @@ final class MagicPipeline {
             // approximation as a single filter, robust and cheap.
             if let nr = CIFilter(name: "CINoiseReduction") {
                 nr.setValue(current, forKey: kCIInputImageKey)
-                nr.setValue(recipe.skinSmooth * 0.06, forKey: "inputNoiseLevel")
+                nr.setValue(effectiveRecipe.skinSmooth * 0.06, forKey: "inputNoiseLevel")
                 nr.setValue(0.5, forKey: "inputSharpness")
                 if let reduced = nr.outputImage {
                     current = reduced

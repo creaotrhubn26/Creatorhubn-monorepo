@@ -60,7 +60,19 @@ enum RAWExportPipeline {
             throw Error.decodeFailed
         }
 
-        applyRecipe(recipe, to: filter)
+        // Phase 5.2 — Picture Style baseline. Only when the user's
+        // recipe is fully neutral (no slider touched yet) do we read
+        // the in-camera Picture Style and merge its small baseline
+        // adjustment in. Once the photographer reaches for any axis
+        // their explicit choice trumps everything and we skip — see
+        // the doc comment on `CanonPictureStyle` for the rationale +
+        // double-counting risk with `CIRAWFilter`.
+        let effectiveRecipe: MagicRecipe = recipe.isNeutral
+            ? recipe.merging(baseline: (CanonPictureStyle.read(fromImageData: rawData)
+                ?? .unknown).baselineRecipeAdjustment)
+            : recipe
+
+        applyRecipe(effectiveRecipe, to: filter)
 
         // Downsample at decode time when caller wants a preview-size
         // render — `CIRAWFilter.scaleFactor` runs the bayer pipeline at
@@ -78,7 +90,7 @@ enum RAWExportPipeline {
             throw Error.renderFailed
         }
 
-        let toned = applyToneAdjustments(recipe: recipe, to: rawOutput)
+        let toned = applyToneAdjustments(recipe: effectiveRecipe, to: rawOutput)
 
         let context = ColorManagement.makeContext(for: colorPurpose)
         guard let cgImage = ColorManagement.renderCGImage(
@@ -159,46 +171,61 @@ enum RAWExportPipeline {
             filter.isLensCorrectionEnabled = true
         }
 
-        // Highlight recovery — a linear-space `CIToneCurve` rolloff that
-        // pulls the 90-100% range down proportional to the slider, so
-        // the photographer can tune exactly how much "softening" of
-        // highlights they want without affecting midtones. Done in
-        // linear scene-referred (via `linearSpaceFilter`) so the curve
-        // acts on actual scene radiance, not gamma-encoded display
-        // values — preserves natural rolloff. Apple's native
-        // `isHighlightRecoveryEnabled` requires iOS 26 so we don't
-        // gate on it here; the linear curve gives most of the same
-        // benefit.
-        if recipe.highlightRecovery > 0 {
-            let toneCurve = CIFilter.toneCurve()
-            let topPull = CGFloat(1.0 - 0.15 * recipe.highlightRecovery)
-            toneCurve.point0 = CGPoint(x: 0,    y: 0)
-            toneCurve.point1 = CGPoint(x: 0.25, y: 0.25)
-            toneCurve.point2 = CGPoint(x: 0.50, y: 0.50)
-            toneCurve.point3 = CGPoint(x: 0.85, y: 0.78 + 0.07 * (1 - recipe.highlightRecovery))
-            toneCurve.point4 = CGPoint(x: 1,    y: topPull)
-            filter.linearSpaceFilter = toneCurve
-        } else {
-            filter.linearSpaceFilter = nil
-        }
+        // Highlight recovery — applied post-output in
+        // ``applyToneAdjustments`` rather than in `linearSpaceFilter`
+        // because (audit 2026-05-04, Apple Core Image Filter Reference):
+        //   1. `CIToneCurve` actually operates in gamma-2 perceptual
+        //      space regardless of which filter slot you put it in,
+        //      not linear scene-referred. Original "linear-space"
+        //      claim was wrong.
+        //   2. CIRAWFilter outputs extended-range scene-linear values
+        //      (>1.0 for HDR; up to 14 stops). A curve ending at
+        //      point4.x=1.0 just linearly extrapolates above 1.0 then
+        //      gamut-clips — meaning highlights that need recovery
+        //      most (blown clouds, specular hits) got NO recovery.
+        // Both problems disappear when the curve runs after CIRAWFilter
+        // has already gamut-mapped to display range.
+        filter.linearSpaceFilter = nil
     }
 
-    /// Apply contrast + saturation post-demosaic on sRGB. Mirrors the
-    /// display pipeline's `* 0.45` mapping so live preview and final
-    /// RAW deliverable agree on these axes — a `+0.5 contrast` slider
-    /// produces the same perceived bump in both outputs.
+    /// Apply contrast + saturation + highlight-recovery post-demosaic.
+    /// Mirrors the display pipeline's `* 0.45` mapping so live preview
+    /// and final RAW deliverable agree on these axes — a `+0.5 contrast`
+    /// slider produces the same perceived bump in both outputs.
     ///   - `contrast` -1…+1 → 0.55…1.45 around 1.0 (neutral).
     ///   - `saturation` -1…+1 → 0.55…1.45 around 1.0 (neutral).
+    ///   - `highlightRecovery` 0…1 → CIToneCurve pulling display 65-100%
+    ///     range down. Knee starts at 65% (industry-standard soft-clip
+    ///     threshold per ARRI/Reinhard/Hable shoulder math, NOT the
+    ///     85% we used pre-audit which read as "obviously blown" by
+    ///     the time the curve kicked in).
     /// Brightness stays at 0 — exposure shifts belong upstream on the RAW
     /// itself, not as a post tone-curve nudge.
     static func applyToneAdjustments(recipe: MagicRecipe, to image: CIImage) -> CIImage {
-        guard recipe.contrast != 0 || recipe.saturation != 0 else { return image }
-        let controls = CIFilter.colorControls()
-        controls.inputImage = image
-        controls.contrast = 1.0 + Float(recipe.contrast) * 0.45
-        controls.saturation = 1.0 + Float(recipe.saturation) * 0.45
-        controls.brightness = 0
-        return controls.outputImage ?? image
+        var current = image
+        if recipe.contrast != 0 || recipe.saturation != 0 {
+            let controls = CIFilter.colorControls()
+            controls.inputImage = current
+            controls.contrast = 1.0 + Float(recipe.contrast) * 0.45
+            controls.saturation = 1.0 + Float(recipe.saturation) * 0.45
+            controls.brightness = 0
+            current = controls.outputImage ?? current
+        }
+        if recipe.highlightRecovery > 0 {
+            let r = recipe.highlightRecovery
+            let toneCurve = CIFilter.toneCurve()
+            toneCurve.inputImage = current
+            // Knee at 65% display-referred — knee-too-late was a real
+            // pre-audit bug. Curve is monotonically reducing slope so
+            // CISpline doesn't overshoot.
+            toneCurve.point0 = CGPoint(x: 0,    y: 0)
+            toneCurve.point1 = CGPoint(x: 0.50, y: 0.50)
+            toneCurve.point2 = CGPoint(x: 0.65, y: 0.65)
+            toneCurve.point3 = CGPoint(x: 0.85, y: 0.85 - 0.07 * r)
+            toneCurve.point4 = CGPoint(x: 1.00, y: 0.92 - 0.08 * r)
+            current = toneCurve.outputImage ?? current
+        }
+        return current
     }
 
     // Encoding moved to `ColorManagement.encodeJPEG` so color-space +
