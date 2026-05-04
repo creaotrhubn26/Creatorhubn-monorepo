@@ -41,6 +41,10 @@ import CustomerEntityConfirmationDialog, {
   loadConfirmedCustomerEntity,
   type ConfirmedCustomerEntity,
 } from './CustomerEntityConfirmationDialog';
+import {
+  listMerchPartnerEmailHistory,
+  type MerchPartnerEmailLogEntry,
+} from '../../services/roleRoomAgentClaudeApi';
 
 interface MerchSuppliersPanelProps {
   projectId: string | null;
@@ -98,6 +102,25 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
   React.useEffect(() => {
     setConfirmedEntity(loadConfirmedCustomerEntity(projectId));
   }, [projectId]);
+
+  // Fetch the project's send-history once so each supplier card can
+  // surface "Sendt 4. mai" badges. Refreshes whenever a cooperation
+  // dialog closes (cheapest hook to detect "user just sent").
+  const [emailHistory, setEmailHistory] = useState<MerchPartnerEmailLogEntry[]>([]);
+  const reloadEmailHistory = React.useCallback(() => {
+    if (!projectId) return;
+    void listMerchPartnerEmailHistory({ projectId, limit: 100 }).then((res) => {
+      setEmailHistory(res.entries ?? []);
+    });
+  }, [projectId]);
+  React.useEffect(() => {
+    reloadEmailHistory();
+  }, [reloadEmailHistory]);
+  // Re-fetch when cooperation dialog closes — most likely cause of new
+  // history entries.
+  React.useEffect(() => {
+    if (!cooperationOpen) reloadEmailHistory();
+  }, [cooperationOpen, reloadEmailHistory]);
 
   const selectedSupplier = useMemo(() => {
     if (!merch || !selectedSupplierKey) return null;
@@ -312,6 +335,12 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
           const pill = STATUS_PILL[supplier.status];
           const key = supplierKeyOf(supplier);
           const isSelected = selectedSupplierKey === key;
+          // Slice 7b history per partner — shown as a small "Sendt X
+          // ganger"-badge in the card so producer immediately sees if
+          // they've already pitched this supplier.
+          const sentCount = supplier.organizationNumber
+            ? emailHistory.filter((e) => e.partnerOrgnr === supplier.organizationNumber).length
+            : 0;
           return (
             <Box
               key={key}
@@ -496,6 +525,20 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
                     Send tilbudsforespørsel
                   </Button>
                 </Stack>
+                {/* Slice 7b: send-history badge */}
+                {sentCount > 0 ? (
+                  <Chip
+                    size="small"
+                    label={`Sendt ${sentCount} ${sentCount === 1 ? 'gang' : 'ganger'} fra dette prosjektet`}
+                    sx={{
+                      alignSelf: 'flex-start',
+                      bgcolor: 'rgba(99,102,241,0.16)',
+                      color: '#c7d2fe',
+                      fontSize: '0.7rem',
+                      height: 22,
+                    }}
+                  />
+                ) : null}
                 {/* Scraped contact info — chip row only when something was found */}
                 {(supplier.contact?.email || supplier.contact?.phone) ? (
                   <Stack

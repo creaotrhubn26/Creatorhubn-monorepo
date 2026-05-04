@@ -565,6 +565,81 @@ export async function findCustomerLegalEntities(input: {
   return r.json();
 }
 
+// Slice 7b — send + log merch-partner emails through the existing
+// Gmail SMTP transport, BCC the producer.
+
+export interface SendMerchPartnerEmailInput {
+  projectId: string;
+  partnerOrgnr?: string | null;
+  partnerName: string;
+  partnerEmail: string;
+  producerCcEmail?: string | null;
+  subject: string;
+  bodyMarkdown: string;
+  replyToEmail?: string | null;
+}
+
+export interface SendMerchPartnerEmailResult {
+  ok: boolean;
+  messageId: string | null;
+  reason?: string;
+  loggedRowId?: string;
+}
+
+export async function sendMerchPartnerEmail(
+  input: SendMerchPartnerEmailInput,
+): Promise<SendMerchPartnerEmailResult> {
+  const { projectId, ...body } = input;
+  const r = await fetch(
+    `${API_BASE}/projects/${encodeURIComponent(projectId)}/agent/merch-partner-email/send`,
+    {
+      method: 'POST',
+      headers: buildHeaders(),
+      body: JSON.stringify(body),
+    },
+  );
+  if (!r.ok) {
+    const raw = await r.text().catch(() => '');
+    let parsed: { error?: string } | null = null;
+    try { parsed = raw ? JSON.parse(raw) : null; } catch { parsed = null; }
+    return { ok: false, messageId: null, reason: parsed?.error ?? `HTTP ${r.status}` };
+  }
+  return r.json();
+}
+
+export interface MerchPartnerEmailLogEntry {
+  id: string;
+  projectId: string;
+  partnerOrgnr: string | null;
+  partnerName: string;
+  partnerEmail: string;
+  ccEmail: string | null;
+  subject: string;
+  bodyMarkdown: string;
+  status: string;
+  gmailMessageId: string | null;
+  errorMessage: string | null;
+  sentByUserId: string | null;
+  sentAt: string;
+}
+
+export async function listMerchPartnerEmailHistory(input: {
+  projectId: string;
+  partnerOrgnr?: string | null;
+  limit?: number;
+}): Promise<{ entries: MerchPartnerEmailLogEntry[] }> {
+  const params = new URLSearchParams();
+  if (input.partnerOrgnr) params.set('partnerOrgnr', input.partnerOrgnr);
+  if (input.limit) params.set('limit', String(input.limit));
+  const qs = params.toString();
+  const r = await fetch(
+    `${API_BASE}/projects/${encodeURIComponent(input.projectId)}/agent/merch-partner-email/history${qs ? `?${qs}` : ''}`,
+    { headers: buildHeaders() },
+  );
+  if (!r.ok) return { entries: [] };
+  return r.json();
+}
+
 /**
  * Streams an agent response via SSE-style POST. Returns a promise that
  * resolves when the stream completes. Caller can abort via AbortSignal.

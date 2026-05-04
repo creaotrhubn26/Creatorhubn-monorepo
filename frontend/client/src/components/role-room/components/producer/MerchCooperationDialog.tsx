@@ -45,6 +45,7 @@ import {
   enrichPartnerCandidate,
   generateMerchCooperationDraft,
   MerchCooperationApiError,
+  sendMerchPartnerEmail,
   type MerchCooperationDraft,
   type MerchDealType,
   type MerchPartnerCandidate,
@@ -153,6 +154,14 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
   const [discoveryLoading, setDiscoveryLoading] = useState(false);
   const [selectedCandidateOrg, setSelectedCandidateOrg] = useState<string | null>(null);
   const [enrichmentSummary, setEnrichmentSummary] = useState<string>('');
+  // Slice 7a: holds the partner's scraped contact email so the
+  // "Send direkte"-button can open mailto with the full draft.
+  const [partnerEmail, setPartnerEmail] = useState<string | null>(null);
+  const [partnerOrgnrSelected, setPartnerOrgnrSelected] = useState<string | null>(null);
+  // System-send state — separate from "Send direkte" mailto so user can
+  // see exactly what happened.
+  const [sending, setSending] = useState(false);
+  const [sendResult, setSendResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<MerchCooperationApiError | null>(null);
@@ -197,7 +206,10 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
       if (!projectId) return;
       setSelectedCandidateOrg(candidate.organizationNumber || candidate.placeId || candidate.name);
       setPartnerName(candidate.name);
+      setPartnerOrgnrSelected(candidate.organizationNumber ?? null);
       setEnrichmentSummary('');
+      setPartnerEmail(null);
+      setSendResult(null);
       try {
         const enrichment = await enrichPartnerCandidate({ projectId, candidate });
         if (enrichment.enrichmentSummary) {
@@ -208,6 +220,11 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
             const tag = `[Hentet fra ${candidate.name}: ${enrichment.enrichmentSummary}]`;
             return prev.trim().length > 0 ? `${prev}\n\n${tag}` : tag;
           });
+        }
+        // Slice 7a: capture the scraped contact email so the "Send
+        // direkte"-button at the bottom of the result can pre-fill it.
+        if (enrichment.website?.contactEmail) {
+          setPartnerEmail(enrichment.website.contactEmail);
         }
       } catch {
         /* enrichment is advisory; user can still generate */
@@ -277,6 +294,58 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
     const body = encodeURIComponent(draftToMarkdown(draft, partnerName));
     return `mailto:?subject=${subject}&body=${body}`;
   }, [draft, partnerName]);
+
+  // Slice 7a: when the picked partner has a scraped contact email, build
+  // a direct mailto with the recipient pre-filled. Producer can hit
+  // "Send direkte" instead of copy-pasting into a fresh draft.
+  const mailtoDirect = useMemo(() => {
+    if (!draft || !partnerEmail) return null;
+    const subject = encodeURIComponent(draft.dealHeadline);
+    const body = encodeURIComponent(draftToMarkdown(draft, partnerName));
+    return `mailto:${encodeURIComponent(partnerEmail)}?subject=${subject}&body=${body}`;
+  }, [draft, partnerEmail, partnerName]);
+
+  // Slice 7b — backend send-and-log via Gmail SMTP. Distinct from mailto
+  // because this records the send in role_room_merch_partner_emails so
+  // producer can see "Sendt 4. mai til X" history later.
+  const handleSendViaSystem = useCallback(async () => {
+    if (!projectId || !draft || !partnerEmail) return;
+    setSending(true);
+    setSendResult(null);
+    try {
+      const r = await sendMerchPartnerEmail({
+        projectId,
+        partnerOrgnr: partnerOrgnrSelected,
+        partnerName,
+        partnerEmail,
+        producerCcEmail: null,
+        subject: draft.dealHeadline,
+        bodyMarkdown: draftToMarkdown(draft, partnerName),
+      });
+      if (r.ok) {
+        setSendResult({
+          ok: true,
+          message: `Sendt til ${partnerEmail} · loggført i prosjekt-historikk`,
+        });
+      } else {
+        setSendResult({
+          ok: false,
+          message: r.reason === 'missing_email_config'
+            ? 'Gmail-konfigurasjon mangler i backend-env. Be admin sette GMAIL_USER + GMAIL_APP_PASSWORD i Render.'
+            : r.reason === 'invalid_recipient'
+              ? 'Mottaker-adressen ser ut som en placeholder (bruker@domene.no e.l.) og ble avvist.'
+              : `Feilet: ${r.reason ?? 'ukjent feil'}`,
+        });
+      }
+    } catch (err) {
+      setSendResult({
+        ok: false,
+        message: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setSending(false);
+    }
+  }, [projectId, draft, partnerName, partnerEmail, partnerOrgnrSelected]);
 
   const canGenerate = Boolean(projectId && customerName.trim() && partnerName.trim() && !loading);
 
@@ -474,6 +543,16 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
                 {enrichmentSummary ? (
                   <Alert severity="success" sx={{ mt: 1, fontSize: '0.82rem' }}>
                     <strong>{partnerName}</strong> · {enrichmentSummary}
+                    {partnerEmail ? (
+                      <Box sx={{ mt: 0.5 }}>
+                        <Chip
+                          size="small"
+                          icon={<EmailIcon sx={{ fontSize: 12, color: '#bbf7d0 !important' }} />}
+                          label={`Forslaget kan sendes direkte til ${partnerEmail}`}
+                          sx={{ bgcolor: 'rgba(34,197,94,0.16)', color: '#bbf7d0', height: 22, fontSize: '0.72rem' }}
+                        />
+                      </Box>
+                    ) : null}
                   </Alert>
                 ) : null}
               </Box>
@@ -536,8 +615,45 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
                       Åpne i e-post
                     </Button>
                   ) : null}
+                  {mailtoDirect && partnerEmail ? (
+                    <Button
+                      size="small"
+                      startIcon={<EmailIcon />}
+                      variant="outlined"
+                      href={mailtoDirect}
+                      sx={{ textTransform: 'none', fontWeight: 700 }}
+                    >
+                      Åpne hos meg ({partnerEmail})
+                    </Button>
+                  ) : null}
+                  {partnerEmail ? (
+                    <Button
+                      size="small"
+                      startIcon={sending ? <CircularProgress size={14} color="inherit" /> : <EmailIcon />}
+                      variant="contained"
+                      onClick={() => void handleSendViaSystem()}
+                      disabled={sending}
+                      sx={{
+                        textTransform: 'none',
+                        fontWeight: 700,
+                        bgcolor: 'rgba(34,197,94,0.4)',
+                        '&:hover': { bgcolor: 'rgba(34,197,94,0.6)' },
+                      }}
+                    >
+                      {sending ? 'Sender …' : `Send via system + logg`}
+                    </Button>
+                  ) : null}
                 </Stack>
               </Stack>
+              {sendResult ? (
+                <Alert
+                  severity={sendResult.ok ? 'success' : 'error'}
+                  sx={{ mt: 1.4 }}
+                  onClose={() => setSendResult(null)}
+                >
+                  {sendResult.message}
+                </Alert>
+              ) : null}
 
               {/* Three-column value exchange */}
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.4} sx={{ mt: 2.2 }}>

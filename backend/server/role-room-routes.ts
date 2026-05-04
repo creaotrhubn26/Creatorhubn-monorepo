@@ -91,6 +91,10 @@ import {
 import { fetchBrregCompany } from './role-room-agent.js';
 import { findCustomerLegalEntityCandidates } from './role-room-legal-entity.js';
 import {
+  sendMerchPartnerEmail,
+  listMerchPartnerEmails,
+} from './role-room-merch-partner-email.js';
+import {
   getAiGovernanceOverview,
   getAuditTrail,
   getConsentList,
@@ -20379,6 +20383,91 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       } catch (error) {
         res.status(500).json({
           error: 'partner_enrichment_failed',
+          detail: error instanceof Error ? error.message : String(error),
+        });
+      }
+    },
+  );
+
+  // Merch partner-email — Slice 7b. Send a cooperation/outreach
+  // email through the existing Gmail SMTP transport, BCC the producer
+  // so they have a copy in their own Sent folder, and log the send to
+  // role_room_merch_partner_emails so the agent UI can show "Sendt 4.
+  // mai til Lindeberg SK Fotball ✓".
+  router.post(
+    '/projects/:projectId/agent/merch-partner-email/send',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const {
+          partnerOrgnr,
+          partnerName,
+          partnerEmail,
+          producerCcEmail,
+          subject,
+          bodyMarkdown,
+          replyToEmail,
+        } = req.body ?? {};
+
+        if (typeof partnerName !== 'string' || partnerName.trim().length === 0) {
+          return res.status(400).json({ error: 'invalid_partner_name' });
+        }
+        if (typeof partnerEmail !== 'string' || partnerEmail.trim().length === 0) {
+          return res.status(400).json({ error: 'invalid_partner_email' });
+        }
+        if (typeof subject !== 'string' || subject.trim().length === 0) {
+          return res.status(400).json({ error: 'invalid_subject' });
+        }
+        if (typeof bodyMarkdown !== 'string' || bodyMarkdown.trim().length === 0) {
+          return res.status(400).json({ error: 'invalid_body' });
+        }
+
+        const result = await sendMerchPartnerEmail({
+          pool,
+          projectId: req.params.projectId,
+          userId,
+          partnerOrgnr: typeof partnerOrgnr === 'string' && partnerOrgnr.length > 0 ? partnerOrgnr : null,
+          partnerName: partnerName.trim(),
+          partnerEmail: partnerEmail.trim(),
+          producerCcEmail: typeof producerCcEmail === 'string' ? producerCcEmail.trim() : null,
+          subject: subject.trim(),
+          bodyMarkdown: bodyMarkdown.trim(),
+          replyToEmail: typeof replyToEmail === 'string' ? replyToEmail.trim() : null,
+        });
+        if (!result.ok) {
+          return res.status(result.reason === 'missing_email_config' ? 503 : 400).json({
+            error: result.reason ?? 'send_failed',
+          });
+        }
+        res.json(result);
+      } catch (error) {
+        res.status(500).json({
+          error: 'partner_email_send_failed',
+          detail: error instanceof Error ? error.message : String(error),
+        });
+      }
+    },
+  );
+
+  router.get(
+    '/projects/:projectId/agent/merch-partner-email/history',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const partnerOrgnr = typeof req.query.partnerOrgnr === 'string'
+          ? req.query.partnerOrgnr.trim()
+          : null;
+        const limit = typeof req.query.limit === 'string' ? Number(req.query.limit) : undefined;
+        const entries = await listMerchPartnerEmails(pool, {
+          projectId: req.params.projectId,
+          partnerOrgnr: partnerOrgnr || null,
+          limit,
+        });
+        res.json({ entries });
+      } catch (error) {
+        res.status(500).json({
+          error: 'partner_email_history_failed',
           detail: error instanceof Error ? error.message : String(error),
         });
       }
