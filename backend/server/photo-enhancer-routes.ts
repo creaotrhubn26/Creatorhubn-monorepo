@@ -4244,6 +4244,153 @@ async function fetchUserLutTable(
   };
 }
 
+/// Phase 5.4 — capture-side bridge. The iPad's deliver flow uploads
+/// picks to capture R2; this enqueues a photo-enhancer job from
+/// already-fetched bytes (rather than from an existing PE-R2 source).
+/// The capture route fetches via `signAssetReadUrl` and hands the
+/// buffer here. We re-upload to PE R2 (so the runner reads from its
+/// expected bucket prefix) and construct a job in the same shape
+/// `POST /jobs` produces, then schedule the queue.
+///
+/// Returns the job id on success or null when the PE R2 upload
+/// client isn't configured (caller should treat as 503).
+export async function enqueuePhotoEnhancerJobFromBuffer(opts: {
+  buffer: Buffer;
+  fileName: string;
+  mimeType: string;
+  projectId?: string;
+  owner: string;
+  userId: string;
+  preset?: string;
+}): Promise<string | null> {
+  if (!isSupportedPhotoUpload({ originalname: opts.fileName, mimetype: opts.mimeType })) {
+    return null;
+  }
+  const config = buildPhotoEnhancerUploadR2Config();
+  const client = getPhotoEnhancerUploadR2Client(config);
+  if (!config.enabled || !config.bucket || !client) {
+    return null;
+  }
+  const sha = createHash("sha256").update(opts.buffer).digest("hex");
+  const key = buildPhotoEnhancerUploadKey({
+    fileName: opts.fileName,
+    projectId: opts.projectId || "capture-deliver",
+    contentHash: sha,
+  });
+  try {
+    await client.send(
+      new PutObjectCommand({
+        Bucket: config.bucket,
+        Key: key,
+        Body: opts.buffer,
+        ContentType: opts.mimeType,
+        Metadata: { sha256: sha, size: String(opts.buffer.length) },
+      }),
+    );
+  } catch {
+    return null;
+  }
+
+  const preset = opts.preset || "auto";
+  const projectId = opts.projectId || "capture-deliver";
+  const now = new Date();
+  const job: PhotoEnhancerQueuedJob = {
+    id: crypto.randomUUID(),
+    status: "queued",
+    priority: 0,
+    owner: opts.owner,
+    userId: opts.userId,
+    projectId,
+    folderId: null,
+    source: {
+      bucket: config.bucket,
+      key,
+      fileName: opts.fileName,
+      mimeType: opts.mimeType,
+      size: opts.buffer.length,
+      uploadId: null,
+      originalHash: sha,
+    },
+    preset,
+    settings: normalizeSettings(undefined, preset),
+    progress: 0,
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+    startedAt: null,
+    completedAt: null,
+    expiresAt: new Date(now.getTime() + PHOTO_ENHANCER_QUEUE_JOB_TTL_MS).toISOString(),
+    attempts: 0,
+    maxAttempts: 2,
+    retryHistory: [],
+    failureReason: null,
+    timeline: [],
+    auditLog: [],
+    artifacts: [
+      {
+        id: "source",
+        type: "source",
+        mimeType: opts.mimeType,
+        size: opts.buffer.length,
+        url: null,
+        checksum: sha,
+      },
+    ],
+    outputManifest: null,
+    checksum: null,
+    cancelled: false,
+    result: null,
+  };
+  addPhotoEnhancerJobEvent(job, "created", "Capture-deliver job created.", {
+    projectId: job.projectId,
+    owner: job.owner,
+    bytes: opts.buffer.length,
+  });
+  addPhotoEnhancerJobEvent(job, "queued", "Job queued for server-side enhancement.", {
+    priority: job.priority,
+    queuePaused: photoEnhancerQueuePaused,
+  });
+  photoEnhancerJobs.set(job.id, job);
+  prunePhotoEnhancerJobs();
+  schedulePhotoEnhancerQueue();
+  return job.id;
+}
+
+/// Phase 5.4 — collapse a `PhotoEnhancerQueuedJob` into the small
+/// shape the iPad poll endpoint cares about: a coarse state name and
+/// the enhanced-image URL when ready. Returns `null` for unknown
+/// jobIds (e.g. job aged out of the in-memory map).
+export function getPhotoEnhancerJobStatusSnapshot(jobId: string): {
+  state: "queued" | "running" | "done" | "failed" | "cancelled" | "unknown";
+  enhancedUrl: string | null;
+} | null {
+  const job = photoEnhancerJobs.get(jobId);
+  if (!job) return null;
+  // Map the internal status taxonomy onto the iPad's simpler enum.
+  // Internal statuses include `paused` (queue-wide pause flag) which
+  // is not a terminal state — surface it as `queued` to the iPad
+  // since it'll resume eventually.
+  const state: "queued" | "running" | "done" | "failed" | "cancelled" | "unknown" = (() => {
+    switch (job.status) {
+      case "queued":
+      case "paused":
+        return "queued";
+      case "running":
+        return "running";
+      case "completed":
+        return "done";
+      case "failed":
+        return "failed";
+      case "cancelled":
+        return "cancelled";
+      default:
+        return "unknown";
+    }
+  })();
+  const enhancedUrl = job.artifacts
+    .find((artifact) => artifact.type === "enhanced-image")?.url ?? null;
+  return { state, enhancedUrl };
+}
+
 export function createPhotoEnhancerRouter(pool?: Pool) {
   const router = express.Router();
 

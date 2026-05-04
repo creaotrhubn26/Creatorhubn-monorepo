@@ -43,6 +43,10 @@ import {
   listAssets as listAssetsForOwner,
 } from './capture-assets-service.js';
 import { addReview as addReviewRow } from './capture-reviews-service.js';
+import {
+  enqueuePhotoEnhancerJobFromBuffer,
+  getPhotoEnhancerJobStatusSnapshot,
+} from './photo-enhancer-routes.js';
 import { performHandoff, type HandoffFilter } from './capture-handoff-service.js';
 import { analyzePhoto, type AnalyzeError } from './capture-analyze-service.js';
 import {
@@ -1003,25 +1007,25 @@ export function createCaptureRouter(
   //
   // The iPad's `LiveCaptureModel.kickEnhancementForLastDelivery` posts
   // here after `deliver()` succeeds. Each pick's bytes already live in
-  // capture R2 (the upload step of deliver wrote them). Conceptually
-  // we'd:
-  //   1. Read each asset's previewKey from captureAssets
-  //   2. Cross-bucket copy (or pre-signed read) capture R2 → PE R2
-  //   3. Construct a PhotoEnhancerQueuedJob via the existing
-  //      photoEnhancerJobs registry + schedulePhotoEnhancerQueue()
+  // capture R2 (the upload step of deliver wrote them). We:
+  //   1. Look up each asset row to get previewKey/fullKey
+  //   2. Fetch bytes from capture R2 via `signAssetReadUrl` + fetch()
+  //   3. Hand the buffer to `enqueuePhotoEnhancerJobFromBuffer` which
+  //      re-uploads to PE R2 + creates the job + schedules the queue
   //   4. Track sessionId → assetId → jobId so the status route can
   //      answer "where's job for asset X" without scanning all jobs
   //
-  // The cross-bucket move + photo-enhancer R2 allowlist update is
-  // non-trivial (blocked on R2 IAM / bucket policy configuration);
-  // shipping these routes today as **MVP stubs** with the correct
-  // response shape so the iPad-side polling + UI plumbing works end-
-  // to-end. Real PE integration lands as Phase 5.4.1 once the bucket
-  // crossing is configured.
+  // Idempotent on duplicate (sessionId, assetId) within process
+  // lifetime: re-enqueue returns the existing job id rather than
+  // creating a duplicate. The map is in-memory; on backend restart,
+  // historical job mappings are lost (jobs themselves still live in
+  // the photo-enhancer in-memory map until their TTL — Phase 6 may
+  // persist this if needed).
   const enhancementMap = new Map<string, Map<string, string>>();
 
   router.post('/sessions/:sessionId/enhance-picks', auth, async (req, res) => {
     const sessionId = req.params.sessionId;
+    const { userId } = req as AuthedRequest;
     const body = (req.body ?? {}) as { assetIds?: unknown; preset?: unknown };
     const assetIds = Array.isArray(body.assetIds)
       ? body.assetIds.filter((v): v is string => typeof v === 'string' && v.length > 0)
@@ -1030,45 +1034,149 @@ export function createCaptureRouter(
       res.status(400).json({ error: 'asset_ids_required' });
       return;
     }
+    const preset = typeof body.preset === 'string' ? body.preset : 'auto';
+
+    // Verify session ownership so a different user's bearer can't
+    // queue enhancement on someone else's shoot.
+    const sessionRows = await db
+      .select({ id: captureSessions.id, ownerUserId: captureSessions.ownerUserId })
+      .from(captureSessions)
+      .where(eq(captureSessions.id, sessionId))
+      .limit(1);
+    if (sessionRows.length === 0) {
+      res.status(404).json({ error: 'session_not_found' });
+      return;
+    }
+    if (sessionRows[0].ownerUserId !== userId) {
+      res.status(403).json({ error: 'forbidden' });
+      return;
+    }
+
+    // Load asset rows for the session — gives us R2 keys + filenames.
+    // Filter to only the requested assetIds AND only ones in this
+    // session (so an iPad bug can't accidentally enhance assets from
+    // a different session).
+    const assetRows = await db
+      .select({
+        id: captureAssets.id,
+        previewKey: captureAssets.previewKey,
+        fullKey: captureAssets.fullKey,
+        originalFilename: captureAssets.originalFilename,
+        mime: captureAssets.mime,
+      })
+      .from(captureAssets)
+      .where(eq(captureAssets.sessionId, sessionId));
+    const assetRowById = new Map(assetRows.map((row) => [row.id, row]));
+
     let perSession = enhancementMap.get(sessionId);
     if (!perSession) {
       perSession = new Map();
       enhancementMap.set(sessionId, perSession);
     }
-    const jobs = assetIds.map((assetId) => {
-      // Reuse existing job id for the same asset within a session so
-      // re-runs from the iPad don't duplicate jobs.
-      let jobId = perSession!.get(assetId);
-      if (!jobId) {
-        // TODO Phase 5.4.1: call enqueuePhotoEnhancerJobFromBuffer()
-        // (to be exported from photo-enhancer-routes.ts) once the
-        // capture-R2-to-PE-R2 bridge is configured. For now, a
-        // synthetic job id keeps the iPad's polling state machine
-        // alive (jobs forever stay "queued" until the real wire lands).
-        jobId = `pending-${sessionId.slice(0, 8)}-${assetId.slice(0, 8)}-${Date.now()}`;
-        perSession!.set(assetId, jobId);
+
+    const jobs: Array<{ assetId: string; jobId: string }> = [];
+    const failures: Array<{ assetId: string; reason: string }> = [];
+
+    for (const assetId of assetIds) {
+      // Idempotent — return existing job id if we've enqueued for this
+      // (session, asset) pair already. Same shape the iPad expects.
+      const existing = perSession.get(assetId);
+      if (existing) {
+        jobs.push({ assetId, jobId: existing });
+        continue;
       }
-      return { assetId, jobId };
-    });
-    res.status(202).json({ jobs });
+      const row = assetRowById.get(assetId);
+      if (!row) {
+        failures.push({ assetId, reason: 'asset_not_in_session' });
+        continue;
+      }
+      // Prefer fullKey when present (higher quality input for the
+      // enhancer). Fall back to previewKey for sessions where the
+      // photographer only delivered the display preview.
+      const sourceKey = row.fullKey ?? row.previewKey;
+      if (!sourceKey) {
+        failures.push({ assetId, reason: 'no_source_key' });
+        continue;
+      }
+      let buffer: Buffer;
+      try {
+        const presignedUrl = await signAssetReadUrl(sourceKey);
+        if (!presignedUrl) {
+          failures.push({ assetId, reason: 'sign_url_failed' });
+          continue;
+        }
+        const response = await fetch(presignedUrl);
+        if (!response.ok) {
+          failures.push({ assetId, reason: `r2_fetch_${response.status}` });
+          continue;
+        }
+        const arrayBuffer = await response.arrayBuffer();
+        buffer = Buffer.from(arrayBuffer);
+      } catch (err) {
+        failures.push({ assetId, reason: 'r2_fetch_threw' });
+        continue;
+      }
+
+      const jobId = await enqueuePhotoEnhancerJobFromBuffer({
+        buffer,
+        fileName: row.originalFilename || `${assetId}.jpg`,
+        mimeType: row.mime || 'image/jpeg',
+        projectId: `capture-${sessionId}`,
+        owner: userId,
+        userId,
+        preset,
+      });
+      if (!jobId) {
+        failures.push({ assetId, reason: 'enqueue_failed' });
+        continue;
+      }
+      perSession.set(assetId, jobId);
+      jobs.push({ assetId, jobId });
+    }
+
+    res.status(202).json({ jobs, failures });
   });
 
   router.get('/sessions/:sessionId/enhance-status', auth, async (req, res) => {
     const sessionId = req.params.sessionId;
+    const { userId } = req as AuthedRequest;
+
+    // Reuse the same session-ownership gate as the POST so a leaked
+    // session id can't be used to scrape another user's job state.
+    const sessionRows = await db
+      .select({ id: captureSessions.id, ownerUserId: captureSessions.ownerUserId })
+      .from(captureSessions)
+      .where(eq(captureSessions.id, sessionId))
+      .limit(1);
+    if (sessionRows.length === 0) {
+      res.status(404).json({ error: 'session_not_found' });
+      return;
+    }
+    if (sessionRows[0].ownerUserId !== userId) {
+      res.status(403).json({ error: 'forbidden' });
+      return;
+    }
+
     const perSession = enhancementMap.get(sessionId);
     if (!perSession) {
       res.json({ jobs: [] });
       return;
     }
-    const jobs = [...perSession.entries()].map(([assetId, jobId]) => ({
-      assetId,
-      jobId,
-      // Phase 5.4.1 will read state from the real photoEnhancerJobs
-      // map. Until then every job is "queued" forever so the iPad
-      // polling cycle stops after its 10-min cap.
-      state: 'queued',
-      enhancedUrl: null as string | null,
-    }));
+    const jobs = [...perSession.entries()].map(([assetId, jobId]) => {
+      const snapshot = getPhotoEnhancerJobStatusSnapshot(jobId);
+      if (!snapshot) {
+        // Job aged out of in-memory map (TTL or restart). Treat as
+        // failed so the iPad stops polling for it; photographer can
+        // re-trigger via a future deliver if they want to retry.
+        return { assetId, jobId, state: 'failed', enhancedUrl: null };
+      }
+      return {
+        assetId,
+        jobId,
+        state: snapshot.state,
+        enhancedUrl: snapshot.enhancedUrl,
+      };
+    });
     res.json({ jobs });
   });
 
