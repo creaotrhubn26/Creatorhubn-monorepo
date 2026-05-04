@@ -114,6 +114,89 @@ describe('sanitiseAnalysis', () => {
     expect(sanitiseAnalysis(42)).toBeNull();
   });
 
+  it('passes through Phase 7-7F optional axes and clamps them', () => {
+    const result = sanitiseAnalysis({
+      subject: 'portrait',
+      confidence: 0.9,
+      tonality: 'soft',
+      suggested_recipe: {
+        warmth: 0.1, skinSmooth: 0, shadowLift: 0.2,
+        contrast: 0.05, saturation: 0.05, highlight_recovery: 0.1,
+        skin_high_freq: 0.20,
+        skin_low_freq: 0.30,
+        eye_sharpen: 0.30,
+        eye_catchlight: 0.20,
+        auto_straighten: false,
+        straighten_angle: 0.05,
+        teeth_whiten: 0.20,
+        subject_type: 'female',
+        skin_unify: 0.30,
+      },
+      quality_notes: [],
+      caption_suggestion: '',
+    });
+    expect(result?.suggested_recipe.skin_high_freq).toBeCloseTo(0.20);
+    expect(result?.suggested_recipe.skin_low_freq).toBeCloseTo(0.30);
+    expect(result?.suggested_recipe.eye_sharpen).toBeCloseTo(0.30);
+    expect(result?.suggested_recipe.eye_catchlight).toBeCloseTo(0.20);
+    expect(result?.suggested_recipe.auto_straighten).toBe(false);
+    expect(result?.suggested_recipe.straighten_angle).toBeCloseTo(0.05);
+    expect(result?.suggested_recipe.teeth_whiten).toBeCloseTo(0.20);
+    expect(result?.suggested_recipe.subject_type).toBe('female');
+    expect(result?.suggested_recipe.skin_unify).toBeCloseTo(0.30);
+  });
+
+  it('clamps Phase 7-7F axes to safe ranges and rejects unknown subject_type', () => {
+    const result = sanitiseAnalysis({
+      subject: 'portrait',
+      confidence: 0.9,
+      tonality: 'x',
+      suggested_recipe: {
+        warmth: 0, skinSmooth: 0, shadowLift: 0,
+        contrast: 0, saturation: 0, highlight_recovery: 0,
+        skin_high_freq: 99,         // → +1
+        skin_low_freq: -99,         // → -1
+        eye_sharpen: -5,            // → 0
+        eye_catchlight: 5,          // → 1
+        straighten_angle: 99,       // → 0.2618 (max)
+        teeth_whiten: -1,           // → 0
+        subject_type: 'alien',      // → 'none'
+        skin_unify: 99,             // → 1
+      },
+      quality_notes: [],
+      caption_suggestion: '',
+    });
+    expect(result?.suggested_recipe.skin_high_freq).toBe(1);
+    expect(result?.suggested_recipe.skin_low_freq).toBe(-1);
+    expect(result?.suggested_recipe.eye_sharpen).toBe(0);
+    expect(result?.suggested_recipe.eye_catchlight).toBe(1);
+    expect(result?.suggested_recipe.straighten_angle).toBeCloseTo(0.2618);
+    expect(result?.suggested_recipe.teeth_whiten).toBe(0);
+    expect(result?.suggested_recipe.subject_type).toBe('none');
+    expect(result?.suggested_recipe.skin_unify).toBe(1);
+  });
+
+  it('omits Phase 7-7F axes from the output when not in input (legacy compat)', () => {
+    // Older Claude builds don't emit the new axes. The output should
+    // leave them undefined so the iPad's "absent → default" path fires.
+    const result = sanitiseAnalysis({
+      subject: 'aviation',
+      confidence: 0.9,
+      tonality: 'cool sky',
+      suggested_recipe: {
+        warmth: -0.3, skinSmooth: 0, shadowLift: 0.2,
+        contrast: 0.3, saturation: 0.05, highlight_recovery: 0.3,
+      },
+      quality_notes: [],
+      caption_suggestion: '',
+    });
+    expect(result?.suggested_recipe.skin_high_freq).toBeUndefined();
+    expect(result?.suggested_recipe.eye_sharpen).toBeUndefined();
+    expect(result?.suggested_recipe.auto_straighten).toBeUndefined();
+    expect(result?.suggested_recipe.teeth_whiten).toBeUndefined();
+    expect(result?.suggested_recipe.subject_type).toBeUndefined();
+  });
+
   it('drops empty / non-string entries from quality_notes', () => {
     const result = sanitiseAnalysis({
       subject: 'product',

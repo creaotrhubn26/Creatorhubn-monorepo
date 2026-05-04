@@ -11,14 +11,30 @@ type Db = NodePgDatabase<Record<string, unknown>>;
 
 // Matches the Swift `MagicRecipe` struct exactly. All floats bounded so
 // Claude can't smuggle out-of-range values that crash CoreImage filters
-// on the iPad.
+// on the iPad. Phase 7-7F additions are optional in the wire format —
+// Claude can omit them and the iPad falls back to its own defaults.
 export interface MagicRecipe {
   warmth: number;             // -1…+1
-  skinSmooth: number;         // 0…1
+  skinSmooth: number;         // 0…1 (legacy — superseded by skin_high_freq + skin_low_freq)
   shadowLift: number;         // 0…1
   contrast: number;           // -1…+1
   saturation: number;         // -1…+1
   highlight_recovery: number; // 0…1 (Phase 4 audit — pulls down 65-100% range via CIToneCurve)
+  // Phase 7 — frequency-separated skin retouch (Evoto parity)
+  skin_high_freq?: number;    // -1…+1 (negative=blur micro-texture, +=sharpen pore detail)
+  skin_low_freq?: number;     // -1…+1 (negative=enhance structure, +=smooth tone)
+  // Phase 7B — eye region (CIDetector landmarks → masked filters)
+  eye_sharpen?: number;       // 0…1 (CIUnsharpMask radius 1.5, masked to eye gradient)
+  eye_catchlight?: number;    // 0…1 (CIExposureAdjust EV*0.4, masked to eye gradient)
+  // Phase 7C — auto-straighten (VNDetectHorizonRequest)
+  auto_straighten?: boolean;  // run horizon detection, no-op when no horizon found
+  straighten_angle?: number;  // -0.2618…+0.2618 rad (±15°) manual override / fallback
+  // Phase 7D — teeth whitening (innerLips polygon mask)
+  teeth_whiten?: number;      // 0…1 (cool-shift + saturation drop + luminance lift, masked to mouth)
+  // Phase 7E — subject-type variant overlay
+  subject_type?: 'none' | 'male' | 'female' | 'child' | 'elderly';
+  // Phase 7F — face↔body skin-tone unify
+  skin_unify?: number;        // 0…1 (sample face mean → body, partial CIColorMatrix bias)
 }
 
 export type SubjectCategory =
@@ -96,13 +112,19 @@ warmth (-1…+1)
   +1   → strong warm shift (+900K)
   Use negative values for: aviation (cuts haze), landscapes (emphasises blue/green), vehicles + products (true colour neutral). Use small positive values for: food, portraits, golden hour. Be aware Apple has already warmed the image.
 
-skinSmooth (0…1)
-  Maps to CINoiseReduction strength on iPad — edge-preserving smoothing that flattens tonal variation without destroying pores, eyelashes, hair strands.
-  0.0 → no smoothing
-  0.3 → light, appropriate for casual portrait work
-  0.5 → moderate, commercial beauty
-  1.0 → heavy, fashion/editorial only
+skinSmooth (0…1) — LEGACY, prefer skin_high_freq + skin_low_freq
+  Pre-Phase-7 single skin slider. Still wired for backwards compatibility, but the iPad's renderer prefers the freq-sep pair below when set. When you emit skin_high_freq / skin_low_freq, leave skinSmooth = 0.
   MUST be 0 for any non-portrait subject — skin smoothing applied to food (textured surfaces), aviation (panel lines), landscapes (foliage detail), or products (material grain) destroys the texture that defines the subject.
+
+skin_high_freq (-1…+1) — Phase 7, Evoto-parity high-frequency skin axis
+  Controls pore + micro-texture detail INDEPENDENT of tone smoothing. Negative blurs micro-texture; positive sharpens pore detail via narrow-radius CIUnsharpMask. Pair with skin_low_freq for the canonical retouch recipe.
+  Portrait: typically +0.10 to +0.25 to PRESERVE pore detail while skin_low_freq smooths tone (this is the "natural retouch" pattern Evoto's freq-separation slider is built for).
+  Other subjects: 0 (no skin to operate on).
+
+skin_low_freq (-1…+1) — Phase 7, Evoto-parity low-frequency skin axis
+  Controls tone smoothing + colour-blotch evenness WITHOUT touching pore texture. Negative enhances facial structure (mild contrast bump); positive smooths via CIRAWFilter luminance NR with sharpness 0.7 to preserve edges.
+  Portrait: 0.20-0.40 for natural look. Industry consensus (Evoto support, Jana Kukebal review, Fstoppers): never above 0.50, reads "plastic" past 0.70.
+  Other subjects: 0.
 
 shadowLift (0…1)
   Maps to CIHighlightShadowAdjust inputShadowAmount. Lifts shadow detail without touching highlights.
@@ -129,17 +151,65 @@ highlight_recovery (0…1)
   Maps to a CIToneCurve in display-gamma post-output that pulls down the 65-100% range. 0 = no pull, 1 = ~8% pull at clip.
   Use moderate values (0.20-0.40) for outdoor work where sky is at clip. Use LOW values (0-0.15) for food, products, portraits where bright highlights are intentional design (sauce gleam, white sweep, catchlight). Pulling them down loses the gloss/wet/luminous character that defines those subjects.
 
+eye_sharpen (0…1) — Phase 7B, masked to detected eye region
+  Narrow-radius CIUnsharpMask limited to a soft circular gradient around each detected eye. Iris detail + lash definition pop without sharpening the rest of the face.
+  Portrait: 0.20-0.40 for natural pop. Above 0.50 reads "crispy / artificial". No-op when no faces detected.
+  Other subjects: 0.
+
+eye_catchlight (0…1) — Phase 7B, masked to detected eye region
+  CIExposureAdjust (up to ~+0.4 EV inside eye region) to brighten specular highlights and lift iris colour. Useful when window-light catch-lights are weak (overcast, indoor mixed light).
+  Portrait: 0.15-0.30 typical. Above 0.60 starts looking flashlight-in-the-eye.
+  Other subjects: 0.
+
+auto_straighten (boolean) — Phase 7C
+  When true, runs VNDetectHorizonRequest on a 1024-px downsample. If a horizon is detected within ±15°, applies CIStraightenFilter (auto-crops to inscribed rect — no black corners). When detection fails (no horizon, low confidence, |angle|>15°), falls back to manual straighten_angle if set, else no-op.
+  TRUE for: aviation, landscape, vehicle (subjects where horizon levelling is industry-standard).
+  FALSE for: portrait, food, product, neutral (no horizon, would burn cycles).
+
+straighten_angle (-0.2618…+0.2618) — Phase 7C, radians (±15°)
+  Manual horizon angle override / fallback. Positive = rotate counter-clockwise. Use only when you can clearly see the horizon is tilted by a specific amount.
+  Default: 0.
+
+teeth_whiten (0…1) — Phase 7D, masked to innerLips polygon
+  VNDetectFaceLandmarksRequest → innerLips polygon → soft mask. Inside mask: cool the white point ~800 K + saturation drop ×0.80 + luminance lift +0.04, all scaled by amount. CIBlendWithMask composites back. No-op when no faces detected.
+  Portrait with visible smile: 0.15-0.30. Industry rule (Adobe/Phlearn/SLR Lounge 2026): pros stay 0.20-0.40; pure white = "TV-anchor plastic", teeth naturally have some yellow.
+  Closed-mouth or non-portrait: 0.
+
+subject_type ('none' | 'male' | 'female' | 'child' | 'elderly') — Phase 7E
+  Subject-type variant overlay layered on the portrait base. Per industry retouching guides (Retouching Academy / Fstoppers / Imagen 2026):
+    male:    less smoothing, more midtone clarity ("rugged"), less aggressive teeth
+    female:  more smoothing, mild warmth, lift makeup colours
+    child:   light smoothing, mild vibrance, minimal teeth (baby teeth already white)
+    elderly: minimal smoothing (preserve wisdom-lines), more skin unify, mild warmth
+    none:    no overlay
+  Use 'none' for non-portrait subjects. For portraits, identify the most likely category from age + apparent gender presentation. Don't infer when uncertain — 'none' is safe.
+
+skin_unify (0…1) — Phase 7F, face↔body skin-tone correction
+  CIDetector face rect → mean RGB. CIAreaAverage on body strips → body mean. Delta = face − body, applied via CIColorMatrix bias to body region only (face protected by radial mask).
+  Useful when: hands/legs read redder than face (cold-hand bias), neck reads more yellow than face, fill-flash on face creates colour mismatch with body.
+  Portrait: 0.20-0.40 typical. Default 0.30 in our portrait preset.
+  Other subjects: 0.
+
 ===== TYPICAL RECIPE ENVELOPES (calibrated against Canon ground-truth 2026-05-04) =====
 
 These are starting points, not mandates. Adjust based on what you see: underexposed shots want more shadowLift, already-warm shots want less warmth, blown highlights want more highlight_recovery (but don't reach for it on intentionally-bright subjects).
 
-portrait    warmth +0.05 to +0.20, skinSmooth 0.20-0.40, shadowLift 0.15-0.30, contrast 0.00 to +0.10, saturation +0.00 to +0.15, highlight_recovery 0.05-0.15
-aviation    warmth -0.40 to -0.20, skinSmooth 0.00,      shadowLift 0.15-0.30, contrast +0.20 to +0.40, saturation +0.05 to +0.20, highlight_recovery 0.20-0.40
-vehicle     warmth -0.15 to -0.05, skinSmooth 0.00,      shadowLift 0.10-0.25, contrast +0.20 to +0.40, saturation +0.10 to +0.25, highlight_recovery 0.10-0.30
-food        warmth +0.10 to +0.30, skinSmooth 0.00,      shadowLift 0.10-0.25, contrast +0.10 to +0.20, saturation +0.10 to +0.25, highlight_recovery 0.05-0.15
-landscape   warmth -0.30 to -0.10, skinSmooth 0.00,      shadowLift 0.20-0.40, contrast +0.20 to +0.40, saturation +0.20 to +0.40, highlight_recovery 0.30-0.50
-product     warmth -0.15 to -0.05, skinSmooth 0.00,      shadowLift 0.05-0.20, contrast +0.05 to +0.20, saturation -0.10 to +0.05, highlight_recovery 0.05-0.20
-neutral     warmth -0.10 to +0.00, skinSmooth 0.00,      shadowLift 0.10-0.25, contrast +0.05 to +0.20, saturation -0.10 to +0.05, highlight_recovery 0.15-0.30
+portrait    warmth +0.05 to +0.20, skinSmooth 0 (use freq-sep), shadowLift 0.15-0.30, contrast 0.00 to +0.10, saturation +0.00 to +0.15, highlight_recovery 0.05-0.15
+            + skin_high_freq +0.10 to +0.25, skin_low_freq +0.20 to +0.40, eye_sharpen 0.20-0.40,
+              eye_catchlight 0.15-0.30, teeth_whiten 0.15-0.30 (when smile visible), skin_unify 0.20-0.40,
+              subject_type per visible age/gender, auto_straighten=false
+aviation    warmth -0.40 to -0.20, shadowLift 0.15-0.30, contrast +0.20 to +0.40, saturation +0.05 to +0.20, highlight_recovery 0.20-0.40
+            + auto_straighten=true (industry standard for aviation), all skin/eye/teeth axes 0
+vehicle     warmth -0.15 to -0.05, shadowLift 0.10-0.25, contrast +0.20 to +0.40, saturation +0.10 to +0.25, highlight_recovery 0.10-0.30
+            + auto_straighten=true (level horizon expected), all skin/eye/teeth axes 0
+food        warmth +0.10 to +0.30, shadowLift 0.10-0.25, contrast +0.10 to +0.20, saturation +0.10 to +0.25, highlight_recovery 0.05-0.15
+            + auto_straighten=false (top-down or composed shots — no horizon), all skin/eye/teeth axes 0
+landscape   warmth -0.30 to -0.10, shadowLift 0.20-0.40, contrast +0.20 to +0.40, saturation +0.20 to +0.40, highlight_recovery 0.30-0.50
+            + auto_straighten=true (THE primary use case — sea/horizon levelling), all skin/eye/teeth axes 0
+product     warmth -0.15 to -0.05, shadowLift 0.05-0.20, contrast +0.05 to +0.20, saturation -0.10 to +0.05, highlight_recovery 0.05-0.20
+            + auto_straighten=false (studio composition is intentional), all skin/eye/teeth axes 0
+neutral     warmth -0.10 to +0.00, shadowLift 0.10-0.25, contrast +0.05 to +0.20, saturation -0.10 to +0.05, highlight_recovery 0.15-0.30
+            + auto_straighten=false (conservative), all skin/eye/teeth axes 0
 
 ===== PER-CATEGORY GUIDANCE (added 2026-05-04 from professional retoucher research) =====
 
@@ -269,7 +339,9 @@ const ANALYSIS_TOOL = {
         description:
           'Brief assessment of exposure, contrast, and colour cast. 3-10 words.',
       },
-      // (highlight_recovery axis added 2026-05-04 audit — see schema below)
+      // Phase 7-7F additions (2026-05-04) are optional — iPad falls
+      // back to local defaults when fields are absent. The 6 required
+      // fields below are the original Phase 4 axis envelope.
       suggested_recipe: {
         type: 'object' as const,
         properties: {
@@ -279,6 +351,24 @@ const ANALYSIS_TOOL = {
           contrast: { type: 'number' as const, minimum: -1, maximum: 1 },
           saturation: { type: 'number' as const, minimum: -1, maximum: 1 },
           highlight_recovery: { type: 'number' as const, minimum: 0, maximum: 1 },
+          // Phase 7 — frequency-separated skin retouch (Evoto parity)
+          skin_high_freq: { type: 'number' as const, minimum: -1, maximum: 1 },
+          skin_low_freq: { type: 'number' as const, minimum: -1, maximum: 1 },
+          // Phase 7B — eye region (CIDetector landmarks)
+          eye_sharpen: { type: 'number' as const, minimum: 0, maximum: 1 },
+          eye_catchlight: { type: 'number' as const, minimum: 0, maximum: 1 },
+          // Phase 7C — auto-straighten
+          auto_straighten: { type: 'boolean' as const },
+          straighten_angle: { type: 'number' as const, minimum: -0.2618, maximum: 0.2618 },
+          // Phase 7D — teeth whitening (innerLips mask)
+          teeth_whiten: { type: 'number' as const, minimum: 0, maximum: 1 },
+          // Phase 7E — subject-type variant
+          subject_type: {
+            type: 'string' as const,
+            enum: ['none', 'male', 'female', 'child', 'elderly'] as const,
+          },
+          // Phase 7F — face↔body skin-tone unify
+          skin_unify: { type: 'number' as const, minimum: 0, maximum: 1 },
         },
         required: [
           'warmth',
@@ -288,7 +378,7 @@ const ANALYSIS_TOOL = {
           'saturation',
           'highlight_recovery',
         ],
-        description: 'Recipe parameters the iPad applies via CoreImage filters.',
+        description: 'Recipe parameters the iPad applies via CoreImage filters. Phase 7-7F axes are optional — omit when not relevant to the subject.',
       },
       quality_notes: {
         type: 'array' as const,
@@ -473,6 +563,29 @@ export function sanitiseAnalysis(raw: unknown): PhotoAnalysis | null {
   };
 
   const recipeRaw = (r.suggested_recipe ?? {}) as Record<string, unknown>;
+  const allowedSubjectTypes = ['none', 'male', 'female', 'child', 'elderly'] as const;
+  type AllowedSubjectType = (typeof allowedSubjectTypes)[number];
+  const subjectTypeRaw = typeof recipeRaw.subject_type === 'string'
+    ? (recipeRaw.subject_type as AllowedSubjectType)
+    : 'none';
+  const safeSubjectType: AllowedSubjectType = allowedSubjectTypes.includes(subjectTypeRaw)
+    ? subjectTypeRaw : 'none';
+
+  // Optional helper that returns the clamped value when the field is
+  // present on the wire payload, undefined otherwise. We only emit
+  // optional axes when Claude actually supplied them — keeps the
+  // iPad's absent-field defaulting path active when fields are omitted.
+  const optionalClamp = (key: string, lo: number, hi: number): number | undefined => {
+    return key in recipeRaw && recipeRaw[key] !== null && recipeRaw[key] !== undefined
+      ? clamp(recipeRaw[key], lo, hi)
+      : undefined;
+  };
+  const optionalBool = (key: string): boolean | undefined => {
+    if (!(key in recipeRaw)) return undefined;
+    const v = recipeRaw[key];
+    return typeof v === 'boolean' ? v : undefined;
+  };
+
   const recipe: MagicRecipe = {
     warmth: clamp(recipeRaw.warmth, -1, 1),
     skinSmooth: clamp(recipeRaw.skinSmooth, 0, 1),
@@ -480,6 +593,15 @@ export function sanitiseAnalysis(raw: unknown): PhotoAnalysis | null {
     contrast: clamp(recipeRaw.contrast, -1, 1),
     saturation: clamp(recipeRaw.saturation, -1, 1),
     highlight_recovery: clamp(recipeRaw.highlight_recovery, 0, 1),
+    skin_high_freq: optionalClamp('skin_high_freq', -1, 1),
+    skin_low_freq: optionalClamp('skin_low_freq', -1, 1),
+    eye_sharpen: optionalClamp('eye_sharpen', 0, 1),
+    eye_catchlight: optionalClamp('eye_catchlight', 0, 1),
+    auto_straighten: optionalBool('auto_straighten'),
+    straighten_angle: optionalClamp('straighten_angle', -0.2618, 0.2618),
+    teeth_whiten: optionalClamp('teeth_whiten', 0, 1),
+    subject_type: 'subject_type' in recipeRaw ? safeSubjectType : undefined,
+    skin_unify: optionalClamp('skin_unify', 0, 1),
   };
 
   const notes = Array.isArray(r.quality_notes)
