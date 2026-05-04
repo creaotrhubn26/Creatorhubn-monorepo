@@ -239,6 +239,18 @@ extension AppDatabase {
             try db.create(indexOn: "outboxMutation", columns: ["status", "createdAt"])
             try db.create(indexOn: "outboxMutation", columns: ["entityTable", "entityId"])
         }
+        migrator.registerMigration("v4_asset_voice_memo") { db in
+            // Per-asset voice memo recorded by the photographer mid-shoot
+            // ("client wants this", "16:9 crop", "skin retouch needed").
+            // Stored as a local file path; the file itself lives at
+            // `<sessionDownloadDir>/voice-memos/<assetId>.m4a`. nil =
+            // no memo. Cleared on disconnect along with the rest of the
+            // session's tempDir, so memos are intentionally session-local
+            // (not synced to backend yet — Phase 3).
+            try db.alter(table: "asset") { t in
+                t.add(column: "voiceMemoKey", .text)
+            }
+        }
 
         return migrator
     }()

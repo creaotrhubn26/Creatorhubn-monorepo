@@ -15,6 +15,12 @@ import Foundation
 /// unreachable — keep tethered, try again" without losing local state.
 actor DeliveryService {
     private let backend: BackendClient
+    /// Phase 2C — when set, picks carrying a `renderRecipe` are demosaiced
+    /// from the camera-original RAW (`?kind=main`) before upload, so the
+    /// client gallery receives a true RAW-quality JPEG instead of the
+    /// in-camera display preview. nil for callsites that only ever ship
+    /// display JPEGs (sync flows, legacy delivery surfaces).
+    private let rawExporter: RAWExportService?
     /// Maps local asset id → backend asset id for the session being
     /// delivered. Carried across retries so a partial failure doesn't
     /// double-upload assets that already landed.
@@ -26,8 +32,17 @@ actor DeliveryService {
     /// gracefully falls back to "all-shots-missing" rendering.
     private(set) var backendSessionId: UUID?
 
-    init(backend: BackendClient) {
+    /// Resolve the backend asset id for a locally-stored asset. nil
+    /// when the asset hasn't been delivered yet (no row on the server
+    /// to attach a review/comment to). Used by Phase 4 photographer
+    /// reply flow so `submitAssetReview` knows where to post.
+    func backendAssetId(forLocal localId: UUID) -> UUID? {
+        idMap[localId]
+    }
+
+    init(backend: BackendClient, rawExporter: RAWExportService? = nil) {
         self.backend = backend
+        self.rawExporter = rawExporter
     }
 
     /// Snapshot of an asset to upload — pulled from `SessionStore` and
@@ -39,8 +54,24 @@ actor DeliveryService {
         let mime: String
         /// On-disk path to the preview JPEG. Multipart upload reads this
         /// directly so we don't hold the bytes in memory longer than the
-        /// part-size buffer.
+        /// part-size buffer. Also acts as the fallback when RAW rendering
+        /// is unavailable (JPEG-only shoots, render failure).
         let previewPath: String
+        /// Phase 2C — recipe to apply to the camera-original RAW before
+        /// upload. When set AND ``DeliveryService`` was built with a
+        /// ``RAWExportService``, the asset's `rawKey` is demosaiced
+        /// through ``RAWExportPipeline`` and the resulting JPEG is
+        /// uploaded instead of `previewPath`. Falls back to `previewPath`
+        /// when no RAW source exists or rendering fails — delivery
+        /// silently degrades to "preview-quality" rather than failing.
+        var renderRecipe: MagicRecipe? = nil
+        /// Dual RAW+JPG shoots — when set, RAW bytes are read from this
+        /// asset's `rawKey` instead of the picked asset's. The output
+        /// upload still carries `localId`'s filename and metadata. Use
+        /// case: photographer picks the JPG row in the filmstrip but
+        /// CCAPI exposed the CR3 sibling as a separate asset row.
+        /// `nil` for pure-RAW or pure-JPG shoots.
+        var rawSourceAssetId: UUID? = nil
         /// Optional linkage back to the project's shot list. When both
         /// are set and the upload completes, we POST to
         /// /api/projects/:projectId/shots/:shotId/link-asset so the
@@ -180,8 +211,32 @@ actor DeliveryService {
         }
     }
 
+    /// Resolve which on-disk file's bytes go up to R2 for this pick.
+    /// Phase 2C: prefer RAW-rendered JPEG when both `renderRecipe` and a
+    /// `RAWExportService` are present. Falls back to `previewPath` for
+    /// JPEG-only shoots, render failure, or callsites that didn't opt in
+    /// to RAW delivery — the upload always succeeds at preview quality
+    /// even if the high-quality path is unavailable.
+    private func resolveUploadPath(pick: DeliverableAsset) async -> String {
+        guard let exporter = rawExporter, let recipe = pick.renderRecipe else {
+            return pick.previewPath
+        }
+        do {
+            let url = try await exporter.render(
+                assetId: pick.localId,
+                sourceAssetId: pick.rawSourceAssetId,
+                recipe: recipe,
+            )
+            return url.path
+        } catch {
+            print("[DeliveryService] RAW render fallback for \(pick.localId): \(error)")
+            return pick.previewPath
+        }
+    }
+
     private func uploadOne(pick: DeliverableAsset, sessionId: UUID) async throws -> UUID {
-        let data = try Data(contentsOf: URL(fileURLWithPath: pick.previewPath))
+        let uploadPath = await resolveUploadPath(pick: pick)
+        let data = try Data(contentsOf: URL(fileURLWithPath: uploadPath))
         let asset = try await backend.registerAsset(
             sessionId: sessionId,
             body: .init(

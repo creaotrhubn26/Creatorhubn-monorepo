@@ -13,6 +13,10 @@ struct Asset: Identifiable, Hashable, Sendable, Codable {
     /// asset (photo-enhancer output). Populated once the enhancement job
     /// completes; unchanged original lives on `previewKey`/`fullKey`.
     var enhancedKey: String?
+    /// On-disk path to a per-asset voice memo (m4a) recorded by the
+    /// photographer mid-shoot. nil = no memo. Session-local — cleared
+    /// when the session's tempDir is torn down on disconnect.
+    var voiceMemoKey: String?
     var checksumSha256: String?
     var mime: String
     var sizeBytes: Int64?

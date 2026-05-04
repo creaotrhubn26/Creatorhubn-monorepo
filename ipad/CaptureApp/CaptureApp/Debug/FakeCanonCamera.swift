@@ -40,12 +40,25 @@ final class FakeCanonCamera: @unchecked Sendable {
 
     /// Queue a new content URL so the next `pollEvents` call returns it as
     /// `addedcontents`. Also stages a small body for `downloadContent`.
+    /// Demo-mode shutter-fired shots prefer the bundled Holy Crust frame
+    /// when available — gives the Magic pipeline + comparison slider a
+    /// real photograph to enhance instead of synthetic test patterns,
+    /// so demo screenshots look like actual photographer work.
     func simulateCapture(filename: String, body: Data? = nil) -> String {
         let url = "/ccapi/ver120/contents/sd/100CANON/\(filename)"
         lock.lock()
         defer { lock.unlock() }
         pendingAddedContents.append(url)
-        contentBodies[url] = body ?? Self.makePreviewJPEG(seed: abs(filename.hashValue))
+        let payload: Data
+        if let body {
+            payload = body
+        } else if let bundleURL = Bundle.main.url(forResource: "holycrust-demo", withExtension: "jpg"),
+                  let bundleData = try? Data(contentsOf: bundleURL) {
+            payload = bundleData
+        } else {
+            payload = Self.makePreviewJPEG(seed: abs(filename.hashValue))
+        }
+        contentBodies[url] = payload
         return url
     }
 
@@ -249,7 +262,22 @@ final class FakeCanonCamera: @unchecked Sendable {
     /// in DEBUG / Demo Mode; tests that just check file existence don't
     /// care about what's inside but this still satisfies them.
     static func makePreviewJPEG(seed: Int) -> Data {
-        let width = 640, height = 480
+        // One real Holy Crust frame mixed into the demo stream so the
+        // Magic pipeline + comparison slider have a recognisable photo
+        // to enhance, not just synthetic test patterns. Seed % 4 == 2
+        // hits roughly the third shot in a 4-shot demo, so we get both
+        // synthetic + real previews surfaced in the filmstrip.
+        if abs(seed) % 4 == 2,
+           let url = Bundle.main.url(forResource: "holycrust-demo", withExtension: "jpg"),
+           let data = try? Data(contentsOf: url) {
+            return data
+        }
+        // Alternate orientation per shot so demo sessions exercise both
+        // landscape + portrait paths in the viewer (fill-vs-fit, swipe
+        // paging, filmstrip thumbnail aspect handling).
+        let isPortrait = abs(seed) % 2 == 1
+        let width = isPortrait ? 480 : 640
+        let height = isPortrait ? 640 : 480
         let colorSpace = CGColorSpaceCreateDeviceRGB()
         let bitmapInfo = CGImageAlphaInfo.noneSkipLast.rawValue
         guard let ctx = CGContext(

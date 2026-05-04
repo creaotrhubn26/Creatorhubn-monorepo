@@ -87,6 +87,7 @@ actor SessionStore {
             previewKey: nil,
             fullKey: nil,
             rawKey: nil,
+            voiceMemoKey: nil,
             checksumSha256: nil,
             mime: descriptor.mime,
             sizeBytes: descriptor.sizeBytes,
@@ -170,6 +171,20 @@ actor SessionStore {
         try await database.dbWriter.write { db in
             guard var asset = try Asset.fetchOne(db, key: id.uuidString.uppercased()) else { return }
             asset.enhancedKey = key
+            asset.updatedAt = Date()
+            try asset.update(db)
+        }
+    }
+
+    /// Attach (or clear, by passing nil) the local voice-memo file path.
+    /// Pure DB-side write; the actual m4a file is created/deleted by
+    /// ``VoiceMemoService``. Updating `updatedAt` triggers the assets
+    /// stream so any UI binding to the asset re-renders to show the
+    /// memo affordance change.
+    func attachVoiceMemoKey(id: UUID, key: String?) async throws {
+        try await database.dbWriter.write { db in
+            guard var asset = try Asset.fetchOne(db, key: id.uuidString.uppercased()) else { return }
+            asset.voiceMemoKey = key
             asset.updatedAt = Date()
             try asset.update(db)
         }

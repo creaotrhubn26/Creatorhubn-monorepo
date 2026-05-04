@@ -75,6 +75,17 @@ actor CameraSession {
         setState(.disconnected)
     }
 
+    /// Request a higher-priority download for an already-discovered asset.
+    /// `.preview` is auto-enqueued for every new shot; `.full` and `.raw`
+    /// are opt-in — typically driven by Phase 2C deliver flow flagging a
+    /// pick (which triggers `.raw` for CR3/CR2) so the demosaiced JPEG is
+    /// ready by the time the photographer hits Deliver. Idempotent: the
+    /// adapter de-dupes per (assetId, kind), so re-enqueueing a pick that
+    /// already has a download in flight is a no-op.
+    func fetch(assetId: UUID, priority: IngestPriority) async throws {
+        try await adapter.fetch(assetId: assetId, priority: priority)
+    }
+
     // MARK: - Event pump
 
     private func pumpAdapterEvents() async {

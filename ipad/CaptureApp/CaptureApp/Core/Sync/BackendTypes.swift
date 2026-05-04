@@ -270,6 +270,28 @@ struct BackendSetShotCompletionRequest: Encodable, Sendable {
     let isCompleted: Bool
 }
 
+/// Phase 4: photographer-side review POST. Mirrors the backend's
+/// `createReviewBody` Zod schema — every field optional so we can
+/// post a comment-only reply, a heart-only ack, or a comment+heart
+/// combo without needing dummy values. Backend echoes the inserted
+/// review row in the response.
+struct BackendCreateReviewRequest: Encodable, Sendable {
+    let heart: Bool?
+    let rating: Int?
+    let comment: String?
+}
+
+struct BackendCreatedReview: Decodable, Sendable {
+    let id: String
+    let assetId: String
+    let reviewerId: String
+    let reviewerType: String
+    let heart: Bool?
+    let rating: Int?
+    let comment: String?
+    let createdAt: String
+}
+
 struct BackendShotLinkCounters: Decodable, Sendable {
     let id: String
     let totalShots: Int

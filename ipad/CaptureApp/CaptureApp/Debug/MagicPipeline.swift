@@ -160,7 +160,10 @@ final class MagicPipeline {
         guard let sourceImage = UIImage(contentsOfFile: source),
               let ciImage = CIImage(image: sourceImage)
         else { return false }
-        let ctx = CIContext(options: [.useSoftwareRenderer: false])
+        // Display-pipeline renders the camera-baked JPEG (already
+        // Display P3) for in-app hero consumption. Use the appPreview
+        // working space so we don't down-gamut to sRGB before display.
+        let ctx = ColorManagement.makeContext(for: .appPreview)
 
         // 1. Apple's auto-adjustment filters: white balance, tone curve,
         //    red-eye. These analyse the scene, so they give us a clean
@@ -188,11 +191,16 @@ final class MagicPipeline {
             if let out = f.outputImage { current = out }
         }
 
-        if recipe.shadowLift > 0 {
+        if recipe.shadowLift > 0 || recipe.highlightRecovery > 0 {
+            // CIHighlightShadowAdjust handles both axes in one pass so
+            // we don't double-process the image. inputHighlightAmount
+            // is in the range -1...1 where negative values pull bright
+            // pixels down (recovery) — same direction as the slider so
+            // we negate `recipe.highlightRecovery` for the input.
             let f = CIFilter(name: "CIHighlightShadowAdjust")!
             f.setValue(current, forKey: kCIInputImageKey)
             f.setValue(recipe.shadowLift, forKey: "inputShadowAmount")
-            f.setValue(0.0, forKey: "inputHighlightAmount")
+            f.setValue(-recipe.highlightRecovery, forKey: "inputHighlightAmount")
             if let out = f.outputImage { current = out }
         }
 
@@ -231,10 +239,17 @@ final class MagicPipeline {
         }
 
         guard !Task.isCancelled,
-              let cgImage = ctx.createCGImage(current, from: ciImage.extent),
-              let jpeg = UIImage(cgImage: cgImage).jpegData(compressionQuality: 0.85)
+              let cgImage = ColorManagement.renderCGImage(
+                from: current, context: ctx, purpose: .appPreview,
+              )
         else { return false }
+        // Encode through ColorManagement so the JPEG carries a P3
+        // ICC profile tag — UIImage.jpegData strips that and falls
+        // back to the device color space at decode time.
         do {
+            let jpeg = try ColorManagement.encodeJPEG(
+                cgImage: cgImage, purpose: .appPreview, quality: 0.85,
+            )
             try jpeg.write(to: destination, options: .atomic)
             return true
         } catch {

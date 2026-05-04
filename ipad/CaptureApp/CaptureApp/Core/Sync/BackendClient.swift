@@ -104,6 +104,22 @@ actor BackendClient {
         )
     }
 
+    /// Phase 4: photographer-side review POST. Closes the toveis-comm
+    /// loop — `LiveCaptureModel.sendPhotographerReply` posts here so
+    /// the client-gallery web UI sees the photographer's reply land in
+    /// real time via the same `client_review` WebSocket broadcast the
+    /// client side uses. `assetId` is the backend asset id (not the
+    /// local UUID); caller resolves via `idMap` from a prior delivery.
+    func submitAssetReview(
+        assetId: UUID,
+        body: BackendCreateReviewRequest,
+    ) async throws -> BackendCreatedReview {
+        try await postJSON(
+            path: "/api/capture/assets/\(assetId.uuidString.lowercased())/reviews",
+            body: body,
+        )
+    }
+
     /// Push a manual completion toggle from `ShotListPanel`. Distinct
     /// from `linkShotToAsset` because the photographer is ticking a shot
     /// done without tying it to a specific asset — and un-ticking must

@@ -20,6 +20,7 @@ struct LiveCaptureView: View {
     @State private var isDeliverPresented = false
     @State private var isArchivePresented = false
     @State private var isSignInPresented = false
+    @State private var isReviewInboxPresented = false
     @State private var viewerAsset: Asset?
 
     var body: some View {
@@ -61,6 +62,8 @@ struct LiveCaptureView: View {
                 sessionName: model.sessionName,
                 showHUD: model.showHUD,
                 onToggleHUD: { model.showHUD.toggle() },
+                clientReviewsEnabled: model.clientReviewsEnabled,
+                onToggleClientReviews: { model.clientReviewsEnabled.toggle() },
                 onRename: { newName in
                     Task { await model.renameSession(newName) }
                 },
@@ -77,14 +80,30 @@ struct LiveCaptureView: View {
             .presentationDetents([.medium, .large])
         }
         .fullScreenCover(item: $viewerAsset) { asset in
-            AssetViewerScreen(asset: asset) { viewerAsset = nil }
+            AssetViewerScreen(
+                assets: model.assets,
+                initialAssetId: asset.id,
+                onClose: { viewerAsset = nil }
+            )
         }
         .sheet(isPresented: $isTunePresented) {
             if let asset = model.focusedAsset {
                 TunePanel(
                     initialRecipe: model.recipe(for: asset.id),
                     onChange: { model.tune(assetId: asset.id, recipe: $0) },
-                    onReset: { model.resetRecipe(assetId: asset.id) }
+                    onReset: { model.resetRecipe(assetId: asset.id) },
+                    onApplyToScope: { scope in
+                        model.applyRecipeToSelection(
+                            recipe: model.recipe(for: asset.id),
+                            scope: scope,
+                            sourceAssetId: asset.id,
+                        )
+                    },
+                    assetCounts: TunePanel.ScopeCounts(
+                        flagged: LiveCaptureModel.RecipeApplyScope.allFlagged.count(in: model.assets),
+                        fourPlus: LiveCaptureModel.RecipeApplyScope.allFourPlus.count(in: model.assets),
+                        entireSession: LiveCaptureModel.RecipeApplyScope.entireSession.count(in: model.assets),
+                    ),
                 )
                 .presentationDetents([.medium, .large])
             }
@@ -97,6 +116,26 @@ struct LiveCaptureView: View {
         .sheet(isPresented: $isArchivePresented) {
             SessionsArchiveSheet(model: model)
                 .presentationDetents([.large])
+        }
+        .sheet(isPresented: $isReviewInboxPresented, onDismiss: {
+            // Close = read. Per-tile filmstrip badges remain so the
+            // photographer keeps the "this shot got feedback" signal
+            // after the bell badge clears.
+            model.markReviewsRead()
+        }) {
+            ReviewInboxSheet(
+                reviews: model.recentClientReviews,
+                onSelectReview: { review in
+                    model.focusedAssetId = review.assetId
+                    isReviewInboxPresented = false
+                },
+                onOpenSideBySide: {
+                    isReviewInboxPresented = false
+                    model.enterReviewMode()
+                },
+                onDismiss: { isReviewInboxPresented = false }
+            )
+            .presentationDetents([.medium, .large])
         }
         .sheet(isPresented: $isSignInPresented) {
             // SignInView is navigation-free by design — wrap it in our
@@ -152,6 +191,106 @@ struct LiveCaptureView: View {
             }
         }
         .animation(.spring(duration: 0.35, bounce: 0.1), value: model.phase)
+        .task {
+            // Screenshot/dev convenience — `--auto-demo` at launch wires
+            // straight into Demo Mode so the disconnected overlay never
+            // shows. `--auto-demo-shots=N` (default 3) follows up with N
+            // shutter triggers spaced 1.5 s apart so the connected UI
+            // has assets to render. Used to capture screenshots without
+            // driving the simulator through manual taps.
+            if ProcessInfo.processInfo.arguments.contains("--auto-demo"),
+               model.phase == .disconnected,
+               !model.isConnecting {
+                await model.connect(to: LiveCaptureModel.demoBaseURL)
+                // Wait for connection to settle before firing.
+                try? await Task.sleep(for: .milliseconds(800))
+                let shotsArg = ProcessInfo.processInfo.arguments
+                    .first { $0.hasPrefix("--auto-demo-shots=") }
+                let shotCount = shotsArg
+                    .flatMap { Int($0.dropFirst("--auto-demo-shots=".count)) }
+                    ?? 3
+                for _ in 0..<shotCount {
+                    await model.triggerShutter()
+                    try? await Task.sleep(for: .milliseconds(1500))
+                }
+                // Inject demo client reviews so the bell + per-tile
+                // badges + review-mode side rail have content to show
+                // in screenshots. Two events: one heart on the second
+                // shot (so the tile gets a comment-bubble badge AND
+                // the bell shows unread count), one comment on the
+                // last shot. Skipped when --no-demo-reviews is passed
+                // or reviews are disabled in Settings.
+                let suppressReviews = ProcessInfo.processInfo.arguments.contains("--no-demo-reviews")
+                if !suppressReviews,
+                   model.clientReviewsEnabled,
+                   model.assets.count >= 2 {
+                    try? await Task.sleep(for: .milliseconds(400))
+                    let second = model.assets[model.assets.count - 2]
+                    let last = model.assets.last!
+                    model.injectDemoReview(
+                        assetId: second.id,
+                        assetFilename: second.originalFilename,
+                        kind: .heart(on: true),
+                        senderKind: .client,
+                        displayName: "Holy Crust",
+                    )
+                    try? await Task.sleep(for: .milliseconds(300))
+                    model.injectDemoReview(
+                        assetId: last.id,
+                        assetFilename: last.originalFilename,
+                        kind: .comment(preview: "Elsker denne — bruk den som hovedbilde på Insta? Litt mer rom over toppen hvis mulig."),
+                        senderKind: .client,
+                        displayName: "Holy Crust",
+                    )
+                    // Photographer's reply lands a moment later so the
+                    // demo screenshot shows actual two-way conversation
+                    // (chat bubbles aligning to alternating sides).
+                    try? await Task.sleep(for: .milliseconds(400))
+                    model.injectDemoReview(
+                        assetId: last.id,
+                        assetFilename: last.originalFilename,
+                        kind: .comment(preview: "Skal fikses — sender en ny crop om litt 👍"),
+                        senderKind: .photographer,
+                        displayName: "Daniel",
+                    )
+                    try? await Task.sleep(for: .milliseconds(300))
+                    model.injectDemoReview(
+                        assetId: last.id,
+                        assetFilename: last.originalFilename,
+                        kind: .comment(preview: "Perfekt, takk!"),
+                        senderKind: .client,
+                        displayName: "Holy Crust",
+                    )
+                }
+
+                // `--auto-fullscreen` opens the AssetViewerScreen on the
+                // latest asset once shots have landed. Lets screenshot
+                // capture pick up the fill-the-screen behavior + swipe
+                // pager without driving the simulator through manual
+                // taps.
+                if ProcessInfo.processInfo.arguments.contains("--auto-fullscreen") {
+                    try? await Task.sleep(for: .milliseconds(500))
+                    if let latest = model.assets.last {
+                        viewerAsset = latest
+                    }
+                }
+                // `--auto-review-mode` enters the split-pane review
+                // mode on the latest reviewed asset, so screenshots
+                // capture the full client-feedback workflow surface.
+                if ProcessInfo.processInfo.arguments.contains("--auto-review-mode") {
+                    try? await Task.sleep(for: .milliseconds(400))
+                    model.enterReviewMode()
+                }
+                // `--auto-tune` opens the Magic · Tune sheet on the
+                // latest enhanced asset for screenshot capture of the
+                // redesigned panel (presets + sections + zero-tick).
+                if ProcessInfo.processInfo.arguments.contains("--auto-tune"),
+                   model.focusedAsset?.enhancedKey != nil {
+                    try? await Task.sleep(for: .milliseconds(500))
+                    isTunePresented = true
+                }
+            }
+        }
     }
 
     private var connectedLayout: some View {
@@ -167,6 +306,8 @@ struct LiveCaptureView: View {
                 shotListProgress: model.selectedProject?.shotListSummary.map {
                     .init(completed: $0.completedShots, total: $0.totalShots)
                 },
+                unreadReviewCount: model.unreadReviewCount,
+                clientReviewsEnabled: model.clientReviewsEnabled,
                 onTogglePin: { model.pinnedFocus.toggle() },
                 onPickProject: { isProjectSelectionPresented = true },
                 onShotList: { isShotListPresented = true },
@@ -183,6 +324,7 @@ struct LiveCaptureView: View {
                 },
                 onDeliver: { isDeliverPresented = true },
                 onArchive: { isArchivePresented = true },
+                onReviewInbox: { isReviewInboxPresented = true },
                 onSettings: { isSettingsPresented = true }
             )
             .padding(.horizontal, 24)
@@ -191,42 +333,97 @@ struct LiveCaptureView: View {
             Divider().background(Color.captureSeparator)
 
             ZStack {
-                HeroStage(
-                    asset: model.focusedAsset,
-                    recipe: model.focusedAsset.map { model.recipe(for: $0.id) } ?? .neutral,
-                    recipeSource: model.focusedAsset.map { model.recipeSource[$0.id] ?? .baseline } ?? .baseline,
-                    analysis: model.showHUD ? model.focusedAnalysis : nil,
-                    aiAnalysis: model.focusedAsset.flatMap { model.aiAnalyses[$0.id] },
-                    aiNotesDismissed: model.focusedAsset.map { model.dismissedNoteAssets.contains($0.id) } ?? false,
-                    showMagic: model.showMagic,
-                    onTap: { asset in viewerAsset = asset },
-                    onToggleMagic: { model.showMagic.toggle() },
-                    onOpenTune: {
-                        guard model.focusedAsset?.enhancedKey != nil else { return }
-                        isTunePresented = true
-                    },
-                    onSetRating: { rating in
-                        guard let id = model.focusedAsset?.id else { return }
-                        Task { await model.setRating(assetId: id, rating: rating) }
-                    },
-                    onTogglePick: {
-                        guard let asset = model.focusedAsset else { return }
-                        Task { await model.togglePick(asset: asset) }
-                    },
-                    onToggleReject: {
-                        guard let asset = model.focusedAsset else { return }
-                        Task { await model.toggleReject(asset: asset) }
-                    },
-                    onDismissNotes: {
-                        guard let id = model.focusedAsset?.id else { return }
-                        model.dismissNotes(assetId: id)
+                if model.isReviewMode, let focused = model.focusedAsset {
+                    ReviewModeStage(
+                        asset: focused,
+                        reviewsForAsset: model.recentClientReviews
+                            .filter { $0.assetId == focused.id },
+                        allReviews: model.recentClientReviews,
+                        onSelectAnotherAsset: { id in
+                            model.focusedAssetId = id
+                        },
+                        onExit: { model.exitReviewMode() },
+                        onOpenFullscreen: { asset in viewerAsset = asset },
+                        onSendReply: { text in
+                            model.sendPhotographerReply(assetId: focused.id, comment: text)
+                        }
+                    )
+                } else if model.isComparing,
+                   let anchor = model.compareAnchorAsset,
+                   let candidate = model.focusedAsset {
+                    CompareHeroStage(
+                        anchor: anchor,
+                        candidate: candidate,
+                        onExit: { model.exitCompare() },
+                        onSwap: {
+                            // Promote candidate to anchor: B becomes the
+                            // new A, A becomes the new B (focused).
+                            let newAnchorId = candidate.id
+                            let newFocusId = anchor.id
+                            model.compareAnchorAssetId = newAnchorId
+                            model.focusedAssetId = newFocusId
+                        }
+                    )
+                } else {
+                    HeroStage(
+                        asset: model.focusedAsset,
+                        recipe: model.focusedAsset.map { model.recipe(for: $0.id) } ?? .neutral,
+                        recipeSource: model.focusedAsset.map { model.recipeSource[$0.id] ?? .baseline } ?? .baseline,
+                        analysis: model.showHUD ? model.focusedAnalysis : nil,
+                        aiAnalysis: model.focusedAsset.flatMap { model.aiAnalyses[$0.id] },
+                        aiNotesDismissed: model.focusedAsset.map { model.dismissedNoteAssets.contains($0.id) } ?? false,
+                        showMagic: model.showMagic,
+                        onTap: { asset in viewerAsset = asset },
+                        onToggleMagic: { model.showMagic.toggle() },
+                        onOpenTune: {
+                            guard model.focusedAsset?.enhancedKey != nil else { return }
+                            isTunePresented = true
+                        },
+                        onSetRating: { rating in
+                            guard let id = model.focusedAsset?.id else { return }
+                            Task { await model.setRating(assetId: id, rating: rating) }
+                        },
+                        onTogglePick: {
+                            guard let asset = model.focusedAsset else { return }
+                            Task { await model.togglePick(asset: asset) }
+                        },
+                        onToggleReject: {
+                            guard let asset = model.focusedAsset else { return }
+                            Task { await model.toggleReject(asset: asset) }
+                        },
+                        onSetColor: { label in
+                            guard let id = model.focusedAsset?.id else { return }
+                            Task { await model.setColorLabel(assetId: id, label: label) }
+                        },
+                        voiceMemoState: model.voiceMemoService?.state ?? .idle,
+                        voiceMemoExists: model.focusedAsset?.voiceMemoKey != nil,
+                        onStartVoiceMemo: {
+                            guard let id = model.focusedAsset?.id else { return }
+                            model.startVoiceMemoRecording(assetId: id)
+                        },
+                        onStopVoiceMemo: {
+                            guard let id = model.focusedAsset?.id else { return }
+                            model.stopVoiceMemoRecording(assetId: id)
+                        },
+                        onPlayVoiceMemo: {
+                            guard let id = model.focusedAsset?.id else { return }
+                            model.toggleVoiceMemoPlayback(assetId: id)
+                        },
+                        onDeleteVoiceMemo: {
+                            guard let id = model.focusedAsset?.id else { return }
+                            model.deleteVoiceMemo(assetId: id)
+                        },
+                        onDismissNotes: {
+                            guard let id = model.focusedAsset?.id else { return }
+                            model.dismissNotes(assetId: id)
+                        }
+                    )
+                    .onChange(of: model.focusedAssetId) { _, _ in
+                        model.refreshAnalysis(for: model.focusedAsset)
                     }
-                )
-                .onChange(of: model.focusedAssetId) { _, _ in
-                    model.refreshAnalysis(for: model.focusedAsset)
-                }
-                .onChange(of: model.focusedAsset?.previewKey) { _, _ in
-                    model.refreshAnalysis(for: model.focusedAsset)
+                    .onChange(of: model.focusedAsset?.previewKey) { _, _ in
+                        model.refreshAnalysis(for: model.focusedAsset)
+                    }
                 }
                 ShutterFlashOverlay(trigger: model.shutterFlashToken)
                     .allowsHitTesting(false)
@@ -238,18 +435,44 @@ struct LiveCaptureView: View {
             VStack(spacing: 0) {
                 FilmstripFilterBar(
                     current: model.filmstripFilter,
+                    currentColor: model.filmstripColorFilter,
                     counts: FilmstripFilterBar.Counts(
                         total: model.assets.count,
                         picks: model.assets.filter { $0.flaggedForClient && !$0.rejected }.count,
                         fourPlus: model.assets.filter { $0.rating >= 4 && !$0.rejected }.count
                     ),
-                    onSelect: { model.filmstripFilter = $0 }
+                    colorCounts: Dictionary(
+                        grouping: model.assets.compactMap { $0.colorLabel },
+                        by: { $0 }
+                    ).mapValues(\.count),
+                    onSelect: { model.filmstripFilter = $0 },
+                    onSelectColor: { model.filmstripColorFilter = $0 }
                 )
                 FilmstripRail(
                     assets: model.filteredAssets,
                     focusedAssetId: model.focusedAssetId,
+                    compareAnchorId: model.compareAnchorAssetId,
+                    assetIdsWithReviews: model.clientReviewsEnabled
+                        ? model.assetIdsWithReviews
+                        : [],
                     onSelect: { model.focusedAssetId = $0.id },
-                    onDoubleTap: { viewerAsset = $0 }
+                    onDoubleTap: { viewerAsset = $0 },
+                    onLongPress: { asset in
+                        // Long-press anchors A-side; if user long-presses
+                        // the anchor again, exit compare. If they
+                        // long-press the currently-focused asset (no B
+                        // would exist), bump focus to the previous asset
+                        // so the compare panel has both sides ready.
+                        if model.compareAnchorAssetId == asset.id {
+                            model.exitCompare()
+                        } else {
+                            model.compareAnchorAssetId = asset.id
+                            if model.focusedAssetId == asset.id,
+                               let other = model.assets.first(where: { $0.id != asset.id }) {
+                                model.focusedAssetId = other.id
+                            }
+                        }
+                    }
                 )
                 .frame(height: 152)
             }
@@ -486,6 +709,23 @@ private struct DiscoveredCameraCard: View {
 
 private extension Color {
     static var tint: Color { Color.accentColor }
+
+    /// Stable mapping from `ColorLabel` enum values to display colors.
+    /// The model exposes 8 buckets (Lightroom standard 5 + 3 extras);
+    /// we keep the picker visually consistent so a "green" set in one
+    /// session looks the same across all surfaces.
+    static func from(colorLabel: ColorLabel) -> Color {
+        switch colorLabel {
+        case .red:    return .red
+        case .orange: return .orange
+        case .yellow: return .yellow
+        case .green:  return .green
+        case .blue:   return .blue
+        case .purple: return .purple
+        case .pink:   return .pink
+        case .gray:   return .gray
+        }
+    }
 }
 
 // MARK: - Failure guide helper
@@ -606,12 +846,15 @@ private struct StatusBar: View {
     let canDeliver: Bool
     let projectTitle: String?
     let shotListProgress: ShotListProgress?
+    let unreadReviewCount: Int
+    let clientReviewsEnabled: Bool
     let onTogglePin: () -> Void
     let onPickProject: () -> Void
     let onShotList: () -> Void
     let onCoverageDashboard: () -> Void
     let onDeliver: () -> Void
     let onArchive: () -> Void
+    let onReviewInbox: () -> Void
     let onSettings: () -> Void
 
     struct ShotListProgress: Equatable {
@@ -708,6 +951,41 @@ private struct StatusBar: View {
                 Label("\(files) on card", systemImage: "sdcard")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
+            }
+
+            // Client review inbox — peripheral surface for hearts +
+            // comments arriving from the delivered web gallery while
+            // the photographer is mid-shoot. Bell icon stays muted by
+            // default; only the orange dot signals unread feedback so
+            // the photographer can keep eyes on the camera. Tap opens
+            // the chronological inbox, which marks all as read on
+            // dismiss. Per-tile heart/comment badges (added in
+            // FilmstripTile) carry the "this shot got feedback"
+            // signal forward even after the inbox is opened. Hidden
+            // entirely when the photographer disables reviews via
+            // Settings — that's the "I want quiet" mode.
+            if clientReviewsEnabled {
+            Button(action: onReviewInbox) {
+                Image(systemName: "bell")
+                    .font(.body)
+                    .frame(width: 36, height: 36)
+                    .foregroundStyle(unreadReviewCount > 0 ? .primary : .secondary)
+                    .overlay(alignment: .topTrailing) {
+                        if unreadReviewCount > 0 {
+                            Text("\(min(unreadReviewCount, 99))")
+                                .font(.system(size: 10, weight: .heavy).monospacedDigit())
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1)
+                                .background(.orange, in: Capsule())
+                                .offset(x: 6, y: -4)
+                        }
+                    }
+            }
+            .buttonStyle(.plain)
+            .help(unreadReviewCount > 0
+                  ? "\(unreadReviewCount) new client review\(unreadReviewCount == 1 ? "" : "s") — tap to review"
+                  : "Client review inbox")
             }
 
             Button(action: onTogglePin) {
@@ -848,6 +1126,13 @@ private struct HeroStage: View {
     let onSetRating: (Int) -> Void
     let onTogglePick: () -> Void
     let onToggleReject: () -> Void
+    let onSetColor: (ColorLabel?) -> Void
+    let voiceMemoState: VoiceMemoService.State
+    let voiceMemoExists: Bool
+    let onStartVoiceMemo: () -> Void
+    let onStopVoiceMemo: () -> Void
+    let onPlayVoiceMemo: () -> Void
+    let onDeleteVoiceMemo: () -> Void
     let onDismissNotes: () -> Void
 
     var body: some View {
@@ -919,6 +1204,21 @@ private struct HeroStage: View {
                             rejected: asset.rejected,
                             onTogglePick: onTogglePick,
                             onToggleReject: onToggleReject
+                        )
+                        Divider().frame(height: 20)
+                        ColorLabelControls(
+                            current: asset.colorLabel,
+                            onSet: onSetColor
+                        )
+                        Divider().frame(height: 20)
+                        VoiceMemoControls(
+                            assetId: asset.id,
+                            state: voiceMemoState,
+                            memoExists: voiceMemoExists,
+                            onStart: onStartVoiceMemo,
+                            onStop: onStopVoiceMemo,
+                            onPlay: onPlayVoiceMemo,
+                            onDelete: onDeleteVoiceMemo
                         )
                     }
 
@@ -1116,6 +1416,646 @@ private struct FocusLoupe: View {
     }
 }
 
+/// Two-up A/B compare hero. Pro photographers shoot through near-identical
+/// poses and need to pick between them; staring at filmstrip thumbnails
+/// at 156×104 px doesn't cut it. This view shows two assets side-by-side
+/// at hero-stage scale with synced zoom + pan — magnify one corner of A
+/// and the same corner of B follows so the eye can compare detail
+/// (sharpness on the catchlight, expression at the mouth) directly.
+///
+/// Interaction model:
+///   - Long-press a filmstrip tile → set as A (anchor, orange ring + "A").
+///   - Tap any other tile → become B (focused candidate).
+///   - Pinch on either pane → both zoom together; drag → both pan.
+///   - Swap button (centre) → promote candidate to anchor + vice-versa.
+///   - X button (top-right) → exit, return to single-hero stage.
+///
+/// Recipe / rating / tune controls intentionally hidden — compare mode
+/// is for *picking*, not editing. Once the photographer picks, they
+/// exit to the single hero and rate/flag/tune from there.
+private struct CompareHeroStage: View {
+    let anchor: Asset
+    let candidate: Asset
+    let onExit: () -> Void
+    let onSwap: () -> Void
+
+    @State private var scale: CGFloat = 1
+    @State private var lastScale: CGFloat = 1
+    @State private var offset: CGSize = .zero
+    @State private var lastOffset: CGSize = .zero
+
+    var body: some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 12) {
+                pane(asset: anchor, label: "A", labelColor: .orange)
+                pane(asset: candidate, label: "B", labelColor: .accentColor)
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 16)
+            .frame(maxHeight: .infinity)
+            .gesture(
+                MagnificationGesture()
+                    .onChanged { value in
+                        scale = max(1, lastScale * value)
+                    }
+                    .onEnded { _ in
+                        lastScale = scale
+                        if scale < 1.05 {
+                            withAnimation(.spring) {
+                                scale = 1
+                                lastScale = 1
+                                offset = .zero
+                                lastOffset = .zero
+                            }
+                        }
+                    }
+                    .simultaneously(with:
+                        DragGesture()
+                            .onChanged { value in
+                                guard scale > 1 else { return }
+                                offset = CGSize(
+                                    width: lastOffset.width + value.translation.width,
+                                    height: lastOffset.height + value.translation.height,
+                                )
+                            }
+                            .onEnded { _ in
+                                lastOffset = offset
+                                if scale <= 1 {
+                                    withAnimation(.spring) {
+                                        offset = .zero
+                                        lastOffset = .zero
+                                    }
+                                }
+                            }
+                    )
+            )
+
+            HStack(spacing: 14) {
+                Text(anchor.originalFilename)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.orange)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .frame(maxWidth: .infinity)
+
+                Button(action: onSwap) {
+                    Label("Swap", systemImage: "arrow.left.arrow.right")
+                        .font(.callout.weight(.semibold))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(.white.opacity(0.08), in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Swap A and B")
+
+                Text(candidate.originalFilename)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(Color.accentColor)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .frame(maxWidth: .infinity)
+            }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 12)
+
+            if scale > 1 {
+                Text("Pinch to zoom • drag to pan • both panes synced")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .padding(.bottom, 8)
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            Button(action: onExit) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.title2)
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(.white, .white.opacity(0.25))
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 24)
+            .padding(.trailing, 36)
+            .accessibilityLabel("Exit compare mode")
+        }
+    }
+
+    @ViewBuilder
+    private func pane(asset: Asset, label: String, labelColor: Color) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 14)
+                .fill(Color.captureChipBG)
+            if let key = asset.previewKey, let image = UIImage(contentsOfFile: key) {
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .scaleEffect(scale)
+                    .offset(offset)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                    .shadow(radius: 16, y: 6)
+            } else {
+                Image(systemName: "photo")
+                    .font(.system(size: 48))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .overlay(alignment: .topLeading) {
+            Text(label)
+                .font(.title3.weight(.heavy))
+                .foregroundStyle(.white)
+                .frame(width: 32, height: 32)
+                .background(labelColor, in: Circle())
+                .padding(12)
+        }
+        .frame(maxWidth: .infinity)
+        .clipped()
+    }
+}
+
+/// Light-weight review-inbox sheet — chronological glance at recent
+/// hearts + comments, designed for *triage*. Shows last ~50 entries,
+/// tapping a row dismisses the sheet, focuses that asset, and (if
+/// "Open side-by-side" was tapped first) enters review-mode.
+///
+/// Read-state: opening the sheet flags entries as read on dismiss.
+/// Per-tile filmstrip badges remain so the photographer can spot
+/// reviewed shots at a glance later.
+private struct ReviewInboxSheet: View {
+    let reviews: [ClientReview]
+    let onSelectReview: (ClientReview) -> Void
+    let onOpenSideBySide: () -> Void
+    let onDismiss: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if reviews.isEmpty {
+                    ContentUnavailableView(
+                        "Ingen tilbakemeldinger ennå",
+                        systemImage: "bubble.left.and.bubble.right",
+                        description: Text("Når kunden hjerter eller kommenterer på leverte bilder, lander de her."),
+                    )
+                } else {
+                    List {
+                        ForEach(reviews) { review in
+                            Button {
+                                onSelectReview(review)
+                            } label: {
+                                ReviewInboxRow(review: review)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .listStyle(.plain)
+                }
+            }
+            .navigationTitle("Klient-tilbakemeldinger")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Lukk") { onDismiss() }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        onOpenSideBySide()
+                    } label: {
+                        Label("Side-by-side", systemImage: "rectangle.split.2x1")
+                    }
+                    .disabled(reviews.isEmpty)
+                }
+            }
+        }
+    }
+}
+
+private struct ReviewInboxRow: View {
+    let review: ClientReview
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(badgeColor.opacity(0.18))
+                    .frame(width: 32, height: 32)
+                Image(systemName: badgeIcon)
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(badgeColor)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(review.displayName ?? (review.senderKind == .photographer ? "Du" : "Klient"))
+                        .font(.subheadline.weight(.semibold))
+                    Text(review.assetFilename)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text(review.timestamp, style: .relative)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    if review.unread {
+                        Circle()
+                            .fill(.orange)
+                            .frame(width: 7, height: 7)
+                    }
+                }
+                switch review.kind {
+                case .heart(let on):
+                    Text(on ? "Hjertet bildet" : "Fjernet hjertet")
+                        .font(.callout)
+                        .foregroundStyle(on ? .pink : .secondary)
+                case .comment(let preview):
+                    Text(preview)
+                        .font(.callout)
+                        .lineLimit(3)
+                }
+            }
+        }
+        .padding(.vertical, 6)
+    }
+
+    private var badgeColor: Color {
+        switch review.kind {
+        case .heart: return .pink
+        case .comment: return .orange
+        }
+    }
+
+    private var badgeIcon: String {
+        switch review.kind {
+        case .heart(let on): return on ? "heart.fill" : "heart.slash"
+        case .comment: return "bubble.left.fill"
+        }
+    }
+}
+
+/// Sustained review-mode hero — image left (full quality, retains
+/// pinch-zoom + tap-to-fullscreen), conversation side-rail right with
+/// chat-bubble layout (client right-aligned + orange-tinted,
+/// photographer left-aligned + neutral) and a reply input pinned to
+/// the bottom. Pro-photo workflow staple: when the client is actively
+/// chatting about a shot, the photographer wants the photo + thread
+/// side-by-side AND wants to reply without leaving the surface.
+private struct ReviewModeStage: View {
+    let asset: Asset
+    let reviewsForAsset: [ClientReview]
+    let allReviews: [ClientReview]
+    let onSelectAnotherAsset: (UUID) -> Void
+    let onExit: () -> Void
+    let onOpenFullscreen: (Asset) -> Void
+    let onSendReply: (String) -> Void
+
+    var body: some View {
+        HStack(spacing: 16) {
+            VStack(spacing: 0) {
+                HeroImage(asset: asset, preferMagic: true)
+                    .onTapGesture { onOpenFullscreen(asset) }
+                    .padding(16)
+                Spacer(minLength: 0)
+            }
+
+            ReviewSideRail(
+                asset: asset,
+                reviewsForAsset: reviewsForAsset,
+                allReviews: allReviews,
+                onSelectAnotherAsset: onSelectAnotherAsset,
+                onExit: onExit,
+                onSendReply: onSendReply,
+            )
+            .frame(width: 380)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+private struct ReviewSideRail: View {
+    let asset: Asset
+    let reviewsForAsset: [ClientReview]
+    let allReviews: [ClientReview]
+    let onSelectAnotherAsset: (UUID) -> Void
+    let onExit: () -> Void
+    let onSendReply: (String) -> Void
+
+    @State private var draftReply: String = ""
+    @FocusState private var replyFieldFocused: Bool
+
+    private var assetIdsWithReviews: [UUID] {
+        var seen: Set<UUID> = []
+        var ordered: [UUID] = []
+        for review in allReviews where !seen.contains(review.assetId) {
+            seen.insert(review.assetId)
+            ordered.append(review.assetId)
+        }
+        return ordered
+    }
+
+    /// Latest review per asset, indexed for the bottom switcher's
+    /// preview chips. Newest review wins (recentClientReviews is
+    /// already sorted newest-first).
+    private var latestPerAsset: [UUID: ClientReview] {
+        var map: [UUID: ClientReview] = [:]
+        for review in allReviews where map[review.assetId] == nil {
+            map[review.assetId] = review
+        }
+        return map
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header — asset thumbnail + filename give the photographer
+            // an immediate visual anchor for which shot the thread is
+            // discussing. Smaller than the hero on the left but still
+            // big enough to recognise without squinting.
+            HStack(spacing: 12) {
+                if let key = asset.previewKey, let img = UIImage(contentsOfFile: key) {
+                    Image(uiImage: img)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 44, height: 44)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                } else {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.captureChipBG)
+                        .frame(width: 44, height: 44)
+                        .overlay {
+                            Image(systemName: "photo")
+                                .foregroundStyle(.tertiary)
+                        }
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Tilbakemeldinger")
+                        .font(.headline)
+                    Text(asset.originalFilename)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button(action: onExit) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title2)
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(.secondary, .secondary.opacity(0.3))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Lukk review-mode")
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+
+            Divider()
+
+            // Conversation thread.
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 8) {
+                        if reviewsForAsset.isEmpty {
+                            VStack(spacing: 10) {
+                                Image(systemName: "bubble.left.and.bubble.right")
+                                    .font(.system(size: 36, weight: .light))
+                                    .foregroundStyle(.tertiary)
+                                Text("Start en samtale")
+                                    .font(.callout.weight(.medium))
+                                    .foregroundStyle(.secondary)
+                                Text("Skriv en kommentar nedenfor — kunden ser den med en gang i galleriet.")
+                                    .font(.caption)
+                                    .foregroundStyle(.tertiary)
+                                    .multilineTextAlignment(.center)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.horizontal, 24)
+                            .padding(.vertical, 32)
+                        } else {
+                            ForEach(reviewsForAsset.reversed()) { review in
+                                ReviewBubble(review: review)
+                                    .id(review.id)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 14)
+                }
+                .onChange(of: reviewsForAsset.count) { _, _ in
+                    if let lastId = reviewsForAsset.reversed().last?.id {
+                        withAnimation(.easeOut(duration: 0.25)) {
+                            proxy.scrollTo(lastId, anchor: .bottom)
+                        }
+                    }
+                }
+            }
+
+            Divider()
+
+            // Other assets that have feedback — quick switcher.
+            // Bigger touch target than the v1 chips so the photographer
+            // can switch threads with a thumb without zooming in.
+            if assetIdsWithReviews.count > 1 {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Andre bilder med tilbakemelding")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 16)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(assetIdsWithReviews, id: \.self) { id in
+                                ReviewSwitcherChip(
+                                    latestReview: latestPerAsset[id],
+                                    isFocused: id == asset.id,
+                                    onSelect: { onSelectAnotherAsset(id) },
+                                )
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                    }
+                }
+                .padding(.vertical, 10)
+                Divider()
+            }
+
+            // Reply input — pinned to the bottom so the photographer's
+            // thumb has a stable target. Send button enables on
+            // non-whitespace text. Multi-line capable; max 4 lines
+            // before scrolling so the rail doesn't crowd the thread.
+            HStack(alignment: .bottom, spacing: 8) {
+                TextField("Skriv et svar…", text: $draftReply, axis: .vertical)
+                    .lineLimit(1...4)
+                    .textFieldStyle(.plain)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
+                    .focused($replyFieldFocused)
+                    .submitLabel(.send)
+                    .onSubmit { commit() }
+                Button(action: commit) {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(canSend ? Color.accentColor : .secondary.opacity(0.45))
+                }
+                .buttonStyle(.plain)
+                .disabled(!canSend)
+                .accessibilityLabel("Send svar")
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+        }
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .padding(.vertical, 16)
+        .padding(.trailing, 16)
+    }
+
+    private var canSend: Bool {
+        !draftReply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func commit() {
+        let trimmed = draftReply.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        onSendReply(trimmed)
+        draftReply = ""
+    }
+}
+
+/// Single chat bubble — alignment + tint key off `senderKind`. Hearts
+/// from the client render as compact inline-style ("❤️ Holy Crust
+/// hjertet · 2m") rather than full bubbles so they don't drown out
+/// substantive comments. Photographer hearts intentionally not
+/// supported (this is the photographer-side surface — heart-back
+/// would be a separate feature).
+private struct ReviewBubble: View {
+    let review: ClientReview
+
+    var body: some View {
+        switch review.kind {
+        case .heart(let on):
+            HStack(spacing: 6) {
+                if !isPhotographer { Spacer(minLength: 0) }
+                HStack(spacing: 5) {
+                    Image(systemName: on ? "heart.fill" : "heart.slash")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.pink)
+                    Text("\(senderName) \(on ? "hjertet" : "fjernet hjertet")")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("·")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                    Text(review.timestamp, style: .relative)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(.pink.opacity(0.10), in: Capsule())
+                if isPhotographer { Spacer(minLength: 0) }
+            }
+
+        case .comment(let preview):
+            HStack(alignment: .bottom, spacing: 8) {
+                if !isPhotographer { Spacer(minLength: 32) }
+                VStack(alignment: isPhotographer ? .leading : .trailing, spacing: 4) {
+                    Text(senderName)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 4)
+                    Text(preview)
+                        .font(.callout)
+                        .foregroundStyle(.primary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(
+                            (isPhotographer ? Color.secondary : Color.orange).opacity(0.18),
+                            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .stroke(
+                                    (isPhotographer ? Color.secondary : Color.orange).opacity(0.35),
+                                    lineWidth: 0.5
+                                )
+                        )
+                    Text(review.timestamp, style: .relative)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .padding(.horizontal, 4)
+                }
+                if isPhotographer { Spacer(minLength: 32) }
+            }
+        }
+    }
+
+    private var isPhotographer: Bool {
+        review.senderKind == .photographer
+    }
+
+    private var senderName: String {
+        review.displayName ?? (isPhotographer ? "Du" : "Klient")
+    }
+}
+
+private struct ReviewSwitcherChip: View {
+    let latestReview: ClientReview?
+    let isFocused: Bool
+    let onSelect: () -> Void
+
+    var body: some View {
+        Button(action: onSelect) {
+            HStack(spacing: 8) {
+                if let latest = latestReview {
+                    Image(systemName: chipIcon(for: latest))
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(chipTint(for: latest))
+                }
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(latestReview?.assetFilename ?? "—")
+                        .font(.caption.monospaced())
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    if let preview = latestReview.flatMap(commentPreview) {
+                        Text(preview)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                isFocused ? Color.accentColor.opacity(0.18) : Color.white.opacity(0.06),
+                in: RoundedRectangle(cornerRadius: 10)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10).stroke(
+                    isFocused ? Color.accentColor.opacity(0.6) : Color.clear,
+                    lineWidth: 1
+                )
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func chipIcon(for review: ClientReview) -> String {
+        switch review.kind {
+        case .heart(let on): return on ? "heart.fill" : "heart.slash"
+        case .comment: return "bubble.left.fill"
+        }
+    }
+
+    private func chipTint(for review: ClientReview) -> Color {
+        switch review.kind {
+        case .heart: return .pink
+        case .comment: return .orange
+        }
+    }
+
+    private func commentPreview(_ review: ClientReview) -> String? {
+        if case .comment(let p) = review.kind {
+            return p
+        }
+        return nil
+    }
+}
+
 private struct EmptyHero: View {
     var body: some View {
         VStack(spacing: 18) {
@@ -1296,6 +2236,122 @@ private struct PickRejectControls: View {
             .buttonStyle(.plain)
             .keyboardShortcut("x", modifiers: [])
             .accessibilityLabel("Mark as rejected")
+        }
+    }
+}
+
+/// Voice memo recorder + playback control for the focused asset.
+///
+/// States:
+///   - No memo, idle → mic button (tap to start recording)
+///   - Recording this asset → red pulsing stop button
+///   - Memo exists, idle → play button + small dot indicator
+///   - Memo exists, playing → stop-playback button
+///
+/// Long-press on a play button = delete memo. Long-press is intentional
+/// (matches the dangerous-action convention used by the reject button)
+/// so a stray tap during shutter doesn't wipe a recorded note.
+private struct VoiceMemoControls: View {
+    let assetId: UUID
+    let state: VoiceMemoService.State
+    let memoExists: Bool
+    let onStart: () -> Void
+    let onStop: () -> Void
+    let onPlay: () -> Void
+    let onDelete: () -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            switch resolvedMode {
+            case .recordIdle:
+                button(icon: "mic", tint: .white.opacity(0.45), background: .clear, action: onStart)
+                    .accessibilityLabel("Record voice memo")
+
+            case .recording:
+                button(icon: "stop.fill", tint: .white, background: Color.red.opacity(0.85), action: onStop)
+                    .accessibilityLabel("Stop recording")
+                    .overlay(alignment: .topTrailing) {
+                        Circle()
+                            .fill(.red)
+                            .frame(width: 8, height: 8)
+                            .opacity(pulseOn ? 1 : 0.25)
+                            .animation(
+                                .easeInOut(duration: 0.7).repeatForever(autoreverses: true),
+                                value: pulseOn
+                            )
+                            .padding(2)
+                    }
+                    .onAppear { pulseOn = true }
+                    .onDisappear { pulseOn = false }
+
+            case .playable:
+                button(icon: "play.fill", tint: .white, background: Color.blue.opacity(0.55), action: onPlay)
+                    .accessibilityLabel("Play voice memo")
+                    .onLongPressGesture(minimumDuration: 0.6) { onDelete() }
+
+            case .playing:
+                button(icon: "stop.fill", tint: .white, background: Color.blue.opacity(0.55), action: onPlay)
+                    .accessibilityLabel("Stop voice memo playback")
+                    .onLongPressGesture(minimumDuration: 0.6) { onDelete() }
+            }
+        }
+    }
+
+    @State private var pulseOn = false
+
+    private enum Mode { case recordIdle, recording, playable, playing }
+
+    private var resolvedMode: Mode {
+        switch state {
+        case .recording(let id, _) where id == assetId: return .recording
+        case .playing(let id) where id == assetId:      return .playing
+        default:
+            return memoExists ? .playable : .recordIdle
+        }
+    }
+
+    private func button(icon: String, tint: Color, background: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.title3)
+                .foregroundStyle(tint)
+                .frame(width: 36, height: 36)
+                .background(background, in: Circle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// Lightroom-style 8-color label row. Tapping the active color clears.
+/// Visual: small filled circles with a thicker ring on the current label.
+/// Numeric keyboard shortcuts (6–9) intentionally avoided — they collide
+/// with rating keys (1–5); colors are mouse/touch-driven.
+private struct ColorLabelControls: View {
+    let current: ColorLabel?
+    let onSet: (ColorLabel?) -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(ColorLabel.allCases, id: \.self) { label in
+                Button {
+                    onSet(current == label ? nil : label)
+                } label: {
+                    Circle()
+                        .fill(Color.from(colorLabel: label))
+                        .frame(width: 18, height: 18)
+                        .overlay {
+                            Circle()
+                                .stroke(
+                                    current == label ? Color.white : Color.white.opacity(0.2),
+                                    lineWidth: current == label ? 2.5 : 1
+                                )
+                        }
+                        .scaleEffect(current == label ? 1.15 : 1.0)
+                        .animation(.spring(duration: 0.2), value: current)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Set color label: \(label.rawValue)")
+            }
         }
     }
 }
@@ -1565,82 +2621,328 @@ struct TunePanel: View {
     let initialRecipe: MagicRecipe
     let onChange: (MagicRecipe) -> Void
     let onReset: () -> Void
+    let onApplyToScope: ((LiveCaptureModel.RecipeApplyScope) -> Void)?
+    let assetCounts: ScopeCounts
+
+    struct ScopeCounts {
+        let flagged: Int
+        let fourPlus: Int
+        let entireSession: Int
+    }
 
     @State private var recipe: MagicRecipe
     @State private var debounce: Task<Void, Never>?
+    @State private var pendingApplyScope: LiveCaptureModel.RecipeApplyScope?
     @Environment(\.dismiss) private var dismiss
 
     init(initialRecipe: MagicRecipe,
          onChange: @escaping (MagicRecipe) -> Void,
-         onReset: @escaping () -> Void) {
+         onReset: @escaping () -> Void,
+         onApplyToScope: ((LiveCaptureModel.RecipeApplyScope) -> Void)? = nil,
+         assetCounts: ScopeCounts = .init(flagged: 0, fourPlus: 0, entireSession: 0)) {
         self.initialRecipe = initialRecipe
         self.onChange = onChange
         self.onReset = onReset
+        self.onApplyToScope = onApplyToScope
+        self.assetCounts = assetCounts
         self._recipe = State(initialValue: initialRecipe)
     }
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    Text("White balance + tone are auto-corrected first. These sliders apply on top — warmth shifts your target temperature by up to ±900K.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+            scrollContent
+                .scrollDismissesKeyboard(.immediately)
+                .navigationTitle("Magic · Tune")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar { doneToolbar }
+                .onChange(of: recipe, debouncedNotify)
+                .alert(
+                    alertTitle,
+                    isPresented: alertBinding,
+                    presenting: pendingApplyScope,
+                    actions: alertActions,
+                    message: alertMessage,
+                )
+        }
+    }
 
-                    TuneSlider(title: "Warmth", icon: "thermometer.sun",
-                               value: $recipe.warmth, range: -1...1,
-                               format: { v in
-                                let k = Int((v * 900).rounded())
-                                return k == 0 ? "neutral" : "\(k > 0 ? "+" : "")\(k)K"
-                               })
-                    TuneSlider(title: "Skin smoothing", icon: "face.smiling",
-                               value: $recipe.skinSmooth, range: 0...1,
-                               format: { "\(Int(($0 * 100).rounded()))%" })
-                    TuneSlider(title: "Shadow lift", icon: "circle.lefthalf.filled",
-                               value: $recipe.shadowLift, range: 0...1,
-                               format: { "\(Int(($0 * 100).rounded()))%" })
-                    TuneSlider(title: "Contrast", icon: "rectangle.lefthalf.inset.filled",
-                               value: $recipe.contrast, range: -1...1,
-                               format: signedPercent)
-                    TuneSlider(title: "Saturation", icon: "paintpalette",
-                               value: $recipe.saturation, range: -1...1,
-                               format: signedPercent)
+    private var scrollContent: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                PresetChipRow(currentRecipe: recipe) { preset in
+                    recipe = preset
+                }
+                lightSection
+                toneSection
+                peopleSection
+                if onApplyToScope != nil { applyToScopeSection }
+                resetButton
+            }
+            .padding(20)
+        }
+    }
 
-                    Button(role: .destructive) {
-                        recipe = initialRecipe
-                        onReset()
-                    } label: {
-                        Label("Reset to baseline", systemImage: "arrow.uturn.backward")
-                            .frame(maxWidth: .infinity, minHeight: 40)
-                    }
-                    .buttonStyle(.bordered)
-                    .tint(.red)
-                    .padding(.top, 8)
-                }
-                .padding(20)
+    @ToolbarContentBuilder
+    private var doneToolbar: some ToolbarContent {
+        ToolbarItem(placement: .topBarTrailing) {
+            Button("Ferdig") { dismiss() }
+                .fontWeight(.semibold)
+        }
+    }
+
+    private func debouncedNotify(_ old: MagicRecipe, _ new: MagicRecipe) {
+        debounce?.cancel()
+        debounce = Task {
+            try? await Task.sleep(for: .milliseconds(120))
+            if !Task.isCancelled { onChange(new) }
+        }
+    }
+
+    private var alertTitle: String {
+        "Bruk recipen på \(pendingApplyScope?.label.lowercased() ?? "")?"
+    }
+
+    private var alertBinding: Binding<Bool> {
+        Binding(
+            get: { pendingApplyScope != nil },
+            set: { if !$0 { pendingApplyScope = nil } }
+        )
+    }
+
+    @ViewBuilder
+    private func alertActions(_ scope: LiveCaptureModel.RecipeApplyScope) -> some View {
+        Button("Bruk") {
+            onApplyToScope?(scope)
+            pendingApplyScope = nil
+            dismiss()
+        }
+        Button("Avbryt", role: .cancel) { pendingApplyScope = nil }
+    }
+
+    @ViewBuilder
+    private func alertMessage(_ scope: LiveCaptureModel.RecipeApplyScope) -> some View {
+        let n: Int = {
+            switch scope {
+            case .allFlagged:    return assetCounts.flagged
+            case .allFourPlus:   return assetCounts.fourPlus
+            case .entireSession: return assetCounts.entireSession
             }
-            .scrollDismissesKeyboard(.immediately)
-            .navigationTitle("Magic · Tune")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
-                }
+        }()
+        Text("Recipen kopieres til \(n) målbilder. Hver kopi kan finjusteres per bilde senere.")
+    }
+
+    private var lightSection: some View {
+        section(title: "Lys", subtitle: "Eksponering · skygger · høylys") {
+            TuneSlider(
+                title: "Warmth", icon: "thermometer.sun",
+                value: $recipe.warmth, range: -1...1,
+                format: warmthFormat,
+            )
+            TuneSlider(
+                title: "Shadow lift", icon: "circle.lefthalf.filled",
+                value: $recipe.shadowLift, range: 0...1,
+                format: percentFormat,
+            )
+            TuneSlider(
+                title: "Highlight recovery", icon: "sun.max",
+                value: $recipe.highlightRecovery, range: 0...1,
+                format: percentFormat,
+            )
+        }
+    }
+
+    private var toneSection: some View {
+        section(title: "Tone", subtitle: "Kontrast · metning") {
+            TuneSlider(
+                title: "Contrast", icon: "rectangle.lefthalf.inset.filled",
+                value: $recipe.contrast, range: -1...1,
+                format: signedPercent,
+            )
+            TuneSlider(
+                title: "Saturation", icon: "paintpalette",
+                value: $recipe.saturation, range: -1...1,
+                format: signedPercent,
+            )
+        }
+    }
+
+    private var peopleSection: some View {
+        section(title: "Personer", subtitle: "Hud · poreutjevning") {
+            TuneSlider(
+                title: "Skin smoothing", icon: "face.smiling",
+                value: $recipe.skinSmooth, range: 0...1,
+                format: percentFormat,
+            )
+        }
+    }
+
+    private var applyToScopeSection: some View {
+        section(
+            title: "Bruk på flere bilder",
+            subtitle: "Lightroom-style batch — denne recipen kopieres til hver target",
+        ) {
+            VStack(spacing: 8) {
+                applyButton(.allFlagged,    count: assetCounts.flagged)
+                applyButton(.allFourPlus,   count: assetCounts.fourPlus)
+                applyButton(.entireSession, count: assetCounts.entireSession)
             }
-            .onChange(of: recipe) { _, new in
-                debounce?.cancel()
-                debounce = Task {
-                    try? await Task.sleep(for: .milliseconds(120))
-                    if !Task.isCancelled { onChange(new) }
-                }
+        }
+    }
+
+    private var resetButton: some View {
+        Button(role: .destructive) {
+            recipe = initialRecipe
+            onReset()
+        } label: {
+            Label("Tilbakestill til baseline", systemImage: "arrow.uturn.backward")
+                .frame(maxWidth: .infinity, minHeight: 40)
+        }
+        .buttonStyle(.bordered)
+        .tint(.red)
+        .padding(.top, 4)
+    }
+
+    private func percentFormat(_ v: Double) -> String {
+        "\(Int((v * 100).rounded()))%"
+    }
+
+    private func warmthFormat(_ v: Double) -> String {
+        let k = Int((v * 900).rounded())
+        return k == 0 ? "nøytral" : "\(k > 0 ? "+" : "")\(k)K"
+    }
+
+    @ViewBuilder
+    private func applyButton(_ scope: LiveCaptureModel.RecipeApplyScope, count: Int) -> some View {
+        Button {
+            pendingApplyScope = scope
+        } label: {
+            HStack {
+                Label(scope.label, systemImage: scope.icon)
+                    .font(.callout.weight(.medium))
+                Spacer()
+                Text("\(count) bilder")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
             }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
+        .disabled(count == 0)
+        .opacity(count == 0 ? 0.5 : 1)
+    }
+
+    @ViewBuilder
+    private func section<Content: View>(
+        title: String,
+        subtitle: String,
+        @ViewBuilder content: () -> Content,
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .textCase(.uppercase)
+                    .foregroundStyle(.secondary)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+            content()
         }
     }
 
     private func signedPercent(_ v: Double) -> String {
         let pct = Int((v * 100).rounded())
         return pct == 0 ? "neutral" : "\(pct > 0 ? "+" : "")\(pct)%"
+    }
+}
+
+/// Quick-apply preset row at the top of the Tune panel. Each chip
+/// swaps the entire recipe, so a photographer who just shot a
+/// portrait can flip to "Food" mid-batch when the next subject is a
+/// product on a plate. Active state highlights the preset whose
+/// slider snapshot matches the current recipe (within tolerance) so
+/// the photographer can see "I'm currently in Portrait-territory" at
+/// a glance.
+private struct PresetChipRow: View {
+    let currentRecipe: MagicRecipe
+    let onPick: (MagicRecipe) -> Void
+
+    private struct Preset: Identifiable {
+        let id: String
+        let label: String
+        let symbol: String
+        let recipe: MagicRecipe
+    }
+
+    private let presets: [Preset] = [
+        Preset(id: "portrait",  label: "Portrett",  symbol: "person.crop.circle",     recipe: .portrait),
+        Preset(id: "food",      label: "Mat",       symbol: "fork.knife",             recipe: .food),
+        Preset(id: "landscape", label: "Landskap",  symbol: "mountain.2",             recipe: .landscape),
+        Preset(id: "vehicle",   label: "Kjøretøy",  symbol: "car",                    recipe: .vehicle),
+        Preset(id: "product",   label: "Produkt",   symbol: "cube.box",               recipe: .product),
+        Preset(id: "aviation",  label: "Fly",       symbol: "airplane",               recipe: .aviation),
+        Preset(id: "neutral",   label: "Nøytral",   symbol: "circle.dashed",          recipe: .neutral),
+    ]
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(presets) { preset in
+                    Button {
+                        onPick(preset.recipe)
+                    } label: {
+                        VStack(spacing: 6) {
+                            Image(systemName: preset.symbol)
+                                .font(.title3)
+                            Text(preset.label)
+                                .font(.caption.weight(.medium))
+                        }
+                        .frame(width: 78, height: 64)
+                        .background(
+                            isActive(preset)
+                                ? Color.accentColor.opacity(0.18)
+                                : Color.secondary.opacity(0.08),
+                            in: RoundedRectangle(cornerRadius: 12)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(
+                                    isActive(preset)
+                                        ? Color.accentColor.opacity(0.65)
+                                        : Color.clear,
+                                    lineWidth: 1.2
+                                )
+                        )
+                        .foregroundStyle(isActive(preset) ? Color.accentColor : .primary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 2)
+        }
+    }
+
+    /// Active when every numeric axis lies within ±0.05 of the
+    /// preset's snapshot. Tolerance keeps the highlight stable while
+    /// the photographer nudges sliders in fine increments — they'd
+    /// expect the chip to stay highlighted unless they significantly
+    /// drifted from the preset.
+    private func isActive(_ preset: Preset) -> Bool {
+        let r1 = currentRecipe
+        let r2 = preset.recipe
+        let tolerance = 0.05
+        return abs(r1.warmth - r2.warmth) < tolerance
+            && abs(r1.skinSmooth - r2.skinSmooth) < tolerance
+            && abs(r1.shadowLift - r2.shadowLift) < tolerance
+            && abs(r1.contrast - r2.contrast) < tolerance
+            && abs(r1.saturation - r2.saturation) < tolerance
+            && abs(r1.highlightRecovery - r2.highlightRecovery) < tolerance
     }
 }
 
@@ -1653,16 +2955,52 @@ private struct TuneSlider: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Label(title, systemImage: icon).font(.callout)
-                Spacer()
-                Text(format(value))
-                    .font(.footnote.monospaced())
-                    .foregroundStyle(.secondary)
-            }
-            Slider(value: $value, in: range)
+            header
+            slider
         }
         .padding(.vertical, 2)
+    }
+
+    private var header: some View {
+        HStack {
+            Label(title, systemImage: icon).font(.callout)
+            Spacer()
+            valuePill
+        }
+    }
+
+    private var valuePill: some View {
+        let isNeutral = value == 0
+        return Text(format(value))
+            .font(.footnote.monospaced())
+            .foregroundStyle(isNeutral ? Color.secondary : Color.accentColor)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 2)
+            .background(
+                (isNeutral ? Color.clear : Color.accentColor.opacity(0.1)),
+                in: Capsule()
+            )
+    }
+
+    private var slider: some View {
+        Slider(value: $value, in: range) {
+            EmptyView()
+        } minimumValueLabel: {
+            Text(rangeEndpointLabel(range.lowerBound))
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        } maximumValueLabel: {
+            Text(rangeEndpointLabel(range.upperBound))
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+    }
+
+    private func rangeEndpointLabel(_ v: Double) -> String {
+        if v == 0 { return "0" }
+        if v == -1 { return "−" }
+        if v == 1 { return "+" }
+        return "\(Int(v))"
     }
 }
 
@@ -1768,14 +3106,29 @@ private struct AssetStateBadge: View {
 private struct FilmstripFilterBar: View {
     struct Counts { let total: Int; let picks: Int; let fourPlus: Int }
     let current: LiveCaptureModel.FilmstripFilter
+    let currentColor: ColorLabel?
     let counts: Counts
+    let colorCounts: [ColorLabel: Int]
     let onSelect: (LiveCaptureModel.FilmstripFilter) -> Void
+    let onSelectColor: (ColorLabel?) -> Void
 
     var body: some View {
         HStack(spacing: 8) {
             chip(for: .all, count: counts.total)
             chip(for: .picks, count: counts.picks)
             chip(for: .fourPlus, count: counts.fourPlus)
+            // Color filter row only surfaces when at least one shot in
+            // the session has a color label set — keeps the bar uncluttered
+            // for sessions where the photographer doesn't use them.
+            if !colorCounts.isEmpty {
+                Divider().frame(height: 14).padding(.horizontal, 4)
+                colorChip(for: nil, count: counts.total)
+                ForEach(ColorLabel.allCases, id: \.self) { label in
+                    if let count = colorCounts[label], count > 0 {
+                        colorChip(for: label, count: count)
+                    }
+                }
+            }
             Spacer()
         }
         .padding(.horizontal, 24)
@@ -1804,13 +3157,47 @@ private struct FilmstripFilterBar: View {
         }
         .buttonStyle(.plain)
     }
+
+    @ViewBuilder
+    private func colorChip(for label: ColorLabel?, count: Int) -> some View {
+        let isActive = currentColor == label
+        Button {
+            onSelectColor(label)
+        } label: {
+            HStack(spacing: 6) {
+                if let label {
+                    Circle()
+                        .fill(Color.from(colorLabel: label))
+                        .frame(width: 10, height: 10)
+                } else {
+                    Image(systemName: "circle.dashed")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                Text("\(count)")
+                    .font(.caption2.weight(.medium))
+            }
+            .foregroundStyle(isActive ? .white : .secondary)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(
+                isActive ? Color.accentColor : .white.opacity(0.06),
+                in: Capsule()
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label.map { "Filter color: \($0.rawValue)" } ?? "Clear color filter")
+    }
 }
 
 private struct FilmstripRail: View {
     let assets: [Asset]
     let focusedAssetId: UUID?
+    let compareAnchorId: UUID?
+    let assetIdsWithReviews: Set<UUID>
     let onSelect: (Asset) -> Void
     let onDoubleTap: (Asset) -> Void
+    let onLongPress: (Asset) -> Void
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -1819,10 +3206,18 @@ private struct FilmstripRail: View {
                     ForEach(assets) { asset in
                         FilmstripTile(
                             asset: asset,
-                            isFocused: asset.id == focusedAssetId
+                            isFocused: asset.id == focusedAssetId,
+                            isCompareAnchor: asset.id == compareAnchorId,
+                            hasReviews: assetIdsWithReviews.contains(asset.id)
                         )
-                        .onTapGesture { onSelect(asset) }
+                        // Order matters — register double-tap before
+                        // single-tap so the dispatcher waits for a
+                        // possible second tap before firing single.
                         .onTapGesture(count: 2) { onDoubleTap(asset) }
+                        .onTapGesture { onSelect(asset) }
+                        .onLongPressGesture(minimumDuration: 0.4) {
+                            onLongPress(asset)
+                        }
                         .id(asset.id)
                     }
                 }
@@ -1848,6 +3243,8 @@ private struct FilmstripRail: View {
 private struct FilmstripTile: View {
     let asset: Asset
     let isFocused: Bool
+    var isCompareAnchor: Bool = false
+    var hasReviews: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -1877,8 +3274,18 @@ private struct FilmstripTile: View {
                     RoundedRectangle(cornerRadius: 8)
                         .stroke(
                             overlayColor,
-                            lineWidth: isFocused ? 2.5 : (asset.flaggedForClient ? 2 : 1)
+                            lineWidth: isCompareAnchor ? 3 : (isFocused ? 2.5 : (asset.flaggedForClient ? 2 : 1))
                         )
+                }
+                .overlay(alignment: .topLeading) {
+                    if isCompareAnchor {
+                        Text("A")
+                            .font(.caption2.weight(.heavy))
+                            .foregroundStyle(.white)
+                            .frame(width: 18, height: 18)
+                            .background(.orange, in: Circle())
+                            .padding(6)
+                    }
                 }
 
                 // Top-right: error, enhanced, or reject marker
@@ -1913,6 +3320,31 @@ private struct FilmstripTile: View {
                         .padding(6)
                 }
             }
+            .overlay(alignment: .bottomTrailing) {
+                HStack(spacing: 4) {
+                    if hasReviews {
+                        Image(systemName: "bubble.left.fill")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(3)
+                            .background(.orange.opacity(0.9), in: Circle())
+                    }
+                    if asset.voiceMemoKey != nil {
+                        Image(systemName: "mic.fill")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(3)
+                            .background(.blue.opacity(0.85), in: Circle())
+                    }
+                    if let label = asset.colorLabel {
+                        Circle()
+                            .fill(Color.from(colorLabel: label))
+                            .frame(width: 12, height: 12)
+                            .overlay(Circle().stroke(.white.opacity(0.85), lineWidth: 1))
+                    }
+                }
+                .padding(8)
+            }
             .overlay(alignment: .bottom) {
                 if asset.rating > 0 {
                     HStack(spacing: 1) {
@@ -1938,6 +3370,7 @@ private struct FilmstripTile: View {
     }
 
     private var overlayColor: Color {
+        if isCompareAnchor           { return .orange }
         if isFocused                 { return .accentColor }
         if asset.rejected            { return .red.opacity(0.6) }
         if asset.flaggedForClient    { return .green.opacity(0.7) }
@@ -2141,6 +3574,8 @@ private struct SettingsSheet: View {
     let sessionName: String
     let showHUD: Bool
     let onToggleHUD: () -> Void
+    let clientReviewsEnabled: Bool
+    let onToggleClientReviews: () -> Void
     let onRename: (String) -> Void
     let onDisconnect: () -> Void
     let onSignIn: () -> Void
@@ -2178,6 +3613,26 @@ private struct SettingsSheet: View {
                             }
                         } icon: {
                             Image(systemName: "chart.bar.xaxis")
+                        }
+                    }
+                }
+
+                Section("Klient-tilbakemeldinger") {
+                    Toggle(isOn: .init(
+                        get: { clientReviewsEnabled },
+                        set: { _ in onToggleClientReviews() }
+                    )) {
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Vis hjerter + kommentarer")
+                                Text(clientReviewsEnabled
+                                     ? "Bell-ikon, per-bilde-merker og review-mode er synlige"
+                                     : "Skjuler all chrome — innkommende events ignoreres til du slår på igjen")
+                                    .font(.caption).foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        } icon: {
+                            Image(systemName: clientReviewsEnabled ? "bubble.left.and.bubble.right.fill" : "bubble.left.and.bubble.right")
                         }
                     }
                 }
@@ -2240,70 +3695,215 @@ private struct SettingsSheet: View {
 
 // MARK: - Full-screen asset viewer
 
+/// Fullscreen Photos-app-style asset viewer. Pages horizontally between
+/// every asset in the session so the photographer can swipe through
+/// shots without dropping back to the filmstrip.
+///
+/// Per-page interaction:
+///   - Default scale = `fillScale` (image covers screen edge-to-edge).
+///     Portrait shots on landscape iPad therefore arrive filled rather
+///     than letterboxed — the explicit "dekke hele skjermen"-ask.
+///   - Pinch-out below fill snaps to fit (scale=1, whole frame visible).
+///   - Pinch-in zooms to detail; drag pans when scale > 1.
+///   - Double-tap cycles fit ↔ fill (and snaps zoomed-in state back to
+///     fill, matching Apple Photos).
+///   - Single-tap toggles chrome (filename/time/close).
+///
+/// Pager-level: TabView page style with .never index display so the
+/// background stays clean. Closing returns to the live capture surface.
 private struct AssetViewerScreen: View {
-    let asset: Asset
+    let assets: [Asset]
+    let initialAssetId: UUID
     let onClose: () -> Void
 
-    @State private var scale: CGFloat = 1
-    @State private var offset: CGSize = .zero
+    @State private var currentAssetId: UUID
+
+    init(assets: [Asset], initialAssetId: UUID, onClose: @escaping () -> Void) {
+        self.assets = assets
+        self.initialAssetId = initialAssetId
+        self.onClose = onClose
+        _currentAssetId = State(initialValue: initialAssetId)
+    }
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-
-            if let key = asset.previewKey, let image = UIImage(contentsOfFile: key) {
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .scaleEffect(scale)
-                    .offset(offset)
-                    .gesture(
-                        MagnificationGesture()
-                            .onChanged { scale = max(1, $0) }
-                            .onEnded { _ in
-                                withAnimation(.spring) {
-                                    if scale < 1.1 { scale = 1; offset = .zero }
-                                }
-                            }
+            TabView(selection: $currentAssetId) {
+                ForEach(assets) { asset in
+                    AssetViewerPage(
+                        asset: asset,
+                        onClose: onClose,
                     )
-                    .simultaneousGesture(
-                        DragGesture()
-                            .onChanged { if scale > 1 { offset = $0.translation } }
-                            .onEnded { _ in if scale <= 1 { withAnimation(.spring) { offset = .zero } } }
-                    )
-            } else {
-                Text("Preview unavailable")
-                    .foregroundStyle(.secondary)
-            }
-
-            VStack {
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(asset.originalFilename)
-                            .font(.headline.monospaced())
-                        Text(asset.captureTime.formatted(date: .abbreviated, time: .standard))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Button(action: onClose) {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.title)
-                            .symbolRenderingMode(.hierarchical)
-                            .foregroundStyle(.white, .white.opacity(0.25))
-                    }
+                    .tag(asset.id)
                 }
-                .padding()
-                .background(.ultraThinMaterial)
-                Spacer()
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .ignoresSafeArea()
+        }
+    }
+}
+
+private struct AssetViewerPage: View {
+    let asset: Asset
+    let onClose: () -> Void
+
+    /// Current zoom factor applied to a `.fit`-rendered image. Conceptual
+    /// scale=1 is letterboxed-fit (whole frame visible); scale=fillScale
+    /// is fill-the-screen (off-aspect content cropped). Initialized to
+    /// `fillScale` on first layout so opening a portrait shot on a
+    /// landscape iPad shows the photographer's image edge-to-edge instead
+    /// of bookended by black bars.
+    @State private var scale: CGFloat = 1
+    /// Aspect-ratio-derived scale that promotes the `.fit`-rendered image
+    /// to "fill the screen". Computed from `image.size` × container size
+    /// in `onAppear`; nil before that so we don't apply a stale 1:1
+    /// default while waiting for layout.
+    @State private var fillScale: CGFloat?
+    @State private var lastCommittedScale: CGFloat = 1
+    @State private var offset: CGSize = .zero
+    @State private var lastCommittedOffset: CGSize = .zero
+    /// Photos-app-style chrome toggle. Single-tap hides filename + close
+    /// button so the image fills the screen edge-to-edge.
+    @State private var showChrome: Bool = true
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack {
+                Color.black.ignoresSafeArea()
+
+                if let key = asset.previewKey, let image = UIImage(contentsOfFile: key) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .scaleEffect(scale)
+                        .offset(offset)
+                        .gesture(
+                            MagnificationGesture()
+                                .onChanged { value in
+                                    scale = max(1, lastCommittedScale * value)
+                                }
+                                .onEnded { _ in
+                                    lastCommittedScale = scale
+                                    if scale < 1.05 {
+                                        withAnimation(.spring) {
+                                            scale = 1
+                                            lastCommittedScale = 1
+                                            offset = .zero
+                                            lastCommittedOffset = .zero
+                                        }
+                                    }
+                                }
+                        )
+                        .simultaneousGesture(
+                            DragGesture()
+                                .onChanged { value in
+                                    // Pan only when zoomed beyond the
+                                    // canonical viewing scale (fillScale).
+                                    // At or below fill, the TabView's
+                                    // page-swipe gesture wins so the
+                                    // photographer can flip through
+                                    // shots without fighting the image.
+                                    let fill = fillScale ?? 1
+                                    guard scale > fill * 1.05 else { return }
+                                    offset = CGSize(
+                                        width: lastCommittedOffset.width + value.translation.width,
+                                        height: lastCommittedOffset.height + value.translation.height,
+                                    )
+                                }
+                                .onEnded { _ in
+                                    lastCommittedOffset = offset
+                                    if scale < 1.05 {
+                                        withAnimation(.spring) {
+                                            offset = .zero
+                                            lastCommittedOffset = .zero
+                                        }
+                                    }
+                                }
+                        )
+                        .onAppear {
+                            let computed = Self.computeFillScale(
+                                imageSize: image.size,
+                                containerSize: geo.size,
+                            )
+                            fillScale = computed
+                            scale = computed
+                            lastCommittedScale = computed
+                            offset = .zero
+                            lastCommittedOffset = .zero
+                        }
+                } else {
+                    Text("Preview unavailable")
+                        .foregroundStyle(.secondary)
+                }
+
+                if showChrome {
+                    VStack {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(asset.originalFilename)
+                                    .font(.headline.monospaced())
+                                Text(asset.captureTime.formatted(date: .abbreviated, time: .standard))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Button(action: onClose) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.title)
+                                    .symbolRenderingMode(.hierarchical)
+                                    .foregroundStyle(.white, .white.opacity(0.25))
+                            }
+                        }
+                        .padding()
+                        .background(.ultraThinMaterial)
+                        Spacer()
+                    }
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
+            .contentShape(Rectangle())
+            // Order matters — register the double-tap (fit↔fill toggle)
+            // first so the gesture system waits for a possible second
+            // tap before resolving the single-tap (chrome toggle).
+            .onTapGesture(count: 2) {
+                withAnimation(.spring) {
+                    let fill = fillScale ?? 1
+                    let nextScale: CGFloat
+                    if scale > fill * 1.05 {
+                        nextScale = fill          // zoomed-in → back to fill
+                    } else if abs(scale - fill) < 0.05 {
+                        nextScale = 1             // fill → fit
+                    } else {
+                        nextScale = fill          // fit → fill
+                    }
+                    scale = nextScale
+                    lastCommittedScale = nextScale
+                    offset = .zero
+                    lastCommittedOffset = .zero
+                }
+            }
+            .onTapGesture(count: 1) {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showChrome.toggle()
+                }
             }
         }
-        .onTapGesture(count: 2) {
-            withAnimation(.spring) {
-                scale = scale > 1 ? 1 : 2
-                offset = .zero
-            }
-        }
+    }
+
+    /// Fill-scale = how much to scale a `.fit`-rendered image so that the
+    /// shorter dimension hits the container edge instead of the longer
+    /// one. For a portrait image on a landscape container this is >1
+    /// (we scale up to fill width, cropping top/bottom); for a landscape
+    /// image on a landscape container it's typically close to 1 already.
+    private static func computeFillScale(imageSize: CGSize, containerSize: CGSize) -> CGFloat {
+        guard imageSize.width > 0,
+              imageSize.height > 0,
+              containerSize.width > 0,
+              containerSize.height > 0
+        else { return 1 }
+        let imageAspect = imageSize.width / imageSize.height
+        let containerAspect = containerSize.width / containerSize.height
+        return max(containerAspect / imageAspect, imageAspect / containerAspect)
     }
 }
 
@@ -2342,6 +3942,21 @@ final class LiveCaptureModel {
             // per asset; failures are silent so the on-device pipeline result
             // remains the visible state if the backend is unreachable.
             scheduleAIAnalyses(after: oldValue)
+            // Phase 2C activation gate. The CCAPI adapter only auto-enqueues
+            // `.preview` for new shots — `.raw` is opt-in. Without this hook
+            // every CR3 pick would land at deliver time with `rawKey == nil`
+            // and the RAWExportService would silently fall back to the
+            // display JPEG, defeating the whole pipeline. Diffing here (vs.
+            // hooking individual UI sites) covers both `togglePick` and the
+            // batch `CullStore.commit` path uniformly.
+            scheduleRAWFetchesForNewlyFlaggedPicks(previous: oldValue)
+            // WYSIWYG hook (Block C). When `rawKey` flips nil → set on
+            // any asset, render a preview-quality JPEG via the same
+            // CIRAWFilter pipeline that produces the gallery deliverable
+            // and attach it as `enhancedKey`. Hero comparison-slider
+            // then shows the photographer the actual demosaic, not
+            // Canon's camera-baked JPEG with display-pipeline magic.
+            scheduleRAWPreviewRenders(previous: oldValue)
         }
     }
     var errorMessage: String?
@@ -2359,6 +3974,37 @@ final class LiveCaptureModel {
     var focusedAsset: Asset? {
         guard let focusedAssetId else { return assets.last }
         return assets.first { $0.id == focusedAssetId } ?? assets.last
+    }
+
+    /// A/B compare mode — when set, the hero stage swaps to a two-up
+    /// comparison panel anchored on this asset (A-side); the currently
+    /// focused asset becomes the candidate (B-side). Set via long-press
+    /// on a filmstrip thumbnail; cleared by the X button on the compare
+    /// panel or when the anchor asset disappears from the session (e.g.
+    /// after disconnect). Pro-photo workflow staple — picking between
+    /// near-duplicate poses without thumbnail-eyeball-error.
+    var compareAnchorAssetId: UUID?
+
+    var compareAnchorAsset: Asset? {
+        guard let id = compareAnchorAssetId else { return nil }
+        return assets.first { $0.id == id }
+    }
+
+    /// True when both anchor + focus exist and they differ — that's the
+    /// only state where the compare hero is meaningful.
+    var isComparing: Bool {
+        guard let anchor = compareAnchorAsset,
+              let focus = focusedAsset
+        else { return false }
+        return anchor.id != focus.id
+    }
+
+    func setCompareAnchor(_ assetId: UUID?) {
+        compareAnchorAssetId = assetId
+    }
+
+    func exitCompare() {
+        compareAnchorAssetId = nil
     }
 
     /// Kick off a background analysis pass whenever the focused asset
@@ -2412,6 +4058,26 @@ final class LiveCaptureModel {
     var showHUD: Bool = true
     private var downloadDirectory: URL?
     private var forwardingTasks: [Task<Void, Never>] = []
+    /// Phase 2C — per-session RAW renderer. Built at connect time so it
+    /// shares the session's download directory; injected into
+    /// ``DeliveryService`` so picks with a `rawKey` get demosaiced through
+    /// ``RAWExportPipeline`` at delivery time. Outside `#if DEBUG` because
+    /// RAW delivery is a release-build feature.
+    private var rawExportService: RAWExportService?
+    /// Per-session voice memo recorder/player. Built at connect time
+    /// so audio session lifecycle pairs cleanly with the shoot. Public
+    /// so SwiftUI views can observe `.state` directly for record/play
+    /// button affordances.
+    var voiceMemoService: VoiceMemoService?
+    /// User-scoped WebSocket subscription for client review events
+    /// (`asset.hearted` / `asset.commented`). Built when both connect
+    /// fires AND a backend session exists (signed-in). Carries the
+    /// observer registration id so disconnect can cleanly tear it
+    /// down. Phase 4 follow-up — closes the toveis-comm loop so the
+    /// photographer sees client comments + hearts land in real time
+    /// while still on-set.
+    private var realtimeService: RealtimeEventService?
+    private var realtimeObserverId: UUID?
     #if DEBUG
     /// Retained while Demo Mode is active so its MockURLProtocol handler
     /// stays installed. Cleared on teardown.
@@ -2459,14 +4125,85 @@ final class LiveCaptureModel {
     /// User-driven tune from the slider panel. Always marks the recipe
     /// as user-tuned so the AI badge gets demoted — the photographer's
     /// hand on the slider wins over Claude's recommendation.
+    ///
+    /// Two render passes when raw is available:
+    ///   1. ``MagicPipeline.retune`` writes a display-JPEG-derived
+    ///      version to `enhancedKey` in ~200 ms — gives instant
+    ///      visual feedback while the slider is still being dragged.
+    ///   2. ``triggerRAWPreviewRetune`` debounces 300 ms then renders
+    ///      a true WYSIWYG version through `RAWExportPipeline`, which
+    ///      lands a second or two later and overwrites `enhancedKey`
+    ///      with the demosaic-based bytes the client gallery will
+    ///      actually receive. Cancellable: subsequent slider drags
+    ///      kill the in-flight RAW render before it commits, so the
+    ///      photographer never sees a stale RAW lag behind the live
+    ///      display preview.
     func tune(assetId: UUID, recipe: MagicRecipe) {
         tunedRecipes[assetId] = recipe
         recipeSource[assetId] = .userTuned
         #if DEBUG
-        guard let sourcePath = assets.first(where: { $0.id == assetId })?.previewKey
-        else { return }
-        magicPipeline?.retune(assetId: assetId, recipe: recipe, sourcePath: sourcePath)
+        if let sourcePath = assets.first(where: { $0.id == assetId })?.previewKey {
+            magicPipeline?.retune(assetId: assetId, recipe: recipe, sourcePath: sourcePath)
+        }
         #endif
+        triggerRAWPreviewRetune(assetId: assetId, recipe: recipe)
+    }
+
+    /// Per-asset debounced RAW retune tasks. Cancelled before each new
+    /// slider tick so a long-running demosaic doesn't land after the
+    /// photographer has moved on to a new recipe value.
+    private var rawPreviewRetuneTasks: [UUID: Task<Void, Never>] = [:]
+
+    /// Phase 4 follow-up — re-render the RAW preview when the
+    /// photographer tunes a recipe, so WYSIWYG holds beyond the
+    /// initial download. No-op when the asset has no raw bytes yet
+    /// (display-JPEG-Magic is the only path); no-op when the
+    /// `RAWExportService` isn't configured (offline/demo modes).
+    private func triggerRAWPreviewRetune(assetId: UUID, recipe: MagicRecipe) {
+        guard let exporter = rawExportService, let store else { return }
+        guard let asset = assets.first(where: { $0.id == assetId }) else { return }
+
+        // Resolve which asset's rawKey to demosaic from. Picked-JPG
+        // case: the CR3 sibling holds the bytes; output keys to the
+        // JPG row (mirrors `scheduleRAWPreviewRenders`).
+        let primaryAssetId = assetId
+        let sourceAssetId: UUID
+        if Self.isRawCapture(filename: asset.originalFilename) {
+            sourceAssetId = asset.id
+        } else if let sibling = Self.siblingRawAsset(for: asset, in: assets) {
+            sourceAssetId = sibling.id
+        } else {
+            return  // no raw bytes anywhere — nothing to retune
+        }
+        // Quick guard: if neither source nor primary has rawKey on
+        // disk, skip (e.g. raw download still in flight; the
+        // assets.didSet hook will pick this up when the bytes land).
+        guard
+            let sourceAsset = assets.first(where: { $0.id == sourceAssetId }),
+            sourceAsset.rawKey != nil
+        else { return }
+
+        rawPreviewRetuneTasks[primaryAssetId]?.cancel()
+        rawPreviewRetuneTasks[primaryAssetId] = Task { [weak self, exporter, store] in
+            // Debounce — let the slider stop moving before we burn
+            // 1-3 s of demosaic compute. Slider-drag emits onChange
+            // events at ~60 Hz; without the debounce we'd queue
+            // dozens of RAW renders in a fraction of a second.
+            try? await Task.sleep(for: .milliseconds(300))
+            if Task.isCancelled { return }
+            do {
+                let url = try await exporter.renderPreview(
+                    assetId: primaryAssetId,
+                    sourceAssetId: sourceAssetId,
+                    recipe: recipe,
+                )
+                if Task.isCancelled { return }
+                try await store.attachEnhancedKey(id: primaryAssetId, key: url.path)
+            } catch {
+                print("[LiveCaptureModel] RAW preview retune failed for \(primaryAssetId): \(error)")
+                _ = self
+            }
+        }
     }
 
     /// Reset to the best available baseline. If Claude provided a
@@ -2484,8 +4221,16 @@ final class LiveCaptureModel {
                 magicPipeline?.retune(assetId: assetId, recipe: claude, sourcePath: sourcePath)
             }
             #endif
+            triggerRAWPreviewRetune(assetId: assetId, recipe: claude)
             return
         }
+        let baselineRecipe: MagicRecipe = {
+            #if DEBUG
+            if let baseline = magicPipeline?.baselineRecipes[assetId] { return baseline }
+            #endif
+            return .neutral
+        }()
+        triggerRAWPreviewRetune(assetId: assetId, recipe: baselineRecipe)
         #if DEBUG
         guard let sourcePath = assets.first(where: { $0.id == assetId })?.previewKey,
               let baseline = magicPipeline?.baselineRecipes[assetId]
@@ -2501,6 +4246,10 @@ final class LiveCaptureModel {
     /// Selects filter applied to the filmstrip. The source array stays
     /// complete so ratings/flags from currently-hidden assets still persist.
     var filmstripFilter: FilmstripFilter = .all
+    /// Optional color-label narrowing applied on top of `filmstripFilter`.
+    /// nil = "any color (incl. unlabeled)". Set this from the color filter
+    /// chips so a photographer can isolate e.g. all picks tagged green.
+    var filmstripColorFilter: ColorLabel? = nil
 
     enum FilmstripFilter: String, CaseIterable, Equatable {
         case all     = "All"
@@ -2509,11 +4258,14 @@ final class LiveCaptureModel {
     }
 
     var filteredAssets: [Asset] {
+        let base: [Asset]
         switch filmstripFilter {
-        case .all:     return assets
-        case .picks:   return assets.filter { $0.flaggedForClient && !$0.rejected }
-        case .fourPlus: return assets.filter { $0.rating >= 4 && !$0.rejected }
+        case .all:     base = assets
+        case .picks:   base = assets.filter { $0.flaggedForClient && !$0.rejected }
+        case .fourPlus: base = assets.filter { $0.rating >= 4 && !$0.rejected }
         }
+        guard let color = filmstripColorFilter else { return base }
+        return base.filter { $0.colorLabel == color }
     }
 
     /// Identity for local SQLite rows. When the user has signed into
@@ -2574,6 +4326,32 @@ final class LiveCaptureModel {
             self.currentSessionId = dbSession.id
             self.sessionName = dbSession.name
             self.backendClient = makeBackendClientFromDefaults()
+            self.rawExportService = RAWExportService(
+                store: store,
+                outputDirectory: tempDir.appendingPathComponent("raw-export"),
+            )
+            self.voiceMemoService = VoiceMemoService(
+                outputDirectory: tempDir.appendingPathComponent("voice-memos"),
+            )
+
+            // Phase 4 — start the user-scoped realtime socket so
+            // client `asset.hearted` / `asset.commented` events land
+            // in `recentClientReviews` while the photographer is
+            // still on-set. Skipped when not signed in (offline mode
+            // keeps the rest of the app functional; reviews simply
+            // never arrive until next sign-in).
+            if let session = SignInService.shared.session {
+                let realtime = RealtimeEventService()
+                self.realtimeService = realtime
+                let wsURL = session.backendBaseURL.appendingPathComponent("/api/ipad/ws/events")
+                await realtime.start(url: wsURL, bearerToken: session.bearer)
+                let observerId = await realtime.addObserver { [weak self] event in
+                    Task { @MainActor in
+                        self?.recordClientReview(event)
+                    }
+                }
+                self.realtimeObserverId = observerId
+            }
 
             try await camera.start()
 
@@ -2677,6 +4455,356 @@ final class LiveCaptureModel {
         }
     }
 
+    /// Set or clear the per-asset color label. Lightroom-style cull
+    /// signal — typically red=drop, yellow=needs-retouch, green=ready,
+    /// blue=client-favorite, purple=portfolio. Pass `nil` to clear.
+    /// Re-tapping the same color via the hero swatch row clears (handled
+    /// by the caller comparing current vs new before invoking).
+    /// Master gate for the entire client-review surface — bell badge,
+    /// per-tile indicators, inbox sheet, review-mode side rail, and
+    /// inbound event recording. When false the photographer never sees
+    /// review chrome (mid-shoot focus mode, or shoots where the share
+    /// link doesn't grant review permission). The toggle lives in the
+    /// Settings sheet; default true. Note: this is iPad-side
+    /// suppression only — TODO for full disable is to gate the share
+    /// token's clientAuth scope at backend `createClientToken` time so
+    /// the public gallery hides the comment box too.
+    var clientReviewsEnabled: Bool = true
+
+    /// Recent client reviews (hearts + comments) for assets in this
+    /// session. Populated from the user-scoped WebSocket
+    /// (`asset.hearted` / `asset.commented` events) once realtime is
+    /// wired into `LiveCaptureModel`, plus from demo-mode injection in
+    /// the auto-demo task. Newest first; capped at 50 entries to bound
+    /// memory on long shoots.
+    var recentClientReviews: [ClientReview] = []
+
+    var unreadReviewCount: Int {
+        recentClientReviews.filter { $0.unread }.count
+    }
+
+    /// Set of asset IDs that have received at least one review in this
+    /// session — used by FilmstripTile to draw a persistent comment-
+    /// bubble badge so the photographer can see "this shot got
+    /// feedback" even after the inbox is opened (read-state clears
+    /// the unread bell badge but per-tile signal stays).
+    var assetIdsWithReviews: Set<UUID> {
+        Set(recentClientReviews.map(\.assetId))
+    }
+
+    /// Sustained review-mode flag. Hero stage swaps to a split pane
+    /// (image left, comment side-rail right) for focused review of
+    /// what the client is saying about a specific shot. Mutually
+    /// exclusive with compare-mode — entering one auto-exits the
+    /// other, so the photographer never has three stages fighting
+    /// for the hero area.
+    var isReviewMode: Bool = false
+
+    func enterReviewMode(focusAssetId: UUID? = nil) {
+        compareAnchorAssetId = nil  // exit compare if active
+        if let id = focusAssetId, assets.contains(where: { $0.id == id }) {
+            focusedAssetId = id
+        } else if let firstReviewedId = recentClientReviews.first?.assetId,
+                  assets.contains(where: { $0.id == firstReviewedId }) {
+            focusedAssetId = firstReviewedId
+        }
+        isReviewMode = true
+        markReviewsRead()
+    }
+
+    func exitReviewMode() {
+        isReviewMode = false
+    }
+
+    /// Append a review notification for the given event. Skips events
+    /// that don't reference an asset in the current session, so a
+    /// shared user-scoped socket carrying reviews from multiple shoots
+    /// only surfaces what's relevant here. No-op when reviews are
+    /// disabled via Settings — events still arrive but stay invisible
+    /// (the photographer asked for quiet).
+    func recordClientReview(_ event: UserEvent) {
+        guard clientReviewsEnabled else { return }
+        let review: ClientReview? = {
+            switch event {
+            case .assetHearted(let p):
+                guard let assetUUID = UUID(uuidString: p.assetId),
+                      let asset = assets.first(where: { $0.id == assetUUID })
+                else { return nil }
+                return ClientReview(
+                    id: UUID(),
+                    assetId: assetUUID,
+                    assetFilename: asset.originalFilename,
+                    kind: .heart(on: p.hearted),
+                    senderKind: .client,
+                    displayName: p.clientName,
+                    timestamp: p.timestamp,
+                    unread: true,
+                )
+            case .assetCommented(let p):
+                guard let assetUUID = UUID(uuidString: p.assetId),
+                      let asset = assets.first(where: { $0.id == assetUUID })
+                else { return nil }
+                return ClientReview(
+                    id: UUID(),
+                    assetId: assetUUID,
+                    assetFilename: asset.originalFilename,
+                    kind: .comment(preview: p.preview),
+                    senderKind: .client,
+                    displayName: p.clientName,
+                    timestamp: p.timestamp,
+                    unread: true,
+                )
+            default:
+                return nil
+            }
+        }()
+        guard let review else { return }
+        // Echo dedup — when the server broadcasts our own photographer
+        // reply back over the user-scoped socket, we'd otherwise
+        // double-insert. Match against any photographer-side review
+        // for the same asset with identical comment text within the
+        // last 30 s; if found, treat the incoming event as the echo
+        // and skip. Heart events don't dedupe (photographer-side
+        // hearts aren't a feature yet, so any incoming heart is
+        // genuinely from the client).
+        if case .comment(let preview) = review.kind {
+            let cutoff = Date().addingTimeInterval(-30)
+            let isEcho = recentClientReviews.contains { existing in
+                guard existing.senderKind == .photographer,
+                      existing.assetId == review.assetId,
+                      existing.timestamp >= cutoff,
+                      case .comment(let existingText) = existing.kind
+                else { return false }
+                return existingText == preview
+            }
+            if isEcho { return }
+        }
+        recentClientReviews.insert(review, at: 0)
+        if recentClientReviews.count > 50 {
+            recentClientReviews.removeLast(recentClientReviews.count - 50)
+        }
+    }
+
+    /// Demo-only convenience — synthesize a review without going through
+    /// the WebSocket. Called from `--auto-demo`'s task so screenshots
+    /// can show the bell + inbox populated. Production code routes
+    /// through `recordClientReview(_:)` from a real `UserEvent`.
+    func injectDemoReview(
+        assetId: UUID,
+        assetFilename: String,
+        kind: ClientReview.Kind,
+        senderKind: ClientReview.SenderKind = .client,
+        displayName: String,
+    ) {
+        guard clientReviewsEnabled else { return }
+        let review = ClientReview(
+            id: UUID(),
+            assetId: assetId,
+            assetFilename: assetFilename,
+            kind: kind,
+            senderKind: senderKind,
+            displayName: displayName,
+            timestamp: Date(),
+            // Photographer's own replies don't count as unread to
+            // herself — only the client side adds to the bell badge.
+            unread: senderKind == .client,
+        )
+        recentClientReviews.insert(review, at: 0)
+        if recentClientReviews.count > 50 {
+            recentClientReviews.removeLast(recentClientReviews.count - 50)
+        }
+    }
+
+    /// Scope for batch recipe application. Picks the photographer's
+    /// most likely intent: "the shots that already passed cull" first,
+    /// then "the rated keepers", then "everything in the session"
+    /// (broad but quick).
+    enum RecipeApplyScope {
+        case allFlagged
+        case allFourPlus
+        case entireSession
+
+        func count(in assets: [Asset]) -> Int {
+            switch self {
+            case .allFlagged:
+                return assets.filter { $0.flaggedForClient && !$0.rejected }.count
+            case .allFourPlus:
+                return assets.filter { $0.rating >= 4 && !$0.rejected }.count
+            case .entireSession:
+                return assets.filter { !$0.rejected }.count
+            }
+        }
+
+        var label: String {
+            switch self {
+            case .allFlagged:    return "Alle picks"
+            case .allFourPlus:   return "Alle 4★+"
+            case .entireSession: return "Hele sesjonen"
+            }
+        }
+
+        var icon: String {
+            switch self {
+            case .allFlagged:    return "flag.fill"
+            case .allFourPlus:   return "star.fill"
+            case .entireSession: return "tray.full.fill"
+            }
+        }
+    }
+
+    /// Apply `recipe` to every asset matching `scope` (excluding the
+    /// already-tuned source asset, which the photographer just left
+    /// in its target state). Each target asset gets its own recipe
+    /// state, recipeSource flipped to `.userTuned`, and a
+    /// MagicPipeline.retune kicked off so the hero/filmstrip update
+    /// in step. Lightroom-style batch sync — turns "I tuned this
+    /// portrait perfectly" into "all twenty portraits from this set
+    /// look the same" with one tap.
+    func applyRecipeToSelection(
+        recipe: MagicRecipe,
+        scope: RecipeApplyScope,
+        sourceAssetId: UUID,
+    ) {
+        let targets: [Asset]
+        switch scope {
+        case .allFlagged:
+            targets = assets.filter { $0.flaggedForClient && !$0.rejected }
+        case .allFourPlus:
+            targets = assets.filter { $0.rating >= 4 && !$0.rejected }
+        case .entireSession:
+            targets = assets.filter { !$0.rejected }
+        }
+        for asset in targets where asset.id != sourceAssetId {
+            tune(assetId: asset.id, recipe: recipe)
+        }
+    }
+
+    /// Photographer-side reply to a client conversation. Locally
+    /// inserts the message immediately so the side rail updates
+    /// in-step with the send action, then POSTs to the backend in a
+    /// detached task so the photographer's input never blocks on
+    /// network. Empty/whitespace-only replies no-op.
+    ///
+    /// Backend POST only fires once the asset has been delivered
+    /// (`DeliveryService.idMap` carries local → backend asset id);
+    /// for un-delivered shots the local insert is the only side
+    /// effect — the reply will land on the server next time delivery
+    /// runs and includes this asset. The backend echo arrives over
+    /// the user-scoped WebSocket (`asset.commented` event), which
+    /// `recordClientReview(_:)` could double-insert; we dedupe by
+    /// sender+timestamp+text in a TODO follow-up. For now the local
+    /// insert is the source of truth on this iPad.
+    func sendPhotographerReply(assetId: UUID, comment: String) {
+        let trimmed = comment.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              clientReviewsEnabled,
+              let asset = assets.first(where: { $0.id == assetId })
+        else { return }
+        let displayName = SignInService.shared.session?.displayName
+            ?? SignInService.shared.session?.email
+        let review = ClientReview(
+            id: UUID(),
+            assetId: assetId,
+            assetFilename: asset.originalFilename,
+            kind: .comment(preview: trimmed),
+            senderKind: .photographer,
+            displayName: displayName,
+            timestamp: Date(),
+            unread: false,
+        )
+        recentClientReviews.insert(review, at: 0)
+        if recentClientReviews.count > 50 {
+            recentClientReviews.removeLast(recentClientReviews.count - 50)
+        }
+
+        guard let backend = backendClient,
+              let delivery = deliveryService
+        else { return }
+        Task { [weak self] in
+            guard let backendAssetId = await delivery.backendAssetId(forLocal: assetId) else {
+                // Not yet delivered → nothing to attach a review to
+                // server-side. Local-only is the correct degradation.
+                return
+            }
+            do {
+                _ = try await backend.submitAssetReview(
+                    assetId: backendAssetId,
+                    body: BackendCreateReviewRequest(
+                        heart: nil,
+                        rating: nil,
+                        comment: trimmed,
+                    ),
+                )
+            } catch {
+                // Surface a quiet error so the photographer knows the
+                // server didn't ack their reply, but don't roll back
+                // the local insert — they can manually retry by
+                // sending again. Background sync (Outbox-style) is a
+                // Phase 5 follow-up.
+                await MainActor.run {
+                    self?.errorMessage = "Svar lagret lokalt — backend nektet (\(error.localizedDescription))"
+                }
+            }
+        }
+    }
+
+    func markReviewsRead() {
+        for i in recentClientReviews.indices {
+            recentClientReviews[i].unread = false
+        }
+    }
+
+    func setColorLabel(assetId: UUID, label: ColorLabel?) async {
+        guard let store else { return }
+        do {
+            try await store.updateAssetLabels(
+                id: assetId,
+                colorLabel: .some(label),
+            )
+        } catch {
+            errorMessage = "Color label failed: \(error.localizedDescription)"
+        }
+    }
+
+    /// Begin recording a voice memo for `assetId`. Stops any in-flight
+    /// recording/playback. The 60 s cap auto-finalizes; manual stop via
+    /// ``stopVoiceMemoRecording`` is the typical path.
+    func startVoiceMemoRecording(assetId: UUID) {
+        guard let voiceMemoService, let store else { return }
+        voiceMemoService.startRecording(assetId: assetId) { url in
+            guard let url else { return }
+            Task { try? await store.attachVoiceMemoKey(id: assetId, key: url.path) }
+        }
+    }
+
+    /// Stop in-flight recording for `assetId` (no-op if not recording
+    /// this asset) and persist the memo path on the asset row.
+    func stopVoiceMemoRecording(assetId: UUID) {
+        guard let voiceMemoService, let store else { return }
+        voiceMemoService.stopRecordingAndFinalize(assetId: assetId) { url in
+            guard let url else { return }
+            Task { try? await store.attachVoiceMemoKey(id: assetId, key: url.path) }
+        }
+    }
+
+    /// Toggle playback of `assetId`'s memo. If already playing this
+    /// memo, stops; if playing a different memo, switches to this one.
+    func toggleVoiceMemoPlayback(assetId: UUID) {
+        guard let voiceMemoService else { return }
+        if case .playing(let id) = voiceMemoService.state, id == assetId {
+            voiceMemoService.stopPlayback()
+        } else {
+            voiceMemoService.startPlayback(assetId: assetId)
+        }
+    }
+
+    /// Delete `assetId`'s voice memo file + clear the path on the row.
+    func deleteVoiceMemo(assetId: UUID) {
+        guard let voiceMemoService, let store else { return }
+        voiceMemoService.deleteMemo(for: assetId)
+        Task { try? await store.attachVoiceMemoKey(id: assetId, key: nil) }
+    }
+
     func renameSession(_ newName: String) async {
         guard let store, let sessionId = currentSessionId else { return }
         do {
@@ -2768,20 +4896,34 @@ final class LiveCaptureModel {
         guard let backend = backendClient else {
             throw DeliveryService.DeliveryError.tokenMintFailed("backend not configured")
         }
-        let service = deliveryService ?? DeliveryService(backend: backend)
+        let service = deliveryService ?? DeliveryService(backend: backend, rawExporter: rawExportService)
         deliveryService = service
 
-        let picks = deliverablePicks(filter: filter)
+        let allFlagged = deliverablePicks(filter: filter)
+        let allAssets = self.assets
+        let picks = allFlagged
             .compactMap { asset -> DeliveryService.DeliverableAsset? in
+                // RAW+JPG dedup: if this is a raw row whose JPG sibling
+                // is also flagged, skip — the JPG row will carry this
+                // raw as `rawSourceAssetId` and a single upload covers
+                // the shot. Otherwise raw stays as a first-class pick.
+                if Self.isRawCapture(filename: asset.originalFilename),
+                   let jpgSibling = Self.siblingJpgAsset(for: asset, in: allFlagged),
+                   allFlagged.contains(where: { $0.id == jpgSibling.id }) {
+                    return nil
+                }
                 guard let previewKey = asset.previewKey,
                       FileManager.default.fileExists(atPath: previewKey)
                 else { return nil }
+                let rawSibling = Self.siblingRawAsset(for: asset, in: allAssets)
                 return DeliveryService.DeliverableAsset(
                     localId: asset.id,
                     originalFilename: asset.originalFilename,
                     captureTime: asset.captureTime,
                     mime: "image/jpeg",
                     previewPath: previewKey,
+                    renderRecipe: recipe(for: asset.id),
+                    rawSourceAssetId: rawSibling?.id,
                 )
             }
         guard !picks.isEmpty else {
@@ -2896,7 +5038,7 @@ final class LiveCaptureModel {
         guard let backend = backendClient else {
             throw DeliveryService.DeliveryError.bridgeFailed("backend not configured — sign in to CreatorHub first")
         }
-        let service = deliveryService ?? DeliveryService(backend: backend)
+        let service = deliveryService ?? DeliveryService(backend: backend, rawExporter: rawExportService)
         deliveryService = service
 
         let localFilter: PickFilter = {
@@ -2907,17 +5049,27 @@ final class LiveCaptureModel {
             case .allNonRejected: return .all
             }
         }()
-        let picks = deliverablePicks(filter: localFilter)
+        let allFlagged = deliverablePicks(filter: localFilter)
+        let allAssets = self.assets
+        let picks = allFlagged
             .compactMap { asset -> DeliveryService.DeliverableAsset? in
+                if Self.isRawCapture(filename: asset.originalFilename),
+                   let jpgSibling = Self.siblingJpgAsset(for: asset, in: allFlagged),
+                   allFlagged.contains(where: { $0.id == jpgSibling.id }) {
+                    return nil
+                }
                 guard let previewKey = asset.previewKey,
                       FileManager.default.fileExists(atPath: previewKey)
                 else { return nil }
+                let rawSibling = Self.siblingRawAsset(for: asset, in: allAssets)
                 return DeliveryService.DeliverableAsset(
                     localId: asset.id,
                     originalFilename: asset.originalFilename,
                     captureTime: asset.captureTime,
                     mime: "image/jpeg",
                     previewPath: previewKey,
+                    renderRecipe: recipe(for: asset.id),
+                    rawSourceAssetId: rawSibling?.id,
                 )
             }
         guard !picks.isEmpty else {
@@ -2995,6 +5147,175 @@ final class LiveCaptureModel {
 
     /// Walk newly-arrived previews and dispatch one AI analyse per asset.
     /// Called from `assets.didSet` so we don't need a separate stream.
+    /// Phase 2C activation hook — request a `.raw` download for each pick
+    /// that just flipped flagged on, provided RAW bytes are reachable and
+    /// not already on disk. Runs on every `assets` diff so it catches
+    /// both interactive (`togglePick`) and batch (`CullStore.commit`)
+    /// flagging paths uniformly.
+    ///
+    /// Two cases:
+    ///   1. Picked asset is itself a Canon RAW (CR3/CR2) → enqueue `.raw`
+    ///      on its own id.
+    ///   2. Picked asset is a JPG with a sibling RAW (dual RAW+JPG shoot,
+    ///      Canon emits both files via separate CCAPI URLs) → enqueue
+    ///      `.raw` on the sibling's id so the high-quality bytes land
+    ///      under the sibling's row, where `DeliveryService` will fetch
+    ///      them via `rawSourceAssetId`.
+    ///
+    /// The adapter de-dupes per (assetId, kind), so re-running across
+    /// stream ticks is safe. Failures are silent — RAW is always
+    /// best-effort; if the camera disconnects mid-download,
+    /// ``DeliveryService`` falls back to the display JPEG without the
+    /// user seeing a delivery error.
+    private func scheduleRAWFetchesForNewlyFlaggedPicks(previous: [Asset]) {
+        guard let cameraSession else { return }
+        let previousFlagged: [UUID: Bool] = Dictionary(
+            uniqueKeysWithValues: previous.map { ($0.id, $0.flaggedForClient) },
+        )
+        for asset in assets {
+            guard asset.flaggedForClient,
+                  previousFlagged[asset.id] != true
+            else { continue }
+
+            let rawTarget: UUID?
+            if Self.isRawCapture(filename: asset.originalFilename) {
+                rawTarget = asset.rawKey == nil ? asset.id : nil
+            } else if let sibling = Self.siblingRawAsset(for: asset, in: assets) {
+                rawTarget = sibling.rawKey == nil ? sibling.id : nil
+            } else {
+                rawTarget = nil
+            }
+
+            guard let id = rawTarget else { continue }
+            Task {
+                try? await cameraSession.fetch(assetId: id, priority: .raw)
+            }
+        }
+    }
+
+    /// Lower-cased extension match for Canon's RAW formats. CR3 covers
+    /// every R-series body in the validated test matrix; CR2 is the
+    /// legacy DSLR format kept here so a 5D-class body wouldn't silently
+    /// degrade to display-JPEG-only delivery if Daniel ever tethers one.
+    private static func isRawCapture(filename: String) -> Bool {
+        let ext = (filename as NSString).pathExtension.lowercased()
+        return ext == "cr3" || ext == "cr2"
+    }
+
+    /// Find a sibling RAW asset for a JPG row when shooting RAW+JPG dual.
+    /// Canon CCAPI exposes the two formats as separate content URLs with
+    /// matching basenames (e.g. `IMG_1234.JPG` + `IMG_1234.CR3`). The
+    /// match is basename-only (case-insensitive); a future sibling that
+    /// shoots into the same session under the same basename overrides
+    /// stale earlier assets, but in practice each basename appears once.
+    /// Returns nil for assets that already are RAW (no self-pairing) or
+    /// JPGs without a corresponding RAW row.
+    private static func siblingRawAsset(for asset: Asset, in assets: [Asset]) -> Asset? {
+        guard !isRawCapture(filename: asset.originalFilename) else { return nil }
+        let basename = (asset.originalFilename as NSString)
+            .deletingPathExtension
+            .lowercased()
+        guard !basename.isEmpty else { return nil }
+        return assets.first { other in
+            guard other.id != asset.id,
+                  isRawCapture(filename: other.originalFilename)
+            else { return false }
+            let otherBase = (other.originalFilename as NSString)
+                .deletingPathExtension
+                .lowercased()
+            return otherBase == basename
+        }
+    }
+
+    /// WYSIWYG-preview render trigger. For each asset whose `rawKey`
+    /// just flipped nil → set, kick off a preview-size demosaic via
+    /// `RAWExportService.renderPreview` and attach the resulting path
+    /// to `enhancedKey`. The hero's existing ComparisonSlider then
+    /// uses the RAW-rendered version as the "after" side, replacing
+    /// MagicPipeline's display-JPEG-derived enhancement. Photographer
+    /// finally sees what the client will receive in the gallery,
+    /// not Canon's in-camera JPEG processing.
+    ///
+    /// One-shot per asset transition: the diff guard means re-runs of
+    /// this method (which fires on every assets-stream tick) won't
+    /// re-render an asset whose RAW already arrived earlier. For
+    /// post-tune-slider re-renders, see Phase D follow-up — this MVP
+    /// covers the auto-render at download-complete time only.
+    private func scheduleRAWPreviewRenders(previous: [Asset]) {
+        guard let exporter = rawExportService, let store else { return }
+        let previousRawKeys: [UUID: String?] = Dictionary(
+            uniqueKeysWithValues: previous.map { ($0.id, $0.rawKey) },
+        )
+        for asset in assets {
+            // Only act on the rawKey transition. If the asset was
+            // hosted earlier with rawKey already set, our preview is
+            // either already on disk or is from a previous session;
+            // skip to avoid re-rendering on every stream tick.
+            let oldRawKey = previousRawKeys[asset.id] ?? nil
+            guard let _ = asset.rawKey,
+                  oldRawKey == nil
+            else { continue }
+
+            // For dual RAW+JPG shoots, render under the JPG row's id
+            // when the asset is the JPG sibling — keeps the visual
+            // pairing tight (the picked JPG row's hero updates with
+            // the demosaic, not the CR3 row).
+            let primaryAssetId: UUID
+            let sourceAssetId: UUID
+            if Self.isRawCapture(filename: asset.originalFilename) {
+                if let jpgSibling = Self.siblingJpgAsset(for: asset, in: assets) {
+                    primaryAssetId = jpgSibling.id
+                    sourceAssetId = asset.id
+                } else {
+                    primaryAssetId = asset.id
+                    sourceAssetId = asset.id
+                }
+            } else {
+                continue  // shouldn't reach — non-raw rows shouldn't have rawKey set
+            }
+
+            let recipe = self.recipe(for: primaryAssetId)
+            Task { [weak self, exporter, store] in
+                do {
+                    let url = try await exporter.renderPreview(
+                        assetId: primaryAssetId,
+                        sourceAssetId: sourceAssetId,
+                        recipe: recipe,
+                    )
+                    try await store.attachEnhancedKey(id: primaryAssetId, key: url.path)
+                } catch {
+                    // Silent — the existing display-JPEG-enhanced path
+                    // remains as a perfectly usable fallback. Logged
+                    // below so devs can see render failures during
+                    // bring-up without disturbing the photographer.
+                    print("[LiveCaptureModel] RAW preview render failed for \(primaryAssetId): \(error)")
+                    _ = self
+                }
+            }
+        }
+    }
+
+    /// Inverse of `siblingRawAsset` — given a RAW asset, find a sibling
+    /// JPG. Used for delivery dedup: if both rows of a dual shoot are
+    /// flagged we want to upload only the JPG row (with the RAW as
+    /// source) rather than uploading the same scene twice.
+    private static func siblingJpgAsset(for raw: Asset, in assets: [Asset]) -> Asset? {
+        guard isRawCapture(filename: raw.originalFilename) else { return nil }
+        let basename = (raw.originalFilename as NSString)
+            .deletingPathExtension
+            .lowercased()
+        guard !basename.isEmpty else { return nil }
+        return assets.first { other in
+            guard other.id != raw.id,
+                  !isRawCapture(filename: other.originalFilename)
+            else { return false }
+            let otherBase = (other.originalFilename as NSString)
+                .deletingPathExtension
+                .lowercased()
+            return otherBase == basename
+        }
+    }
+
     private func scheduleAIAnalyses(after old: [Asset]) {
         guard backendClient != nil else { return }
         let oldKeys: [UUID: String?] = Dictionary(uniqueKeysWithValues: old.map { ($0.id, $0.previewKey) })
@@ -3109,6 +5430,19 @@ final class LiveCaptureModel {
         sessionName = "Live shoot"
         downloadDirectory = nil
         deviceSummary = nil
+        for task in rawPreviewRetuneTasks.values { task.cancel() }
+        rawPreviewRetuneTasks.removeAll()
+        rawExportService = nil
+        voiceMemoService?.reset()
+        voiceMemoService = nil
+        if let realtime = realtimeService, let observerId = realtimeObserverId {
+            Task { await realtime.removeObserver(observerId) }
+        }
+        if let realtime = realtimeService {
+            Task { await realtime.stop() }
+        }
+        realtimeService = nil
+        realtimeObserverId = nil
         #if DEBUG
         magicPipeline?.stop()
         magicPipeline = nil
