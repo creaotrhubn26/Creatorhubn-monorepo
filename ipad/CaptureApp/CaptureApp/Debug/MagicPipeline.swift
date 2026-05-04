@@ -223,12 +223,50 @@ final class MagicPipeline {
             if let out = f.outputImage { current = out }
         }
 
+        // Phase 6 — dehaze proxy (coordinated contrast + sat + shadow
+        // nudge). Applied first so subsequent contrast/sat sliders
+        // stack on top.
+        if effectiveRecipe.dehaze > 0 {
+            let d = effectiveRecipe.dehaze
+            if let pre = CIFilter(name: "CIColorControls") {
+                pre.setValue(current, forKey: kCIInputImageKey)
+                pre.setValue(1.0 + d * 0.15, forKey: kCIInputContrastKey)
+                pre.setValue(1.0 + d * 0.10, forKey: kCIInputSaturationKey)
+                if let out = pre.outputImage { current = out }
+            }
+            if let shadow = CIFilter(name: "CIHighlightShadowAdjust") {
+                shadow.setValue(current, forKey: kCIInputImageKey)
+                shadow.setValue(d * 0.10, forKey: "inputShadowAmount")
+                shadow.setValue(1.0, forKey: "inputHighlightAmount")
+                if let out = shadow.outputImage { current = out }
+            }
+        }
+
         if effectiveRecipe.contrast != 0 || effectiveRecipe.saturation != 0 {
             let f = CIFilter(name: "CIColorControls")!
             f.setValue(current, forKey: kCIInputImageKey)
             f.setValue(1.0 + effectiveRecipe.saturation * 0.45, forKey: kCIInputSaturationKey)
             f.setValue(1.0 + effectiveRecipe.contrast * 0.45, forKey: kCIInputContrastKey)
             if let out = f.outputImage { current = out }
+        }
+
+        // Phase 6 — Vibrance (CIVibrance lifts dull colors only).
+        if effectiveRecipe.vibrance != 0 {
+            if let v = CIFilter(name: "CIVibrance") {
+                v.setValue(current, forKey: kCIInputImageKey)
+                v.setValue(effectiveRecipe.vibrance, forKey: "inputAmount")
+                if let out = v.outputImage { current = out }
+            }
+        }
+
+        // Phase 6 — Texture (wide-radius unsharp mask).
+        if effectiveRecipe.texture > 0 {
+            if let t = CIFilter(name: "CIUnsharpMask") {
+                t.setValue(current, forKey: kCIInputImageKey)
+                t.setValue(25.0, forKey: kCIInputRadiusKey)
+                t.setValue(effectiveRecipe.texture * 0.6, forKey: kCIInputIntensityKey)
+                if let out = t.outputImage { current = out }
+            }
         }
 
         if effectiveRecipe.skinSmooth > 0 {

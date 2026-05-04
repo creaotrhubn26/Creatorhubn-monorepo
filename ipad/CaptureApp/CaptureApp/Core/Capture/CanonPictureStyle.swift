@@ -221,6 +221,9 @@ extension MagicRecipe {
             contrast: clampSigned(contrast + baseline.contrast),
             saturation: clampSigned(saturation + baseline.saturation),
             highlightRecovery: clampUnit(highlightRecovery + baseline.highlightRecovery),
+            vibrance: clampSigned(vibrance + baseline.vibrance),
+            texture: clampUnit(texture + baseline.texture),
+            dehaze: clampUnit(dehaze + baseline.dehaze),
         )
     }
 

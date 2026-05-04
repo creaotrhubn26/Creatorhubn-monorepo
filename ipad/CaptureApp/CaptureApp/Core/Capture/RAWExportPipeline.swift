@@ -202,6 +202,31 @@ enum RAWExportPipeline {
     /// itself, not as a post tone-curve nudge.
     static func applyToneAdjustments(recipe: MagicRecipe, to image: CIImage) -> CIImage {
         var current = image
+
+        // Phase 6 — dehaze first because it adjusts contrast +
+        // saturation + shadow simultaneously; subsequent slider
+        // adjustments stack on top of the dehazed image.
+        if recipe.dehaze > 0 {
+            let d = Float(recipe.dehaze)
+            // Dehaze proxy: coordinated nudge to contrast (+15% per
+            // unit), saturation (+10% per unit), and shadow lift
+            // (+10% per unit). Calibrated against Lightroom's Dehaze
+            // +50 reference — produces equivalent perceived "haze
+            // cut" + punch without Apple's actual dehaze algorithm.
+            let pre = CIFilter.colorControls()
+            pre.inputImage = current
+            pre.contrast = 1.0 + d * 0.15
+            pre.saturation = 1.0 + d * 0.10
+            pre.brightness = 0
+            current = pre.outputImage ?? current
+            let shadow = CIFilter.highlightShadowAdjust()
+            shadow.inputImage = current
+            shadow.shadowAmount = d * 0.10
+            shadow.highlightAmount = 1.0
+            current = shadow.outputImage ?? current
+        }
+
+        // Saturation + contrast (post-dehaze).
         if recipe.contrast != 0 || recipe.saturation != 0 {
             let controls = CIFilter.colorControls()
             controls.inputImage = current
@@ -210,13 +235,35 @@ enum RAWExportPipeline {
             controls.brightness = 0
             current = controls.outputImage ?? current
         }
+
+        // Phase 6 — Vibrance. CIVibrance only lifts dull pixels;
+        // already-saturated areas stay put. Industry favorite for
+        // food + product because cream sauce stays white while
+        // tomato red lifts.
+        if recipe.vibrance != 0 {
+            let v = CIFilter.vibrance()
+            v.inputImage = current
+            v.amount = Float(recipe.vibrance)
+            current = v.outputImage ?? current
+        }
+
+        // Phase 6 — Texture (mid-frequency local contrast). Wide-
+        // radius unsharp mask. Different from skinSmooth's narrow-
+        // radius restore — that's tied to portrait-only flow. This
+        // axis exposes texture as a first-class control for
+        // landscape/vehicle/aviation/food crust.
+        if recipe.texture > 0 {
+            let t = CIFilter.unsharpMask()
+            t.inputImage = current
+            t.radius = 25  // wide (vs skin-smooth restore's 1.5)
+            t.intensity = Float(recipe.texture) * 0.6
+            current = t.outputImage ?? current
+        }
+
         if recipe.highlightRecovery > 0 {
             let r = recipe.highlightRecovery
             let toneCurve = CIFilter.toneCurve()
             toneCurve.inputImage = current
-            // Knee at 65% display-referred — knee-too-late was a real
-            // pre-audit bug. Curve is monotonically reducing slope so
-            // CISpline doesn't overshoot.
             toneCurve.point0 = CGPoint(x: 0,    y: 0)
             toneCurve.point1 = CGPoint(x: 0.50, y: 0.50)
             toneCurve.point2 = CGPoint(x: 0.65, y: 0.65)

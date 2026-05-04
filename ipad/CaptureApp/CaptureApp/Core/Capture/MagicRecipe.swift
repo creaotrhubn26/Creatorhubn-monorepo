@@ -37,6 +37,36 @@ struct MagicRecipe: Sendable, Equatable, Codable {
     /// portraits.
     var highlightRecovery: Double = 0
 
+    /// **Phase 6** — Vibrance. Maps to `CIVibrance` which boosts dull
+    /// colors more than already-saturated ones. Photographer pros prefer
+    /// this over global saturation for food + product because it keeps
+    /// already-vivid sauce/paint/fabric from going neon while lifting
+    /// muted background or skin tones.
+    /// Range -1…+1: -1 = compress vibrance toward grey, 0 = no change,
+    /// +1 = aggressive lift. Applied AFTER saturation in the pipeline.
+    var vibrance: Double = 0
+
+    /// **Phase 6** — Texture. Mid-frequency local-contrast boost via
+    /// `CIUnsharpMask` with a wide radius (~25px). Industry tool for
+    /// landscape (foliage detail), vehicle (panel lines), aviation
+    /// (rivet definition). Distinct from `contrast` (global tone curve)
+    /// and from `skinSmooth` (which uses noise reduction at narrow
+    /// radius). Range 0…1: 0 = no boost, 1 = aggressive (>+0.5 starts
+    /// looking crunchy / halo-ridden per Lightroom community advice).
+    var texture: Double = 0
+
+    /// **Phase 6** — Dehaze proxy. Apple has no native dehaze CIFilter,
+    /// so we approximate via coordinated nudges to contrast + saturation
+    /// + shadow lift, all inside this single axis. Range 0…1: 0 = no
+    /// dehaze, 1 = strong (industry-standard +50-65 typical for
+    /// aviation). Useful for outdoor work with atmospheric haze, distant
+    /// landscapes, smoky/dusty interiors. Applied as an ADDITIVE nudge
+    /// on top of the recipe's other axes — your `contrast: 0.30` plus a
+    /// `dehaze: 0.40` combine to a noticeably-punchy-but-still-natural
+    /// look. Stay below +0.50 unless the haze is really bad (over +0.70
+    /// produces the over-cooked / HDR-disaster look).
+    var dehaze: Double = 0
+
     /// Subject-specific factory presets. Picked automatically by
     /// `MagicPipeline` based on Vision classification results, overridable
     /// via the Tune panel. Each recipe's intensities are tuned to what a
@@ -60,65 +90,56 @@ struct MagicRecipe: Sendable, Equatable, Codable {
     /// positions with ImageMagick, compute mean RGB delta. Repeat
     /// per-body for camera-specific bias (R5 / R5 mkII may differ).
 
-    /// Portraits: small warm nudge (+0.10 ≈ +90K above Apple's
-    /// already-warm baseline = ~+250K total — Adobe Lightroom
-    /// portrait territory). Skin smoothing held at 0.30 — only
-    /// fires when subject classifier is confident; auto-classifier
-    /// false-positives on food / objects shouldn't blur texture.
-    /// Highlight recovery 0.10 (was 0.30 — over-aggressive caused
-    /// loss of catchlight character).
+    /// Portraits: vibrance preferred over saturation for skin (lifts
+    /// background/clothing without overdriving lip/cheek redness).
+    /// Mild texture for hair/fabric; zero dehaze (no atmospheric
+    /// haze indoors).
     static let portrait = MagicRecipe(
         warmth: 0.10, skinSmooth: 0.30, shadowLift: 0.20, contrast: 0.05, saturation: 0.05,
-        highlightRecovery: 0.10
+        highlightRecovery: 0.10, vibrance: 0.10, texture: 0.05, dehaze: 0
     )
 
-    /// Aviation: cool to fight haze. -0.30 = stronger cool than
-    /// before (was -0.20) since Apple adds warmth, so pre-fight is
-    /// needed to get effective cool tilt. Highlight recovery 0.30
-    /// (was 0.65 — way too aggressive; sky highlights are bright
-    /// BY DESIGN, not clipped accidents).
+    /// Aviation: dehaze is the canonical primary tool for aviation
+    /// (industry +50-65). High texture for rivet/lettering/panel-line
+    /// definition. Vibrance instead of saturation to lift washed sky
+    /// without making airframe colors cartoonish.
     static let aviation = MagicRecipe(
-        warmth: -0.30, skinSmooth: 0, shadowLift: 0.25, contrast: 0.30, saturation: 0.10,
-        highlightRecovery: 0.30
+        warmth: -0.30, skinSmooth: 0, shadowLift: 0.25, contrast: 0.30, saturation: 0.05,
+        highlightRecovery: 0.30, vibrance: 0.20, texture: 0.30, dehaze: 0.45
     )
 
-    /// Cars + vehicles: NEUTRAL warmth target. Apple adds ~+10 RGB
-    /// warmth, so we offset -0.10 to land at TRUE neutral (color
-    /// truth on bodywork). Lower saturation (0.15 was 0.55) — Apple
-    /// already adds saturation, more would falsify paint colour.
-    /// Highlight recovery 0.20 (chrome + glass).
+    /// Cars + vehicles: deep blacks + paint truth (negative warmth
+    /// to compensate Apple bias). Texture for panel-line definition.
+    /// Modest vibrance over saturation so paint reads accurate.
+    /// Dehaze for outdoor/parking-lot atmospheric softness.
     static let vehicle = MagicRecipe(
-        warmth: -0.10, skinSmooth: 0, shadowLift: 0.20, contrast: 0.25, saturation: 0.15,
-        highlightRecovery: 0.20
+        warmth: -0.10, skinSmooth: 0, shadowLift: 0.20, contrast: 0.25, saturation: 0.10,
+        highlightRecovery: 0.20, vibrance: 0.15, texture: 0.25, dehaze: 0.20
     )
 
-    /// Food: warm bias still appropriate (appetizing) but moderated.
-    /// +0.20 = ~+180K above Apple's baseline = ~+330K total = real
-    /// golden-hour tint without going pumpkin-orange. Saturation
-    /// +0.20 (was +0.55 — caused white sauce to lose its character).
-    /// Highlight recovery 0.10 (was +0.55 — preserved bright sauce
-    /// gleam IS the shot, don't pull it down).
+    /// Food: realism over drama. Vibrance > saturation (industry
+    /// consensus: keeps cream sauce white while lifting tomato red).
+    /// Light texture for crispy/crusty surfaces. Zero dehaze
+    /// (interior food has no atmospheric haze).
     static let food = MagicRecipe(
-        warmth: 0.20, skinSmooth: 0, shadowLift: 0.20, contrast: 0.15, saturation: 0.20,
-        highlightRecovery: 0.10
+        warmth: 0.20, skinSmooth: 0, shadowLift: 0.20, contrast: 0.15, saturation: 0.10,
+        highlightRecovery: 0.10, vibrance: 0.20, texture: 0.10, dehaze: 0
     )
 
-    /// Landscape: keep cool tilt direction but stronger compensation
-    /// for Apple's warmth. -0.25 = fights ~+10 RGB warmth + adds
-    /// real cool. Saturation +0.30 (was +0.60). Highlight recovery
-    /// 0.40 (was 0.70 — sky bright-but-not-clipped should stay
-    /// bright).
+    /// Landscape: industry recipe — texture +20-40 for foliage,
+    /// vibrance for sky/water without going neon, moderate dehaze
+    /// for distance haze.
     static let landscape = MagicRecipe(
-        warmth: -0.25, skinSmooth: 0, shadowLift: 0.30, contrast: 0.25, saturation: 0.30,
-        highlightRecovery: 0.40
+        warmth: -0.25, skinSmooth: 0, shadowLift: 0.30, contrast: 0.25, saturation: 0.20,
+        highlightRecovery: 0.40, vibrance: 0.20, texture: 0.30, dehaze: 0.30
     )
 
-    /// Product: TRUE neutral target. Apple-bias offset of -0.10
-    /// warmth, zero saturation lift, light shadow nudge. Highlight
-    /// recovery 0.10 (catalog backgrounds stay clean).
+    /// Product: COLOR TRUTH mandate. Vibrance > saturation, but
+    /// both small. Zero texture (catalog products want clean, not
+    /// crunchy). Zero dehaze (studio).
     static let product = MagicRecipe(
         warmth: -0.10, skinSmooth: 0, shadowLift: 0.10, contrast: 0.10, saturation: -0.05,
-        highlightRecovery: 0.10
+        highlightRecovery: 0.10, vibrance: 0.05, texture: 0, dehaze: 0
     )
 
     /// Fallback when subject classification doesn't confidently fire.
@@ -142,7 +163,7 @@ struct MagicRecipe: Sendable, Equatable, Codable {
     /// different defaults).
     static let neutral = MagicRecipe(
         warmth: -0.05, skinSmooth: 0, shadowLift: 0.20, contrast: 0.10, saturation: -0.05,
-        highlightRecovery: 0.25
+        highlightRecovery: 0.25, vibrance: 0.10, texture: 0.10, dehaze: 0.05
     )
 
     /// Short chip-strings for the recipe display under the hero. Hides
@@ -171,11 +192,22 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         if highlightRecovery >= 0.05 {
             chips.append("Highlights -\(Int((highlightRecovery * 100).rounded()))%")
         }
+        if abs(vibrance) >= 0.05 {
+            let pct = Int((vibrance * 100).rounded())
+            chips.append("Vibrance \(pct > 0 ? "+" : "")\(pct)%")
+        }
+        if texture >= 0.05 {
+            chips.append("Texture +\(Int((texture * 100).rounded()))%")
+        }
+        if dehaze >= 0.05 {
+            chips.append("Dehaze +\(Int((dehaze * 100).rounded()))%")
+        }
         return chips
     }
 
     var isNeutral: Bool {
         warmth == 0 && skinSmooth == 0 && shadowLift == 0
             && contrast == 0 && saturation == 0 && highlightRecovery == 0
+            && vibrance == 0 && texture == 0 && dehaze == 0
     }
 }
