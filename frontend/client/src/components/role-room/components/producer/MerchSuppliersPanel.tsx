@@ -55,6 +55,8 @@ const PRODUCT_LABEL: Record<RoleRoomAgentMerchProductCategory, string> = {
   stationery: 'Notatbok/penn',
   sports_kits: 'Sportsdrakter',
   promotional: 'Promo',
+  vehicle_wrap: 'Bilprofilering',
+  signage: 'Skilt/banner',
   unknown: 'Ukjent',
 };
 
@@ -288,6 +290,32 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ bootstrap, on
                     />
                   ) : null}
                 </Stack>
+                {/* Slice 2: scraped offerings — actual keywords found on
+                    the supplier's homepage. Most informative signal we
+                    have without manual contact. */}
+                {supplier.offerings && supplier.offerings.length > 0 ? (
+                  <Box>
+                    <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', mb: 0.4 }}>
+                      Tilbyr (fra nettsiden)
+                    </Typography>
+                    <Stack direction="row" spacing={0.4} flexWrap="wrap" useFlexGap>
+                      {supplier.offerings.map((offering) => (
+                        <Chip
+                          key={offering}
+                          size="small"
+                          label={offering}
+                          sx={{
+                            bgcolor: 'rgba(34,197,94,0.12)',
+                            color: '#bbf7d0',
+                            fontSize: '0.7rem',
+                            height: 20,
+                            border: '1px solid rgba(34,197,94,0.2)',
+                          }}
+                        />
+                      ))}
+                    </Stack>
+                  </Box>
+                ) : null}
                 <Typography sx={{ color: 'rgba(226,232,240,0.74)', fontSize: '0.82rem', lineHeight: 1.45 }}>
                   {supplier.relevanceReason}
                 </Typography>

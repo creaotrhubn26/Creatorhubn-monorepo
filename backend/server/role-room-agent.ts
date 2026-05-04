@@ -248,6 +248,8 @@ export type RoleRoomAgentMerchProductCategory =
   | "stationery"
   | "sports_kits"
   | "promotional"
+  | "vehicle_wrap"
+  | "signage"
   | "unknown";
 
 export type RoleRoomAgentMerchSupplierEvidence = {
@@ -281,6 +283,14 @@ export type RoleRoomAgentMerchSupplier = {
    *  verify before committing to a quote. */
   techniques: RoleRoomAgentMerchTechnique[];
   productCategories: RoleRoomAgentMerchProductCategory[];
+  /** Specific offerings detected from the supplier's homepage (e.g.
+   *  ["t-skjorter", "hettegensere", "broderi"]). Empty when no website
+   *  was scraped or when nothing matched the merch vocabulary. */
+  offerings?: string[];
+  /** When true, the supplier's homepage was successfully fetched and
+   *  classified — the techniques/productCategories above include
+   *  signal beyond the company name alone. */
+  websiteSignalsEnriched?: boolean;
   confidence: number;
   status: "verified" | "likely" | "needs_review" | "rejected";
   evidence: RoleRoomAgentMerchSupplierEvidence[];
@@ -3080,6 +3090,12 @@ const MERCH_NACE_CODES: ReadonlyArray<{
   { code: "13.92", label: "Produksjon av andre tekstilvarer", defaultTechnique: "unknown", requireKeywordMatch: true },
   { code: "14.13", label: "Produksjon av annen yttertøy", defaultTechnique: "unknown", requireKeywordMatch: false },
   { code: "14.19", label: "Produksjon av andre klær og tilbehør", defaultTechnique: "unknown", requireKeywordMatch: false },
+  // Bilprofilering / vehicle wrap homes — both NACE buckets are broad,
+  // so requireKeywordMatch keeps us focused on actual wrap shops
+  // (verified empirically: 73.11 holds wrap shops AND every other ad
+  // agency; 95.31 holds wrap shops AND general car repair).
+  { code: "73.11", label: "Reklamebyråvirksomhet", defaultTechnique: "vinyl", requireKeywordMatch: true },
+  { code: "95.31", label: "Reparasjon og vedlikehold av motorvogn", defaultTechnique: "vinyl", requireKeywordMatch: true },
 ];
 
 const MERCH_PLACES_QUERIES: ReadonlyArray<{ query: string; technique: RoleRoomAgentMerchTechnique }> = [
@@ -3089,29 +3105,103 @@ const MERCH_PLACES_QUERIES: ReadonlyArray<{ query: string; technique: RoleRoomAg
   { query: "sublimering tekstil", technique: "sublimation" },
   { query: "promo produkter", technique: "promo_products" },
   { query: "merch leverandør", technique: "unknown" },
+  // Bilprofilering / vehicle wrap — these queries surface dedicated
+  // wrap shops that NACE 18.12 alone won't catch (they're often
+  // classified under 47.30 / 73.11 / 45.20).
+  { query: "bilfoliering", technique: "vinyl" },
+  { query: "bildekor", technique: "vinyl" },
+  { query: "bilprofilering", technique: "vinyl" },
 ];
 
 /** Keyword → technique inference. Order doesn't matter; multiple matches
- *  produce a deduped union. Lowercase comparison only. */
+ *  produce a deduped union. Lowercase comparison only. Words/phrases
+ *  picked to fire on Norwegian merch industry copy specifically; we
+ *  deliberately avoid ambiguous terms like "trykk" alone (matches paper
+ *  printers too). */
 const MERCH_TECHNIQUE_KEYWORDS: Record<RoleRoomAgentMerchTechnique, string[]> = {
-  screen_print: ["silketrykk", "screen print", "serigrafi", "tekstiltrykk", "stencil"],
+  screen_print: ["silketrykk", "screen print", "serigrafi", "tekstiltrykk", "stencil", "logotrykk"],
   dtg: ["dtg", "direct to garment", "direkte på plagg"],
   embroidery: ["broder", "embroidery", "stickerei"],
   sublimation: ["sublim", "sublimasjon", "sublimering"],
   vinyl: ["vinyl", "tape print", "transfer"],
-  promo_products: ["promo", "merchandise", "merch", "give-away", "giveaway", "profilprodukt", "reklameartikler"],
+  promo_products: [
+    "promo",
+    "merchandise",
+    "merch",
+    "give-away",
+    "giveaway",
+    "profilprodukt",
+    "profilartikkel",
+    "reklameartikler",
+    "reklameprodukt",
+    "profilering",
+    "merkevareprodukt",
+  ],
   unknown: [],
 };
 
 /** Keyword → product category inference. */
 const MERCH_PRODUCT_KEYWORDS: Record<RoleRoomAgentMerchProductCategory, string[]> = {
-  apparel: ["t-skjorte", "tee", "shirt", "hettegens", "hoodie", "genser", "klær", "plagg", "uniform"],
-  headwear: ["caps", "lue", "hat", "snapback"],
+  apparel: [
+    "t-skjorte",
+    "tskjorte",
+    "tee",
+    "shirt",
+    "polo",
+    "skjorte",
+    "hettegens",
+    "hoodie",
+    "genser",
+    "klær",
+    "plagg",
+    "uniform",
+    "softshell",
+    "jakke",
+    "vest",
+    "profilklær",
+    "arbeidstøy",
+  ],
+  headwear: ["caps", "lue", "hat", "snapback", "beanie"],
   bags: ["totebag", "sekk", "bag", "ryggsekk", "veske"],
-  drinkware: ["krus", "mug", "flaske", "drink"],
-  stationery: ["notatbok", "penn", "blokk", "kalender"],
-  sports_kits: ["draktsett", "fotballdrakt", "sportsdrakt", "trikot", "drakt"],
-  promotional: ["promo", "merch", "give-away", "giveaway", "profilprodukt"],
+  drinkware: ["krus", "mug", "flaske", "drink", "vannflaske"],
+  stationery: ["notatbok", "penn", "blokk", "kalender", "notisbok"],
+  sports_kits: ["draktsett", "fotballdrakt", "sportsdrakt", "trikot", "spillertrøye", "klubbdrakt"],
+  promotional: ["promo", "merch", "give-away", "giveaway", "profilprodukt", "profilartikkel"],
+  // Bilprofilering / vehicle wrapping — separate category because it's a
+  // distinct production capability (large-format vinyl + on-vehicle
+  // installation), and producers/agencies often source it from
+  // dedicated wrap shops, not their textile printer.
+  vehicle_wrap: [
+    "bilfoliering",
+    "bildekor",
+    "bilprofilering",
+    "bilreklame",
+    "bilwrap",
+    "bil wrap",
+    "vehicle wrap",
+    "fleet wrap",
+    "varebil-dekor",
+    "varebildekor",
+    "lastebil-dekor",
+    "lastebildekor",
+    "kjøretøydekor",
+    "fullfoliering",
+  ],
+  // Skilt + storformat for messer, butikkfasader, eventflagg — beslektet
+  // med vehicle wrap (samme storformatprintere) men distinkt produkt.
+  signage: [
+    "skilt",
+    "fasadeskilt",
+    "messeskilt",
+    "rollup",
+    "roll-up",
+    "beachflag",
+    "vippeflagg",
+    "banner",
+    "storformat",
+    "storprint",
+    "messesystem",
+  ],
   unknown: [],
 };
 
@@ -3160,6 +3250,8 @@ function emptyProductCounts(): Record<RoleRoomAgentMerchProductCategory, number>
     stationery: 0,
     sports_kits: 0,
     promotional: 0,
+    vehicle_wrap: 0,
+    signage: 0,
     unknown: 0,
   };
 }
@@ -3498,6 +3590,159 @@ function buildLimitedMerchSuppliers(reason: string): RoleRoomAgentMerchSuppliers
   };
 }
 
+/**
+ * Slice 2: enrich each supplier with signals scraped from their homepage.
+ *
+ * Reuses extractTextSnippet (the same scraper that powers fetchWebsiteInsights)
+ * but with a tighter ~6s budget per supplier and a 3-way concurrency cap so
+ * a slow shop doesn't block the whole bootstrap. Failed fetches leave the
+ * supplier untouched — name-only classification still applies.
+ *
+ * What we extract from the page:
+ *   - <title>, <meta name="description">, <meta property="og:description">
+ *   - First ~1.8KB of stripped body text (extractTextSnippet)
+ * Then re-run inferTechniques + inferProductCategories on the combined
+ * text. The richer haystack catches "vi tilbyr broderi"-style signals
+ * that the company name alone misses.
+ *
+ * Also extracts a small `offerings` array (3-6 hits) of the actual
+ * keywords that matched, so the UI can show "tilbyr: t-skjorter, hettegensere,
+ * broderi" rather than just an abstract category chip.
+ */
+async function enrichMerchSuppliersWithWebsiteSignals(
+  suppliers: RoleRoomAgentMerchSupplier[],
+): Promise<void> {
+  const targets = suppliers.filter(
+    (s) => hasText(s.websiteUrl) && (s.status === "verified" || s.status === "likely"),
+  );
+  if (targets.length === 0) return;
+
+  const concurrency = 3;
+  for (let i = 0; i < targets.length; i += concurrency) {
+    const batch = targets.slice(i, i + concurrency);
+    await Promise.all(
+      batch.map(async (supplier) => {
+        try {
+          const url = supplier.websiteUrl;
+          if (!url) return;
+          const response = await fetch(url, {
+            headers: {
+              "User-Agent":
+                "Mozilla/5.0 (compatible; RoleRoomAgent/1.0; +https://creatorhubn.com/role-room/agent)",
+              Accept: "text/html,application/xhtml+xml",
+            },
+            redirect: "follow",
+            signal: AbortSignal.timeout(6_000),
+          });
+          if (!response.ok) return;
+          const html = await response.text();
+          if (!html || html.length < 100) return;
+
+          const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+          const metaDescMatch = html.match(
+            /<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i,
+          );
+          const ogDescMatch = html.match(
+            /<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i,
+          );
+          const title = titleMatch ? normalizeWhitespace(decodeHtmlEntities(titleMatch[1])) : null;
+          const metaDesc = metaDescMatch
+            ? normalizeWhitespace(decodeHtmlEntities(metaDescMatch[1]))
+            : null;
+          const ogDesc = ogDescMatch
+            ? normalizeWhitespace(decodeHtmlEntities(ogDescMatch[1]))
+            : null;
+          const bodySnippet = extractTextSnippet(html);
+
+          const haystack = [supplier.name, title, metaDesc, ogDesc, bodySnippet]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase();
+
+          // Re-infer with the richer text. Drop "unknown" from prior
+          // result if the homepage gave us anything concrete.
+          const techniques: RoleRoomAgentMerchTechnique[] = [];
+          for (const [technique, keywords] of Object.entries(
+            MERCH_TECHNIQUE_KEYWORDS,
+          ) as Array<[RoleRoomAgentMerchTechnique, string[]]>) {
+            if (technique === "unknown") continue;
+            if (keywords.some((kw) => haystack.includes(kw))) {
+              techniques.push(technique);
+            }
+          }
+          const productCategories: RoleRoomAgentMerchProductCategory[] = [];
+          for (const [category, keywords] of Object.entries(
+            MERCH_PRODUCT_KEYWORDS,
+          ) as Array<[RoleRoomAgentMerchProductCategory, string[]]>) {
+            if (category === "unknown") continue;
+            if (keywords.some((kw) => haystack.includes(kw))) {
+              productCategories.push(category);
+            }
+          }
+
+          // Build a small `offerings` list of the actual matched keywords
+          // — much more informative than abstract category chips. Take
+          // the first 6 unique hits across both vocabularies.
+          const offerings: string[] = [];
+          const offeringSeen = new Set<string>();
+          for (const keywords of [
+            ...Object.values(MERCH_PRODUCT_KEYWORDS),
+            ...Object.values(MERCH_TECHNIQUE_KEYWORDS),
+          ]) {
+            for (const kw of keywords) {
+              if (offerings.length >= 6) break;
+              if (offeringSeen.has(kw)) continue;
+              if (haystack.includes(kw)) {
+                offerings.push(kw);
+                offeringSeen.add(kw);
+              }
+            }
+            if (offerings.length >= 6) break;
+          }
+
+          // Merge: keep prior signals + add fresh ones, drop "unknown"
+          // when we now have something concrete.
+          const mergedTechniques = Array.from(new Set([...supplier.techniques, ...techniques])).filter(
+            (t) => !(t === "unknown" && (supplier.techniques.length > 1 || techniques.length > 0)),
+          );
+          const mergedProducts = Array.from(
+            new Set([...supplier.productCategories, ...productCategories]),
+          ).filter(
+            (c) => !(c === "unknown" && (supplier.productCategories.length > 1 || productCategories.length > 0)),
+          );
+
+          supplier.techniques = mergedTechniques.length > 0 ? mergedTechniques : supplier.techniques;
+          supplier.productCategories = mergedProducts.length > 0 ? mergedProducts : supplier.productCategories;
+          supplier.offerings = offerings;
+          supplier.websiteSignalsEnriched = true;
+          // Bump confidence by +5 when scraping confirmed at least one
+          // technique or product — capped at 100. The producer now has
+          // signal beyond name+NACE alone.
+          if (techniques.length > 0 || productCategories.length > 0) {
+            supplier.confidence = Math.min(100, supplier.confidence + 5);
+            supplier.evidence.push({
+              type: "website_available",
+              label: "Hjemmeside bekreftet merch-tilbud",
+              weight: 5,
+            });
+            // Re-derive status from the new confidence.
+            supplier.status =
+              supplier.confidence >= 80
+                ? "verified"
+                : supplier.confidence >= 55
+                  ? "likely"
+                  : supplier.confidence >= 35
+                    ? "needs_review"
+                    : "rejected";
+          }
+        } catch {
+          // Best-effort enrichment — leave the supplier untouched.
+        }
+      }),
+    );
+  }
+}
+
 async function fetchMerchSuppliersAnalysis(
   input: RoleRoomAgentProducerBootstrapInput,
   websiteInsights: RoleRoomAgentWebsiteInsights,
@@ -3557,7 +3802,13 @@ async function fetchMerchSuppliersAnalysis(
     byKey.set(key, winner);
   }
 
-  const suppliers = Array.from(byKey.values()).sort((a, b) => b.confidence - a.confidence);
+  let suppliers = Array.from(byKey.values()).sort((a, b) => b.confidence - a.confidence);
+  // Slice 2: scrape verified/likely suppliers' websites to confirm
+  // technique/product offerings beyond name+NACE alone. Mutates the
+  // supplier records in place — best-effort, never throws.
+  await enrichMerchSuppliersWithWebsiteSignals(suppliers);
+  // Re-sort in case enrichment bumped some suppliers' confidence.
+  suppliers = suppliers.sort((a, b) => b.confidence - a.confidence);
   const verifiedCount = suppliers.filter(
     (s) => s.status === "verified" || s.status === "likely",
   ).length;

@@ -259,6 +259,8 @@ export type RoleRoomAgentMerchProductCategory =
   | 'stationery'
   | 'sports_kits'
   | 'promotional'
+  | 'vehicle_wrap'
+  | 'signage'
   | 'unknown';
 
 export interface RoleRoomAgentMerchSupplierEvidence {
@@ -287,6 +289,10 @@ export interface RoleRoomAgentMerchSupplier {
   userRatingCount?: number | null;
   techniques: RoleRoomAgentMerchTechnique[];
   productCategories: RoleRoomAgentMerchProductCategory[];
+  /** Specific keywords detected from the supplier's homepage. */
+  offerings?: string[];
+  /** True when the supplier's website was scraped for richer signals. */
+  websiteSignalsEnriched?: boolean;
   confidence: number;
   status: 'verified' | 'likely' | 'needs_review' | 'rejected';
   evidence: RoleRoomAgentMerchSupplierEvidence[];
