@@ -20,6 +20,7 @@ import {
   Typography,
 } from '@mui/material';
 import {
+  Business as BusinessIcon,
   CheckCircleOutline as CheckIcon,
   Handshake as HandshakeIcon,
   Language as WebIcon,
@@ -36,6 +37,10 @@ import type {
 import MerchMockupPreview from './MerchMockupPreview';
 import MerchOutreachDialog from './MerchOutreachDialog';
 import MerchCooperationDialog from './MerchCooperationDialog';
+import CustomerEntityConfirmationDialog, {
+  loadConfirmedCustomerEntity,
+  type ConfirmedCustomerEntity,
+} from './CustomerEntityConfirmationDialog';
 
 interface MerchSuppliersPanelProps {
   projectId: string | null;
@@ -84,6 +89,15 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
   const [selectedSupplierKey, setSelectedSupplierKey] = useState<string | null>(null);
   const [outreachSupplier, setOutreachSupplier] = useState<RoleRoomAgentMerchSupplier | null>(null);
   const [cooperationOpen, setCooperationOpen] = useState(false);
+  const [confirmEntityOpen, setConfirmEntityOpen] = useState(false);
+  const [confirmedEntity, setConfirmedEntity] = useState<ConfirmedCustomerEntity | null>(() =>
+    loadConfirmedCustomerEntity(projectId),
+  );
+
+  // Reload confirmed entity when projectId changes.
+  React.useEffect(() => {
+    setConfirmedEntity(loadConfirmedCustomerEntity(projectId));
+  }, [projectId]);
 
   const selectedSupplier = useMemo(() => {
     if (!merch || !selectedSupplierKey) return null;
@@ -148,6 +162,39 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
 
   return (
     <Stack spacing={1.6}>
+      {/* Customer entity confirmation banner — surfaces confirmed
+          orgnr/bydel so partner-discovery and cooperation use real data
+          when Brreg's juridisk hovedsete differs from operating area. */}
+      {confirmedEntity ? (
+        <Alert
+          severity="success"
+          icon={<BusinessIcon fontSize="small" />}
+          action={
+            <Button size="small" onClick={() => setConfirmEntityOpen(true)} sx={{ textTransform: 'none' }}>
+              Endre
+            </Button>
+          }
+          sx={{ bgcolor: 'rgba(34,197,94,0.08)', color: '#bbf7d0', border: '1px solid rgba(34,197,94,0.2)', '& .MuiAlert-icon': { color: '#bbf7d0' } }}
+        >
+          Bekreftet kunde: <strong>{confirmedEntity.legalName}</strong>
+          {confirmedEntity.organizationNumber ? ` (${confirmedEntity.organizationNumber})` : ''}
+          {confirmedEntity.bydel ? ` · driver fra ${confirmedEntity.bydel}` : ''}
+        </Alert>
+      ) : (
+        <Alert
+          severity="info"
+          icon={<BusinessIcon fontSize="small" />}
+          action={
+            <Button size="small" variant="contained" onClick={() => setConfirmEntityOpen(true)} sx={{ textTransform: 'none' }}>
+              Bekreft kunde
+            </Button>
+          }
+        >
+          Bekreft hvilken juridisk bedrift dette er + bydel dere driver fra. Da blir partner-forslag og samarbeidsutkast
+          basert på riktig data.
+        </Alert>
+      )}
+
       {/* Header / market context */}
       <Box
         sx={{
@@ -502,6 +549,16 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
         projectId={projectId}
         bootstrap={bootstrap}
         supplier={selectedSupplier}
+        confirmedEntity={confirmedEntity}
+      />
+
+      {/* Customer entity confirmation (Slice 6 — multi-step) */}
+      <CustomerEntityConfirmationDialog
+        open={confirmEntityOpen}
+        onClose={() => setConfirmEntityOpen(false)}
+        projectId={projectId}
+        bootstrap={bootstrap}
+        onConfirm={(entity) => setConfirmedEntity(entity)}
       />
 
       {/* Cooperation angles + outreach checklist */}

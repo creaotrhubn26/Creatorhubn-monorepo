@@ -446,6 +446,125 @@ export async function generateMerchCooperationDraft(
   return (await response.json()) as MerchCooperationDraft;
 }
 
+// =============================================================================
+// Slice 6 — partner discovery + enrichment + customer legal-entity lookup.
+// =============================================================================
+
+export interface MerchPartnerCandidate {
+  source: 'brreg' | 'google_places';
+  organizationNumber?: string | null;
+  placeId?: string | null;
+  name: string;
+  websiteUrl?: string | null;
+  formattedAddress?: string | null;
+  distanceKm?: number | null;
+  naceCode?: string | null;
+  naceLabel?: string | null;
+  areaMatch?: string | null;
+  score: number;
+  evidence: string[];
+}
+
+export interface MerchPartnerEnrichment {
+  candidate: MerchPartnerCandidate;
+  brreg?: {
+    daglig_leder_navn?: string | null;
+    foundedYear?: number | null;
+    employeeCount?: number | null;
+    statusFlags?: { bankrupt?: boolean; underLiquidation?: boolean };
+  };
+  website?: {
+    title?: string | null;
+    metaDescription?: string | null;
+    sponsorLine?: string | null;
+    memberCountHint?: string | null;
+    contactEmail?: string | null;
+    contactPhone?: string | null;
+  };
+  metaPage?: {
+    pageId?: string | null;
+    pageName?: string | null;
+    followersCount?: number | null;
+    fanCount?: number | null;
+    category?: string | null;
+    about?: string | null;
+    pageUrl?: string | null;
+    verified?: boolean;
+  };
+  enrichmentSummary: string;
+}
+
+export async function discoverPartners(input: {
+  projectId: string;
+  partnerType: MerchPartnerType;
+  customerOrgnr: string;
+  areaOverride?: string | null;
+}): Promise<{
+  candidates: MerchPartnerCandidate[];
+  customer: { orgnr: string; name: string; kommunenummer: string | null; businessAddress: string | null };
+}> {
+  const params = new URLSearchParams();
+  params.set('partnerType', input.partnerType);
+  params.set('customerOrgnr', input.customerOrgnr);
+  if (input.areaOverride) params.set('areaOverride', input.areaOverride);
+  const r = await fetch(
+    `${API_BASE}/projects/${encodeURIComponent(input.projectId)}/agent/partner-discovery?${params.toString()}`,
+    { headers: buildHeaders() },
+  );
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+export async function enrichPartnerCandidate(input: {
+  projectId: string;
+  candidate: MerchPartnerCandidate;
+}): Promise<MerchPartnerEnrichment> {
+  const r = await fetch(
+    `${API_BASE}/projects/${encodeURIComponent(input.projectId)}/agent/partner-enrichment`,
+    {
+      method: 'POST',
+      headers: buildHeaders(),
+      body: JSON.stringify({ candidate: input.candidate }),
+    },
+  );
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+export interface CustomerLegalEntityCandidate {
+  organizationNumber: string;
+  name: string;
+  registeredAddress: string | null;
+  postalCode: string | null;
+  postalCity: string | null;
+  municipality: string | null;
+  municipalityNumber: string | null;
+  website: string | null;
+  industryCode: { code: string | null; description: string | null };
+  score: number;
+  matchReasons: string[];
+  websiteHostMatch: boolean;
+  scrapedFromBrandWebsite: boolean;
+}
+
+export async function findCustomerLegalEntities(input: {
+  projectId: string;
+  brandName: string;
+  websiteUrl?: string | null;
+  municipalityNumber?: string | null;
+}): Promise<{ candidates: CustomerLegalEntityCandidate[] }> {
+  const params = new URLSearchParams();
+  if (input.brandName) params.set('brand', input.brandName);
+  if (input.websiteUrl) params.set('website', input.websiteUrl);
+  if (input.municipalityNumber) params.set('kommunenummer', input.municipalityNumber);
+  const r = await fetch(
+    `${API_BASE}/projects/${encodeURIComponent(input.projectId)}/agent/legal-entity-candidates?${params.toString()}`,
+    { headers: buildHeaders() },
+  );
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
 /**
  * Streams an agent response via SSE-style POST. Returns a promise that
  * resolves when the stream completes. Caller can abort via AbortSignal.

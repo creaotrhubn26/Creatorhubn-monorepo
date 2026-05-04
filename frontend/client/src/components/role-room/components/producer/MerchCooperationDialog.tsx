@@ -37,18 +37,25 @@ import {
   WarningAmber as WarningIcon,
   PlaylistAddCheck as ChecklistIcon,
   Refresh as RefreshIcon,
+  Place as PlaceIcon,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import {
+  discoverPartners,
+  enrichPartnerCandidate,
   generateMerchCooperationDraft,
   MerchCooperationApiError,
   type MerchCooperationDraft,
   type MerchDealType,
+  type MerchPartnerCandidate,
+  type MerchPartnerEnrichment,
   type MerchPartnerType,
 } from '../../services/roleRoomAgentClaudeApi';
 import type {
   RoleRoomAgentMerchSupplier,
   RoleRoomAgentProducerBootstrapResult,
 } from '../../services/roleRoomAgentService';
+import type { ConfirmedCustomerEntity } from './CustomerEntityConfirmationDialog';
 
 interface MerchCooperationDialogProps {
   open: boolean;
@@ -58,6 +65,10 @@ interface MerchCooperationDialogProps {
   /** Optional pre-bound supplier — surfaces in "vi tilbyr" so the
    *  proposal references who would actually print the merch. */
   supplier?: RoleRoomAgentMerchSupplier | null;
+  /** When set, overrides Brreg-derived defaults for orgnr / bydel /
+   *  legal name. Used when producer has run the customer-confirmation
+   *  flow and Brregs forretningsadresse differs from operating area. */
+  confirmedEntity?: ConfirmedCustomerEntity | null;
 }
 
 const PARTNER_TYPES: ReadonlyArray<{ id: MerchPartnerType; label: string }> = [
@@ -109,8 +120,9 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
   projectId,
   bootstrap,
   supplier,
+  confirmedEntity,
 }) => {
-  const customerName = bootstrap?.companyProfile?.companyName ?? '';
+  const customerName = confirmedEntity?.legalName?.trim() || bootstrap?.companyProfile?.companyName || '';
   const customerIndustry = bootstrap?.companyProfile?.industry ?? '';
   const customerBrief = bootstrap?.companyProfile?.summary ?? '';
 
@@ -119,10 +131,90 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
   const [partnerNotes, setPartnerNotes] = useState('');
   const [dealType, setDealType] = useState<MerchDealType>('sponsor');
 
+  // Slice 6: live partner discovery — fetched whenever projectId +
+  // customerOrgnr + partnerType are known. Producer can click a
+  // candidate to auto-fill partnerName + add enrichment to notes.
+  // Confirmed entity wins over Brreg-derived defaults — gives producer
+  // the override they explicitly set in the customer-confirmation flow.
+  const customerOrgnr =
+    (confirmedEntity?.organizationNumber && confirmedEntity.organizationNumber.length === 9
+      ? confirmedEntity.organizationNumber
+      : null)
+    ?? bootstrap?.companyProfile?.organizationNumber
+    ?? null;
+  const [areaOverride, setAreaOverride] = useState<string>(confirmedEntity?.bydel ?? '');
+
+  // When the confirmed entity changes (producer re-runs confirmation),
+  // re-seed the bydel-override field.
+  React.useEffect(() => {
+    if (confirmedEntity?.bydel) setAreaOverride(confirmedEntity.bydel);
+  }, [confirmedEntity?.bydel]);
+  const [partnerCandidates, setPartnerCandidates] = useState<MerchPartnerCandidate[]>([]);
+  const [discoveryLoading, setDiscoveryLoading] = useState(false);
+  const [selectedCandidateOrg, setSelectedCandidateOrg] = useState<string | null>(null);
+  const [enrichmentSummary, setEnrichmentSummary] = useState<string>('');
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<MerchCooperationApiError | null>(null);
   const [draft, setDraft] = useState<MerchCooperationDraft | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+
+  // Discovery — runs whenever partnerType / orgnr / areaOverride changes.
+  // Skipped for partner types Brreg can't help with (event, bedrift) —
+  // those still rely on the manual text input.
+  React.useEffect(() => {
+    if (!projectId || !customerOrgnr) return;
+    if (partnerType === 'event' || partnerType === 'bedrift') {
+      setPartnerCandidates([]);
+      return;
+    }
+    let cancelled = false;
+    setDiscoveryLoading(true);
+    void discoverPartners({
+      projectId,
+      partnerType,
+      customerOrgnr,
+      areaOverride: areaOverride.trim() || null,
+    })
+      .then((res) => {
+        if (cancelled) return;
+        setPartnerCandidates(res.candidates ?? []);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setPartnerCandidates([]);
+      })
+      .finally(() => {
+        if (!cancelled) setDiscoveryLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, customerOrgnr, partnerType, areaOverride]);
+
+  const pickCandidate = useCallback(
+    async (candidate: MerchPartnerCandidate) => {
+      if (!projectId) return;
+      setSelectedCandidateOrg(candidate.organizationNumber || candidate.placeId || candidate.name);
+      setPartnerName(candidate.name);
+      setEnrichmentSummary('');
+      try {
+        const enrichment = await enrichPartnerCandidate({ projectId, candidate });
+        if (enrichment.enrichmentSummary) {
+          setEnrichmentSummary(enrichment.enrichmentSummary);
+          // Append enrichment to partnerNotes so the cooperation prompt
+          // sees the real facts (member count, sponsor line, FB followers).
+          setPartnerNotes((prev) => {
+            const tag = `[Hentet fra ${candidate.name}: ${enrichment.enrichmentSummary}]`;
+            return prev.trim().length > 0 ? `${prev}\n\n${tag}` : tag;
+          });
+        }
+      } catch {
+        /* enrichment is advisory; user can still generate */
+      }
+    },
+    [projectId],
+  );
 
   const generate = useCallback(async () => {
     if (!projectId) return;
@@ -215,8 +307,11 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
               <TextField
                 label="Motpartens navn"
                 value={partnerName}
-                onChange={(e) => setPartnerName(e.target.value)}
-                placeholder="f.eks. FK Lyn, Øya-festivalen, NMBU Studentsamfunn"
+                onChange={(e) => {
+                  setPartnerName(e.target.value);
+                  setSelectedCandidateOrg(null);
+                }}
+                placeholder="f.eks. Lindeberg Sportsklubb FOTBALL — eller bruk forslagene under"
                 fullWidth
                 size="small"
                 disabled={loading}
@@ -272,6 +367,116 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
                 label={`Tiltenkt leverandør: ${supplier.name}`}
                 sx={{ mt: 1, bgcolor: 'rgba(99,102,241,0.16)', color: '#e0e7ff' }}
               />
+            ) : null}
+
+            {/* Slice 6: partner-discovery picker. For sportsklubb/skole/
+                forening we surface ranked Brreg candidates so producer
+                clicks instead of guessing the legal name. */}
+            {customerOrgnr && (partnerType === 'sportsklubb' || partnerType === 'skole' || partnerType === 'forening') ? (
+              <Box sx={{ mt: 1.6 }}>
+                <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1} sx={{ mb: 0.8 }}>
+                  <Stack direction="row" spacing={0.6} alignItems="center">
+                    <SearchIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
+                    <Typography sx={{ fontSize: '0.74rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'text.secondary' }}>
+                      Forslag i kundens nabolag
+                    </Typography>
+                    {discoveryLoading ? <CircularProgress size={12} sx={{ ml: 0.5 }} /> : null}
+                  </Stack>
+                  <TextField
+                    value={areaOverride}
+                    onChange={(e) => setAreaOverride(e.target.value)}
+                    placeholder="bydel-overstyring (f.eks. lindeberg)"
+                    size="small"
+                    sx={{ maxWidth: 240, '& .MuiInputBase-root': { fontSize: '0.78rem' } }}
+                    helperText={areaOverride ? null : 'Auto-detektert fra postnummer'}
+                  />
+                </Stack>
+                {partnerCandidates.length === 0 && !discoveryLoading ? (
+                  <Alert severity="info" sx={{ fontSize: '0.82rem' }}>
+                    Ingen Brreg-treff funnet i nabolaget. Skriv navnet direkte over, eller
+                    overstyr bydel-keyword.
+                  </Alert>
+                ) : (
+                  <Stack direction="row" spacing={0.8} flexWrap="wrap" useFlexGap>
+                    {partnerCandidates.slice(0, 8).map((c) => {
+                      const key = c.organizationNumber || c.placeId || c.name;
+                      const isSelected = selectedCandidateOrg === key;
+                      return (
+                        <Box
+                          key={key}
+                          onClick={() => void pickCandidate(c)}
+                          sx={{
+                            cursor: 'pointer',
+                            p: 1,
+                            borderRadius: 2,
+                            minWidth: 220,
+                            maxWidth: 280,
+                            flex: '1 1 240px',
+                            border: isSelected
+                              ? '2px solid rgba(99,102,241,0.7)'
+                              : '1px solid rgba(148,163,184,0.2)',
+                            bgcolor: isSelected ? 'rgba(30,27,75,0.5)' : 'rgba(15,23,42,0.5)',
+                            transition: 'all 0.15s',
+                            '&:hover': { borderColor: 'rgba(99,102,241,0.5)' },
+                          }}
+                        >
+                          <Stack spacing={0.4}>
+                            <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+                              <Typography sx={{ fontSize: '0.86rem', fontWeight: 700, color: 'text.primary', lineHeight: 1.3 }}>
+                                {c.name}
+                              </Typography>
+                              <Chip
+                                size="small"
+                                label={`${c.score}`}
+                                sx={{
+                                  height: 18,
+                                  fontSize: '0.66rem',
+                                  bgcolor: c.score >= 80
+                                    ? 'rgba(34,197,94,0.16)'
+                                    : c.score >= 50
+                                      ? 'rgba(59,130,246,0.16)'
+                                      : 'rgba(148,163,184,0.16)',
+                                  color: c.score >= 80 ? '#bbf7d0' : c.score >= 50 ? '#bfdbfe' : '#cbd5e1',
+                                }}
+                              />
+                            </Stack>
+                            {c.formattedAddress ? (
+                              <Stack direction="row" spacing={0.4} alignItems="center">
+                                <PlaceIcon sx={{ fontSize: 12, color: 'text.secondary' }} />
+                                <Typography sx={{ fontSize: '0.74rem', color: 'text.secondary' }}>
+                                  {c.formattedAddress}
+                                </Typography>
+                              </Stack>
+                            ) : null}
+                            {c.areaMatch ? (
+                              <Chip
+                                size="small"
+                                label={`Bydel-match: ${c.areaMatch}`}
+                                sx={{ alignSelf: 'flex-start', height: 18, fontSize: '0.66rem', bgcolor: 'rgba(34,197,94,0.12)', color: '#bbf7d0' }}
+                              />
+                            ) : null}
+                            {c.websiteUrl ? (
+                              <Typography sx={{ fontSize: '0.72rem', color: '#a5f3fc' }}>
+                                {c.websiteUrl.replace(/^https?:\/\//, '').replace(/^www\./, '')}
+                              </Typography>
+                            ) : null}
+                            {c.organizationNumber ? (
+                              <Typography sx={{ fontSize: '0.66rem', color: 'text.secondary', fontFamily: 'monospace' }}>
+                                Brreg {c.organizationNumber}
+                              </Typography>
+                            ) : null}
+                          </Stack>
+                        </Box>
+                      );
+                    })}
+                  </Stack>
+                )}
+                {enrichmentSummary ? (
+                  <Alert severity="success" sx={{ mt: 1, fontSize: '0.82rem' }}>
+                    <strong>{partnerName}</strong> · {enrichmentSummary}
+                  </Alert>
+                ) : null}
+              </Box>
             ) : null}
           </Box>
 
