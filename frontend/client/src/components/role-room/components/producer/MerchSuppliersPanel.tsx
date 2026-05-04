@@ -31,10 +31,16 @@ import type {
   RoleRoomAgentMerchTechnique,
   RoleRoomAgentProducerBootstrapResult,
 } from '../../services/roleRoomAgentService';
+import MerchMockupPreview from './MerchMockupPreview';
 
 interface MerchSuppliersPanelProps {
+  projectId: string | null;
   bootstrap: RoleRoomAgentProducerBootstrapResult | null;
   onRequestBootstrap?: () => void;
+}
+
+function supplierKeyOf(s: RoleRoomAgentMerchSupplier): string {
+  return s.placeId || s.organizationNumber || s.name;
 }
 
 const TECHNIQUE_LABEL: Record<RoleRoomAgentMerchTechnique, string> = {
@@ -67,10 +73,16 @@ const STATUS_PILL: Record<RoleRoomAgentMerchSupplier['status'], { label: string;
   rejected: { label: 'Avvist', bg: 'rgba(148,163,184,0.16)', fg: '#cbd5e1' },
 };
 
-const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ bootstrap, onRequestBootstrap }) => {
+const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bootstrap, onRequestBootstrap }) => {
   const merch = bootstrap?.merchSuppliers ?? null;
   const [techniqueFilter, setTechniqueFilter] = useState<RoleRoomAgentMerchTechnique | null>(null);
   const [productFilter, setProductFilter] = useState<RoleRoomAgentMerchProductCategory | null>(null);
+  const [selectedSupplierKey, setSelectedSupplierKey] = useState<string | null>(null);
+
+  const selectedSupplier = useMemo(() => {
+    if (!merch || !selectedSupplierKey) return null;
+    return merch.suppliers.find((s) => supplierKeyOf(s) === selectedSupplierKey) ?? null;
+  }, [merch, selectedSupplierKey]);
 
   const filteredSuppliers = useMemo(() => {
     if (!merch) return [];
@@ -156,6 +168,16 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ bootstrap, on
         </Stack>
       </Box>
 
+      {/* Mockup-preview — fotorealistisk render via Printful. Shows logo
+          on a generic Printful product variant; supplier-aware so the
+          product picker narrows to what the selected supplier actually
+          carries (apparel/headwear/bags/drinkware). */}
+      <MerchMockupPreview
+        projectId={projectId}
+        bootstrap={bootstrap}
+        selectedSupplier={selectedSupplier}
+      />
+
       {/* Filters: technique + product. Click to toggle. */}
       {(techniqueChips.length > 0 || productChips.length > 0) ? (
         <Stack spacing={0.6}>
@@ -219,25 +241,42 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ bootstrap, on
         ) : null}
         {filteredSuppliers.map((supplier) => {
           const pill = STATUS_PILL[supplier.status];
+          const key = supplierKeyOf(supplier);
+          const isSelected = selectedSupplierKey === key;
           return (
             <Box
-              key={supplier.placeId || supplier.organizationNumber || supplier.name}
+              key={key}
+              onClick={() => setSelectedSupplierKey(isSelected ? null : key)}
               sx={{
                 flex: '1 1 280px',
                 minWidth: 0,
                 p: 1,
                 borderRadius: 2.4,
-                border: supplier.status === 'verified'
-                  ? '1px solid rgba(16,185,129,0.26)'
-                  : '1px solid rgba(148,163,184,0.16)',
-                bgcolor: 'rgba(15,23,42,0.48)',
+                cursor: 'pointer',
+                border: isSelected
+                  ? '2px solid rgba(99,102,241,0.7)'
+                  : supplier.status === 'verified'
+                    ? '1px solid rgba(16,185,129,0.26)'
+                    : '1px solid rgba(148,163,184,0.16)',
+                bgcolor: isSelected ? 'rgba(30,27,75,0.5)' : 'rgba(15,23,42,0.48)',
+                transition: 'border-color 0.15s, background-color 0.15s',
+                '&:hover': { borderColor: isSelected ? 'rgba(99,102,241,0.9)' : 'rgba(99,102,241,0.4)' },
               }}
             >
               <Stack spacing={0.7}>
                 <Stack direction="row" spacing={0.7} alignItems="center" justifyContent="space-between">
-                  <Typography sx={{ color: '#f8fafc', fontWeight: 800, fontSize: '0.92rem' }}>
-                    {supplier.name}
-                  </Typography>
+                  <Stack direction="row" spacing={0.6} alignItems="center">
+                    <Typography sx={{ color: '#f8fafc', fontWeight: 800, fontSize: '0.92rem' }}>
+                      {supplier.name}
+                    </Typography>
+                    {isSelected ? (
+                      <Chip
+                        size="small"
+                        label="Valgt"
+                        sx={{ bgcolor: 'rgba(99,102,241,0.22)', color: '#e0e7ff', fontWeight: 700, height: 20, fontSize: '0.66rem' }}
+                      />
+                    ) : null}
+                  </Stack>
                   <Chip
                     size="small"
                     label={pill.label}
@@ -327,7 +366,13 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ bootstrap, on
                 <Typography sx={{ color: '#a5f3fc', fontSize: '0.78rem', lineHeight: 1.45 }}>
                   → {supplier.outreachHint}
                 </Typography>
-                <Stack direction="row" spacing={0.7} flexWrap="wrap" useFlexGap>
+                <Stack
+                  direction="row"
+                  spacing={0.7}
+                  flexWrap="wrap"
+                  useFlexGap
+                  onClick={(e) => e.stopPropagation()}
+                >
                   {supplier.websiteUrl ? (
                     <Button
                       href={supplier.websiteUrl}

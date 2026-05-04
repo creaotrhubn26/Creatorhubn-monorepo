@@ -721,6 +721,7 @@ export default function RoleRoomAgentDialog({
         ) : activeTab === 'merch' ? (
           <Box sx={{ p: { xs: 1.4, md: 2 } }}>
             <MerchSuppliersPanel
+              projectId={projectId}
               bootstrap={result}
               onRequestBootstrap={() => setActiveTab('research')}
             />

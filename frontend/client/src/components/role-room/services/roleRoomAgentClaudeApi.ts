@@ -292,6 +292,81 @@ export interface AgentStreamEvents {
   onError?: (message: string) => void;
 }
 
+export type MerchMockupProductId =
+  | 'tshirt'
+  | 'hoodie'
+  | 'polo'
+  | 'cap'
+  | 'totebag'
+  | 'mug';
+
+export interface MerchMockupResult {
+  mockupUrl: string;
+  cached: boolean;
+  productLabel: string;
+}
+
+export interface MerchMockupErrorShape {
+  code:
+    | 'mockup_provider_unconfigured'
+    | 'invalid_product'
+    | 'invalid_design_url'
+    | 'mockup_generation_failed';
+  detail: string;
+  httpStatus: number;
+}
+
+export class MerchMockupError extends Error {
+  code: MerchMockupErrorShape['code'];
+  httpStatus: number;
+  detail: string;
+  constructor(shape: MerchMockupErrorShape) {
+    super(shape.detail);
+    this.name = 'MerchMockupError';
+    this.code = shape.code;
+    this.httpStatus = shape.httpStatus;
+    this.detail = shape.detail;
+  }
+}
+
+/**
+ * Generate a Printful-rendered mockup for the given product +
+ * customer-logo URL. Synchronous from the caller's perspective; the
+ * backend polls Printful internally for up to 30s.
+ */
+export async function generateMerchMockup(input: {
+  projectId: string;
+  productId: MerchMockupProductId;
+  designImageUrl: string;
+}): Promise<MerchMockupResult> {
+  const response = await fetch(
+    `${API_BASE}/projects/${encodeURIComponent(input.projectId)}/agent/merch-mockup`,
+    {
+      method: 'POST',
+      headers: buildHeaders(),
+      body: JSON.stringify({
+        productId: input.productId,
+        designImageUrl: input.designImageUrl,
+      }),
+    },
+  );
+  if (!response.ok) {
+    const raw = await response.text().catch(() => '');
+    let parsed: { error?: string; detail?: string } | null = null;
+    try {
+      parsed = raw ? JSON.parse(raw) : null;
+    } catch {
+      parsed = null;
+    }
+    throw new MerchMockupError({
+      code: (parsed?.error ?? 'mockup_generation_failed') as MerchMockupErrorShape['code'],
+      detail: parsed?.detail ?? `HTTP ${response.status}`,
+      httpStatus: response.status,
+    });
+  }
+  return (await response.json()) as MerchMockupResult;
+}
+
 /**
  * Streams an agent response via SSE-style POST. Returns a promise that
  * resolves when the stream completes. Caller can abort via AbortSignal.

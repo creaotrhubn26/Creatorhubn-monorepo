@@ -71,6 +71,12 @@ import {
 } from './role-room-agent-ratelimit.js';
 import { handleAgentStream } from './role-room-agent-stream.js';
 import {
+  generateMerchMockup,
+  isPrintfulConfigured,
+  PrintfulMockupError,
+  type MerchMockupProductId,
+} from './role-room-merch-mockup.js';
+import {
   getAiGovernanceOverview,
   getAuditTrail,
   getConsentList,
@@ -20135,6 +20141,52 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json({ ok: true });
       } catch (error) {
         res.status(500).json({ error: 'tool_result_log_failed', detail: String(error) });
+      }
+    },
+  );
+
+  // Merch mockup generator — synchronous wrapper over Printful's
+  // mockup-generator API. Given a productId (tshirt/hoodie/...) and
+  // a public design image URL (typically the customer's logo from the
+  // bootstrap result), returns the rendered photorealistic mockup URL.
+  // Internal polling up to 30s; cached per (productId, designImageUrl).
+  router.post(
+    '/projects/:projectId/agent/merch-mockup',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        if (!isPrintfulConfigured()) {
+          return res.status(503).json({
+            error: 'mockup_provider_unconfigured',
+            detail: 'PRINTFUL_API_KEY not set in backend env. Set the key in Render to enable photorealistic mockups.',
+          });
+        }
+        const { productId, designImageUrl } = req.body ?? {};
+        const allowedProducts = new Set<MerchMockupProductId>([
+          'tshirt', 'hoodie', 'polo', 'cap', 'totebag', 'mug',
+        ]);
+        if (typeof productId !== 'string' || !allowedProducts.has(productId as MerchMockupProductId)) {
+          return res.status(400).json({ error: 'invalid_product', detail: `productId must be one of: ${Array.from(allowedProducts).join(', ')}` });
+        }
+        if (typeof designImageUrl !== 'string' || !/^https?:\/\//i.test(designImageUrl)) {
+          return res.status(400).json({ error: 'invalid_design_url', detail: 'designImageUrl must be a public http(s) URL' });
+        }
+        const result = await generateMerchMockup(pool, {
+          productId: productId as MerchMockupProductId,
+          designImageUrl,
+        });
+        res.json(result);
+      } catch (error) {
+        if (error instanceof PrintfulMockupError) {
+          return res.status(error.httpStatus).json({
+            error: 'mockup_generation_failed',
+            detail: error.message,
+          });
+        }
+        res.status(500).json({
+          error: 'mockup_generation_failed',
+          detail: error instanceof Error ? error.message : String(error),
+        });
       }
     },
   );

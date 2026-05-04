@@ -58,6 +58,13 @@ services:
         value: "on"
       - key: ROLE_ROOM_AGENT_HAIKU_MODEL
         value: claude-haiku-4-5-20251001
+      # Printful Mockup Generator — used by Role Room agent's Merch tab
+      # to render photorealistic merch previews (T-shirt/hoodie/cap/...)
+      # with the customer's logo. Free tier; sync: false because it's a
+      # secret. Without this set, the /agent/merch-mockup endpoint
+      # returns 503 and the UI shows a "wire Printful first" message.
+      - key: PRINTFUL_API_KEY
+        sync: false
       # Proactive daily scan — runs once a day and pushes risk findings
       # into producer_project_notifications. Default off; enable after
       # you've validated costs with a small pilot group.
