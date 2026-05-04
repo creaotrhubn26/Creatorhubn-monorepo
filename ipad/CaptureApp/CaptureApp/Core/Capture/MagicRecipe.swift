@@ -42,87 +42,83 @@ struct MagicRecipe: Sendable, Equatable, Codable {
     /// via the Tune panel. Each recipe's intensities are tuned to what a
     /// retouch editor typically does for that subject — not dramatic.
 
-    /// Portraits: skin transitions are delicate. Warmth 0.35 = ~315K
-    /// nudge toward "natural golden hour" (Adobe Lightroom portrait
-    /// preset territory) without veering into orange. Skin smoothing
-    /// 0.40 maps to luminance NR amount 0.40 — softens pores without
-    /// crossing into plastic-skin uncanny valley (>0.50 starts to
-    /// look airbrushed on iPad). Shadow lift gentle so depth around
-    /// eyes/nose stays. Contrast deliberately LOW (0.10) — high
-    /// contrast on skin reads as harsh + ages the subject. Saturation
-    /// muted (0.15) — over-saturated reds register as sunburn rather
-    /// than healthy glow. Highlight recovery moderate-aggressive (0.30)
-    /// because forehead/cheek highlights are the first thing to clip
-    /// in mixed lighting.
+    /// **Audit-recalibrated 2026-05-04** — all presets now compensate
+    /// for Apple's CIRAWFilter built-in warm + saturated bias (~+10
+    /// RGB warmth + ~+7 saturation, measured against Canon's own
+    /// embedded JPEG preview). Pre-recalibration values were stacking
+    /// on top of Apple's bias → real-world food photos came out
+    /// notably orange and over-saturated (visible bright-sauce-loses-
+    /// white character, "63%"-style highlight clipping). Fix: small
+    /// direction-vector deltas, zero or negative warmth on subjects
+    /// where color truth matters, lowered highlight recovery so
+    /// bright-by-intent areas (sauce gleam, white-on-white, sky
+    /// haze) keep their character.
+    ///
+    /// Ground-truth methodology: extract Canon-baked preview via
+    /// `exiftool -PreviewImage -b file.CR3 > canon.jpg`, render
+    /// `.CR3` through Apple `sips -s format jpeg`, sample 5 pixel
+    /// positions with ImageMagick, compute mean RGB delta. Repeat
+    /// per-body for camera-specific bias (R5 / R5 mkII may differ).
+
+    /// Portraits: small warm nudge (+0.10 ≈ +90K above Apple's
+    /// already-warm baseline = ~+250K total — Adobe Lightroom
+    /// portrait territory). Skin smoothing held at 0.30 — only
+    /// fires when subject classifier is confident; auto-classifier
+    /// false-positives on food / objects shouldn't blur texture.
+    /// Highlight recovery 0.10 (was 0.30 — over-aggressive caused
+    /// loss of catchlight character).
     static let portrait = MagicRecipe(
-        warmth: 0.35, skinSmooth: 0.40, shadowLift: 0.35, contrast: 0.10, saturation: 0.15,
-        highlightRecovery: 0.30
+        warmth: 0.10, skinSmooth: 0.30, shadowLift: 0.20, contrast: 0.05, saturation: 0.05,
+        highlightRecovery: 0.10
     )
 
-    /// Aviation: cool tint cuts atmospheric haze (-0.20 ≈ -180K, which
-    /// fights the warm cast that haze adds at distance). Strong
-    /// contrast for rivet/lettering/panel-line definition against
-    /// blown-out sky. Moderate saturation — over-saturated airframes
-    /// look unnatural. Aggressive highlight recovery (0.65) because
-    /// sky is almost always at or beyond clipping in aerial shots.
+    /// Aviation: cool to fight haze. -0.30 = stronger cool than
+    /// before (was -0.20) since Apple adds warmth, so pre-fight is
+    /// needed to get effective cool tilt. Highlight recovery 0.30
+    /// (was 0.65 — way too aggressive; sky highlights are bright
+    /// BY DESIGN, not clipped accidents).
     static let aviation = MagicRecipe(
-        warmth: -0.20, skinSmooth: 0, shadowLift: 0.35, contrast: 0.60, saturation: 0.40,
-        highlightRecovery: 0.65
-    )
-
-    /// Cars + vehicles: NEUTRAL warmth is critical — bodywork colour
-    /// is the entire point of the shot, and a warmth shift falsifies
-    /// the buyer's expectation of how the colour reads in person.
-    /// Strong contrast for sharp panel lines + deep blacks (paint
-    /// depth = perceived quality). Moderate shadow lift so metal
-    /// shadows don't go to mush. Heavy saturation (0.55) punches
-    /// the bodywork colour. High highlight recovery (0.60) for
-    /// chrome + glass + rim/wheel highlights that habitually clip.
-    static let vehicle = MagicRecipe(
-        warmth: 0.00, skinSmooth: 0, shadowLift: 0.30, contrast: 0.55, saturation: 0.55,
-        highlightRecovery: 0.60
-    )
-
-    /// Food: warm-tone bias maps to "appetizing" in cross-cultural
-    /// colour research (warm = fresh, recently cooked). +0.50 ≈ +450K
-    /// gives that golden-hour tint without going orange. Strong
-    /// shadow lift opens up dark food (chocolate, sauces, cast iron).
-    /// Heavy saturation (0.55) boosts reds/oranges/yellows that
-    /// dominate food. Strong contrast (0.40) for surface texture.
-    /// Aggressive highlight recovery (0.55) because sauce/glaze gleam
-    /// is THE shot — losing it to clipping kills the appetite trigger.
-    /// No skin smoothing.
-    static let food = MagicRecipe(
-        warmth: 0.50, skinSmooth: 0, shadowLift: 0.50, contrast: 0.40, saturation: 0.55,
-        highlightRecovery: 0.55
-    )
-
-    /// Landscape: cool tilt (-0.10) emphasises sky + water + green
-    /// foliage (blue/green register MORE saturated when the warm
-    /// cast is removed). Strong shadow lift opens shadow detail in
-    /// foreground (rocks, grass, near-trees). Strong contrast for
-    /// cloud-vs-sky drama. High saturation (0.60) — landscape is
-    /// where the photographer can push colours hardest before the
-    /// image looks fake. Highlight recovery essentially MAXED at 0.70
-    /// because outdoor sky is at or above clipping nearly always
-    /// (especially on iPad-class CR3 dynamic range).
-    static let landscape = MagicRecipe(
-        warmth: -0.10, skinSmooth: 0, shadowLift: 0.55, contrast: 0.55, saturation: 0.60,
-        highlightRecovery: 0.70
-    )
-
-    /// Product on white/studio background: NEUTRAL warmth is
-    /// mandatory — colour accuracy is the deliverable (e-commerce
-    /// listings live or die by this). Light shadow lift for
-    /// soft-product depth without commercial flatness. LOW contrast
-    /// (0.20) to keep that clean catalog look — high contrast reads
-    /// as "lifestyle photography", not "product photography".
-    /// Minimal saturation (0.05) for truthfulness over drama.
-    /// Moderate highlight recovery (0.30) preserves white-background
-    /// detail (sweep lines, fold shadows on backdrop).
-    static let product = MagicRecipe(
-        warmth: 0.00, skinSmooth: 0, shadowLift: 0.20, contrast: 0.20, saturation: 0.05,
+        warmth: -0.30, skinSmooth: 0, shadowLift: 0.25, contrast: 0.30, saturation: 0.10,
         highlightRecovery: 0.30
+    )
+
+    /// Cars + vehicles: NEUTRAL warmth target. Apple adds ~+10 RGB
+    /// warmth, so we offset -0.10 to land at TRUE neutral (color
+    /// truth on bodywork). Lower saturation (0.15 was 0.55) — Apple
+    /// already adds saturation, more would falsify paint colour.
+    /// Highlight recovery 0.20 (chrome + glass).
+    static let vehicle = MagicRecipe(
+        warmth: -0.10, skinSmooth: 0, shadowLift: 0.20, contrast: 0.25, saturation: 0.15,
+        highlightRecovery: 0.20
+    )
+
+    /// Food: warm bias still appropriate (appetizing) but moderated.
+    /// +0.20 = ~+180K above Apple's baseline = ~+330K total = real
+    /// golden-hour tint without going pumpkin-orange. Saturation
+    /// +0.20 (was +0.55 — caused white sauce to lose its character).
+    /// Highlight recovery 0.10 (was +0.55 — preserved bright sauce
+    /// gleam IS the shot, don't pull it down).
+    static let food = MagicRecipe(
+        warmth: 0.20, skinSmooth: 0, shadowLift: 0.20, contrast: 0.15, saturation: 0.20,
+        highlightRecovery: 0.10
+    )
+
+    /// Landscape: keep cool tilt direction but stronger compensation
+    /// for Apple's warmth. -0.25 = fights ~+10 RGB warmth + adds
+    /// real cool. Saturation +0.30 (was +0.60). Highlight recovery
+    /// 0.40 (was 0.70 — sky bright-but-not-clipped should stay
+    /// bright).
+    static let landscape = MagicRecipe(
+        warmth: -0.25, skinSmooth: 0, shadowLift: 0.30, contrast: 0.25, saturation: 0.30,
+        highlightRecovery: 0.40
+    )
+
+    /// Product: TRUE neutral target. Apple-bias offset of -0.10
+    /// warmth, zero saturation lift, light shadow nudge. Highlight
+    /// recovery 0.10 (catalog backgrounds stay clean).
+    static let product = MagicRecipe(
+        warmth: -0.10, skinSmooth: 0, shadowLift: 0.10, contrast: 0.10, saturation: -0.05,
+        highlightRecovery: 0.10
     )
 
     /// Fallback when subject classification doesn't confidently fire.

@@ -282,20 +282,31 @@ final class MagicPipeline {
     /// Order of checks matches importance: faces are the dominant signal
     /// for "portrait" and override everything else; then Vision's general
     /// scene classifier picks up plane / car / food / landscape / product.
+    /// **Audit 2026-05-04** — fix for false-positive portrait detection
+    /// on food/object photos. Pre-fix order was: faces first, scene-
+    /// classifier as fallback. Result: VNDetectFaceRectanglesRequest
+    /// hit 0.5 confidence on the curved highlights of bread/object
+    /// shots and forced portrait recipe (skin-smoothing on food
+    /// texture, warm bias on already-warm subjects).
+    ///
+    /// New order: scene classifier FIRST. If it confidently matches
+    /// a non-portrait subject, that wins. Only when scene classifier
+    /// returns no high-confidence match do we fall back to face
+    /// detection — and then with a much higher confidence floor
+    /// (0.85, not 0.5) so an actual portrait has to look like one.
     private static func classifySubject(_ image: UIImage) -> MagicRecipe {
         guard let cgImage = image.cgImage else { return .neutral }
 
-        if detectFaces(cgImage: cgImage) { return .portrait }
-
-        // VNClassifyImageRequest returns labels like "sports_car",
-        // "airliner", "plate", "mountain", "product". Confidence > 0.25
-        // is the practical threshold for iOS's bundled model.
+        // Scene classifier first — `VNClassifyImageRequest` returns
+        // labels like "sports_car", "airliner", "plate", "mountain",
+        // "product". Threshold 0.30 (slightly tighter than the old
+        // 0.25) so weak guesses don't fire wrong recipes.
         let request = VNClassifyImageRequest()
         let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
-        do { try handler.perform([request]) } catch { return .neutral }
+        do { try handler.perform([request]) } catch { return faceFallback(cgImage: cgImage) }
 
         let labels = (request.results ?? [])
-            .filter { $0.confidence >= 0.25 }
+            .filter { $0.confidence >= 0.30 }
             .map(\.identifier)
             .map { $0.lowercased() }
 
@@ -304,14 +315,20 @@ final class MagicPipeline {
         if labels.contains(where: Self.foodHints.contains)     { return .food }
         if labels.contains(where: Self.landscapeHints.contains){ return .landscape }
         if labels.contains(where: Self.productHints.contains)  { return .product }
-        return .neutral
+
+        // No confident scene match — try faces with a strict floor.
+        return faceFallback(cgImage: cgImage)
     }
 
-    private static func detectFaces(cgImage: CGImage) -> Bool {
+    private static func faceFallback(cgImage: CGImage) -> MagicRecipe {
         let request = VNDetectFaceRectanglesRequest()
         let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
-        do { try handler.perform([request]) } catch { return false }
-        return request.results?.contains { $0.confidence >= 0.5 } ?? false
+        do { try handler.perform([request]) } catch { return .neutral }
+        // 0.85 confidence floor — an actual portrait clears this; a
+        // bread-as-face hallucination doesn't. Pre-fix value was 0.5
+        // which was the source of the cross-genre misfires.
+        let hasFace = request.results?.contains { $0.confidence >= 0.85 } ?? false
+        return hasFace ? .portrait : .neutral
     }
 
     // The label vocabulary below is a subset of Apple's bundled scene
