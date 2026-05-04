@@ -13,11 +13,12 @@ type Db = NodePgDatabase<Record<string, unknown>>;
 // Claude can't smuggle out-of-range values that crash CoreImage filters
 // on the iPad.
 export interface MagicRecipe {
-  warmth: number;        // -1…+1
-  skinSmooth: number;    // 0…1
-  shadowLift: number;    // 0…1
-  contrast: number;      // -1…+1
-  saturation: number;    // -1…+1
+  warmth: number;             // -1…+1
+  skinSmooth: number;         // 0…1
+  shadowLift: number;         // 0…1
+  contrast: number;           // -1…+1
+  saturation: number;         // -1…+1
+  highlight_recovery: number; // 0…1 (Phase 4 audit — pulls down 65-100% range via CIToneCurve)
 }
 
 export type SubjectCategory =
@@ -84,27 +85,30 @@ neutral — Fallback when nothing else clearly applies. Mixed subjects, abstract
 
 ===== ENHANCEMENT PARAMETERS =====
 
-All five parameters are continuous floats. Units below are what the photographer sees in the UI.
+All six parameters are continuous floats. Units below are what the photographer sees in the UI.
+
+**Critical context (2026-05-04 audit):** Apple's CIRAWFilter applies its own warm + saturated default look during demosaic — measured ~+10 RGB warmth + ~+7 saturation against Canon's own embedded JPEG preview. Your recipe is layered on top of that, so use small deltas. Negative warmth is NOT a mistake — it's how you compensate for Apple's bias to land at true neutral or cool. Pre-audit recipes were 2-3× too aggressive and produced visibly orange / over-saturated output (especially on food + portraits).
 
 warmth (-1…+1)
   Maps to CITemperatureAndTint target. Positive warms (orange/amber cast added), negative cools (blue cast added).
   -1   → strong cool shift (−900K)
-   0   → no temperature shift
+   0   → no shift relative to Apple's default (which itself is ~+200K warm)
   +1   → strong warm shift (+900K)
-  Use negative values to cut atmospheric haze (aviation, misty landscapes). Use positive values to restore golden hour warmth or add life to neutral studio light.
+  Use negative values for: aviation (cuts haze), landscapes (emphasises blue/green), vehicles + products (true colour neutral). Use small positive values for: food, portraits, golden hour. Be aware Apple has already warmed the image.
 
 skinSmooth (0…1)
   Maps to CINoiseReduction strength on iPad — edge-preserving smoothing that flattens tonal variation without destroying pores, eyelashes, hair strands.
   0.0 → no smoothing
-  0.5 → moderate, appropriate for most portrait work
-  1.0 → heavy, only use for commercial beauty/fashion where pore structure is heavily post-processed
-  Must be 0 for any non-portrait subject — skin smoothing applied to aviation, landscapes, or products introduces unwanted softness.
+  0.3 → light, appropriate for casual portrait work
+  0.5 → moderate, commercial beauty
+  1.0 → heavy, fashion/editorial only
+  MUST be 0 for any non-portrait subject — skin smoothing applied to food (textured surfaces), aviation (panel lines), landscapes (foliage detail), or products (material grain) destroys the texture that defines the subject.
 
 shadowLift (0…1)
   Maps to CIHighlightShadowAdjust inputShadowAmount. Lifts shadow detail without touching highlights.
   0.0 → no lift
-  0.3 → gentle recovery, preserves mood
-  0.7 → aggressive recovery, use for underexposed captures
+  0.2 → gentle, preserves mood
+  0.5 → aggressive recovery
   1.0 → maximum lift, almost always too flat
 
 contrast (-1…+1)
@@ -112,26 +116,87 @@ contrast (-1…+1)
   -1   → flat, low-contrast look
    0   → as-shot
   +1   → punchy, high-contrast
-  Positive values punch up vehicles, landscapes, aviation. Portraits usually want 0 to +0.15.
+  Positive values punch up vehicles, landscapes, aviation. Portraits usually want 0 to +0.10 (high contrast hardens skin transitions).
 
 saturation (-1…+1)
   Maps to CIColorControls inputSaturation as 1.0 + value*0.45.
   -1   → near-desaturated
    0   → as-shot
   +1   → heavily saturated
-  Landscapes and food tolerate +0.4-+0.55. Portraits want +0.1-+0.2 (skin tones desaturate gracefully). Aviation tolerates +0.3-+0.5 to lift washed skies. Never push product above +0.2 — clients need honest colour.
+  Apple already adds ~+7 RGB saturation. So +0.20 from you = effectively ~+15 RGB total = "noticeably more vibrant". +0.50 = oversaturated to the point food looks orange/cartoonish. Stay well below +0.30 except for landscape which can tolerate more.
 
-===== TYPICAL RECIPE ENVELOPES =====
+highlight_recovery (0…1)
+  Maps to a CIToneCurve in display-gamma post-output that pulls down the 65-100% range. 0 = no pull, 1 = ~8% pull at clip.
+  Use moderate values (0.20-0.40) for outdoor work where sky is at clip. Use LOW values (0-0.15) for food, products, portraits where bright highlights are intentional design (sauce gleam, white sweep, catchlight). Pulling them down loses the gloss/wet/luminous character that defines those subjects.
 
-These are starting points, not mandates. Adjust based on what you see in the shot: underexposed shots want more shadowLift, already-warm shots want less warmth, etc.
+===== TYPICAL RECIPE ENVELOPES (calibrated against Canon ground-truth 2026-05-04) =====
 
-portrait            warmth +0.30 to +0.50, skinSmooth 0.40-0.70, shadowLift 0.25-0.50, contrast  0.00 to +0.15, saturation +0.05 to +0.25
-aviation            warmth -0.30 to -0.15, skinSmooth 0.00,      shadowLift 0.20-0.35, contrast +0.30 to +0.55, saturation +0.20 to +0.45
-vehicle             warmth  0.00 to +0.20, skinSmooth 0.00,      shadowLift 0.10-0.25, contrast +0.30 to +0.55, saturation +0.35 to +0.60
-food                warmth +0.35 to +0.60, skinSmooth 0.00,      shadowLift 0.25-0.45, contrast +0.10 to +0.30, saturation +0.25 to +0.55
-landscape           warmth -0.20 to +0.10, skinSmooth 0.00,      shadowLift 0.30-0.55, contrast +0.30 to +0.55, saturation +0.30 to +0.55
-product             warmth  0.00 to +0.15, skinSmooth 0.00,      shadowLift 0.20-0.35, contrast +0.15 to +0.35, saturation +0.05 to +0.20
-neutral             warmth +0.15 to +0.35, skinSmooth 0.00,      shadowLift 0.20-0.35, contrast +0.10 to +0.30, saturation +0.15 to +0.35
+These are starting points, not mandates. Adjust based on what you see: underexposed shots want more shadowLift, already-warm shots want less warmth, blown highlights want more highlight_recovery (but don't reach for it on intentionally-bright subjects).
+
+portrait    warmth +0.05 to +0.20, skinSmooth 0.20-0.40, shadowLift 0.15-0.30, contrast 0.00 to +0.10, saturation +0.00 to +0.15, highlight_recovery 0.05-0.15
+aviation    warmth -0.40 to -0.20, skinSmooth 0.00,      shadowLift 0.15-0.30, contrast +0.20 to +0.40, saturation +0.05 to +0.20, highlight_recovery 0.20-0.40
+vehicle     warmth -0.15 to -0.05, skinSmooth 0.00,      shadowLift 0.10-0.25, contrast +0.20 to +0.40, saturation +0.10 to +0.25, highlight_recovery 0.10-0.30
+food        warmth +0.10 to +0.30, skinSmooth 0.00,      shadowLift 0.10-0.25, contrast +0.10 to +0.20, saturation +0.10 to +0.25, highlight_recovery 0.05-0.15
+landscape   warmth -0.30 to -0.10, skinSmooth 0.00,      shadowLift 0.20-0.40, contrast +0.20 to +0.40, saturation +0.20 to +0.40, highlight_recovery 0.30-0.50
+product     warmth -0.15 to -0.05, skinSmooth 0.00,      shadowLift 0.05-0.20, contrast +0.05 to +0.20, saturation -0.10 to +0.05, highlight_recovery 0.05-0.20
+neutral     warmth -0.10 to +0.00, skinSmooth 0.00,      shadowLift 0.10-0.25, contrast +0.05 to +0.20, saturation -0.10 to +0.05, highlight_recovery 0.15-0.30
+
+===== PER-CATEGORY GUIDANCE (added 2026-05-04 from professional retoucher research) =====
+
+**PORTRAIT** — sources: imagen-ai.com 2026 portrait workflow, drawhorns.com skin tones, mastinlabs.com creamy skin guide.
+- Healthy skin tone follows the rule: Red > Green > Blue. Watch for green pulling in fluorescent indoor light.
+- Temperature shifts of +100-200K (≈+0.11 to +0.22 in our scale) are the canonical "warm hint" range. Anything above +0.30 starts looking sunburnt or jaundiced depending on baseline skin.
+- Lift shadows GENTLY (0.15-0.30) — heavy shadow lift flattens face geometry + ages the subject by reducing 3D rendering of cheekbones / nose.
+- Saturation negative on lips can be useful (-0.05 to -0.10) since over-saturated reds read as makeup-heavy. Our pipeline doesn't expose per-channel; recommend low global saturation instead.
+- Skin smoothing 0.20-0.40 is the photographer-grade range. 0.50+ = uncanny-valley airbrushed.
+- Highlight recovery LOW (0.05-0.15) — catchlight in the eye is visual life; aggressively pulling highlights down kills it.
+- 2026 industry baseline: Texture -20 + Clarity -10 for skin (we don't expose these axes; rely on skinSmooth as proxy).
+
+**VEHICLE** — sources: lightroompresets.com car edit guide, smartclipping.io step-by-step, imagen-ai.com car presets.
+- Deep BLACKS are the sleek-look signature ("drop blacks -20" for tire richness). Our pipeline doesn't expose blacks separately; deeper contrast (+0.30 to +0.40) is the proxy.
+- Paint COLOR INTEGRITY is the deliverable. Buyers compare against showroom — falsified warmth = customer complaint. Use slightly NEGATIVE warmth (-0.05 to -0.15) to compensate for Apple's bias and land at true neutral.
+- Saturation moderate (+0.10 to +0.25) — punchy paint without veering into "matchbox toy" cartoon look.
+- Clarity rarely above +0.25 (would map to ~+0.45 in our scale via skinSmooth's UnsharpMask companion if we exposed it; not currently a slider).
+- Highlight recovery MODERATE (0.15-0.30) — chrome + glass + windshield highlights bloom out otherwise; recover but don't kill the gleam.
+- Dehaze (industry standard +0.10 to +0.30 for outdoor cars) — we don't expose dehaze; use higher contrast + slight cool warmth as proxy.
+
+**LANDSCAPE** — sources: focus.picfair.com 10 expert tips, picturecomms photographylife.com, henryturnerphotography.co.uk.
+- Sky needs SATURATION + cool tilt (drop temperature -200K = -0.22 in our scale; we use -0.30 to be generous).
+- Greens get MORE NATURAL when desaturated slightly (the bundled Adobe Landscape profile pulls greens toward emerald). Our global saturation can't differentiate greens; recommend conservative +0.20 to +0.40 saturation overall.
+- Texture +20 to +40 (industry value) for foliage detail — we don't expose this axis. Higher contrast is poor proxy.
+- Clarity +10 to +25 typical; >+25 = "crunchy / halo-ridden". We don't expose.
+- Dehaze + shadow lift to compensate for resulting deeper shadows. Our shadowLift 0.20-0.40 partially covers this.
+- Highlight recovery 0.30-0.50 because outdoor sky is at or above clipping nearly always (especially harsh midday).
+- Sky-specific gradients (linear/radial mask): -0.5 to -1.0 stops exposure on sky region. We don't expose masking; rely on global highlight_recovery.
+
+**AVIATION** — sources: KelbyOne 5-min aviation workflow, jetphotos forums.
+- Dehaze is THE primary tool for aviation (+0.50 to +0.65 industry typical for haze-heavy shots). We don't expose dehaze. Compensate with: stronger cool warmth (-0.30 to -0.40) + higher contrast (+0.25 to +0.40).
+- Cool tones cut atmospheric blue scatter (-0.30 to -0.40 warmth in our scale).
+- Saturation MODERATE (+0.05 to +0.20) — over-saturated airframe colors look cartoonish; restraint reads as professional / aviation-magazine-style.
+- Highlight recovery 0.20-0.40 — sky almost always blown but rivet detail in shadows often needs preservation, so don't go aggressive.
+- Detail/sharpening important for rivet + lettering definition. Our pipeline doesn't expose; rely on contrast as proxy.
+
+**PRODUCT** — sources: Shopify product editing guide 2025, expertphotography.com, presetcurator.com white-background guide.
+- COLOR TRUTH is the deliverable. Use color picker on neutral gray + nudge temperature so whites read white. Use SLIGHTLY NEGATIVE warmth (-0.05 to -0.15) to compensate for Apple's bias and land at TRUE neutral.
+- Vibrance > Saturation philosophy (industry: "nudge vibrance up to about +5 or +6"). Our pipeline uses Saturation; stay LOW (-0.10 to +0.05) and never push above +0.10 — falsifies brand colors which causes customer returns.
+- Clean / commercial / catalog look = LOW contrast (+0.05 to +0.20). High contrast reads as "lifestyle photography" which is the wrong genre signal.
+- Highlight recovery LOW (0.05-0.20) — sweep lines on backdrop + soft shadows on product are deliberate composition; don't pull them out.
+- Marketplace constraint: Amazon, Walmart, Etsy require pure-white backgrounds for main listing image. Our pipeline doesn't auto-clean backgrounds; flag in quality_notes if background isn't clean enough for marketplace use.
+
+**FOOD** — sources: PRO EDU food photography Lightroom workflow, foodphotographyacademy.co color grading, Two Loves Studio.
+
+Food photography retouching is its own discipline. Beyond the envelope above:
+
+- **Vibrance > Saturation philosophy**: professionals prefer Vibrance because it boosts dull tones without overdriving already-saturated colors. Our pipeline uses Saturation (CIColorControls). Compensate: stay LOW on saturation (+0.10 to +0.20), even for visually rich food. Pre-audit recipes pushed +0.55 — visibly cartoonish.
+- **Realism over drama**: "When it comes to color grading food photography, less is usually more — we rely on colors to look realistic" (Two Loves Studio, foodphotographyacademy.co). The viewer's brain triggers appetite from REALISTIC food, not from oversaturated food. Cartoonish food signals "fake / processed" subconsciously.
+- **Highlights are your friend**: bright sauce gleam, glistening wet surfaces, oil sheen on roasted meat — these ARE the appetite triggers ("Boosting highlights on wet/glossy surfaces makes food look fresh and juicy"). DO NOT pull them down with aggressive highlight_recovery. 0.05-0.15 max for food.
+- **Warm balance, not warm shift**: warm food shots feel cozy / appetizing, but the mechanism is BALANCED warm-and-cool tones, not blanket warmth. "Your image will look best when there is a balance of cool and warm tones throughout. If your image looks too warm or too cool, adjust the temperature slider until the whites look neutral" (PRO EDU). Whites should stay white (cream sauce, white plates, sugar dusting).
+- **By-color considerations** (informational — our recipe doesn't expose per-channel HSL yet, but inform your decisions):
+  - Yellow foods (citrus, curries): Lightroom convention saturation +10-15, luminance -15-20, hue toward orange
+  - Red foods (sauces, meat, berries): hue +5-10 toward orange, saturation +5-10
+  - Browns (chocolate, coffee, bread crust): luminance +10-15, saturation +5
+  - Greens (salads, herbs): yellow saturation -10-15 (greens default to yellow-green; pulling yellow makes them more emerald)
+- **Cross-cultural appetite research** (Frontiers in Psychology): warm colors — particularly red — increase heart rate and stimulate appetite. This is the SCIENCE behind food = warm bias. But the effect is from COMPOSITION + balanced palette, not from cranking the warmth slider.
 
 ===== QUALITY NOTES =====
 
@@ -204,6 +269,7 @@ const ANALYSIS_TOOL = {
         description:
           'Brief assessment of exposure, contrast, and colour cast. 3-10 words.',
       },
+      // (highlight_recovery axis added 2026-05-04 audit — see schema below)
       suggested_recipe: {
         type: 'object' as const,
         properties: {
@@ -212,6 +278,7 @@ const ANALYSIS_TOOL = {
           shadowLift: { type: 'number' as const, minimum: 0, maximum: 1 },
           contrast: { type: 'number' as const, minimum: -1, maximum: 1 },
           saturation: { type: 'number' as const, minimum: -1, maximum: 1 },
+          highlight_recovery: { type: 'number' as const, minimum: 0, maximum: 1 },
         },
         required: [
           'warmth',
@@ -219,6 +286,7 @@ const ANALYSIS_TOOL = {
           'shadowLift',
           'contrast',
           'saturation',
+          'highlight_recovery',
         ],
         description: 'Recipe parameters the iPad applies via CoreImage filters.',
       },
@@ -411,6 +479,7 @@ export function sanitiseAnalysis(raw: unknown): PhotoAnalysis | null {
     shadowLift: clamp(recipeRaw.shadowLift, 0, 1),
     contrast: clamp(recipeRaw.contrast, -1, 1),
     saturation: clamp(recipeRaw.saturation, -1, 1),
+    highlight_recovery: clamp(recipeRaw.highlight_recovery, 0, 1),
   };
 
   const notes = Array.isArray(r.quality_notes)

@@ -6154,6 +6154,11 @@ final class LiveCaptureModel {
             magicPipeline?.retune(assetId: assetId, recipe: claude, sourcePath: sourcePath)
         }
         #endif
+        // Phase 4 follow-up: also kick a RAW preview retune so the
+        // hero's WYSIWYG version reflects Claude's recipe (not just
+        // the display-JPEG-Magic). Same debounced + cancellable
+        // path used by manual tune-slider edits.
+        triggerRAWPreviewRetune(assetId: assetId, recipe: claude)
     }
 
     private func magicRecipe(from wire: BackendSuggestedRecipe) -> MagicRecipe {
@@ -6162,7 +6167,8 @@ final class LiveCaptureModel {
             skinSmooth: wire.skinSmooth,
             shadowLift: wire.shadowLift,
             contrast: wire.contrast,
-            saturation: wire.saturation
+            saturation: wire.saturation,
+            highlightRecovery: wire.highlightRecovery ?? 0
         )
     }
 

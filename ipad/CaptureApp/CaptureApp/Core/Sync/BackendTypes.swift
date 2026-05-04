@@ -420,12 +420,21 @@ enum BackendSubjectCategory: String, Decodable, Sendable, CaseIterable {
 
 /// Mirrors `MagicRecipe` on the iPad and the backend
 /// `MagicRecipe` interface in capture-analyze-service.ts.
+/// `highlightRecovery` is optional for backwards-compatibility —
+/// older backend builds without the Phase 4 audit don't return it,
+/// in which case we fall back to 0 (no recovery).
 struct BackendSuggestedRecipe: Decodable, Sendable {
     let warmth: Double
     let skinSmooth: Double
     let shadowLift: Double
     let contrast: Double
     let saturation: Double
+    let highlightRecovery: Double?
+
+    private enum CodingKeys: String, CodingKey {
+        case warmth, skinSmooth, shadowLift, contrast, saturation
+        case highlightRecovery = "highlight_recovery"
+    }
 }
 
 struct BackendPhotoAnalysis: Decodable, Sendable {
