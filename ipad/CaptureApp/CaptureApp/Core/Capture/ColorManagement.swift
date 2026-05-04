@@ -172,4 +172,39 @@ enum ColorManagement {
         case destinationFailed
         case finalizeFailed
     }
+
+    // MARK: - Orientation
+
+    /// Read the EXIF/TIFF orientation tag from a RAW or JPEG byte
+    /// blob. CGImageProperty values are 1…8 per the TIFF spec:
+    ///   1 = up         (no rotation)
+    ///   3 = down       (180°)
+    ///   6 = right      (camera held landscape, rotated 90° CW for display)
+    ///   8 = left       (camera held landscape, rotated 270° CW for display)
+    ///   2/4/5/7        = mirrored variants (rare on Canon bodies)
+    /// Returns `.up` when the source carries no orientation tag — safer
+    /// than guessing.
+    ///
+    /// **Why pipelines need this:** Apple's `CIRAWFilter.outputImage`
+    /// emits sensor-natural pixel order. On a camera held landscape
+    /// (8192×5464), that's correct; on a camera rotated to portrait
+    /// (still 8192×5464 sensor, EXIF orientation=8), the photo lands
+    /// rotated 90° in the rendered JPEG unless someone applies the
+    /// EXIF rotation. Web browsers + Photos.app honour the `kCGImage
+    /// PropertyOrientation` JPEG tag, but iPad in-app preview reads
+    /// raw pixels — so we apply the rotation in pixels, then write
+    /// the JPEG with orientation = up. That makes a single source of
+    /// truth (rendered pixels == final orientation) regardless of
+    /// downstream consumer.
+    static func readOrientation(from rawData: Data) -> CGImagePropertyOrientation {
+        guard let source = CGImageSourceCreateWithData(rawData as CFData, nil),
+              let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil)
+                as? [String: Any],
+              let raw = props[kCGImagePropertyOrientation as String] as? UInt32,
+              let orientation = CGImagePropertyOrientation(rawValue: raw)
+        else {
+            return .up
+        }
+        return orientation
+    }
 }

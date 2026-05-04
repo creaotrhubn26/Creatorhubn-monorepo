@@ -158,8 +158,19 @@ final class MagicPipeline {
 
     nonisolated private static func renderToDisk(source: String, destination: URL, recipe: MagicRecipe) -> Bool {
         guard let sourceImage = UIImage(contentsOfFile: source),
-              let ciImage = CIImage(image: sourceImage)
+              let ciRaw = CIImage(image: sourceImage)
         else { return false }
+        // `CIImage(image:)` returns sensor-natural pixels and silently
+        // drops `UIImage.imageOrientation` — well-known Apple gotcha.
+        // For Canon `?kind=display` JPEGs that ship with EXIF
+        // orientation != 1 (camera held portrait), the rendered output
+        // would arrive sideways unless we re-apply the EXIF transform
+        // here. Read directly from the file bytes (authoritative)
+        // rather than translating UIImage.imageOrientation, which can
+        // drift through UIKit's own conversions.
+        let sourceData = (try? Data(contentsOf: URL(fileURLWithPath: source))) ?? Data()
+        let orientation = ColorManagement.readOrientation(from: sourceData)
+        let ciImage = orientation == .up ? ciRaw : ciRaw.oriented(orientation)
         // Display-pipeline renders the camera-baked JPEG (already
         // Display P3) for in-app hero consumption. Use the appPreview
         // working space so we don't down-gamut to sRGB before display.

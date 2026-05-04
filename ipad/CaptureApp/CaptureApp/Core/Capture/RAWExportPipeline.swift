@@ -89,6 +89,13 @@ enum RAWExportPipeline {
             throw Error.renderFailed
         }
 
+        // No manual orientation correction needed: CIRAWFilter reads
+        // EXIF orientation from the CR3 and rotates `outputImage`
+        // automatically. Verified empirically — _L9A7437.CR3 (sensor
+        // 8192×5464, EXIF orientation 8 = "rotate 270 CW") emerges
+        // as 5464×8192 in the right orientation. Adding a manual
+        // `.oriented()` here would double-rotate.
+
         let toned = applyToneAdjustments(recipe: effectiveRecipe, to: rawOutput)
 
         let context = ColorManagement.makeContext(for: colorPurpose)
