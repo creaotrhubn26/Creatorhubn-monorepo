@@ -21,6 +21,7 @@ import {
 } from '@mui/material';
 import {
   CheckCircleOutline as CheckIcon,
+  Handshake as HandshakeIcon,
   Language as WebIcon,
   Map as MapIcon,
   Mail as MailIcon,
@@ -34,6 +35,7 @@ import type {
 } from '../../services/roleRoomAgentService';
 import MerchMockupPreview from './MerchMockupPreview';
 import MerchOutreachDialog from './MerchOutreachDialog';
+import MerchCooperationDialog from './MerchCooperationDialog';
 
 interface MerchSuppliersPanelProps {
   projectId: string | null;
@@ -81,6 +83,7 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
   const [productFilter, setProductFilter] = useState<RoleRoomAgentMerchProductCategory | null>(null);
   const [selectedSupplierKey, setSelectedSupplierKey] = useState<string | null>(null);
   const [outreachSupplier, setOutreachSupplier] = useState<RoleRoomAgentMerchSupplier | null>(null);
+  const [cooperationOpen, setCooperationOpen] = useState(false);
 
   const selectedSupplier = useMemo(() => {
     if (!merch || !selectedSupplierKey) return null;
@@ -163,11 +166,27 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
               {merch.marketContext}
             </Typography>
           </Box>
-          <Chip
-            size="small"
-            label={`${merch.verifiedSupplierCount}/${merch.suppliers.length} klare for forespørsel`}
-            sx={{ bgcolor: 'rgba(34,197,94,0.14)', color: '#bbf7d0', fontWeight: 700 }}
-          />
+          <Stack direction="row" spacing={0.7} alignItems="center" flexWrap="wrap" useFlexGap>
+            <Chip
+              size="small"
+              label={`${merch.verifiedSupplierCount}/${merch.suppliers.length} klare for forespørsel`}
+              sx={{ bgcolor: 'rgba(34,197,94,0.14)', color: '#bbf7d0', fontWeight: 700 }}
+            />
+            <Button
+              size="small"
+              variant="contained"
+              startIcon={<HandshakeIcon fontSize="small" />}
+              onClick={() => setCooperationOpen(true)}
+              sx={{
+                textTransform: 'none',
+                fontWeight: 700,
+                bgcolor: 'rgba(99,102,241,0.4)',
+                '&:hover': { bgcolor: 'rgba(99,102,241,0.6)' },
+              }}
+            >
+              Lag samarbeidsforslag
+            </Button>
+          </Stack>
         </Stack>
       </Box>
 
@@ -474,6 +493,15 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
         productCategory={
           outreachSupplier?.productCategories.find((c) => c !== 'unknown') ?? null
         }
+      />
+
+      {/* Cooperation draft dialog (Claude-drevet) */}
+      <MerchCooperationDialog
+        open={cooperationOpen}
+        onClose={() => setCooperationOpen(false)}
+        projectId={projectId}
+        bootstrap={bootstrap}
+        supplier={selectedSupplier}
       />
 
       {/* Cooperation angles + outreach checklist */}

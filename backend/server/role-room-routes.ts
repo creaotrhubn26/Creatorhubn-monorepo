@@ -77,6 +77,12 @@ import {
   type MerchMockupProductId,
 } from './role-room-merch-mockup.js';
 import {
+  generateMerchCooperationDraft,
+  MerchCooperationError,
+  type MerchDealType,
+  type MerchPartnerType,
+} from './role-room-merch-cooperation.js';
+import {
   getAiGovernanceOverview,
   getAuditTrail,
   getConsentList,
@@ -20185,6 +20191,82 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         }
         res.status(500).json({
           error: 'mockup_generation_failed',
+          detail: error instanceof Error ? error.message : String(error),
+        });
+      }
+    },
+  );
+
+  // Merch cooperation draft — Claude-drevet samarbeidsforslag.
+  // Tar kunde + motpart (klubb/event/skole/forening/bedrift) + ønsket
+  // avtaletype og returnerer strukturert avtaleutkast (overskrift,
+  // pitch, tilbud begge veier, paragrafer, risiko, neste steg).
+  // Ingen PII til Claude — kun firmanavn + bransje + brief-sammendrag.
+  router.post(
+    '/projects/:projectId/agent/merch-cooperation',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const {
+          customerName,
+          customerIndustry,
+          customerBriefSummary,
+          partnerName,
+          partnerType,
+          partnerNotes,
+          dealType,
+          supplierContext,
+        } = req.body ?? {};
+
+        const allowedPartners = new Set<MerchPartnerType>([
+          'sportsklubb', 'event', 'skole', 'forening', 'bedrift',
+        ]);
+        const allowedDeals = new Set<MerchDealType>([
+          'sponsor', 'kit_supplier', 'cross_promo', 'give_away', 'long_term_partnership',
+        ]);
+        if (typeof customerName !== 'string' || customerName.trim().length === 0) {
+          return res.status(400).json({ error: 'invalid_customer_name' });
+        }
+        if (typeof partnerName !== 'string' || partnerName.trim().length === 0) {
+          return res.status(400).json({ error: 'invalid_partner_name' });
+        }
+        if (!allowedPartners.has(partnerType as MerchPartnerType)) {
+          return res.status(400).json({ error: 'invalid_partner_type' });
+        }
+        if (!allowedDeals.has(dealType as MerchDealType)) {
+          return res.status(400).json({ error: 'invalid_deal_type' });
+        }
+
+        const result = await generateMerchCooperationDraft({
+          pool,
+          projectId: req.params.projectId,
+          userId,
+          customerName: customerName.trim(),
+          customerIndustry: typeof customerIndustry === 'string' ? customerIndustry.trim() : null,
+          customerBriefSummary: typeof customerBriefSummary === 'string' ? customerBriefSummary.trim().slice(0, 1500) : null,
+          partnerName: partnerName.trim(),
+          partnerType: partnerType as MerchPartnerType,
+          partnerNotes: typeof partnerNotes === 'string' ? partnerNotes.trim().slice(0, 800) : null,
+          dealType: dealType as MerchDealType,
+          supplierContext: supplierContext && typeof supplierContext === 'object' && supplierContext !== null
+            ? {
+                name: String(supplierContext.name ?? ''),
+                techniques: Array.isArray(supplierContext.techniques) ? supplierContext.techniques.map(String) : [],
+                productCategories: Array.isArray(supplierContext.productCategories) ? supplierContext.productCategories.map(String) : [],
+              }
+            : null,
+        });
+        res.json(result);
+      } catch (error) {
+        if (error instanceof MerchCooperationError) {
+          return res.status(error.httpStatus).json({
+            error: 'cooperation_generation_failed',
+            detail: error.message,
+          });
+        }
+        res.status(500).json({
+          error: 'cooperation_generation_failed',
           detail: error instanceof Error ? error.message : String(error),
         });
       }

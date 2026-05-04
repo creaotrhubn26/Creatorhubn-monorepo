@@ -367,6 +367,85 @@ export async function generateMerchMockup(input: {
   return (await response.json()) as MerchMockupResult;
 }
 
+export type MerchPartnerType = 'sportsklubb' | 'event' | 'skole' | 'forening' | 'bedrift';
+export type MerchDealType =
+  | 'sponsor'
+  | 'kit_supplier'
+  | 'cross_promo'
+  | 'give_away'
+  | 'long_term_partnership';
+
+export interface MerchCooperationDraft {
+  generatedAt: string;
+  model: string;
+  dealHeadline: string;
+  openingPitch: string;
+  weProposeToOffer: string[];
+  theyOffer: string[];
+  commercialFraming: string;
+  draftAgreementParagraphs: string[];
+  riskNotes: string[];
+  nextSteps: string[];
+}
+
+export interface MerchCooperationInput {
+  projectId: string;
+  customerName: string;
+  customerIndustry?: string | null;
+  customerBriefSummary?: string | null;
+  partnerName: string;
+  partnerType: MerchPartnerType;
+  partnerNotes?: string | null;
+  dealType: MerchDealType;
+  supplierContext?: {
+    name: string;
+    techniques: string[];
+    productCategories: string[];
+  } | null;
+}
+
+export class MerchCooperationApiError extends Error {
+  code: string;
+  httpStatus: number;
+  detail: string;
+  constructor(opts: { code: string; detail: string; httpStatus: number }) {
+    super(opts.detail);
+    this.name = 'MerchCooperationApiError';
+    this.code = opts.code;
+    this.httpStatus = opts.httpStatus;
+    this.detail = opts.detail;
+  }
+}
+
+export async function generateMerchCooperationDraft(
+  input: MerchCooperationInput,
+): Promise<MerchCooperationDraft> {
+  const { projectId, ...body } = input;
+  const response = await fetch(
+    `${API_BASE}/projects/${encodeURIComponent(projectId)}/agent/merch-cooperation`,
+    {
+      method: 'POST',
+      headers: buildHeaders(),
+      body: JSON.stringify(body),
+    },
+  );
+  if (!response.ok) {
+    const raw = await response.text().catch(() => '');
+    let parsed: { error?: string; detail?: string } | null = null;
+    try {
+      parsed = raw ? JSON.parse(raw) : null;
+    } catch {
+      parsed = null;
+    }
+    throw new MerchCooperationApiError({
+      code: parsed?.error ?? 'cooperation_generation_failed',
+      detail: parsed?.detail ?? `HTTP ${response.status}`,
+      httpStatus: response.status,
+    });
+  }
+  return (await response.json()) as MerchCooperationDraft;
+}
+
 /**
  * Streams an agent response via SSE-style POST. Returns a promise that
  * resolves when the stream completes. Caller can abort via AbortSignal.
