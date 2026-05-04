@@ -231,6 +231,10 @@ extension MagicRecipe {
             dehaze: clampUnit(dehaze + baseline.dehaze),
             eyeSharpen: clampUnit(eyeSharpen + baseline.eyeSharpen),
             eyeCatchlight: clampUnit(eyeCatchlight + baseline.eyeCatchlight),
+            autoStraighten: autoStraighten || baseline.autoStraighten,
+            straightenAngle: max(-AutoStraightenFilter.maxAngle,
+                                 min(AutoStraightenFilter.maxAngle,
+                                     straightenAngle + baseline.straightenAngle)),
         )
     }
 

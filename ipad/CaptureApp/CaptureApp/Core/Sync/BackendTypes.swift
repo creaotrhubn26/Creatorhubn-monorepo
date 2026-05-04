@@ -442,6 +442,10 @@ struct BackendSuggestedRecipe: Decodable, Sendable {
     /// "subject is portrait", the prompt should set both > 0.
     let eyeSharpen: Double?
     let eyeCatchlight: Double?
+    /// Phase 7C — auto-straighten + manual horizon angle (radians).
+    /// Optional for backwards-compat with older Claude Vision builds.
+    let autoStraighten: Bool?
+    let straightenAngle: Double?
 
     private enum CodingKeys: String, CodingKey {
         case warmth, skinSmooth, shadowLift, contrast, saturation
@@ -450,6 +454,8 @@ struct BackendSuggestedRecipe: Decodable, Sendable {
         case skinLowFreq = "skin_low_freq"
         case eyeSharpen = "eye_sharpen"
         case eyeCatchlight = "eye_catchlight"
+        case autoStraighten = "auto_straighten"
+        case straightenAngle = "straighten_angle"
     }
 }
 

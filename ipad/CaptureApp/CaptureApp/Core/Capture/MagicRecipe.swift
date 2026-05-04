@@ -84,6 +84,25 @@ struct MagicRecipe: Sendable, Equatable, Codable {
     /// looking crunchy / halo-ridden per Lightroom community advice).
     var texture: Double = 0
 
+    /// **Phase 7C** — Auto-straighten via `VNDetectHorizonRequest`.
+    /// When true, detection runs on a 1024-px-downsample of the image
+    /// and `CIStraightenFilter` applies the result. When detection
+    /// fails (no clear horizon, low confidence, |angle|>15°), the
+    /// image passes through and `straightenAngle` (if non-zero) is
+    /// used as a manual fallback. Default false — pros don't want
+    /// auto-straighten silently rotating studio/product/portrait
+    /// frames; landscape/aviation/vehicle presets enable it.
+    var autoStraighten: Bool = false
+
+    /// **Phase 7C** — Manual horizon angle, in radians. Range
+    /// effectively ±0.2618 (±15°) — beyond that the straighten tool
+    /// stops; use the regular crop+rotate UI for dutch tilts. Used as
+    /// fallback when `autoStraighten` fails or as override when the
+    /// photographer drags the angle slider in the Tune panel.
+    /// Sign convention: positive = rotate counter-clockwise, matches
+    /// `CIStraightenFilter` and `VNHorizonObservation.angle`.
+    var straightenAngle: Double = 0
+
     /// **Phase 7B (Evoto parity)** — Eye sharpening. Detects eyes via
     /// `CIDetector` face landmarks (`leftEyePosition` + `rightEyePosition`),
     /// builds a soft radial-gradient mask around each, applies a
@@ -164,7 +183,8 @@ struct MagicRecipe: Sendable, Equatable, Codable {
     /// without making airframe colors cartoonish.
     static let aviation = MagicRecipe(
         warmth: -0.30, shadowLift: 0.25, contrast: 0.30, saturation: 0.05,
-        highlightRecovery: 0.30, vibrance: 0.20, texture: 0.30, dehaze: 0.45
+        highlightRecovery: 0.30, vibrance: 0.20, texture: 0.30, dehaze: 0.45,
+        autoStraighten: true
     )
 
     /// Cars + vehicles: deep blacks + paint truth (negative warmth
@@ -173,7 +193,8 @@ struct MagicRecipe: Sendable, Equatable, Codable {
     /// Dehaze for outdoor/parking-lot atmospheric softness.
     static let vehicle = MagicRecipe(
         warmth: -0.10, shadowLift: 0.20, contrast: 0.25, saturation: 0.10,
-        highlightRecovery: 0.20, vibrance: 0.15, texture: 0.25, dehaze: 0.20
+        highlightRecovery: 0.20, vibrance: 0.15, texture: 0.25, dehaze: 0.20,
+        autoStraighten: true
     )
 
     /// Food: realism over drama. Vibrance > saturation (industry
@@ -190,7 +211,8 @@ struct MagicRecipe: Sendable, Equatable, Codable {
     /// for distance haze.
     static let landscape = MagicRecipe(
         warmth: -0.25, shadowLift: 0.30, contrast: 0.25, saturation: 0.20,
-        highlightRecovery: 0.40, vibrance: 0.20, texture: 0.30, dehaze: 0.30
+        highlightRecovery: 0.40, vibrance: 0.20, texture: 0.30, dehaze: 0.30,
+        autoStraighten: true
     )
 
     /// Product: COLOR TRUTH mandate. Vibrance > saturation, but
@@ -277,6 +299,14 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         if eyeCatchlight >= 0.05 {
             chips.append("Catch-light +\(Int((eyeCatchlight * 100).rounded()))%")
         }
+        if autoStraighten {
+            chips.append("Auto-straighten")
+        }
+        if abs(straightenAngle) >= 0.005 {
+            // Convert radians → degrees with 1 decimal place
+            let deg = straightenAngle * 180.0 / .pi
+            chips.append(String(format: "Straighten %+.1f°", deg))
+        }
         return chips
     }
 
@@ -285,6 +315,7 @@ struct MagicRecipe: Sendable, Equatable, Codable {
             && shadowLift == 0 && contrast == 0 && saturation == 0
             && highlightRecovery == 0 && vibrance == 0 && texture == 0
             && dehaze == 0 && eyeSharpen == 0 && eyeCatchlight == 0
+            && !autoStraighten && straightenAngle == 0
     }
 
     // MARK: - Codable (forward-compat decode)
@@ -309,6 +340,8 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         dehaze = try c.decodeIfPresent(Double.self, forKey: .dehaze) ?? 0
         eyeSharpen = try c.decodeIfPresent(Double.self, forKey: .eyeSharpen) ?? 0
         eyeCatchlight = try c.decodeIfPresent(Double.self, forKey: .eyeCatchlight) ?? 0
+        autoStraighten = try c.decodeIfPresent(Bool.self, forKey: .autoStraighten) ?? false
+        straightenAngle = try c.decodeIfPresent(Double.self, forKey: .straightenAngle) ?? 0
     }
 
     /// Memberwise init — synthesized Codable would consume this slot, so
@@ -327,7 +360,9 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         texture: Double = 0,
         dehaze: Double = 0,
         eyeSharpen: Double = 0,
-        eyeCatchlight: Double = 0
+        eyeCatchlight: Double = 0,
+        autoStraighten: Bool = false,
+        straightenAngle: Double = 0
     ) {
         self.warmth = warmth
         self.skinHighFreq = skinHighFreq
@@ -342,11 +377,14 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         self.dehaze = dehaze
         self.eyeSharpen = eyeSharpen
         self.eyeCatchlight = eyeCatchlight
+        self.autoStraighten = autoStraighten
+        self.straightenAngle = straightenAngle
     }
 
     private enum CodingKeys: String, CodingKey {
         case warmth, skinHighFreq, skinLowFreq, skinSmooth, shadowLift
         case contrast, saturation, highlightRecovery, vibrance, texture, dehaze
         case eyeSharpen, eyeCatchlight
+        case autoStraighten, straightenAngle
     }
 }

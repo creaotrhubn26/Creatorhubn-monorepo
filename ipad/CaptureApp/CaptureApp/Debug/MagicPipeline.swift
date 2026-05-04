@@ -188,12 +188,20 @@ final class MagicPipeline {
             return recipe.merging(baseline: style.baselineRecipeAdjustment)
         }()
 
+        // Phase 7C — auto-straighten / horizon levelling. Apply early
+        // so the auto filters + face detection + tone adjustments all
+        // see the post-rotation image (face-detection coordinates +
+        // mask geometry need to match the final pixels).
+        let straightened = AutoStraightenFilter.apply(
+            recipe: effectiveRecipe, to: ciImage,
+        )
+
         // 1. Apple's auto-adjustment filters: white balance, tone curve,
         //    red-eye. These analyse the scene, so they give us a clean
         //    colour-neutral baseline before we apply subject-specific
         //    recipe adjustments on top.
-        var current = ciImage
-        let autoFilters = ciImage.autoAdjustmentFilters(options: [
+        var current = straightened
+        let autoFilters = straightened.autoAdjustmentFilters(options: [
             .enhance: true,
             .redEye: true
         ])

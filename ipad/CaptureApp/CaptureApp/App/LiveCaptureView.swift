@@ -3039,6 +3039,7 @@ struct TunePanel: View {
                 lightSection
                 toneSection
                 peopleSection
+                geometrySection
                 if onApplyToScope != nil { applyToScopeSection }
                 resetButton
             }
@@ -3128,6 +3129,26 @@ struct TunePanel: View {
                 format: signedPercent,
             )
         }
+    }
+
+    private var geometrySection: some View {
+        section(title: "Geometri", subtitle: "Auto-rett horisont · manuell vinkel") {
+            Toggle(isOn: $recipe.autoStraighten) {
+                Label("Auto-rett horisont", systemImage: "level")
+            }
+            TuneSlider(
+                title: "Vinkel", icon: "arrow.triangle.2.circlepath",
+                // ±15° → ±0.2618 rad. Slider operates in radians;
+                // format converts to degrees for display.
+                value: $recipe.straightenAngle, range: -0.2618...0.2618,
+                format: degreeFormat,
+            )
+        }
+    }
+
+    private func degreeFormat(_ radians: Double) -> String {
+        let deg = radians * 180.0 / .pi
+        return String(format: "%+.1f°", deg)
     }
 
     private var peopleSection: some View {
@@ -3371,6 +3392,8 @@ private struct PresetChipRow: View {
             && abs(r1.highlightRecovery - r2.highlightRecovery) < tolerance
             && abs(r1.eyeSharpen - r2.eyeSharpen) < tolerance
             && abs(r1.eyeCatchlight - r2.eyeCatchlight) < tolerance
+            && r1.autoStraighten == r2.autoStraighten
+            && abs(r1.straightenAngle - r2.straightenAngle) < tolerance
     }
 }
 
@@ -6204,7 +6227,9 @@ final class LiveCaptureModel {
             saturation: wire.saturation,
             highlightRecovery: wire.highlightRecovery ?? 0,
             eyeSharpen: wire.eyeSharpen ?? 0,
-            eyeCatchlight: wire.eyeCatchlight ?? 0
+            eyeCatchlight: wire.eyeCatchlight ?? 0,
+            autoStraighten: wire.autoStraighten ?? false,
+            straightenAngle: wire.straightenAngle ?? 0
         )
     }
 

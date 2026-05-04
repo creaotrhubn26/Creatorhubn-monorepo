@@ -96,7 +96,15 @@ enum RAWExportPipeline {
         // as 5464×8192 in the right orientation. Adding a manual
         // `.oriented()` here would double-rotate.
 
-        let toned = applyToneAdjustments(recipe: effectiveRecipe, to: rawOutput)
+        // Phase 7C — auto-straighten / horizon levelling. Runs before
+        // tone adjustments + face detection so all downstream steps
+        // see the post-rotation image (face-detection coordinates +
+        // mask geometry need to match the final pixels).
+        let straightened = AutoStraightenFilter.apply(
+            recipe: effectiveRecipe, to: rawOutput,
+        )
+
+        let toned = applyToneAdjustments(recipe: effectiveRecipe, to: straightened)
 
         let context = ColorManagement.makeContext(for: colorPurpose)
         guard let cgImage = ColorManagement.renderCGImage(
