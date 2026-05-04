@@ -221,6 +221,13 @@ export type RoleRoomAgentWebsiteInsights = {
   probableHeroImageUrl?: string | null;
   socialProfileCandidates?: RoleRoomAgentSocialProfileCandidate[];
   selectedPageSnippets: RoleRoomAgentWebsitePageSnippet[];
+  /** Norwegian 9-digit organization number scraped from the website's
+   *  footer / "Om oss" / impressum-style copy. Validated with mod-11
+   *  checksum, so this is the actual legal entity behind the brand —
+   *  e.g. holycrust.no surfaces "Macks Invest AS, 933 469 395".
+   *  Bootstrap uses this to look up Brreg even when the user only
+   *  knows the consumer-facing brand name. */
+  extractedOrgNumber?: string | null;
 };
 
 // =============================================================================
@@ -1529,6 +1536,57 @@ function buildLimitedLocalPresencePlan(
   };
 }
 
+/** Validate a 9-digit Norwegian organization number with the mod-11
+ *  checksum. Filters out any random 9-digit sequence (phone numbers,
+ *  postal codes glued together) that happens to match the regex. */
+function isValidNorwegianOrgNumber(digits: string): boolean {
+  if (!/^\d{9}$/.test(digits)) return false;
+  const weights = [3, 2, 7, 6, 5, 4, 3, 2];
+  let sum = 0;
+  for (let i = 0; i < 8; i++) {
+    sum += Number(digits[i]) * weights[i];
+  }
+  const remainder = sum % 11;
+  const checksum = remainder === 0 ? 0 : 11 - remainder;
+  if (checksum === 10) return false; // not a valid orgnr — would be 10
+  return checksum === Number(digits[8]);
+}
+
+/** Extract a Norwegian 9-digit organization number from raw HTML.
+ *  Looks first for explicit "Org.nr"/"Organisasjonsnummer"/"MVA"
+ *  contexts (high precision), then falls back to any mod-11-valid
+ *  9-digit sequence (catches footers that just print the number).
+ *  Returns null when nothing valid found. */
+function extractOrgNumberFromHtml(html: string): string | null {
+  if (!html) return null;
+  const stripped = html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s+/g, " ");
+  // High-precision: explicit label.
+  const labelled = stripped.match(
+    /(?:org\.?\s*nr\.?|organisasjonsnummer|orgnr|mva)\s*[:.]?\s*(?:no)?\s*((?:\d[\s.-]?){9})/i,
+  );
+  if (labelled) {
+    const digits = labelled[1].replace(/\D/g, "");
+    if (digits.length === 9 && isValidNorwegianOrgNumber(digits)) {
+      return digits;
+    }
+  }
+  // Lower-precision fallback: scan all 9-digit groups (allowing space
+  // separators), validate each with mod-11. Take the first valid hit.
+  const candidates = stripped.match(/\b\d{3}[\s.-]?\d{3}[\s.-]?\d{3}\b/g) ?? [];
+  for (const c of candidates) {
+    const digits = c.replace(/\D/g, "");
+    if (digits.length === 9 && isValidNorwegianOrgNumber(digits)) {
+      return digits;
+    }
+  }
+  return null;
+}
+
 function extractTextSnippet(html: string): string {
   const stripped = html
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
@@ -2364,6 +2422,12 @@ export async function fetchWebsiteInsights(
         brregCompany,
       ),
       selectedPageSnippets,
+      // Pull a real, validated orgnr off the page when present. Catches
+      // brand-vs-legal-entity gaps (e.g. holycrust.no's footer prints
+      // "Macks Invest AS, 933 469 395" — the actual entity to look up
+      // in Brreg, not the brand "Holy Crust"). Bootstrap uses this when
+      // the user didn't supply an explicit organizationNumber.
+      extractedOrgNumber: extractOrgNumberFromHtml(html),
     };
   } catch {
     return { finalUrl: websiteUrl, selectedPageSnippets: [], socialProfileCandidates: [] };

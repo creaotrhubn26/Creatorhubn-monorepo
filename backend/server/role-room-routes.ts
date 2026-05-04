@@ -83,6 +83,14 @@ import {
   type MerchPartnerType,
 } from './role-room-merch-cooperation.js';
 import {
+  discoverMerchPartners,
+  enrichMerchPartner,
+  type MerchPartnerCandidate,
+  type MerchPartnerType as DiscoveryPartnerType,
+} from './role-room-merch-partner-discovery.js';
+import { fetchBrregCompany } from './role-room-agent.js';
+import { findCustomerLegalEntityCandidates } from './role-room-legal-entity.js';
+import {
   getAiGovernanceOverview,
   getAuditTrail,
   getConsentList,
@@ -20267,6 +20275,110 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         }
         res.status(500).json({
           error: 'cooperation_generation_failed',
+          detail: error instanceof Error ? error.message : String(error),
+        });
+      }
+    },
+  );
+
+  // Customer legal-entity discovery — when producer enters a brand
+  // ("Holy Crust") or website ("holycrust.no"), surface 1-5 plausible
+  // Brreg-registered legal entities so the customer can confirm
+  // "yes, we're Macks Invest AS" before bootstrap continues.
+  router.get(
+    '/projects/:projectId/agent/legal-entity-candidates',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const brandName = typeof req.query.brand === 'string' ? req.query.brand.trim() : '';
+        const websiteUrl = typeof req.query.website === 'string' ? req.query.website.trim() : null;
+        const municipalityNumber = typeof req.query.kommunenummer === 'string'
+          ? req.query.kommunenummer.trim()
+          : null;
+        if (brandName.length < 2 && !websiteUrl) {
+          return res.status(400).json({ error: 'brand_or_website_required' });
+        }
+        const candidates = await findCustomerLegalEntityCandidates({
+          brandName: brandName || (websiteUrl ?? ''),
+          websiteUrl: websiteUrl || null,
+          municipalityNumber: municipalityNumber || null,
+        });
+        res.json({ candidates });
+      } catch (error) {
+        res.status(500).json({
+          error: 'legal_entity_lookup_failed',
+          detail: error instanceof Error ? error.message : String(error),
+        });
+      }
+    },
+  );
+
+  // Merch partner-discovery — find local sport clubs / schools /
+  // foreninger for a customer based on their bydel + Brreg NACE
+  // (93.12 sportsklubber, 85.x skoler, 94.99 foreninger). Returns
+  // ranked candidates so the cooperation-generator can pick a
+  // realistic partner instead of the producer typing one in blind.
+  router.get(
+    '/projects/:projectId/agent/partner-discovery',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const partnerType = typeof req.query.partnerType === 'string'
+          ? req.query.partnerType
+          : '';
+        const orgnr = typeof req.query.customerOrgnr === 'string'
+          ? req.query.customerOrgnr.trim()
+          : '';
+        const areaOverride = typeof req.query.areaOverride === 'string'
+          ? req.query.areaOverride.trim()
+          : null;
+        const allowed = new Set<DiscoveryPartnerType>(['sportsklubb', 'event', 'skole', 'forening', 'bedrift']);
+        if (!allowed.has(partnerType as DiscoveryPartnerType)) {
+          return res.status(400).json({ error: 'invalid_partner_type' });
+        }
+        if (!orgnr || orgnr.length !== 9) {
+          return res.status(400).json({ error: 'customerOrgnr (9 digits) required' });
+        }
+        const brreg = await fetchBrregCompany({
+          organizationNumber: orgnr,
+          companyName: '',
+          websiteUrl: null,
+        } as unknown as Parameters<typeof fetchBrregCompany>[0]);
+        if (!brreg || brreg.lookupStatus !== 'verified') {
+          return res.status(404).json({ error: 'customer_brreg_not_found' });
+        }
+        const candidates = await discoverMerchPartners(
+          { brregCompany: brreg, areaOverride: areaOverride || null },
+          partnerType as DiscoveryPartnerType,
+        );
+        res.json({ candidates, customer: { orgnr: brreg.organizationNumber, name: brreg.name, kommunenummer: brreg.municipalityNumber, businessAddress: brreg.businessAddress } });
+      } catch (error) {
+        res.status(500).json({
+          error: 'partner_discovery_failed',
+          detail: error instanceof Error ? error.message : String(error),
+        });
+      }
+    },
+  );
+
+  // Merch partner-enrichment — given a partner candidate, run Brreg
+  // full lookup + website scrape + Meta Page lookup so the cooperation
+  // generator can reference real facts about the partner instead of
+  // generic assumptions.
+  router.post(
+    '/projects/:projectId/agent/partner-enrichment',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const candidate = req.body?.candidate as MerchPartnerCandidate | undefined;
+        if (!candidate || typeof candidate.name !== 'string') {
+          return res.status(400).json({ error: 'candidate_required' });
+        }
+        const enrichment = await enrichMerchPartner(pool, candidate);
+        res.json(enrichment);
+      } catch (error) {
+        res.status(500).json({
+          error: 'partner_enrichment_failed',
           detail: error instanceof Error ? error.message : String(error),
         });
       }
