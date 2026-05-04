@@ -50,6 +50,12 @@ import {
   enqueuePhotoEnhancerJobFromBuffer,
   getPhotoEnhancerJobStatusSnapshot,
 } from './photo-enhancer-routes.js';
+import {
+  broadcastToSessionPeers,
+  markAbsent as markPresenceAbsent,
+  markPresent as markPresencePresent,
+  peersForSession,
+} from './capture-presence-service.js';
 import { performHandoff, type HandoffFilter } from './capture-handoff-service.js';
 import { analyzePhoto, type AnalyzeError } from './capture-analyze-service.js';
 import {
@@ -571,7 +577,67 @@ export function createCaptureRouter(
       res.status(404).json({ error: 'not_found' });
       return;
     }
+    // Phase 5.3 — broadcast the label change to every photographer
+    // currently in this session so multi-iPad shoots see each other's
+    // pick/rate/color/reject toggles in real time. Receivers gate on
+    // `actorUserId !== self.userId` to avoid clobbering their own
+    // optimistic local update.
+    broadcastToSessionPeers(row.sessionId, {
+      kind: 'asset.labels-changed',
+      assetId: row.id,
+      sessionId: row.sessionId,
+      actorUserId: userId,
+      rating: row.rating ?? null,
+      colorLabel: row.colorLabel ?? null,
+      flaggedForClient: row.flaggedForClient ?? null,
+      rejected: row.rejected ?? null,
+      timestamp: new Date().toISOString(),
+    });
     res.json(row);
+  });
+
+  // Phase 5.3 — explicit presence join/leave so an iPad joining
+  // mid-shoot tells other connected iPads it's there, and a clean
+  // disconnect clears the avatar promptly (vs. waiting 5min for the
+  // stale-cleanup pass). Body: { joining: bool }.
+  router.post('/sessions/:sessionId/presence', auth, async (req, res) => {
+    const sessionId = req.params.sessionId;
+    const { userId } = req as AuthedRequest;
+    const body = (req.body ?? {}) as { joining?: unknown; displayName?: unknown };
+    const joining = body.joining === true;
+    const displayName = typeof body.displayName === 'string' && body.displayName.length > 0
+      ? body.displayName : null;
+
+    // Verify the user has access to this session (owner OR — Phase 6
+    // — invited assistant). For now, owner-only matches the rest of
+    // capture-routes' authz model.
+    const sessionRows = await db
+      .select({ id: captureSessions.id, ownerUserId: captureSessions.ownerUserId })
+      .from(captureSessions)
+      .where(eq(captureSessions.id, sessionId))
+      .limit(1);
+    if (sessionRows.length === 0) {
+      res.status(404).json({ error: 'session_not_found' });
+      return;
+    }
+    if (sessionRows[0].ownerUserId !== userId) {
+      res.status(403).json({ error: 'forbidden' });
+      return;
+    }
+
+    if (joining) {
+      markPresencePresent(sessionId, userId, displayName);
+    } else {
+      markPresenceAbsent(sessionId, userId);
+    }
+    res.status(200).json({
+      sessionId,
+      peers: peersForSession(sessionId).map((peer) => ({
+        userId: peer.userId,
+        displayName: peer.displayName,
+        joinedAt: new Date(peer.joinedAt).toISOString(),
+      })),
+    });
   });
 
   router.put('/assets/:id/signals', auth, async (req, res) => {

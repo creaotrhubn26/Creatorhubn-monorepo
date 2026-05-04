@@ -16,6 +16,9 @@ enum UserEvent: Equatable {
     case contractSigned(Signed)
     case shotCaptured(ShotCaptured)
     case shotCompletionToggled(ShotCompletionToggled)
+    case presenceJoined(PresenceInfo)
+    case presenceLeft(PresenceLeft)
+    case assetLabelsChanged(AssetLabelsChange)
     case unknown(kind: String)
 
     struct AssetHearted: Equatable {
@@ -68,6 +71,43 @@ enum UserEvent: Equatable {
         let projectId: String
         let shotId: String
         let isCompleted: Bool
+        let timestamp: Date
+    }
+
+    /// Phase 5.3 — another iPad joined this session. `actorUserId`
+    /// is the joining peer; receivers compare against
+    /// `SignInService.shared.session?.userId` to suppress self-events
+    /// when the WebSocket fans the join back to the originator's
+    /// other devices.
+    struct PresenceInfo: Equatable {
+        let sessionId: String
+        let actorUserId: String
+        let displayName: String?
+        let timestamp: Date
+    }
+
+    /// Counterpart to PresenceInfo. Doesn't carry displayName because
+    /// the UI just removes the avatar by userId.
+    struct PresenceLeft: Equatable {
+        let sessionId: String
+        let actorUserId: String
+        let timestamp: Date
+    }
+
+    /// Phase 5.3 — a peer toggled an asset's label axis. Receiver
+    /// reconciles by re-fetching the asset row from the backend
+    /// (or, in the simpler local-storage iPad case, by treating the
+    /// event as a hint to refresh and applying the patch directly
+    /// to its SessionStore so GRDB observation re-emits and UI
+    /// updates).
+    struct AssetLabelsChange: Equatable {
+        let assetId: String
+        let sessionId: String
+        let actorUserId: String
+        let rating: Int?
+        let colorLabel: String?
+        let flaggedForClient: Bool?
+        let rejected: Bool?
         let timestamp: Date
     }
 
@@ -157,6 +197,43 @@ enum UserEvent: Equatable {
                 projectId: projectId,
                 shotId: shotId,
                 isCompleted: isCompleted,
+                timestamp: ts,
+            ))
+        case "presence.joined":
+            guard let sessionId = event["sessionId"] as? String, !sessionId.isEmpty,
+                  let actorUserId = event["actorUserId"] as? String, !actorUserId.isEmpty,
+                  let ts = decodeTimestamp(event["timestamp"])
+            else { return nil }
+            return .presenceJoined(.init(
+                sessionId: sessionId,
+                actorUserId: actorUserId,
+                displayName: (event["displayName"] as? String).flatMap { $0.isEmpty ? nil : $0 },
+                timestamp: ts,
+            ))
+        case "presence.left":
+            guard let sessionId = event["sessionId"] as? String, !sessionId.isEmpty,
+                  let actorUserId = event["actorUserId"] as? String, !actorUserId.isEmpty,
+                  let ts = decodeTimestamp(event["timestamp"])
+            else { return nil }
+            return .presenceLeft(.init(
+                sessionId: sessionId,
+                actorUserId: actorUserId,
+                timestamp: ts,
+            ))
+        case "asset.labels-changed":
+            guard let assetId = event["assetId"] as? String, !assetId.isEmpty,
+                  let sessionId = event["sessionId"] as? String, !sessionId.isEmpty,
+                  let actorUserId = event["actorUserId"] as? String, !actorUserId.isEmpty,
+                  let ts = decodeTimestamp(event["timestamp"])
+            else { return nil }
+            return .assetLabelsChanged(.init(
+                assetId: assetId,
+                sessionId: sessionId,
+                actorUserId: actorUserId,
+                rating: event["rating"] as? Int,
+                colorLabel: event["colorLabel"] as? String,
+                flaggedForClient: event["flaggedForClient"] as? Bool,
+                rejected: event["rejected"] as? Bool,
                 timestamp: ts,
             ))
         default:

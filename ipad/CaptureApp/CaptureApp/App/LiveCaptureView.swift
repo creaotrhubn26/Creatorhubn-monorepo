@@ -309,6 +309,7 @@ struct LiveCaptureView: View {
                 },
                 unreadReviewCount: model.unreadReviewCount,
                 clientReviewsEnabled: model.clientReviewsEnabled,
+                presentPeers: model.presentPeers,
                 onTogglePin: { model.pinnedFocus.toggle() },
                 onPickProject: { isProjectSelectionPresented = true },
                 onShotList: { isShotListPresented = true },
@@ -718,6 +719,21 @@ private struct DiscoveredCameraCard: View {
 private extension Color {
     static var tint: Color { Color.accentColor }
 
+    /// Phase 5.3 — deterministic per-userId avatar tint. Hashes the
+    /// userId and picks from a small palette so the same peer always
+    /// renders the same color in the StatusBar (predictable identity
+    /// across reconnects + multi-iPad).
+    static func peerAvatar(for userId: String) -> Color {
+        let palette: [Color] = [
+            .blue, .purple, .indigo, .teal, .green, .orange, .pink, .brown,
+        ]
+        var hash: UInt64 = 5381
+        for byte in userId.utf8 {
+            hash = ((hash << 5) &+ hash) &+ UInt64(byte)
+        }
+        return palette[Int(hash % UInt64(palette.count))]
+    }
+
     /// Stable mapping from `ColorLabel` enum values to display colors.
     /// The model exposes 8 buckets (Lightroom standard 5 + 3 extras);
     /// we keep the picker visually consistent so a "green" set in one
@@ -856,6 +872,7 @@ private struct StatusBar: View {
     let shotListProgress: ShotListProgress?
     let unreadReviewCount: Int
     let clientReviewsEnabled: Bool
+    let presentPeers: [LiveCaptureModel.PresentPeer]
     let onTogglePin: () -> Void
     let onPickProject: () -> Void
     let onShotList: () -> Void
@@ -959,6 +976,16 @@ private struct StatusBar: View {
                 Label("\(files) on card", systemImage: "sdcard")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
+            }
+
+            // Phase 5.3 — multi-photographer presence row. Avatars
+            // (initial-letter colored circles) for every other
+            // photographer currently on this session. Hidden when
+            // solo (no point rendering an empty space). Single iPad
+            // shoots are the common case so the StatusBar stays
+            // uncluttered.
+            if !presentPeers.isEmpty {
+                PresenceAvatarRow(peers: presentPeers)
             }
 
             // Client review inbox — peripheral surface for hearts +
@@ -3182,6 +3209,51 @@ struct TunePanel: View {
     }
 }
 
+/// Phase 5.3 — initial-letter avatars for peer photographers in the
+/// same session. First 3 render inline; "+N" overflow chip when more.
+/// Avatar color is derived deterministically from userId hash so the
+/// same peer renders the same color across reconnects + multi-iPad
+/// (lead + assistant always see each other in the same hues).
+private struct PresenceAvatarRow: View {
+    let peers: [LiveCaptureModel.PresentPeer]
+
+    private var visiblePeers: ArraySlice<LiveCaptureModel.PresentPeer> {
+        peers.prefix(3)
+    }
+
+    private var overflowCount: Int {
+        max(0, peers.count - 3)
+    }
+
+    var body: some View {
+        HStack(spacing: -6) {
+            ForEach(Array(visiblePeers), id: \.id) { peer in
+                avatar(for: peer)
+                    .help(peer.displayName ?? "Photographer")
+            }
+            if overflowCount > 0 {
+                Text("+\(overflowCount)")
+                    .font(.caption2.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(.white)
+                    .frame(width: 24, height: 24)
+                    .background(Color.gray.opacity(0.7), in: Circle())
+                    .overlay(Circle().stroke(.background, lineWidth: 1.5))
+            }
+        }
+    }
+
+    private func avatar(for peer: LiveCaptureModel.PresentPeer) -> some View {
+        let initial = (peer.displayName?.first.map { String($0).uppercased() }
+                       ?? String(peer.id.prefix(1)).uppercased())
+        return Text(initial)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.white)
+            .frame(width: 24, height: 24)
+            .background(Color.peerAvatar(for: peer.id), in: Circle())
+            .overlay(Circle().stroke(.background, lineWidth: 1.5))
+    }
+}
+
 /// Quick-apply preset row at the top of the Tune panel. Each chip
 /// swaps the entire recipe, so a photographer who just shot a
 /// portrait can flip to "Food" mid-batch when the next subject is a
@@ -4420,6 +4492,17 @@ final class LiveCaptureModel {
     /// while still on-set.
     private var realtimeService: RealtimeEventService?
     private var realtimeObserverId: UUID?
+
+    /// Phase 5.3 — multi-photographer presence. Tracks every other
+    /// photographer currently connected to this session. Self-events
+    /// (presence.joined where actorUserId == own userId) are filtered
+    /// out at decode-time so the avatar row only shows peers.
+    struct PresentPeer: Identifiable, Equatable, Hashable {
+        let id: String        // userId — drives equality + dedup
+        let displayName: String?
+        let joinedAt: Date
+    }
+    var presentPeers: [PresentPeer] = []
     #if DEBUG
     /// Retained while Demo Mode is active so its MockURLProtocol handler
     /// stays installed. Cleared on teardown.
@@ -4698,6 +4781,17 @@ final class LiveCaptureModel {
                     }
                 }
                 self.realtimeObserverId = observerId
+                // Phase 5.3 — announce presence so other iPads in
+                // this session add an avatar for us. Fire-and-forget;
+                // server retries the broadcast naturally on the next
+                // markPresent heartbeat.
+                if let backend = self.backendClient {
+                    Task { [backend, sessionId = dbSession.id, name = session.displayName] in
+                        try? await backend.broadcastPresence(
+                            sessionId: sessionId, joining: true, displayName: name,
+                        )
+                    }
+                }
             }
 
             try await camera.start()
@@ -4870,6 +4964,23 @@ final class LiveCaptureModel {
     /// disabled via Settings — events still arrive but stay invisible
     /// (the photographer asked for quiet).
     func recordClientReview(_ event: UserEvent) {
+        // Phase 5.3 — presence + label-change events route here too.
+        // We dispatch BEFORE the clientReviewsEnabled gate because
+        // presence tracking is independent of review surface (turning
+        // off reviews shouldn't make assistant photographers vanish).
+        switch event {
+        case .presenceJoined(let p):
+            handlePresenceJoined(p)
+            return
+        case .presenceLeft(let p):
+            handlePresenceLeft(p)
+            return
+        case .assetLabelsChanged(let p):
+            handleAssetLabelsChanged(p)
+            return
+        default:
+            break
+        }
         guard clientReviewsEnabled else { return }
         let review: ClientReview? = {
             switch event {
@@ -4901,7 +5012,9 @@ final class LiveCaptureModel {
                     timestamp: p.timestamp,
                     unread: true,
                 )
-            default:
+            case .presenceJoined, .presenceLeft, .assetLabelsChanged,
+                 .quoteSigned, .contractSigned, .shotCaptured,
+                 .shotCompletionToggled, .unknown:
                 return nil
             }
         }()
@@ -5268,6 +5381,65 @@ final class LiveCaptureModel {
                     self?.errorMessage = "Svar lagret lokalt — backend nektet (\(error.localizedDescription))"
                 }
             }
+        }
+    }
+
+    /// Phase 5.3 — multi-photographer presence handlers.
+    private func handlePresenceJoined(_ p: UserEvent.PresenceInfo) {
+        guard let currentSessionId,
+              p.sessionId.lowercased() == currentSessionId.uuidString.lowercased()
+        else { return }
+        // Filter self-events. The backend fans `presence.joined` to
+        // every photographer in the session including the joiner so
+        // their other devices catch up; without this gate we'd render
+        // an avatar for ourselves.
+        if let selfId = SignInService.shared.session?.userId,
+           p.actorUserId == selfId {
+            return
+        }
+        let peer = PresentPeer(
+            id: p.actorUserId,
+            displayName: p.displayName,
+            joinedAt: p.timestamp,
+        )
+        if let existing = presentPeers.firstIndex(where: { $0.id == peer.id }) {
+            presentPeers[existing] = peer
+        } else {
+            presentPeers.append(peer)
+        }
+    }
+
+    private func handlePresenceLeft(_ p: UserEvent.PresenceLeft) {
+        guard let currentSessionId,
+              p.sessionId.lowercased() == currentSessionId.uuidString.lowercased()
+        else { return }
+        presentPeers.removeAll { $0.id == p.actorUserId }
+    }
+
+    /// Reconcile a peer's label change into local state. We patch
+    /// SessionStore directly so GRDB's assets stream re-emits and
+    /// the UI updates in step. Suppress self-events so we don't
+    /// clobber an in-flight optimistic local update with a stale
+    /// echo of our own toggle.
+    private func handleAssetLabelsChanged(_ p: UserEvent.AssetLabelsChange) {
+        guard let currentSessionId,
+              p.sessionId.lowercased() == currentSessionId.uuidString.lowercased()
+        else { return }
+        if let selfId = SignInService.shared.session?.userId,
+           p.actorUserId == selfId {
+            return
+        }
+        guard let assetUUID = UUID(uuidString: p.assetId),
+              let store
+        else { return }
+        Task {
+            try? await store.updateAssetLabels(
+                id: assetUUID,
+                rating: p.rating,
+                colorLabel: p.colorLabel.flatMap { ColorLabel(rawValue: $0) }.map { Optional($0) },
+                flaggedForClient: p.flaggedForClient,
+                rejected: p.rejected,
+            )
         }
     }
 
@@ -5977,6 +6149,16 @@ final class LiveCaptureModel {
         }
         realtimeService = nil
         realtimeObserverId = nil
+        // Phase 5.3 — fire presence-leave so peer iPads drop us
+        // immediately rather than waiting for the 5-min stale-cleanup.
+        if let backend = backendClient, let sessionId = currentSessionId {
+            Task { [backend, sessionId] in
+                try? await backend.broadcastPresence(
+                    sessionId: sessionId, joining: false, displayName: nil,
+                )
+            }
+        }
+        presentPeers.removeAll()
         #if DEBUG
         magicPipeline?.stop()
         magicPipeline = nil

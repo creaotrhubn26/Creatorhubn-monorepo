@@ -198,6 +198,35 @@ actor BackendClient {
         )
     }
 
+    /// Phase 5.3 — broadcast presence join/leave to peers in the same
+    /// session via the WebSocket. Server-side `capture-presence-service`
+    /// owns the in-memory roster + stale cleanup; we just nudge it
+    /// when the iPad's lifecycle hits a definite transition (connect,
+    /// disconnect). Periodic heartbeats are handled by the WebSocket
+    /// ping/pong, not this endpoint, so we don't burn battery polling.
+    func broadcastPresence(
+        sessionId: UUID,
+        joining: Bool,
+        displayName: String?,
+    ) async throws {
+        struct Body: Encodable { let joining: Bool; let displayName: String? }
+        let body = Body(joining: joining, displayName: displayName)
+        let _: PresencePeersResponse = try await postJSON(
+            path: "/api/capture/sessions/\(sessionId.uuidString.lowercased())/presence",
+            body: body,
+        )
+    }
+
+    private struct PresencePeersResponse: Decodable, Sendable {
+        let sessionId: String
+        let peers: [PresencePeer]
+        struct PresencePeer: Decodable, Sendable {
+            let userId: String
+            let displayName: String?
+            let joinedAt: String
+        }
+    }
+
     /// Push a manual completion toggle from `ShotListPanel`. Distinct
     /// from `linkShotToAsset` because the photographer is ticking a shot
     /// done without tying it to a specific asset — and un-ticking must

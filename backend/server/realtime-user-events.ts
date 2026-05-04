@@ -97,6 +97,45 @@ export type UserEvent =
       shotId: string;
       isCompleted: boolean;
       timestamp: string;
+    }
+  /// Phase 5.3 — multi-photographer presence. Fires when an iPad
+  /// connects to a session OR sends an explicit join via the
+  /// presence endpoint. `actorUserId` and `displayName` identify
+  /// the new peer so existing connected iPads can render an
+  /// avatar in the StatusBar.
+  | {
+      kind: "presence.joined";
+      sessionId: string;
+      actorUserId: string;
+      displayName: string | null;
+      timestamp: string;
+    }
+  /// Counterpart to `presence.joined` — fires when an iPad
+  /// explicitly leaves OR when its presence entry expires from the
+  /// stale-cleanup pass (~5 min idle).
+  | {
+      kind: "presence.left";
+      sessionId: string;
+      actorUserId: string;
+      timestamp: string;
+    }
+  /// Phase 5.3 — broadcast when ANY photographer with access to
+  /// the session changes a label axis (rating / pick flag /
+  /// rejected / colorLabel) on an asset. Other iPads in the same
+  /// shoot reconcile their local SessionStore by re-fetching the
+  /// asset row. `actorUserId` lets the receiver suppress the echo
+  /// of its own change (we'd otherwise round-trip our own toggle
+  /// and clobber it).
+  | {
+      kind: "asset.labels-changed";
+      assetId: string;
+      sessionId: string;
+      actorUserId: string;
+      rating: number | null;
+      colorLabel: string | null;
+      flaggedForClient: boolean | null;
+      rejected: boolean | null;
+      timestamp: string;
     };
 
 export const USER_EVENTS_WS_PATH = "/api/ipad/ws/events";

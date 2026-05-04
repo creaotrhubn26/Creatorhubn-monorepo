@@ -121,7 +121,8 @@ final class LiveSetDashboardModel {
         // Hearts/comments/signing don't change shot-list coverage so
         // we ignore them here — the photographer's separate Galleri /
         // Admin tabs handle those.
-        case .assetHearted, .assetCommented, .quoteSigned, .contractSigned, .unknown:
+        case .assetHearted, .assetCommented, .quoteSigned, .contractSigned,
+             .presenceJoined, .presenceLeft, .assetLabelsChanged, .unknown:
             return false
         }
     }
