@@ -24,6 +24,7 @@ import {
   Language as WebIcon,
   Map as MapIcon,
   Mail as MailIcon,
+  Send as SendIcon,
 } from '@mui/icons-material';
 import type {
   RoleRoomAgentMerchProductCategory,
@@ -32,6 +33,7 @@ import type {
   RoleRoomAgentProducerBootstrapResult,
 } from '../../services/roleRoomAgentService';
 import MerchMockupPreview from './MerchMockupPreview';
+import MerchOutreachDialog from './MerchOutreachDialog';
 
 interface MerchSuppliersPanelProps {
   projectId: string | null;
@@ -78,6 +80,7 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
   const [techniqueFilter, setTechniqueFilter] = useState<RoleRoomAgentMerchTechnique | null>(null);
   const [productFilter, setProductFilter] = useState<RoleRoomAgentMerchProductCategory | null>(null);
   const [selectedSupplierKey, setSelectedSupplierKey] = useState<string | null>(null);
+  const [outreachSupplier, setOutreachSupplier] = useState<RoleRoomAgentMerchSupplier | null>(null);
 
   const selectedSupplier = useMemo(() => {
     if (!merch || !selectedSupplierKey) return null;
@@ -412,12 +415,66 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
                       Brreg
                     </Button>
                   ) : null}
+                  <Button
+                    size="small"
+                    variant="contained"
+                    startIcon={<SendIcon fontSize="small" />}
+                    onClick={() => setOutreachSupplier(supplier)}
+                    sx={{
+                      textTransform: 'none',
+                      fontWeight: 700,
+                      bgcolor: 'rgba(99,102,241,0.4)',
+                      '&:hover': { bgcolor: 'rgba(99,102,241,0.6)' },
+                    }}
+                  >
+                    Send tilbudsforespørsel
+                  </Button>
                 </Stack>
+                {/* Scraped contact info — chip row only when something was found */}
+                {(supplier.contact?.email || supplier.contact?.phone) ? (
+                  <Stack
+                    direction="row"
+                    spacing={0.5}
+                    flexWrap="wrap"
+                    useFlexGap
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {supplier.contact?.email ? (
+                      <Chip
+                        size="small"
+                        icon={<MailIcon sx={{ fontSize: 14, color: '#bbf7d0 !important' }} />}
+                        label={supplier.contact.email}
+                        component="a"
+                        clickable
+                        href={`mailto:${supplier.contact.email}`}
+                        sx={{ bgcolor: 'rgba(34,197,94,0.12)', color: '#bbf7d0', fontSize: '0.72rem' }}
+                      />
+                    ) : null}
+                    {supplier.contact?.phone ? (
+                      <Chip
+                        size="small"
+                        label={supplier.contact.phone}
+                        sx={{ bgcolor: 'rgba(59,130,246,0.12)', color: '#bfdbfe', fontSize: '0.72rem' }}
+                      />
+                    ) : null}
+                  </Stack>
+                ) : null}
               </Stack>
             </Box>
           );
         })}
       </Stack>
+
+      {/* Outreach modal — pre-filled tilbudsforespørsel */}
+      <MerchOutreachDialog
+        open={Boolean(outreachSupplier)}
+        onClose={() => setOutreachSupplier(null)}
+        supplier={outreachSupplier}
+        bootstrap={bootstrap}
+        productCategory={
+          outreachSupplier?.productCategories.find((c) => c !== 'unknown') ?? null
+        }
+      />
 
       {/* Cooperation angles + outreach checklist */}
       <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1}>

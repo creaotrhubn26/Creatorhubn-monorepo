@@ -293,6 +293,13 @@ export interface RoleRoomAgentMerchSupplier {
   offerings?: string[];
   /** True when the supplier's website was scraped for richer signals. */
   websiteSignalsEnriched?: boolean;
+  /** Contact info scraped from the supplier's homepage and/or
+   *  /kontakt subpage. All fields nullable. */
+  contact?: {
+    email?: string | null;
+    phone?: string | null;
+    contactPageUrl?: string | null;
+  };
   confidence: number;
   status: 'verified' | 'likely' | 'needs_review' | 'rejected';
   evidence: RoleRoomAgentMerchSupplierEvidence[];

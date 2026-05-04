@@ -291,6 +291,13 @@ export type RoleRoomAgentMerchSupplier = {
    *  classified — the techniques/productCategories above include
    *  signal beyond the company name alone. */
   websiteSignalsEnriched?: boolean;
+  /** Contact info scraped from the supplier's homepage and/or
+   *  /kontakt page. All best-effort; nulls when nothing found. */
+  contact?: {
+    email?: string | null;
+    phone?: string | null;
+    contactPageUrl?: string | null;
+  };
   confidence: number;
   status: "verified" | "likely" | "needs_review" | "rejected";
   evidence: RoleRoomAgentMerchSupplierEvidence[];
@@ -3609,6 +3616,84 @@ function buildLimitedMerchSuppliers(reason: string): RoleRoomAgentMerchSuppliers
  * keywords that matched, so the UI can show "tilbyr: t-skjorter, hettegensere,
  * broderi" rather than just an abstract category chip.
  */
+/** Extract a single best email from raw HTML/text. Skips obvious junk
+ *  (info@example.com, test@test.com, image-hash-looking strings). */
+function extractEmail(text: string): string | null {
+  if (!text) return null;
+  const matches = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi) ?? [];
+  for (const m of matches) {
+    const lower = m.toLowerCase();
+    // Skip placeholder + image-CDN-noise + sentry/intercom/analytics noise.
+    if (/^(test|noreply|no-reply|donotreply|webmaster|postmaster|bruker|admin|user|epost|mail)@/.test(lower)) continue;
+    if (/example\.(com|org|net)$/.test(lower)) continue;
+    // Norwegian "your domain" placeholders frequently shipped in templates.
+    if (/(domene|firma|bedrift|kunde)\.(no|com)$/.test(lower)) continue;
+    if (/sentry\.io|intercom|googletagmanager|hotjar|cloudflare|wixstatic|squarespace/.test(lower)) continue;
+    if (/^[a-f0-9]{32,}@/i.test(lower)) continue; // hash-looking local part
+    return m;
+  }
+  return matches[0] ?? null; // fall back to first match if everything was filtered
+}
+
+/** Extract a Norwegian phone number. Accepts +47-prefixed and 8-digit
+ *  bare formats; normalises to "+47 XX XX XX XX". Returns null if no
+ *  plausible NO number found. */
+function extractNorwegianPhone(text: string): string | null {
+  if (!text) return null;
+  // Strip common noise (zero-width chars, soft hyphens) before matching.
+  const cleaned = text.replace(/[​-‍­]/g, " ");
+  // Match +47 + 8 digits (with optional separators) OR a bare 8-digit
+  // run starting with 4/9/2/3 (Norwegian mobile/landline prefixes).
+  const patterns = [
+    /\+47[\s.-]?(\d[\s.-]?){8}/g,
+    /(?<![\d])([49][\s.-]?\d[\s.-]?){4}(?![\d])/g, // 8-digit mobile starting 4/9
+    /(?<![\d])([23][\s.-]?\d[\s.-]?){4}(?![\d])/g, // 8-digit landline 2/3
+  ];
+  for (const p of patterns) {
+    const m = cleaned.match(p);
+    if (!m) continue;
+    for (const raw of m) {
+      const digits = raw.replace(/[^\d]/g, "");
+      const eight = digits.startsWith("47") && digits.length === 10 ? digits.slice(2) : digits;
+      if (eight.length === 8) {
+        // Skip obvious placeholder patterns: identical 2-digit pairs
+        // (e.g. "42 93 42 93", "12 34 12 34") and common dummies.
+        const p1 = eight.slice(0, 2);
+        const p2 = eight.slice(2, 4);
+        const p3 = eight.slice(4, 6);
+        const p4 = eight.slice(6, 8);
+        if (p1 === p3 && p2 === p4) continue;
+        if (eight === "12345678" || eight === "00000000" || eight === "11111111") continue;
+        return `+47 ${p1} ${p2} ${p3} ${p4}`;
+      }
+    }
+  }
+  return null;
+}
+
+/** Find the most plausible /kontakt or /contact link from html. Returns
+ *  absolute URL when the href is relative. */
+function extractContactPageUrl(html: string, baseUrl: string): string | null {
+  const matches = html.match(/href=["']([^"']+)["'][^>]*>[^<]*(kontakt|contact)[^<]*</gi) ?? [];
+  for (const raw of matches) {
+    const hrefMatch = raw.match(/href=["']([^"']+)["']/i);
+    if (!hrefMatch) continue;
+    const href = hrefMatch[1];
+    try {
+      return new URL(href, baseUrl).toString();
+    } catch {
+      continue;
+    }
+  }
+  // Common fallback paths if nothing labelled — many sites have /kontakt.
+  try {
+    const base = new URL(baseUrl);
+    return new URL("/kontakt", base.origin).toString();
+  } catch {
+    return null;
+  }
+}
+
 async function enrichMerchSuppliersWithWebsiteSignals(
   suppliers: RoleRoomAgentMerchSupplier[],
 ): Promise<void> {
@@ -3715,6 +3800,36 @@ async function enrichMerchSuppliersWithWebsiteSignals(
           supplier.productCategories = mergedProducts.length > 0 ? mergedProducts : supplier.productCategories;
           supplier.offerings = offerings;
           supplier.websiteSignalsEnriched = true;
+          // Slice 4: extract contact info from the same scraped HTML.
+          // Looks at body text + meta + structured data; if the homepage
+          // has no email but links to /kontakt, falls through to that
+          // page (one extra fetch, ~1s budget).
+          const homepageText = `${title ?? ""} ${metaDesc ?? ""} ${ogDesc ?? ""} ${bodySnippet}`;
+          let email = extractEmail(homepageText);
+          let phone = extractNorwegianPhone(homepageText);
+          const contactPageUrl = extractContactPageUrl(html, url);
+          if ((!email || !phone) && contactPageUrl && contactPageUrl !== url) {
+            try {
+              const cResp = await fetch(contactPageUrl, {
+                headers: { "User-Agent": "Mozilla/5.0 (compatible; RoleRoomAgent/1.0)" },
+                signal: AbortSignal.timeout(4_000),
+                redirect: "follow",
+              });
+              if (cResp.ok) {
+                const cHtml = await cResp.text();
+                const cText = extractTextSnippet(cHtml);
+                if (!email) email = extractEmail(`${cText} ${cHtml}`);
+                if (!phone) phone = extractNorwegianPhone(`${cText} ${cHtml}`);
+              }
+            } catch {
+              // Best-effort — keep whatever we found on the homepage.
+            }
+          }
+          supplier.contact = {
+            email: email ?? null,
+            phone: phone ?? null,
+            contactPageUrl: contactPageUrl ?? null,
+          };
           // Bump confidence by +5 when scraping confirmed at least one
           // technique or product — capped at 100. The producer now has
           // signal beyond name+NACE alone.
