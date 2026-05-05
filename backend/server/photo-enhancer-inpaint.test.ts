@@ -561,6 +561,130 @@ describe('executeInpaint patch_clone (synthetic)', () => {
   });
 });
 
+describe('executeInpaint freq_sep (synthetic skin-blemish)', () => {
+  it('removes a blemish but preserves the surrounding skin texture variance', async () => {
+    // Build a 100x100 "skin" image: warm skin-tone (180, 140, 110)
+    // with a deterministic sinusoidal "pore" pattern as high-freq
+    // detail (variance the test will look for after the heal). A
+    // small RED defect (a "pimple") sits at (48-52, 48-52). After
+    // freq_sep:
+    //   - centre of the mask must NO LONGER be red (blemish gone)
+    //   - the pore pattern outside the mask must be pixel-identical
+    //   - the pore pattern inside the cleaned region must still
+    //     show variance comparable to the surrounding skin (THIS is
+    //     the freq_sep promise — patch_clone would smooth this out
+    //     by copying donor texture)
+    const W = 100;
+    const H = 100;
+    const raw = Buffer.alloc(W * H * 3);
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const i = (y * W + x) * 3;
+        // Sinusoidal high-frequency texture, ~12px wavelength, ±18 amp.
+        const tex = Math.round(18 * Math.sin(x * 0.52) * Math.cos(y * 0.49));
+        raw[i]     = Math.max(0, Math.min(255, 180 + tex));
+        raw[i + 1] = Math.max(0, Math.min(255, 140 + tex));
+        raw[i + 2] = Math.max(0, Math.min(255, 110 + tex));
+      }
+    }
+    // Red defect: 5x5 at (48..52, 48..52).
+    for (let y = 48; y < 53; y++) {
+      for (let x = 48; x < 53; x++) {
+        const i = (y * W + x) * 3;
+        raw[i] = 255; raw[i + 1] = 30; raw[i + 2] = 30;
+      }
+    }
+    const imageBuffer = await sharp(raw, { raw: { width: W, height: H, channels: 3 } })
+      .png()
+      .toBuffer();
+
+    const maskRaw = Buffer.alloc(W * H);
+    for (let y = 40; y < 60; y++) {
+      for (let x = 40; x < 60; x++) {
+        maskRaw[y * W + x] = 255;
+      }
+    }
+    const maskBuffer = await sharp(maskRaw, { raw: { width: W, height: H, channels: 1 } })
+      .png()
+      .toBuffer();
+
+    const result = await executeInpaint({
+      imageBuffer,
+      maskBuffer,
+      recipe: {
+        strategy: 'freq_sep',
+        radiusPx: 0, // → use default sigma_low = 5
+        featherPx: 6,
+        sourceRegions: [],
+        avoidRegions: [],
+        postFreqSepSkin: false,
+        warnings: [],
+        rationale: 'blemish on textured skin',
+      },
+      intensity: 1,
+      outputMime: 'image/png',
+    });
+
+    expect(result.strategyUsed).toBe('freq_sep');
+    expect(result.maskBounds).toEqual({ x: 40, y: 40, w: 20, h: 20 });
+
+    const outRaw = await sharp(result.buffer).raw().toBuffer({ resolveWithObject: true });
+    const stride = outRaw.info.channels;
+    const pixel = (x: number, y: number) => {
+      const i = (y * W + x) * stride;
+      return [outRaw.data[i], outRaw.data[i + 1], outRaw.data[i + 2]];
+    };
+
+    // (1) Blemish gone — centre of mask must be skin-toned, not red.
+    const [centreR, , centreB] = pixel(50, 50);
+    expect(centreR).toBeLessThan(220);  // far below pure-red defect
+    expect(centreB).toBeGreaterThan(60); // far above defect's blue=30
+
+    // (2) Pixels far outside the mask must be untouched (≤ 1 unit
+    // delta is acceptable — sharp's PNG round-trip can wobble by 1).
+    const [origR, origG, origB] = (() => {
+      const i = (10 * W + 10) * 3;
+      return [raw[i], raw[i + 1], raw[i + 2]];
+    })();
+    const [farR, farG, farB] = pixel(10, 10);
+    expect(Math.abs(farR - origR)).toBeLessThanOrEqual(1);
+    expect(Math.abs(farG - origG)).toBeLessThanOrEqual(1);
+    expect(Math.abs(farB - origB)).toBeLessThanOrEqual(1);
+
+    // (3) Texture preservation INSIDE the cleaned region. Compute the
+    // R-channel standard deviation in two 8x8 windows: one inside the
+    // healed area (44-52, 44-52, away from the defect itself) and one
+    // outside in clean skin (10-18, 10-18). For freq_sep to live up
+    // to its name, the inside-mask variance must be a meaningful
+    // fraction of the outside variance — patch_clone with a uniformly-
+    // toned donor would crush variance to near-zero inside the mask.
+    function stdDevR(x0: number, y0: number, side: number): number {
+      let sum = 0;
+      let n = 0;
+      const vals: number[] = [];
+      for (let y = y0; y < y0 + side; y++) {
+        for (let x = x0; x < x0 + side; x++) {
+          const v = pixel(x, y)[0];
+          vals.push(v);
+          sum += v;
+          n++;
+        }
+      }
+      const mean = sum / n;
+      let sq = 0;
+      for (const v of vals) sq += (v - mean) ** 2;
+      return Math.sqrt(sq / n);
+    }
+    const insideStdDev = stdDevR(44, 44, 8);
+    const outsideStdDev = stdDevR(10, 10, 8);
+    // We don't expect a tight match (donor's low-band has been
+    // shifted in, so there's a small DC offset), but the texture
+    // variance ratio must clear at least 50% of the original — well
+    // above what patch_clone would yield in this setup.
+    expect(insideStdDev).toBeGreaterThan(outsideStdDev * 0.5);
+  });
+});
+
 describe('executeInpaint round-trip on a real photo', () => {
   const realPhoto = path.resolve(__dirname, '../../preview-thumb.jpg');
 

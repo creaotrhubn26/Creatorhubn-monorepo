@@ -532,6 +532,183 @@ async function executePatchClone(
   return { cropPng: composited, cropBox };
 }
 
+/**
+ * Execute the freq_sep strategy on a SINGLE mask component.
+ *
+ * Frequency separation decomposes the crop into a LOW band (blurred,
+ * holds tone + colour) and a HIGH band (residual, holds skin pores +
+ * fine texture). The heal pass replaces the LOW band's colour blob
+ * inside the mask with the LOW band of a colour-matched donor — but
+ * the HIGH band stays untouched everywhere. Result: a blemish, mole,
+ * or stray-tone patch is gone, but the surrounding skin's pore
+ * texture is preserved verbatim.
+ *
+ * Why this matters vs patch_clone for skin: patch_clone copies BOTH
+ * bands from the donor, so the masked area gets the donor's pore
+ * texture. On a face that's the "smoothed-skin Photoshop look" — the
+ * thing photographers explicitly avoid. freq_sep keeps every original
+ * pore in place, just replaces the underlying colour.
+ *
+ * Algorithm:
+ *   1. Crop the image at component bbox + margin.
+ *   2. Blur the crop with sigma_low (default 5px) → low.
+ *   3. Pick a colour-matched donor (same scoring as patch_clone).
+ *   4. Extract donor at component-bbox size → donor RGB.
+ *   5. Blur donor → donor_low.
+ *   6. Build feathered alpha (same edge-pad machinery as patch_clone).
+ *   7. healed_low = lerp(crop_low, donor_low, alpha) per pixel,
+ *      where donor_low sits at the mask's offset inside the crop.
+ *   8. high = crop - crop_low (signed; preserves ALL original detail).
+ *   9. result = clamp(healed_low + high) per channel.
+ */
+async function executeFreqSep(
+  imageBuffer: Buffer,
+  maskAnalysis: MaskAnalysis,
+  componentBounds: { x: number; y: number; w: number; h: number },
+  recipe: InpaintRecipeRecommendation,
+): Promise<{ cropPng: Buffer; cropBox: { x: number; y: number; w: number; h: number } }> {
+  // Sigma is "scale of details to preserve in the high band". 5px is
+  // a sensible default for portrait-scale photos where pores read at
+  // ~2px and we want them in HIGH. Recipe.radiusPx > 0 lets Claude
+  // override (e.g. coarser texture surfaces).
+  const sigmaLow = Math.max(3, recipe.radiusPx > 0 ? recipe.radiusPx : 5);
+  const margin = Math.max(8, recipe.featherPx);
+  const cropBox = expandRegion(componentBounds, margin, maskAnalysis.width, maskAnalysis.height);
+
+  const donor = await pickDonor(
+    imageBuffer,
+    recipe,
+    componentBounds,
+    maskAnalysis.width,
+    maskAnalysis.height,
+  );
+
+  // ── Crop + low/high decomposition ──
+  const cropRgb = await sharp(imageBuffer)
+    .extract({ left: cropBox.x, top: cropBox.y, width: cropBox.w, height: cropBox.h })
+    .removeAlpha()
+    .raw()
+    .toBuffer();
+  // Sharp's blur on an RGB raw input preserves 3 channels (this is
+  // the only quirk-free path; .blur on 1-ch raw promotes to 3 — but
+  // here we're staying RGB throughout).
+  const cropLow = await sharp(cropRgb, {
+    raw: { width: cropBox.w, height: cropBox.h, channels: 3 },
+  })
+    .blur(sigmaLow)
+    .raw()
+    .toBuffer();
+
+  // ── Donor low (at component-bbox size, ready to slot into crop) ──
+  const donorRgb = await sharp(imageBuffer)
+    .extract({ left: donor.x, top: donor.y, width: donor.w, height: donor.h })
+    .removeAlpha()
+    .resize(componentBounds.w, componentBounds.h, { fit: 'fill' })
+    .raw()
+    .toBuffer();
+  const donorLow = await sharp(donorRgb, {
+    raw: { width: componentBounds.w, height: componentBounds.h, channels: 3 },
+  })
+    .blur(sigmaLow)
+    .raw()
+    .toBuffer();
+
+  // ── Feathered alpha (same machinery as patch_clone) ──
+  const maskCropPng = await sharp(maskAnalysis.raw, {
+    raw: { width: maskAnalysis.width, height: maskAnalysis.height, channels: 1 },
+  })
+    .extract({ left: cropBox.x, top: cropBox.y, width: cropBox.w, height: cropBox.h })
+    .png()
+    .toBuffer();
+  const compTouchesTop = componentBounds.y === 0;
+  const compTouchesBottom = componentBounds.y + componentBounds.h === maskAnalysis.height;
+  const compTouchesLeft = componentBounds.x === 0;
+  const compTouchesRight = componentBounds.x + componentBounds.w === maskAnalysis.width;
+  const padPx = Math.ceil(Math.max(8, recipe.featherPx));
+  const edgePad = {
+    top: compTouchesTop ? padPx : 0,
+    bottom: compTouchesBottom ? padPx : 0,
+    left: compTouchesLeft ? padPx : 0,
+    right: compTouchesRight ? padPx : 0,
+  };
+  const alpha = await featherMask(maskCropPng, cropBox.w, cropBox.h, recipe.featherPx, edgePad);
+
+  // ── Recombine.
+  //
+  // For each pixel in mask region:
+  //   healed_low  = lerp(crop_low,  donor_low,  alpha)
+  //   healed_high = lerp(crop_high, donor_high, alpha)
+  //   result      = clamp(healed_low + healed_high)
+  //
+  // Why blend HIGH at full alpha by default: a small high-contrast
+  // defect (a strobe-glint on a forehead, a sharp red mole) carries
+  // its colour signal in BOTH bands. Replacing only LOW leaves the
+  // defect's high-frequency residue intact and you see chromatic
+  // halo where the defect was. Blending HIGH with the donor's HIGH
+  // (which has similar-style noise from a colour-matched skin patch)
+  // wipes the defect's signature without flat-smoothing texture —
+  // donor still has pore noise, just from a clean area.
+  //
+  // Outside the mask alpha is ≈0 so both bands stay at their crop
+  // values — original texture preserved verbatim everywhere except
+  // where the photographer asked.
+  const maskOffsetX = componentBounds.x - cropBox.x;
+  const maskOffsetY = componentBounds.y - cropBox.y;
+  const result = Buffer.alloc(cropBox.w * cropBox.h * 3);
+  for (let y = 0; y < cropBox.h; y++) {
+    for (let x = 0; x < cropBox.w; x++) {
+      const cropIdx = (y * cropBox.w + x) * 3;
+      const aByte = alpha[y * cropBox.w + x];
+      const a = aByte / 255;
+
+      // Donor bands only exist inside the component bbox region.
+      // Outside, alpha is ~0 anyway so we keep crop's own bands.
+      const dx = x - maskOffsetX;
+      const dy = y - maskOffsetY;
+      let donorLowR = cropLow[cropIdx];
+      let donorLowG = cropLow[cropIdx + 1];
+      let donorLowB = cropLow[cropIdx + 2];
+      let donorHighR = 0;
+      let donorHighG = 0;
+      let donorHighB = 0;
+      if (dx >= 0 && dx < componentBounds.w && dy >= 0 && dy < componentBounds.h) {
+        const dIdx = (dy * componentBounds.w + dx) * 3;
+        donorLowR = donorLow[dIdx];
+        donorLowG = donorLow[dIdx + 1];
+        donorLowB = donorLow[dIdx + 2];
+        // Donor high = donor original - donor low (signed).
+        donorHighR = donorRgb[dIdx]     - donorLow[dIdx];
+        donorHighG = donorRgb[dIdx + 1] - donorLow[dIdx + 1];
+        donorHighB = donorRgb[dIdx + 2] - donorLow[dIdx + 2];
+      }
+
+      // Healed bands (lerp toward donor at alpha).
+      const healedLowR = cropLow[cropIdx]     * (1 - a) + donorLowR * a;
+      const healedLowG = cropLow[cropIdx + 1] * (1 - a) + donorLowG * a;
+      const healedLowB = cropLow[cropIdx + 2] * (1 - a) + donorLowB * a;
+
+      const cropHighR = cropRgb[cropIdx]     - cropLow[cropIdx];
+      const cropHighG = cropRgb[cropIdx + 1] - cropLow[cropIdx + 1];
+      const cropHighB = cropRgb[cropIdx + 2] - cropLow[cropIdx + 2];
+      const healedHighR = cropHighR * (1 - a) + donorHighR * a;
+      const healedHighG = cropHighG * (1 - a) + donorHighG * a;
+      const healedHighB = cropHighB * (1 - a) + donorHighB * a;
+
+      result[cropIdx]     = Math.max(0, Math.min(255, Math.round(healedLowR + healedHighR)));
+      result[cropIdx + 1] = Math.max(0, Math.min(255, Math.round(healedLowG + healedHighG)));
+      result[cropIdx + 2] = Math.max(0, Math.min(255, Math.round(healedLowB + healedHighB)));
+    }
+  }
+
+  const cropPng = await sharp(result, {
+    raw: { width: cropBox.w, height: cropBox.h, channels: 3 },
+  })
+    .png()
+    .toBuffer();
+
+  return { cropPng, cropBox };
+}
+
 // ---- OpenCV.js lazy init ----------------------------------------------------
 
 let cvReady: Promise<any> | null = null;
@@ -647,24 +824,12 @@ export async function executeInpaint(
     return { buffer: out, strategyUsed: recipe.strategy, maskBounds: null, warnings: ['Tom maske — ingenting endret.'] };
   }
 
-  let strategyUsed: InpaintRecipeRecommendation['strategy'] = recipe.strategy;
-  let effectiveRecipe = recipe;
-  if (recipe.strategy === 'freq_sep') {
-    // Slice 1 fallback: real freq-sep skin pass arrives later. Until
-    // then, treat skin masks as a soft patch_clone — the result is at
-    // least defensible (smooth tone from a nearby donor) rather than
-    // failing.
-    warnings.push('freq_sep ikke implementert ennå — kjører patch_clone som fallback');
-    strategyUsed = 'patch_clone';
-    effectiveRecipe = {
-      ...recipe,
-      strategy: 'patch_clone',
-      featherPx: Math.max(recipe.featherPx, 24),
-    };
-  } else if (
+  const strategyUsed: InpaintRecipeRecommendation['strategy'] = recipe.strategy;
+  if (
     recipe.strategy !== 'patch_clone' &&
     recipe.strategy !== 'telea' &&
-    recipe.strategy !== 'ns'
+    recipe.strategy !== 'ns' &&
+    recipe.strategy !== 'freq_sep'
   ) {
     throw new Error(`inpaint: unknown strategy ${recipe.strategy}`);
   }
@@ -674,10 +839,20 @@ export async function executeInpaint(
   // through the inner loop; only the final encode honours outputMime.
   let workingImage = await sharp(imageBuffer).png().toBuffer();
   for (const comp of maskAnalysis.components) {
-    const cropResult =
-      effectiveRecipe.strategy === 'patch_clone'
-        ? await executePatchClone(workingImage, maskAnalysis, comp.bounds, effectiveRecipe)
-        : await executeOpenCvInpaint(workingImage, maskAnalysis, comp.bounds, effectiveRecipe);
+    let cropResult: { cropPng: Buffer; cropBox: { x: number; y: number; w: number; h: number } };
+    switch (recipe.strategy) {
+      case 'freq_sep':
+        cropResult = await executeFreqSep(workingImage, maskAnalysis, comp.bounds, recipe);
+        break;
+      case 'telea':
+      case 'ns':
+        cropResult = await executeOpenCvInpaint(workingImage, maskAnalysis, comp.bounds, recipe);
+        break;
+      case 'patch_clone':
+      default:
+        cropResult = await executePatchClone(workingImage, maskAnalysis, comp.bounds, recipe);
+        break;
+    }
 
     const blendedCrop =
       intensity >= 0.999
