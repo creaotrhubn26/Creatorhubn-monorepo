@@ -50,6 +50,18 @@ export interface ClientGalleryImageRendered {
   thumbnailUrl: string;
   fullSizeUrl: string;
   watermarkedUrl: string | null;
+  /// Slice 6 — signed URL for the auto-cleaned variant of this image
+  /// (stray studio equipment removed by the iPad's AutoCleanService
+  /// + server inpaint pipeline). Non-null only when the photographer
+  /// opted into delivering the cleaned variant at delivery time AND
+  /// the captureAssets row still has a valid auto_cleaned_key. The
+  /// gallery viewer prefers this when present and offers a "Vis
+  /// original" toggle so the client can compare.
+  autoCleanedUrl: string | null;
+  /// Number of distractions Claude removed in the cleaned variant.
+  /// Surfaced alongside the cleaned URL as "Auto-renset · N objekter
+  /// fjernet" to set client expectations. Null when no cleaned variant.
+  autoCleanedDetectionCount: number | null;
   tags: unknown;
   sortOrder: number;
   isVisible: boolean;
@@ -129,14 +141,29 @@ export async function listClientGalleryImages(
     const md = (row.imageMetadata ?? {}) as Record<string, unknown>;
     if (typeof md.captureAssetId === 'string') assetIds.push(md.captureAssetId);
   }
-  let keysByAssetId = new Map<string, { previewKey: string | null; fullKey: string | null }>();
+  let keysByAssetId = new Map<
+    string,
+    { previewKey: string | null; fullKey: string | null; autoCleanedKey: string | null }
+  >();
   if (assetIds.length > 0) {
     const assets = await db
-      .select({ id: captureAssets.id, previewKey: captureAssets.previewKey, fullKey: captureAssets.fullKey })
+      .select({
+        id: captureAssets.id,
+        previewKey: captureAssets.previewKey,
+        fullKey: captureAssets.fullKey,
+        autoCleanedKey: captureAssets.autoCleanedKey,
+      })
       .from(captureAssets)
       .where(inArray(captureAssets.id, assetIds));
     keysByAssetId = new Map(
-      assets.map((a) => [a.id, { previewKey: a.previewKey ?? null, fullKey: a.fullKey ?? null }]),
+      assets.map((a) => [
+        a.id,
+        {
+          previewKey: a.previewKey ?? null,
+          fullKey: a.fullKey ?? null,
+          autoCleanedKey: a.autoCleanedKey ?? null,
+        },
+      ]),
     );
   }
 
@@ -148,6 +175,7 @@ export async function listClientGalleryImages(
 
     let thumbnailUrl = row.thumbnailUrl;
     let fullSizeUrl = row.fullSizeUrl;
+    let autoCleanedUrl: string | null = null;
     let signingFailed = false;
 
     if (captureAssetId) {
@@ -172,7 +200,26 @@ export async function listClientGalleryImages(
       } else {
         signingFailed = true;
       }
+
+      // Slice 6 — auto-cleaned variant. Two gates: (a) photographer
+      // opted in at delivery time (image_metadata.useAutoCleaned), and
+      // (b) the captureAssets row STILL has a non-null auto_cleaned_key
+      // (operationally important: a clean-out script that nulls the
+      // key elsewhere should silently degrade to "no cleaned variant"
+      // rather than serve a 404 download). Sign-failure leaves the URL
+      // null so the viewer falls back to the original cleanly.
+      if (md.useAutoCleaned === true && keys?.autoCleanedKey) {
+        const cleanedSigned = await signer(keys.autoCleanedKey);
+        if (cleanedSigned) {
+          autoCleanedUrl = cleanedSigned;
+        }
+      }
     }
+
+    const autoCleanedDetectionCount =
+      md.useAutoCleaned === true && typeof md.autoCleanedDetectionCount === 'number'
+        ? (md.autoCleanedDetectionCount as number)
+        : null;
 
     rendered.push({
       id: row.id,
@@ -181,6 +228,8 @@ export async function listClientGalleryImages(
       thumbnailUrl,
       fullSizeUrl,
       watermarkedUrl: row.watermarkedUrl ?? null,
+      autoCleanedUrl,
+      autoCleanedDetectionCount,
       tags: row.tags ?? [],
       sortOrder: row.sortOrder ?? 0,
       isVisible: row.isVisible ?? true,

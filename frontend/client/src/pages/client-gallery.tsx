@@ -86,6 +86,15 @@ interface GalleryImage {
   thumbnailUrl: string;
   fullSizeUrl: string;
   watermarkedUrl?: string;
+  /** Slice 6 — signed URL for the auto-cleaned variant (stray studio
+   *  equipment removed). Non-null only when the photographer opted in
+   *  at delivery time. The viewer prefers this when present and offers
+   *  a "Vis original"-toggle so the client can compare. */
+  autoCleanedUrl?: string | null;
+  /** How many distractions the photographer's auto-clean pipeline
+   *  removed. Surfaced as a small badge so the client knows the shot
+   *  has been polished. */
+  autoCleanedDetectionCount?: number | null;
   imageMetadata?: {
     width: number;
     height: number;
@@ -139,6 +148,11 @@ export default function ClientGallery({}: ClientGalleryProps) {
   const [showOnlySelected, setShowOnlySelected] = useState(false);
   const [imageDialogOpen, setImageDialogOpen] = useState(false);
   const [selectedImageForView, setSelectedImageForView] = useState<GalleryImage | null>(null);
+  /** Slice 6 — per-image override: when an id is in this set, the
+   *  viewer renders the camera-original instead of the auto-cleaned
+   *  variant. Default is "show cleaned" so the polished version is
+   *  what the client sees first. */
+  const [showOriginalIds, setShowOriginalIds] = useState<Set<string>>(new Set());
   const [commentDialogOpen, setCommentDialogOpen] = useState(false);
   const [newComment, setNewComment] = useState('');
   const [commentImageId, setCommentImageId] = useState<string | null>(null);
@@ -939,7 +953,7 @@ export default function ClientGallery({}: ClientGalleryProps) {
                       image={
                         gallery?.gallerySettings?.watermarkEnabled
                           ? image.watermarkedUrl
-                          : image.thumbnailUrl
+                          : (image.autoCleanedUrl ?? image.thumbnailUrl)
                     }
                       alt={image.imageTitle}
                       sx={{
@@ -1134,21 +1148,80 @@ export default function ClientGallery({}: ClientGalleryProps) {
             </DialogTitle>
             <DialogContent sx={{ bgcolor: '#0a0f1a', p: 3 }}>
               <Box sx={{ textAlign: 'center', mb: 2 }}>
-                <img
-                  src={
-                    gallery?.gallerySettings?.watermarkEnabled
-                      ? selectedImageForView.watermarkedUrl
-                      : selectedImageForView.fullSizeUrl
-                }
-                  alt={selectedImageForView.imageTitle}
-                  style={{
-                    maxWidth: '100%',
-                    height: 'auto',
-                    maxHeight: '70vh',
-                    borderRadius: '8px',
-                }}
-                />
+                {(() => {
+                  const showOriginal = showOriginalIds.has(selectedImageForView.id);
+                  const watermarkOn = gallery?.gallerySettings?.watermarkEnabled;
+                  const cleanedAvailable = Boolean(selectedImageForView.autoCleanedUrl);
+                  const src = watermarkOn
+                    ? selectedImageForView.watermarkedUrl
+                    : (showOriginal || !cleanedAvailable
+                        ? selectedImageForView.fullSizeUrl
+                        : selectedImageForView.autoCleanedUrl);
+                  return (
+                    <img
+                      src={src ?? undefined}
+                      alt={selectedImageForView.imageTitle}
+                      style={{
+                        maxWidth: '100%',
+                        height: 'auto',
+                        maxHeight: '70vh',
+                        borderRadius: '8px',
+                      }}
+                    />
+                  );
+                })()}
               </Box>
+              {/* Slice 6 — auto-clean banner. Visible only when the photographer
+                  opted in to deliver the cleaned variant. Watermark mode wins
+                  (a watermarked preview can't be replaced mid-flow). */}
+              {selectedImageForView.autoCleanedUrl
+                && !gallery?.gallerySettings?.watermarkEnabled && (
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 2,
+                    px: 2,
+                    py: 1.5,
+                    mb: 2,
+                    bgcolor: 'rgba(0, 200, 200, 0.12)',
+                    border: '1px solid rgba(0, 200, 200, 0.4)',
+                    borderRadius: 1,
+                  }}
+                >
+                  <Box sx={{ flex: 1 }}>
+                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.95)', fontWeight: 600 }}>
+                      {showOriginalIds.has(selectedImageForView.id)
+                        ? 'Viser original'
+                        : `Auto-renset · ${selectedImageForView.autoCleanedDetectionCount ?? 0} objekter fjernet`}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.65)' }}>
+                      {showOriginalIds.has(selectedImageForView.id)
+                        ? 'Trykk for å gå tilbake til renset versjon'
+                        : 'Trykk for å se originalbildet'}
+                    </Typography>
+                  </Box>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => {
+                      setShowOriginalIds((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(selectedImageForView.id)) next.delete(selectedImageForView.id);
+                        else next.add(selectedImageForView.id);
+                        return next;
+                      });
+                    }}
+                    sx={{
+                      color: 'rgba(255,255,255,0.95)',
+                      borderColor: 'rgba(0, 200, 200, 0.6)',
+                      '&:hover': { borderColor: 'rgba(0, 200, 200, 1)' },
+                    }}
+                  >
+                    {showOriginalIds.has(selectedImageForView.id) ? 'Vis renset' : 'Vis original'}
+                  </Button>
+                </Box>
+              )}
               {selectedImageForView.imageDescription && (
                 <Typography variant="body1" paragraph sx={{ color: 'rgba(255,255,255,0.8)' }}>
                   {selectedImageForView.imageDescription}

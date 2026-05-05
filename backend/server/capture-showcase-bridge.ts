@@ -34,6 +34,22 @@ export interface BridgePickInput {
   /// Optional full-size key — used when available so the gallery viewer
   /// can show full-resolution. Falls back to preview when absent.
   fullKey?: string | null;
+  /// Slice 6 — set to true when this asset has a cleaned variant on
+  /// the server (capture_assets.auto_cleaned_key is non-null) AND the
+  /// photographer wants the gallery to surface it. The bridge stamps
+  /// `image_metadata.useAutoCleaned = true` so listClientGalleryImages
+  /// re-signs the cleaned key alongside the original. Omitting this
+  /// flag (the default) means the gallery shows only the camera-
+  /// original even if a cleaned variant exists — opt-in semantics so
+  /// re-running auto-clean later doesn't silently change a delivered
+  /// gallery's contents.
+  useAutoCleaned?: boolean;
+  /// Number of distractions Claude removed in the cleaned variant —
+  /// passed through to image_metadata so the gallery viewer can show
+  /// "Auto-renset · N objekter fjernet". Ignored when useAutoCleaned
+  /// is false. 0 is a valid value (pass ran clean) but a delivery
+  /// with useAutoCleaned=true and count=0 typically indicates a bug.
+  autoCleanedDetectionCount?: number | null;
   /// Optional EXIF + capture metadata to surface in the gallery.
   metadata?: Record<string, unknown>;
 }
@@ -189,17 +205,27 @@ export async function bridgeCaptureSessionToGallery(
     }
     const fullSigned = pick.fullKey ? (await signer(pick.fullKey)) ?? previewSigned : previewSigned;
     try {
+      // Build the metadata blob: existing fields + capture linkage +
+      // (Slice 6) the auto-cleaned opt-in. Storing useAutoCleaned as
+      // an explicit boolean on the row freezes the photographer's
+      // intent at delivery time: re-running auto-clean later won't
+      // silently change a delivered gallery's contents.
+      const baseMetadata: Record<string, unknown> = {
+        ...(pick.metadata ?? {}),
+        captureAssetId: pick.captureAssetId,
+        source: 'capture',
+      };
+      if (pick.useAutoCleaned) {
+        baseMetadata.useAutoCleaned = true;
+        baseMetadata.autoCleanedDetectionCount = pick.autoCleanedDetectionCount ?? 0;
+      }
       await input.db.insert(clientGalleryImages).values({
         galleryId,
         photographerId: input.ownerUserId,
         imageTitle: pick.title,
         thumbnailUrl: previewSigned,
         fullSizeUrl: fullSigned,
-        imageMetadata: {
-          ...(pick.metadata ?? {}),
-          captureAssetId: pick.captureAssetId,
-          source: 'capture',
-        },
+        imageMetadata: baseMetadata,
         sortOrder,
         isVisible: true,
       });
@@ -273,6 +299,15 @@ export async function pickAssetsFromCaptureSession(
       title: stripExtension(a.originalFilename),
       previewKey: a.previewKey!,
       fullKey: a.fullKey ?? null,
+      // Slice 6 — auto-opt-in to delivering the cleaned variant when
+      // one exists on the server. The auto-clean upload endpoint
+      // populates auto_cleaned_key as soon as the iPad finishes the
+      // detect+inpaint round-trip, so by the time the photographer
+      // hits Deliver, every cleaned asset is already wired. Setting
+      // useAutoCleaned freezes the choice into the gallery row so
+      // re-running auto-clean post-delivery doesn't change history.
+      useAutoCleaned: Boolean(a.autoCleanedKey),
+      autoCleanedDetectionCount: a.autoCleanedDetectionCount ?? null,
       metadata: {
         rating: a.rating ?? 0,
         flaggedForClient: Boolean(a.flaggedForClient),

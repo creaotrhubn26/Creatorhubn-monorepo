@@ -241,6 +241,103 @@ describe('listClientGalleryImages', () => {
     expect(await listClientGalleryImages(db as never, 'g1')).toEqual([]);
   });
 
+  it('signs autoCleanedUrl when the row opted in AND the asset still has the key (Slice 6)', async () => {
+    const db = makeDb([
+      [
+        {
+          id: 'img-clean',
+          galleryId: 'g1',
+          photographerId: 'u1',
+          imageTitle: 'Cleaned',
+          imageDescription: null,
+          thumbnailUrl: 'stale',
+          fullSizeUrl: 'stale',
+          watermarkedUrl: null,
+          imageMetadata: {
+            captureAssetId: 'a1',
+            useAutoCleaned: true,
+            autoCleanedDetectionCount: 2,
+          },
+          tags: [],
+          sortOrder: 0,
+          isVisible: true,
+        },
+      ],
+      [{ id: 'a1', previewKey: 'p/a1.jpg', fullKey: 'f/a1.jpg', autoCleanedKey: 'c/a1.jpg' }],
+    ]);
+    const sign = vi.fn(async (key: string | null) => (key ? `https://signed/${key}` : null));
+    const [row] = await listClientGalleryImages(db as never, 'g1', { signKey: sign });
+    expect(row.autoCleanedUrl).toBe('https://signed/c/a1.jpg');
+    expect(row.autoCleanedDetectionCount).toBe(2);
+    expect(sign).toHaveBeenCalledWith('c/a1.jpg');
+  });
+
+  it('returns null autoCleanedUrl when the asset row no longer has the cleaned key (graceful)', async () => {
+    const db = makeDb([
+      [
+        {
+          id: 'img-orphaned-clean',
+          galleryId: 'g1',
+          photographerId: 'u1',
+          imageTitle: 'Orphan-clean',
+          imageDescription: null,
+          thumbnailUrl: 'stale',
+          fullSizeUrl: 'stale',
+          watermarkedUrl: null,
+          imageMetadata: {
+            captureAssetId: 'a1',
+            useAutoCleaned: true,
+            autoCleanedDetectionCount: 1,
+          },
+          tags: [],
+          sortOrder: 0,
+          isVisible: true,
+        },
+      ],
+      // Asset still exists with preview/full but auto_cleaned_key was nulled
+      // (e.g. cleanup script ran). Render must degrade silently — show
+      // original, no autoCleanedUrl, no signingFailed (the original is fine).
+      [{ id: 'a1', previewKey: 'p/a1.jpg', fullKey: 'f/a1.jpg', autoCleanedKey: null }],
+    ]);
+    const sign = vi.fn(async (key: string | null) => (key ? `https://signed/${key}` : null));
+    const [row] = await listClientGalleryImages(db as never, 'g1', { signKey: sign });
+    expect(row.autoCleanedUrl).toBeNull();
+    // detection count still surfaces — useful "cleaned was offered once" hint.
+    expect(row.autoCleanedDetectionCount).toBe(1);
+    expect(row.thumbnailUrl).toBe('https://signed/p/a1.jpg');
+    expect(row.signingFailed).toBe(false);
+  });
+
+  it('does NOT surface autoCleanedUrl when the row never opted in (default)', async () => {
+    const db = makeDb([
+      [
+        {
+          id: 'img-no-optin',
+          galleryId: 'g1',
+          photographerId: 'u1',
+          imageTitle: 'Original-only',
+          imageDescription: null,
+          thumbnailUrl: 'stale',
+          fullSizeUrl: 'stale',
+          watermarkedUrl: null,
+          // useAutoCleaned absent / not true — render must ignore even
+          // if the asset has a cleaned key.
+          imageMetadata: { captureAssetId: 'a1' },
+          tags: [],
+          sortOrder: 0,
+          isVisible: true,
+        },
+      ],
+      [{ id: 'a1', previewKey: 'p/a1.jpg', fullKey: 'f/a1.jpg', autoCleanedKey: 'c/a1.jpg' }],
+    ]);
+    const sign = vi.fn(async (key: string | null) => (key ? `https://signed/${key}` : null));
+    const [row] = await listClientGalleryImages(db as never, 'g1', { signKey: sign });
+    expect(row.autoCleanedUrl).toBeNull();
+    expect(row.autoCleanedDetectionCount).toBeNull();
+    // Critically: signer was NOT asked to sign the cleaned key.
+    expect(sign).not.toHaveBeenCalledWith('c/a1.jpg');
+  });
+
   it('does not query captureAssets when no image carries a captureAssetId', async () => {
     const db = makeDb([
       [

@@ -901,6 +901,122 @@ export function createCaptureRouter(
     res.json({ reviews: rows });
   });
 
+  // Slice 6 — auto-clean variant upload. The iPad has the cleaned JPG
+  // sitting locally after AutoCleanService ran; this route ingests it
+  // into the capture R2 bucket and stamps the resulting key + detection
+  // count onto the asset row, so the gallery render later re-signs it
+  // alongside the camera-original (same machinery preview_key uses).
+  //
+  // Multipart body:
+  //   cleaned          — JPEG/PNG file (≤ 30MB cap)
+  //   detectionCount   — text field, integer ≥ 0
+  //
+  // Path: /sessions/:sessionId/assets/:assetId/upload-cleaned-variant
+  // Auth: auth middleware + ownership-checked asset fetch.
+  // Idempotent: re-uploading replaces in place at the deterministic
+  // key `capture-cleaned/<sessionId>/<assetId>.jpg`. The R2 key is the
+  // same for every re-upload of the same asset.
+  const captureCleanedUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 30 * 1024 * 1024 },
+  });
+  router.post(
+    '/sessions/:sessionId/assets/:assetId/upload-cleaned-variant',
+    auth,
+    captureCleanedUpload.single('cleaned'),
+    async (req, res) => {
+      const { userId } = req as AuthedRequest;
+      const { sessionId, assetId } = req.params;
+      const cleanedFile = (req as Request & { file?: Express.Multer.File }).file;
+      if (!cleanedFile) {
+        res.status(400).json({ error: 'cleaned_required' });
+        return;
+      }
+
+      // Validate mime — only JPEG/PNG today (matches what /inpaint emits).
+      const allowedMime = new Set(['image/jpeg', 'image/png']);
+      const mime = cleanedFile.mimetype || 'application/octet-stream';
+      if (!allowedMime.has(mime)) {
+        res.status(415).json({ error: 'cleaned_mime_unsupported', mime });
+        return;
+      }
+
+      // Validate detectionCount — integer ≥ 0.
+      const countRaw = (req.body?.detectionCount ?? '').toString();
+      const detectionCount = Number(countRaw);
+      if (!Number.isInteger(detectionCount) || detectionCount < 0 || detectionCount > 64) {
+        res.status(400).json({ error: 'detection_count_invalid' });
+        return;
+      }
+
+      // Ownership-checked fetch: fails 404 if user doesn't own the
+      // session that contains this asset, OR if the asset is in a
+      // different session than the URL claims. The latter check
+      // matters because the R2 key is derived from sessionId — without
+      // it, an attacker who guessed an assetId could overwrite a
+      // cleaned variant under a session they DO own.
+      const owned = await fetchAsset(db, userId, assetId);
+      if (!owned) {
+        res.status(404).json({ error: 'asset_not_found' });
+        return;
+      }
+      if (owned.sessionId !== sessionId) {
+        res.status(404).json({ error: 'asset_session_mismatch' });
+        return;
+      }
+
+      // Deterministic key — same asset re-uploaded overwrites in place.
+      const r2Key = `capture-cleaned/${sessionId}/${assetId}.jpg`;
+      const stored = await uploadCaptureObject({
+        key: r2Key,
+        buffer: cleanedFile.buffer,
+        contentType: mime,
+      });
+      if (!stored) {
+        res.status(503).json({ error: 'r2_not_configured' });
+        return;
+      }
+
+      // Stamp the key + detection count onto the asset row. Drizzle's
+      // returning() gives us the canonical updated row.
+      try {
+        const [row] = await db
+          .update(captureAssets)
+          .set({
+            autoCleanedKey: stored,
+            autoCleanedDetectionCount: detectionCount,
+            updatedAt: new Date(),
+          })
+          .where(eq(captureAssets.id, assetId))
+          .returning({
+            id: captureAssets.id,
+            autoCleanedKey: captureAssets.autoCleanedKey,
+            autoCleanedDetectionCount: captureAssets.autoCleanedDetectionCount,
+          });
+        if (!row) {
+          // Asset got deleted between fetch + update. Highly unlikely but possible.
+          res.status(404).json({ error: 'asset_not_found' });
+          return;
+        }
+        res.status(201).json({
+          assetId: row.id,
+          autoCleanedKey: row.autoCleanedKey,
+          autoCleanedDetectionCount: row.autoCleanedDetectionCount ?? 0,
+        });
+      } catch (err) {
+        // Failure here means R2 has the blob but DB doesn't reference it
+        // — orphaned blob is acceptable (deterministic key means the
+        // next attempt overwrites). Surface the error so the iPad can
+        // retry, but don't try to delete the R2 object (deletion errors
+        // would just compound the problem).
+        res.status(500).json({
+          error: 'attach_failed',
+          detail: err instanceof Error ? err.message : String(err),
+        });
+      }
+    },
+  );
+
   // ── Handoff to photo enhancer ───────────────────────────────
 
   router.post('/sessions/:sessionId/handoff', auth, async (req, res) => {

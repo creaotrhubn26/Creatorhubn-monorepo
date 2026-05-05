@@ -365,6 +365,15 @@ struct BackendInpaintResponse: Decodable, Sendable {
     let executorWarnings: [String]?
 }
 
+/// Slice 6 — POST /api/capture/sessions/:sid/assets/:aid/upload-cleaned-variant.
+/// Returns the deterministic R2 key the backend stamped onto the
+/// captureAssets row so the iPad can confirm the round-trip succeeded.
+struct BackendCleanedVariantResponse: Decodable, Sendable {
+    let assetId: String
+    let autoCleanedKey: String?
+    let autoCleanedDetectionCount: Int
+}
+
 struct BackendShotLinkCounters: Decodable, Sendable {
     let id: String
     let totalShots: Int

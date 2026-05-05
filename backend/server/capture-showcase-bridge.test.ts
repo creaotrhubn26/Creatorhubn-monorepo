@@ -233,6 +233,57 @@ describe('bridgeCaptureSessionToGallery', () => {
     }
   });
 
+  it('stamps useAutoCleaned + count on metadata when the pick has a cleaned variant (Slice 6)', async () => {
+    const { db, inserts } = makeDbStub({
+      ownedSessions: [{ id: 'sess', name: 'S' }],
+    });
+    const result = await bridgeCaptureSessionToGallery({
+      db,
+      ownerUserId: 'user-1',
+      captureSessionId: 'sess',
+      clientName: 'C',
+      clientEmail: 'c@x.com',
+      picks: [
+        {
+          captureAssetId: 'asset-clean',
+          title: 'IMG_001',
+          previewKey: 'caps/owner/sess/asset-clean/preview',
+          useAutoCleaned: true,
+          autoCleanedDetectionCount: 3,
+        },
+        {
+          captureAssetId: 'asset-bare',
+          title: 'IMG_002',
+          previewKey: 'caps/owner/sess/asset-bare/preview',
+          // useAutoCleaned omitted — must NOT appear in metadata
+        },
+      ],
+      tokenFactory: () => 'tok',
+      signKey: async (k) => `signed:${k}`,
+    });
+    expect(result.ok).toBe(true);
+
+    const imageInserts = inserts.filter((i) => i.table.includes('client_gallery_images'));
+    expect(imageInserts).toHaveLength(2);
+
+    const cleanInsert = imageInserts.find(
+      (i) => i.values.imageMetadata.captureAssetId === 'asset-clean',
+    );
+    expect(cleanInsert).toBeDefined();
+    expect(cleanInsert!.values.imageMetadata.useAutoCleaned).toBe(true);
+    expect(cleanInsert!.values.imageMetadata.autoCleanedDetectionCount).toBe(3);
+
+    const bareInsert = imageInserts.find(
+      (i) => i.values.imageMetadata.captureAssetId === 'asset-bare',
+    );
+    expect(bareInsert).toBeDefined();
+    // Critical: opt-out asset must NOT carry useAutoCleaned, even
+    // implicitly. The render contract treats only an explicit `true`
+    // as opt-in — but defending against type drift here is cheap.
+    expect(bareInsert!.values.imageMetadata.useAutoCleaned).toBeUndefined();
+    expect(bareInsert!.values.imageMetadata.autoCleanedDetectionCount).toBeUndefined();
+  });
+
   it('falls back to the default public host when no override or env var is set', async () => {
     delete process.env.CREATORHUB_PUBLIC_URL;
     const { db } = makeDbStub({

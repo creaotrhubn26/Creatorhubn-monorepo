@@ -70,6 +70,18 @@ export const captureAssets = pgTable(
     previewKey: varchar('preview_key', { length: 1024 }),
     fullKey: varchar('full_key', { length: 1024 }),
     rawKey: varchar('raw_key', { length: 1024 }),
+    /// Slice 6 — R2 key for the auto-cleaned variant (stray studio
+    /// equipment removed). Populated by POST /api/capture/sessions/
+    /// :sid/assets/:aid/upload-cleaned-variant when the iPad finishes
+    /// the AutoCleanService round-trip. Nullable because most assets
+    /// won't have a cleaned variant (toggle off, no detections, or
+    /// upload failed).
+    autoCleanedKey: varchar('auto_cleaned_key', { length: 1024 }),
+    /// How many distractions Claude detected on this asset (0 = ran
+    /// clean, null = pass hasn't run server-side). Surfaced to the
+    /// gallery viewer so the client sees "auto-renset · N objekter
+    /// fjernet" alongside the cleaned preview.
+    autoCleanedDetectionCount: integer('auto_cleaned_detection_count'),
     checksumSha256: varchar('checksum_sha256', { length: 64 }),
     mime: varchar('mime', { length: 128 }).notNull(),
     sizeBytes: bigint('size_bytes', { mode: 'number' }),

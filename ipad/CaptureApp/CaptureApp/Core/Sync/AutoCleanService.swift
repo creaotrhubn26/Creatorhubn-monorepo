@@ -46,6 +46,19 @@ protocol AutoCleanBackend: Sendable {
         maskPngData: Data,
         intensity: Double,
     ) async throws -> BackendInpaintResponse
+
+    /// Slice 6 — push the cleaned JPEG up to the capture R2 bucket so
+    /// the Showcase bridge can later surface it to the client gallery.
+    /// Best-effort from the service's perspective — a failure here
+    /// just means the cleaned variant stays iPad-local, the gallery
+    /// shows the original. The server records the deterministic R2
+    /// key on the captureAssets row.
+    func uploadCleanedVariant(
+        sessionId: UUID,
+        assetId: UUID,
+        cleanedJpegData: Data,
+        detectionCount: Int,
+    ) async throws -> BackendCleanedVariantResponse
 }
 
 extension BackendClient: AutoCleanBackend {}
@@ -140,6 +153,26 @@ struct AutoCleanService: Sendable {
         try? await store.attachAutoCleanedKey(
             id: asset.id, key: dest.path, detectionCount: detections.count,
         )
+
+        // Slice 6 — push the cleaned bytes up to R2 so it's available
+        // when the photographer hits Deliver. Fire-and-forget at this
+        // layer: we already have the local copy attached, and the
+        // bridge's pickAssetsFromCaptureSession defaults to "skip
+        // cleaned variant" when captureAssets.auto_cleaned_key is
+        // null. So a failed upload simply means the gallery surfaces
+        // only the original — degraded, not broken.
+        do {
+            _ = try await backend.uploadCleanedVariant(
+                sessionId: asset.sessionId,
+                assetId: asset.id,
+                cleanedJpegData: cleanedBytes,
+                detectionCount: detections.count,
+            )
+        } catch {
+            #if DEBUG
+            print("[AutoCleanService] cleaned-variant upload failed for \(asset.id): \(error)")
+            #endif
+        }
     }
 
     // MARK: - Helpers

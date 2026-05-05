@@ -233,6 +233,64 @@ actor BackendClient {
         }
     }
 
+    /// Slice 6 — upload the auto-cleaned JPEG for an asset to the
+    /// capture R2 bucket. Backend records the key + detection count
+    /// on the captureAssets row so the Showcase bridge can later
+    /// surface the cleaned variant to the client gallery without a
+    /// second upload at deliver time. Idempotent — re-upload of the
+    /// same asset overwrites the R2 object in place at a deterministic
+    /// key. Best-effort caller: AutoCleanService swallows errors so a
+    /// failed upload doesn't break the surrounding shoot flow.
+    func uploadCleanedVariant(
+        sessionId: UUID,
+        assetId: UUID,
+        cleanedJpegData: Data,
+        detectionCount: Int,
+    ) async throws -> BackendCleanedVariantResponse {
+        let boundary = "boundary-\(UUID().uuidString)"
+        let path = "/api/capture/sessions/\(sessionId.uuidString.lowercased())/assets/\(assetId.uuidString.lowercased())/upload-cleaned-variant"
+        var request = URLRequest(url: baseURL.appendingPathComponent(path))
+        request.httpMethod = "POST"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        for (name, value) in authHeaders {
+            request.setValue(value, forHTTPHeaderField: name)
+        }
+        var body = Data()
+        body.appendMultipartFile(
+            name: "cleaned",
+            filename: "cleaned.jpg",
+            mimeType: "image/jpeg",
+            fileData: cleanedJpegData,
+            boundary: boundary,
+        )
+        body.appendMultipartField(
+            name: "detectionCount",
+            value: String(detectionCount),
+            boundary: boundary,
+        )
+        body.append("--\(boundary)--\r\n".data(using: .utf8) ?? Data())
+        request.httpBody = body
+
+        let (data, response) = try await self.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw BackendError.transport("not HTTPURLResponse")
+        }
+        if http.statusCode == 401 || http.statusCode == 403 {
+            throw BackendError.unauthorized
+        }
+        if http.statusCode == 404 {
+            throw BackendError.notFound
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw BackendError.httpStatus(http.statusCode, body: String(data: data, encoding: .utf8))
+        }
+        do {
+            return try JSONDecoder().decode(BackendCleanedVariantResponse.self, from: data)
+        } catch {
+            throw BackendError.decode(String(describing: error))
+        }
+    }
+
     /// Slice 4 — fire the inpaint executor with image + binary mask.
     /// AutoCleanService builds the mask client-side as a single PNG
     /// covering all confirmed detections; passing `skipPlanner=1`
