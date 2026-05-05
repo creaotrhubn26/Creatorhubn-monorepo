@@ -113,6 +113,7 @@
     "react-feather": "^2.0.10",
     "react-hook-form": "^7.69.0",
     "react-leaflet": "^4.2.1",
+    "react-moveable": "^0.56.0",
     "react-quill": "^2.0.0",
     "react-router-dom": "^7.9.4",
     "react-signature-canvas": "^1.1.0-alpha.2",

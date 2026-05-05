@@ -5,7 +5,11 @@
 
 set -e  # Exit on error
 
-IS_RENDER_RUNTIME=$(printf '%s' "${RENDER:-}" | tr '[:upper:]' '[:lower:]')
+# Honor user-satt IS_RENDER_RUNTIME (manuell override fra CLI), faller tilbake
+# til $RENDER som settes automatisk i Render's runtime-miljø. Verken Render
+# eller en bruker som setter IS_RENDER_RUNTIME=true selv blir overrasket av
+# at flagget ignoreres.
+IS_RENDER_RUNTIME=$(printf '%s' "${IS_RENDER_RUNTIME:-${RENDER:-}}" | tr '[:upper:]' '[:lower:]')
 RUN_RENDER_BOOT_SEEDING_NORMALIZED=$(printf '%s' "${RUN_RENDER_BOOT_SEEDING:-}" | tr '[:upper:]' '[:lower:]')
 RUN_RENDER_BOOT_INTEGRITY_NORMALIZED=$(printf '%s' "${RUN_RENDER_BOOT_INTEGRITY:-}" | tr '[:upper:]' '[:lower:]')
 RUN_RENDER_DRIZZLE_PUSH_NORMALIZED=$(printf '%s' "${RUN_RENDER_DRIZZLE_PUSH:-}" | tr '[:upper:]' '[:lower:]')
@@ -70,12 +74,16 @@ if [ -d "migrations" ]; then
           fi
           
           echo "  ➤ Applying $base_name..."
-          if psql "$DATABASE_URL" -f "$migration_file"; then
+          # ON_ERROR_STOP=1 sikrer at psql returnerer non-zero hvis noen
+          # statement i migrasjonen feiler. Uten dette ville en BEGIN/COMMIT-
+          # transaksjon som rulles tilbake fortsatt rapportere exit 0, og vi
+          # ville feilaktig markere migrasjonen som applied.
+          if psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration_file"; then
             # Record successful migration
             psql "$DATABASE_URL" -c "INSERT INTO _migrations_applied (filename) VALUES ('$base_name') ON CONFLICT (filename) DO NOTHING;" 2>/dev/null
             echo "  ✅ $base_name applied successfully"
           else
-            echo "  ❌ Error applying $base_name"
+            echo "  ❌ Error applying $base_name (transaksjon rullet tilbake)"
             echo "  ⚠️  Continuing with remaining migrations..."
           fi
         fi

@@ -50,6 +50,7 @@ import roleRoomAgentService, {
 import RoleRoomAgentChatPanel from '../ai/RoleRoomAgentChatPanel';
 import RoleRoomFeedPlannerPanel from './RoleRoomFeedPlannerPanel';
 import MarketingPlanPanel from './MarketingPlanPanel';
+import PosterComposerPanel from './PosterComposerPanel';
 import MerchSuppliersPanel from './MerchSuppliersPanel';
 
 type RoleRoomAgentDialogProps = {
@@ -226,7 +227,7 @@ export default function RoleRoomAgentDialog({
   // full correction trail as the newest source of truth.
   const [refinementDraft, setRefinementDraft] = useState('');
   const [refinementHistory, setRefinementHistory] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState<'research' | 'chat' | 'merch' | 'feed-planner' | 'marketing-plan' | 'meta-page' | 'page-content' | 'ads-attribution' | 'fb-publish' | 'fb-mention' | 'ig-hashtag' | 'social-inbox' | 'social-analytics'>('research');
+  const [activeTab, setActiveTab] = useState<'research' | 'chat' | 'merch' | 'feed-planner' | 'marketing-plan' | 'posters' | 'meta-page' | 'page-content' | 'ads-attribution' | 'fb-publish' | 'fb-mention' | 'ig-hashtag' | 'social-inbox' | 'social-analytics'>('research');
   const [systemStatusOpen, setSystemStatusOpen] = useState(false);
 
   // Track whether the current generated result has already been turned
@@ -590,6 +591,13 @@ export default function RoleRoomAgentDialog({
           iconPosition="start"
         />
         <Tab
+          value="posters"
+          label="Plakater & Menyer"
+          icon={<ArticleIcon fontSize="small" />}
+          iconPosition="start"
+          data-testid="agent-tab-posters"
+        />
+        <Tab
           value="feed-planner"
           label="Feed-planner"
           icon={<GridViewIcon fontSize="small" />}
@@ -735,6 +743,10 @@ export default function RoleRoomAgentDialog({
         ) : activeTab === 'marketing-plan' ? (
           <Box sx={{ p: { xs: 1.4, md: 2 } }}>
             <MarketingPlanPanel projectId={projectId} bootstrap={result} />
+          </Box>
+        ) : activeTab === 'posters' ? (
+          <Box sx={{ height: '100%', minHeight: 600 }}>
+            <PosterComposerPanel />
           </Box>
         ) : activeTab === 'meta-page' ? (
           <Box sx={{ p: { xs: 1, md: 2 } }}>

@@ -29,6 +29,13 @@ declare module 'nodemailer' {
   export default nodemailer;
 }
 
+declare module 'wawoff2' {
+  export function decompress(buf: Uint8Array | Buffer): Promise<Uint8Array>;
+  export function compress(buf: Uint8Array | Buffer): Promise<Uint8Array>;
+  const wawoff2: { decompress: typeof decompress; compress: typeof compress };
+  export default wawoff2;
+}
+
 declare module 'web-push' {
   export interface PushSubscription {
     endpoint: string;

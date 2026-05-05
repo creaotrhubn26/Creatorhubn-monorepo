@@ -103,6 +103,7 @@ import {
   getAuditTrail,
   getConsentList,
 } from './role-room-ai-governance.js';
+import { registerPosterComposerRoutes } from './role-room-poster-composer-routes.js';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -20869,6 +20870,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       }
     },
   );
+
+  // Plakat-/menu-composer-endepunkter
+  registerPosterComposerRoutes(router, pool);
 
   return router;
 }
