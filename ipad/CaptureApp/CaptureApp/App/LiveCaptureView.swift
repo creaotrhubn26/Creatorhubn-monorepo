@@ -23,6 +23,12 @@ struct LiveCaptureView: View {
     @State private var isSignInPresented = false
     @State private var isReviewInboxPresented = false
     @State private var viewerAsset: Asset?
+    /// Slice 7 — when set, presents DetectionReviewSheet for that
+    /// asset's pending detections. Cleared on dismiss / confirm. The
+    /// filmstrip doubleTap routes here instead of `viewerAsset` when
+    /// the asset has pending detections — once confirmed, doubleTap
+    /// behaves normally (asset no longer has pending).
+    @State private var pendingReviewAsset: Asset?
 
     var body: some View {
         ZStack {
@@ -63,8 +69,8 @@ struct LiveCaptureView: View {
                 sessionName: model.sessionName,
                 showHUD: model.showHUD,
                 onToggleHUD: { model.showHUD.toggle() },
-                autoCleanEnabled: model.autoCleanEnabled,
-                onToggleAutoClean: { model.autoCleanEnabled.toggle() },
+                autoCleanMode: model.autoCleanMode,
+                onSetAutoCleanMode: { model.autoCleanMode = $0 },
                 clientReviewsEnabled: model.clientReviewsEnabled,
                 onToggleClientReviews: { model.clientReviewsEnabled.toggle() },
                 deliveryColorProfileTag: model.deliveryColorProfileTag,
@@ -92,6 +98,23 @@ struct LiveCaptureView: View {
                 initialAssetId: asset.id,
                 onClose: { viewerAsset = nil }
             )
+        }
+        .sheet(item: $pendingReviewAsset) { asset in
+            // Slice 7 — review sheet for pending detections. Bound to
+            // the asset id; the model re-fetches the latest asset each
+            // body to pick up any pendingDetections changes from
+            // AutoCleanService that arrived between dispatch and render.
+            DetectionReviewSheet(
+                asset: model.assets.first(where: { $0.id == asset.id }) ?? asset,
+                onConfirm: { selectedIds in
+                    pendingReviewAsset = nil
+                    Task { await model.commitPendingDetections(assetId: asset.id, selected: selectedIds) }
+                },
+                onDismiss: {
+                    pendingReviewAsset = nil
+                },
+            )
+            .presentationDetents([.medium, .large])
         }
         .sheet(isPresented: $isTunePresented) {
             if let asset = model.focusedAsset {
@@ -484,7 +507,16 @@ struct LiveCaptureView: View {
                         ? model.assetIdsWithReviews
                         : [],
                     onSelect: { model.focusedAssetId = $0.id },
-                    onDoubleTap: { viewerAsset = $0 },
+                    onDoubleTap: { asset in
+                        // Slice 7 — route to DetectionReviewSheet when
+                        // there are pending detections; once committed,
+                        // doubleTap opens the viewer normally.
+                        if let pending = asset.pendingDetections, !pending.isEmpty {
+                            pendingReviewAsset = asset
+                        } else {
+                            viewerAsset = asset
+                        }
+                    },
                     onLongPress: { asset in
                         // Long-press anchors A-side; if user long-presses
                         // the anchor again, exit compare. If they
@@ -3842,6 +3874,21 @@ private struct FilmstripTile: View {
                         .padding(4)
                         .background(.purple.opacity(0.85), in: Circle())
                         .padding(6)
+                } else if let pending = asset.pendingDetections, !pending.isEmpty {
+                    // Slice 7 — pending review badge. Distinct purple
+                    // capsule so the photographer can scan the strip
+                    // and see which shots want a tap-to-confirm.
+                    HStack(spacing: 2) {
+                        Image(systemName: "checklist")
+                            .font(.system(size: 9, weight: .heavy))
+                        Text("\(pending.count)")
+                            .font(.system(size: 10, weight: .heavy))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(.purple.opacity(0.9), in: Capsule())
+                    .padding(6)
                 } else if let count = asset.autoCleanedDetectionCount, count > 0 {
                     // Slice 4 — auto-clean badge. Shows count so the
                     // photographer knows at a glance how many pieces of
@@ -4117,14 +4164,138 @@ private struct ErrorToast: View {
 
 // MARK: - Settings sheet
 
+// MARK: - Detection review sheet (Slice 7)
+
+/// Per-asset opt-in confirmation for distractions Claude found in
+/// review-mode. Each detection is shown as a row with its type, an
+/// 80-char description, and a confidence percent. All detections start
+/// PRE-SELECTED so the photographer's natural action ("Bekreft") removes
+/// everything Claude suggested — they untick the ones to keep, not the
+/// other way around. Empty selection on confirm is a valid "dismiss
+/// without inpainting" gesture and clears the pending queue.
+private struct DetectionReviewSheet: View {
+    let asset: Asset
+    let onConfirm: (Set<String>) -> Void
+    let onDismiss: () -> Void
+
+    @State private var selected: Set<String> = []
+    @State private var didInitialiseSelection: Bool = false
+
+    private var detections: [PendingDetection] {
+        asset.pendingDetections?.detections ?? []
+    }
+
+    private static let typeLabels: [String: String] = [
+        "flash_strobe":      "Blits / modifier",
+        "light_stand":       "Lys-stativ",
+        "cable":             "Kabel",
+        "boom_arm":          "Boom-arm",
+        "tape_clip":         "Tape / klips",
+        "sensor_dust":       "Sensor-støv",
+        "other_distraction": "Annet",
+    ]
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                if detections.isEmpty {
+                    ContentUnavailableView(
+                        "Ingen forslag",
+                        systemImage: "checkmark.seal",
+                        description: Text("Claude fant ingen utstyr å fjerne på denne shoten."),
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    List {
+                        Section {
+                            ForEach(detections) { det in
+                                Button {
+                                    if selected.contains(det.id) { selected.remove(det.id) }
+                                    else { selected.insert(det.id) }
+                                } label: {
+                                    HStack(alignment: .top, spacing: 12) {
+                                        Image(systemName: selected.contains(det.id)
+                                              ? "checkmark.circle.fill"
+                                              : "circle")
+                                            .font(.title3)
+                                            .foregroundStyle(selected.contains(det.id) ? .purple : .secondary)
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            HStack {
+                                                Text(Self.typeLabels[det.type] ?? det.type)
+                                                    .font(.subheadline.weight(.semibold))
+                                                Spacer()
+                                                Text("\(Int((det.confidence * 100).rounded()))%")
+                                                    .font(.caption.monospacedDigit())
+                                                    .foregroundStyle(.secondary)
+                                            }
+                                            if !det.description.isEmpty {
+                                                Text(det.description)
+                                                    .font(.caption)
+                                                    .foregroundStyle(.secondary)
+                                                    .fixedSize(horizontal: false, vertical: true)
+                                            }
+                                            Text("Bbox: \(det.bbox.x),\(det.bbox.y) · \(det.bbox.w)×\(det.bbox.h)")
+                                                .font(.caption2.monospacedDigit())
+                                                .foregroundStyle(.tertiary)
+                                        }
+                                    }
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        } header: {
+                            Text("\(detections.count) forslag fra Claude")
+                        } footer: {
+                            Text("Alle er valgt som default — fjern hak for ting du vil beholde i bildet.")
+                                .font(.caption2)
+                        }
+
+                        Section {
+                            Button("Velg alle") {
+                                selected = Set(detections.map(\.id))
+                            }
+                            Button("Velg ingen") {
+                                selected.removeAll()
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Vurder forslag")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Avbryt", action: onDismiss)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(selected.isEmpty ? "Forkast alle" : "Bekreft \(selected.count)") {
+                        onConfirm(selected)
+                    }
+                    .disabled(detections.isEmpty)
+                    .keyboardShortcut(.defaultAction)
+                }
+            }
+            .onAppear {
+                // Pre-select everything ONCE on first appear; subsequent
+                // re-renders (asset stream re-emit) preserve the user's
+                // edits so far.
+                if !didInitialiseSelection {
+                    selected = Set(detections.map(\.id))
+                    didInitialiseSelection = true
+                }
+            }
+        }
+    }
+}
+
 private struct SettingsSheet: View {
     let currentURL: String
     let device: LiveCaptureModel.DeviceSummary?
     let sessionName: String
     let showHUD: Bool
     let onToggleHUD: () -> Void
-    let autoCleanEnabled: Bool
-    let onToggleAutoClean: () -> Void
+    let autoCleanMode: AutoCleanMode
+    let onSetAutoCleanMode: (AutoCleanMode) -> Void
     let clientReviewsEnabled: Bool
     let onToggleClientReviews: () -> Void
     let deliveryColorProfileTag: String
@@ -4168,20 +4339,39 @@ private struct SettingsSheet: View {
                             Image(systemName: "chart.bar.xaxis")
                         }
                     }
-                    Toggle(isOn: .init(
-                        get: { autoCleanEnabled },
-                        set: { _ in onToggleAutoClean() }
+                    Picker(selection: .init(
+                        get: { autoCleanMode },
+                        set: { onSetAutoCleanMode($0) }
                     )) {
                         Label {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Auto-rens utstyr")
-                                Text("Claude detekterer blits/kabel/stativ per shot, fjerner stille i bakgrunnen")
-                                    .font(.caption).foregroundStyle(.secondary)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("Av")
+                                Text("Ingen automatisk fjerning")
+                                    .font(.caption2).foregroundStyle(.secondary)
                             }
-                        } icon: {
-                            Image(systemName: "wand.and.stars")
-                        }
+                        } icon: { Image(systemName: "circle.slash") }
+                            .tag(AutoCleanMode.off)
+                        Label {
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("Vurder forslag")
+                                Text("Claude foreslår, du krysser av per shot før noe fjernes")
+                                    .font(.caption2).foregroundStyle(.secondary)
+                            }
+                        } icon: { Image(systemName: "checklist") }
+                            .tag(AutoCleanMode.review)
+                        Label {
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("Auto-rens utstyr")
+                                Text("Fjern detekterte objekter stille — du kan se original i viewer")
+                                    .font(.caption2).foregroundStyle(.secondary)
+                            }
+                        } icon: { Image(systemName: "wand.and.stars") }
+                            .tag(AutoCleanMode.autoClean)
+                    } label: {
+                        Text("Fjern objekter")
                     }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
                 }
 
                 Section("Leverings-fargerom") {
@@ -4709,16 +4899,16 @@ final class LiveCaptureModel {
     /// when focus changes; refreshed in background. Nil = no reading yet.
     var focusedAnalysis: ImageAnalysis?
     var showHUD: Bool = true
-    /// Slice 4 — when on, every newly-arrived shot is sent to the
-    /// /detect-distractions + /inpaint pipeline as soon as its preview
-    /// JPEG lands. Cleaned variant lives on `Asset.autoCleanedKey` and
-    /// the viewer prefers it over `previewKey` until the photographer
-    /// taps "Vis original". Off by default — opt-in for studios where
-    /// stray equipment is a real recurring problem.
-    var autoCleanEnabled: Bool = false {
+    /// Slice 4 + 7 — auto-clean mode picker. `.off` does nothing.
+    /// `.autoClean` (Slice 4) auto-removes every detected distraction
+    /// silently. `.review` (Slice 7) runs detect, stashes findings on
+    /// `Asset.pendingDetections`, and shows a "💡 N forslag" badge on
+    /// the filmstrip — photographer taps to review + confirm before
+    /// any inpaint runs. Default `.off`.
+    var autoCleanMode: AutoCleanMode = .off {
         didSet {
-            if autoCleanEnabled, oldValue == false {
-                // Sweep existing assets so a mid-shoot toggle still
+            if autoCleanMode != .off, oldValue == .off {
+                // Sweep existing assets so a mid-shoot toggle-on still
                 // catches everything that's already been delivered.
                 dispatchAutoCleanForNewlyReadyAssets()
             }
@@ -5447,32 +5637,57 @@ final class LiveCaptureModel {
         }
     }
 
-    /// Slice 4 — fire AutoCleanService for any asset that has its
+    /// Slice 7 — DetectionReviewSheet calls this after the photographer
+    /// ticks which pending detections to actually remove. Hands off to
+    /// the service which runs the inpaint with the chosen subset and
+    /// clears the pending queue. Empty `selected` is a valid commit —
+    /// it dismisses the review without inpainting and marks the asset
+    /// "ran clean, 0 removed".
+    func commitPendingDetections(assetId: UUID, selected: Set<String>) async {
+        guard let service = autoCleanService,
+              let downloadDir = downloadDirectory,
+              let asset = assets.first(where: { $0.id == assetId })
+        else { return }
+        await service.processConfirmedDetections(
+            asset: asset,
+            selectedDetectionIds: selected,
+            downloadDir: downloadDir,
+        )
+    }
+
+    /// Slice 4 + 7 — fire AutoCleanService for any asset that has its
     /// preview JPEG attached and hasn't been processed yet. Called
     /// from the assets-stream observer (every emission) and from the
-    /// `autoCleanEnabled` setter (so flipping the toggle on mid-shoot
+    /// `autoCleanMode` setter (so flipping the toggle on mid-shoot
     /// retroactively sweeps existing assets).
     ///
     /// No-ops when:
-    ///   - the toggle is off,
+    ///   - the mode is .off,
     ///   - the service hasn't been built (no backend client / not signed in),
     ///   - we don't have a download directory (pre-connect).
     /// All checks are cheap so calling this on every assets emission
     /// is fine — it only enqueues work when something has actually
     /// transitioned to "preview ready and unseen".
     private func dispatchAutoCleanForNewlyReadyAssets() {
-        guard autoCleanEnabled,
+        guard autoCleanMode != .off,
               let service = autoCleanService,
               let downloadDir = downloadDirectory
         else { return }
+        let mode = autoCleanMode
         for asset in assets {
+            // Skip assets already processed (auto-cleaned) OR awaiting
+            // review (pending detections set). The review-mode skip
+            // matters: an assets-stream re-emission shouldn't kick a
+            // fresh detect when the photographer hasn't acted on the
+            // previous one yet.
             guard asset.previewKey != nil,
                   asset.autoCleanedDetectionCount == nil,
+                  asset.pendingDetections == nil,
                   !autoCleanDispatched.contains(asset.id)
             else { continue }
             autoCleanDispatched.insert(asset.id)
             Task.detached(priority: .utility) {
-                await service.processAsset(asset, downloadDir: downloadDir)
+                await service.processAsset(asset, downloadDir: downloadDir, mode: mode)
             }
         }
     }

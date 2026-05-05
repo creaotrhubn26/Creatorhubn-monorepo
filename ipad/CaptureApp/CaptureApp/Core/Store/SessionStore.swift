@@ -91,6 +91,7 @@ actor SessionStore {
             serverEnhancedKey: nil,
             autoCleanedKey: nil,
             autoCleanedDetectionCount: nil,
+            pendingDetections: nil,
             checksumSha256: nil,
             mime: descriptor.mime,
             sizeBytes: descriptor.sizeBytes,
@@ -218,6 +219,18 @@ actor SessionStore {
             guard var asset = try Asset.fetchOne(db, key: id.uuidString.uppercased()) else { return }
             asset.autoCleanedKey = key
             asset.autoCleanedDetectionCount = detectionCount
+            asset.updatedAt = Date()
+            try asset.update(db)
+        }
+    }
+
+    /// Slice 7 — stash detections from a review-mode detect pass so
+    /// DetectionReviewSheet can display them. Pass nil to clear (after
+    /// review is committed, or to reset).
+    func attachPendingDetections(id: UUID, list: PendingDetectionsList?) async throws {
+        try await database.dbWriter.write { db in
+            guard var asset = try Asset.fetchOne(db, key: id.uuidString.uppercased()) else { return }
+            asset.pendingDetections = list
             asset.updatedAt = Date()
             try asset.update(db)
         }

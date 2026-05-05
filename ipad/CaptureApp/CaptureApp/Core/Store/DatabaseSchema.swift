@@ -276,6 +276,18 @@ extension AppDatabase {
                 t.add(column: "autoCleanedDetectionCount", .integer)
             }
         }
+        migrator.registerMigration("v7_asset_pending_detections") { db in
+            // Slice 7 — review-mode pending detections. When the
+            // photographer picks "Vurder forslag" mode (vs auto-clean),
+            // AutoCleanService runs detect but stashes the findings
+            // here instead of inpainting. The DetectionReviewSheet
+            // reads this column to show thumbnails + checkboxes;
+            // committing the review (whether or not anything was
+            // selected) clears it back to NULL.
+            try db.alter(table: "asset") { t in
+                t.add(column: "pendingDetections", .text)
+            }
+        }
 
         return migrator
     }()
@@ -375,6 +387,28 @@ extension AssetSignals: DatabaseValueConvertible {
             return nil
         }
         return try? JSONDecoder().decode(AssetSignals.self, from: data)
+    }
+}
+
+extension PendingDetectionsList: DatabaseValueConvertible {
+    public var databaseValue: DatabaseValue {
+        guard
+            let data = try? JSONEncoder().encode(self),
+            let json = String(data: data, encoding: .utf8)
+        else {
+            return DatabaseValue.null
+        }
+        return json.databaseValue
+    }
+
+    public static func fromDatabaseValue(_ dbValue: DatabaseValue) -> PendingDetectionsList? {
+        guard
+            let string = String.fromDatabaseValue(dbValue),
+            let data = string.data(using: .utf8)
+        else {
+            return nil
+        }
+        return try? JSONDecoder().decode(PendingDetectionsList.self, from: data)
     }
 }
 

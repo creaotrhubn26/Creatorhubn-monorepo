@@ -63,16 +63,34 @@ protocol AutoCleanBackend: Sendable {
 
 extension BackendClient: AutoCleanBackend {}
 
+/// Slice 7 — three-mode picker that drives AutoCleanService behaviour.
+/// `.off` means no detect runs at all. `.review` runs detect and stashes
+/// findings on Asset.pendingDetections so the photographer can confirm
+/// per-detection in DetectionReviewSheet. `.autoClean` runs the full
+/// detect+inpaint pipeline silently (Slice 4 behaviour).
+enum AutoCleanMode: String, CaseIterable, Sendable, Codable {
+    case off
+    case review
+    case autoClean
+}
+
 struct AutoCleanService: Sendable {
     let store: SessionStore
     let backend: any AutoCleanBackend
 
-    /// Run the full detect+inpaint round-trip for a single asset.
-    /// Caller hands us the asset (with previewKey populated) and a
-    /// session-scoped directory to write the cleaned JPEG into.
-    /// Errors are logged + swallowed so a flaky network call never
-    /// breaks the surrounding shoot flow.
-    func processAsset(_ asset: Asset, downloadDir: URL) async {
+    /// Run detect for a single asset, then either inpaint silently
+    /// (mode .autoClean) or stash findings for photographer review
+    /// (mode .review). Caller hands us the asset (with previewKey
+    /// populated), a session-scoped download directory, and the
+    /// current mode. Errors logged + swallowed so a flaky network
+    /// call never breaks the surrounding shoot flow.
+    ///
+    /// `.off` is treated as "no-op" but the dispatcher in
+    /// LiveCaptureModel guards against the call upstream — accepting
+    /// it here too keeps the contract simple.
+    func processAsset(_ asset: Asset, downloadDir: URL, mode: AutoCleanMode) async {
+        if mode == .off { return }
+
         guard let previewKey = asset.previewKey else {
             return
         }
@@ -97,20 +115,109 @@ struct AutoCleanService: Sendable {
 
         if detections.isEmpty {
             // Pass ran, found nothing. Mark as such so the UI can
-            // distinguish "ran clean" from "didn't run".
+            // distinguish "ran clean" from "didn't run". Same for
+            // both modes — review-mode also wants to surface "we
+            // looked, nothing to flag".
             try? await store.attachAutoCleanedKey(
                 id: asset.id, key: nil, detectionCount: 0,
             )
             return
         }
 
-        // Build a binary PNG mask covering every detection.
+        // Slice 7 review mode: stash detections, stop. The photographer
+        // commits via processConfirmedDetections (called from
+        // DetectionReviewSheet) which then runs the inpaint with the
+        // chosen subset.
+        if mode == .review {
+            let pending = PendingDetectionsList(
+                detections: detections.map { d in
+                    PendingDetection(
+                        id: d.id,
+                        type: d.type,
+                        bbox: PendingBbox(x: d.bbox.x, y: d.bbox.y, w: d.bbox.w, h: d.bbox.h),
+                        confidence: d.confidence,
+                        description: d.description,
+                    )
+                }
+            )
+            try? await store.attachPendingDetections(id: asset.id, list: pending)
+            return
+        }
+
+        // Auto-clean mode (Slice 4 behaviour): all detections become a
+        // single mask, run inpaint, save + upload.
+        await runInpaintAndPersist(
+            asset: asset,
+            imageData: imageData,
+            detectionsForMask: detections.map { $0.bbox },
+            detectionCount: detections.count,
+            downloadDir: downloadDir,
+        )
+    }
+
+    /// Slice 7 — called from DetectionReviewSheet after the
+    /// photographer ticks which pending detections to actually remove.
+    /// Runs inpaint with just the chosen subset, persists the cleaned
+    /// variant, clears pendingDetections regardless of outcome (review
+    /// is committed even if no detections were selected — that's how
+    /// the photographer dismisses without inpainting).
+    func processConfirmedDetections(
+        asset: Asset,
+        selectedDetectionIds: Set<String>,
+        downloadDir: URL,
+    ) async {
+        // Always clear pending — committed reviews don't reappear.
+        defer {
+            Task { try? await self.store.attachPendingDetections(id: asset.id, list: nil) }
+        }
+
+        guard let pending = asset.pendingDetections, !pending.isEmpty else {
+            return
+        }
+        let selected = pending.detections.filter { selectedDetectionIds.contains($0.id) }
+        if selected.isEmpty {
+            // Photographer dismissed everything — record as "ran clean
+            // 0 removed" so the badge state is consistent with "we
+            // looked, nothing was kept".
+            try? await store.attachAutoCleanedKey(
+                id: asset.id, key: nil, detectionCount: 0,
+            )
+            return
+        }
+
+        guard let previewKey = asset.previewKey,
+              let imageData = try? Data(contentsOf: URL(fileURLWithPath: previewKey))
+        else { return }
+
+        await runInpaintAndPersist(
+            asset: asset,
+            imageData: imageData,
+            detectionsForMask: selected.map {
+                BackendBbox(x: $0.bbox.x, y: $0.bbox.y, w: $0.bbox.w, h: $0.bbox.h)
+            },
+            detectionCount: selected.count,
+            downloadDir: downloadDir,
+        )
+    }
+
+    /// Shared inner: build mask, call inpaint, save + upload. Used by
+    /// both auto-clean mode (all detections) and review-confirm mode
+    /// (subset). Best-effort — failures are logged + swallowed so the
+    /// asset just keeps its pre-inpaint state.
+    private func runInpaintAndPersist(
+        asset: Asset,
+        imageData: Data,
+        detectionsForMask: [BackendBbox],
+        detectionCount: Int,
+        downloadDir: URL,
+    ) async {
+        // Build a binary PNG mask covering every selected bbox.
         guard let imageDimensions = imageDimensions(of: imageData) else {
             return
         }
         guard let maskPng = buildMaskPng(
             dimensions: imageDimensions,
-            bboxes: detections.map { $0.bbox },
+            bboxes: detectionsForMask,
         ) else {
             return
         }
@@ -151,7 +258,7 @@ struct AutoCleanService: Sendable {
         }
 
         try? await store.attachAutoCleanedKey(
-            id: asset.id, key: dest.path, detectionCount: detections.count,
+            id: asset.id, key: dest.path, detectionCount: detectionCount,
         )
 
         // Slice 6 — push the cleaned bytes up to R2 so it's available
@@ -166,7 +273,7 @@ struct AutoCleanService: Sendable {
                 sessionId: asset.sessionId,
                 assetId: asset.id,
                 cleanedJpegData: cleanedBytes,
-                detectionCount: detections.count,
+                detectionCount: detectionCount,
             )
         } catch {
             #if DEBUG

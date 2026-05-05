@@ -35,6 +35,14 @@ struct Asset: Identifiable, Hashable, Sendable, Codable {
     /// the photographer knows the pass ran. 0 = ran but found nothing.
     /// nil = pass hasn't run.
     var autoCleanedDetectionCount: Int?
+    /// Slice 7 — when AutoCleanService runs in `.review` mode, the
+    /// detect call's findings are stashed here instead of being
+    /// auto-inpainted. The photographer reviews via DetectionReview-
+    /// Sheet, ticks the ones to remove, and the service then runs
+    /// inpaint with just the chosen subset. Cleared once review is
+    /// committed (regardless of whether anything was selected).
+    /// nil = no detect run yet OR review already committed.
+    var pendingDetections: PendingDetectionsList?
     var checksumSha256: String?
     var mime: String
     var sizeBytes: Int64?
