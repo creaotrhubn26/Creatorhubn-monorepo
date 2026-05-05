@@ -297,6 +297,57 @@ export default function ClientGallery({}: ClientGalleryProps) {
     return () => events.forEach((event) => document.removeEventListener(event, handleActivity));
 }, [updateActivity]);
 
+  // Slice 9.5 — screenshot + right-click protection. Toggled per
+  // gallery via gallery_settings.screenshotProtection. Three layers:
+  //
+  //   (1) suppress contextmenu so right-click → "Save Image As" is gone
+  //   (2) cancel drag-start so the user can't drag images out of the page
+  //   (3) blur the document body when the tab is hidden, which interferes
+  //       with macOS Cmd+Shift+5 / Win Snipping Tool screenshots that
+  //       trigger a brief visibility hidden window
+  //
+  // None of this is bulletproof — a determined attacker with browser
+  // dev tools or external screen capture wins anyway. The point is to
+  // raise the bar against accidental copy-pasting + screenshotting,
+  // matching what Pic-Time and SmugMug surface as "screenshot
+  // protection".
+  useEffect(() => {
+    if (!gallery?.gallerySettings?.screenshotProtection) return;
+    const onContextMenu = (e: MouseEvent) => e.preventDefault();
+    const onDragStart = (e: DragEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && target.tagName === 'IMG') e.preventDefault();
+    };
+    const onVisibility = () => {
+      document.body.style.filter = document.hidden ? 'blur(40px)' : '';
+    };
+    document.addEventListener('contextmenu', onContextMenu);
+    document.addEventListener('dragstart', onDragStart);
+    document.addEventListener('visibilitychange', onVisibility);
+    // Apply user-select / pointer-event hints via CSS class on body
+    // so it cascades to all dynamic image content.
+    document.body.classList.add('client-gallery-screenshot-protected');
+    const styleEl = document.createElement('style');
+    styleEl.textContent = `
+      .client-gallery-screenshot-protected img,
+      .client-gallery-screenshot-protected .MuiCardMedia-root {
+        user-select: none !important;
+        -webkit-user-drag: none !important;
+        -webkit-touch-callout: none !important;
+        pointer-events: auto;
+      }
+    `;
+    document.head.appendChild(styleEl);
+    return () => {
+      document.removeEventListener('contextmenu', onContextMenu);
+      document.removeEventListener('dragstart', onDragStart);
+      document.removeEventListener('visibilitychange', onVisibility);
+      document.body.classList.remove('client-gallery-screenshot-protected');
+      document.body.style.filter = '';
+      styleEl.remove();
+    };
+  }, [gallery?.gallerySettings?.screenshotProtection]);
+
   // Telemetry: emit a ``pause`` event when the tab has been hidden
   // for at least 2 minutes, so the fatigue-curve analysis can reset
   // its drift baseline. 2 minutes is long enough to filter out brief
