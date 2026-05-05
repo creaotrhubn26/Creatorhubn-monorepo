@@ -89,6 +89,8 @@ actor SessionStore {
             rawKey: nil,
             voiceMemoKey: nil,
             serverEnhancedKey: nil,
+            autoCleanedKey: nil,
+            autoCleanedDetectionCount: nil,
             checksumSha256: nil,
             mime: descriptor.mime,
             sizeBytes: descriptor.sizeBytes,
@@ -201,6 +203,21 @@ actor SessionStore {
         try await database.dbWriter.write { db in
             guard var asset = try Asset.fetchOne(db, key: id.uuidString.uppercased()) else { return }
             asset.serverEnhancedKey = key
+            asset.updatedAt = Date()
+            try asset.update(db)
+        }
+    }
+
+    /// Slice 4 — attach the auto-clean variant. Called by
+    /// AutoCleanService once the inpaint round-trip completes. Pass
+    /// nil for `key` when the detection pass found nothing worth
+    /// removing — `detectionCount = 0` lets the UI distinguish "ran,
+    /// nothing to do" from "didn't run yet".
+    func attachAutoCleanedKey(id: UUID, key: String?, detectionCount: Int) async throws {
+        try await database.dbWriter.write { db in
+            guard var asset = try Asset.fetchOne(db, key: id.uuidString.uppercased()) else { return }
+            asset.autoCleanedKey = key
+            asset.autoCleanedDetectionCount = detectionCount
             asset.updatedAt = Date()
             try asset.update(db)
         }

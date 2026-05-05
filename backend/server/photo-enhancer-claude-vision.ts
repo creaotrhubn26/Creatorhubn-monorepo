@@ -834,3 +834,719 @@ export async function suggestPortraitRecipe(
     };
   }
 }
+
+// ============================================================================
+// Object removal / inpaint planner.
+//
+// Different from suggestPortraitRecipe: this one runs once per object-removal
+// brush stroke, not once per image. The photographer paints a mask over the
+// thing they want gone (a flash head poking into frame, a power cable on the
+// floor, a stray light stand), and Claude plans HOW the executor should fill
+// the hole. Claude does NOT paint pixels — it returns a recipe and the
+// deterministic executor (OpenCV Telea/NS + clone-stamp + optional freq-sep
+// post-pass) does the actual work.
+//
+// Why this split:
+//   - Single AI vendor (Anthropic) for the whole stack — no Stability /
+//     Replicate / Firefly account to manage.
+//   - Image-in, JSON-out is cheap. Image-in, image-out (LaMa, SDXL inpaint)
+//     would 10× the cost per call.
+//   - Recipe is auditable and survives round-trips. The photographer can see
+//     what strategy was used and why.
+// ============================================================================
+
+export type InpaintStrategy = 'telea' | 'ns' | 'patch_clone' | 'freq_sep';
+
+const INPAINT_STRATEGIES: readonly InpaintStrategy[] = [
+  'telea',
+  'ns',
+  'patch_clone',
+  'freq_sep',
+] as const;
+
+export interface InpaintRegion {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface InpaintRecipeRecommendation {
+  strategy: InpaintStrategy;
+  /** Telea/NS radius in pixels. Ignored for patch_clone / freq_sep. */
+  radiusPx: number;
+  /** Feather blend radius for patch_clone. Ignored for telea/ns/freq_sep. */
+  featherPx: number;
+  /** Image-space rects safe to sample fill content from. */
+  sourceRegions: InpaintRegion[];
+  /** Image-space rects the executor must NOT sample from. */
+  avoidRegions: InpaintRegion[];
+  /** Run a freq-sep skin smooth as a post-pass (skin blemish use only). */
+  postFreqSepSkin: boolean;
+  warnings: string[];
+  rationale: string;
+}
+
+export type SuggestInpaintError = SuggestError;
+
+export type SuggestInpaintResult =
+  | {
+      ok: true;
+      recipe: InpaintRecipeRecommendation;
+      usage: SuggestUsage;
+    }
+  | { ok: false; error: SuggestInpaintError; detail?: string };
+
+export interface SuggestInpaintInput {
+  imageBase64: string;
+  imageMime: 'image/jpeg' | 'image/png' | 'image/webp';
+  /** PNG-encoded base64 mask, same dimensions as the image, white = remove. */
+  maskPngBase64: string;
+  /** Image dimensions so Claude can validate sourceRegions are in-bounds. */
+  width: number;
+  height: number;
+}
+
+// Stable system prompt — sits above the 4,096-token prefix-cache threshold so
+// repeated planner calls in the same session pay the cache-write cost once.
+// The tone matches the portrait-recipe planner: terse, decisive, no
+// pleasantries.
+const INPAINT_SYSTEM_PROMPT = `You are the planner for the CreatorHub photo enhancer's object-removal feature. A photographer has painted a mask over something they want removed from the image. Your job is to look at the image AND the mask and call plan_inpaint with the executor instructions.
+
+You do NOT paint pixels. You decide HOW a deterministic executor (OpenCV Telea/NS inpainting, patch-clone with feathered blend, optional frequency-separation skin smooth) should fill the masked region.
+
+===== PRIMARY USE CASE =====
+
+This feature is built for STUDIO SHOOT cleanup: stray lighting equipment that ended up in frame against a controlled backdrop. The masked object is almost always one of:
+
+- A strobe head, beauty dish, softbox, or modifier poking into the frame edge.
+- A light stand (vertical pole, often with a tripod base).
+- A power cable, sync cable, extension cord on the floor or hanging in shot.
+- A boom arm, C-stand arm, sandbag, or gaffer-taped clip on the backdrop.
+- Sensor dust, lens spots, or stray hair on a clean studio backdrop.
+
+The backdrop is usually one of: seamless paper (smooth gradient or even tone), a painted wall, a controlled set surface (table, floor cyc, marble, wood). It is RARELY a complex outdoor scene with foliage or crowds.
+
+If the image is clearly NOT a studio shoot — outdoor portrait, landscape, food on a busy table — the same strategies still apply, but be more conservative with patch_clone (fewer good donor patches) and lean on telea/ns for small defects.
+
+===== STRATEGY GUIDE =====
+
+Pick exactly one strategy. The executor runs only that one.
+
+patch_clone — copy from sourceRegions and feather-blend over the mask. THIS IS THE PRIMARY STRATEGY for studio shoots: when the mask sits against a backdrop area that has a clean equivalent nearby (same wall, same paper, same floor), copy from there. Specify 1–4 sourceRegions in image pixels, each large enough to cover the mask with a feather margin. Use this whenever a clean donor patch exists.
+
+telea — OpenCV INPAINT_TELEA (fast marching). Good for SMALL ROUND defects: sensor dust, water spots, lens flecks, small skin pores when freq_sep is overkill. Set radiusPx between 3 and 12. Bad for long thin objects (cables) — it will blur into a smear.
+
+ns — OpenCV INPAINT_NS (Navier-Stokes). Marginally better than telea on textured surfaces with linear structure (wood grain, brick lines). Same radius range. Use only when the surface has clear directional texture that telea would visibly disrupt.
+
+freq_sep — frequency-separated skin heal. ONLY for skin blemishes on visible skin (face, neck, hands). Never use this for non-skin objects. The executor handles skin texture preservation; you just signal that this is a skin region.
+
+===== sourceRegions / avoidRegions =====
+
+sourceRegions are image-pixel rects {x, y, w, h} the executor may sample fill content from. Required for patch_clone, optional for telea/ns (you can hint nearby texture), unused for freq_sep.
+
+avoidRegions are image-pixel rects the executor must NEVER sample from: subject's face/body, signage with readable text, brand logos, anything semantically distinct from the masked region. The executor uses these as hard exclusions.
+
+Both arrays cap at 8 entries. All coordinates must be within image dimensions (you'll be told width/height).
+
+===== featherPx and radiusPx =====
+
+featherPx — gaussian feather radius for patch_clone blend, in pixels. 8–32 typical. Larger for smooth backdrops, smaller for textured surfaces with high-frequency detail at the seam.
+
+radiusPx — OpenCV inpaint radius for telea/ns. 3–12 typical. Match the typical defect size.
+
+===== warnings =====
+
+Surface anything the photographer should know before accepting the result. Up to 4 short strings. Examples that warrant a warning:
+
+- "Masken krysser en hard kant — vurder å re-brushe så masken stopper langs kanten."
+- "Ingen ren donor-patch funnet i nærheten — resultatet kan vise gjentakelse."
+- "Backdroppen har gradient — feather-blend kan bli synlig hvis du ser nøye."
+- "Masken berører hud — vurder freq_sep i stedet for patch_clone."
+
+===== rationale =====
+
+One to three sentences in Norwegian explaining the strategy choice. Max 400 chars. Be concrete: "Kabel mot grå seamless. patch_clone fra venstre-oven hvor papiret er rent, feather 16px for myk overgang." Not: "I will inpaint this for you."
+
+===== OUTPUT =====
+
+You MUST call plan_inpaint exactly once. Never return plain text. Never apologise. Never hedge with "I'll try". Every field is required.`;
+
+const INPAINT_TOOL = {
+  name: 'plan_inpaint',
+  description:
+    'Plan how the deterministic inpaint executor should fill the photographer-painted mask region. Returns strategy + source/avoid rects + blend parameters + warnings.',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      strategy: {
+        type: 'string' as const,
+        enum: ['telea', 'ns', 'patch_clone', 'freq_sep'],
+        description:
+          'Fill strategy. patch_clone is the primary studio-shoot path. telea/ns for small round defects. freq_sep ONLY for skin blemishes.',
+      },
+      radiusPx: {
+        type: 'number' as const,
+        minimum: 0,
+        maximum: 64,
+        description:
+          'OpenCV inpaint radius for telea/ns. 3–12 typical. Set to 0 for patch_clone / freq_sep.',
+      },
+      featherPx: {
+        type: 'number' as const,
+        minimum: 0,
+        maximum: 128,
+        description:
+          'Feather blend radius for patch_clone. 8–32 typical. Set to 0 for other strategies.',
+      },
+      sourceRegions: {
+        type: 'array' as const,
+        maxItems: 8,
+        items: {
+          type: 'object' as const,
+          properties: {
+            x: { type: 'number' as const, minimum: 0 },
+            y: { type: 'number' as const, minimum: 0 },
+            w: { type: 'number' as const, minimum: 1 },
+            h: { type: 'number' as const, minimum: 1 },
+          },
+          required: ['x', 'y', 'w', 'h'],
+        },
+        description:
+          'Image-pixel rects safe to sample fill content from. Required for patch_clone, optional hints for telea/ns, leave empty for freq_sep.',
+      },
+      avoidRegions: {
+        type: 'array' as const,
+        maxItems: 8,
+        items: {
+          type: 'object' as const,
+          properties: {
+            x: { type: 'number' as const, minimum: 0 },
+            y: { type: 'number' as const, minimum: 0 },
+            w: { type: 'number' as const, minimum: 1 },
+            h: { type: 'number' as const, minimum: 1 },
+          },
+          required: ['x', 'y', 'w', 'h'],
+        },
+        description:
+          'Image-pixel rects the executor must NOT sample from. Subjects, faces, text, logos, anything semantically distinct.',
+      },
+      postFreqSepSkin: {
+        type: 'boolean' as const,
+        description:
+          'Run a frequency-separated skin smooth as a post-pass after the fill. true ONLY when the masked region is on visible skin and tone evening would help.',
+      },
+      warnings: {
+        type: 'array' as const,
+        maxItems: 4,
+        items: { type: 'string' as const, maxLength: 200 },
+        description:
+          'Short warnings the photographer should see before accepting the result. Empty array if none.',
+      },
+      rationale: {
+        type: 'string' as const,
+        description:
+          'One to three Norwegian sentences explaining the strategy choice. Max 400 chars.',
+      },
+    },
+    required: [
+      'strategy',
+      'radiusPx',
+      'featherPx',
+      'sourceRegions',
+      'avoidRegions',
+      'postFreqSepSkin',
+      'warnings',
+      'rationale',
+    ],
+  },
+};
+
+function parseInpaintRegions(
+  raw: unknown,
+  width: number,
+  height: number,
+): InpaintRegion[] {
+  if (!Array.isArray(raw)) return [];
+  const out: InpaintRegion[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const r = item as Record<string, unknown>;
+    const x = Math.round(clamp(r.x, 0, Math.max(0, width - 1)));
+    const y = Math.round(clamp(r.y, 0, Math.max(0, height - 1)));
+    const wMax = Math.max(1, width - x);
+    const hMax = Math.max(1, height - y);
+    const w = Math.round(clamp(r.w, 1, wMax, wMax));
+    const h = Math.round(clamp(r.h, 1, hMax, hMax));
+    out.push({ x, y, w, h });
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+
+/**
+ * Defensive validation of the inpaint planner payload. Claude generally
+ * stays in range given the schema, but we treat the value as untrusted —
+ * clamp coordinates to image bounds, coerce unknown strategies to
+ * patch_clone (the safe default for studio shoots), cap warning count and
+ * length so a pathological response can't blow the UI.
+ */
+export function sanitiseInpaintRecipe(
+  raw: unknown,
+  width: number,
+  height: number,
+): InpaintRecipeRecommendation | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+
+  const strategyRaw = typeof r.strategy === 'string' ? r.strategy : 'patch_clone';
+  const strategy: InpaintStrategy = INPAINT_STRATEGIES.includes(
+    strategyRaw as InpaintStrategy,
+  )
+    ? (strategyRaw as InpaintStrategy)
+    : 'patch_clone';
+
+  const warningsRaw = Array.isArray(r.warnings) ? r.warnings : [];
+  const warnings = warningsRaw
+    .filter((w): w is string => typeof w === 'string')
+    .map((w) => w.slice(0, 200))
+    .slice(0, 4);
+
+  return {
+    strategy,
+    radiusPx: Math.round(clamp(r.radiusPx, 0, 64, 6)),
+    featherPx: Math.round(clamp(r.featherPx, 0, 128, 16)),
+    sourceRegions: parseInpaintRegions(r.sourceRegions, width, height),
+    avoidRegions: parseInpaintRegions(r.avoidRegions, width, height),
+    postFreqSepSkin: Boolean(r.postFreqSepSkin),
+    warnings,
+    rationale:
+      typeof r.rationale === 'string' ? r.rationale.slice(0, 400) : '',
+  };
+}
+
+export async function suggestInpaintRecipe(
+  input: SuggestInpaintInput,
+): Promise<SuggestInpaintResult> {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return { ok: false, error: 'not_configured' };
+  }
+  if (!input.imageBase64 || input.imageBase64.length > MAX_IMAGE_BASE64_BYTES) {
+    return { ok: false, error: 'image_too_large' };
+  }
+  if (!input.maskPngBase64 || input.maskPngBase64.length > MAX_IMAGE_BASE64_BYTES) {
+    return { ok: false, error: 'image_too_large' };
+  }
+  if (!Number.isFinite(input.width) || !Number.isFinite(input.height)) {
+    return { ok: false, error: 'invalid_response', detail: 'bad dimensions' };
+  }
+
+  let client: any;
+  try {
+    const mod: any = await import('@anthropic-ai/sdk');
+    const AnthropicCtor = mod.default ?? mod.Anthropic;
+    client = new AnthropicCtor({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+      maxRetries: 1,
+      timeout: 25_000,
+    });
+  } catch (err) {
+    return { ok: false, error: 'not_configured', detail: String(err) };
+  }
+
+  try {
+    const response = await client.messages.create({
+      model: process.env.PHOTO_ENHANCER_INPAINT_MODEL || 'claude-opus-4-7',
+      max_tokens: 1500,
+      system: [
+        {
+          type: 'text',
+          text: INPAINT_SYSTEM_PROMPT,
+          cache_control: { type: 'ephemeral' },
+        },
+      ],
+      tools: [INPAINT_TOOL],
+      tool_choice: { type: 'tool', name: 'plan_inpaint' },
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: input.imageMime,
+                data: input.imageBase64,
+              },
+            },
+            {
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: 'image/png',
+                data: input.maskPngBase64,
+              },
+            },
+            {
+              type: 'text',
+              text: `Image is ${input.width}×${input.height} pixels. The second image is the mask — white pixels are what the photographer wants removed, black pixels stay. Plan the inpaint by calling plan_inpaint exactly once. All sourceRegions / avoidRegions must lie inside the image bounds.`,
+            },
+          ],
+        },
+      ],
+    });
+
+    const toolUse = (response.content ?? []).find(
+      (block: any) =>
+        block?.type === 'tool_use' && block?.name === 'plan_inpaint',
+    );
+    if (!toolUse || typeof toolUse.input !== 'object') {
+      return { ok: false, error: 'invalid_response', detail: 'no tool_use block' };
+    }
+
+    const recipe = sanitiseInpaintRecipe(toolUse.input, input.width, input.height);
+    if (!recipe) {
+      return { ok: false, error: 'invalid_response', detail: 'schema mismatch' };
+    }
+
+    return {
+      ok: true,
+      recipe,
+      usage: {
+        input_tokens: response.usage?.input_tokens ?? 0,
+        output_tokens: response.usage?.output_tokens ?? 0,
+        cache_creation_input_tokens:
+          response.usage?.cache_creation_input_tokens ?? 0,
+        cache_read_input_tokens: response.usage?.cache_read_input_tokens ?? 0,
+      },
+    };
+  } catch (err: any) {
+    if (err?.name === 'APIConnectionTimeoutError' || err?.status === 408) {
+      return { ok: false, error: 'timeout' };
+    }
+    return {
+      ok: false,
+      error: 'upstream_failed',
+      detail: String(err?.message ?? err),
+    };
+  }
+}
+
+// ============================================================================
+// Auto-detect distractions.
+//
+// Different from suggestInpaintRecipe (which plans how to fill a mask the
+// photographer painted) and suggestPortraitRecipe (which proposes slider
+// values). This one runs FIRST — Claude looks at a fresh photo, finds
+// stray studio equipment, and returns bbox-es. The photographer reviews
+// each detection and ticks the ones to actually remove. Selected
+// detections then collapse into a single combined mask that goes into
+// the existing /inpaint endpoint.
+//
+// Why this matters: it's the prerequisite for the iPad Capture
+// integration. The Capture app has no brush UI — it can only show the
+// photographer "we found these distractions, remove them?" and act on
+// the answer. Same auto-detect endpoint, different surface.
+//
+// Conservativism is a feature: false positives erode trust faster than
+// missed detections. The system prompt enumerates exactly which object
+// classes count, and a strict NEVER-list keeps Claude from suggesting
+// to remove subjects, faces, scene architecture, or branded props.
+// ============================================================================
+
+export type DistractionType =
+  | 'flash_strobe'
+  | 'light_stand'
+  | 'cable'
+  | 'boom_arm'
+  | 'tape_clip'
+  | 'sensor_dust'
+  | 'other_distraction';
+
+const DISTRACTION_TYPES: readonly DistractionType[] = [
+  'flash_strobe',
+  'light_stand',
+  'cable',
+  'boom_arm',
+  'tape_clip',
+  'sensor_dust',
+  'other_distraction',
+] as const;
+
+export interface DistractionDetection {
+  /** Stable id assigned server-side so the UI can reference detections
+   *  through the round-trip without relying on array index. */
+  id: string;
+  type: DistractionType;
+  bbox: { x: number; y: number; w: number; h: number };
+  /** [0, 1] — anything below MIN_DISTRACTION_CONFIDENCE is dropped before
+   *  reaching the UI; what's surfaced is what Claude was reasonably sure
+   *  about. */
+  confidence: number;
+  /** One-line Norwegian description shown to the photographer in the
+   *  detection list, e.g. "Lys-kabel langs gulvet, høyre side". */
+  description: string;
+}
+
+export interface DistractionAnalysis {
+  detections: DistractionDetection[];
+  rationale: string;
+}
+
+export type DetectDistractionsResult =
+  | { ok: true; analysis: DistractionAnalysis; usage: SuggestUsage }
+  | { ok: false; error: SuggestError; detail?: string };
+
+export interface DetectDistractionsInput {
+  imageBase64: string;
+  imageMime: 'image/jpeg' | 'image/png' | 'image/webp';
+  width: number;
+  height: number;
+}
+
+const MIN_DISTRACTION_CONFIDENCE = 0.55;
+const MAX_DISTRACTIONS = 8;
+
+const DETECT_SYSTEM_PROMPT = `You are the auto-detect pass for the CreatorHub photo enhancer's "Fjern objekter" feature. A photographer will see your output as a list of suggested removals — they tick the ones they want gone, then a separate inpainter erases them. Your job is to find STRAY STUDIO EQUIPMENT in the frame and return tight bbox-es for it.
+
+Conservatism is a feature. The photographer's trust is destroyed by ONE false positive (a suggestion to remove something they wanted in the shot) far faster than it's eroded by ten missed detections. When in doubt, lower confidence or omit the detection entirely.
+
+===== WHAT TO DETECT =====
+
+Pick from this strict enum. Anything that doesn't fit a category goes in "other_distraction" with extra description detail.
+
+- flash_strobe   — strobe head, beauty dish, softbox, octabox, modifier panel poking into the frame edge.
+- light_stand    — vertical pole or tripod base supporting a light. Often dark, often at the bottom or side.
+- cable          — power cable, sync cable, extension cord on the floor or hanging in shot. Usually thin and dark.
+- boom_arm       — C-stand arm, boom arm, sandbag at the base of a stand.
+- tape_clip      — gaffer tape, clips, clamps holding backdrop paper to a frame or wall.
+- sensor_dust    — small dark spot from sensor dust or lens flecks. Usually round, < 30 pixels.
+- other_distraction — anything else clearly stray that fits the spirit of the above (a stray water bottle, a forgotten hair clip on the floor, a battery on the table).
+
+===== NEVER FLAG =====
+
+These are off-limits regardless of how stray they look:
+
+- People, faces, hands, hair, skin, clothing.
+- Anything the subject is wearing, holding, or interacting with (jewelry, bouquet, prop, food, drink).
+- Architectural features (windows, doors, columns, walls, ceilings, floor tiles, mouldings, beams). Even if a window looks "in the way", it's part of the scene — the photographer composed for it.
+- Furniture in scene (tables, chairs, sofas, lamps as decor).
+- Plants, foliage, decor, table settings, food on plates, books, art on walls.
+- Logos, signage, text on subject's clothing.
+- Shadows, reflections, lens flare. Those are lighting, not objects.
+
+If you're uncertain whether something is a distraction or part of the scene, OMIT IT. The photographer can always paint a manual mask if you missed something — false positives are the unrecoverable error.
+
+===== BBOX RULES =====
+
+Coordinates are image-pixel space (you'll be told width and height). Each bbox must:
+
+- Lie entirely inside image bounds (x ≥ 0, y ≥ 0, x+w ≤ width, y+h ≤ height).
+- Be TIGHT to the object — don't pad with surrounding wall. The inpainter handles feather blending; oversized bbox-es eat into the surrounding wall texture and produce visible patches.
+- Have w, h ≥ 4 px (anything smaller is sub-pixel noise, not a real object).
+
+===== CONFIDENCE =====
+
+[0.0, 1.0]. The UI hides anything below 0.55, so don't bother surfacing low-confidence guesses. The values you should actually use:
+
+- 0.95+  — unambiguous: a clear strobe head poking into the frame, a thick power cable trailing across the floor.
+- 0.80   — confident: a thin cable that could plausibly be something else, a stand mostly out of frame.
+- 0.65   — plausible: a small dark patch that might be sensor dust, a tape strip that might be intentional.
+- < 0.55 — don't include.
+
+===== DESCRIPTION =====
+
+One short Norwegian sentence per detection, max 80 chars. The photographer sees it next to a thumbnail crop, so be specific about WHERE: "Lys-kabel langs nederste kant", "Stativfot venstre side, 1/3 inn", "Strobe-modifier øverste høyre hjørne".
+
+===== OUTPUT =====
+
+Cap at 8 detections per image. If you genuinely don't see any studio equipment, return an empty array — that's the right answer for an outdoor shot, a cleanly-styled product flat-lay, or a photo where the photographer already cleared the set.
+
+You MUST call detect_distractions exactly once. Never return plain text. Never apologise. Never hedge with "I'll try". Every field is required.`;
+
+const DETECT_DISTRACTIONS_TOOL = {
+  name: 'detect_distractions',
+  description:
+    'Find stray studio equipment in the photo (flash heads, cables, stands, modifiers, tape, sensor dust). Return tight bbox-es with confidence so the photographer can confirm which to remove.',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      detections: {
+        type: 'array' as const,
+        maxItems: MAX_DISTRACTIONS,
+        items: {
+          type: 'object' as const,
+          properties: {
+            type: {
+              type: 'string' as const,
+              enum: [...DISTRACTION_TYPES],
+            },
+            bbox: {
+              type: 'object' as const,
+              properties: {
+                x: { type: 'number' as const, minimum: 0 },
+                y: { type: 'number' as const, minimum: 0 },
+                w: { type: 'number' as const, minimum: 4 },
+                h: { type: 'number' as const, minimum: 4 },
+              },
+              required: ['x', 'y', 'w', 'h'],
+            },
+            confidence: { type: 'number' as const, minimum: 0, maximum: 1 },
+            description: { type: 'string' as const, maxLength: 120 },
+          },
+          required: ['type', 'bbox', 'confidence', 'description'],
+        },
+      },
+      rationale: {
+        type: 'string' as const,
+        description:
+          'One sentence in Norwegian summarising the scene and what you flagged (or why you flagged nothing). Max 300 chars.',
+      },
+    },
+    required: ['detections', 'rationale'],
+  },
+};
+
+export function sanitiseDistractions(
+  raw: unknown,
+  width: number,
+  height: number,
+): DistractionAnalysis {
+  if (!raw || typeof raw !== 'object') {
+    return { detections: [], rationale: '' };
+  }
+  const r = raw as Record<string, unknown>;
+  const detectionsRaw = Array.isArray(r.detections) ? r.detections : [];
+
+  const out: DistractionDetection[] = [];
+  for (let i = 0; i < detectionsRaw.length && out.length < MAX_DISTRACTIONS; i++) {
+    const d = detectionsRaw[i];
+    if (!d || typeof d !== 'object') continue;
+    const det = d as Record<string, unknown>;
+
+    const typeRaw = typeof det.type === 'string' ? det.type : 'other_distraction';
+    const type: DistractionType = DISTRACTION_TYPES.includes(typeRaw as DistractionType)
+      ? (typeRaw as DistractionType)
+      : 'other_distraction';
+
+    const confidence = clamp(det.confidence, 0, 1, 0);
+    if (confidence < MIN_DISTRACTION_CONFIDENCE) continue;
+
+    const bboxRaw = (det.bbox ?? {}) as Record<string, unknown>;
+    const x = Math.round(clamp(bboxRaw.x, 0, Math.max(0, width - 1)));
+    const y = Math.round(clamp(bboxRaw.y, 0, Math.max(0, height - 1)));
+    const wMax = Math.max(4, width - x);
+    const hMax = Math.max(4, height - y);
+    const w = Math.round(clamp(bboxRaw.w, 4, wMax, wMax));
+    const h = Math.round(clamp(bboxRaw.h, 4, hMax, hMax));
+
+    const description =
+      typeof det.description === 'string' ? det.description.slice(0, 120) : '';
+
+    out.push({
+      id: `det-${i}-${type}-${x}-${y}`,
+      type,
+      bbox: { x, y, w, h },
+      confidence,
+      description,
+    });
+  }
+
+  const rationale =
+    typeof r.rationale === 'string' ? r.rationale.slice(0, 300) : '';
+
+  return { detections: out, rationale };
+}
+
+export async function detectDistractions(
+  input: DetectDistractionsInput,
+): Promise<DetectDistractionsResult> {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return { ok: false, error: 'not_configured' };
+  }
+  if (!input.imageBase64 || input.imageBase64.length > MAX_IMAGE_BASE64_BYTES) {
+    return { ok: false, error: 'image_too_large' };
+  }
+  if (!Number.isFinite(input.width) || !Number.isFinite(input.height)) {
+    return { ok: false, error: 'invalid_response', detail: 'bad dimensions' };
+  }
+
+  let client: any;
+  try {
+    const mod: any = await import('@anthropic-ai/sdk');
+    const AnthropicCtor = mod.default ?? mod.Anthropic;
+    client = new AnthropicCtor({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+      maxRetries: 1,
+      timeout: 25_000,
+    });
+  } catch (err) {
+    return { ok: false, error: 'not_configured', detail: String(err) };
+  }
+
+  try {
+    const response = await client.messages.create({
+      model: process.env.PHOTO_ENHANCER_DETECT_MODEL || 'claude-opus-4-7',
+      max_tokens: 2000,
+      system: [
+        {
+          type: 'text',
+          text: DETECT_SYSTEM_PROMPT,
+          cache_control: { type: 'ephemeral' },
+        },
+      ],
+      tools: [DETECT_DISTRACTIONS_TOOL],
+      tool_choice: { type: 'tool', name: 'detect_distractions' },
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: input.imageMime,
+                data: input.imageBase64,
+              },
+            },
+            {
+              type: 'text',
+              text: `Image is ${input.width}×${input.height} pixels. Find stray studio equipment in this photo. All bbox coordinates must lie inside the image. Call detect_distractions exactly once.`,
+            },
+          ],
+        },
+      ],
+    });
+
+    const toolUse = (response.content ?? []).find(
+      (block: any) =>
+        block?.type === 'tool_use' && block?.name === 'detect_distractions',
+    );
+    if (!toolUse || typeof toolUse.input !== 'object') {
+      return { ok: false, error: 'invalid_response', detail: 'no tool_use block' };
+    }
+
+    const analysis = sanitiseDistractions(toolUse.input, input.width, input.height);
+
+    return {
+      ok: true,
+      analysis,
+      usage: {
+        input_tokens: response.usage?.input_tokens ?? 0,
+        output_tokens: response.usage?.output_tokens ?? 0,
+        cache_creation_input_tokens:
+          response.usage?.cache_creation_input_tokens ?? 0,
+        cache_read_input_tokens: response.usage?.cache_read_input_tokens ?? 0,
+      },
+    };
+  } catch (err: any) {
+    if (err?.name === 'APIConnectionTimeoutError' || err?.status === 408) {
+      return { ok: false, error: 'timeout' };
+    }
+    return {
+      ok: false,
+      error: 'upstream_failed',
+      detail: String(err?.message ?? err),
+    };
+  }
+}

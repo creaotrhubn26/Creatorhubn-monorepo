@@ -57,6 +57,9 @@ import { CullView } from '../../photo-enhancer/CullView';
 import { FaceChipStrip, computeFocusTransform } from '../../photo-enhancer/FaceChipStrip';
 import { useFaceDetectionLoader } from '../../photo-enhancer/useFaceDetectionLoader';
 import { FrequencySepDialog } from '../../photo-enhancer/FrequencySepDialog';
+import { ObjectRemovalEditor } from '../../photo-enhancer/ObjectRemovalEditor';
+import { AutoDistractionDetector } from '../../photo-enhancer/AutoDistractionDetector';
+import type { InpaintRecipe } from '../../../lib/enhancer-session/module-contract';
 import { ClientActivityBanner } from '../../photo-enhancer/ClientActivityBanner';
 import type { DetectedFace } from '../../../lib/enhancer-session/types';
 import type { SampledPixel } from '../../../lib/enhancer-session/hsl-band-math';
@@ -433,6 +436,8 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
   const [originalImageUrl, setOriginalImageUrl] = useState('');
   const [enhancedImageUrl, setEnhancedImageUrl] = useState('');
   const [frequencySepOpen, setFrequencySepOpen] = useState(false);
+  const [objectRemovalOpen, setObjectRemovalOpen] = useState(false);
+  const [autoDetectorOpen, setAutoDetectorOpen] = useState(false);
   /** Pulled from `?projectId=...` URL param at mount. When present, the
    *  ClientActivityBanner surfaces recent hearts/comments from the bakery /
    *  client. Null = hide the banner entirely. */
@@ -1081,6 +1086,70 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
     setEnhancedImageUrl('');
   };
 
+  /**
+   * Object-removal commit. Mirrors handleFrequencySepApply: swap the
+   * pipeline input to the inpainted result so subsequent slider tweaks
+   * compose on top of the cleaned image. Records the recipe (without the
+   * mask itself — too large to persist in settings) so A/B and audit
+   * tooling can show what was removed.
+   *
+   * Used by both the manual brush editor (ObjectRemovalEditor) and the
+   * auto-detect flow (AutoDistractionDetector). Recipe may be null in
+   * the auto path when the executor ran skipPlanner.
+   */
+  const handleInpaintApply = (
+    label: string,
+    inpaintedDataUrl: string,
+    recipe: InpaintRecipe | null,
+    _warnings: string[],
+  ) => {
+    fetch(inpaintedDataUrl)
+      .then((r) => r.blob())
+      .then((blob) => {
+        const file = new File(
+          [blob],
+          uploadedImage?.name?.replace(/\.[^.]+$/, '_inpainted.jpg') || 'inpainted.jpg',
+          { type: 'image/jpeg' },
+        );
+        if (
+          originalImageUrl.startsWith('blob:') &&
+          !session.state.images.some((i) => i.previewUrl === originalImageUrl)
+        ) {
+          URL.revokeObjectURL(originalImageUrl);
+        }
+        const nextUrl = URL.createObjectURL(file);
+        setUploadedImage(file);
+        setOriginalImageUrl(nextUrl);
+        setEnhancedImageUrl('');
+        setSettings((previous) => ({
+          ...previous,
+          inpaint: recipe ? { maskPng: '', intensity: 1, recipe } : previous.inpaint,
+        }));
+        commitActiveHistory(label);
+      })
+      .catch((err) => {
+        console.error('[photo-enhancer] inpaint apply failed:', err);
+      });
+  };
+
+  const handleObjectRemovalApply = (
+    inpaintedDataUrl: string,
+    recipe: InpaintRecipe,
+    warnings: string[],
+  ) => {
+    handleInpaintApply('Fjern objekter', inpaintedDataUrl, recipe, warnings);
+    setObjectRemovalOpen(false);
+  };
+
+  const handleAutoDetectApply = (
+    inpaintedDataUrl: string,
+    recipe: InpaintRecipe | null,
+    warnings: string[],
+  ) => {
+    handleInpaintApply('Auto-fjern objekter', inpaintedDataUrl, recipe, warnings);
+    setAutoDetectorOpen(false);
+  };
+
   // Syncs the active session image into the legacy per-image state fields
   // when the user clicks a different thumb in the filmstrip. Only fires
   // when the active id actually changes, so ongoing edits on the current
@@ -1486,7 +1555,7 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                     value={settings.modelPreference}
                     onChange={(event) => setSettings((previous) => ({ ...previous, modelPreference: event.target.value }))}
                   >
-                    {(processingOptions?.modelPreference || ['auto', 'sharp', 'gfpgan', 'codeformer', 'realesrgan', 'swinir', 'bsrgan', 'diffbir', 'lama']).map((model) => (
+                    {(processingOptions?.modelPreference || ['auto', 'sharp', 'gfpgan', 'codeformer', 'realesrgan', 'swinir', 'bsrgan', 'diffbir']).map((model) => (
                       <MenuItem key={model} value={model}>
                         {model === 'auto' ? 'Auto pipeline' : model.toUpperCase()}
                       </MenuItem>
@@ -1675,11 +1744,10 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                     { key: 'swinir', label: 'SwinIR' },
                     { key: 'bsrgan', label: 'BSRGAN' },
                     { key: 'diffbir', label: 'DiffBIR' },
-                    { key: 'lamaInpaint', label: 'LaMa inpaint' },
                     { key: 'faceOnlyCrop', label: 'Face-only crop' },
                     { key: 'preserveBackground', label: 'Preserve background' },
                   ].map((toggle) => {
-                    const key = toggle.key as 'swinir' | 'bsrgan' | 'diffbir' | 'lamaInpaint' | 'faceOnlyCrop' | 'preserveBackground';
+                    const key = toggle.key as 'swinir' | 'bsrgan' | 'diffbir' | 'faceOnlyCrop' | 'preserveBackground';
                     return (
                       <Chip
                         key={toggle.key}
@@ -1755,6 +1823,23 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                     title="Åpne frekvens-separert retusj (pore-bevarende, stylus + trykk)"
                   >
                     Frekvens-retusj
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    onClick={() => setObjectRemovalOpen(true)}
+                    disabled={!uploadedImage || !originalImageUrl}
+                    title="Mal over blits/kabel/stativ — Claude planlegger fyll, server utfører"
+                  >
+                    Fjern objekter
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    color="secondary"
+                    onClick={() => setAutoDetectorOpen(true)}
+                    disabled={!uploadedImage || !originalImageUrl}
+                    title="Claude finner studio-utstyr selv — du krysser av hva som skal fjernes"
+                  >
+                    Auto-finn objekter
                   </Button>
                   <Button
                     variant="contained"
@@ -2293,6 +2378,36 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
         onApply={handleFrequencySepApply}
         onClose={() => setFrequencySepOpen(false)}
       />
+
+      <Dialog
+        open={objectRemovalOpen && Boolean(originalImageUrl)}
+        onClose={() => setObjectRemovalOpen(false)}
+        maxWidth="lg"
+        fullWidth
+      >
+        {originalImageUrl && (
+          <ObjectRemovalEditor
+            imageUrl={originalImageUrl}
+            onApply={handleObjectRemovalApply}
+            onClose={() => setObjectRemovalOpen(false)}
+          />
+        )}
+      </Dialog>
+
+      <Dialog
+        open={autoDetectorOpen && Boolean(originalImageUrl)}
+        onClose={() => setAutoDetectorOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        {originalImageUrl && (
+          <AutoDistractionDetector
+            imageUrl={originalImageUrl}
+            onApply={handleAutoDetectApply}
+            onClose={() => setAutoDetectorOpen(false)}
+          />
+        )}
+      </Dialog>
     </Box>
   );
 }

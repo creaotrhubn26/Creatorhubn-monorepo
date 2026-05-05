@@ -263,6 +263,19 @@ extension AppDatabase {
                 t.add(column: "serverEnhancedKey", .text)
             }
         }
+        migrator.registerMigration("v6_asset_auto_cleaned") { db in
+            // Slice 4 — auto-clean variant. When the photographer has
+            // "Auto-rens utstyr" toggled on, each shot fires
+            // detect-distractions + inpaint on the backend; the
+            // resulting JPEG lands here, and the detection count goes
+            // alongside so the filmstrip badge can show "N forslag" or
+            // "Auto-renset (N)". Both nullable: the pass may not have
+            // run yet, or it ran and found nothing worth removing.
+            try db.alter(table: "asset") { t in
+                t.add(column: "autoCleanedKey", .text)
+                t.add(column: "autoCleanedDetectionCount", .integer)
+            }
+        }
 
         return migrator
     }()

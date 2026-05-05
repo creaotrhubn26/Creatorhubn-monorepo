@@ -187,6 +187,108 @@ actor BackendClient {
         )
     }
 
+    /// Slice 4 — auto-detect stray studio equipment in a fresh shot.
+    /// Sends the JPEG bytes to /api/photo-enhancer/detect-distractions
+    /// (multipart) and decodes the detection list. Caller — the
+    /// per-asset AutoCleanService — wraps the response into a list of
+    /// bbox+type+confidence rows for the review sheet (or, in
+    /// auto-stille mode, immediately fires `requestPhotoEnhancerInpaint`
+    /// for the high-confidence ones).
+    func detectDistractions(
+        imageData: Data,
+        imageMimeType: String,
+    ) async throws -> BackendDistractionsResponse {
+        let boundary = "boundary-\(UUID().uuidString)"
+        var request = URLRequest(url: baseURL.appendingPathComponent("/api/photo-enhancer/detect-distractions"))
+        request.httpMethod = "POST"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        for (name, value) in authHeaders {
+            request.setValue(value, forHTTPHeaderField: name)
+        }
+        var body = Data()
+        body.appendMultipartFile(
+            name: "image",
+            filename: "image.jpg",
+            mimeType: imageMimeType,
+            fileData: imageData,
+            boundary: boundary,
+        )
+        body.append("--\(boundary)--\r\n".data(using: .utf8) ?? Data())
+        request.httpBody = body
+
+        let (data, response) = try await self.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw BackendError.transport("not HTTPURLResponse")
+        }
+        if http.statusCode == 401 || http.statusCode == 403 {
+            throw BackendError.unauthorized
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw BackendError.httpStatus(http.statusCode, body: String(data: data, encoding: .utf8))
+        }
+        do {
+            return try JSONDecoder().decode(BackendDistractionsResponse.self, from: data)
+        } catch {
+            throw BackendError.decode(String(describing: error))
+        }
+    }
+
+    /// Slice 4 — fire the inpaint executor with image + binary mask.
+    /// AutoCleanService builds the mask client-side as a single PNG
+    /// covering all confirmed detections; passing `skipPlanner=1`
+    /// routes directly to the patch_clone executor with synthesised
+    /// donors, sparing the Claude planner round-trip we already paid
+    /// for in `detectDistractions`. Returns the inpainted JPEG bytes.
+    func requestPhotoEnhancerInpaint(
+        imageData: Data,
+        imageMimeType: String,
+        maskPngData: Data,
+        intensity: Double = 1.0,
+    ) async throws -> BackendInpaintResponse {
+        let boundary = "boundary-\(UUID().uuidString)"
+        var request = URLRequest(url: baseURL.appendingPathComponent("/api/photo-enhancer/inpaint"))
+        request.httpMethod = "POST"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        for (name, value) in authHeaders {
+            request.setValue(value, forHTTPHeaderField: name)
+        }
+        var body = Data()
+        body.appendMultipartFile(
+            name: "image",
+            filename: "image.jpg",
+            mimeType: imageMimeType,
+            fileData: imageData,
+            boundary: boundary,
+        )
+        body.appendMultipartFile(
+            name: "mask",
+            filename: "mask.png",
+            mimeType: "image/png",
+            fileData: maskPngData,
+            boundary: boundary,
+        )
+        body.appendMultipartField(name: "intensity", value: String(format: "%.3f", intensity), boundary: boundary)
+        body.appendMultipartField(name: "skipPlanner", value: "1", boundary: boundary)
+        body.append("--\(boundary)--\r\n".data(using: .utf8) ?? Data())
+        request.httpBody = body
+
+        let (data, response) = try await self.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw BackendError.transport("not HTTPURLResponse")
+        }
+        if http.statusCode == 401 || http.statusCode == 403 {
+            throw BackendError.unauthorized
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw BackendError.httpStatus(http.statusCode, body: String(data: data, encoding: .utf8))
+        }
+        do {
+            return try JSONDecoder().decode(BackendInpaintResponse.self, from: data)
+        } catch {
+            throw BackendError.decode(String(describing: error))
+        }
+    }
+
     /// Phase 5.4 — poll all enhancement jobs queued for `sessionId`.
     /// Caller should compare against locally-tracked job state and
     /// download bytes for any jobs that just transitioned to "done".

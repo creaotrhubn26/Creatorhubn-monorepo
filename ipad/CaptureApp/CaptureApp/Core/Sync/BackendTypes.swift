@@ -327,6 +327,44 @@ struct BackendEnhancementJobStatus: Decodable, Sendable {
     let enhancedUrl: String?
 }
 
+// MARK: - Slice 4: object-removal auto-clean
+
+/// One distraction Claude flagged in /detect-distractions. Mirrors the
+/// server-side `DistractionDetection` shape from
+/// backend/server/photo-enhancer-claude-vision.ts. The web UI's
+/// `AutoDistractionDetector` consumes the same JSON.
+struct BackendDistraction: Decodable, Sendable, Identifiable {
+    let id: String
+    let type: String  // flash_strobe / light_stand / cable / boom_arm / tape_clip / sensor_dust / other_distraction
+    let bbox: BackendBbox
+    let confidence: Double
+    let description: String
+}
+
+struct BackendBbox: Decodable, Sendable {
+    let x: Int
+    let y: Int
+    let w: Int
+    let h: Int
+}
+
+struct BackendDistractionsResponse: Decodable, Sendable {
+    let success: Bool
+    let detections: [BackendDistraction]
+    let rationale: String?
+}
+
+/// /api/photo-enhancer/inpaint response. The cleaned JPEG comes back
+/// as base64 in the JSON body — same shape the web `ObjectRemovalEditor`
+/// consumes.
+struct BackendInpaintResponse: Decodable, Sendable {
+    let success: Bool
+    let imageBase64: String
+    let imageMime: String?
+    let strategyUsed: String?
+    let executorWarnings: [String]?
+}
+
 struct BackendShotLinkCounters: Decodable, Sendable {
     let id: String
     let totalShots: Int

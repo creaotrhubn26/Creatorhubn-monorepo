@@ -63,6 +63,8 @@ struct LiveCaptureView: View {
                 sessionName: model.sessionName,
                 showHUD: model.showHUD,
                 onToggleHUD: { model.showHUD.toggle() },
+                autoCleanEnabled: model.autoCleanEnabled,
+                onToggleAutoClean: { model.autoCleanEnabled.toggle() },
                 clientReviewsEnabled: model.clientReviewsEnabled,
                 onToggleClientReviews: { model.clientReviewsEnabled.toggle() },
                 deliveryColorProfileTag: model.deliveryColorProfileTag,
@@ -1656,7 +1658,7 @@ private struct CompareHeroStage: View {
         ZStack {
             RoundedRectangle(cornerRadius: 14)
                 .fill(Color.captureChipBG)
-            if let key = asset.previewKey, let image = UIImage(contentsOfFile: key) {
+            if let key = asset.displayPreviewKey, let image = UIImage(contentsOfFile: key) {
                 Image(uiImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
@@ -1894,7 +1896,7 @@ private struct ReviewSideRail: View {
             // discussing. Smaller than the hero on the left but still
             // big enough to recognise without squinting.
             HStack(spacing: 12) {
-                if let key = asset.previewKey, let img = UIImage(contentsOfFile: key) {
+                if let key = asset.displayPreviewKey, let img = UIImage(contentsOfFile: key) {
                     Image(uiImage: img)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
@@ -3782,7 +3784,7 @@ private struct FilmstripTile: View {
         VStack(alignment: .leading, spacing: 6) {
             ZStack(alignment: .topTrailing) {
                 Group {
-                    if let key = asset.previewKey, let image = UIImage(contentsOfFile: key) {
+                    if let key = asset.displayPreviewKey, let image = UIImage(contentsOfFile: key) {
                         Image(uiImage: image)
                             .resizable()
                             .aspectRatio(contentMode: .fill)
@@ -3840,6 +3842,21 @@ private struct FilmstripTile: View {
                         .padding(4)
                         .background(.purple.opacity(0.85), in: Circle())
                         .padding(6)
+                } else if let count = asset.autoCleanedDetectionCount, count > 0 {
+                    // Slice 4 — auto-clean badge. Shows count so the
+                    // photographer knows at a glance how many pieces of
+                    // equipment Claude removed from this shot.
+                    HStack(spacing: 2) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 9, weight: .heavy))
+                        Text("\(count)")
+                            .font(.system(size: 10, weight: .heavy))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(.teal.opacity(0.9), in: Capsule())
+                    .padding(6)
                 }
             }
             .overlay(alignment: .bottomLeading) {
@@ -4106,6 +4123,8 @@ private struct SettingsSheet: View {
     let sessionName: String
     let showHUD: Bool
     let onToggleHUD: () -> Void
+    let autoCleanEnabled: Bool
+    let onToggleAutoClean: () -> Void
     let clientReviewsEnabled: Bool
     let onToggleClientReviews: () -> Void
     let deliveryColorProfileTag: String
@@ -4147,6 +4166,20 @@ private struct SettingsSheet: View {
                             }
                         } icon: {
                             Image(systemName: "chart.bar.xaxis")
+                        }
+                    }
+                    Toggle(isOn: .init(
+                        get: { autoCleanEnabled },
+                        set: { _ in onToggleAutoClean() }
+                    )) {
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Auto-rens utstyr")
+                                Text("Claude detekterer blits/kabel/stativ per shot, fjerner stille i bakgrunnen")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                        } icon: {
+                            Image(systemName: "wand.and.stars")
                         }
                     }
                 }
@@ -4339,7 +4372,7 @@ private struct AssetViewerPage: View {
             ZStack {
                 Color.black.ignoresSafeArea()
 
-                if let key = asset.previewKey, let image = UIImage(contentsOfFile: key) {
+                if let key = asset.displayPreviewKey, let image = UIImage(contentsOfFile: key) {
                     Image(uiImage: image)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
@@ -4624,6 +4657,25 @@ final class LiveCaptureModel {
     /// when focus changes; refreshed in background. Nil = no reading yet.
     var focusedAnalysis: ImageAnalysis?
     var showHUD: Bool = true
+    /// Slice 4 — when on, every newly-arrived shot is sent to the
+    /// /detect-distractions + /inpaint pipeline as soon as its preview
+    /// JPEG lands. Cleaned variant lives on `Asset.autoCleanedKey` and
+    /// the viewer prefers it over `previewKey` until the photographer
+    /// taps "Vis original". Off by default — opt-in for studios where
+    /// stray equipment is a real recurring problem.
+    var autoCleanEnabled: Bool = false {
+        didSet {
+            if autoCleanEnabled, oldValue == false {
+                // Sweep existing assets so a mid-shoot toggle still
+                // catches everything that's already been delivered.
+                dispatchAutoCleanForNewlyReadyAssets()
+            }
+        }
+    }
+    private var autoCleanService: AutoCleanService?
+    /// Asset ids we've already kicked auto-clean for, so re-emissions
+    /// of the assets stream don't fire duplicate detect calls.
+    private var autoCleanDispatched: Set<UUID> = []
     private var downloadDirectory: URL?
     private var forwardingTasks: [Task<Void, Never>] = []
     /// Phase 2C — per-session RAW renderer. Built at connect time so it
@@ -4927,6 +4979,9 @@ final class LiveCaptureModel {
             self.currentSessionId = dbSession.id
             self.sessionName = dbSession.name
             self.backendClient = makeBackendClientFromDefaults()
+            if let backend = self.backendClient {
+                self.autoCleanService = AutoCleanService(store: store, backend: backend)
+            }
             self.rawExportService = RAWExportService(
                 store: store,
                 outputDirectory: tempDir.appendingPathComponent("raw-export"),
@@ -5006,7 +5061,10 @@ final class LiveCaptureModel {
             let assetsStream = store.assetsStream(sessionId: dbSession.id)
             let assetsTask = Task { [weak self] in
                 for await assets in assetsStream {
-                    await MainActor.run { self?.assets = assets }
+                    await MainActor.run {
+                        self?.assets = assets
+                        self?.dispatchAutoCleanForNewlyReadyAssets()
+                    }
                 }
             }
             let telemetryStream = camera.telemetryUpdates
@@ -5334,6 +5392,36 @@ final class LiveCaptureModel {
         }
         for asset in targets where asset.id != sourceAssetId {
             tune(assetId: asset.id, recipe: recipe)
+        }
+    }
+
+    /// Slice 4 — fire AutoCleanService for any asset that has its
+    /// preview JPEG attached and hasn't been processed yet. Called
+    /// from the assets-stream observer (every emission) and from the
+    /// `autoCleanEnabled` setter (so flipping the toggle on mid-shoot
+    /// retroactively sweeps existing assets).
+    ///
+    /// No-ops when:
+    ///   - the toggle is off,
+    ///   - the service hasn't been built (no backend client / not signed in),
+    ///   - we don't have a download directory (pre-connect).
+    /// All checks are cheap so calling this on every assets emission
+    /// is fine — it only enqueues work when something has actually
+    /// transitioned to "preview ready and unseen".
+    private func dispatchAutoCleanForNewlyReadyAssets() {
+        guard autoCleanEnabled,
+              let service = autoCleanService,
+              let downloadDir = downloadDirectory
+        else { return }
+        for asset in assets {
+            guard asset.previewKey != nil,
+                  asset.autoCleanedDetectionCount == nil,
+                  !autoCleanDispatched.contains(asset.id)
+            else { continue }
+            autoCleanDispatched.insert(asset.id)
+            Task.detached(priority: .utility) {
+                await service.processAsset(asset, downloadDir: downloadDir)
+            }
         }
     }
 

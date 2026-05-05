@@ -1,7 +1,13 @@
 import express from "express";
 import multer from "multer";
 import type { Pool } from "pg";
-import { suggestPortraitRecipe } from "./photo-enhancer-claude-vision.js";
+import {
+  detectDistractions,
+  suggestInpaintRecipe,
+  suggestPortraitRecipe,
+  type InpaintRecipeRecommendation,
+} from "./photo-enhancer-claude-vision.js";
+import { executeInpaint } from "./photo-enhancer-inpaint-executor.js";
 import {
   aggregateUserRecipePreferences,
   logRecipeFeedback,
@@ -198,7 +204,6 @@ type PhotoEnhancerSettings = {
   swinir: boolean;
   bsrgan: boolean;
   diffbir: boolean;
-  lamaInpaint: boolean;
   faceOnlyCrop: boolean;
   preserveBackground: boolean;
   skinTextureGuard: number;
@@ -1178,7 +1183,6 @@ const defaultSettings: PhotoEnhancerSettings = {
   swinir: false,
   bsrgan: false,
   diffbir: false,
-  lamaInpaint: false,
   faceOnlyCrop: false,
   preserveBackground: true,
   skinTextureGuard: 70,
@@ -1658,7 +1662,6 @@ function normalizeSettings(
     "swinir",
     "bsrgan",
     "diffbir",
-    "lama",
   ].includes(modelPreference)
     ? modelPreference
     : "auto";
@@ -1682,7 +1685,6 @@ function normalizeSettings(
     swinir: readBooleanOption("swinir", Boolean(merged.swinir)),
     bsrgan: readBooleanOption("bsrgan", Boolean(merged.bsrgan)),
     diffbir: readBooleanOption("diffbir", Boolean(merged.diffbir)),
-    lamaInpaint: readBooleanOption("lamaInpaint", Boolean(merged.lamaInpaint)),
     faceOnlyCrop: readBooleanOption("faceOnlyCrop", Boolean(merged.faceOnlyCrop)),
     preserveBackground: readBooleanOption("preserveBackground", Boolean(merged.preserveBackground)),
     skinTextureGuard: clampNumber(merged.skinTextureGuard, 0, 100),
@@ -4509,7 +4511,7 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
         ],
       },
       processingOptions: {
-        modelPreference: ["auto", "sharp", "gfpgan", "codeformer", "realesrgan", "swinir", "bsrgan", "diffbir", "lama"],
+        modelPreference: ["auto", "sharp", "gfpgan", "codeformer", "realesrgan", "swinir", "bsrgan", "diffbir"],
         gfpganQuality: { min: 0, max: 100, default: defaultSettings.gfpganQuality },
         codeformerFidelity: { min: 0, max: 100, default: defaultSettings.codeformerFidelity },
         realesrganScale: { values: [2, 3, 4], default: defaultSettings.realesrganScale },
@@ -4517,7 +4519,6 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
           swinir: true,
           bsrgan: true,
           diffbir: true,
-          lamaInpaint: true,
           faceOnlyCrop: true,
           preserveBackground: true,
           skinTextureGuard: { min: 0, max: 100, default: defaultSettings.skinTextureGuard },
@@ -6212,6 +6213,209 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
         res
           .status(500)
           .json({ success: false, error: "suggest_recipe_failed" });
+      }
+    },
+  );
+
+  // POST /detect-distractions — Auto-detect stray studio equipment.
+  // Hands a JPEG/PNG/WebP to Claude Vision; gets back a list of bbox
+  // detections (flash heads, cables, stands, modifiers, tape, sensor
+  // dust). The web UI shows these as toggleable thumbnails; the iPad
+  // Capture surface auto-applies high-confidence ones. Selected
+  // detections then collapse into a combined mask that goes into
+  // /inpaint.
+  router.post(
+    "/detect-distractions",
+    photoEnhancerUpload.single("image"),
+    async (req, res) => {
+      if (!req.file) {
+        return res
+          .status(400)
+          .json({ success: false, error: "image_required" });
+      }
+      const mime = String(req.file.mimetype || "").toLowerCase();
+      if (!["image/jpeg", "image/png", "image/webp"].includes(mime)) {
+        return res
+          .status(415)
+          .json({ success: false, error: "unsupported_mime" });
+      }
+      try {
+        const meta = await (await import("sharp")).default(req.file.buffer).metadata();
+        const width = meta.width ?? 0;
+        const height = meta.height ?? 0;
+        if (!width || !height) {
+          return res
+            .status(400)
+            .json({ success: false, error: "image_dimensions_unreadable" });
+        }
+        const result = await detectDistractions({
+          imageBase64: req.file.buffer.toString("base64"),
+          imageMime: mime as "image/jpeg" | "image/png" | "image/webp",
+          width,
+          height,
+        });
+        if (!result.ok) {
+          const status =
+            result.error === "not_configured"
+              ? 503
+              : result.error === "timeout"
+                ? 504
+                : result.error === "image_too_large"
+                  ? 413
+                  : 502;
+          return res.status(status).json({
+            success: false,
+            error: result.error,
+            detail: result.detail,
+          });
+        }
+        res.json({
+          success: true,
+          detections: result.analysis.detections,
+          rationale: result.analysis.rationale,
+          usage: result.usage,
+        });
+      } catch (error) {
+        console.error("[photo-enhancer] detect-distractions failed:", error);
+        res.status(500).json({
+          success: false,
+          error: "detect_failed",
+          detail: error instanceof Error ? error.message : String(error),
+        });
+      }
+    },
+  );
+
+  // POST /inpaint — Object-removal endpoint. Accepts an image + a mask
+  // (white = remove). Calls Claude Vision to plan the fill, then runs
+  // the deterministic executor (patch_clone via sharp / Telea-NS via
+  // OpenCV.js). Returns the inpainted image base64-encoded plus the
+  // recipe Claude returned so the UI can show warnings + strategy.
+  //
+  // Body (multipart):
+  //   image       — JPEG/PNG/WebP source.
+  //   mask        — PNG mask, same dimensions, white = remove.
+  //   intensity   — optional [0,1] blend (default 1.0).
+  //   skipPlanner — optional "1" to bypass Claude (executor uses a
+  //                 default patch_clone recipe). Useful for tests and
+  //                 when ANTHROPIC_API_KEY is unset.
+  router.post(
+    "/inpaint",
+    photoEnhancerUpload.fields([
+      { name: "image", maxCount: 1 },
+      { name: "mask", maxCount: 1 },
+    ]),
+    async (req, res) => {
+      const files = req.files as
+        | { image?: Express.Multer.File[]; mask?: Express.Multer.File[] }
+        | undefined;
+      const imageFile = files?.image?.[0];
+      const maskFile = files?.mask?.[0];
+
+      if (!imageFile) {
+        return res.status(400).json({ success: false, error: "image_required" });
+      }
+      if (!maskFile) {
+        return res.status(400).json({ success: false, error: "mask_required" });
+      }
+      const imageMime = String(imageFile.mimetype || "").toLowerCase();
+      if (!["image/jpeg", "image/png", "image/webp"].includes(imageMime)) {
+        return res.status(415).json({ success: false, error: "unsupported_image_mime" });
+      }
+      const maskMime = String(maskFile.mimetype || "").toLowerCase();
+      if (maskMime !== "image/png") {
+        return res.status(415).json({ success: false, error: "mask_must_be_png" });
+      }
+
+      const intensityRaw = readNumber((req.body as Record<string, unknown> | undefined)?.intensity);
+      const intensity = intensityRaw === null ? 1 : Math.max(0, Math.min(1, intensityRaw));
+      const skipPlanner =
+        readString((req.body as Record<string, unknown> | undefined)?.skipPlanner) === "1";
+
+      try {
+        // Read image dimensions for the planner + executor sanity check.
+        const meta = await (await import("sharp")).default(imageFile.buffer).metadata();
+        const width = meta.width ?? 0;
+        const height = meta.height ?? 0;
+        if (!width || !height) {
+          return res.status(400).json({ success: false, error: "image_dimensions_unreadable" });
+        }
+
+        // Plan the fill. Either ask Claude or fall back to a vanilla
+        // patch_clone recipe so the executor still has something to do.
+        let recipe: InpaintRecipeRecommendation;
+        let plannerUsage:
+          | {
+              input_tokens: number;
+              output_tokens: number;
+              cache_creation_input_tokens: number;
+              cache_read_input_tokens: number;
+            }
+          | null = null;
+
+        if (skipPlanner) {
+          recipe = {
+            strategy: "patch_clone",
+            radiusPx: 0,
+            featherPx: 16,
+            sourceRegions: [],
+            avoidRegions: [],
+            postFreqSepSkin: false,
+            warnings: [],
+            rationale: "skipPlanner=1 — vanilla patch_clone fra synthesised donor.",
+          };
+        } else {
+          const plannerResult = await suggestInpaintRecipe({
+            imageBase64: imageFile.buffer.toString("base64"),
+            imageMime: imageMime as "image/jpeg" | "image/png" | "image/webp",
+            maskPngBase64: maskFile.buffer.toString("base64"),
+            width,
+            height,
+          });
+          if (!plannerResult.ok) {
+            const status =
+              plannerResult.error === "not_configured"
+                ? 503
+                : plannerResult.error === "timeout"
+                  ? 504
+                  : plannerResult.error === "image_too_large"
+                    ? 413
+                    : 502;
+            return res.status(status).json({
+              success: false,
+              error: plannerResult.error,
+              detail: plannerResult.detail,
+            });
+          }
+          recipe = plannerResult.recipe;
+          plannerUsage = plannerResult.usage;
+        }
+
+        const result = await executeInpaint({
+          imageBuffer: imageFile.buffer,
+          maskBuffer: maskFile.buffer,
+          recipe,
+          intensity,
+          outputMime: "image/jpeg",
+        });
+
+        res.json({
+          success: true,
+          imageBase64: result.buffer.toString("base64"),
+          imageMime: "image/jpeg",
+          recipe,
+          strategyUsed: result.strategyUsed,
+          maskBounds: result.maskBounds,
+          executorWarnings: result.warnings,
+          plannerUsage,
+        });
+      } catch (error) {
+        console.error("[photo-enhancer] inpaint failed:", error);
+        res.status(500).json({
+          success: false,
+          error: "inpaint_failed",
+          detail: error instanceof Error ? error.message : String(error),
+        });
       }
     },
   );

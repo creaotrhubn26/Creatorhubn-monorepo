@@ -229,19 +229,6 @@ export const photoEnhancerModelRegistry: PhotoEnhancerModelDefinition[] = [
     runnerEnvKeys: ["PHOTO_ENHANCER_DIFFBIR_URL", "DIFFBIR_SERVICE_URL"],
   },
   {
-    id: "lama",
-    displayName: "LaMa",
-    modelType: "inpaint",
-    description: "Inpainting model for object removal, background repair, and crop extension.",
-    recommendedFor: ["retouch", "object-removal", "background-cleanup"],
-    candidateKeys: [
-      "models/lama/weights/big-lama.pt",
-      "models/lama/big-lama.pt",
-      "models/lama/big-lama.zip",
-    ],
-    runnerEnvKeys: ["PHOTO_ENHANCER_LAMA_URL", "LAMA_SERVICE_URL"],
-  },
-  {
     id: "face-api-models",
     displayName: "face-api.js weights",
     modelType: "analysis",

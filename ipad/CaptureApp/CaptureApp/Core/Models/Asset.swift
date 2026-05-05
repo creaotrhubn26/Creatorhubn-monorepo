@@ -23,6 +23,18 @@ struct Asset: Identifiable, Hashable, Sendable, Codable {
     /// `enhancedKey` (in-app Magic preview) so the hero comparison
     /// slider can offer both alongside the camera-baked original.
     var serverEnhancedKey: String?
+    /// Slice 4 (auto-clean) — local path to the JPEG that's had stray
+    /// studio equipment (cables, stands, flash heads) auto-removed by
+    /// /api/photo-enhancer/detect-distractions + /inpaint. nil = not
+    /// requested or no detections. Distinct from the other enhanced
+    /// keys so the viewer can toggle through original / cleaned /
+    /// AI-enhanced independently.
+    var autoCleanedKey: String?
+    /// Number of distractions Claude detected on this asset (regardless
+    /// of how many were actually removed). Surfaced as a small badge so
+    /// the photographer knows the pass ran. 0 = ran but found nothing.
+    /// nil = pass hasn't run.
+    var autoCleanedDetectionCount: Int?
     var checksumSha256: String?
     var mime: String
     var sizeBytes: Int64?
@@ -41,6 +53,23 @@ struct Asset: Identifiable, Hashable, Sendable, Codable {
 
 enum ColorLabel: String, Sendable, Codable, CaseIterable {
     case red, orange, yellow, green, blue, purple, pink, gray
+}
+
+extension Asset {
+    /// Local file path the photographer should actually SEE for this
+    /// asset. Prefers the auto-cleaned variant when present so stray
+    /// studio equipment is gone in every display surface (filmstrip
+    /// thumbnail, compare pane, hero viewer, chat thumbnail). Falls
+    /// back to the camera-original preview when auto-clean hasn't run
+    /// or found nothing to remove.
+    ///
+    /// Code paths that touch the ORIGINAL bytes (download, upload,
+    /// sync, RAW pipeline, checksum verification) deliberately keep
+    /// reading `previewKey` directly — auto-clean is a display-time
+    /// concern, not an archival one.
+    var displayPreviewKey: String? {
+        autoCleanedKey ?? previewKey
+    }
 }
 
 struct AssetSignals: Hashable, Sendable, Codable {
