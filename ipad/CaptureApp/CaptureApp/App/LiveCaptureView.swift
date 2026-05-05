@@ -4366,13 +4366,33 @@ private struct AssetViewerPage: View {
     /// Photos-app-style chrome toggle. Single-tap hides filename + close
     /// button so the image fills the screen edge-to-edge.
     @State private var showChrome: Bool = true
+    /// Slice 5 — when true, render the camera-original `previewKey`
+    /// instead of the auto-cleaned variant. Per-shot only (no settings
+    /// state), default false so the photographer sees the polished
+    /// version first and opts in to the original when they want to
+    /// verify what was removed. Banner at the bottom of the chrome
+    /// surfaces the toggle only on shots that actually have a cleaned
+    /// variant — non-cleaned shots see no extra UI.
+    @State private var showOriginalDespiteCleaned: Bool = false
+
+    /// Effective preview key for the viewer: cleaned-by-default, original
+    /// when the photographer toggles. Falls back gracefully if either
+    /// key is missing.
+    private var effectivePreviewKey: String? {
+        if showOriginalDespiteCleaned { return asset.previewKey ?? asset.autoCleanedKey }
+        return asset.displayPreviewKey
+    }
+    private var hasCleanedVariant: Bool {
+        asset.autoCleanedKey != nil
+            && (asset.autoCleanedDetectionCount ?? 0) > 0
+    }
 
     var body: some View {
         GeometryReader { geo in
             ZStack {
                 Color.black.ignoresSafeArea()
 
-                if let key = asset.displayPreviewKey, let image = UIImage(contentsOfFile: key) {
+                if let key = effectivePreviewKey, let image = UIImage(contentsOfFile: key) {
                     Image(uiImage: image)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
@@ -4458,6 +4478,38 @@ private struct AssetViewerPage: View {
                         .padding()
                         .background(.ultraThinMaterial)
                         Spacer()
+                        if hasCleanedVariant {
+                            HStack(spacing: 12) {
+                                Image(systemName: "sparkles")
+                                    .foregroundStyle(.teal)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(showOriginalDespiteCleaned
+                                         ? "Viser original"
+                                         : "Auto-renset · \(asset.autoCleanedDetectionCount ?? 0) objekter fjernet")
+                                        .font(.subheadline.weight(.semibold))
+                                    Text(showOriginalDespiteCleaned
+                                         ? "Trykk for å gå tilbake til renset versjon"
+                                         : "Trykk for å se originalbildet")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Button {
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        showOriginalDespiteCleaned.toggle()
+                                    }
+                                } label: {
+                                    Text(showOriginalDespiteCleaned ? "Vis renset" : "Vis original")
+                                        .font(.subheadline.weight(.semibold))
+                                        .padding(.horizontal, 14)
+                                        .padding(.vertical, 8)
+                                        .background(.teal.opacity(showOriginalDespiteCleaned ? 1 : 0.25), in: Capsule())
+                                        .foregroundStyle(showOriginalDespiteCleaned ? .black : .white)
+                                }
+                            }
+                            .padding()
+                            .background(.ultraThinMaterial)
+                        }
                     }
                     .transition(.move(edge: .top).combined(with: .opacity))
                 }
