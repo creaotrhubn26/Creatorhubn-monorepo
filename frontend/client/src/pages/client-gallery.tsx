@@ -4,7 +4,7 @@
  * Using Universal Showcase design and profession adapter integration
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
@@ -157,6 +157,20 @@ export default function ClientGallery({}: ClientGalleryProps) {
   const [newComment, setNewComment] = useState('');
   const [commentImageId, setCommentImageId] = useState<string | null>(null);
   const [pricingDialogOpen, setPricingDialogOpen] = useState(false);
+  // Slice 9.4 — gallery-level password the viewer collects via prompt
+  // and forwards on every authenticated request via x-gallery-password.
+  // Stored in component state (not localStorage) so closing the tab
+  // forces a re-prompt — the access link by itself shouldn't grant
+  // session persistence beyond the open tab.
+  const [galleryPassword, setGalleryPassword] = useState<string | null>(null);
+  const [passwordPromptOpen, setPasswordPromptOpen] = useState(false);
+  const [passwordInput, setPasswordInput] = useState('');
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  // Slice 9.3 — bulk download state. busyDownloading drives the spinner
+  // on the "Last ned valgte"-button so the photographer's client
+  // doesn't double-tap and start two parallel zip jobs.
+  const [busyDownloading, setBusyDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const [extraImagePricingOpen, setExtraImagePricingOpen] = useState(false);
   const [selectionWarningOpen, setSelectionWarningOpen] = useState(false);
   const [contractPreviewOpen, setContractPreviewOpen] = useState(false);
@@ -191,6 +205,17 @@ export default function ClientGallery({}: ClientGalleryProps) {
 });
   const config = getProfessionConfig();
 
+  // Slice 9.4 — header bag passed on every authenticated request to
+  // the gallery routes. The first GET /:token doesn't need it (it
+  // surfaces requiresPassword in the response), but every other call
+  // does once a password is set. Memoized so we don't reshape the
+  // identity on every render — useQuery treats new objects as new
+  // request inputs and would re-fetch.
+  const galleryHeaders = useMemo(
+    () => (galleryPassword ? { 'x-gallery-password': galleryPassword } : undefined),
+    [galleryPassword],
+  );
+
   // Fetch gallery data (includes project ID linkage)
   const { data: gallery, isLoading: galleryLoading } = useQuery({
     queryKey: ['/api/client/gallery', accessToken],
@@ -198,31 +223,53 @@ export default function ClientGallery({}: ClientGalleryProps) {
     enabled: !!accessToken,
 });
 
+  // Slice 9.4 — open the password prompt when the gallery row says
+  // requiresPassword and we don't have one in state yet. Fires once
+  // per gallery load; the user closing the prompt without entering
+  // a password just leaves the gallery's data fetches in their 401
+  // state.
+  useEffect(() => {
+    if (gallery?.requiresPassword && !galleryPassword && !passwordPromptOpen) {
+      setPasswordPromptOpen(true);
+    }
+  }, [gallery?.requiresPassword, galleryPassword, passwordPromptOpen]);
+
   // Fetch gallery images (linked to project)
   const { data: images = [], isLoading: imagesLoading } = useQuery({
-    queryKey: ['/api/client/gallery', accessToken, 'images'],
-    queryFn: () => apiRequest(`/api/client/gallery/${accessToken}/images`),
-    enabled: !!accessToken,
+    queryKey: ['/api/client/gallery', accessToken, 'images', galleryPassword],
+    queryFn: () => apiRequest(`/api/client/gallery/${accessToken}/images`, {
+      headers: galleryHeaders,
+    }),
+    // Don't fire the auth'd fetches until we either know the gallery
+    // doesn't require a password or the user has supplied one. Saves
+    // a guaranteed-401 round-trip + the noisy console error.
+    enabled: !!accessToken
+      && !!gallery
+      && (!gallery.requiresPassword || !!galleryPassword),
 });
 
   // Fetch existing selections (linked to project and client). Backend
   // returns { galleryId, selections: [...] } for the whole gallery;
   // clientEmail filtering is done locally.
   const { data: selections = { selections: [] } } = useQuery({
-    queryKey: ['/api/client/gallery', accessToken, 'selections'],
+    queryKey: ['/api/client/gallery', accessToken, 'selections', galleryPassword],
     queryFn: () =>
-      apiRequest(`/api/client/gallery/${accessToken}/selections`),
-    enabled: !!accessToken,
+      apiRequest(`/api/client/gallery/${accessToken}/selections`, { headers: galleryHeaders }),
+    enabled: !!accessToken
+      && !!gallery
+      && (!gallery.requiresPassword || !!galleryPassword),
 });
 
   // Fetch existing comments so the gallery can show prior notes on the
   // image detail view + comment counts. Mirrors the selections query
   // shape; both come back as { galleryId, <collection>: [...] }.
   const { data: commentsData = { comments: [] } } = useQuery({
-    queryKey: ['/api/client/gallery', accessToken, 'comments'],
+    queryKey: ['/api/client/gallery', accessToken, 'comments', galleryPassword],
     queryFn: () =>
-      apiRequest(`/api/client/gallery/${accessToken}/comments`),
-    enabled: !!accessToken,
+      apiRequest(`/api/client/gallery/${accessToken}/comments`, { headers: galleryHeaders }),
+    enabled: !!accessToken
+      && !!gallery
+      && (!gallery.requiresPassword || !!galleryPassword),
 });
   const allComments: Array<{
     id: string; imageId: string; clientName: string; comment: string;
@@ -855,24 +902,101 @@ export default function ClientGallery({}: ClientGalleryProps) {
           </Stack>
         </Box>
 
-        {/* Action Button */}
+        {/* Action Buttons */}
         {selectedImages.size > 0 && (
-          <Button
-            variant="contained"
-            fullWidth
-            onClick={handleProceedToCheckout}
-            sx={{
-              mt: 'auto',
-              bgcolor: config.primaryColor,
-              color: 'white',
-              py: 1.5, '&:hover': {
-                bgcolor: alpha(config.primaryColor, 0.8),
-            },
-          }}
-            startIcon={<ShoppingCart />}
-          >
-            Fortsett ({selectedImages.size} bilder)
-          </Button>
+          <Stack spacing={1} sx={{ mt: 'auto' }}>
+            {/* Slice 9.3 — bulk download. Only shown when allowDownload
+                is on (default true) and there's at least one selection.
+                The button calls /download-zip directly via fetch (not
+                apiRequest) because we need the raw Response stream + a
+                blob URL to trigger the browser download dialog.
+                Returns 402 if pricing has unpaid extras — we surface
+                a clear message and pivot to checkout (Slice 10). */}
+            {gallery?.gallerySettings?.allowDownload !== false && (
+              <Button
+                variant="outlined"
+                fullWidth
+                disabled={busyDownloading}
+                onClick={async () => {
+                  setDownloadError(null);
+                  setBusyDownloading(true);
+                  try {
+                    const res = await fetch(
+                      `${(import.meta.env.DEV || window.location.hostname === 'localhost')
+                        ? ''
+                        : (import.meta.env.VITE_API_URL || '')}/api/client/gallery/${accessToken}/download-zip`,
+                      {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          ...(galleryPassword ? { 'x-gallery-password': galleryPassword } : {}),
+                        },
+                        body: JSON.stringify({
+                          imageIds: Array.from(selectedImages),
+                          clientEmail: gallery?.clientEmail,
+                        }),
+                      },
+                    );
+                    if (res.status === 402) {
+                      setDownloadError('Betal ekstra-bilder først (åpne Fortsett-flyt).');
+                      return;
+                    }
+                    if (res.status === 401) {
+                      setDownloadError('Galleriet krever passord.');
+                      setPasswordPromptOpen(true);
+                      return;
+                    }
+                    if (!res.ok) {
+                      setDownloadError(`Kunne ikke laste ned (HTTP ${res.status}).`);
+                      return;
+                    }
+                    const blob = await res.blob();
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `${gallery?.projectTitle || 'galleri'}-${selectedImages.size}-bilder.zip`;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    URL.revokeObjectURL(url);
+                  } catch (err) {
+                    setDownloadError(err instanceof Error ? err.message : String(err));
+                  } finally {
+                    setBusyDownloading(false);
+                  }
+                }}
+                sx={{
+                  color: 'white',
+                  borderColor: 'rgba(255,255,255,0.3)',
+                  '&:hover': { borderColor: 'rgba(255,255,255,0.6)' },
+                }}
+              >
+                {busyDownloading
+                  ? 'Pakker zip…'
+                  : `Last ned valgte (${selectedImages.size})`}
+              </Button>
+            )}
+            {downloadError && (
+              <Typography variant="caption" sx={{ color: '#ff6b6b' }}>
+                {downloadError}
+              </Typography>
+            )}
+            <Button
+              variant="contained"
+              fullWidth
+              onClick={handleProceedToCheckout}
+              sx={{
+                bgcolor: config.primaryColor,
+                color: 'white',
+                py: 1.5, '&:hover': {
+                  bgcolor: alpha(config.primaryColor, 0.8),
+              },
+            }}
+              startIcon={<ShoppingCart />}
+            >
+              Fortsett ({selectedImages.size} bilder)
+            </Button>
+          </Stack>
         )}
       </Box>
 
@@ -1541,6 +1665,78 @@ export default function ClientGallery({}: ClientGalleryProps) {
           />
         </Box>
       )}
+
+      {/* Slice 9.4 — gallery password prompt. Opens automatically when
+          GET /:token returns requiresPassword=true. Submitting saves
+          to component state which then unblocks all the auth'd queries
+          (images, selections, comments). Wrong password keeps the
+          dialog open with an error so the client can retry. */}
+      <Dialog
+        open={passwordPromptOpen}
+        onClose={() => {
+          // Closing without entering a password just leaves the
+          // gallery's auth'd content hidden — no harm. Don't auto-
+          // dismiss otherwise photographer-shared galleries with a
+          // typo'd password become permanently broken.
+          setPasswordPromptOpen(false);
+          setPasswordInput('');
+          setPasswordError(null);
+        }}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Galleri passord</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
+            Fotografen har låst dette galleriet. Skriv inn passordet du fikk i
+            invitasjonen.
+          </Typography>
+          <input
+            type="password"
+            value={passwordInput}
+            autoFocus
+            onChange={(e) => {
+              setPasswordInput(e.target.value);
+              setPasswordError(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && passwordInput.length > 0) {
+                setGalleryPassword(passwordInput);
+                setPasswordPromptOpen(false);
+                setPasswordInput('');
+              }
+            }}
+            placeholder="Passord"
+            style={{
+              width: '100%',
+              padding: '12px 16px',
+              fontSize: 16,
+              borderRadius: 6,
+              border: '1px solid #ccc',
+              outline: 'none',
+            }}
+          />
+          {passwordError && (
+            <Typography variant="caption" sx={{ color: '#d32f2f', mt: 1, display: 'block' }}>
+              {passwordError}
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPasswordPromptOpen(false)}>Avbryt</Button>
+          <Button
+            variant="contained"
+            disabled={passwordInput.length === 0}
+            onClick={() => {
+              setGalleryPassword(passwordInput);
+              setPasswordPromptOpen(false);
+              setPasswordInput('');
+            }}
+          >
+            Lås opp
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
