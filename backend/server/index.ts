@@ -8,6 +8,15 @@ import multer from "multer";
 import { createRequire } from "module";
 const _require = createRequire(import.meta.url);
 const pdfParseModule: any = _require("pdf-parse");
+const archiverFactory = _require('archiver') as (
+  format: 'zip',
+  options?: { zlib?: { level?: number } },
+) => {
+  on(event: 'warning' | 'error', listener: (err: Error & { code?: string }) => void): unknown;
+  pipe(dest: NodeJS.WritableStream): unknown;
+  append(input: NodeJS.ReadableStream | Buffer | string, opts: { name: string }): unknown;
+  finalize(): Promise<void>;
+};
 import mammoth from "mammoth";
 import crypto from "crypto";
 import { google } from "googleapis";
@@ -23335,6 +23344,21 @@ app.get("/api/client/gallery/:accessToken", async (req, res) => {
   try {
     const gallery = await fetchClientGalleryByAccessToken(db, accessToken);
     if (!gallery) return res.status(404).json({ error: "not_found" });
+    // Slice 9.4 — this endpoint deliberately does NOT enforce the
+    // password (the viewer needs to know whether to prompt for one),
+    // but it surfaces the requiresPassword + isExpired flags + the
+    // gallery_settings so the viewer can render the right gate UI.
+    // Subsequent routes (images, comments, selections, etc) DO enforce.
+    const detail = await fetchGalleryWithSettingsByToken(accessToken);
+    const settings = detail?.settings ?? {};
+    const expiresAtRaw = settings.expiresAt;
+    let isExpired = false;
+    if (typeof expiresAtRaw === 'string' && expiresAtRaw.trim()) {
+      const t = new Date(expiresAtRaw).getTime();
+      isExpired = Number.isFinite(t) && t < Date.now();
+    }
+    const requiresPassword =
+      settings.requiresPassword === true && typeof settings.passwordHash === 'string';
     return res.json({
       id: gallery.id,
       clientName: gallery.clientName,
@@ -23345,6 +23369,22 @@ app.get("/api/client/gallery/:accessToken", async (req, res) => {
       completedAt: gallery.completedAt,
       source: gallery.source,
       captureSessionId: gallery.captureSessionId,
+      // Slice 9.4 — gate hints. Viewer reads these BEFORE attempting
+      // to fetch images so it can render password-prompt or
+      // expired-state cleanly.
+      requiresPassword,
+      isExpired,
+      expiresAt: typeof expiresAtRaw === 'string' ? expiresAtRaw : null,
+      // Slice 9 — surface gallery_settings the viewer needs without
+      // requiring it to call a separate settings endpoint. We strip
+      // passwordHash here — the viewer doesn't need to see it, and
+      // shipping it cross-origin to anyone with the access token
+      // would let them brute-force offline.
+      gallerySettings: (() => {
+        const safe = { ...settings };
+        delete safe.passwordHash;
+        return safe;
+      })(),
     });
   } catch (error) {
     console.error("[client-gallery] fetch failed", error);
@@ -23358,11 +23398,19 @@ app.get("/api/client/gallery/:accessToken/images", async (req, res) => {
     return res.status(400).json({ error: "missing_access_token" });
   }
   try {
-    const gallery = await fetchClientGalleryByAccessToken(db, accessToken);
-    if (!gallery) return res.status(404).json({ error: "not_found" });
-    const images = await listClientGalleryImages(db, gallery.id);
+    // Slice 9.4 — gate enforces password + expiration before serving
+    // the actual image URLs. Returning 401 with requiresPassword=true
+    // tells the viewer to prompt + retry with x-gallery-password header.
+    const access = await gateGalleryAccess(accessToken, readGalleryPasswordHeader(req));
+    if (!access.ok) {
+      return res.status(access.status).json({
+        error: access.error,
+        ...(access.requiresPassword ? { requiresPassword: true } : {}),
+      });
+    }
+    const images = await listClientGalleryImages(db, access.gallery.id);
     return res.json({
-      galleryId: gallery.id,
+      galleryId: access.gallery.id,
       images,
       // Client can display a banner when any image came back with
       // signingFailed: true (e.g. the captureAssets row was deleted).
@@ -23397,6 +23445,15 @@ app.post("/api/client/gallery/:accessToken/selections", async (req, res) => {
     return res.status(400).json({ error: "invalid_request" });
   }
   try {
+    // Slice 9.4 — password + expiration gate. Same gate semantics as
+    // /images: 401 with requiresPassword=true, 410 if expired.
+    const access = await gateGalleryAccess(accessToken, readGalleryPasswordHeader(req));
+    if (!access.ok) {
+      return res.status(access.status).json({
+        error: access.error,
+        ...(access.requiresPassword ? { requiresPassword: true } : {}),
+      });
+    }
     const gallery = await fetchClientGalleryByAccessToken(db, accessToken);
     if (!gallery) return res.status(404).json({ error: "not_found" });
     // Upsert by (gallery, image, client_email) so each repeat click just
@@ -23492,6 +23549,13 @@ app.get("/api/client/gallery/:accessToken/selections", async (req, res) => {
   const accessToken = String(req.params.accessToken || "").trim();
   if (!accessToken) return res.status(400).json({ error: "missing_access_token" });
   try {
+    const access = await gateGalleryAccess(accessToken, readGalleryPasswordHeader(req));
+    if (!access.ok) {
+      return res.status(access.status).json({
+        error: access.error,
+        ...(access.requiresPassword ? { requiresPassword: true } : {}),
+      });
+    }
     const gallery = await fetchClientGalleryByAccessToken(db, accessToken);
     if (!gallery) return res.status(404).json({ error: "not_found" });
     const result = await pool.query(
@@ -23533,6 +23597,13 @@ app.post("/api/client/gallery/:accessToken/comments", async (req, res) => {
     return res.status(400).json({ error: "comment_too_long" });
   }
   try {
+    const access = await gateGalleryAccess(accessToken, readGalleryPasswordHeader(req));
+    if (!access.ok) {
+      return res.status(access.status).json({
+        error: access.error,
+        ...(access.requiresPassword ? { requiresPassword: true } : {}),
+      });
+    }
     const gallery = await fetchClientGalleryByAccessToken(db, accessToken);
     if (!gallery) return res.status(404).json({ error: "not_found" });
     const result = await pool.query(
@@ -23571,6 +23642,13 @@ app.get("/api/client/gallery/:accessToken/comments", async (req, res) => {
   if (!accessToken) return res.status(400).json({ error: "missing_access_token" });
   const imageId = typeof req.query?.imageId === "string" ? req.query.imageId : null;
   try {
+    const access = await gateGalleryAccess(accessToken, readGalleryPasswordHeader(req));
+    if (!access.ok) {
+      return res.status(access.status).json({
+        error: access.error,
+        ...(access.requiresPassword ? { requiresPassword: true } : {}),
+      });
+    }
     const gallery = await fetchClientGalleryByAccessToken(db, accessToken);
     if (!gallery) return res.status(404).json({ error: "not_found" });
     const params: any[] = [gallery.id];
@@ -23601,6 +23679,364 @@ app.get("/api/client/gallery/:accessToken/comments", async (req, res) => {
   } catch (error) {
     console.error("[client-gallery] comment list failed", error);
     res.status(500).json({ error: "comment_list_failed" });
+  }
+});
+
+// ── Slice 9 — checkout flow ────────────────────────────────────────────
+// Two routes the gallery viewer has been calling for months without a
+// server-side implementation: calculate-pricing and submit-selection.
+// The pricing math is deliberately re-run server-side at every step
+// (calculate-pricing AND submit-selection) so a malicious client can't
+// just edit the totalAmount they POST. Stripe checkout (Slice 10) hooks
+// in via the requiresPayment flag the submit endpoint returns.
+
+interface GalleryPricing {
+  selectedCount: number;
+  includedImages: number;  // how many fit within contracted bucket
+  extraImages: number;     // how many require extra payment
+  pricePerImage: number;
+  currency: string;
+  totalAmount: number;     // extraImages × pricePerImage, rounded to 2 dp
+}
+
+/// Pure function — same gallery + same selectedImageIds always
+/// produce identical pricing. No DB calls. Caller owns the gallery
+/// fetch + ownership gate.
+function calculateGalleryPricing(
+  gallerySettings: Record<string, unknown> | null | undefined,
+  selectedCount: number,
+): GalleryPricing {
+  const settings = (gallerySettings ?? {}) as Record<string, unknown>;
+  const contractedImages = Math.max(0, Number(settings.contractedImages) || 0);
+  const pricePerImage = Math.max(0, Number(settings.pricePerImage) || 0);
+  const currency = typeof settings.currency === 'string' && settings.currency
+    ? settings.currency
+    : 'NOK';
+  const sel = Math.max(0, Math.floor(selectedCount));
+  const includedImages = Math.min(sel, contractedImages);
+  const extraImages = Math.max(0, sel - contractedImages);
+  const totalAmount = Math.round(extraImages * pricePerImage * 100) / 100;
+  return {
+    selectedCount: sel,
+    includedImages,
+    extraImages,
+    pricePerImage,
+    currency,
+    totalAmount,
+  };
+}
+
+/// gallerySettings lives on photographer_client_galleries.gallery_settings
+/// as JSONB. Helper keeps the cast in one place + handles missing rows.
+async function fetchGalleryWithSettingsByToken(
+  accessToken: string,
+): Promise<{ id: string; clientEmail: string; settings: Record<string, unknown> } | null> {
+  const rows = await pool.query(
+    `SELECT id, client_email, gallery_settings, status
+     FROM photographer_client_galleries
+     WHERE access_token = $1
+     LIMIT 1`,
+    [accessToken],
+  );
+  const row = rows.rows[0];
+  if (!row) return null;
+  if (row.status && row.status !== 'active') return null;
+  return {
+    id: row.id,
+    clientEmail: row.client_email ?? '',
+    settings: (row.gallery_settings ?? {}) as Record<string, unknown>,
+  };
+}
+
+// Slice 9.4 — access-gate helper. Wraps fetchGallery + expiration +
+// password checks so every client-gallery route gets identical treatment.
+// Returns the gallery on success; on failure, an HTTP-shaped error with
+// `requiresPassword: true` when the caller needs to prompt + retry.
+//
+// Password is sent as the `x-gallery-password` header — stateless
+// design keeps things simple (no cookies, no JWTs, no separate
+// auth-state table). The trade-off is that a determined attacker who
+// already has the access token can probably also socially-engineer
+// the password; this gate is "raise the bar against accidental
+// access", not airtight security.
+type GalleryAccessResult =
+  | { ok: true; gallery: { id: string; clientEmail: string; settings: Record<string, unknown> }; settings: Record<string, unknown> }
+  | { ok: false; status: number; error: string; requiresPassword?: boolean };
+
+async function gateGalleryAccess(
+  accessToken: string,
+  providedPassword: string | null,
+): Promise<GalleryAccessResult> {
+  const gallery = await fetchGalleryWithSettingsByToken(accessToken);
+  if (!gallery) return { ok: false, status: 404, error: 'not_found' };
+  const settings = gallery.settings;
+
+  // Expiration: gallery_settings.expiresAt is an ISO string when set.
+  // Past expiration → 410 Gone (semantically "this resource WAS here
+  // but isn't any more" — clearer than 404 which conflates with
+  // wrong-token).
+  const expiresAtRaw = settings.expiresAt;
+  if (typeof expiresAtRaw === 'string' && expiresAtRaw.trim()) {
+    const expiresAt = new Date(expiresAtRaw);
+    if (Number.isFinite(expiresAt.getTime()) && expiresAt.getTime() < Date.now()) {
+      return { ok: false, status: 410, error: 'gallery_expired' };
+    }
+  }
+
+  // Password: only enforced when BOTH `requiresPassword` is truthy and
+  // a hash is actually stored. A misconfigured row with requiresPassword
+  // but no hash falls back to "no password" rather than being permanently
+  // unreachable — defensive against admin UI bugs.
+  const requiresPassword = settings.requiresPassword === true;
+  const passwordHash = typeof settings.passwordHash === 'string' ? settings.passwordHash : null;
+  if (requiresPassword && passwordHash) {
+    if (!providedPassword) {
+      return { ok: false, status: 401, error: 'password_required', requiresPassword: true };
+    }
+    const bcrypt = await import('bcrypt');
+    const passwordOk = await bcrypt.default.compare(providedPassword, passwordHash);
+    if (!passwordOk) {
+      return { ok: false, status: 401, error: 'password_invalid', requiresPassword: true };
+    }
+  }
+
+  return { ok: true, gallery, settings };
+}
+
+function readGalleryPasswordHeader(req: import('express').Request): string | null {
+  const raw = req.header('x-gallery-password');
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  return trimmed.length === 0 ? null : trimmed;
+}
+
+app.post("/api/client/gallery/:accessToken/calculate-pricing", async (req, res) => {
+  const accessToken = String(req.params.accessToken || "").trim();
+  if (!accessToken) return res.status(400).json({ error: "missing_access_token" });
+  const selectedImageIds = Array.isArray(req.body?.selectedImageIds)
+    ? req.body.selectedImageIds.filter((s: unknown): s is string => typeof s === 'string')
+    : null;
+  if (!selectedImageIds) {
+    return res.status(400).json({ error: "selectedImageIds_required" });
+  }
+  try {
+    const access = await gateGalleryAccess(accessToken, readGalleryPasswordHeader(req));
+    if (!access.ok) {
+      return res.status(access.status).json({
+        error: access.error,
+        ...(access.requiresPassword ? { requiresPassword: true } : {}),
+      });
+    }
+    const pricing = calculateGalleryPricing(access.settings, selectedImageIds.length);
+    res.json({ pricing });
+  } catch (error) {
+    console.error("[client-gallery] calculate-pricing failed", error);
+    res.status(500).json({ error: "calculate_pricing_failed" });
+  }
+});
+
+app.post("/api/client/gallery/:accessToken/submit-selection", async (req, res) => {
+  const accessToken = String(req.params.accessToken || "").trim();
+  if (!accessToken) return res.status(400).json({ error: "missing_access_token" });
+  const clientEmail = typeof req.body?.clientEmail === 'string' ? req.body.clientEmail.trim() : '';
+  const selectedImageIds = Array.isArray(req.body?.selectedImageIds)
+    ? req.body.selectedImageIds.filter((s: unknown): s is string => typeof s === 'string')
+    : null;
+  if (!selectedImageIds || selectedImageIds.length === 0) {
+    return res.status(400).json({ error: "selectedImageIds_required" });
+  }
+  try {
+    const access = await gateGalleryAccess(accessToken, readGalleryPasswordHeader(req));
+    if (!access.ok) {
+      return res.status(access.status).json({
+        error: access.error,
+        ...(access.requiresPassword ? { requiresPassword: true } : {}),
+      });
+    }
+    const gallery = access.gallery;
+    const effectiveEmail = clientEmail || gallery.clientEmail;
+    if (!effectiveEmail) return res.status(400).json({ error: "client_email_required" });
+
+    // Re-derive pricing server-side — never trust client-supplied total.
+    const pricing = calculateGalleryPricing(access.settings, selectedImageIds.length);
+
+    // Persist selections in one batch. Replace any stale 'selected' rows
+    // for this client by setting them to 'rejected' first, then upserting
+    // the chosen ids as 'selected'. Future Slice 10 download/checkout
+    // gating reads from these rows.
+    await pool.query('BEGIN');
+    try {
+      // Demote any 'selected' rows for this client+gallery that aren't
+      // in the new selection list (they got unticked).
+      await pool.query(
+        `UPDATE client_image_selections
+         SET selection_type = 'rejected', updated_at = NOW()
+         WHERE gallery_id = $1
+           AND client_email = $2
+           AND selection_type = 'selected'
+           AND NOT (image_id = ANY($3::uuid[]))`,
+        [gallery.id, effectiveEmail, selectedImageIds],
+      );
+      // Upsert the new selection set.
+      for (const imageId of selectedImageIds) {
+        await pool.query(
+          `INSERT INTO client_image_selections
+             (gallery_id, image_id, client_email, selection_type, created_at, updated_at)
+           VALUES ($1, $2, $3, 'selected', NOW(), NOW())
+           ON CONFLICT (gallery_id, image_id, client_email)
+           DO UPDATE SET selection_type = 'selected', updated_at = NOW()`,
+          [gallery.id, imageId, effectiveEmail],
+        );
+      }
+      await pool.query('COMMIT');
+    } catch (err) {
+      await pool.query('ROLLBACK');
+      throw err;
+    }
+
+    res.json({
+      ok: true,
+      pricing,
+      requiresPayment: pricing.totalAmount > 0,
+      // Stripe payment intent comes from Slice 10's create-payment-intent
+      // route — surfaced as a separate call so that endpoint owns the
+      // Stripe API call + idempotency key handling.
+    });
+  } catch (error) {
+    console.error("[client-gallery] submit-selection failed", error);
+    res.status(500).json({ error: "submit_selection_failed" });
+  }
+});
+
+// Slice 9.3 — bulk download. Streams a ZIP of selected images from R2
+// straight into the response so we never buffer the full archive in
+// memory. Auto-cleaned variants are preferred when the gallery row
+// opted in (mirrors the viewer's display semantics). Watermark mode
+// honoured. Payment-gated for galleries with extras (Slice 10 wires
+// the actual gate; v1 just refuses unpaid extras with a clear error).
+//
+// Body: { imageIds: string[], clientEmail?: string }
+// Returns: streamed ZIP, or 4xx on validation failures.
+app.post("/api/client/gallery/:accessToken/download-zip", async (req, res) => {
+  const accessToken = String(req.params.accessToken || "").trim();
+  if (!accessToken) return res.status(400).json({ error: "missing_access_token" });
+  const imageIds = Array.isArray(req.body?.imageIds)
+    ? req.body.imageIds.filter((s: unknown): s is string => typeof s === 'string')
+    : null;
+  if (!imageIds || imageIds.length === 0) {
+    return res.status(400).json({ error: "imageIds_required" });
+  }
+  if (imageIds.length > 1000) {
+    // Defence-in-depth: huge zips are slow + Render request timeouts
+    // hit. Photographers will rarely deliver more than a few hundred.
+    return res.status(413).json({ error: "too_many_images", max: 1000 });
+  }
+
+  try {
+    const access = await gateGalleryAccess(accessToken, readGalleryPasswordHeader(req));
+    if (!access.ok) {
+      return res.status(access.status).json({
+        error: access.error,
+        ...(access.requiresPassword ? { requiresPassword: true } : {}),
+      });
+    }
+    const gallery = access.gallery;
+    const settings = access.settings;
+    if (settings.allowDownload === false) {
+      return res.status(403).json({ error: "download_disabled" });
+    }
+
+    // Slice 10 will gate this on payment status. For now: refuse zip
+    // download when the photographer's pricing model has extras and
+    // the client hasn't paid yet — better than silently letting them
+    // skip the checkout.
+    const clientEmail = typeof req.body?.clientEmail === 'string'
+      ? req.body.clientEmail.trim()
+      : gallery.clientEmail;
+    const pricing = calculateGalleryPricing(settings, imageIds.length);
+    if (pricing.totalAmount > 0) {
+      const paid = await pool.query(
+        `SELECT 1 FROM client_image_payments
+         WHERE gallery_id = $1
+           AND client_email = $2
+           AND payment_status = 'succeeded'
+         LIMIT 1`,
+        [gallery.id, clientEmail],
+      );
+      if (paid.rowCount === 0) {
+        return res.status(402).json({
+          error: "payment_required",
+          pricing,
+        });
+      }
+    }
+
+    // Resolve image URLs the same way listClientGalleryImages does so
+    // the zip contents match what the viewer is showing. This re-signs
+    // each capture-sourced image's R2 key fresh — the caller doesn't
+    // need to pre-pass URLs (which could go stale anyway).
+    const allImages = await listClientGalleryImages(db, gallery.id);
+    const idSet = new Set(imageIds);
+    const picked = allImages.filter((img) => idSet.has(img.id));
+    if (picked.length === 0) {
+      return res.status(404).json({ error: "no_matching_images" });
+    }
+    const watermarked = settings.watermarkEnabled === true;
+
+    const zipFilename = `gallery-${gallery.id.slice(0, 8)}-${Date.now()}.zip`;
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${zipFilename}"`);
+
+    const archive = archiverFactory('zip', { zlib: { level: 6 } });
+    archive.on('warning', (err: Error & { code?: string }) => {
+      if (err.code !== 'ENOENT') console.warn('[client-gallery] zip warning:', err);
+    });
+    archive.on('error', (err: Error) => {
+      console.error('[client-gallery] zip error:', err);
+      try { res.status(500).end(); } catch {}
+    });
+    archive.pipe(res);
+
+    // Pull each image as a node-fetch stream and append. archiver
+    // handles back-pressure so we only buffer one in flight at a
+    // time (the connection drives consumption).
+    let appended = 0;
+    for (const img of picked) {
+      const sourceUrl = watermarked && img.watermarkedUrl
+        ? img.watermarkedUrl
+        : (img.autoCleanedUrl ?? img.fullSizeUrl);
+      try {
+        const fetchRes = await fetch(sourceUrl);
+        if (!fetchRes.ok || !fetchRes.body) {
+          console.warn(`[client-gallery] zip skip ${img.id}: ${fetchRes.status}`);
+          continue;
+        }
+        // node-fetch v3 returns a web ReadableStream; archiver wants a
+        // Node Readable. The Node-native fetch gives us .body as a
+        // web stream too — convert via Readable.fromWeb.
+        const { Readable } = await import('node:stream');
+        const nodeStream = Readable.fromWeb(fetchRes.body as never);
+        const safeName = `${img.imageTitle.replace(/[\\/:*?"<>|]/g, '_')}.jpg`;
+        archive.append(nodeStream, { name: safeName });
+        appended++;
+      } catch (err) {
+        console.warn(`[client-gallery] zip fetch failed ${img.id}:`, err);
+      }
+    }
+
+    if (appended === 0) {
+      // We declared application/zip headers already; finalize an empty
+      // archive rather than swap to JSON (which would confuse the client).
+      console.warn(`[client-gallery] zip download produced 0 entries for gallery ${gallery.id}`);
+    }
+    await archive.finalize();
+  } catch (error) {
+    console.error("[client-gallery] download-zip failed", error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: "download_zip_failed" });
+    } else {
+      try { res.end(); } catch {}
+    }
   }
 });
 
