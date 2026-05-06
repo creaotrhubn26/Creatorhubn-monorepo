@@ -29,7 +29,11 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
+  FormControl,
   FormControlLabel,
+  InputLabel,
+  MenuItem,
+  Select,
   Grid,
   IconButton,
   Stack,
@@ -104,6 +108,12 @@ interface PhotographerGallery {
   /** Slice 9X.3 — title resolved from projects.title via correlated
    *  subquery; null when projectId references a deleted/missing row. */
   linkedProjectTitle?: string | null;
+  /** Slice 9X.5 — pricing-package linkage. packageId is the FK; the
+   *  resolved name + included-images count come from the backend
+   *  correlated subquery. Used to drive auto-fill of contractedImages. */
+  packageId?: string | null;
+  linkedPackageName?: string | null;
+  linkedPackageImagesIncluded?: number | null;
 }
 
 interface GalleryEvent {
@@ -537,6 +547,33 @@ const GallerySettingsDialog: React.FC<{
   const [clearPassword, setClearPassword] = useState(false);
   // Slice 9X.3 — link / unlink projectId.
   const [projectId, setProjectId] = useState<string>(gallery.projectId ?? '');
+  // Slice 9X.5 — pricing-package linkage. Empty = unlinked. Backend
+  // auto-fills contractedImages from the package when this changes
+  // unless the photographer also edits contractedImages manually in
+  // the same save (so the manual override always wins).
+  const [packageId, setPackageId] = useState<string>(gallery.packageId ?? '');
+  const { data: packagesList } = useQuery<{
+    id: string | number;
+    name?: string;
+    package_name?: string;
+    inclusions?: { images?: number; hours?: number };
+    basePrice?: number;
+  }[]>({
+    // Source of truth = PricingAdministration (Administrasjon-fanen i
+    // UniversalDashboard). Same /api/pricing/packages?userId=… endpoint
+    // that the admin UI writes to, so changes there propagate here.
+    queryKey: ['/api/pricing/packages', 'gallery-settings'],
+    queryFn: async () => {
+      // Photographer userId — comes from session, exposed via the
+      // pricing-routes endpoint that doesn't require explicit param.
+      // Falls back to empty array on auth fail.
+      const me = await apiRequest('/api/auth/user').catch(() => null);
+      const uid = (me as { id?: string } | null)?.id;
+      if (!uid) return [];
+      const res = await apiRequest(`/api/pricing/packages?userId=${encodeURIComponent(uid)}`);
+      return Array.isArray(res) ? res : [];
+    },
+  });
 
   const patchMutation = useMutation({
     mutationFn: async () => {
@@ -550,6 +587,9 @@ const GallerySettingsDialog: React.FC<{
         screenshotProtection,
         expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
         projectId: projectId.trim() ? projectId.trim() : null,
+        // Slice 9X.5 — sending packageId triggers backend auto-fill
+        // of contractedImages from package.inclusions.images.
+        packageId: packageId.trim() ? packageId.trim() : null,
       };
       if (clearPassword) {
         patch.password = null;
@@ -630,6 +670,54 @@ const GallerySettingsDialog: React.FC<{
                     : 'Ikke tilknyttet noe prosjekt.'
               }
             />
+          </Box>
+
+          <Divider />
+
+          {/* Slice 9X.5 — pricing-package linkage. Photographer's
+              packages come from PricingAdministration (Administrasjon-
+              fanen i UniversalDashboard); selecting one auto-fills
+              contractedImages from package.inclusions.images. */}
+          <Box>
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>
+              <MoneyIcon fontSize="small" sx={{ verticalAlign: 'middle', mr: 0.5 }} />
+              Pris-pakke (fra Administrasjon)
+            </Typography>
+            <FormControl fullWidth size="small">
+              <InputLabel>Velg pakke</InputLabel>
+              <Select
+                label="Velg pakke"
+                value={packageId}
+                onChange={(e) => setPackageId(String(e.target.value || ''))}
+              >
+                <MenuItem value="">Ingen pakke (manuelt)</MenuItem>
+                {(packagesList ?? []).map((p) => {
+                  const id = String(p.id);
+                  const name = p.package_name || p.name || `Pakke ${id}`;
+                  const imgs = p.inclusions?.images;
+                  const label = imgs ? `${name} — ${imgs} bilder inkludert` : name;
+                  return (
+                    <MenuItem key={id} value={id}>
+                      {label}
+                    </MenuItem>
+                  );
+                })}
+              </Select>
+            </FormControl>
+            {gallery.linkedPackageName && (
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                Nåværende: {gallery.linkedPackageName}
+                {gallery.linkedPackageImagesIncluded != null
+                  ? ` · ${gallery.linkedPackageImagesIncluded} bilder inkludert`
+                  : ''}
+              </Typography>
+            )}
+            {packageId && packageId !== gallery.packageId && (
+              <Alert severity="info" sx={{ mt: 1, py: 0.5 }}>
+                Lagring auto-fyller "Inkluderte bilder" fra pakkens inclusions.
+                Endre tallet manuelt etterpå hvis kontrakten avviker.
+              </Alert>
+            )}
           </Box>
 
           <Divider />

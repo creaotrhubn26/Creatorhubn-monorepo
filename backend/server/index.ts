@@ -23801,7 +23801,28 @@ app.get("/api/photographer/galleries", async (req, res) => {
          (SELECT COUNT(*) FROM client_image_selections WHERE gallery_id = g.id AND selection_type = 'selected') AS selection_count,
          (SELECT COUNT(*) FROM client_image_selections WHERE gallery_id = g.id AND selection_type = 'favorite') AS favorite_count,
          (SELECT COUNT(*) FROM client_image_payments WHERE gallery_id = g.id AND payment_status = 'succeeded') AS paid_count,
-         (SELECT title FROM projects WHERE id = (g.gallery_settings->>'projectId') LIMIT 1) AS linked_project_title
+         (SELECT title FROM projects WHERE id = (g.gallery_settings->>'projectId') LIMIT 1) AS linked_project_title,
+         -- Slice 9X.5 — pricing-package linkage. Two tables exist
+         -- (pricing_packages = newer, packages = legacy); UNION + LIMIT 1
+         -- so whichever table the photographer's package lives in wins.
+         (
+           SELECT name FROM (
+             SELECT package_name AS name FROM pricing_packages
+             WHERE id::text = (g.gallery_settings->>'packageId')
+             UNION ALL
+             SELECT name AS name FROM packages
+             WHERE id::text = (g.gallery_settings->>'packageId')
+           ) p LIMIT 1
+         ) AS linked_package_name,
+         (
+           SELECT (inclusions->>'images')::int FROM (
+             SELECT included_services AS inclusions FROM pricing_packages
+             WHERE id::text = (g.gallery_settings->>'packageId')
+             UNION ALL
+             SELECT inclusions AS inclusions FROM packages
+             WHERE id::text = (g.gallery_settings->>'packageId')
+           ) p LIMIT 1
+         ) AS linked_package_images
        FROM photographer_client_galleries g
        WHERE g.photographer_id = $1
        ORDER BY g.created_at DESC
@@ -23835,6 +23856,11 @@ app.get("/api/photographer/galleries", async (req, res) => {
           // gracefully when missing.
           projectId,
           linkedProjectTitle: typeof r.linked_project_title === 'string' ? r.linked_project_title : null,
+          // Slice 9X.5 — pricing-package linkage.
+          packageId: typeof settings.packageId === 'string' ? settings.packageId : null,
+          linkedPackageName: typeof r.linked_package_name === 'string' ? r.linked_package_name : null,
+          linkedPackageImagesIncluded:
+            typeof r.linked_package_images === 'number' ? r.linked_package_images : null,
         };
       }),
     });
@@ -23844,6 +23870,46 @@ app.get("/api/photographer/galleries", async (req, res) => {
   }
 });
 
+// Slice 9X.5 — look up `images` count from a pricing-package's
+// inclusions JSONB. Used by gallery POST + PATCH to auto-fill
+// contractedImages whenever the photographer links a package.
+// Returns null if the package doesn't exist, isn't owned by this
+// photographer, or doesn't carry an images-count. Best-effort:
+// callers that get null fall back to manual contractedImages.
+async function lookupPackageImagesIncluded(
+  packageId: string,
+  ownerUserId: string,
+): Promise<{ images: number | null; packageName: string | null }> {
+  if (!packageId || !ownerUserId) return { images: null, packageName: null };
+  // Newer pricing_packages table uses included_services + package_name.
+  // Legacy packages table uses inclusions + name. Try both with one
+  // UNION query so the right shape wins regardless of which table the
+  // photographer's package lives in.
+  try {
+    const result = await pool.query(
+      `SELECT name, inclusions FROM (
+         SELECT package_name AS name, included_services AS inclusions
+         FROM pricing_packages
+         WHERE id::text = $1 AND user_id = $2
+         UNION ALL
+         SELECT name AS name, inclusions AS inclusions
+         FROM packages
+         WHERE id::text = $1 AND user_id = $2
+       ) p LIMIT 1`,
+      [packageId, ownerUserId],
+    );
+    const row = result.rows[0];
+    if (!row) return { images: null, packageName: null };
+    const inclusions = row.inclusions ?? {};
+    const raw = (inclusions as Record<string, unknown>)?.images;
+    const images = typeof raw === 'number' && raw > 0 ? Math.floor(raw) : null;
+    return { images, packageName: typeof row.name === 'string' ? row.name : null };
+  } catch (err) {
+    console.warn('[gallery-package-lookup] failed', err);
+    return { images: null, packageName: null };
+  }
+}
+
 // POST /api/photographer/galleries — create empty gallery, return shareUrl.
 app.post("/api/photographer/galleries", async (req, res) => {
   const session = requireUserSession(req, res);
@@ -23852,6 +23918,10 @@ app.post("/api/photographer/galleries", async (req, res) => {
   const clientEmail = String(req.body?.clientEmail ?? '').trim().toLowerCase();
   const projectTitle = req.body?.projectTitle != null ? String(req.body.projectTitle).trim() : null;
   const projectId = req.body?.projectId != null ? String(req.body.projectId).trim() : null;
+  // Slice 9X.5 — optional pricing-package linkage. When supplied, we
+  // auto-fill contractedImages from package.inclusions.images so the
+  // photographer doesn't have to retype the contract terms.
+  const packageId = req.body?.packageId != null ? String(req.body.packageId).trim() : null;
   if (!clientName || !clientEmail || !clientEmail.includes('@')) {
     return res.status(400).json({ error: "client_name_and_email_required" });
   }
@@ -23862,6 +23932,11 @@ app.post("/api/photographer/galleries", async (req, res) => {
       createdVia: 'photographer_dashboard',
     };
     if (projectId) settings.projectId = projectId;
+    if (packageId) {
+      settings.packageId = packageId;
+      const lookup = await lookupPackageImagesIncluded(packageId, session.userId);
+      if (lookup.images != null) settings.contractedImages = lookup.images;
+    }
     const result = await pool.query(
       `INSERT INTO photographer_client_galleries
          (photographer_id, client_name, client_email, project_title, access_token,
@@ -23909,11 +23984,30 @@ app.patch("/api/photographer/galleries/:id/settings", async (req, res) => {
       // Slice 9X.3 — let photographer link/unlink project. Empty string
       // or null clears the linkage.
       'projectId',
+      // Slice 9X.5 — pricing-package linkage; auto-fills contractedImages
+      // from package.inclusions.images when changed.
+      'packageId',
     ]);
     for (const [key, value] of Object.entries(patch)) {
       if (key === 'password') continue;
       if (!ALLOWED.has(key)) continue;
       next[key] = value;
+    }
+
+    // Slice 9X.5 — when packageId changes, look up the package's
+    // images-included count and auto-fill contractedImages UNLESS the
+    // caller explicitly sent contractedImages in the same patch (which
+    // signals manual override). Skip auto-fill when packageId is being
+    // cleared to null so the photographer doesn't lose their setting.
+    const packageIdChanged =
+      'packageId' in patch && patch.packageId !== currentSettings.packageId;
+    const contractedImagesAlsoSent = 'contractedImages' in patch;
+    if (packageIdChanged && !contractedImagesAlsoSent) {
+      const newPkgId = patch.packageId;
+      if (typeof newPkgId === 'string' && newPkgId.trim()) {
+        const lookup = await lookupPackageImagesIncluded(newPkgId.trim(), session.userId);
+        if (lookup.images != null) next.contractedImages = lookup.images;
+      }
     }
 
     if ('password' in patch) {
