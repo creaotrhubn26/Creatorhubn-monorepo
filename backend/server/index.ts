@@ -23631,6 +23631,19 @@ app.post("/api/client/gallery/:accessToken/comments", async (req, res) => {
         createdAt: row?.created_at,
       },
     });
+
+    // Slice 9.6 — fire-and-forget photographer notification. Spawns
+    // a microtask AFTER res.json so the client never waits on SMTP.
+    setImmediate(() => {
+      void dispatchGalleryNotification('comment_created', gallery.photographerId, {
+        galleryId: gallery.id,
+        galleryTitle: gallery.projectTitle ?? null,
+        shareUrl: buildGalleryShareUrl(accessToken),
+        clientName: clientName || gallery.clientName || 'Klient',
+        clientEmail: clientEmail || gallery.clientEmail || '',
+        details: { comment, imageId, commentType },
+      });
+    });
   } catch (error) {
     console.error("[client-gallery] comment save failed", error);
     res.status(500).json({ error: "comment_save_failed" });
@@ -23681,6 +23694,131 @@ app.get("/api/client/gallery/:accessToken/comments", async (req, res) => {
     res.status(500).json({ error: "comment_list_failed" });
   }
 });
+
+// ── Slice 9.6 — gallery email notifications ────────────────────────────
+// Fire-and-forget dispatchers for the two highest-signal client events:
+// new comment posted, selection submitted. Sent to the photographer's
+// email so they know the client is active without having to refresh
+// the dashboard. Best-effort: any failure (no SMTP config, lookup miss,
+// SMTP timeout) logs + swallows so the originating POST always 2xx's.
+//
+// Why not session_notifications + cron-poll: that table targets the
+// older client_gallery_sessions flow (separate from photographer_
+// client_galleries that the iPad bridge uses). Direct dispatch here
+// keeps the surface tight; richer queueing (deadline reminders,
+// open-rate tracking) can land in Slice 12 alongside the engagement
+// dashboard.
+
+interface GalleryNotificationPayload {
+  galleryId: string;
+  galleryTitle: string | null;
+  shareUrl: string;
+  clientName: string;
+  clientEmail: string;
+  // Free-form per-event details surfaced in the email body.
+  details: Record<string, unknown>;
+}
+
+type GalleryNotificationType = 'comment_created' | 'selection_submitted';
+
+async function lookupPhotographerEmail(photographerId: string): Promise<string | null> {
+  if (!photographerId) return null;
+  try {
+    const r = await pool.query(`SELECT email FROM users WHERE id = $1 LIMIT 1`, [photographerId]);
+    const email = r.rows[0]?.email;
+    return typeof email === 'string' && email.includes('@') ? email : null;
+  } catch (err) {
+    console.warn('[gallery-notify] photographer email lookup failed:', err);
+    return null;
+  }
+}
+
+function buildGalleryNotificationEmail(
+  type: GalleryNotificationType,
+  payload: GalleryNotificationPayload,
+): { subject: string; text: string; html: string } {
+  const title = payload.galleryTitle || 'Galleri';
+  const safeShareUrl = payload.shareUrl.replace(/[<>'"]/g, '');
+  const clientLabel = `${payload.clientName} (${payload.clientEmail})`;
+
+  if (type === 'comment_created') {
+    const comment = String(payload.details.comment ?? '').slice(0, 500);
+    return {
+      subject: `${title}: ny kommentar fra ${payload.clientName}`,
+      text: `${clientLabel} skrev en kommentar i galleriet "${title}":\n\n"${comment}"\n\nÅpne galleriet: ${safeShareUrl}`,
+      html: `<p><strong>${clientLabel}</strong> skrev en kommentar i galleriet <em>${title}</em>:</p>
+        <blockquote style="border-left:3px solid #ddd; padding:8px 12px; color:#333;">${comment.replace(/</g, '&lt;')}</blockquote>
+        <p><a href="${safeShareUrl}" style="color:#0066cc;">Åpne galleriet</a></p>
+        <hr style="border:none; border-top:1px solid #eee; margin:24px 0;">
+        <p style="font-size:12px; color:#888;">Sendt automatisk fra CreatorHub. Du mottar dette fordi du eier galleriet.</p>`,
+    };
+  }
+
+  // selection_submitted
+  const selectedCount = Number(payload.details.selectedCount ?? 0);
+  const totalAmount = Number(payload.details.totalAmount ?? 0);
+  const currency = String(payload.details.currency ?? 'NOK');
+  const requiresPayment = Boolean(payload.details.requiresPayment);
+  return {
+    subject: `${title}: ${payload.clientName} har valgt ${selectedCount} bilder`,
+    text: `${clientLabel} har submittet sitt utvalg i galleriet "${title}".\n\nValgte bilder: ${selectedCount}\n${requiresPayment ? `Sum å betale: ${totalAmount} ${currency} (klient må betale ekstra-bilder før download låses opp)` : 'Alt innenfor inkluderte bilder — ingen ekstra-betaling kreves.'}\n\nÅpne galleriet: ${safeShareUrl}`,
+    html: `<p><strong>${clientLabel}</strong> har submittet sitt utvalg i galleriet <em>${title}</em>.</p>
+      <ul>
+        <li>Valgte bilder: <strong>${selectedCount}</strong></li>
+        ${requiresPayment
+          ? `<li>Sum å betale: <strong>${totalAmount} ${currency}</strong> (klient må betale ekstra-bilder før download låses opp)</li>`
+          : '<li>Alt innenfor inkluderte bilder — ingen ekstra-betaling kreves.</li>'}
+      </ul>
+      <p><a href="${safeShareUrl}" style="color:#0066cc;">Åpne galleriet</a></p>
+      <hr style="border:none; border-top:1px solid #eee; margin:24px 0;">
+      <p style="font-size:12px; color:#888;">Sendt automatisk fra CreatorHub. Du mottar dette fordi du eier galleriet.</p>`,
+  };
+}
+
+/// Fire-and-forget dispatcher. Caller awaits nothing — call it via
+/// setImmediate / Promise without await so the originating route's
+/// response is never blocked on SMTP latency.
+async function dispatchGalleryNotification(
+  type: GalleryNotificationType,
+  photographerId: string,
+  payload: GalleryNotificationPayload,
+): Promise<void> {
+  try {
+    const transporter = getRoleRoomEducationInquiryMailer();
+    if (!transporter) {
+      // SMTP not configured (dev / test / Render env without GMAIL_*).
+      // Skip silently — same posture other notification paths take.
+      return;
+    }
+    const photographerEmail = await lookupPhotographerEmail(photographerId);
+    if (!photographerEmail) return;
+
+    const fromAddress =
+      process.env.GMAIL_USER ||
+      process.env.GOOGLE_WORKSPACE_EMAIL ||
+      process.env.GOOGLE_ADMIN_EMAIL ||
+      'noreply@creatorhubn.com';
+
+    const { subject, text, html } = buildGalleryNotificationEmail(type, payload);
+    await transporter.sendMail({
+      from: `CreatorHub <${fromAddress}>`,
+      to: photographerEmail,
+      replyTo: payload.clientEmail,
+      subject,
+      text,
+      html,
+    });
+  } catch (err) {
+    console.warn(`[gallery-notify] dispatch ${type} failed:`, err);
+  }
+}
+
+/// Build the share URL the photographer clicks in the email. Mirrors
+/// the bridge's URL construction so the link goes to the same viewer.
+function buildGalleryShareUrl(accessToken: string): string {
+  const host = (process.env.CREATORHUB_PUBLIC_URL ?? 'https://app.creatorhubn.com').replace(/\/$/, '');
+  return `${host}/client/gallery/${accessToken}`;
+}
 
 // ── Slice 9 — checkout flow ────────────────────────────────────────────
 // Two routes the gallery viewer has been calling for months without a
@@ -23901,6 +24039,37 @@ app.post("/api/client/gallery/:accessToken/submit-selection", async (req, res) =
       // Stripe payment intent comes from Slice 10's create-payment-intent
       // route — surfaced as a separate call so that endpoint owns the
       // Stripe API call + idempotency key handling.
+    });
+
+    // Slice 9.6 — fire-and-forget photographer notification with the
+    // pricing snapshot baked into the email so Daniel knows whether
+    // checkout still needs to happen. Same fire-and-forget posture as
+    // the comment dispatcher — never blocks the client's POST.
+    setImmediate(async () => {
+      try {
+        const photographerRow = await pool.query(
+          `SELECT photographer_id, project_title, client_name, client_email
+           FROM photographer_client_galleries WHERE id = $1 LIMIT 1`,
+          [gallery.id],
+        );
+        const row = photographerRow.rows[0];
+        if (!row?.photographer_id) return;
+        void dispatchGalleryNotification('selection_submitted', row.photographer_id, {
+          galleryId: gallery.id,
+          galleryTitle: row.project_title ?? null,
+          shareUrl: buildGalleryShareUrl(accessToken),
+          clientName: row.client_name || effectiveEmail.split('@')[0] || 'Klient',
+          clientEmail: effectiveEmail,
+          details: {
+            selectedCount: selectedImageIds.length,
+            totalAmount: pricing.totalAmount,
+            currency: pricing.currency,
+            requiresPayment: pricing.totalAmount > 0,
+          },
+        });
+      } catch (err) {
+        console.warn('[gallery-notify] selection_submitted dispatch failed:', err);
+      }
     });
   } catch (error) {
     console.error("[client-gallery] submit-selection failed", error);
