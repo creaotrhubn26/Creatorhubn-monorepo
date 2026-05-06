@@ -8,12 +8,16 @@
 
 import type { Pool } from 'pg';
 
-export type RoleRoomFeedPlatform = 'instagram' | 'tiktok' | 'linkedin';
+export type RoleRoomFeedPlatform = 'instagram' | 'tiktok' | 'linkedin' | 'facebook';
 
 export const SUPPORTED_FEED_PLATFORMS: readonly RoleRoomFeedPlatform[] = [
   'instagram',
   'tiktok',
   'linkedin',
+  // Feed Planner 2.0 Fase A — Facebook plan-persistence reuses the same
+  // jsonb-shape as IG/TT/LI; the actual publish-flow goes through the
+  // dedicated /api/role-room/facebook/publish-video endpoint.
+  'facebook',
 ] as const;
 
 export type RoleRoomFeedApprovalState =

@@ -483,7 +483,7 @@ const normalizeStoryLogicDraft = (value: Record<string, unknown>): Record<string
   versions: Array.isArray(value.versions) ? value.versions : [],
 });
 
-export type RoleRoomFeedPlatform = 'instagram' | 'tiktok' | 'linkedin' | 'youtube';
+export type RoleRoomFeedPlatform = 'instagram' | 'tiktok' | 'linkedin' | 'youtube' | 'facebook';
 
 export type RoleRoomFeedPostConcept =
   | 'product_highlight'

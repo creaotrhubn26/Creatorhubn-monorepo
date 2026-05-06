@@ -68,6 +68,9 @@ type PlatformOption = {
 
 const PLATFORM_OPTIONS: PlatformOption[] = [
   { id: 'instagram', label: 'Instagram', minimumTierLevel: 1 },
+  // Facebook deler IG-spotlight-tier siden FB-publisering går mot
+  // /api/role-room/facebook/publish-video (Page-token, ikke IG Graph).
+  { id: 'facebook', label: 'Facebook', minimumTierLevel: 1 },
   { id: 'tiktok', label: 'TikTok', minimumTierLevel: 2 },
   { id: 'linkedin', label: 'LinkedIn', minimumTierLevel: 2 },
 ];

@@ -10,7 +10,7 @@
 
 import type { Pool } from 'pg';
 
-export type RoleRoomFeedTemplatePlatform = 'instagram' | 'tiktok' | 'linkedin';
+export type RoleRoomFeedTemplatePlatform = 'instagram' | 'tiktok' | 'linkedin' | 'facebook';
 
 export interface RoleRoomFeedTemplatePayload {
   concept: string;

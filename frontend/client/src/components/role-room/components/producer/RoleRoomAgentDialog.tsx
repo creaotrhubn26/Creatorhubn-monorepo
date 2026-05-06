@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Alert,
   Box,
   Button,
@@ -17,31 +20,24 @@ import {
   useTheme,
 } from '@mui/material';
 import {
-  AlternateEmail as AlternateEmailIcon,
   Article as ArticleIcon,
   AutoFixHigh as AutoFixHighIcon,
   Chat as ChatIcon,
-  CloudUpload as CloudUploadIcon,
-  FactCheck as FactCheckIcon,
+  ExpandMore as ExpandMoreIcon,
   GridView as GridViewIcon,
   Language as LanguageIcon,
   LocalMall as MerchIcon,
   MoveToInbox as InboxIcon,
   QueryStats as QueryStatsIcon,
   Rocket as RocketIcon,
-  Tag as TagIcon,
 } from '@mui/icons-material';
 import MetaPagePublicMetadataInspector from './MetaPagePublicMetadataInspector';
-import AdsAttributionInspector from './AdsAttributionInspector';
-import FacebookVideoPublisher from './FacebookVideoPublisher';
-import FacebookPageMentionPublisher from './FacebookPageMentionPublisher';
+import PagePublicContentInspector from './PagePublicContentInspector';
 import SocialInboxPanel from './SocialInboxPanel';
 import SocialAnalyticsPanel from './SocialAnalyticsPanel';
 import RoleRoomAgentWorkflowStepper from './RoleRoomAgentWorkflowStepper';
 import RoleRoomAgentConnectionsBar from './RoleRoomAgentConnectionsBar';
 import SocialAccessRequestDialog from './SocialAccessRequestDialog';
-import IgHashtagInspector from './IgHashtagInspector';
-import PagePublicContentInspector from './PagePublicContentInspector';
 import { Tab, Tabs } from '@mui/material';
 import roleRoomAgentService, {
   type RoleRoomAgentAccess,
@@ -227,7 +223,7 @@ export default function RoleRoomAgentDialog({
   // full correction trail as the newest source of truth.
   const [refinementDraft, setRefinementDraft] = useState('');
   const [refinementHistory, setRefinementHistory] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState<'research' | 'chat' | 'merch' | 'feed-planner' | 'marketing-plan' | 'posters' | 'meta-page' | 'page-content' | 'ads-attribution' | 'fb-publish' | 'fb-mention' | 'ig-hashtag' | 'social-inbox' | 'social-analytics'>('research');
+  const [activeTab, setActiveTab] = useState<'research' | 'chat' | 'merch' | 'feed-planner' | 'marketing-plan' | 'posters' | 'social-inbox' | 'social-analytics'>('research');
   const [systemStatusOpen, setSystemStatusOpen] = useState(false);
 
   // Track whether the current generated result has already been turned
@@ -620,42 +616,6 @@ export default function RoleRoomAgentDialog({
           iconPosition="start"
         />
         <Tab
-          value="meta-page"
-          label="Meta Page"
-          icon={<FactCheckIcon fontSize="small" />}
-          iconPosition="start"
-        />
-        <Tab
-          value="page-content"
-          label="Page Content"
-          icon={<ArticleIcon fontSize="small" />}
-          iconPosition="start"
-        />
-        <Tab
-          value="ads-attribution"
-          label="Ads Attribution"
-          icon={<QueryStatsIcon fontSize="small" />}
-          iconPosition="start"
-        />
-        <Tab
-          value="fb-publish"
-          label="FB Publish"
-          icon={<CloudUploadIcon fontSize="small" />}
-          iconPosition="start"
-        />
-        <Tab
-          value="fb-mention"
-          label="Page Mentions"
-          icon={<AlternateEmailIcon fontSize="small" />}
-          iconPosition="start"
-        />
-        <Tab
-          value="ig-hashtag"
-          label="IG Hashtags"
-          icon={<TagIcon fontSize="small" />}
-          iconPosition="start"
-        />
-        <Tab
           value="social-inbox"
           label="Inbox"
           icon={<InboxIcon fontSize="small" />}
@@ -763,30 +723,6 @@ export default function RoleRoomAgentDialog({
         ) : activeTab === 'posters' ? (
           <Box sx={{ height: '100%', minHeight: 600 }}>
             <PosterComposerPanel />
-          </Box>
-        ) : activeTab === 'meta-page' ? (
-          <Box sx={{ p: { xs: 1, md: 2 } }}>
-            <MetaPagePublicMetadataInspector />
-          </Box>
-        ) : activeTab === 'page-content' ? (
-          <Box sx={{ p: { xs: 1, md: 2 } }}>
-            <PagePublicContentInspector />
-          </Box>
-        ) : activeTab === 'ads-attribution' ? (
-          <Box sx={{ p: { xs: 1, md: 2 } }}>
-            <AdsAttributionInspector />
-          </Box>
-        ) : activeTab === 'fb-publish' ? (
-          <Box sx={{ p: { xs: 1, md: 2 } }}>
-            <FacebookVideoPublisher />
-          </Box>
-        ) : activeTab === 'fb-mention' ? (
-          <Box sx={{ p: { xs: 1, md: 2 } }}>
-            <FacebookPageMentionPublisher />
-          </Box>
-        ) : activeTab === 'ig-hashtag' ? (
-          <Box sx={{ p: { xs: 1, md: 2 } }}>
-            <IgHashtagInspector />
           </Box>
         ) : activeTab === 'social-inbox' ? (
           <Box sx={{ p: { xs: 1, md: 2 } }}>
@@ -1674,6 +1610,75 @@ export default function RoleRoomAgentDialog({
                   </Stack>
                 </Box>
               </Stack>
+
+              {/* Konkurrenter & inspirasjon — samler tidligere top-level
+                  fanene (Meta Page-metadata + Page Content) som collapsible
+                  research-subseksjoner. Producer kan slå opp en konkurrents
+                  Page-metadata eller hente offentlig content uten å
+                  forlate research-flowen. */}
+              <Box
+                data-testid="research-competitors-section"
+                sx={{
+                  borderRadius: 3,
+                  border: '1px solid rgba(34,211,238,0.18)',
+                  bgcolor: 'rgba(8,47,73,0.18)',
+                  overflow: 'hidden',
+                }}
+              >
+                <Box sx={{ px: 1.4, py: 1, borderBottom: '1px solid rgba(34,211,238,0.16)' }}>
+                  <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.95rem' }}>
+                    Konkurrenter &amp; inspirasjon
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(226,232,240,0.62)', fontSize: '0.78rem' }}>
+                    Slå opp Page-metadata og hent offentlig content fra konkurrenter direkte i research-flowen.
+                  </Typography>
+                </Box>
+                <Accordion
+                  disableGutters
+                  square
+                  sx={{
+                    bgcolor: 'transparent',
+                    color: '#e2e8f0',
+                    boxShadow: 'none',
+                    '&:before': { display: 'none' },
+                    borderBottom: '1px solid rgba(148,163,184,0.12)',
+                  }}
+                >
+                  <AccordionSummary
+                    expandIcon={<ExpandMoreIcon sx={{ color: 'rgba(226,232,240,0.7)' }} />}
+                    data-testid="research-meta-accordion"
+                  >
+                    <Typography sx={{ fontWeight: 700, fontSize: '0.86rem' }}>
+                      Meta Page-metadata
+                    </Typography>
+                  </AccordionSummary>
+                  <AccordionDetails sx={{ p: { xs: 1, md: 2 } }}>
+                    <MetaPagePublicMetadataInspector />
+                  </AccordionDetails>
+                </Accordion>
+                <Accordion
+                  disableGutters
+                  square
+                  sx={{
+                    bgcolor: 'transparent',
+                    color: '#e2e8f0',
+                    boxShadow: 'none',
+                    '&:before': { display: 'none' },
+                  }}
+                >
+                  <AccordionSummary
+                    expandIcon={<ExpandMoreIcon sx={{ color: 'rgba(226,232,240,0.7)' }} />}
+                    data-testid="research-content-accordion"
+                  >
+                    <Typography sx={{ fontWeight: 700, fontSize: '0.86rem' }}>
+                      Page Content (offentlig)
+                    </Typography>
+                  </AccordionSummary>
+                  <AccordionDetails sx={{ p: { xs: 1, md: 2 } }}>
+                    <PagePublicContentInspector />
+                  </AccordionDetails>
+                </Accordion>
+              </Box>
             </Stack>
           ) : null}
         </Stack>

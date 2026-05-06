@@ -19,7 +19,7 @@
 
 import type { Pool } from 'pg';
 
-export type RoleRoomFeedStrategyPlatform = 'instagram' | 'tiktok' | 'linkedin';
+export type RoleRoomFeedStrategyPlatform = 'instagram' | 'tiktok' | 'linkedin' | 'facebook';
 
 export interface RoleRoomFeedStrategySummary {
   algorithmPriorities: string[];
@@ -113,6 +113,33 @@ const SEED_DEFAULTS: Record<RoleRoomFeedStrategyPlatform, RoleRoomFeedStrategySu
     recentChanges: [
       'LinkedIn Collaborative Articles kan gi eksperts-badge — vurder deltakelse.',
       'Videoinnlegg under 90 sek prioriteres på feed siden Q1.',
+    ],
+    generatedAt: new Date().toISOString(),
+  },
+  // Facebook seed — Feed Planner 2.0 Fase A. Replaces det meste fra IG-
+  // logikken, men FB Page-feeden vekter delinger og lenge-kommentarer
+  // tyngre, og favoriserer link-posts og lange video-formater.
+  facebook: {
+    algorithmPriorities: [
+      'Meaningful interactions (kommentarer 3+ ord, deling med kontekst) er sterkeste signal.',
+      'Video over 1 minutt med høy retention får løft i Watch-feeden.',
+      'Reels deler distribusjons-modell med IG — kort, hook-først, høy gjennomføring.',
+      'Pages med stabil 3–5 posts/uke beholder organisk rekkevidde bedre enn burst-publisering.',
+    ],
+    captionStructure: [
+      'Hook + utdypning på 2–4 setninger; FB tåler lengre tekst enn IG.',
+      'Inkluder 1–2 spørsmål eller debatt-prompts for å trigge kommentar-tråder.',
+      'Avslutt med tydelig CTA — "del om du kjenner noen som…" eller link-i-kommentar.',
+    ],
+    hashtagGuidance:
+      '0–3 hashtags på FB; #brand + #lokasjon er det meste folk ser etter. Ikke kopier IG-hashtag-strategi rett over.',
+    postingWindows: [
+      { audience: 'B2C bredt', bestWindows: ['tir 13–15', 'tor 13–15', 'søn 12–14'] },
+      { audience: 'Lokal handel / servering', bestWindows: ['fre 16–18', 'lør 10–12'] },
+    ],
+    recentChanges: [
+      'FB Reels-monetisering rullet ut til flere markeder; cross-posting fra IG fungerer.',
+      'Page-mentions (@[PAGE_ID]) gir ekstra rekkevidde når den nevnte siden samhandler.',
     ],
     generatedAt: new Date().toISOString(),
   },
@@ -248,6 +275,11 @@ export async function refreshStrategyWithClaude(
     linkedin: [
       'https://www.linkedin.com/business/marketing/blog',
       'https://www.linkedin.com/pulse/topics/marketing-s1146',
+    ],
+    facebook: [
+      'https://www.facebook.com/business/news',
+      'https://www.facebook.com/business/insights',
+      'https://about.fb.com/news/',
     ],
   };
 

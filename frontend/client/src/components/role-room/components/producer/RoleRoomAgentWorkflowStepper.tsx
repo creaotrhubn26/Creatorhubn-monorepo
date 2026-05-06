@@ -21,7 +21,10 @@ const PHASES: Array<{
     label: 'Analyze',
     caption: 'Forstå bedriften',
     icon: <AnalyzeIcon fontSize="small" />,
-    tabs: ['research', 'meta-page'],
+    // Konkurrent-/Page-metadata-faner ble lagt inn under Research som
+    // collapsible accordion (Feed Planner 2.0 Fase A) — fasen vekkes
+    // fortsatt av research-fanen.
+    tabs: ['research'],
   },
   {
     id: 'plan',
@@ -35,7 +38,10 @@ const PHASES: Array<{
     label: 'Publish',
     caption: 'På tvers av plattformer',
     icon: <PublishIcon fontSize="small" />,
-    tabs: ['fb-publish', 'fb-mention', 'page-content'],
+    // FB Publish + Page Mentions + IG Hashtags er nå inline i Feed Planner
+    // post-editor (publish-CTAs + caption-toolbar). Fasen mapper til
+    // feed-planner som inngangen til all publisering.
+    tabs: ['feed-planner'],
   },
   {
     id: 'listen',
@@ -49,7 +55,8 @@ const PHASES: Array<{
     label: 'Measure',
     caption: 'Analytics',
     icon: <MeasureIcon fontSize="small" />,
-    tabs: ['social-analytics', 'ads-attribution'],
+    // Ads Attribution er nå en subview under Analytics-fanen.
+    tabs: ['social-analytics'],
   },
 ];
 

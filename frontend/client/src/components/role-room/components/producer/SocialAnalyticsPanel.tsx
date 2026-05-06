@@ -31,6 +31,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import AdsAttributionInspector from './AdsAttributionInspector';
 import roleRoomAgentService, {
   type RoleRoomAccountMetric,
   type RoleRoomDailyEventEntry,
@@ -617,6 +618,20 @@ export default function SocialAnalyticsPanel(): React.ReactElement {
           <Typography sx={{ color: 'rgba(226,232,240,0.45)', fontSize: '0.7rem', textAlign: 'center' }}>
             Data fra <code>social_events</code> + <code>social_metrics</code> · Auto-refresh er av — klikk Oppdater for ferske tall
           </Typography>
+
+          {/* Ads Attribution — tidligere top-level fane, nå subview under
+              Analytics. Lar producer matche organisk performance i kortene
+              over mot Meta-ads-attribution uten å bytte tab. */}
+          <Divider sx={{ borderColor: 'rgba(148,163,184,0.12)', mt: 1 }} />
+          <Box data-testid="analytics-ads-attribution-section" sx={{ pt: 1 }}>
+            <Typography sx={{ color: '#e2e8f0', fontWeight: 800, fontSize: '0.95rem', mb: 0.4 }}>
+              Ads-attribution
+            </Typography>
+            <Typography sx={{ color: 'rgba(226,232,240,0.62)', fontSize: '0.78rem', mb: 1.4 }}>
+              Match Meta-ads-resultater mot organisk feed-performance. Bruker Conversions API + Marketing API.
+            </Typography>
+            <AdsAttributionInspector />
+          </Box>
         </>
       )}
     </Stack>

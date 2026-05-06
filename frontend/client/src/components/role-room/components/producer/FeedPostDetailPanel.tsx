@@ -5,6 +5,10 @@ import {
   Button,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControl,
   IconButton,
   InputAdornment,
@@ -17,6 +21,7 @@ import {
   Typography,
 } from '@mui/material';
 import {
+  AlternateEmail as AlternateEmailIcon,
   Autorenew as AutorenewIcon,
   AddPhotoAlternate as AddPhotoAlternateIcon,
   AutoAwesome as AutoAwesomeIcon,
@@ -29,6 +34,7 @@ import {
   Lock as LockIcon,
   Movie as MovieIcon,
   Tag as TagIcon,
+  TravelExplore as TravelExploreIcon,
 } from '@mui/icons-material';
 import roleRoomAgentService, {
   RoleRoomFeedEntitlementError,
@@ -50,6 +56,7 @@ import FeedPostTile from './FeedPostTile';
 import GoogleDriveImagePicker from './GoogleDriveImagePicker';
 import FeedPostApprovalActions from './FeedPostApprovalActions';
 import LinkedInPublishAsSelector from './LinkedInPublishAsSelector';
+import IgHashtagInspector from './IgHashtagInspector';
 
 type FeedPostDetailPanelProps = {
   projectId: string;
@@ -206,6 +213,14 @@ export default function FeedPostDetailPanel({
     topMediaPreview: string | null;
     validationError: string | null;
   }>>([]);
+  // Caption-toolbar dialogs (Feed Planner 2.0 Fase A):
+  //   mentionPickerOpen — åpner FB Page-picker som limer @[PAGE_ID] inn i
+  //                       caption (FB Graph parser dette automatisk).
+  //   hashtagInspectorOpen — gjenbruker IgHashtagInspector som inline-tool
+  //                         for hashtag-discovery uten å forlate post-editor.
+  const [mentionPickerOpen, setMentionPickerOpen] = useState(false);
+  const [hashtagInspectorOpen, setHashtagInspectorOpen] = useState(false);
+  const [mentionSelectedPageId, setMentionSelectedPageId] = useState<string>('');
 
   const resolveAuthToken = (): string | null => {
     try {
@@ -228,7 +243,10 @@ export default function FeedPostDetailPanel({
       .then((body) => {
         if (body?.success && Array.isArray(body.pages)) {
           setFbPages(body.pages);
-          if (body.pages.length > 0) setFbSelectedPageId(body.pages[0].id);
+          if (body.pages.length > 0) {
+            setFbSelectedPageId(body.pages[0].id);
+            setMentionSelectedPageId(body.pages[0].id);
+          }
         }
       })
       .catch(() => { /* silently ignore — button handles errors */ });
@@ -889,19 +907,49 @@ export default function FeedPostDetailPanel({
         sx={textFieldSx}
       />
 
-      <TextField
-        size="small"
-        label="Caption"
-        value={post.caption}
-        onChange={(event) => onUpdate({ caption: event.target.value })}
-        inputProps={{ maxLength: 2000 }}
-        fullWidth
-        multiline
-        minRows={3}
-        maxRows={6}
-        variant="outlined"
-        sx={textFieldSx}
-      />
+      <Stack spacing={0.6}>
+        <TextField
+          size="small"
+          label="Caption"
+          value={post.caption}
+          onChange={(event) => onUpdate({ caption: event.target.value })}
+          inputProps={{ maxLength: 2000 }}
+          fullWidth
+          multiline
+          minRows={3}
+          maxRows={6}
+          variant="outlined"
+          sx={textFieldSx}
+        />
+        {/* Caption-toolbar — Page-mention er en FB-feature, men vi viser
+            knappen på alle plattformer fordi @[PAGE_ID]-syntax bare
+            tolkes av FB; andre plattformer renderer det som vanlig tekst.
+            Selve picker-dialogen krever koblede FB Pages. */}
+        <Stack direction="row" spacing={0.6} alignItems="center" flexWrap="wrap" useFlexGap>
+          <Tooltip title="Sett inn @-mention av en annen Facebook Page (Page Mention-syntax)">
+            <span>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<AlternateEmailIcon fontSize="small" />}
+                onClick={() => setMentionPickerOpen(true)}
+                disabled={post.locked}
+                data-testid="caption-mention-button"
+                sx={{
+                  textTransform: 'none',
+                  fontWeight: 700,
+                  fontSize: '0.74rem',
+                  color: '#60a5fa',
+                  borderColor: 'rgba(96,165,250,0.45)',
+                  '&:hover': { borderColor: '#60a5fa', bgcolor: 'rgba(96,165,250,0.08)' },
+                }}
+              >
+                @-mention
+              </Button>
+            </span>
+          </Tooltip>
+        </Stack>
+      </Stack>
 
       <TextField
         size="small"
@@ -972,6 +1020,27 @@ export default function FeedPostDetailPanel({
           data-testid="feedpost-hashtag-suggest"
         >
           {hashtagSuggesting ? 'Foreslår…' : 'Foreslå hashtags (AI + Meta)'}
+        </Button>
+        {/* Inline hashtag-inspector — gjenbruker IgHashtagInspector i en
+            dialog så producer kan slå opp top-media for en hashtag og
+            vurdere reach før de legger den til i caption. */}
+        <Button
+          size="small"
+          variant="outlined"
+          onClick={() => setHashtagInspectorOpen(true)}
+          startIcon={<TravelExploreIcon fontSize="small" />}
+          disabled={post.locked}
+          data-testid="feedpost-hashtag-inspector"
+          sx={{
+            textTransform: 'none',
+            fontWeight: 700,
+            fontSize: '0.74rem',
+            color: '#22d3ee',
+            borderColor: 'rgba(34,211,238,0.45)',
+            '&:hover': { borderColor: '#22d3ee', bgcolor: 'rgba(34,211,238,0.08)' },
+          }}
+        >
+          Hashtag-inspector
         </Button>
         {hashtagSuggestions.length > 0 ? (
           <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.6)' }}>
@@ -1196,7 +1265,11 @@ export default function FeedPostDetailPanel({
         </Stack>
       ) : null}
 
-      {post.mediaType === 'reel' ? (
+      {/* FB Page publish-flow er en publish-video-endepunkt — så vi
+          eksponerer den når posten er en reel ELLER når plattformen er
+          'facebook' (i så fall venter vi en video). Knappen er disabled
+          hvis videoen mangler. */}
+      {post.mediaType === 'reel' || platform === 'facebook' ? (
         <Stack
           spacing={0.8}
           data-testid="fb-publish-section"
@@ -1276,6 +1349,118 @@ export default function FeedPostDetailPanel({
       >
         Regenerer mal (placeholder)
       </Button>
+
+      {/* @-mention-dialog (FB Page-picker) — limer @[PAGE_ID] inn på enden
+          av caption. FB Graph oversetter dette til en klikkbar Page-mention
+          ved publisering. */}
+      <Dialog
+        open={mentionPickerOpen}
+        onClose={() => setMentionPickerOpen(false)}
+        maxWidth="xs"
+        fullWidth
+        data-testid="caption-mention-dialog"
+        PaperProps={{
+          sx: {
+            bgcolor: 'rgba(15,23,42,0.98)',
+            color: '#e2e8f0',
+            border: '1px solid rgba(96,165,250,0.32)',
+          },
+        }}
+      >
+        <DialogTitle sx={{ fontWeight: 800, fontSize: '0.95rem' }}>
+          Sett inn Page-mention
+        </DialogTitle>
+        <DialogContent dividers sx={{ borderColor: 'rgba(148,163,184,0.18)' }}>
+          {fbPages.length === 0 ? (
+            <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.08)' }}>
+              Ingen FB Pages funnet. Koble Meta-kontoen for å hente Pages med
+              <code> pages_manage_posts</code> + <code>pages_show_list</code> scopes.
+            </Alert>
+          ) : (
+            <Stack spacing={1}>
+              <Typography sx={{ fontSize: '0.82rem', color: 'rgba(226,232,240,0.78)' }}>
+                Velg en Page å nevne. Limt-inn syntax er <code>@[PAGE_ID]</code> — Facebook
+                konverterer det automatisk til en klikkbar mention ved publisering.
+              </Typography>
+              <FormControl size="small" fullWidth>
+                <InputLabel sx={{ color: 'rgba(226,232,240,0.7)' }}>Page</InputLabel>
+                <Select
+                  label="Page"
+                  value={mentionSelectedPageId}
+                  onChange={(event) => setMentionSelectedPageId(String(event.target.value))}
+                  inputProps={{ 'data-testid': 'caption-mention-page-select' }}
+                  sx={{ color: '#e2e8f0' }}
+                >
+                  {fbPages.map((p) => (
+                    <MenuItem key={p.id} value={p.id}>
+                      {p.name ?? '(unnamed)'} ({p.id})
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setMentionPickerOpen(false)} sx={{ textTransform: 'none' }}>
+            Avbryt
+          </Button>
+          <Button
+            variant="contained"
+            disabled={!mentionSelectedPageId || post.locked}
+            data-testid="caption-mention-insert"
+            onClick={() => {
+              const token = `@[${mentionSelectedPageId}]`;
+              if (post.caption.includes(token)) {
+                setMentionPickerOpen(false);
+                return;
+              }
+              const next = post.caption.trim().length > 0
+                ? `${post.caption} ${token}`
+                : token;
+              onUpdate({ caption: next });
+              setMentionPickerOpen(false);
+            }}
+            sx={{
+              textTransform: 'none',
+              fontWeight: 700,
+              background: 'linear-gradient(135deg, #1877F2 0%, #0866ff 100%)',
+            }}
+          >
+            Sett inn mention
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Hashtag-inspector-dialog — gjenbruker IgHashtagInspector som
+          inline-tool. Lar producer søke top-media + se reach-signaler
+          uten å forlate post-editor. */}
+      <Dialog
+        open={hashtagInspectorOpen}
+        onClose={() => setHashtagInspectorOpen(false)}
+        maxWidth="md"
+        fullWidth
+        data-testid="caption-hashtag-inspector-dialog"
+        PaperProps={{
+          sx: {
+            bgcolor: 'rgba(15,23,42,0.98)',
+            color: '#e2e8f0',
+            border: '1px solid rgba(34,211,238,0.32)',
+          },
+        }}
+      >
+        <DialogTitle sx={{ fontWeight: 800, fontSize: '0.95rem' }}>
+          Hashtag-inspector
+        </DialogTitle>
+        <DialogContent dividers sx={{ borderColor: 'rgba(148,163,184,0.18)' }}>
+          <IgHashtagInspector />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setHashtagInspectorOpen(false)} sx={{ textTransform: 'none' }}>
+            Lukk
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Stack>
   );
 }

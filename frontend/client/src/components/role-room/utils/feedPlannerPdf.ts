@@ -71,6 +71,8 @@ function platformLabel(platform: RoleRoomFeedPlatform): string {
       return 'TikTok';
     case 'linkedin':
       return 'LinkedIn';
+    case 'facebook':
+      return 'Facebook';
     default:
       return platform;
   }

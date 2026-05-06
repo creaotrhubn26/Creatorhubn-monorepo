@@ -21,6 +21,8 @@ export default function SocialBrandLogo({ platform, size = 18, style, title }: S
       return <TikTokBrandLogo size={size} style={style} title={title} />;
     case 'linkedin':
       return <LinkedInBrandLogo size={size} style={style} title={title} />;
+    case 'facebook':
+      return <FacebookBrandLogo size={size} style={style} title={title} />;
     default:
       return null;
   }
@@ -133,6 +135,27 @@ export function LinkedInBrandLogo({
       <rect x="15" y="28" width="8" height="22" rx="1.5" fill="#FFFFFF" />
       <path
         d="M29 28h7.5v3.1c1.7-2.2 4.6-3.9 8.7-3.9 8.7 0 10.2 5.7 10.2 13V50h-8V41c0-3.5-.1-8-4.9-8-4.9 0-5.6 3.8-5.6 7.8V50h-7.9V28Z"
+        fill="#FFFFFF"
+      />
+    </svg>
+  );
+}
+
+export function FacebookBrandLogo({
+  size = 18,
+  style,
+  title = 'Facebook',
+}: {
+  size?: number;
+  style?: CSSProperties;
+  title?: string;
+}) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" role="img" aria-label={title} style={style}>
+      <title>{title}</title>
+      <rect x="2" y="2" width="60" height="60" rx="14" fill="#1877F2" />
+      <path
+        d="M40.5 33.6h-6V52H26.7V33.6h-4.4v-7.2h4.4v-4.5c0-4.7 2.8-7.4 7.5-7.4 2.2 0 4.5.4 4.5.4v5.7h-2.5c-2.5 0-3.3 1.5-3.3 3.1v2.6h6L40.5 33.6Z"
         fill="#FFFFFF"
       />
     </svg>
