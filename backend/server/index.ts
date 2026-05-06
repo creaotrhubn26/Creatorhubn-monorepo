@@ -24278,7 +24278,12 @@ interface GalleryNotificationPayload {
   details: Record<string, unknown>;
 }
 
-type GalleryNotificationType = 'comment_created' | 'selection_submitted';
+type GalleryNotificationType =
+  | 'comment_created'
+  | 'selection_submitted'
+  // Slice 9X.15 — project milestone reached, notify the CLIENT
+  // (not the photographer) that their gallery has progress.
+  | 'project_milestone';
 
 async function lookupPhotographerEmail(photographerId: string): Promise<string | null> {
   if (!photographerId) return null;
@@ -24310,6 +24315,30 @@ function buildGalleryNotificationEmail(
         <p><a href="${safeShareUrl}" style="color:#0066cc;">Åpne galleriet</a></p>
         <hr style="border:none; border-top:1px solid #eee; margin:24px 0;">
         <p style="font-size:12px; color:#888;">Sendt automatisk fra CreatorHub. Du mottar dette fordi du eier galleriet.</p>`,
+    };
+  }
+
+  if (type === 'project_milestone') {
+    // Client-bound. Subject + body talk TO the client, not about them.
+    const milestone = String(payload.details.milestone ?? 'oppdatering');
+    const photographerName = String(payload.details.photographerName ?? 'Fotografen');
+    const friendlyMilestone =
+      milestone === 'completed'
+        ? 'er ferdigstilt'
+        : milestone === 'ready_for_review'
+        ? 'er klar for din gjennomgang'
+        : milestone === 'editing'
+        ? 'er under redigering'
+        : `har en ny status (${milestone})`;
+    return {
+      subject: `${title}: ${friendlyMilestone}`,
+      text: `Hei ${payload.clientName},\n\nProsjektet "${title}" ${friendlyMilestone}.\n\nÅpne galleriet: ${safeShareUrl}\n\nMvh,\n${photographerName}`,
+      html: `<p>Hei <strong>${payload.clientName}</strong>,</p>
+        <p>Prosjektet <em>${title}</em> ${friendlyMilestone}.</p>
+        <p><a href="${safeShareUrl}" style="color:#0066cc; font-size:16px; padding:12px 24px; background:#f5f5f5; border-radius:6px; text-decoration:none;">Åpne ditt galleri →</a></p>
+        <p style="margin-top:24px;">Mvh,<br>${photographerName}</p>
+        <hr style="border:none; border-top:1px solid #eee; margin:24px 0;">
+        <p style="font-size:12px; color:#888;">Sendt automatisk fra CreatorHub.</p>`,
     };
   }
 
@@ -24369,6 +24398,42 @@ async function dispatchGalleryNotification(
     });
   } catch (err) {
     console.warn(`[gallery-notify] dispatch ${type} failed:`, err);
+  }
+}
+
+// Slice 9X.15 — client-bound dispatcher. Same signature as the
+// photographer-side one but sends to payload.clientEmail and uses
+// the photographer's name as the From (so the client recognises the
+// sender). Falls back to silent no-op when SMTP isn't configured —
+// project updates must never fail because email infrastructure is
+// flaky.
+async function dispatchClientGalleryNotification(
+  type: GalleryNotificationType,
+  photographerId: string,
+  payload: GalleryNotificationPayload,
+): Promise<void> {
+  try {
+    const transporter = getRoleRoomEducationInquiryMailer();
+    if (!transporter) return;
+    if (!payload.clientEmail || !payload.clientEmail.includes('@')) return;
+    const photographerEmail = await lookupPhotographerEmail(photographerId);
+    const fromAddress =
+      photographerEmail ||
+      process.env.GMAIL_USER ||
+      process.env.GOOGLE_WORKSPACE_EMAIL ||
+      'noreply@creatorhubn.com';
+    const photographerName = String(payload.details.photographerName ?? 'CreatorHub');
+    const { subject, text, html } = buildGalleryNotificationEmail(type, payload);
+    await transporter.sendMail({
+      from: `${photographerName} <${fromAddress}>`,
+      to: payload.clientEmail,
+      replyTo: photographerEmail || undefined,
+      subject,
+      text,
+      html,
+    });
+  } catch (err) {
+    console.warn(`[client-gallery-notify] dispatch ${type} failed:`, err);
   }
 }
 
@@ -61628,6 +61693,21 @@ app.put("/api/projects/:id", async (req, res) => {
     const { id } = req.params;
     const data = req.body;
 
+    // Slice 9X.15 — capture old status BEFORE update so we can detect
+    // milestone transitions and notify clients exactly once. Wrapped in
+    // its own try because a missing project would just mean the update
+    // below also returns 404 — the notification logic skips on null.
+    let oldStatus: string | null = null;
+    try {
+      const before = await pool.query(
+        `SELECT status FROM legacy.projects WHERE id = $1 LIMIT 1`,
+        [id],
+      );
+      oldStatus = (before.rows[0]?.status ?? null) as string | null;
+    } catch (_err) {
+      // Non-fatal — skip notification path on lookup error.
+    }
+
     // Build dynamic SET clause
     const updates: string[] = ["updated_at = NOW()"];
     const params: any[] = [];
@@ -61679,6 +61759,70 @@ app.put("/api/projects/:id", async (req, res) => {
 
     if (result.rowCount === 0) {
       return res.status(404).json({ error: "Prosjekt ikke funnet" });
+    }
+
+    // Slice 9X.15 — milestone notification. Fire-and-forget so the
+    // PUT response isn't held up by SMTP. Only triggers on transitions
+    // INTO the meaningful client-facing milestones (idempotent — same
+    // status PATCH'd twice doesn't double-notify).
+    const newStatus = typeof data.status === 'string' ? data.status : null;
+    const MILESTONE_STATUSES = new Set(['ready_for_review', 'completed', 'editing']);
+    if (newStatus && newStatus !== oldStatus && MILESTONE_STATUSES.has(newStatus)) {
+      const projectRow = result.rows[0];
+      void (async () => {
+        try {
+          // Find linked galleries via gallery_settings.projectId.
+          const linked = await pool.query(
+            `SELECT id, access_token, client_name, client_email, project_title, photographer_id
+             FROM photographer_client_galleries
+             WHERE gallery_settings->>'projectId' = $1
+               AND status != 'completed'
+             LIMIT 50`,
+            [String(id)],
+          );
+          if (linked.rowCount === 0) return;
+          // Photographer name for the From-line. Best-effort lookup —
+          // falls back to "CreatorHub".
+          let photographerName: string | null = null;
+          if (projectRow.lead_creator || projectRow.photographer_id) {
+            try {
+              const pid = String(projectRow.photographer_id ?? projectRow.lead_creator ?? '');
+              if (pid) {
+                const u = await pool.query(
+                  `SELECT first_name, last_name, username FROM users WHERE id = $1 LIMIT 1`,
+                  [pid],
+                );
+                const r0 = u.rows[0];
+                photographerName =
+                  (r0 && [r0.first_name, r0.last_name].filter(Boolean).join(' ').trim()) ||
+                  r0?.username ||
+                  null;
+              }
+            } catch (_err) { /* ignore */ }
+          }
+          for (const g of linked.rows) {
+            void dispatchClientGalleryNotification(
+              'project_milestone',
+              g.photographer_id,
+              {
+                galleryId: g.id,
+                galleryTitle: g.project_title || projectRow.title || 'Prosjekt',
+                shareUrl: buildGalleryShareUrl(String(g.access_token)),
+                clientName: g.client_name,
+                clientEmail: g.client_email,
+                details: {
+                  milestone: newStatus,
+                  oldStatus: oldStatus ?? 'draft',
+                  projectId: String(id),
+                  photographerName: photographerName || 'Fotografen',
+                },
+              },
+            );
+          }
+        } catch (err) {
+          console.warn('[project-milestone-notify] failed:', err);
+        }
+      })();
     }
 
     res.json(mapProjectRow(result.rows[0]));
