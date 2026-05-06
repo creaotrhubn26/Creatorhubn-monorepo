@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { useTheming } from '../utils/theming-helper';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useUrlTab } from '@/hooks/useUrlState';
 import {
   Box,
   IconButton,
@@ -87,17 +88,18 @@ function AdminTabPanel(props: AdminTabPanelProps) {
 export default function ShowcaseAdmin() {
   const [adminMode, setAdminMode] = useState(false);
   const [adminDialog, setAdminDialog] = useState(false);
-  // Slice 9X.2 — accept ?tab=clientGalleries from the
-  // ProjectCreationWithMemoryCards deep-link so the page lands directly
-  // on the Klient-galleri-tab. Other ?tab=… values fall through to the
-  // numeric default. Read once at mount; tab clicks take over after.
-  const initialAdminTab = (() => {
-    if (typeof window === 'undefined') return 0;
-    const tab = new URLSearchParams(window.location.search).get('tab');
-    if (tab === 'clientGalleries') return 0;
-    return 0;
-  })();
-  const [adminTabValue, setAdminTabValue] = useState(initialAdminTab);
+  // URL-driven tab state: browser back/forward navigates between tabs,
+  // refresh holder samme tab, og delbare URL-er (?adminTab=2) lander
+  // direkte på riktig fane. Slice 9X.2-deep-linket ?tab=clientGalleries
+  // mappes til index 0 (Klient-galleri-tab er første) ved mount.
+  const [adminTabValue, setAdminTabValue] = useUrlTab('adminTab', 0);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const legacy = new URLSearchParams(window.location.search).get('tab');
+    if (legacy === 'clientGalleries' && adminTabValue !== 0) {
+      setAdminTabValue(0);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [previewMode, setPreviewMode] = useState(false);
 
   // Dynamic profession integration
