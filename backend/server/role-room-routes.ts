@@ -20872,7 +20872,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
   );
 
   // Plakat-/menu-composer-endepunkter
-  registerPosterComposerRoutes(router, pool);
+  registerPosterComposerRoutes(router, pool, apiKeyAuth(pool, activeSessions), getUserId);
 
   return router;
 }

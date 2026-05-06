@@ -203,12 +203,25 @@ export interface PosterDraftSummary {
 // API-klient
 // ─────────────────────────────────────────────────────────────────────────
 
+/**
+ * Auth-headers samkjørt med roleRoomService-mønsteret:
+ *   - Authorization: Bearer <token>  (in-app session, fra creatorhub_auth_token)
+ *   - x-api-key: <key>               (eksterne klienter, fra roleRoomApiKey)
+ * Backend's apiKeyAuth-middleware godtar enten — vi sender begge når
+ * tilgjengelig så endepunktene fungerer både for innloggede brukere og
+ * API-nøkkel-baserte integrasjoner.
+ */
 function authHeaders(): Record<string, string> {
-  const userId = localStorage.getItem("creatorhub:userId") ?? "";
-  const userEmail = localStorage.getItem("creatorhub:userEmail") ?? "";
   const headers: Record<string, string> = {};
-  if (userId) headers["x-user-id"] = userId;
-  if (userEmail) headers["x-user-email"] = userEmail;
+  const apiKey = localStorage.getItem("roleRoomApiKey") ?? "";
+  const authToken =
+    localStorage.getItem("creatorhub_auth_token") ||
+    localStorage.getItem("authToken") ||
+    localStorage.getItem("auth_token") ||
+    localStorage.getItem("token") ||
+    "";
+  if (apiKey) headers["x-api-key"] = apiKey;
+  if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
   return headers;
 }
 

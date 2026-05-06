@@ -6,7 +6,7 @@
  * frontend kan vise dem direkte i en <img>-tag eller via Object URL.
  */
 import type { Pool } from "pg";
-import type { Request, Response, Router } from "express";
+import type { Request, RequestHandler, Response, Router } from "express";
 import multer from "multer";
 import {
   FORMAT_DIMENSIONS,
@@ -29,7 +29,20 @@ const posterImageUpload = multer({
   limits: { fileSize: 25 * 1024 * 1024 }, // 25 MB / bilde
 });
 
-export function registerPosterComposerRoutes(router: Router, pool: Pool): void {
+/**
+ * Auth-context fra role-room-routes:
+ *   - authMiddleware: apiKeyAuth-instans (Bearer-token / x-api-key / dev-bypass)
+ *   - getUserId: leser ut req.apiKeyUser.userId, faller til 'anonymous'
+ *
+ * Routes som muterer DB (drafts, upload) bruker authMiddleware + getUserId.
+ * Lese-endepunkter (preview/formats/templates) er public og rate-limit-friendly.
+ */
+export function registerPosterComposerRoutes(
+  router: Router,
+  pool: Pool,
+  authMiddleware: RequestHandler,
+  getUserId: (req: Request) => string,
+): void {
   // ── POST /poster/preview — render plakat til PNG ──
   router.post("/poster/preview", async (req: Request, res: Response) => {
     try {
@@ -131,10 +144,10 @@ export function registerPosterComposerRoutes(router: Router, pool: Pool): void {
   });
 
   // ── GET /poster/drafts — list user's drafts ──
-  router.get("/poster/drafts", async (req: Request, res: Response) => {
-    const userId = (req.headers["x-user-id"] as string | undefined)?.trim();
-    if (!userId) {
-      return res.status(401).json({ error: "x-user-id header required" });
+  router.get("/poster/drafts", authMiddleware, async (req: Request, res: Response) => {
+    const userId = getUserId(req);
+    if (userId === "anonymous") {
+      return res.status(401).json({ error: "auth required" });
     }
     try {
       const { rows } = await pool.query(
@@ -153,9 +166,9 @@ export function registerPosterComposerRoutes(router: Router, pool: Pool): void {
   });
 
   // ── GET /poster/drafts/:draftId — load full content ──
-  router.get("/poster/drafts/:draftId", async (req: Request, res: Response) => {
-    const userId = (req.headers["x-user-id"] as string | undefined)?.trim();
-    if (!userId) return res.status(401).json({ error: "x-user-id header required" });
+  router.get("/poster/drafts/:draftId", authMiddleware, async (req: Request, res: Response) => {
+    const userId = getUserId(req);
+    if (userId === "anonymous") return res.status(401).json({ error: "auth required" });
     try {
       const { rows } = await pool.query(
         `SELECT id, user_id, brand_id, template_id, name, format, content, status, rendered_url, rendered_at, created_at, updated_at
@@ -172,7 +185,8 @@ export function registerPosterComposerRoutes(router: Router, pool: Pool): void {
   });
 
   // ── POST /poster/claude/campaign — generer kampanje-tekst via Claude ──
-  router.post("/poster/claude/campaign", async (req: Request, res: Response) => {
+  // (auth — Claude-kall koster credit)
+  router.post("/poster/claude/campaign", authMiddleware, async (req: Request, res: Response) => {
     const body = req.body as {
       brand?: PosterContent["brand"];
       templateId?: string;
@@ -221,9 +235,10 @@ export function registerPosterComposerRoutes(router: Router, pool: Pool): void {
   });
 
   // ── POST /poster/upload — last opp brand-bilde til R2 ──
-  router.post("/poster/upload", posterImageUpload.single("file"), async (req: Request, res: Response) => {
-    const userId = (req.headers["x-user-id"] as string | undefined)?.trim();
-    if (!userId) return res.status(401).json({ error: "x-user-id header required" });
+  // (auth — bilder lagres med userId i path-prefix)
+  router.post("/poster/upload", authMiddleware, posterImageUpload.single("file"), async (req: Request, res: Response) => {
+    const userId = getUserId(req);
+    if (userId === "anonymous") return res.status(401).json({ error: "auth required" });
     const file = (req as Request & { file?: Express.Multer.File }).file;
     if (!file) return res.status(400).json({ error: "file (multipart) required" });
     if (!file.mimetype.startsWith("image/")) {
@@ -246,9 +261,9 @@ export function registerPosterComposerRoutes(router: Router, pool: Pool): void {
   });
 
   // ── POST /poster/drafts — save (insert or update via id) ──
-  router.post("/poster/drafts", async (req: Request, res: Response) => {
-    const userId = (req.headers["x-user-id"] as string | undefined)?.trim();
-    if (!userId) return res.status(401).json({ error: "x-user-id header required" });
+  router.post("/poster/drafts", authMiddleware, async (req: Request, res: Response) => {
+    const userId = getUserId(req);
+    if (userId === "anonymous") return res.status(401).json({ error: "auth required" });
     const body = req.body as {
       id?: string;
       brandId?: string | null;
