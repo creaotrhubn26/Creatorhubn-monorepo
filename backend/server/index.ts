@@ -68,6 +68,11 @@ import {
   runWhatsAppInvoiceSweep,
 } from "./casting-whatsapp-invoice-runner.js";
 import {
+  maybeStartComposerInvoiceSweep,
+  runComposerMonthlyInvoiceSweep,
+  readComposerInvoiceStatus,
+} from "./composer-invoice-runner.js";
+import {
   maybeStartTeamInviteSweep,
   readTeamInviteSweepStatus,
   runTeamInviteSweep,
@@ -23911,6 +23916,84 @@ app.patch("/api/photographer/galleries/:id/settings", async (req, res) => {
   }
 });
 
+// Slice 9X.1 — cross-gallery events feed for the unified inbox in
+// CommunicationHub. Same UNION shape as the per-gallery /events
+// endpoint, just scoped to ALL galleries the photographer owns and
+// joined with gallery info so the inbox can show "client X commented
+// on gallery Y" without N+1 lookups. Capped at 200 — older history
+// goes via the per-gallery dialog.
+app.get("/api/photographer/galleries/events", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const sinceRaw = typeof req.query?.since === 'string' ? req.query.since : null;
+  const sinceDate = sinceRaw ? new Date(sinceRaw) : null;
+  let sinceClause = '';
+  const params: unknown[] = [session.userId];
+  if (sinceDate && Number.isFinite(sinceDate.getTime())) {
+    params.push(sinceDate.toISOString());
+    sinceClause = `AND e.event_at > $2::timestamptz`;
+  }
+  try {
+    const result = await pool.query(
+      `WITH owned AS (
+         SELECT id, client_name, project_title, access_token
+         FROM photographer_client_galleries
+         WHERE photographer_id = $1
+       ),
+       events AS (
+         (SELECT 'comment' AS event_type, c.id::text, c.gallery_id, c.image_id::text,
+                  c.client_name, c.client_email, c.comment AS detail,
+                  NULL::numeric AS amount, NULL::varchar AS currency,
+                  NULL::varchar AS payment_status, c.created_at AS event_at
+           FROM client_image_comments c WHERE c.gallery_id IN (SELECT id FROM owned))
+         UNION ALL
+         (SELECT 'selection' AS event_type, s.id::text, s.gallery_id, s.image_id::text,
+                  NULL AS client_name, s.client_email, s.selection_type AS detail,
+                  NULL::numeric AS amount, NULL::varchar AS currency,
+                  NULL::varchar AS payment_status, s.updated_at AS event_at
+           FROM client_image_selections s WHERE s.gallery_id IN (SELECT id FROM owned))
+         UNION ALL
+         (SELECT 'payment' AS event_type, p.id::text, p.gallery_id, NULL AS image_id,
+                  NULL AS client_name, p.client_email,
+                  CONCAT('extra-images: ', p.additional_images) AS detail,
+                  p.total_amount AS amount, p.currency, p.payment_status,
+                  p.updated_at AS event_at
+           FROM client_image_payments p WHERE p.gallery_id IN (SELECT id FROM owned))
+       )
+       SELECT e.event_type, e.id, e.gallery_id, e.image_id, e.client_name, e.client_email,
+              e.detail, e.amount, e.currency, e.payment_status, e.event_at,
+              o.client_name AS gallery_client_name, o.project_title, o.access_token
+       FROM events e
+       JOIN owned o ON o.id = e.gallery_id
+       WHERE 1=1 ${sinceClause}
+       ORDER BY e.event_at DESC NULLS LAST
+       LIMIT 200`,
+      params,
+    );
+    res.json({
+      events: result.rows.map((r: Record<string, unknown>) => ({
+        id: r.id,
+        type: r.event_type,
+        galleryId: r.gallery_id,
+        galleryClientName: r.gallery_client_name,
+        galleryProjectTitle: r.project_title,
+        galleryShareUrl: r.access_token ? buildGalleryShareUrl(String(r.access_token)) : null,
+        imageId: r.image_id,
+        clientName: r.client_name,
+        clientEmail: r.client_email,
+        detail: r.detail,
+        amount: r.amount != null ? Number(r.amount) : null,
+        currency: r.currency,
+        paymentStatus: r.payment_status,
+        timestamp: r.event_at,
+      })),
+    });
+  } catch (error) {
+    console.error("[photographer-galleries] cross-gallery events failed", error);
+    res.status(500).json({ error: "events_failed" });
+  }
+});
+
 // GET /api/photographer/galleries/:id/events — activity timeline.
 app.get("/api/photographer/galleries/:id/events", async (req, res) => {
   const session = requireUserSession(req, res);
@@ -41765,6 +41848,44 @@ app.post("/api/role-room/casting/whatsapp-invoice/sweep", async (req, res) => {
 app.get("/api/role-room/casting/whatsapp-invoice/status", async (req, res) => {
   if (!requireAdminSession(req, res)) return;
   return res.json({ success: true, summary: readWhatsAppInvoiceStatus() });
+});
+
+// ── Pressroom (composer) månedlig faktura-sweep ───────────────────────
+//
+// Manuell trigger + status-endpoint. Stripe-klient instansieres inne i
+// runneren fra STRIPE_SECRET_KEY (samme env-var som resten av Composer-
+// stacken). dryRun støtt via ?dryRun=1.
+
+app.post("/api/composer/invoice/sweep", async (req, res) => {
+  if (!requireAdminSession(req, res)) return;
+  try {
+    const dryRun =
+      String(req.query?.dryRun || req.body?.dryRun || "").toLowerCase() ===
+        "1" ||
+      String(req.query?.dryRun || req.body?.dryRun || "").toLowerCase() ===
+        "true";
+    const period =
+      typeof req.query?.period === "string"
+        ? req.query.period
+        : typeof req.body?.period === "string"
+          ? req.body.period
+          : undefined;
+    const summary = await runComposerMonthlyInvoiceSweep(pool, {
+      dryRun,
+      billingPeriod: period,
+    });
+    return res.json({ success: true, summary });
+  } catch (error) {
+    console.error("Composer invoice sweep failed:", error);
+    return res
+      .status(500)
+      .json({ error: "Kunne ikke trigge composer-faktura-sweep." });
+  }
+});
+
+app.get("/api/composer/invoice/status", async (req, res) => {
+  if (!requireAdminSession(req, res)) return;
+  return res.json({ success: true, summary: readComposerInvoiceStatus() });
 });
 
 // ── WhatsApp config + team-invite-admin ────────────────────────────────
@@ -115538,6 +115659,11 @@ httpServer.listen(PORT, "0.0.0.0", () => {
       stripe: stripeForInvoiceRunner,
       resolveCustomer: resolveStripeCustomerForCastingProject,
     });
+    // Pressroom (composer) månedlig faktura-sweep. Kjører første gang
+    // ~120s etter boot og deretter hver 24t; idempotent via
+    // composer_usage.stripe_invoice_item_id. Stripe-klient instansieres
+    // internt i runneren fra STRIPE_SECRET_KEY.
+    maybeStartComposerInvoiceSweep(pool);
   }
   maybeStartRoleRoomAiAuditPrune();
   maybeStartRoleRoomAgentDailyScan();
