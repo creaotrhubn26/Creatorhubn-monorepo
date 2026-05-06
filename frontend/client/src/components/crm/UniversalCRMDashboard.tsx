@@ -148,6 +148,11 @@ export default function UniversalCRMDashboard({
   const [linkRole, setLinkRole] = useState<string>('Client');
   const [linkNotes, setLinkNotes] = useState<string>('');
   const [showContractsDialog, setShowContractsDialog] = useState(false);
+  // Slice 9X.8 — per-client galleries dialog. Opens when photographer
+  // clicks "Galleri-historikk" on a customer card; lists every gallery
+  // belonging to that customer with full status, share-link, and
+  // mark-complete action.
+  const [showGalleriesDialog, setShowGalleriesDialog] = useState(false);
   const [customerContracts, setCustomerContracts] = useState<any[]>([]);
   const [meetingForm, setMeetingForm] = useState({
     date: new Date().toISOString().split('T')[0],
@@ -1600,6 +1605,21 @@ export default function UniversalCRMDashboard({
                             >
                               Kontrakter
                             </Button>
+                            {/* Slice 9X.8 — open per-client gallery list. */}
+                            {galleryAgg && galleryAgg.count > 0 && (
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedCustomer(customer);
+                                  setShowGalleriesDialog(true);
+                                }}
+                                sx={{ borderColor: alpha(colors.primary, 0.4), color: colors.primary }}
+                              >
+                                Galleri-historikk ({galleryAgg.count})
+                              </Button>
+                            )}
                           </Stack>
                         </Stack>
                       </CardContent>
@@ -1611,6 +1631,119 @@ export default function UniversalCRMDashboard({
           )}
         </Stack>
       </Stack>
+
+      {/* Slice 9X.8 — per-client gallery-historikk dialog. Filtrerer
+          galleries fetched i top-level useQuery på selectedCustomer.email
+          så ingen ekstra backend-call. */}
+      <Dialog
+        open={showGalleriesDialog}
+        onClose={() => setShowGalleriesDialog(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography variant="h6">
+              Galleri-historikk for {selectedCustomer?.name}
+            </Typography>
+          </Box>
+        </DialogTitle>
+        <DialogContent dividers>
+          {(() => {
+            const list = (galleriesData?.galleries ?? []).filter(
+              (g) => (g.clientEmail || '').toLowerCase().trim() === (selectedCustomer?.email || '').toLowerCase().trim(),
+            );
+            if (list.length === 0) {
+              return (
+                <Typography color="text.secondary">
+                  Ingen galleries for denne klienten ennå.
+                </Typography>
+              );
+            }
+            return (
+              <Stack spacing={1.5}>
+                {list
+                  .slice()
+                  .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+                  .map((g) => {
+                    const isCompleted = g.status === 'completed' || Boolean(g.completedAt);
+                    return (
+                      <Card key={g.id} variant="outlined">
+                        <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                          <Stack direction="row" spacing={2} alignItems="flex-start">
+                            <Box sx={{ flex: 1, minWidth: 0 }}>
+                              <Typography variant="subtitle2" sx={{ fontWeight: 700 }} noWrap>
+                                {g.linkedProjectTitle || g.projectTitle || 'Galleri'}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                Opprettet {new Date(g.createdAt).toLocaleDateString('nb-NO')}
+                                {g.completedAt
+                                  ? ` · Levert ${new Date(g.completedAt).toLocaleDateString('nb-NO')}`
+                                  : ''}
+                              </Typography>
+                              <Stack direction="row" spacing={0.5} sx={{ mt: 1 }} flexWrap="wrap" useFlexGap>
+                                <Chip
+                                  size="small"
+                                  label={isCompleted ? 'Levert' : 'Aktiv'}
+                                  sx={{
+                                    bgcolor: isCompleted ? '#4caf50' : alpha(colors.primary, 0.12),
+                                    color: isCompleted ? 'white' : colors.primary,
+                                    fontWeight: 700,
+                                  }}
+                                />
+                                <Chip size="small" variant="outlined" label={`${g.imageCount} bilder`} />
+                                {g.selectionCount > 0 && (
+                                  <Chip size="small" variant="outlined" label={`${g.selectionCount} valg`} />
+                                )}
+                                {g.paidCount > 0 && (
+                                  <Chip size="small" sx={{ bgcolor: '#ff9800', color: 'white' }} label={`${g.paidCount} betalt`} />
+                                )}
+                              </Stack>
+                            </Box>
+                            <Stack spacing={1}>
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                onClick={() => window.open(g.shareUrl, '_blank')}
+                              >
+                                Åpne
+                              </Button>
+                              {!isCompleted && (
+                                <Button
+                                  size="small"
+                                  variant="contained"
+                                  color="success"
+                                  onClick={async () => {
+                                    try {
+                                      await apiRequest(`/api/photographer/galleries/${g.id}/mark-complete`, {
+                                        method: 'POST',
+                                        body: JSON.stringify({}),
+                                      });
+                                      queryClient.invalidateQueries({
+                                        queryKey: ['/api/photographer/galleries'],
+                                      });
+                                    } catch (err) {
+                                      console.warn('mark-complete failed', err);
+                                    }
+                                  }}
+                                >
+                                  Marker ferdig
+                                </Button>
+                              )}
+                            </Stack>
+                          </Stack>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+              </Stack>
+            );
+          })()}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowGalleriesDialog(false)}>Lukk</Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Customer Contracts Dialog */}
       <Dialog open={showContractsDialog} onClose={() => setShowContractsDialog(false)} maxWidth="md" fullWidth>
