@@ -50,6 +50,7 @@ import {
   Favorite as FavoriteIcon,
   CheckCircle as CheckCircleIcon,
   Payment as PaymentIcon,
+  Folder as FolderIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
@@ -92,6 +93,12 @@ interface PhotographerGallery {
   selectionCount: number;
   favoriteCount: number;
   paidCount: number;
+  /** Slice 9X.3 — linked project ID (stored in gallery_settings.projectId
+   *  but surfaced top-level for UI convenience). */
+  projectId?: string | null;
+  /** Slice 9X.3 — title resolved from projects.title via correlated
+   *  subquery; null when projectId references a deleted/missing row. */
+  linkedProjectTitle?: string | null;
 }
 
 interface GalleryEvent {
@@ -365,6 +372,32 @@ const GalleryCard: React.FC<{
           )}
         </Stack>
 
+        {/* Slice 9X.3 — project linkage chip. Click navigates to the
+            linked project. Hidden when no projectId is set. */}
+        {gallery.projectId && (
+          <Tooltip
+            title={
+              gallery.linkedProjectTitle
+                ? `Tilknyttet prosjekt: ${gallery.linkedProjectTitle}`
+                : 'Tilknyttet prosjekt (ikke funnet — kanskje slettet)'
+            }
+          >
+            <Chip
+              size="small"
+              icon={<FolderIcon />}
+              label={gallery.linkedProjectTitle || 'Prosjekt slettet'}
+              color={gallery.linkedProjectTitle ? 'info' : 'default'}
+              variant={gallery.linkedProjectTitle ? 'filled' : 'outlined'}
+              onClick={() => {
+                if (typeof window !== 'undefined' && gallery.projectId) {
+                  window.location.href = `/universal-dashboard?projectId=${encodeURIComponent(gallery.projectId)}`;
+                }
+              }}
+              sx={{ mb: 1, maxWidth: '100%' }}
+            />
+          </Tooltip>
+        )}
+
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
           {gallery.imageCount} {terms.itemPlural} · opprettet{' '}
           {new Date(gallery.createdAt).toLocaleDateString('nb-NO')}
@@ -453,6 +486,8 @@ const GallerySettingsDialog: React.FC<{
   const [expiresAt, setExpiresAt] = useState<string>(s.expiresAt ? s.expiresAt.slice(0, 10) : '');
   const [password, setPassword] = useState<string>('');
   const [clearPassword, setClearPassword] = useState(false);
+  // Slice 9X.3 — link / unlink projectId.
+  const [projectId, setProjectId] = useState<string>(gallery.projectId ?? '');
 
   const patchMutation = useMutation({
     mutationFn: async () => {
@@ -465,6 +500,7 @@ const GallerySettingsDialog: React.FC<{
         watermarkEnabled,
         screenshotProtection,
         expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
+        projectId: projectId.trim() ? projectId.trim() : null,
       };
       if (clearPassword) {
         patch.password = null;
@@ -518,6 +554,33 @@ const GallerySettingsDialog: React.FC<{
                 sx={{ width: 100 }}
               />
             </Stack>
+          </Box>
+
+          <Divider />
+
+          {/* Slice 9X.3 — project linkage. Plain text-input for now;
+              an autocomplete/picker is a follow-up if the photographer
+              accumulates lots of projects. Empty string clears the
+              link on save. */}
+          <Box>
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>
+              <FolderIcon fontSize="small" sx={{ verticalAlign: 'middle', mr: 0.5 }} />
+              Tilknyttet prosjekt
+            </Typography>
+            <TextField
+              label="Prosjekt-ID (la stå tom for å koble fra)"
+              value={projectId}
+              onChange={(e) => setProjectId(e.target.value)}
+              fullWidth
+              size="small"
+              helperText={
+                gallery.linkedProjectTitle
+                  ? `Nåværende: ${gallery.linkedProjectTitle}`
+                  : gallery.projectId
+                    ? 'Nåværende ID peker på et prosjekt som ikke finnes lenger.'
+                    : 'Ikke tilknyttet noe prosjekt.'
+              }
+            />
           </Box>
 
           <Divider />
