@@ -357,6 +357,70 @@ export default function UniversalCRMDashboard({
   }
 });
 
+  // Slice 9X.16+ — projects-per-customer aggregation. Same backend
+  // endpoint UniversalDashboard already polls; React Query caches
+  // across the dashboard so no extra hit. Map keyed on lowercased
+  // clientEmail so it joins cleanly with customer.email regardless of
+  // case differences between sources.
+  const { data: projectsList } = useQuery<Array<{
+    id: string;
+    name: string;
+    title: string;
+    clientEmail: string;
+    status: string;
+    budget: number | null;
+    eventDate: string | null;
+    createdAt: string;
+  }>>({
+    queryKey: ['/api/projects', user?.id, 'crm-aggregation'],
+    enabled: Boolean(user?.id),
+    queryFn: async () => {
+      const r = await fetch(`/api/projects?userId=${encodeURIComponent(String(user?.id ?? ''))}`);
+      if (!r.ok) return [];
+      const arr = await r.json();
+      return Array.isArray(arr) ? arr : [];
+    },
+  });
+  const projectsByClient = React.useMemo(() => {
+    const m = new Map<string, {
+      count: number;
+      activeCount: number;
+      completedCount: number;
+      draftCount: number;
+      totalBudget: number;
+      lastEventDate: string | null;
+      latestProjectId: string | null;
+      latestProjectName: string | null;
+    }>();
+    for (const p of projectsList ?? []) {
+      const key = (p.clientEmail || '').toLowerCase().trim();
+      if (!key) continue;
+      const existing = m.get(key) ?? {
+        count: 0,
+        activeCount: 0,
+        completedCount: 0,
+        draftCount: 0,
+        totalBudget: 0,
+        lastEventDate: null as string | null,
+        latestProjectId: null as string | null,
+        latestProjectName: null as string | null,
+      };
+      existing.count += 1;
+      if (p.status === 'completed') existing.completedCount += 1;
+      else if (p.status === 'draft') existing.draftCount += 1;
+      else existing.activeCount += 1;
+      if (p.budget && p.budget > 0) existing.totalBudget += p.budget;
+      const stamp = p.eventDate || p.createdAt;
+      if (!existing.lastEventDate || (stamp && stamp > existing.lastEventDate)) {
+        existing.lastEventDate = stamp;
+        existing.latestProjectId = p.id;
+        existing.latestProjectName = p.title || p.name;
+      }
+      m.set(key, existing);
+    }
+    return m;
+  }, [projectsList]);
+
   // Fetch split sheet statistics (only for music producers)
   const isMusicProducer = activeProfession === 'music_producer';
   const { data: splitSheetStatsData } = useQuery({
@@ -1229,6 +1293,10 @@ export default function UniversalCRMDashboard({
                 const completedCount = customerSplitSheetsList.filter((ss: any) => ss.status === 'completed').length;
                 const pendingCount = customerSplitSheetsList.filter((ss: any) => ss.status === 'pending_signatures').length;
                 const linkedToEvent = eventContext ? linkedCustomersForEvent.includes(customer.email) : false;
+                // Slice 9X.16+ — projects aggregation for this customer.
+                const projectAgg = customer.email
+                  ? projectsByClient.get(customer.email.toLowerCase().trim())
+                  : null;
 
                 return (
                   <Grid item xs={12} md={6} xl={4} key={customer.id}>
@@ -1351,6 +1419,54 @@ export default function UniversalCRMDashboard({
                                 )}
                                 {pendingCount > 0 && (
                                   <Chip label={`${pendingCount} venter`} size="small" sx={{ bgcolor: '#ff9800', color: 'white' }} />
+                                )}
+                              </Stack>
+                            </Stack>
+                          )}
+
+                          {/* Slice 9X.16+ — projects-aggregation per
+                              kunde. Surfacer status-fordeling +
+                              klikkbar chip til siste prosjekt. */}
+                          {projectAgg && (
+                            <Stack spacing={1}>
+                              <Stack direction="row" spacing={1} alignItems="center">
+                                <Typography variant="caption" sx={{ fontWeight: 700, color: '#0288d1' }}>
+                                  Prosjekt {projectAgg.count}
+                                </Typography>
+                                {projectAgg.latestProjectName && (
+                                  <Typography variant="caption" color="text.secondary" noWrap sx={{ flex: 1 }}>
+                                    Nyeste: {projectAgg.latestProjectName}
+                                  </Typography>
+                                )}
+                              </Stack>
+                              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                                {projectAgg.activeCount > 0 && (
+                                  <Chip
+                                    label={`${projectAgg.activeCount} aktive`}
+                                    size="small"
+                                    sx={{ bgcolor: alpha('#0288d1', 0.12), color: '#0288d1', fontWeight: 700 }}
+                                  />
+                                )}
+                                {projectAgg.draftCount > 0 && (
+                                  <Chip
+                                    label={`${projectAgg.draftCount} utkast`}
+                                    size="small"
+                                    variant="outlined"
+                                  />
+                                )}
+                                {projectAgg.completedCount > 0 && (
+                                  <Chip
+                                    label={`${projectAgg.completedCount} fullført`}
+                                    size="small"
+                                    sx={{ bgcolor: '#4caf50', color: 'white' }}
+                                  />
+                                )}
+                                {projectAgg.totalBudget > 0 && (
+                                  <Chip
+                                    label={`Σ ${projectAgg.totalBudget.toLocaleString('nb-NO')} kr`}
+                                    size="small"
+                                    variant="outlined"
+                                  />
                                 )}
                               </Stack>
                             </Stack>
