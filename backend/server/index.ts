@@ -23739,6 +23739,233 @@ app.get("/api/client/gallery/:accessToken/comments", async (req, res) => {
   }
 });
 
+// ── Slice 9D — photographer-side gallery management ────────────────────
+// Backs UniversalDashboard + ShowcaseAdmin + AdministrationHub.
+// Without these, the photographer can only manage galleries via direct
+// DB writes; with them, the dashboard can list, create, configure, and
+// surface activity. All routes auth-gated via requireUserSession;
+// per-row ownership enforced by photographerId match.
+
+function requireUserSession(
+  req: express.Request,
+  res: express.Response,
+): { userId: string; email: string; name: string; role: string } | null {
+  const session = getActiveSessionFromRequest(req);
+  if (!session) {
+    res.status(401).json({ error: "auth_required" });
+    return null;
+  }
+  return session;
+}
+
+// GET /api/photographer/galleries — list galleries with engagement counts.
+app.get("/api/photographer/galleries", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  try {
+    const result = await pool.query(
+      `SELECT
+         g.id, g.client_name, g.client_email, g.project_title, g.access_token,
+         g.status, g.gallery_settings, g.created_at, g.completed_at,
+         (SELECT COUNT(*) FROM client_gallery_images WHERE gallery_id = g.id) AS image_count,
+         (SELECT COUNT(*) FROM client_image_comments WHERE gallery_id = g.id) AS comment_count,
+         (SELECT COUNT(*) FROM client_image_selections WHERE gallery_id = g.id AND selection_type = 'selected') AS selection_count,
+         (SELECT COUNT(*) FROM client_image_selections WHERE gallery_id = g.id AND selection_type = 'favorite') AS favorite_count,
+         (SELECT COUNT(*) FROM client_image_payments WHERE gallery_id = g.id AND payment_status = 'succeeded') AS paid_count
+       FROM photographer_client_galleries g
+       WHERE g.photographer_id = $1
+       ORDER BY g.created_at DESC
+       LIMIT 200`,
+      [session.userId],
+    );
+    res.json({
+      galleries: result.rows.map((r: Record<string, unknown>) => {
+        const settings = (r.gallery_settings ?? {}) as Record<string, unknown>;
+        const safeSettings = { ...settings };
+        delete safeSettings.passwordHash;
+        return {
+          id: r.id,
+          clientName: r.client_name,
+          clientEmail: r.client_email,
+          projectTitle: r.project_title,
+          accessToken: r.access_token,
+          shareUrl: buildGalleryShareUrl(String(r.access_token ?? '')),
+          status: r.status,
+          gallerySettings: safeSettings,
+          requiresPassword: typeof settings.passwordHash === 'string' && settings.requiresPassword === true,
+          createdAt: r.created_at,
+          completedAt: r.completed_at,
+          imageCount: Number(r.image_count ?? 0),
+          commentCount: Number(r.comment_count ?? 0),
+          selectionCount: Number(r.selection_count ?? 0),
+          favoriteCount: Number(r.favorite_count ?? 0),
+          paidCount: Number(r.paid_count ?? 0),
+        };
+      }),
+    });
+  } catch (error) {
+    console.error("[photographer-galleries] list failed", error);
+    res.status(500).json({ error: "list_failed" });
+  }
+});
+
+// POST /api/photographer/galleries — create empty gallery, return shareUrl.
+app.post("/api/photographer/galleries", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const clientName = String(req.body?.clientName ?? '').trim();
+  const clientEmail = String(req.body?.clientEmail ?? '').trim().toLowerCase();
+  const projectTitle = req.body?.projectTitle != null ? String(req.body.projectTitle).trim() : null;
+  const projectId = req.body?.projectId != null ? String(req.body.projectId).trim() : null;
+  if (!clientName || !clientEmail || !clientEmail.includes('@')) {
+    return res.status(400).json({ error: "client_name_and_email_required" });
+  }
+  try {
+    const accessToken = crypto.randomBytes(24).toString('base64url');
+    const settings: Record<string, unknown> = {
+      source: 'web_dashboard',
+      createdVia: 'photographer_dashboard',
+    };
+    if (projectId) settings.projectId = projectId;
+    const result = await pool.query(
+      `INSERT INTO photographer_client_galleries
+         (photographer_id, client_name, client_email, project_title, access_token,
+          gallery_settings, status, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, 'active', NOW(), NOW())
+       RETURNING id, access_token, created_at`,
+      [session.userId, clientName, clientEmail, projectTitle, accessToken, settings],
+    );
+    const row = result.rows[0];
+    res.status(201).json({
+      id: row.id,
+      accessToken: row.access_token,
+      shareUrl: buildGalleryShareUrl(row.access_token),
+      createdAt: row.created_at,
+    });
+  } catch (error) {
+    console.error("[photographer-galleries] create failed", error);
+    res.status(500).json({ error: "create_failed" });
+  }
+});
+
+// PATCH /api/photographer/galleries/:id/settings — merge gallery_settings.
+// Special: incoming `password` plaintext is bcrypt-hashed → passwordHash.
+app.patch("/api/photographer/galleries/:id/settings", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const galleryId = String(req.params.id || '').trim();
+  if (!galleryId) return res.status(400).json({ error: "gallery_id_required" });
+  const patch = (req.body && typeof req.body === 'object' ? req.body : {}) as Record<string, unknown>;
+  try {
+    const owned = await pool.query(
+      `SELECT id, gallery_settings FROM photographer_client_galleries
+       WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
+      [galleryId, session.userId],
+    );
+    if (owned.rowCount === 0) return res.status(404).json({ error: "gallery_not_found" });
+    const currentSettings = (owned.rows[0].gallery_settings ?? {}) as Record<string, unknown>;
+    const next: Record<string, unknown> = { ...currentSettings };
+
+    const ALLOWED = new Set([
+      'maxSelections', 'pricePerImage', 'currency', 'contractedImages',
+      'allowDownload', 'allowComments', 'watermarkEnabled', 'expiresAt',
+      'requiresPassword', 'screenshotProtection',
+      'logoUrl', 'primaryColor', 'accentColor', 'fontFamily', 'customDomainAlias',
+    ]);
+    for (const [key, value] of Object.entries(patch)) {
+      if (key === 'password') continue;
+      if (!ALLOWED.has(key)) continue;
+      next[key] = value;
+    }
+
+    if ('password' in patch) {
+      const raw = patch.password;
+      if (raw === null || raw === '' || raw === undefined) {
+        delete next.passwordHash;
+        next.requiresPassword = false;
+      } else if (typeof raw === 'string' && raw.length > 0) {
+        if (raw.length < 4) return res.status(400).json({ error: "password_too_short", min: 4 });
+        if (raw.length > 128) return res.status(400).json({ error: "password_too_long", max: 128 });
+        const bcrypt = await import('bcrypt');
+        next.passwordHash = await bcrypt.default.hash(raw, 10);
+        next.requiresPassword = true;
+      }
+    }
+
+    await pool.query(
+      `UPDATE photographer_client_galleries
+       SET gallery_settings = $1, updated_at = NOW()
+       WHERE id = $2`,
+      [next, galleryId],
+    );
+    const safe = { ...next };
+    delete safe.passwordHash;
+    res.json({
+      id: galleryId,
+      gallerySettings: safe,
+      requiresPassword: next.requiresPassword === true && typeof next.passwordHash === 'string',
+    });
+  } catch (error) {
+    console.error("[photographer-galleries] patch settings failed", error);
+    res.status(500).json({ error: "patch_settings_failed" });
+  }
+});
+
+// GET /api/photographer/galleries/:id/events — activity timeline.
+app.get("/api/photographer/galleries/:id/events", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const galleryId = String(req.params.id || '').trim();
+  if (!galleryId) return res.status(400).json({ error: "gallery_id_required" });
+  try {
+    const owned = await pool.query(
+      `SELECT id FROM photographer_client_galleries
+       WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
+      [galleryId, session.userId],
+    );
+    if (owned.rowCount === 0) return res.status(404).json({ error: "gallery_not_found" });
+
+    const result = await pool.query(
+      `(SELECT 'comment' AS event_type, id::text, image_id::text, client_name, client_email,
+                comment AS detail, NULL::numeric AS amount, NULL::varchar AS currency,
+                NULL::varchar AS payment_status, created_at AS event_at
+         FROM client_image_comments WHERE gallery_id = $1)
+       UNION ALL
+       (SELECT 'selection' AS event_type, id::text, image_id::text, NULL AS client_name, client_email,
+                selection_type AS detail, NULL::numeric AS amount, NULL::varchar AS currency,
+                NULL::varchar AS payment_status, updated_at AS event_at
+         FROM client_image_selections WHERE gallery_id = $1)
+       UNION ALL
+       (SELECT 'payment' AS event_type, id::text, NULL AS image_id, NULL AS client_name, client_email,
+                CONCAT('extra-images: ', additional_images) AS detail,
+                total_amount AS amount, currency, payment_status,
+                updated_at AS event_at
+         FROM client_image_payments WHERE gallery_id = $1)
+       ORDER BY event_at DESC NULLS LAST
+       LIMIT 500`,
+      [galleryId],
+    );
+    res.json({
+      galleryId,
+      events: result.rows.map((r: Record<string, unknown>) => ({
+        id: r.id,
+        type: r.event_type,
+        imageId: r.image_id,
+        clientName: r.client_name,
+        clientEmail: r.client_email,
+        detail: r.detail,
+        amount: r.amount != null ? Number(r.amount) : null,
+        currency: r.currency,
+        paymentStatus: r.payment_status,
+        timestamp: r.event_at,
+      })),
+    });
+  } catch (error) {
+    console.error("[photographer-galleries] events failed", error);
+    res.status(500).json({ error: "events_failed" });
+  }
+});
+
 // ── Slice 10.1 — Stripe payment intent for client checkout ─────────────
 // The viewer flips to checkout when submit-selection returns
 // requiresPayment=true. This route creates the PaymentIntent + records
