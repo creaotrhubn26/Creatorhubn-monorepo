@@ -23949,6 +23949,85 @@ app.patch("/api/photographer/galleries/:id/settings", async (req, res) => {
   }
 });
 
+// Slice 9X.7 — mark a gallery as completed. Idempotent. When the
+// gallery is linked to a project (gallery_settings.projectId),
+// stamp the project's metadata.galleryDeliveredAt so dashboards
+// that aggregate project-level milestones can surface "client got
+// the gallery" without scanning every gallery row. Doesn't touch
+// project.status — that's the photographer's call (a delivered
+// gallery isn't necessarily a closed project; revisions, prints,
+// invoicing may follow).
+app.post("/api/photographer/galleries/:id/mark-complete", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const galleryId = String(req.params.id || '').trim();
+  if (!galleryId) return res.status(400).json({ error: "gallery_id_required" });
+  try {
+    const owned = await pool.query(
+      `SELECT id, gallery_settings, status, completed_at
+       FROM photographer_client_galleries
+       WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
+      [galleryId, session.userId],
+    );
+    if (owned.rowCount === 0) return res.status(404).json({ error: "gallery_not_found" });
+    const row = owned.rows[0];
+    const settings = (row.gallery_settings ?? {}) as Record<string, unknown>;
+    const linkedProjectId = typeof settings.projectId === 'string' ? settings.projectId : null;
+
+    // Idempotent transition: if already completed, return current
+    // state so the UI can refresh without thinking it failed.
+    let alreadyCompleted = row.status === 'completed';
+    if (!alreadyCompleted) {
+      await pool.query(
+        `UPDATE photographer_client_galleries
+         SET status = 'completed', completed_at = NOW(), updated_at = NOW()
+         WHERE id = $1`,
+        [galleryId],
+      );
+    }
+
+    // Project callback: additive metadata stamp. Try/catch wrapped so
+    // a missing/dropped projects table doesn't fail the gallery
+    // transition itself.
+    let projectCallbackOk = false;
+    if (linkedProjectId) {
+      try {
+        const updateResult = await pool.query(
+          `UPDATE projects
+           SET metadata = jsonb_set(
+                 COALESCE(metadata, '{}'::jsonb),
+                 '{galleryDeliveredAt}',
+                 to_jsonb(NOW()::text),
+                 true
+               ),
+               metadata = jsonb_set(
+                 COALESCE(metadata, '{}'::jsonb),
+                 '{galleryId}',
+                 to_jsonb($2::text),
+                 true
+               )
+           WHERE id = $1`,
+          [linkedProjectId, galleryId],
+        );
+        projectCallbackOk = (updateResult.rowCount ?? 0) > 0;
+      } catch (projectErr) {
+        console.warn('[gallery-complete] project callback failed (non-fatal)', projectErr);
+      }
+    }
+
+    return res.json({
+      id: galleryId,
+      status: 'completed',
+      alreadyCompleted,
+      linkedProjectId,
+      projectCallbackOk,
+    });
+  } catch (error) {
+    console.error("[photographer-galleries] mark-complete failed", error);
+    res.status(500).json({ error: "mark_complete_failed" });
+  }
+});
+
 // Slice 9X.1 — cross-gallery events feed for the unified inbox in
 // CommunicationHub. Same UNION shape as the per-gallery /events
 // endpoint, just scoped to ALL galleries the photographer owns and
