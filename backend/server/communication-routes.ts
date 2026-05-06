@@ -4120,7 +4120,17 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
     try {
       const payload = (req.body || {}) as Record<string, unknown>;
       const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
-      const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
+      // Triage-fix: resolveLiveGoogleWorkspaceContext kunne throw når
+      // OAuth-tokens var utløpt eller bruker mangler workspace-kobling
+      // — outer try/catch konverterte det til 500. Wrap separat og
+      // returner 400 (samme som "ikke koblet til") slik at frontend
+      // ikke får falskt server-error.
+      let workspaceContext: Awaited<ReturnType<typeof resolveLiveGoogleWorkspaceContext>> = null;
+      try {
+        workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
+      } catch (workspaceErr) {
+        console.warn('[google-drive-context] workspace resolve failed (treating as not-connected):', workspaceErr);
+      }
       if (!workspaceContext) {
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
       }

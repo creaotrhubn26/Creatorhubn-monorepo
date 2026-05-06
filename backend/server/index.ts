@@ -63568,6 +63568,27 @@ app.get("/api/wedding/timeline/project/:projectId", async (req, res) => {
   }
 });
 
+// Triage-fix: tre endpoints frontend-koden polled mot men som ikke
+// fantes (404-flom i prod-konsollen). Returnerer tomme-default-svar
+// så React Query får en valid respons og ikke logger feil. Når en
+// faktisk implementasjon trengs, erstatt disse stubene.
+app.get("/api/wedding-timeline", async (_req, res) => {
+  // Frontend polled denne med ?contract_signature_status=pending —
+  // ingen tilsvarende rute fantes. Tom liste avslutter polleren rent.
+  res.json([]);
+});
+app.get("/api/photo-enhancement/contracts", async (_req, res) => {
+  // Samme posture: tom liste til Slice 9X.14 (Photo Enhancer job ↔
+  // Gallery image tracking) eventuelt setter opp ekte kontrakt-flyt.
+  res.json([]);
+});
+app.get("/api/platform/features", async (_req, res) => {
+  // PlatformPricingService-frontend cacher resultatet og har egen
+  // fallback til hardcoded features hvis listen er tom. Returnerer
+  // strukturen frontend forventer ({features: []}).
+  res.json({ features: [] });
+});
+
 app.post("/api/wedding-timeline/sync-meeting-notes", async (req, res) => {
   try {
     const body =
@@ -98489,6 +98510,14 @@ app.get("/api/split-sheets", async (req, res) => {
 });
 
 // GET /api/split-sheets/stats — Dashboard stats
+// Triage-fix: /api/split-sheets/invoices ble fanget av :id-route under
+// (linje ~98720) som tolket "invoices" som UUID og kastet 500. Tomt
+// stub-svar her registrerer en konkret rute før catch-all så Express
+// matcher denne først.
+app.get("/api/split-sheets/invoices", async (_req, res) => {
+  res.json([]);
+});
+
 app.get("/api/split-sheets/stats", async (req, res) => {
   try {
     const userId = (req.headers["x-user-id"] as string) || "anonymous";
