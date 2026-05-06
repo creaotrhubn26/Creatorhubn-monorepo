@@ -13,6 +13,7 @@ import { useLocation } from 'wouter';
 import { trackButtonClick } from '@/hooks/useActionTracker';
 import { useDemoMode } from '@/contexts/DemoModeContext';
 import { useAuth } from '@/hooks/useAuth';
+import { useUrlTab } from '@/hooks/useUrlState';
 import { isProfessionFeatureAvailable } from '@shared/profession-feature-matrix';
 import AdminIndicator from '../admin/AdminIndicator';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
@@ -1251,20 +1252,35 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
     setUiSettings(prev => ({ ...prev, [key]: value }));
 };
 
-  // Aliases for backward compatibility during refactoring
-  const tabValue = tabState.main;
+  // URL-driven main tab. ?dashTab=N i URL-en så browser back/forward
+  // navigerer mellom hovedfanene, refresh holder valgt fane, og en
+  // delbar URL åpner direkte på riktig sted.
+  // Vi beholder tabState.main som lokal speiling så eksisterende
+  // ref-watching (previousMainTabRef etc.) fungerer uten endringer —
+  // setter både URL og lokal state ved hvert klikk.
+  const [urlMainTab, setUrlMainTab] = useUrlTab('dashTab', tabState.main ?? 0);
+  useEffect(() => {
+    if (urlMainTab !== tabState.main) {
+      updateTabStateLocal('main', urlMainTab);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlMainTab]);
+  const tabValue = urlMainTab;
 
   // Event Timeline dialog state
   const [showEventTimelineDialog, setShowEventTimelineDialog] = useState(false);
   const [_eventTimelinePrefill, setEventTimelinePrefill] = useState<any | null>(null);
-  
+
   // Client Activity modal state
   const [showClientActivityModal, setShowClientActivityModal] = useState(false);
-  
+
   // Split Sheets modal state
   const [showSplitSheetsModal, setShowSplitSheetsModal] = useState(false);
-  
-  const setTabValue = (value: number) => updateTabStateLocal('main', value);
+
+  const setTabValue = (value: number) => {
+    setUrlMainTab(value);
+    updateTabStateLocal('main', value);
+  };
   const settingsTabValue = tabState.settings;
   const setSettingsTabValue = (value: number) => updateTabStateLocal('settings', value);
   const selectedTimelineTab = tabState.timeline;
