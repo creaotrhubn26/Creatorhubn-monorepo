@@ -354,10 +354,18 @@ const StoryArcStudioRouteWrapper = () => (
 // Community Landing Page Wrapper - gets userId and profession from hooks
 const CommunityLandingPageWrapper = () => {
   try {
-    const { user } = useAuth();
+    const { user, isLoading: authLoading, isAuthenticated } = useAuth();
     const { getUserProfession } = useDynamicProfessions();
-    const userId = user?.id || 'guest';
-    const profession = user?.profession || getUserProfession() || 'photographer';
+    // Ingen 'guest'-fallback: redirect til login om bruker mangler.
+    if (authLoading) return null;
+    if (!isAuthenticated || !user?.id) {
+      if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+        window.location.href = '/login';
+      }
+      return null;
+    }
+    const userId = user.id;
+    const profession = user.profession || getUserProfession() || 'photographer';
     return (
       <AcademyDesignProvider>
         <CommunityHub

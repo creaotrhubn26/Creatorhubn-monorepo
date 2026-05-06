@@ -60,6 +60,7 @@ import {
   useMediaQuery,
   Stack,
   LinearProgress,
+  CircularProgress,
   alpha,
   Fade,
   Skeleton,
@@ -538,7 +539,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
   const ROLE_ROOM_GOOGLE_TRANSFER_PROCESSING_KEY = 'creatorhub:rr-google-processing';
   const ROLE_ROOM_MARKETPLACE_URL = 'https://theroleroom.com/?source=creatorhub-marketplace';
   const [, setLocation] = useLocation();
-  const { user: currentUser, isPrototypeTester } = useAuth();
+  const { user: currentUser, isPrototypeTester, isLoading: authLoading, isAuthenticated } = useAuth();
   const { status: communicationStatus } = useCommunicationStatus();
   const { status: _fileManagementStatus } = useFileManagementStatus();
   
@@ -673,10 +674,14 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
     retry: false,
   });
 
-  // Derive user identifiers from session and unified auth
-  const userId = userSession?.userId || currentUser?.id || 'guest';
+  // Derive user identifiers from session and unified auth.
+  // No 'guest'-fallback: dashboard is innlogget-only og burde ALDRI
+  // rendere før auth har resolvet med ekte bruker-id. Tomt felt
+  // signaliserer "auth ikke ferdig hydrert"; render-gaten under
+  // hindrer queries fra å sende uhåndterte tomme bruker-IDer.
+  const userId = userSession?.userId || currentUser?.id || '';
   const userEmail = userSession?.email || currentUser?.email;
-  const roleRoomAccess = useRoleRoomWorkspaceAccess(Boolean(userId && userId !== 'guest'));
+  const roleRoomAccess = useRoleRoomWorkspaceAccess(Boolean(userId));
   const installRoleRoomAppMutation = useInstallApp();
 
   // Check admin permissions for the resolved user email
@@ -2604,6 +2609,26 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
       }
     }
   }), [customBranding.color, theme.palette.primary.dark]);
+
+  // Auth-gate: før vi rendrer noe innhold må vi vite om brukeren er
+  // innlogget. Tidligere falt vi tilbake til `userId='guest'` som
+  // genererte 404/401 på alle bruker-spesifikke ruter (communication,
+  // accounting, gear etc). Render ingenting (eller en spinner) mens
+  // useAuth henter — komponenter videre nede slipper å håndtere
+  // "guest"-state og queries fyrer ikke før vi har en ekte ID.
+  if (authLoading) {
+    return (
+      <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+  if (!isAuthenticated || !userId) {
+    if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+      window.location.href = '/login';
+    }
+    return null;
+  }
 
   return (
     <Box

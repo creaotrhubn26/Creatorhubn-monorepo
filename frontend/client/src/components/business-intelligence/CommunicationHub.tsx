@@ -219,28 +219,39 @@ const CommunicationHub: React.FC<CommunicationHubProps> = ({ userId, profession 
   const [emailMenuTarget, setEmailMenuTarget] = useState<Email | null>(null);
   const meetingPreparationProfession = normalizeMeetingPreparationProfession(profession);
 
+  // Hold communication-fetches inntil userId faktisk er innlogget brukers
+  // id (ikke "guest"-placeholder fra session-bootstrap). Når useAuth ennå
+  // ikke har hydrert kjører React Query queries som "guest" og 404'er
+  // mot backend som ikke har en guest-rute. Felles helper unngår å
+  // duplisere check'en.
+  const isAuthedUser = Boolean(userId) && userId !== 'guest';
+
   // Fetch inboxes
   const { data: inboxes = [] } = useQuery<EmailInbox[]>({
     queryKey: [`/api/communication/inboxes/${userId}`],
     queryFn: () => apiRequest(`/api/communication/inboxes/${userId}`),
+    enabled: isAuthedUser,
   });
 
   // Fetch emails
   const { data: emails = [], refetch: refetchEmails } = useQuery<Email[]>({
     queryKey: [`/api/communication/emails/${userId}`, selectedInbox, emailFilter],
     queryFn: () => apiRequest(`/api/communication/emails/${userId}?inbox=${selectedInbox}&filter=${emailFilter}`),
+    enabled: isAuthedUser,
   });
 
   // Fetch meetings
   const { data: meetings = [], refetch: refetchMeetings } = useQuery<Meeting[]>({
     queryKey: [`/api/communication/meetings/${userId}`, meetingFilter],
     queryFn: () => apiRequest(`/api/communication/meetings/${userId}?filter=${meetingFilter}`),
+    enabled: isAuthedUser,
   });
 
   // Fetch notes
   const { data: notes = [], refetch: refetchNotes } = useQuery<Note[]>({
     queryKey: [`/api/communication/notes/${userId}`],
     queryFn: () => apiRequest(`/api/communication/notes/${userId}`),
+    enabled: isAuthedUser,
   });
 
   // Mark email as read
