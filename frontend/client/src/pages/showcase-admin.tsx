@@ -87,7 +87,17 @@ function AdminTabPanel(props: AdminTabPanelProps) {
 export default function ShowcaseAdmin() {
   const [adminMode, setAdminMode] = useState(false);
   const [adminDialog, setAdminDialog] = useState(false);
-  const [adminTabValue, setAdminTabValue] = useState(0);
+  // Slice 9X.2 — accept ?tab=clientGalleries from the
+  // ProjectCreationWithMemoryCards deep-link so the page lands directly
+  // on the Klient-galleri-tab. Other ?tab=… values fall through to the
+  // numeric default. Read once at mount; tab clicks take over after.
+  const initialAdminTab = (() => {
+    if (typeof window === 'undefined') return 0;
+    const tab = new URLSearchParams(window.location.search).get('tab');
+    if (tab === 'clientGalleries') return 0;
+    return 0;
+  })();
+  const [adminTabValue, setAdminTabValue] = useState(initialAdminTab);
   const [previewMode, setPreviewMode] = useState(false);
 
   // Dynamic profession integration

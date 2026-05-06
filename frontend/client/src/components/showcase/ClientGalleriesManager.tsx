@@ -15,7 +15,7 @@
  * the web dashboard. Wired into ShowcaseAdmin as a "Klient-galleri" tab.
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Alert,
   Box,
@@ -119,8 +119,40 @@ export const ClientGalleriesManager: React.FC<ClientGalleriesManagerProps> = ({ 
   const [createName, setCreateName] = useState('');
   const [createEmail, setCreateEmail] = useState('');
   const [createTitle, setCreateTitle] = useState('');
+  // Slice 9X.2 — projectId carried through the create-flow when the
+  // user arrived via the "Opprett prosjekt + klient-galleri" deep-link
+  // from ProjectCreationWithMemoryCards. Sent on POST so 9X.3 can
+  // persist the project↔gallery linkage in gallery_settings.projectId.
+  const [createProjectId, setCreateProjectId] = useState<string | null>(null);
   const [settingsOpenFor, setSettingsOpenFor] = useState<PhotographerGallery | null>(null);
   const [eventsOpenFor, setEventsOpenFor] = useState<PhotographerGallery | null>(null);
+
+  // Slice 9X.2 — read prefill params from the URL once on mount. When
+  // the deep-link sets autoCreate=1, open the dialog pre-populated
+  // with clientName/clientEmail/projectTitle/projectId, then strip the
+  // params so a refresh doesn't re-trigger the dialog.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('autoCreate') !== '1') return;
+    const name = params.get('clientName') ?? '';
+    const email = params.get('clientEmail') ?? '';
+    const title = params.get('projectTitle') ?? '';
+    const projId = params.get('projectId') ?? '';
+    if (name) setCreateName(name);
+    if (email) setCreateEmail(email);
+    if (title) setCreateTitle(title);
+    if (projId) setCreateProjectId(projId);
+    setCreateOpen(true);
+    // Clean up the URL so reload won't re-pop the dialog.
+    const cleaned = new URLSearchParams(window.location.search);
+    ['autoCreate', 'clientName', 'clientEmail', 'projectTitle', 'projectId'].forEach((k) =>
+      cleaned.delete(k),
+    );
+    const newSearch = cleaned.toString();
+    const next = `${window.location.pathname}${newSearch ? '?' + newSearch : ''}${window.location.hash}`;
+    window.history.replaceState({}, '', next);
+  }, []);
 
   // Slice 9D backend route — photographer's gallery list with counts.
   const { data, isLoading, error } = useQuery<{ galleries: PhotographerGallery[] }>({
@@ -138,6 +170,7 @@ export const ClientGalleriesManager: React.FC<ClientGalleriesManagerProps> = ({ 
         clientName: createName,
         clientEmail: createEmail,
         projectTitle: createTitle || undefined,
+        ...(createProjectId ? { projectId: createProjectId } : {}),
       }),
     }),
     onSuccess: () => {
@@ -145,6 +178,7 @@ export const ClientGalleriesManager: React.FC<ClientGalleriesManagerProps> = ({ 
       setCreateName('');
       setCreateEmail('');
       setCreateTitle('');
+      setCreateProjectId(null);
       queryClient.invalidateQueries({ queryKey: ['/api/photographer/galleries'] });
     },
   });

@@ -4769,7 +4769,7 @@ useEffect(() => {
               disabled={!projectData.projectName || !projectData.projectType}
               onClick={async () => {
                 try {
-                  trackButtonClick('opprett_prosjekt', { 
+                  trackButtonClick('opprett_prosjekt', {
                     profession: userProfession,
                     projectType: projectData.projectType,
                     hasClient: !!projectData.clientName
@@ -4811,6 +4811,68 @@ useEffect(() => {
               }}
             >
               Opprett Prosjekt
+            </Button>
+            {/* Slice 9X.2 — deep-link til klient-galleri-opprettelse.
+                Synlig kun når klient-info finnes (galleri uten klient =
+                meningsløst). Oppretter prosjektet først, deretter
+                navigerer til /showcase-admin med prefill-parametre slik
+                at ClientGalleriesManager åpner create-dialog ferdig
+                utfylt. projectId sendes med slik at #9X.3
+                (gallery.projectId-persistens) kan plukke det opp uten
+                at vi endrer URL-skjemaet senere. */}
+            <Button
+              variant="outlined"
+              size="large"
+              startIcon={<Folder />}
+              disabled={
+                !projectData.projectName ||
+                !projectData.projectType ||
+                !projectData.clientName ||
+                !projectData.clientEmail
+              }
+              onClick={async () => {
+                try {
+                  trackButtonClick('opprett_prosjekt_med_galleri', {
+                    profession: userProfession,
+                    projectType: projectData.projectType,
+                  });
+                  showInfoToast('Oppretter prosjekt + klient-galleri…', 2000);
+                  const newProject = await createProjectContext(mapToProjectData());
+                  if (newProject) {
+                    await WorkflowIntegrationService.orchestrateCompleteWorkflow(newProject);
+                  }
+                  if (onProjectCreated && newProject) {
+                    onProjectCreated(newProject);
+                  }
+                  const params = new URLSearchParams({
+                    tab: 'clientGalleries',
+                    autoCreate: '1',
+                    clientName: projectData.clientName || '',
+                    clientEmail: projectData.clientEmail || '',
+                    projectTitle: projectData.projectName || '',
+                    ...(newProject?.id ? { projectId: String(newProject.id) } : {}),
+                  });
+                  if (navigate) {
+                    navigate(`/showcase-admin?${params.toString()}`);
+                  } else if (typeof window !== 'undefined') {
+                    window.location.href = `/showcase-admin?${params.toString()}`;
+                  }
+                } catch (error) {
+                  console.error('Failed to create project + gallery deep-link:', error);
+                  showErrorToast('Kunne ikke opprette. Prøv igjen.');
+                }
+              }}
+              sx={{
+                color: theming.colors.primary,
+                borderColor: theming.colors.primary,
+                px: 3,
+                py: 2,
+                fontWeight: 600,
+                textTransform: 'none',
+                borderRadius: 1.5,
+              }}
+            >
+              + Klient-galleri
             </Button>
           </Stack>
         </CardContent>
