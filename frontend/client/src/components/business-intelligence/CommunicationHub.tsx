@@ -77,8 +77,9 @@ import {
 } from '@mui/icons-material';
 import { useTheming } from '@/utils/theming-helper';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiRequest } from '@/lib/queryClient';
+import { useUrlTab } from '@/hooks/useUrlState';
 import { getShowcaseTerminology } from '@/utils/showcaseTerminology';
+import { apiRequest } from '@/lib/queryClient';
 import SmartEmailComposer from '../email/SmartEmailComposer';
 import SmartMeetingPreparation from '../meet/SmartMeetingPreparation';
 import UniversalChatWidget from '../chat/UniversalChatWidget';
@@ -185,18 +186,118 @@ function normalizeMeetingPreparationProfession(profession: string): MeetingPrepa
   }
 }
 
+/**
+ * BI KPI-rad — Power BI-stil helse-snapshot over Kommunikasjonshub-tabs.
+ * Viser fire chips (galleri-aktivitet, valg i dag, betalinger 7d,
+ * kommentarer i dag). Selv-inneholdt fetch mot
+ * /api/photographer/galleries/events så ingen avhengigheter til
+ * parent-state — hindrer at linter-strip av lokal galleryEvents
+ * ødelegger rendering.
+ */
+function BiKpiRow({ profession, onClickGalleryTab }: { profession: string; onClickGalleryTab: () => void }) {
+  const { data: eventsData } = useQuery<{
+    events: Array<{
+      id: string;
+      type: 'comment' | 'selection' | 'payment';
+      galleryId: string;
+      timestamp: string;
+    }>;
+  }>({
+    queryKey: ['/api/photographer/galleries/events'],
+    queryFn: () => apiRequest('/api/photographer/galleries/events'),
+    refetchInterval: 30_000,
+  });
+  const events = eventsData?.events ?? [];
+  const terms = getShowcaseTerminology(profession);
+
+  const now = Date.now();
+  const last24h = now - 24 * 60 * 60 * 1000;
+  const last7d = now - 7 * 24 * 60 * 60 * 1000;
+  const events24h = events.filter((e) => new Date(e.timestamp).getTime() > last24h);
+  const events7d = events.filter((e) => new Date(e.timestamp).getTime() > last7d);
+  const kpis = [
+    {
+      label: `${terms.collection} med aktivitet`,
+      value: new Set(events.map((e) => e.galleryId)).size,
+      color: '#0288d1',
+    },
+    {
+      label: 'Valg i dag',
+      value: events24h.filter((e) => e.type === 'selection').length,
+      color: '#43a047',
+    },
+    {
+      label: 'Betalinger 7d',
+      value: events7d.filter((e) => e.type === 'payment').length,
+      color: '#fb8c00',
+    },
+    {
+      label: 'Kommentarer i dag',
+      value: events24h.filter((e) => e.type === 'comment').length,
+      color: '#7b1fa2',
+    },
+  ];
+  return (
+    <Box
+      sx={{
+        display: 'grid',
+        gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(4, 1fr)' },
+        gap: 1.5,
+        mb: 2,
+      }}
+    >
+      {kpis.map((kpi) => (
+        <Paper
+          key={kpi.label}
+          elevation={0}
+          onClick={onClickGalleryTab}
+          sx={{
+            p: 2,
+            borderRadius: 2,
+            border: `1px solid ${kpi.color}22`,
+            background: `linear-gradient(135deg, ${kpi.color}0a 0%, ${kpi.color}03 100%)`,
+            cursor: 'pointer',
+            transition: 'transform 180ms ease, box-shadow 180ms ease',
+            '&:hover': {
+              transform: 'translateY(-2px)',
+              boxShadow: `0 8px 24px ${kpi.color}22`,
+            },
+          }}
+        >
+          <Typography
+            variant="caption"
+            sx={{
+              display: 'block',
+              color: 'text.secondary',
+              fontSize: '0.72rem',
+              letterSpacing: '0.04em',
+              textTransform: 'uppercase',
+              fontWeight: 600,
+              mb: 0.5,
+            }}
+          >
+            {kpi.label}
+          </Typography>
+          <Typography variant="h4" sx={{ color: kpi.color, fontWeight: 700, lineHeight: 1 }}>
+            {kpi.value.toLocaleString('nb-NO')}
+          </Typography>
+        </Paper>
+      ))}
+    </Box>
+  );
+}
+
 const CommunicationHub: React.FC<CommunicationHubProps> = ({ userId, profession }) => {
   const theming = useTheming(profession);
   const queryClient = useQueryClient();
   
-  // Tab state
-  const [tabValue, setTabValue] = useState(0);
+  // Tab state — URL-driven så browser back/forward navigerer mellom
+  // Email/Møter/Notater/Chat/Galleri-faner og refresh holder valgt tab.
+  const [tabValue, setTabValue] = useUrlTab('hubTab', 0);
 
   // Slice 9X.1 — gallery activity feed for the unified inbox tab.
-  // Polled every 30s so live engagement feels responsive without
-  // requiring a WebSocket subscription. Profession-aware terminology
-  // is applied at render time (foto-galleri / video-galleri / lyd-
-  // galleri) via the profession config the parent passes in.
+  // Polled every 30s; profession-aware terminology applied via
+  // shared getShowcaseTerminology-helper.
   const galleryEventsQuery = useQuery<{
     events: Array<{
       id: string;
@@ -221,24 +322,12 @@ const CommunicationHub: React.FC<CommunicationHubProps> = ({ userId, profession 
     refetchInterval: 30_000,
   });
   const galleryEvents = galleryEventsQuery.data?.events ?? [];
-
-  // Slice 9X.1 — naive unread count: events from the last 24h that
-  // weren't already in the cached set on first mount. Real "read /
-  // unread" tracking would need a per-user lastSeenAt — Slice 9D.5
-  // backlog. For now the badge surfaces "today's activity".
   const galleryEventsUnreadCount = React.useMemo(() => {
     const cutoff = Date.now() - 24 * 60 * 60 * 1000;
     return galleryEvents.filter(
       (e) => new Date(e.timestamp).getTime() > cutoff,
     ).length;
   }, [galleryEvents]);
-
-  // Slice 9X.1 + 9P — profession-aware terminology. Single source of
-  // truth lives in `utils/showcaseTerminology.ts` so all
-  // klient-galleri-surfaces stay consistent (photo/video/music). The
-  // local map that used to live here was inlined ad-hoc; we now use
-  // the shared helper so a profession added in one place propagates
-  // everywhere.
   const galleryTerm = React.useMemo(
     () => getShowcaseTerminology(profession),
     [profession],
@@ -463,6 +552,11 @@ const CommunicationHub: React.FC<CommunicationHubProps> = ({ userId, profession 
           </Stack>
         </Box>
       </Paper>
+
+      {/* BI KPI-rad: rask helse-status før photographer dykker i
+          tabs. Selv-inneholdt fetch så komponentet ikke avhenger av
+          variabel som linteren tidvis har strippet. */}
+      <BiKpiRow profession={profession} onClickGalleryTab={() => setTabValue(0)} />
 
       {/* Tabs */}
       <Paper elevation={1} sx={{ ...theming.getThemedCardSx() }}>
