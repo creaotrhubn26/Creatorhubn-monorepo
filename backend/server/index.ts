@@ -23789,6 +23789,9 @@ app.get("/api/photographer/galleries", async (req, res) => {
   const session = requireUserSession(req, res);
   if (!session) return;
   try {
+    // Slice 9X.3 — surface linkedProjectTitle via a correlated
+    // sub-select on the JSONB projectId so the photographer sees
+    // "Linked to: Bryllup Ola og Kari" instead of an opaque UUID.
     const result = await pool.query(
       `SELECT
          g.id, g.client_name, g.client_email, g.project_title, g.access_token,
@@ -23797,7 +23800,8 @@ app.get("/api/photographer/galleries", async (req, res) => {
          (SELECT COUNT(*) FROM client_image_comments WHERE gallery_id = g.id) AS comment_count,
          (SELECT COUNT(*) FROM client_image_selections WHERE gallery_id = g.id AND selection_type = 'selected') AS selection_count,
          (SELECT COUNT(*) FROM client_image_selections WHERE gallery_id = g.id AND selection_type = 'favorite') AS favorite_count,
-         (SELECT COUNT(*) FROM client_image_payments WHERE gallery_id = g.id AND payment_status = 'succeeded') AS paid_count
+         (SELECT COUNT(*) FROM client_image_payments WHERE gallery_id = g.id AND payment_status = 'succeeded') AS paid_count,
+         (SELECT title FROM projects WHERE id = (g.gallery_settings->>'projectId') LIMIT 1) AS linked_project_title
        FROM photographer_client_galleries g
        WHERE g.photographer_id = $1
        ORDER BY g.created_at DESC
@@ -23809,6 +23813,7 @@ app.get("/api/photographer/galleries", async (req, res) => {
         const settings = (r.gallery_settings ?? {}) as Record<string, unknown>;
         const safeSettings = { ...settings };
         delete safeSettings.passwordHash;
+        const projectId = typeof settings.projectId === 'string' ? settings.projectId : null;
         return {
           id: r.id,
           clientName: r.client_name,
@@ -23826,6 +23831,10 @@ app.get("/api/photographer/galleries", async (req, res) => {
           selectionCount: Number(r.selection_count ?? 0),
           favoriteCount: Number(r.favorite_count ?? 0),
           paidCount: Number(r.paid_count ?? 0),
+          // Slice 9X.3 — project linkage. Both nullable; UI degrades
+          // gracefully when missing.
+          projectId,
+          linkedProjectTitle: typeof r.linked_project_title === 'string' ? r.linked_project_title : null,
         };
       }),
     });
@@ -23897,6 +23906,9 @@ app.patch("/api/photographer/galleries/:id/settings", async (req, res) => {
       'allowDownload', 'allowComments', 'watermarkEnabled', 'expiresAt',
       'requiresPassword', 'screenshotProtection',
       'logoUrl', 'primaryColor', 'accentColor', 'fontFamily', 'customDomainAlias',
+      // Slice 9X.3 — let photographer link/unlink project. Empty string
+      // or null clears the linkage.
+      'projectId',
     ]);
     for (const [key, value] of Object.entries(patch)) {
       if (key === 'password') continue;
