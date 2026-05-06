@@ -13,8 +13,21 @@ import type { Pool } from "pg";
 import type Stripe from "stripe";
 
 import { currentBillingPeriod } from "./casting-sms-billing.js";
+import {
+  RR_BRAND_PREFIXES,
+  RR_TAX_CODE,
+  brandedProductName,
+  validateCustomerAddress,
+} from "./stripe-billing-utils.js";
 
 const RUNNER_KEY = "casting-sms-invoice";
+
+// Brand-konsistent line-item-navn (vises på Stripe-fakturaen).
+// Casting SMS = telecom service per Stripe Tax classification.
+const CASTING_SMS_PRODUCT_NAME = brandedProductName(
+  RR_BRAND_PREFIXES.CASTING,
+  "Audition SMS",
+);
 
 export interface SmsInvoiceSweepSummary {
   reason: "startup" | "interval" | "manual";
@@ -175,24 +188,52 @@ export async function runSmsInvoiceSweep(
             continue;
           }
 
+          // Norge-MVA-compliance: Stripe Tax kan ikke regne ut 25% MVA uten
+          // gyldig customer-adresse (country + postal_code). Hopp over
+          // kunder som ikke har dette satt — bedre å la fakturaen vente til
+          // adressen er fylt inn enn å sende ut en faktura uten MVA.
+          const addrCheck = await validateCustomerAddress(
+            deps.stripe,
+            stripeCustomerId,
+          );
+          if (!addrCheck.ok) {
+            summary.skipped += 1;
+            summary.notes.push(
+              `skip project=${group.projectId} period=${group.billingPeriod} reason=invalid_customer_address missing=${addrCheck.missing.join(",")}`,
+            );
+            console.warn(
+              `[casting-sms-invoice] skipping customer ${stripeCustomerId} (project=${group.projectId} period=${group.billingPeriod}): missing address fields ${addrCheck.missing.join(", ")}`,
+            );
+            continue;
+          }
+
           const amountOre = Math.round(group.totalNokExVat * 100);
           if (amountOre <= 0) {
             summary.skipped += 1;
             continue;
           }
 
-          const description = `Audition-SMS ${group.billingPeriod} (${group.smsCount} stk)`;
+          const description = `${CASTING_SMS_PRODUCT_NAME} ${group.billingPeriod} (${group.smsCount} stk)`;
+          // tax_behavior='exclusive' + tax_code=TELECOM_SMS lar Stripe Tax
+          // legge på 25% norsk MVA automatisk basert på customer-adressen.
+          // Forutsetter at Stripe Tax er aktivert i dashboard og at
+          // konto-default ELLER customer har automatic_tax på.
           const invoiceItem = await deps.stripe.invoiceItems.create({
             customer: stripeCustomerId,
             amount: amountOre,
             currency: "nok",
             description,
+            tax_behavior: "exclusive",
+            tax_code: RR_TAX_CODE.TELECOM_SMS,
             metadata: {
               runner: RUNNER_KEY,
+              brand: RR_BRAND_PREFIXES.CASTING,
+              product_name: CASTING_SMS_PRODUCT_NAME,
               billing_period: group.billingPeriod,
               project_id: group.projectId,
               sms_count: String(group.smsCount),
               vat_rate: String(group.vatRate),
+              tax_code: RR_TAX_CODE.TELECOM_SMS,
             },
           });
 

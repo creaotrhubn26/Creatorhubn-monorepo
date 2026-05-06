@@ -17,8 +17,21 @@ import type Stripe from "stripe";
 
 import { currentBillingPeriod } from "./casting-sms-billing.js";
 import type { ProjectCustomerResolver } from "./casting-sms-invoice-runner.js";
+import {
+  RR_BRAND_PREFIXES,
+  RR_TAX_CODE,
+  brandedProductName,
+  validateCustomerAddress,
+} from "./stripe-billing-utils.js";
 
 const RUNNER_KEY = "casting-whatsapp-invoice";
+
+// Brand-konsistent line-item-navn (vises på Stripe-fakturaen).
+// WhatsApp-meldinger klassifiseres som telecom på samme måte som SMS.
+const CASTING_WHATSAPP_PRODUCT_NAME = brandedProductName(
+  RR_BRAND_PREFIXES.CASTING,
+  "Audition WhatsApp",
+);
 
 export interface WhatsAppInvoiceSweepSummary {
   reason: "startup" | "interval" | "manual";
@@ -177,24 +190,48 @@ export async function runWhatsAppInvoiceSweep(
             continue;
           }
 
+          // Norge-MVA-compliance (samme rasjonale som SMS-runneren): Stripe
+          // Tax kan ikke beregne 25% MVA uten gyldig customer-adresse.
+          const addrCheck = await validateCustomerAddress(
+            deps.stripe,
+            stripeCustomerId,
+          );
+          if (!addrCheck.ok) {
+            summary.skipped += 1;
+            summary.notes.push(
+              `skip project=${group.projectId} period=${group.billingPeriod} reason=invalid_customer_address missing=${addrCheck.missing.join(",")}`,
+            );
+            console.warn(
+              `[casting-whatsapp-invoice] skipping customer ${stripeCustomerId} (project=${group.projectId} period=${group.billingPeriod}): missing address fields ${addrCheck.missing.join(", ")}`,
+            );
+            continue;
+          }
+
           const amountOre = Math.round(group.totalNokExVat * 100);
           if (amountOre <= 0) {
             summary.skipped += 1;
             continue;
           }
 
-          const description = `Audition-WhatsApp ${group.billingPeriod} (${group.whatsappCount} stk)`;
+          const description = `${CASTING_WHATSAPP_PRODUCT_NAME} ${group.billingPeriod} (${group.whatsappCount} stk)`;
+          // tax_behavior='exclusive' + tax_code=TELECOM_SMS lar Stripe Tax
+          // legge på 25% norsk MVA automatisk basert på customer-adressen.
           const invoiceItem = await deps.stripe.invoiceItems.create({
             customer: stripeCustomerId,
             amount: amountOre,
             currency: "nok",
             description,
+            tax_behavior: "exclusive",
+            tax_code: RR_TAX_CODE.TELECOM_SMS,
             metadata: {
               runner: RUNNER_KEY,
+              brand: RR_BRAND_PREFIXES.CASTING,
+              product_name: CASTING_WHATSAPP_PRODUCT_NAME,
               billing_period: group.billingPeriod,
               project_id: group.projectId,
               whatsapp_count: String(group.whatsappCount),
               vat_rate: String(group.vatRate),
+              tax_code: RR_TAX_CODE.TELECOM_SMS,
             },
           });
 

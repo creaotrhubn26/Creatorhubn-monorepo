@@ -41,7 +41,17 @@ function makePoolStub(opts: {
   return { pool, queries };
 }
 
-function makeStripeStub(opts: { failOn?: string } = {}) {
+function makeStripeStub(
+  opts: {
+    failOn?: string;
+    /**
+     * Map customerId → customer-stub som customers.retrieve returnerer.
+     * Default: alle har gyldig norsk adresse (country=NO, postal_code=0150),
+     * så validateCustomerAddress returnerer { ok: true }.
+     */
+    customers?: Record<string, { address?: { country?: string; postal_code?: string } | null; deleted?: boolean }>;
+  } = {},
+) {
   const created: Array<Record<string, unknown>> = [];
   const stripe = {
     invoiceItems: {
@@ -52,6 +62,24 @@ function makeStripeStub(opts: { failOn?: string } = {}) {
         const id = `ii_test_${created.length + 1}`;
         created.push({ id, ...input });
         return { id };
+      }),
+    },
+    customers: {
+      retrieve: vi.fn(async (customerId: string) => {
+        const stub = opts.customers?.[customerId];
+        if (stub) {
+          return {
+            id: customerId,
+            address: stub.address ?? null,
+            deleted: stub.deleted ?? false,
+          };
+        }
+        // Default: gyldig norsk adresse.
+        return {
+          id: customerId,
+          address: { country: "NO", postal_code: "0150" },
+          deleted: false,
+        };
       }),
     },
   } as unknown as Parameters<typeof runSmsInvoiceSweep>[1]["stripe"];
@@ -142,6 +170,37 @@ describe("runSmsInvoiceSweep", () => {
     expect(created[0].currency).toBe("nok");
     expect(String(created[0].description)).toContain("3 stk");
     expect(String(created[0].description)).toContain("2026-03");
+    // Norway-MVA-compliance: tax_behavior + tax_code må være satt så
+    // Stripe Tax kan beregne 25% MVA automatisk.
+    expect(created[0].tax_behavior).toBe("exclusive");
+    expect(created[0].tax_code).toBe("txcd_30060000");
+    expect(
+      (created[0].metadata as Record<string, string>).tax_code,
+    ).toBe("txcd_30060000");
+  });
+
+  it("skips group when customer has no address (Stripe Tax cannot compute MVA)", async () => {
+    const { pool } = makePoolStub({ unbilledRows: [asRow(baseGroup)] });
+    const { stripe, created } = makeStripeStub({
+      customers: { cus_no_addr: { address: null } },
+    });
+    const resolver: ProjectCustomerResolver = async () => ({
+      stripeCustomerId: "cus_no_addr",
+    });
+
+    const summary = await runSmsInvoiceSweep("manual", {
+      pool,
+      stripe,
+      resolveCustomer: resolver,
+      now: new Date("2026-04-15T12:00:00Z"),
+    });
+
+    expect(summary.skipped).toBe(1);
+    expect(summary.invoiceItemsCreated).toBe(0);
+    expect(created).toHaveLength(0);
+    expect(
+      summary.notes.some((n) => n.includes("invalid_customer_address")),
+    ).toBe(true);
   });
 
   it("skips group when customer cannot be resolved", async () => {
