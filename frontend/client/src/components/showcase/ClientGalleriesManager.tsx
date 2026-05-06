@@ -84,10 +84,15 @@ interface PhotographerGallery {
   projectTitle: string | null;
   accessToken: string;
   shareUrl: string;
+  /** 'active' | 'completed' | other status strings the backend may set. */
   status: string;
   gallerySettings: GallerySettings;
   requiresPassword: boolean;
   createdAt: string;
+  /** Slice 9X.7 — set when the photographer marks the gallery
+   *  delivered. UI uses presence (not just status string) for its
+   *  "marker som ferdig"-button gating. */
+  completedAt?: string | null;
   imageCount: number;
   commentCount: number;
   selectionCount: number;
@@ -326,9 +331,25 @@ const GalleryCard: React.FC<{
   onSettings: () => void;
   onEvents: () => void;
 }> = ({ gallery, terms, onSettings, onEvents }) => {
+  const queryClient = useQueryClient();
   const [copied, setCopied] = useState(false);
   const totalEvents =
     gallery.commentCount + gallery.selectionCount + gallery.paidCount;
+  const isCompleted = gallery.status === 'completed' || Boolean(gallery.completedAt);
+
+  // Slice 9X.7 — mark gallery as delivered + trigger project callback.
+  // Idempotent on the backend so a double-click won't error.
+  const completeMutation = useMutation({
+    mutationFn: async () =>
+      apiRequest(`/api/photographer/galleries/${gallery.id}/mark-complete`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/photographer/galleries'] });
+    },
+  });
+
   return (
     <Card sx={{ height: '100%' }}>
       <CardContent>
@@ -344,6 +365,11 @@ const GalleryCard: React.FC<{
           {gallery.requiresPassword && (
             <Tooltip title="Passordbeskyttet">
               <LockIcon fontSize="small" color="action" />
+            </Tooltip>
+          )}
+          {isCompleted && (
+            <Tooltip title={gallery.completedAt ? `Levert ${new Date(gallery.completedAt).toLocaleDateString('nb-NO')}` : 'Markert som ferdig'}>
+              <CheckCircleIcon fontSize="small" color="success" />
             </Tooltip>
           )}
         </Stack>
@@ -464,6 +490,29 @@ const GalleryCard: React.FC<{
             Hendelser ({totalEvents})
           </Button>
         </Stack>
+        {/* Slice 9X.7 — explicit completion action. Disabled when
+            already completed (idempotent on backend, but visual cue). */}
+        <Button
+          size="small"
+          startIcon={<CheckCircleIcon />}
+          onClick={() => completeMutation.mutate()}
+          disabled={isCompleted || completeMutation.isPending}
+          fullWidth
+          color="success"
+          variant={isCompleted ? 'outlined' : 'contained'}
+          sx={{ mt: 1 }}
+        >
+          {isCompleted
+            ? 'Markert som ferdig'
+            : completeMutation.isPending
+              ? 'Markerer…'
+              : 'Marker som ferdig'}
+        </Button>
+        {completeMutation.isError && (
+          <Typography variant="caption" color="error" sx={{ display: 'block', mt: 0.5 }}>
+            {String((completeMutation.error as Error)?.message ?? 'Feilet')}
+          </Typography>
+        )}
       </CardContent>
     </Card>
   );
