@@ -78,6 +78,7 @@ import {
 import { useTheming } from '@/utils/theming-helper';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import { getShowcaseTerminology } from '@/utils/showcaseTerminology';
 import SmartEmailComposer from '../email/SmartEmailComposer';
 import SmartMeetingPreparation from '../meet/SmartMeetingPreparation';
 import UniversalChatWidget from '../chat/UniversalChatWidget';
@@ -232,21 +233,16 @@ const CommunicationHub: React.FC<CommunicationHubProps> = ({ userId, profession 
     ).length;
   }, [galleryEvents]);
 
-  // Slice 9X.1 — profession-aware terminology. The platform serves
-  // photographers, videographers, and musicians; "bilder" is wrong
-  // for the latter two. Map at render time so all the gallery copy
-  // here matches the user's profession context. NOTE: the underlying
-  // backend storage stays "image" — this is purely UI labels.
-  const galleryTerm = React.useMemo(() => {
-    const p = String(profession ?? '').toLowerCase();
-    if (p.includes('video') || p.includes('film')) {
-      return { collection: 'video-galleri', item: 'klipp', selectedVerb: 'valgt' };
-    }
-    if (p.includes('music') || p.includes('audio') || p.includes('musik')) {
-      return { collection: 'lyd-galleri', item: 'spor', selectedVerb: 'valgt' };
-    }
-    return { collection: 'foto-galleri', item: 'bilde', selectedVerb: 'valgt' };
-  }, [profession]);
+  // Slice 9X.1 + 9P — profession-aware terminology. Single source of
+  // truth lives in `utils/showcaseTerminology.ts` so all
+  // klient-galleri-surfaces stay consistent (photo/video/music). The
+  // local map that used to live here was inlined ad-hoc; we now use
+  // the shared helper so a profession added in one place propagates
+  // everywhere.
+  const galleryTerm = React.useMemo(
+    () => getShowcaseTerminology(profession),
+    [profession],
+  );
   
   // Email state
   const [emailComposerOpen, setEmailComposerOpen] = useState(false);
