@@ -679,7 +679,7 @@ export default function ShowcaseAdmin() {
                 Wires the new GET/POST/PATCH/events backend routes so the
                 photographer can create, configure, and monitor client
                 galleries from the dashboard. */}
-            <ClientGalleriesManager />
+            <ClientGalleriesManager profession={profession} />
           </AdminTabPanel>
 
           <AdminTabPanel value={adminTabValue} index={1}>
