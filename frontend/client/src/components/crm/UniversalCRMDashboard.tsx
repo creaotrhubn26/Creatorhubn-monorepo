@@ -357,6 +357,72 @@ export default function UniversalCRMDashboard({
   }
 });
 
+  // Slice 9X.16 — fetch ALL photographer galleries once and group by
+  // clientEmail so every customer card can surface "X galleries · Y
+  // selected · Z paid". Uses the same /api/photographer/galleries
+  // endpoint ClientGalleriesManager + ProjectTimeline already poll, so
+  // React Query caches the response across the dashboard.
+  const { data: galleriesData } = useQuery<{ galleries: Array<{
+    id: string;
+    clientEmail: string;
+    status: string;
+    completedAt?: string | null;
+    imageCount: number;
+    selectionCount: number;
+    paidCount: number;
+    createdAt: string;
+    shareUrl: string;
+    projectTitle: string | null;
+    linkedProjectTitle?: string | null;
+  }> }>({
+    queryKey: ['/api/photographer/galleries'],
+    queryFn: async () => {
+      const r = await fetch('/api/photographer/galleries');
+      if (!r.ok) return { galleries: [] };
+      return r.json();
+    },
+    refetchInterval: 30_000,
+  });
+  const galleriesByClient = React.useMemo(() => {
+    const m = new Map<string, {
+      count: number;
+      activeCount: number;
+      completedCount: number;
+      totalSelections: number;
+      totalPaid: number;
+      lastActivity: string | null;
+      latestShareUrl: string | null;
+      latestProjectTitle: string | null;
+    }>();
+    for (const g of galleriesData?.galleries ?? []) {
+      const key = (g.clientEmail || '').toLowerCase().trim();
+      if (!key) continue;
+      const existing = m.get(key) ?? {
+        count: 0,
+        activeCount: 0,
+        completedCount: 0,
+        totalSelections: 0,
+        totalPaid: 0,
+        lastActivity: null as string | null,
+        latestShareUrl: null as string | null,
+        latestProjectTitle: null as string | null,
+      };
+      existing.count += 1;
+      if (g.status === 'completed' || g.completedAt) existing.completedCount += 1;
+      else existing.activeCount += 1;
+      existing.totalSelections += g.selectionCount || 0;
+      existing.totalPaid += g.paidCount || 0;
+      const stamp = g.completedAt ?? g.createdAt;
+      if (!existing.lastActivity || (stamp && stamp > existing.lastActivity)) {
+        existing.lastActivity = stamp;
+        existing.latestShareUrl = g.shareUrl;
+        existing.latestProjectTitle = g.linkedProjectTitle ?? g.projectTitle;
+      }
+      m.set(key, existing);
+    }
+    return m;
+  }, [galleriesData]);
+
   // Fetch split sheet statistics (only for music producers)
   const isMusicProducer = activeProfession === 'music_producer';
   const { data: splitSheetStatsData } = useQuery({
@@ -1229,6 +1295,10 @@ export default function UniversalCRMDashboard({
                 const completedCount = customerSplitSheetsList.filter((ss: any) => ss.status === 'completed').length;
                 const pendingCount = customerSplitSheetsList.filter((ss: any) => ss.status === 'pending_signatures').length;
                 const linkedToEvent = eventContext ? linkedCustomersForEvent.includes(customer.email) : false;
+                // Slice 9X.16 — gallery aggregation for this customer.
+                const galleryAgg = customer.email
+                  ? galleriesByClient.get(customer.email.toLowerCase().trim())
+                  : null;
 
                 return (
                   <Grid item xs={12} md={6} xl={4} key={customer.id}>
@@ -1351,6 +1421,57 @@ export default function UniversalCRMDashboard({
                                 )}
                                 {pendingCount > 0 && (
                                   <Chip label={`${pendingCount} venter`} size="small" sx={{ bgcolor: '#ff9800', color: 'white' }} />
+                                )}
+                              </Stack>
+                            </Stack>
+                          )}
+
+                          {/* Slice 9X.16 — galleri-aggregation per kunde.
+                              Surfacer hvor mange galleries denne klienten
+                              har, hvor mange er levert, og samlet valg/
+                              betalingsaktivitet. Klikk-to-open går til
+                              det nyeste galleriet. */}
+                          {galleryAgg && (
+                            <Stack spacing={1}>
+                              <Stack direction="row" spacing={1} alignItems="center">
+                                <Typography variant="caption" sx={{ fontWeight: 700, color: colors.primary }}>
+                                  Klient-galleri {galleryAgg.count}
+                                </Typography>
+                                {galleryAgg.latestProjectTitle && (
+                                  <Typography variant="caption" color="text.secondary" noWrap sx={{ flex: 1 }}>
+                                    Nyeste: {galleryAgg.latestProjectTitle}
+                                  </Typography>
+                                )}
+                              </Stack>
+                              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                                {galleryAgg.activeCount > 0 && (
+                                  <Chip
+                                    label={`${galleryAgg.activeCount} aktive`}
+                                    size="small"
+                                    sx={{ bgcolor: alpha(colors.primary, 0.12), color: colors.primary, fontWeight: 700 }}
+                                  />
+                                )}
+                                {galleryAgg.completedCount > 0 && (
+                                  <Chip label={`${galleryAgg.completedCount} levert`} size="small" sx={{ bgcolor: '#4caf50', color: 'white' }} />
+                                )}
+                                {galleryAgg.totalSelections > 0 && (
+                                  <Chip label={`${galleryAgg.totalSelections} valg`} size="small" variant="outlined" />
+                                )}
+                                {galleryAgg.totalPaid > 0 && (
+                                  <Chip label={`${galleryAgg.totalPaid} betalt`} size="small" sx={{ bgcolor: '#ff9800', color: 'white' }} />
+                                )}
+                                {galleryAgg.latestShareUrl && (
+                                  <Chip
+                                    label="Åpne"
+                                    size="small"
+                                    variant="outlined"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (galleryAgg.latestShareUrl) {
+                                        window.open(galleryAgg.latestShareUrl, '_blank');
+                                      }
+                                    }}
+                                  />
                                 )}
                               </Stack>
                             </Stack>
