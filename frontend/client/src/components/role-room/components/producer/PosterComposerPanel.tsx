@@ -15,13 +15,16 @@ import {
   Alert,
   Box,
   Button,
+  Chip,
   CircularProgress,
   Divider,
   FormControl,
   IconButton,
   InputLabel,
+  LinearProgress,
   MenuItem,
   Paper,
+  Popover,
   Select,
   Stack,
   Tab,
@@ -44,6 +47,7 @@ import {
 import {
   fetchFormats,
   fetchTemplates,
+  fetchUsageSummary,
   generateCampaignConcept,
   listDrafts,
   loadDraft,
@@ -61,6 +65,7 @@ import {
   type PosterFormat,
   type MenuFormat,
   type TemplateGroups,
+  type UsageSummary,
 } from "../../../../services/posterComposerService";
 import PosterEditorCanvas from "./PosterEditorCanvas";
 
@@ -342,6 +347,10 @@ export default function PosterComposerPanel({ brandId: _brandId }: PosterCompose
   const [scrapeLoading, setScrapeLoading] = useState(false);
   const [scrapeResult, setScrapeResult] = useState<{ categories: { title: string; items: { name: string; description?: string; price: string; imageUrl?: string }[] }[]; source: string; warnings: string[] } | null>(null);
 
+  // Usage-summary-state (Pressroom toolbar pill)
+  const [usage, setUsage] = useState<UsageSummary | null>(null);
+  const [usageAnchor, setUsageAnchor] = useState<HTMLElement | null>(null);
+
   // Format-/template-katalog fra backend
   const [formats, setFormats] = useState<FormatGroups | null>(null);
   const [templates, setTemplates] = useState<TemplateGroups | null>(null);
@@ -365,7 +374,16 @@ export default function PosterComposerPanel({ brandId: _brandId }: PosterCompose
     fetchFormats().then(setFormats).catch((e) => setRenderError(`Format-liste-feil: ${e.message}`));
     fetchTemplates().then(setTemplates).catch((e) => setRenderError(`Template-liste-feil: ${e.message}`));
     refreshDrafts();
+    fetchUsageSummary().then(setUsage).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Poll usage hvert 30. sekund mens panelet er åpent
+  useEffect(() => {
+    const id = setInterval(() => {
+      fetchUsageSummary().then(setUsage).catch(() => {});
+    }, 30000);
+    return () => clearInterval(id);
   }, []);
 
   // ── Drafts: list, save, load ──
@@ -745,6 +763,22 @@ export default function PosterComposerPanel({ brandId: _brandId }: PosterCompose
             </Button>
           )}
 
+          {/* Usage-pill — viser månedens forbruk vs. tier-kvote */}
+          {usage && (
+            <Chip
+              size="small"
+              label={`${usage.tier}: ${usage.consumed.claude_calls}/${usage.included.claude_calls} AI · ${usage.consumed.renders}/${usage.included.renders} renders`}
+              color={
+                usage.consumed.claude_calls / Math.max(1, usage.included.claude_calls) > 0.9 ||
+                usage.consumed.renders / Math.max(1, usage.included.renders) > 0.9
+                  ? "warning"
+                  : "default"
+              }
+              onClick={(e) => setUsageAnchor(e.currentTarget)}
+              sx={{ cursor: "pointer", fontFamily: "monospace", fontSize: 11 }}
+            />
+          )}
+
           <Button
             startIcon={<AutoAwesomeIcon />}
             variant="contained"
@@ -755,6 +789,61 @@ export default function PosterComposerPanel({ brandId: _brandId }: PosterCompose
             Claude-kampanjetekst
           </Button>
         </Stack>
+
+        {/* Usage-popover — detaljert breakdown av månedsforbruk */}
+        <Popover
+          open={Boolean(usageAnchor)}
+          anchorEl={usageAnchor}
+          onClose={() => setUsageAnchor(null)}
+          anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+          transformOrigin={{ vertical: "top", horizontal: "right" }}
+        >
+          {usage && (
+            <Box sx={{ p: 2, minWidth: 320 }}>
+              <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                  Forbruk · {usage.period}
+                </Typography>
+                <Chip size="small" label={usage.tier.toUpperCase()} color="primary" />
+              </Stack>
+              <Divider sx={{ mb: 2 }} />
+
+              <Stack spacing={1.5}>
+                <UsageBar
+                  label="AI-kampanjetekster"
+                  consumed={usage.consumed.claude_calls}
+                  included={usage.included.claude_calls}
+                  unit=""
+                />
+                <UsageBar
+                  label="Renders"
+                  consumed={usage.consumed.renders}
+                  included={usage.included.renders}
+                  unit=""
+                />
+                <UsageBar
+                  label="Lagring"
+                  consumed={usage.consumed.r2_gb}
+                  included={usage.included.r2_gb}
+                  unit=" GB"
+                />
+              </Stack>
+
+              <Divider sx={{ my: 1.5 }} />
+              <Stack direction="row" justifyContent="space-between">
+                <Typography variant="caption" color="text.secondary">
+                  Overage denne måneden:
+                </Typography>
+                <Typography variant="caption" sx={{ fontWeight: 700 }}>
+                  {usage.cost_nok_ex_vat.toFixed(2)} NOK eks. mva.
+                </Typography>
+              </Stack>
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
+                Brand-profiler tillatt: {usage.included.brands === 9999 ? "ubegrenset" : usage.included.brands}
+              </Typography>
+            </Box>
+          )}
+        </Popover>
 
         {/* Scrape-dialog */}
         <Dialog open={scrapeOpen} onClose={() => setScrapeOpen(false)} maxWidth="md" fullWidth>
@@ -1733,5 +1822,48 @@ function MenuItemImageUpload({
         </Typography>
       )}
     </Stack>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// UsageBar — én rad med "X / Y" + LinearProgress for én usage-metric
+// ─────────────────────────────────────────────────────────────────────────
+
+function UsageBar({
+  label,
+  consumed,
+  included,
+  unit,
+}: {
+  label: string;
+  consumed: number;
+  included: number;
+  unit: string;
+}) {
+  const ratio = included > 0 ? Math.min(consumed / included, 1) : 0;
+  const isOver = consumed > included;
+  const color: "primary" | "warning" | "error" = isOver ? "error" : ratio > 0.9 ? "warning" : "primary";
+  return (
+    <Box>
+      <Stack direction="row" justifyContent="space-between" alignItems="baseline" sx={{ mb: 0.5 }}>
+        <Typography variant="caption" sx={{ fontWeight: 600 }}>
+          {label}
+        </Typography>
+        <Typography variant="caption" sx={{ fontFamily: "monospace", color: isOver ? "error.main" : "text.primary" }}>
+          {consumed.toFixed(unit === " GB" ? 2 : 0)}{unit} / {included === 9999 ? "∞" : `${included}${unit}`}
+        </Typography>
+      </Stack>
+      <LinearProgress
+        variant="determinate"
+        value={ratio * 100}
+        color={color}
+        sx={{ height: 6, borderRadius: 3 }}
+      />
+      {isOver && (
+        <Typography variant="caption" color="error" sx={{ display: "block", mt: 0.25 }}>
+          Overage: {(consumed - included).toFixed(unit === " GB" ? 2 : 0)}{unit}
+        </Typography>
+      )}
+    </Box>
   );
 }

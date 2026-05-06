@@ -349,6 +349,24 @@ export async function scrapeMenuFromUrl(url: string): Promise<ScrapedMenuResult>
 }
 
 /**
+ * Hent månedens forbruk + tier-kvote for innlogget bruker.
+ * Brukes av usage-pill i Pressroom-toolbar.
+ */
+export interface UsageSummary {
+  period: string;
+  tier: "pilot" | "standard" | "pro" | "custom";
+  included: { claude_calls: number; renders: number; r2_gb: number; brands: number };
+  consumed: { claude_calls: number; renders: number; r2_gb: number };
+  cost_nok_ex_vat: number;
+}
+
+export async function fetchUsageSummary(): Promise<UsageSummary> {
+  const resp = await fetch(`${API_BASE}/poster/usage/summary`, { headers: authHeaders() });
+  if (!resp.ok) throw new Error(`fetchUsageSummary failed: ${resp.status}`);
+  return resp.json();
+}
+
+/**
  * Last opp brand-/produktbilde til R2. Returnerer signed URL som kan brukes
  * direkte i CustomLayer.imageUrl eller PosterContent.products[].imageUrl.
  */
