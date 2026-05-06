@@ -129,6 +129,14 @@ export function ExportPresetDialog(props: ExportPresetDialogProps) {
   const [deliveryClientName, setDeliveryClientName] = useState<string>(clientName ?? '');
   const [deliveryClientEmail, setDeliveryClientEmail] = useState<string>(clientEmail ?? '');
   const [deliveredUrl, setDeliveredUrl] = useState<string | null>(null);
+  // Slice 9X.6 — target a specific existing gallery instead of always
+  // creating a new one. Empty string means "create new"; any other
+  // value is a gallery ID the backend pushes the enhanced batch into
+  // via createClientGalleryFromBlobs(existingGalleryId=…).
+  const [targetGalleryId, setTargetGalleryId] = useState<string>('');
+  const [existingGalleries, setExistingGalleries] = useState<
+    Array<{ id: string; clientName: string; clientEmail: string; projectTitle: string | null; imageCount: number }>
+  >([]);
 
   useEffect(() => {
     if (!open) return;
@@ -139,7 +147,38 @@ export function ExportPresetDialog(props: ExportPresetDialogProps) {
     setDeliveredUrl(null);
     setDeliveryClientName(clientName ?? '');
     setDeliveryClientEmail(clientEmail ?? '');
+    setTargetGalleryId('');
   }, [open, preset, clientName, clientEmail]);
+
+  // Slice 9X.6 — fetch the photographer's existing galleries when
+  // dialog opens so the picker can offer them. Failure is non-fatal:
+  // the photographer can still create a new gallery even if listing
+  // breaks.
+  useEffect(() => {
+    if (!open || !photographerId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/photographer/galleries', { credentials: 'include' });
+        if (!res.ok) return;
+        const body = (await res.json()) as {
+          galleries?: Array<{
+            id: string;
+            clientName: string;
+            clientEmail: string;
+            projectTitle: string | null;
+            imageCount: number;
+          }>;
+        };
+        if (!cancelled) setExistingGalleries(body.galleries ?? []);
+      } catch (err) {
+        if (!cancelled) console.warn('[ExportPresetDialog] gallery list failed', err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, photographerId]);
 
   const samplePreviews = useMemo(() => {
     const sample = images.slice(0, 3);
@@ -242,6 +281,12 @@ export function ExportPresetDialog(props: ExportPresetDialogProps) {
         'projectTitle',
         (projectName?.trim() || draft.name || 'Levering').slice(0, 200),
       );
+      // Slice 9X.6 — opt-in to push into an existing gallery. Backend
+      // handler (createClientGalleryFromBlobs) returns 404 if the ID
+      // is wrong, surfaced via response.error="existing_gallery_not_found".
+      if (targetGalleryId) {
+        form.append('existingGalleryId', targetGalleryId);
+      }
       for (const r of results) {
         form.append('images', r.blob, r.filename);
         form.append('titles', r.filename.replace(/\.[^.]+$/, ''));
@@ -634,6 +679,8 @@ export function ExportPresetDialog(props: ExportPresetDialogProps) {
               value={deliveryClientName}
               onChange={(event) => setDeliveryClientName(event.target.value)}
               sx={{ flex: 1 }}
+              disabled={Boolean(targetGalleryId)}
+              helperText={targetGalleryId ? 'Hentes fra valgt galleri' : undefined}
             />
             <TextField
               size="small"
@@ -642,12 +689,47 @@ export function ExportPresetDialog(props: ExportPresetDialogProps) {
               value={deliveryClientEmail}
               onChange={(event) => setDeliveryClientEmail(event.target.value)}
               sx={{ flex: 1 }}
+              disabled={Boolean(targetGalleryId)}
+              helperText={targetGalleryId ? 'Hentes fra valgt galleri' : undefined}
             />
           </Stack>
+          {/* Slice 9X.6 — push enhanced batch into an existing gallery
+              instead of creating a new one. Empty option = create new. */}
+          {existingGalleries.length > 0 && (
+            <FormControl size="small" fullWidth sx={{ mb: 1 }}>
+              <InputLabel>Mål-galleri</InputLabel>
+              <Select
+                label="Mål-galleri"
+                value={targetGalleryId}
+                onChange={(event) => {
+                  const id = String(event.target.value || '');
+                  setTargetGalleryId(id);
+                  // Auto-fill client info from the chosen gallery so the
+                  // photographer doesn't need to retype.
+                  if (id) {
+                    const g = existingGalleries.find((x) => x.id === id);
+                    if (g) {
+                      setDeliveryClientName(g.clientName);
+                      setDeliveryClientEmail(g.clientEmail);
+                    }
+                  }
+                }}
+              >
+                <MenuItem value="">+ Opprett nytt galleri</MenuItem>
+                {existingGalleries.map((g) => (
+                  <MenuItem key={g.id} value={g.id}>
+                    {(g.projectTitle || g.clientName) + ` — ${g.imageCount} bilder · ${g.clientEmail}`}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
           {deliveredUrl && (
             <Alert severity="success" sx={{ mb: 1 }}>
               <Typography variant="body2">
-                Galleriet er opprettet. Del denne URLen med kunden:
+                {targetGalleryId
+                  ? 'Push til galleri fullført. Klient-URL:'
+                  : 'Galleriet er opprettet. Del denne URLen med kunden:'}
               </Typography>
               <Typography
                 variant="body2"
@@ -700,7 +782,7 @@ export function ExportPresetDialog(props: ExportPresetDialogProps) {
               onClick={() => void handleDeliver()}
               disabled={running || !deliveryReady}
             >
-              Lever til klientgalleri
+              {targetGalleryId ? 'Push til valgt galleri' : 'Lever til klientgalleri'}
             </Button>
           )}
         </Stack>
