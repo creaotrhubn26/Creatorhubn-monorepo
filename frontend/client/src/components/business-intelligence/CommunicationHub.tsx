@@ -33,6 +33,7 @@ import {
   DialogTitle,
   Alert,
   Stack,
+  CircularProgress,
   Tooltip,
   FormControl,
   InputLabel,
@@ -45,6 +46,10 @@ import {
   Event as MeetingIcon,
   Notes as NotesIcon,
   Chat as ChatIcon,
+  PhotoLibrary as PhotoLibraryIcon,
+  Comment as CommentIcon,
+  CheckCircle as CheckCircleIcon,
+  Payment as PaymentIcon,
   Search as SearchIcon,
   Add as AddIcon,
   Inbox as InboxIcon,
@@ -185,6 +190,63 @@ const CommunicationHub: React.FC<CommunicationHubProps> = ({ userId, profession 
   
   // Tab state
   const [tabValue, setTabValue] = useState(0);
+
+  // Slice 9X.1 — gallery activity feed for the unified inbox tab.
+  // Polled every 30s so live engagement feels responsive without
+  // requiring a WebSocket subscription. Profession-aware terminology
+  // is applied at render time (foto-galleri / video-galleri / lyd-
+  // galleri) via the profession config the parent passes in.
+  const galleryEventsQuery = useQuery<{
+    events: Array<{
+      id: string;
+      type: 'comment' | 'selection' | 'payment';
+      galleryId: string;
+      galleryClientName: string | null;
+      galleryProjectTitle: string | null;
+      galleryShareUrl: string | null;
+      imageId: string | null;
+      clientName: string | null;
+      clientEmail: string;
+      detail: string;
+      amount: number | null;
+      currency: string | null;
+      paymentStatus: string | null;
+      timestamp: string;
+    }>;
+  }>({
+    queryKey: ['/api/photographer/galleries/events'],
+    queryFn: () =>
+      apiRequest('/api/photographer/galleries/events') as Promise<{ events: never[] }>,
+    refetchInterval: 30_000,
+  });
+  const galleryEvents = galleryEventsQuery.data?.events ?? [];
+
+  // Slice 9X.1 — naive unread count: events from the last 24h that
+  // weren't already in the cached set on first mount. Real "read /
+  // unread" tracking would need a per-user lastSeenAt — Slice 9D.5
+  // backlog. For now the badge surfaces "today's activity".
+  const galleryEventsUnreadCount = React.useMemo(() => {
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    return galleryEvents.filter(
+      (e) => new Date(e.timestamp).getTime() > cutoff,
+    ).length;
+  }, [galleryEvents]);
+
+  // Slice 9X.1 — profession-aware terminology. The platform serves
+  // photographers, videographers, and musicians; "bilder" is wrong
+  // for the latter two. Map at render time so all the gallery copy
+  // here matches the user's profession context. NOTE: the underlying
+  // backend storage stays "image" — this is purely UI labels.
+  const galleryTerm = React.useMemo(() => {
+    const p = String(profession ?? '').toLowerCase();
+    if (p.includes('video') || p.includes('film')) {
+      return { collection: 'video-galleri', item: 'klipp', selectedVerb: 'valgt' };
+    }
+    if (p.includes('music') || p.includes('audio') || p.includes('musik')) {
+      return { collection: 'lyd-galleri', item: 'spor', selectedVerb: 'valgt' };
+    }
+    return { collection: 'foto-galleri', item: 'bilde', selectedVerb: 'valgt' };
+  }, [profession]);
   
   // Email state
   const [emailComposerOpen, setEmailComposerOpen] = useState(false);
@@ -452,6 +514,21 @@ const CommunicationHub: React.FC<CommunicationHubProps> = ({ userId, profession 
             label="Chat"
             id="comm-tab-3"
             aria-controls="comm-tabpanel-3"
+          />
+          {/* Slice 9X.1 — unified inbox: gallery comments / selections /
+              payments alongside email + chat. Photographer no longer has
+              to context-switch to Klient-galleri-tab to see what their
+              clients did. */}
+          <Tab
+            icon={
+              <Badge badgeContent={galleryEventsUnreadCount} color="warning">
+                <PhotoLibraryIcon aria-hidden="true" />
+              </Badge>
+            }
+            label="Galleri"
+            id="comm-tab-4"
+            aria-controls="comm-tabpanel-4"
+            aria-label={`Galleri-aktivitet, ${galleryEventsUnreadCount} nye`}
           />
         </Tabs>
 
@@ -1050,6 +1127,90 @@ const CommunicationHub: React.FC<CommunicationHubProps> = ({ userId, profession 
         </TabPanel>
 
         {/* Chat Tab */}
+        {/* Slice 9X.1 — Galleri-aktivitet panel. Profession-aware
+            terminology applied via galleryTerm (foto/video/lyd-galleri,
+            bilde/klipp/spor). Backend route /api/photographer/galleries/
+            events serves the union'd timeline across all galleries the
+            photographer owns. */}
+        <TabPanel value={tabValue} index={4}>
+          <Box sx={{ p: 2 }}>
+            <Stack direction="row" justifyContent="space-between" alignItems="baseline" sx={{ mb: 2 }}>
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  {galleryTerm.collection.charAt(0).toUpperCase() + galleryTerm.collection.slice(1)} aktivitet
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Kommentarer, valg og betalinger fra klienter — på tvers av alle dine {galleryTerm.collection}.
+                </Typography>
+              </Box>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => galleryEventsQuery.refetch()}
+                disabled={galleryEventsQuery.isFetching}
+              >
+                {galleryEventsQuery.isFetching ? 'Oppdaterer…' : 'Oppdater'}
+              </Button>
+            </Stack>
+            {galleryEventsQuery.isLoading && (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                <CircularProgress />
+              </Box>
+            )}
+            {!galleryEventsQuery.isLoading && galleryEvents.length === 0 && (
+              <Box sx={{ textAlign: 'center', py: 6, color: 'text.secondary' }}>
+                <PhotoLibraryIcon sx={{ fontSize: 48, opacity: 0.3, mb: 1 }} />
+                <Typography variant="body1">Ingen aktivitet ennå</Typography>
+                <Typography variant="body2">
+                  Klient-{galleryTerm.item}-aktivitet vil dukke opp her etter hvert som klientene dine åpner sine {galleryTerm.collection}.
+                </Typography>
+              </Box>
+            )}
+            <Stack spacing={1}>
+              {galleryEvents.map((e) => {
+                const titleClient = e.clientName ?? e.clientEmail;
+                const galleryLabel = e.galleryProjectTitle || e.galleryClientName || 'galleri';
+                let icon: React.ReactNode = <CommentIcon color="primary" fontSize="small" />;
+                let label = '';
+                if (e.type === 'comment') {
+                  icon = <CommentIcon color="primary" fontSize="small" />;
+                  const trimmed = e.detail.length > 80 ? `${e.detail.slice(0, 80)}…` : e.detail;
+                  label = `${titleClient} kommenterte i "${galleryLabel}": "${trimmed}"`;
+                } else if (e.type === 'selection') {
+                  icon = <CheckCircleIcon color="success" fontSize="small" />;
+                  label = `${titleClient} markerte ${galleryTerm.item} som ${e.detail} i "${galleryLabel}"`;
+                } else if (e.type === 'payment') {
+                  icon = <PaymentIcon color="warning" fontSize="small" />;
+                  label = `${titleClient} betalte ${e.amount} ${e.currency ?? ''} (${e.paymentStatus ?? ''}) for "${galleryLabel}"`;
+                }
+                return (
+                  <Paper
+                    key={`${e.type}-${e.id}`}
+                    variant="outlined"
+                    sx={{
+                      p: 1.5,
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: 1.5,
+                      cursor: e.galleryShareUrl ? 'pointer' : 'default',
+                      '&:hover': e.galleryShareUrl ? { bgcolor: 'action.hover' } : undefined,
+                    }}
+                    onClick={() => e.galleryShareUrl && window.open(e.galleryShareUrl, '_blank')}
+                  >
+                    <Box sx={{ pt: 0.25 }}>{icon}</Box>
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography variant="body2">{label}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {new Date(e.timestamp).toLocaleString('nb-NO')}
+                      </Typography>
+                    </Box>
+                  </Paper>
+                );
+              })}
+            </Stack>
+          </Box>
+        </TabPanel>
+
         <TabPanel value={tabValue} index={3}>
           {chatOpen && (
             <Paper elevation={1} sx={{ height: '70vh', ...theming.getThemedCardSx() }}>
