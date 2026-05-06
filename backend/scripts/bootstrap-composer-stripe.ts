@@ -72,7 +72,12 @@ const TIERS: SubscriptionTier[] = [
   },
 ];
 
-const OVERAGE: OveragePrice[] = [
+interface OveragePriceWithMeter extends OveragePrice {
+  meterEventName: string;     // matcher meter_events.create(event_name)
+  meterDisplayName: string;   // vises i Stripe dashboard
+}
+
+const OVERAGE: OveragePriceWithMeter[] = [
   {
     lookupKey: "composer_overage_claude",
     name: "Composer — AI-kampanje (overage)",
@@ -80,6 +85,8 @@ const OVERAGE: OveragePrice[] = [
     metadata: { event_type: "claude_campaign" },
     priceNokExVat: 5,
     unitLabel: "kall",
+    meterEventName: "composer_claude_call",
+    meterDisplayName: "Composer Claude calls",
   },
   {
     lookupKey: "composer_overage_render",
@@ -88,6 +95,8 @@ const OVERAGE: OveragePrice[] = [
     metadata: { event_type: "render" },
     priceNokExVat: 0.5,
     unitLabel: "render",
+    meterEventName: "composer_render",
+    meterDisplayName: "Composer renders",
   },
   {
     lookupKey: "composer_overage_r2_gb",
@@ -96,8 +105,36 @@ const OVERAGE: OveragePrice[] = [
     metadata: { event_type: "r2_storage" },
     priceNokExVat: 1,
     unitLabel: "GB/mnd",
+    meterEventName: "composer_r2_gb_month",
+    meterDisplayName: "Composer R2 storage GB-mnd",
   },
 ];
+
+/**
+ * Stripe Billing Meters (siden 2025-03-31): metered prices må kobles til
+ * en Meter som mottar usage events via /v1/billing/meter_events.
+ * Idempotent via event_name (Meter har ikke lookup_key, men event_name er unikt).
+ */
+async function findOrCreateMeter(
+  eventName: string,
+  displayName: string,
+): Promise<Stripe.Billing.Meter> {
+  const existing = await stripe.billing.meters.list({ limit: 100 });
+  const match = existing.data.find((m) => m.event_name === eventName);
+  if (match) {
+    console.log(`  ✓ Meter eksisterer: ${eventName} (${match.id})`);
+    return match;
+  }
+  const created = await stripe.billing.meters.create({
+    display_name: displayName,
+    event_name: eventName,
+    default_aggregation: { formula: "sum" },
+    customer_mapping: { event_payload_key: "stripe_customer_id", type: "by_id" },
+    value_settings: { event_payload_key: "value" },
+  });
+  console.log(`  + Meter opprettet: ${eventName} (${created.id})`);
+  return created;
+}
 
 async function findOrCreateProduct(spec: ProductSpec): Promise<Stripe.Product> {
   const existing = await stripe.products.list({ limit: 100, active: true });
@@ -119,7 +156,12 @@ async function findOrCreateProduct(spec: ProductSpec): Promise<Stripe.Product> {
 async function findOrCreatePrice(
   productId: string,
   lookupKey: string,
-  spec: { priceNokExVat: number; recurring?: boolean; metered?: boolean; metadata?: Record<string, string> },
+  spec: {
+    priceNokExVat: number;
+    recurring?: boolean;
+    meterId?: string; // Hvis satt, opprettes prisen som meter-backed (siden 2025-03-31)
+    metadata?: Record<string, string>;
+  },
 ): Promise<Stripe.Price> {
   const unitAmount = Math.round(spec.priceNokExVat * 100);
   const existingPrices = await stripe.prices.list({ product: productId, lookup_keys: [lookupKey], limit: 5 });
@@ -136,10 +178,11 @@ async function findOrCreatePrice(
     metadata: { ...spec.metadata },
     tax_behavior: "exclusive",
   };
-  if (spec.recurring) {
-    params.recurring = { interval: "month", usage_type: spec.metered ? "metered" : "licensed" };
-  } else if (spec.metered) {
-    params.recurring = { interval: "month", usage_type: "metered" };
+  if (spec.meterId) {
+    // Metered price (recurring 'metered' med meter-binding)
+    params.recurring = { interval: "month", usage_type: "metered", meter: spec.meterId };
+  } else if (spec.recurring) {
+    params.recurring = { interval: "month", usage_type: "licensed" };
   }
   const price = await stripe.prices.create(params);
   console.log(`    + Opprettet pris: ${lookupKey} (${price.id}) ${unitAmount / 100} NOK eks. mva.`);
@@ -163,16 +206,24 @@ async function main() {
     tierResults.push({ tier: tier.metadata.tier, productId: product.id, priceId: price.id, price: tier.priceNokExVat });
   }
 
-  console.log("\nOverage-priser (metered):");
-  const overageResults: Array<{ event: string; productId: string; priceId: string; price: number }> = [];
+  console.log("\nOverage-priser (metered med Stripe Meters):");
+  const overageResults: Array<{ event: string; productId: string; priceId: string; meterId: string; meterEventName: string; price: number }> = [];
   for (const ov of OVERAGE) {
     const product = await findOrCreateProduct(ov);
+    const meter = await findOrCreateMeter(ov.meterEventName, ov.meterDisplayName);
     const price = await findOrCreatePrice(product.id, ov.lookupKey, {
       priceNokExVat: ov.priceNokExVat,
-      metered: true,
-      metadata: ov.metadata,
+      meterId: meter.id,
+      metadata: { ...ov.metadata, meter_event_name: ov.meterEventName },
     });
-    overageResults.push({ event: ov.metadata.event_type, productId: product.id, priceId: price.id, price: ov.priceNokExVat });
+    overageResults.push({
+      event: ov.metadata.event_type,
+      productId: product.id,
+      priceId: price.id,
+      meterId: meter.id,
+      meterEventName: ov.meterEventName,
+      price: ov.priceNokExVat,
+    });
   }
 
   console.log("\n─────────────────────────");
@@ -183,8 +234,13 @@ async function main() {
   for (const r of overageResults) {
     const eventKey = r.event === "claude_campaign" ? "CLAUDE" : r.event === "render" ? "RENDER" : "R2_GB";
     console.log(`STRIPE_COMPOSER_OVERAGE_${eventKey}_PRICE_ID=${r.priceId}`);
+    console.log(`STRIPE_COMPOSER_OVERAGE_${eventKey}_METER_ID=${r.meterId}`);
+    console.log(`STRIPE_COMPOSER_OVERAGE_${eventKey}_METER_EVENT_NAME=${r.meterEventName}`);
   }
-  console.log("\nFerdig. Sett env-vars i Render dashboard og redeploy backend.\n");
+  console.log("\nFerdig. Sett env-vars i Render dashboard og redeploy backend.");
+  console.log("MERK: invoice-runner må oppdateres til å sende meter_events");
+  console.log("(POST /v1/billing/meter_events) i stedet for invoice_items pga.");
+  console.log("Stripe Meter-kravet (2025-03-31).\n");
 }
 
 main().catch((err) => {
