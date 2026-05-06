@@ -806,6 +806,50 @@ app.post(
           }
           break;
         }
+        // Slice 10.2 — gallery checkout completion. We only act when
+        // metadata.galleryId is present so other PaymentIntent flows
+        // (subscriptions, agent add-ons) pass through untouched.
+        case "payment_intent.succeeded": {
+          const intent = event.data.object as Stripe.PaymentIntent;
+          const galleryId = intent.metadata?.galleryId;
+          if (!galleryId) break;
+          // Stamp the row + emit a download token. Photo-zip endpoint
+          // already accepts any 'succeeded' row for this gallery+email
+          // pair, so the token is mostly an audit-trail breadcrumb;
+          // future Slice 10.4 print-checkout will use it for download
+          // links emailed to the client.
+          const downloadToken = crypto.randomBytes(24).toString('base64url');
+          const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30d
+          try {
+            await pool.query(
+              `UPDATE client_image_payments
+               SET payment_status = 'succeeded',
+                   download_token = $1,
+                   download_expires_at = $2,
+                   updated_at = NOW()
+               WHERE stripe_payment_intent_id = $3`,
+              [downloadToken, expiresAt, intent.id],
+            );
+          } catch (err) {
+            console.error('[client-gallery] payment_intent.succeeded persist failed:', err);
+          }
+          break;
+        }
+        case "payment_intent.payment_failed": {
+          const intent = event.data.object as Stripe.PaymentIntent;
+          if (!intent.metadata?.galleryId) break;
+          try {
+            await pool.query(
+              `UPDATE client_image_payments
+               SET payment_status = 'failed', updated_at = NOW()
+               WHERE stripe_payment_intent_id = $1`,
+              [intent.id],
+            );
+          } catch (err) {
+            console.error('[client-gallery] payment_intent.payment_failed persist failed:', err);
+          }
+          break;
+        }
         default:
           break;
       }
@@ -23692,6 +23736,99 @@ app.get("/api/client/gallery/:accessToken/comments", async (req, res) => {
   } catch (error) {
     console.error("[client-gallery] comment list failed", error);
     res.status(500).json({ error: "comment_list_failed" });
+  }
+});
+
+// ── Slice 10.1 — Stripe payment intent for client checkout ─────────────
+// The viewer flips to checkout when submit-selection returns
+// requiresPayment=true. This route creates the PaymentIntent + records
+// the pending row in client_image_payments. Stripe webhook (Slice 10.2,
+// added to the existing CreatorHub webhook switch) flips the row to
+// 'succeeded' on confirmation. Re-submitting a selection issues a new
+// intent — the prior pending row stays for audit but only the latest
+// 'succeeded' counts when /download-zip checks payment status.
+//
+// Body: { selectedImageIds, clientEmail }
+// Returns: { clientSecret, paymentIntentId, pricing } or 4xx.
+app.post("/api/client/gallery/:accessToken/create-payment-intent", async (req, res) => {
+  const accessToken = String(req.params.accessToken || "").trim();
+  if (!accessToken) return res.status(400).json({ error: "missing_access_token" });
+  const clientEmail = typeof req.body?.clientEmail === 'string' ? req.body.clientEmail.trim() : '';
+  const selectedImageIds = Array.isArray(req.body?.selectedImageIds)
+    ? req.body.selectedImageIds.filter((s: unknown): s is string => typeof s === 'string')
+    : null;
+  if (!selectedImageIds || selectedImageIds.length === 0) {
+    return res.status(400).json({ error: "selectedImageIds_required" });
+  }
+  try {
+    const access = await gateGalleryAccess(accessToken, readGalleryPasswordHeader(req));
+    if (!access.ok) {
+      return res.status(access.status).json({
+        error: access.error,
+        ...(access.requiresPassword ? { requiresPassword: true } : {}),
+      });
+    }
+    const gallery = access.gallery;
+    const effectiveEmail = clientEmail || gallery.clientEmail;
+    if (!effectiveEmail) return res.status(400).json({ error: "client_email_required" });
+
+    const pricing = calculateGalleryPricing(access.settings, selectedImageIds.length);
+    if (pricing.totalAmount <= 0) {
+      return res.status(400).json({ error: "no_payment_needed", pricing });
+    }
+
+    const stripe = getCreatorHubStripeClient();
+    if (!stripe) {
+      return res.status(503).json({ error: "stripe_not_configured" });
+    }
+
+    // Stripe wants amount in the smallest currency unit. NOK + most
+    // EUR are 100 cents/øre per unit.
+    const amount = Math.round(pricing.totalAmount * 100);
+
+    const intent = await stripe.paymentIntents.create({
+      amount,
+      currency: pricing.currency.toLowerCase(),
+      receipt_email: effectiveEmail,
+      // Metadata feeds the webhook handler — without galleryId it
+      // can't associate the success event with the right row.
+      metadata: {
+        galleryId: gallery.id,
+        clientEmail: effectiveEmail,
+        extraImages: String(pricing.extraImages),
+        accessToken: accessToken.slice(0, 32), // truncated for log readability
+      },
+      description: `CreatorHub klient-galleri ekstra-bilder (${pricing.extraImages} stk)`,
+      automatic_payment_methods: { enabled: true },
+    });
+
+    // Insert pending payment row. Webhook flips status to 'succeeded'
+    // and stamps download_token on confirmation.
+    await pool.query(
+      `INSERT INTO client_image_payments
+         (gallery_id, client_email, stripe_payment_intent_id, total_amount,
+          currency, additional_images, selected_image_ids, payment_status,
+          created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', NOW(), NOW())`,
+      [
+        gallery.id,
+        effectiveEmail,
+        intent.id,
+        pricing.totalAmount,
+        pricing.currency,
+        pricing.extraImages,
+        JSON.stringify(selectedImageIds),
+      ],
+    );
+
+    res.json({
+      clientSecret: intent.client_secret,
+      paymentIntentId: intent.id,
+      pricing,
+    });
+  } catch (error) {
+    console.error("[client-gallery] create-payment-intent failed", error);
+    res.status(500).json({ error: "create_payment_intent_failed" });
   }
 });
 
