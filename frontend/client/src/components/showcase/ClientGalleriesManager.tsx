@@ -53,6 +53,12 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import {
+  getShowcaseTerminology,
+  capitalise,
+  type ShowcaseProfession,
+  type ShowcaseTerminology,
+} from '@/utils/showcaseTerminology';
 
 interface GallerySettings {
   maxSelections?: number;
@@ -101,8 +107,14 @@ interface GalleryEvent {
   timestamp: string;
 }
 
-export const ClientGalleriesManager: React.FC = () => {
+export interface ClientGalleriesManagerProps {
+  /** Photographer's profession for terminology — falls back to photo-flavoured copy. */
+  profession?: ShowcaseProfession | null;
+}
+
+export const ClientGalleriesManager: React.FC<ClientGalleriesManagerProps> = ({ profession }) => {
   const queryClient = useQueryClient();
+  const terms = useMemo(() => getShowcaseTerminology(profession), [profession]);
   const [createOpen, setCreateOpen] = useState(false);
   const [createName, setCreateName] = useState('');
   const [createEmail, setCreateEmail] = useState('');
@@ -142,10 +154,10 @@ export const ClientGalleriesManager: React.FC = () => {
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
         <Box>
           <Typography variant="h6" sx={{ fontWeight: 600 }}>
-            Klient-galleri
+            {capitalise(`klient-${terms.collection}`)}
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Lever bilder til klienter med passord-beskyttelse, prising og innsamlede valg.
+            Lever {terms.itemPlural} til {terms.client}er med passord-beskyttelse, prising og innsamlede valg.
           </Typography>
         </Box>
         <Button
@@ -153,13 +165,13 @@ export const ClientGalleriesManager: React.FC = () => {
           startIcon={<AddIcon />}
           onClick={() => setCreateOpen(true)}
         >
-          Nytt galleri
+          {`Nytt ${terms.collection}`}
         </Button>
       </Stack>
 
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
-          Kunne ikke laste galleri-listen. {String((error as Error)?.message ?? error)}
+          {`Kunne ikke laste ${terms.collection}-listen.`} {String((error as Error)?.message ?? error)}
         </Alert>
       )}
 
@@ -173,13 +185,13 @@ export const ClientGalleriesManager: React.FC = () => {
         <Card sx={{ textAlign: 'center', py: 6 }}>
           <CardContent>
             <Typography variant="h6" gutterBottom>
-              Ingen galleri ennå
+              {`Ingen ${terms.collectionPlural} ennå`}
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Opprett ditt første klient-galleri for å levere bilder til en klient.
+              {`Opprett ditt første klient-${terms.collection} for å levere ${terms.itemPlural} til en ${terms.client}.`}
             </Typography>
             <Button variant="outlined" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>
-              Opprett galleri
+              {`Opprett ${terms.collection}`}
             </Button>
           </CardContent>
         </Card>
@@ -190,6 +202,7 @@ export const ClientGalleriesManager: React.FC = () => {
           <Grid item xs={12} md={6} lg={4} key={g.id}>
             <GalleryCard
               gallery={g}
+              terms={terms}
               onSettings={() => setSettingsOpenFor(g)}
               onEvents={() => setEventsOpenFor(g)}
             />
@@ -199,18 +212,18 @@ export const ClientGalleriesManager: React.FC = () => {
 
       {/* Create dialog */}
       <Dialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Nytt klient-galleri</DialogTitle>
+        <DialogTitle>{`Nytt klient-${terms.collection}`}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <TextField
-              label="Klient navn"
+              label={`${capitalise(terms.client)} navn`}
               value={createName}
               onChange={(e) => setCreateName(e.target.value)}
               required
               fullWidth
             />
             <TextField
-              label="Klient e-post"
+              label={`${capitalise(terms.client)} e-post`}
               type="email"
               value={createEmail}
               onChange={(e) => setCreateEmail(e.target.value)}
@@ -251,12 +264,14 @@ export const ClientGalleriesManager: React.FC = () => {
       {settingsOpenFor && (
         <GallerySettingsDialog
           gallery={settingsOpenFor}
+          terms={terms}
           onClose={() => setSettingsOpenFor(null)}
         />
       )}
       {eventsOpenFor && (
         <GalleryEventsDialog
           gallery={eventsOpenFor}
+          terms={terms}
           onClose={() => setEventsOpenFor(null)}
         />
       )}
@@ -266,9 +281,10 @@ export const ClientGalleriesManager: React.FC = () => {
 
 const GalleryCard: React.FC<{
   gallery: PhotographerGallery;
+  terms: ShowcaseTerminology;
   onSettings: () => void;
   onEvents: () => void;
-}> = ({ gallery, onSettings, onEvents }) => {
+}> = ({ gallery, terms, onSettings, onEvents }) => {
   const [copied, setCopied] = useState(false);
   const totalEvents =
     gallery.commentCount + gallery.selectionCount + gallery.paidCount;
@@ -316,7 +332,7 @@ const GalleryCard: React.FC<{
         </Stack>
 
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-          {gallery.imageCount} bilder · opprettet{' '}
+          {gallery.imageCount} {terms.itemPlural} · opprettet{' '}
           {new Date(gallery.createdAt).toLocaleDateString('nb-NO')}
         </Typography>
 
@@ -388,8 +404,9 @@ const GalleryCard: React.FC<{
 
 const GallerySettingsDialog: React.FC<{
   gallery: PhotographerGallery;
+  terms: ShowcaseTerminology;
   onClose: () => void;
-}> = ({ gallery, onClose }) => {
+}> = ({ gallery, terms, onClose }) => {
   const queryClient = useQueryClient();
   const s = gallery.gallerySettings || {};
   const [contractedImages, setContractedImages] = useState<number>(Number(s.contractedImages ?? 0));
@@ -443,16 +460,16 @@ const GallerySettingsDialog: React.FC<{
             </Typography>
             <Stack direction="row" spacing={2}>
               <TextField
-                label="Inkluderte bilder"
+                label={`Inkluderte ${terms.itemPlural}`}
                 type="number"
                 value={contractedImages}
                 onChange={(e) => setContractedImages(Math.max(0, Number(e.target.value) || 0))}
-                helperText="Antall bilder klient får uten ekstra-betaling"
+                helperText={`Antall ${terms.itemPlural} ${terms.client} får uten ekstra-betaling`}
                 fullWidth
                 size="small"
               />
               <TextField
-                label="Pris per ekstra-bilde"
+                label={`Pris per ekstra-${terms.item}`}
                 type="number"
                 value={pricePerImage}
                 onChange={(e) => setPricePerImage(Math.max(0, Number(e.target.value) || 0))}
@@ -479,7 +496,7 @@ const GallerySettingsDialog: React.FC<{
             <Stack spacing={1.5}>
               {gallery.requiresPassword && !clearPassword && (
                 <Alert severity="info" sx={{ py: 0.5 }}>
-                  Galleriet er passordbeskyttet. Skriv nytt passord under for å endre, eller kryss av for å fjerne passord.
+                  {`${capitalise(terms.collection)} er passordbeskyttet. Skriv nytt passord under for å endre, eller kryss av for å fjerne passord.`}
                 </Alert>
               )}
               <TextField
@@ -518,7 +535,7 @@ const GallerySettingsDialog: React.FC<{
                     onChange={(e) => setWatermarkEnabled(e.target.checked)}
                   />
                 }
-                label="Vannmerk preview-bildene"
+                label={terms.watermarkLabel}
               />
               <TextField
                 label="Utløpsdato (valgfri)"
@@ -536,7 +553,7 @@ const GallerySettingsDialog: React.FC<{
 
           <Box>
             <Typography variant="subtitle2" sx={{ mb: 1 }}>
-              Klient-tillatelser
+              {`${capitalise(terms.client)}-tillatelser`}
             </Typography>
             <Stack spacing={1}>
               <FormControlLabel
@@ -555,7 +572,7 @@ const GallerySettingsDialog: React.FC<{
                     onChange={(e) => setAllowComments(e.target.checked)}
                   />
                 }
-                label="Tillat kommentarer på bilder"
+                label={`Tillat kommentarer på ${terms.itemPlural}`}
               />
             </Stack>
           </Box>
@@ -583,8 +600,9 @@ const GallerySettingsDialog: React.FC<{
 
 const GalleryEventsDialog: React.FC<{
   gallery: PhotographerGallery;
+  terms: ShowcaseTerminology;
   onClose: () => void;
-}> = ({ gallery, onClose }) => {
+}> = ({ gallery, terms, onClose }) => {
   const { data, isLoading } = useQuery<{ events: GalleryEvent[] }>({
     queryKey: ['/api/photographer/galleries', gallery.id, 'events'],
     queryFn: () => apiRequest(`/api/photographer/galleries/${gallery.id}/events`) as Promise<{ events: GalleryEvent[] }>,
@@ -600,7 +618,7 @@ const GalleryEventsDialog: React.FC<{
         )}
         <Stack spacing={1}>
           {events.map((e) => (
-            <EventRow key={`${e.type}-${e.id}`} event={e} />
+            <EventRow key={`${e.type}-${e.id}`} event={e} terms={terms} />
           ))}
         </Stack>
       </DialogContent>
@@ -611,7 +629,7 @@ const GalleryEventsDialog: React.FC<{
   );
 };
 
-const EventRow: React.FC<{ event: GalleryEvent }> = ({ event }) => {
+const EventRow: React.FC<{ event: GalleryEvent; terms: ShowcaseTerminology }> = ({ event, terms }) => {
   const icon = useMemo(() => {
     switch (event.type) {
       case 'comment':
@@ -628,11 +646,11 @@ const EventRow: React.FC<{ event: GalleryEvent }> = ({ event }) => {
       case 'comment':
         return `${event.clientName ?? event.clientEmail} kommenterte: "${event.detail.slice(0, 80)}${event.detail.length > 80 ? '…' : ''}"`;
       case 'selection':
-        return `${event.clientEmail} markerte bilde som ${event.detail}`;
+        return `${event.clientEmail} markerte ${terms.item} som ${event.detail}`;
       case 'payment':
         return `${event.clientEmail} betalte ${event.amount} ${event.currency} (${event.paymentStatus})`;
     }
-  }, [event]);
+  }, [event, terms.item]);
 
   return (
     <Box
