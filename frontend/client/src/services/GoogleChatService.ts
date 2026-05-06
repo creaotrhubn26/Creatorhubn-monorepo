@@ -252,9 +252,58 @@ class GoogleChatService {
     });
   }
 
-  // Get space members
-  async getSpaceMembers(spaceName: string): Promise<{ members: GoogleChatUser[] }> {
-    return this.makeRequest(`${spaceName}/members`);
+  // Get space members.
+  //
+  // GOOGLE CHAT API CHANGE — May 29, 2026: space owners can restrict
+  // who can see members. When restricted, this endpoint returns
+  // permission_denied (403) for our user-scoped OAuth tokens. Apps
+  // using chat.app authorization aren't affected, but we use the
+  // user-scoped chat.memberships.readonly scope so we ARE.
+  //
+  // Defensive posture: if Google rejects the call, swallow the 403
+  // and return an empty members list so callers (rooms list, member
+  // chips, etc.) degrade to "no visible members" instead of crashing
+  // with a thrown error. The space itself, message-send, and other
+  // non-membership endpoints keep working — only the membership
+  // visibility goes dark for restricted spaces.
+  async getSpaceMembers(spaceName: string): Promise<{ members: GoogleChatUser[]; restrictedByOwner?: boolean }> {
+    if (this.isDemoMode) {
+      return this.getDemoData(`${spaceName}/members`) as unknown as { members: GoogleChatUser[] };
+    }
+    if (!this.accessToken) {
+      throw new Error('Google Chat access token not available');
+    }
+    try {
+      const response = await fetch(`${this.baseUrl}${spaceName}/members`, {
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      if (response.status === 403) {
+        // Owner restricted membership visibility (post-May-29 behaviour).
+        // Log once for monitoring so we can spot the rollout in
+        // production telemetry; otherwise behave as if the space is
+        // empty from our perspective.
+        if (typeof console !== 'undefined') {
+          console.warn(`[GoogleChat] membership visibility restricted for ${spaceName} (403). Returning empty list.`);
+        }
+        return { members: [], restrictedByOwner: true };
+      }
+      if (!response.ok) {
+        throw new Error(`Google Chat API error: ${response.status} ${response.statusText}`);
+      }
+      const data = await response.json();
+      return {
+        members: Array.isArray(data?.members) ? data.members : [],
+        restrictedByOwner: false,
+      };
+    } catch (err) {
+      // Network failures bubble up; only the structured 403 path returns
+      // the empty-list shape. Callers that need to distinguish
+      // "restricted" from "empty space" check restrictedByOwner.
+      throw err;
+    }
   }
 }
 
