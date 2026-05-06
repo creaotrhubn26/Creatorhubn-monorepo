@@ -76,6 +76,7 @@ import ExtraImagePricingDialog from '@/components/ExtraImagePricingDialog';
 import ImageSelectionWarning from '@/components/ImageSelectionWarning';
 import ContractPreviewModal from '@/components/ContractPreviewModal';
 import TermsAcceptanceDialog from '@/components/TermsAcceptanceDialog';
+import { getShowcaseTerminology, capitalise } from '@/utils/showcaseTerminology';
 
 interface ClientGalleryProps {}
 
@@ -114,6 +115,11 @@ interface Gallery {
   clientName: string;
   clientEmail: string;
   projectTitle: string;
+  /** Slice 9P — surfaced by GET /api/client/gallery/:token so the
+   *  viewer renders the right copy ("foto-galleri" vs "video-galleri"
+   *  vs "lyd-galleri"). Null when the photographer has no profession
+   *  set; viewer falls back to photo-flavoured copy. */
+  photographerProfession?: string | null;
   gallerySettings: {
     maxSelections: number;
     pricePerImage: number;
@@ -222,6 +228,15 @@ export default function ClientGallery({}: ClientGalleryProps) {
     queryFn: () => apiRequest(`/api/client/gallery/${accessToken}`),
     enabled: !!accessToken,
 });
+
+  // Slice 9P — profession-aware terminology. Backend exposes the
+  // photographer's profession; we use it to render "foto-galleri"
+  // vs "video-galleri" vs "lyd-galleri" copy. Falls back to photo-
+  // flavoured text when the field is missing.
+  const terms = useMemo(
+    () => getShowcaseTerminology(gallery?.photographerProfession ?? null),
+    [gallery?.photographerProfession],
+  );
 
   // Slice 9.4 — open the password prompt when the gallery row says
   // requiresPassword and we don't have one in state yet. Fires once
@@ -766,7 +781,7 @@ export default function ClientGallery({}: ClientGalleryProps) {
             <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
               <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
                 {selectedImages.size} av {gallery?.gallerySettings?.contractedImages || 0},{' '}
-                inkluderte bilder
+                inkluderte {terms.itemPlural}
               </Typography>
               {selectedImages.size > (gallery?.gallerySettings?.contractedImages || 0) && (
                 <Typography variant="body2" sx={{ color: '#ffa726', fontWeight: 600}}>
@@ -822,7 +837,7 @@ export default function ClientGallery({}: ClientGalleryProps) {
             }}
             >
               <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
-                Valgte bilder:
+                {`Valgte ${terms.itemPlural}:`}
               </Typography>
               <Chip
                 label={`${selectedImages.size}/${gallery?.gallerySettings.maxSelections || 0}`}
@@ -860,7 +875,7 @@ export default function ClientGallery({}: ClientGalleryProps) {
                   Ekstra kostnad:
                 </Typography>
                 <Typography variant="body2" sx={{ color: config.primaryColor, fontWeight: 600}}>
-                  {gallery.gallerySettings.currency} {gallery.gallerySettings.pricePerImage}/bilde
+                  {`${gallery.gallerySettings.currency} ${gallery.gallerySettings.pricePerImage}/${terms.item}`}
                 </Typography>
               </Box>
             )}
@@ -989,11 +1004,11 @@ export default function ClientGallery({}: ClientGalleryProps) {
                       },
                     );
                     if (res.status === 402) {
-                      setDownloadError('Betal ekstra-bilder først (åpne Fortsett-flyt).');
+                      setDownloadError(`Betal ekstra-${terms.itemPlural} først (åpne Fortsett-flyt).`);
                       return;
                     }
                     if (res.status === 401) {
-                      setDownloadError('Galleriet krever passord.');
+                      setDownloadError(`${capitalise(terms.collection)} krever passord.`);
                       setPasswordPromptOpen(true);
                       return;
                     }
@@ -1005,7 +1020,7 @@ export default function ClientGallery({}: ClientGalleryProps) {
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = `${gallery?.projectTitle || 'galleri'}-${selectedImages.size}-bilder.zip`;
+                    a.download = `${gallery?.projectTitle || terms.collection}-${selectedImages.size}-${terms.itemPlural}.zip`;
                     document.body.appendChild(a);
                     a.click();
                     a.remove();
@@ -1045,7 +1060,7 @@ export default function ClientGallery({}: ClientGalleryProps) {
             }}
               startIcon={<ShoppingCart />}
             >
-              Fortsett ({selectedImages.size} bilder)
+              {`Fortsett (${selectedImages.size} ${terms.itemPlural})`}
             </Button>
           </Stack>
         )}
@@ -1065,10 +1080,10 @@ export default function ClientGallery({}: ClientGalleryProps) {
         >
           <Box>
             <Typography variant="h4" sx={{ fontWeight: 600, color: '#fff', mb: 0.5 }}>
-              {gallery?.projectTitle || 'Fotogalleri'}
+              {gallery?.projectTitle || capitalise(terms.collection)}
             </Typography>
             <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.7)' }}>
-              Hei {gallery?.clientName}! Velg dine favorittbilder
+              {`Hei ${gallery?.clientName}! Velg dine favoritt-${terms.itemPlural}`}
             </Typography>
           </Box>
 
@@ -1459,7 +1474,7 @@ export default function ClientGallery({}: ClientGalleryProps) {
                 variant="contained"
                 sx={{ bgcolor: config.primaryColor, color: '#fff' }}
               >
-                {selectedImages.has(selectedImageForView.id) ? 'Fjern valg' : 'Velg bilde'}
+                {selectedImages.has(selectedImageForView.id) ? 'Fjern valg' : `Velg ${terms.item}`}
               </Button>
             </DialogActions>
           </>
@@ -1580,10 +1595,10 @@ export default function ClientGallery({}: ClientGalleryProps) {
 
               <Box sx={{ mb: 2 }}>
                 <Typography sx={{ color: 'rgba(255,255,255,0.8)' }}>
-                  Inkluderte bilder: {calculatePricingMutation.data.pricing.includedImages}
+                  {`Inkluderte ${terms.itemPlural}: ${calculatePricingMutation.data.pricing.includedImages}`}
                 </Typography>
                 <Typography sx={{ color: 'rgba(255,255,255,0.8)' }}>
-                  Ekstra bilder: {calculatePricingMutation.data.pricing.extraImages}
+                  {`Ekstra ${terms.itemPlural}: ${calculatePricingMutation.data.pricing.extraImages}`}
                 </Typography>
                 <Typography variant="h6" sx={{ mt: 1, color: config.primaryColor }}>
                   Total: {calculatePricingMutation.data.pricing.currency},{', '}

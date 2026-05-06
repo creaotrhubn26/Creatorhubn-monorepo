@@ -23408,6 +23408,25 @@ app.get("/api/client/gallery/:accessToken", async (req, res) => {
     }
     const requiresPassword =
       settings.requiresPassword === true && typeof settings.passwordHash === 'string';
+
+    // Slice 9P — surface photographer's profession so the viewer can
+    // render profession-aware copy (foto-galleri / video-galleri /
+    // lyd-galleri, bilder / klipp / spor). Failure to look this up is
+    // non-fatal; viewer falls back to photographer-flavoured copy.
+    let photographerProfession: string | null = null;
+    try {
+      if (gallery.photographerId) {
+        const profRow = await pool.query(
+          'SELECT profession FROM users WHERE id = $1 LIMIT 1',
+          [gallery.photographerId],
+        );
+        const raw = profRow.rows[0]?.profession;
+        if (typeof raw === 'string' && raw.trim()) photographerProfession = raw.trim();
+      }
+    } catch (lookupErr) {
+      console.warn('[client-gallery] profession lookup failed', lookupErr);
+    }
+
     return res.json({
       id: gallery.id,
       clientName: gallery.clientName,
@@ -23418,6 +23437,8 @@ app.get("/api/client/gallery/:accessToken", async (req, res) => {
       completedAt: gallery.completedAt,
       source: gallery.source,
       captureSessionId: gallery.captureSessionId,
+      // Slice 9P — drives client-gallery viewer terminology.
+      photographerProfession,
       // Slice 9.4 — gate hints. Viewer reads these BEFORE attempting
       // to fetch images so it can render password-prompt or
       // expired-state cleanly.
