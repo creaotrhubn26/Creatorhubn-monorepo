@@ -51,21 +51,21 @@ interface OveragePrice extends ProductSpec {
 const TIERS: SubscriptionTier[] = [
   {
     lookupKey: "composer_pilot_monthly",
-    name: "CreatorHub Composer — Pilot",
+    name: "Pressroom — Pilot",
     description: "Plakater, signage og meny-PDF for liten butikk. 10 AI-genererte kampanjer + 50 renders + 1 GB lagring per måned.",
     metadata: { tier: "pilot", included_claude: "10", included_renders: "50", included_gb: "1", included_brands: "1" },
     priceNokExVat: 199,
   },
   {
     lookupKey: "composer_standard_monthly",
-    name: "CreatorHub Composer — Standard",
+    name: "Pressroom — Standard",
     description: "Komplett plakat-/menu-stack for SMB. 50 AI-kampanjer + 500 renders + 5 GB + 3 brand-profiler.",
     metadata: { tier: "standard", included_claude: "50", included_renders: "500", included_gb: "5", included_brands: "3" },
     priceNokExVat: 599,
   },
   {
     lookupKey: "composer_pro_monthly",
-    name: "CreatorHub Composer — Pro",
+    name: "Pressroom — Pro",
     description: "For kjeder og multi-store. 200 AI-kampanjer + 2000 renders + 25 GB + ubegrensede brand-profiler.",
     metadata: { tier: "pro", included_claude: "200", included_renders: "2000", included_gb: "25", included_brands: "999" },
     priceNokExVat: 1499,

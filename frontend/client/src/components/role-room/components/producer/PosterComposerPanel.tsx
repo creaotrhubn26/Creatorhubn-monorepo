@@ -559,7 +559,7 @@ export default function PosterComposerPanel({ brandId: _brandId }: PosterCompose
       <Paper elevation={0} sx={{ p: 2, borderBottom: 1, borderColor: "divider" }}>
         <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
           <Typography variant="h6" sx={{ fontWeight: 700 }}>
-            Plakat-/menu-composer
+            Pressroom
           </Typography>
           {/* Mode-toggle */}
           <Tabs

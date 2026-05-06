@@ -592,7 +592,7 @@ export default function RoleRoomAgentDialog({
         />
         <Tab
           value="posters"
-          label="Plakater & Menyer"
+          label="Pressroom"
           icon={<ArticleIcon fontSize="small" />}
           iconPosition="start"
           data-testid="agent-tab-posters"
