@@ -23870,6 +23870,37 @@ app.get("/api/photographer/galleries", async (req, res) => {
   }
 });
 
+// Slice 9X.9 — look up the photographer's "default" package for new
+// galleries. Source of truth: packages.popular = true (users mark
+// their main service in PricingAdministration's package editor with
+// the popular-toggle). Falls back to most-recent active package if
+// none flagged popular. Returns null when photographer has no
+// packages — caller stays manual.
+async function lookupDefaultPackageId(ownerUserId: string): Promise<string | null> {
+  if (!ownerUserId) return null;
+  try {
+    const result = await pool.query(
+      `SELECT id::text AS id FROM (
+         SELECT id, created_at, true AS is_popular
+         FROM packages
+         WHERE user_id = $1 AND active = true AND popular = true
+         UNION ALL
+         SELECT id, created_at, false AS is_popular
+         FROM packages
+         WHERE user_id = $1 AND active = true AND popular = false
+       ) p
+       ORDER BY is_popular DESC, created_at DESC
+       LIMIT 1`,
+      [ownerUserId],
+    );
+    const id = result.rows[0]?.id;
+    return typeof id === 'string' && id ? id : null;
+  } catch (err) {
+    console.warn('[gallery-default-package] lookup failed', err);
+    return null;
+  }
+}
+
 // Slice 9X.5 — look up `images` count from a pricing-package's
 // inclusions JSONB. Used by gallery POST + PATCH to auto-fill
 // contractedImages whenever the photographer links a package.
@@ -23932,9 +23963,18 @@ app.post("/api/photographer/galleries", async (req, res) => {
       createdVia: 'photographer_dashboard',
     };
     if (projectId) settings.projectId = projectId;
-    if (packageId) {
-      settings.packageId = packageId;
-      const lookup = await lookupPackageImagesIncluded(packageId, session.userId);
+    // Slice 9X.9 — when caller doesn't specify packageId, fall back
+    // to photographer's default (popular-flagged) package from
+    // PricingAdministration so new galleries inherit pricing without
+    // an extra step.
+    let effectivePackageId = packageId;
+    if (!effectivePackageId) {
+      const fallback = await lookupDefaultPackageId(session.userId);
+      if (fallback) effectivePackageId = fallback;
+    }
+    if (effectivePackageId) {
+      settings.packageId = effectivePackageId;
+      const lookup = await lookupPackageImagesIncluded(effectivePackageId, session.userId);
       if (lookup.images != null) settings.contractedImages = lookup.images;
     }
     const result = await pool.query(
