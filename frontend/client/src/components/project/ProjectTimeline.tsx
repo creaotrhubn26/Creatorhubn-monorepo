@@ -31,6 +31,7 @@ import {
   Card,
   CardContent,
   IconButton,
+  Stack,
   useTheme,
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
@@ -110,6 +111,128 @@ interface ProjectTimelineProps {
   selectedProject?: any;
   onProjectUpdate?: (project: any) => void;
   profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
+}
+
+// Slice 9X.5 — package + client-status snapshot card. Pulls from
+// existing endpoints (no new backend) so deploys are decoupled:
+//   - /api/photographer/galleries  → all this user's galleries; we
+//     filter to those linked to projectId via gallery_settings.projectId
+//   - /api/pricing/packages?userId  → photographer's packages with
+//     inclusions.images / inclusions.hours
+// Renders nothing when neither package nor gallery exists, so silent
+// for projects that haven't been wired up.
+function ProjectStatusCard({
+  projectId,
+  userId,
+}: {
+  projectId: string;
+  userId: string;
+}) {
+  const { data: galleries } = useQuery<{ galleries: Array<{
+    id: string;
+    projectId?: string | null;
+    status: string;
+    completedAt?: string | null;
+    shareUrl: string;
+    clientName: string;
+    clientEmail: string;
+    imageCount: number;
+    selectionCount: number;
+    paidCount: number;
+    packageId?: string | null;
+    linkedPackageName?: string | null;
+    linkedPackageImagesIncluded?: number | null;
+  }> }>({
+    queryKey: ['/api/photographer/galleries'],
+    queryFn: () => apiRequest('/api/photographer/galleries'),
+    refetchInterval: 30_000,
+  });
+  const linkedGalleries = (galleries?.galleries ?? []).filter(
+    (g) => g.projectId === projectId,
+  );
+  const primary = linkedGalleries[0];
+
+  const { data: packages } = useQuery<Array<{
+    id: string | number;
+    name?: string;
+    package_name?: string;
+    inclusions?: { images?: number; hours?: number };
+    basePrice?: number;
+  }>>({
+    queryKey: ['/api/pricing/packages', userId, 'project-status-card'],
+    enabled: Boolean(userId),
+    queryFn: () =>
+      apiRequest(`/api/pricing/packages?userId=${encodeURIComponent(userId)}`).then(
+        (r: unknown) => (Array.isArray(r) ? r : []) as never[],
+      ),
+  });
+
+  if (linkedGalleries.length === 0) return null;
+
+  // Status label for the photographer at a glance.
+  let statusLabel = 'Aktiv';
+  let statusColor: 'default' | 'success' | 'warning' | 'info' = 'info';
+  if (primary?.completedAt || primary?.status === 'completed') {
+    statusLabel = `Levert ${primary.completedAt ? new Date(primary.completedAt).toLocaleDateString('nb-NO') : ''}`.trim();
+    statusColor = 'success';
+  } else if (primary?.paidCount && primary.paidCount > 0) {
+    statusLabel = 'Betalt — venter levering';
+    statusColor = 'warning';
+  } else if (primary?.selectionCount && primary.selectionCount > 0) {
+    statusLabel = `${primary.selectionCount} valg gjort`;
+    statusColor = 'info';
+  }
+
+  const pkgFromGallery = primary?.linkedPackageName
+    ? {
+        name: primary.linkedPackageName,
+        images: primary.linkedPackageImagesIncluded,
+      }
+    : null;
+  const pkgFallback = primary?.packageId
+    ? (packages ?? []).find((p) => String(p.id) === String(primary.packageId))
+    : null;
+  const pkg =
+    pkgFromGallery ??
+    (pkgFallback
+      ? {
+          name: pkgFallback.package_name || pkgFallback.name || 'Pakke',
+          images: pkgFallback.inclusions?.images ?? null,
+        }
+      : null);
+
+  return (
+    <Paper sx={{ mb: 2, p: 2, border: '1px solid', borderColor: 'divider' }}>
+      <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap" useFlexGap>
+        <Typography variant="subtitle1" sx={{ fontWeight: 600, mr: 1 }}>
+          Klient-status
+        </Typography>
+        <Chip size="small" color={statusColor} label={statusLabel} />
+        {pkg && (
+          <Chip
+            size="small"
+            variant="outlined"
+            label={pkg.images ? `${pkg.name} · ${pkg.images} bilder` : pkg.name}
+          />
+        )}
+        {primary && (
+          <Chip
+            size="small"
+            variant="outlined"
+            label={`${primary.imageCount} bilder · ${primary.selectionCount} valgt`}
+            onClick={() => window.open(primary.shareUrl, '_blank')}
+          />
+        )}
+        {linkedGalleries.length > 1 && (
+          <Chip
+            size="small"
+            variant="outlined"
+            label={`+${linkedGalleries.length - 1} galleri til`}
+          />
+        )}
+      </Stack>
+    </Paper>
+  );
 }
 
 export const ProjectTimeline: React.FC<ProjectTimelineProps> = ({
@@ -964,6 +1087,13 @@ export const ProjectTimeline: React.FC<ProjectTimelineProps> = ({
 
   return (
     <Box sx={{ p: 2 }}>
+      {/* Slice 9X.5 — pakke + klient-status-kort. Surfacer linkages
+          mellom dette prosjektet, valgt pris-pakke (inkluderte
+          bilder/timer) og evt. levert klient-galleri (status, antall
+          valg, betaling). Lar fotografen umiddelbart se hvor klienten
+          er i flyten uten å hoppe mellom faner. */}
+      <ProjectStatusCard projectId={projectId} userId={userId} />
+
       {/* Timeline Events Display */}
       <Paper sx={{ mb: 3, p: 3, bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider' }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>

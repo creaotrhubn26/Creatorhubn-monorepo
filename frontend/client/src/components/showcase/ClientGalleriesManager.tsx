@@ -136,6 +136,9 @@ export const ClientGalleriesManager: React.FC<ClientGalleriesManagerProps> = ({ 
   // from ProjectCreationWithMemoryCards. Sent on POST so 9X.3 can
   // persist the project↔gallery linkage in gallery_settings.projectId.
   const [createProjectId, setCreateProjectId] = useState<string | null>(null);
+  // Slice 9X.5 — propagated via deep-link from ProjectCreationWithMemoryCards
+  // so the new gallery inherits package linkage + auto-filled contractedImages.
+  const [createPackageId, setCreatePackageId] = useState<string | null>(null);
   const [settingsOpenFor, setSettingsOpenFor] = useState<PhotographerGallery | null>(null);
   const [eventsOpenFor, setEventsOpenFor] = useState<PhotographerGallery | null>(null);
 
@@ -151,14 +154,16 @@ export const ClientGalleriesManager: React.FC<ClientGalleriesManagerProps> = ({ 
     const email = params.get('clientEmail') ?? '';
     const title = params.get('projectTitle') ?? '';
     const projId = params.get('projectId') ?? '';
+    const pkgId = params.get('packageId') ?? '';
     if (name) setCreateName(name);
     if (email) setCreateEmail(email);
     if (title) setCreateTitle(title);
     if (projId) setCreateProjectId(projId);
+    if (pkgId) setCreatePackageId(pkgId);
     setCreateOpen(true);
     // Clean up the URL so reload won't re-pop the dialog.
     const cleaned = new URLSearchParams(window.location.search);
-    ['autoCreate', 'clientName', 'clientEmail', 'projectTitle', 'projectId'].forEach((k) =>
+    ['autoCreate', 'clientName', 'clientEmail', 'projectTitle', 'projectId', 'packageId'].forEach((k) =>
       cleaned.delete(k),
     );
     const newSearch = cleaned.toString();
@@ -183,6 +188,7 @@ export const ClientGalleriesManager: React.FC<ClientGalleriesManagerProps> = ({ 
         clientEmail: createEmail,
         projectTitle: createTitle || undefined,
         ...(createProjectId ? { projectId: createProjectId } : {}),
+        ...(createPackageId ? { packageId: createPackageId } : {}),
       }),
     }),
     onSuccess: () => {
@@ -191,6 +197,7 @@ export const ClientGalleriesManager: React.FC<ClientGalleriesManagerProps> = ({ 
       setCreateEmail('');
       setCreateTitle('');
       setCreateProjectId(null);
+      setCreatePackageId(null);
       queryClient.invalidateQueries({ queryKey: ['/api/photographer/galleries'] });
     },
   });

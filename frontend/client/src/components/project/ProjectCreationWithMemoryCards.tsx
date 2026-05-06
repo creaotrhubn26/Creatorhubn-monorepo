@@ -1195,6 +1195,70 @@ interface ProjectInitialData {
   budget?: string;
 }
 
+// Slice 9X.5 — package picker that reads from PricingAdministration's
+// /api/pricing/packages endpoint. Renders nothing when the photographer
+// has no packages registered yet (empty UI > confusing empty Select).
+// Lives above the main export so the wizard JSX can mount it inline.
+function ProjectPackagePicker({
+  userId,
+  value,
+  onChange,
+}: {
+  userId: string | null;
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  const { data: packages } = useQuery<Array<{
+    id: string | number;
+    name?: string;
+    package_name?: string;
+    inclusions?: { images?: number; hours?: number };
+    basePrice?: number;
+  }>>({
+    queryKey: ['/api/pricing/packages', userId, 'project-create'],
+    enabled: Boolean(userId),
+    queryFn: () =>
+      apiRequest(`/api/pricing/packages?userId=${encodeURIComponent(userId!)}`).then(
+        (r: unknown) => (Array.isArray(r) ? r : []) as never[],
+      ),
+  });
+  if (!packages || packages.length === 0) return null;
+  return (
+    <Card sx={{ mt: 3 }}>
+      <CardContent>
+        <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
+          Pris-pakke (fra Administrasjon)
+        </Typography>
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
+          Velger du pakke her, blir den brukt videre i klient-galleriet
+          (auto-fyller inkluderte bilder) og vises i ProjectTimeline.
+        </Typography>
+        <FormControl fullWidth size="small">
+          <InputLabel>Pakke</InputLabel>
+          <Select label="Pakke" value={value} onChange={(e) => onChange(String(e.target.value || ''))}>
+            <MenuItem value="">Ingen pakke</MenuItem>
+            {packages.map((p) => {
+              const id = String(p.id);
+              const name = p.package_name || p.name || `Pakke ${id}`;
+              const imgs = p.inclusions?.images;
+              const hrs = p.inclusions?.hours;
+              const parts: string[] = [];
+              if (imgs) parts.push(`${imgs} bilder`);
+              if (hrs) parts.push(`${hrs}t`);
+              const label = parts.length > 0 ? `${name} — ${parts.join(' · ')}` : name;
+              return (
+                <MenuItem key={id} value={id}>
+                  {label}
+                </MenuItem>
+              );
+            })}
+          </Select>
+        </FormControl>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function ProjectCreationWithMemoryCards({
   profession,
   userId,
@@ -1456,6 +1520,10 @@ export default function ProjectCreationWithMemoryCards({
     createWeddingTimeline: false,
     weddingTimelineShared: false,
     weddingTimelineUrl: '' as string,
+    // Slice 9X.5 — pris-pakke fra PricingAdministration. Når satt
+    // brukes den til å auto-fylle galleri-contractedImages OG til å
+    // vise pris/inkluderte timer i ProjectTimeline.
+    packageId: '' as string,
   });
 
   // Session ID for autosave (hoisted before useAutoSave). Scoped per user and
@@ -1982,6 +2050,10 @@ useEffect(() => {
       watermark: 'none' as const,
       clientAccess: 'full' as const,
       pricing: {},
+      // Slice 9X.5 — bevarer pakke-ID på prosjektet så ProjectTimeline
+      // kan vise inkluderte timer/bilder + galleri-flyt kan auto-fylle
+      // contractedImages fra samme pakke.
+      packageId: projectData.packageId || undefined,
       meetingPreferences: {
         meetingOption: projectData.meetingOption,
         meetingTime: projectData.meetingTime,
@@ -4755,6 +4827,17 @@ useEffect(() => {
         </Card>
       )}
 
+      {/* Slice 9X.5 — pris-pakke-velger. Henter pakker fra
+          PricingAdministration (Administrasjon-fanen). packageId
+          persisteres i project.settings og propageres til galleri-
+          opprettelse via deep-link så contractedImages auto-fylles.
+          Synlig kun når brukeren har minst én pakke registrert. */}
+      <ProjectPackagePicker
+        userId={user?.id ?? null}
+        value={projectData.packageId}
+        onChange={(packageId) => setProjectData((prev) => ({ ...prev, packageId }))}
+      />
+
       {/* Create Project Button */}
       <Card sx={{ mt: 3, background: `linear-gradient(135deg, ${theming.colors.primary}15 0%, ${theming.colors.primary}05 100%)` }}>
         <CardContent>
@@ -4851,6 +4934,10 @@ useEffect(() => {
                     clientEmail: projectData.clientEmail || '',
                     projectTitle: projectData.projectName || '',
                     ...(newProject?.id ? { projectId: String(newProject.id) } : {}),
+                    // Slice 9X.5 — propagér pakken slik at galleri-skap
+                    // bruker samme pakke-rad og auto-fyller
+                    // contractedImages.
+                    ...(projectData.packageId ? { packageId: projectData.packageId } : {}),
                   });
                   if (navigate) {
                     navigate(`/showcase-admin?${params.toString()}`);
