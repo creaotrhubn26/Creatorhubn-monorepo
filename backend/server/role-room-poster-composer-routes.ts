@@ -23,6 +23,7 @@ import {
 import { generateCampaignConcept } from "./role-room-poster-claude.ts";
 import { scrapeMenuFromUrl } from "./role-room-menu-scraper.ts";
 import { signAssetReadUrlForDelivery, uploadCaptureObject } from "./capture-upload-service.js";
+import { COMPOSER_PRICING, getUsageSummary, recordUsage } from "./composer-billing-service.ts";
 
 const posterImageUpload = multer({
   storage: multer.memoryStorage(),
@@ -44,7 +45,7 @@ export function registerPosterComposerRoutes(
   getUserId: (req: Request) => string,
 ): void {
   // ── POST /poster/preview — render plakat til PNG ──
-  router.post("/poster/preview", async (req: Request, res: Response) => {
+  router.post("/poster/preview", authMiddleware, async (req: Request, res: Response) => {
     try {
       const body = req.body as { content?: PosterContent; format?: PosterFormat };
       if (!body?.content || !body?.format) {
@@ -56,10 +57,28 @@ export function registerPosterComposerRoutes(
           known: Object.keys(FORMAT_DIMENSIONS),
         });
       }
+      const t0 = Date.now();
       const png = await renderPoster(body.content, body.format);
+      const renderMs = Date.now() - t0;
       res.setHeader("Content-Type", "image/png");
       res.setHeader("Cache-Control", "no-store");
-      return res.send(png);
+      res.send(png);
+
+      // Logg fakturerbar bruk (fire-and-forget)
+      const userId = getUserId(req);
+      if (userId !== "anonymous") {
+        recordUsage(pool, {
+          userId,
+          eventType: "render_poster",
+          metadata: {
+            format: body.format,
+            template_id: body.content.templateId,
+            render_ms: renderMs,
+            output_bytes: png.length,
+          },
+        });
+      }
+      return;
     } catch (err) {
       console.error("[poster/preview] render failed:", err);
       return res.status(500).json({
@@ -70,7 +89,7 @@ export function registerPosterComposerRoutes(
   });
 
   // ── POST /poster/menu-preview — render meny til PDF ──
-  router.post("/poster/menu-preview", async (req: Request, res: Response) => {
+  router.post("/poster/menu-preview", authMiddleware, async (req: Request, res: Response) => {
     try {
       const body = req.body as { content?: MenuContent; format?: MenuFormat };
       if (!body?.content) {
@@ -83,10 +102,29 @@ export function registerPosterComposerRoutes(
           known: Object.keys(MENU_FORMAT_DIMENSIONS),
         });
       }
+      const t0 = Date.now();
       const pdf = await renderMenuPdf(body.content, fmt);
+      const renderMs = Date.now() - t0;
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader("Cache-Control", "no-store");
-      return res.send(pdf);
+      res.send(pdf);
+
+      const userId = getUserId(req);
+      if (userId !== "anonymous") {
+        recordUsage(pool, {
+          userId,
+          eventType: "render_menu_pdf",
+          metadata: {
+            format: fmt,
+            template_id: body.content.templateId,
+            categories: body.content.categories?.length ?? 0,
+            items: (body.content.categories ?? []).reduce((n, c) => n + c.items.length, 0),
+            render_ms: renderMs,
+            output_bytes: pdf.length,
+          },
+        });
+      }
+      return;
     } catch (err) {
       console.error("[poster/menu-preview] render failed:", err);
       return res.status(500).json({
@@ -209,7 +247,40 @@ export function registerPosterComposerRoutes(
         .status(502)
         .json({ error: "Claude-generering feilet — sjekk ANTHROPIC_API_KEY og credit." });
     }
-    return res.json({ campaign: concept });
+    res.json({ campaign: concept });
+
+    // Logg fakturerbar Claude-bruk
+    const userId = getUserId(req);
+    if (userId !== "anonymous") {
+      recordUsage(pool, {
+        userId,
+        eventType: "claude_campaign",
+        metadata: {
+          template_id: body.templateId,
+          intent_chars: body.intent.length,
+          brand_name: body.brand.businessName,
+        },
+      });
+    }
+    return;
+  });
+
+  // ── GET /poster/pricing — public pris-katalog (UI-display) ──
+  router.get("/poster/pricing", async (_req: Request, res: Response) => {
+    return res.json(COMPOSER_PRICING);
+  });
+
+  // ── GET /poster/usage/summary — bruker's forbruk denne måneden ──
+  router.get("/poster/usage/summary", authMiddleware, async (req: Request, res: Response) => {
+    const userId = getUserId(req);
+    if (userId === "anonymous") return res.status(401).json({ error: "auth required" });
+    try {
+      const summary = await getUsageSummary(pool, userId);
+      return res.json(summary);
+    } catch (err) {
+      console.error("[poster/usage/summary] failed:", err);
+      return res.status(500).json({ error: "summary failed" });
+    }
   });
 
   // ── POST /poster/scrape-menu — auto-fyll meny fra restaurant-nettside ──
