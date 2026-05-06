@@ -473,16 +473,32 @@ export default function RoleRoomAgentDialog({
                 <AutoFixHighIcon sx={{ fontSize: { xs: 20, md: 24 } }} />
               </Box>
               <Box sx={{ minWidth: 0, flex: 1 }}>
-                <Typography
-                  sx={{
-                    color: '#f8fafc',
-                    fontWeight: 800,
-                    fontSize: { xs: '1.05rem', md: '1.4rem' },
-                    lineHeight: 1.2,
-                  }}
-                >
-                  The Role Room Agent
-                </Typography>
+                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                  <Typography
+                    sx={{
+                      color: '#f8fafc',
+                      fontWeight: 800,
+                      fontSize: { xs: '1.05rem', md: '1.4rem' },
+                      lineHeight: 1.2,
+                    }}
+                  >
+                    The Role Room Agent
+                  </Typography>
+                  <Chip
+                    label="BETA"
+                    size="small"
+                    sx={{
+                      height: 20,
+                      fontSize: '0.65rem',
+                      fontWeight: 800,
+                      letterSpacing: '0.08em',
+                      color: '#fde68a',
+                      borderColor: 'rgba(251,191,36,0.4)',
+                      backgroundColor: 'rgba(251,191,36,0.12)',
+                    }}
+                    variant="outlined"
+                  />
+                </Stack>
                 <Typography
                   sx={{
                     color: 'rgba(226,232,240,0.72)',
