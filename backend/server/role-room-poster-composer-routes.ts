@@ -21,6 +21,7 @@ import {
   type MenuFormat,
 } from "./role-room-menu-composer.ts";
 import { generateCampaignConcept } from "./role-room-poster-claude.ts";
+import { scrapeMenuFromUrl } from "./role-room-menu-scraper.ts";
 import { signAssetReadUrlForDelivery, uploadCaptureObject } from "./capture-upload-service.js";
 
 const posterImageUpload = multer({
@@ -195,6 +196,28 @@ export function registerPosterComposerRoutes(router: Router, pool: Pool): void {
         .json({ error: "Claude-generering feilet — sjekk ANTHROPIC_API_KEY og credit." });
     }
     return res.json({ campaign: concept });
+  });
+
+  // ── POST /poster/scrape-menu — auto-fyll meny fra restaurant-nettside ──
+  router.post("/poster/scrape-menu", async (req: Request, res: Response) => {
+    const body = req.body as { url?: string };
+    if (!body?.url) return res.status(400).json({ error: "url required" });
+    try {
+      const result = await scrapeMenuFromUrl(body.url);
+      if (!result) {
+        return res.status(404).json({
+          error: "kunne ikke hente meny",
+          detail: "ingen kjent strategi matchet — sjekk at URL-en peker på en restaurant-side, eller fyll inn manuelt.",
+        });
+      }
+      return res.json(result);
+    } catch (err) {
+      console.error("[poster/scrape-menu] failed:", err);
+      return res.status(500).json({
+        error: "scrape failed",
+        detail: err instanceof Error ? err.message : String(err),
+      });
+    }
   });
 
   // ── POST /poster/upload — last opp brand-bilde til R2 ──

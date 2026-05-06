@@ -50,6 +50,8 @@ import {
   renderPosterPreview,
   renderMenuPreview,
   saveDraft,
+  uploadPosterImage,
+  scrapeMenuFromUrl,
   type CustomLayer,
   type FormatGroups,
   type FormatInfo,
@@ -79,24 +81,17 @@ import {
 // I Fase 3 byttes dette med "load from selected brand-profile + template".
 // ─────────────────────────────────────────────────────────────────────────
 
-const HOLY_LOGO_DATA_URL = (() => {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
-  <circle cx="100" cy="100" r="92" fill="none" stroke="white" stroke-width="6"/>
-  <circle cx="40" cy="60" r="6" fill="white"/>
-  <circle cx="160" cy="80" r="5" fill="white"/>
-  <circle cx="60" cy="140" r="7" fill="white"/>
-  <circle cx="150" cy="150" r="6" fill="white"/>
-  <text x="100" y="92" font-family="Arial Black,sans-serif" font-size="32" font-weight="900" fill="white" text-anchor="middle">HOLY</text>
-  <text x="100" y="128" font-family="Arial Black,sans-serif" font-size="32" font-weight="900" fill="white" text-anchor="middle">CRUST</text>
-</svg>`;
-  return `data:image/svg+xml;base64,${btoa(svg)}`;
-})();
+// Ekte Holy Crust-assets fra holycrust.no + Supabase storage (Daniel eier
+// brand'et — pilot-bruk). Når brand-picker fra business_profiles er på plass
+// (Fase 4-followup), erstattes dette med brand.logo_url + product-bilder fra DB.
+const HOLY_LOGO_URL = "https://holycrust.no/assets/logo-CoKe0218.png";
+const HC_BUCKET = "https://qraexxlqubveegtueszd.supabase.co/storage/v1/object/public/menu-images";
 
 const DEFAULT_POSTER: PosterContent = {
   templateId: "monday-special",
   brand: {
     businessName: "Holy Crust",
-    logoUrl: HOLY_LOGO_DATA_URL,
+    logoUrl: HOLY_LOGO_URL,
     colors: {
       primary: "#C8102E",
       secondary: "#1B2D5C",
@@ -119,9 +114,9 @@ const DEFAULT_POSTER: PosterContent = {
     { label: "VALGFRI LITEN PIZZA", price: "99,-" },
   ],
   products: [
-    { imageUrl: "https://images.unsplash.com/photo-1628840042765-356cda07504e?w=600&q=80", name: "Pepperoni" },
-    { imageUrl: "https://images.unsplash.com/photo-1604068549290-dea0e4a305ca?w=600&q=80", name: "Veggie" },
-    { imageUrl: "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=600&q=80", name: "Holy Kebab" },
+    { imageUrl: `${HC_BUCKET}/pepperoni.jpg`, name: "Pepperoni" },
+    { imageUrl: `${HC_BUCKET}/holy-veggie-pizza.jpg`, name: "Holy Veggie" },
+    { imageUrl: `${HC_BUCKET}/holy-kebab-pizza-v2.jpg`, name: "Holy Kebab" },
   ],
   ctaActions: [
     { iconSvgPath: "M3 12h2l3-9h8l3 9h2v8H3v-8z", text: "Hent i restaurant" },
@@ -139,19 +134,74 @@ const DEFAULT_MENU: MenuContent = {
     {
       title: "Starters",
       items: [
-        { name: "Garlic Brød", description: "Sprøtt brød med smør og hvitløk.", price: "29 kr" },
-        { name: "Holy Garlic Brød", description: "Hvitløksbrød med ost og kylling tikka.", price: "59 kr" },
+        { name: "Garlic Brød", description: "Sprøtt, nystekt brød med smør og hvitløk.", price: "29 kr", imageUrl: "https://holycrust.no/images/garlic-brod.jpg" },
+        { name: "Holy Garlic Brød", description: "Hvitløksbrød med ost og kylling tikka.", price: "59 kr", imageUrl: `${HC_BUCKET}/holy-garlic-brod.jpg` },
+        { name: "Spicy Rice", description: "Aromatisk ris med vår signatur smak.", price: "69 kr", imageUrl: `${HC_BUCKET}/spicy-rice.jpg` },
+      ],
+    },
+    {
+      title: "Grill",
+      items: [
+        { name: "Chicken Tandoori", description: "Klassisk tandoori-marinert kylling.", price: "4 stk 79 · 6 stk 109 · 8 stk 139 kr", imageUrl: `${HC_BUCKET}/grill-chicken-tandoori.jpg` },
+        { name: "Peri Peri", description: "Kylling i vår signatur peri peri-saus.", price: "4 stk 79 · 6 stk 109 · 8 stk 139 kr", imageUrl: `${HC_BUCKET}/grill-peri-peri.jpg` },
       ],
     },
     {
       title: "Holy Pizzas",
       items: [
-        { name: "Margherita", description: "Klassisk pizza med tomatsaus og ost.", price: "Liten 99 · Stor 229 kr" },
-        { name: "Pepperoni", description: "Tidløs favoritt med pepperoni og ost.", price: "Liten 129 · Stor 249 kr" },
+        { name: "Margherita", description: "Klassisk pizza med fyldig tomatsaus og smeltet ost.", price: "Liten 99 · Stor 229 kr", imageUrl: `${HC_BUCKET}/margherita.jpg` },
+        { name: "Pepperoni", description: "Tidløs favoritt med rikelig pepperoni.", price: "Liten 129 · Stor 249 kr", imageUrl: `${HC_BUCKET}/pepperoni.jpg` },
+        { name: "Chicken Tikka", description: "Saftig marinert kylling og rødløk.", price: "Liten 139 · Stor 259 kr", imageUrl: `${HC_BUCKET}/chicken-tikka-pizza-v2.jpg` },
+        { name: "Peri Peri", description: "Kylling, paprika og løk med peri peri-saus.", price: "Liten 149 · Stor 269 kr", imageUrl: `${HC_BUCKET}/peri-peri-pizza.jpg` },
+        { name: "Beef Blessing", description: "Marinert biff med ost og paprika.", price: "Liten 149 · Stor 259 kr", imageUrl: `${HC_BUCKET}/beef-blessing-pizza.jpg` },
+        { name: "Hot Beef", description: "Krydret biff med løk, jalapeños og tomat.", price: "Liten 149 · Stor 259 kr", imageUrl: `${HC_BUCKET}/hot-beef-pizza-v2.jpg` },
+        { name: "Holy Kebab", description: "Dønerkjøtt, jalapeños, mais og rødløk med kebabdressing.", price: "Liten 149 · Stor 269 kr", imageUrl: `${HC_BUCKET}/holy-kebab-pizza-v2.jpg` },
+        { name: "Holy Veggie", description: "Paprika, rødløk, sopp, tomat og sort pepper.", price: "Liten 149 · Stor 249 kr", imageUrl: `${HC_BUCKET}/holy-veggie-pizza.jpg` },
+      ],
+    },
+    {
+      title: "Detroit Style",
+      description: "Tykk, sprø panbunn — vår signaturpizza",
+      items: [
+        { name: "Ost og Marinara", description: "Sprø firkantet bunn med ost og fyldig tomatsaus.", price: "Liten 169 · Stor 229 kr", imageUrl: `${HC_BUCKET}/detroit-ost-marinara.jpg` },
+        { name: "Pepperoni", description: "Klassisk Detroit-stil med rikelig pepperoni.", price: "Liten 179 · Stor 249 kr", imageUrl: `${HC_BUCKET}/detroit-pepperoni.jpg` },
+        { name: "Chicken Tikka", description: "Marinert kylling med rødløk på tykk, luftig bunn.", price: "Liten 189 · Stor 259 kr", imageUrl: `${HC_BUCKET}/detroit-chicken-tikka.jpg` },
+        { name: "Peri Peri", description: "Kylling, paprika, løk og peri peri-saus.", price: "Liten 189 · Stor 259 kr", imageUrl: `${HC_BUCKET}/detroit-peri-peri.jpg` },
+        { name: "Kebab", description: "Dønerkjøtt, jalapeños, mais og kebabdressing.", price: "Liten 189 · Stor 259 kr", imageUrl: `${HC_BUCKET}/detroit-kebab.jpg` },
+      ],
+    },
+    {
+      title: "Andre Retter",
+      items: [
+        { name: "Plain Fries", description: "Klassiske pommes frites, sprø og gylne.", price: "39 kr", imageUrl: `${HC_BUCKET}/plain-fries.png` },
+      ],
+    },
+    {
+      title: "Dessert",
+      items: [
+        { name: "Raspberry Cheesecake", description: "Ostekake med bringebær og hvit sjokolade.", price: "99 kr", imageUrl: `${HC_BUCKET}/raspberry-cheesecake.jpg` },
+        { name: "Cookie Double Chocolate", description: "Myk og seig kjeks med dobbel sjokolade.", price: "49 kr", imageUrl: `${HC_BUCKET}/cookie-double-chocolate.jpg` },
       ],
     },
   ],
-  contact: { phone: "972 52 222", address: "Jerikoveien 1, 1067 Oslo", website: "holycrust.no" },
+  contact: {
+    phone: "972 52 222",
+    address: "Jerikoveien 1, 1067 Oslo",
+    website: "holycrust.no",
+    hours: [
+      { day: "Mandag", time: "11:00 – 22:00" },
+      { day: "Tirsdag", time: "11:00 – 22:00" },
+      { day: "Onsdag", time: "11:00 – 22:00" },
+      { day: "Torsdag", time: "11:00 – 22:00" },
+      { day: "Fredag", time: "11:00 – 22:00" },
+      { day: "Lørdag", time: "11:00 – 22:00" },
+      { day: "Søndag", time: "11:00 – 22:00" },
+    ],
+  },
+  deals: [
+    { title: "2 Stor Pizza", description: "Velg blant Holy-favorittene", price: "429 kr" },
+    { title: "Familiepakke", description: "Pizza + grill + drikke", price: "699 kr" },
+  ],
 };
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -286,6 +336,12 @@ export default function PosterComposerPanel({ brandId: _brandId }: PosterCompose
   const [claudeIntent, setClaudeIntent] = useState("");
   const [claudeLoading, setClaudeLoading] = useState(false);
 
+  // Scrape-state
+  const [scrapeOpen, setScrapeOpen] = useState(false);
+  const [scrapeUrl, setScrapeUrl] = useState("holycrust.no");
+  const [scrapeLoading, setScrapeLoading] = useState(false);
+  const [scrapeResult, setScrapeResult] = useState<{ categories: { title: string; items: { name: string; description?: string; price: string; imageUrl?: string }[] }[]; source: string; warnings: string[] } | null>(null);
+
   // Format-/template-katalog fra backend
   const [formats, setFormats] = useState<FormatGroups | null>(null);
   const [templates, setTemplates] = useState<TemplateGroups | null>(null);
@@ -398,6 +454,34 @@ export default function PosterComposerPanel({ brandId: _brandId }: PosterCompose
   }, [mode, posterHistory, menuHistory]);
 
   const activeHistory = mode === "poster" ? posterHistory : menuHistory;
+
+  // ── Scrape: hent meny fra nettside ──
+  const runScrape = useCallback(async () => {
+    if (!scrapeUrl.trim()) return;
+    setScrapeLoading(true);
+    setScrapeResult(null);
+    try {
+      const result = await scrapeMenuFromUrl(scrapeUrl);
+      setScrapeResult(result);
+    } catch (err) {
+      setSnackbar(`Scrape-feil: ${err instanceof Error ? err.message : err}`);
+    } finally {
+      setScrapeLoading(false);
+    }
+  }, [scrapeUrl]);
+
+  const applyScrapedMenu = useCallback(() => {
+    if (!scrapeResult) return;
+    setMenu({
+      ...menu,
+      categories: scrapeResult.categories,
+      // Sett mode til menu hvis vi ikke allerede er der
+    });
+    setMode("menu");
+    setScrapeOpen(false);
+    setScrapeResult(null);
+    setSnackbar(`Importerte ${scrapeResult.categories.reduce((n, c) => n + c.items.length, 0)} items fra ${scrapeResult.source}`);
+  }, [scrapeResult, menu, setMenu]);
 
   // ── Claude: generer kampanje-tekst ──
   const runClaude = useCallback(async () => {
@@ -650,6 +734,17 @@ export default function PosterComposerPanel({ brandId: _brandId }: PosterCompose
             </Tooltip>
           )}
 
+          {mode === "menu" && (
+            <Button
+              startIcon={<AutoAwesomeIcon />}
+              variant="outlined"
+              size="small"
+              onClick={() => setScrapeOpen(true)}
+            >
+              Hent fra nettside
+            </Button>
+          )}
+
           <Button
             startIcon={<AutoAwesomeIcon />}
             variant="contained"
@@ -660,6 +755,95 @@ export default function PosterComposerPanel({ brandId: _brandId }: PosterCompose
             Claude-kampanjetekst
           </Button>
         </Stack>
+
+        {/* Scrape-dialog */}
+        <Dialog open={scrapeOpen} onClose={() => setScrapeOpen(false)} maxWidth="md" fullWidth>
+          <DialogTitle>Importer meny fra nettside</DialogTitle>
+          <DialogContent>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Backend prøver Supabase-detektor først (matcher Holy Crust-stack), faller tilbake til generic HTML-scrape (alt-text + img-tags).
+              Inspiser resultatet før du importerer.
+            </Typography>
+            <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+              <TextField
+                autoFocus
+                label="Nettside-URL"
+                fullWidth
+                size="small"
+                value={scrapeUrl}
+                onChange={(e) => setScrapeUrl(e.target.value)}
+                disabled={scrapeLoading}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") runScrape();
+                }}
+              />
+              <Button
+                variant="contained"
+                onClick={runScrape}
+                disabled={scrapeLoading || !scrapeUrl.trim()}
+                startIcon={scrapeLoading ? <CircularProgress size={14} /> : null}
+              >
+                {scrapeLoading ? "Henter…" : "Hent"}
+              </Button>
+            </Stack>
+
+            {scrapeResult && (
+              <Box sx={{ border: 1, borderColor: "divider", borderRadius: 1, p: 1.5, maxHeight: 400, overflow: "auto" }}>
+                <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
+                  Kilde: <code>{scrapeResult.source}</code> ·{" "}
+                  {scrapeResult.categories.reduce((n, c) => n + c.items.length, 0)} items i{" "}
+                  {scrapeResult.categories.length} kategorier
+                </Typography>
+                {scrapeResult.warnings.length > 0 && (
+                  <Alert severity="info" sx={{ mb: 1 }}>
+                    {scrapeResult.warnings.join(" · ")}
+                  </Alert>
+                )}
+                {scrapeResult.categories.map((c, ci) => (
+                  <Box key={ci} sx={{ mb: 1.5 }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                      {c.title} ({c.items.length})
+                    </Typography>
+                    <Stack spacing={0.5} sx={{ pl: 1.5, mt: 0.5 }}>
+                      {c.items.map((it, ii) => (
+                        <Stack key={ii} direction="row" spacing={1} alignItems="center">
+                          <Box
+                            sx={{
+                              width: 32, height: 32, flexShrink: 0,
+                              borderRadius: "50%",
+                              backgroundImage: it.imageUrl ? `url(${it.imageUrl})` : undefined,
+                              backgroundSize: "cover",
+                              backgroundPosition: "center",
+                              bgcolor: it.imageUrl ? undefined : "action.hover",
+                              border: it.imageUrl ? "none" : "1px dashed",
+                              borderColor: "divider",
+                            }}
+                          />
+                          <Typography variant="body2" sx={{ flex: 1 }}>
+                            {it.name}
+                          </Typography>
+                          <Typography variant="caption" color="primary" sx={{ fontWeight: 700 }}>
+                            {it.price}
+                          </Typography>
+                        </Stack>
+                      ))}
+                    </Stack>
+                  </Box>
+                ))}
+              </Box>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setScrapeOpen(false)}>Avbryt</Button>
+            <Button
+              variant="contained"
+              onClick={applyScrapedMenu}
+              disabled={!scrapeResult || scrapeResult.categories.length === 0}
+            >
+              Importer
+            </Button>
+          </DialogActions>
+        </Dialog>
 
         {/* Claude-dialog */}
         <Dialog open={claudeOpen} onClose={() => setClaudeOpen(false)} maxWidth="sm" fullWidth>
@@ -1272,6 +1456,40 @@ function MenuForm({
                     maxRows={2}
                     sx={{ mt: 0.5 }}
                   />
+                  {/* Image-upload: thumbnail-preview + upload-knapp */}
+                  <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }}>
+                    <Box
+                      sx={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: "50%",
+                        border: "1px dashed",
+                        borderColor: "divider",
+                        flexShrink: 0,
+                        backgroundImage: item.imageUrl ? `url(${item.imageUrl})` : undefined,
+                        backgroundSize: "cover",
+                        backgroundPosition: "center",
+                        backgroundColor: item.imageUrl ? undefined : "action.hover",
+                      }}
+                    />
+                    <MenuItemImageUpload
+                      currentUrl={item.imageUrl}
+                      onUploaded={(url) => {
+                        const nextCats = [...content.categories];
+                        const nextItems = [...cat.items];
+                        nextItems[ii] = { ...item, imageUrl: url };
+                        nextCats[ci] = { ...cat, items: nextItems };
+                        update({ categories: nextCats });
+                      }}
+                      onClear={item.imageUrl ? () => {
+                        const nextCats = [...content.categories];
+                        const nextItems = [...cat.items];
+                        nextItems[ii] = { ...item, imageUrl: undefined };
+                        nextCats[ci] = { ...cat, items: nextItems };
+                        update({ categories: nextCats });
+                      } : undefined}
+                    />
+                  </Stack>
                 </Box>
               ))}
               <Button
@@ -1450,6 +1668,70 @@ function MenuForm({
       <Typography variant="body2" color="text.secondary">
         Brand-redigering er felles med plakat-tabben — bytt til "Plakat / Signage"-modus for å endre palett/fonter/logo.
       </Typography>
+    </Stack>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// MenuItemImageUpload — kompakt upload-knapp pr menu-item
+// ─────────────────────────────────────────────────────────────────────────
+
+function MenuItemImageUpload({
+  currentUrl,
+  onUploaded,
+  onClear,
+}: {
+  currentUrl: string | undefined;
+  onUploaded: (url: string) => void;
+  onClear?: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleFile = async (file: File | undefined) => {
+    if (!file) return;
+    setUploading(true);
+    setError(null);
+    try {
+      const result = await uploadPosterImage(file);
+      onUploaded(result.url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  };
+
+  return (
+    <Stack direction="row" spacing={0.5} alignItems="center" sx={{ flex: 1 }}>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: "none" }}
+        onChange={(e) => handleFile(e.target.files?.[0])}
+      />
+      <Button
+        size="small"
+        variant={currentUrl ? "text" : "outlined"}
+        onClick={() => inputRef.current?.click()}
+        disabled={uploading}
+        sx={{ fontSize: 11, py: 0.25, minWidth: 0 }}
+      >
+        {uploading ? "Laster…" : currentUrl ? "Bytt bilde" : "Legg til bilde"}
+      </Button>
+      {currentUrl && onClear && (
+        <IconButton size="small" onClick={onClear} sx={{ p: 0.25 }}>
+          <DeleteIcon sx={{ fontSize: 14 }} />
+        </IconButton>
+      )}
+      {error && (
+        <Typography variant="caption" color="error" sx={{ fontSize: 10 }}>
+          {error.slice(0, 30)}
+        </Typography>
+      )}
     </Stack>
   );
 }

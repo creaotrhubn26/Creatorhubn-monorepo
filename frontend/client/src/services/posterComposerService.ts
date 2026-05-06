@@ -309,6 +309,33 @@ export async function generateCampaignConcept(payload: {
 }
 
 /**
+ * Auto-scrape meny fra restaurant-nettside. Returnerer strukturert
+ * fragment som kan importeres direkte inn i composer-content.
+ * Strategier (i prioritetsrekkefølge): Supabase REST hvis prosjektet er
+ * Supabase-backed, ellers generic HTML-scrape (alt-text + img-tags).
+ */
+export interface ScrapedMenuResult {
+  source: string;
+  cover?: { title?: string; subtitle?: string; tagline?: string };
+  categories: MenuCategory[];
+  contact?: { phone?: string; address?: string; website?: string };
+  warnings: string[];
+}
+
+export async function scrapeMenuFromUrl(url: string): Promise<ScrapedMenuResult> {
+  const resp = await fetch(`${API_BASE}/poster/scrape-menu`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ url }),
+  });
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`Scrape feilet (${resp.status}): ${text.slice(0, 200)}`);
+  }
+  return resp.json();
+}
+
+/**
  * Last opp brand-/produktbilde til R2. Returnerer signed URL som kan brukes
  * direkte i CustomLayer.imageUrl eller PosterContent.products[].imageUrl.
  */
