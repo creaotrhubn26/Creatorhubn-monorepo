@@ -40,6 +40,7 @@ import {
 import UniversalShowcase from '../components/universal/UniversalShowcase';
 import { ShowcaseDriveManager } from '../components/showcase/ShowcaseDriveManager';
 import { CategoryManager } from '../components/showcase/CategoryManager';
+import { ClientGalleriesManager } from '../components/showcase/ClientGalleriesManager';
 import {
   Dialog,
   DialogTitle,
@@ -666,6 +667,7 @@ export default function ShowcaseAdmin() {
                 },
             }}
             >
+              <Tab icon={theming.getThemedIcon('PhotoLibrary', { sx: { mr: 1 } })} iconPosition="start" label="Klient-galleri" />
               <Tab icon={theming.getThemedIcon('Category', { sx: { mr: 1 } })} iconPosition="start" label="Kategorier" />
               <Tab icon={theming.getThemedIcon('CloudSync', { sx: { mr: 1 } })} iconPosition="start" label="Drive Integration" />
               <Tab icon={theming.getThemedIcon('Settings', { sx: { mr: 1 } })} iconPosition="start" label="Innstillinger" />
@@ -673,10 +675,18 @@ export default function ShowcaseAdmin() {
           </Box>
 
           <AdminTabPanel value={adminTabValue} index={0}>
-            <CategoryManager userId={userId} profession={profession} editMode={true} />
+            {/* Slice 9D — photographer's control panel for client galleries.
+                Wires the new GET/POST/PATCH/events backend routes so the
+                photographer can create, configure, and monitor client
+                galleries from the dashboard. */}
+            <ClientGalleriesManager />
           </AdminTabPanel>
 
           <AdminTabPanel value={adminTabValue} index={1}>
+            <CategoryManager userId={userId} profession={profession} editMode={true} />
+          </AdminTabPanel>
+
+          <AdminTabPanel value={adminTabValue} index={2}>
             <ShowcaseDriveManager
               userId={userId}
               profession={profession}
@@ -684,7 +694,7 @@ export default function ShowcaseAdmin() {
             />
           </AdminTabPanel>
 
-          <AdminTabPanel value={adminTabValue} index={2}>
+          <AdminTabPanel value={adminTabValue} index={3}>
             <Box>
               <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary, fontWeight: 600 }}>
                 {theming.getThemedIcon('Settings', { sx: { mr: 1, verticalAlign: 'middle' } })}
