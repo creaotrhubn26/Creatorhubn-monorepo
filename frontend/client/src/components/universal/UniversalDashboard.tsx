@@ -15,6 +15,7 @@ import { useDemoMode } from '@/contexts/DemoModeContext';
 import { useAuth } from '@/hooks/useAuth';
 import { useUrlTab } from '@/hooks/useUrlState';
 import { useCmsContent } from '@/hooks/useCmsContent';
+import { useRealtimeNotifications } from '@/hooks/useRealtimeNotifications';
 import { isProfessionFeatureAvailable } from '@shared/profession-feature-matrix';
 import AdminIndicator from '../admin/AdminIndicator';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
@@ -95,6 +96,7 @@ import {
   Business,
   Email,
   Notifications,
+  LocalShipping,
   CloudDone,
   Article,
   FolderOpen,
@@ -2204,6 +2206,34 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
     enabled: !!userId && userId !== 'guest'
 });
 
+  // Slice 9D.5 — aggregate badges for unread messages, gallery submissions
+  // og pending print-orders. 30s refetch dekker submissions + print-orders;
+  // chat_message-events fra WebSocket invalidate-r for ~instant unread-count.
+  const { data: dashboardBadges } = useQuery<{
+    unreadMessages: number;
+    newGallerySubmissions: number;
+    pendingPrintOrders: number;
+  }>({
+    queryKey: ['/api/photographer/dashboard-badges', userId],
+    queryFn: () => apiRequest('/api/photographer/dashboard-badges'),
+    enabled: !!userId && userId !== 'guest',
+    refetchInterval: 30000,
+  });
+
+  // Live-invalidate badges når WebSocket signaliserer relevant event.
+  // Backend emitterer 'chat_message' for nye client-meldinger; submissions
+  // og print-orders har ingen WS-event ennå, så de henger på 30s polling.
+  useRealtimeNotifications(
+    userId !== 'guest' ? userId : undefined,
+    useCallback((data: { type: string }) => {
+      if (data.type === 'chat_message' || data.type === 'message_received') {
+        queryClient.invalidateQueries({
+          queryKey: ['/api/photographer/dashboard-badges', userId],
+        });
+      }
+    }, [userId]),
+  );
+
   // Fetch recent notifications for notification center
   const { data: recentNotifications = [] } = useQuery({
     queryKey: ['/api/notifications/recent', userId],
@@ -2222,12 +2252,16 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
     refetchInterval: 30000 // Refresh every 30 seconds
   });
 
-  const unreadEmailCount = unreadEmailData?.count || 0;
+  // Slice 9D.5 — bruk nye dashboard-badges-endpointet som primærkilde.
+  // De gamle /api/emails/unread-count + /api/client-activity/summary
+  // returnerer 404 i prod, så fallback (`?? 0`) gir 0 uansett.
+  const unreadEmailCount = dashboardBadges?.unreadMessages ?? unreadEmailData?.count ?? 0;
   const urgentDeadlines = clientActivitySummary?.urgentDeadlines || 0;
   const unreadComments = clientActivitySummary?.unreadComments || 0;
   const recentDownloads = clientActivitySummary?.recentDownloads || 0;
-  const pendingSubmissions = clientActivitySummary?.pendingSubmissions || 0;
+  const pendingSubmissions = dashboardBadges?.newGallerySubmissions ?? clientActivitySummary?.pendingSubmissions ?? 0;
   const pendingTimelineChanges = clientActivitySummary?.pendingTimelineChanges || 0;
+  const pendingPrintOrders = dashboardBadges?.pendingPrintOrders ?? 0;
   const totalClientActivity = urgentDeadlines + unreadComments + recentDownloads + pendingSubmissions + pendingTimelineChanges;
 
   // Fetch upcoming projects data - moved to top level to fix hook order
@@ -3731,12 +3765,47 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                       aria-label={`Client activity${totalClientActivity > 0 ? ` - ${totalClientActivity} updates` : ', '}`}
                       tabIndex={0}
                     >
-                      <Badge 
-                        badgeContent={totalClientActivity} 
+                      <Badge
+                        badgeContent={totalClientActivity}
                         color={(pendingTimelineChanges > 0 || urgentDeadlines > 0) ? "error" : "primary"}
                         max={99}
                       >
                         <Notifications sx={{ color: (pendingTimelineChanges > 0 || urgentDeadlines > 0) ? '#f44336' : 'inherit' }} />
+                      </Badge>
+                    </IconButton>
+                  </Tooltip>
+
+                  {/* Slice 9D.5 — pending print-orders badge */}
+                  <Tooltip title={
+                    pendingPrintOrders > 0
+                      ? `${pendingPrintOrders} print-bestilling${pendingPrintOrders === 1 ? '' : 'er'} venter fulfillment`
+                      : 'Ingen print-bestillinger venter'
+                  }>
+                    <IconButton
+                      size={isSmallScreen ? "small" : "medium"}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        // Routes til print-orders-tab kommer i senere slice;
+                        // foreløpig samme modal som client-activity.
+                        setShowClientActivityModal(true);
+                      }}
+                      sx={{
+                        bgcolor: pendingPrintOrders > 0 ? '#ff8c001a' : `${customBranding.color}10`,
+                        minHeight: { xs: 36, sm: 44 },
+                        '&:hover': {
+                          bgcolor: pendingPrintOrders > 0 ? '#ff8c0033' : customBranding.color + '20',
+                        },
+                      }}
+                      aria-label={`Print-bestillinger${pendingPrintOrders > 0 ? ` - ${pendingPrintOrders} venter` : ''}`}
+                      tabIndex={0}
+                    >
+                      <Badge
+                        badgeContent={pendingPrintOrders}
+                        color={pendingPrintOrders > 0 ? "warning" : "default"}
+                        max={99}
+                      >
+                        <LocalShipping />
                       </Badge>
                     </IconButton>
                   </Tooltip>

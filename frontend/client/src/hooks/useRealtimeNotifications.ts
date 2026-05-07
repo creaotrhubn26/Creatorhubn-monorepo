@@ -15,11 +15,20 @@ export interface RealtimeNotification {
   userId?: string;
 }
 
-export function useRealtimeNotifications(userId?: string) {
+export function useRealtimeNotifications(
+  userId?: string,
+  onMessage?: (data: { type: string; [key: string]: unknown }) => void,
+) {
   const [connected, setConnected] = useState(false);
   const [notifications, setNotifications] = useState<RealtimeNotification[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Hold onMessage i ref slik at WebSocket-handleren alltid bruker
+  // siste callback uten å reconnect-e ved hver render.
+  const onMessageRef = useRef(onMessage);
+  useEffect(() => {
+    onMessageRef.current = onMessage;
+  }, [onMessage]);
 
   /**
    * Connect to WebSocket server
@@ -52,7 +61,12 @@ export function useRealtimeNotifications(userId?: string) {
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          
+
+          // Slice 9D.5 — gi callere innsyn i hele event-strømmen
+          // (badge-invalidation, audit-trace, etc.) uten å pålegge
+          // dem en ekstra WebSocket-tilkobling.
+          onMessageRef.current?.(data);
+
           switch (data.type) {
             case 'CONNECTED':
             case 'auth_success':

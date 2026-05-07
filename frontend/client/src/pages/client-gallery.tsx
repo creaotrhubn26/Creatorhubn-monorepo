@@ -76,6 +76,7 @@ import ExtraImagePricingDialog from '@/components/ExtraImagePricingDialog';
 import ImageSelectionWarning from '@/components/ImageSelectionWarning';
 import ContractPreviewModal from '@/components/ContractPreviewModal';
 import TermsAcceptanceDialog from '@/components/TermsAcceptanceDialog';
+import PrintStoreSection from '@/components/client-gallery/PrintStoreSection';
 import { getShowcaseTerminology, capitalise } from '@/utils/showcaseTerminology';
 
 interface ClientGalleryProps {}
@@ -249,20 +250,28 @@ export default function ClientGallery({}: ClientGalleryProps) {
     }
   }, [gallery?.requiresPassword, galleryPassword, passwordPromptOpen]);
 
-  // Slice 10.3 — håndter return fra Stripe Checkout. Stripe redirecter
-  // til ?checkout=success eller ?checkout=cancelled. Vis bekreftelse +
-  // strip URL-paramene så refresh ikke viser samme melding to ganger.
+  // Slice 10.3 + 10.5 — håndter return fra Stripe Checkout. Stripe
+  // redirecter til ?checkout=success/cancelled (ekstra-bilder) eller
+  // ?print=success/cancelled (print-ordre). Vis bekreftelse + strip
+  // URL-paramene så refresh ikke viser samme melding to ganger.
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
-    const status = params.get('checkout');
-    if (!status) return;
-    if (status === 'success') {
+    const checkout = params.get('checkout');
+    const print = params.get('print');
+    if (checkout === 'success') {
       alert('Betaling mottatt! Du kan nå laste ned valgte bilder. Sjekk e-post for kvittering.');
-    } else if (status === 'cancelled') {
+    } else if (checkout === 'cancelled') {
       alert('Betalingen ble avbrutt. Du kan prøve igjen når du vil.');
+    } else if (print === 'success') {
+      alert('Print-bestilling registrert! Vi tar kontakt om frakt og leveringstid. Sjekk e-post for kvittering.');
+    } else if (print === 'cancelled') {
+      alert('Print-bestillingen ble avbrutt.');
+    } else {
+      return;
     }
     params.delete('checkout');
+    params.delete('print');
     params.delete('session_id');
     const newSearch = params.toString();
     window.history.replaceState(
@@ -1086,6 +1095,20 @@ export default function ClientGallery({}: ClientGalleryProps) {
               {`Fortsett (${selectedImages.size} ${terms.itemPlural})`}
             </Button>
           </Stack>
+        )}
+
+        {/* Slice 10.5 — print store i sidebar. Skjult når fotograf
+            ikke har aktivert print-produkter. */}
+        {accessToken && (
+          <Box sx={{ mt: 2 }}>
+            <PrintStoreSection
+              accessToken={accessToken}
+              galleryPassword={galleryPassword}
+              clientEmail={gallery?.clientEmail ?? undefined}
+              clientName={gallery?.clientName ?? undefined}
+              defaultImageId={selectedImages.size === 1 ? Array.from(selectedImages)[0] : null}
+            />
+          </Box>
         )}
       </Box>
 

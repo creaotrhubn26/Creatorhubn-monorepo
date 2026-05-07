@@ -24600,7 +24600,7 @@ app.post("/api/client/gallery/:accessToken/create-checkout-session", async (req,
             currency: pricing.currency.toLowerCase(),
             unit_amount: Math.round(pricing.pricePerImage * 100),
             product_data: {
-              name: `Ekstra bilde — ${gallery.projectTitle ?? 'klient-galleri'}`,
+              name: `Ekstra bilde — ${(access.settings.projectTitle as string | undefined) ?? 'klient-galleri'}`,
               description: `${pricing.extraImages} bilder utover inkluderte. Total: ${pricing.totalAmount.toFixed(2)} ${pricing.currency}`,
             },
           },
@@ -25042,6 +25042,62 @@ app.delete("/api/photographer/print-products/:id", async (req, res) => {
   }
 });
 
+// Slice 9D.5 — aggregate notification badges for photographer dashboard.
+// Three counts in one round-trip; each query wrapped i sin egen try/catch
+// så schema-drift på én tabell ikke skjuler de to andre.
+app.get("/api/photographer/dashboard-badges", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const photographerId = session.userId;
+
+  const safeCount = async (label: string, run: () => Promise<number>): Promise<number> => {
+    try {
+      return await run();
+    } catch (err) {
+      console.warn(`[dashboard-badges] ${label} failed:`, err);
+      return 0;
+    }
+  };
+
+  const [unreadMessages, newGallerySubmissions, pendingPrintOrders] = await Promise.all([
+    safeCount('unread_messages', async () => {
+      const r = await pool.query(
+        `SELECT COUNT(*)::int AS c
+         FROM communication_messages
+         WHERE recipient_id = $1 AND COALESCE(is_read, false) = false`,
+        [photographerId],
+      );
+      return Number(r.rows[0]?.c ?? 0);
+    }),
+    safeCount('gallery_submissions', async () => {
+      const r = await pool.query(
+        `SELECT COUNT(*)::int AS c
+         FROM client_selections sel
+         JOIN client_gallery_sessions s ON s.id = sel.session_id
+         WHERE s.photographer_id = $1
+           AND sel.is_selected = true
+           AND sel.photographer_approved IS NULL`,
+        [photographerId],
+      );
+      return Number(r.rows[0]?.c ?? 0);
+    }),
+    safeCount('pending_print_orders', async () => {
+      await ensurePrintStoreSchema();
+      const r = await pool.query(
+        `SELECT COUNT(*)::int AS c
+         FROM print_orders
+         WHERE photographer_id = $1
+           AND payment_status = 'paid'
+           AND COALESCE(fulfillment_status, 'pending') = 'pending'`,
+        [photographerId],
+      );
+      return Number(r.rows[0]?.c ?? 0);
+    }),
+  ]);
+
+  res.json({ unreadMessages, newGallerySubmissions, pendingPrintOrders });
+});
+
 // Public — klient ser tilgjengelige prints for sitt galleri
 app.get("/api/client/gallery/:accessToken/print-products", async (req, res) => {
   const accessToken = String(req.params.accessToken || "").trim();
@@ -25132,7 +25188,7 @@ app.post("/api/client/gallery/:accessToken/print-order", async (req, res) => {
     }
     let total = 0;
     let currency = 'NOK';
-    const lineItems: Array<{ quantity: number; price_data: Record<string, unknown> }> = [];
+    const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [];
     for (const item of items as Array<Record<string, unknown>>) {
       const pid = String(item.productId);
       const product = productMap.get(pid);
