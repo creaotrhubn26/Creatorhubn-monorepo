@@ -73,6 +73,9 @@ import {
   readComposerInvoiceStatus,
 } from "./composer-invoice-runner.js";
 import {
+  maybeStartCompetitorSnapshotSweep,
+} from "./competitor-metadata-fetcher.js";
+import {
   maybeStartTeamInviteSweep,
   readTeamInviteSweepStatus,
   runTeamInviteSweep,
@@ -838,6 +841,18 @@ app.post(
           } catch (err) {
             console.error('[client-gallery] payment_intent.succeeded persist failed:', err);
           }
+          // Analytics — registrer betaling i ecosystem-loggen.
+          recordAnalyticsEvent('payment.succeeded', {
+            entityType: 'gallery',
+            entityId: String(galleryId),
+            actorUserId: intent.metadata?.userId ?? null,
+            metadata: {
+              amount: intent.amount,
+              currency: intent.currency,
+              stripeIntentId: intent.id,
+              clientEmail: intent.metadata?.clientEmail ?? null,
+            },
+          });
           break;
         }
         case "payment_intent.payment_failed": {
@@ -23986,6 +24001,19 @@ app.post("/api/photographer/galleries", async (req, res) => {
       [session.userId, clientName, clientEmail, projectTitle, accessToken, settings],
     );
     const row = result.rows[0];
+    // Analytics — bind gallery-creation til økosystem-event-loggen.
+    recordAnalyticsEvent('gallery.created', {
+      entityType: 'gallery',
+      entityId: String(row.id),
+      actorUserId: session.userId,
+      metadata: {
+        clientEmail,
+        projectTitle,
+        projectId: projectId ?? null,
+        packageId: effectivePackageId ?? null,
+        source: 'web_dashboard',
+      },
+    });
     res.status(201).json({
       id: row.id,
       accessToken: row.access_token,
@@ -24083,6 +24111,75 @@ app.patch("/api/photographer/galleries/:id/settings", async (req, res) => {
   }
 });
 
+// Ecosystem analytics — unified event-feed på tvers av alle systemer
+// i UniversalDashboard (gallery, project, payment, capture, photo
+// enhancer). BI-laget leser herfra istedenfor å forene siloer per
+// query.
+//
+// Filtre:
+//   ?since=ISO-timestamp  — kun events nyere enn dette (default: 30d)
+//   ?event_type=…         — filtrer på event-type
+//   ?entity_type=…        — filtrer på entitetstype (gallery/project/etc)
+//   ?entity_id=…          — kun events for denne entiteten
+//   ?limit=N              — max events (default 200, max 1000)
+//
+// actor_user_id auto-filtreres til session.userId så photographer
+// kun ser sin egen data.
+app.get("/api/analytics/events", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  await ensureAnalyticsEventsSchema().catch(() => {
+    /* on first call schema gets created; on failure return empty */
+  });
+  const params: unknown[] = [session.userId];
+  let where = `actor_user_id = $1`;
+  const sinceRaw = typeof req.query.since === 'string' ? req.query.since : null;
+  if (sinceRaw) {
+    params.push(sinceRaw);
+    where += ` AND created_at >= $${params.length}`;
+  } else {
+    where += ` AND created_at >= NOW() - INTERVAL '30 days'`;
+  }
+  if (typeof req.query.event_type === 'string' && req.query.event_type.trim()) {
+    params.push(req.query.event_type.trim());
+    where += ` AND event_type = $${params.length}`;
+  }
+  if (typeof req.query.entity_type === 'string' && req.query.entity_type.trim()) {
+    params.push(req.query.entity_type.trim());
+    where += ` AND entity_type = $${params.length}`;
+  }
+  if (typeof req.query.entity_id === 'string' && req.query.entity_id.trim()) {
+    params.push(req.query.entity_id.trim());
+    where += ` AND entity_id = $${params.length}`;
+  }
+  const limit = Math.min(Math.max(Number(req.query.limit) || 200, 1), 1000);
+  try {
+    const result = await pool.query(
+      `SELECT id, event_type, entity_type, entity_id, actor_user_id,
+              metadata, created_at
+       FROM analytics_events
+       WHERE ${where}
+       ORDER BY created_at DESC
+       LIMIT ${limit}`,
+      params,
+    );
+    res.json({
+      events: result.rows.map((r: Record<string, unknown>) => ({
+        id: r.id,
+        eventType: r.event_type,
+        entityType: r.entity_type,
+        entityId: r.entity_id,
+        actorUserId: r.actor_user_id,
+        metadata: r.metadata ?? {},
+        createdAt: r.created_at,
+      })),
+    });
+  } catch (err) {
+    console.error('[analytics-events] list failed:', err);
+    res.json({ events: [] });
+  }
+});
+
 // Slice 9X.7 — mark a gallery as completed. Idempotent. When the
 // gallery is linked to a project (gallery_settings.projectId),
 // stamp the project's metadata.galleryDeliveredAt so dashboards
@@ -24147,6 +24244,21 @@ app.post("/api/photographer/galleries/:id/mark-complete", async (req, res) => {
       } catch (projectErr) {
         console.warn('[gallery-complete] project callback failed (non-fatal)', projectErr);
       }
+    }
+
+    // Analytics — registrer kun ved EKTE transition (ikke idempotent
+    // re-call). Bind til linkedProjectId via metadata så cross-system
+    // queries kan joine på begge.
+    if (!alreadyCompleted) {
+      recordAnalyticsEvent('gallery.completed', {
+        entityType: 'gallery',
+        entityId: galleryId,
+        actorUserId: session.userId,
+        metadata: {
+          linkedProjectId,
+          projectCallbackOk,
+        },
+      });
     }
 
     return res.json({
@@ -24573,6 +24685,80 @@ async function dispatchClientGalleryNotification(
 
 /// Build the share URL the photographer clicks in the email. Mirrors
 /// the bridge's URL construction so the link goes to the same viewer.
+// Analytics events foundation — unified ecosystem-wide event log.
+// Every important user-facing action (gallery created, payment
+// succeeded, project status change, photo enhancer batch pushed) skal
+// skrive en rad her. BI-dashboardet og cross-system aggregations leser
+// fra analytics_events istedenfor å forene siloer per query.
+//
+// Schema lever i 125_analytics_events.sql; vi sikrer at tabellen
+// finnes ved oppstart slik at recordAnalyticsEvent aldri trenger å
+// håndtere "table doesn't exist"-feil.
+let analyticsEventsSchemaReady: Promise<void> | null = null;
+function ensureAnalyticsEventsSchema(): Promise<void> {
+  if (!analyticsEventsSchemaReady) {
+    analyticsEventsSchemaReady = (async () => {
+      try {
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS analytics_events (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            event_type VARCHAR(64) NOT NULL,
+            entity_type VARCHAR(32),
+            entity_id VARCHAR(64),
+            actor_user_id VARCHAR(64),
+            metadata JSONB DEFAULT '{}'::jsonb,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+          CREATE INDEX IF NOT EXISTS analytics_events_created_at_idx
+            ON analytics_events (created_at DESC);
+          CREATE INDEX IF NOT EXISTS analytics_events_entity_idx
+            ON analytics_events (entity_type, entity_id, created_at DESC);
+          CREATE INDEX IF NOT EXISTS analytics_events_actor_idx
+            ON analytics_events (actor_user_id, created_at DESC);
+          CREATE INDEX IF NOT EXISTS analytics_events_type_idx
+            ON analytics_events (event_type, created_at DESC);
+        `);
+      } catch (err) {
+        console.warn('[analytics-events] schema-ensure failed:', err);
+        // Reset så neste call retry'er
+        analyticsEventsSchemaReady = null;
+        throw err;
+      }
+    })();
+  }
+  return analyticsEventsSchemaReady;
+}
+
+interface AnalyticsEventOptions {
+  entityType?: string;
+  entityId?: string;
+  actorUserId?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
+/// Fire-and-forget. Call uten await — feil logges men aldri kastet,
+/// så event-recording kan ikke knekke produksjons-endpoints.
+function recordAnalyticsEvent(eventType: string, opts: AnalyticsEventOptions = {}): void {
+  void (async () => {
+    try {
+      await ensureAnalyticsEventsSchema();
+      await pool.query(
+        `INSERT INTO analytics_events (event_type, entity_type, entity_id, actor_user_id, metadata)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [
+          eventType,
+          opts.entityType ?? null,
+          opts.entityId ?? null,
+          opts.actorUserId ?? null,
+          opts.metadata ?? {},
+        ],
+      );
+    } catch (err) {
+      console.warn(`[analytics-events] record ${eventType} failed:`, err);
+    }
+  })();
+}
+
 function buildGalleryShareUrl(accessToken: string): string {
   const host = (process.env.CREATORHUB_PUBLIC_URL ?? 'https://app.creatorhubn.com').replace(/\/$/, '');
   return `${host}/client/gallery/${accessToken}`;
@@ -61901,6 +62087,20 @@ app.put("/api/projects/:id", async (req, res) => {
     // status PATCH'd twice doesn't double-notify).
     const newStatus = typeof data.status === 'string' ? data.status : null;
     const MILESTONE_STATUSES = new Set(['ready_for_review', 'completed', 'editing']);
+    if (newStatus && newStatus !== oldStatus) {
+      // Analytics — alle status-overganger logges (ikke bare milestones)
+      // så BI kan rekonstruere full prosjekt-flyt.
+      recordAnalyticsEvent('project.status_changed', {
+        entityType: 'project',
+        entityId: String(id),
+        actorUserId: typeof getUserIdFromAuth === 'function' ? readString(getUserIdFromAuth(req)) ?? null : null,
+        metadata: {
+          oldStatus: oldStatus ?? null,
+          newStatus,
+          isMilestone: MILESTONE_STATUSES.has(newStatus),
+        },
+      });
+    }
     if (newStatus && newStatus !== oldStatus && MILESTONE_STATUSES.has(newStatus)) {
       const projectRow = result.rows[0];
       void (async () => {
@@ -116084,6 +116284,10 @@ httpServer.listen(PORT, "0.0.0.0", () => {
     // internt i runneren fra STRIPE_SECRET_KEY.
     maybeStartComposerInvoiceSweep(pool);
   }
+  // Page Metadata 2.0 — daglig competitor-watchlist-snapshot. Kjører
+  // første sweep ~180s etter boot og deretter hver 24t; idempotent via
+  // 12-timers skip-vindu på last_fetched_at.
+  maybeStartCompetitorSnapshotSweep(pool);
   maybeStartRoleRoomAiAuditPrune();
   maybeStartRoleRoomAgentDailyScan();
   // Scheduled-publish worker: scan role_room_instagram_publish_jobs
