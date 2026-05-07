@@ -37,6 +37,7 @@ const REQUIRED_SCOPES = [
   'publish_video',
   'business_management',
   'ads_read',
+  'ads_management',
   'attribution_read',
 ];
 

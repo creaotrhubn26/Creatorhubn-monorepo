@@ -110,6 +110,25 @@ import {
   type AdsGoal,
   type GrowthPhase,
 } from './role-room-ads-shared.js';
+import {
+  listAdAccounts as listMetaAdAccounts,
+  createCampaign as createMetaCampaign,
+  pauseCampaign as pauseMetaCampaign,
+  resumeCampaign as resumeMetaCampaign,
+  endCampaign as endMetaCampaign,
+  MetaAdsApiError,
+  type MetaCampaignObjective,
+} from './role-room-meta-ads.js';
+import {
+  insertCampaign,
+  updateCampaignStatus,
+  getCampaignById,
+  listCampaignsForUser,
+} from './role-room-ads-db.js';
+import {
+  listInstagramConnections,
+  ensureFreshConnection,
+} from './role-room-instagram-oauth.js';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -20955,6 +20974,222 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         platformAllocation: value.platformAllocation,
       }));
       res.json({ industries });
+    },
+  );
+
+  // ── Ads 2.0 — Meta campaign lifecycle ────────────────────
+  // Resolve the user's Meta access-token via the Instagram-OAuth connection
+  // (same long-lived token covers ads_read + ads_management once the user
+  // re-authorizes against the upgraded scope list).
+  async function resolveMetaToken(userId: string): Promise<string | null> {
+    const connections = await listInstagramConnections(pool, userId);
+    if (!connections.length) return null;
+    const fresh = await ensureFreshConnection(pool, connections[0]);
+    return fresh.accessToken || null;
+  }
+
+  router.get(
+    '/ads/meta/ad-accounts',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const token = await resolveMetaToken(userId);
+        if (!token) {
+          return res.status(412).json({
+            error: 'meta_not_connected',
+            detail: 'Connect Instagram/Meta first via /role-room/instagram/oauth/start',
+          });
+        }
+        const accounts = await listMetaAdAccounts(token);
+        res.json({ accounts });
+      } catch (error) {
+        if (error instanceof MetaAdsApiError) {
+          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: error.message });
+        }
+        res.status(500).json({ error: 'Failed to list Meta ad accounts', detail: String(error) });
+      }
+    },
+  );
+
+  router.post(
+    '/ads/meta/campaigns',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const {
+          projectId,
+          businessProfileId,
+          adAccountId,
+          name,
+          objective,
+          dailyBudgetNok,
+          goal,
+          sourcePostId,
+          sourceAssetId,
+          audienceConfig,
+          creativeConfig,
+        } = req.body ?? {};
+
+        if (!projectId || !adAccountId || !name || !objective) {
+          return res.status(400).json({
+            error: 'invalid_input',
+            detail: 'projectId, adAccountId, name, objective required',
+          });
+        }
+
+        const token = await resolveMetaToken(userId);
+        if (!token) {
+          return res.status(412).json({ error: 'meta_not_connected' });
+        }
+
+        // Convert NOK daily budget → currency-cents (assume NOK ad-account; the
+        // metrics poll will reconcile if account is in another currency).
+        const dailyBudgetCents =
+          typeof dailyBudgetNok === 'number' ? Math.round(dailyBudgetNok * 100) : undefined;
+
+        // 1) Create the campaign on Meta (PAUSED by default — user activates from UI)
+        const metaResult = await createMetaCampaign(token, {
+          adAccountId,
+          name,
+          objective: objective as MetaCampaignObjective,
+          dailyBudgetCents,
+          status: 'PAUSED',
+        });
+
+        // 2) Persist locally so we own the campaign-list source-of-truth
+        const row = await insertCampaign(pool, {
+          projectId,
+          userId,
+          businessProfileId: businessProfileId ?? null,
+          platform: 'meta',
+          externalCampaignId: metaResult.id,
+          sourcePostId: sourcePostId ?? null,
+          sourceAssetId: sourceAssetId ?? null,
+          status: 'paused',
+          goal: goal ?? null,
+          dailyBudgetNok: dailyBudgetNok ?? null,
+          audienceConfig: audienceConfig ?? null,
+          creativeConfig: creativeConfig ?? null,
+        });
+
+        res.status(201).json({ campaign: row });
+      } catch (error) {
+        if (error instanceof MetaAdsApiError) {
+          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: error.message });
+        }
+        res.status(500).json({ error: 'Failed to create Meta campaign', detail: String(error) });
+      }
+    },
+  );
+
+  router.post(
+    '/ads/meta/campaigns/:campaignId/pause',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const campaign = await getCampaignById(pool, req.params.campaignId);
+        if (!campaign || campaign.userId !== userId) {
+          return res.status(404).json({ error: 'campaign_not_found' });
+        }
+        if (campaign.platform !== 'meta' || !campaign.externalCampaignId) {
+          return res.status(400).json({ error: 'not_a_meta_campaign' });
+        }
+
+        const token = await resolveMetaToken(userId);
+        if (!token) return res.status(412).json({ error: 'meta_not_connected' });
+
+        await pauseMetaCampaign(token, campaign.externalCampaignId);
+        const updated = await updateCampaignStatus(pool, campaign.id, 'paused');
+        res.json({ campaign: updated });
+      } catch (error) {
+        if (error instanceof MetaAdsApiError) {
+          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: error.message });
+        }
+        res.status(500).json({ error: 'Failed to pause campaign', detail: String(error) });
+      }
+    },
+  );
+
+  router.post(
+    '/ads/meta/campaigns/:campaignId/resume',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const campaign = await getCampaignById(pool, req.params.campaignId);
+        if (!campaign || campaign.userId !== userId) {
+          return res.status(404).json({ error: 'campaign_not_found' });
+        }
+        if (campaign.platform !== 'meta' || !campaign.externalCampaignId) {
+          return res.status(400).json({ error: 'not_a_meta_campaign' });
+        }
+
+        const token = await resolveMetaToken(userId);
+        if (!token) return res.status(412).json({ error: 'meta_not_connected' });
+
+        await resumeMetaCampaign(token, campaign.externalCampaignId);
+        const updated = await updateCampaignStatus(pool, campaign.id, 'active');
+        res.json({ campaign: updated });
+      } catch (error) {
+        if (error instanceof MetaAdsApiError) {
+          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: error.message });
+        }
+        res.status(500).json({ error: 'Failed to resume campaign', detail: String(error) });
+      }
+    },
+  );
+
+  router.delete(
+    '/ads/meta/campaigns/:campaignId',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const campaign = await getCampaignById(pool, req.params.campaignId);
+        if (!campaign || campaign.userId !== userId) {
+          return res.status(404).json({ error: 'campaign_not_found' });
+        }
+        if (campaign.platform !== 'meta' || !campaign.externalCampaignId) {
+          return res.status(400).json({ error: 'not_a_meta_campaign' });
+        }
+
+        const token = await resolveMetaToken(userId);
+        if (!token) return res.status(412).json({ error: 'meta_not_connected' });
+
+        await endMetaCampaign(token, campaign.externalCampaignId);
+        const updated = await updateCampaignStatus(pool, campaign.id, 'ended');
+        res.json({ campaign: updated });
+      } catch (error) {
+        if (error instanceof MetaAdsApiError) {
+          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: error.message });
+        }
+        res.status(500).json({ error: 'Failed to end campaign', detail: String(error) });
+      }
+    },
+  );
+
+  // Cross-platform list — UI consumes this for the "All campaigns" view.
+  router.get(
+    '/ads/campaigns',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const projectId = typeof req.query.projectId === 'string' ? req.query.projectId : undefined;
+        const platform = typeof req.query.platform === 'string'
+          ? (req.query.platform as 'meta' | 'google' | 'tiktok' | 'linkedin')
+          : undefined;
+        const status = typeof req.query.status === 'string'
+          ? (req.query.status as 'draft' | 'active' | 'paused' | 'ended' | 'failed')
+          : undefined;
+        const campaigns = await listCampaignsForUser(pool, userId, { projectId, platform, status });
+        res.json({ campaigns });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to list campaigns', detail: String(error) });
+      }
     },
   );
 
