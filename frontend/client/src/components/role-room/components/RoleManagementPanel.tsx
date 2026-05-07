@@ -252,7 +252,7 @@ function RoleManagementPanelInner({
         return;
       }
       try {
-        const { favoritesApi } = await import('@/services/castingApiService');
+        const { favoritesApi } = await import('../services/castingApiService');
         const dbFavorites = await favoritesApi.get(projectId, 'role');
         if (dbFavorites.length > 0) {
           setFavorites(new Set(dbFavorites));
@@ -281,7 +281,7 @@ function RoleManagementPanelInner({
       const values = [...favorites];
       await settingsService.setSetting(FAVORITES_NAMESPACE, values, { projectId });
       try {
-        const { favoritesApi } = await import('@/services/castingApiService');
+        const { favoritesApi } = await import('../services/castingApiService');
         await favoritesApi.set(projectId, 'role', values);
       } catch (error) {
         console.warn('Database save failed:', error);
