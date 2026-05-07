@@ -24757,6 +24757,51 @@ function ensureCmsSchema(): Promise<void> {
           CREATE INDEX IF NOT EXISTS cms_content_key_idx ON cms_content (content_key);
           CREATE INDEX IF NOT EXISTS cms_content_type_idx ON cms_content (content_type_key);
         `);
+        // Idempotent column-migration: prod-DB hadde en tidligere
+        // versjon av cms_content_types/cms_fields/cms_content som
+        // manglet kolonner vi nå avhenger av (type_key etc). CREATE
+        // TABLE IF NOT EXISTS er no-op når tabellen finnes selv om
+        // schema avviker, så vi må ALTER for hver forventet kolonne.
+        await pool.query(`
+          ALTER TABLE cms_fields ADD COLUMN IF NOT EXISTS field_key VARCHAR(128);
+          ALTER TABLE cms_fields ADD COLUMN IF NOT EXISTS label VARCHAR(255);
+          ALTER TABLE cms_fields ADD COLUMN IF NOT EXISTS field_type VARCHAR(32) DEFAULT 'text';
+          ALTER TABLE cms_fields ADD COLUMN IF NOT EXISTS description TEXT;
+          ALTER TABLE cms_fields ADD COLUMN IF NOT EXISTS validation JSONB DEFAULT '{}'::jsonb;
+          ALTER TABLE cms_fields ADD COLUMN IF NOT EXISTS default_value TEXT;
+          ALTER TABLE cms_fields ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+          ALTER TABLE cms_content_types ADD COLUMN IF NOT EXISTS type_key VARCHAR(64);
+          ALTER TABLE cms_content_types ADD COLUMN IF NOT EXISTS label VARCHAR(255);
+          ALTER TABLE cms_content_types ADD COLUMN IF NOT EXISTS description TEXT;
+          ALTER TABLE cms_content_types ADD COLUMN IF NOT EXISTS field_keys JSONB DEFAULT '[]'::jsonb;
+          ALTER TABLE cms_content_types ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+          ALTER TABLE cms_content ADD COLUMN IF NOT EXISTS content_key VARCHAR(128);
+          ALTER TABLE cms_content ADD COLUMN IF NOT EXISTS content_type_key VARCHAR(64);
+          ALTER TABLE cms_content ADD COLUMN IF NOT EXISTS profession VARCHAR(64);
+          ALTER TABLE cms_content ADD COLUMN IF NOT EXISTS locale VARCHAR(16) DEFAULT 'nb-NO';
+          ALTER TABLE cms_content ADD COLUMN IF NOT EXISTS payload JSONB DEFAULT '{}'::jsonb;
+          ALTER TABLE cms_content ADD COLUMN IF NOT EXISTS is_published BOOLEAN DEFAULT true;
+          ALTER TABLE cms_content ADD COLUMN IF NOT EXISTS created_by VARCHAR(64);
+          ALTER TABLE cms_content ADD COLUMN IF NOT EXISTS updated_by VARCHAR(64);
+        `);
+        // UNIQUE-constraints — CREATE TABLE skipper dem hvis tabell
+        // var pre-existing, så vi sikrer dem nå. Bruker plain UNIQUE
+        // INDEX (ikke partial COALESCE-pattern) så ON CONFLICT-syntax
+        // i seed-INSERT-ene matcher index-spesifikasjonen.
+        await pool.query(`
+          CREATE UNIQUE INDEX IF NOT EXISTS cms_fields_field_key_uq
+            ON cms_fields (field_key);
+          CREATE UNIQUE INDEX IF NOT EXISTS cms_content_types_type_key_uq
+            ON cms_content_types (type_key);
+        `);
+        // cms_content sin (content_key, profession, locale) UNIQUE er
+        // tricky pga NULL-semantikk; bruker uttrykksindex med COALESCE
+        // så NULL profession kolliderer på samme måte som '__none__'.
+        // ON CONFLICT-clausen i seed-INSERT må endres til å matche.
+        await pool.query(`
+          CREATE UNIQUE INDEX IF NOT EXISTS cms_content_compound_uq
+            ON cms_content (content_key, COALESCE(profession, ''), COALESCE(locale, 'nb-NO'));
+        `);
         // Seed default-content. Idempotent via ON CONFLICT så
         // re-runs ikke overskriver admin-redigeringer.
         await pool.query(`
@@ -24792,7 +24837,7 @@ function ensureCmsSchema(): Promise<void> {
             ('gallery.empty_state', 'dashboard_hero', 'music_producer', 'nb-NO',
              '{"value": "Ingen lyd-galleri ennå — opprett ditt første for å levere spor til en klient."}'::jsonb),
             ('design.tokens', 'design_system', NULL, 'nb-NO', '{}'::jsonb)
-          ON CONFLICT (content_key, profession, locale) DO NOTHING;
+          ON CONFLICT (content_key, COALESCE(profession, ''), COALESCE(locale, 'nb-NO')) DO NOTHING;
         `);
       } catch (err) {
         console.warn('[cms] schema-ensure failed:', err);
@@ -25033,7 +25078,7 @@ app.put("/api/cms/content/:key", async (req, res) => {
     await pool.query(
       `INSERT INTO cms_content (content_key, content_type_key, profession, locale, payload, is_published, created_by, updated_by)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
-       ON CONFLICT (content_key, profession, locale) DO UPDATE SET
+       ON CONFLICT (content_key, COALESCE(profession, ''), COALESCE(locale, 'nb-NO')) DO UPDATE SET
          content_type_key = EXCLUDED.content_type_key,
          payload = EXCLUDED.payload,
          is_published = EXCLUDED.is_published,
