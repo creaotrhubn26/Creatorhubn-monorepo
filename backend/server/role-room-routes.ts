@@ -126,6 +126,12 @@ import {
 } from './role-room-carousel-ai-image.js';
 import { findGalleryMatches } from './role-room-carousel-gallery-match.js';
 import {
+  publishCarouselPost,
+  ValidationFailedError,
+  type PublishablePost,
+  type PublishableSlide,
+} from './role-room-carousel-publisher.js';
+import {
   listAdAccounts as listMetaAdAccounts,
   createCampaign as createMetaCampaign,
   pauseCampaign as pauseMetaCampaign,
@@ -21615,6 +21621,84 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       } catch (error) {
         res.status(500).json({
           error: 'Failed to find gallery matches',
+          detail: String((error as Error)?.message ?? error),
+        });
+      }
+    },
+  );
+
+  router.post(
+    '/carousel/posts/:postId/approve-and-publish',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const { projectId, scheduledAt } = req.body ?? {};
+        if (!projectId) {
+          return res.status(400).json({ error: 'invalid_input', detail: 'projectId required' });
+        }
+        const owns = await assertPostOwnership(userId, req.params.postId);
+        if (!owns) return res.status(404).json({ error: 'post_not_found' });
+
+        const postRow = await pool.query(
+          `SELECT * FROM carousel_posts WHERE id = $1`,
+          [req.params.postId],
+        );
+        if (!postRow.rowCount) return res.status(404).json({ error: 'post_not_found' });
+        const dbPost = postRow.rows[0];
+
+        const slidesRow = await pool.query(
+          `SELECT * FROM carousel_slides WHERE post_id = $1 ORDER BY slide_index ASC`,
+          [req.params.postId],
+        );
+
+        const post: PublishablePost = {
+          id: dbPost.id,
+          draftId: dbPost.draft_id,
+          dayOfWeek: dbPost.day_of_week,
+          format: dbPost.format,
+          primaryPlatform: dbPost.primary_platform,
+          hook: dbPost.hook,
+          narrative: dbPost.narrative,
+          caption: dbPost.caption,
+          scheduledAt: scheduledAt ?? dbPost.scheduled_at ?? null,
+        };
+
+        const slides: PublishableSlide[] = slidesRow.rows.map((s) => ({
+          id: s.id,
+          postId: s.post_id,
+          slideIndex: s.slide_index,
+          imageRef: s.image_ref,
+          textBlocks: s.text_blocks,
+          brandOverlays: s.brand_overlays,
+        }));
+
+        const result = await publishCarouselPost(pool, userId, post, slides, {
+          projectId,
+        });
+
+        // Update parent draft approved-count + status
+        await pool.query(
+          `UPDATE carousel_drafts d
+              SET approved_post_count = (
+                SELECT COUNT(*) FROM carousel_posts p
+                 WHERE p.draft_id = d.id AND p.status IN ('approved','scheduled','published')
+              )
+            WHERE d.id = $1`,
+          [dbPost.draft_id],
+        );
+
+        res.json({ result });
+      } catch (error) {
+        if (error instanceof ValidationFailedError) {
+          return res.status(422).json({
+            error: 'validation_failed',
+            detail: error.message,
+            errors: error.errors,
+          });
+        }
+        res.status(500).json({
+          error: 'Failed to approve and publish',
           detail: String((error as Error)?.message ?? error),
         });
       }

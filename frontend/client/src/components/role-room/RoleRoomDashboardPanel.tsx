@@ -1113,7 +1113,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                   />
                 )}
                 {subTab === 'carousel' && (
-                  <CarouselPanel />
+                  <CarouselPanel projectId={selectedProjectId} />
                 )}
               </CardContent>
             </Card>

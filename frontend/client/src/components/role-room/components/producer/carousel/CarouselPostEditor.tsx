@@ -48,6 +48,8 @@ interface Props {
   onBack: () => void;
   onSlidePatch: (slideId: string, patch: Partial<CarouselSlideRow>) => void;
   onCaptionPatch: (postId: string, platform: CarouselPlatform, value: string) => void;
+  onApprovePublish?: (postId: string) => Promise<void> | void;
+  approveBusy?: boolean;
 }
 
 export default function CarouselPostEditor({
@@ -56,6 +58,8 @@ export default function CarouselPostEditor({
   onBack,
   onSlidePatch,
   onCaptionPatch,
+  onApprovePublish,
+  approveBusy,
 }: Props) {
   const [selectedPlatform, setSelectedPlatform] = useState<CarouselPlatform>(
     post.primary_platform,
@@ -90,14 +94,30 @@ export default function CarouselPostEditor({
         <IconButton onClick={onBack} sx={{ color: '#c084fc' }}>
           <ArrowBackIcon />
         </IconButton>
-        <Box>
+        <Box sx={{ flex: 1 }}>
           <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.65)' }}>
-            {post.format} · dag {post.day_of_week}
+            {post.format} · dag {post.day_of_week} · status: {post.status}
           </Typography>
           <Typography variant="h6" sx={{ color: '#e2e8f0', fontWeight: 700 }}>
             {post.hook}
           </Typography>
         </Box>
+        {onApprovePublish && post.status === 'draft' && (
+          <Button
+            variant="contained"
+            onClick={() => onApprovePublish(post.id)}
+            disabled={approveBusy}
+            sx={{
+              bgcolor: '#34d399',
+              color: '#0a0617',
+              fontWeight: 700,
+              '&:hover': { bgcolor: '#10b981' },
+              textTransform: 'none',
+            }}
+          >
+            {approveBusy ? 'Publiserer…' : 'Godkjenn + send til Feed Planner'}
+          </Button>
+        )}
       </Stack>
 
       {/* Slide-strip */}

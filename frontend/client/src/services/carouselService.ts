@@ -212,6 +212,24 @@ export interface GalleryAssetMatch {
   matchedOn: Array<'tag' | 'caption' | 'project'>;
 }
 
+export interface PublishResult {
+  feedPlanId: string;
+  feedPlanPostId: string;
+  platform: CarouselPlatform;
+  insertedAt: string;
+  validationWarnings: string[];
+}
+
+export async function approveAndPublishPost(
+  postId: string,
+  body: { projectId: string; scheduledAt?: string },
+): Promise<{ result: PublishResult }> {
+  return carouselFetch(`/carousel/posts/${postId}/approve-and-publish`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
 export async function findGalleryMatchesForSlide(
   slideId: string,
   body: { prompt: string; projectId?: string; limit?: number },

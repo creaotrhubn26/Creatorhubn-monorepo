@@ -14,6 +14,7 @@ import {
   Button,
   Card,
   CircularProgress,
+  Snackbar,
   Stack,
   TextField,
   Typography,
@@ -22,6 +23,7 @@ import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import CarouselWeekOverview from './CarouselWeekOverview';
 import CarouselPostEditor from './CarouselPostEditor';
 import {
+  approveAndPublishPost,
   generateDraft,
   getDraft,
   patchSlide,
@@ -46,11 +48,17 @@ function nextMondayISO(): string {
   return today.toISOString().slice(0, 10);
 }
 
-export default function CarouselPanel() {
+interface CarouselPanelProps {
+  projectId?: string | null;
+}
+
+export default function CarouselPanel({ projectId }: CarouselPanelProps = {}) {
   const [state, setState] = useState<State>({ kind: 'empty' });
   const [url, setUrl] = useState('https://');
   const [weekStarting, setWeekStarting] = useState(nextMondayISO());
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
+  const [approveBusyPostId, setApproveBusyPostId] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ kind: 'success' | 'error'; message: string } | null>(null);
 
   const refreshDraft = useCallback(async (draftId: string) => {
     const data = await getDraft(draftId);
@@ -152,6 +160,42 @@ export default function CarouselPanel() {
       });
     }, 1200);
     captionPatchTimers.current.set(postId, timer);
+  }
+
+  async function handleApprovePublish(postId: string) {
+    if (!projectId) {
+      setToast({
+        kind: 'error',
+        message: 'Velg et prosjekt før du publiserer (Role Room → prosjektliste).',
+      });
+      return;
+    }
+    setApproveBusyPostId(postId);
+    try {
+      const post = state.kind === 'ready' ? state.posts.find((p) => p.id === postId) : null;
+      const { result } = await approveAndPublishPost(postId, {
+        projectId,
+        scheduledAt: post?.scheduled_at ?? undefined,
+      });
+      if (state.kind === 'ready') {
+        await refreshDraft(state.draft.id);
+      }
+      const warnings = result.validationWarnings ?? [];
+      setToast({
+        kind: 'success',
+        message: warnings.length
+          ? `Sendt til Feed Planner med ${warnings.length} advarsel(er): ${warnings.join('; ')}`
+          : 'Sendt til Feed Planner!',
+      });
+      setEditingPostId(null);
+    } catch (err) {
+      setToast({
+        kind: 'error',
+        message: (err as Error).message || 'Kunne ikke publisere',
+      });
+    } finally {
+      setApproveBusyPostId(null);
+    }
   }
 
   // Auto-load most recent draft if any
@@ -262,13 +306,33 @@ export default function CarouselPanel() {
     const slides = state.slides.filter((s) => s.post_id === editingPostId);
     if (post) {
       return (
-        <CarouselPostEditor
-          post={post}
-          slides={slides}
-          onBack={() => setEditingPostId(null)}
-          onSlidePatch={handleSlidePatch}
-          onCaptionPatch={handleCaptionPatch}
-        />
+        <>
+          <CarouselPostEditor
+            post={post}
+            slides={slides}
+            onBack={() => setEditingPostId(null)}
+            onSlidePatch={handleSlidePatch}
+            onCaptionPatch={handleCaptionPatch}
+            onApprovePublish={handleApprovePublish}
+            approveBusy={approveBusyPostId === post.id}
+          />
+          <Snackbar
+            open={!!toast}
+            autoHideDuration={6000}
+            onClose={() => setToast(null)}
+            anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+          >
+            {toast ? (
+              <Alert
+                onClose={() => setToast(null)}
+                severity={toast.kind}
+                sx={{ width: '100%' }}
+              >
+                {toast.message}
+              </Alert>
+            ) : undefined}
+          </Snackbar>
+        </>
       );
     }
   }
@@ -294,6 +358,18 @@ export default function CarouselPanel() {
           Generér ny uke
         </Button>
       </Stack>
+      <Snackbar
+        open={!!toast}
+        autoHideDuration={6000}
+        onClose={() => setToast(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        {toast ? (
+          <Alert onClose={() => setToast(null)} severity={toast.kind} sx={{ width: '100%' }}>
+            {toast.message}
+          </Alert>
+        ) : undefined}
+      </Snackbar>
     </Stack>
   );
 }
