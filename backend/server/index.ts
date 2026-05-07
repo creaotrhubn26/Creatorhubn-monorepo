@@ -853,6 +853,33 @@ app.post(
               clientEmail: intent.metadata?.clientEmail ?? null,
             },
           });
+          // Slice 10.4 — print-order branch. Hvis metadata.kind ===
+          // 'print_order', stempel print_orders-rad i tillegg.
+          // payment_status='succeeded' så frontend kan vise
+          // bekreftelse, fulfillment_status fortsetter på 'pending'
+          // til fotograf manuelt markerer som sendt.
+          if (intent.metadata?.kind === 'print_order') {
+            try {
+              await pool.query(
+                `UPDATE print_orders
+                 SET payment_status = 'succeeded', updated_at = NOW()
+                 WHERE stripe_payment_intent_id = $1`,
+                [intent.id],
+              );
+            } catch (printErr) {
+              console.warn('[print-store] mark-paid failed:', printErr);
+            }
+            recordAnalyticsEvent('print_order.paid', {
+              entityType: 'print_order',
+              entityId: String(intent.metadata?.galleryId ?? ''),
+              actorUserId: intent.metadata?.photographerId ?? null,
+              metadata: {
+                amount: intent.amount,
+                currency: intent.currency,
+                stripeIntentId: intent.id,
+              },
+            });
+          }
           break;
         }
         case "payment_intent.payment_failed": {
@@ -24817,6 +24844,417 @@ async function dispatchClientGalleryNotification(
     console.warn(`[client-gallery-notify] dispatch ${type} failed:`, err);
   }
 }
+
+// Slice 10.4 — Print Store foundation. Tre tabeller som lar
+// fotografen tilby fysiske prints til klient-galleri-besøkende:
+//   print_products: per-photographer-katalog (8x10 / 11x14 / canvas /
+//     etc) med pris og produktnavn
+//   print_orders: én rad per klient-bestilling med Stripe-payment-id
+//   print_order_items: bilde-id × pris-rad (selectedImageIds × product)
+// Bygger på samme schema-ensure-mønster som CMS/analytics (idempotent
+// CREATE TABLE IF NOT EXISTS + ALTER ADD COLUMN IF NOT EXISTS for
+// pre-existing ghost-tables).
+let printStoreSchemaReady: Promise<void> | null = null;
+function ensurePrintStoreSchema(): Promise<void> {
+  if (!printStoreSchemaReady) {
+    printStoreSchemaReady = (async () => {
+      try {
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS print_products (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            photographer_id VARCHAR(64) NOT NULL,
+            name VARCHAR(255) NOT NULL,
+            description TEXT,
+            size_label VARCHAR(64),
+            material VARCHAR(64),
+            unit_price NUMERIC(10,2) NOT NULL DEFAULT 0,
+            currency VARCHAR(8) NOT NULL DEFAULT 'NOK',
+            is_active BOOLEAN DEFAULT true,
+            sort_order INT DEFAULT 0,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW()
+          );
+          CREATE TABLE IF NOT EXISTS print_orders (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            gallery_id VARCHAR(64),
+            photographer_id VARCHAR(64) NOT NULL,
+            client_email VARCHAR(255) NOT NULL,
+            client_name VARCHAR(255),
+            shipping_address JSONB,
+            stripe_payment_intent_id VARCHAR(128),
+            stripe_session_id VARCHAR(128),
+            total_amount NUMERIC(10,2) NOT NULL DEFAULT 0,
+            currency VARCHAR(8) NOT NULL DEFAULT 'NOK',
+            payment_status VARCHAR(32) NOT NULL DEFAULT 'pending',
+            fulfillment_status VARCHAR(32) DEFAULT 'pending',
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW()
+          );
+          CREATE TABLE IF NOT EXISTS print_order_items (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            order_id UUID NOT NULL,
+            product_id UUID NOT NULL,
+            image_id VARCHAR(64),
+            quantity INT NOT NULL DEFAULT 1,
+            unit_price NUMERIC(10,2) NOT NULL,
+            created_at TIMESTAMPTZ DEFAULT NOW()
+          );
+          CREATE INDEX IF NOT EXISTS print_products_photographer_idx
+            ON print_products (photographer_id, is_active);
+          CREATE INDEX IF NOT EXISTS print_orders_photographer_idx
+            ON print_orders (photographer_id, created_at DESC);
+          CREATE INDEX IF NOT EXISTS print_orders_gallery_idx
+            ON print_orders (gallery_id);
+          CREATE INDEX IF NOT EXISTS print_orders_stripe_intent_idx
+            ON print_orders (stripe_payment_intent_id);
+          CREATE INDEX IF NOT EXISTS print_order_items_order_idx
+            ON print_order_items (order_id);
+        `);
+      } catch (err) {
+        console.warn('[print-store] schema-ensure failed:', err);
+        printStoreSchemaReady = null;
+        throw err;
+      }
+    })();
+  }
+  return printStoreSchemaReady;
+}
+
+// Photographer print-product CRUD
+app.get("/api/photographer/print-products", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  try {
+    await ensurePrintStoreSchema();
+    const result = await pool.query(
+      `SELECT id, name, description, size_label, material, unit_price,
+              currency, is_active, sort_order, created_at, updated_at
+       FROM print_products
+       WHERE photographer_id = $1
+       ORDER BY sort_order ASC, created_at DESC`,
+      [session.userId],
+    );
+    res.json({
+      products: result.rows.map((r: Record<string, unknown>) => ({
+        id: r.id,
+        name: r.name,
+        description: r.description ?? '',
+        sizeLabel: r.size_label ?? '',
+        material: r.material ?? '',
+        unitPrice: Number(r.unit_price),
+        currency: r.currency,
+        isActive: r.is_active !== false,
+        sortOrder: r.sort_order ?? 0,
+      })),
+    });
+  } catch (err) {
+    console.warn('[print-store] list products failed:', err);
+    res.json({ products: [] });
+  }
+});
+
+app.post("/api/photographer/print-products", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  try {
+    await ensurePrintStoreSchema();
+    const { name, description, sizeLabel, material, unitPrice, currency, sortOrder, isActive } = req.body ?? {};
+    if (!name || unitPrice == null) {
+      return res.status(400).json({ error: 'name_and_unitPrice_required' });
+    }
+    const result = await pool.query(
+      `INSERT INTO print_products (photographer_id, name, description, size_label, material, unit_price, currency, sort_order, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING id`,
+      [
+        session.userId,
+        String(name),
+        description ?? null,
+        sizeLabel ?? null,
+        material ?? null,
+        Number(unitPrice),
+        String(currency || 'NOK').toUpperCase(),
+        Number(sortOrder) || 0,
+        isActive !== false,
+      ],
+    );
+    res.status(201).json({ id: result.rows[0].id, success: true });
+  } catch (err) {
+    console.error('[print-store] create product failed:', err);
+    res.status(500).json({
+      error: 'create_product_failed',
+      detail: err instanceof Error ? err.message : String(err),
+    });
+  }
+});
+
+app.put("/api/photographer/print-products/:id", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  try {
+    await ensurePrintStoreSchema();
+    const { name, description, sizeLabel, material, unitPrice, currency, sortOrder, isActive } = req.body ?? {};
+    await pool.query(
+      `UPDATE print_products
+       SET name = COALESCE($1, name),
+           description = COALESCE($2, description),
+           size_label = COALESCE($3, size_label),
+           material = COALESCE($4, material),
+           unit_price = COALESCE($5, unit_price),
+           currency = COALESCE($6, currency),
+           sort_order = COALESCE($7, sort_order),
+           is_active = COALESCE($8, is_active),
+           updated_at = NOW()
+       WHERE id = $9 AND photographer_id = $10`,
+      [
+        name ?? null,
+        description ?? null,
+        sizeLabel ?? null,
+        material ?? null,
+        unitPrice != null ? Number(unitPrice) : null,
+        currency ? String(currency).toUpperCase() : null,
+        sortOrder != null ? Number(sortOrder) : null,
+        isActive ?? null,
+        req.params.id,
+        session.userId,
+      ],
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[print-store] update product failed:', err);
+    res.status(500).json({ error: 'update_product_failed' });
+  }
+});
+
+app.delete("/api/photographer/print-products/:id", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  try {
+    await ensurePrintStoreSchema();
+    await pool.query(
+      `DELETE FROM print_products WHERE id = $1 AND photographer_id = $2`,
+      [req.params.id, session.userId],
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[print-store] delete product failed:', err);
+    res.status(500).json({ error: 'delete_product_failed' });
+  }
+});
+
+// Public — klient ser tilgjengelige prints for sitt galleri
+app.get("/api/client/gallery/:accessToken/print-products", async (req, res) => {
+  const accessToken = String(req.params.accessToken || "").trim();
+  if (!accessToken) return res.status(400).json({ error: "missing_access_token" });
+  try {
+    const access = await gateGalleryAccess(accessToken, readGalleryPasswordHeader(req));
+    if (!access.ok) {
+      return res.status(access.status).json({
+        error: access.error,
+        ...(access.requiresPassword ? { requiresPassword: true } : {}),
+      });
+    }
+    await ensurePrintStoreSchema();
+    const galleryRow = await pool.query(
+      `SELECT photographer_id FROM photographer_client_galleries WHERE id = $1 LIMIT 1`,
+      [access.gallery.id],
+    );
+    const photographerId = galleryRow.rows[0]?.photographer_id;
+    if (!photographerId) return res.json({ products: [] });
+    const result = await pool.query(
+      `SELECT id, name, description, size_label, material, unit_price, currency, sort_order
+       FROM print_products
+       WHERE photographer_id = $1 AND is_active = true
+       ORDER BY sort_order ASC, created_at DESC`,
+      [photographerId],
+    );
+    res.json({
+      products: result.rows.map((r: Record<string, unknown>) => ({
+        id: r.id,
+        name: r.name,
+        description: r.description ?? '',
+        sizeLabel: r.size_label ?? '',
+        material: r.material ?? '',
+        unitPrice: Number(r.unit_price),
+        currency: r.currency,
+      })),
+    });
+  } catch (err) {
+    console.warn('[print-store] public list failed:', err);
+    res.json({ products: [] });
+  }
+});
+
+// Klient bestiller prints — oppretter ordre + Stripe Checkout-session.
+// Webhook handler nedenfor stempler payment_status='succeeded' og fyrer
+// fulfillment-event til fotograf.
+app.post("/api/client/gallery/:accessToken/print-order", async (req, res) => {
+  const accessToken = String(req.params.accessToken || "").trim();
+  if (!accessToken) return res.status(400).json({ error: "missing_access_token" });
+  const items = Array.isArray(req.body?.items) ? req.body.items : null;
+  const shippingAddress = req.body?.shippingAddress ?? null;
+  const clientEmail = typeof req.body?.clientEmail === 'string' ? req.body.clientEmail.trim() : '';
+  const clientName = typeof req.body?.clientName === 'string' ? req.body.clientName.trim() : '';
+  if (!items || items.length === 0) {
+    return res.status(400).json({ error: "items_required" });
+  }
+  try {
+    const access = await gateGalleryAccess(accessToken, readGalleryPasswordHeader(req));
+    if (!access.ok) {
+      return res.status(access.status).json({
+        error: access.error,
+        ...(access.requiresPassword ? { requiresPassword: true } : {}),
+      });
+    }
+    await ensurePrintStoreSchema();
+    const galleryRow = await pool.query(
+      `SELECT photographer_id FROM photographer_client_galleries WHERE id = $1 LIMIT 1`,
+      [access.gallery.id],
+    );
+    const photographerId = galleryRow.rows[0]?.photographer_id;
+    if (!photographerId) return res.status(404).json({ error: 'gallery_owner_not_found' });
+
+    // Resolve product prices server-side så klient ikke kan
+    // manipulere unit_price på vei inn.
+    const productIds = items.map((i: Record<string, unknown>) => String(i.productId));
+    const productRows = await pool.query(
+      `SELECT id, name, unit_price, currency FROM print_products
+       WHERE id = ANY($1::uuid[]) AND photographer_id = $2 AND is_active = true`,
+      [productIds, photographerId],
+    );
+    const productMap = new Map<string, { name: string; unitPrice: number; currency: string }>();
+    for (const r of productRows.rows) {
+      productMap.set(String(r.id), {
+        name: r.name,
+        unitPrice: Number(r.unit_price),
+        currency: r.currency,
+      });
+    }
+    let total = 0;
+    let currency = 'NOK';
+    const lineItems: Array<{ quantity: number; price_data: Record<string, unknown> }> = [];
+    for (const item of items as Array<Record<string, unknown>>) {
+      const pid = String(item.productId);
+      const product = productMap.get(pid);
+      if (!product) continue;
+      const qty = Math.max(1, Math.min(99, Number(item.quantity) || 1));
+      total += product.unitPrice * qty;
+      currency = product.currency;
+      lineItems.push({
+        quantity: qty,
+        price_data: {
+          currency: product.currency.toLowerCase(),
+          unit_amount: Math.round(product.unitPrice * 100),
+          product_data: {
+            name: product.name,
+            description: item.imageId ? `Bilde-id: ${String(item.imageId).slice(0, 16)}` : undefined,
+          },
+        },
+      });
+    }
+    if (lineItems.length === 0) {
+      return res.status(400).json({ error: 'no_valid_items' });
+    }
+
+    const effectiveEmail = clientEmail || access.gallery.clientEmail;
+    if (!effectiveEmail) return res.status(400).json({ error: 'client_email_required' });
+
+    const stripe = getCreatorHubStripeClient();
+    if (!stripe) return res.status(503).json({ error: 'stripe_not_configured' });
+
+    const publicHost = (process.env.CREATORHUB_PUBLIC_URL ?? 'https://app.creatorhubn.com').replace(/\/$/, '');
+    const session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      payment_method_types: ['card'],
+      line_items: lineItems,
+      customer_email: effectiveEmail,
+      shipping_address_collection: { allowed_countries: ['NO', 'SE', 'DK', 'FI', 'IS'] },
+      success_url: `${publicHost}/client/gallery/${accessToken}?print=success&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${publicHost}/client/gallery/${accessToken}?print=cancelled`,
+      metadata: {
+        kind: 'print_order',
+        galleryId: access.gallery.id,
+        photographerId,
+        accessToken: accessToken.slice(0, 32),
+      },
+      payment_intent_data: {
+        metadata: {
+          kind: 'print_order',
+          galleryId: access.gallery.id,
+          photographerId,
+          accessToken: accessToken.slice(0, 32),
+        },
+        receipt_email: effectiveEmail,
+        description: `CreatorHub print-bestilling — ${lineItems.length} produkter`,
+      },
+    });
+
+    // Insert pending ordre + items
+    const orderResult = await pool.query(
+      `INSERT INTO print_orders
+         (gallery_id, photographer_id, client_email, client_name, shipping_address,
+          stripe_payment_intent_id, stripe_session_id, total_amount, currency,
+          payment_status, fulfillment_status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', 'pending')
+       RETURNING id`,
+      [
+        access.gallery.id,
+        photographerId,
+        effectiveEmail,
+        clientName || null,
+        shippingAddress ? JSON.stringify(shippingAddress) : null,
+        typeof session.payment_intent === 'string' ? session.payment_intent : null,
+        session.id,
+        total,
+        currency,
+      ],
+    );
+    const orderId = orderResult.rows[0].id;
+    for (const item of items as Array<Record<string, unknown>>) {
+      const pid = String(item.productId);
+      const product = productMap.get(pid);
+      if (!product) continue;
+      await pool.query(
+        `INSERT INTO print_order_items (order_id, product_id, image_id, quantity, unit_price)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [
+          orderId,
+          pid,
+          item.imageId ? String(item.imageId) : null,
+          Math.max(1, Math.min(99, Number(item.quantity) || 1)),
+          product.unitPrice,
+        ],
+      );
+    }
+
+    recordAnalyticsEvent('print_order.created', {
+      entityType: 'print_order',
+      entityId: orderId,
+      actorUserId: photographerId,
+      metadata: {
+        galleryId: access.gallery.id,
+        clientEmail: effectiveEmail,
+        itemCount: lineItems.length,
+        totalAmount: total,
+        currency,
+      },
+    });
+
+    res.json({
+      orderId,
+      sessionId: session.id,
+      checkoutUrl: session.url,
+      total,
+      currency,
+    });
+  } catch (err) {
+    console.error('[print-store] create order failed:', err);
+    res.status(500).json({
+      error: 'create_order_failed',
+      detail: err instanceof Error ? err.message : String(err),
+    });
+  }
+});
 
 /// Build the share URL the photographer clicks in the email. Mirrors
 /// the bridge's URL construction so the link goes to the same viewer.
