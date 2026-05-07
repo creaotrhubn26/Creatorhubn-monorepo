@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Pre-push: catches the two prod-deploy traps that have repeatedly broken
+# Render and Vercel builds.
+#   1. backend/package-lock.json drift — Dockerfile runs 'npm ci' standalone
+#      in /app/backend, which fails if the lock isn't synced with package.json.
+#   2. `await import('@/...')` — rollup (Vercel prod build) cannot resolve
+#      the @ alias inside dynamic imports, even though local tsc passes.
+#
+# Skip with: `git push --no-verify` (use sparingly; both checks fix recurring
+# outages, not stylistic concerns).
+
+set -e
+
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
+
+red()   { printf '\033[0;31m%s\033[0m\n' "$*"; }
+green() { printf '\033[0;32m%s\033[0m\n' "$*"; }
+yellow(){ printf '\033[0;33m%s\033[0m\n' "$*"; }
+
+# ── Check 1: backend lock-file drift ──────────────────────────────────────
+yellow "[pre-push] Checking backend/package-lock.json sync…"
+TMP=$(mktemp)
+cp backend/package-lock.json "$TMP"
+(cd backend && npm install --workspaces=false --package-lock-only --silent >/dev/null 2>&1) || {
+  cp "$TMP" backend/package-lock.json
+  rm "$TMP"
+  red "[pre-push] npm install --package-lock-only failed. Resolve manually before pushing."
+  exit 1
+}
+if ! cmp -s backend/package-lock.json "$TMP"; then
+  cp "$TMP" backend/package-lock.json
+  rm "$TMP"
+  red "[pre-push] backend/package-lock.json is out of sync with backend/package.json."
+  red "           Render's 'npm ci' will fail (this trap has cost ~3 weeks of failed deploys)."
+  yellow "Fix:"
+  yellow "    cd backend && npm install --workspaces=false --package-lock-only"
+  yellow "    git add backend/package-lock.json && git commit -m 'chore: sync backend lock'"
+  exit 1
+fi
+rm "$TMP"
+green "[pre-push] Lock-file in sync."
+
+# ── Check 2: dynamic-import @-alias ───────────────────────────────────────
+yellow "[pre-push] Scanning for await import('@/...') — rollup-incompatible…"
+HITS=$(grep -rn "await import('@/" frontend/client/src/ --include="*.ts" --include="*.tsx" 2>/dev/null || true)
+if [ -n "$HITS" ]; then
+  red "[pre-push] Found dynamic imports using '@/' alias — Vercel rollup-build will fail:"
+  printf '%s\n' "$HITS" | sed 's/^/    /'
+  yellow "Fix: replace '@/<path>' with a relative path (e.g. '../services/foo')."
+  exit 1
+fi
+green "[pre-push] No rollup-incompatible dynamic imports."
+
+green "[pre-push] All checks passed."

@@ -20,7 +20,8 @@
     "smoke:role-room:live": "node scripts/role-room-live-smoke.mjs",
     "e2e:role-room-exporter:live": "node scripts/role-room-exporter-live-e2e.mjs",
     "e2e:role-room-google-workspace:live": "node scripts/role-room-google-workspace-live-e2e.mjs",
-    "deploy:role-room:prod": "node scripts/deploy-role-room-prod.mjs"
+    "deploy:role-room:prod": "node scripts/deploy-role-room-prod.mjs",
+    "prepare": "git config core.hooksPath .githooks"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"
