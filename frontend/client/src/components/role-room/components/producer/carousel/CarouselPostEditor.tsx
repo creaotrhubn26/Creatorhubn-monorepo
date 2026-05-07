@@ -49,7 +49,16 @@ interface Props {
   onSlidePatch: (slideId: string, patch: Partial<CarouselSlideRow>) => void;
   onCaptionPatch: (postId: string, platform: CarouselPlatform, value: string) => void;
   onApprovePublish?: (postId: string) => Promise<void> | void;
+  onSchedulePatch?: (postId: string, scheduledAt: string | null) => void;
   approveBusy?: boolean;
+}
+
+function toLocalInputValue(iso: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 export default function CarouselPostEditor({
@@ -59,8 +68,10 @@ export default function CarouselPostEditor({
   onSlidePatch,
   onCaptionPatch,
   onApprovePublish,
+  onSchedulePatch,
   approveBusy,
 }: Props) {
+  const scheduledFuture = !!post.scheduled_at && new Date(post.scheduled_at).getTime() > Date.now();
   const [selectedPlatform, setSelectedPlatform] = useState<CarouselPlatform>(
     post.primary_platform,
   );
@@ -103,20 +114,46 @@ export default function CarouselPostEditor({
           </Typography>
         </Box>
         {onApprovePublish && post.status === 'draft' && (
-          <Button
-            variant="contained"
-            onClick={() => onApprovePublish(post.id)}
-            disabled={approveBusy}
-            sx={{
-              bgcolor: '#34d399',
-              color: '#0a0617',
-              fontWeight: 700,
-              '&:hover': { bgcolor: '#10b981' },
-              textTransform: 'none',
-            }}
-          >
-            {approveBusy ? 'Publiserer…' : 'Godkjenn + send til Feed Planner'}
-          </Button>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            {onSchedulePatch && (
+              <TextField
+                type="datetime-local"
+                size="small"
+                label="Planlegg (valgfritt)"
+                value={toLocalInputValue(post.scheduled_at)}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  onSchedulePatch(post.id, v ? new Date(v).toISOString() : null);
+                }}
+                InputLabelProps={{ shrink: true, sx: { color: 'rgba(226,232,240,0.65)' } }}
+                sx={{
+                  width: 200,
+                  '& .MuiOutlinedInput-root': {
+                    color: '#e2e8f0',
+                    '& fieldset': { borderColor: 'rgba(168,85,247,0.35)' },
+                  },
+                }}
+              />
+            )}
+            <Button
+              variant="contained"
+              onClick={() => onApprovePublish(post.id)}
+              disabled={approveBusy}
+              sx={{
+                bgcolor: '#34d399',
+                color: '#0a0617',
+                fontWeight: 700,
+                '&:hover': { bgcolor: '#10b981' },
+                textTransform: 'none',
+              }}
+            >
+              {approveBusy
+                ? 'Publiserer…'
+                : scheduledFuture
+                  ? 'Godkjenn + planlegg'
+                  : 'Godkjenn + send nå'}
+            </Button>
+          </Stack>
         )}
       </Stack>
 

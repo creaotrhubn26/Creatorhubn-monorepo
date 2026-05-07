@@ -162,6 +162,22 @@ export default function CarouselPanel({ projectId }: CarouselPanelProps = {}) {
     captionPatchTimers.current.set(postId, timer);
   }
 
+  function handleSchedulePatch(postId: string, scheduledAt: string | null) {
+    setState((prev) => {
+      if (prev.kind !== 'ready') return prev;
+      return {
+        ...prev,
+        posts: prev.posts.map((p) =>
+          p.id === postId ? { ...p, scheduled_at: scheduledAt } : p,
+        ),
+      };
+    });
+    patchPost(postId, { scheduledAt }).catch((err) => {
+      console.error('[CarouselPanel] schedule patch failed', err);
+      setToast({ kind: 'error', message: 'Kunne ikke lagre tidspunkt' });
+    });
+  }
+
   async function handleApprovePublish(postId: string) {
     if (!projectId) {
       setToast({
@@ -314,6 +330,7 @@ export default function CarouselPanel({ projectId }: CarouselPanelProps = {}) {
             onSlidePatch={handleSlidePatch}
             onCaptionPatch={handleCaptionPatch}
             onApprovePublish={handleApprovePublish}
+            onSchedulePatch={handleSchedulePatch}
             approveBusy={approveBusyPostId === post.id}
           />
           <Snackbar

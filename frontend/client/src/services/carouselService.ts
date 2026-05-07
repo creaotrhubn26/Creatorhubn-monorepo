@@ -246,7 +246,7 @@ export async function patchPost(
     caption?: Record<CarouselPlatform, string>;
     hook?: string;
     narrative?: string;
-    scheduledAt?: string;
+    scheduledAt?: string | null;
     status?: CarouselPostRow['status'];
   },
 ): Promise<{ post: CarouselPostRow }> {
