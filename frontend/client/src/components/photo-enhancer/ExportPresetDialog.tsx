@@ -287,6 +287,14 @@ export function ExportPresetDialog(props: ExportPresetDialogProps) {
       if (targetGalleryId) {
         form.append('existingGalleryId', targetGalleryId);
       }
+      // Slice 9X.14 — generer enhancerJobId per export-batch så backend
+      // kan stemple hver bilderad i image_metadata.enhancerJobId. Lar UI
+      // senere gruppere "alle bilder fra dagens batch" og lar BI-grafen
+      // joine photo_enhancer.batch_pushed-events mot konkrete galleri-
+      // rader. Fallback i backend genererer en server-side id om
+      // frontend ikke sender én.
+      const enhancerJobId = `enh-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      form.append('enhancerJobId', enhancerJobId);
       for (const r of results) {
         form.append('images', r.blob, r.filename);
         form.append('titles', r.filename.replace(/\.[^.]+$/, ''));

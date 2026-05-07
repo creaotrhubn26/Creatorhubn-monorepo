@@ -56,6 +56,11 @@ export interface DeliveryInput {
   /// it instead of creating a new one. `accessToken` is preserved so
   /// previously-shared links keep working.
   existingGalleryId?: string;
+  /// Slice 9X.14 — Photo Enhancer job-id. Genereres på frontend ved
+  /// hver export-batch og lagres i image_metadata.enhancerJobId per
+  /// rad. Lar UI senere gruppere "alle bilder fra dagens batch" og
+  /// gir cross-system sporbarhet i analytics_events.
+  enhancerJobId?: string;
   images: DeliveryImageInput[];
   /// Dependency seams for tests. Default to real R2 + real crypto.
   r2Config?: CaptureR2Config;
@@ -249,6 +254,12 @@ export async function createClientGalleryFromBlobs(
           ...(img.metadata ?? {}),
           source: 'enhancer_delivery',
           mimeType: img.mimeType,
+          // Slice 9X.14 — Photo Enhancer job-tracking. Stempler hver
+          // bilde-rad med den batch-id'en som ble generert på frontend.
+          // Tillater senere gruppering "alle bilder fra job X" og lar
+          // BI-grafen joine photo_enhancer.batch_pushed-events mot
+          // konkrete gallery-rader.
+          ...(input.enhancerJobId ? { enhancerJobId: input.enhancerJobId } : {}),
         },
         sortOrder,
         isVisible: true,

@@ -4986,6 +4986,13 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
       const clientEmail = readString(req.body?.clientEmail);
       const projectTitle = readString(req.body?.projectTitle);
       const existingGalleryId = readString(req.body?.existingGalleryId);
+      // Slice 9X.14 — frontend genererer enhancerJobId per export-batch.
+      // Optional; om mangler genererer vi server-side så vi alltid har
+      // en unik markør per delivery (kommer i analytics_events.metadata
+      // og i hver gallery-rads image_metadata).
+      const enhancerJobId =
+        readString(req.body?.enhancerJobId) ||
+        `srv-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
       if (!ownerUserId || !clientName || !clientEmail || !projectTitle) {
         return res.status(400).json({
@@ -5017,6 +5024,7 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
         clientEmail,
         projectTitle,
         existingGalleryId: existingGalleryId ?? undefined,
+        enhancerJobId,
         images: files.map((file, i) => ({
           title: titles[i] || file.originalname.replace(/\.[^.]+$/, ""),
           filename: file.originalname,
@@ -5059,6 +5067,7 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
               reusedExisting: result.reusedExisting ?? false,
               clientEmail,
               projectTitle,
+              enhancerJobId,
             }),
           ],
         ).catch((err) => {
@@ -5070,6 +5079,7 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
         success: true,
         galleryId: result.galleryId,
         accessToken: result.accessToken,
+        enhancerJobId,
         shareUrl: result.shareUrl,
         uploadedImageCount: result.uploadedImageCount,
         reusedExisting: result.reusedExisting,
