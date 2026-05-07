@@ -38,6 +38,7 @@ import { RealTimeProvider } from './contexts/RealTimeContext';
 import { VisualEditorProvider } from '@/components/admin/visual-editor/VisualEditorContext';
 import UniversalSessionManager from './components/session/UniversalSessionManager';
 import { Toaster } from '@/components/ui/toaster';
+import { ScrollRestoration } from '@/components/ScrollRestoration';
 import { useDynamicProfessions } from '@/components/universal/hooks/useDynamicProfessions';
 import NotFound from '@/pages/not-found';
 import EmailDesignerPage from '@/pages/EmailDesignerPage';
@@ -556,6 +557,10 @@ function App() {
                   >
                     <ProjectProvider>
                       <GlobalChatProvider>
+                {/* ScrollRestoration: bevarer scroll-posisjon per
+                    pathname+search ved browser back/forward. Pure
+                    side-effect — rendrer ingenting. */}
+                <ScrollRestoration />
                 <Switch>
                   {/* Login route */}
                   <Route path="/login" component={LoginPageSimple} />
