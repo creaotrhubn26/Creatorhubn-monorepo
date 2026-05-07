@@ -24784,6 +24784,29 @@ function ensureCmsSchema(): Promise<void> {
           ALTER TABLE cms_content ADD COLUMN IF NOT EXISTS created_by VARCHAR(64);
           ALTER TABLE cms_content ADD COLUMN IF NOT EXISTS updated_by VARCHAR(64);
         `);
+        // Drop NOT NULL på ghost-kolonner fra eldre schema som vi ikke
+        // populates lenger. PostgreSQL har ingen ALTER ... DROP NOT NULL
+        // IF EXISTS, så vi wrap'er hver i egen try-catch via DO-blokk.
+        // Konkret kjent fra prod-feil:
+        //   "null value in column \"name\" of relation \"cms_content_types\""
+        // Eldre drizzle-schema brukte trolig 'name' istedenfor min
+        // 'label'. Defensivt tillegg: drop NOT NULL på flere typiske
+        // ghost-kolonner i samme batch.
+        await pool.query(`
+          DO $$ BEGIN
+            BEGIN ALTER TABLE cms_content_types ALTER COLUMN name DROP NOT NULL; EXCEPTION WHEN undefined_column THEN END;
+            BEGIN ALTER TABLE cms_content_types ALTER COLUMN slug DROP NOT NULL; EXCEPTION WHEN undefined_column THEN END;
+            BEGIN ALTER TABLE cms_content_types ALTER COLUMN title DROP NOT NULL; EXCEPTION WHEN undefined_column THEN END;
+            BEGIN ALTER TABLE cms_fields ALTER COLUMN name DROP NOT NULL; EXCEPTION WHEN undefined_column THEN END;
+            BEGIN ALTER TABLE cms_fields ALTER COLUMN type DROP NOT NULL; EXCEPTION WHEN undefined_column THEN END;
+            BEGIN ALTER TABLE cms_fields ALTER COLUMN slug DROP NOT NULL; EXCEPTION WHEN undefined_column THEN END;
+            BEGIN ALTER TABLE cms_content ALTER COLUMN name DROP NOT NULL; EXCEPTION WHEN undefined_column THEN END;
+            BEGIN ALTER TABLE cms_content ALTER COLUMN slug DROP NOT NULL; EXCEPTION WHEN undefined_column THEN END;
+            BEGIN ALTER TABLE cms_content ALTER COLUMN title DROP NOT NULL; EXCEPTION WHEN undefined_column THEN END;
+            BEGIN ALTER TABLE cms_content ALTER COLUMN body DROP NOT NULL; EXCEPTION WHEN undefined_column THEN END;
+            BEGIN ALTER TABLE cms_content ALTER COLUMN content_type DROP NOT NULL; EXCEPTION WHEN undefined_column THEN END;
+          END $$;
+        `);
         // UNIQUE-constraints — CREATE TABLE skipper dem hvis tabell
         // var pre-existing, så vi sikrer dem nå. Bruker plain UNIQUE
         // INDEX (ikke partial COALESCE-pattern) så ON CONFLICT-syntax
