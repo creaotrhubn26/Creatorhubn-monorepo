@@ -4156,28 +4156,32 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
           </Box>
         ) : (
           /* Standard Dashboard */
-          <MuiCard sx={{ 
-            background: 'rgba(255, 255, 255, 0.92)',
+          <MuiCard sx={{
+            // Landing-matched dark surface med warm orange aksent. Erstatter
+            // den hvite glassmorph-effekten så hele dashboardet snakker
+            // samme språk som landing-page (CreatorHubInvestorLanding).
+            background: 'linear-gradient(135deg, rgba(5,6,10,0.96) 0%, rgba(15,16,24,0.94) 100%)',
             backdropFilter: 'blur(24px)',
             WebkitBackdropFilter: 'blur(24px)',
-            border: '1px solid rgba(255, 255, 255, 0.5)',
+            border: '1px solid rgba(255,186,108,0.18)',
             borderRadius: 4,
-            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.08)',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
             overflow: 'hidden',
+            color: '#f6f2ea',
             // WCAG Compliance: High contrast and focus management
             '&:focus-within': {
               outline: `2px solid ${customBranding.color}`,
               outlineOffset: '2px'
             }
           }}>
-            <Box sx={{ 
-              borderBottom: 1, 
-              borderColor: 'rgba(0,0,0,0.06)',
-              background: 'rgba(255, 255, 255, 0.6)',
+            <Box sx={{
+              borderBottom: 1,
+              borderColor: 'rgba(255,186,108,0.18)',
+              background: 'rgba(5,6,10,0.58)',
               px: { xs: 1, sm: 2 },
               pt: 1,
             }}>
-              <MuiTabs 
+              <MuiTabs
                 value={tabValue}
                 onChange={handleTabChange}
                 variant="scrollable"
@@ -4185,6 +4189,9 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                 allowScrollButtonsMobile
                 sx={{
                   minHeight: 56,
+                  '& .MuiTabs-indicator': {
+                    bgcolor: '#ffba6c',
+                  },
                   '& .MuiTab-root': {
                     fontWeight: 600,
                     fontSize: { xs: '0.75rem', sm: '0.85rem', md: '0.9rem' },
@@ -4194,14 +4201,14 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                     py: 1.5,
                     borderRadius: '12px 12px 0 0',
                     transition: 'all 0.2s ease',
-                    color: 'text.secondary',
+                    color: 'rgba(246,242,234,0.66)',
                     '&:hover': {
-                      bgcolor: 'rgba(0,0,0,0.03)',
-                      color: 'text.primary',
+                      bgcolor: 'rgba(255,186,108,0.08)',
+                      color: '#fff5e8',
                     },
                     '&.Mui-selected': {
-                      color: customBranding.color,
-                      bgcolor: 'rgba(255,255,255,0.8)',
+                      color: '#ffba6c',
+                      bgcolor: 'rgba(255,186,108,0.12)',
                     }
                   },
                   '& .MuiTabs-indicator': {
