@@ -141,6 +141,16 @@ export const ClientGalleriesManager: React.FC<ClientGalleriesManagerProps> = ({ 
   // CMS-styrt empty-state-tekst. Henter profesjon-aware override; faller
   // tilbake til profesjon-terms-baserte default i selve render-en.
   const emptyStateCopy = useCmsContent('gallery.empty_state', '');
+  // CMS-styrt heading + intro. Default-fallbacks bevarer paritet hvis
+  // cms_content-rad ikke finnes.
+  const headerTitle = useCmsContent(
+    'clientgalleries.heading',
+    capitalise(`klient-${terms.collection}`),
+  );
+  const headerIntro = useCmsContent(
+    'clientgalleries.intro',
+    `Lever ${terms.itemPlural} til ${terms.client}er med passord-beskyttelse, prising og innsamlede valg.`,
+  );
   const [createOpen, setCreateOpen] = useState(false);
   const [createName, setCreateName] = useState('');
   const [createEmail, setCreateEmail] = useState('');
@@ -221,10 +231,10 @@ export const ClientGalleriesManager: React.FC<ClientGalleriesManagerProps> = ({ 
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
         <Box>
           <Typography variant="h6" sx={{ fontWeight: 600 }}>
-            {capitalise(`klient-${terms.collection}`)}
+            {headerTitle}
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Lever {terms.itemPlural} til {terms.client}er med passord-beskyttelse, prising og innsamlede valg.
+            {headerIntro}
           </Typography>
         </Box>
         <Button

@@ -78,6 +78,7 @@ import {
 import { useTheming } from '@/utils/theming-helper';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useUrlTab } from '@/hooks/useUrlState';
+import { useCmsContent } from '@/hooks/useCmsContent';
 import { getShowcaseTerminology } from '@/utils/showcaseTerminology';
 import { apiRequest } from '@/lib/queryClient';
 import SmartEmailComposer from '../email/SmartEmailComposer';
@@ -290,6 +291,9 @@ function BiKpiRow({ profession, onClickGalleryTab }: { profession: string; onCli
 const CommunicationHub: React.FC<CommunicationHubProps> = ({ userId, profession }) => {
   const theming = useTheming(profession);
   const queryClient = useQueryClient();
+  // CMS-styrt header. Default-fallback bevarer paritet hvis cms-rad
+  // ikke finnes (fersk DB e.g.).
+  const communicationHubTitle = useCmsContent('communication.heading', 'Kommunikasjonshub');
   
   // Tab state — URL-driven så browser back/forward navigerer mellom
   // Email/Møter/Notater/Chat/Galleri-faner og refresh holder valgt tab.
@@ -509,7 +513,7 @@ const CommunicationHub: React.FC<CommunicationHubProps> = ({ userId, profession 
       <Paper elevation={2} sx={{ p: 2, mb: 2, ...theming.getThemedCardSx() }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography variant="h5" component="h1" sx={{ color: theming.colors.primary, fontWeight: 'bold' }}>
-            Kommunikasjonshub
+            {communicationHubTitle}
           </Typography>
           <Stack direction="row" spacing={1} role="group" aria-label="Verktøyhandlinger">
             <Tooltip title="Oppdater alle">

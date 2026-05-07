@@ -24839,7 +24839,10 @@ function ensureCmsSchema(): Promise<void> {
             ('bi.section_title', 'BI-overskrift', 'text', 'Tittel i Business Intelligence-fanen'),
             ('bi.section_intro', 'BI-introtekst', 'longtext', 'Beskrivelse av BI-data-kilden'),
             ('gallery.empty_state', 'Galleri tom-tilstand', 'text', 'Tekst når klient ikke har galleries'),
-            ('design.tokens', 'Design-tokens', 'json', 'Sentrale farger og typografi-overrides')
+            ('design.tokens', 'Design-tokens', 'json', 'Sentrale farger og typografi-overrides'),
+            ('clientgalleries.heading', 'Klient-galleri overskrift', 'text', 'Tittel øverst i Klient-galleri-fanen'),
+            ('clientgalleries.intro', 'Klient-galleri intro', 'longtext', 'Forklarende tekst i Klient-galleri-fanen'),
+            ('communication.heading', 'Kommunikasjonshub overskrift', 'text', 'Tittel øverst i CommunicationHub')
           ON CONFLICT (field_key) DO NOTHING;
           INSERT INTO cms_content_types (type_key, label, description, field_keys) VALUES
             ('dashboard_hero', 'Dashboard hero', 'Hero-bånd øverst i UniversalDashboard',
@@ -24888,7 +24891,16 @@ function ensureCmsSchema(): Promise<void> {
             ('dashboard.hero.heading', 'dashboard_hero', 'enterprise', 'nb-NO',
              '{"value": "Team-orkestrert produksjon"}'::jsonb),
             ('dashboard.hero.subheading', 'dashboard_hero', 'enterprise', 'nb-NO',
-             '{"value": "Cross-team-prosjekter, Brand-kontroll, og samlet rapportering."}'::jsonb)
+             '{"value": "Cross-team-prosjekter, Brand-kontroll, og samlet rapportering."}'::jsonb),
+            -- Klient-galleri header (alle profesjoner deler default,
+            -- kan overrides per-profession i admin senere)
+            ('clientgalleries.heading', NULL, NULL, 'nb-NO',
+             '{"value": "Klient-galleri"}'::jsonb),
+            ('clientgalleries.intro', NULL, NULL, 'nb-NO',
+             '{"value": "Lever bilder til klienter med passord-beskyttelse, prising og innsamlede valg."}'::jsonb),
+            -- Kommunikasjonshub header
+            ('communication.heading', NULL, NULL, 'nb-NO',
+             '{"value": "Kommunikasjonshub"}'::jsonb)
           ON CONFLICT (content_key, COALESCE(profession, ''), COALESCE(locale, 'nb-NO')) DO NOTHING;
         `);
       } catch (err) {
