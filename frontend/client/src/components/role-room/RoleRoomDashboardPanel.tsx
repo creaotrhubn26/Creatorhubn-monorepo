@@ -28,6 +28,7 @@ import RoleRoomMobileShootingDayView from './components/production-mobile/RoleRo
 import RoleRoomMobileShotListView from './components/production-mobile/RoleRoomMobileShotListView';
 import RoleRoomMobileCrewView from './components/production-mobile/RoleRoomMobileCrewView';
 import RoleRoomAgentChatPanel from './components/ai/RoleRoomAgentChatPanel';
+import CarouselPanel from './components/producer/carousel/CarouselPanel';
 import { useRoleRoomAgentContext } from './hooks/useRoleRoomAgentContext';
 import { validateAgentToolInput } from './services/roleRoomAgentToolSchemas';
 import { logAgentToolResult } from './services/roleRoomAgentClaudeApi';
@@ -231,6 +232,7 @@ type SubTab =
   | 'crew'
   | 'schedule'
   | 'publishing'
+  | 'carousel'
   | 'approval'
   | 'brief'
   | 'planner'
@@ -942,6 +944,13 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                     sx={{ minHeight: 48 }}
                   />
                 )}
+                <Tab
+                  value="carousel"
+                  label="Ukescontent"
+                  icon={<EditIcon fontSize="small" />}
+                  iconPosition="start"
+                  sx={{ minHeight: 48 }}
+                />
                 {!viewport.isDesktop && (
                   <Tab
                     value="approval"
@@ -1102,6 +1111,9 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                     candidates={candidates as any}
                     crew={crew as any}
                   />
+                )}
+                {subTab === 'carousel' && (
+                  <CarouselPanel />
                 )}
               </CardContent>
             </Card>

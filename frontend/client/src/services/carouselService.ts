@@ -167,6 +167,32 @@ export async function getDraft(draftId: string): Promise<FullDraftResponse> {
   return carouselFetch(`/carousel/drafts/${draftId}`, { method: 'GET' });
 }
 
+export async function patchSlide(
+  slideId: string,
+  patch: { textBlocks?: CarouselSlideRow['text_blocks']; layout?: LayoutId; imageRef?: ImageRef },
+): Promise<{ slide: CarouselSlideRow }> {
+  return carouselFetch(`/carousel/slides/${slideId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function patchPost(
+  postId: string,
+  patch: {
+    caption?: Record<CarouselPlatform, string>;
+    hook?: string;
+    narrative?: string;
+    scheduledAt?: string;
+    status?: CarouselPostRow['status'];
+  },
+): Promise<{ post: CarouselPostRow }> {
+  return carouselFetch(`/carousel/posts/${postId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  });
+}
+
 // ─────────────────────────────────────────────────────────
 // Helpers — UI-side
 // ─────────────────────────────────────────────────────────

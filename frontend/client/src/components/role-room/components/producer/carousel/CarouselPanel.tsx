@@ -7,7 +7,7 @@
  *   3. Ready — week overview + click-through to per-post editor
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Alert,
   Box,
@@ -24,6 +24,8 @@ import CarouselPostEditor from './CarouselPostEditor';
 import {
   generateDraft,
   getDraft,
+  patchSlide,
+  patchPost,
   type CarouselDraftRow,
   type CarouselPostRow,
   type CarouselSlideRow,
@@ -80,7 +82,15 @@ export default function CarouselPanel() {
     }
   }
 
+  // Debounced persistence — coalesce rapid edits into a single PATCH
+  // call after 1.2s of inactivity per (entity-id + field).
+  const slidePatchTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const captionPatchTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const pendingSlideEdits = useRef<Map<string, Partial<CarouselSlideRow>>>(new Map());
+  const pendingPostEdits = useRef<Map<string, Record<CarouselPlatform, string>>>(new Map());
+
   function handleSlidePatch(slideId: string, patch: Partial<CarouselSlideRow>) {
+    // Optimistic local update
     setState((prev) => {
       if (prev.kind !== 'ready') return prev;
       return {
@@ -88,20 +98,60 @@ export default function CarouselPanel() {
         slides: prev.slides.map((s) => (s.id === slideId ? { ...s, ...patch } : s)),
       };
     });
-    // TODO Slice 4.5: PATCH /carousel/slides/:id when persistence-route lands
+
+    // Coalesce edits into pending queue
+    const existing = pendingSlideEdits.current.get(slideId) ?? {};
+    pendingSlideEdits.current.set(slideId, { ...existing, ...patch });
+
+    const previous = slidePatchTimers.current.get(slideId);
+    if (previous) clearTimeout(previous);
+    const timer = setTimeout(() => {
+      const queued = pendingSlideEdits.current.get(slideId);
+      if (!queued) return;
+      pendingSlideEdits.current.delete(slideId);
+      slidePatchTimers.current.delete(slideId);
+      patchSlide(slideId, {
+        textBlocks: queued.text_blocks,
+        layout: queued.layout,
+        imageRef: queued.image_ref,
+      }).catch((err) => {
+        console.error('[CarouselPanel] slide patch failed', err);
+      });
+    }, 1200);
+    slidePatchTimers.current.set(slideId, timer);
   }
 
   function handleCaptionPatch(postId: string, platform: CarouselPlatform, value: string) {
+    // Optimistic local update
+    let nextCaption: Record<CarouselPlatform, string> | null = null;
     setState((prev) => {
       if (prev.kind !== 'ready') return prev;
       return {
         ...prev,
-        posts: prev.posts.map((p) =>
-          p.id === postId ? { ...p, caption: { ...p.caption, [platform]: value } } : p,
-        ),
+        posts: prev.posts.map((p) => {
+          if (p.id !== postId) return p;
+          const merged = { ...p.caption, [platform]: value };
+          nextCaption = merged;
+          return { ...p, caption: merged };
+        }),
       };
     });
-    // TODO Slice 4.5: PATCH /carousel/posts/:id with caption JSONB merge
+    if (nextCaption) {
+      pendingPostEdits.current.set(postId, nextCaption);
+    }
+
+    const previous = captionPatchTimers.current.get(postId);
+    if (previous) clearTimeout(previous);
+    const timer = setTimeout(() => {
+      const queued = pendingPostEdits.current.get(postId);
+      if (!queued) return;
+      pendingPostEdits.current.delete(postId);
+      captionPatchTimers.current.delete(postId);
+      patchPost(postId, { caption: queued }).catch((err) => {
+        console.error('[CarouselPanel] caption patch failed', err);
+      });
+    }, 1200);
+    captionPatchTimers.current.set(postId, timer);
   }
 
   // Auto-load most recent draft if any

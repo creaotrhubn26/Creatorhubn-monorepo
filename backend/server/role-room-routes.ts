@@ -21429,5 +21429,180 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     },
   );
 
+  // Persistence for editor edits (Slice 4.5)
+  // Each PATCH writes a row to carousel_versions for undo / audit.
+
+  /**
+   * Verify the slide / post belongs to the calling user. Throws 404 if not.
+   * Returns the post-id (helps callers chain inserts to versions).
+   */
+  async function assertSlideOwnership(
+    userId: string,
+    slideId: string,
+  ): Promise<{ postId: string } | null> {
+    const result = await pool.query<{ post_id: string }>(
+      `SELECT s.post_id
+         FROM carousel_slides s
+         JOIN carousel_posts p ON p.id = s.post_id
+         JOIN carousel_drafts d ON d.id = p.draft_id
+        WHERE s.id = $1 AND d.user_id = $2`,
+      [slideId, userId],
+    );
+    if (!result.rowCount) return null;
+    return { postId: result.rows[0].post_id };
+  }
+
+  async function assertPostOwnership(
+    userId: string,
+    postId: string,
+  ): Promise<boolean> {
+    const result = await pool.query(
+      `SELECT 1 FROM carousel_posts p
+         JOIN carousel_drafts d ON d.id = p.draft_id
+        WHERE p.id = $1 AND d.user_id = $2`,
+      [postId, userId],
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async function snapshotPostVersion(
+    postId: string,
+    userId: string,
+    summary: string,
+  ): Promise<void> {
+    await pool.query(
+      `INSERT INTO carousel_versions (post_id, version_number, snapshot, changed_by, change_summary)
+       SELECT
+         $1,
+         COALESCE((SELECT MAX(version_number) FROM carousel_versions WHERE post_id = $1), 0) + 1,
+         to_jsonb(p.*),
+         $2,
+         $3
+       FROM carousel_posts p WHERE p.id = $1`,
+      [postId, userId, summary],
+    );
+  }
+
+  router.patch(
+    '/carousel/slides/:slideId',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const { textBlocks, layout, imageRef } = req.body ?? {};
+        const owner = await assertSlideOwnership(userId, req.params.slideId);
+        if (!owner) return res.status(404).json({ error: 'slide_not_found' });
+
+        const setExpr: string[] = [];
+        const params: unknown[] = [req.params.slideId];
+        if (textBlocks !== undefined) {
+          params.push(JSON.stringify(textBlocks));
+          setExpr.push(`text_blocks = $${params.length}::jsonb`);
+        }
+        if (layout !== undefined) {
+          params.push(layout);
+          setExpr.push(`layout = $${params.length}`);
+        }
+        if (imageRef !== undefined) {
+          params.push(JSON.stringify(imageRef));
+          setExpr.push(`image_ref = $${params.length}::jsonb`);
+        }
+        if (setExpr.length === 0) {
+          return res.status(400).json({ error: 'invalid_input', detail: 'no patchable fields' });
+        }
+
+        await snapshotPostVersion(owner.postId, userId, `slide ${req.params.slideId} edited`);
+        const result = await pool.query(
+          `UPDATE carousel_slides SET ${setExpr.join(', ')}
+            WHERE id = $1 RETURNING *`,
+          params,
+        );
+        res.json({ slide: result.rows[0] });
+      } catch (error) {
+        res.status(500).json({
+          error: 'Failed to update slide',
+          detail: String((error as Error)?.message ?? error),
+        });
+      }
+    },
+  );
+
+  router.patch(
+    '/carousel/posts/:postId',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const { caption, hook, narrative, scheduledAt, status } = req.body ?? {};
+        const owns = await assertPostOwnership(userId, req.params.postId);
+        if (!owns) return res.status(404).json({ error: 'post_not_found' });
+
+        const setExpr: string[] = [];
+        const params: unknown[] = [req.params.postId];
+        if (caption !== undefined) {
+          params.push(JSON.stringify(caption));
+          setExpr.push(`caption = $${params.length}::jsonb`);
+        }
+        if (hook !== undefined) {
+          params.push(hook);
+          setExpr.push(`hook = $${params.length}`);
+        }
+        if (narrative !== undefined) {
+          params.push(narrative);
+          setExpr.push(`narrative = $${params.length}`);
+        }
+        if (scheduledAt !== undefined) {
+          params.push(scheduledAt);
+          setExpr.push(`scheduled_at = $${params.length}`);
+        }
+        if (status !== undefined) {
+          params.push(status);
+          setExpr.push(`status = $${params.length}`);
+          if (status === 'approved') {
+            setExpr.push('approved_at = now()');
+            params.push(userId);
+            setExpr.push(`approved_by = $${params.length}`);
+          }
+        }
+        if (setExpr.length === 0) {
+          return res.status(400).json({ error: 'invalid_input', detail: 'no patchable fields' });
+        }
+
+        await snapshotPostVersion(req.params.postId, userId, `post edited`);
+        const result = await pool.query(
+          `UPDATE carousel_posts SET ${setExpr.join(', ')}
+            WHERE id = $1 RETURNING *`,
+          params,
+        );
+
+        // Update approval count on parent draft when status changes to approved
+        if (status === 'approved') {
+          await pool.query(
+            `UPDATE carousel_drafts d
+                SET approved_post_count = (
+                  SELECT COUNT(*) FROM carousel_posts p
+                   WHERE p.draft_id = d.id AND p.status IN ('approved','scheduled','published')
+                ),
+                status = CASE
+                  WHEN (SELECT COUNT(*) FROM carousel_posts p
+                          WHERE p.draft_id = d.id AND p.status IN ('approved','scheduled','published')
+                       ) >= total_posts THEN 'partially_approved'
+                  ELSE status END
+              FROM carousel_posts p
+             WHERE p.id = $1 AND p.draft_id = d.id`,
+            [req.params.postId],
+          );
+        }
+
+        res.json({ post: result.rows[0] });
+      } catch (error) {
+        res.status(500).json({
+          error: 'Failed to update post',
+          detail: String((error as Error)?.message ?? error),
+        });
+      }
+    },
+  );
+
   return router;
 }
