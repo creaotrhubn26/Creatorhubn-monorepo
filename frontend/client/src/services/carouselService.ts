@@ -177,6 +177,51 @@ export async function patchSlide(
   });
 }
 
+export interface AiImageResult {
+  generatedUrl: string;
+  prompt: string;
+  finalPrompt: string;
+  cost: number;
+  model: string;
+  cached: boolean;
+}
+
+export async function generateAiImageForSlide(
+  slideId: string,
+  body: {
+    prompt: string;
+    aspectRatio?: '1:1' | '4:5' | '1.91:1' | '2:3';
+    brandColors?: { primary: string; secondary: string; accent: string };
+    enrichWithBrand?: boolean;
+  },
+): Promise<{ result: AiImageResult }> {
+  return carouselFetch(`/carousel/slides/${slideId}/ai-image`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export interface GalleryAssetMatch {
+  assetId: string;
+  galleryId: string;
+  url: string;
+  thumbnailUrl: string | null;
+  alt: string | null;
+  capturedAt: string | null;
+  score: number;
+  matchedOn: Array<'tag' | 'caption' | 'project'>;
+}
+
+export async function findGalleryMatchesForSlide(
+  slideId: string,
+  body: { prompt: string; projectId?: string; limit?: number },
+): Promise<{ matches: GalleryAssetMatch[] }> {
+  return carouselFetch(`/carousel/slides/${slideId}/gallery-matches`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
 export async function patchPost(
   postId: string,
   patch: {

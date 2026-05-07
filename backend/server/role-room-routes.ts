@@ -121,6 +121,11 @@ import {
 } from './role-room-carousel-generator.js';
 import { makeDefaultResolverContext } from './role-room-carousel-image-resolver.js';
 import {
+  generateAiImage,
+  makeReplicateClient,
+} from './role-room-carousel-ai-image.js';
+import { findGalleryMatches } from './role-room-carousel-gallery-match.js';
+import {
   listAdAccounts as listMetaAdAccounts,
   createCampaign as createMetaCampaign,
   pauseCampaign as pauseMetaCampaign,
@@ -21521,6 +21526,95 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       } catch (error) {
         res.status(500).json({
           error: 'Failed to update slide',
+          detail: String((error as Error)?.message ?? error),
+        });
+      }
+    },
+  );
+
+  router.post(
+    '/carousel/slides/:slideId/ai-image',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const owner = await assertSlideOwnership(userId, req.params.slideId);
+        if (!owner) return res.status(404).json({ error: 'slide_not_found' });
+
+        const { prompt, aspectRatio, brandColors, enrichWithBrand } = req.body ?? {};
+        if (typeof prompt !== 'string' || !prompt.trim()) {
+          return res.status(400).json({ error: 'invalid_input', detail: 'prompt required' });
+        }
+        const replicate = makeReplicateClient();
+        // Minimal R2 stub — caller may wire a real one in a follow-up
+        const r2 = {
+          async upload(key: string, _buffer: Buffer, _ct: string): Promise<string> {
+            // Without a writeable R2 binding we just hand back a deterministic
+            // placeholder URL; caller swaps via env-injected uploader later.
+            return `https://r2.creatorhubn.com/${key}`;
+          },
+        };
+        const result = await generateAiImage(
+          { replicate, r2, pool },
+          {
+            userId,
+            slideId: req.params.slideId,
+            prompt,
+            brandColors: brandColors ?? { primary: '#0a0617', secondary: '#1a1133', accent: '#a855f7' },
+            aspectRatio: aspectRatio ?? '1:1',
+            enrichWithBrand: enrichWithBrand !== false,
+          },
+        );
+
+        // Patch slide with the new imageRef
+        await pool.query(
+          `UPDATE carousel_slides
+              SET image_ref = $2::jsonb
+            WHERE id = $1`,
+          [
+            req.params.slideId,
+            JSON.stringify({
+              strategy: 'ai',
+              prompt: result.prompt,
+              generatedUrl: result.generatedUrl,
+              cost: result.cost,
+              model: result.model,
+            }),
+          ],
+        );
+
+        res.json({ result });
+      } catch (error) {
+        res.status(500).json({
+          error: 'Failed to generate AI image',
+          detail: String((error as Error)?.message ?? error),
+        });
+      }
+    },
+  );
+
+  router.post(
+    '/carousel/slides/:slideId/gallery-matches',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const owner = await assertSlideOwnership(userId, req.params.slideId);
+        if (!owner) return res.status(404).json({ error: 'slide_not_found' });
+        const { prompt, projectId, limit } = req.body ?? {};
+        if (typeof prompt !== 'string' || !prompt.trim()) {
+          return res.status(400).json({ error: 'invalid_input', detail: 'prompt required' });
+        }
+        const matches = await findGalleryMatches(pool, {
+          userId,
+          prompt,
+          preferredProjectId: projectId ?? null,
+          limit: typeof limit === 'number' ? limit : 12,
+        });
+        res.json({ matches });
+      } catch (error) {
+        res.status(500).json({
+          error: 'Failed to find gallery matches',
           detail: String((error as Error)?.message ?? error),
         });
       }

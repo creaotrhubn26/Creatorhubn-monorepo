@@ -21,7 +21,9 @@ import {
   Typography,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import ImageIcon from '@mui/icons-material/Image';
 import CarouselSlidePreview from './CarouselSlidePreview';
+import CarouselImageSwapDialog from './CarouselImageSwapDialog';
 import {
   PLATFORM_LABELS,
   PLATFORM_ASPECTS,
@@ -29,6 +31,7 @@ import {
   type CarouselPostRow,
   type CarouselSlideRow,
   type CarouselPlatform,
+  type ImageRef,
 } from '../../../../../services/carouselService';
 
 const PLATFORMS: CarouselPlatform[] = [
@@ -58,6 +61,7 @@ export default function CarouselPostEditor({
     post.primary_platform,
   );
   const [selectedSlideIdx, setSelectedSlideIdx] = useState(0);
+  const [imageSwapOpen, setImageSwapOpen] = useState(false);
 
   const sortedSlides = useMemo(
     () => [...slides].sort((a, b) => a.slide_index - b.slide_index),
@@ -209,7 +213,7 @@ export default function CarouselPostEditor({
                   }}
                 />
               ))}
-              <Stack direction="row" spacing={1}>
+              <Stack direction="row" spacing={1} alignItems="center">
                 <Chip
                   size="small"
                   label={`Bilde: ${selectedSlide?.image_ref.strategy ?? '—'}`}
@@ -220,6 +224,20 @@ export default function CarouselPostEditor({
                   label={`Layout: ${selectedSlide?.layout}`}
                   sx={{ bgcolor: 'rgba(168,85,247,0.16)', color: '#c084fc' }}
                 />
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => setImageSwapOpen(true)}
+                  startIcon={<ImageIcon fontSize="small" />}
+                  sx={{
+                    color: '#c084fc',
+                    borderColor: 'rgba(168,85,247,0.45)',
+                    textTransform: 'none',
+                    ml: 'auto',
+                  }}
+                >
+                  Bytt bilde
+                </Button>
               </Stack>
             </Stack>
           </Card>
@@ -272,6 +290,21 @@ export default function CarouselPostEditor({
           </Card>
         </Stack>
       </Box>
+
+      <CarouselImageSwapDialog
+        open={imageSwapOpen}
+        slide={selectedSlide ?? null}
+        onClose={() => setImageSwapOpen(false)}
+        onApply={(slideId, imageRef: ImageRef) => {
+          onSlidePatch(slideId, { image_ref: imageRef });
+          setImageSwapOpen(false);
+        }}
+        brandColors={{
+          primary: selectedSlide?.brand_overlays.primaryColor ?? '#0a0617',
+          secondary: '#1a1133',
+          accent: selectedSlide?.brand_overlays.accentColor ?? '#a855f7',
+        }}
+      />
     </Box>
   );
 }
