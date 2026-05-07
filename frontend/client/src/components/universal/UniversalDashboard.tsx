@@ -2657,17 +2657,23 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
     return null;
   }
 
+  // Profession-aware accent: hver profesjon har egen signaturfarge
+  // som overlay over landing-base. Photographer beholder warm orange
+  // (matcher landing direkte); videograf rød, musikkprodusent blå,
+  // vendor grønn, enterprise lilla. Alle på samme dark navy base så
+  // CreatorHub-identitet er konsistent men hver fag har egen "lyd".
+  const professionAccent = customBranding.color || '#ffba6c';
   return (
     <Box
       sx={{
         minHeight: '100vh',
-        // Landing-page-matched bakgrunn: dyp navy med warm orange aksent.
-        // Erstatter den lyse cream/peach-gradienten så dashboardet
-        // signaliserer "samme produkt som landingssiden" istedenfor å
-        // se ut som et generisk admin-panel.
+        // Landing-page-matched bakgrunn: dyp navy med profesjon-spesifikk
+        // aksent-glød. Erstatter cream/peach-gradienten så dashboardet
+        // snakker samme språk som landing-page, mens hver profesjon
+        // beholder sin egen identitet via accent-fargen.
         background: `
-          radial-gradient(circle at top right, rgba(255,163,72,0.18), transparent 32%),
-          radial-gradient(circle at left 20%, rgba(218,120,49,0.10), transparent 36%),
+          radial-gradient(circle at top right, ${professionAccent}28, transparent 32%),
+          radial-gradient(circle at left 20%, ${professionAccent}18, transparent 36%),
           #05060a
         `,
         color: '#f6f2ea',
@@ -2683,8 +2689,8 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
           right: 0,
           bottom: 0,
           background: `
-            radial-gradient(ellipse at 20% 20%, rgba(255,186,108,0.05) 0%, transparent 50%),
-            radial-gradient(ellipse at 80% 80%, rgba(218,120,49,0.04) 0%, transparent 50%)
+            radial-gradient(ellipse at 20% 20%, ${professionAccent}0d 0%, transparent 50%),
+            radial-gradient(ellipse at 80% 80%, ${professionAccent}08 0%, transparent 50%)
           `,
           pointerEvents: 'none',
           zIndex: 0,
@@ -2698,13 +2704,13 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
           backgroundImage: 'none',
           backgroundColor: 'rgba(15,16,24,0.85)',
           color: '#f6f2ea',
-          border: '1px solid rgba(255,186,108,0.10)',
+          border: `1px solid ${professionAccent}1a`,
         },
         '& .MuiCard-root': {
           backgroundImage: 'none',
           backgroundColor: 'rgba(15,16,24,0.85)',
           color: '#f6f2ea',
-          border: '1px solid rgba(255,186,108,0.10)',
+          border: `1px solid ${professionAccent}1a`,
         },
         // Typography arver color via theme — sett body/h-variants til
         // ink-cream så tekst er lesbar på dark surface.
@@ -2717,22 +2723,22 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         // Inputs (TextField, Select) trenger lysere outline + hvit tekst
         '& .MuiOutlinedInput-root': {
           color: '#f6f2ea',
-          '& fieldset': { borderColor: 'rgba(255,186,108,0.24)' },
-          '&:hover fieldset': { borderColor: 'rgba(255,186,108,0.4)' },
-          '&.Mui-focused fieldset': { borderColor: '#ffba6c' },
+          '& fieldset': { borderColor: `${professionAccent}3d` },
+          '&:hover fieldset': { borderColor: `${professionAccent}66` },
+          '&.Mui-focused fieldset': { borderColor: professionAccent },
         },
         '& .MuiInputLabel-root': {
           color: 'rgba(246,242,234,0.66)',
-          '&.Mui-focused': { color: '#ffba6c' },
+          '&.Mui-focused': { color: professionAccent },
         },
         // Divider mer synlig på dark
         '& .MuiDivider-root': {
-          borderColor: 'rgba(255,186,108,0.12)',
+          borderColor: `${professionAccent}1f`,
         },
         // Chip outlined-variant: ramme + tekst i ink
         '& .MuiChip-outlined': {
           color: '#f6f2ea',
-          borderColor: 'rgba(255,186,108,0.30)',
+          borderColor: `${professionAccent}4d`,
         },
         // List/menu items
         '& .MuiListItemText-secondary': {
@@ -2741,7 +2747,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         // Table headers
         '& .MuiTableCell-root': {
           color: '#f6f2ea',
-          borderColor: 'rgba(255,186,108,0.10)',
+          borderColor: `${professionAccent}1a`,
         },
         '& .MuiTableCell-head': {
           backgroundColor: 'rgba(5,6,10,0.4)',
@@ -4211,15 +4217,15 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         ) : (
           /* Standard Dashboard */
           <MuiCard sx={{
-            // Landing-matched dark surface med warm orange aksent. Erstatter
-            // den hvite glassmorph-effekten så hele dashboardet snakker
-            // samme språk som landing-page (CreatorHubInvestorLanding).
+            // Landing-matched dark surface med profesjon-spesifikk
+            // aksent-border. Hver fag har egen "lyd" (orange/rød/blå/
+            // grønn/lilla) på samme dark navy base.
             background: 'linear-gradient(135deg, rgba(5,6,10,0.96) 0%, rgba(15,16,24,0.94) 100%)',
             backdropFilter: 'blur(24px)',
             WebkitBackdropFilter: 'blur(24px)',
-            border: '1px solid rgba(255,186,108,0.18)',
+            border: `1px solid ${professionAccent}2e`,
             borderRadius: 4,
-            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
+            boxShadow: `0 8px 32px ${professionAccent}26`,
             overflow: 'hidden',
             color: '#f6f2ea',
             // WCAG Compliance: High contrast and focus management
@@ -4230,7 +4236,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
           }}>
             <Box sx={{
               borderBottom: 1,
-              borderColor: 'rgba(255,186,108,0.18)',
+              borderColor: `${professionAccent}2e`,
               background: 'rgba(5,6,10,0.58)',
               px: { xs: 1, sm: 2 },
               pt: 1,
@@ -4244,7 +4250,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                 sx={{
                   minHeight: 56,
                   '& .MuiTabs-indicator': {
-                    bgcolor: '#ffba6c',
+                    bgcolor: professionAccent,
                   },
                   '& .MuiTab-root': {
                     fontWeight: 600,
@@ -4257,12 +4263,12 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                     transition: 'all 0.2s ease',
                     color: 'rgba(246,242,234,0.66)',
                     '&:hover': {
-                      bgcolor: 'rgba(255,186,108,0.08)',
+                      bgcolor: `${professionAccent}14`,
                       color: '#fff5e8',
                     },
                     '&.Mui-selected': {
-                      color: '#ffba6c',
-                      bgcolor: 'rgba(255,186,108,0.12)',
+                      color: professionAccent,
+                      bgcolor: `${professionAccent}1f`,
                     }
                   },
                   '& .MuiTabs-indicator': {
