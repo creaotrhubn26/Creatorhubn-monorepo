@@ -139,6 +139,7 @@ import {
 // Import profession-specific components
 import BRREGIntegration from '../unused/profession-specific/BRREGIntegration';
 import AdministrationHub from './AdministrationHub';
+import { BusinessIntelligenceHub } from '@/components/business-intelligence/BusinessIntelligenceHub';
 
 // Import dynamic profession system
 import { useDynamicProfessions } from './hooks/useDynamicProfessions';
@@ -649,6 +650,16 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
       const showcaseTabIndex = nextTabs.findIndex((tab) => tab.id === 'showcase-admin');
       const insertIndex = showcaseTabIndex >= 0 ? showcaseTabIndex + 1 : Math.min(2, nextTabs.length);
       nextTabs.splice(insertIndex, 0, publishingTab);
+    }
+
+    // BI-fanen — augmenteres samme måte som publishing. Synlig for alle
+    // creator-professions; leser fra unified analytics_events-laget.
+    // Plasseres rett etter "Oversikt" så BI er mest synlig høyre i nav.
+    if (creatorPublishingProfessions.has(profession) && !nextTabs.some((tab) => tab.id === 'business-intelligence')) {
+      const biTab = { id: 'business-intelligence', label: 'BI', icon: <Assessment /> };
+      const overviewIndex = nextTabs.findIndex((tab) => tab.id === 'overview');
+      const insertIndex = overviewIndex >= 0 ? overviewIndex + 1 : 1;
+      nextTabs.splice(insertIndex, 0, biTab);
     }
     
     return {
@@ -5685,6 +5696,13 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                   }}
                   createShowcaseOnUpload
                 />
+              </TabPanel>
+
+              {/* BI-fanen — leser fra det unified analytics_events-laget
+                  som dekker alle UniversalDashboard-systemer (Galleri,
+                  Prosjekt, Betaling). Refresher hver 30s for live-feel. */}
+              <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'business-intelligence')}>
+                <BusinessIntelligenceHub />
               </TabPanel>
 
               {/* Tab 7: Universal File Upload */}
