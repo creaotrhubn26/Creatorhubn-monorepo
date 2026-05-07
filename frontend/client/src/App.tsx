@@ -181,6 +181,8 @@ import PrivacyPolicy from '@/pages/privacy-policy';
 import TermsAndConditions from '@/pages/terms-and-conditions';
 import CreatorhubInnovationPage from '@/pages/CreatorhubInnovationPage';
 import GoogleVerificationDemoPage from '@/pages/GoogleVerificationDemoPage';
+import PhotographerClientsList from '@/pages/photographer-clients-list';
+import PhotographerClientDetail from '@/pages/photographer-client-detail';
 import { syncSiteSeo } from '@/lib/siteSeo';
 import { trackMarketingPageView } from '@/lib/marketingPixelsRuntime';
 
@@ -644,6 +646,8 @@ function App() {
                     path="/photographer-dashboard-material"
                     component={() => <SmartDashboardRoute profession="photographer" />}
                   />
+                  <Route path="/photographer/clients/:clientId" component={PhotographerClientDetail} />
+                  <Route path="/photographer/clients" component={PhotographerClientsList} />
                   <Route
                     path="/videographer-dashboard-material"
                     component={() => <SmartDashboardRoute profession="videographer" />}
