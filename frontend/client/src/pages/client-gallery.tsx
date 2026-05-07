@@ -249,6 +249,29 @@ export default function ClientGallery({}: ClientGalleryProps) {
     }
   }, [gallery?.requiresPassword, galleryPassword, passwordPromptOpen]);
 
+  // Slice 10.3 — håndter return fra Stripe Checkout. Stripe redirecter
+  // til ?checkout=success eller ?checkout=cancelled. Vis bekreftelse +
+  // strip URL-paramene så refresh ikke viser samme melding to ganger.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const status = params.get('checkout');
+    if (!status) return;
+    if (status === 'success') {
+      alert('Betaling mottatt! Du kan nå laste ned valgte bilder. Sjekk e-post for kvittering.');
+    } else if (status === 'cancelled') {
+      alert('Betalingen ble avbrutt. Du kan prøve igjen når du vil.');
+    }
+    params.delete('checkout');
+    params.delete('session_id');
+    const newSearch = params.toString();
+    window.history.replaceState(
+      {},
+      '',
+      `${window.location.pathname}${newSearch ? '?' + newSearch : ''}${window.location.hash}`,
+    );
+  }, []);
+
   // Fetch gallery images (linked to project)
   const { data: images = [], isLoading: imagesLoading } = useQuery({
     queryKey: ['/api/client/gallery', accessToken, 'images', galleryPassword],
@@ -1606,16 +1629,30 @@ export default function ClientGallery({}: ClientGalleryProps) {
                 </Typography>
               </Box>
 
-              <Alert
-                severity="info"
-                sx={{
-                  bgcolor: 'rgba(33, 150, 243, 0.1)',
-                  border: '1px solid rgba(33, 150, 243, 0.3)',
-                  color: '#fff',
-              }}
-              >
-                Fotografen vil bli varslet om ditt valg og kontakte deg for betaling og levering.
-              </Alert>
+              {calculatePricingMutation.data.pricing.totalAmount > 0 ? (
+                <Alert
+                  severity="warning"
+                  sx={{
+                    bgcolor: 'rgba(255, 152, 0, 0.1)',
+                    border: '1px solid rgba(255, 152, 0, 0.3)',
+                    color: '#fff',
+                  }}
+                >
+                  Du blir sendt videre til Stripe for sikker betaling.
+                  Etter betaling får du tilgang til å laste ned alle valgte {terms.itemPlural}.
+                </Alert>
+              ) : (
+                <Alert
+                  severity="info"
+                  sx={{
+                    bgcolor: 'rgba(33, 150, 243, 0.1)',
+                    border: '1px solid rgba(33, 150, 243, 0.3)',
+                    color: '#fff',
+                  }}
+                >
+                  Fotografen vil bli varslet om ditt valg og kontakte deg for betaling og levering.
+                </Alert>
+              )}
             </Box>
           )}
         </DialogContent>
@@ -1626,14 +1663,60 @@ export default function ClientGallery({}: ClientGalleryProps) {
           >
             Tilbake
           </Button>
-          <Button
-            onClick={() => submitSelectionMutation.mutate(calculatePricingMutation.data)}
-            variant="contained"
-            disabled={submitSelectionMutation.isPending}
-            sx={{ bgcolor: config.primaryColor, color: '#fff' }}
-          >
-            Bekreft valg
-          </Button>
+          {calculatePricingMutation.data?.pricing?.totalAmount > 0 ? (
+            <Button
+              onClick={async () => {
+                // Slice 10.3 — Stripe Checkout Session redirect.
+                // Backend lager session, vi navigerer til Stripe sin
+                // hostede checkout-side; webhook fanger payment_intent
+                // .succeeded og oppdaterer client_image_payments-rad
+                // med download_token.
+                try {
+                  const res = await fetch(
+                    `${(import.meta.env.DEV || window.location.hostname === 'localhost')
+                      ? ''
+                      : (import.meta.env.VITE_API_URL || '')}/api/client/gallery/${accessToken}/create-checkout-session`,
+                    {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        ...(galleryPassword ? { 'x-gallery-password': galleryPassword } : {}),
+                      },
+                      body: JSON.stringify({
+                        clientEmail: gallery?.clientEmail,
+                        selectedImageIds: Array.from(selectedImages),
+                      }),
+                    },
+                  );
+                  if (!res.ok) {
+                    throw new Error(`HTTP ${res.status}`);
+                  }
+                  const data = (await res.json()) as { checkoutUrl?: string };
+                  if (data.checkoutUrl) {
+                    window.location.href = data.checkoutUrl;
+                  } else {
+                    throw new Error('Mangler checkoutUrl i respons');
+                  }
+                } catch (err) {
+                  console.error('[client-gallery] checkout-redirect failed:', err);
+                  alert('Kunne ikke starte betaling. Prøv igjen eller kontakt fotografen.');
+                }
+              }}
+              variant="contained"
+              sx={{ bgcolor: config.primaryColor, color: '#fff' }}
+            >
+              {`Betal ${calculatePricingMutation.data.pricing.totalAmount} ${calculatePricingMutation.data.pricing.currency} →`}
+            </Button>
+          ) : (
+            <Button
+              onClick={() => submitSelectionMutation.mutate(calculatePricingMutation.data)}
+              variant="contained"
+              disabled={submitSelectionMutation.isPending}
+              sx={{ bgcolor: config.primaryColor, color: '#fff' }}
+            >
+              Bekreft valg
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
 

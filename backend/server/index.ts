@@ -24522,6 +24522,119 @@ app.post("/api/client/gallery/:accessToken/create-payment-intent", async (req, r
   }
 });
 
+// Slice 10.3 — Stripe Checkout Session for klient-galleri ekstra-bilder.
+// Bruker Stripe-hostet checkout-side i stedet for å bygge Elements-UI
+// fra grunnen av. Fordel: ingen @stripe/stripe-js-dep i frontend, full
+// PCI-compliance håndtert av Stripe, 3DS-flyt automatisk. Ulempe:
+// klient redirectes ut av galleriet og tilbake (success_url = samme
+// gallery-token).
+app.post("/api/client/gallery/:accessToken/create-checkout-session", async (req, res) => {
+  const accessToken = String(req.params.accessToken || "").trim();
+  if (!accessToken) return res.status(400).json({ error: "missing_access_token" });
+  const clientEmail = typeof req.body?.clientEmail === 'string' ? req.body.clientEmail.trim() : '';
+  const selectedImageIds = Array.isArray(req.body?.selectedImageIds)
+    ? req.body.selectedImageIds.filter((s: unknown): s is string => typeof s === 'string')
+    : null;
+  if (!selectedImageIds || selectedImageIds.length === 0) {
+    return res.status(400).json({ error: "selectedImageIds_required" });
+  }
+  try {
+    const access = await gateGalleryAccess(accessToken, readGalleryPasswordHeader(req));
+    if (!access.ok) {
+      return res.status(access.status).json({
+        error: access.error,
+        ...(access.requiresPassword ? { requiresPassword: true } : {}),
+      });
+    }
+    const gallery = access.gallery;
+    const effectiveEmail = clientEmail || gallery.clientEmail;
+    if (!effectiveEmail) return res.status(400).json({ error: "client_email_required" });
+
+    const pricing = calculateGalleryPricing(access.settings, selectedImageIds.length);
+    if (pricing.totalAmount <= 0) {
+      return res.status(400).json({ error: "no_payment_needed", pricing });
+    }
+
+    const stripe = getCreatorHubStripeClient();
+    if (!stripe) return res.status(503).json({ error: "stripe_not_configured" });
+
+    const amount = Math.round(pricing.totalAmount * 100);
+    const publicHost = (process.env.CREATORHUB_PUBLIC_URL ?? 'https://app.creatorhubn.com').replace(/\/$/, '');
+    const successUrl = `${publicHost}/client/gallery/${accessToken}?checkout=success&session_id={CHECKOUT_SESSION_ID}`;
+    const cancelUrl = `${publicHost}/client/gallery/${accessToken}?checkout=cancelled`;
+
+    const session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          quantity: pricing.extraImages,
+          price_data: {
+            currency: pricing.currency.toLowerCase(),
+            unit_amount: Math.round(pricing.pricePerImage * 100),
+            product_data: {
+              name: `Ekstra bilde — ${gallery.projectTitle ?? 'klient-galleri'}`,
+              description: `${pricing.extraImages} bilder utover inkluderte. Total: ${pricing.totalAmount.toFixed(2)} ${pricing.currency}`,
+            },
+          },
+        },
+      ],
+      customer_email: effectiveEmail,
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+      metadata: {
+        galleryId: gallery.id,
+        clientEmail: effectiveEmail,
+        extraImages: String(pricing.extraImages),
+        accessToken: accessToken.slice(0, 32),
+      },
+      payment_intent_data: {
+        // Mirror metadata på PaymentIntent slik at den eksisterende
+        // payment_intent.succeeded-webhook (Slice 10.2) finner
+        // galleryId og kan stempe ned download_token.
+        metadata: {
+          galleryId: gallery.id,
+          clientEmail: effectiveEmail,
+          extraImages: String(pricing.extraImages),
+          accessToken: accessToken.slice(0, 32),
+        },
+        receipt_email: effectiveEmail,
+        description: `CreatorHub klient-galleri ekstra-bilder (${pricing.extraImages} stk)`,
+      },
+    });
+
+    // Insert pending row så webhook har noe å oppdatere.
+    await pool.query(
+      `INSERT INTO client_image_payments
+         (gallery_id, client_email, stripe_payment_intent_id, total_amount,
+          currency, additional_images, selected_image_ids, payment_status,
+          created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', NOW(), NOW())`,
+      [
+        gallery.id,
+        effectiveEmail,
+        session.payment_intent as string,
+        pricing.totalAmount,
+        pricing.currency,
+        pricing.extraImages,
+        JSON.stringify(selectedImageIds),
+      ],
+    );
+
+    res.json({
+      sessionId: session.id,
+      checkoutUrl: session.url,
+      pricing,
+    });
+  } catch (error) {
+    console.error("[client-gallery] create-checkout-session failed", error);
+    res.status(500).json({
+      error: "create_checkout_session_failed",
+      detail: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
 // ── Slice 9.6 — gallery email notifications ────────────────────────────
 // Fire-and-forget dispatchers for the two highest-signal client events:
 // new comment posted, selection submitted. Sent to the photographer's
