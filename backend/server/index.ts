@@ -56323,6 +56323,23 @@ app.post("/api/submissions", async (req, res) => {
       `📩 Ny forespørsel fra ${name} (${email}) → vendor ${vendorEmail || vendorId || "ukjent"}`,
     );
 
+    // Analytics — bind ny submission til ecosystem-loggen så BI-grafen
+    // viser hele klient-funnel'en (submission → contacted → quoted →
+    // converted → galleri).
+    recordAnalyticsEvent('submission.received', {
+      entityType: 'submission',
+      entityId: String(submission.id),
+      actorUserId: vendorId || null,
+      metadata: {
+        clientEmail: email,
+        clientName: name,
+        projectType: projectType || null,
+        budget: budget || null,
+        vendorEmail: vendorEmail || null,
+        priority: priority || 'medium',
+      },
+    });
+
     res.status(201).json({
       success: true,
       submission,
@@ -56531,7 +56548,25 @@ app.put("/api/submissions/:id/status", async (req, res) => {
     if (result.rowCount === 0) {
       return res.status(404).json({ error: "Forespørsel ikke funnet" });
     }
-    res.json({ success: true, submission: mapSubmissionRow(result.rows[0]) });
+    const updated = mapSubmissionRow(result.rows[0]);
+    // Analytics — submission funnel-stage transition. Lar BI-grafen
+    // måle conversion-rate (submission → contacted → quoted → accepted)
+    // på tvers av photographer-pipeline.
+    if (status) {
+      recordAnalyticsEvent('submission.status_changed', {
+        entityType: 'submission',
+        entityId: String(id),
+        actorUserId: typeof getUserIdFromAuth === 'function'
+          ? readString(getUserIdFromAuth(req)) ?? null
+          : null,
+        metadata: {
+          newStatus: status,
+          clientEmail: (updated as Record<string, unknown>).email ?? null,
+          projectType: (updated as Record<string, unknown>).projectType ?? null,
+        },
+      });
+    }
+    res.json({ success: true, submission: updated });
   } catch (error) {
     console.error("Error updating submission:", error);
     res.status(500).json({ error: "Kunne ikke oppdatere forespørsel" });

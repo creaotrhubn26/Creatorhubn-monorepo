@@ -49,6 +49,8 @@ type Period = '7d' | '30d' | '90d';
 const PERIOD_DAYS: Record<Period, number> = { '7d': 7, '30d': 30, '90d': 90 };
 
 const EVENT_COLORS: Record<string, string> = {
+  'submission.received': '#1e88e5',
+  'submission.status_changed': '#039be5',
   'gallery.created': '#0288d1',
   'gallery.completed': '#43a047',
   'project.status_changed': '#fb8c00',
@@ -73,6 +75,8 @@ function humanLabel(eventType: string): string {
     case 'comment.created': return 'Kommentar';
     case 'selection.submitted': return 'Klient-valg';
     case 'photo_enhancer.batch_pushed': return 'Photo Enhancer-levering';
+    case 'submission.received': return 'Ny forespørsel';
+    case 'submission.status_changed': return 'Forespørsel-status';
     default: return eventType;
   }
 }
