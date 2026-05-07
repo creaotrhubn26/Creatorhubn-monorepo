@@ -56860,6 +56860,61 @@ app.get("/api/submissions/stats", async (req, res) => {
   }
 });
 
+// POST /api/submissions/:id/mark-converted — bind submission til
+// opprettet project. Lukker workflow_audit-gap "submissions↔projects
+// mangler FK". Fires submission.converted-event så BI-funnel kan
+// måle conversion-rate fra lead til prosjekt.
+app.post("/api/submissions/:id/mark-converted", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { projectId } = req.body ?? {};
+    if (!projectId) {
+      return res.status(400).json({ error: "project_id_required" });
+    }
+    const result = await pool.query(
+      `UPDATE client_submissions
+       SET status = 'converted',
+           internal_notes = COALESCE(internal_notes, '') || E'\nKonvertert til prosjekt: ' || $1,
+           updated_at = NOW()
+       WHERE id = $2
+       RETURNING *`,
+      [projectId, id],
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Forespørsel ikke funnet" });
+    }
+    const updated = mapSubmissionRow(result.rows[0]);
+    // Mirror på project-siden — sett settings.submissionId så drill-
+    // back fra prosjekt-tidslinjen til opprinnelig submission funker.
+    try {
+      await pool.query(
+        `UPDATE legacy.projects
+         SET settings = COALESCE(settings, '{}'::jsonb) || jsonb_build_object('submissionId', $1::text),
+             updated_at = NOW()
+         WHERE id = $2`,
+        [String(id), String(projectId)],
+      );
+    } catch (linkErr) {
+      console.warn('[submission-mark-converted] project-side link failed:', linkErr);
+    }
+    recordAnalyticsEvent('submission.converted', {
+      entityType: 'submission',
+      entityId: String(id),
+      actorUserId: typeof getUserIdFromAuth === 'function'
+        ? readString(getUserIdFromAuth(req)) ?? null
+        : null,
+      metadata: {
+        projectId: String(projectId),
+        clientEmail: (updated as Record<string, unknown>).email ?? null,
+      },
+    });
+    res.json({ success: true, submission: updated });
+  } catch (error) {
+    console.error("Error marking submission converted:", error);
+    res.status(500).json({ error: "Kunne ikke markere som konvertert" });
+  }
+});
+
 // PUT /api/submissions/:id/status — update submission status
 app.put("/api/submissions/:id/status", async (req, res) => {
   try {

@@ -2758,14 +2758,27 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                           eventDates: uiSettings.submissionProjectData?.eventDates,
                           location: uiSettings.submissionProjectData?.location,
                           guestCount: uiSettings.submissionProjectData?.guestCount}}
-                        onProjectCreated={async () => {
+                        onProjectCreated={async (newProject?: { id?: string }) => {
+                          // Workflow-audit-fix: hvis vi konverterer fra
+                          // submission, koble dem sammen i backend så BI
+                          // kan måle conversion-rate og drill-back funker.
+                          const submissionId = uiSettings.submissionProjectData?.id;
+                          const projectId = newProject?.id;
+                          if (submissionId && projectId) {
+                            try {
+                              await apiRequest(`/api/submissions/${submissionId}/mark-converted`, {
+                                method: 'POST',
+                                body: JSON.stringify({ projectId }),
+                              });
+                            } catch (err) {
+                              console.warn('[submission-convert] mark-converted failed:', err);
+                            }
+                          }
                           setShowProjectCreation(false);
-                          // Clear the submission that was being converted
-                          // and refresh dashboard data so the brand-new
-                          // project appears without a manual reload.
                           setUiSettings(prev => ({ ...prev, submissionProjectData: null }));
                           await queryClient.invalidateQueries({ queryKey: ['/api/projects'] });
                           queryClient.invalidateQueries({ queryKey: [`/api/dashboard/${profession}`] });
+                          queryClient.invalidateQueries({ queryKey: ['/api/submissions'] });
                         }}
                       />
                     </ProjectProvider>
