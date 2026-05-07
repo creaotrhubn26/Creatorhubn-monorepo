@@ -868,6 +868,18 @@ app.post(
           } catch (err) {
             console.error('[client-gallery] payment_intent.payment_failed persist failed:', err);
           }
+          recordAnalyticsEvent('payment.failed', {
+            entityType: 'gallery',
+            entityId: String(intent.metadata?.galleryId ?? ''),
+            actorUserId: intent.metadata?.userId ?? null,
+            metadata: {
+              amount: intent.amount,
+              currency: intent.currency,
+              stripeIntentId: intent.id,
+              clientEmail: intent.metadata?.clientEmail ?? null,
+              lastError: intent.last_payment_error?.message ?? null,
+            },
+          });
           break;
         }
         default:
@@ -23729,6 +23741,16 @@ app.post("/api/client/gallery/:accessToken/comments", async (req, res) => {
         details: { comment, imageId, commentType },
       });
     });
+    recordAnalyticsEvent('comment.created', {
+      entityType: 'gallery',
+      entityId: gallery.id,
+      actorUserId: gallery.photographerId,
+      metadata: {
+        imageId: imageId ?? null,
+        commentType,
+        clientEmail: clientEmail || gallery.clientEmail || null,
+      },
+    });
   } catch (error) {
     console.error("[client-gallery] comment save failed", error);
     res.status(500).json({ error: "comment_save_failed" });
@@ -25014,6 +25036,18 @@ app.post("/api/client/gallery/:accessToken/submit-selection", async (req, res) =
       } catch (err) {
         console.warn('[gallery-notify] selection_submitted dispatch failed:', err);
       }
+    });
+    recordAnalyticsEvent('selection.submitted', {
+      entityType: 'gallery',
+      entityId: gallery.id,
+      actorUserId: null,
+      metadata: {
+        selectedCount: selectedImageIds.length,
+        totalAmount: pricing.totalAmount,
+        currency: pricing.currency,
+        requiresPayment: pricing.totalAmount > 0,
+        clientEmail: effectiveEmail,
+      },
     });
   } catch (error) {
     console.error("[client-gallery] submit-selection failed", error);

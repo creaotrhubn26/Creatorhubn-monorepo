@@ -55,7 +55,8 @@ const EVENT_COLORS: Record<string, string> = {
   'payment.succeeded': '#ff9800',
   'payment.failed': '#e53935',
   'comment.created': '#7b1fa2',
-  'selection.submitted': '#43a047',
+  'selection.submitted': '#26a69a',
+  'photo_enhancer.batch_pushed': '#5e35b1',
 };
 
 function colorFor(eventType: string): string {
@@ -71,6 +72,7 @@ function humanLabel(eventType: string): string {
     case 'payment.failed': return 'Betaling feilet';
     case 'comment.created': return 'Kommentar';
     case 'selection.submitted': return 'Klient-valg';
+    case 'photo_enhancer.batch_pushed': return 'Photo Enhancer-levering';
     default: return eventType;
   }
 }

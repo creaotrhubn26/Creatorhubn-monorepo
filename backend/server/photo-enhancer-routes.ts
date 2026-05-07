@@ -5043,6 +5043,29 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
           detail: result.detail,
         });
       }
+      // Analytics — registrer enhanced batch i ecosystem-loggen.
+      // Skriver direkte mot analytics_events siden dette route-modulen
+      // ikke importerer recordAnalyticsEvent-helperen fra index.ts.
+      // Fire-and-forget (void Promise) så response aldri blokkeres.
+      if (pool && result.galleryId) {
+        void pool.query(
+          `INSERT INTO analytics_events (event_type, entity_type, entity_id, actor_user_id, metadata)
+           VALUES ('photo_enhancer.batch_pushed', 'gallery', $1, $2, $3)`,
+          [
+            String(result.galleryId),
+            ownerUserId,
+            JSON.stringify({
+              uploadedImageCount: result.uploadedImageCount,
+              reusedExisting: result.reusedExisting ?? false,
+              clientEmail,
+              projectTitle,
+            }),
+          ],
+        ).catch((err) => {
+          console.warn('[photo-enhancer-deliveries] analytics record failed:', err);
+        });
+      }
+
       return res.status(200).json({
         success: true,
         galleryId: result.galleryId,
