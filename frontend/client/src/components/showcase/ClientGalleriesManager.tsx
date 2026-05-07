@@ -64,6 +64,7 @@ import {
   type ShowcaseProfession,
   type ShowcaseTerminology,
 } from '@/utils/showcaseTerminology';
+import { useCmsContent } from '@/hooks/useCmsContent';
 
 interface GallerySettings {
   maxSelections?: number;
@@ -137,6 +138,9 @@ export interface ClientGalleriesManagerProps {
 export const ClientGalleriesManager: React.FC<ClientGalleriesManagerProps> = ({ profession }) => {
   const queryClient = useQueryClient();
   const terms = useMemo(() => getShowcaseTerminology(profession), [profession]);
+  // CMS-styrt empty-state-tekst. Henter profesjon-aware override; faller
+  // tilbake til profesjon-terms-baserte default i selve render-en.
+  const emptyStateCopy = useCmsContent('gallery.empty_state', '');
   const [createOpen, setCreateOpen] = useState(false);
   const [createName, setCreateName] = useState('');
   const [createEmail, setCreateEmail] = useState('');
@@ -251,7 +255,11 @@ export const ClientGalleriesManager: React.FC<ClientGalleriesManagerProps> = ({ 
               {`Ingen ${terms.collectionPlural} ennå`}
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              {`Opprett ditt første klient-${terms.collection} for å levere ${terms.itemPlural} til en ${terms.client}.`}
+              {/* Profesjon-aware override fra cms_content.gallery.empty_state
+                  vinner; default-fallback er den profesjon-terms-baserte
+                  setningen så feature-paritet beholdes. */}
+              {emptyStateCopy
+                || `Opprett ditt første klient-${terms.collection} for å levere ${terms.itemPlural} til en ${terms.client}.`}
             </Typography>
             <Button variant="outlined" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>
               {`Opprett ${terms.collection}`}

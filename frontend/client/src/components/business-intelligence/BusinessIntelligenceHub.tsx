@@ -34,6 +34,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { landingTokens, landingHeroSx } from '@/theme/landingTokens';
+import { useCmsContent } from '@/hooks/useCmsContent';
 
 interface AnalyticsEvent {
   id: string;
@@ -85,6 +86,13 @@ function humanLabel(eventType: string): string {
 export function BusinessIntelligenceHub() {
   const theme = useTheme();
   const [period, setPeriod] = useState<Period>('30d');
+  // CMS-styrt overskrift + intro. Default-strenger bevarer feature-
+  // paritet hvis cms_content-rad ikke finnes (fersk DB e.g.).
+  const sectionTitle = useCmsContent('bi.section_title', 'Business Intelligence');
+  const sectionIntro = useCmsContent(
+    'bi.section_intro',
+    'Aktivitet på tvers av Galleri, Prosjekt, Betaling og Klient-events.',
+  );
 
   const sinceISO = useMemo(() => {
     const d = new Date();
@@ -198,10 +206,10 @@ export function BusinessIntelligenceHub() {
               variant="h4"
               sx={{ fontWeight: landingTokens.fontWeightDisplay, color: landingTokens.ink, mb: 0.5 }}
             >
-              Business Intelligence
+              {sectionTitle}
             </Typography>
             <Typography variant="body2" sx={{ color: landingTokens.inkMuted, maxWidth: 560 }}>
-              Aktivitet på tvers av Galleri, Prosjekt, Betaling og Klient-events.
+              {sectionIntro}{' '}
               Live-feed fra <code style={{ color: landingTokens.accent }}>analytics_events</code>.
             </Typography>
           </Box>
