@@ -111,6 +111,16 @@ import {
   type GrowthPhase,
 } from './role-room-ads-shared.js';
 import {
+  analyzeWebsite,
+  hashUrl,
+  normalizeUrl,
+} from './role-room-website-analyzer.js';
+import { generateWeekPlan } from './role-room-content-strategist.js';
+import {
+  generateCarouselDraft,
+} from './role-room-carousel-generator.js';
+import { makeDefaultResolverContext } from './role-room-carousel-image-resolver.js';
+import {
   listAdAccounts as listMetaAdAccounts,
   createCampaign as createMetaCampaign,
   pauseCampaign as pauseMetaCampaign,
@@ -21189,6 +21199,232 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json({ campaigns });
       } catch (error) {
         res.status(500).json({ error: 'Failed to list campaigns', detail: String(error) });
+      }
+    },
+  );
+
+  // ── Carousel pipeline (Slice 1 + 2 + 3) ────────────────
+  // Three composable endpoints + one orchestrator that runs the
+  // whole pipeline in a single call — convenient for early demo
+  // before the editor UI ships in Slice 4.
+
+  router.post(
+    '/carousel/analyze-website',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const { url, skipClaude } = req.body ?? {};
+        if (typeof url !== 'string' || !url.trim()) {
+          return res.status(400).json({ error: 'invalid_input', detail: 'url required' });
+        }
+        const normalized = normalizeUrl(url);
+        const urlHash = hashUrl(normalized);
+        const cached = await pool.query<{
+          id: string;
+          brand_profile: Record<string, unknown>;
+          fetched_at: string;
+          expires_at: string;
+        }>(
+          `SELECT id, brand_profile, fetched_at, expires_at
+             FROM website_analyses
+            WHERE user_id = $1 AND url_hash = $2 AND expires_at > now()`,
+          [userId, urlHash],
+        );
+        if (cached.rowCount && cached.rows[0]) {
+          return res.json({
+            analysisId: cached.rows[0].id,
+            cached: true,
+            brandProfile: cached.rows[0].brand_profile,
+          });
+        }
+        const profile = await analyzeWebsite(url, { skipClaude: !!skipClaude });
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+        const inserted = await pool.query<{ id: string }>(
+          `INSERT INTO website_analyses
+             (user_id, url, url_hash, brand_profile, expires_at)
+           VALUES ($1, $2, $3, $4::jsonb, $5)
+           ON CONFLICT (user_id, url_hash) DO UPDATE SET
+             brand_profile = EXCLUDED.brand_profile,
+             fetched_at = now(),
+             expires_at = EXCLUDED.expires_at
+           RETURNING id`,
+          [userId, profile.url, urlHash, JSON.stringify(profile), expiresAt],
+        );
+        res.json({
+          analysisId: inserted.rows[0].id,
+          cached: false,
+          brandProfile: profile,
+        });
+      } catch (error) {
+        res.status(500).json({
+          error: 'Failed to analyze website',
+          detail: String((error as Error)?.message ?? error),
+        });
+      }
+    },
+  );
+
+  router.post(
+    '/carousel/generate-week',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const { analysisId, weekStarting } = req.body ?? {};
+        if (!analysisId || !weekStarting) {
+          return res.status(400).json({
+            error: 'invalid_input',
+            detail: 'analysisId + weekStarting required',
+          });
+        }
+        const row = await pool.query<{
+          brand_profile: Record<string, unknown>;
+        }>(
+          `SELECT brand_profile FROM website_analyses
+            WHERE id = $1 AND user_id = $2`,
+          [analysisId, userId],
+        );
+        if (!row.rowCount) {
+          return res.status(404).json({ error: 'analysis_not_found' });
+        }
+        const brand = row.rows[0].brand_profile as unknown as Parameters<typeof generateWeekPlan>[0];
+        const plan = await generateWeekPlan(brand, weekStarting);
+        res.json({ plan });
+      } catch (error) {
+        res.status(500).json({
+          error: 'Failed to generate week plan',
+          detail: String((error as Error)?.message ?? error),
+        });
+      }
+    },
+  );
+
+  // Orchestrator — analyze + plan + generate draft in one shot.
+  router.post(
+    '/carousel/generate-draft',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const { url, weekStarting, skipClaude } = req.body ?? {};
+        if (!url || !weekStarting) {
+          return res.status(400).json({
+            error: 'invalid_input',
+            detail: 'url + weekStarting required',
+          });
+        }
+
+        // 1) Analyze (with cache)
+        const normalized = normalizeUrl(url);
+        const urlHash = hashUrl(normalized);
+        const cached = await pool.query<{ id: string; brand_profile: Record<string, unknown> }>(
+          `SELECT id, brand_profile FROM website_analyses
+            WHERE user_id = $1 AND url_hash = $2 AND expires_at > now()`,
+          [userId, urlHash],
+        );
+        let analysisId: string;
+        let brandProfile: Parameters<typeof generateWeekPlan>[0];
+        if (cached.rowCount && cached.rows[0]) {
+          analysisId = cached.rows[0].id;
+          brandProfile = cached.rows[0].brand_profile as unknown as Parameters<typeof generateWeekPlan>[0];
+        } else {
+          brandProfile = await analyzeWebsite(url, { skipClaude: !!skipClaude });
+          const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+          const inserted = await pool.query<{ id: string }>(
+            `INSERT INTO website_analyses
+               (user_id, url, url_hash, brand_profile, expires_at)
+             VALUES ($1, $2, $3, $4::jsonb, $5)
+             ON CONFLICT (user_id, url_hash) DO UPDATE SET
+               brand_profile = EXCLUDED.brand_profile,
+               fetched_at = now(),
+               expires_at = EXCLUDED.expires_at
+             RETURNING id`,
+            [userId, brandProfile.url, urlHash, JSON.stringify(brandProfile), expiresAt],
+          );
+          analysisId = inserted.rows[0].id;
+        }
+
+        // 2) Strategist
+        const plan = await generateWeekPlan(brandProfile, weekStarting);
+
+        // 3) Generator (DB transaction inside)
+        const fallbackColor = brandProfile.colors?.primary ?? '#0a0617';
+        const resolverCtx = makeDefaultResolverContext(pool, fallbackColor);
+        const draft = await generateCarouselDraft(
+          pool,
+          { userId, websiteAnalysisId: analysisId, weekPlan: plan, brand: brandProfile },
+          resolverCtx,
+        );
+
+        res.status(201).json({ draft });
+      } catch (error) {
+        res.status(500).json({
+          error: 'Failed to generate draft',
+          detail: String((error as Error)?.message ?? error),
+        });
+      }
+    },
+  );
+
+  router.get(
+    '/carousel/drafts/:draftId',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const draft = await pool.query(
+          `SELECT * FROM carousel_drafts WHERE id = $1 AND user_id = $2`,
+          [req.params.draftId, userId],
+        );
+        if (!draft.rowCount) {
+          return res.status(404).json({ error: 'draft_not_found' });
+        }
+        const posts = await pool.query(
+          `SELECT * FROM carousel_posts WHERE draft_id = $1 ORDER BY day_of_week ASC`,
+          [req.params.draftId],
+        );
+        const slides = await pool.query(
+          `SELECT s.* FROM carousel_slides s
+             JOIN carousel_posts p ON p.id = s.post_id
+            WHERE p.draft_id = $1
+            ORDER BY p.day_of_week ASC, s.slide_index ASC`,
+          [req.params.draftId],
+        );
+        res.json({
+          draft: draft.rows[0],
+          posts: posts.rows,
+          slides: slides.rows,
+        });
+      } catch (error) {
+        res.status(500).json({
+          error: 'Failed to load draft',
+          detail: String((error as Error)?.message ?? error),
+        });
+      }
+    },
+  );
+
+  router.get(
+    '/carousel/drafts',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const result = await pool.query(
+          `SELECT id, week_starting, status, total_posts, approved_post_count, created_at
+             FROM carousel_drafts
+            WHERE user_id = $1
+            ORDER BY week_starting DESC
+            LIMIT 50`,
+          [userId],
+        );
+        res.json({ drafts: result.rows });
+      } catch (error) {
+        res.status(500).json({
+          error: 'Failed to list drafts',
+          detail: String((error as Error)?.message ?? error),
+        });
       }
     },
   );
