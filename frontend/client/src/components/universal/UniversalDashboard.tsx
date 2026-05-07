@@ -548,15 +548,23 @@ interface UniversalDashboardProps {
 function DashboardHeroBand({
   accent,
   professionDisplayName,
+  businessName,
+  userDisplayName,
 }: {
   accent: string;
   professionDisplayName: string;
+  businessName?: string | null;
+  userDisplayName?: string | null;
 }) {
   const heading = useCmsContent('dashboard.hero.heading', 'Velkommen til CreatorHub');
   const subheading = useCmsContent(
     'dashboard.hero.subheading',
     'Alle dine prosjekter, kunder og leveranser i ett verktøy.',
   );
+  // Caption-prioritet: bedriftsnavn vinner (det Daniel ba om — bruker
+  // ser sin egen virksomhet øverst). Fallback til profesjon-navnet
+  // (Fotograf/Videograf/etc) hvis bedriftsnavn ikke er satt.
+  const captionText = businessName?.trim() || professionDisplayName;
   return (
     <Box
       sx={{
@@ -579,19 +587,31 @@ function DashboardHeroBand({
         },
       }}
     >
-      <Typography
-        variant="caption"
-        sx={{
-          color: accent,
-          fontWeight: 700,
-          letterSpacing: '0.08em',
-          textTransform: 'uppercase',
-          display: 'block',
-          mb: 1,
-        }}
-      >
-        {professionDisplayName}
-      </Typography>
+      <Stack direction="row" alignItems="baseline" spacing={1.5} sx={{ mb: 1, flexWrap: 'wrap' }}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: accent,
+            fontWeight: 700,
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+          }}
+        >
+          {captionText}
+        </Typography>
+        {businessName && (
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'rgba(246,242,234,0.42)',
+              fontWeight: 500,
+              letterSpacing: '0.04em',
+            }}
+          >
+            · {professionDisplayName}
+          </Typography>
+        )}
+      </Stack>
       <Typography
         variant="h3"
         sx={{
@@ -602,7 +622,7 @@ function DashboardHeroBand({
           fontSize: { xs: '1.75rem', md: '2.5rem' },
         }}
       >
-        {heading}
+        {userDisplayName ? `Hei ${userDisplayName.split(' ')[0]} — ${heading}` : heading}
       </Typography>
       <Typography
         variant="body1"
@@ -4303,6 +4323,13 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
             <DashboardHeroBand
               accent={professionAccent}
               professionDisplayName={config.name}
+              businessName={currentUser?.businessName ?? null}
+              userDisplayName={
+                currentUser?.displayName
+                || (currentUser?.firstName
+                    ? `${currentUser.firstName}${currentUser?.lastName ? ' ' + currentUser.lastName : ''}`
+                    : null)
+              }
             />
           <MuiCard sx={{
             // Landing-matched dark surface med profesjon-spesifikk

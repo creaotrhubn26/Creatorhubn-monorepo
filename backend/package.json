@@ -223,6 +223,7 @@
     "node-cron": "^3.0.3",
     "node-fetch": "^3.3.2",
     "node-html-parser": "^7.0.1",
+    "node-vibrant": "^4.0.4",
     "nodemailer": "^8.0.5",
     "npm-check-updates": "^19.1.2",
     "onnxruntime-node": "^1.19.2",
