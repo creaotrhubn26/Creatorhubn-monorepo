@@ -2689,10 +2689,64 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
           pointerEvents: 'none',
           zIndex: 0,
         },
-        // Force MUI Paper/Card to inherit dark surface so child-
-        // komponenter ikke fortsetter å vise hvitt på mørk bakgrunn.
-        '& .MuiPaper-root, & .MuiCard-root': {
+        // Cascading dark-tema for child-komponenter. Aggressivt nok til
+        // at standard MUI Paper/Card/Tabell/Dialog henger sammen med
+        // landing-aksenten, men opt-out via explicit bg-prop fortsatt
+        // mulig for komponenter som trenger lys overflate (e.g. white-
+        // labeled klient-galleri-viewer som er public-facing).
+        '& .MuiPaper-root': {
           backgroundImage: 'none',
+          backgroundColor: 'rgba(15,16,24,0.85)',
+          color: '#f6f2ea',
+          border: '1px solid rgba(255,186,108,0.10)',
+        },
+        '& .MuiCard-root': {
+          backgroundImage: 'none',
+          backgroundColor: 'rgba(15,16,24,0.85)',
+          color: '#f6f2ea',
+          border: '1px solid rgba(255,186,108,0.10)',
+        },
+        // Typography arver color via theme — sett body/h-variants til
+        // ink-cream så tekst er lesbar på dark surface.
+        '& .MuiTypography-root': {
+          color: '#f6f2ea',
+        },
+        '& .MuiTypography-colorTextSecondary, & .MuiTypography-body2': {
+          color: 'rgba(246,242,234,0.66)',
+        },
+        // Inputs (TextField, Select) trenger lysere outline + hvit tekst
+        '& .MuiOutlinedInput-root': {
+          color: '#f6f2ea',
+          '& fieldset': { borderColor: 'rgba(255,186,108,0.24)' },
+          '&:hover fieldset': { borderColor: 'rgba(255,186,108,0.4)' },
+          '&.Mui-focused fieldset': { borderColor: '#ffba6c' },
+        },
+        '& .MuiInputLabel-root': {
+          color: 'rgba(246,242,234,0.66)',
+          '&.Mui-focused': { color: '#ffba6c' },
+        },
+        // Divider mer synlig på dark
+        '& .MuiDivider-root': {
+          borderColor: 'rgba(255,186,108,0.12)',
+        },
+        // Chip outlined-variant: ramme + tekst i ink
+        '& .MuiChip-outlined': {
+          color: '#f6f2ea',
+          borderColor: 'rgba(255,186,108,0.30)',
+        },
+        // List/menu items
+        '& .MuiListItemText-secondary': {
+          color: 'rgba(246,242,234,0.55)',
+        },
+        // Table headers
+        '& .MuiTableCell-root': {
+          color: '#f6f2ea',
+          borderColor: 'rgba(255,186,108,0.10)',
+        },
+        '& .MuiTableCell-head': {
+          backgroundColor: 'rgba(5,6,10,0.4)',
+          color: '#fff5e8',
+          fontWeight: 700,
         },
         // WCAG AA Compliance: Motion and contrast preferences
         '@media (prefers-reduced-motion: reduce)': {

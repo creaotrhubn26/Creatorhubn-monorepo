@@ -24864,7 +24864,31 @@ function ensureCmsSchema(): Promise<void> {
              '{"value": "Ingen video-galleri ennå — opprett ditt første for å levere klipp til en klient."}'::jsonb),
             ('gallery.empty_state', 'dashboard_hero', 'music_producer', 'nb-NO',
              '{"value": "Ingen lyd-galleri ennå — opprett ditt første for å levere spor til en klient."}'::jsonb),
-            ('design.tokens', 'design_system', NULL, 'nb-NO', '{}'::jsonb)
+            ('design.tokens', 'design_system', NULL, 'nb-NO', '{}'::jsonb),
+            -- Profession-aware hero-overrides så hver dashboard-flate
+            -- har copy som passer faget. Foto-default holder seg til
+            -- generic 'Velkommen til CreatorHub'; video/musikk/vendor
+            -- får tilpasset oppstart-tekst.
+            ('dashboard.hero.heading', 'dashboard_hero', 'photographer', 'nb-NO',
+             '{"value": "Studio i lommen"}'::jsonb),
+            ('dashboard.hero.subheading', 'dashboard_hero', 'photographer', 'nb-NO',
+             '{"value": "Fra første shoot til levert klient-galleri — alt i én flyt."}'::jsonb),
+            ('dashboard.hero.heading', 'dashboard_hero', 'videographer', 'nb-NO',
+             '{"value": "Edit fra første klipp"}'::jsonb),
+            ('dashboard.hero.subheading', 'dashboard_hero', 'videographer', 'nb-NO',
+             '{"value": "Capture-til-color, klient-godkjenning, og deliveries i ett."}'::jsonb),
+            ('dashboard.hero.heading', 'dashboard_hero', 'music_producer', 'nb-NO',
+             '{"value": "Spor til mester"}'::jsonb),
+            ('dashboard.hero.subheading', 'dashboard_hero', 'music_producer', 'nb-NO',
+             '{"value": "Session-prep, split-sheet, og master-delivery samlet."}'::jsonb),
+            ('dashboard.hero.heading', 'dashboard_hero', 'vendor', 'nb-NO',
+             '{"value": "Drift og pipeline"}'::jsonb),
+            ('dashboard.hero.subheading', 'dashboard_hero', 'vendor', 'nb-NO',
+             '{"value": "Lead-håndtering, kvoter, og leveringsstatus i én oversikt."}'::jsonb),
+            ('dashboard.hero.heading', 'dashboard_hero', 'enterprise', 'nb-NO',
+             '{"value": "Team-orkestrert produksjon"}'::jsonb),
+            ('dashboard.hero.subheading', 'dashboard_hero', 'enterprise', 'nb-NO',
+             '{"value": "Cross-team-prosjekter, Brand-kontroll, og samlet rapportering."}'::jsonb)
           ON CONFLICT (content_key, COALESCE(profession, ''), COALESCE(locale, 'nb-NO')) DO NOTHING;
         `);
       } catch (err) {
