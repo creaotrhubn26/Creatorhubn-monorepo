@@ -14,6 +14,7 @@ import { trackButtonClick } from '@/hooks/useActionTracker';
 import { useDemoMode } from '@/contexts/DemoModeContext';
 import { useAuth } from '@/hooks/useAuth';
 import { useUrlTab } from '@/hooks/useUrlState';
+import { useCmsContent } from '@/hooks/useCmsContent';
 import { isProfessionFeatureAvailable } from '@shared/profession-feature-matrix';
 import AdminIndicator from '../admin/AdminIndicator';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
@@ -537,6 +538,82 @@ interface UniversalDashboardProps {
 }
 
 // Internal component that uses the context
+/**
+ * DashboardHeroBand — profesjon-aware hero øverst i UniversalDashboard.
+ * Henter heading + subheading via useCmsContent (CMS leverer profesjon-
+ * spesifikk variant, fallback til generic). Stylet med landing-tema +
+ * profession-accent for den samme fargesignaturen som resten av
+ * dashboardet.
+ */
+function DashboardHeroBand({
+  accent,
+  professionDisplayName,
+}: {
+  accent: string;
+  professionDisplayName: string;
+}) {
+  const heading = useCmsContent('dashboard.hero.heading', 'Velkommen til CreatorHub');
+  const subheading = useCmsContent(
+    'dashboard.hero.subheading',
+    'Alle dine prosjekter, kunder og leveranser i ett verktøy.',
+  );
+  return (
+    <Box
+      sx={{
+        mb: 3,
+        p: { xs: 3, md: 4 },
+        borderRadius: 4,
+        background: `linear-gradient(135deg, rgba(5,6,10,0.96) 0%, rgba(15,16,24,0.94) 100%)`,
+        border: `1px solid ${accent}33`,
+        position: 'relative',
+        overflow: 'hidden',
+        '&::before': {
+          content: '""',
+          position: 'absolute',
+          top: -60,
+          right: -60,
+          width: 240,
+          height: 240,
+          background: `radial-gradient(circle, ${accent}22 0%, transparent 70%)`,
+          pointerEvents: 'none',
+        },
+      }}
+    >
+      <Typography
+        variant="caption"
+        sx={{
+          color: accent,
+          fontWeight: 700,
+          letterSpacing: '0.08em',
+          textTransform: 'uppercase',
+          display: 'block',
+          mb: 1,
+        }}
+      >
+        {professionDisplayName}
+      </Typography>
+      <Typography
+        variant="h3"
+        sx={{
+          fontWeight: 800,
+          color: '#f6f2ea',
+          mb: 1,
+          lineHeight: 1.1,
+          fontSize: { xs: '1.75rem', md: '2.5rem' },
+        }}
+      >
+        {heading}
+      </Typography>
+      <Typography
+        variant="body1"
+        sx={{ color: 'rgba(246,242,234,0.66)', maxWidth: 720 }}
+      >
+        {subheading}
+      </Typography>
+    </Box>
+  );
+}
+
 const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ profession = 'photographer' }) => {
   const ROLE_ROOM_GOOGLE_TRANSFER_PROCESSING_KEY = 'creatorhub:rr-google-processing';
   const ROLE_ROOM_MARKETPLACE_URL = 'https://theroleroom.com/?source=creatorhub-marketplace';
@@ -4216,6 +4293,17 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
           </Box>
         ) : (
           /* Standard Dashboard */
+          <>
+            {/* CMS-styrt profesjon-aware hero. Henter
+                dashboard.hero.heading + .subheading via useCmsContent.
+                Backend leverer profesjon-spesifikk variant automatisk
+                (photographer: "Studio i lommen", videograf: "Edit fra
+                første klipp", etc). Default-fallback i hooken sikrer
+                at vi alltid har tekst selv om CMS-rad ikke finnes. */}
+            <DashboardHeroBand
+              accent={professionAccent}
+              professionDisplayName={config.name}
+            />
           <MuiCard sx={{
             // Landing-matched dark surface med profesjon-spesifikk
             // aksent-border. Hver fag har egen "lyd" (orange/rød/blå/
@@ -6860,6 +6948,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
             {/* BRREG and Optimization Background Functions */}
             <BRREGIntegration profession={profession as any} mode="background" />
           </MuiCard>
+          </>
         )}
       </Container>
 
