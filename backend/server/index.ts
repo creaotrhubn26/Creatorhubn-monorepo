@@ -24792,19 +24792,24 @@ function ensureCmsSchema(): Promise<void> {
         // Eldre drizzle-schema brukte trolig 'name' istedenfor min
         // 'label'. Defensivt tillegg: drop NOT NULL på flere typiske
         // ghost-kolonner i samme batch.
+        // PL/pgSQL DROP NOT NULL — wrap hver i egen BEGIN/EXCEPTION-
+        // sub-block. Single-line BEGIN x; EXCEPTION WHEN y THEN END;
+        // er IKKE gyldig syntax (hver må være på flere linjer med
+        // statement-terminator og NULL i exception-handleren).
         await pool.query(`
-          DO $$ BEGIN
-            BEGIN ALTER TABLE cms_content_types ALTER COLUMN name DROP NOT NULL; EXCEPTION WHEN undefined_column THEN END;
-            BEGIN ALTER TABLE cms_content_types ALTER COLUMN slug DROP NOT NULL; EXCEPTION WHEN undefined_column THEN END;
-            BEGIN ALTER TABLE cms_content_types ALTER COLUMN title DROP NOT NULL; EXCEPTION WHEN undefined_column THEN END;
-            BEGIN ALTER TABLE cms_fields ALTER COLUMN name DROP NOT NULL; EXCEPTION WHEN undefined_column THEN END;
-            BEGIN ALTER TABLE cms_fields ALTER COLUMN type DROP NOT NULL; EXCEPTION WHEN undefined_column THEN END;
-            BEGIN ALTER TABLE cms_fields ALTER COLUMN slug DROP NOT NULL; EXCEPTION WHEN undefined_column THEN END;
-            BEGIN ALTER TABLE cms_content ALTER COLUMN name DROP NOT NULL; EXCEPTION WHEN undefined_column THEN END;
-            BEGIN ALTER TABLE cms_content ALTER COLUMN slug DROP NOT NULL; EXCEPTION WHEN undefined_column THEN END;
-            BEGIN ALTER TABLE cms_content ALTER COLUMN title DROP NOT NULL; EXCEPTION WHEN undefined_column THEN END;
-            BEGIN ALTER TABLE cms_content ALTER COLUMN body DROP NOT NULL; EXCEPTION WHEN undefined_column THEN END;
-            BEGIN ALTER TABLE cms_content ALTER COLUMN content_type DROP NOT NULL; EXCEPTION WHEN undefined_column THEN END;
+          DO $$
+          BEGIN
+            BEGIN ALTER TABLE cms_content_types ALTER COLUMN name DROP NOT NULL; EXCEPTION WHEN undefined_column THEN NULL; END;
+            BEGIN ALTER TABLE cms_content_types ALTER COLUMN slug DROP NOT NULL; EXCEPTION WHEN undefined_column THEN NULL; END;
+            BEGIN ALTER TABLE cms_content_types ALTER COLUMN title DROP NOT NULL; EXCEPTION WHEN undefined_column THEN NULL; END;
+            BEGIN ALTER TABLE cms_fields ALTER COLUMN name DROP NOT NULL; EXCEPTION WHEN undefined_column THEN NULL; END;
+            BEGIN ALTER TABLE cms_fields ALTER COLUMN type DROP NOT NULL; EXCEPTION WHEN undefined_column THEN NULL; END;
+            BEGIN ALTER TABLE cms_fields ALTER COLUMN slug DROP NOT NULL; EXCEPTION WHEN undefined_column THEN NULL; END;
+            BEGIN ALTER TABLE cms_content ALTER COLUMN name DROP NOT NULL; EXCEPTION WHEN undefined_column THEN NULL; END;
+            BEGIN ALTER TABLE cms_content ALTER COLUMN slug DROP NOT NULL; EXCEPTION WHEN undefined_column THEN NULL; END;
+            BEGIN ALTER TABLE cms_content ALTER COLUMN title DROP NOT NULL; EXCEPTION WHEN undefined_column THEN NULL; END;
+            BEGIN ALTER TABLE cms_content ALTER COLUMN body DROP NOT NULL; EXCEPTION WHEN undefined_column THEN NULL; END;
+            BEGIN ALTER TABLE cms_content ALTER COLUMN content_type DROP NOT NULL; EXCEPTION WHEN undefined_column THEN NULL; END;
           END $$;
         `);
         // UNIQUE-constraints — CREATE TABLE skipper dem hvis tabell
