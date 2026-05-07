@@ -24838,12 +24838,15 @@ app.post("/api/cms/admin/fields", async (req, res) => {
       `INSERT INTO cms_fields (field_key, label, field_type, description, validation, default_value, is_active)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING id`,
-      [String(key), String(label), String(type || 'text'), description ?? null, validation ?? {}, defaultValue ?? null, isActive !== false],
+      [String(key), String(label), String(type || 'text'), description ?? null, JSON.stringify(validation ?? {}), defaultValue ?? null, isActive !== false],
     );
     res.status(201).json({ id: result.rows[0].id, success: true });
   } catch (err) {
     console.error('[cms] create field failed:', err);
-    res.status(500).json({ error: 'create_field_failed' });
+    res.status(500).json({
+      error: 'create_field_failed',
+      detail: err instanceof Error ? err.message : String(err),
+    });
   }
 });
 
@@ -24912,12 +24915,15 @@ app.post("/api/cms/admin/content-types", async (req, res) => {
       `INSERT INTO cms_content_types (type_key, label, description, field_keys, is_active)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING id`,
-      [String(key), String(label), description ?? null, fieldKeys ?? [], isActive !== false],
+      [String(key), String(label), description ?? null, JSON.stringify(fieldKeys ?? []), isActive !== false],
     );
     res.status(201).json({ id: result.rows[0].id, success: true });
   } catch (err) {
     console.error('[cms] create content-type failed:', err);
-    res.status(500).json({ error: 'create_content_type_failed' });
+    res.status(500).json({
+      error: 'create_content_type_failed',
+      detail: err instanceof Error ? err.message : String(err),
+    });
   }
 });
 
@@ -25008,7 +25014,10 @@ app.get("/api/cms/content/:key", async (req, res) => {
     });
   } catch (err) {
     console.error('[cms] content fetch failed:', err);
-    res.status(500).json({ error: 'fetch_failed' });
+    res.status(500).json({
+      error: 'fetch_failed',
+      detail: err instanceof Error ? err.message : String(err),
+    });
   }
 });
 
@@ -25030,12 +25039,15 @@ app.put("/api/cms/content/:key", async (req, res) => {
          is_published = EXCLUDED.is_published,
          updated_by = EXCLUDED.updated_by,
          updated_at = NOW()`,
-      [key, contentType ?? null, profession ?? null, locale ?? 'nb-NO', payload ?? {}, isPublished !== false, session.userId],
+      [key, contentType ?? null, profession ?? null, locale ?? 'nb-NO', JSON.stringify(payload ?? {}), isPublished !== false, session.userId],
     );
     res.json({ success: true });
   } catch (err) {
     console.error('[cms] content upsert failed:', err);
-    res.status(500).json({ error: 'upsert_failed' });
+    res.status(500).json({
+      error: 'upsert_failed',
+      detail: err instanceof Error ? err.message : String(err),
+    });
   }
 });
 
