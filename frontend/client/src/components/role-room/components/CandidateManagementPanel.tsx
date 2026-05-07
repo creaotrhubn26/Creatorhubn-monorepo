@@ -491,7 +491,7 @@ function CandidateManagementPanelInner({
         return;
       }
       try {
-        const { favoritesApi } = await import('@/services/castingApiService');
+        const { favoritesApi } = await import('../services/castingApiService');
         const dbFavorites = await favoritesApi.get(projectId, 'candidate');
         if (dbFavorites.length > 0) {
           setFavorites(new Set(dbFavorites));
@@ -520,7 +520,7 @@ function CandidateManagementPanelInner({
       const values = [...favorites];
       await settingsService.setSetting(FAVORITES_NAMESPACE, values, { projectId });
       try {
-        const { favoritesApi } = await import('@/services/castingApiService');
+        const { favoritesApi } = await import('../services/castingApiService');
         await favoritesApi.set(projectId, 'candidate', values);
       } catch (error) {
         console.warn('Database save failed:', error);
