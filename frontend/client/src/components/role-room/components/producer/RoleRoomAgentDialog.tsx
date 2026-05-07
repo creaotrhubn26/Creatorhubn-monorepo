@@ -33,6 +33,7 @@ import {
 } from '@mui/icons-material';
 import MetaPagePublicMetadataInspector from './MetaPagePublicMetadataInspector';
 import PagePublicContentInspector from './PagePublicContentInspector';
+import CompetitorWatchlistPanel from './CompetitorWatchlistPanel';
 import SocialInboxPanel from './SocialInboxPanel';
 import SocialAnalyticsPanel from './SocialAnalyticsPanel';
 import RoleRoomAgentWorkflowStepper from './RoleRoomAgentWorkflowStepper';
@@ -1630,9 +1631,14 @@ export default function RoleRoomAgentDialog({
                     Konkurrenter &amp; inspirasjon
                   </Typography>
                   <Typography sx={{ color: 'rgba(226,232,240,0.62)', fontSize: '0.78rem' }}>
-                    Slå opp Page-metadata og hent offentlig content fra konkurrenter direkte i research-flowen.
+                    Vedvarende watchlist for trend-tracking + ad-hoc oppslag.
                   </Typography>
                 </Box>
+                {projectId && (
+                  <Box sx={{ p: 1.4 }}>
+                    <CompetitorWatchlistPanel projectId={projectId} />
+                  </Box>
+                )}
                 <Accordion
                   disableGutters
                   square
