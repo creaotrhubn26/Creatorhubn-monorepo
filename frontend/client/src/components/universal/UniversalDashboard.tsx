@@ -2661,9 +2661,16 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
     <Box
       sx={{
         minHeight: '100vh',
+        // Landing-page-matched bakgrunn: dyp navy med warm orange aksent.
+        // Erstatter den lyse cream/peach-gradienten så dashboardet
+        // signaliserer "samme produkt som landingssiden" istedenfor å
+        // se ut som et generisk admin-panel.
         background: `
-          linear-gradient(135deg, #FFFBF5 0%, #FFF7ED 25%, #FEF3C7 50%, #FFEDD5 75%, ${customBranding.color}08 100%)
+          radial-gradient(circle at top right, rgba(255,163,72,0.18), transparent 32%),
+          radial-gradient(circle at left 20%, rgba(218,120,49,0.10), transparent 36%),
+          #05060a
         `,
+        color: '#f6f2ea',
         backgroundAttachment: 'fixed',
         py: { xs: 2, sm: 3, md: 4 },
         px: { xs: 1, sm: 2 },
@@ -2676,21 +2683,26 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
           right: 0,
           bottom: 0,
           background: `
-            radial-gradient(ellipse at 20% 20%, ${customBranding.color}08 0%, transparent 50%),
-            radial-gradient(ellipse at 80% 80%, ${customBranding.color}06 0%, transparent 50%),
-            radial-gradient(ellipse at 50% 50%, rgba(99, 102, 241, 0.03) 0%, transparent 50%)
+            radial-gradient(ellipse at 20% 20%, rgba(255,186,108,0.05) 0%, transparent 50%),
+            radial-gradient(ellipse at 80% 80%, rgba(218,120,49,0.04) 0%, transparent 50%)
           `,
           pointerEvents: 'none',
           zIndex: 0,
         },
+        // Force MUI Paper/Card to inherit dark surface so child-
+        // komponenter ikke fortsetter å vise hvitt på mørk bakgrunn.
+        '& .MuiPaper-root, & .MuiCard-root': {
+          backgroundImage: 'none',
+        },
         // WCAG AA Compliance: Motion and contrast preferences
         '@media (prefers-reduced-motion: reduce)': {
-          background: '#FFFBF5',
+          background: '#05060a',
           '&::before': { display: 'none' }
         },
         '@media (prefers-contrast: high)': {
-          background: '#ffffff',
-          border: '2px solid #000000'
+          background: '#000000',
+          color: '#ffffff',
+          border: '2px solid #ffffff'
         }
       }}
       // WCAG: Root container semantics

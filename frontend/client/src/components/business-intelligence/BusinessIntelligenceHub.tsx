@@ -33,6 +33,7 @@ import {
 } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import { landingTokens, landingHeroSx } from '@/theme/landingTokens';
 
 interface AnalyticsEvent {
   id: string;
@@ -168,28 +169,65 @@ export function BusinessIntelligenceHub() {
 
   return (
     <Box>
-      {/* Header med periode-velger */}
-      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
-        <Box>
-          <Typography variant="h5" sx={{ fontWeight: 700 }}>
-            Business Intelligence
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Aktivitet på tvers av Galleri, Prosjekt, Betaling og Klient-events.
-            Live-feed fra <code>analytics_events</code>.
-          </Typography>
-        </Box>
-        <ToggleButtonGroup
-          size="small"
-          exclusive
-          value={period}
-          onChange={(_, v) => v && setPeriod(v as Period)}
+      {/* Hero-bånd — matcher landing-page (mørk navy + warm orange
+          aksent) så BI-fanen signaliserer "samme produkt som
+          landing-siden" istedenfor å se ut som et generisk admin-
+          panel. */}
+      <Box sx={{ ...landingHeroSx, mb: 3 }}>
+        <Stack
+          direction={{ xs: 'column', sm: 'row' }}
+          justifyContent="space-between"
+          alignItems={{ xs: 'flex-start', sm: 'center' }}
+          spacing={2}
         >
-          <ToggleButton value="7d">7d</ToggleButton>
-          <ToggleButton value="30d">30d</ToggleButton>
-          <ToggleButton value="90d">90d</ToggleButton>
-        </ToggleButtonGroup>
-      </Stack>
+          <Box>
+            <Typography
+              variant="caption"
+              sx={{
+                color: landingTokens.accent,
+                fontWeight: landingTokens.fontWeightLabel,
+                letterSpacing: landingTokens.letterSpacingLabel,
+                textTransform: 'uppercase',
+                display: 'block',
+                mb: 0.5,
+              }}
+            >
+              Insight
+            </Typography>
+            <Typography
+              variant="h4"
+              sx={{ fontWeight: landingTokens.fontWeightDisplay, color: landingTokens.ink, mb: 0.5 }}
+            >
+              Business Intelligence
+            </Typography>
+            <Typography variant="body2" sx={{ color: landingTokens.inkMuted, maxWidth: 560 }}>
+              Aktivitet på tvers av Galleri, Prosjekt, Betaling og Klient-events.
+              Live-feed fra <code style={{ color: landingTokens.accent }}>analytics_events</code>.
+            </Typography>
+          </Box>
+          <ToggleButtonGroup
+            size="small"
+            exclusive
+            value={period}
+            onChange={(_, v) => v && setPeriod(v as Period)}
+            sx={{
+              '& .MuiToggleButton-root': {
+                color: landingTokens.inkSoft,
+                borderColor: landingTokens.accentBorder,
+                '&.Mui-selected': {
+                  bgcolor: landingTokens.accent,
+                  color: landingTokens.surfaceDeep,
+                  '&:hover': { bgcolor: landingTokens.accentBright },
+                },
+              },
+            }}
+          >
+            <ToggleButton value="7d">7d</ToggleButton>
+            <ToggleButton value="30d">30d</ToggleButton>
+            <ToggleButton value="90d">90d</ToggleButton>
+          </ToggleButtonGroup>
+        </Stack>
+      </Box>
 
       {/* KPI-rad */}
       <Box
