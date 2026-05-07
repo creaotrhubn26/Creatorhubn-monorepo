@@ -21,7 +21,7 @@
     "e2e:role-room-exporter:live": "node scripts/role-room-exporter-live-e2e.mjs",
     "e2e:role-room-google-workspace:live": "node scripts/role-room-google-workspace-live-e2e.mjs",
     "deploy:role-room:prod": "node scripts/deploy-role-room-prod.mjs",
-    "prepare": "git config core.hooksPath .githooks"
+    "prepare": "git rev-parse --git-dir > /dev/null 2>&1 && git config core.hooksPath .githooks || true"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"
