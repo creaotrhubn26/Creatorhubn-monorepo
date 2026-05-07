@@ -103,6 +103,13 @@ import {
   getAuditTrail,
   getConsentList,
 } from './role-room-ai-governance.js';
+import {
+  recommendAdsBudget,
+  INDUSTRY_FACTORS,
+  type IndustryCategory,
+  type AdsGoal,
+  type GrowthPhase,
+} from './role-room-ads-shared.js';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -20867,6 +20874,87 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       } catch (error) {
         res.status(500).json({ error: 'Failed to load AI interactions', detail: String(error) });
       }
+    },
+  );
+
+  // ── Ads 2.0 — budget recommendation engine ───────────────
+  // Returns a recommended monthly ads budget based on industry, revenue
+  // estimate, goal, and growth phase. Per-platform allocation included so
+  // the Ad Builder can pre-fill Meta/Google/TikTok budgets.
+  router.post(
+    '/ads/budget/recommend',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const {
+          industryCategory,
+          monthlyRevenueNok,
+          goal,
+          growthPhase,
+          businessProfileId,
+        } = req.body ?? {};
+
+        let resolvedIndustry = industryCategory;
+        let resolvedRevenue = Number(monthlyRevenueNok);
+        let resolvedGrowth = growthPhase;
+
+        // If a businessProfileId is supplied, fall back to its stored values.
+        if (businessProfileId && (!resolvedIndustry || !Number.isFinite(resolvedRevenue))) {
+          const row = await pool.query<{
+            industry_category: string | null;
+            monthly_revenue_estimate_nok: string | null;
+            growth_phase: string | null;
+          }>(
+            `SELECT industry_category, monthly_revenue_estimate_nok, growth_phase
+             FROM business_profiles WHERE id = $1`,
+            [businessProfileId],
+          );
+          if (row.rowCount && row.rows[0]) {
+            resolvedIndustry = resolvedIndustry || row.rows[0].industry_category || 'other';
+            if (!Number.isFinite(resolvedRevenue) && row.rows[0].monthly_revenue_estimate_nok) {
+              resolvedRevenue = Number(row.rows[0].monthly_revenue_estimate_nok);
+            }
+            resolvedGrowth = resolvedGrowth || row.rows[0].growth_phase || 'established';
+          }
+        }
+
+        if (!resolvedIndustry || !Number.isFinite(resolvedRevenue) || resolvedRevenue <= 0) {
+          return res.status(400).json({
+            error: 'invalid_input',
+            detail: 'industryCategory + monthlyRevenueNok required (or businessProfileId pointing at a profile with both)',
+          });
+        }
+
+        const recommendation = recommendAdsBudget({
+          industryCategory: resolvedIndustry as IndustryCategory,
+          monthlyRevenueNok: resolvedRevenue,
+          goal: goal as AdsGoal | undefined,
+          growthPhase: resolvedGrowth as GrowthPhase | undefined,
+        });
+
+        res.json({ recommendation });
+      } catch (error) {
+        res.status(500).json({
+          error: 'Failed to recommend ads budget',
+          detail: String(error),
+        });
+      }
+    },
+  );
+
+  // Static reference data — industry catalog for the picker UI.
+  router.get(
+    '/ads/budget/industries',
+    apiKeyAuth(pool, activeSessions),
+    async (_req: Request, res: Response) => {
+      const industries = Object.entries(INDUSTRY_FACTORS).map(([key, value]) => ({
+        key,
+        description: value.description,
+        marketingShareOfRevenue: value.marketingShareOfRevenue,
+        digitalAdsShareOfMarketing: value.digitalAdsShareOfMarketing,
+        platformAllocation: value.platformAllocation,
+      }));
+      res.json({ industries });
     },
   );
 
