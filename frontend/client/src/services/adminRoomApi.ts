@@ -476,3 +476,63 @@ export const businessPlanApi = {
     return data.plan;
   },
 };
+
+// ─────────────────────────────────────────────────────────
+// Pitch decks (kobler Investor-pipeline til investor_room_decks)
+// ─────────────────────────────────────────────────────────
+
+export type DeckStatus = 'draft' | 'published' | 'archived';
+
+export interface PitchDeck {
+  id: string;
+  userId: string;
+  projectId: string | null;
+  title: string;
+  description: string | null;
+  status: DeckStatus;
+  slideCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PitchDeckSlide {
+  id: string;
+  deckId: string;
+  position: number;
+  section: string;
+  layout: string;
+  content: { heading?: string; body?: string; [k: string]: unknown };
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const decksApi = {
+  list: async (): Promise<PitchDeck[]> => {
+    const data = await jsonFetch<{ items: PitchDeck[] }>('/decks');
+    return data.items;
+  },
+  create: async (body: { title: string; description?: string }): Promise<{ deck: PitchDeck; slides: PitchDeckSlide[] }> => {
+    return jsonFetch('/decks', { method: 'POST', body: JSON.stringify(body) });
+  },
+  get: async (id: string): Promise<{ deck: PitchDeck; slides: PitchDeckSlide[] }> => {
+    return jsonFetch(`/decks/${encodeURIComponent(id)}`);
+  },
+  patchMeta: async (id: string, body: { title?: string; description?: string; status?: DeckStatus }): Promise<PitchDeck> => {
+    const data = await jsonFetch<{ deck: PitchDeck }>(`/decks/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    });
+    return data.deck;
+  },
+  patchSlide: async (deckId: string, slideId: string, body: { content?: Record<string, unknown>; notes?: string }): Promise<PitchDeckSlide> => {
+    const data = await jsonFetch<{ slide: PitchDeckSlide }>(
+      `/decks/${encodeURIComponent(deckId)}/slides/${encodeURIComponent(slideId)}`,
+      { method: 'PATCH', body: JSON.stringify(body) },
+    );
+    return data.slide;
+  },
+  remove: async (id: string): Promise<void> => {
+    await jsonFetch(`/decks/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+};

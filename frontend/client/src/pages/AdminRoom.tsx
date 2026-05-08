@@ -48,6 +48,7 @@ import {
   investorContactsApi,
   partnerContactsApi,
   businessPlanApi,
+  decksApi,
   FUNDING_SCHEME_PRESETS,
   FUNDING_SCHEME_DEADLINES,
   FUNDING_STATUS_LABELS,
@@ -662,7 +663,8 @@ function InvestorDrawer({ open, initial, onClose, onSaved }: InvestorDrawerProps
                   Pitch deck
                 </Typography>
                 <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.78rem', mb: 1 }}>
-                  Lim inn delelenke (Notion, Pitch.com, Google Slides, Loom-video) — registreres som versjon når den oppdateres.
+                  Lim inn delelenke, eller generer et nytt internt deck (10 seksjoner) som
+                  pre-fylles fra Forretningsplan-fanen.
                 </Typography>
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
                   <TextField
@@ -679,8 +681,44 @@ function InvestorDrawer({ open, initial, onClose, onSaved }: InvestorDrawerProps
                     onClick={() => setForm((p) => ({ ...p, deckUploadedAt: new Date().toISOString() }))}
                     sx={{ textTransform: 'none', fontWeight: 700 }}
                   >
-                    Marker som oppdatert nå
+                    Marker oppdatert nå
                   </Button>
+                </Stack>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 1 }}>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    startIcon={<AutoAwesomeIcon />}
+                    onClick={async () => {
+                      try {
+                        const deckTitle = `${initial?.company_name ?? form.companyName ?? 'TROLL Investor'} — pitch deck`;
+                        const result = await decksApi.create({
+                          title: deckTitle,
+                          description: 'Generert fra Admin Room — pre-fylt fra Forretningsplan',
+                        });
+                        const internalUrl = `/admin-room/deck/${result.deck.id}`;
+                        setForm((p) => ({ ...p, deckUrl: internalUrl, deckUploadedAt: new Date().toISOString() }));
+                      } catch (err) {
+                        console.warn('Deck create failed', err);
+                      }
+                    }}
+                    sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#7c3aed' }}
+                  >
+                    Generer fra Forretningsplan
+                  </Button>
+                  {form.deckUrl && form.deckUrl.startsWith('/admin-room/deck/') ? (
+                    <Button
+                      size="small"
+                      variant="text"
+                      component="a"
+                      href={form.deckUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      sx={{ textTransform: 'none', fontWeight: 700 }}
+                    >
+                      Åpne deck
+                    </Button>
+                  ) : null}
                 </Stack>
                 {form.deckUploadedAt ? (
                   <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.78rem', mt: 0.6 }}>
