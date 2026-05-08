@@ -49,10 +49,13 @@ import {
   partnerContactsApi,
   businessPlanApi,
   FUNDING_SCHEME_PRESETS,
+  FUNDING_SCHEME_DEADLINES,
   FUNDING_STATUS_LABELS,
   INVESTOR_STATUS_LABELS,
   PARTNERSHIP_TYPE_LABELS,
   PARTNER_STATUS_LABELS,
+  PARTNER_CONTRACT_STATUS_LABELS,
+  DEFAULT_DD_CHECKLIST,
   type FundingApp,
   type FundingAppStatus,
   type FundingAppInput,
@@ -63,6 +66,8 @@ import {
   type PartnerStatus,
   type PartnershipType,
   type PartnerContactInput,
+  type PartnerContractStatus,
+  type DueDiligenceItem,
   type BusinessPlan,
   type BusinessPlanInput,
 } from '../services/adminRoomApi';
@@ -237,6 +242,7 @@ function FundingAppDrawer({ open, initial, onClose, onSaved }: FundingDrawerProp
         contactEmail: initial.contact_email,
         submissionDate: initial.submission_date,
         decisionDate: initial.decision_date,
+        deadline: initial.deadline,
         notes: initial.notes,
       });
     } else {
@@ -333,6 +339,7 @@ function FundingAppDrawer({ open, initial, onClose, onSaved }: FundingDrawerProp
               </FormControl>
             </Stack>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+              <TextField label="Søknadsfrist" size="small" type="date" InputLabelProps={{ shrink: true }} sx={{ flex: 1 }} value={form.deadline ?? ''} onChange={(e) => setForm((p) => ({ ...p, deadline: e.target.value || null }))} helperText={form.scheme && FUNDING_SCHEME_DEADLINES[form.scheme] ? FUNDING_SCHEME_DEADLINES[form.scheme] : 'Sett egen frist'} />
               <TextField label="Innleveringsdato" size="small" type="date" InputLabelProps={{ shrink: true }} sx={{ flex: 1 }} value={form.submissionDate ?? ''} onChange={(e) => setForm((p) => ({ ...p, submissionDate: e.target.value || null }))} />
               <TextField label="Vedtaksdato" size="small" type="date" InputLabelProps={{ shrink: true }} sx={{ flex: 1 }} value={form.decisionDate ?? ''} onChange={(e) => setForm((p) => ({ ...p, decisionDate: e.target.value || null }))} />
             </Stack>
@@ -399,6 +406,34 @@ function FundingAppsTab() {
 
   return (
     <Stack spacing={2}>
+      <Alert
+        severity="info"
+        sx={{
+          bgcolor: 'rgba(59,130,246,0.08)',
+          border: '1px solid rgba(59,130,246,0.22)',
+          color: '#bfdbfe',
+          '& .MuiAlert-icon': { color: '#60a5fa' },
+        }}
+      >
+        <Typography sx={{ fontWeight: 700, color: '#bfdbfe' }}>
+          Søknadsvinduer — Innovasjon Norge & EU
+        </Typography>
+        <Stack spacing={0.4} sx={{ fontSize: '0.84rem' }}>
+          <Typography sx={{ fontSize: '0.84rem', color: 'rgba(219,234,254,0.92)' }}>
+            • <strong>Markedsavklaring (1)</strong>: løpende — behandling 4-8 uker
+          </Typography>
+          <Typography sx={{ fontSize: '0.84rem', color: 'rgba(219,234,254,0.92)' }}>
+            • <strong>Kommersialisering (2)</strong>: løpende — behandling 6-10 uker
+          </Typography>
+          <Typography sx={{ fontSize: '0.84rem', color: 'rgba(219,234,254,0.92)' }}>
+            • <strong>Innovasjonskontrakter</strong>: utlysningsbasert — typisk 2-4 cut-offs per år
+          </Typography>
+          <Typography sx={{ fontSize: '0.84rem', color: 'rgba(219,234,254,0.92)' }}>
+            • <strong>EU Horizon EIC</strong>: cut-off hver 2-3 mnd · sjekk
+            {' '}<a href="https://eic.ec.europa.eu/eic-funding-opportunities/eic-accelerator_en" target="_blank" rel="noreferrer" style={{ color: '#93c5fd' }}>EIC kalenderen</a>
+          </Typography>
+        </Stack>
+      </Alert>
       <Stack direction="row" justifyContent="space-between" alignItems="center">
         <Typography sx={{ color: '#e2e8f0', fontSize: '0.92rem' }}>
           {items.length} søknad{items.length === 1 ? '' : 'er'} registrert
@@ -427,6 +462,32 @@ function FundingAppsTab() {
                     </Typography>
                     <Stack direction="row" spacing={0.6} flexWrap="wrap" sx={{ mt: 0.6 }}>
                       <Chip size="small" label={FUNDING_STATUS_LABELS[item.status]} sx={{ bgcolor: 'rgba(168,85,247,0.16)', color: '#ddd6fe' }} />
+                      {(() => {
+                        if (!item.deadline || item.status === 'approved' || item.status === 'rejected') return null;
+                        const deadlineDate = new Date(item.deadline);
+                        const daysUntil = Math.ceil((deadlineDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                        let label: string;
+                        let bg: string;
+                        let fg: string;
+                        if (daysUntil < 0) {
+                          label = `Frist passert (${item.deadline})`;
+                          bg = 'rgba(248,113,113,0.22)';
+                          fg = '#fca5a5';
+                        } else if (daysUntil <= 7) {
+                          label = `Frist om ${daysUntil}d (${item.deadline})`;
+                          bg = 'rgba(248,113,113,0.18)';
+                          fg = '#fca5a5';
+                        } else if (daysUntil <= 30) {
+                          label = `Frist om ${daysUntil}d (${item.deadline})`;
+                          bg = 'rgba(251,191,36,0.18)';
+                          fg = '#fde68a';
+                        } else {
+                          label = `Frist ${item.deadline}`;
+                          bg = 'rgba(59,130,246,0.16)';
+                          fg = '#bfdbfe';
+                        }
+                        return <Chip size="small" label={label} sx={{ bgcolor: bg, color: fg, fontWeight: 700 }} />;
+                      })()}
                       {item.submission_date ? <Chip size="small" label={`Sendt ${item.submission_date}`} sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }} /> : null}
                       {item.decision_date ? <Chip size="small" label={`Vedtak ${item.decision_date}`} sx={{ bgcolor: 'rgba(16,185,129,0.16)', color: '#86efac' }} /> : null}
                     </Stack>
@@ -499,9 +560,12 @@ function InvestorDrawer({ open, initial, onClose, onSaved }: InvestorDrawerProps
         nextStep: initial.next_step,
         nextStepDue: initial.next_step_due,
         notes: initial.notes,
+        ddChecklist: initial.dd_checklist?.length ? initial.dd_checklist : DEFAULT_DD_CHECKLIST,
+        deckUrl: initial.deck_url,
+        deckUploadedAt: initial.deck_uploaded_at,
       });
     } else {
-      setForm({ status: 'lead', currency: 'NOK', focusAreas: [] });
+      setForm({ status: 'lead', currency: 'NOK', focusAreas: [], ddChecklist: DEFAULT_DD_CHECKLIST });
     }
     setError(null);
   }, [initial, open]);
@@ -591,6 +655,101 @@ function InvestorDrawer({ open, initial, onClose, onSaved }: InvestorDrawerProps
                 <TextField label="Frist" size="small" type="date" InputLabelProps={{ shrink: true }} sx={{ flex: 1 }} value={form.nextStepDue ?? ''} onChange={(e) => setForm((p) => ({ ...p, nextStepDue: e.target.value || null }))} />
               </Stack>
               <TextField label="Notater" size="small" multiline minRows={3} fullWidth value={form.notes ?? ''} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} />
+
+              {/* Pitch deck-tracking */}
+              <Box sx={{ p: 1.25, borderRadius: 1.5, border: '1px solid rgba(148,163,184,0.14)', background: 'rgba(15,23,42,0.42)' }}>
+                <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.4, fontSize: '0.92rem' }}>
+                  Pitch deck
+                </Typography>
+                <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.78rem', mb: 1 }}>
+                  Lim inn delelenke (Notion, Pitch.com, Google Slides, Loom-video) — registreres som versjon når den oppdateres.
+                </Typography>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                  <TextField
+                    label="Deck-URL"
+                    size="small"
+                    sx={{ flex: 2 }}
+                    value={form.deckUrl ?? ''}
+                    onChange={(e) => setForm((p) => ({ ...p, deckUrl: e.target.value || null }))}
+                    placeholder="https://..."
+                  />
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => setForm((p) => ({ ...p, deckUploadedAt: new Date().toISOString() }))}
+                    sx={{ textTransform: 'none', fontWeight: 700 }}
+                  >
+                    Marker som oppdatert nå
+                  </Button>
+                </Stack>
+                {form.deckUploadedAt ? (
+                  <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.78rem', mt: 0.6 }}>
+                    Sist oppdatert: {new Date(form.deckUploadedAt).toLocaleString('nb-NO')}
+                  </Typography>
+                ) : null}
+              </Box>
+
+              {/* Due-diligence-sjekkliste */}
+              <Box sx={{ p: 1.25, borderRadius: 1.5, border: '1px solid rgba(148,163,184,0.14)', background: 'rgba(15,23,42,0.42)' }}>
+                <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.6 }}>
+                  <Box>
+                    <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.92rem' }}>
+                      Due-diligence-sjekkliste
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.78rem' }}>
+                      {(form.ddChecklist ?? []).filter((d) => d.done).length} / {(form.ddChecklist ?? []).length} fullført
+                    </Typography>
+                  </Box>
+                  <Button
+                    size="small"
+                    startIcon={<AddIcon fontSize="small" />}
+                    onClick={() => setForm((p) => ({
+                      ...p,
+                      ddChecklist: [...(p.ddChecklist ?? []), { label: 'Nytt punkt', done: false }],
+                    }))}
+                    sx={{ textTransform: 'none', fontWeight: 700, color: '#a78bfa' }}
+                  >
+                    Nytt punkt
+                  </Button>
+                </Stack>
+                <Stack spacing={0.5}>
+                  {(form.ddChecklist ?? []).map((item: DueDiligenceItem, idx: number) => (
+                    <Stack key={idx} direction="row" spacing={1} alignItems="center">
+                      <input
+                        type="checkbox"
+                        checked={item.done}
+                        onChange={(e) => setForm((p) => ({
+                          ...p,
+                          ddChecklist: (p.ddChecklist ?? []).map((d, i) => i === idx ? { ...d, done: e.target.checked } : d),
+                        }))}
+                        style={{ width: 18, height: 18, accentColor: '#a78bfa' }}
+                      />
+                      <TextField
+                        size="small"
+                        fullWidth
+                        value={item.label}
+                        onChange={(e) => setForm((p) => ({
+                          ...p,
+                          ddChecklist: (p.ddChecklist ?? []).map((d, i) => i === idx ? { ...d, label: e.target.value } : d),
+                        }))}
+                        sx={{
+                          '& input': { textDecoration: item.done ? 'line-through' : 'none', color: item.done ? 'rgba(226,232,240,0.5)' : '#e2e8f0' },
+                        }}
+                      />
+                      <IconButton
+                        size="small"
+                        onClick={() => setForm((p) => ({
+                          ...p,
+                          ddChecklist: (p.ddChecklist ?? []).filter((_, i) => i !== idx),
+                        }))}
+                        sx={{ color: 'rgba(248,113,113,0.7)' }}
+                      >
+                        <DeleteOutlineIcon fontSize="small" />
+                      </IconButton>
+                    </Stack>
+                  ))}
+                </Stack>
+              </Box>
             </Stack>
           </Box>
           <Stack direction="row" spacing={1} sx={{ px: 2, py: 1.25, borderTop: '1px solid rgba(148,163,184,0.14)' }}>
@@ -722,6 +881,47 @@ function InvestorContactsTab() {
                               ↳ {item.next_step}{item.next_step_due ? ` (${item.next_step_due})` : ''}
                             </Typography>
                           ) : null}
+                          <Stack direction="row" spacing={0.6} flexWrap="wrap" sx={{ mt: 0.6 }}>
+                            {item.deck_url ? (
+                              <Chip
+                                size="small"
+                                label="Deck delt"
+                                component="a"
+                                href={item.deck_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                clickable
+                                sx={{ bgcolor: 'rgba(168,85,247,0.18)', color: '#ddd6fe', cursor: 'pointer' }}
+                              />
+                            ) : (
+                              <Chip size="small" label="Ingen deck" sx={{ bgcolor: 'rgba(148,163,184,0.14)', color: '#cbd5e1' }} />
+                            )}
+                            {(() => {
+                              const total = item.dd_checklist?.length ?? 0;
+                              if (total === 0) return null;
+                              const done = item.dd_checklist.filter((d) => d.done).length;
+                              const pct = Math.round((done / total) * 100);
+                              return (
+                                <Chip
+                                  size="small"
+                                  label={`DD ${done}/${total} (${pct}%)`}
+                                  sx={{
+                                    bgcolor: pct === 100
+                                      ? 'rgba(16,185,129,0.18)'
+                                      : pct >= 50
+                                        ? 'rgba(251,191,36,0.18)'
+                                        : 'rgba(148,163,184,0.16)',
+                                    color: pct === 100
+                                      ? '#86efac'
+                                      : pct >= 50
+                                        ? '#fde68a'
+                                        : '#cbd5e1',
+                                    fontWeight: 700,
+                                  }}
+                                />
+                              );
+                            })()}
+                          </Stack>
                         </Box>
                         <Stack direction="row" spacing={0.5}>
                           <IconButton size="small" onClick={() => { setEditing(item); setDrawerOpen(true); }} sx={{ color: 'rgba(226,232,240,0.74)' }}>
@@ -789,9 +989,10 @@ function PartnerDrawer({ open, initial, onClose, onSaved }: PartnerDrawerProps) 
         nextStep: initial.next_step,
         nextStepDue: initial.next_step_due,
         notes: initial.notes,
+        contractStatus: initial.contract_status ?? 'none',
       });
     } else {
-      setForm({ partnershipType: 'other', status: 'potential' });
+      setForm({ partnershipType: 'other', status: 'potential', contractStatus: 'none' });
     }
     setError(null);
   }, [initial, open]);
@@ -859,6 +1060,18 @@ function PartnerDrawer({ open, initial, onClose, onSaved }: PartnerDrawerProps) 
               </FormControl>
             </Stack>
             <TextField label="Sammendrag av forslag" size="small" multiline minRows={3} fullWidth value={form.proposalSummary ?? ''} onChange={(e) => setForm((p) => ({ ...p, proposalSummary: e.target.value }))} />
+            <FormControl size="small" fullWidth>
+              <InputLabel>Kontrakt-status</InputLabel>
+              <Select
+                label="Kontrakt-status"
+                value={form.contractStatus ?? 'none'}
+                onChange={(e) => setForm((p) => ({ ...p, contractStatus: e.target.value as PartnerContractStatus }))}
+              >
+                {(Object.keys(PARTNER_CONTRACT_STATUS_LABELS) as PartnerContractStatus[]).map((s) => (
+                  <MenuItem key={s} value={s}>{PARTNER_CONTRACT_STATUS_LABELS[s]}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
               <TextField label="Neste steg" size="small" sx={{ flex: 2 }} value={form.nextStep ?? ''} onChange={(e) => setForm((p) => ({ ...p, nextStep: e.target.value }))} />
               <TextField label="Frist" size="small" type="date" InputLabelProps={{ shrink: true }} sx={{ flex: 1 }} value={form.nextStepDue ?? ''} onChange={(e) => setForm((p) => ({ ...p, nextStepDue: e.target.value || null }))} />
@@ -940,6 +1153,25 @@ function PartnerContactsTab() {
                     <Stack direction="row" spacing={0.6} flexWrap="wrap" sx={{ mt: 0.6 }}>
                       <Chip size="small" label={PARTNERSHIP_TYPE_LABELS[item.partnership_type]} sx={{ bgcolor: 'rgba(168,85,247,0.16)', color: '#ddd6fe' }} />
                       <Chip size="small" label={PARTNER_STATUS_LABELS[item.status]} sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }} />
+                      {item.contract_status && item.contract_status !== 'none' ? (
+                        <Chip
+                          size="small"
+                          label={`Kontrakt: ${PARTNER_CONTRACT_STATUS_LABELS[item.contract_status as PartnerContractStatus]}`}
+                          sx={{
+                            bgcolor: item.contract_status === 'signed'
+                              ? 'rgba(16,185,129,0.18)'
+                              : item.contract_status === 'expired'
+                                ? 'rgba(248,113,113,0.18)'
+                                : 'rgba(251,191,36,0.18)',
+                            color: item.contract_status === 'signed'
+                              ? '#86efac'
+                              : item.contract_status === 'expired'
+                                ? '#fca5a5'
+                                : '#fde68a',
+                            fontWeight: 700,
+                          }}
+                        />
+                      ) : null}
                       {item.next_step_due ? <Chip size="small" label={`Frist ${item.next_step_due}`} sx={{ bgcolor: 'rgba(251,191,36,0.16)', color: '#fde68a' }} /> : null}
                     </Stack>
                   </Box>

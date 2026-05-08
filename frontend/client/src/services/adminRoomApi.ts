@@ -71,6 +71,7 @@ export interface FundingApp {
   contact_email: string | null;
   submission_date: string | null;
   decision_date: string | null;
+  deadline: string | null;
   notes: string | null;
   metadata: Record<string, unknown>;
   created_at: string;
@@ -90,7 +91,16 @@ export type FundingAppInput = Omit<
   contactEmail?: string | null;
   submissionDate?: string | null;
   decisionDate?: string | null;
+  deadline?: string | null;
   budgetBreakdown?: FundingBudgetLine[];
+};
+
+// IN-støtteordninger: typisk søknadsvindu og behandlingstid.
+export const FUNDING_SCHEME_DEADLINES: Record<string, string> = {
+  innovasjon_norge_1: 'Løpende søknadsfrist · behandlingstid 4-8 uker',
+  innovasjon_norge_2: 'Løpende søknadsfrist · behandlingstid 6-10 uker',
+  in_innovasjonskontrakter: 'Utlysningsbasert — typisk 2-4 utlysninger per år',
+  eu_horizon_eic: 'Cut-off-datoer hver 2-3 mnd (mars · juni · oktober)',
 };
 
 export const fundingAppsApi = {
@@ -130,6 +140,11 @@ export type InvestorStatus =
   | 'closed_won'
   | 'closed_lost';
 
+export interface DueDiligenceItem {
+  label: string;
+  done: boolean;
+}
+
 export interface InvestorContact {
   id: string;
   user_id: string;
@@ -147,6 +162,9 @@ export interface InvestorContact {
   next_step_due: string | null;
   notes: string | null;
   last_contact_at: string | null;
+  dd_checklist: DueDiligenceItem[];
+  deck_url: string | null;
+  deck_uploaded_at: string | null;
   metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
@@ -167,7 +185,23 @@ export type InvestorContactInput = {
   nextStepDue?: string | null;
   notes?: string | null;
   lastContactAt?: string | null;
+  ddChecklist?: DueDiligenceItem[];
+  deckUrl?: string | null;
+  deckUploadedAt?: string | null;
 };
+
+// Standard due-diligence-sjekkliste — startpunkt for hver investor.
+export const DEFAULT_DD_CHECKLIST: DueDiligenceItem[] = [
+  { label: 'Pitch deck levert', done: false },
+  { label: 'Aksjonærliste (cap table)', done: false },
+  { label: 'Siste 2 års regnskap', done: false },
+  { label: '12-mnd budsjett + cashflow', done: false },
+  { label: 'Pipeline / traction-tall', done: false },
+  { label: 'Ansattlister + lønnsbudsjett', done: false },
+  { label: 'IP-/rettighetsstruktur', done: false },
+  { label: 'Kundekontrakter (top 5)', done: false },
+  { label: 'Term sheet utkast', done: false },
+];
 
 export const investorContactsApi = {
   list: async (): Promise<InvestorContact[]> => {
@@ -200,6 +234,8 @@ export const investorContactsApi = {
 export type PartnerStatus = 'potential' | 'in_talks' | 'active' | 'paused' | 'ended';
 export type PartnershipType = 'distribution' | 'tech' | 'content' | 'production' | 'other';
 
+export type PartnerContractStatus = 'none' | 'draft' | 'in_review' | 'signed' | 'expired';
+
 export interface PartnerContact {
   id: string;
   user_id: string;
@@ -213,6 +249,7 @@ export interface PartnerContact {
   next_step: string | null;
   next_step_due: string | null;
   notes: string | null;
+  contract_status: PartnerContractStatus | null;
   metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
@@ -229,6 +266,15 @@ export type PartnerContactInput = {
   nextStep?: string | null;
   nextStepDue?: string | null;
   notes?: string | null;
+  contractStatus?: PartnerContractStatus | null;
+};
+
+export const PARTNER_CONTRACT_STATUS_LABELS: Record<PartnerContractStatus, string> = {
+  none: 'Ingen kontrakt',
+  draft: 'Utkast',
+  in_review: 'Under review',
+  signed: 'Signert',
+  expired: 'Utløpt',
 };
 
 export const partnerContactsApi = {

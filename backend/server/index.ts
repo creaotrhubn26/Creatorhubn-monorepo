@@ -19856,9 +19856,10 @@ app.post("/api/admin-room/funding-apps", async (req, res) => {
       `INSERT INTO admin_funding_apps
          (user_id, scheme, scheme_label, project_name, applicant_company, status,
           amount_requested, currency, description, milestones, budget_breakdown,
-          contact_person, contact_email, submission_date, decision_date, notes, metadata)
+          contact_person, contact_email, submission_date, decision_date, deadline,
+          notes, metadata)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb,
-               $12, $13, $14, $15, $16, $17::jsonb)
+               $12, $13, $14, $15, $16, $17, $18::jsonb)
        RETURNING *`,
       [
         session.userId,
@@ -19876,6 +19877,7 @@ app.post("/api/admin-room/funding-apps", async (req, res) => {
         asString(body.contactEmail),
         asString(body.submissionDate),
         asString(body.decisionDate),
+        asString(body.deadline),
         asString(body.notes),
         asJsonbObject(body.metadata),
       ],
@@ -19911,6 +19913,7 @@ app.patch("/api/admin-room/funding-apps/:id", async (req, res) => {
   if ("contactEmail" in body) push("contact_email", asString(body.contactEmail));
   if ("submissionDate" in body) push("submission_date", asString(body.submissionDate));
   if ("decisionDate" in body) push("decision_date", asString(body.decisionDate));
+  if ("deadline" in body) push("deadline", asString(body.deadline));
   if ("notes" in body) push("notes", asString(body.notes));
   if (sets.length === 0) {
     res.status(400).json({ error: "Ingen felter å oppdatere" });
@@ -19982,8 +19985,10 @@ app.post("/api/admin-room/investor-contacts", async (req, res) => {
       `INSERT INTO admin_investor_contacts
          (user_id, company_name, contact_name, contact_email, contact_phone,
           status, ticket_size_min, ticket_size_max, currency, focus_areas,
-          intro_source, next_step, next_step_due, notes, last_contact_at, metadata)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12, $13, $14, $15, $16::jsonb)
+          intro_source, next_step, next_step_due, notes, last_contact_at,
+          dd_checklist, deck_url, deck_uploaded_at, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12, $13, $14, $15,
+               $16::jsonb, $17, $18, $19::jsonb)
        RETURNING *`,
       [
         session.userId,
@@ -20001,6 +20006,9 @@ app.post("/api/admin-room/investor-contacts", async (req, res) => {
         asString(body.nextStepDue),
         asString(body.notes),
         asString(body.lastContactAt),
+        asJsonbArray(body.ddChecklist),
+        asString(body.deckUrl),
+        asString(body.deckUploadedAt),
         asJsonbObject(body.metadata),
       ],
     );
@@ -20035,6 +20043,9 @@ app.patch("/api/admin-room/investor-contacts/:id", async (req, res) => {
   if ("nextStepDue" in body) push("next_step_due", asString(body.nextStepDue));
   if ("notes" in body) push("notes", asString(body.notes));
   if ("lastContactAt" in body) push("last_contact_at", asString(body.lastContactAt));
+  if ("ddChecklist" in body) sets.push(`dd_checklist = '${asJsonbArray(body.ddChecklist).replace(/'/g, "''")}'::jsonb`);
+  if ("deckUrl" in body) push("deck_url", asString(body.deckUrl));
+  if ("deckUploadedAt" in body) push("deck_uploaded_at", asString(body.deckUploadedAt));
   if (sets.length === 0) {
     res.status(400).json({ error: "Ingen felter å oppdatere" });
     return;
@@ -20105,8 +20116,8 @@ app.post("/api/admin-room/partner-contacts", async (req, res) => {
       `INSERT INTO admin_partner_contacts
          (user_id, company_name, contact_name, contact_email, contact_phone,
           partnership_type, status, proposal_summary, next_step, next_step_due,
-          notes, metadata)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb)
+          notes, contract_status, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb)
        RETURNING *`,
       [
         session.userId,
@@ -20120,6 +20131,7 @@ app.post("/api/admin-room/partner-contacts", async (req, res) => {
         asString(body.nextStep),
         asString(body.nextStepDue),
         asString(body.notes),
+        asString(body.contractStatus),
         asJsonbObject(body.metadata),
       ],
     );
@@ -20150,6 +20162,7 @@ app.patch("/api/admin-room/partner-contacts/:id", async (req, res) => {
   if ("nextStep" in body) push("next_step", asString(body.nextStep));
   if ("nextStepDue" in body) push("next_step_due", asString(body.nextStepDue));
   if ("notes" in body) push("notes", asString(body.notes));
+  if ("contractStatus" in body) push("contract_status", asString(body.contractStatus));
   if (sets.length === 0) {
     res.status(400).json({ error: "Ingen felter å oppdatere" });
     return;
