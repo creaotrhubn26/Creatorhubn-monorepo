@@ -47,6 +47,7 @@ import {
   fundingAppsApi,
   investorContactsApi,
   partnerContactsApi,
+  businessPlanApi,
   FUNDING_SCHEME_PRESETS,
   FUNDING_STATUS_LABELS,
   INVESTOR_STATUS_LABELS,
@@ -62,11 +63,13 @@ import {
   type PartnerStatus,
   type PartnershipType,
   type PartnerContactInput,
+  type BusinessPlan,
+  type BusinessPlanInput,
 } from '../services/adminRoomApi';
 
 const ADMIN_ROOM_OWNER_EMAIL = 'daniel@creatorhubn.com';
 
-type AdminRoomTab = 'funding' | 'investors' | 'partners';
+type AdminRoomTab = 'funding' | 'investors' | 'partners' | 'business-plan';
 
 // ─────────────────────────────────────────────────────────
 // Stable produkt-features for søknadsmaler. Role Room Agent
@@ -975,6 +978,242 @@ function PartnerContactsTab() {
 }
 
 // ─────────────────────────────────────────────────────────
+// Section: Forretningsplan & strategi
+// ─────────────────────────────────────────────────────────
+
+interface BizPlanSection {
+  id: string;
+  title: string;
+  helperText?: string;
+  fields: Array<{
+    key: keyof BusinessPlanInput;
+    dbKey: keyof BusinessPlan;
+    label: string;
+    helperText?: string;
+    minRows?: number;
+    placeholder?: string;
+  }>;
+}
+
+const BIZ_PLAN_SECTIONS: BizPlanSection[] = [
+  {
+    id: 'exec',
+    title: '1.0 Executive Summary',
+    helperText: 'Kort oppsummering av hva The Role Room er, markedet, traction og hva du søker.',
+    fields: [{
+      key: 'execSummary',
+      dbKey: 'exec_summary',
+      label: 'Sammendrag',
+      minRows: 6,
+      placeholder: 'The Role Room er en helhetlig produksjonsplattform for det norske...',
+    }],
+  },
+  {
+    id: 'intro',
+    title: '2.0 Introduksjon',
+    helperText: 'Selskap, visjon, bærekraft, bransje og økonomiske nøkkeltall.',
+    fields: [
+      { key: 'introOverview', dbKey: 'intro_overview', label: '2.1 Selskapet', minRows: 4 },
+      { key: 'introVision', dbKey: 'intro_vision', label: '2.2 Visjon', minRows: 3 },
+      { key: 'introSustainability', dbKey: 'intro_sustainability', label: '2.3 Bærekraftige tiltak', minRows: 3 },
+      { key: 'introIndustry', dbKey: 'intro_industry', label: '2.4 Bransje', minRows: 3 },
+      { key: 'introFinancials', dbKey: 'intro_financials', label: '2.5 Regnskapstall (siste 2 år)', minRows: 3 },
+    ],
+  },
+  {
+    id: 'internal',
+    title: '3.0 Internanalyse',
+    helperText: 'Verdinettverk, drivere, ressurser og verdiskapningsevne.',
+    fields: [
+      { key: 'internalValueNetworkPrimary', dbKey: 'internal_value_network_primary', label: '3.1.1 Primæraktiviteter', minRows: 3 },
+      { key: 'internalValueNetworkSupport', dbKey: 'internal_value_network_support', label: '3.1.2 Støtteaktiviteter', minRows: 3 },
+      { key: 'internalDriversCustomer', dbKey: 'internal_drivers_customer', label: '3.2.1 Kundemasse og skala', minRows: 3 },
+      { key: 'internalDriversCapacity', dbKey: 'internal_drivers_capacity', label: '3.2.2 Kapasitetsutnyttelse', minRows: 3 },
+      { key: 'internalDriversLearning', dbKey: 'internal_drivers_learning', label: '3.2.3 Læring', minRows: 3 },
+      { key: 'internalResourceAnalysis', dbKey: 'internal_resource_analysis', label: '3.3 Ressursanalyse', minRows: 4 },
+      { key: 'internalOperational', dbKey: 'internal_operational', label: '3.4.1 Operasjonell evne', minRows: 3 },
+      { key: 'internalDynamic', dbKey: 'internal_dynamic', label: '3.4.2 Dynamisk evne', minRows: 3 },
+      { key: 'internalVrio', dbKey: 'internal_vrio', label: '3.5.1 VRIO-analyse',
+        helperText: 'Verdifull, sjelden, vanskelig å imitere, organisert. Liste opp ressurser per V/R/I/O-akse.',
+        minRows: 5 },
+      { key: 'internalNetworkStructure', dbKey: 'internal_network_structure', label: '3.5.2 Nettverksstruktur', minRows: 3 },
+      { key: 'internalStrengthsWeaknesses', dbKey: 'internal_strengths_weaknesses', label: '3.6 Styrker og svakheter', minRows: 4 },
+    ],
+  },
+  {
+    id: 'external',
+    title: '4.0 Ekstern analyse',
+    helperText: 'PESTEL, Porter\'s 5, konkurrenter og interessenter.',
+    fields: [
+      { key: 'externalPestel', dbKey: 'external_pestel', label: '4.1 PESTEL-analyse',
+        helperText: 'Politisk · Økonomisk · Sosialt · Teknologisk · Miljø · Juridisk',
+        minRows: 6 },
+      { key: 'externalPestelConclusion', dbKey: 'external_pestel_conclusion', label: '4.1.1 Konklusjon — PESTEL', minRows: 2 },
+      { key: 'externalPorter', dbKey: 'external_porter', label: '4.2.1 Porters fem krefter',
+        helperText: 'Nye aktører · Leverandører · Kunder · Substitutter · Konkurranseintensitet',
+        minRows: 5 },
+      { key: 'externalPorterConclusion', dbKey: 'external_porter_conclusion', label: '4.2.2 Konklusjon — bransjeanalyse', minRows: 2 },
+      { key: 'externalCompetitors', dbKey: 'external_competitors', label: '4.3 Konkurrentanalyse',
+        helperText: 'Liste opp 3-5 hovedkonkurrenter med posisjonering, styrker og svakheter.',
+        minRows: 5 },
+      { key: 'externalCompetitorSummary', dbKey: 'external_competitor_summary', label: '4.3.1 Oppsummering konkurrenter', minRows: 2 },
+      { key: 'externalStakeholders', dbKey: 'external_stakeholders', label: '4.4 Interessentanalyse',
+        helperText: 'Kunder, NFI, Filmforbundet, leverandører, ansatte. Interesse vs påvirkning.',
+        minRows: 4 },
+      { key: 'externalStakeholderConclusion', dbKey: 'external_stakeholder_conclusion', label: '4.4.1 Konklusjon — interessenter', minRows: 2 },
+    ],
+  },
+  {
+    id: 'swot',
+    title: '5.0 SWOT-analyse',
+    helperText: 'Styrker, svakheter, muligheter, trusler — én linje per punkt.',
+    fields: [
+      { key: 'swotStrengths', dbKey: 'swot_strengths', label: 'Styrker (S)', minRows: 3 },
+      { key: 'swotWeaknesses', dbKey: 'swot_weaknesses', label: 'Svakheter (W)', minRows: 3 },
+      { key: 'swotOpportunities', dbKey: 'swot_opportunities', label: 'Muligheter (O)', minRows: 3 },
+      { key: 'swotThreats', dbKey: 'swot_threats', label: 'Trusler (T)', minRows: 3 },
+    ],
+  },
+  {
+    id: 'wheel',
+    title: '6.0 Strategisk hjul + nåværende strategi',
+    helperText: 'Beskriv det strategiske hjulet (mål, virkemidler, tiltak) og hva som er den nåværende strategien.',
+    fields: [
+      { key: 'strategicWheel', dbKey: 'strategic_wheel', label: 'Strategisk hjul', minRows: 4 },
+      { key: 'currentStrategy', dbKey: 'current_strategy', label: 'Nåværende strategi', minRows: 4 },
+    ],
+  },
+  {
+    id: 'recommendation',
+    title: '7.0 Strategisk anbefaling',
+    helperText: 'Hvor bør The Role Room være om 12-24 måneder, og hvorfor — vurdert mot SAFe-kriteriene.',
+    fields: [
+      { key: 'strategicRecommendation', dbKey: 'strategic_recommendation', label: 'Anbefaling', minRows: 5 },
+      { key: 'safeSuitability', dbKey: 'safe_suitability', label: '7.1.1 Suitability — passer strategien?', minRows: 3 },
+      { key: 'safeAcceptability', dbKey: 'safe_acceptability', label: '7.1.2 Acceptability — godtas av interessenter?', minRows: 3 },
+      { key: 'safeFeasibility', dbKey: 'safe_feasibility', label: '7.1.3 Feasibility — gjennomførbar?', minRows: 3 },
+    ],
+  },
+];
+
+function BusinessPlanTab() {
+  const [plan, setPlan] = useState<BusinessPlan | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [savingField, setSavingField] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<Partial<Record<keyof BusinessPlan, string>>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    businessPlanApi.get()
+      .then((data) => { if (!cancelled) setPlan(data); })
+      .catch((err) => { if (!cancelled) setError((err as Error).message); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  function valueFor(dbKey: keyof BusinessPlan): string {
+    if (drafts[dbKey] !== undefined) return drafts[dbKey] as string;
+    const stored = plan?.[dbKey];
+    return typeof stored === 'string' ? stored : '';
+  }
+
+  function handleChange(dbKey: keyof BusinessPlan, value: string) {
+    setDrafts((prev) => ({ ...prev, [dbKey]: value }));
+  }
+
+  async function handleBlur(field: { key: keyof BusinessPlanInput; dbKey: keyof BusinessPlan }) {
+    if (drafts[field.dbKey] === undefined) return;
+    const value = drafts[field.dbKey] as string;
+    const stored = plan?.[field.dbKey];
+    if (value === stored) {
+      setDrafts((prev) => {
+        const next = { ...prev };
+        delete next[field.dbKey];
+        return next;
+      });
+      return;
+    }
+    setSavingField(String(field.dbKey));
+    try {
+      const updated = await businessPlanApi.patch({ [field.key]: value } as BusinessPlanInput);
+      setPlan(updated);
+      setDrafts((prev) => {
+        const next = { ...prev };
+        delete next[field.dbKey];
+        return next;
+      });
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSavingField(null);
+    }
+  }
+
+  function handlePrint() {
+    window.print();
+  }
+
+  if (loading) return <Stack alignItems="center" sx={{ py: 6 }}><CircularProgress /></Stack>;
+
+  return (
+    <Stack spacing={3}>
+      {error ? <Alert severity="error">{error}</Alert> : null}
+      <Stack direction="row" alignItems="center" justifyContent="space-between">
+        <Box>
+          <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '1.1rem' }}>
+            Forretningsplan & strategi — The Role Room
+          </Typography>
+          <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.86rem' }}>
+            Lagrer automatisk når du klikker ut av et felt. Følger BI/BBI-strukturen for strategiske analyser.
+          </Typography>
+        </Box>
+        <Button variant="outlined" onClick={handlePrint} sx={{ textTransform: 'none', fontWeight: 700 }}>
+          Skriv ut / lagre PDF
+        </Button>
+      </Stack>
+      {BIZ_PLAN_SECTIONS.map((section) => (
+        <Box
+          key={section.id}
+          sx={{
+            p: 1.75,
+            borderRadius: 2,
+            border: '1px solid rgba(148,163,184,0.18)',
+            background: 'rgba(15,23,42,0.42)',
+          }}
+        >
+          <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '1.02rem' }}>
+            {section.title}
+          </Typography>
+          {section.helperText ? (
+            <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.84rem', mb: 1.5 }}>
+              {section.helperText}
+            </Typography>
+          ) : null}
+          <Stack spacing={1.5}>
+            {section.fields.map((field) => (
+              <TextField
+                key={String(field.dbKey)}
+                label={field.label}
+                value={valueFor(field.dbKey)}
+                onChange={(e) => handleChange(field.dbKey, e.target.value)}
+                onBlur={() => { void handleBlur(field); }}
+                fullWidth
+                multiline
+                minRows={field.minRows ?? 3}
+                placeholder={field.placeholder}
+                helperText={savingField === field.dbKey ? 'Lagrer…' : field.helperText}
+              />
+            ))}
+          </Stack>
+        </Box>
+      ))}
+    </Stack>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
 // Page shell
 // ─────────────────────────────────────────────────────────
 
@@ -996,6 +1235,7 @@ export default function AdminRoom() {
   if (tab === 'funding') content = <FundingAppsTab />;
   else if (tab === 'investors') content = <InvestorContactsTab />;
   else if (tab === 'partners') content = <PartnerContactsTab />;
+  else if (tab === 'business-plan') content = <BusinessPlanTab />;
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
@@ -1019,6 +1259,7 @@ export default function AdminRoom() {
             '& .MuiTabs-indicator': { backgroundColor: '#a78bfa' },
           }}
         >
+          <Tab value="business-plan" label="Forretningsplan" />
           <Tab value="funding" label="Søknader (IN/EU)" />
           <Tab value="investors" label="Investor-pipeline" />
           <Tab value="partners" label="Samarbeidspartnere" />

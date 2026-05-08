@@ -324,3 +324,109 @@ export const PARTNER_STATUS_LABELS: Record<PartnerStatus, string> = {
   paused: 'På pause',
   ended: 'Avsluttet',
 };
+
+// ─────────────────────────────────────────────────────────
+// Business plan (Forretningsplan + strategi)
+// ─────────────────────────────────────────────────────────
+
+export interface BusinessPlan {
+  id: string;
+  user_id: string;
+  // 1.0
+  exec_summary: string | null;
+  // 2.0
+  intro_overview: string | null;
+  intro_vision: string | null;
+  intro_sustainability: string | null;
+  intro_industry: string | null;
+  intro_financials: string | null;
+  // 3.0
+  internal_value_network_primary: string | null;
+  internal_value_network_support: string | null;
+  internal_drivers_customer: string | null;
+  internal_drivers_capacity: string | null;
+  internal_drivers_learning: string | null;
+  internal_resource_analysis: string | null;
+  internal_operational: string | null;
+  internal_dynamic: string | null;
+  internal_vrio: string | null;
+  internal_network_structure: string | null;
+  internal_strengths_weaknesses: string | null;
+  // 4.0
+  external_pestel: string | null;
+  external_pestel_conclusion: string | null;
+  external_porter: string | null;
+  external_porter_conclusion: string | null;
+  external_competitors: string | null;
+  external_competitor_summary: string | null;
+  external_stakeholders: string | null;
+  external_stakeholder_conclusion: string | null;
+  // 5.0
+  swot_strengths: string | null;
+  swot_weaknesses: string | null;
+  swot_opportunities: string | null;
+  swot_threats: string | null;
+  // 6.0
+  strategic_wheel: string | null;
+  current_strategy: string | null;
+  // 7.0
+  strategic_recommendation: string | null;
+  safe_suitability: string | null;
+  safe_acceptability: string | null;
+  safe_feasibility: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export type BusinessPlanInput = Partial<{
+  execSummary: string;
+  introOverview: string;
+  introVision: string;
+  introSustainability: string;
+  introIndustry: string;
+  introFinancials: string;
+  internalValueNetworkPrimary: string;
+  internalValueNetworkSupport: string;
+  internalDriversCustomer: string;
+  internalDriversCapacity: string;
+  internalDriversLearning: string;
+  internalResourceAnalysis: string;
+  internalOperational: string;
+  internalDynamic: string;
+  internalVrio: string;
+  internalNetworkStructure: string;
+  internalStrengthsWeaknesses: string;
+  externalPestel: string;
+  externalPestelConclusion: string;
+  externalPorter: string;
+  externalPorterConclusion: string;
+  externalCompetitors: string;
+  externalCompetitorSummary: string;
+  externalStakeholders: string;
+  externalStakeholderConclusion: string;
+  swotStrengths: string;
+  swotWeaknesses: string;
+  swotOpportunities: string;
+  swotThreats: string;
+  strategicWheel: string;
+  currentStrategy: string;
+  strategicRecommendation: string;
+  safeSuitability: string;
+  safeAcceptability: string;
+  safeFeasibility: string;
+}>;
+
+export const businessPlanApi = {
+  get: async (): Promise<BusinessPlan | null> => {
+    const data = await jsonFetch<{ plan: BusinessPlan | null }>('/business-plan');
+    return data.plan;
+  },
+  patch: async (input: BusinessPlanInput): Promise<BusinessPlan> => {
+    const data = await jsonFetch<{ plan: BusinessPlan }>('/business-plan', {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    });
+    return data.plan;
+  },
+};

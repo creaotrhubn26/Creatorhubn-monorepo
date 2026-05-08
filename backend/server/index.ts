@@ -20191,6 +20191,104 @@ app.delete("/api/admin-room/partner-contacts/:id", async (req, res) => {
   }
 });
 
+// ── Business plan (forretningsplan + strategi) ───────────────────────
+const BUSINESS_PLAN_TEXT_FIELDS = [
+  "exec_summary",
+  "intro_overview",
+  "intro_vision",
+  "intro_sustainability",
+  "intro_industry",
+  "intro_financials",
+  "internal_value_network_primary",
+  "internal_value_network_support",
+  "internal_drivers_customer",
+  "internal_drivers_capacity",
+  "internal_drivers_learning",
+  "internal_resource_analysis",
+  "internal_operational",
+  "internal_dynamic",
+  "internal_vrio",
+  "internal_network_structure",
+  "internal_strengths_weaknesses",
+  "external_pestel",
+  "external_pestel_conclusion",
+  "external_porter",
+  "external_porter_conclusion",
+  "external_competitors",
+  "external_competitor_summary",
+  "external_stakeholders",
+  "external_stakeholder_conclusion",
+  "swot_strengths",
+  "swot_weaknesses",
+  "swot_opportunities",
+  "swot_threats",
+  "strategic_wheel",
+  "current_strategy",
+  "strategic_recommendation",
+  "safe_suitability",
+  "safe_acceptability",
+  "safe_feasibility",
+] as const;
+
+const TEXT_FIELD_TO_BODY_KEY: Record<string, string> = {};
+for (const field of BUSINESS_PLAN_TEXT_FIELDS) {
+  // snake_case → camelCase
+  TEXT_FIELD_TO_BODY_KEY[field] = field.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+}
+
+app.get("/api/admin-room/business-plan", async (req, res) => {
+  const session = requireAdminRoomAccess(req, res);
+  if (!session) return;
+  try {
+    const result = await pool.query(
+      `SELECT * FROM admin_business_plan WHERE user_id = $1`,
+      [session.userId],
+    );
+    res.json({ plan: result.rows[0] ?? null });
+  } catch (err) {
+    console.error("admin-room business-plan get error", err);
+    res.status(500).json({ error: "Kunne ikke hente forretningsplan" });
+  }
+});
+
+app.patch("/api/admin-room/business-plan", async (req, res) => {
+  const session = requireAdminRoomAccess(req, res);
+  if (!session) return;
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const sets: string[] = [];
+  const params: unknown[] = [session.userId];
+  for (const field of BUSINESS_PLAN_TEXT_FIELDS) {
+    const bodyKey = TEXT_FIELD_TO_BODY_KEY[field];
+    if (bodyKey in body) {
+      const value = typeof body[bodyKey] === "string" ? (body[bodyKey] as string) : null;
+      params.push(value);
+      sets.push(`${field} = $${params.length}`);
+    }
+  }
+  if (sets.length === 0) {
+    res.status(400).json({ error: "Ingen felter å oppdatere" });
+    return;
+  }
+  sets.push("updated_at = now()");
+  try {
+    // UPSERT så første PATCH oppretter rad hvis ikke finnes
+    const upsertResult = await pool.query(
+      `INSERT INTO admin_business_plan (user_id) VALUES ($1)
+         ON CONFLICT (user_id) DO NOTHING`,
+      [session.userId],
+    );
+    void upsertResult;
+    const result = await pool.query(
+      `UPDATE admin_business_plan SET ${sets.join(", ")} WHERE user_id = $1 RETURNING *`,
+      params,
+    );
+    res.json({ plan: result.rows[0] });
+  } catch (err) {
+    console.error("admin-room business-plan patch error", err);
+    res.status(500).json({ error: "Kunne ikke oppdatere forretningsplan" });
+  }
+});
+
 app.post("/api/demo/troll/seed-all", async (req, res) => {
   try {
     const ownerUserId = (req as { userId?: string }).userId
