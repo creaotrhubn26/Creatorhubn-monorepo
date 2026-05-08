@@ -700,9 +700,9 @@ export async function seedTrollDemo(
       const b = budgetItems[i];
       await client.query(
         `INSERT INTO role_room_budget_items
-           (project_id, phase, category, item_name, estimate, approved, actual,
+           (id, project_id, phase, category, item_name, estimate, approved, actual,
             currency, status, sort_order, created_by, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 'NOK', $8, $9, $10, NOW(), NOW())`,
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, 'NOK', $8, $9, $10, NOW(), NOW())`,
         [TROLL_PROJECT_ID, b.phase, b.category, b.name, b.estimate, b.approved, b.actual, b.status, i, ownerUserId],
       );
     }
@@ -722,11 +722,11 @@ export async function seedTrollDemo(
     for (const x of expenses) {
       await client.query(
         `INSERT INTO role_room_expenses
-           (project_id, title, merchant_name, expense_date, amount, vat_amount,
+           (id, project_id, title, merchant_name, expense_date, amount, vat_amount,
             currency, category, cost_owner, refund_status, client_approval_status,
             ocr_status, ocr_review_required, amount_validation_status,
             vat_validation_status, created_by_user_id, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, 'NOK', $7, 'production', 'not_requested',
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, 'NOK', $7, 'production', 'not_requested',
                  'pending', 'completed', false, 'verified', 'verified', $8,
                  NOW(), NOW())`,
         [TROLL_PROJECT_ID, x.title, x.merchant, x.date, x.amount, x.vat, x.category, ownerUserId],
