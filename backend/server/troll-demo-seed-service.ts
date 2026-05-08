@@ -20,6 +20,11 @@
  *   • casting_schedules — 6 audition/fitting/rehearsal-sesjoner
  *   • casting_props — 8 TROLL-tema rekvisitter
  *   • split_sheets + split_sheet_contributors — 1 sheet med 8 bidragsytere
+ *   • casting_storyboards — 4 storyboard-skall for nøkkelscener
+ *   • casting_candidate_videos — 4 audition self-tapes (status='ready')
+ *   • role_room_calendar_events — 6 produksjonsteam-events
+ *   • role_room_budget_items — 10 budsjettlinjer (3 faser)
+ *   • role_room_expenses — 5 eksempel-utgifter
  *
  * Returnerer rapport om hva som ble seedet for frontend-feedback.
  */
@@ -50,6 +55,8 @@ export async function seedTrollDemo(
       'casting_shot_lists',
       'casting_production_days',
       'casting_schedules',
+      'casting_storyboards',
+      'casting_candidate_videos',
       'casting_scenes',
       'casting_manuscripts',
       'casting_props',
@@ -516,6 +523,183 @@ export async function seedTrollDemo(
       );
     }
 
+    // ── 14. casting_storyboards ───────────────────────────────────────
+    const storyboards = [
+      { scene: 'scene-1', title: 'Tunnelen — Eksplosjonen (rough storyboard)' },
+      { scene: 'scene-4', title: 'Krise-møtet (blocking)' },
+      { scene: 'scene-9', title: 'Skog — forfølgelse (handheld)' },
+      { scene: 'scene-10', title: 'Hytten — fars hemmelighet (intimate)' },
+    ];
+    for (const sb of storyboards) {
+      await client.query(
+        `INSERT INTO casting_storyboards
+           (project_id, scene_id, title, strokes, width, height, workflow_level,
+            metadata, created_by, created_at, updated_at)
+         VALUES ($1, $2, $3, '[]'::jsonb, 1920, 1080, 'rough', $4::jsonb, $5,
+                 NOW(), NOW())`,
+        [
+          TROLL_PROJECT_ID,
+          sb.scene,
+          sb.title,
+          JSON.stringify({ source: 'troll_seed_v1', isDemo: true }),
+          ownerUserId,
+        ],
+      );
+    }
+
+    // ── 15. casting_candidate_videos ──────────────────────────────────
+    // Self-tape audition videos for filled roles. URLs peker på en
+    // generisk demo-stream — i prod ville dette vært R2-uploaded clips.
+    const auditionVideos = [
+      {
+        candidate: 'cand-ine', title: 'Self-tape — Nora monolog',
+        url: 'https://demo.creatorhubn.com/troll/auditions/ine-nora.mp4',
+        thumb: 'https://demo.creatorhubn.com/troll/auditions/thumbs/ine-nora.jpg',
+        duration: 92, rating: 5, notes: 'Strålende. Nora cast.',
+      },
+      {
+        candidate: 'cand-kim', title: 'Self-tape — Andreas oppvarming',
+        url: 'https://demo.creatorhubn.com/troll/auditions/kim-andreas.mp4',
+        thumb: 'https://demo.creatorhubn.com/troll/auditions/thumbs/kim-andreas.jpg',
+        duration: 78, rating: 4, notes: 'Sterk timing. Cast.',
+      },
+      {
+        candidate: 'cand-stein', title: 'Self-tape — Bonden-monolog',
+        url: 'https://demo.creatorhubn.com/troll/auditions/stein-bonde.mp4',
+        thumb: 'https://demo.creatorhubn.com/troll/auditions/thumbs/stein-bonde.jpg',
+        duration: 105, rating: 3, notes: 'Solid. Vurderer mot 2 andre.',
+      },
+      {
+        candidate: 'cand-mads', title: 'Self-tape — Tunnelarbeider 1',
+        url: 'https://demo.creatorhubn.com/troll/auditions/mads-arb1.mp4',
+        thumb: 'https://demo.creatorhubn.com/troll/auditions/thumbs/mads-arb1.jpg',
+        duration: 64, rating: 4, notes: 'Cast. God action-sense.',
+      },
+    ];
+    for (const v of auditionVideos) {
+      await client.query(
+        `INSERT INTO casting_candidate_videos
+           (candidate_id, project_id, title, video_url, thumbnail_url,
+            duration_seconds, mime_type, rating, status, uploaded_by, notes,
+            metadata, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, 'video/mp4', $7, 'ready', $8, $9,
+                 $10::jsonb, NOW(), NOW())`,
+        [
+          v.candidate, TROLL_PROJECT_ID, v.title, v.url, v.thumb,
+          v.duration, v.rating, ownerUserId, v.notes,
+          JSON.stringify({ source: 'troll_seed_v1', isDemo: true }),
+        ],
+      );
+    }
+
+    // ── 16. role_room_calendar_events (production team kalender) ──────
+    // Idempotent rensing — DELETE før INSERT siden tabellen ikke er i
+    // den første subTables-listen (den blir tømt nå istedenfor).
+    await client.query(
+      `DELETE FROM role_room_calendar_events WHERE project_id = $1`,
+      [TROLL_PROJECT_ID],
+    );
+    const calendarEvents = [
+      {
+        id: 'evt-readthrough', title: 'Read-through med hovedcast',
+        type: 'meeting', start: '2026-01-12T09:00:00Z', end: '2026-01-12T13:00:00Z',
+        location: null, notes: 'Ine, Kim, Gard, Fridtjov, Anneke.',
+      },
+      {
+        id: 'evt-recce-dovre', title: 'Tech recce — Dovrefjell',
+        type: 'recce', start: '2026-01-15T08:00:00Z', end: '2026-01-15T17:00:00Z',
+        location: 'loc-dovre', notes: 'Roar, Jallo, Stian. Lokasjons-evaluering.',
+      },
+      {
+        id: 'evt-stunt-rehearsal', title: 'Stunt rehearsal — tunnel-kollaps',
+        type: 'rehearsal', start: '2026-01-18T14:00:00Z', end: '2026-01-18T17:00:00Z',
+        location: 'loc-tunnel', notes: 'Koreografi for scene 1+2.',
+      },
+      {
+        id: 'evt-shoot-day-1', title: 'Opptaksdag 1 — Lærdalstunnelen',
+        type: 'shoot', start: '2026-01-20T06:00:00Z', end: '2026-01-20T22:00:00Z',
+        location: 'loc-tunnel', notes: 'Scene 1+2. Call time 06:00.',
+      },
+      {
+        id: 'evt-shoot-day-2', title: 'Opptaksdag 2 — Statsministerens kontor',
+        type: 'shoot', start: '2026-01-21T07:00:00Z', end: '2026-01-21T20:00:00Z',
+        location: 'loc-oslo-stat', notes: 'Scene 3. Call time 07:00.',
+      },
+      {
+        id: 'evt-wrap', title: 'Wrap party — TROLL',
+        type: 'general', start: '2026-02-15T19:00:00Z', end: '2026-02-15T23:30:00Z',
+        location: null, notes: 'Cast + crew. Lokasjon avklares.',
+      },
+    ];
+    for (const e of calendarEvents) {
+      await client.query(
+        `INSERT INTO role_room_calendar_events
+           (id, project_id, title, event_type, start_time, end_time,
+            location_id, notes, status, created_by, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'scheduled', $9, NOW(), NOW())`,
+        [e.id, TROLL_PROJECT_ID, e.title, e.type, e.start, e.end, e.location, e.notes, ownerUserId],
+      );
+    }
+
+    // ── 17. role_room_budget_items ─────────────────────────────────────
+    await client.query(
+      `DELETE FROM role_room_budget_items WHERE project_id = $1`,
+      [TROLL_PROJECT_ID],
+    );
+    const budgetItems = [
+      // Pre-produksjon
+      { phase: 'preproduction', category: 'Pre-produksjon', name: 'Manuskript-finalisering', estimate: 350000, approved: 350000, actual: 320000, status: 'approved' },
+      { phase: 'preproduction', category: 'Pre-produksjon', name: 'Casting-prosess', estimate: 250000, approved: 250000, actual: 215000, status: 'approved' },
+      // Produksjon — crew
+      { phase: 'production', category: 'Crew', name: 'Roar Uthaug — regissør', estimate: 800000, approved: 800000, actual: 0, status: 'approved' },
+      { phase: 'production', category: 'Crew', name: 'Espen Horn — produsent', estimate: 500000, approved: 500000, actual: 0, status: 'approved' },
+      { phase: 'production', category: 'Crew', name: 'Jallo Faber — DP', estimate: 350000, approved: 350000, actual: 0, status: 'approved' },
+      // Produksjon — locations
+      { phase: 'production', category: 'Locations', name: 'Dovrefjell tilatelse + ranger', estimate: 75000, approved: 75000, actual: 0, status: 'approved' },
+      { phase: 'production', category: 'Locations', name: 'Lærdalstunnelen — leie', estimate: 120000, approved: 120000, actual: 0, status: 'pending_approval' },
+      // Produksjon — cast
+      { phase: 'production', category: 'Cast', name: 'Ine Marie Wilmann — Nora', estimate: 250000, approved: 250000, actual: 0, status: 'approved' },
+      // Post — VFX (hovedlinje)
+      { phase: 'postproduction', category: 'VFX', name: 'Trollet — CGI hovedmodel', estimate: 8000000, approved: 7500000, actual: 0, status: 'approved' },
+      { phase: 'postproduction', category: 'Lyd / Color', name: 'Stian Aadland + DI grading', estimate: 600000, approved: 600000, actual: 0, status: 'draft' },
+    ];
+    for (let i = 0; i < budgetItems.length; i++) {
+      const b = budgetItems[i];
+      await client.query(
+        `INSERT INTO role_room_budget_items
+           (project_id, phase, category, item_name, estimate, approved, actual,
+            currency, status, sort_order, created_by, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'NOK', $8, $9, $10, NOW(), NOW())`,
+        [TROLL_PROJECT_ID, b.phase, b.category, b.name, b.estimate, b.approved, b.actual, b.status, i, ownerUserId],
+      );
+    }
+
+    // ── 18. role_room_expenses ─────────────────────────────────────────
+    await client.query(
+      `DELETE FROM role_room_expenses WHERE project_id = $1`,
+      [TROLL_PROJECT_ID],
+    );
+    const expenses = [
+      { title: 'Catering opptaksdag 1', merchant: 'Dovre Servering AS', date: '2026-01-20', amount: 12500, vat: 3125, category: 'Catering' },
+      { title: 'Drivstoff varebil — Oslo–Lærdal', merchant: 'Circle K', date: '2026-01-19', amount: 1850, vat: 463, category: 'Transport' },
+      { title: 'Hotell Dovrefjell — 6 netter', merchant: 'Dovrefjell Hotel', date: '2026-01-25', amount: 18900, vat: 2025, category: 'Hotell' },
+      { title: 'Frakt utstyr — ARRI rigg', merchant: 'Bring Express', date: '2026-01-18', amount: 3200, vat: 800, category: 'Transport' },
+      { title: 'Sikkerhetsgjerde Lærdal', merchant: 'Cramo Norge', date: '2026-01-17', amount: 4100, vat: 1025, category: 'Sikkerhet' },
+    ];
+    for (const x of expenses) {
+      await client.query(
+        `INSERT INTO role_room_expenses
+           (project_id, title, merchant_name, expense_date, amount, vat_amount,
+            currency, category, cost_owner, refund_status, client_approval_status,
+            ocr_status, ocr_review_required, amount_validation_status,
+            vat_validation_status, created_by_user_id, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, 'NOK', $7, 'production', 'not_requested',
+                 'pending', 'completed', false, 'verified', 'verified', $8,
+                 NOW(), NOW())`,
+        [TROLL_PROJECT_ID, x.title, x.merchant, x.date, x.amount, x.vat, x.category, ownerUserId],
+      );
+    }
+
     await client.query('COMMIT');
 
     return {
@@ -535,6 +719,11 @@ export async function seedTrollDemo(
         props: props.length,
         splitSheets: 1,
         splitSheetContributors: contributors.length,
+        storyboards: storyboards.length,
+        candidateVideos: auditionVideos.length,
+        calendarEvents: calendarEvents.length,
+        budgetItems: budgetItems.length,
+        expenses: expenses.length,
       },
     };
   } catch (err) {
