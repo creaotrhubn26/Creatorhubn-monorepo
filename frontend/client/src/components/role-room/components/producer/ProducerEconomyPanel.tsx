@@ -365,6 +365,7 @@ export default function ProducerEconomyPanel({
             onChange={setCategory}
             size="small"
             minWidth={200}
+            phase={phase}
           />
           <TextField
             size="small"

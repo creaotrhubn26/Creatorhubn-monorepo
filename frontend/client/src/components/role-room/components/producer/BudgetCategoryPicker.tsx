@@ -44,9 +44,21 @@ interface BudgetCategoryPickerProps {
   disabled?: boolean;
   fullWidth?: boolean;
   minWidth?: number | string;
+  /** Når satt, vises kun kategori-grupper som er relevante for fasen.
+   * Egne (project-scoped) kategorier vises alltid. */
+  phase?: 'preproduction' | 'production' | 'postproduction';
 }
 
 const NEW_CATEGORY_VALUE = '__add_new_category__';
+
+// Hvilke kategori-grupper som er relevante per produksjonsfase. ATL +
+// OH er alltid relevante (rettigheter/honorar krediteres på tvers av
+// faser, overhead også). Uten phase-prop vises alle.
+const PHASE_GROUPS: Record<NonNullable<BudgetCategoryPickerProps['phase']>, ReadonlyArray<string>> = {
+  preproduction: ['ATL', 'PRE', 'OH'],
+  production: ['ATL', 'PROD', 'LOG', 'OH'],
+  postproduction: ['POST', 'OH'],
+};
 
 export default function BudgetCategoryPicker({
   projectId,
@@ -56,6 +68,7 @@ export default function BudgetCategoryPicker({
   disabled = false,
   fullWidth = false,
   minWidth = 200,
+  phase,
 }: BudgetCategoryPickerProps) {
   const [categories, setCategories] = useState<BudgetCategory[]>([]);
   const [loading, setLoading] = useState(false);
@@ -88,10 +101,19 @@ export default function BudgetCategoryPicker({
   const groups = useMemo(() => {
     const grouped = groupCategories(categories);
     const orderedKeys = PARENT_GROUP_ORDER.map((g) => g.key);
-    return [...grouped].sort(
+    const sorted = [...grouped].sort(
       (a, b) => orderedKeys.indexOf(a.parent_group) - orderedKeys.indexOf(b.parent_group),
     );
-  }, [categories]);
+    if (!phase) return sorted;
+    // Filtrér til grupper relevante for fasen, men la alltid grupper som
+    // har minst én bruker-opprettet kategori (project_id satt) komme
+    // gjennom — dem har brukeren bevisst lagt der.
+    const relevant = new Set<string>(PHASE_GROUPS[phase]);
+    return sorted.filter((group) => {
+      if (relevant.has(group.parent_group)) return true;
+      return group.categories.some((c) => !c.is_system && c.project_id === projectId);
+    });
+  }, [categories, phase, projectId]);
 
   // Custom-kategorier brukeren kan slette (kun ikke-system fra dette prosjektet)
   const projectCustomIds = useMemo(

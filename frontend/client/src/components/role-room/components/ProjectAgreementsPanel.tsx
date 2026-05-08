@@ -45,6 +45,7 @@ import type {
 import { useProducerReviews } from '../hooks/useProducerReviews';
 import authSessionService from '../services/authSessionService';
 import settingsService from '../services/settingsService';
+import { castingService } from '../services/castingService';
 import {
   googleWorkspaceApi,
   projectAgreementsApi,
@@ -374,8 +375,20 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
         updatedAt: new Date().toISOString(),
       },
     };
+    // Persist til DB FØR onProjectUpdated — parent-handleren reloader
+    // prosjekt-listen fra serveren (loadProjects), så uten lagring her
+    // ville en optimistisk endring blitt overskrevet av stale DB-state
+    // på neste re-render. Dette var årsaken til at f.eks. compensation-
+    // Model "snappet tilbake" rett etter at brukeren valgte ny verdi.
+    try {
+      await castingService.saveProject(nextProject);
+    } catch (error) {
+      console.error('[ProjectAgreementsPanel] saveProject failed', error);
+      enqueueSnackbar('Kunne ikke lagre samarbeidsrammen — prøv igjen.', { variant: 'error' });
+      return;
+    }
     await onProjectUpdated(nextProject);
-  }, [onProjectUpdated, project]);
+  }, [enqueueSnackbar, onProjectUpdated, project]);
 
   const updateCollaborationTextList = useCallback(async (
     key: keyof Pick<
