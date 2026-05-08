@@ -29,6 +29,7 @@ import RoleRoomMobileShotListView from './components/production-mobile/RoleRoomM
 import RoleRoomMobileCrewView from './components/production-mobile/RoleRoomMobileCrewView';
 import RoleRoomAgentChatPanel from './components/ai/RoleRoomAgentChatPanel';
 import CarouselPanel from './components/producer/carousel/CarouselPanel';
+import AdminRoom from '../../pages/AdminRoom';
 import { useRoleRoomAgentContext } from './hooks/useRoleRoomAgentContext';
 import { validateAgentToolInput } from './services/roleRoomAgentToolSchemas';
 import { logAgentToolResult } from './services/roleRoomAgentClaudeApi';
@@ -239,7 +240,10 @@ type SubTab =
   | 'shooting'
   | 'shotlist'
   | 'mannskap'
-  | 'agent';
+  | 'agent'
+  | 'admin-room';
+
+const ADMIN_ROOM_OWNER_EMAIL = 'daniel@creatorhubn.com';
 
 // ── Props ────────────────────────────────────────────────────
 
@@ -1012,6 +1016,16 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                   iconPosition="start"
                   sx={{ minHeight: 48 }}
                 />
+                {/* Admin Room — kun synlig for produkteier-konto */}
+                {(profileEmail || '').trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL && (
+                  <Tab
+                    value="admin-room"
+                    label="Admin Room"
+                    icon={<AutoFixHighIcon fontSize="small" />}
+                    iconPosition="start"
+                    sx={{ minHeight: 48, color: '#a78bfa' }}
+                  />
+                )}
               </Tabs>
               <Divider />
 
@@ -1114,6 +1128,10 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                 )}
                 {subTab === 'carousel' && (
                   <CarouselPanel projectId={selectedProjectId} />
+                )}
+                {subTab === 'admin-room'
+                  && (profileEmail || '').trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL && (
+                    <AdminRoom />
                 )}
               </CardContent>
             </Card>

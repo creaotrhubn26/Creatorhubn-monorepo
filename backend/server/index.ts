@@ -19782,6 +19782,415 @@ app.get("/api/casting/demo/troll/offers-contracts", (_req, res) => {
 // (DELETE før INSERT). Oppretter prosjekt + roles + candidates + crew +
 // locations + manuscript + scenes + shotLists + equipment + production
 // days + consents. Trigger via "Last TROLL Demo-prosjekt"-knapp.
+// ── Admin Room ────────────────────────────────────────────────────
+// Internt arbeidsrom kun for daniel@creatorhubn.com — IN-søknader,
+// investor-pipeline og potensielle samarbeidspartnere. Email-låst på
+// rute-nivå; UI-laget gjør sin egen sjekk i tillegg.
+
+const ADMIN_ROOM_OWNER_EMAIL = "daniel@creatorhubn.com";
+
+function requireAdminRoomAccess(
+  req: express.Request,
+  res: express.Response,
+): { userId: string; email: string } | null {
+  const session = getActiveSessionFromRequest(req);
+  if (!session) {
+    res.status(401).json({ error: "Innlogging kreves" });
+    return null;
+  }
+  const normalizedEmail = String(session.email || "").trim().toLowerCase();
+  if (normalizedEmail !== ADMIN_ROOM_OWNER_EMAIL) {
+    res.status(403).json({ error: "Admin Room er kun tilgjengelig for produkteier" });
+    return null;
+  }
+  return { userId: session.userId, email: normalizedEmail };
+}
+
+function asJsonbArray(value: unknown): string {
+  if (Array.isArray(value)) return JSON.stringify(value);
+  return "[]";
+}
+function asJsonbObject(value: unknown): string {
+  if (value && typeof value === "object" && !Array.isArray(value)) return JSON.stringify(value);
+  return "{}";
+}
+function asString(value: unknown, fallback: string | null = null): string | null {
+  if (typeof value === "string" && value.trim().length > 0) return value.trim();
+  return fallback;
+}
+function asNumberOrNull(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim().length > 0) {
+    const n = Number.parseFloat(value);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+// ── Funding apps ────────────────────────────────────────────────────
+app.get("/api/admin-room/funding-apps", async (req, res) => {
+  const session = requireAdminRoomAccess(req, res);
+  if (!session) return;
+  try {
+    const result = await pool.query(
+      `SELECT * FROM admin_funding_apps WHERE user_id = $1 ORDER BY created_at DESC`,
+      [session.userId],
+    );
+    res.json({ items: result.rows });
+  } catch (err) {
+    console.error("admin-room funding-apps list error", err);
+    res.status(500).json({ error: "Kunne ikke hente søknader" });
+  }
+});
+
+app.post("/api/admin-room/funding-apps", async (req, res) => {
+  const session = requireAdminRoomAccess(req, res);
+  if (!session) return;
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  if (!asString(body.scheme) || !asString(body.schemeLabel) || !asString(body.projectName)) {
+    res.status(400).json({ error: "scheme, schemeLabel og projectName er påkrevd" });
+    return;
+  }
+  try {
+    const result = await pool.query(
+      `INSERT INTO admin_funding_apps
+         (user_id, scheme, scheme_label, project_name, applicant_company, status,
+          amount_requested, currency, description, milestones, budget_breakdown,
+          contact_person, contact_email, submission_date, decision_date, notes, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb,
+               $12, $13, $14, $15, $16, $17::jsonb)
+       RETURNING *`,
+      [
+        session.userId,
+        asString(body.scheme),
+        asString(body.schemeLabel),
+        asString(body.projectName),
+        asString(body.applicantCompany),
+        asString(body.status, "draft"),
+        asNumberOrNull(body.amountRequested),
+        asString(body.currency, "NOK"),
+        asString(body.description),
+        asJsonbArray(body.milestones),
+        asJsonbArray(body.budgetBreakdown),
+        asString(body.contactPerson),
+        asString(body.contactEmail),
+        asString(body.submissionDate),
+        asString(body.decisionDate),
+        asString(body.notes),
+        asJsonbObject(body.metadata),
+      ],
+    );
+    res.status(201).json({ item: result.rows[0] });
+  } catch (err) {
+    console.error("admin-room funding-apps create error", err);
+    res.status(500).json({ error: "Kunne ikke opprette søknad" });
+  }
+});
+
+app.patch("/api/admin-room/funding-apps/:id", async (req, res) => {
+  const session = requireAdminRoomAccess(req, res);
+  if (!session) return;
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const sets: string[] = [];
+  const params: unknown[] = [req.params.id, session.userId];
+  const push = (sqlExpr: string, value: unknown) => {
+    params.push(value);
+    sets.push(`${sqlExpr} = $${params.length}`);
+  };
+  if ("scheme" in body) push("scheme", asString(body.scheme));
+  if ("schemeLabel" in body) push("scheme_label", asString(body.schemeLabel));
+  if ("projectName" in body) push("project_name", asString(body.projectName));
+  if ("applicantCompany" in body) push("applicant_company", asString(body.applicantCompany));
+  if ("status" in body) push("status", asString(body.status, "draft"));
+  if ("amountRequested" in body) push("amount_requested", asNumberOrNull(body.amountRequested));
+  if ("currency" in body) push("currency", asString(body.currency, "NOK"));
+  if ("description" in body) push("description", asString(body.description));
+  if ("milestones" in body) sets.push(`milestones = '${asJsonbArray(body.milestones).replace(/'/g, "''")}'::jsonb`);
+  if ("budgetBreakdown" in body) sets.push(`budget_breakdown = '${asJsonbArray(body.budgetBreakdown).replace(/'/g, "''")}'::jsonb`);
+  if ("contactPerson" in body) push("contact_person", asString(body.contactPerson));
+  if ("contactEmail" in body) push("contact_email", asString(body.contactEmail));
+  if ("submissionDate" in body) push("submission_date", asString(body.submissionDate));
+  if ("decisionDate" in body) push("decision_date", asString(body.decisionDate));
+  if ("notes" in body) push("notes", asString(body.notes));
+  if (sets.length === 0) {
+    res.status(400).json({ error: "Ingen felter å oppdatere" });
+    return;
+  }
+  sets.push("updated_at = now()");
+  try {
+    const result = await pool.query(
+      `UPDATE admin_funding_apps SET ${sets.join(", ")}
+        WHERE id = $1 AND user_id = $2 RETURNING *`,
+      params,
+    );
+    if (result.rowCount === 0) {
+      res.status(404).json({ error: "Søknad ikke funnet" });
+      return;
+    }
+    res.json({ item: result.rows[0] });
+  } catch (err) {
+    console.error("admin-room funding-apps patch error", err);
+    res.status(500).json({ error: "Kunne ikke oppdatere søknad" });
+  }
+});
+
+app.delete("/api/admin-room/funding-apps/:id", async (req, res) => {
+  const session = requireAdminRoomAccess(req, res);
+  if (!session) return;
+  try {
+    const result = await pool.query(
+      `DELETE FROM admin_funding_apps WHERE id = $1 AND user_id = $2 RETURNING id`,
+      [req.params.id, session.userId],
+    );
+    if (result.rowCount === 0) {
+      res.status(404).json({ error: "Søknad ikke funnet" });
+      return;
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("admin-room funding-apps delete error", err);
+    res.status(500).json({ error: "Kunne ikke slette søknad" });
+  }
+});
+
+// ── Investor contacts ─────────────────────────────────────────────
+app.get("/api/admin-room/investor-contacts", async (req, res) => {
+  const session = requireAdminRoomAccess(req, res);
+  if (!session) return;
+  try {
+    const result = await pool.query(
+      `SELECT * FROM admin_investor_contacts WHERE user_id = $1 ORDER BY created_at DESC`,
+      [session.userId],
+    );
+    res.json({ items: result.rows });
+  } catch (err) {
+    console.error("admin-room investor-contacts list error", err);
+    res.status(500).json({ error: "Kunne ikke hente investor-kontakter" });
+  }
+});
+
+app.post("/api/admin-room/investor-contacts", async (req, res) => {
+  const session = requireAdminRoomAccess(req, res);
+  if (!session) return;
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  if (!asString(body.companyName)) {
+    res.status(400).json({ error: "companyName er påkrevd" });
+    return;
+  }
+  try {
+    const result = await pool.query(
+      `INSERT INTO admin_investor_contacts
+         (user_id, company_name, contact_name, contact_email, contact_phone,
+          status, ticket_size_min, ticket_size_max, currency, focus_areas,
+          intro_source, next_step, next_step_due, notes, last_contact_at, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12, $13, $14, $15, $16::jsonb)
+       RETURNING *`,
+      [
+        session.userId,
+        asString(body.companyName),
+        asString(body.contactName),
+        asString(body.contactEmail),
+        asString(body.contactPhone),
+        asString(body.status, "lead"),
+        asNumberOrNull(body.ticketSizeMin),
+        asNumberOrNull(body.ticketSizeMax),
+        asString(body.currency, "NOK"),
+        asJsonbArray(body.focusAreas),
+        asString(body.introSource),
+        asString(body.nextStep),
+        asString(body.nextStepDue),
+        asString(body.notes),
+        asString(body.lastContactAt),
+        asJsonbObject(body.metadata),
+      ],
+    );
+    res.status(201).json({ item: result.rows[0] });
+  } catch (err) {
+    console.error("admin-room investor-contacts create error", err);
+    res.status(500).json({ error: "Kunne ikke opprette investor-kontakt" });
+  }
+});
+
+app.patch("/api/admin-room/investor-contacts/:id", async (req, res) => {
+  const session = requireAdminRoomAccess(req, res);
+  if (!session) return;
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const sets: string[] = [];
+  const params: unknown[] = [req.params.id, session.userId];
+  const push = (sqlExpr: string, value: unknown) => {
+    params.push(value);
+    sets.push(`${sqlExpr} = $${params.length}`);
+  };
+  if ("companyName" in body) push("company_name", asString(body.companyName));
+  if ("contactName" in body) push("contact_name", asString(body.contactName));
+  if ("contactEmail" in body) push("contact_email", asString(body.contactEmail));
+  if ("contactPhone" in body) push("contact_phone", asString(body.contactPhone));
+  if ("status" in body) push("status", asString(body.status, "lead"));
+  if ("ticketSizeMin" in body) push("ticket_size_min", asNumberOrNull(body.ticketSizeMin));
+  if ("ticketSizeMax" in body) push("ticket_size_max", asNumberOrNull(body.ticketSizeMax));
+  if ("currency" in body) push("currency", asString(body.currency, "NOK"));
+  if ("focusAreas" in body) sets.push(`focus_areas = '${asJsonbArray(body.focusAreas).replace(/'/g, "''")}'::jsonb`);
+  if ("introSource" in body) push("intro_source", asString(body.introSource));
+  if ("nextStep" in body) push("next_step", asString(body.nextStep));
+  if ("nextStepDue" in body) push("next_step_due", asString(body.nextStepDue));
+  if ("notes" in body) push("notes", asString(body.notes));
+  if ("lastContactAt" in body) push("last_contact_at", asString(body.lastContactAt));
+  if (sets.length === 0) {
+    res.status(400).json({ error: "Ingen felter å oppdatere" });
+    return;
+  }
+  sets.push("updated_at = now()");
+  try {
+    const result = await pool.query(
+      `UPDATE admin_investor_contacts SET ${sets.join(", ")}
+        WHERE id = $1 AND user_id = $2 RETURNING *`,
+      params,
+    );
+    if (result.rowCount === 0) {
+      res.status(404).json({ error: "Investor-kontakt ikke funnet" });
+      return;
+    }
+    res.json({ item: result.rows[0] });
+  } catch (err) {
+    console.error("admin-room investor-contacts patch error", err);
+    res.status(500).json({ error: "Kunne ikke oppdatere investor-kontakt" });
+  }
+});
+
+app.delete("/api/admin-room/investor-contacts/:id", async (req, res) => {
+  const session = requireAdminRoomAccess(req, res);
+  if (!session) return;
+  try {
+    const result = await pool.query(
+      `DELETE FROM admin_investor_contacts WHERE id = $1 AND user_id = $2 RETURNING id`,
+      [req.params.id, session.userId],
+    );
+    if (result.rowCount === 0) {
+      res.status(404).json({ error: "Investor-kontakt ikke funnet" });
+      return;
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("admin-room investor-contacts delete error", err);
+    res.status(500).json({ error: "Kunne ikke slette investor-kontakt" });
+  }
+});
+
+// ── Partner contacts ──────────────────────────────────────────────
+app.get("/api/admin-room/partner-contacts", async (req, res) => {
+  const session = requireAdminRoomAccess(req, res);
+  if (!session) return;
+  try {
+    const result = await pool.query(
+      `SELECT * FROM admin_partner_contacts WHERE user_id = $1 ORDER BY created_at DESC`,
+      [session.userId],
+    );
+    res.json({ items: result.rows });
+  } catch (err) {
+    console.error("admin-room partner-contacts list error", err);
+    res.status(500).json({ error: "Kunne ikke hente partnere" });
+  }
+});
+
+app.post("/api/admin-room/partner-contacts", async (req, res) => {
+  const session = requireAdminRoomAccess(req, res);
+  if (!session) return;
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  if (!asString(body.companyName)) {
+    res.status(400).json({ error: "companyName er påkrevd" });
+    return;
+  }
+  try {
+    const result = await pool.query(
+      `INSERT INTO admin_partner_contacts
+         (user_id, company_name, contact_name, contact_email, contact_phone,
+          partnership_type, status, proposal_summary, next_step, next_step_due,
+          notes, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb)
+       RETURNING *`,
+      [
+        session.userId,
+        asString(body.companyName),
+        asString(body.contactName),
+        asString(body.contactEmail),
+        asString(body.contactPhone),
+        asString(body.partnershipType, "other"),
+        asString(body.status, "potential"),
+        asString(body.proposalSummary),
+        asString(body.nextStep),
+        asString(body.nextStepDue),
+        asString(body.notes),
+        asJsonbObject(body.metadata),
+      ],
+    );
+    res.status(201).json({ item: result.rows[0] });
+  } catch (err) {
+    console.error("admin-room partner-contacts create error", err);
+    res.status(500).json({ error: "Kunne ikke opprette partner" });
+  }
+});
+
+app.patch("/api/admin-room/partner-contacts/:id", async (req, res) => {
+  const session = requireAdminRoomAccess(req, res);
+  if (!session) return;
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const sets: string[] = [];
+  const params: unknown[] = [req.params.id, session.userId];
+  const push = (sqlExpr: string, value: unknown) => {
+    params.push(value);
+    sets.push(`${sqlExpr} = $${params.length}`);
+  };
+  if ("companyName" in body) push("company_name", asString(body.companyName));
+  if ("contactName" in body) push("contact_name", asString(body.contactName));
+  if ("contactEmail" in body) push("contact_email", asString(body.contactEmail));
+  if ("contactPhone" in body) push("contact_phone", asString(body.contactPhone));
+  if ("partnershipType" in body) push("partnership_type", asString(body.partnershipType, "other"));
+  if ("status" in body) push("status", asString(body.status, "potential"));
+  if ("proposalSummary" in body) push("proposal_summary", asString(body.proposalSummary));
+  if ("nextStep" in body) push("next_step", asString(body.nextStep));
+  if ("nextStepDue" in body) push("next_step_due", asString(body.nextStepDue));
+  if ("notes" in body) push("notes", asString(body.notes));
+  if (sets.length === 0) {
+    res.status(400).json({ error: "Ingen felter å oppdatere" });
+    return;
+  }
+  sets.push("updated_at = now()");
+  try {
+    const result = await pool.query(
+      `UPDATE admin_partner_contacts SET ${sets.join(", ")}
+        WHERE id = $1 AND user_id = $2 RETURNING *`,
+      params,
+    );
+    if (result.rowCount === 0) {
+      res.status(404).json({ error: "Partner ikke funnet" });
+      return;
+    }
+    res.json({ item: result.rows[0] });
+  } catch (err) {
+    console.error("admin-room partner-contacts patch error", err);
+    res.status(500).json({ error: "Kunne ikke oppdatere partner" });
+  }
+});
+
+app.delete("/api/admin-room/partner-contacts/:id", async (req, res) => {
+  const session = requireAdminRoomAccess(req, res);
+  if (!session) return;
+  try {
+    const result = await pool.query(
+      `DELETE FROM admin_partner_contacts WHERE id = $1 AND user_id = $2 RETURNING id`,
+      [req.params.id, session.userId],
+    );
+    if (result.rowCount === 0) {
+      res.status(404).json({ error: "Partner ikke funnet" });
+      return;
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("admin-room partner-contacts delete error", err);
+    res.status(500).json({ error: "Kunne ikke slette partner" });
+  }
+});
+
 app.post("/api/demo/troll/seed-all", async (req, res) => {
   try {
     const ownerUserId = (req as { userId?: string }).userId

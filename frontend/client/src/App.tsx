@@ -188,6 +188,7 @@ import { syncSiteSeo } from '@/lib/siteSeo';
 import { trackMarketingPageView } from '@/lib/marketingPixelsRuntime';
 
 const LandingMobileBackupSep19 = React.lazy(() => import('@/pages/landing-mobile-backup-sep19'));
+const AdminRoomPage = React.lazy(() => import('./pages/AdminRoom'));
 // Wrapper components for route compatibility
 const AdminDashboardWrapper = (props: any) => <AdminDashboard {...props} />;
 const CompleteDeploymentManagerWrapper = (props: any) => <CompleteDeploymentManager {...props} />;
@@ -627,6 +628,15 @@ function App() {
                   <Route path="/auth/linkedin/callback" component={LinkedInCallback} />
                   <Route path="/meta-page-inspector" component={MetaPagePublicMetadataInspector} />
                   <Route path="/admin" component={AdminDashboardWrapper} />
+                  <Route path="/admin-room">
+                    <React.Suspense fallback={
+                      <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+                        <CircularProgress />
+                      </Box>
+                    }>
+                      <AdminRoomPage />
+                    </React.Suspense>
+                  </Route>
                   <Route path="/verification-demo" component={VerificationSystemDashboard as React.ComponentType<any>} />
                   <Route path="/visual-cms-admin" component={VisualCMSAdminDashboard as React.ComponentType<any>} />
                   <Route path="/equipment-admin" component={EquipmentAdminPage} />
