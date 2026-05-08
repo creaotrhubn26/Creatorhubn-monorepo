@@ -487,23 +487,26 @@ export async function seedTrollDemo(
     );
     const splitSheetId = splitSheetRow.rows[0].id;
 
+    // role-CHECK på split_sheet_contributors er hardkodet for music-domene
+    // (producer/artist/songwriter/...). Vi mapper film-roller til 'other'
+    // og lagrer faktisk tittel i notes så den vises i UI.
     const contributors = [
-      { name: 'Roar Uthaug', email: 'roar@uthaug.no', role: 'director', percentage: 25, order: 0 },
-      { name: 'Espen Horn', email: 'espen@motlysfilm.no', role: 'producer', percentage: 20, order: 1 },
-      { name: 'Espen Aukan', email: 'espen.aukan@writer.no', role: 'writer', percentage: 15, order: 2 },
-      { name: 'Ine Marie Wilmann', email: 'agent@inemarie.no', role: 'lead_actor', percentage: 10, order: 3 },
-      { name: 'Kim Falck', email: 'kim.falck@agent.no', role: 'lead_actor', percentage: 10, order: 4 },
-      { name: 'Jallo Faber', email: 'jallo@cinematographers.no', role: 'cinematographer', percentage: 10, order: 5 },
-      { name: 'Hanne Berkaak', email: 'hanne@design.no', role: 'production_designer', percentage: 5, order: 6 },
-      { name: 'Stian Aadland', email: 'stian@sound.no', role: 'sound_designer', percentage: 5, order: 7 },
+      { name: 'Roar Uthaug', email: 'roar@uthaug.no', role: 'producer', notes: 'Regissør', percentage: 25, order: 0 },
+      { name: 'Espen Horn', email: 'espen@motlysfilm.no', role: 'producer', notes: 'Produsent', percentage: 20, order: 1 },
+      { name: 'Espen Aukan', email: 'espen.aukan@writer.no', role: 'songwriter', notes: 'Manusforfatter', percentage: 15, order: 2 },
+      { name: 'Ine Marie Wilmann', email: 'agent@inemarie.no', role: 'artist', notes: 'Hovedrolle — Nora', percentage: 10, order: 3 },
+      { name: 'Kim Falck', email: 'kim.falck@agent.no', role: 'artist', notes: 'Hovedrolle — Andreas', percentage: 10, order: 4 },
+      { name: 'Jallo Faber', email: 'jallo@cinematographers.no', role: 'collaborator', notes: 'Cinematographer / DP', percentage: 10, order: 5 },
+      { name: 'Hanne Berkaak', email: 'hanne@design.no', role: 'collaborator', notes: 'Production designer', percentage: 5, order: 6 },
+      { name: 'Stian Aadland', email: 'stian@sound.no', role: 'mix_engineer', notes: 'Sound designer', percentage: 5, order: 7 },
     ];
     for (const c of contributors) {
       await client.query(
         `INSERT INTO split_sheet_contributors
-           (split_sheet_id, name, email, role, percentage, order_index, invitation_status,
-            created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, 'not_sent', NOW(), NOW())`,
-        [splitSheetId, c.name, c.email, c.role, c.percentage, c.order],
+           (split_sheet_id, name, email, role, percentage, order_index, notes,
+            invitation_status, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'not_sent', NOW(), NOW())`,
+        [splitSheetId, c.name, c.email, c.role, c.percentage, c.order, c.notes],
       );
     }
 
