@@ -330,7 +330,7 @@ import {
   syncNotebookLmWorkspaceForMeetingNote,
   syncNotebookLmWorkspaceForScope,
 } from "./notebooklm-workspace.js";
-import { createWebSocketServer } from "./websocket-chat.js";
+import { createWebSocketServer, broadcastChatEventToUser } from "./websocket-chat.js";
 import { createReferenceProxyRouter } from "./reference-proxy-routes.js";
 import { createYouTubeRouter } from "./youtube-routes.js";
 import {
@@ -879,6 +879,20 @@ app.post(
                 stripeIntentId: intent.id,
               },
             });
+            // Slice 9D.5.D — varsle fotograf via WebSocket så
+            // pending-print-orders-badgen oppdateres umiddelbart.
+            const photographerOwner = typeof intent.metadata?.photographerId === 'string'
+              ? intent.metadata.photographerId
+              : null;
+            if (photographerOwner) {
+              broadcastChatEventToUser(photographerOwner, {
+                type: 'print_order_paid',
+                galleryId: intent.metadata?.galleryId ?? null,
+                amount: intent.amount,
+                currency: intent.currency,
+                paidAt: new Date().toISOString(),
+              });
+            }
           }
           break;
         }
@@ -24046,13 +24060,14 @@ app.post("/api/photographer/galleries", async (req, res) => {
       const lookup = await lookupPackageImagesIncluded(effectivePackageId, session.userId);
       if (lookup.images != null) settings.contractedImages = lookup.images;
     }
+    const canonicalClientId = await ensureCanonicalClientId(session.userId, clientEmail, clientName);
     const result = await pool.query(
       `INSERT INTO photographer_client_galleries
          (photographer_id, client_name, client_email, project_title, access_token,
-          gallery_settings, status, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, 'active', NOW(), NOW())
+          gallery_settings, status, canonical_client_id, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, 'active', $7, NOW(), NOW())
        RETURNING id, access_token, created_at`,
-      [session.userId, clientName, clientEmail, projectTitle, accessToken, settings],
+      [session.userId, clientName, clientEmail, projectTitle, accessToken, settings, canonicalClientId],
     );
     const row = result.rows[0];
     // Analytics — bind gallery-creation til økosystem-event-loggen.
@@ -25075,13 +25090,17 @@ app.get("/api/photographer/dashboard-badges", async (req, res) => {
       return Number(r.rows[0]?.c ?? 0);
     }),
     safeCount('gallery_submissions', async () => {
+      // "Nye" = laget innen siste 7 dager + ikke vurdert. Uten tidsvinduet
+      // bygger vi opp historisk gjeld der hver gammel ikke-vurdert
+      // selection forblir telt for alltid.
       const r = await pool.query(
         `SELECT COUNT(*)::int AS c
          FROM client_selections sel
          JOIN client_gallery_sessions s ON s.id = sel.session_id
          WHERE s.photographer_id = $1
            AND sel.is_selected = true
-           AND sel.photographer_approved IS NULL`,
+           AND sel.photographer_approved IS NULL
+           AND sel.created_at > NOW() - INTERVAL '7 days'`,
         [photographerId],
       );
       return Number(r.rows[0]?.c ?? 0);
@@ -25101,6 +25120,77 @@ app.get("/api/photographer/dashboard-badges", async (req, res) => {
   ]);
 
   res.json({ unreadMessages, newGallerySubmissions, pendingPrintOrders });
+});
+
+// Slice 9X.8.C — helper for å sette canonical client_id på nye rader.
+// Migration 134 backfilte historiske rader; denne sikrer at NYE
+// galleri/print/kontrakt-INSERTS får client_id direkte uten at vi
+// må re-kjøre backfillen.
+async function ensureCanonicalClientId(
+  photographerId: string,
+  email: string,
+  clientName: string | null,
+): Promise<string | null> {
+  if (!photographerId) return null;
+  const trimmedEmail = (email ?? '').trim();
+  if (!trimmedEmail) return null;
+  try {
+    const name = (clientName ?? '').trim();
+    const firstSpace = name.indexOf(' ');
+    const firstName = firstSpace >= 0 ? name.slice(0, firstSpace) : name;
+    const lastName = firstSpace >= 0 ? name.slice(firstSpace + 1).trim() : '';
+    // ON CONFLICT DO UPDATE SET email=EXCLUDED.email gir oss RETURNING id
+    // selv på treff (DO NOTHING ville returnert tom rad).
+    const result = await pool.query(
+      `INSERT INTO clients
+         (photographer_id, email, first_name, last_name, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, NOW(), NOW())
+       ON CONFLICT (photographer_id, email)
+         DO UPDATE SET email = EXCLUDED.email
+       RETURNING id`,
+      [photographerId, trimmedEmail, firstName, lastName],
+    );
+    return (result.rows[0]?.id as string | undefined) ?? null;
+  } catch (err) {
+    console.warn('[ensureCanonicalClientId] failed:', err);
+    return null;
+  }
+}
+
+// Slice 9D.5.C — print-orders-liste for fotograf
+app.get("/api/photographer/print-orders", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  try {
+    await ensurePrintStoreSchema();
+    const result = await pool.query(
+      `SELECT id, gallery_id, client_email, client_name,
+              total_amount, currency, payment_status,
+              fulfillment_status, stripe_session_id, created_at
+         FROM print_orders
+        WHERE photographer_id = $1
+        ORDER BY created_at DESC
+        LIMIT 200`,
+      [session.userId],
+    );
+    res.json({
+      orders: result.rows.map((r: Record<string, unknown>) => ({
+        id: r.id,
+        galleryId: r.gallery_id,
+        clientEmail: r.client_email,
+        clientName: r.client_name ?? '',
+        totalAmount: Number(r.total_amount ?? 0),
+        currency: r.currency ?? 'NOK',
+        paymentStatus: r.payment_status,
+        fulfillmentStatus: r.fulfillment_status,
+        stripeSessionId: r.stripe_session_id,
+        createdAt: r.created_at,
+      })),
+    });
+  } catch (err) {
+    console.warn('[print-orders] list failed:', err);
+    res.json({ orders: [] });
+  }
 });
 
 // =====================================================
@@ -25190,6 +25280,52 @@ app.get("/api/photographer/clients", async (req, res) => {
   }
 });
 
+// Slice 9X.8.E — opprett klient manuelt (lead før første galleri).
+app.post("/api/photographer/clients", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const photographerId = session.userId;
+  const { firstName, lastName, email, phone, city, address, postalCode, notes } = req.body ?? {};
+
+  const trimmedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+  if (!trimmedEmail) return res.status(400).json({ error: 'email_required' });
+
+  try {
+    const result = await pool.query(
+      `INSERT INTO clients
+         (photographer_id, email, first_name, last_name, phone, address, city, postal_code, notes,
+          created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+       ON CONFLICT (photographer_id, email) DO UPDATE SET
+         first_name  = COALESCE(NULLIF(EXCLUDED.first_name,  ''), clients.first_name),
+         last_name   = COALESCE(NULLIF(EXCLUDED.last_name,   ''), clients.last_name),
+         phone       = COALESCE(EXCLUDED.phone,       clients.phone),
+         address     = COALESCE(EXCLUDED.address,     clients.address),
+         city        = COALESCE(EXCLUDED.city,        clients.city),
+         postal_code = COALESCE(EXCLUDED.postal_code, clients.postal_code),
+         notes       = COALESCE(EXCLUDED.notes,       clients.notes),
+         updated_at  = NOW()
+       RETURNING id`,
+      [
+        photographerId,
+        trimmedEmail,
+        typeof firstName === 'string' ? firstName.trim() : '',
+        typeof lastName === 'string' ? lastName.trim() : '',
+        typeof phone === 'string' && phone.trim() ? phone.trim() : null,
+        typeof address === 'string' && address.trim() ? address.trim() : null,
+        typeof city === 'string' && city.trim() ? city.trim() : null,
+        typeof postalCode === 'string' && postalCode.trim() ? postalCode.trim() : null,
+        typeof notes === 'string' && notes.trim() ? notes.trim() : null,
+      ],
+    );
+    const id = result.rows[0]?.id as string;
+    res.status(201).json({ id });
+  } catch (err) {
+    console.error('[crm] create client failed:', err);
+    res.status(500).json({ error: 'create_client_failed' });
+  }
+});
+
 // Full klient-profil: kontakt + galleri-historikk + ordre + kontrakter.
 app.get("/api/photographer/clients/:clientId", async (req, res) => {
   const session = requireUserSession(req, res);
@@ -25212,7 +25348,7 @@ app.get("/api/photographer/clients/:clientId", async (req, res) => {
     }
     const c = clientRow.rows[0] as Record<string, unknown>;
 
-    const [galleries, orders, contracts] = await Promise.all([
+    const [galleries, orders, contracts, messages] = await Promise.all([
       pool.query(
         `SELECT id, project_title, access_token, status,
                 gallery_settings, created_at, completed_at
@@ -25236,6 +25372,19 @@ app.get("/api/photographer/clients/:clientId", async (req, res) => {
           WHERE canonical_client_id = $1 AND user_id = $2
           ORDER BY created_at DESC`,
         [clientId, photographerId],
+      ).catch(() => ({ rows: [] as Record<string, unknown>[] })),
+      // Slice 9X.8.F — best-effort meldinger via email-match. client_id-FK
+      // er ikke kanonisert ennå (clientId VARCHAR), så vi joiner på
+      // from_email/to_email mot clients.email.
+      pool.query(
+        `SELECT cc.id, cc.communication_type, cc.direction, cc.subject,
+                cc.content, cc.from_email, cc.to_email, cc.created_at
+           FROM client_communications cc
+          WHERE cc.user_id = $1
+            AND (cc.from_email = $2 OR cc.to_email = $2)
+          ORDER BY cc.created_at DESC
+          LIMIT 50`,
+        [photographerId, c.email],
       ).catch(() => ({ rows: [] as Record<string, unknown>[] })),
     ]);
 
@@ -25280,6 +25429,16 @@ app.get("/api/photographer/clients/:clientId", async (req, res) => {
         contractValue: r.contract_value != null ? Number(r.contract_value) : null,
         currency: r.currency ?? 'NOK',
         signedAt: r.signed_at,
+        createdAt: r.created_at,
+      })),
+      messages: messages.rows.map((r: Record<string, unknown>) => ({
+        id: r.id,
+        type: r.communication_type,
+        direction: r.direction,
+        subject: r.subject ?? '',
+        content: r.content,
+        fromEmail: r.from_email ?? null,
+        toEmail: r.to_email ?? null,
         createdAt: r.created_at,
       })),
     });
@@ -25483,13 +25642,14 @@ app.post("/api/client/gallery/:accessToken/print-order", async (req, res) => {
       },
     });
 
-    // Insert pending ordre + items
+    // Insert pending ordre + items. Slice 9X.8.C — sett canonical_client_id.
+    const canonicalClientId = await ensureCanonicalClientId(photographerId, effectiveEmail, clientName ?? null);
     const orderResult = await pool.query(
       `INSERT INTO print_orders
          (gallery_id, photographer_id, client_email, client_name, shipping_address,
           stripe_payment_intent_id, stripe_session_id, total_amount, currency,
-          payment_status, fulfillment_status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', 'pending')
+          payment_status, fulfillment_status, canonical_client_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', 'pending', $10)
        RETURNING id`,
       [
         access.gallery.id,
@@ -25501,6 +25661,7 @@ app.post("/api/client/gallery/:accessToken/print-order", async (req, res) => {
         session.id,
         total,
         currency,
+        canonicalClientId,
       ],
     );
     const orderId = orderResult.rows[0].id;
@@ -103037,32 +103198,41 @@ async function ensureContractForAcceptedQuote(quoteRow: any) {
     projectCreationData: quote.projectCreationData || {},
   };
 
+  // Slice 9X.8.C — kanonisk klient-id for nye kontrakter.
+  const ownerUserId = quote.createdBy || "default-user";
+  const contractClientName = clientInfo.name || quote.clientName || "";
+  const contractClientEmail = clientInfo.email || quote.clientEmail || "";
+  const canonicalClientId = await ensureCanonicalClientId(
+    ownerUserId,
+    contractClientEmail,
+    contractClientName,
+  );
   const insertResult = await pool.query(
     `INSERT INTO contracts (
        id, user_id, client_id, project_id, source_quote_id, contract_number,
        contract_title, title, client_name, client_email, client_phone,
        customer_type, contract_type, project_type, project_description,
        total_amount, profession, template_used, sections, status, signature_status,
-       metadata, created_at, updated_at
+       metadata, canonical_client_id, created_at, updated_at
      ) VALUES (
        $1, $2, $3, $4, $5, $6,
        $7, $8, $9, $10, $11,
        $12, $13, $14, $15,
        $16, $17, $18, $19::jsonb, 'draft', 'not_started',
-       $20::jsonb, NOW(), NOW()
+       $20::jsonb, $21, NOW(), NOW()
      )
      RETURNING *`,
     [
       crypto.randomUUID(),
-      quote.createdBy || "default-user",
+      ownerUserId,
       quote.clientId || null,
       quote.projectId || null,
       quote.id,
       contractNumber,
       contractTitle,
       contractTitle,
-      clientInfo.name || quote.clientName || "",
-      clientInfo.email || quote.clientEmail || "",
+      contractClientName,
+      contractClientEmail,
       clientInfo.phoneNumber || clientInfo.phone || null,
       clientInfo.customerType || "private",
       quote.projectType || quote.quoteType || "service_agreement",
@@ -103075,6 +103245,7 @@ async function ensureContractForAcceptedQuote(quoteRow: any) {
       quote.projectType || quote.quoteType || "quote_conversion",
       JSON.stringify(buildContractSectionsFromQuote(quote)),
       JSON.stringify(contractMetadata),
+      canonicalClientId,
     ],
   );
 
@@ -107334,6 +107505,29 @@ app.post("/api/showcase/client-selections", async (req, res) => {
         readString(payload.clientComment) || "",
       ],
     );
+
+    // Slice 9D.5.D — varsle fotograf via WebSocket så dashboard-badgen
+    // oppdateres umiddelbart. Best-effort; feiler stille uten å forstyrre
+    // klient-responsen.
+    try {
+      const ownerRow = await pool.query(
+        `SELECT photographer_id FROM client_gallery_sessions WHERE id = $1 LIMIT 1`,
+        [sessionId],
+      );
+      const ownerId = ownerRow.rows[0]?.photographer_id as string | undefined;
+      if (ownerId) {
+        broadcastChatEventToUser(ownerId, {
+          type: 'gallery_submission',
+          sessionId,
+          clientEmail,
+          showcaseItemId,
+          createdAt: new Date().toISOString(),
+        });
+      }
+    } catch (wsErr) {
+      console.warn('[ws] gallery_submission broadcast failed:', wsErr);
+    }
+
     res.status(201).json(result.rows[0]);
   } catch (error) {
     console.error("Error saving client selection:", error);

@@ -2221,12 +2221,19 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
   });
 
   // Live-invalidate badges når WebSocket signaliserer relevant event.
-  // Backend emitterer 'chat_message' for nye client-meldinger; submissions
-  // og print-orders har ingen WS-event ennå, så de henger på 30s polling.
+  // Slice 9D.5.D wirer 'gallery_submission' + 'print_order_paid' i tillegg
+  // til de eksisterende meldingseventene, så alle 3 badges-typer får
+  // ~instant oppdatering.
   useRealtimeNotifications(
     userId !== 'guest' ? userId : undefined,
     useCallback((data: { type: string }) => {
-      if (data.type === 'chat_message' || data.type === 'message_received') {
+      const relevant = new Set([
+        'chat_message',
+        'message_received',
+        'gallery_submission',
+        'print_order_paid',
+      ]);
+      if (relevant.has(data.type)) {
         queryClient.invalidateQueries({
           queryKey: ['/api/photographer/dashboard-badges', userId],
         });
@@ -3775,6 +3782,27 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                     </IconButton>
                   </Tooltip>
 
+                  {/* Slice 9X.8.D — link til klient-CRM */}
+                  <Tooltip title="Klienter (CRM)">
+                    <IconButton
+                      size={isSmallScreen ? "small" : "medium"}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setLocation('/photographer/clients');
+                      }}
+                      sx={{
+                        bgcolor: `${customBranding.color}10`,
+                        minHeight: { xs: 36, sm: 44 },
+                        '&:hover': { bgcolor: customBranding.color + '20' },
+                      }}
+                      aria-label="Klienter (CRM)"
+                      tabIndex={0}
+                    >
+                      <Person />
+                    </IconButton>
+                  </Tooltip>
+
                   {/* Slice 9D.5 — pending print-orders badge */}
                   <Tooltip title={
                     pendingPrintOrders > 0
@@ -3786,9 +3814,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        // Routes til print-orders-tab kommer i senere slice;
-                        // foreløpig samme modal som client-activity.
-                        setShowClientActivityModal(true);
+                        setLocation('/photographer/print-orders');
                       }}
                       sx={{
                         bgcolor: pendingPrintOrders > 0 ? '#ff8c001a' : `${customBranding.color}10`,

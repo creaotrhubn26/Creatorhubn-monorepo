@@ -23,9 +23,25 @@ interface ConnectedClient {
   connectedAt: Date;
 }
 
+// Slice 9D.5.D — module-level handle slik at route-handlers kan
+// broadcaste events uten å gå via WebSocketServer-instansen.
+let activeChatClients: Map<string, ConnectedClient> | null = null;
+
+/** Broadcast en JSON-payload til alle åpne sockets eid av userId. */
+export function broadcastChatEventToUser(userId: string, message: unknown): void {
+  if (!activeChatClients) return;
+  const data = JSON.stringify(message);
+  for (const client of activeChatClients.values()) {
+    if (client.userId === userId && client.ws.readyState === WebSocket.OPEN) {
+      try { client.ws.send(data); } catch { /* ignore */ }
+    }
+  }
+}
+
 export function createWebSocketServer(server: Server, db: DB): WebSocketServer {
   const wss = new WebSocketServer({ noServer: true });
   const clients = new Map<string, ConnectedClient>();
+  activeChatClients = clients;
 
   server.on('upgrade', (req, socket, head) => {
     try {

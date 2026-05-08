@@ -57,11 +57,23 @@ interface ContractRow {
   createdAt: string;
 }
 
+interface MessageRow {
+  id: string;
+  type: string;
+  direction: string;
+  subject: string;
+  content: string;
+  fromEmail: string | null;
+  toEmail: string | null;
+  createdAt: string;
+}
+
 interface DetailResponse {
   client: ClientDetail;
   galleries: GalleryRow[];
   orders: OrderRow[];
   contracts: ContractRow[];
+  messages: MessageRow[];
 }
 
 function formatDate(iso: string | null): string {
@@ -247,6 +259,7 @@ export default function PhotographerClientDetail() {
           <Tab label={`Galleri (${data.galleries.length})`} />
           <Tab label={`Bestillinger (${data.orders.length})`} />
           <Tab label={`Kontrakter (${data.contracts.length})`} />
+          <Tab label={`Meldinger (${data.messages.length})`} />
         </Tabs>
         <Divider />
 
@@ -354,6 +367,47 @@ export default function PhotographerClientDetail() {
                   <Chip size="small" label={ct.status} color={statusColor(ct.status)} />
                 </Stack>
               </Stack>
+            ))}
+          </Box>
+        )}
+
+        {activeTab === 3 && (
+          <Box sx={{ p: 2 }}>
+            {data.messages.length === 0 && (
+              <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
+                Ingen meldinger registrert.
+              </Typography>
+            )}
+            {data.messages.map((m) => (
+              <Box
+                key={m.id}
+                sx={{ py: 1.5, borderBottom: '1px solid', borderColor: 'divider' }}
+              >
+                <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.5 }}>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Chip size="small" label={m.direction === 'inbound' ? 'Inn' : 'Ut'} color={m.direction === 'inbound' ? 'primary' : 'default'} />
+                    <Typography variant="body2" fontWeight={500}>
+                      {m.subject || `(${m.type})`}
+                    </Typography>
+                  </Stack>
+                  <Typography variant="caption" color="text.secondary">
+                    {formatDate(m.createdAt)}
+                  </Typography>
+                </Stack>
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{
+                    whiteSpace: 'pre-wrap',
+                    display: '-webkit-box',
+                    WebkitLineClamp: 3,
+                    WebkitBoxOrient: 'vertical',
+                    overflow: 'hidden',
+                  }}
+                >
+                  {m.content}
+                </Typography>
+              </Box>
             ))}
           </Box>
         )}
