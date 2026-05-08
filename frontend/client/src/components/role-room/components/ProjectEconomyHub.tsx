@@ -87,6 +87,10 @@ interface ProjectEconomyHubProps {
   onOpenTimeline?: (focus?: Partial<ProducerWorkflowFocusPayload>) => void;
   onOpenDeliverableSource?: (target: ProducerWorkflowApprovalTemplate) => void;
   onOpenMedia?: (focus?: ClientPortalWorkspaceFocus) => void;
+  /** Hvilken Samarbeidsramme-variant som vises — content_producer beholder
+   *  eksisterende felt, production_team får film/TV-spesifikke felt for
+   *  honorar, IP, distribusjon, klarering og forsikring. */
+  productionMode?: 'content_producer' | 'production_team';
 }
 
 interface NormalizedCrewMember {
@@ -586,6 +590,7 @@ export default function ProjectEconomyHub({
   onOpenTimeline,
   onOpenDeliverableSource,
   onOpenMedia,
+  productionMode = 'content_producer',
 }: ProjectEconomyHubProps) {
   const { enqueueSnackbar } = useSnackbar();
   const useLocalFallback = shouldUseRoleRoomLocalFallback();
@@ -2919,6 +2924,7 @@ export default function ProjectEconomyHub({
                     onOpenMedia={onOpenMedia}
                     onOpenReviews={onOpenReviews}
                     onOpenTimeline={onOpenTimeline}
+                    productionMode={productionMode}
                   />
 
                   <Box

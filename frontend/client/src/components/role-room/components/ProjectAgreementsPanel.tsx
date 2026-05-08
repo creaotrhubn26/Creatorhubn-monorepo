@@ -100,6 +100,8 @@ import {
   PRODUCER_COLLABORATION_COMPENSATION_MODEL_LABELS,
   PRODUCER_COLLABORATION_COST_COVERAGE_LABELS,
   PRODUCER_COLLABORATION_STATUS_LABELS,
+  PRODUCTION_FEE_STRUCTURE_LABELS,
+  PRODUCTION_IP_OWNERSHIP_LABELS,
 } from '../utils/producerProjectPlanning';
 import { getAbsoluteProjectFileUrl, normalizeProjectFileRecord } from '../utils/projectFiles';
 import { runReceiptOcr } from '../utils/receiptOcr';
@@ -114,6 +116,14 @@ interface ProjectAgreementsPanelProps {
   onOpenReviews?: (focus?: Partial<ProducerWorkflowFocusPayload>) => void;
   onOpenTimeline?: (focus?: Partial<ProducerWorkflowFocusPayload>) => void;
   onOpenMedia?: (focus?: ClientPortalWorkspaceFocus) => void;
+  /** Bestemmer hvilken Økonomi & rettigheter-variant som vises.
+   *   'content_producer' — eksisterende felt (oppstartsmodell, klient/portefølje
+   *                        rettigheter, ansvarsutelukkelser).
+   *   'production_team'  — film/TV-spesifikke felt (honorar-struktur, IP-eierskap,
+   *                        distribusjon, festival, music clearance, forsikring).
+   * Default 'content_producer' for bakover-kompat. Innholdsprodusent-flyten
+   * påvirkes ikke uansett innstilling. */
+  productionMode?: 'content_producer' | 'production_team';
 }
 
 const LOCAL_PROJECT_AGREEMENTS_NAMESPACE = 'role-room-project-agreements';
@@ -283,6 +293,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
   onOpenReviews,
   onOpenTimeline,
   onOpenMedia,
+  productionMode = 'content_producer',
 }) => {
   const { enqueueSnackbar } = useSnackbar();
   const { uploadProjectFile } = useProject();
@@ -2270,12 +2281,15 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
             ) : null}
 
             {collaborationTab === 'economy' ? (
-            <Grid container spacing={2}>
-              <Grid size={{ xs: 12 }}>
-                <Box sx={{ p: 1.5, borderRadius: 2, border: '1px solid rgba(148,163,184,0.16)', background: 'rgba(255,255,255,0.03)' }}>
-                  <Typography sx={{ color: '#fff', fontWeight: 700, mb: 1 }}>
-                    Hvem dekker ekstrakostnader?
-                  </Typography>
+            <Stack spacing={2}>
+              {/* ── Section 1: Kostnader & utlegg (delt på tvers av modus) ── */}
+              <Box sx={{ p: 1.5, borderRadius: 2, border: '1px solid rgba(148,163,184,0.16)', background: 'rgba(255,255,255,0.03)' }}>
+                <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.4 }}>
+                  Kostnader & utlegg
+                </Typography>
+                <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.84rem', mb: 1 }}>
+                  Hvem dekker ekstrakostnader, og hvor er bilag dokumentert?
+                </Typography>
                   <Stack spacing={1}>
                     {(collaborationDraft.costItems ?? []).map((item, index) => (
                       <Grid container spacing={1} key={item.id}>
@@ -2433,80 +2447,337 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                       </Grid>
                     ))}
                   </Stack>
-                </Box>
-              </Grid>
+              </Box>
 
-              <Grid size={{ xs: 12, md: 6 }}>
-                <TextField
-                  label="Kompensasjonsoppsett etter oppstartsperioden"
-                  value={collaborationDraft.compensationSummary ?? ''}
-                  onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, compensationSummary: event.target.value }))}
-                  onBlur={() => { void persistCollaborationDraft(); }}
-                  fullWidth
-                  multiline
-                  minRows={4}
-                  disabled={!canEditCollaborationTerms}
-                />
-              </Grid>
-              <Grid size={{ xs: 12, md: 6 }}>
-                <TextField
-                  label="Evaluering etter samarbeidsperioden"
-                  value={collaborationDraft.evaluationPlan ?? ''}
-                  onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, evaluationPlan: event.target.value }))}
-                  onBlur={() => { void persistCollaborationDraft(); }}
-                  fullWidth
-                  multiline
-                  minRows={4}
-                  disabled={!canEditCollaborationTerms}
-                />
-              </Grid>
-              <Grid size={{ xs: 12, md: 6 }}>
-                <TextField
-                  label="Rettigheter til bruk hos kunden"
-                  value={collaborationDraft.clientUsageRights ?? ''}
-                  onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, clientUsageRights: event.target.value }))}
-                  onBlur={() => { void persistCollaborationDraft(); }}
-                  fullWidth
-                  multiline
-                  minRows={3}
-                  disabled={!canEditCollaborationTerms}
-                />
-              </Grid>
-              <Grid size={{ xs: 12, md: 6 }}>
-                <TextField
-                  label="Bruk i egen portefølje / markedsføring"
-                  value={collaborationDraft.producerPortfolioRights ?? ''}
-                  onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, producerPortfolioRights: event.target.value }))}
-                  onBlur={() => { void persistCollaborationDraft(); }}
-                  fullWidth
-                  multiline
-                  minRows={3}
-                  disabled={!canEditCollaborationTerms}
-                />
-              </Grid>
-              <Grid size={{ xs: 12, md: 6 }}>
-                <TextField
-                  label="Arbeidsomfang / timer per måned"
-                  value={collaborationDraft.workloadCap ?? ''}
-                  onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, workloadCap: event.target.value }))}
-                  onBlur={() => { void persistCollaborationDraft(); }}
-                  fullWidth
-                  disabled={!canEditCollaborationTerms}
-                />
-              </Grid>
-              <Grid size={{ xs: 12, md: 6 }}>
-                <TextField
-                  label="Hva innholdsprodusenten ikke holdes ansvarlig for"
-                  value={collaborationDraft.liabilityExclusions ?? ''}
-                  onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, liabilityExclusions: event.target.value }))}
-                  onBlur={() => { void persistCollaborationDraft(); }}
-                  fullWidth
-                  multiline
-                  minRows={2}
-                  disabled={!canEditCollaborationTerms}
-                />
-              </Grid>
-            </Grid>
+              {productionMode === 'content_producer' ? (
+                <>
+                  {/* ── Section 2: Kompensasjon & arbeidsomfang ── */}
+                  <Box sx={{ p: 1.5, borderRadius: 2, border: '1px solid rgba(148,163,184,0.16)', background: 'rgba(255,255,255,0.03)' }}>
+                    <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.4 }}>
+                      Kompensasjon & arbeidsomfang
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.84rem', mb: 1 }}>
+                      Hvordan honorar utbetales etter oppstartsperioden + maks-timer per måned.
+                    </Typography>
+                    <Grid container spacing={2}>
+                      <Grid size={{ xs: 12, md: 8 }}>
+                        <TextField
+                          label="Kompensasjonsoppsett etter oppstartsperioden"
+                          value={collaborationDraft.compensationSummary ?? ''}
+                          onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, compensationSummary: event.target.value }))}
+                          onBlur={() => { void persistCollaborationDraft(); }}
+                          fullWidth
+                          multiline
+                          minRows={4}
+                          disabled={!canEditCollaborationTerms}
+                        />
+                      </Grid>
+                      <Grid size={{ xs: 12, md: 4 }}>
+                        <TextField
+                          label="Arbeidsomfang / timer per måned"
+                          value={collaborationDraft.workloadCap ?? ''}
+                          onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, workloadCap: event.target.value }))}
+                          onBlur={() => { void persistCollaborationDraft(); }}
+                          fullWidth
+                          disabled={!canEditCollaborationTerms}
+                        />
+                      </Grid>
+                    </Grid>
+                  </Box>
+
+                  {/* ── Section 3: Evaluering ── */}
+                  <Box sx={{ p: 1.5, borderRadius: 2, border: '1px solid rgba(148,163,184,0.16)', background: 'rgba(255,255,255,0.03)' }}>
+                    <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.4 }}>
+                      Evaluering & framdrift
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.84rem', mb: 1 }}>
+                      Hvordan dere måler om samarbeidet leverer det dere ble enige om.
+                    </Typography>
+                    <TextField
+                      label="Evaluering etter samarbeidsperioden"
+                      value={collaborationDraft.evaluationPlan ?? ''}
+                      onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, evaluationPlan: event.target.value }))}
+                      onBlur={() => { void persistCollaborationDraft(); }}
+                      fullWidth
+                      multiline
+                      minRows={3}
+                      disabled={!canEditCollaborationTerms}
+                    />
+                  </Box>
+
+                  {/* ── Section 4: Rettigheter ── */}
+                  <Box sx={{ p: 1.5, borderRadius: 2, border: '1px solid rgba(148,163,184,0.16)', background: 'rgba(255,255,255,0.03)' }}>
+                    <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.4 }}>
+                      Rettigheter
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.84rem', mb: 1 }}>
+                      Hva kan kunden bruke materialet til, og hva kan du vise i egen portefølje.
+                    </Typography>
+                    <Grid container spacing={2}>
+                      <Grid size={{ xs: 12, md: 6 }}>
+                        <TextField
+                          label="Rettigheter til bruk hos kunden"
+                          value={collaborationDraft.clientUsageRights ?? ''}
+                          onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, clientUsageRights: event.target.value }))}
+                          onBlur={() => { void persistCollaborationDraft(); }}
+                          fullWidth
+                          multiline
+                          minRows={3}
+                          disabled={!canEditCollaborationTerms}
+                        />
+                      </Grid>
+                      <Grid size={{ xs: 12, md: 6 }}>
+                        <TextField
+                          label="Bruk i egen portefølje / markedsføring"
+                          value={collaborationDraft.producerPortfolioRights ?? ''}
+                          onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, producerPortfolioRights: event.target.value }))}
+                          onBlur={() => { void persistCollaborationDraft(); }}
+                          fullWidth
+                          multiline
+                          minRows={3}
+                          disabled={!canEditCollaborationTerms}
+                        />
+                      </Grid>
+                    </Grid>
+                  </Box>
+
+                  {/* ── Section 5: Ansvar ── */}
+                  <Box sx={{ p: 1.5, borderRadius: 2, border: '1px solid rgba(148,163,184,0.16)', background: 'rgba(255,255,255,0.03)' }}>
+                    <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.4 }}>
+                      Ansvar & garantier
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.84rem', mb: 1 }}>
+                      Konkret avgrensning av hva innholdsprodusenten ikke holdes ansvarlig for.
+                    </Typography>
+                    <TextField
+                      label="Hva innholdsprodusenten ikke holdes ansvarlig for"
+                      value={collaborationDraft.liabilityExclusions ?? ''}
+                      onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, liabilityExclusions: event.target.value }))}
+                      onBlur={() => { void persistCollaborationDraft(); }}
+                      fullWidth
+                      multiline
+                      minRows={2}
+                      disabled={!canEditCollaborationTerms}
+                    />
+                  </Box>
+                </>
+              ) : (
+                <>
+                  {/* ── Production-team variant: film/TV-økonomi & rettigheter ── */}
+
+                  {/* Honorar-struktur */}
+                  <Box sx={{ p: 1.5, borderRadius: 2, border: '1px solid rgba(148,163,184,0.16)', background: 'rgba(255,255,255,0.03)' }}>
+                    <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.4 }}>
+                      Honorar-struktur
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.84rem', mb: 1 }}>
+                      Hvordan teamet kompenseres — fast, dagrate, per episode eller royalty-andel.
+                    </Typography>
+                    <Grid container spacing={2}>
+                      <Grid size={{ xs: 12, md: 4 }}>
+                        <FormControl fullWidth>
+                          <InputLabel>Honorar-modell</InputLabel>
+                          <Select
+                            label="Honorar-modell"
+                            value={collaborationDraft.filmFeeStructure ?? 'fixed_per_project'}
+                            disabled={!canEditCollaborationTerms}
+                            onChange={(event) => {
+                              const nextValue = event.target.value as NonNullable<ProducerCollaborationTerms['filmFeeStructure']>;
+                              setCollaborationDraft((prev) => ({ ...prev, filmFeeStructure: nextValue }));
+                              void updateCollaborationTerms((prev) => ({ ...prev, filmFeeStructure: nextValue }));
+                            }}
+                          >
+                            {Object.entries(PRODUCTION_FEE_STRUCTURE_LABELS).map(([value, label]) => (
+                              <MenuItem key={value} value={value}>{label}</MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      </Grid>
+                      <Grid size={{ xs: 12, md: 4 }}>
+                        <TextField
+                          label="Dagrate (NOK)"
+                          value={collaborationDraft.filmDayRate ?? ''}
+                          onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, filmDayRate: event.target.value }))}
+                          onBlur={() => { void persistCollaborationDraft(); }}
+                          fullWidth
+                          disabled={!canEditCollaborationTerms}
+                          helperText="F.eks. 12 000 NOK / opptaksdag · 8 000 NOK / postdag"
+                        />
+                      </Grid>
+                      <Grid size={{ xs: 12, md: 4 }}>
+                        <TextField
+                          label="Royalty / etterskudd"
+                          value={collaborationDraft.filmRoyaltySplit ?? ''}
+                          onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, filmRoyaltySplit: event.target.value }))}
+                          onBlur={() => { void persistCollaborationDraft(); }}
+                          fullWidth
+                          disabled={!canEditCollaborationTerms}
+                          helperText="F.eks. 5% av nettoinntekt etter break-even"
+                        />
+                      </Grid>
+                    </Grid>
+                  </Box>
+
+                  {/* IP & distribusjon */}
+                  <Box sx={{ p: 1.5, borderRadius: 2, border: '1px solid rgba(148,163,184,0.16)', background: 'rgba(255,255,255,0.03)' }}>
+                    <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.4 }}>
+                      IP & distribusjon
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.84rem', mb: 1 }}>
+                      Hvem eier sluttverket, hvor og hvor lenge får det vises.
+                    </Typography>
+                    <Grid container spacing={2}>
+                      <Grid size={{ xs: 12, md: 6 }}>
+                        <FormControl fullWidth>
+                          <InputLabel>IP-eierskap</InputLabel>
+                          <Select
+                            label="IP-eierskap"
+                            value={collaborationDraft.filmIpOwnership ?? 'production_company'}
+                            disabled={!canEditCollaborationTerms}
+                            onChange={(event) => {
+                              const nextValue = event.target.value as NonNullable<ProducerCollaborationTerms['filmIpOwnership']>;
+                              setCollaborationDraft((prev) => ({ ...prev, filmIpOwnership: nextValue }));
+                              void updateCollaborationTerms((prev) => ({ ...prev, filmIpOwnership: nextValue }));
+                            }}
+                          >
+                            {Object.entries(PRODUCTION_IP_OWNERSHIP_LABELS).map(([value, label]) => (
+                              <MenuItem key={value} value={value}>{label}</MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      </Grid>
+                      <Grid size={{ xs: 12, md: 6 }}>
+                        <TextField
+                          label="Distribusjons-rettigheter"
+                          value={collaborationDraft.filmDistributionRights ?? ''}
+                          onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, filmDistributionRights: event.target.value }))}
+                          onBlur={() => { void persistCollaborationDraft(); }}
+                          fullWidth
+                          multiline
+                          minRows={2}
+                          disabled={!canEditCollaborationTerms}
+                          helperText="Territorier, plattformer, eksklusivitet, varighet"
+                        />
+                      </Grid>
+                      <Grid size={{ xs: 12, md: 6 }}>
+                        <TextField
+                          label="Festival-rettigheter"
+                          value={collaborationDraft.filmFestivalRights ?? ''}
+                          onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, filmFestivalRights: event.target.value }))}
+                          onBlur={() => { void persistCollaborationDraft(); }}
+                          fullWidth
+                          multiline
+                          minRows={2}
+                          disabled={!canEditCollaborationTerms}
+                          helperText="Hvem velger festivaler / hvem dekker submission-fees"
+                        />
+                      </Grid>
+                      <Grid size={{ xs: 12, md: 6 }}>
+                        <TextField
+                          label="Sequel- / remake-rettigheter"
+                          value={collaborationDraft.filmSequelRights ?? ''}
+                          onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, filmSequelRights: event.target.value }))}
+                          onBlur={() => { void persistCollaborationDraft(); }}
+                          fullWidth
+                          multiline
+                          minRows={2}
+                          disabled={!canEditCollaborationTerms}
+                        />
+                      </Grid>
+                    </Grid>
+                  </Box>
+
+                  {/* Klarering & rettigheter til personer/musikk */}
+                  <Box sx={{ p: 1.5, borderRadius: 2, border: '1px solid rgba(148,163,184,0.16)', background: 'rgba(255,255,255,0.03)' }}>
+                    <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.4 }}>
+                      Klarering & rettigheter
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.84rem', mb: 1 }}>
+                      Synkroniseringsrettigheter og portrettrettigheter til skuespillere.
+                    </Typography>
+                    <Grid container spacing={2}>
+                      <Grid size={{ xs: 12, md: 6 }}>
+                        <TextField
+                          label="Music clearance"
+                          value={collaborationDraft.filmMusicClearance ?? ''}
+                          onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, filmMusicClearance: event.target.value }))}
+                          onBlur={() => { void persistCollaborationDraft(); }}
+                          fullWidth
+                          multiline
+                          minRows={2}
+                          disabled={!canEditCollaborationTerms}
+                          helperText="Hvem klarerer synkronisering — TONO, originalt, library-musikk"
+                        />
+                      </Grid>
+                      <Grid size={{ xs: 12, md: 6 }}>
+                        <TextField
+                          label="Likeness / portrettrettigheter"
+                          value={collaborationDraft.filmLikenessRights ?? ''}
+                          onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, filmLikenessRights: event.target.value }))}
+                          onBlur={() => { void persistCollaborationDraft(); }}
+                          fullWidth
+                          multiline
+                          minRows={2}
+                          disabled={!canEditCollaborationTerms}
+                          helperText="Bruk av skuespilleres bilde i markedsføring, etc."
+                        />
+                      </Grid>
+                    </Grid>
+                  </Box>
+
+                  {/* Forsikring & sikkerhet */}
+                  <Box sx={{ p: 1.5, borderRadius: 2, border: '1px solid rgba(148,163,184,0.16)', background: 'rgba(255,255,255,0.03)' }}>
+                    <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.4 }}>
+                      Forsikring, sikkerhet & per-diem
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.84rem', mb: 1 }}>
+                      Hva er dekket av E&O / utstyrsforsikring, og hvordan er reisedøgn-honorar.
+                    </Typography>
+                    <Grid container spacing={2}>
+                      <Grid size={{ xs: 12, md: 4 }}>
+                        <TextField
+                          label="Forsikrings-policy"
+                          value={collaborationDraft.filmInsurancePolicy ?? ''}
+                          onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, filmInsurancePolicy: event.target.value }))}
+                          onBlur={() => { void persistCollaborationDraft(); }}
+                          fullWidth
+                          multiline
+                          minRows={2}
+                          disabled={!canEditCollaborationTerms}
+                          helperText="E&O, utstyr, aktør-skade, weather-day"
+                        />
+                      </Grid>
+                      <Grid size={{ xs: 12, md: 4 }}>
+                        <TextField
+                          label="Per-diem-policy"
+                          value={collaborationDraft.filmPerDiemPolicy ?? ''}
+                          onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, filmPerDiemPolicy: event.target.value }))}
+                          onBlur={() => { void persistCollaborationDraft(); }}
+                          fullWidth
+                          multiline
+                          minRows={2}
+                          disabled={!canEditCollaborationTerms}
+                          helperText="Sats per døgn på reise, hvem tar utlegg"
+                        />
+                      </Grid>
+                      <Grid size={{ xs: 12, md: 4 }}>
+                        <TextField
+                          label="HMS / sikkerhets-krav"
+                          value={collaborationDraft.filmSafetyRequirements ?? ''}
+                          onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, filmSafetyRequirements: event.target.value }))}
+                          onBlur={() => { void persistCollaborationDraft(); }}
+                          fullWidth
+                          multiline
+                          minRows={2}
+                          disabled={!canEditCollaborationTerms}
+                          helperText="Stunt-koord., HMS-protokoll, sertifiseringer"
+                        />
+                      </Grid>
+                    </Grid>
+                  </Box>
+                </>
+              )}
+            </Stack>
             ) : null}
           </Stack>
         </CardContent>

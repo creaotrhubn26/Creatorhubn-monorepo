@@ -11941,6 +11941,7 @@ type RoleRoomProjectWorkspaceState = {
                         profession={profession ?? 'videographer'}
                         readOnly={!canEditProducerWorkflow}
                         canSendBudgetReview={canSendBudgetReview}
+                        productionMode={plannerAudience}
                         onProjectUpdated={async (updatedProject) => {
                           setCurrentProject(updatedProject);
                           await loadProjects();
@@ -12354,6 +12355,7 @@ type RoleRoomProjectWorkspaceState = {
               profession={profession ?? 'videographer'}
               readOnly={!canEditProducerWorkflow}
               canSendBudgetReview={canSendBudgetReview}
+              productionMode={plannerAudience}
               onProjectUpdated={async (updatedProject) => {
                 setCurrentProject(updatedProject);
                 await loadProjects();

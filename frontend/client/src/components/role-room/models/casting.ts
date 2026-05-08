@@ -1239,6 +1239,21 @@ export interface ProducerCollaborationTerms {
   producerPortfolioRights?: string;
   workloadCap?: string;
   liabilityExclusions?: string;
+  // ── Produksjonsteam-spesifikke felter (film/TV/serie) ────────────
+  // Kun synlig når Samarbeidsramme rendres i production_team-modus.
+  // Innholdsprodusent-flyten ignorerer disse og påvirkes ikke.
+  filmFeeStructure?: 'fixed_per_project' | 'day_rate' | 'per_episode' | 'royalty_share' | 'mixed';
+  filmDayRate?: string;
+  filmRoyaltySplit?: string;
+  filmIpOwnership?: 'production_company' | 'client' | 'shared' | 'work_for_hire';
+  filmDistributionRights?: string;
+  filmFestivalRights?: string;
+  filmSequelRights?: string;
+  filmMusicClearance?: string;
+  filmLikenessRights?: string;
+  filmInsurancePolicy?: string;
+  filmPerDiemPolicy?: string;
+  filmSafetyRequirements?: string;
 }
 
 export interface ProducerClientIntake {

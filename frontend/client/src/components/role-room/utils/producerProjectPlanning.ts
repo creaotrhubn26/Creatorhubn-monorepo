@@ -1392,7 +1392,52 @@ const normalizeProducerCollaborationTerms = (value: unknown): ProducerCollaborat
     producerPortfolioRights: hasText(record.producerPortfolioRights) ? record.producerPortfolioRights.trim() : '',
     workloadCap: hasText(record.workloadCap) ? record.workloadCap.trim() : '',
     liabilityExclusions: hasText(record.liabilityExclusions) ? record.liabilityExclusions.trim() : '',
+    // Produksjonsteam-spesifikke felter — kun normaliseres hvis lagret
+    filmFeeStructure: (
+      record.filmFeeStructure === 'fixed_per_project'
+      || record.filmFeeStructure === 'day_rate'
+      || record.filmFeeStructure === 'per_episode'
+      || record.filmFeeStructure === 'royalty_share'
+      || record.filmFeeStructure === 'mixed'
+    )
+      ? record.filmFeeStructure
+      : undefined,
+    filmDayRate: hasText(record.filmDayRate) ? record.filmDayRate.trim() : '',
+    filmRoyaltySplit: hasText(record.filmRoyaltySplit) ? record.filmRoyaltySplit.trim() : '',
+    filmIpOwnership: (
+      record.filmIpOwnership === 'production_company'
+      || record.filmIpOwnership === 'client'
+      || record.filmIpOwnership === 'shared'
+      || record.filmIpOwnership === 'work_for_hire'
+    )
+      ? record.filmIpOwnership
+      : undefined,
+    filmDistributionRights: hasText(record.filmDistributionRights) ? record.filmDistributionRights.trim() : '',
+    filmFestivalRights: hasText(record.filmFestivalRights) ? record.filmFestivalRights.trim() : '',
+    filmSequelRights: hasText(record.filmSequelRights) ? record.filmSequelRights.trim() : '',
+    filmMusicClearance: hasText(record.filmMusicClearance) ? record.filmMusicClearance.trim() : '',
+    filmLikenessRights: hasText(record.filmLikenessRights) ? record.filmLikenessRights.trim() : '',
+    filmInsurancePolicy: hasText(record.filmInsurancePolicy) ? record.filmInsurancePolicy.trim() : '',
+    filmPerDiemPolicy: hasText(record.filmPerDiemPolicy) ? record.filmPerDiemPolicy.trim() : '',
+    filmSafetyRequirements: hasText(record.filmSafetyRequirements) ? record.filmSafetyRequirements.trim() : '',
   };
+};
+
+// Display-labels for film-fee og film-IP-ownership — eksportert så
+// ProjectAgreementsPanel kan vise menneske-lesbare alternativer.
+export const PRODUCTION_FEE_STRUCTURE_LABELS: Record<NonNullable<ProducerCollaborationTerms['filmFeeStructure']>, string> = {
+  fixed_per_project: 'Fast honorar per prosjekt',
+  day_rate: 'Dagrate (per opptaksdag)',
+  per_episode: 'Per episode',
+  royalty_share: 'Royalty-andel',
+  mixed: 'Hybrid (fast + royalty)',
+};
+
+export const PRODUCTION_IP_OWNERSHIP_LABELS: Record<NonNullable<ProducerCollaborationTerms['filmIpOwnership']>, string> = {
+  production_company: 'Produksjonsselskapet',
+  client: 'Oppdragsgiver / kunde',
+  shared: 'Delt mellom partene',
+  work_for_hire: 'Work-for-hire (kunde får full overdragelse)',
 };
 
 const createWorkspaceId = (prefix: 'section' | 'page'): string => (
