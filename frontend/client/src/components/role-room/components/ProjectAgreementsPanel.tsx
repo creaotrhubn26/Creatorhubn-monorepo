@@ -2056,6 +2056,56 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
               </Stack>
             </Stack>
 
+            {/* ── Juridisk disclaimer (alltid synlig) ─────────────────
+               * Feltene i Samarbeidsramme er beslutningsstøtte og struktur,
+               * ikke advokat-godkjent avtaletekst. Brukerne må forstå at
+               * en gyldig avtale krever review fra advokat + signering.
+               */}
+            <Alert
+              severity="info"
+              sx={{
+                bgcolor: 'rgba(251,191,36,0.08)',
+                border: '1px solid rgba(251,191,36,0.22)',
+                color: '#fde68a',
+                '& .MuiAlert-icon': { color: '#fbbf24' },
+              }}
+            >
+              <Typography sx={{ fontWeight: 700, color: '#fde68a' }}>
+                Beslutningsstøtte — ikke juridisk gyldig avtale
+              </Typography>
+              <Typography sx={{ fontSize: '0.84rem', color: 'rgba(254,243,199,0.92)' }}>
+                Feltene under hjelper deg dokumentere intensjon og struktur. Avtalen er ikke
+                juridisk gyldig før den er gjennomgått av advokat og signert av begge parter.
+                Relevante lover: avtaleloven (avtl.), aksjeloven (asl.), åndsverkloven (åvl.),
+                arbeidsmiljøloven (aml.) og personopplysningsloven (GDPR).
+              </Typography>
+            </Alert>
+
+            {/* Ekstra advarsel for aksjeselskaps-/eierskapsmodeller — disse
+               krever styreprotokoll + generalforsamlings-vedtak per aksjeloven. */}
+            {(collaborationDraft.agreementModel === 'startup_equity'
+              || collaborationDraft.agreementModel === 'holding_company') ? (
+              <Alert
+                severity="warning"
+                sx={{
+                  bgcolor: 'rgba(248,113,113,0.08)',
+                  border: '1px solid rgba(248,113,113,0.32)',
+                  color: '#fca5a5',
+                  '& .MuiAlert-icon': { color: '#f87171' },
+                }}
+              >
+                <Typography sx={{ fontWeight: 700, color: '#fca5a5' }}>
+                  Aksjelov-relevant: krever ekstra dokumentasjon
+                </Typography>
+                <Typography sx={{ fontSize: '0.84rem', color: 'rgba(254,226,226,0.92)' }}>
+                  Eierskaps- og holdingselskap-modeller berører aksjeloven §§ 5 (utbytte),
+                  6 (styre/dgl. leder), 8 (lån/kreditt til aksjonærer). Krev styreprotokoll
+                  og evt. generalforsamlings-vedtak før signering. Aksjonæravtaler bør
+                  separat-revideres av advokat.
+                </Typography>
+              </Alert>
+            ) : null}
+
             {/* ── Sub-tabs for Samarbeidsramme ────────────────────────
                * 7 logiske grupper var stablet i én flat Grid (475 linjer
                * input-felt). Splittet i 3 sub-tabs som matcher faktisk
@@ -2282,6 +2332,225 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
               </Grid>
             </Grid>
             ) : null}
+
+            {/* ── Juridisk støtte: hentbare maler + advokat-firma ──────────
+               * Synlig på tvers av sub-tabs så brukerne lett finner verifiserte
+               * maler og spesialiserte advokatfirma. Ingen erstatter for
+               * advokat-review, men gir tydelig vei videre.
+               */}
+            <Box
+              sx={{
+                p: 1.5,
+                borderRadius: 2,
+                border: '1px solid rgba(59,130,246,0.22)',
+                background: 'rgba(30,58,138,0.10)',
+              }}
+            >
+              <Stack
+                direction={{ xs: 'column', md: 'row' }}
+                spacing={1.25}
+                justifyContent="space-between"
+                alignItems={{ md: 'flex-start' }}
+              >
+                <Box sx={{ minWidth: 0, flex: 1 }}>
+                  <Typography sx={{ color: '#bfdbfe', fontWeight: 800, mb: 0.4 }}>
+                    Juridisk støtte
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(219,234,254,0.84)', fontSize: '0.83rem', mb: 1 }}>
+                    Hentbare maler er kvalitetssikret av bransjeorganisasjonene.
+                    Spesialiserte advokatfirma anbefales for review før signering.
+                  </Typography>
+                  <Stack spacing={0.6}>
+                    <Typography sx={{ color: '#dbeafe', fontWeight: 700, fontSize: '0.82rem' }}>
+                      Bransje-maler
+                    </Typography>
+                    <Stack direction="row" spacing={1} flexWrap="wrap">
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        href="https://www.filmforbundet.no/avtaler-og-rettigheter/"
+                        target="_blank"
+                        rel="noreferrer"
+                        sx={{ textTransform: 'none', fontWeight: 700, color: '#bfdbfe', borderColor: 'rgba(147,197,253,0.4)' }}
+                      >
+                        Norsk Filmforbund — avtaler
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        href="https://www.virke.no/bransje/produsentforeningen/"
+                        target="_blank"
+                        rel="noreferrer"
+                        sx={{ textTransform: 'none', fontWeight: 700, color: '#bfdbfe', borderColor: 'rgba(147,197,253,0.4)' }}
+                      >
+                        Virke Produsentforeningen
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        href="https://www.med.no/"
+                        target="_blank"
+                        rel="noreferrer"
+                        sx={{ textTransform: 'none', fontWeight: 700, color: '#bfdbfe', borderColor: 'rgba(147,197,253,0.4)' }}
+                      >
+                        MED — Mediebedriftene
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        href="https://nfi.no/"
+                        target="_blank"
+                        rel="noreferrer"
+                        sx={{ textTransform: 'none', fontWeight: 700, color: '#bfdbfe', borderColor: 'rgba(147,197,253,0.4)' }}
+                      >
+                        NFI — produksjonsregler
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        href="https://www.tono.no/"
+                        target="_blank"
+                        rel="noreferrer"
+                        sx={{ textTransform: 'none', fontWeight: 700, color: '#bfdbfe', borderColor: 'rgba(147,197,253,0.4)' }}
+                      >
+                        TONO — musikkrettigheter
+                      </Button>
+                    </Stack>
+                    <Typography sx={{ color: '#dbeafe', fontWeight: 700, fontSize: '0.82rem', mt: 1 }}>
+                      Spesialiserte advokatfirma (film/TV/media)
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(219,234,254,0.7)', fontSize: '0.78rem', mb: 0.6 }}>
+                      Klikk «Send forespørsel» for å åpne e-post med prefylt forespørsel om review av prosjektets samarbeidsramme.
+                    </Typography>
+                    {(() => {
+                      const projectName = project?.name ?? 'prosjektet';
+                      const mailSubject = encodeURIComponent(`Forespørsel om review av samarbeidsavtale — ${projectName}`);
+                      const mailBody = encodeURIComponent(
+                        `Hei,\n\nVi vurderer en samarbeidsavtale knyttet til produksjonen "${projectName}" `
+                        + `og ønsker en gjennomgang før signering.\n\n`
+                        + `Avtaletype: ${PRODUCER_COLLABORATION_AGREEMENT_MODEL_LABELS[collaborationDraft.agreementModel ?? 'one_time_project']}\n`
+                        + `Status: ${PRODUCER_COLLABORATION_STATUS_LABELS[collaborationDraft.status ?? 'discovery']}\n\n`
+                        + `Kan dere ta en kort innledende samtale denne uka?\n\nMvh,\n`,
+                      );
+                      const firms: Array<{
+                        name: string;
+                        specialty: string;
+                        email: string;
+                        phone: string;
+                        site: string;
+                      }> = [
+                        {
+                          name: 'Schjødt',
+                          specialty: 'Teknologi & immaterialrettigheter, M&A',
+                          email: 'post@schjodt.no',
+                          phone: '+47 22 01 88 00',
+                          site: 'https://www.schjodt.no/fagomrader/teknologi-og-immaterialrettigheter/',
+                        },
+                        {
+                          name: 'Wiersholm',
+                          specialty: 'IP, markedsføring, media, GDPR',
+                          email: 'post@wiersholm.no',
+                          phone: '+47 21 02 10 00',
+                          site: 'https://www.wiersholm.no/fagomrader/immaterialrett-og-markedsforing',
+                        },
+                        {
+                          name: 'Wikborg Rein',
+                          specialty: 'Kontraktsrett, M&A, transaksjoner',
+                          email: 'post@wr.no',
+                          phone: '+47 22 82 75 00',
+                          site: 'https://www.wr.no/',
+                        },
+                        {
+                          name: 'Brækhus',
+                          specialty: 'Forretningsjuridiske tjenester',
+                          email: 'post@braekhus.no',
+                          phone: '+47 23 23 90 90',
+                          site: 'https://braekhus.no/',
+                        },
+                        {
+                          name: 'Dehnke',
+                          specialty: 'Mindre advokatfirma, kontraktsspesialisering',
+                          email: 'post@dehnke.no',
+                          phone: '+47 22 17 17 17',
+                          site: 'https://www.dehnke.no/',
+                        },
+                      ];
+                      return (
+                        <Box
+                          sx={{
+                            display: 'grid',
+                            gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', lg: 'repeat(3, 1fr)' },
+                            gap: 1,
+                          }}
+                        >
+                          {firms.map((firm) => (
+                            <Box
+                              key={firm.name}
+                              sx={{
+                                p: 1.1,
+                                borderRadius: 1.5,
+                                border: '1px solid rgba(196,181,253,0.28)',
+                                background: 'rgba(76,29,149,0.10)',
+                              }}
+                            >
+                              <Typography sx={{ color: '#ddd6fe', fontWeight: 800, fontSize: '0.92rem' }}>
+                                {firm.name}
+                              </Typography>
+                              <Typography sx={{ color: 'rgba(221,214,254,0.7)', fontSize: '0.74rem', mb: 0.6 }}>
+                                {firm.specialty}
+                              </Typography>
+                              <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap>
+                                <Button
+                                  size="small"
+                                  variant="contained"
+                                  href={`mailto:${firm.email}?subject=${mailSubject}&body=${mailBody}`}
+                                  sx={{
+                                    textTransform: 'none', fontWeight: 700, fontSize: '0.74rem',
+                                    bgcolor: '#7c3aed', '&:hover': { bgcolor: '#6d28d9' },
+                                    minWidth: 0, py: 0.4, px: 1,
+                                  }}
+                                >
+                                  Send forespørsel
+                                </Button>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  href={`tel:${firm.phone.replace(/\s/g, '')}`}
+                                  sx={{
+                                    textTransform: 'none', fontWeight: 700, fontSize: '0.74rem',
+                                    color: '#ddd6fe', borderColor: 'rgba(196,181,253,0.42)',
+                                    minWidth: 0, py: 0.4, px: 1,
+                                  }}
+                                >
+                                  Ring
+                                </Button>
+                                <Button
+                                  size="small"
+                                  variant="text"
+                                  href={firm.site}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  sx={{
+                                    textTransform: 'none', fontWeight: 700, fontSize: '0.74rem',
+                                    color: 'rgba(221,214,254,0.86)',
+                                    minWidth: 0, py: 0.4, px: 0.6,
+                                  }}
+                                >
+                                  Nettside
+                                </Button>
+                              </Stack>
+                              <Typography sx={{ color: 'rgba(221,214,254,0.6)', fontSize: '0.7rem', mt: 0.6 }}>
+                                {firm.email} · {firm.phone}
+                              </Typography>
+                            </Box>
+                          ))}
+                        </Box>
+                      );
+                    })()}
+                  </Stack>
+                </Box>
+              </Stack>
+            </Box>
 
             {collaborationTab === 'economy' ? (
             <Stack spacing={2}>
@@ -2513,8 +2782,12 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                     <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.4 }}>
                       Rettigheter
                     </Typography>
-                    <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.84rem', mb: 1 }}>
+                    <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.84rem', mb: 0.4 }}>
                       Hva kan kunden bruke materialet til, og hva kan du vise i egen portefølje.
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(251,191,36,0.78)', fontSize: '0.74rem', mb: 1 }}>
+                      ⚠ Overdragelse av åndsverk må være skriftlig og spesifikk (åvl. § 67).
+                      Begrens til de beføyelsene kunden faktisk trenger.
                     </Typography>
                     <Grid container spacing={2}>
                       <Grid size={{ xs: 12, md: 6 }}>
@@ -2549,8 +2822,12 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                     <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.4 }}>
                       Ansvar & garantier
                     </Typography>
-                    <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.84rem', mb: 1 }}>
+                    <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.84rem', mb: 0.4 }}>
                       Konkret avgrensning av hva innholdsprodusenten ikke holdes ansvarlig for.
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(251,191,36,0.78)', fontSize: '0.74rem', mb: 1 }}>
+                      ⚠ Ansvarsfraskrivelser kan settes til side hvis urimelige (avtl. § 36).
+                      For forbrukerforhold gjelder strengere regler i forbrukerkjøpsloven.
                     </Typography>
                     <TextField
                       label="Hva innholdsprodusenten ikke holdes ansvarlig for"
@@ -2573,8 +2850,11 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                     <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.4 }}>
                       Honorar-struktur
                     </Typography>
-                    <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.84rem', mb: 1 }}>
+                    <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.84rem', mb: 0.4 }}>
                       Hvordan teamet kompenseres — fast, dagrate, per episode eller royalty-andel.
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(251,191,36,0.78)', fontSize: '0.74rem', mb: 1 }}>
+                      ⚠ Frilans vs. fast ansatt-grensen reguleres av aml. § 1-8. Skatt/MVA-konsekvenser bør avklares med regnskapsfører.
                     </Typography>
                     <Grid container spacing={2}>
                       <Grid size={{ xs: 12, md: 4 }}>
@@ -2626,9 +2906,35 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                     <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.4 }}>
                       IP & distribusjon
                     </Typography>
-                    <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.84rem', mb: 1 }}>
+                    <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.84rem', mb: 0.4 }}>
                       Hvem eier sluttverket, hvor og hvor lenge får det vises.
                     </Typography>
+                    <Typography sx={{ color: 'rgba(251,191,36,0.78)', fontSize: '0.74rem', mb: 1 }}>
+                      ⚠ Overdragelse av åndsverk må være skriftlig og spesifisere beføyelser per
+                      åvl. §§ 67–69. Vernetid 70 år etter opphavsmannens død (åvl. § 11).
+                    </Typography>
+                    {collaborationDraft.filmIpOwnership === 'work_for_hire' ? (
+                      <Alert
+                        severity="warning"
+                        sx={{
+                          mb: 1.5,
+                          bgcolor: 'rgba(248,113,113,0.08)',
+                          border: '1px solid rgba(248,113,113,0.32)',
+                          color: '#fca5a5',
+                          '& .MuiAlert-icon': { color: '#f87171' },
+                        }}
+                      >
+                        <Typography sx={{ fontWeight: 700, fontSize: '0.86rem' }}>
+                          Work-for-hire: pliktig skriftlig overdragelse
+                        </Typography>
+                        <Typography sx={{ fontSize: '0.8rem' }}>
+                          Full overdragelse til oppdragsgiver krever skriftlig avtale med
+                          eksplisitt liste over beføyelser. Ufullstendig formulering
+                          kan tolkes innskrenkende mot opphavsmann (åvl. § 67 andre ledd).
+                          Distribusjons-rettighetene under <em>må</em> spesifiseres.
+                        </Typography>
+                      </Alert>
+                    ) : null}
                     <Grid container spacing={2}>
                       <Grid size={{ xs: 12, md: 6 }}>
                         <FormControl fullWidth>
@@ -2695,8 +3001,13 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                     <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.4 }}>
                       Klarering & rettigheter
                     </Typography>
-                    <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.84rem', mb: 1 }}>
+                    <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.84rem', mb: 0.4 }}>
                       Synkroniseringsrettigheter og portrettrettigheter til skuespillere.
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(251,191,36,0.78)', fontSize: '0.74rem', mb: 1 }}>
+                      ⚠ Musikk: TONO/Gramo-klarering for innspilt musikk + utøvende kunstnere
+                      (åvl. §§ 17, 39). Likeness/portrett: åvl. § 104 + GDPR art. 6 — eksplisitt
+                      samtykke fra avbildede personer.
                     </Typography>
                     <Grid container spacing={2}>
                       <Grid size={{ xs: 12, md: 6 }}>
@@ -2733,8 +3044,13 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                     <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.4 }}>
                       Forsikring, sikkerhet & per-diem
                     </Typography>
-                    <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.84rem', mb: 1 }}>
+                    <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.84rem', mb: 0.4 }}>
                       Hva er dekket av E&O / utstyrsforsikring, og hvordan er reisedøgn-honorar.
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(251,191,36,0.78)', fontSize: '0.74rem', mb: 1 }}>
+                      ⚠ HMS på set reguleres av aml. kap. 4 + internkontrollforskriften. Stunt
+                      og spesialeffekter krever sertifisert koordinator. Per-diem og reisetillegg
+                      har skattemessige konsekvenser per skattebetalingsforskriften.
                     </Typography>
                     <Grid container spacing={2}>
                       <Grid size={{ xs: 12, md: 4 }}>
@@ -2920,6 +3236,23 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
         <DialogTitle>Ny klientavtale</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
+            <Alert
+              severity="warning"
+              sx={{
+                bgcolor: 'rgba(251,191,36,0.08)',
+                border: '1px solid rgba(251,191,36,0.22)',
+                color: '#fde68a',
+                '& .MuiAlert-icon': { color: '#fbbf24' },
+              }}
+            >
+              <Typography sx={{ fontWeight: 700 }}>
+                Beslutningsstøtte — ikke juridisk gyldig avtale
+              </Typography>
+              <Typography sx={{ fontSize: '0.84rem' }}>
+                Malene under er strukturer og hjelpetekst — de er ikke gjennomgått av advokat.
+                Avtalen er ikke gyldig før den er revidert av advokat og signert av begge parter.
+              </Typography>
+            </Alert>
             <Alert severity="info" sx={{ bgcolor: 'rgba(16,185,129,0.08)' }}>
               {clientTemplateConfig.description}
             </Alert>

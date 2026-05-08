@@ -1302,6 +1302,30 @@ export const projectAgreementsApi = {
     return true;
   },
 
+  /**
+   * Inline-rediger detaljer på eksisterende avtale (tittel, motpart, ...).
+   * Kun de feltene som settes patches; status/signature går via egne ruter.
+   */
+  patch: async (
+    agreementId: string,
+    body: {
+      title?: string;
+      counterpartyName?: string;
+      counterpartyEmail?: string;
+      counterpartyCompanyName?: string;
+      counterpartyOrganizationNumber?: string;
+      disclosingPartyName?: string;
+      disclosingPartyCompanyName?: string;
+      disclosingPartyOrganizationNumber?: string;
+    },
+  ): Promise<ProjectAgreement> => {
+    const result = await apiRequest<{ agreement: ProjectAgreement }>(
+      `/project-agreements/${agreementId}`,
+      { method: 'PATCH', body: JSON.stringify(body) },
+    );
+    return result.agreement;
+  },
+
   getGoogleSignatures: async (projectId: string): Promise<RoleRoomGoogleAgreementSignature[]> => {
     const result = await apiRequest<{ signatures?: RoleRoomGoogleAgreementSignature[] }>(
       `/projects/${projectId}/google/agreements/signatures`,

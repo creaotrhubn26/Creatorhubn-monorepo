@@ -19709,6 +19709,67 @@ app.put(
   },
 );
 
+// PATCH for inline-redigering av tittel + motpart/utleverende-felter.
+// Lar avtale-Drawer endre felt uten å åpne create-form-Dialog.
+app.patch(
+  "/api/role-room/project-agreements/:agreementId",
+  async (req, res) => {
+    let location = findByIdInProjectMap(
+      legacyProjectAgreementsByProject,
+      req.params.agreementId,
+    );
+    if (!location) {
+      const dbLocation = await findByIdInDbProjectArrays(
+        "casting:project-agreements:",
+        req.params.agreementId,
+      );
+      if (dbLocation) {
+        setProjectItems(
+          legacyProjectAgreementsByProject,
+          dbLocation.projectId,
+          dbLocation.items,
+        );
+        location = { projectId: dbLocation.projectId, index: dbLocation.index };
+      }
+    }
+    if (!location) {
+      res.status(404).json({ error: "Agreement not found" });
+      return;
+    }
+    const current = getProjectItems(
+      legacyProjectAgreementsByProject,
+      location.projectId,
+    );
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const trim = (value: unknown): string | undefined =>
+      typeof value === "string" ? value.trim() : undefined;
+    const existing = current[location.index];
+    const next = {
+      ...existing,
+      ...(trim(body.title) !== undefined ? { title: trim(body.title) as string } : {}),
+      ...(trim(body.counterpartyName) !== undefined ? { counterparty_name: trim(body.counterpartyName) as string } : {}),
+      ...(trim(body.counterpartyEmail) !== undefined ? { counterparty_email: trim(body.counterpartyEmail) as string } : {}),
+      ...(trim(body.counterpartyCompanyName) !== undefined ? { counterparty_company_name: trim(body.counterpartyCompanyName) as string } : {}),
+      ...(trim(body.counterpartyOrganizationNumber) !== undefined ? { counterparty_organization_number: trim(body.counterpartyOrganizationNumber) as string } : {}),
+      ...(trim(body.disclosingPartyName) !== undefined ? { disclosing_party_name: trim(body.disclosingPartyName) as string } : {}),
+      ...(trim(body.disclosingPartyCompanyName) !== undefined ? { disclosing_party_company_name: trim(body.disclosingPartyCompanyName) as string } : {}),
+      ...(trim(body.disclosingPartyOrganizationNumber) !== undefined ? { disclosing_party_organization_number: trim(body.disclosingPartyOrganizationNumber) as string } : {}),
+      updated_at: new Date().toISOString(),
+    };
+    current[location.index] = next;
+    setProjectItems(
+      legacyProjectAgreementsByProject,
+      location.projectId,
+      current,
+    );
+    await compatStoreSet(
+      dbLegacyProjectAgreementsKey(location.projectId),
+      current,
+    );
+    res.json({ agreement: next });
+  },
+);
+
 app.post("/api/casting/demo/troll/offers-contracts", (_req, res) => {
   res.json({ success: true, created: 0 });
 });
