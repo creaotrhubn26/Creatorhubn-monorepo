@@ -26,6 +26,8 @@ import {
   Typography,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import BudgetCategoryPicker from './producer/BudgetCategoryPicker';
 import Grid from '@mui/material/Grid2';
 import {
   Add as AddIcon,
@@ -447,6 +449,43 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
       )),
     }));
   }, [updateCollaborationTerms]);
+
+  // Legg til ny tom kostnadslinje + persist umiddelbart så bruker kan
+  // fylle inn etter eget tempo.
+  const addCollaborationCostItem = useCallback(async () => {
+    if (!canEditCollaborationTerms) return;
+    const newId = `collaboration-cost-${Date.now()}`;
+    const newItem = {
+      id: newId,
+      label: '',
+      category: undefined,
+      coveredBy: 'case_by_case' as const,
+      notes: '',
+      amountLabel: '',
+      reimbursable: true,
+    };
+    setCollaborationDraft((prev) => ({
+      ...prev,
+      costItems: [...(prev.costItems ?? []), newItem],
+    }));
+    await updateCollaborationTerms((current) => ({
+      ...current,
+      costItems: [...(current.costItems ?? []), newItem],
+    }));
+  }, [canEditCollaborationTerms, updateCollaborationTerms]);
+
+  const removeCollaborationCostItem = useCallback(async (itemId: string) => {
+    if (!canEditCollaborationTerms) return;
+    if (!window.confirm('Slett denne kostnadslinjen?')) return;
+    setCollaborationDraft((prev) => ({
+      ...prev,
+      costItems: (prev.costItems ?? []).filter((entry) => entry.id !== itemId),
+    }));
+    await updateCollaborationTerms((current) => ({
+      ...current,
+      costItems: (current.costItems ?? []).filter((entry) => entry.id !== itemId),
+    }));
+  }, [canEditCollaborationTerms, updateCollaborationTerms]);
 
   useEffect(() => {
     setCollaborationDraft(producerPlanning.collaborationTerms ?? {});
@@ -2556,18 +2595,70 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
             <Stack spacing={2}>
               {/* ── Section 1: Kostnader & utlegg (delt på tvers av modus) ── */}
               <Box sx={{ p: 1.5, borderRadius: 2, border: '1px solid rgba(148,163,184,0.16)', background: 'rgba(255,255,255,0.03)' }}>
-                <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.4 }}>
-                  Kostnader & utlegg
-                </Typography>
-                <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.84rem', mb: 1 }}>
-                  Hvem dekker ekstrakostnader, og hvor er bilag dokumentert?
-                </Typography>
-                  <Stack spacing={1}>
-                    {(collaborationDraft.costItems ?? []).map((item, index) => (
-                      <Grid container spacing={1} key={item.id}>
-                        <Grid size={{ xs: 12, md: 3 }}>
+                <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'flex-start' }} spacing={1} sx={{ mb: 1 }}>
+                  <Box>
+                    <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.2 }}>
+                      Kostnader & utlegg
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.84rem' }}>
+                      Hver linje har egen kategori (samme chart-of-accounts som budsjett — du kan også legge til egne).
+                      Bilag lastes opp og OCR-leses for dokumentasjon.
+                    </Typography>
+                  </Box>
+                  {canEditCollaborationTerms ? (
+                    <Button
+                      size="small"
+                      variant="contained"
+                      startIcon={<AddIcon />}
+                      onClick={() => { void addCollaborationCostItem(); }}
+                      sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#7c3aed', whiteSpace: 'nowrap' }}
+                    >
+                      Ny kostnadslinje
+                    </Button>
+                  ) : null}
+                </Stack>
+                {(collaborationDraft.costItems ?? []).length === 0 ? (
+                  <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.08)' }}>
+                    Ingen kostnadslinjer registrert. Klikk «Ny kostnadslinje» for å starte.
+                  </Alert>
+                ) : null}
+                <Stack spacing={1.5}>
+                  {(collaborationDraft.costItems ?? []).map((item, index) => (
+                    <Box
+                      key={item.id}
+                      sx={{
+                        p: 1.25,
+                        borderRadius: 2,
+                        border: '1px solid rgba(148,163,184,0.16)',
+                        background: 'rgba(15,23,42,0.32)',
+                      }}
+                    >
+                      <Grid container spacing={1.25}>
+                        <Grid size={{ xs: 12, md: 4 }}>
+                          <BudgetCategoryPicker
+                            projectId={project.id}
+                            value={item.category ?? ''}
+                            onChange={(nextCategory) => {
+                              updateCollaborationCostItemDraft(item.id, (entry) => ({
+                                ...entry,
+                                category: nextCategory || undefined,
+                              }));
+                              void updateCollaborationTerms((prev) => ({
+                                ...prev,
+                                costItems: (prev.costItems ?? []).map((entry) => (
+                                  entry.id === item.id ? { ...entry, category: nextCategory || undefined } : entry
+                                )),
+                              }));
+                            }}
+                            size="small"
+                            fullWidth
+                            disabled={!canEditCollaborationTerms}
+                          />
+                        </Grid>
+                        <Grid size={{ xs: 12, md: 5 }}>
                           <TextField
-                            label="Kostnad"
+                            label="Beskrivelse"
+                            size="small"
                             value={item.label}
                             onChange={(event) => updateCollaborationCostItemDraft(item.id, (entry) => ({
                               ...entry,
@@ -2576,10 +2667,36 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                             onBlur={() => { void persistCollaborationDraft(); }}
                             fullWidth
                             disabled={!canEditCollaborationTerms}
+                            placeholder="F.eks. Statister, busstransport på opptaksdag 2"
                           />
                         </Grid>
-                        <Grid size={{ xs: 12, md: 3 }}>
-                          <FormControl fullWidth>
+                        <Grid size={{ xs: 10, md: 2 }}>
+                          <TextField
+                            label="Beløp"
+                            size="small"
+                            value={item.amountLabel ?? ''}
+                            onChange={(event) => updateCollaborationCostItemDraft(item.id, (entry) => ({
+                              ...entry,
+                              amountLabel: event.target.value,
+                            }))}
+                            onBlur={() => { void persistCollaborationDraft(); }}
+                            fullWidth
+                            disabled={!canEditCollaborationTerms}
+                          />
+                        </Grid>
+                        <Grid size={{ xs: 2, md: 1 }} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+                          {canEditCollaborationTerms ? (
+                            <IconButton
+                              size="small"
+                              onClick={() => { void removeCollaborationCostItem(item.id); }}
+                              sx={{ color: 'rgba(248,113,113,0.78)' }}
+                            >
+                              <DeleteOutlineIcon fontSize="small" />
+                            </IconButton>
+                          ) : null}
+                        </Grid>
+                        <Grid size={{ xs: 12, md: 4 }}>
+                          <FormControl fullWidth size="small">
                             <InputLabel>Dekkes av</InputLabel>
                             <Select
                               label="Dekkes av"
@@ -2605,22 +2722,10 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                             </Select>
                           </FormControl>
                         </Grid>
-                        <Grid size={{ xs: 12, md: 2 }}>
-                          <TextField
-                            label="Beløp / ramme"
-                            value={item.amountLabel ?? ''}
-                            onChange={(event) => updateCollaborationCostItemDraft(item.id, (entry) => ({
-                              ...entry,
-                              amountLabel: event.target.value,
-                            }))}
-                            onBlur={() => { void persistCollaborationDraft(); }}
-                            fullWidth
-                            disabled={!canEditCollaborationTerms}
-                          />
-                        </Grid>
-                        <Grid size={{ xs: 12, md: 4 }}>
+                        <Grid size={{ xs: 12, md: 8 }}>
                           <TextField
                             label="Notat"
+                            size="small"
                             value={item.notes ?? ''}
                             onChange={(event) => updateCollaborationCostItemDraft(item.id, (entry) => ({
                               ...entry,
@@ -2717,8 +2822,9 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                           </Stack>
                         </Grid>
                       </Grid>
-                    ))}
-                  </Stack>
+                    </Box>
+                  ))}
+                </Stack>
               </Box>
 
               {productionMode === 'content_producer' ? (

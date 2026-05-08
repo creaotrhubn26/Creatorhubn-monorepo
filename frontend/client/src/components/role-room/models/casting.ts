@@ -1204,6 +1204,10 @@ export type ProducerCollaborationCompensationModel =
 export interface ProducerCollaborationCostItem {
   id: string;
   label: string;
+  /** Standard chart-of-accounts-kategori (samme som budget_categories).
+   * Lagres som strengnavn for bakover-kompat — picker-en kan
+   * fortsatt mappe til system + bruker-egne kategorier. */
+  category?: string;
   coveredBy: ProducerCollaborationCostCoverage;
   notes?: string;
   amountLabel?: string;

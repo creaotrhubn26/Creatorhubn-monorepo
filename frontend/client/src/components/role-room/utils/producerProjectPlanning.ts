@@ -1358,6 +1358,7 @@ const normalizeProducerCollaborationTerms = (value: unknown): ProducerCollaborat
       return {
         id: hasText(entry.id) ? entry.id.trim() : `collaboration-cost-${index + 1}`,
         label: hasText(entry.label) ? entry.label.trim() : `Kostnad ${index + 1}`,
+        category: hasText(entry.category) ? entry.category.trim() : undefined,
         coveredBy: normalizeProducerCollaborationCostCoverage(entry.coveredBy),
         notes: hasText(entry.notes) ? entry.notes.trim() : '',
         amountLabel: hasText(entry.amountLabel) ? entry.amountLabel.trim() : '',
