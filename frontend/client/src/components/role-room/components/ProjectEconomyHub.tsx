@@ -652,6 +652,10 @@ export default function ProjectEconomyHub({
   const [isSyncingTravel, setIsSyncingTravel] = useState(false);
   const [budgetPanelVersion, setBudgetPanelVersion] = useState(0);
   const [activeView, setActiveView] = useState<EconomyWorkspaceView>('overview');
+  // Budsjett-fanen har 3 sub-tabs: linjer / avtaler+fordeling / sync+ramme.
+  // Felles topp-stripe (Neste steg + Fasefokus) er synlig på tvers av sub-tabs.
+  type BudgetSubTab = 'lines' | 'agreements' | 'syncs';
+  const [budgetSubTab, setBudgetSubTab] = useState<BudgetSubTab>('lines');
   const [focusedPhase, setFocusedPhase] = useState<EconomyFocusPhase>('all');
   const [budgetReviewTitle, setBudgetReviewTitle] = useState(() => buildBudgetReviewDefaults(project.name, 'all').title);
   const [budgetReviewDescription, setBudgetReviewDescription] = useState(() => buildBudgetReviewDefaults(project.name, 'all').description);
@@ -2748,134 +2752,17 @@ export default function ProjectEconomyHub({
             </Box>
           ) : null}
           {activeView === 'budget' ? (
-            <Box
-              sx={{
-                display: 'grid',
-                gridTemplateColumns: {
-                  xs: '1fr',
-                  xl: 'minmax(0, 1.7fr) minmax(320px, 0.88fr)',
-                },
-                gap: 2,
-                alignItems: 'start',
-              }}
-            >
-              <Stack spacing={2}>
-                <ProducerEconomyPanel
-                  key={`${project.id}:${budgetPanelVersion}`}
-                  projectId={project.id}
-                  title="Budsjett og avtaler"
-                  readOnly={readOnly}
-                  canSendBudgetReview={false}
-                  focusedPhase={focusedPhase}
-                  onFocusedPhaseChange={setFocusedPhase}
-                  contractsPanel={(
-                    <ProjectAgreementsPanel
-                      project={project}
-                      readOnly={readOnly}
-                      onProjectUpdated={onProjectUpdated}
-                      onCandidateStatusChange={(candidateId, status) => {
-                        void handleCandidateStatusChange(candidateId, status);
-                      }}
-                      onOpenMedia={onOpenMedia}
-                      onOpenReviews={onOpenReviews}
-                      onOpenTimeline={onOpenTimeline}
-                    />
-                  )}
-                />
-
-                <Box
-                  sx={{
-                    p: 1.5,
-                    borderRadius: 2,
-                    border: '1px solid rgba(148,163,184,0.16)',
-                    background: 'rgba(15,23,42,0.66)',
-                  }}
-                >
-                  <Stack
-                    direction={{ xs: 'column', sm: 'row' }}
-                    spacing={1}
-                    justifyContent="space-between"
-                    sx={{ mb: 1.25 }}
-                  >
-                    <Box>
-                      <Typography sx={{ color: '#fff', fontWeight: 800 }}>
-                        Teamavtaler og fordeling
-                      </Typography>
-                      <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.86rem' }}>
-                        Hold honorarer, fordeling og rettigheter på samme tallgrunnlag.
-                      </Typography>
-                    </Box>
-                    <Stack direction="row" spacing={1} flexWrap="wrap">
-                      <Chip size="small" label={splitSheetStatusLabel} sx={{ bgcolor: 'rgba(168,85,247,0.16)', color: '#d8b4fe' }} />
-                      <Chip size="small" label={`${splitSheetContributorCount} bidragsytere`} sx={{ bgcolor: 'rgba(45,212,191,0.16)', color: '#99f6e4' }} />
-                    </Stack>
-                  </Stack>
-
-                  {splitSheetContributorCount === 0 ? (
-                    <Alert severity="info">
-                      Legg til team eller bidragsytere først. Når teamet er klart, kan teamavtaler og fordeling bygges her uten å forlate økonomi.
-                    </Alert>
-                  ) : readOnly ? (
-                    <Stack spacing={1}>
-                      <Alert severity="info">
-                        Teamavtaler vises i lesemodus for denne rollen.
-                      </Alert>
-                      <Stack spacing={0.8}>
-                        {(splitSheetData?.contributors ?? splitSheetInitialContributors).map((contributor, index) => (
-                          <Box
-                            key={`${contributor.email || contributor.name}-${index}`}
-                            sx={{
-                              p: 1,
-                              borderRadius: 1.25,
-                              border: '1px solid rgba(148,163,184,0.18)',
-                              background: 'rgba(2,6,23,0.54)',
-                            }}
-                          >
-                            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between">
-                              <Box>
-                                <Typography sx={{ color: '#f8fafc', fontWeight: 600 }}>
-                                  {contributor.name}
-                                </Typography>
-                                <Typography sx={{ color: 'rgba(203,213,225,0.82)', fontSize: '0.85rem' }}>
-                                  {ROLE_DISPLAY_NAMES[contributor.role] ?? contributor.role}
-                                </Typography>
-                              </Box>
-                              <Stack direction="row" spacing={1} flexWrap="wrap">
-                                {contributor.email ? (
-                                  <Chip size="small" label={contributor.email} />
-                                ) : null}
-                                {contributor.percentage > 0 ? (
-                                  <Chip size="small" label={`${contributor.percentage.toFixed(2)}%`} />
-                                ) : null}
-                              </Stack>
-                            </Stack>
-                          </Box>
-                        ))}
-                      </Stack>
-                    </Stack>
-                  ) : (
-                    <SplitSheetEditor
-                      splitSheet={splitSheetData}
-                      projectId={project.id}
-                      projectName={project.name}
-                      initialContributors={splitSheetInitialContributors}
-                      profession={profession}
-                      agreementLabel="Teamavtale"
-                      onSaveProject={handlePersistProjectForEconomy}
-                      onSave={(savedSplitSheet) => {
-                        void handleSplitSheetSaved(savedSplitSheet);
-                      }}
-                      onCancel={() => undefined}
-                    />
-                  )}
-                </Box>
-              </Stack>
-
-              <Stack
-                spacing={2}
+            <Stack spacing={2}>
+              {/* ── Topp-stripe: Neste steg + Fasefokus ─────────────────
+                 * Synlig på tvers av alle Budsjett-sub-tabs så fokus og
+                 * neste handling alltid er for hånden uten å scrolle.
+                 */}
+              <Box
                 sx={{
-                  position: { xl: 'sticky' },
-                  top: { xl: 20 },
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1.4fr) minmax(280px, 1fr)' },
+                  gap: 2,
+                  alignItems: 'stretch',
                 }}
               >
                 <Box
@@ -2941,216 +2828,346 @@ export default function ProjectEconomyHub({
                     background: 'rgba(15,23,42,0.66)',
                   }}
                 >
-                  <Stack spacing={1.5}>
-                    <Box>
-                      <Typography sx={{ color: '#fff', fontWeight: 800 }}>
-                        Budsjettgrunnlag
-                      </Typography>
-                      <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.86rem', mt: 0.35 }}>
-                        Her styrer du fasefokus, totalramme og synk mellom plan, team og logistikk før tallene sendes videre.
-                      </Typography>
-                    </Box>
-
-                    <Box
-                      sx={{
-                        p: 1.15,
-                        borderRadius: 1.5,
-                        border: '1px solid rgba(148,163,184,0.14)',
-                        background: 'rgba(2,6,23,0.52)',
-                      }}
+                  <Stack direction="row" spacing={1} justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                    <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>
+                      Fasefokus
+                    </Typography>
+                    <Chip
+                      size="small"
+                      label={focusedPhaseLabel}
+                      sx={{ bgcolor: 'rgba(251,191,36,0.14)', color: '#fde68a' }}
+                    />
+                  </Stack>
+                  <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.82rem', mb: 1 }}>
+                    Filteret påvirker linjer, totaler og synk i alle sub-faner.
+                  </Typography>
+                  <Stack direction="row" spacing={1} flexWrap="wrap">
+                    <Button
+                      size="small"
+                      variant={focusedPhase === 'all' ? 'contained' : 'outlined'}
+                      onClick={() => setFocusedPhase('all')}
+                      sx={{ textTransform: 'none', fontWeight: 700, bgcolor: focusedPhase === 'all' ? '#1d4ed8' : 'transparent' }}
                     >
-                      <Stack direction="row" spacing={1} justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
-                        <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>
-                          Fasefokus
-                        </Typography>
-                        <Chip
-                          size="small"
-                          label={focusedPhaseLabel}
-                          sx={{ bgcolor: 'rgba(251,191,36,0.14)', color: '#fde68a' }}
-                        />
-                      </Stack>
-                      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} flexWrap="wrap">
-                        <Button
-                          size="small"
-                          variant={focusedPhase === 'all' ? 'contained' : 'outlined'}
-                          onClick={() => setFocusedPhase('all')}
-                          sx={{ textTransform: 'none', fontWeight: 700, bgcolor: focusedPhase === 'all' ? '#1d4ed8' : 'transparent' }}
-                        >
-                          Alle faser
-                        </Button>
-                        {phaseCards.map((phaseCard) => (
-                          <Button
-                            key={phaseCard.phase}
-                            size="small"
-                            variant={focusedPhase === phaseCard.phase ? 'contained' : 'outlined'}
-                            onClick={() => setFocusedPhase(phaseCard.phase)}
-                            sx={{ textTransform: 'none', fontWeight: 700, bgcolor: focusedPhase === phaseCard.phase ? '#0f766e' : 'transparent' }}
-                          >
-                            {phaseCard.label}
-                          </Button>
-                        ))}
-                      </Stack>
-                    </Box>
-
-                    <Box
-                      sx={{
-                        p: 1.15,
-                        borderRadius: 1.5,
-                        border: '1px solid rgba(148,163,184,0.14)',
-                        background: 'rgba(2,6,23,0.52)',
-                      }}
-                    >
-                      <Typography sx={{ color: '#f8fafc', fontWeight: 700, mb: 1 }}>
-                        Prosjektramme
-                      </Typography>
-                      <Stack spacing={1}>
-                        <TextField
-                          size="small"
-                          label="Totalramme"
-                          value={projectBudgetInput}
-                          onChange={(event) => setProjectBudgetInput(event.target.value)}
-                          disabled={readOnly}
-                          InputLabelProps={{ sx: { color: 'rgba(226,232,240,0.82)' } }}
-                        />
-                        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                          <Button
-                            variant="contained"
-                            onClick={() => setProjectBudgetInput(String(projectedCrewTotal))}
-                            disabled={readOnly}
-                            sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#1d4ed8' }}
-                          >
-                            Bruk bemanningsprognose
-                          </Button>
-                          <Button
-                            variant="outlined"
-                            onClick={() => { void handleSaveProjectBudget(); }}
-                            disabled={readOnly || isSavingBudget}
-                            sx={{ textTransform: 'none', fontWeight: 700 }}
-                          >
-                            Lagre totalramme
-                          </Button>
-                        </Stack>
-                        {budgetUtilization !== null ? (
-                          <Chip
-                            size="small"
-                            label={`Teamandel ${(budgetUtilization * 100).toFixed(1)}% av totalrammen`}
-                            sx={{
-                              alignSelf: 'flex-start',
-                              bgcolor: budgetUtilization > 1 ? 'rgba(248,113,113,0.16)' : 'rgba(52,211,153,0.16)',
-                              color: budgetUtilization > 1 ? '#fca5a5' : '#86efac',
-                            }}
-                          />
-                        ) : null}
-                      </Stack>
-                    </Box>
-
-                    <Box
-                      sx={{
-                        display: 'grid',
-                        gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' },
-                        gap: 1,
-                      }}
-                    >
-                      <Box
-                        sx={{
-                          p: 1.15,
-                          borderRadius: 1.5,
-                          border: '1px solid rgba(148,163,184,0.14)',
-                          background: 'rgba(2,6,23,0.52)',
-                        }}
+                      Alle faser
+                    </Button>
+                    {phaseCards.map((phaseCard) => (
+                      <Button
+                        key={phaseCard.phase}
+                        size="small"
+                        variant={focusedPhase === phaseCard.phase ? 'contained' : 'outlined'}
+                        onClick={() => setFocusedPhase(phaseCard.phase)}
+                        sx={{ textTransform: 'none', fontWeight: 700, bgcolor: focusedPhase === phaseCard.phase ? '#0f766e' : 'transparent' }}
                       >
-                        <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>
-                          Teamkostnader
-                        </Typography>
-                        <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.84rem', mt: 0.35 }}>
-                          {formatCurrency(crewDailyTotal, currency)} per opptaksdag · {formatCurrency(projectedCrewTotal, currency)} over {plannedShootDays} dager.
-                        </Typography>
-                        <Stack spacing={0.6} sx={{ mt: 1 }}>
-                          {topDepartments.slice(0, 3).map(([department, departmentRate]) => (
-                            <Chip
-                              key={department}
-                              size="small"
-                              label={`${department}: ${formatCurrency(departmentRate, currency)}/dag`}
-                              sx={{ alignSelf: 'flex-start', bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
-                            />
-                          ))}
-                        </Stack>
-                        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 1.2 }}>
-                          <Button
-                            variant="contained"
-                            startIcon={<SyncIcon />}
-                            onClick={() => { void handleSyncCrewCosts(); }}
-                            disabled={readOnly || loading || isSyncingCrew}
-                            sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#0f766e' }}
-                          >
-                            Synk team
-                          </Button>
-                          {onOpenTeam ? (
-                            <Button
-                              variant="outlined"
-                              endIcon={<ArrowForwardIcon />}
-                              onClick={onOpenTeam}
-                              sx={{ textTransform: 'none', fontWeight: 700 }}
-                            >
-                              Åpne team
-                            </Button>
-                          ) : null}
-                        </Stack>
-                      </Box>
-
-                      <Box
-                        sx={{
-                          p: 1.15,
-                          borderRadius: 1.5,
-                          border: '1px solid rgba(148,163,184,0.14)',
-                          background: 'rgba(2,6,23,0.52)',
-                        }}
-                      >
-                        <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>
-                          Reise og logistikk
-                        </Typography>
-                        <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.84rem', mt: 0.35 }}>
-                          {normalizedTravelCosts.length > 0
-                            ? `${normalizedTravelCosts.length} profiler · ${travelDayCount} reisedager · ${formatCurrency(totalTravelCosts, currency)}`
-                            : 'Ingen registrerte reisekostnader ennå.'}
-                        </Typography>
-                        <Stack spacing={0.6} sx={{ mt: 1 }}>
-                          {normalizedTravelCosts.slice(0, 3).map((entry) => (
-                            <Chip
-                              key={entry.crewMemberId}
-                              size="small"
-                              label={`${entry.crewMemberName}: ${formatCurrency(entry.totalCost, currency)}`}
-                              sx={{ alignSelf: 'flex-start', bgcolor: 'rgba(249,115,22,0.16)', color: '#fdba74' }}
-                            />
-                          ))}
-                        </Stack>
-                        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 1.2 }}>
-                          <Button
-                            variant="contained"
-                            startIcon={<SyncIcon />}
-                            onClick={() => { void handleSyncTravelCosts(); }}
-                            disabled={readOnly || loading || isSyncingTravel}
-                            sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#c2410c' }}
-                          >
-                            Synk reiser
-                          </Button>
-                          {onOpenTeam ? (
-                            <Button
-                              variant="outlined"
-                              endIcon={<ArrowForwardIcon />}
-                              onClick={onOpenTeam}
-                              sx={{ textTransform: 'none', fontWeight: 700 }}
-                            >
-                              Åpne plan
-                            </Button>
-                          ) : null}
-                        </Stack>
-                      </Box>
-                    </Box>
+                        {phaseCard.label}
+                      </Button>
+                    ))}
                   </Stack>
                 </Box>
-              </Stack>
-            </Box>
+              </Box>
+
+              {/* ── Sub-tabs for Budsjett ───────────────────────────── */}
+              <Tabs
+                value={budgetSubTab}
+                onChange={(_event, nextValue: BudgetSubTab) => setBudgetSubTab(nextValue)}
+                variant="scrollable"
+                allowScrollButtonsMobile
+                sx={{
+                  borderBottom: '1px solid rgba(148,163,184,0.16)',
+                  '& .MuiTab-root': {
+                    textTransform: 'none',
+                    fontWeight: 700,
+                    color: 'rgba(226,232,240,0.78)',
+                    minHeight: 42,
+                  },
+                  '& .Mui-selected': { color: '#f8fafc' },
+                  '& .MuiTabs-indicator': { backgroundColor: '#fbbf24' },
+                }}
+              >
+                <Tab value="lines" label="Linjer" />
+                <Tab value="agreements" label="Avtaler & fordeling" />
+                <Tab value="syncs" label="Sync & ramme" />
+              </Tabs>
+
+              {/* ── Sub-tab: Linjer (kun budsjett-linjer per fase) ───── */}
+              {budgetSubTab === 'lines' ? (
+                <ProducerEconomyPanel
+                  key={`${project.id}:${budgetPanelVersion}`}
+                  projectId={project.id}
+                  title="Budsjett og avtaler"
+                  readOnly={readOnly}
+                  canSendBudgetReview={false}
+                  focusedPhase={focusedPhase}
+                  onFocusedPhaseChange={setFocusedPhase}
+                />
+              ) : null}
+
+              {/* ── Sub-tab: Avtaler & fordeling ─────────────────────── */}
+              {budgetSubTab === 'agreements' ? (
+                <Stack spacing={2}>
+                  <ProjectAgreementsPanel
+                    project={project}
+                    readOnly={readOnly}
+                    onProjectUpdated={onProjectUpdated}
+                    onCandidateStatusChange={(candidateId, status) => {
+                      void handleCandidateStatusChange(candidateId, status);
+                    }}
+                    onOpenMedia={onOpenMedia}
+                    onOpenReviews={onOpenReviews}
+                    onOpenTimeline={onOpenTimeline}
+                  />
+
+                  <Box
+                    sx={{
+                      p: 1.5,
+                      borderRadius: 2,
+                      border: '1px solid rgba(148,163,184,0.16)',
+                      background: 'rgba(15,23,42,0.66)',
+                    }}
+                  >
+                    <Stack
+                      direction={{ xs: 'column', sm: 'row' }}
+                      spacing={1}
+                      justifyContent="space-between"
+                      sx={{ mb: 1.25 }}
+                    >
+                      <Box>
+                        <Typography sx={{ color: '#fff', fontWeight: 800 }}>
+                          Teamavtaler og fordeling
+                        </Typography>
+                        <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.86rem' }}>
+                          Hold honorarer, fordeling og rettigheter på samme tallgrunnlag.
+                        </Typography>
+                      </Box>
+                      <Stack direction="row" spacing={1} flexWrap="wrap">
+                        <Chip size="small" label={splitSheetStatusLabel} sx={{ bgcolor: 'rgba(168,85,247,0.16)', color: '#d8b4fe' }} />
+                        <Chip size="small" label={`${splitSheetContributorCount} bidragsytere`} sx={{ bgcolor: 'rgba(45,212,191,0.16)', color: '#99f6e4' }} />
+                      </Stack>
+                    </Stack>
+
+                    {splitSheetContributorCount === 0 ? (
+                      <Alert severity="info">
+                        Legg til team eller bidragsytere først. Når teamet er klart, kan teamavtaler og fordeling bygges her uten å forlate økonomi.
+                      </Alert>
+                    ) : readOnly ? (
+                      <Stack spacing={1}>
+                        <Alert severity="info">
+                          Teamavtaler vises i lesemodus for denne rollen.
+                        </Alert>
+                        <Stack spacing={0.8}>
+                          {(splitSheetData?.contributors ?? splitSheetInitialContributors).map((contributor, index) => (
+                            <Box
+                              key={`${contributor.email || contributor.name}-${index}`}
+                              sx={{
+                                p: 1,
+                                borderRadius: 1.25,
+                                border: '1px solid rgba(148,163,184,0.18)',
+                                background: 'rgba(2,6,23,0.54)',
+                              }}
+                            >
+                              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between">
+                                <Box>
+                                  <Typography sx={{ color: '#f8fafc', fontWeight: 600 }}>
+                                    {contributor.name}
+                                  </Typography>
+                                  <Typography sx={{ color: 'rgba(203,213,225,0.82)', fontSize: '0.85rem' }}>
+                                    {ROLE_DISPLAY_NAMES[contributor.role] ?? contributor.role}
+                                  </Typography>
+                                </Box>
+                                <Stack direction="row" spacing={1} flexWrap="wrap">
+                                  {contributor.email ? (
+                                    <Chip size="small" label={contributor.email} />
+                                  ) : null}
+                                  {contributor.percentage > 0 ? (
+                                    <Chip size="small" label={`${contributor.percentage.toFixed(2)}%`} />
+                                  ) : null}
+                                </Stack>
+                              </Stack>
+                            </Box>
+                          ))}
+                        </Stack>
+                      </Stack>
+                    ) : (
+                      <SplitSheetEditor
+                        splitSheet={splitSheetData}
+                        projectId={project.id}
+                        projectName={project.name}
+                        initialContributors={splitSheetInitialContributors}
+                        profession={profession}
+                        agreementLabel="Teamavtale"
+                        onSaveProject={handlePersistProjectForEconomy}
+                        onSave={(savedSplitSheet) => {
+                          void handleSplitSheetSaved(savedSplitSheet);
+                        }}
+                        onCancel={() => undefined}
+                      />
+                    )}
+                  </Box>
+                </Stack>
+              ) : null}
+
+              {/* ── Sub-tab: Sync & ramme ────────────────────────────── */}
+              {budgetSubTab === 'syncs' ? (
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' },
+                    gap: 2,
+                  }}
+                >
+                  <Box
+                    sx={{
+                      p: 1.5,
+                      borderRadius: 2,
+                      border: '1px solid rgba(148,163,184,0.16)',
+                      background: 'rgba(15,23,42,0.66)',
+                      gridColumn: { md: 'span 2' },
+                    }}
+                  >
+                    <Typography sx={{ color: '#f8fafc', fontWeight: 800, mb: 0.5 }}>
+                      Prosjektramme
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.86rem', mb: 1.2 }}>
+                      Total ramme + utility — kobler bemanningsprognose mot faktisk avtalt budsjett.
+                    </Typography>
+                    <Stack spacing={1}>
+                      <TextField
+                        size="small"
+                        label="Totalramme"
+                        value={projectBudgetInput}
+                        onChange={(event) => setProjectBudgetInput(event.target.value)}
+                        disabled={readOnly}
+                        InputLabelProps={{ sx: { color: 'rgba(226,232,240,0.82)' } }}
+                      />
+                      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                        <Button
+                          variant="contained"
+                          onClick={() => setProjectBudgetInput(String(projectedCrewTotal))}
+                          disabled={readOnly}
+                          sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#1d4ed8' }}
+                        >
+                          Bruk bemanningsprognose
+                        </Button>
+                        <Button
+                          variant="outlined"
+                          onClick={() => { void handleSaveProjectBudget(); }}
+                          disabled={readOnly || isSavingBudget}
+                          sx={{ textTransform: 'none', fontWeight: 700 }}
+                        >
+                          Lagre totalramme
+                        </Button>
+                      </Stack>
+                      {budgetUtilization !== null ? (
+                        <Chip
+                          size="small"
+                          label={`Teamandel ${(budgetUtilization * 100).toFixed(1)}% av totalrammen`}
+                          sx={{
+                            alignSelf: 'flex-start',
+                            bgcolor: budgetUtilization > 1 ? 'rgba(248,113,113,0.16)' : 'rgba(52,211,153,0.16)',
+                            color: budgetUtilization > 1 ? '#fca5a5' : '#86efac',
+                          }}
+                        />
+                      ) : null}
+                    </Stack>
+                  </Box>
+
+                  <Box
+                    sx={{
+                      p: 1.5,
+                      borderRadius: 2,
+                      border: '1px solid rgba(148,163,184,0.16)',
+                      background: 'rgba(15,23,42,0.66)',
+                    }}
+                  >
+                    <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>
+                      Teamkostnader
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.86rem', mt: 0.35 }}>
+                      {formatCurrency(crewDailyTotal, currency)} per opptaksdag · {formatCurrency(projectedCrewTotal, currency)} over {plannedShootDays} dager.
+                    </Typography>
+                    <Stack spacing={0.6} sx={{ mt: 1 }}>
+                      {topDepartments.slice(0, 3).map(([department, departmentRate]) => (
+                        <Chip
+                          key={department}
+                          size="small"
+                          label={`${department}: ${formatCurrency(departmentRate, currency)}/dag`}
+                          sx={{ alignSelf: 'flex-start', bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
+                        />
+                      ))}
+                    </Stack>
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 1.2 }}>
+                      <Button
+                        variant="contained"
+                        startIcon={<SyncIcon />}
+                        onClick={() => { void handleSyncCrewCosts(); }}
+                        disabled={readOnly || loading || isSyncingCrew}
+                        sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#0f766e' }}
+                      >
+                        Synk team
+                      </Button>
+                      {onOpenTeam ? (
+                        <Button
+                          variant="outlined"
+                          endIcon={<ArrowForwardIcon />}
+                          onClick={onOpenTeam}
+                          sx={{ textTransform: 'none', fontWeight: 700 }}
+                        >
+                          Åpne team
+                        </Button>
+                      ) : null}
+                    </Stack>
+                  </Box>
+
+                  <Box
+                    sx={{
+                      p: 1.5,
+                      borderRadius: 2,
+                      border: '1px solid rgba(148,163,184,0.16)',
+                      background: 'rgba(15,23,42,0.66)',
+                    }}
+                  >
+                    <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>
+                      Reise og logistikk
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.86rem', mt: 0.35 }}>
+                      {normalizedTravelCosts.length > 0
+                        ? `${normalizedTravelCosts.length} profiler · ${travelDayCount} reisedager · ${formatCurrency(totalTravelCosts, currency)}`
+                        : 'Ingen registrerte reisekostnader ennå.'}
+                    </Typography>
+                    <Stack spacing={0.6} sx={{ mt: 1 }}>
+                      {normalizedTravelCosts.slice(0, 3).map((entry) => (
+                        <Chip
+                          key={entry.crewMemberId}
+                          size="small"
+                          label={`${entry.crewMemberName}: ${formatCurrency(entry.totalCost, currency)}`}
+                          sx={{ alignSelf: 'flex-start', bgcolor: 'rgba(249,115,22,0.16)', color: '#fdba74' }}
+                        />
+                      ))}
+                    </Stack>
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 1.2 }}>
+                      <Button
+                        variant="contained"
+                        startIcon={<SyncIcon />}
+                        onClick={() => { void handleSyncTravelCosts(); }}
+                        disabled={readOnly || loading || isSyncingTravel}
+                        sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#c2410c' }}
+                      >
+                        Synk reiser
+                      </Button>
+                      {onOpenTeam ? (
+                        <Button
+                          variant="outlined"
+                          endIcon={<ArrowForwardIcon />}
+                          onClick={onOpenTeam}
+                          sx={{ textTransform: 'none', fontWeight: 700 }}
+                        >
+                          Åpne plan
+                        </Button>
+                      ) : null}
+                    </Stack>
+                  </Box>
+                </Box>
+              ) : null}
+            </Stack>
           ) : null}
 
           {activeView === 'approvals' ? (
