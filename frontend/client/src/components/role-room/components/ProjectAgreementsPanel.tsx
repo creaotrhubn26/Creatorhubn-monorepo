@@ -12,7 +12,9 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
+  Drawer,
   FormControl,
+  IconButton,
   InputLabel,
   ListSubheader,
   MenuItem,
@@ -23,6 +25,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import CloseIcon from '@mui/icons-material/Close';
 import Grid from '@mui/material/Grid2';
 import {
   Add as AddIcon,
@@ -3308,72 +3311,247 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
         </DialogActions>
       </Dialog>
 
-      <Dialog open={Boolean(previewAgreement)} onClose={() => setPreviewAgreement(null)} maxWidth="md" fullWidth>
-        <DialogTitle>{previewAgreement?.title ?? 'Prosjektavtale'}</DialogTitle>
-        <DialogContent>
-          {previewAgreement ? (
-            <Stack spacing={2} sx={{ mt: 1 }}>
-              <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between">
-                <Stack direction="row" spacing={1} flexWrap="wrap">
-                  <Chip
-                    label={PROJECT_AGREEMENT_COUNTERPARTY_LABELS[previewAgreement.counterparty_type as 'client' | 'extra'] ?? previewAgreement.counterparty_type}
-                    size="small"
-                  />
-                  <Chip
-                    label={getAgreementTypeLabel(previewAgreement.agreement_type)}
-                    size="small"
-                  />
-                  <Chip
-                    label={PROJECT_AGREEMENT_STATUS_LABELS[previewAgreement.status]}
-                    size="small"
-                    sx={{ bgcolor: `${agreementStatusColor(previewAgreement.status)}20`, color: agreementStatusColor(previewAgreement.status) }}
-                  />
-                </Stack>
-                <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.84rem' }}>
-                  {previewAgreement.signed_date ? `Signert ${new Date(previewAgreement.signed_date).toLocaleString('nb-NO')}` : 'Ikke signert ennå'}
-                </Typography>
+      <Drawer
+        anchor="right"
+        open={Boolean(previewAgreement)}
+        onClose={() => setPreviewAgreement(null)}
+        PaperProps={{
+          sx: {
+            width: { xs: '100%', sm: 520, md: 600 },
+            bgcolor: 'rgba(2,6,23,0.96)',
+            color: '#e2e8f0',
+            borderLeft: '1px solid rgba(148,163,184,0.18)',
+          },
+        }}
+      >
+        {previewAgreement ? (() => {
+          const drawerSignatureBusy = signatureBusyAgreementId === previewAgreement.id;
+          const drawerSignatureTone = getAgreementSignatureTone(previewAgreement.google_signature);
+          const drawerSignatureProgress = getAgreementSignatureProgress(previewAgreement);
+          const drawerHasGoogle = useLocalFallback || (
+            Boolean(googleStatus?.configured) && googleStatus?.state === 'connected'
+          );
+          const drawerPrimary = getAgreementPrimarySignatureAction(previewAgreement, { hasGoogleAccess: drawerHasGoogle });
+          const drawerStatusColor = agreementStatusColor(previewAgreement.status);
+          const runDrawerPrimary = () => {
+            const target = previewAgreement;
+            if (!target) return;
+            switch (drawerPrimary.key) {
+              case 'prepare': void handlePrepareGoogleSignature(target); break;
+              case 'send': void handleSendGoogleSignatureRequest(target); break;
+              case 'open':
+              case 'view': openGoogleSignature(target); break;
+              case 'confirm_signed': void handleConfirmGoogleSigned(target); break;
+              case 'sync': void handleSyncGoogleSignature(target); break;
+              case 'manual_send': void handleAgreementStatus(target.id, 'sent'); break;
+              case 'manual_sign': void handleAgreementStatus(target.id, 'signed'); break;
+              default: break;
+            }
+          };
+
+          return (
+            <Stack sx={{ height: '100%' }}>
+              {/* ── Sticky header ─────────────────────────────────── */}
+              <Stack
+                direction="row"
+                alignItems="center"
+                justifyContent="space-between"
+                sx={{
+                  px: 2,
+                  py: 1.5,
+                  borderBottom: '1px solid rgba(148,163,184,0.14)',
+                  position: 'sticky',
+                  top: 0,
+                  bgcolor: 'rgba(2,6,23,0.96)',
+                  zIndex: 1,
+                }}
+              >
+                <Box sx={{ minWidth: 0, pr: 1 }}>
+                  <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '1.05rem', lineHeight: 1.25 }}>
+                    {previewAgreement.title}
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.8rem' }}>
+                    {previewAgreement.counterparty_name}
+                    {previewAgreement.counterparty_company_name ? ` · ${previewAgreement.counterparty_company_name}` : ''}
+                  </Typography>
+                </Box>
+                <IconButton onClick={() => setPreviewAgreement(null)} size="small" sx={{ color: 'rgba(226,232,240,0.7)' }}>
+                  <CloseIcon fontSize="small" />
+                </IconButton>
               </Stack>
 
-              <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(15,23,42,0.66)', border: '1px solid rgba(148,163,184,0.16)' }}>
-                <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                  Utleverende part
-                </Typography>
-                <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.9rem' }}>
-                  {previewAgreement.disclosing_party_name || 'Ikke oppgitt'}
-                  {previewAgreement.disclosing_party_company_name ? `, ${previewAgreement.disclosing_party_company_name}` : ''}
-                  {previewAgreement.disclosing_party_organization_number ? `, org.nr. ${previewAgreement.disclosing_party_organization_number}` : ''}
-                </Typography>
-                <Divider sx={{ my: 1.25, borderColor: 'rgba(148,163,184,0.14)' }} />
-                <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                  Mottakende part
-                </Typography>
-                <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.9rem' }}>
-                  {previewAgreement.counterparty_name}
-                  {previewAgreement.counterparty_company_name ? `, ${previewAgreement.counterparty_company_name}` : ''}
-                  {previewAgreement.counterparty_organization_number ? `, org.nr. ${previewAgreement.counterparty_organization_number}` : ''}
-                  {previewAgreement.counterparty_email ? `, ${previewAgreement.counterparty_email}` : ''}
-                </Typography>
-              </Box>
+              {/* ── Body (scrollbar) ──────────────────────────────── */}
+              <Box sx={{ flex: 1, overflowY: 'auto', px: 2, py: 2 }}>
+                <Stack spacing={2}>
+                  {/* Meta-stripe */}
+                  <Stack direction="row" spacing={1} flexWrap="wrap">
+                    <Chip
+                      size="small"
+                      label={PROJECT_AGREEMENT_STATUS_LABELS[previewAgreement.status]}
+                      sx={{ bgcolor: `${drawerStatusColor}20`, color: drawerStatusColor, fontWeight: 700 }}
+                    />
+                    <Chip
+                      size="small"
+                      label={PROJECT_AGREEMENT_COUNTERPARTY_LABELS[previewAgreement.counterparty_type as 'client' | 'extra'] ?? previewAgreement.counterparty_type}
+                      sx={{ bgcolor: 'rgba(6,182,212,0.16)', color: '#67e8f9' }}
+                    />
+                    <Chip
+                      size="small"
+                      label={getAgreementTypeLabel(previewAgreement.agreement_type)}
+                      sx={{ bgcolor: 'rgba(139,92,246,0.16)', color: '#c4b5fd' }}
+                    />
+                    <Chip
+                      size="small"
+                      label={getAgreementSignatureLabel(previewAgreement.google_signature)}
+                      sx={{ bgcolor: drawerSignatureTone.background, color: drawerSignatureTone.color }}
+                    />
+                  </Stack>
+                  <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.82rem' }}>
+                    {previewAgreement.signed_date
+                      ? `Signert ${new Date(previewAgreement.signed_date).toLocaleString('nb-NO')}`
+                      : 'Ikke signert ennå'}
+                  </Typography>
 
-              <Stack spacing={1.5}>
-                {(previewAgreement.sections ?? []).map((section) => (
-                  <Box key={section.id}>
-                    <Typography sx={{ color: '#f8fafc', fontWeight: 700, mb: 0.4 }}>
-                      {section.heading}
+                  {/* Signaturprogress (5 steg) */}
+                  <Box
+                    sx={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(5, minmax(0, 1fr))',
+                      gap: 0.55,
+                    }}
+                  >
+                    {drawerSignatureProgress.steps.map((step) => (
+                      <Box
+                        key={step.key}
+                        sx={{
+                          px: 0.65, py: 0.55, borderRadius: 1.1,
+                          border: step.state === 'current'
+                            ? '1px solid rgba(250,204,21,0.36)'
+                            : '1px solid rgba(148,163,184,0.16)',
+                          bgcolor: step.state === 'complete'
+                            ? 'rgba(16,185,129,0.14)'
+                            : step.state === 'current'
+                              ? 'rgba(250,204,21,0.12)'
+                              : 'rgba(15,23,42,0.46)',
+                        }}
+                      >
+                        <Typography
+                          sx={{
+                            color: step.state === 'complete'
+                              ? '#86efac'
+                              : step.state === 'current'
+                                ? '#fde68a'
+                                : 'rgba(148,163,184,0.84)',
+                            fontSize: '0.7rem', fontWeight: 700, textAlign: 'center',
+                          }}
+                        >
+                          {step.label}
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Box>
+
+                  <Divider sx={{ borderColor: 'rgba(148,163,184,0.14)' }} />
+
+                  {/* Parter */}
+                  <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(15,23,42,0.66)', border: '1px solid rgba(148,163,184,0.16)' }}>
+                    <Typography sx={{ color: '#fff', fontWeight: 700 }}>
+                      Utleverende part
                     </Typography>
-                    <Typography sx={{ color: 'rgba(203,213,225,0.82)', fontSize: '0.88rem', whiteSpace: 'pre-wrap' }}>
-                      {section.body}
+                    <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.88rem' }}>
+                      {previewAgreement.disclosing_party_name || 'Ikke oppgitt'}
+                      {previewAgreement.disclosing_party_company_name ? `, ${previewAgreement.disclosing_party_company_name}` : ''}
+                      {previewAgreement.disclosing_party_organization_number ? `, org.nr. ${previewAgreement.disclosing_party_organization_number}` : ''}
+                    </Typography>
+                    <Divider sx={{ my: 1.25, borderColor: 'rgba(148,163,184,0.14)' }} />
+                    <Typography sx={{ color: '#fff', fontWeight: 700 }}>
+                      Mottakende part
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.88rem' }}>
+                      {previewAgreement.counterparty_name}
+                      {previewAgreement.counterparty_company_name ? `, ${previewAgreement.counterparty_company_name}` : ''}
+                      {previewAgreement.counterparty_organization_number ? `, org.nr. ${previewAgreement.counterparty_organization_number}` : ''}
+                      {previewAgreement.counterparty_email ? `, ${previewAgreement.counterparty_email}` : ''}
                     </Typography>
                   </Box>
-                ))}
-              </Stack>
+
+                  {/* Avtale-seksjoner */}
+                  <Stack spacing={1.5}>
+                    {(previewAgreement.sections ?? []).map((section) => (
+                      <Box key={section.id}>
+                        <Typography sx={{ color: '#f8fafc', fontWeight: 700, mb: 0.4 }}>
+                          {section.heading}
+                        </Typography>
+                        <Typography sx={{ color: 'rgba(203,213,225,0.82)', fontSize: '0.88rem', whiteSpace: 'pre-wrap' }}>
+                          {section.body}
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Stack>
+                </Stack>
+              </Box>
+
+              {/* ── Sticky footer: status- og signatur-handlinger ──── */}
+              {!readOnly ? (
+                <Box
+                  sx={{
+                    px: 2,
+                    py: 1.25,
+                    borderTop: '1px solid rgba(148,163,184,0.14)',
+                    bgcolor: 'rgba(2,6,23,0.94)',
+                  }}
+                >
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                    {drawerPrimary.key !== 'none' ? (
+                      <Button
+                        size="small"
+                        variant="contained"
+                        onClick={runDrawerPrimary}
+                        disabled={drawerSignatureBusy || googleStatusLoading}
+                        sx={{
+                          flex: 1.4,
+                          textTransform: 'none',
+                          fontWeight: 800,
+                          bgcolor: drawerPrimary.key === 'view' || drawerPrimary.key === 'manual_sign'
+                            ? '#10b981'
+                            : drawerPrimary.key === 'confirm_signed'
+                              ? '#059669'
+                              : drawerPrimary.key === 'send' || drawerPrimary.key === 'manual_send'
+                                ? '#f59e0b'
+                                : drawerPrimary.key === 'prepare'
+                                  ? '#8b5cf6'
+                                  : '#2563eb',
+                        }}
+                      >
+                        {drawerPrimary.label}
+                      </Button>
+                    ) : null}
+                    {previewAgreement.google_signature ? (
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() => openGoogleSignature(previewAgreement)}
+                        disabled={drawerSignatureBusy}
+                        sx={{ flex: 1, textTransform: 'none', fontWeight: 700 }}
+                      >
+                        Åpne i Google
+                      </Button>
+                    ) : null}
+                    <Button
+                      size="small"
+                      variant="text"
+                      onClick={() => setPreviewAgreement(null)}
+                      sx={{ textTransform: 'none', fontWeight: 700 }}
+                    >
+                      Lukk
+                    </Button>
+                  </Stack>
+                </Box>
+              ) : null}
             </Stack>
-          ) : null}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setPreviewAgreement(null)}>Lukk</Button>
-        </DialogActions>
-      </Dialog>
+          );
+        })() : null}
+      </Drawer>
     </Box>
   );
 };
