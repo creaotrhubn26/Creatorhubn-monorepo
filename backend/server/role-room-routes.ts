@@ -13718,6 +13718,107 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     }
   });
 
+  // ── Budsjett-kategorier (system + per-prosjekt) ────────────────────
+  router.get('/projects/:projectId/producer/economy/categories', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    const projectId = req.params.projectId;
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canReadProducerEconomy(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til økonomi' });
+        return;
+      }
+      const result = await pool.query(
+        `SELECT id, project_id, parent_group, parent_group_label,
+                category_name, description, sort_order, is_system, created_by, created_at
+           FROM role_room_budget_categories
+          WHERE (project_id IS NULL OR project_id = $1) AND is_archived = FALSE
+          ORDER BY parent_group, sort_order ASC, category_name ASC`,
+        [projectId],
+      );
+      res.json({ categories: result.rows });
+    } catch (error) {
+      console.error('Budget categories fetch error:', error);
+      res.status(500).json({ error: 'Kunne ikke hente kategorier' });
+    }
+  });
+
+  router.post('/projects/:projectId/producer/economy/categories', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    const projectId = req.params.projectId;
+    const userId = getUserId(req);
+    const { parentGroup, parentGroupLabel, categoryName, description, sortOrder } = req.body as Record<string, unknown>;
+
+    if (typeof parentGroup !== 'string' || !parentGroup.trim()) {
+      res.status(400).json({ error: 'parentGroup er påkrevd' });
+      return;
+    }
+    if (typeof parentGroupLabel !== 'string' || !parentGroupLabel.trim()) {
+      res.status(400).json({ error: 'parentGroupLabel er påkrevd' });
+      return;
+    }
+    if (typeof categoryName !== 'string' || !categoryName.trim()) {
+      res.status(400).json({ error: 'categoryName er påkrevd' });
+      return;
+    }
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å opprette kategori' });
+        return;
+      }
+      const result = await pool.query(
+        `INSERT INTO role_room_budget_categories
+           (project_id, parent_group, parent_group_label, category_name,
+            description, sort_order, is_system, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, FALSE, $7)
+         RETURNING id, project_id, parent_group, parent_group_label,
+                   category_name, description, sort_order, is_system,
+                   created_by, created_at`,
+        [
+          projectId,
+          parentGroup.trim(),
+          parentGroupLabel.trim(),
+          categoryName.trim(),
+          typeof description === 'string' ? description : null,
+          typeof sortOrder === 'number' ? sortOrder : 999,
+          userId,
+        ],
+      );
+      res.status(201).json({ category: result.rows[0] });
+    } catch (error) {
+      console.error('Budget category create error:', error);
+      res.status(500).json({ error: 'Kunne ikke opprette kategori' });
+    }
+  });
+
+  router.delete('/projects/:projectId/producer/economy/categories/:categoryId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    const projectId = req.params.projectId;
+    const categoryId = req.params.categoryId;
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å slette kategori' });
+        return;
+      }
+      // Slett kun bruker-opprettede kategorier (is_system=FALSE) for det
+      // konkrete prosjektet — system-rader (project_id IS NULL) er
+      // delte og kan ikke slettes via API.
+      const deleted = await pool.query(
+        `DELETE FROM role_room_budget_categories
+          WHERE id = $1 AND project_id = $2 AND is_system = FALSE
+          RETURNING id`,
+        [categoryId, projectId],
+      );
+      if (deleted.rowCount === 0) {
+        res.status(404).json({ error: 'Fant ikke kategori (eller er system-kategori)' });
+        return;
+      }
+      res.json({ success: true, categoryId });
+    } catch (error) {
+      console.error('Budget category delete error:', error);
+      res.status(500).json({ error: 'Kunne ikke slette kategori' });
+    }
+  });
+
   router.get('/projects/:projectId/producer/reviews', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     if (!(await ensureProducerWorkflowTables())) {
       res.status(500).json({ error: 'Producer-tabeller er ikke tilgjengelige' });

@@ -21,6 +21,7 @@ import {
 import { useProducerEconomy } from '../../hooks/useProducerEconomy';
 import type { ProducerPhase } from '../../services/producerWorkflowService';
 import { getProducerEconomyStatusLabel } from '../../utils/producerWorkflow';
+import BudgetCategoryPicker from './BudgetCategoryPicker';
 
 interface ProducerEconomyPanelProps {
   projectId: string;
@@ -290,13 +291,12 @@ export default function ProducerEconomyPanel({
               ))}
             </Select>
           </Box>
-          <TextField
-            size="small"
-            label="Kategori"
+          <BudgetCategoryPicker
+            projectId={projectId}
             value={category}
-            onChange={(event) => setCategory(event.target.value)}
-            sx={{ minWidth: 180 }}
-            InputLabelProps={{ sx: { color: 'rgba(226,232,240,0.82)' } }}
+            onChange={setCategory}
+            size="small"
+            minWidth={200}
           />
           <TextField
             size="small"
