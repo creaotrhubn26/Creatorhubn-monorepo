@@ -31,17 +31,36 @@
 
 import type { Pool } from 'pg';
 
-const TROLL_PROJECT_ID = 'troll-project-2026';
+const TROLL_CANONICAL_ID = 'troll-project-2026';
 
 interface SeedReport {
   project: { id: string; name: string };
   counts: Record<string, number>;
 }
 
+export interface SeedTrollOptions {
+  /** Override target project — defaults to canonical 'troll-project-2026'. */
+  projectId?: string;
+  /** Override project name (only when projectId is non-canonical). */
+  projectName?: string;
+  /** Optional description override (only for non-canonical). */
+  projectDescription?: string;
+}
+
 export async function seedTrollDemo(
   pool: Pool,
   ownerUserId: string,
+  options: SeedTrollOptions = {},
 ): Promise<SeedReport> {
+  const TROLL_PROJECT_ID = options.projectId ?? TROLL_CANONICAL_ID;
+  const isCanonical = TROLL_PROJECT_ID === TROLL_CANONICAL_ID;
+  const projectName = options.projectName ?? 'TROLL';
+  // Scope entity-IDer per prosjekt så seed kan kjøres for flere TROLL-kopier
+  // uten PK-kollisjon. Kanonisk prosjekt beholder rå slugs for bakover-
+  // kompat med eksisterende referanser/tester.
+  const eid = (slug: string): string =>
+    isCanonical ? slug : `${TROLL_PROJECT_ID.slice(0, 24)}-${slug}`;
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -96,8 +115,9 @@ export async function seedTrollDemo(
          updated_at = NOW()`,
       [
         TROLL_PROJECT_ID,
-        'TROLL',
-        'Norsk eventyrfilm regissert av Roar Uthaug. Når en eksplosjon i de norske fjellene avslører et urgammelt troll, må paleontologen Nora samarbeide med myndighetene for å stoppe skapningen før den når hovedstaden. En spektakulær action-eventyrfilm med VFX og storslåtte locations.',
+        projectName,
+        options.projectDescription
+          ?? 'Norsk eventyrfilm regissert av Roar Uthaug. Når en eksplosjon i de norske fjellene avslører et urgammelt troll, må paleontologen Nora samarbeide med myndighetene for å stoppe skapningen før den når hovedstaden. En spektakulær action-eventyrfilm med VFX og storslåtte locations.',
         ownerUserId,
         '2026-01-20',
         '2026-02-15',
@@ -177,8 +197,9 @@ export async function seedTrollDemo(
            (id, project_id, name, description, age_range, gender, role_type,
             scene_ids, status, assigned_candidate_id, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, NOW(), NOW())`,
-        [r.id, TROLL_PROJECT_ID, r.name, r.description, r.age_range, r.gender,
-         r.role_type, JSON.stringify(r.scene_ids), r.status, r.candidate_id],
+        [eid(r.id), TROLL_PROJECT_ID, r.name, r.description, r.age_range, r.gender,
+         r.role_type, JSON.stringify(r.scene_ids.map(eid)), r.status,
+         r.candidate_id ? eid(r.candidate_id) : null],
       );
     }
 
@@ -198,7 +219,8 @@ export async function seedTrollDemo(
         `INSERT INTO casting_candidates
            (id, project_id, name, email, phone, notes, status, assigned_roles, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, NOW(), NOW())`,
-        [c.id, TROLL_PROJECT_ID, c.name, c.email, c.phone, c.notes, c.status, JSON.stringify(c.roles)],
+        [eid(c.id), TROLL_PROJECT_ID, c.name, c.email, c.phone, c.notes, c.status,
+         JSON.stringify(c.roles.map(eid))],
       );
     }
 
@@ -216,7 +238,7 @@ export async function seedTrollDemo(
         `INSERT INTO casting_crew
            (id, project_id, name, role, email, phone, department, rate, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())`,
-        [m.id, TROLL_PROJECT_ID, m.name, m.role, m.email, m.phone, m.department, m.rate],
+        [eid(m.id), TROLL_PROJECT_ID, m.name, m.role, m.email, m.phone, m.department, m.rate],
       );
     }
 
@@ -233,12 +255,12 @@ export async function seedTrollDemo(
         `INSERT INTO casting_locations
            (id, project_id, name, address, type, access_notes, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())`,
-        [l.id, TROLL_PROJECT_ID, l.name, l.address, l.type, l.notes],
+        [eid(l.id), TROLL_PROJECT_ID, l.name, l.address, l.type, l.notes],
       );
     }
 
     // ── 8. casting_manuscripts ────────────────────────────────────────
-    const manuscriptId = 'manuscript-troll-v1';
+    const manuscriptId = eid('manuscript-troll-v1');
     await client.query(
       `INSERT INTO casting_manuscripts
          (id, project_id, title, format, content, version, status, metadata, created_at, updated_at)
@@ -246,8 +268,8 @@ export async function seedTrollDemo(
       [
         manuscriptId,
         TROLL_PROJECT_ID,
-        'TROLL — Manuskript v1',
-        '# TROLL\n\nNorsk eventyrfilm. Skrevet av Espen Aukan og Roar Uthaug.\n\nFINAL DRAFT — 2025-11-01',
+        `${projectName} — Manuskript v1`,
+        `# ${projectName}\n\nNorsk eventyrfilm. Skrevet av Espen Aukan og Roar Uthaug.\n\nFINAL DRAFT — 2025-11-01`,
         JSON.stringify({ author: 'Espen Aukan & Roar Uthaug', draftNumber: 7 }),
       ],
     );
@@ -270,7 +292,8 @@ export async function seedTrollDemo(
         `INSERT INTO casting_scenes
            (id, project_id, manuscript_id, scene_number, title, setting, time_of_day, int_ext, characters, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, NOW(), NOW())`,
-        [s.id, TROLL_PROJECT_ID, manuscriptId, s.num, s.title, s.setting, s.tod, s.int_ext, JSON.stringify(s.characters)],
+        [eid(s.id), TROLL_PROJECT_ID, manuscriptId, s.num, s.title, s.setting, s.tod, s.int_ext,
+         JSON.stringify(s.characters.map(eid))],
       );
     }
 
@@ -317,7 +340,7 @@ export async function seedTrollDemo(
            (id, project_id, scene_id, shots, camera_settings, created_at, updated_at)
          VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, NOW(), NOW())`,
         [
-          sl.id, TROLL_PROJECT_ID, sl.scene_id,
+          eid(sl.id), TROLL_PROJECT_ID, eid(sl.scene_id),
           JSON.stringify(sl.shots),
           JSON.stringify({ aspect: '2.39:1', resolution: '6K', fps: 24 }),
         ],
@@ -365,7 +388,10 @@ export async function seedTrollDemo(
         `INSERT INTO casting_production_days
            (id, project_id, date, scene_ids, crew_ids, location_id, status, created_at, updated_at)
          VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, 'planned', NOW(), NOW())`,
-        [d.id, TROLL_PROJECT_ID, d.date, JSON.stringify(d.scenes), JSON.stringify(d.crew), d.location],
+        [eid(d.id), TROLL_PROJECT_ID, d.date,
+         JSON.stringify(d.scenes.map(eid)),
+         JSON.stringify(d.crew.map(eid)),
+         eid(d.location)],
       );
     }
 
@@ -418,8 +444,11 @@ export async function seedTrollDemo(
             start_time, end_time, type, status, notes, reminders_sent,
             created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, '[]'::jsonb, NOW(), NOW())`,
-        [s.id, TROLL_PROJECT_ID, s.candidate, s.role, s.location, s.date,
-         s.start, s.end, s.type, s.status, s.notes],
+        [eid(s.id), TROLL_PROJECT_ID,
+         s.candidate ? eid(s.candidate) : null,
+         s.role ? eid(s.role) : null,
+         s.location ? eid(s.location) : null,
+         s.date, s.start, s.end, s.type, s.status, s.notes],
       );
     }
 
@@ -458,7 +487,7 @@ export async function seedTrollDemo(
            (id, project_id, name, category, description, availability, quantity,
             created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())`,
-        [p.id, TROLL_PROJECT_ID, p.name, p.category, p.description, p.availability, p.quantity],
+        [eid(p.id), TROLL_PROJECT_ID, p.name, p.category, p.description, p.availability, p.quantity],
       );
     }
 
@@ -522,7 +551,7 @@ export async function seedTrollDemo(
         `INSERT INTO casting_consents
            (id, project_id, candidate_id, type, status, signed_at, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, ${c.status === 'signed' ? 'NOW()' : 'NULL'}, NOW(), NOW())`,
-        [c.id, TROLL_PROJECT_ID, c.candidate, c.type, c.status],
+        [eid(c.id), TROLL_PROJECT_ID, eid(c.candidate), c.type, c.status],
       );
     }
 
@@ -542,7 +571,7 @@ export async function seedTrollDemo(
                  NOW(), NOW())`,
         [
           TROLL_PROJECT_ID,
-          sb.scene,
+          eid(sb.scene),
           sb.title,
           JSON.stringify({ source: 'troll_seed_v1', isDemo: true }),
           ownerUserId,
@@ -588,7 +617,7 @@ export async function seedTrollDemo(
          VALUES ($1, $2, $3, $4, $5, $6, 'video/mp4', $7, 'ready', $8, $9,
                  $10::jsonb, NOW(), NOW())`,
         [
-          v.candidate, TROLL_PROJECT_ID, v.title, v.url, v.thumb,
+          eid(v.candidate), TROLL_PROJECT_ID, v.title, v.url, v.thumb,
           v.duration, v.rating, ownerUserId, v.notes,
           JSON.stringify({ source: 'troll_seed_v1', isDemo: true }),
         ],
@@ -640,7 +669,8 @@ export async function seedTrollDemo(
            (id, project_id, title, event_type, start_time, end_time,
             location_id, notes, status, created_by, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'scheduled', $9, NOW(), NOW())`,
-        [e.id, TROLL_PROJECT_ID, e.title, e.type, e.start, e.end, e.location, e.notes, ownerUserId],
+        [eid(e.id), TROLL_PROJECT_ID, e.title, e.type, e.start, e.end,
+         e.location ? eid(e.location) : null, e.notes, ownerUserId],
       );
     }
 

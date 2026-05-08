@@ -19726,8 +19726,17 @@ app.post("/api/demo/troll/seed-all", async (req, res) => {
     const ownerUserId = (req as { userId?: string }).userId
       ?? readString(req.headers["x-user-id"] as string | undefined)
       ?? "demo-user";
+    const body = (req.body ?? {}) as {
+      projectId?: string;
+      projectName?: string;
+      projectDescription?: string;
+    };
     const { seedTrollDemo } = await import("./troll-demo-seed-service.js");
-    const report = await seedTrollDemo(pool, ownerUserId);
+    const report = await seedTrollDemo(pool, ownerUserId, {
+      projectId: body.projectId,
+      projectName: body.projectName,
+      projectDescription: body.projectDescription,
+    });
 
     // Hent faktiske rader fra DB for å bygge frontend-kompatibel "areas"-respons
     const [crewRes, locsRes] = await Promise.all([
@@ -19776,8 +19785,17 @@ app.post("/api/demo/troll/initialize-all", async (req, res) => {
     const ownerUserId = (req as { userId?: string }).userId
       ?? readString(req.headers["x-user-id"] as string | undefined)
       ?? "demo-user";
+    const body = (req.body ?? {}) as {
+      projectId?: string;
+      projectName?: string;
+      projectDescription?: string;
+    };
     const { seedTrollDemo } = await import("./troll-demo-seed-service.js");
-    const report = await seedTrollDemo(pool, ownerUserId);
+    const report = await seedTrollDemo(pool, ownerUserId, {
+      projectId: body.projectId,
+      projectName: body.projectName,
+      projectDescription: body.projectDescription,
+    });
 
     const [crewRes, locsRes] = await Promise.all([
       pool.query("SELECT * FROM casting_crew WHERE project_id = $1", [report.project.id]),

@@ -1567,6 +1567,10 @@ useEffect(() => {
   const [trollInitAreas, setTrollInitAreas] = useState<Record<string, { status: string; count: number; items: any[] }>>({});
   const [trollInitProgress, setTrollInitProgress] = useState(0);
   const [trollInitError, setTrollInitError] = useState<string | null>(null);
+  // ID of the TROLL project created by this demo run — set when seed
+  // is triggered, used on dialog complete to navigate to the seeded
+  // project instead of going back to the empty form.
+  const [trollSeededProjectId, setTrollSeededProjectId] = useState<string | null>(null);
 
   // Open TROLL Demo Dialog
   const handleOpenTrollDialog = useCallback(() => {
@@ -1575,6 +1579,7 @@ useEffect(() => {
     setTrollInitAreas({});
     setTrollInitProgress(0);
     setTrollInitError(null);
+    setTrollSeededProjectId(null);
   }, []);
 
   // Initialize and Load TROLL Demo Data
@@ -1612,12 +1617,20 @@ useEffect(() => {
       }
       setTrollInitProgress(60);
       
-      // Step 4: Load all data status from database
+      // Step 4: Load all data status from database. Hver demo-kjøring
+      // får sin egen prosjekt-ID så brukeren kan ha flere TROLL-kopier
+      // uten data-kollisjon (backend scoper alle entity-IDer per
+      // projectId via eid()-helper i seedTrollDemo).
+      const trollNewProjectId = `troll-${Date.now()}`;
+      setTrollSeededProjectId(trollNewProjectId);
       setTrollInitStatus('loading');
       const response = await fetch('/api/demo/troll/initialize-all', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({})
+        body: JSON.stringify({
+          projectId: trollNewProjectId,
+          projectName: 'TROLL',
+        })
       });
       
       if (response.ok) {
@@ -1630,14 +1643,14 @@ useEffect(() => {
       
       // Step 5: Load TROLL project data into form
       const projects = await castingService.getProjects();
-      const trollProject = projects.find((p: any) => p.id === 'troll-project-2026' || p.name === 'TROLL');
+      const trollProject = projects.find((p: any) => p.id === trollNewProjectId || p.name === 'TROLL');
       
       if (trollProject) {
         // Load candidates, crew, locations from database
         const [trollCandidates, crew, locations] = await Promise.all([
-          castingService.getCandidates('troll-project-2026'),
-          castingService.getCrew('troll-project-2026'),
-          castingService.getLocations('troll-project-2026')
+          castingService.getCandidates(trollNewProjectId),
+          castingService.getCrew(trollNewProjectId),
+          castingService.getLocations(trollNewProjectId)
         ]);
         
         // Log loaded candidate count for diagnostic purposes
@@ -1652,7 +1665,7 @@ useEffect(() => {
         }));
         
         // Build split sheet contributors from actual data
-        const splitSheetResponse = await fetch('/api/split-sheets?project_id=troll-project-2026');
+        const splitSheetResponse = await fetch(`/api/split-sheets?project_id=${encodeURIComponent(trollNewProjectId)}`);
         let splitSheetContributors: any[] = [];
         if (splitSheetResponse.ok) {
           const ssData = await splitSheetResponse.json();
@@ -1705,9 +1718,20 @@ useEffect(() => {
     setTrollInitDialogOpen(false);
     if (trollInitStatus === 'complete') {
       showSuccessToast('🎬 TROLL demo-prosjekt lastet fra database!', 5000);
-      setActiveStep(0);
+      // Naviger direkte til det seeded prosjektet i stedet for å gå
+      // tilbake til create-formen — brukeren ser full demo-data uten
+      // å måtte gjennomgå create-stegene på nytt.
+      if (trollSeededProjectId && onProjectCreated) {
+        onProjectCreated({
+          id: trollSeededProjectId,
+          name: 'TROLL',
+          projectType: 'film',
+        });
+      } else {
+        setActiveStep(0);
+      }
     }
-  }, [trollInitStatus, showSuccessToast]);
+  }, [trollInitStatus, showSuccessToast, trollSeededProjectId, onProjectCreated]);
 
   // Load TROLL Demo Project - Comprehensive film production example (legacy, now opens dialog)
   const handleLoadTrollDemo = useCallback(async () => {
