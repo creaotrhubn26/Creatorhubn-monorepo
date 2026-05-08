@@ -73,6 +73,8 @@ import {
 } from './split-sheets/types';
 import ProjectAgreementsPanel from './ProjectAgreementsPanel';
 import ProducerEconomyPanel from './producer/ProducerEconomyPanel';
+import EconomyCashflowPanel from './producer/EconomyCashflowPanel';
+import EconomyReportsPanel from './producer/EconomyReportsPanel';
 
 interface ProjectEconomyHubProps {
   project: CastingProject;
@@ -652,9 +654,10 @@ export default function ProjectEconomyHub({
   const [isSyncingTravel, setIsSyncingTravel] = useState(false);
   const [budgetPanelVersion, setBudgetPanelVersion] = useState(0);
   const [activeView, setActiveView] = useState<EconomyWorkspaceView>('overview');
-  // Budsjett-fanen har 3 sub-tabs: linjer / avtaler+fordeling / sync+ramme.
+  // Budsjett-fanen har 5 sub-tabs:
+  //   linjer / avtaler+fordeling / sync+ramme / cashflow / rapporter
   // Felles topp-stripe (Neste steg + Fasefokus) er synlig på tvers av sub-tabs.
-  type BudgetSubTab = 'lines' | 'agreements' | 'syncs';
+  type BudgetSubTab = 'lines' | 'agreements' | 'syncs' | 'cashflow' | 'reports';
   const [budgetSubTab, setBudgetSubTab] = useState<BudgetSubTab>('lines');
   const [focusedPhase, setFocusedPhase] = useState<EconomyFocusPhase>('all');
   const [budgetReviewTitle, setBudgetReviewTitle] = useState(() => buildBudgetReviewDefaults(project.name, 'all').title);
@@ -2886,6 +2889,8 @@ export default function ProjectEconomyHub({
                 <Tab value="lines" label="Linjer" />
                 <Tab value="agreements" label="Avtaler & fordeling" />
                 <Tab value="syncs" label="Sync & ramme" />
+                <Tab value="cashflow" label="Cashflow" />
+                <Tab value="reports" label="Rapporter" />
               </Tabs>
 
               {/* ── Sub-tab: Linjer (kun budsjett-linjer per fase) ───── */}
@@ -3166,6 +3171,16 @@ export default function ProjectEconomyHub({
                     </Stack>
                   </Box>
                 </Box>
+              ) : null}
+
+              {/* ── Sub-tab: Cashflow ────────────────────────────────── */}
+              {budgetSubTab === 'cashflow' ? (
+                <EconomyCashflowPanel projectId={project.id} />
+              ) : null}
+
+              {/* ── Sub-tab: Rapporter ───────────────────────────────── */}
+              {budgetSubTab === 'reports' ? (
+                <EconomyReportsPanel projectId={project.id} />
               ) : null}
             </Stack>
           ) : null}
