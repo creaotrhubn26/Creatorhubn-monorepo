@@ -2185,15 +2185,23 @@ export default function NewProjectCreationModal({
       // Call the comprehensive TROLL seed endpoint — én DB-transaksjon
       // som persisterer prosjekt + roles + candidates + crew + locations
       // + manuscript + scenes + shotLists + equipment + production days
-      // + consents. Idempotent (DELETE før INSERT). Erstatter den gamle
-      // /initialize-all-stuben som bare returnerte tom JSON.
+      // + consents. Idempotent (DELETE før INSERT).
+      //
+      // Hver demo-kjøring får sin egen prosjekt-ID så man kan ha flere
+      // TROLL-kopier samtidig uten data-kollisjon. Backend scoper alle
+      // entity-IDer (role-nora, cand-ine, ...) per projectId via eid()-
+      // helper i seedTrollDemo.
+      const trollNewProjectId = `troll-${Date.now()}`;
       const response = await fetch('/api/demo/troll/seed-all', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...((authSessionService.getAuthHeadersSync() ?? {}) as Record<string, string>),
         },
-        body: JSON.stringify({})
+        body: JSON.stringify({
+          projectId: trollNewProjectId,
+          projectName: 'TROLL',
+        })
       });
       
       if (response.ok) {
@@ -2220,7 +2228,7 @@ export default function NewProjectCreationModal({
             const ssArea = data.areas.split_sheets;
             if (ssArea?.status === 'loaded' && ssArea?.count > 0) {
               try {
-                const ssResponse = await fetch('/api/split-sheets?project_id=troll-project-2026');
+                const ssResponse = await fetch(`/api/split-sheets?project_id=${encodeURIComponent(trollNewProjectId)}`);
                 if (ssResponse.ok) {
                   const ssData = await ssResponse.json();
                   if (ssData.splitSheets?.[0]?.contributors) {
@@ -2249,8 +2257,8 @@ export default function NewProjectCreationModal({
               : [{ id: 'collab-1', name: 'Regissør', email: 'regi@trollfilm.no', role: 'director' as ContributorRole }];
             
             const trollSplitSheet: SplitSheet | null = splitSheetContributors.length > 0 ? {
-              id: 'troll-project-2026',
-              project_id: 'troll-project-2026',
+              id: trollNewProjectId,
+              project_id: trollNewProjectId,
               title: 'TROLL - Filmproduksjon Split Sheet',
               description: 'Fordeling av inntekter for TROLL (2026)',
               status: 'draft' as const,
@@ -2259,7 +2267,7 @@ export default function NewProjectCreationModal({
 
             setProjectData((prev) => ({
               ...prev,
-              projectId: 'troll-project-2026',
+              projectId: trollNewProjectId,
               projectName: String(trollProject.name || 'TROLL'),
               projectType: 'documentary' as const,
               description: 'Norsk eventyrfilm regissert av Roar Uthaug',
@@ -2277,6 +2285,19 @@ export default function NewProjectCreationModal({
             
             setTrollInitStatus('complete');
             toast.showSuccess('TROLL demo-prosjekt lastet inn!');
+
+            // Naviger direkte til det seeded prosjektet i stedet for å la
+            // brukeren stå igjen på create-formen og ende opp med å lage et
+            // tomt nytt prosjekt. onProjectCreated lukker modalen og laster
+            // currentProject hos parent (CastingPlannerPanel).
+            if (onProjectCreated) {
+              onProjectCreated({
+                id: trollNewProjectId,
+                name: 'TROLL',
+                projectType: 'documentary',
+                description: 'Norsk eventyrfilm regissert av Roar Uthaug',
+              });
+            }
           } else {
             throw new Error('TROLL prosjekt ikke funnet i database');
           }

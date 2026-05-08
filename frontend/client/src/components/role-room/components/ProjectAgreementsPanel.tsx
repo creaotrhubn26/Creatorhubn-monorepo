@@ -286,6 +286,11 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
   const { enqueueSnackbar } = useSnackbar();
   const { uploadProjectFile } = useProject();
   const [tabValue, setTabValue] = useState(0);
+  // Samarbeidsramme deler 7 logiske grupper inn i 3 sub-tabs så Card-en
+  // ikke blir en 475-linjers vegg av input-felt. State i parent slik at
+  // bytte mellom hovedtabs ikke nullstiller fokus.
+  type CollaborationTab = 'agreement' | 'scope' | 'economy';
+  const [collaborationTab, setCollaborationTab] = useState<CollaborationTab>('agreement');
   const [agreements, setAgreements] = useState<ProjectAgreement[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -2024,6 +2029,36 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
               </Stack>
             </Stack>
 
+            {/* ── Sub-tabs for Samarbeidsramme ────────────────────────
+               * 7 logiske grupper var stablet i én flat Grid (475 linjer
+               * input-felt). Splittet i 3 sub-tabs som matcher faktisk
+               * arbeidsflyt: rammene først, deretter scope/ansvar,
+               * deretter økonomi/rettigheter. Header + status-chips står
+               * stille på toppen.
+               */}
+            <Tabs
+              value={collaborationTab}
+              onChange={(_event, nextValue: CollaborationTab) => setCollaborationTab(nextValue)}
+              variant="scrollable"
+              allowScrollButtonsMobile
+              sx={{
+                borderBottom: '1px solid rgba(148,163,184,0.16)',
+                '& .MuiTab-root': {
+                  textTransform: 'none',
+                  fontWeight: 700,
+                  color: 'rgba(226,232,240,0.78)',
+                  minHeight: 42,
+                },
+                '& .Mui-selected': { color: '#f8fafc' },
+                '& .MuiTabs-indicator': { backgroundColor: '#a78bfa' },
+              }}
+            >
+              <Tab value="agreement" label="Avtale" />
+              <Tab value="scope" label="Scope & roller" />
+              <Tab value="economy" label="Økonomi & rettigheter" />
+            </Tabs>
+
+            {collaborationTab === 'agreement' ? (
             <Grid container spacing={2}>
               <Grid size={{ xs: 12, md: 4 }}>
                 <FormControl fullWidth>
@@ -2117,7 +2152,11 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                   disabled={!canEditCollaborationTerms}
                 />
               </Grid>
+            </Grid>
+            ) : null}
 
+            {collaborationTab === 'scope' ? (
+            <Grid container spacing={2}>
               <Grid size={{ xs: 12, md: 6 }}>
                 <TextField
                   label="Leveranser innenfor scope"
@@ -2214,7 +2253,11 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                   disabled={!canEditCollaborationTerms}
                 />
               </Grid>
+            </Grid>
+            ) : null}
 
+            {collaborationTab === 'economy' ? (
+            <Grid container spacing={2}>
               <Grid size={{ xs: 12 }}>
                 <Box sx={{ p: 1.5, borderRadius: 2, border: '1px solid rgba(148,163,184,0.16)', background: 'rgba(255,255,255,0.03)' }}>
                   <Typography sx={{ color: '#fff', fontWeight: 700, mb: 1 }}>
@@ -2451,6 +2494,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                 />
               </Grid>
             </Grid>
+            ) : null}
           </Stack>
         </CardContent>
       </Card>
