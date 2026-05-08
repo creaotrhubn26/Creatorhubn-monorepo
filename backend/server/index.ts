@@ -20366,6 +20366,70 @@ app.delete("/api/admin-room/decks/:id", async (req, res) => {
   }
 });
 
+// AI-generate slide-content via Claude
+app.post("/api/admin-room/decks/:id/slides/:slideId/generate", async (req, res) => {
+  const session = requireAdminRoomAccess(req, res);
+  if (!session) return;
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  try {
+    const { getDeckById, listSlidesForDeck, updateSlideContent } = await import(
+      "./role-room-investor-deck-db.js"
+    );
+    const { generateInvestorSection } = await import("./role-room-investor-deck-claude.js");
+
+    const deck = await getDeckById(pool, req.params.id, session.userId);
+    if (!deck) {
+      res.status(404).json({ error: "Deck ikke funnet" });
+      return;
+    }
+    const slides = await listSlidesForDeck(pool, deck.id);
+    const slide = slides.find((s) => s.id === req.params.slideId);
+    if (!slide) {
+      res.status(404).json({ error: "Slide ikke funnet" });
+      return;
+    }
+
+    // Bruk forretningsplan som forretningskontekst hvis tilgjengelig
+    const planResult = await pool.query(
+      `SELECT * FROM admin_business_plan WHERE user_id = $1`,
+      [session.userId],
+    );
+    const plan = planResult.rows[0] ?? null;
+
+    const generation = await generateInvestorSection(slide.section, {
+      brandName: typeof body.brandName === "string" && body.brandName.trim()
+        ? body.brandName.trim()
+        : "The Role Room",
+      industry: typeof body.industry === "string" ? body.industry : (plan?.intro_industry ?? null),
+      description: typeof body.description === "string"
+        ? body.description
+        : (plan?.exec_summary ?? plan?.intro_overview ?? null),
+      monthlyRevenueNok: typeof body.monthlyRevenueNok === "number" ? body.monthlyRevenueNok : null,
+      growthPhase: typeof body.growthPhase === "string" ? body.growthPhase : null,
+      customNote: typeof body.customNote === "string" ? body.customNote : null,
+    });
+
+    const updated = await updateSlideContent(pool, slide.id, {
+      ...slide.content,
+      body: generation.body,
+    });
+    if (!updated) {
+      res.status(500).json({ error: "Kunne ikke lagre generert tekst" });
+      return;
+    }
+    res.json({
+      slide: updated,
+      tokens: { input: generation.inputTokens, output: generation.outputTokens },
+    });
+  } catch (err) {
+    console.error("admin-room decks generate error", err);
+    res.status(500).json({
+      error: "Kunne ikke generere via Claude",
+      detail: String((err as Error)?.message ?? err).slice(0, 200),
+    });
+  }
+});
+
 // ── Business plan (forretningsplan + strategi) ───────────────────────
 const BUSINESS_PLAN_TEXT_FIELDS = [
   "exec_summary",

@@ -535,4 +535,21 @@ export const decksApi = {
   remove: async (id: string): Promise<void> => {
     await jsonFetch(`/decks/${encodeURIComponent(id)}`, { method: 'DELETE' });
   },
+  generateSlide: async (
+    deckId: string,
+    slideId: string,
+    body: {
+      brandName?: string;
+      industry?: string;
+      description?: string;
+      monthlyRevenueNok?: number;
+      growthPhase?: string;
+      customNote?: string;
+    } = {},
+  ): Promise<{ slide: PitchDeckSlide; tokens: { input: number; output: number } }> => {
+    return jsonFetch(`/decks/${encodeURIComponent(deckId)}/slides/${encodeURIComponent(slideId)}/generate`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
 };

@@ -189,6 +189,7 @@ import { trackMarketingPageView } from '@/lib/marketingPixelsRuntime';
 
 const LandingMobileBackupSep19 = React.lazy(() => import('@/pages/landing-mobile-backup-sep19'));
 const AdminRoomPage = React.lazy(() => import('./pages/AdminRoom'));
+const DeckEditorPage = React.lazy(() => import('./pages/DeckEditor'));
 // Wrapper components for route compatibility
 const AdminDashboardWrapper = (props: any) => <AdminDashboard {...props} />;
 const CompleteDeploymentManagerWrapper = (props: any) => <CompleteDeploymentManager {...props} />;
@@ -635,6 +636,15 @@ function App() {
                       </Box>
                     }>
                       <AdminRoomPage />
+                    </React.Suspense>
+                  </Route>
+                  <Route path="/admin-room/deck/:deckId">
+                    <React.Suspense fallback={
+                      <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+                        <CircularProgress />
+                      </Box>
+                    }>
+                      <DeckEditorPage />
                     </React.Suspense>
                   </Route>
                   <Route path="/verification-demo" component={VerificationSystemDashboard as React.ComponentType<any>} />
