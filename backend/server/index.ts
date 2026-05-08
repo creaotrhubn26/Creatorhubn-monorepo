@@ -19827,6 +19827,180 @@ function asNumberOrNull(value: unknown): number | null {
   return null;
 }
 
+// ── Activity log helper ─────────────────────────────────────────────
+// Appender hendelser i admin_activity_log slik at IN-søknader får
+// sporbarhet og brukeren ser hva som ble endret når.
+async function logAdminActivity(args: {
+  userId: string;
+  entityType: string;
+  entityId?: string | null;
+  action: string;
+  summary?: string;
+  details?: Record<string, unknown>;
+}): Promise<void> {
+  try {
+    await pool.query(
+      `INSERT INTO admin_activity_log (user_id, entity_type, entity_id, action, summary, details)
+       VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
+      [
+        args.userId,
+        args.entityType,
+        args.entityId ?? null,
+        args.action,
+        args.summary ?? null,
+        JSON.stringify(args.details ?? {}),
+      ],
+    );
+  } catch (err) {
+    // Log-failure skal aldri blokkere hovedoperasjonen
+    console.warn("logAdminActivity failed (non-fatal):", err);
+  }
+}
+
+app.get("/api/admin-room/activity-log", async (req, res) => {
+  const session = requireAdminRoomAccess(req, res);
+  if (!session) return;
+  const limit = Math.min(Number.parseInt(String(req.query.limit ?? "50"), 10) || 50, 200);
+  const entityType = typeof req.query.entityType === "string" ? req.query.entityType : null;
+  const entityId = typeof req.query.entityId === "string" ? req.query.entityId : null;
+  try {
+    const params: unknown[] = [session.userId];
+    let where = "user_id = $1";
+    if (entityType) {
+      params.push(entityType);
+      where += ` AND entity_type = $${params.length}`;
+    }
+    if (entityId) {
+      params.push(entityId);
+      where += ` AND entity_id = $${params.length}`;
+    }
+    params.push(limit);
+    const result = await pool.query(
+      `SELECT * FROM admin_activity_log
+        WHERE ${where}
+        ORDER BY created_at DESC
+        LIMIT $${params.length}`,
+      params,
+    );
+    res.json({ items: result.rows });
+  } catch (err) {
+    console.error("admin-room activity-log list error", err);
+    res.status(500).json({ error: "Kunne ikke hente aktivitets-logg" });
+  }
+});
+
+// ── AI-utkast for søknads-tekst ────────────────────────────────────
+app.post("/api/admin-room/funding-apps/:id/generate", async (req, res) => {
+  const session = requireAdminRoomAccess(req, res);
+  if (!session) return;
+  try {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      res.status(503).json({ error: "ANTHROPIC_API_KEY er ikke satt" });
+      return;
+    }
+    // Hent søknaden + forretningsplan som kontekst
+    const appResult = await pool.query(
+      `SELECT * FROM admin_funding_apps WHERE id = $1 AND user_id = $2`,
+      [req.params.id, session.userId],
+    );
+    if (!appResult.rowCount) {
+      res.status(404).json({ error: "Søknad ikke funnet" });
+      return;
+    }
+    const app_ = appResult.rows[0];
+    const planResult = await pool.query(
+      `SELECT * FROM admin_business_plan WHERE user_id = $1`,
+      [session.userId],
+    );
+    const plan = planResult.rows[0] ?? null;
+
+    const Anthropic = (await import("@anthropic-ai/sdk")).default;
+    const client = new Anthropic({ apiKey });
+
+    const planContext = plan
+      ? [
+          `EXEC SUMMARY: ${plan.exec_summary ?? ""}`,
+          `INTRO: ${plan.intro_overview ?? ""}`,
+          `MARKED: ${plan.intro_industry ?? ""}`,
+          `KONKURRANSE: ${plan.external_competitors ?? ""}`,
+          `STYRKER: ${plan.swot_strengths ?? ""}`,
+          `MULIGHETER: ${plan.swot_opportunities ?? ""}`,
+          `STRATEGI: ${plan.strategic_recommendation ?? ""}`,
+        ].filter((s) => s.split(":")[1]?.trim()).join("\n\n")
+      : "";
+
+    const schemeInstructions: Record<string, string> = {
+      innovasjon_norge_1: "IN-Markedsavklaring: 1500-2000 tegn. Fokus på markedsbehov-validering, konkrete intervju-/pilot-mål, ROI-måling.",
+      innovasjon_norge_2: "IN-Kommersialisering: 2500-3500 tegn. Fokus på skalering, GTM-strategi, leveranse-operasjoner, ARR-mål.",
+      in_innovasjonskontrakter: "IN-Innovasjonskontrakter: 2000-3000 tegn. Fokus på samutvikling med kunde, problem-løsning-fit.",
+      eu_horizon_eic: "EIC Accelerator: 3000-4000 tegn. Fokus på europeisk skalering, breakthrough-teknologi, sosial impact.",
+    };
+    const schemeGuide = schemeInstructions[app_.scheme] ?? "Generell støttesøknad: 1500-2500 tegn med markedsbehov, mål, og konkrete tiltak.";
+
+    const systemPrompt = `Du er en søknadsskriver for norske støtteordninger (Innovasjon Norge, EU Horizon).
+
+Skrivestil:
+- Norsk, formell forretnings-stil
+- Konkret og datadrevet, ikke hype
+- Strukturert med kortfattede punkter eller nummererte avsnitt
+- Ingen anførselstegn rundt outputen
+- Ingen forspil — returner kun innholdet selv`;
+
+    const userPrompt = [
+      `Skriv søknadstekst for: ${app_.scheme_label}`,
+      `Prosjekt: ${app_.project_name}`,
+      `Søker: ${app_.applicant_company ?? "CreatorHub Norge AS"}`,
+      `Beløp: ${app_.amount_requested ? `${app_.amount_requested} ${app_.currency}` : "ikke satt"}`,
+      "",
+      `Format-krav: ${schemeGuide}`,
+      "",
+      app_.description ? `Eksisterende utkast (utvid eller forbedre):\n${app_.description}` : "Skriv et førsteutkast.",
+      "",
+      planContext ? `Forretningskontekst:\n${planContext}` : "",
+    ].filter(Boolean).join("\n");
+
+    const response = await client.messages.create({
+      model: "claude-sonnet-4-5-20250929",
+      max_tokens: 2500,
+      system: systemPrompt,
+      messages: [{ role: "user", content: userPrompt }],
+    });
+
+    type ContentBlock = { type: string; text?: string };
+    const generatedText = (response.content as ContentBlock[])
+      .filter((b): b is { type: 'text'; text: string } => b.type === "text" && typeof b.text === "string")
+      .map((b) => b.text)
+      .join("\n")
+      .trim();
+
+    // Lagre + logg
+    const updated = await pool.query(
+      `UPDATE admin_funding_apps SET description = $1, updated_at = now()
+        WHERE id = $2 AND user_id = $3 RETURNING *`,
+      [generatedText, req.params.id, session.userId],
+    );
+    await logAdminActivity({
+      userId: session.userId,
+      entityType: "funding_app",
+      entityId: req.params.id,
+      action: "generated",
+      summary: `AI-utkast generert (${response.usage.output_tokens} tokens)`,
+      details: { tokens: response.usage },
+    });
+    res.json({
+      item: updated.rows[0],
+      tokens: { input: response.usage.input_tokens, output: response.usage.output_tokens },
+    });
+  } catch (err) {
+    console.error("admin-room funding-apps generate error", err);
+    res.status(500).json({
+      error: "Kunne ikke generere via Claude",
+      detail: String((err as Error)?.message ?? err).slice(0, 200),
+    });
+  }
+});
+
 // ── Funding apps ────────────────────────────────────────────────────
 app.get("/api/admin-room/funding-apps", async (req, res) => {
   const session = requireAdminRoomAccess(req, res);
@@ -19882,6 +20056,13 @@ app.post("/api/admin-room/funding-apps", async (req, res) => {
         asJsonbObject(body.metadata),
       ],
     );
+    await logAdminActivity({
+      userId: session.userId,
+      entityType: "funding_app",
+      entityId: result.rows[0].id,
+      action: "created",
+      summary: `${result.rows[0].scheme_label} — ${result.rows[0].project_name}`,
+    });
     res.status(201).json({ item: result.rows[0] });
   } catch (err) {
     console.error("admin-room funding-apps create error", err);
@@ -20012,6 +20193,13 @@ app.post("/api/admin-room/investor-contacts", async (req, res) => {
         asJsonbObject(body.metadata),
       ],
     );
+    await logAdminActivity({
+      userId: session.userId,
+      entityType: "investor",
+      entityId: result.rows[0].id,
+      action: "created",
+      summary: result.rows[0].company_name,
+    });
     res.status(201).json({ item: result.rows[0] });
   } catch (err) {
     console.error("admin-room investor-contacts create error", err);
@@ -20135,6 +20323,13 @@ app.post("/api/admin-room/partner-contacts", async (req, res) => {
         asJsonbObject(body.metadata),
       ],
     );
+    await logAdminActivity({
+      userId: session.userId,
+      entityType: "partner",
+      entityId: result.rows[0].id,
+      action: "created",
+      summary: result.rows[0].company_name,
+    });
     res.status(201).json({ item: result.rows[0] });
   } catch (err) {
     console.error("admin-room partner-contacts create error", err);
@@ -20272,6 +20467,13 @@ app.post("/api/admin-room/decks", async (req, res) => {
       console.warn("admin-room decks prefill skipped:", prefillErr);
     }
 
+    await logAdminActivity({
+      userId: session.userId,
+      entityType: "deck",
+      entityId: result.deck.id,
+      action: "created",
+      summary: result.deck.title,
+    });
     res.status(201).json({ deck: result.deck, slides: result.slides });
   } catch (err) {
     console.error("admin-room decks create error", err);

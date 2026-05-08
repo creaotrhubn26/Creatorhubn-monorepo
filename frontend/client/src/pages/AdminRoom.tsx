@@ -49,6 +49,7 @@ import {
   partnerContactsApi,
   businessPlanApi,
   decksApi,
+  activityLogApi,
   FUNDING_SCHEME_PRESETS,
   FUNDING_SCHEME_DEADLINES,
   FUNDING_STATUS_LABELS,
@@ -71,11 +72,12 @@ import {
   type DueDiligenceItem,
   type BusinessPlan,
   type BusinessPlanInput,
+  type ActivityLogEntry,
 } from '../services/adminRoomApi';
 
 const ADMIN_ROOM_OWNER_EMAIL = 'daniel@creatorhubn.com';
 
-type AdminRoomTab = 'dashboard' | 'business-plan' | 'funding' | 'investors' | 'partners';
+type AdminRoomTab = 'dashboard' | 'business-plan' | 'funding' | 'investors' | 'partners' | 'activity';
 
 // ─────────────────────────────────────────────────────────
 // Stable produkt-features for søknadsmaler. Role Room Agent
@@ -227,6 +229,7 @@ function FundingAppDrawer({ open, initial, onClose, onSaved }: FundingDrawerProp
   const [form, setForm] = useState<FundingAppInput>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
 
   useEffect(() => {
     if (initial) {
@@ -349,22 +352,58 @@ function FundingAppDrawer({ open, initial, onClose, onSaved }: FundingDrawerProp
               <TextField label="Kontakt-e-post" size="small" sx={{ flex: 1 }} value={form.contactEmail ?? ''} onChange={(e) => setForm((p) => ({ ...p, contactEmail: e.target.value }))} />
             </Stack>
             <Box>
-              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.5 }}>
+              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.5, flexWrap: 'wrap', gap: 0.5 }}>
                 <Typography sx={{ color: 'rgba(226,232,240,0.86)', fontWeight: 600, fontSize: '0.86rem' }}>Søknadstekst</Typography>
-                <Button size="small" startIcon={<AutoAwesomeIcon />} onClick={handleGenerate} sx={{ textTransform: 'none', fontWeight: 700, color: '#a78bfa' }}>
-                  Generer mal
-                </Button>
+                <Stack direction="row" spacing={0.5}>
+                  <Button size="small" startIcon={<AutoAwesomeIcon />} onClick={handleGenerate} sx={{ textTransform: 'none', fontWeight: 700, color: '#a78bfa' }}>
+                    Skjelett-mal
+                  </Button>
+                  {initial ? (
+                    <Button
+                      size="small"
+                      variant="contained"
+                      startIcon={generating ? <CircularProgress size={14} /> : <AutoAwesomeIcon />}
+                      onClick={async () => {
+                        if (!initial) return;
+                        setGenerating(true);
+                        try {
+                          const result = await fundingAppsApi.generate(initial.id);
+                          setForm((p) => ({ ...p, description: result.item.description }));
+                          onSaved(result.item);
+                        } catch (err) {
+                          setError((err as Error).message);
+                        } finally {
+                          setGenerating(false);
+                        }
+                      }}
+                      disabled={generating}
+                      sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#7c3aed' }}
+                    >
+                      {generating ? 'Genererer…' : 'Generer via Claude'}
+                    </Button>
+                  ) : null}
+                </Stack>
               </Stack>
-              <TextField multiline minRows={10} fullWidth value={form.description ?? ''} onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))} />
+              <TextField multiline minRows={10} fullWidth value={form.description ?? ''} onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))} disabled={generating} />
             </Box>
             <TextField label="Interne notater" size="small" multiline minRows={3} fullWidth value={form.notes ?? ''} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} />
           </Stack>
         </Box>
         <Stack direction="row" spacing={1} sx={{ px: 2, py: 1.25, borderTop: '1px solid rgba(148,163,184,0.14)' }}>
+          {initial ? (
+            <Button
+              variant="outlined"
+              onClick={() => window.print()}
+              sx={{ textTransform: 'none', fontWeight: 700 }}
+              className="no-print"
+            >
+              Skriv ut / PDF
+            </Button>
+          ) : null}
           <Button variant="contained" onClick={handleSave} disabled={saving} sx={{ flex: 1, textTransform: 'none', fontWeight: 700, bgcolor: '#7c3aed' }}>
             {saving ? 'Lagrer…' : initial ? 'Lagre endringer' : 'Opprett'}
           </Button>
-          <Button variant="text" onClick={onClose} sx={{ textTransform: 'none', fontWeight: 700 }}>Avbryt</Button>
+          <Button variant="text" onClick={onClose} sx={{ textTransform: 'none', fontWeight: 700 }} className="no-print">Avbryt</Button>
         </Stack>
       </Stack>
     </Drawer>
@@ -1522,6 +1561,89 @@ function BusinessPlanTab() {
 }
 
 // ─────────────────────────────────────────────────────────
+// Section: Activity log
+// ─────────────────────────────────────────────────────────
+
+const ENTITY_LABEL: Record<string, string> = {
+  funding_app: 'Søknad',
+  investor: 'Investor',
+  partner: 'Partner',
+  business_plan: 'Forretningsplan',
+  deck: 'Deck',
+  deck_slide: 'Deck-slide',
+};
+const ACTION_LABEL: Record<string, string> = {
+  created: 'Opprettet',
+  updated: 'Oppdatert',
+  deleted: 'Slettet',
+  generated: 'AI-generert',
+  status_change: 'Status endret',
+};
+
+function ActivityLogTab() {
+  const [entries, setEntries] = useState<ActivityLogEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    activityLogApi.list({ limit: 100 })
+      .then((data) => { if (!cancelled) setEntries(data); })
+      .catch((err) => { if (!cancelled) setError((err as Error).message); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  if (loading) return <Stack alignItems="center" sx={{ py: 6 }}><CircularProgress /></Stack>;
+
+  return (
+    <Stack spacing={2}>
+      {error ? <Alert severity="error">{error}</Alert> : null}
+      <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.86rem' }}>
+        Append-only endrings-spor på tvers av Søknader, Investorer, Partnere, Forretningsplan og Deck. Brukes til IN-revisjons-spor.
+      </Typography>
+      {entries.length === 0 ? (
+        <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.08)' }}>
+          Ingen aktivitet enda. Hendelser logges automatisk når du oppretter, redigerer eller AI-genererer.
+        </Alert>
+      ) : (
+        <Stack spacing={0.6}>
+          {entries.map((e) => {
+            const tone = e.action === 'created' ? { bg: 'rgba(52,211,153,0.16)', fg: '#86efac' }
+              : e.action === 'deleted' ? { bg: 'rgba(248,113,113,0.16)', fg: '#fca5a5' }
+              : e.action === 'generated' ? { bg: 'rgba(168,85,247,0.16)', fg: '#ddd6fe' }
+              : { bg: 'rgba(96,165,250,0.16)', fg: '#bfdbfe' };
+            return (
+              <Stack
+                key={e.id}
+                direction={{ xs: 'column', sm: 'row' }}
+                spacing={1}
+                alignItems={{ sm: 'center' }}
+                sx={{
+                  p: 1, borderRadius: 1.5,
+                  border: '1px solid rgba(148,163,184,0.14)',
+                  background: 'rgba(2,6,23,0.34)',
+                }}
+              >
+                <Chip size="small" label={ENTITY_LABEL[e.entity_type] ?? e.entity_type} sx={{ bgcolor: 'rgba(148,163,184,0.16)', color: '#cbd5e1' }} />
+                <Chip size="small" label={ACTION_LABEL[e.action] ?? e.action} sx={{ bgcolor: tone.bg, color: tone.fg, fontWeight: 700 }} />
+                <Typography sx={{ color: '#e2e8f0', fontSize: '0.86rem', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {e.summary ?? '—'}
+                </Typography>
+                <Typography sx={{ color: 'rgba(203,213,225,0.6)', fontSize: '0.74rem', whiteSpace: 'nowrap' }}>
+                  {new Date(e.created_at).toLocaleString('nb-NO')}
+                </Typography>
+              </Stack>
+            );
+          })}
+        </Stack>
+      )}
+    </Stack>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
 // Section: Dashboard / Hjem
 // ─────────────────────────────────────────────────────────
 
@@ -1836,15 +1958,22 @@ export default function AdminRoom() {
   else if (tab === 'investors') content = <InvestorContactsTab />;
   else if (tab === 'partners') content = <PartnerContactsTab />;
   else if (tab === 'business-plan') content = <BusinessPlanTab />;
+  else if (tab === 'activity') content = <ActivityLogTab />;
 
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
+    <Container maxWidth="lg" sx={{ py: { xs: 2, md: 4 }, px: { xs: 1.5, md: 3 } }}>
+      <style>{`
+        @media print {
+          .no-print { display: none !important; }
+          body { background: white !important; }
+        }
+      `}</style>
       <Stack spacing={2}>
         <Box>
-          <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '1.4rem' }}>
+          <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: { xs: '1.2rem', md: '1.4rem' } }}>
             Admin Room
           </Typography>
-          <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.92rem' }}>
+          <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: { xs: '0.84rem', md: '0.92rem' } }}>
             Internt arbeidsrom for produkteier — IN-/EU-søknader, investor-pipeline og potensielle samarbeidspartnere.
             Ikke en del av det publiserte The Role Room-produktet.
           </Typography>
@@ -1852,6 +1981,8 @@ export default function AdminRoom() {
         <Tabs
           value={tab}
           onChange={(_event, next: AdminRoomTab) => setTab(next)}
+          variant="scrollable"
+          allowScrollButtonsMobile
           sx={{
             borderBottom: '1px solid rgba(148,163,184,0.16)',
             '& .MuiTab-root': { textTransform: 'none', fontWeight: 700, color: 'rgba(226,232,240,0.78)', minHeight: 42 },
@@ -1864,6 +1995,7 @@ export default function AdminRoom() {
           <Tab value="funding" label="Søknader (IN/EU)" />
           <Tab value="investors" label="Investor-pipeline" />
           <Tab value="partners" label="Samarbeidspartnere" />
+          <Tab value="activity" label="Aktivitets-logg" />
         </Tabs>
         <Box>{content}</Box>
       </Stack>

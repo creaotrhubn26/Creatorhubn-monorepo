@@ -125,6 +125,40 @@ export const fundingAppsApi = {
   remove: async (id: string): Promise<void> => {
     await jsonFetch(`/funding-apps/${encodeURIComponent(id)}`, { method: 'DELETE' });
   },
+  generate: async (id: string): Promise<{ item: FundingApp; tokens: { input: number; output: number } }> => {
+    return jsonFetch(`/funding-apps/${encodeURIComponent(id)}/generate`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+  },
+};
+
+// ─────────────────────────────────────────────────────────
+// Activity log
+// ─────────────────────────────────────────────────────────
+
+export interface ActivityLogEntry {
+  id: string;
+  user_id: string;
+  entity_type: string;
+  entity_id: string | null;
+  action: string;
+  summary: string | null;
+  details: Record<string, unknown>;
+  created_at: string;
+}
+
+export const activityLogApi = {
+  list: async (options?: { limit?: number; entityType?: string; entityId?: string }): Promise<ActivityLogEntry[]> => {
+    const params = new URLSearchParams();
+    if (options?.limit) params.set('limit', String(options.limit));
+    if (options?.entityType) params.set('entityType', options.entityType);
+    if (options?.entityId) params.set('entityId', options.entityId);
+    const data = await jsonFetch<{ items: ActivityLogEntry[] }>(
+      `/activity-log${params.toString() ? `?${params.toString()}` : ''}`,
+    );
+    return data.items;
+  },
 };
 
 // ─────────────────────────────────────────────────────────
