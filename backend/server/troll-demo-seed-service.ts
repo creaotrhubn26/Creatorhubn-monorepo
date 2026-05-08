@@ -495,7 +495,7 @@ export async function seedTrollDemo(
         `INSERT INTO split_sheet_contributors
            (split_sheet_id, name, email, role, percentage, order_index, invitation_status,
             created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, 'pending', NOW(), NOW())`,
+         VALUES ($1, $2, $3, $4, $5, $6, 'not_sent', NOW(), NOW())`,
         [splitSheetId, c.name, c.email, c.role, c.percentage, c.order],
       );
     }
