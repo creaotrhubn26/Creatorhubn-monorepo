@@ -475,6 +475,16 @@ export const businessPlanApi = {
     });
     return data.plan;
   },
+  generateField: async (body: {
+    fieldKey: string;
+    fieldLabel: string;
+    existingContent?: string;
+  }): Promise<{ text: string; tokens: { input: number; output: number } }> => {
+    return jsonFetch('/business-plan/generate', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
 };
 
 // ─────────────────────────────────────────────────────────

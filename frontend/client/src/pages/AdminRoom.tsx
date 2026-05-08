@@ -75,7 +75,7 @@ import {
 
 const ADMIN_ROOM_OWNER_EMAIL = 'daniel@creatorhubn.com';
 
-type AdminRoomTab = 'funding' | 'investors' | 'partners' | 'business-plan';
+type AdminRoomTab = 'dashboard' | 'business-plan' | 'funding' | 'investors' | 'partners';
 
 // ─────────────────────────────────────────────────────────
 // Stable produkt-features for søknadsmaler. Role Room Agent
@@ -1371,6 +1371,7 @@ function BusinessPlanTab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [savingField, setSavingField] = useState<string | null>(null);
+  const [generatingField, setGeneratingField] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Partial<Record<keyof BusinessPlan, string>>>({});
 
   useEffect(() => {
@@ -1425,6 +1426,32 @@ function BusinessPlanTab() {
     window.print();
   }
 
+  async function handleGenerate(field: { key: keyof BusinessPlanInput; dbKey: keyof BusinessPlan; label: string }) {
+    setGeneratingField(String(field.dbKey));
+    setError(null);
+    try {
+      const existingContent = valueFor(field.dbKey);
+      const result = await businessPlanApi.generateField({
+        fieldKey: String(field.key),
+        fieldLabel: field.label,
+        existingContent,
+      });
+      // Sett som draft + persist umiddelbart
+      setDrafts((prev) => ({ ...prev, [field.dbKey]: result.text }));
+      const updated = await businessPlanApi.patch({ [field.key]: result.text } as BusinessPlanInput);
+      setPlan(updated);
+      setDrafts((prev) => {
+        const next = { ...prev };
+        delete next[field.dbKey];
+        return next;
+      });
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setGeneratingField(null);
+    }
+  }
+
   if (loading) return <Stack alignItems="center" sx={{ py: 6 }}><CircularProgress /></Stack>;
 
   return (
@@ -1463,18 +1490,29 @@ function BusinessPlanTab() {
           ) : null}
           <Stack spacing={1.5}>
             {section.fields.map((field) => (
-              <TextField
-                key={String(field.dbKey)}
-                label={field.label}
-                value={valueFor(field.dbKey)}
-                onChange={(e) => handleChange(field.dbKey, e.target.value)}
-                onBlur={() => { void handleBlur(field); }}
-                fullWidth
-                multiline
-                minRows={field.minRows ?? 3}
-                placeholder={field.placeholder}
-                helperText={savingField === field.dbKey ? 'Lagrer…' : field.helperText}
-              />
+              <Box key={String(field.dbKey)}>
+                <TextField
+                  label={field.label}
+                  value={valueFor(field.dbKey)}
+                  onChange={(e) => handleChange(field.dbKey, e.target.value)}
+                  onBlur={() => { void handleBlur(field); }}
+                  fullWidth
+                  multiline
+                  minRows={field.minRows ?? 3}
+                  placeholder={field.placeholder}
+                  helperText={savingField === field.dbKey ? 'Lagrer…' : (generatingField === field.dbKey ? 'Genererer via Claude…' : field.helperText)}
+                  disabled={generatingField === field.dbKey}
+                />
+                <Button
+                  size="small"
+                  startIcon={generatingField === field.dbKey ? <CircularProgress size={14} /> : <AutoAwesomeIcon fontSize="small" />}
+                  onClick={() => { void handleGenerate(field); }}
+                  disabled={generatingField !== null || savingField !== null}
+                  sx={{ textTransform: 'none', fontWeight: 700, color: '#a78bfa', mt: 0.5 }}
+                >
+                  {generatingField === field.dbKey ? 'Genererer…' : 'Generer via Claude'}
+                </Button>
+              </Box>
             ))}
           </Stack>
         </Box>
@@ -1484,11 +1522,302 @@ function BusinessPlanTab() {
 }
 
 // ─────────────────────────────────────────────────────────
+// Section: Dashboard / Hjem
+// ─────────────────────────────────────────────────────────
+
+function DashboardTab({ onJumpToTab }: { onJumpToTab: (tab: AdminRoomTab) => void }) {
+  const [funding, setFunding] = useState<FundingApp[]>([]);
+  const [investors, setInvestors] = useState<InvestorContact[]>([]);
+  const [partners, setPartners] = useState<PartnerContact[]>([]);
+  const [plan, setPlan] = useState<BusinessPlan | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    Promise.all([
+      fundingAppsApi.list().catch(() => []),
+      investorContactsApi.list().catch(() => []),
+      partnerContactsApi.list().catch(() => []),
+      businessPlanApi.get().catch(() => null),
+    ]).then(([f, i, p, bp]) => {
+      if (cancelled) return;
+      setFunding(f);
+      setInvestors(i);
+      setPartners(p);
+      setPlan(bp);
+    }).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  const fundingByStatus = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const f of funding) {
+      map.set(f.status, (map.get(f.status) ?? 0) + 1);
+    }
+    return map;
+  }, [funding]);
+
+  const totalAsk = useMemo(
+    () => funding.reduce((sum, f) => sum + (f.amount_requested ?? 0), 0),
+    [funding],
+  );
+
+  const investorsByStatus = useMemo(() => {
+    const map = new Map<InvestorStatus, number>();
+    for (const i of investors) {
+      map.set(i.status, (map.get(i.status) ?? 0) + 1);
+    }
+    return map;
+  }, [investors]);
+
+  const partnersByStatus = useMemo(() => {
+    const map = new Map<PartnerStatus, number>();
+    for (const p of partners) {
+      map.set(p.status, (map.get(p.status) ?? 0) + 1);
+    }
+    return map;
+  }, [partners]);
+
+  const planCompletion = useMemo(() => {
+    if (!plan) return { filled: 0, total: 35, pct: 0 };
+    const fields: Array<keyof BusinessPlan> = [
+      'exec_summary', 'intro_overview', 'intro_vision', 'intro_sustainability',
+      'intro_industry', 'intro_financials', 'internal_value_network_primary',
+      'internal_value_network_support', 'internal_drivers_customer',
+      'internal_drivers_capacity', 'internal_drivers_learning',
+      'internal_resource_analysis', 'internal_operational', 'internal_dynamic',
+      'internal_vrio', 'internal_network_structure', 'internal_strengths_weaknesses',
+      'external_pestel', 'external_pestel_conclusion', 'external_porter',
+      'external_porter_conclusion', 'external_competitors', 'external_competitor_summary',
+      'external_stakeholders', 'external_stakeholder_conclusion',
+      'swot_strengths', 'swot_weaknesses', 'swot_opportunities', 'swot_threats',
+      'strategic_wheel', 'current_strategy', 'strategic_recommendation',
+      'safe_suitability', 'safe_acceptability', 'safe_feasibility',
+    ];
+    let filled = 0;
+    for (const f of fields) {
+      const v = plan[f];
+      if (typeof v === 'string' && v.trim().length > 0) filled++;
+    }
+    return { filled, total: fields.length, pct: Math.round((filled / fields.length) * 100) };
+  }, [plan]);
+
+  const upcomingDeadlines = useMemo(() => {
+    type Deadline = { date: string; label: string; daysUntil: number; tab: AdminRoomTab };
+    const list: Deadline[] = [];
+    const now = Date.now();
+    for (const f of funding) {
+      if (f.deadline && f.status !== 'approved' && f.status !== 'rejected') {
+        const days = Math.ceil((new Date(f.deadline).getTime() - now) / (1000 * 60 * 60 * 24));
+        list.push({ date: f.deadline, label: `Søknad: ${f.project_name}`, daysUntil: days, tab: 'funding' });
+      }
+    }
+    for (const i of investors) {
+      if (i.next_step_due) {
+        const days = Math.ceil((new Date(i.next_step_due).getTime() - now) / (1000 * 60 * 60 * 24));
+        list.push({ date: i.next_step_due, label: `Investor: ${i.company_name} — ${i.next_step ?? 'oppfølging'}`, daysUntil: days, tab: 'investors' });
+      }
+    }
+    for (const p of partners) {
+      if (p.next_step_due) {
+        const days = Math.ceil((new Date(p.next_step_due).getTime() - now) / (1000 * 60 * 60 * 24));
+        list.push({ date: p.next_step_due, label: `Partner: ${p.company_name} — ${p.next_step ?? 'neste steg'}`, daysUntil: days, tab: 'partners' });
+      }
+    }
+    return list.sort((a, b) => a.daysUntil - b.daysUntil).slice(0, 5);
+  }, [funding, investors, partners]);
+
+  if (loading) {
+    return <Stack alignItems="center" sx={{ py: 6 }}><CircularProgress /></Stack>;
+  }
+
+  return (
+    <Stack spacing={2}>
+      {/* Top KPI-stripe */}
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' },
+          gap: 1.5,
+        }}
+      >
+        {[
+          { label: 'Søknader', value: funding.length, sub: `${formatCurrency(totalAsk)} forespurt`, tab: 'funding' as const, color: '#a78bfa' },
+          { label: 'Investorer', value: investors.length, sub: `${investorsByStatus.get('term_sheet') ?? 0} i term sheet`, tab: 'investors' as const, color: '#60a5fa' },
+          { label: 'Partnere', value: partners.length, sub: `${partnersByStatus.get('active') ?? 0} aktive`, tab: 'partners' as const, color: '#34d399' },
+          { label: 'Forretningsplan', value: `${planCompletion.pct}%`, sub: `${planCompletion.filled} / ${planCompletion.total} felt`, tab: 'business-plan' as const, color: '#fbbf24' },
+        ].map((card) => (
+          <Box
+            key={card.label}
+            onClick={() => onJumpToTab(card.tab)}
+            sx={{
+              p: 1.5,
+              borderRadius: 2,
+              border: '1px solid rgba(148,163,184,0.18)',
+              background: 'rgba(15,23,42,0.42)',
+              cursor: 'pointer',
+              transition: 'background 0.15s',
+              '&:hover': { background: 'rgba(168,85,247,0.08)' },
+            }}
+          >
+            <Typography sx={{ color: card.color, fontSize: '0.78rem', fontWeight: 700, mb: 0.4, opacity: 0.86 }}>
+              {card.label}
+            </Typography>
+            <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '1.6rem', lineHeight: 1 }}>
+              {card.value}
+            </Typography>
+            <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.78rem', mt: 0.4 }}>
+              {card.sub}
+            </Typography>
+          </Box>
+        ))}
+      </Box>
+
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 1.5 }}>
+        {/* Frister */}
+        <Box sx={{ p: 1.5, borderRadius: 2, border: '1px solid rgba(148,163,184,0.18)', background: 'rgba(15,23,42,0.42)' }}>
+          <Typography sx={{ color: '#fff', fontWeight: 800, mb: 1 }}>Neste 5 frister</Typography>
+          {upcomingDeadlines.length === 0 ? (
+            <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.08)' }}>
+              Ingen registrerte frister enda.
+            </Alert>
+          ) : (
+            <Stack spacing={0.8}>
+              {upcomingDeadlines.map((d, idx) => {
+                const tone =
+                  d.daysUntil < 0 ? { bg: 'rgba(248,113,113,0.18)', fg: '#fca5a5' }
+                  : d.daysUntil <= 7 ? { bg: 'rgba(248,113,113,0.14)', fg: '#fca5a5' }
+                  : d.daysUntil <= 30 ? { bg: 'rgba(251,191,36,0.16)', fg: '#fde68a' }
+                  : { bg: 'rgba(59,130,246,0.14)', fg: '#bfdbfe' };
+                const label =
+                  d.daysUntil < 0 ? `Passert ${Math.abs(d.daysUntil)}d`
+                  : d.daysUntil === 0 ? 'I dag'
+                  : `${d.daysUntil}d`;
+                return (
+                  <Stack
+                    key={`${d.tab}-${idx}`}
+                    direction="row"
+                    spacing={1}
+                    alignItems="center"
+                    onClick={() => onJumpToTab(d.tab)}
+                    sx={{
+                      p: 1, borderRadius: 1.5,
+                      border: '1px solid rgba(148,163,184,0.14)',
+                      background: 'rgba(2,6,23,0.34)',
+                      cursor: 'pointer',
+                      '&:hover': { background: 'rgba(168,85,247,0.08)' },
+                    }}
+                  >
+                    <Chip size="small" label={label} sx={{ bgcolor: tone.bg, color: tone.fg, fontWeight: 700, minWidth: 70 }} />
+                    <Box sx={{ minWidth: 0, flex: 1 }}>
+                      <Typography sx={{ color: '#e2e8f0', fontWeight: 600, fontSize: '0.86rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {d.label}
+                      </Typography>
+                      <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.74rem' }}>
+                        {d.date}
+                      </Typography>
+                    </Box>
+                  </Stack>
+                );
+              })}
+            </Stack>
+          )}
+        </Box>
+
+        {/* Søknad-status-fordeling */}
+        <Box sx={{ p: 1.5, borderRadius: 2, border: '1px solid rgba(148,163,184,0.18)', background: 'rgba(15,23,42,0.42)' }}>
+          <Typography sx={{ color: '#fff', fontWeight: 800, mb: 1 }}>Søknader per status</Typography>
+          {funding.length === 0 ? (
+            <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.08)' }}>
+              Ingen søknader registrert enda.
+            </Alert>
+          ) : (
+            <Stack spacing={0.5}>
+              {(Object.keys(FUNDING_STATUS_LABELS) as FundingAppStatus[]).map((status) => {
+                const count = fundingByStatus.get(status) ?? 0;
+                const pct = funding.length > 0 ? Math.round((count / funding.length) * 100) : 0;
+                if (count === 0) return null;
+                return (
+                  <Box key={status}>
+                    <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.2 }}>
+                      <Typography sx={{ color: '#e2e8f0', fontSize: '0.84rem' }}>
+                        {FUNDING_STATUS_LABELS[status]}
+                      </Typography>
+                      <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.84rem' }}>
+                        {count} ({pct}%)
+                      </Typography>
+                    </Stack>
+                    <Box sx={{ height: 6, bgcolor: 'rgba(148,163,184,0.16)', borderRadius: 3, overflow: 'hidden' }}>
+                      <Box sx={{ height: '100%', width: `${pct}%`, bgcolor: '#a78bfa', transition: 'width 0.2s' }} />
+                    </Box>
+                  </Box>
+                );
+              })}
+            </Stack>
+          )}
+        </Box>
+      </Box>
+
+      {/* Investor pipeline + partner liste i bunnen */}
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 1.5 }}>
+        <Box sx={{ p: 1.5, borderRadius: 2, border: '1px solid rgba(148,163,184,0.18)', background: 'rgba(15,23,42,0.42)' }}>
+          <Typography sx={{ color: '#fff', fontWeight: 800, mb: 1 }}>Investor pipeline</Typography>
+          {investors.length === 0 ? (
+            <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.08)' }}>
+              Ingen investorer enda.
+            </Alert>
+          ) : (
+            <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap>
+              {(Object.keys(INVESTOR_STATUS_LABELS) as InvestorStatus[]).map((status) => {
+                const count = investorsByStatus.get(status) ?? 0;
+                if (count === 0) return null;
+                return (
+                  <Chip
+                    key={status}
+                    label={`${INVESTOR_STATUS_LABELS[status]}: ${count}`}
+                    sx={{ bgcolor: 'rgba(96,165,250,0.16)', color: '#bfdbfe', fontWeight: 700 }}
+                  />
+                );
+              })}
+            </Stack>
+          )}
+        </Box>
+        <Box sx={{ p: 1.5, borderRadius: 2, border: '1px solid rgba(148,163,184,0.18)', background: 'rgba(15,23,42,0.42)' }}>
+          <Typography sx={{ color: '#fff', fontWeight: 800, mb: 1 }}>Partner-status</Typography>
+          {partners.length === 0 ? (
+            <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.08)' }}>
+              Ingen partnere enda.
+            </Alert>
+          ) : (
+            <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap>
+              {(Object.keys(PARTNER_STATUS_LABELS) as PartnerStatus[]).map((status) => {
+                const count = partnersByStatus.get(status) ?? 0;
+                if (count === 0) return null;
+                return (
+                  <Chip
+                    key={status}
+                    label={`${PARTNER_STATUS_LABELS[status]}: ${count}`}
+                    sx={{ bgcolor: 'rgba(52,211,153,0.16)', color: '#86efac', fontWeight: 700 }}
+                  />
+                );
+              })}
+            </Stack>
+          )}
+        </Box>
+      </Box>
+    </Stack>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
 // Page shell
 // ─────────────────────────────────────────────────────────
 
 export default function AdminRoom() {
-  const [tab, setTab] = useState<AdminRoomTab>('funding');
+  const [tab, setTab] = useState<AdminRoomTab>('dashboard');
   const userEmail = useMemo(() => getCurrentUserEmail(), []);
 
   if (userEmail !== ADMIN_ROOM_OWNER_EMAIL) {
@@ -1502,7 +1831,8 @@ export default function AdminRoom() {
   }
 
   let content: ReactNode = null;
-  if (tab === 'funding') content = <FundingAppsTab />;
+  if (tab === 'dashboard') content = <DashboardTab onJumpToTab={setTab} />;
+  else if (tab === 'funding') content = <FundingAppsTab />;
   else if (tab === 'investors') content = <InvestorContactsTab />;
   else if (tab === 'partners') content = <PartnerContactsTab />;
   else if (tab === 'business-plan') content = <BusinessPlanTab />;
@@ -1529,6 +1859,7 @@ export default function AdminRoom() {
             '& .MuiTabs-indicator': { backgroundColor: '#a78bfa' },
           }}
         >
+          <Tab value="dashboard" label="Oversikt" />
           <Tab value="business-plan" label="Forretningsplan" />
           <Tab value="funding" label="Søknader (IN/EU)" />
           <Tab value="investors" label="Investor-pipeline" />

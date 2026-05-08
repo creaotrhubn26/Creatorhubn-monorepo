@@ -20490,6 +20490,97 @@ app.get("/api/admin-room/business-plan", async (req, res) => {
   }
 });
 
+// AI-utkast for hvert felt i forretningsplan via Claude
+app.post("/api/admin-room/business-plan/generate", async (req, res) => {
+  const session = requireAdminRoomAccess(req, res);
+  if (!session) return;
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const fieldKey = typeof body.fieldKey === "string" ? body.fieldKey : "";
+  const fieldLabel = typeof body.fieldLabel === "string" ? body.fieldLabel : "";
+  const existingContent = typeof body.existingContent === "string" ? body.existingContent : "";
+  if (!fieldKey || !fieldLabel) {
+    res.status(400).json({ error: "fieldKey og fieldLabel er påkrevd" });
+    return;
+  }
+  try {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      res.status(503).json({ error: "ANTHROPIC_API_KEY er ikke satt" });
+      return;
+    }
+
+    // Hent eksisterende plan-data som kontekst — Claude kan referere til
+    // andre seksjoner for å lage konsistent tekst på tvers.
+    const planResult = await pool.query(
+      `SELECT * FROM admin_business_plan WHERE user_id = $1`,
+      [session.userId],
+    );
+    const plan = planResult.rows[0] ?? {};
+
+    const Anthropic = (await import("@anthropic-ai/sdk")).default;
+    const client = new Anthropic({ apiKey });
+
+    const systemPrompt = `Du er en norsk strategirådgiver som skriver forretningsplaner i BI/BBI-stil.
+
+Skrivestil:
+- Norsk, formell forretnings-stil
+- Konkret og datadrevet, ikke hype
+- 200-400 ord for vanlige seksjoner, 600+ for analyser (PESTEL, Porter, VRIO, SWOT)
+- Bruk Markdown-bullets der det gir mening
+- Ingen anførselstegn rundt outputen
+- Ingen forspil — returner kun innholdet selv
+
+Selskapet er The Role Room — en helhetlig produksjonsplattform for det norske
+film- og innholdsmarkedet. Stable produktfunksjonalitet: casting (roller,
+kandidater, kanban), crew & lokasjoner, storyboard og shotlists, budsjett-
+styring (kategori-grupper, Avvik, Cashflow, Rapporter), avtaler (NDA,
+samarbeidsavtaler, signering via Google), TROLL-demo for fremvisning.
+Multi-vertikal: produksjonsteam og innholdsprodusenter. Pilotkunde:
+Holy Crust (Oslo).`;
+
+    const planSummary = Object.entries(plan)
+      .filter(([key, value]) => (
+        typeof value === "string" && value.trim().length > 0
+        && key !== fieldKey
+        && !["id", "user_id", "metadata", "created_at", "updated_at"].includes(key)
+      ))
+      .slice(0, 10)
+      .map(([key, value]) => `${key}: ${(value as string).slice(0, 200)}`)
+      .join("\n");
+
+    const userPrompt = [
+      `Skriv innhold for seksjonen "${fieldLabel}" i en forretningsplan for The Role Room.`,
+      existingContent ? `\nEksisterende utkast (utvid eller forbedre):\n${existingContent}` : null,
+      planSummary ? `\nKontekst fra andre seksjoner:\n${planSummary}` : null,
+    ].filter(Boolean).join("\n");
+
+    const response = await client.messages.create({
+      model: "claude-sonnet-4-5-20250929",
+      max_tokens: 1500,
+      system: systemPrompt,
+      messages: [{ role: "user", content: userPrompt }],
+    });
+
+    type ContentBlock = { type: string; text?: string };
+    const generatedText = (response.content as ContentBlock[])
+      .filter((b): b is { type: 'text'; text: string } => b.type === "text" && typeof b.text === "string")
+      .map((b) => b.text)
+      .join("\n")
+      .trim();
+
+    res.json({
+      text: generatedText,
+      tokens: { input: response.usage.input_tokens, output: response.usage.output_tokens },
+    });
+  } catch (err) {
+    console.error("admin-room business-plan generate error", err);
+    res.status(500).json({
+      error: "Kunne ikke generere via Claude",
+      detail: String((err as Error)?.message ?? err).slice(0, 200),
+    });
+  }
+});
+
 app.patch("/api/admin-room/business-plan", async (req, res) => {
   const session = requireAdminRoomAccess(req, res);
   if (!session) return;
