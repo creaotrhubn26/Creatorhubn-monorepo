@@ -19735,10 +19735,13 @@ app.post("/api/demo/troll/seed-all", async (req, res) => {
         production_days: { status: "loaded", count: report.counts.productionDays, items: [] },
         manuscripts: { status: "loaded", count: report.counts.manuscripts, items: [] },
         consents: { status: "loaded", count: report.counts.consents, items: [] },
-        // Kompatibilitet med eksisterende frontend som forventer disse feltene:
-        split_sheets: { status: "loaded", count: 0, items: [] },
-        offers: { status: "loaded", count: 0, items: [] },
-        contracts: { status: "loaded", count: 0, items: [] },
+        schedules: { status: "loaded", count: report.counts.schedules, items: [] },
+        props: { status: "loaded", count: report.counts.props, items: [] },
+        split_sheets: { status: "loaded", count: report.counts.splitSheets, items: [] },
+        // Tabellene casting_offers og casting_contracts finnes ikke i schemaet
+        // enda; merket not_supported så UI viser ikke "Tom"-warning.
+        offers: { status: "not_supported", count: 0, items: [] },
+        contracts: { status: "not_supported", count: 0, items: [] },
       },
       counts: report.counts,
     });
@@ -19781,9 +19784,11 @@ app.post("/api/demo/troll/initialize-all", async (req, res) => {
         production_days: { status: "loaded", count: report.counts.productionDays, items: [] },
         manuscripts: { status: "loaded", count: report.counts.manuscripts, items: [] },
         consents: { status: "loaded", count: report.counts.consents, items: [] },
-        split_sheets: { status: "loaded", count: 0, items: [] },
-        offers: { status: "loaded", count: 0, items: [] },
-        contracts: { status: "loaded", count: 0, items: [] },
+        schedules: { status: "loaded", count: report.counts.schedules, items: [] },
+        props: { status: "loaded", count: report.counts.props, items: [] },
+        split_sheets: { status: "loaded", count: report.counts.splitSheets, items: [] },
+        offers: { status: "not_supported", count: 0, items: [] },
+        contracts: { status: "not_supported", count: 0, items: [] },
       },
       counts: report.counts,
     });

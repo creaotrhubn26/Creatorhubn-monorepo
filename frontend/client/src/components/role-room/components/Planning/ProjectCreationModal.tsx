@@ -3055,7 +3055,10 @@ useEffect(() => {
                       contracts: 'Kontrakter',
                       consents: 'Samtykker',
                       split_sheets: 'Split Sheets',
-                      equipment: 'Utstyr'
+                      equipment: 'Utstyr',
+                      schedules: 'Tidsplan',
+                      props: 'Rekvisitter',
+                      manuscripts: 'Manuskript'
                     };
                     const label = areaLabels[key] || key.replace(/_/g, ' ');
                     
@@ -3072,6 +3075,8 @@ useEffect(() => {
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                           {area.status === 'loaded' ? (
                             <CheckCircle sx={{ color: 'success.main', fontSize: 20 }} />
+                          ) : area.status === 'not_supported' ? (
+                            <CheckCircle sx={{ color: 'text.disabled', fontSize: 20 }} />
                           ) : area.status === 'empty' || area.status === 'not_found' ? (
                             <Warning sx={{ color: 'warning.main', fontSize: 20 }} />
                           ) : (
@@ -3081,10 +3086,22 @@ useEffect(() => {
                             {label}
                           </Typography>
                         </Box>
-                        <Chip 
-                          label={area.count === 0 ? 'Tom' : `${area.count} elementer`}
+                        <Chip
+                          label={
+                            area.status === 'not_supported'
+                              ? 'Ikke aktivert'
+                              : area.count === 0 ? 'Tom' : `${area.count} elementer`
+                          }
                           size="small"
-                          color={area.status === 'loaded' && area.count > 0 ? 'success' : area.status === 'empty' || area.count === 0 ? 'warning' : 'default'}
+                          color={
+                            area.status === 'loaded' && area.count > 0
+                              ? 'success'
+                              : area.status === 'not_supported'
+                                ? 'default'
+                                : area.status === 'empty' || area.count === 0
+                                  ? 'warning'
+                                  : 'default'
+                          }
                           variant="outlined"
                         />
                       </Box>
@@ -3141,10 +3158,16 @@ useEffect(() => {
                     contracts: 'Kontrakter',
                     consents: 'Samtykker',
                     split_sheets: 'Split Sheets',
-                    equipment: 'Utstyr'
+                    equipment: 'Utstyr',
+                    schedules: 'Tidsplan',
+                    props: 'Rekvisitter',
+                    manuscripts: 'Manuskript'
                   };
                   const label = areaLabels[key] || key.replace(/_/g, ' ');
-                  const isEmpty = area.status === 'empty' || area.status === 'not_found' || area.count === 0;
+                  // not_supported betyr at tabellen ikke finnes i schemaet — vises
+                  // diskret istedenfor som "manglende data".
+                  const isEmpty = area.status === 'empty' || area.status === 'not_found'
+                    || (area.count === 0 && area.status !== 'not_supported');
                   
                   return (
                     <Box key={key} sx={{ 
@@ -3248,7 +3271,7 @@ useEffect(() => {
           >
             {trollInitStatus === 'complete' ? 'Lukk' : 'Avbryt'}
           </Button>
-          {trollInitStatus === 'complete' && Object.values(trollInitAreas).some(a => a.status === 'empty' || a.status === 'not_found' || a.count === 0) && (
+          {trollInitStatus === 'complete' && Object.values(trollInitAreas).some(a => a.status === 'empty' || a.status === 'not_found' || (a.count === 0 && a.status !== 'not_supported')) && (
             <Button 
               variant="outlined"
               onClick={() => {

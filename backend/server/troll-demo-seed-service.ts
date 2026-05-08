@@ -17,6 +17,9 @@
  *   • casting_equipment — 8 utstyrspakker
  *   • casting_production_days — 6 opptaksdager
  *   • casting_consents — 4 samtykker
+ *   • casting_schedules — 6 audition/fitting/rehearsal-sesjoner
+ *   • casting_props — 8 TROLL-tema rekvisitter
+ *   • split_sheets + split_sheet_contributors — 1 sheet med 8 bidragsytere
  *
  * Returnerer rapport om hva som ble seedet for frontend-feedback.
  */
@@ -359,6 +362,144 @@ export async function seedTrollDemo(
       );
     }
 
+    // ── 12b. casting_schedules ────────────────────────────────────────
+    // Audition / callback / fitting / rehearsal-sesjoner. Tabell-skjema
+    // tillater nullable role/scene/location, så vi seeder en realistisk
+    // miks som dekker både pre-prod og produksjon.
+    const schedules = [
+      {
+        id: 'sched-bonden-audition', candidate: 'cand-stein', role: 'role-bonde',
+        location: 'loc-osterdalen', date: '2025-12-15', start: '14:00', end: '15:00',
+        type: 'audition', status: 'completed',
+        notes: 'Stein leste sidene 12-14. Sterk presence, vurderes til callback.',
+      },
+      {
+        id: 'sched-bonden-callback', candidate: 'cand-stein', role: 'role-bonde',
+        location: 'loc-osterdalen', date: '2025-12-22', start: '13:00', end: '14:00',
+        type: 'callback', status: 'completed',
+        notes: 'Callback med Roar — chemistry-test mot Nora-skuespilleren.',
+      },
+      {
+        id: 'sched-nora-fitting', candidate: 'cand-ine', role: 'role-nora',
+        location: null, date: '2026-01-10', start: '10:00', end: '12:00',
+        type: 'fitting', status: 'scheduled',
+        notes: 'Kostyme-prøve, paleontolog-feltjakke. Eva Haukeland leder.',
+      },
+      {
+        id: 'sched-readthrough', candidate: null, role: null,
+        location: null, date: '2026-01-12', start: '09:00', end: '13:00',
+        type: 'rehearsal', status: 'scheduled',
+        notes: 'Read-through med Ine, Kim, Gard, Fridtjov, Anneke.',
+      },
+      {
+        id: 'sched-stunt-tunnel', candidate: null, role: 'role-arbeider1',
+        location: 'loc-tunnel', date: '2026-01-18', start: '14:00', end: '17:00',
+        type: 'rehearsal', status: 'scheduled',
+        notes: 'Stunt-rehearsal scene 1+2 — koreografi for tunnel-kollapsen.',
+      },
+      {
+        id: 'sched-preprod', candidate: null, role: null,
+        location: 'loc-oslo-stat', date: '2026-01-19', start: '09:00', end: '12:00',
+        type: 'meeting', status: 'scheduled',
+        notes: 'Pre-produksjonsmøte: gjennomgang av opptaksdager 1-6.',
+      },
+    ];
+    for (const s of schedules) {
+      await client.query(
+        `INSERT INTO casting_schedules
+           (id, project_id, candidate_id, role_id, location_id, date,
+            start_time, end_time, type, status, notes, reminders_sent,
+            created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, '[]'::jsonb, NOW(), NOW())`,
+        [s.id, TROLL_PROJECT_ID, s.candidate, s.role, s.location, s.date,
+         s.start, s.end, s.type, s.status, s.notes],
+      );
+    }
+
+    // ── 12c. casting_props ────────────────────────────────────────────
+    // Rekvisitter knyttet til TROLL-univers (gruvedrift, statsministerens
+    // kontor, paleontologisk feltarbeid, norske fjellsymboler).
+    const props = [
+      { id: 'prop-borrekrone', name: 'Knust borrekrone', category: 'set_dressing',
+        description: 'Ødelagt bor-spiss fra eksplosjonen i Lærdalstunnelen. Hero prop scene 1.',
+        availability: 'in_storage', quantity: 1 },
+      { id: 'prop-hjelm', name: 'Tunnelarbeider-hjelm', category: 'costume',
+        description: 'Vernehjelm med pannelampe, brand: Petzl. Scene 1+2.',
+        availability: 'rented', quantity: 8 },
+      { id: 'prop-kart-dovre', name: 'Topografisk kart — Dovrefjell',
+        category: 'paper_props', description: 'A2 print, sammenbrettet. Brukes i scene 4 + 7.',
+        availability: 'in_storage', quantity: 2 },
+      { id: 'prop-mappe', name: 'Statsministerens dokumentmappe',
+        category: 'set_dressing', description: 'Skinninnbundet, embossert med riksvåpen.',
+        availability: 'in_storage', quantity: 1 },
+      { id: 'prop-geiger', name: 'Vintage Geiger-teller', category: 'hand_prop',
+        description: 'Sovjetisk DP-5B, fungerende. Tobias bruker den i scene 10.',
+        availability: 'rented', quantity: 1 },
+      { id: 'prop-feltkoffert', name: 'Paleontolog-feltkoffert', category: 'hand_prop',
+        description: 'Noras feltverktøy — pinsetter, lupe, prøveglass, notatbok.',
+        availability: 'in_storage', quantity: 1 },
+      { id: 'prop-flagg', name: 'Norsk flagg — Akershus festning',
+        category: 'set_dressing', description: 'Flaggstang-størrelse, bomullsbasert.',
+        availability: 'in_storage', quantity: 3 },
+      { id: 'prop-runestein', name: 'Runesteen-kopi', category: 'set_dressing',
+        description: 'Polyuretan-replika, Tobias hytte. Scene 10 reveal.',
+        availability: 'in_production', quantity: 2 },
+    ];
+    for (const p of props) {
+      await client.query(
+        `INSERT INTO casting_props
+           (id, project_id, name, category, description, availability, quantity,
+            created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())`,
+        [p.id, TROLL_PROJECT_ID, p.name, p.category, p.description, p.availability, p.quantity],
+      );
+    }
+
+    // ── 12d. split_sheets + split_sheet_contributors ──────────────────
+    // Idempotent: slett eksisterende sheet for prosjektet før INSERT.
+    await client.query(
+      `DELETE FROM split_sheet_contributors
+         WHERE split_sheet_id IN (SELECT id FROM split_sheets WHERE project_id = $1)`,
+      [TROLL_PROJECT_ID],
+    );
+    await client.query(`DELETE FROM split_sheets WHERE project_id = $1`, [TROLL_PROJECT_ID]);
+
+    const splitSheetRow = await client.query<{ id: string }>(
+      `INSERT INTO split_sheets
+         (user_id, project_id, title, description, status, total_percentage, metadata,
+          created_at, updated_at)
+       VALUES ($1, $2, $3, $4, 'draft', 100, $5::jsonb, NOW(), NOW())
+       RETURNING id`,
+      [
+        ownerUserId,
+        TROLL_PROJECT_ID,
+        'TROLL — Filmproduksjon Split Sheet',
+        'Fordeling av inntekter for TROLL (2026). Bygget på Norsk Filminstitutts standard-kontrakt.',
+        JSON.stringify({ source: 'troll_seed_v1', isDemo: true }),
+      ],
+    );
+    const splitSheetId = splitSheetRow.rows[0].id;
+
+    const contributors = [
+      { name: 'Roar Uthaug', email: 'roar@uthaug.no', role: 'director', percentage: 25, order: 0 },
+      { name: 'Espen Horn', email: 'espen@motlysfilm.no', role: 'producer', percentage: 20, order: 1 },
+      { name: 'Espen Aukan', email: 'espen.aukan@writer.no', role: 'writer', percentage: 15, order: 2 },
+      { name: 'Ine Marie Wilmann', email: 'agent@inemarie.no', role: 'lead_actor', percentage: 10, order: 3 },
+      { name: 'Kim Falck', email: 'kim.falck@agent.no', role: 'lead_actor', percentage: 10, order: 4 },
+      { name: 'Jallo Faber', email: 'jallo@cinematographers.no', role: 'cinematographer', percentage: 10, order: 5 },
+      { name: 'Hanne Berkaak', email: 'hanne@design.no', role: 'production_designer', percentage: 5, order: 6 },
+      { name: 'Stian Aadland', email: 'stian@sound.no', role: 'sound_designer', percentage: 5, order: 7 },
+    ];
+    for (const c of contributors) {
+      await client.query(
+        `INSERT INTO split_sheet_contributors
+           (split_sheet_id, name, email, role, percentage, order_index, invitation_status,
+            created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, 'pending', NOW(), NOW())`,
+        [splitSheetId, c.name, c.email, c.role, c.percentage, c.order],
+      );
+    }
+
     // ── 13. casting_consents ──────────────────────────────────────────
     const consents = [
       { id: 'consent-ine', candidate: 'cand-ine', type: 'image_likeness', status: 'signed' },
@@ -390,6 +531,10 @@ export async function seedTrollDemo(
         equipment: equipmentInserted,
         productionDays: productionDays.length,
         consents: consents.length,
+        schedules: schedules.length,
+        props: props.length,
+        splitSheets: 1,
+        splitSheetContributors: contributors.length,
       },
     };
   } catch (err) {
