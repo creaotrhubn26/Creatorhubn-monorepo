@@ -76,7 +76,17 @@ import {
   NavigateBefore as GotoIcon,
   Visibility as ViewIcon,
   Download as DownloadIcon,
+  MenuBook as ExpositionIcon,
+  Whatshot as ConflictIcon,
+  TrendingUp as RisingActionIcon,
+  GpsFixed as ClimaxIcon,
+  TrendingDown as FallingActionIcon,
+  CheckCircle as ResolutionIcon,
+  ArrowForward as TransitionIcon,
+  AccountCircle as CharacterDevIcon,
+  CallSplit as SubplotIcon,
 } from '@mui/icons-material';
+import type { SvgIconComponent } from '@mui/icons-material';
 import {
   analyzeScriptExtended,
   createShareConfig,
@@ -98,17 +108,17 @@ interface StoryStructurePanelProps {
   darkMode?: boolean;
 }
 
-// Purpose colors and labels
-const PURPOSE_CONFIG: Record<ScenePurpose, { color: string; label: string; icon: string }> = {
-  exposition: { color: '#3b82f6', label: 'Eksposisjon', icon: '📖' },
-  conflict: { color: '#ef4444', label: 'Konflikt', icon: '⚔️' },
-  rising_action: { color: '#f59e0b', label: 'Stigende handling', icon: '📈' },
-  climax: { color: '#dc2626', label: 'Klimaks', icon: '🎯' },
-  falling_action: { color: '#8b5cf6', label: 'Fallende handling', icon: '📉' },
-  resolution: { color: '#22c55e', label: 'Løsning', icon: '✅' },
-  transition: { color: '#6b7280', label: 'Overgang', icon: '➡️' },
-  character_development: { color: '#06b6d4', label: 'Karakterutvikling', icon: '👤' },
-  subplot: { color: '#ec4899', label: 'Subplott', icon: '🔀' },
+// Purpose colors, labels and MUI icons
+const PURPOSE_CONFIG: Record<ScenePurpose, { color: string; label: string; Icon: SvgIconComponent }> = {
+  exposition: { color: '#3b82f6', label: 'Eksposisjon', Icon: ExpositionIcon },
+  conflict: { color: '#ef4444', label: 'Konflikt', Icon: ConflictIcon },
+  rising_action: { color: '#f59e0b', label: 'Stigende handling', Icon: RisingActionIcon },
+  climax: { color: '#dc2626', label: 'Klimaks', Icon: ClimaxIcon },
+  falling_action: { color: '#8b5cf6', label: 'Fallende handling', Icon: FallingActionIcon },
+  resolution: { color: '#22c55e', label: 'Løsning', Icon: ResolutionIcon },
+  transition: { color: '#6b7280', label: 'Overgang', Icon: TransitionIcon },
+  character_development: { color: '#06b6d4', label: 'Karakterutvikling', Icon: CharacterDevIcon },
+  subplot: { color: '#ec4899', label: 'Subplott', Icon: SubplotIcon },
 };
 
 // Generate character color
@@ -339,11 +349,17 @@ const SceneListPanel: FC<SceneListPanelProps> = ({
           >
             <MenuItem value="all">Alle scener</MenuItem>
             <Divider />
-            {Object.entries(PURPOSE_CONFIG).map(([key, config]) => (
-              <MenuItem key={key} value={key}>
-                {config.icon} {config.label}
-              </MenuItem>
-            ))}
+            {Object.entries(PURPOSE_CONFIG).map(([key, config]) => {
+              const PurposeIcon = config.Icon;
+              return (
+                <MenuItem key={key} value={key}>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <PurposeIcon sx={{ fontSize: 18, color: config.color }} />
+                    <span>{config.label}</span>
+                  </Stack>
+                </MenuItem>
+              );
+            })}
           </Select>
         </FormControl>
       </Stack>
@@ -569,18 +585,22 @@ const StructurePanel: FC<StructurePanelProps> = ({
       </Typography>
       
       <Stack direction="row" flexWrap="wrap" gap={0.5}>
-        {Object.entries(PURPOSE_CONFIG).map(([key, config]) => (
-          <Chip
-            key={key}
-            label={`${config.icon} ${config.label}`}
-            size="small"
-            sx={{
-              bgcolor: `${config.color}20`,
-              color: config.color,
-              fontSize: '0.65rem',
-            }}
-          />
-        ))}
+        {Object.entries(PURPOSE_CONFIG).map(([key, config]) => {
+          const PurposeIcon = config.Icon;
+          return (
+            <Chip
+              key={key}
+              icon={<PurposeIcon sx={{ fontSize: 14, color: `${config.color} !important` }} />}
+              label={config.label}
+              size="small"
+              sx={{
+                bgcolor: `${config.color}20`,
+                color: config.color,
+                fontSize: '0.65rem',
+              }}
+            />
+          );
+        })}
       </Stack>
     </Box>
   );
