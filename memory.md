@@ -179,8 +179,8 @@ export function setupXxxRoutes(deps: XxxRoutesDeps): void {
 11. `analytics-routes.ts` (24)
 12. ~~`admin-room-funding-routes.ts` (3)~~ ✅ **gjort** — 5 endpoints (commit `17060294`)
 13. ~~`admin-room-investors-routes.ts` (4)~~ ✅ **gjort** — admin-only investor-CRM, due-diligence checklist + deck-status (commit pending push)
-14. `admin-room-partners-routes.ts` (4) — neste kandidat
-15. `admin-room-decks-routes.ts` (7)
+14. ~~`admin-room-partners-routes.ts` (4)~~ ✅ **gjort** — partner-CRM, kontrakt-status (commit pending push)
+15. `admin-room-decks-routes.ts` (7) — neste kandidat (kobler til investor-pipeline; importerer fra `role-room-investor-deck-db.js`)
 16. `admin-room-business-plan-routes.ts` (3)
 17. `admin-room-activity-routes.ts` (1)
 18. (resten av smågrupper bundles eller utsettes)
