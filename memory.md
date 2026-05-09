@@ -163,12 +163,13 @@ export function setupXxxRoutes(deps: XxxRoutesDeps): void {
 **Anbefalt rekkefølge** (fra størst til minst, delt i håndterlige biter):
 
 1. `role-room-*-routes.ts` (97 endpoints) — **kartlagt 2026-05-09:** spredt utover index.ts (linje 13676 → 33479+), ikke ett kluster. Faktiske sub-kategorier:
-   - `role-room-vendor-links-routes.ts` (2) — public, statisk vendor-data ✅ **gjort** (commit pending push)
+   - `role-room-vendor-links-routes.ts` (2) — public, statisk vendor-data ✅ **gjort** (commit `67091ba2`)
+   - `role-room-casting-routes.ts` (6) — admin-tooling for reminder/SMS/WhatsApp-invoice-sveep ✅ **gjort** (commit pending push). Bruker `requireAdminSession` (admin-rolle, ikke produkteier-låst).
    - `role-room-agent-routes.ts` (19 + 7 marketing-plan = 26) — Innholdsprodusent-mode (sjekk for getActiveProfessionMode i hver endpoint før ekstrakt)
    - `role-room-whatsapp-routes.ts` (15) — WhatsApp messaging
    - `role-room-social-routes.ts` (8 social + 8 instagram + 4 tiktok + 4 facebook + 2 youtube + 2 linkedin = 28) — sosiale OAuth/posting
-   - `role-room-billing-routes.ts` (8) — Role Room billing
-   - `role-room-projects-routes.ts` (2 projects + 2 offers + 2 contracts + 1 project-agreements = 7) — prosjekt-lifecycle
+   - `role-room-billing-routes.ts` (9 endpoints — webhook ved linje 642 + 8 ved linje 43672-45392) — **utsatt 2026-05-09:** ekstremt spredt utover hele filen, krever Stripe-state og webhook-secrets. Kommer tilbake når subsystemet kan ekstrakteres samlet med Stripe-customer-resolver-helpers.
+   - `role-room-projects-routes.ts` (10 endpoints — multi-line app.X-format avslørte 3 ekstra) — **utsatt 2026-05-09:** entangled med 14 module-scope helpers (legacyOffersByProject, legacyContractsByProject, legacyProjectAgreementsByProject Maps + getProjectItems/setProjectItems/findByIdInProjectMap/findByIdInDbProjectArrays/createProjectAgreementRecord/normalizeProjectAgreementStatus/dbLegacy*Key + compatStoreGet/compatStoreSet). Disse helpers brukes også av andre endpoints utenfor role-room-projects, så de kan ikke flyttes uten større refactor. Kommer tilbake til denne etter (a) helpers ekstraktert til egen modul, eller (b) større "casting-offers-contracts-agreements"-subsystem-extract som flytter helpers og endpoints sammen.
    - `role-room-casting-routes.ts` (6) — casting-funksjonalitet (lite — det meste ligger i `/api/casting`-clusteret som er separat)
    - `role-room-misc-routes.ts` (3 client-portal + 1 education-inquiries + 1 commercial-access = 5) — diverse
    - **Mode-relevans:** `agent` og `marketing-plan` er primært Innholdsprodusent-mode; `social` har OAuth som er mode-uavhengig men feed/publishing er mode-spesifikt. Sjekk per endpoint.

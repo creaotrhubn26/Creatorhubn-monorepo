@@ -333,6 +333,7 @@ import { setupAdminDecksRoutes } from "./admin-room-decks-routes";
 import { setupAdminBusinessPlanRoutes } from "./admin-room-business-plan-routes";
 import { setupAdminActivityRoutes } from "./admin-room-activity-routes";
 import { setupRoleRoomVendorLinksRoutes } from "./role-room-vendor-links-routes";
+import { setupRoleRoomCastingRoutes } from "./role-room-casting-routes";
 import { asString, asNumberOrNull, asJsonbArray, asJsonbObject } from "./_shared";
 import {
   getNotebookLmWorkspaceStatus,
@@ -43892,91 +43893,14 @@ app.post("/api/role-room/billing/reminders/trigger", async (req, res) => {
   }
 });
 
-app.post("/api/role-room/casting/reminders/sweep", async (req, res) => {
-  if (!requireAdminSession(req, res)) {
-    return;
-  }
-
-  try {
-    const summary = await runAuditionReminderSweep("manual", { pool });
-    return res.json({ success: true, summary });
-  } catch (error) {
-    console.error("Error triggering audition reminder sweep:", error);
-    return res.status(500).json({
-      error: "Kunne ikke trigge audition-reminder-sweep.",
-    });
-  }
-});
-
-app.get("/api/role-room/casting/reminders/status", async (req, res) => {
-  if (!requireAdminSession(req, res)) {
-    return;
-  }
-
-  return res.json({
-    success: true,
-    summary: readAuditionReminderStatus(),
-  });
-});
-
-app.post("/api/role-room/casting/sms-invoice/sweep", async (req, res) => {
-  if (!requireAdminSession(req, res)) {
-    return;
-  }
-  const stripe = getRoleRoomStripeClient();
-  if (!stripe) {
-    return res.status(503).json({
-      error: "Stripe Billing er ikke konfigurert på serveren.",
-    });
-  }
-  try {
-    const summary = await runSmsInvoiceSweep("manual", {
-      pool,
-      stripe,
-      resolveCustomer: resolveStripeCustomerForCastingProject,
-    });
-    return res.json({ success: true, summary });
-  } catch (error) {
-    console.error("Error triggering SMS invoice sweep:", error);
-    return res.status(500).json({
-      error: "Kunne ikke trigge SMS-faktura-sweep.",
-    });
-  }
-});
-
-app.get("/api/role-room/casting/sms-invoice/status", async (req, res) => {
-  if (!requireAdminSession(req, res)) {
-    return;
-  }
-  return res.json({ success: true, summary: readSmsInvoiceStatus() });
-});
-
-app.post("/api/role-room/casting/whatsapp-invoice/sweep", async (req, res) => {
-  if (!requireAdminSession(req, res)) return;
-  const stripe = getRoleRoomStripeClient();
-  if (!stripe) {
-    return res
-      .status(503)
-      .json({ error: "Stripe Billing er ikke konfigurert på serveren." });
-  }
-  try {
-    const summary = await runWhatsAppInvoiceSweep("manual", {
-      pool,
-      stripe,
-      resolveCustomer: resolveStripeCustomerForCastingProject,
-    });
-    return res.json({ success: true, summary });
-  } catch (error) {
-    console.error("WhatsApp invoice sweep failed:", error);
-    return res
-      .status(500)
-      .json({ error: "Kunne ikke trigge WhatsApp-faktura-sweep." });
-  }
-});
-
-app.get("/api/role-room/casting/whatsapp-invoice/status", async (req, res) => {
-  if (!requireAdminSession(req, res)) return;
-  return res.json({ success: true, summary: readWhatsAppInvoiceStatus() });
+// ── role-room/casting/* — flyttet til ./role-room-casting-routes.ts
+//   reminder-sweep + sms/whatsapp-invoice-sweep, alle admin-tooling.
+setupRoleRoomCastingRoutes({
+  app,
+  pool,
+  requireAdminSession,
+  getRoleRoomStripeClient,
+  resolveStripeCustomerForCastingProject,
 });
 
 // ── Pressroom (composer) månedlig faktura-sweep ───────────────────────
