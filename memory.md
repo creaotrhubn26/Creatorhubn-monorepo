@@ -174,7 +174,10 @@ export function setupXxxRoutes(deps: XxxRoutesDeps): void {
    - `role-room-client-portal-routes.ts` (3) — admin-side av klient-portal (invite/list/revoke) ✅ **gjort** (commit pending push). Klient-siden (magic-link-auth via session_token) blir igjen i index.ts som /api/client/portal/*.
    - **Restende misc:** `commercial-access` (1, linje 43640) og `education-inquiries` (1, linje 45486) blir stående i index.ts — for små for egen modul, ingen logisk gruppering med andre endpoints. Vurder å bundle med education-/marketing-modul senere.
    - **Mode-relevans:** `agent` og `marketing-plan` er primært Innholdsprodusent-mode; `social` har OAuth som er mode-uavhengig men feed/publishing er mode-spesifikt. Sjekk per endpoint.
-2. `showcase-routes.ts` (60)
+2. `showcase-*-routes.ts` (60 endpoints, ~2800 linjer 105258-108050) — **kartlagt 2026-05-10:** ~40 unike sub-segmenter, krever splitt i ~8 sub-moduler. Sub-modul-progresjon:
+   - `showcase-templates-routes.ts` (4) — design-maler, drizzle CRUD ✅ **gjort** (commit pending push). Auth: open (eksisterende oppførsel — userId fra query/header, ingen session-validering).
+   - Gjenstår: collections (6), items (4), client-selections (3), smart-albums (2), pricing (2), client-session (2), categories+day-categories+profession (4), batch-operations (2), analytics (2), watermark/upload-media/update-metadata/toggle-favorite/sync-google-photos/quick-transform/showcases/settings/sets/send-overage-email/portfolios/move-images/link-project/import-google-photos/enhancement-presets/enhance-photo/email/delete-images/crop/copy-images/comments/client-submissions/calculate-selection-price/bulk-upload/bulk-download/archive-images (~37 misc image-ops). **Foreslått gruppering:** items (CRUD + comments), collections, categories, client (portal/sessions/submissions/selections), image-ops (bulk + transformations), google-photos, misc.
+
 3. `admin-routes.ts` (51) — eventuelt splittes
 4. `evendi-routes.ts` (50)
 5. `projects-routes.ts` (48)
