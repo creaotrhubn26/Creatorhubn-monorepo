@@ -23,31 +23,7 @@
  * Se 139_role_nav_config.sql for tabell-skjema.
  */
 
-import type express from "express";
-import type { Pool } from "pg";
-
-interface AdminSession {
-  userId: string;
-  email: string;
-}
-
-export interface RoleNavRoutesDeps {
-  app: express.Application;
-  pool: Pool;
-  getActiveSessionFromRequest: (req: express.Request) => AdminSession | null;
-  requireAdminRoomAccess: (
-    req: express.Request,
-    res: express.Response,
-  ) => AdminSession | null;
-  logAdminActivity: (args: {
-    userId: string;
-    entityType: string;
-    entityId?: string | null;
-    action: string;
-    summary?: string;
-    details?: Record<string, unknown>;
-  }) => Promise<void>;
-}
+import type { AdminRoomRoutesDeps } from "./_shared";
 
 const VALID_ROLE_NAV_TAB_VALUES = new Set([
   "roles",
@@ -80,7 +56,7 @@ const VALID_USER_ROLE_TYPES = new Set([
   "reader",
 ]);
 
-export function setupRoleNavConfigRoutes(deps: RoleNavRoutesDeps): void {
+export function setupRoleNavConfigRoutes(deps: AdminRoomRoutesDeps): void {
   const {
     app,
     pool,
