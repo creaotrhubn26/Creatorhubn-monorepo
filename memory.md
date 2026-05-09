@@ -180,10 +180,12 @@ export function setupXxxRoutes(deps: XxxRoutesDeps): void {
 12. ~~`admin-room-funding-routes.ts` (3)~~ ✅ **gjort** — 5 endpoints (commit `17060294`)
 13. ~~`admin-room-investors-routes.ts` (4)~~ ✅ **gjort** — admin-only investor-CRM, due-diligence checklist + deck-status (commit pending push)
 14. ~~`admin-room-partners-routes.ts` (4)~~ ✅ **gjort** — partner-CRM, kontrakt-status (commit `71f2a360`)
-15. ~~`admin-room-decks-routes.ts` (7)~~ ✅ **gjort** — pitch-decks for investor-pipeline, AI-generate per slide (commit pending push)
-16. `admin-room-business-plan-routes.ts` (3)
-17. `admin-room-activity-routes.ts` (1)
+15. ~~`admin-room-decks-routes.ts` (7)~~ ✅ **gjort** — pitch-decks for investor-pipeline, AI-generate per slide (commit `4ab32dcc`)
+16. ~~`admin-room-business-plan-routes.ts` (3)~~ ✅ **gjort** — UPSERT på 35 tekstfelt + AI-generate per felt (commit pending push)
+17. ~~`admin-room-activity-routes.ts` (1)~~ ✅ **gjort** — GET med filter på entityType/entityId/limit (commit pending push)
 18. (resten av smågrupper bundles eller utsettes)
+
+**🎉 Admin-room-clusteret er fullstendig ekstraktert.** Alle 24 endpoints fra `/api/admin-room/*` er flyttet til 7 dedikerte route-moduler. `index.ts` har nå kun 7 setup-kall i admin-room-blokken. Neste mål: større grupper (`role-room`, `showcase`, `admin`, `evendi`, `projects`, `casting`).
 
 **Strategi (avgjort 2026-05-09):** Se "Backend Fase 2 — første ekstrakt" over. Stateful helpers via deps; pure helpers fra `_shared.ts`. `getActiveProfessionMode` finnes ikke som navngitt funksjon i backend per dette tidspunkt — sjekk hver gruppe ved ekstrakt (se `## 🎭 Modes` under).
 
