@@ -335,7 +335,15 @@ import { setupAdminActivityRoutes } from "./admin-room-activity-routes";
 import { setupRoleRoomVendorLinksRoutes } from "./role-room-vendor-links-routes";
 import { setupRoleRoomCastingRoutes } from "./role-room-casting-routes";
 import { setupRoleRoomClientPortalRoutes } from "./role-room-client-portal-routes";
-import { asString, asNumberOrNull, asJsonbArray, asJsonbObject } from "./_shared";
+import {
+  asString,
+  asNumberOrNull,
+  asJsonbArray,
+  asJsonbObject,
+  readBoolean,
+  readString,
+  normalizeJsonObjectField,
+} from "./_shared";
 import {
   getNotebookLmWorkspaceStatus,
   syncNotebookLmWorkspaceForMeetingNote,
@@ -20060,22 +20068,6 @@ function readNumber(value: unknown): number | null {
     return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
-}
-
-function readBoolean(value: unknown): boolean | null {
-  if (typeof value === "boolean") return value;
-  if (typeof value === "string") {
-    const normalized = value.trim().toLowerCase();
-    if (normalized === "true") return true;
-    if (normalized === "false") return false;
-  }
-  return null;
-}
-
-function readString(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim().replace(/,+$/u, "");
-  return trimmed.length ? trimmed : null;
 }
 
 function readStringArray(value: unknown): string[] {
@@ -97084,23 +97076,6 @@ const normalizeJsonArrayField = (value: unknown) => {
     }
   }
   return [];
-};
-
-const normalizeJsonObjectField = (value: unknown) => {
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    return value as Record<string, unknown>;
-  }
-  if (typeof value === "string") {
-    try {
-      const parsed = JSON.parse(value);
-      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-        ? (parsed as Record<string, unknown>)
-        : null;
-    } catch {
-      return null;
-    }
-  }
-  return null;
 };
 
 const readJsonObject = (value: unknown): Record<string, unknown> =>
