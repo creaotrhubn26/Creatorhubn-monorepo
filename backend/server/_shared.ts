@@ -93,6 +93,26 @@ export function readString(value: unknown): string | null {
   return trimmed.length ? trimmed : null;
 }
 
+export function readNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+export function readOptionalIsoDate(value: unknown): string | null {
+  if (value instanceof Date && Number.isFinite(value.getTime())) {
+    return value.toISOString();
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = new Date(value);
+    return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
+  }
+  return null;
+}
+
 export function normalizeJsonObjectField(value: unknown): Record<string, unknown> | null {
   if (value && typeof value === "object" && !Array.isArray(value)) {
     return value as Record<string, unknown>;

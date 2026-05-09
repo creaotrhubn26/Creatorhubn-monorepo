@@ -343,6 +343,8 @@ import {
   asJsonbObject,
   readBoolean,
   readString,
+  readNumber,
+  readOptionalIsoDate,
   normalizeJsonObjectField,
 } from "./_shared";
 import {
@@ -20062,15 +20064,6 @@ function estimateInstallMinutes(
   return 10;
 }
 
-function readNumber(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string" && value.trim() !== "") {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
-}
-
 function readStringArray(value: unknown): string[] {
   if (Array.isArray(value)) {
     return value.filter(
@@ -28836,16 +28829,6 @@ const GOOGLE_WORKSPACE_BACKUP_ROOT = path.join(
   "creatorhub-google-workspace-backups",
 );
 
-const readOptionalIsoDate = (value: unknown): string | null => {
-  if (value instanceof Date && Number.isFinite(value.getTime())) {
-    return value.toISOString();
-  }
-  if (typeof value === "string" && value.trim().length > 0) {
-    const parsed = new Date(value);
-    return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
-  }
-  return null;
-};
 
 const readGrantedGoogleScopes = (value: unknown): string[] => {
   if (Array.isArray(value)) {
