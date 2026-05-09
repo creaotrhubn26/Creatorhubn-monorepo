@@ -75,9 +75,11 @@ import {
   type ActivityLogEntry,
 } from '../services/adminRoomApi';
 
+import { RoleNavConfigTab } from '../components/role-room/components/admin-room/RoleNavConfigTab';
+
 const ADMIN_ROOM_OWNER_EMAIL = 'daniel@creatorhubn.com';
 
-type AdminRoomTab = 'dashboard' | 'business-plan' | 'funding' | 'investors' | 'partners' | 'activity';
+type AdminRoomTab = 'dashboard' | 'business-plan' | 'funding' | 'investors' | 'partners' | 'activity' | 'role-nav';
 
 // ─────────────────────────────────────────────────────────
 // Stable produkt-features for søknadsmaler. Role Room Agent
@@ -1959,6 +1961,7 @@ export default function AdminRoom() {
   else if (tab === 'partners') content = <PartnerContactsTab />;
   else if (tab === 'business-plan') content = <BusinessPlanTab />;
   else if (tab === 'activity') content = <ActivityLogTab />;
+  else if (tab === 'role-nav') content = <RoleNavConfigTab />;
 
   return (
     <Container maxWidth="lg" sx={{ py: { xs: 2, md: 4 }, px: { xs: 1.5, md: 3 } }}>
@@ -1996,6 +1999,7 @@ export default function AdminRoom() {
           <Tab value="investors" label="Investor-pipeline" />
           <Tab value="partners" label="Samarbeidspartnere" />
           <Tab value="activity" label="Aktivitets-logg" />
+          <Tab value="role-nav" label="Rolle-navigasjon" />
         </Tabs>
         <Box>{content}</Box>
       </Stack>
