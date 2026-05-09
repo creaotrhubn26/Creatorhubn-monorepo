@@ -162,11 +162,16 @@ export function setupXxxRoutes(deps: XxxRoutesDeps): void {
 
 **Anbefalt rekkefølge** (fra størst til minst, delt i håndterlige biter):
 
-1. `role-room-routes.ts` (97 endpoints) — sannsynligvis splittes i 3-4 sub-moduler:
-   - `role-room-projects-routes.ts`
-   - `role-room-casting-routes.ts`
-   - `role-room-crew-routes.ts`
-   - `role-room-misc-routes.ts`
+1. `role-room-*-routes.ts` (97 endpoints) — **kartlagt 2026-05-09:** spredt utover index.ts (linje 13676 → 33479+), ikke ett kluster. Faktiske sub-kategorier:
+   - `role-room-vendor-links-routes.ts` (2) — public, statisk vendor-data ✅ **gjort** (commit pending push)
+   - `role-room-agent-routes.ts` (19 + 7 marketing-plan = 26) — Innholdsprodusent-mode (sjekk for getActiveProfessionMode i hver endpoint før ekstrakt)
+   - `role-room-whatsapp-routes.ts` (15) — WhatsApp messaging
+   - `role-room-social-routes.ts` (8 social + 8 instagram + 4 tiktok + 4 facebook + 2 youtube + 2 linkedin = 28) — sosiale OAuth/posting
+   - `role-room-billing-routes.ts` (8) — Role Room billing
+   - `role-room-projects-routes.ts` (2 projects + 2 offers + 2 contracts + 1 project-agreements = 7) — prosjekt-lifecycle
+   - `role-room-casting-routes.ts` (6) — casting-funksjonalitet (lite — det meste ligger i `/api/casting`-clusteret som er separat)
+   - `role-room-misc-routes.ts` (3 client-portal + 1 education-inquiries + 1 commercial-access = 5) — diverse
+   - **Mode-relevans:** `agent` og `marketing-plan` er primært Innholdsprodusent-mode; `social` har OAuth som er mode-uavhengig men feed/publishing er mode-spesifikt. Sjekk per endpoint.
 2. `showcase-routes.ts` (60)
 3. `admin-routes.ts` (51) — eventuelt splittes
 4. `evendi-routes.ts` (50)

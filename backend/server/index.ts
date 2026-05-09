@@ -332,6 +332,7 @@ import { setupAdminPartnersRoutes } from "./admin-room-partners-routes";
 import { setupAdminDecksRoutes } from "./admin-room-decks-routes";
 import { setupAdminBusinessPlanRoutes } from "./admin-room-business-plan-routes";
 import { setupAdminActivityRoutes } from "./admin-room-activity-routes";
+import { setupRoleRoomVendorLinksRoutes } from "./role-room-vendor-links-routes";
 import { asString, asNumberOrNull, asJsonbArray, asJsonbObject } from "./_shared";
 import {
   getNotebookLmWorkspaceStatus,
@@ -5054,51 +5055,6 @@ async function loadGearNewsFeed(): Promise<{
   return { source: "compat-news", data: COMPAT_GEAR_NEWS };
 }
 
-const COMPAT_VENDOR_LINKS = [
-  {
-    id: "vendor-foto-no-cameras",
-    category: "Kamera",
-    subcategory: "Speillost",
-    vendor_name: "Foto.no",
-    product_name: "Canon EOS R5 Mark II",
-    product_url:
-      "https://www.foto.no/canon/163394/canon-eos-r5-mark-ii-45mp-sensor-30-bps-8k-video",
-    affiliate_url: "",
-    image_url:
-      "https://placehold.co/800x500/1f2937/ffffff?text=Foto.no+Canon+R5+II",
-    description: "Kampanjepris hos norsk forhandler.",
-    is_recommended: true,
-    sort_order: 1,
-  },
-  {
-    id: "vendor-scphoto-audio",
-    category: "Lyd",
-    subcategory: "Tradlost",
-    vendor_name: "Foto.no",
-    product_name: "Rode Wireless PRO",
-    product_url:
-      "https://www.foto.no/r%c3%b8de/157955/r%c3%b8de-wireless-pro-tr%c3%a5dl%c3%b8st-mikrofonsystem-2-x-tx-1-x-rx",
-    affiliate_url: "",
-    image_url: "https://placehold.co/800x500/082f49/e0f2fe?text=Wireless+PRO",
-    description: "God pakkepris inkludert ladekase.",
-    is_recommended: true,
-    sort_order: 2,
-  },
-  {
-    id: "vendor-japanphoto-light",
-    category: "Lys",
-    subcategory: "LED",
-    vendor_name: "Foto.no",
-    product_name: "Aputure 600d Pro",
-    product_url:
-      "https://www.foto.no/aputure/134866/aputure-ls-600d-pro-dagslys-5600k-v-mount",
-    affiliate_url: "",
-    image_url: "https://placehold.co/800x500/3f1d5c/f3e8ff?text=Aputure+600d",
-    description: "Leveres med softbox-kit.",
-    is_recommended: false,
-    sort_order: 3,
-  },
-];
 
 const normalizeCatalogCategory = (raw: string): string => {
   const value = raw.trim().toLowerCase();
@@ -13673,30 +13629,8 @@ app.get("/api/equipment/firmware-updates/:userId", async (req, res) => {
   }
 });
 
-app.get("/api/role-room/vendor-links", (req, res) => {
-  const category =
-    typeof req.query.category === "string"
-      ? req.query.category.trim().toLowerCase()
-      : "";
-  const links = category
-    ? COMPAT_VENDOR_LINKS.filter(
-        (item) => item.category.toLowerCase() === category,
-      )
-    : COMPAT_VENDOR_LINKS;
-  res.json({ links });
-});
-
-app.get("/api/role-room/vendor-links/categories", (_req, res) => {
-  const counts = new Map<string, number>();
-  COMPAT_VENDOR_LINKS.forEach((item) => {
-    counts.set(item.category, (counts.get(item.category) || 0) + 1);
-  });
-  const categories = Array.from(counts.entries()).map(([category, count]) => ({
-    category,
-    count,
-  }));
-  res.json({ categories });
-});
+// ── role-room/vendor-links — flyttet til ./role-room-vendor-links-routes.ts
+setupRoleRoomVendorLinksRoutes({ app });
 
 app.get("/api/equipment/inventory", async (req, res) => {
   try {
