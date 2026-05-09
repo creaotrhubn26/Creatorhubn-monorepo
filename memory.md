@@ -1,6 +1,6 @@
 # memory.md — Role Room session-state, refaktor-plan og kø
 
-> Levende dokument for Claude Code-sesjoner og produkt-eier. Sist oppdatert: 2026-05-09.
+> Levende dokument for Claude Code-sesjoner og produkt-eier. Sist oppdatert: 2026-05-09 (etter funding-ekstrakt).
 > Plassert i repo-rot slik at Claude Code (lokal eller web) automatisk leser den ved oppstart.
 
 ---
@@ -36,6 +36,16 @@ Live på branch og venter på merge til `main`. Migrasjon kjørt mot Neon.
 
 - `StoryStructurePanel.tsx` — PURPOSE_CONFIG (9 emoji): MenuBook, Whatshot, TrendingUp, GpsFixed, TrendingDown, CheckCircle, ArrowForward, AccountCircle, CallSplit
 
+### Backend Fase 2 — første ekstrakt (commit `17060294`)
+
+- `backend/server/_shared.ts` — felles types (`AdminSession`, `AdminRoomRoutesDeps`, `LogAdminActivityArgs`) og 4 pure helpers (`asString`, `asNumberOrNull`, `asJsonbArray`, `asJsonbObject`)
+- `backend/server/admin-room-funding-routes.ts` — `setupAdminFundingRoutes()` med 5 endpoints (memory.md sa "3" — feil; korrigert: list, create, patch, delete, AI-generate)
+- `backend/server/admin-room-role-nav-routes.ts` — retrofit til å importere `AdminRoomRoutesDeps` fra `_shared` (én konsistent strategi)
+- `index.ts` — netto -266 linjer; importerer pure helpers fra `_shared` (101 bruk i admin-room-clusteret 19810-20432)
+- `tsc --noEmit` passerer
+
+**Strategi-valg (gjelder for resten av Fase 2):** Stateful helpers (`pool`, `getActiveSessionFromRequest`, `requireAdminRoomAccess`, `logAdminActivity`) blir værende i `index.ts` og passes via deps-objekt. Pure helpers bor i `_shared.ts` og importeres direkte. Hver `admin-room-*-routes.ts` tar en `AdminRoomRoutesDeps` som eneste argument.
+
 ---
 
 ## 🚧 IKKE PUSHET — venter på re-implementering
@@ -68,7 +78,7 @@ Bygget lokalt men gikk tapt i `git reset --hard` (commit `fffb2b5` aldri pushet)
  25  /api/equipment
  24  /api/split-sheets
  24  /api/analytics
- 24  /api/admin-room    ← ✅ delvis ekstraktert (role-nav-config)
+ 24  /api/admin-room    ← ✅ delvis ekstraktert (role-nav-config + funding-apps)
  23  /api/price-administration
  20  /api/user
  19  /api/quotes
@@ -94,6 +104,34 @@ Bygget lokalt men gikk tapt i `git reset --hard` (commit `fffb2b5` aldri pushet)
 ### `frontend/client/src/components/role-room` — paneler som trenger responsiv-gjennomgang
 
 Estimert ~50 paneler. Må kartlegges presist i Fase 4.
+
+---
+
+## 🎭 Modes — kontekst for all refaktor
+
+Appen har **4 produkt-modes** som bestemmer hvilke features som vises, hvilken terminologi som brukes, og hvilke workflows som gir mening. Modes er **ortogonale til brukerroller** (director, producer, casting_director, …) — en regissør i Produksjonsteam-mode vs. samme rolle i Innholdsprodusent-mode kan se ulike tab-sett selv om rolle-konfigen er lik.
+
+| Mode | Hva | Eksempler |
+|---|---|---|
+| **Produksjonsteam** | Film/TV-produksjon | Full casting + crew + scheduling + shotlist + audition |
+| **Innholdsprodusent** | Sosiale medier / brand-content | Brief → Plan → Approval → Publishing-flyt (lett casting) |
+| **Utdanningsinstitusjon** | Skoler/akademier | Academy-/kurs-tilpasset, mindre produksjons-fokus |
+| **Dansestudio** | Dans-produksjoner | Egen `DanceWorkspace` med koreografi-verktøy |
+
+**Mode-switcher:** ser ut til å eksistere i admin-profil-sheet via `isAdminUser`-check i `RoleRoomDashboardPanel`. Gjør 4×4-testing håndterbart i Fase 4.
+
+### Hvor mode-logikk er funnet (per 2026-05-09)
+
+- **Backend:** ingen helper-funksjon ved navn `getActiveProfessionMode` eller `isDanceMode` finnes i `backend/server/index.ts` per dette tidspunkt. Hvis mode-aware filter-logikk eksisterer, er det inline i hver endpoint og må kartlegges per gruppe ved ekstrakt.
+- **Frontend:** `DanceWorkspace` er allerede et eksempel på mode-spesifikk UI. Flere paneler kan ha implisitte mode-antagelser (kartlegges i Fase 4).
+- **Funding-endpoints (commit `17060294`):** ingen mode-logikk funnet. Funding er Admin Room-funksjonalitet låst til produkteier; orthogonalt til alle 4 modes.
+
+### Regler for resten av refaktoren
+
+1. **Når en route-gruppe ekstrakteres:** søk i blokken etter `profession`, `mode`, `isDance`, `getActiveProfession*` *før* du kopierer. Hvis truffet — bevar logikken, ikke "rens" den. Hvis det finnes avhengigheter til en mode-helper, legg den i `AdminRoomRoutesDeps` (eller en route-gruppe-spesifikk deps-utvidelse).
+2. **Fase 3 (CastingPlannerPanel-splitt):** SubPanels kan trenge mode-awareness (eks. `CrewSubPanel` for Produksjonsteam vs. minimal versjon for Innholdsprodusent). Denne axis er separat fra `useEffectiveTabsForRole` (som handler om bruker-rolle innen et prosjekt).
+3. **Fase 4 (responsiv-optimering):** hvert panel testes i alle **4 modes × 4 viewports = 16 kombinasjoner**.
+4. **Rolle-nav-konfig vs. modes:** brukerrollene er ortogonale til modes. Vurder å utvide `useEffectiveTabsForRole(role)` til `useEffectiveTabsForRole(role, mode)` senere når mode-spesifikke tab-sett trengs.
 
 ---
 
@@ -139,15 +177,15 @@ export function setupXxxRoutes(deps: XxxRoutesDeps): void {
 9. `equipment-routes.ts` (25)
 10. `split-sheets-routes.ts` (24)
 11. `analytics-routes.ts` (24)
-12. `admin-room-funding-routes.ts` (3)
-13. `admin-room-investors-routes.ts` (5)
-14. `admin-room-partners-routes.ts` (5)
-15. `admin-room-decks-routes.ts` (6)
+12. ~~`admin-room-funding-routes.ts` (3)~~ ✅ **gjort** — 5 endpoints (commit `17060294`)
+13. `admin-room-investors-routes.ts` (4) — neste kandidat (samme mønster, lav risiko)
+14. `admin-room-partners-routes.ts` (4)
+15. `admin-room-decks-routes.ts` (7)
 16. `admin-room-business-plan-routes.ts` (3)
 17. `admin-room-activity-routes.ts` (1)
 18. (resten av smågrupper bundles eller utsettes)
 
-**Kritisk:** Felles helpers (`pool`, `getActiveSessionFromRequest`, `requireAdminRoomAccess`, `logAdminActivity`, `getActiveProfessionMode` osv.) bør eksporteres fra en `backend/server/_shared.ts`-fil eller passes inn via deps. Velg én strategi før første ekstrakt.
+**Strategi (avgjort 2026-05-09):** Se "Backend Fase 2 — første ekstrakt" over. Stateful helpers via deps; pure helpers fra `_shared.ts`. `getActiveProfessionMode` finnes ikke som navngitt funksjon i backend per dette tidspunkt — sjekk hver gruppe ved ekstrakt (se `## 🎭 Modes` under).
 
 ### Fase 3 — Frontend refaktor (multi-sesjon)
 
