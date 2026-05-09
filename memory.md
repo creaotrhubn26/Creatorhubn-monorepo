@@ -180,7 +180,9 @@ export function setupXxxRoutes(deps: XxxRoutesDeps): void {
    - `showcase-items-routes.ts` (7) — items CRUD inkl. legacy/alias URL-er ✅ **gjort** (commit `03c1afb0`). 4 deps (app, pool, updateShowcaseItemRecord, mapShowcaseItemRow). De 2 helpers blir værende i index.ts (12 bruk hver, brukt av mange ikke-ekstraktrte endpoints).
    - `showcase-categories-routes.ts` (4) — GET/POST /categories, GET /profession/:profession, GET /day-categories ✅ **gjort** (commit `b9b2472e`). 4 deps (app, pool, getTableColumns, mapShowcaseItemRow).
    - `showcase-comments-routes.ts` (3) — drizzle CRUD for klient-feedback + like-counter ✅ **gjort** (commit `d8791e59`). Minimal deps (app, db).
-   - `showcase-analytics-routes.ts` (2) — POST track view/like/share/download + GET aggregat ✅ **gjort** (commit pending push). Minimal deps (app, pool).
+   - `showcase-analytics-routes.ts` (2) — POST track view/like/share/download + GET aggregat ✅ **gjort** (commit `37106b2f`). Minimal deps (app, pool).
+   - `showcase-pricing-routes.ts` (2) — GET /pricing + GET /pricing/:profession ✅ **gjort** (commit pending push). Deps: app + resolveShowcasePricing (blir værende i index.ts).
+   - `showcase-smart-albums-routes.ts` (2) — POST create + POST :albumId/update (regelbasert auto-tildeling) ✅ **gjort** (commit pending push). Deps: app, pool, db, mapShowcaseItemRow.
    - Gjenstår: collections (6), items (4), client-selections (3), smart-albums (2), pricing (2), client-session (2), categories+day-categories+profession (4), batch-operations (2), analytics (2), watermark/upload-media/update-metadata/toggle-favorite/sync-google-photos/quick-transform/showcases/settings/sets/send-overage-email/portfolios/move-images/link-project/import-google-photos/enhancement-presets/enhance-photo/email/delete-images/crop/copy-images/comments/client-submissions/calculate-selection-price/bulk-upload/bulk-download/archive-images (~37 misc image-ops). **Foreslått gruppering:** items (CRUD + comments), collections, categories, client (portal/sessions/submissions/selections), image-ops (bulk + transformations), google-photos, misc.
 
 3. `admin-routes.ts` (51) — eventuelt splittes

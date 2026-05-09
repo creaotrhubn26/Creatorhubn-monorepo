@@ -341,6 +341,8 @@ import { setupShowcaseItemsRoutes } from "./showcase-items-routes";
 import { setupShowcaseCategoriesRoutes } from "./showcase-categories-routes";
 import { setupShowcaseCommentsRoutes } from "./showcase-comments-routes";
 import { setupShowcaseAnalyticsRoutes } from "./showcase-analytics-routes";
+import { setupShowcasePricingRoutes } from "./showcase-pricing-routes";
+import { setupShowcaseSmartAlbumsRoutes } from "./showcase-smart-albums-routes";
 import {
   asString,
   asNumberOrNull,
@@ -105854,46 +105856,10 @@ app.get("/api/showcase/public/:userId", async (req, res) => {
   }
 });
 
-// GET /api/showcase/pricing — Resolve showcase pricing for a profession
-app.get("/api/showcase/pricing", async (req, res) => {
-  try {
-    const profession = readString(req.query.profession) || "photographer";
-    const userId =
-      readString(req.query.userId) ||
-      readString(req.headers["x-user-id"]) ||
-      null;
-    const pricing = await resolveShowcasePricing(profession, userId);
-    res.json({
-      pricing,
-      projectPricing: {
-        contracted_images: pricing.contractedBase,
-        per_image: pricing.perImage,
-      },
-    });
-  } catch (error) {
-    console.error("Error resolving showcase pricing:", error);
-    res.status(500).json({ error: "Kunne ikke hente showcase-prising" });
-  }
-});
+// ── Showcase pricing — flyttet til ./showcase-pricing-routes.ts
+//   GET /pricing + GET /pricing/:profession.
+setupShowcasePricingRoutes({ app, resolveShowcasePricing });
 
-app.get("/api/showcase/pricing/:profession", async (req, res) => {
-  try {
-    const pricing = await resolveShowcasePricing(
-      req.params.profession,
-      readString(req.query.userId) || readString(req.headers["x-user-id"]),
-    );
-    res.json({
-      pricing,
-      projectPricing: {
-        contracted_images: pricing.contractedBase,
-        per_image: pricing.perImage,
-      },
-    });
-  } catch (error) {
-    console.error("Error resolving showcase pricing:", error);
-    res.status(500).json({ error: "Kunne ikke hente showcase-prising" });
-  }
-});
 
 app.get("/api/showcase/enhancement-presets", async (_req, res) => {
   res.json(SHOWCASE_ENHANCEMENT_PRESETS);
@@ -106137,123 +106103,10 @@ app.post(
   },
 );
 
-app.post("/api/showcase/smart-albums", async (req, res) => {
-  try {
-    const payload = req.body as Record<string, unknown>;
-    const [created] = await db
-      .insert(schema.smartAlbums)
-      .values({
-        id: crypto.randomUUID(),
-        userId:
-          readString(payload.userId) ||
-          readString(req.headers["x-user-id"]) ||
-          "system",
-        profession: readString(payload.profession) || "photographer",
-        name: readString(payload.name) || "Smart album",
-        description: readString(payload.description) || "",
-        albumType: "smart_rule",
-        smartRules: {
-          rating: readNumber(payload.rating) ?? 0,
-          tags: readStringArray(payload.tags),
-          dateRange: normalizeJsonObjectField(payload.dateRange) || {},
-          location: readString(payload.location) || "",
-          camera: readString(payload.camera) || "",
-          autoUpdate: readBoolean(payload.autoUpdate) ?? true,
-        },
-        layoutStyle: "grid",
-        sortBy: "date",
-        sortOrder: "desc",
-        isPublic: false,
-        itemCount: 0,
-        status: "active",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      })
-      .returning();
-    res.status(201).json(created);
-  } catch (error) {
-    console.error("Error creating smart album:", error);
-    res.status(500).json({ error: "Kunne ikke opprette smart album" });
-  }
-});
+// ── Showcase smart-albums — flyttet til ./showcase-smart-albums-routes.ts
+//   POST create + POST :albumId/update.
+setupShowcaseSmartAlbumsRoutes({ app, pool, db, mapShowcaseItemRow });
 
-app.post("/api/showcase/smart-albums/:albumId/update", async (req, res) => {
-  try {
-    const albumId = req.params.albumId;
-    const albumRows = await db
-      .select()
-      .from(schema.smartAlbums)
-      .where(eq(schema.smartAlbums.id, albumId))
-      .limit(1);
-    const album = albumRows[0];
-    if (!album) {
-      return res.status(404).json({ error: "Smart album ikke funnet" });
-    }
-
-    const rules = normalizeJsonObjectField(album.smartRules) || {};
-    const tagRules = readStringArray(rules.tags);
-    const ratingRule = readNumber(rules.rating) ?? 0;
-    const userId = readString(album.userId) || "";
-    const profession = readString(album.profession) || "photographer";
-
-    const itemsResult = await pool.query(
-      `SELECT *
-         FROM showcase_items
-        WHERE user_id = $1
-          AND profession = $2
-          AND COALESCE(is_active, true) = true`,
-      [userId, profession],
-    );
-
-    const matchingItems = itemsResult.rows
-      .map((row: Record<string, unknown>) => mapShowcaseItemRow(row))
-      .filter((item) => {
-        const tagMatch =
-          !tagRules.length ||
-          tagRules.every((tag) => (item.tags || []).includes(tag));
-        const ratingMatch = !ratingRule || Number(item.rating || 0) >= ratingRule;
-        return tagMatch && ratingMatch;
-      });
-
-    await db
-      .delete(schema.smartAlbumItems)
-      .where(eq(schema.smartAlbumItems.albumId, albumId));
-
-    if (matchingItems.length) {
-      await db.insert(schema.smartAlbumItems).values(
-        matchingItems.map((item, index) => ({
-          id: crypto.randomUUID(),
-          albumId,
-          showcaseItemId: String(item.id),
-          sortOrder: index,
-          wasAutoAssigned: true,
-          assignmentReason: "smart_rules",
-          addedAt: new Date().toISOString(),
-        })),
-      );
-    }
-
-    const [updated] = await db
-      .update(schema.smartAlbums)
-      .set({
-        itemCount: matchingItems.length,
-        lastAutoUpdate: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      })
-      .where(eq(schema.smartAlbums.id, albumId))
-      .returning();
-
-    res.json({
-      success: true,
-      album: updated,
-      items: matchingItems,
-      itemCount: matchingItems.length,
-    });
-  } catch (error) {
-    console.error("Error updating smart album:", error);
-    res.status(500).json({ error: "Kunne ikke oppdatere smart album" });
-  }
-});
 
 app.get("/api/showcase/portfolios", async (req, res) => {
   try {
