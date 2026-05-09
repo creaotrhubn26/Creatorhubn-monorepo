@@ -18,6 +18,14 @@ import { useProducerNotifications } from './hooks/useProducerNotifications';
 import { useProducerReviews } from './hooks/useProducerReviews';
 import { useProducerTimeline } from './hooks/useProducerTimeline';
 import RoleRoomMobileTopBar, { MobileSyncStatus } from './components/RoleRoomMobileTopBar';
+import RoleRoomTabRail, { type TabRailItem } from './components/ipad/RoleRoomTabRail';
+import RoleRoomBottomNav, {
+  type BottomNavItem,
+} from './components/mobile/RoleRoomBottomNav';
+import {
+  useEffectiveTabsForRole,
+  type SubTabValue,
+} from './hooks/useRoleNavConfig';
 import RoleRoomProjectSwitcher from './components/RoleRoomProjectSwitcher';
 import RoleRoomMobileInboxSheet, { InboxItem } from './components/RoleRoomMobileInboxSheet';
 import RoleRoomMobileProfileSheet from './components/RoleRoomMobileProfileSheet';
@@ -286,7 +294,27 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
   const restoreAttemptedRef = useRef(false);
 
   const viewport = useRoleRoomViewportMode();
+  const useTabRail = viewport.mode === 'tabletLandscape';
   const auth = useAuth();
+
+  // Sentralt tab-katalog. Brukes av top-Tabs, side-rail og bottom-nav slik
+  // at admin-konfigen virker likt på tvers av viewports.
+  const TAB_DEFS: Record<SubTabValue, { label: string; Icon: any; highlight?: boolean }> = {
+    'roles': { label: 'Roller', Icon: TheaterIcon },
+    'candidates': { label: 'Kandidater', Icon: PersonIcon },
+    'crew': { label: 'Crew', Icon: GroupIcon },
+    'schedule': { label: 'Tidsplan', Icon: CalendarIcon },
+    'publishing': { label: 'Publisering', Icon: YouTubeIcon },
+    'carousel': { label: 'Ukescontent', Icon: EditIcon },
+    'approval': { label: 'Godkjenning', Icon: CheckCircleIcon },
+    'brief': { label: 'Brief', Icon: EditIcon },
+    'planner': { label: 'Planner', Icon: ScheduleIcon },
+    'shooting': { label: 'Skyting', Icon: MovieIcon },
+    'shotlist': { label: 'Shotliste', Icon: TheaterIcon },
+    'mannskap': { label: 'Mannskap', Icon: GroupIcon },
+    'agent': { label: 'Agent', Icon: AutoFixHighIcon },
+    'admin-room': { label: 'Admin Room', Icon: AutoFixHighIcon, highlight: true },
+  };
   const isAdminUser = auth.user?.role === 'admin' || auth.user?.role === 'super_admin';
   const activeProfessionMode = getActiveProfessionMode();
   const [roleRoomAgentAccess, setRoleRoomAgentAccess] = useState<RoleRoomAgentAccess | null>(null);
@@ -371,6 +399,11 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
     () => (userRoles ?? []).filter((entry) => entry.userId === userId),
     [userRoles, userId],
   );
+
+  // Effektiv tab-rekkefølge for innlogget bruker (server-konfig + fallback til defaults).
+  // Påvirker top-Tabs, iPad side-rail og telefon-bottom-nav likt.
+  const userPrimaryRole = currentUserProjectRoles[0]?.role ?? null;
+  const effectiveTabs = useEffectiveTabsForRole(userPrimaryRole);
 
   const canUsePublishing = useMemo(() => {
     const publishingRoles: UserRole['role'][] = [
@@ -628,7 +661,17 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
   }
 
   return (
-    <Box className="role-room-route" sx={{ p: { xs: 1, sm: 2, md: 3 }, maxWidth: 1400, mx: 'auto' }}>
+    <Box
+      className="role-room-route"
+      sx={{
+        p: { xs: 1, sm: 2, md: 3 },
+        maxWidth: 1400,
+        mx: 'auto',
+        pb: viewport.mode === 'mobile'
+          ? 'calc(64px + env(safe-area-inset-bottom, 0px) + 16px)'
+          : undefined,
+      }}
+    >
       {/* ── Mobile/iPad topbar (items 026-050) ─────────── */}
       {!viewport.isDesktop ? (
         <>
@@ -873,7 +916,43 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
               </Box>
             </Card>
           ) : (
-            <Card variant="outlined" sx={{ borderRadius: 2 }}>
+            <Box
+              sx={{
+                display: useTabRail ? 'flex' : 'block',
+                gap: useTabRail ? 1.5 : 0,
+                alignItems: 'flex-start',
+              }}
+            >
+              {useTabRail && (
+                <RoleRoomTabRail
+                  visible
+                  value={subTab}
+                  onChange={(next) => setSubTab(next as SubTab)}
+                  ariaLabel="Prosjekt-seksjoner"
+                  items={effectiveTabs
+                    .filter((v) => {
+                      // Skjul faner som krever en gate som ikke er åpen
+                      if (v === 'publishing' && !canUsePublishing) return false;
+                      if (v === 'admin-room' && (profileEmail || '').trim().toLowerCase() !== ADMIN_ROOM_OWNER_EMAIL) return false;
+                      return Boolean(TAB_DEFS[v]);
+                    })
+                    .map((v) => ({
+                      value: v,
+                      label: TAB_DEFS[v].label,
+                      Icon: TAB_DEFS[v].Icon,
+                      highlight: TAB_DEFS[v].highlight,
+                    }))}
+                />
+              )}
+              <Card
+                variant="outlined"
+                sx={{
+                  borderRadius: 2,
+                  flex: useTabRail ? 1 : undefined,
+                  minWidth: 0,
+                  width: useTabRail ? undefined : '100%',
+                }}
+              >
               {/* Project header */}
               <CardHeader
                 title={selectedProject?.name ?? '…'}
@@ -903,131 +982,58 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                 </Alert>
               )}
 
-              {/* Sub-tabs */}
+              {/* Sub-tabs (hidden on iPad landscape — rail handles nav) */}
+              {!useTabRail && (<>
               <Tabs
                 value={subTab}
                 onChange={(_, v: SubTab) => setSubTab(v)}
-                sx={{ px: 2 }}
+                className="rr-sub-tabs"
+                sx={{
+                  px: { xs: 1, sm: 2 },
+                  minHeight: { xs: 56, sm: 48 },
+                  '& .MuiTab-root': {
+                    minHeight: { xs: 56, sm: 48 },
+                    minWidth: { xs: 96, sm: 90 },
+                    fontSize: { xs: '0.8125rem', sm: '0.875rem' },
+                    px: { xs: 1.5, sm: 2 },
+                    WebkitTapHighlightColor: 'transparent',
+                    touchAction: 'manipulation',
+                    '&:active': { bgcolor: 'rgba(139,92,246,0.08)' },
+                  },
+                  '& .MuiTabs-scrollButtons.Mui-disabled': {
+                    opacity: 0.3,
+                  },
+                  '& .MuiTabs-indicator': {
+                    height: 3,
+                  },
+                }}
                 variant="scrollable"
                 scrollButtons="auto"
+                allowScrollButtonsMobile
               >
-                <Tab
-                  value="roles"
-                  label="Roller"
-                  icon={<TheaterIcon fontSize="small" />}
-                  iconPosition="start"
-                  sx={{ minHeight: 48 }}
-                />
-                <Tab
-                  value="candidates"
-                  label="Kandidater"
-                  icon={<PersonIcon fontSize="small" />}
-                  iconPosition="start"
-                  sx={{ minHeight: 48 }}
-                />
-                <Tab
-                  value="crew"
-                  label="Crew"
-                  icon={<GroupIcon fontSize="small" />}
-                  iconPosition="start"
-                  sx={{ minHeight: 48 }}
-                />
-                <Tab
-                  value="schedule"
-                  label="Tidsplan"
-                  icon={<CalendarIcon fontSize="small" />}
-                  iconPosition="start"
-                  sx={{ minHeight: 48 }}
-                />
-                {canUsePublishing && (
-                  <Tab
-                    value="publishing"
-                    label="Publisering"
-                    icon={<YouTubeIcon fontSize="small" />}
-                    iconPosition="start"
-                    sx={{ minHeight: 48 }}
-                  />
-                )}
-                <Tab
-                  value="carousel"
-                  label="Ukescontent"
-                  icon={<EditIcon fontSize="small" />}
-                  iconPosition="start"
-                  sx={{ minHeight: 48 }}
-                />
-                {!viewport.isDesktop && (
-                  <Tab
-                    value="approval"
-                    label="Godkjenning"
-                    icon={<CheckCircleIcon fontSize="small" />}
-                    iconPosition="start"
-                    sx={{ minHeight: 48 }}
-                  />
-                )}
-                {!viewport.isDesktop && (
-                  <Tab
-                    value="brief"
-                    label="Brief"
-                    icon={<EditIcon fontSize="small" />}
-                    iconPosition="start"
-                    sx={{ minHeight: 48 }}
-                  />
-                )}
-                {!viewport.isDesktop && (
-                  <Tab
-                    value="planner"
-                    label="Planner"
-                    icon={<ScheduleIcon fontSize="small" />}
-                    iconPosition="start"
-                    sx={{ minHeight: 48 }}
-                  />
-                )}
-                {!viewport.isDesktop && (
-                  <Tab
-                    value="shooting"
-                    label="Skyting"
-                    icon={<MovieIcon fontSize="small" />}
-                    iconPosition="start"
-                    sx={{ minHeight: 48 }}
-                  />
-                )}
-                {!viewport.isDesktop && (
-                  <Tab
-                    value="shotlist"
-                    label="Shotliste"
-                    icon={<TheaterIcon fontSize="small" />}
-                    iconPosition="start"
-                    sx={{ minHeight: 48 }}
-                  />
-                )}
-                {!viewport.isDesktop && (
-                  <Tab
-                    value="mannskap"
-                    label="Mannskap"
-                    icon={<GroupIcon fontSize="small" />}
-                    iconPosition="start"
-                    sx={{ minHeight: 48 }}
-                  />
-                )}
-                <Tab
-                  value="agent"
-                  label="Agent"
-                  icon={<AutoFixHighIcon fontSize="small" />}
-                  iconPosition="start"
-                  sx={{ minHeight: 48 }}
-                />
-                {/* Admin Room — kun synlig for produkteier-konto */}
-                {(profileEmail || '').trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL && (
-                  <Tab
-                    value="admin-room"
-                    label="Admin Room"
-                    icon={<AutoFixHighIcon fontSize="small" />}
-                    iconPosition="start"
-                    sx={{ minHeight: 48, color: '#a78bfa' }}
-                  />
-                )}
+                {effectiveTabs
+                  .filter((v) => {
+                    if (v === 'publishing' && !canUsePublishing) return false;
+                    if (v === 'admin-room' && (profileEmail || '').trim().toLowerCase() !== ADMIN_ROOM_OWNER_EMAIL) return false;
+                    return Boolean(TAB_DEFS[v]);
+                  })
+                  .map((v) => {
+                    const def = TAB_DEFS[v];
+                    const TabIconComp = def.Icon;
+                    return (
+                      <Tab
+                        key={v}
+                        value={v}
+                        label={def.label}
+                        icon={<TabIconComp fontSize="small" />}
+                        iconPosition="start"
+                        sx={def.highlight ? { minHeight: 48, color: '#a78bfa' } : { minHeight: 48 }}
+                      />
+                    );
+                  })}
               </Tabs>
               <Divider />
+              </>)}
 
               <CardContent sx={{ minHeight: 300 }}>
                 {subTab === 'roles' && (
@@ -1134,7 +1140,8 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                     <AdminRoom />
                 )}
               </CardContent>
-            </Card>
+              </Card>
+            </Box>
           )}
         </Grid>
       </Grid>
@@ -1184,6 +1191,31 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
         onLogout={auth.logout ? () => { void auth.logout(); } : undefined}
         isAdmin={isAdminUser}
       />
+
+      {/* Telefon-bunn-nav: server-konfig + filter på sikre gates (publishing/admin) */}
+      {viewport.mode === 'mobile' && selectedProjectId && (() => {
+        const allowed = effectiveTabs.filter((v) => {
+          if (v === 'publishing' && !canUsePublishing) return false;
+          if (v === 'admin-room' && (profileEmail || '').trim().toLowerCase() !== ADMIN_ROOM_OWNER_EMAIL) return false;
+          return Boolean(TAB_DEFS[v]);
+        });
+        const items: BottomNavItem[] = allowed.map((v) => ({
+          value: v,
+          label: TAB_DEFS[v].label,
+          Icon: TAB_DEFS[v].Icon,
+        }));
+        const primaryItems = items.slice(0, 4);
+        const overflowItems = items.slice(4);
+        return (
+          <RoleRoomBottomNav
+            visible
+            primaryItems={primaryItems}
+            overflowItems={overflowItems}
+            value={subTab}
+            onChange={(next) => setSubTab(next as SubTab)}
+          />
+        );
+      })()}
     </Box>
   );
 };
