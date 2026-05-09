@@ -178,8 +178,8 @@ export function setupXxxRoutes(deps: XxxRoutesDeps): void {
 10. `split-sheets-routes.ts` (24)
 11. `analytics-routes.ts` (24)
 12. ~~`admin-room-funding-routes.ts` (3)~~ ✅ **gjort** — 5 endpoints (commit `17060294`)
-13. `admin-room-investors-routes.ts` (4) — neste kandidat (samme mønster, lav risiko)
-14. `admin-room-partners-routes.ts` (4)
+13. ~~`admin-room-investors-routes.ts` (4)~~ ✅ **gjort** — admin-only investor-CRM, due-diligence checklist + deck-status (commit pending push)
+14. `admin-room-partners-routes.ts` (4) — neste kandidat
 15. `admin-room-decks-routes.ts` (7)
 16. `admin-room-business-plan-routes.ts` (3)
 17. `admin-room-activity-routes.ts` (1)
