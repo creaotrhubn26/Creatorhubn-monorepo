@@ -337,6 +337,7 @@ import { setupRoleRoomCastingRoutes } from "./role-room-casting-routes";
 import { setupRoleRoomClientPortalRoutes } from "./role-room-client-portal-routes";
 import { setupShowcaseTemplatesRoutes } from "./showcase-templates-routes";
 import { setupShowcaseCollectionsRoutes } from "./showcase-collections-routes";
+import { setupShowcaseItemsRoutes } from "./showcase-items-routes";
 import {
   asString,
   asNumberOrNull,
@@ -105343,109 +105344,14 @@ app.get("/api/showcase/profession/:profession", async (req, res) => {
   }
 });
 
-// POST /api/showcase/items — Create showcase item
-app.post("/api/showcase/items", async (req, res) => {
-  try {
-    const {
-      title,
-      description,
-      imageUrl,
-      thumbnailUrl,
-      category,
-      profession,
-      userId,
-      tags,
-      clientName,
-      isPublic,
-    } = req.body;
-    const id = crypto.randomUUID();
-    const now = new Date().toISOString();
-    await pool.query(
-      `INSERT INTO showcase_items (id, user_id, profession, category, title, description, image_url, thumbnail_url, crop_data, is_public, is_active, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true, $11::timestamp, $12::timestamp)`,
-      [
-        id,
-        userId,
-        profession,
-        category || "Portfolio",
-        title,
-        description || "",
-        imageUrl || "",
-        thumbnailUrl || "",
-        JSON.stringify({ tags: tags || [], clientName: clientName || "" }),
-        isPublic !== false,
-        now,
-        now,
-      ],
-    );
-    res.status(201).json({ id, title, category, profession, created_at: now });
-  } catch (error) {
-    console.error("Error creating showcase item:", error);
-    res.status(500).json({ error: "Kunne ikke opprette element" });
-  }
-});
-
-// PATCH /api/showcase/items/:itemId — Update showcase item
-app.patch("/api/showcase/items/:itemId", async (req, res) => {
-  try {
-    const { itemId } = req.params;
-    const updates = req.body;
-    const setClauses: string[] = [];
-    const params: any[] = [];
-    let paramIdx = 1;
-
-    const fieldMap: Record<string, string> = {
-      title: "title",
-      description: "description",
-      imageUrl: "image_url",
-      thumbnailUrl: "thumbnail_url",
-      category: "category",
-      isPublic: "is_public",
-      isActive: "is_active",
-    };
-    for (const [key, col] of Object.entries(fieldMap)) {
-      if (updates[key] !== undefined) {
-        setClauses.push(`${col} = $${paramIdx}`);
-        params.push(updates[key]);
-        paramIdx++;
-      }
-    }
-    if (setClauses.length === 0)
-      return res.status(400).json({ error: "Ingen felt å oppdatere" });
-
-    setClauses.push(`updated_at = $${paramIdx}::timestamp`);
-    params.push(new Date().toISOString());
-    paramIdx++;
-    params.push(itemId);
-
-    const result = await pool.query(
-      `UPDATE showcase_items SET ${setClauses.join(", ")} WHERE id = $${paramIdx} RETURNING *`,
-      params,
-    );
-    if (!result.rowCount)
-      return res.status(404).json({ error: "Element ikke funnet" });
-    res.json(result.rows[0]);
-  } catch (error) {
-    console.error("Error updating showcase item:", error);
-    res.status(500).json({ error: "Kunne ikke oppdatere element" });
-  }
-});
-
-// DELETE /api/showcase/items/:itemId — Delete showcase item
-app.delete("/api/showcase/items/:itemId", async (req, res) => {
-  try {
-    const { itemId } = req.params;
-    const result = await pool.query(
-      "DELETE FROM showcase_items WHERE id = $1 RETURNING id",
-      [itemId],
-    );
-    if (!result.rowCount)
-      return res.status(404).json({ error: "Element ikke funnet" });
-    res.json({ deleted: true, id: itemId });
-  } catch (error) {
-    console.error("Error deleting showcase item:", error);
-    res.status(500).json({ error: "Kunne ikke slette element" });
-  }
+// ── Showcase items — flyttet til ./showcase-items-routes.ts
+//   POST /items, PATCH/DELETE /items/:itemId, samt legacy/alias-PUT/DELETE
+//   under /:itemId og /update-metadata/:itemId.
+setupShowcaseItemsRoutes({
+  app,
+  pool,
+  updateShowcaseItemRecord,
+  mapShowcaseItemRow,
 });
 
 // POST /api/showcase/sets — Create showcase set
@@ -106730,69 +106636,9 @@ app.post("/api/showcase", async (req, res) => {
   }
 });
 
-app.put("/api/showcase/:itemId", async (req, res) => {
-  try {
-    const updated = await updateShowcaseItemRecord(
-      req.params.itemId,
-      req.body as Record<string, unknown>,
-    );
-    if (!updated) {
-      return res.status(404).json({ error: "Showcase ikke funnet" });
-    }
-    res.json(mapShowcaseItemRow(updated));
-  } catch (error) {
-    console.error("Error updating showcase item:", error);
-    res.status(500).json({ error: "Kunne ikke oppdatere showcase" });
-  }
-});
 
-app.delete("/api/showcase/:itemId", async (req, res) => {
-  try {
-    const result = await pool.query(
-      "DELETE FROM showcase_items WHERE id = $1 RETURNING *",
-      [req.params.itemId],
-    );
-    if (!result.rows.length) {
-      return res.status(404).json({ error: "Showcase ikke funnet" });
-    }
-    res.json({ deleted: true, id: req.params.itemId });
-  } catch (error) {
-    console.error("Error deleting showcase item:", error);
-    res.status(500).json({ error: "Kunne ikke slette showcase" });
-  }
-});
 
-app.put("/api/showcase/items/:itemId", async (req, res) => {
-  try {
-    const updated = await updateShowcaseItemRecord(
-      req.params.itemId,
-      req.body as Record<string, unknown>,
-    );
-    if (!updated) {
-      return res.status(404).json({ error: "Showcase-element ikke funnet" });
-    }
-    res.json(mapShowcaseItemRow(updated));
-  } catch (error) {
-    console.error("Error updating showcase item alias:", error);
-    res.status(500).json({ error: "Kunne ikke oppdatere showcase-element" });
-  }
-});
 
-app.put("/api/showcase/update-metadata/:itemId", async (req, res) => {
-  try {
-    const updated = await updateShowcaseItemRecord(
-      req.params.itemId,
-      req.body as Record<string, unknown>,
-    );
-    if (!updated) {
-      return res.status(404).json({ error: "Showcase-element ikke funnet" });
-    }
-    res.json({ success: true, item: mapShowcaseItemRow(updated) });
-  } catch (error) {
-    console.error("Error updating showcase metadata:", error);
-    res.status(500).json({ error: "Kunne ikke oppdatere metadata" });
-  }
-});
 
 app.post("/api/showcase/calculate-selection-price", async (req, res) => {
   try {
