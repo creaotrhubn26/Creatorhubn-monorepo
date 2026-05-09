@@ -325,6 +325,7 @@ import {
   revokeClientPortalSession,
 } from "./role-room-client-portal.js";
 import { registerTidumAdminRoutes } from "./tidum-admin-routes.js";
+import { setupRoleNavConfigRoutes } from "./admin-room-role-nav-routes";
 import {
   getNotebookLmWorkspaceStatus,
   syncNotebookLmWorkspaceForMeetingNote,
@@ -20819,6 +20820,15 @@ app.patch("/api/admin-room/business-plan", async (req, res) => {
     console.error("admin-room business-plan patch error", err);
     res.status(500).json({ error: "Kunne ikke oppdatere forretningsplan" });
   }
+});
+
+// Role Nav Config endpoints — konfig per brukerrolle på tvers av viewports
+setupRoleNavConfigRoutes({
+  app,
+  pool,
+  getActiveSessionFromRequest,
+  requireAdminRoomAccess,
+  logAdminActivity,
 });
 
 app.post("/api/demo/troll/seed-all", async (req, res) => {
