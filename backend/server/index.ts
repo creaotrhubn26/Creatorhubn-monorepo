@@ -362,6 +362,8 @@ import { setupRoleRoomAgentInspectRoutes } from "./role-room-agent-inspect-route
 import { setupRoleRoomWhatsAppRoutes } from "./role-room-whatsapp-routes";
 import { setupRoleRoomSocialRoutes } from "./role-room-social-routes";
 import { setupRoleRoomSocialMetaRoutes } from "./role-room-social-meta-routes";
+import { RoleRoomCommercialAccessError } from "./role-room-commercial-access-error";
+import { setupRoleRoomCommercialAccessRoutes } from "./role-room-commercial-access-routes";
 import {
   asString,
   asNumberOrNull,
@@ -34284,14 +34286,8 @@ function getRoleRoomCommercialPlan(persona: RoleRoomCommercialPersona) {
   };
 }
 
-class RoleRoomCommercialAccessError extends Error {
-  statusCode: number;
-
-  constructor(statusCode: number, message: string) {
-    super(message);
-    this.statusCode = statusCode;
-  }
-}
+// RoleRoomCommercialAccessError flyttet til ./role-room-commercial-access-error.ts
+// så både service-funksjonen i index.ts og route-modulen kan importere den.
 
 type RoleRoomCommercialAccessResult = {
   persona: RoleRoomCommercialPersona;
@@ -40170,38 +40166,9 @@ async function getRoleRoomCommercialLoginGate(input: {
   };
 }
 
-app.post("/api/role-room/commercial-access", async (req, res) => {
-  try {
-    const access = await ensureRoleRoomCommercialAccess({
-      persona: req.body?.persona,
-      organizationNumber: req.body?.organizationNumber,
-      companyName: req.body?.companyName,
-      teamMembers: req.body?.teamMembers,
-    });
-
-    return res.status(201).json({
-      success: true,
-      organizationNumber: access.organizationNumber,
-      companyName: access.companyName,
-      planId: access.plan.planId,
-      planName: access.plan.planName,
-      monthlyTotalExVat: access.monthlyTotalExVat,
-      paymentCompleted: access.paymentCompleted,
-      membersRegistered: access.members.length,
-      teamLeadEmail: access.teamLead.email,
-    });
-  } catch (error) {
-    console.error("Error creating Role Room commercial access requests:", error);
-    if (error instanceof RoleRoomCommercialAccessError) {
-      return res.status(error.statusCode).json({
-        error: error.message,
-      });
-    }
-    return res.status(500).json({
-      error: "Kunne ikke opprette Role Room-tilgangsforespørselen.",
-    });
-  }
-});
+// ── Role Room commercial-access — flyttet til ./role-room-commercial-access-routes.ts
+//   POST /commercial-access (onboarding-flyt for prod-team / innholdsprodusent).
+setupRoleRoomCommercialAccessRoutes({ app, ensureRoleRoomCommercialAccess });
 
 app.post("/api/role-room/billing/checkout-session", async (req, res) => {
   try {
