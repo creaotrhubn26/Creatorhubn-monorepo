@@ -369,6 +369,7 @@ import { createRoleRoomLiveSetService } from "./role-room-live-set-service";
 import { setupRoleRoomProjectsRoutes } from "./role-room-projects-routes";
 import { setupRoleRoomBillingAdminRoutes } from "./role-room-billing-admin-routes";
 import { setupCastingPoolsRoutes } from "./casting-pools-routes";
+import { setupCastingMiscRoutes } from "./casting-misc-routes";
 import {
   asString,
   asNumberOrNull,
@@ -14240,7 +14241,6 @@ const legacyShotListsByProject = new Map<string, any[]>();
 const legacyCalendarEventsByProject = new Map<string, any[]>();
 const legacyTeamDashboardSnapshotsByProject = new Map<string, any[]>();
 const legacyStoryLogicByProject = new Map<string, LegacyStoryLogicEntry>();
-const legacyFavoritesStore = new Map<string, string[]>();
 const legacyOffersByProject = new Map<string, any[]>();
 const legacyContractsByProject = new Map<string, any[]>();
 const legacyProjectAgreementsByProject = new Map<string, any[]>();
@@ -15403,20 +15403,12 @@ app.post("/api/profession/config/:profession", async (req, res) => {
   }
 });
 
-function legacyFavoritesKey(projectId: string, favoriteType: string): string {
-  return `${projectId}::${favoriteType}`;
-}
-
 function dbLegacySettingKey(
   userId: string,
   namespace: string,
   projectId?: string,
 ): string {
   return `settings:${legacySettingKey(userId, namespace, projectId)}`;
-}
-
-function dbLegacyFavoritesKey(projectId: string, favoriteType: string): string {
-  return `casting:favorites:${legacyFavoritesKey(projectId, favoriteType)}`;
 }
 
 function dbLegacyCastingProjectKey(projectId: string): string {
@@ -17306,10 +17298,6 @@ app.delete("/api/projects/:projectId/story-logic", async (req, res) => {
   });
 });
 
-app.get("/api/casting/health", (_req, res) => {
-  res.json({ status: "healthy", mode: "local-dev" });
-});
-
 async function getLegacyCastingProject(projectId: string): Promise<any | null> {
   const dbProject = await compatStoreGet<any>(
     dbLegacyCastingProjectKey(projectId),
@@ -18560,94 +18548,6 @@ app.post(
   },
 );
 
-// Favorites (legacy compatibility for Role/Candidate panels)
-app.get("/api/casting/favorites/:projectId/:favoriteType", async (req, res) => {
-  const { projectId, favoriteType } = req.params;
-  const key = legacyFavoritesKey(projectId, favoriteType);
-  const dbFavorites = await compatStoreGet<string[]>(
-    dbLegacyFavoritesKey(projectId, favoriteType),
-  );
-  if (Array.isArray(dbFavorites)) {
-    legacyFavoritesStore.set(key, dbFavorites);
-    res.json({ favorites: dbFavorites });
-    return;
-  }
-  res.json({ favorites: legacyFavoritesStore.get(key) || [] });
-});
-
-app.post(
-  "/api/casting/favorites/:projectId/:favoriteType",
-  async (req, res) => {
-    const { projectId, favoriteType } = req.params;
-    const itemIds = Array.isArray(req.body?.itemIds)
-      ? req.body.itemIds.filter((id: unknown) => typeof id === "string")
-      : [];
-    legacyFavoritesStore.set(
-      legacyFavoritesKey(projectId, favoriteType),
-      itemIds as string[],
-    );
-    await compatStoreSet(
-      dbLegacyFavoritesKey(projectId, favoriteType),
-      itemIds,
-    );
-    res.json({ ok: true, favorites: itemIds });
-  },
-);
-
-app.post(
-  "/api/casting/favorites/:projectId/:favoriteType/add",
-  async (req, res) => {
-    const { projectId, favoriteType } = req.params;
-    const itemId = typeof req.body?.itemId === "string" ? req.body.itemId : "";
-    if (!itemId) {
-      res.status(400).json({ error: "itemId is required" });
-      return;
-    }
-    const key = legacyFavoritesKey(projectId, favoriteType);
-    const dbFavorites = await compatStoreGet<string[]>(
-      dbLegacyFavoritesKey(projectId, favoriteType),
-    );
-    const source = Array.isArray(dbFavorites)
-      ? dbFavorites
-      : legacyFavoritesStore.get(key) || [];
-    const current = new Set(source);
-    current.add(itemId);
-    const updated = Array.from(current);
-    legacyFavoritesStore.set(key, updated);
-    await compatStoreSet(
-      dbLegacyFavoritesKey(projectId, favoriteType),
-      updated,
-    );
-    res.json({ ok: true, favorites: updated });
-  },
-);
-
-app.post(
-  "/api/casting/favorites/:projectId/:favoriteType/remove",
-  async (req, res) => {
-    const { projectId, favoriteType } = req.params;
-    const itemId = typeof req.body?.itemId === "string" ? req.body.itemId : "";
-    if (!itemId) {
-      res.status(400).json({ error: "itemId is required" });
-      return;
-    }
-    const key = legacyFavoritesKey(projectId, favoriteType);
-    const dbFavorites = await compatStoreGet<string[]>(
-      dbLegacyFavoritesKey(projectId, favoriteType),
-    );
-    const source = Array.isArray(dbFavorites)
-      ? dbFavorites
-      : legacyFavoritesStore.get(key) || [];
-    const updated = source.filter((id) => id !== itemId);
-    legacyFavoritesStore.set(key, updated);
-    await compatStoreSet(
-      dbLegacyFavoritesKey(projectId, favoriteType),
-      updated,
-    );
-    res.json({ ok: true, favorites: updated });
-  },
-);
-
 async function findByIdInDbProjectArrays(
   prefix: string,
   id: string,
@@ -19286,14 +19186,6 @@ app.patch(
     res.json({ agreement: next });
   },
 );
-
-app.post("/api/casting/demo/troll/offers-contracts", (_req, res) => {
-  res.json({ success: true, created: 0 });
-});
-
-app.get("/api/casting/demo/troll/offers-contracts", (_req, res) => {
-  res.json({ success: true, offers: [], contracts: [] });
-});
 
 // Comprehensive TROLL demo seed — kjører i én DB-transaksjon, idempotent
 // (DELETE før INSERT). Oppretter prosjekt + roles + candidates + crew +
@@ -38984,6 +38876,15 @@ setupCastingPoolsRoutes({
   compatStoreSet,
   compatStoreDelete,
   compatStoreListByPrefix,
+});
+
+// ── Casting misc — flyttet til ./casting-misc-routes.ts
+//   7 endpoints: health + favorites (4) + demo/troll (2). Modulen eier
+//   legacyFavoritesStore Map + key-helpers internt.
+setupCastingMiscRoutes({
+  app,
+  compatStoreGet,
+  compatStoreSet,
 });
 
 app.post("/api/role-room/billing/checkout-session", async (req, res) => {
