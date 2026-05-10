@@ -376,6 +376,9 @@ import {
   readNumber,
   readOptionalIsoDate,
   normalizeJsonObjectField,
+  getProjectItems,
+  setProjectItems,
+  findByIdInProjectMap,
 } from "./_shared";
 import {
   getNotebookLmWorkspaceStatus,
@@ -18873,17 +18876,6 @@ app.post("/api/casting/roles/save-to-pool", async (req, res) => {
   res.status(201).json({ success: true, poolRoleId });
 });
 
-function findByIdInProjectMap(
-  source: Map<string, any[]>,
-  id: string,
-): { projectId: string; index: number } | null {
-  for (const [projectId, items] of source.entries()) {
-    const index = items.findIndex((item) => item.id === id);
-    if (index >= 0) return { projectId, index };
-  }
-  return null;
-}
-
 async function findByIdInDbProjectArrays(
   prefix: string,
   id: string,
@@ -18902,18 +18894,6 @@ async function findByIdInDbProjectArrays(
     };
   }
   return null;
-}
-
-function getProjectItems(source: Map<string, any[]>, projectId: string): any[] {
-  return source.get(projectId) || [];
-}
-
-function setProjectItems(
-  source: Map<string, any[]>,
-  projectId: string,
-  items: any[],
-): void {
-  source.set(projectId, items);
 }
 
 function normalizeProjectAgreementStatus(

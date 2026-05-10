@@ -145,3 +145,35 @@ export function normalizeJsonObjectField(value: unknown): Record<string, unknown
   }
   return null;
 }
+
+// ── Generiske project-Map-helpers ─────────────────────────────────────
+// Brukes mot legacy in-memory Maps der nøkkelen er projectId og verdien
+// er en liste av entries (offers, contracts, project-agreements, calendar-
+// events, live-set-sessions m.fl.). 60+ kall fordelt på /api/casting og
+// /api/role-room. Pure funksjoner uten lukking over module-state.
+
+export function getProjectItems<T>(
+  source: Map<string, T[]>,
+  projectId: string,
+): T[] {
+  return source.get(projectId) || [];
+}
+
+export function setProjectItems<T>(
+  source: Map<string, T[]>,
+  projectId: string,
+  items: T[],
+): void {
+  source.set(projectId, items);
+}
+
+export function findByIdInProjectMap<T extends { id?: unknown }>(
+  source: Map<string, T[]>,
+  id: string,
+): { projectId: string; index: number } | null {
+  for (const [projectId, items] of source.entries()) {
+    const index = items.findIndex((item) => item.id === id);
+    if (index >= 0) return { projectId, index };
+  }
+  return null;
+}
