@@ -355,6 +355,7 @@ import { setupEvendiPeopleRoutes } from "./evendi-people-routes";
 import { setupEvendiConversationsRoutes } from "./evendi-conversations-routes";
 import { setupEvendiBridgesRoutes } from "./evendi-bridges-routes";
 import { setupEvendiMiscRoutes } from "./evendi-misc-routes";
+import { setupRoleRoomMarketingPlanRoutes } from "./role-room-marketing-plan-routes";
 import {
   asString,
   asNumberOrNull,
@@ -34882,214 +34883,15 @@ app.get("/api/role-room/instagram/jobs/:projectId", async (req, res) => {
 
 // ── Marketing Plan Engine ───────────────────────────────────────────────
 //
-// Generates content pillars + channel strategy + KPI targets from the
-// producer-bootstrap output. Gated on (a) Role Room Agent entitlement
-// (same as other AI endpoints), and (b) a readiness check that confirms
-// the bootstrap has enough signal to produce a non-generic plan.
-
-app.post("/api/role-room/marketing-plan/readiness", async (req, res) => {
-  const featureId = "role-room-agent-producer";
-  if (!isCompatAdminFeatureEnabled(featureId)) {
-    return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
-  }
-  const session = requireAdminSession(req, res);
-  if (!session) return;
-  const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
-  const bootstrap = (body.bootstrap ?? {}) as Parameters<typeof checkMarketingPlanReadiness>[0];
-  const connections = await listInstagramConnections(pool, session.userId);
-  const readiness = checkMarketingPlanReadiness(bootstrap, connections.length > 0);
-  return res.json({ success: true, readiness });
-});
-
-app.post("/api/role-room/marketing-plan/generate", async (req, res) => {
-  const featureId = "role-room-agent-producer";
-  if (!isCompatAdminFeatureEnabled(featureId)) {
-    return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
-  }
-  const session = requireAdminSession(req, res);
-  if (!session) return;
-
-  const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
-  const projectId = typeof body.projectId === "string" ? body.projectId.trim() : "";
-  if (!projectId) {
-    return res.status(400).json({ success: false, error: "projectId er påkrevd." });
-  }
-  if (!body.bootstrap || typeof body.bootstrap !== "object") {
-    return res.status(400).json({ success: false, error: "bootstrap er påkrevd." });
-  }
-  const horizonDays = typeof body.horizonDays === "number" && body.horizonDays > 0 && body.horizonDays <= 90
-    ? Math.round(body.horizonDays)
-    : undefined;
-
-  // Entitlement gate — marketing-plan generation counts against the
-  // same AI quota as other Claude-powered features.
-  const entitlement = await checkAgentEntitlement(pool, session.userId, session.role);
-  if (!entitlement.allowed) {
-    return res.status(402).json({
-      success: false,
-      error: entitlement.reason || "Markedsplan-generering krever aktiv plan eller add-on.",
-      entitlement,
-    });
-  }
-
-  const connections = await listInstagramConnections(pool, session.userId);
-  const bootstrap = body.bootstrap as Parameters<typeof checkMarketingPlanReadiness>[0];
-  const readiness = checkMarketingPlanReadiness(bootstrap, connections.length > 0);
-  if (!readiness.ready) {
-    return res.status(409).json({
-      success: false,
-      error: "Bootstrap mangler nødvendige felter for en meningsfull markedsplan.",
-      readiness,
-    });
-  }
-
-  const generated = await generateMarketingPlan({
-    bootstrap,
-    hasInstagramConnection: connections.length > 0,
-    horizonDays,
-  });
-  if (!generated) {
-    return res.status(503).json({
-      success: false,
-      error: "Claude kunne ikke generere planen nå. Sjekk ANTHROPIC_API_KEY eller prøv igjen.",
-    });
-  }
-
-  const persisted = await persistGeneratedMarketingPlan(pool, {
-    projectId,
-    ownerUserId: session.userId,
-    horizonDays,
-    generated,
-  });
-  if (!persisted) {
-    return res.status(500).json({ success: false, error: "Kunne ikke lagre planen." });
-  }
-  return res.json({ success: true, plan: persisted });
-});
-
-app.get("/api/role-room/marketing-plan/:projectId", async (req, res) => {
-  const session = requireAdminSession(req, res);
-  if (!session) return;
-  const projectId = String(req.params.projectId || "").trim();
-  if (!projectId) {
-    return res.status(400).json({ success: false, error: "projectId er påkrevd." });
-  }
-  const plan = await fetchActiveMarketingPlan(pool, projectId);
-  return res.json({ success: true, plan });
-});
-
-app.get("/api/role-room/marketing-plan/:planId/posts", async (req, res) => {
-  const session = requireAdminSession(req, res);
-  if (!session) return;
-  const planId = String(req.params.planId || "").trim();
-  if (!planId) {
-    return res.status(400).json({ success: false, error: "planId er påkrevd." });
-  }
-  const posts = await listPlanPosts(pool, planId);
-  return res.json({ success: true, posts });
-});
-
-app.post("/api/role-room/marketing-plan/:planId/generate-posts", async (req, res) => {
-  const featureId = "role-room-agent-producer";
-  if (!isCompatAdminFeatureEnabled(featureId)) {
-    return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
-  }
-  const session = requireAdminSession(req, res);
-  if (!session) return;
-
-  const planId = String(req.params.planId || "").trim();
-  const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
-  const projectId = typeof body.projectId === "string" ? body.projectId.trim() : "";
-  if (!planId || !projectId) {
-    return res.status(400).json({ success: false, error: "planId og projectId er påkrevd." });
-  }
-
-  // Entitlement — 30-post Claude-gen counts against the AI quota.
-  const entitlement = await checkAgentEntitlement(pool, session.userId, session.role);
-  if (!entitlement.allowed) {
-    return res.status(402).json({
-      success: false,
-      error: entitlement.reason || "Markedsplan-generering krever aktiv plan eller add-on.",
-      entitlement,
-    });
-  }
-
-  // Load the plan + pillars so we can hand Claude the full strategy
-  // context. Ownership gate: plan must belong to the session user's
-  // project (fetchActiveMarketingPlan only returns draft/active; we
-  // also verify owner_user_id to prevent cross-project generation).
-  const plan = await fetchActiveMarketingPlan(pool, projectId);
-  if (!plan || plan.id !== planId || plan.ownerUserId !== session.userId) {
-    return res.status(404).json({ success: false, error: "Fant ingen aktiv markedsplan for dette prosjektet." });
-  }
-
-  const generated = await generatePlanPosts({
-    strategy: plan.strategy,
-    pillars: plan.pillars,
-    horizonDays: plan.horizonDays,
-  });
-  if (!generated) {
-    return res.status(503).json({
-      success: false,
-      error: "Claude kunne ikke generere post-planen nå. Prøv igjen om et øyeblikk.",
-    });
-  }
-  const persisted = await persistPlanPosts(pool, {
-    planId,
-    posts: generated.posts,
-    pillarIndexToId: generated.pillarIndexToId,
-  });
-  if (!persisted) {
-    return res.status(500).json({ success: false, error: "Kunne ikke lagre post-planen." });
-  }
-  return res.json({ success: true, posts: persisted, model: generated.model });
-});
-
-// Accept a plan-post into the feed-planner so it becomes schedulable.
-// Idempotent — re-accepting an already-scheduled post returns current
-// state without duplicating the feed entry.
-app.post("/api/role-room/marketing-plan/posts/:postId/accept", async (req, res) => {
-  const session = requireAdminSession(req, res);
-  if (!session) return;
-  const postId = String(req.params.postId || "").trim();
-  const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
-  const projectId = typeof body.projectId === "string" ? body.projectId.trim() : "";
-  const scheduledFor = typeof body.scheduledFor === "string" ? body.scheduledFor : null;
-  if (!postId || !projectId) {
-    return res.status(400).json({ success: false, error: "postId og projectId er påkrevd." });
-  }
-  const result = await acceptPlanPostIntoFeedPlanner(
-    pool,
-    { planPostId: postId, projectId, ownerUserId: session.userId, scheduledFor },
-    { loadFeedPlan: loadFeedPlan as never, saveFeedPlan: saveFeedPlan as never },
-  );
-  if (!result) {
-    return res.status(404).json({
-      success: false,
-      error: "Fant ikke posten eller du eier den ikke.",
-    });
-  }
-  return res.json({ success: true, planPost: result.planPost, feedPlanPostId: result.feedPlanPostId });
-});
-
-app.post("/api/role-room/marketing-plan/:planId/activate", async (req, res) => {
-  const session = requireAdminSession(req, res);
-  if (!session) return;
-  const planId = String(req.params.planId || "").trim();
-  const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
-  const projectId = typeof body.projectId === "string" ? body.projectId.trim() : "";
-  if (!planId || !projectId) {
-    return res.status(400).json({ success: false, error: "planId og projectId er påkrevd." });
-  }
-  const ok = await activateMarketingPlan(pool, planId, projectId);
-  if (!ok) {
-    return res.status(409).json({
-      success: false,
-      error: "Fant ingen draft-plan å aktivere (kan allerede være aktivert eller arkivert).",
-    });
-  }
-  const plan = await fetchActiveMarketingPlan(pool, projectId);
-  return res.json({ success: true, plan });
+// ── Role Room marketing-plan — flyttet til ./role-room-marketing-plan-routes.ts
+//   7 endpoints: readiness, generate, get plan, list/generate posts,
+//   accept post, activate. Innholdsprodusent-mode-feature, gated på
+//   role-room-agent-producer feature-flag + AI-quota.
+setupRoleRoomMarketingPlanRoutes({
+  app,
+  pool,
+  requireAdminSession,
+  isCompatAdminFeatureEnabled,
 });
 
 // ── Client portal (magic-link dashboard) — admin-side flyttet til
