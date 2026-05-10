@@ -165,7 +165,10 @@ export function setupXxxRoutes(deps: XxxRoutesDeps): void {
 1. `role-room-*-routes.ts` (97 endpoints) — **kartlagt 2026-05-09:** spredt utover index.ts (linje 13676 → 33479+), ikke ett kluster. Faktiske sub-kategorier:
    - `role-room-vendor-links-routes.ts` (2) — public, statisk vendor-data ✅ **gjort** (commit `67091ba2`)
    - `role-room-casting-routes.ts` (6) — admin-tooling for reminder/SMS/WhatsApp-invoice-sveep ✅ **gjort** (commit pending push). Bruker `requireAdminSession` (admin-rolle, ikke produkteier-låst).
-   - `role-room-agent-routes.ts` (19 + 7 marketing-plan = 26) — Innholdsprodusent-mode (sjekk for getActiveProfessionMode i hver endpoint før ekstrakt)
+   - `role-room-agent-*-routes.ts` (19 endpoints, splittet i 3 sub-moduler):
+     - `role-room-agent-core-routes.ts` (3) — /access (feature-flag + provider-config status), /producer-bootstrap (Claude → markedsplan-bootstrap), /feed-plan/approvals/pending ✅ **gjort** (commit pending push). Deps: 6 (app, pool, getActiveSessionFromRequest, requireAdminSession, isCompatAdminFeatureEnabled, getCompatAdminFeature). Importerer fra ./role-room-agent.js.
+     - `role-room-agent-feed-plan-routes.ts` (10) — feed-plan templates+strategy+CRUD+drive+approve. **Ikke gjort enda.**
+     - `role-room-agent-inspect-routes.ts` (6) — meta-page-inspect, page-search, page-content-inspect, hashtag-suggest, ig-hashtag-inspect, ads-attribution-inspect. **Ikke gjort enda.**
    - `role-room-whatsapp-routes.ts` (15) — WhatsApp messaging
    - `role-room-social-routes.ts` (8 social + 8 instagram + 4 tiktok + 4 facebook + 2 youtube + 2 linkedin = 28) — sosiale OAuth/posting
    - `role-room-billing-routes.ts` (9 endpoints — webhook ved linje 642 + 8 ved linje 43672-45392) — **utsatt 2026-05-09:** ekstremt spredt utover hele filen, krever Stripe-state og webhook-secrets. Kommer tilbake når subsystemet kan ekstrakteres samlet med Stripe-customer-resolver-helpers.
