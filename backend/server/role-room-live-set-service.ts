@@ -39,6 +39,10 @@ export interface RoleRoomLiveSetService {
     projectId: string,
     events: unknown[],
   ) => Promise<void>;
+  // In-memory cleanup ved prosjekt-DELETE. DB-rydding (compatStoreDelete
+  // mot dbLegacyLiveSetSessionsKey/EventsKey) gjøres separat av kall-
+  // stedet — denne metoden rører kun Maps internt i service-modulen.
+  clearProjectState: (projectId: string) => void;
 }
 
 export function createRoleRoomLiveSetService(
@@ -92,10 +96,16 @@ export function createRoleRoomLiveSetService(
     await compatStoreSet(dbLegacyLiveSetEventsKey(projectId), events);
   }
 
+  function clearProjectState(projectId: string): void {
+    legacyLiveSetSessionsByProject.delete(projectId);
+    legacyLiveSetEventsByProject.delete(projectId);
+  }
+
   return {
     getLegacyLiveSetSessions,
     replaceLegacyLiveSetSessions,
     getLegacyLiveSetEvents,
     replaceLegacyLiveSetEvents,
+    clearProjectState,
   };
 }

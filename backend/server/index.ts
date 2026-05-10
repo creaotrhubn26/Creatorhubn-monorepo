@@ -365,6 +365,8 @@ import { setupRoleRoomSocialMetaRoutes } from "./role-room-social-meta-routes";
 import { RoleRoomCommercialAccessError } from "./role-room-commercial-access-error";
 import { setupRoleRoomCommercialAccessRoutes } from "./role-room-commercial-access-routes";
 import { setupRoleRoomEducationInquiriesRoutes } from "./role-room-education-inquiries-routes";
+import { createRoleRoomLiveSetService } from "./role-room-live-set-service";
+import { setupRoleRoomProjectsRoutes } from "./role-room-projects-routes";
 import {
   asString,
   asNumberOrNull,
@@ -14242,8 +14244,6 @@ const legacyRolePool = new Map<string, any>();
 const legacyOffersByProject = new Map<string, any[]>();
 const legacyContractsByProject = new Map<string, any[]>();
 const legacyProjectAgreementsByProject = new Map<string, any[]>();
-const legacyLiveSetSessionsByProject = new Map<string, any[]>();
-const legacyLiveSetEventsByProject = new Map<string, any[]>();
 const compatUserKvStore = new Map<
   string,
   { value: unknown; updatedAt: string }
@@ -15462,6 +15462,16 @@ function dbLegacyLiveSetSessionsKey(projectId: string): string {
 function dbLegacyLiveSetEventsKey(projectId: string): string {
   return `role-room:live-set-events:${projectId}`;
 }
+
+// Service-instans deles mellom routes-modulen for /api/role-room/projects/*
+// (live-set sessions/events endpoints) og casting DELETE-handleren under
+// (rydder in-memory state ved prosjekt-DELETE).
+const liveSetService = createRoleRoomLiveSetService({
+  compatStoreGet,
+  compatStoreSet,
+  dbLegacyLiveSetSessionsKey,
+  dbLegacyLiveSetEventsKey,
+});
 
 function dbLegacyManuscriptKey(manuscriptId: string): string {
   return `casting:manuscript:${manuscriptId}`;
@@ -17352,28 +17362,6 @@ async function getLegacyTeamSnapshots(projectId: string): Promise<any[]> {
   return legacyTeamDashboardSnapshotsByProject.get(projectId) || [];
 }
 
-async function getLegacyLiveSetSessions(projectId: string): Promise<any[]> {
-  const dbSessions = await compatStoreGet<any[]>(
-    dbLegacyLiveSetSessionsKey(projectId),
-  );
-  if (Array.isArray(dbSessions)) {
-    legacyLiveSetSessionsByProject.set(projectId, dbSessions);
-    return dbSessions;
-  }
-  return legacyLiveSetSessionsByProject.get(projectId) || [];
-}
-
-async function getLegacyLiveSetEvents(projectId: string): Promise<any[]> {
-  const dbEvents = await compatStoreGet<any[]>(
-    dbLegacyLiveSetEventsKey(projectId),
-  );
-  if (Array.isArray(dbEvents)) {
-    legacyLiveSetEventsByProject.set(projectId, dbEvents);
-    return dbEvents;
-  }
-  return legacyLiveSetEventsByProject.get(projectId) || [];
-}
-
 function readManuscriptProjectId(source: any, fallback = ""): string {
   if (!source || typeof source !== "object") return fallback;
   const fromCamel =
@@ -18235,8 +18223,7 @@ app.delete("/api/casting/projects/:projectId", async (req, res) => {
   legacyOffersByProject.delete(projectId);
   legacyContractsByProject.delete(projectId);
   legacyProjectAgreementsByProject.delete(projectId);
-  legacyLiveSetSessionsByProject.delete(projectId);
-  legacyLiveSetEventsByProject.delete(projectId);
+  liveSetService.clearProjectState(projectId);
   const manuscriptDeletes = manuscriptsForProject.flatMap((manuscript) => {
     const manuscriptId =
       typeof manuscript?.id === "string" ? manuscript.id : "";
@@ -19244,226 +19231,6 @@ app.put(
       current,
     );
     res.json({ ok: true });
-  },
-);
-
-app.get("/api/role-room/projects/:projectId/offers", async (req, res) => {
-  const projectId = req.params.projectId;
-  const dbOffers = await compatStoreGet<any[]>(dbLegacyOffersKey(projectId));
-  if (Array.isArray(dbOffers)) {
-    setProjectItems(legacyOffersByProject, projectId, dbOffers);
-    res.json({ offers: dbOffers });
-    return;
-  }
-  res.json({ offers: getProjectItems(legacyOffersByProject, projectId) });
-});
-
-app.get("/api/role-room/projects/:projectId/contracts", async (req, res) => {
-  const projectId = req.params.projectId;
-  const dbContracts = await compatStoreGet<any[]>(
-    dbLegacyContractsKey(projectId),
-  );
-  if (Array.isArray(dbContracts)) {
-    setProjectItems(legacyContractsByProject, projectId, dbContracts);
-    res.json({ contracts: dbContracts });
-    return;
-  }
-  res.json({ contracts: getProjectItems(legacyContractsByProject, projectId) });
-});
-
-app.get(
-  "/api/role-room/projects/:projectId/project-agreements",
-  async (req, res) => {
-    const projectId = req.params.projectId;
-    const dbAgreements = await compatStoreGet<any[]>(
-      dbLegacyProjectAgreementsKey(projectId),
-    );
-    if (Array.isArray(dbAgreements)) {
-      setProjectItems(
-        legacyProjectAgreementsByProject,
-        projectId,
-        dbAgreements,
-      );
-      res.json({ agreements: dbAgreements });
-      return;
-    }
-    res.json({
-      agreements: getProjectItems(legacyProjectAgreementsByProject, projectId),
-    });
-  },
-);
-
-app.post(
-  "/api/role-room/projects/:projectId/live-set/sessions",
-  async (req, res) => {
-    const projectId = req.params.projectId;
-    const payload = req.body || {};
-    const current = await getLegacyLiveSetSessions(projectId);
-    const sessionId =
-      typeof payload.sessionId === "string" && payload.sessionId.trim()
-        ? payload.sessionId
-        : `live-set-session-${Date.now()}`;
-    const session = {
-      sessionId,
-      projectId,
-      operatorId:
-        typeof payload.operatorId === "string"
-          ? payload.operatorId
-          : "unknown-operator",
-      deviceId:
-        typeof payload.deviceId === "string"
-          ? payload.deviceId
-          : "unknown-device",
-      shootingDayId:
-        typeof payload.shootingDayId === "string"
-          ? payload.shootingDayId
-          : undefined,
-      startedAt: new Date().toISOString(),
-      metadata:
-        payload.metadata && typeof payload.metadata === "object"
-          ? payload.metadata
-          : {},
-    };
-    const next = [
-      ...current.filter((entry) => entry?.sessionId !== sessionId),
-      session,
-    ];
-    legacyLiveSetSessionsByProject.set(projectId, next);
-    await compatStoreSet(dbLegacyLiveSetSessionsKey(projectId), next);
-    res.json({ success: true, session });
-  },
-);
-
-app.post(
-  "/api/role-room/projects/:projectId/live-set/events/batch",
-  async (req, res) => {
-    const projectId = req.params.projectId;
-    const payload = req.body || {};
-    const incoming = Array.isArray(payload.events) ? payload.events : [];
-    if (!incoming.length) {
-      res.json({
-        success: true,
-        ackedEventIds: [],
-        rejected: [],
-        conflicts: [],
-        serverTime: new Date().toISOString(),
-      });
-      return;
-    }
-
-    const current = await getLegacyLiveSetEvents(projectId);
-    const byId = new Map<string, any>(
-      current.map((event) => [
-        String(event?.eventId || event?.id || ""),
-        event,
-      ]),
-    );
-    const ackedEventIds: string[] = [];
-
-    for (const rawEvent of incoming) {
-      const eventId =
-        typeof rawEvent?.eventId === "string" && rawEvent.eventId.trim()
-          ? rawEvent.eventId
-          : `live-set-event-${Date.now()}-${ackedEventIds.length}`;
-      byId.set(eventId, {
-        ...rawEvent,
-        eventId,
-        projectId,
-        sessionId:
-          typeof rawEvent?.sessionId === "string"
-            ? rawEvent.sessionId
-            : payload.sessionId,
-        capturedAt:
-          typeof rawEvent?.capturedAt === "string"
-            ? rawEvent.capturedAt
-            : new Date().toISOString(),
-      });
-      ackedEventIds.push(eventId);
-    }
-
-    const next = Array.from(byId.values()).sort((left, right) => {
-      const leftTime = Date.parse(String(left?.capturedAt || "")) || 0;
-      const rightTime = Date.parse(String(right?.capturedAt || "")) || 0;
-      if (leftTime !== rightTime) return leftTime - rightTime;
-      return Number(left?.seq || 0) - Number(right?.seq || 0);
-    });
-
-    legacyLiveSetEventsByProject.set(projectId, next);
-    await compatStoreSet(dbLegacyLiveSetEventsKey(projectId), next);
-    res.json({
-      success: true,
-      ackedEventIds,
-      rejected: [],
-      conflicts: [],
-      serverTime: new Date().toISOString(),
-    });
-  },
-);
-
-app.get(
-  "/api/role-room/projects/:projectId/live-set/events",
-  async (req, res) => {
-    const projectId = req.params.projectId;
-    const since = typeof req.query.since === "string" ? req.query.since : "";
-    const sinceTime = since ? Date.parse(since) : NaN;
-    const current = await getLegacyLiveSetEvents(projectId);
-    const events = Number.isFinite(sinceTime)
-      ? current.filter((event) => {
-          const capturedAt = Date.parse(String(event?.capturedAt || ""));
-          return Number.isFinite(capturedAt) ? capturedAt > sinceTime : true;
-        })
-      : current;
-    const latestEvent =
-      events.length > 0
-        ? events[events.length - 1]
-        : current[current.length - 1];
-    res.json({
-      success: true,
-      events,
-      conflicts: [],
-      serverCursor:
-        typeof latestEvent?.capturedAt === "string"
-          ? latestEvent.capturedAt
-          : undefined,
-    });
-  },
-);
-
-app.post(
-  "/api/role-room/projects/:projectId/live-set/sync/ack",
-  async (req, res) => {
-    const projectId = req.params.projectId;
-    const payload = req.body || {};
-    const eventIds = Array.isArray(payload.eventIds)
-      ? payload.eventIds.map((value: unknown) => String(value))
-      : [];
-    const current = await getLegacyLiveSetEvents(projectId);
-    const known = new Set(
-      current.map((event) => String(event?.eventId || event?.id || "")),
-    );
-    const ackedEventIds = eventIds.filter((eventId: string) =>
-      known.has(eventId),
-    );
-    const unknownEventIds = eventIds.filter(
-      (eventId: string) => !known.has(eventId),
-    );
-    res.json({ success: true, ackedEventIds, unknownEventIds });
-  },
-);
-
-app.get(
-  "/api/role-room/projects/:projectId/live-set/health",
-  async (_req, res) => {
-    res.json({
-      success: true,
-      status: "ok",
-      dependencies: {
-        db: "ok",
-        weatherUpstream: "ok",
-        websocket: "degraded",
-      },
-      timestamp: new Date().toISOString(),
-    });
   },
 );
 
@@ -39384,6 +39151,23 @@ setupRoleRoomEducationInquiriesRoutes({
   buildInviteRequestProffAnalysis,
   upsertInviteRequestProffScreening,
   isValidNorwegianOrgNumber,
+});
+
+// ── Role Room projects — flyttet til ./role-room-projects-routes.ts
+//   8 endpoints under /api/role-room/projects/:projectId/* (offers,
+//   contracts, project-agreements GET + live-set sessions/events POST/GET +
+//   health). Service-laget: ./role-room-live-set-service.ts (instansiert
+//   over slik at casting DELETE-handler kan rydde live-set state).
+setupRoleRoomProjectsRoutes({
+  app,
+  compatStoreGet,
+  legacyOffersByProject,
+  legacyContractsByProject,
+  legacyProjectAgreementsByProject,
+  dbLegacyOffersKey,
+  dbLegacyContractsKey,
+  dbLegacyProjectAgreementsKey,
+  liveSetService,
 });
 
 app.post("/api/role-room/billing/checkout-session", async (req, res) => {
