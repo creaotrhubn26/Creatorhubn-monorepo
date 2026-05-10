@@ -171,6 +171,8 @@ export function setupXxxRoutes(deps: XxxRoutesDeps): void {
      - `role-room-agent-inspect-routes.ts` (6) — meta-page-inspect, page-search, page-content-inspect, hashtag-suggest (Claude), ig-hashtag-inspect, ads-attribution-inspect ✅ **gjort** (commit pending push). Bruker Meta Graph API direkte via fetch + Anthropic SDK dynamisk import. Deps: 4.
 
 **🎉 Hele agent-clusteret (19 endpoints, 3 sub-moduler) ferdig.**
+
+   - `role-room-whatsapp-routes.ts` (18 endpoints) — Meta WhatsApp Business API (webhook, config CRUD, health, group, team-invite, test-send, inbox, create-template, by-project, resend) ✅ **gjort** (commit pending push). Importerer fra 4 eksterne moduler (whatsapp-config-service, whatsapp-events-service, casting-team-whatsapp-invite-service, instagram-webhook for verifyMetaWebhookSignature). Deps: 4 (app, pool, requireAdminSession, requireAdminOrDemoBypass).
    - `role-room-whatsapp-routes.ts` (15) — WhatsApp messaging
    - `role-room-social-routes.ts` (8 social + 8 instagram + 4 tiktok + 4 facebook + 2 youtube + 2 linkedin = 28) — sosiale OAuth/posting
    - `role-room-billing-routes.ts` (9 endpoints — webhook ved linje 642 + 8 ved linje 43672-45392) — **utsatt 2026-05-09:** ekstremt spredt utover hele filen, krever Stripe-state og webhook-secrets. Kommer tilbake når subsystemet kan ekstrakteres samlet med Stripe-customer-resolver-helpers.
