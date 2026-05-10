@@ -193,7 +193,8 @@ export function setupXxxRoutes(deps: XxxRoutesDeps): void {
 3. `admin-routes.ts` (51) — eventuelt splittes
 4. `evendi-*-routes.ts` (~63 endpoints, ikke 50 som memory.md sa) — kartlagt 2026-05-10: 39 unike sub-segmenter. Sub-modul-progresjon:
    - `evendi-planning-routes.ts` (9) — bryllups-planlegging med sync mellom Evendi (klient-app) og fotograf-tidslinje ✅ **gjort** (commit `b5ea64ee`). Deps: 3 (app, pool, resolveCoupleId). Død helper `mapPlanningTimeline` slettet.
-   - `evendi-weather-location-routes.ts` (6) — bridger Kartverket (adresse-søk), YR.no (vær), reise-kostnad mellom CreatorHub og Evendi ✅ **gjort** (commit pending push). Inkl. 4 module-scope helpers flyttet med (YR_BRIDGE_CACHE, fetchYrWeatherBridge, searchKartverketAddress, calculateTravelInfo). Deps: 3 (app, pool, resolveCoupleId).
+   - `evendi-weather-location-routes.ts` (6) — bridger Kartverket (adresse-søk), YR.no (vær), reise-kostnad mellom CreatorHub og Evendi ✅ **gjort** (commit `5bd5cb52`). Inkl. 4 module-scope helpers flyttet med (YR_BRIDGE_CACHE, fetchYrWeatherBridge, searchKartverketAddress, calculateTravelInfo). Deps: 3 (app, pool, resolveCoupleId).
+   - `evendi-sales-routes.ts` (6) — vendor-side salgs-flyt (offers CRUD + contracts list/PATCH) ✅ **gjort** (commit pending push). Auth: token-basert via `getVendorFromSession` (Bearer + vendor-lookup). Deps: 3 (app, pool, getVendorFromSession).
    - Gjenstår: weather-location (6), offers (4)+contracts (2), important-people (4)+couple (3)+coordinators (1)+contacts (1) = people (9), conversations (3), bridges (~10), delivery-* (~7), m.fl. singletons.
 5. `projects-routes.ts` (48)
 6. `casting-routes.ts` (48)
