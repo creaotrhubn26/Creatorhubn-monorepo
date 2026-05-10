@@ -1,31 +1,34 @@
 # memory.md — Role Room session-state, refaktor-plan og kø
 
-> Levende dokument for Claude Code-sesjoner og produkt-eier. Sist oppdatert: 2026-05-10 (etter omfattende Fase 2-sesjon).
+> Levende dokument for Claude Code-sesjoner og produkt-eier. Sist oppdatert: 2026-05-10 (round 2 — etter service-laget-refactor for education-inquiries).
 > Plassert i repo-rot slik at Claude Code (lokal eller web) automatisk leser den ved oppstart.
 
 ---
 
 ## 🚀 SESSIONS-OPPSUMMERING (2026-05-09 til 2026-05-10)
 
-**Massiv Fase 2-refaktor utført over én lang sesjon. Alle 40 commits pushet til `origin/claude/check-git-status-BAfbj`. tsc passerer på hver. Ingen funksjonelle endringer.**
+**Sesjon 1 (2026-05-09 → tidlig 2026-05-10):** Massiv Fase 2-refaktor — 40 commits, 238 endpoints fra `admin-room` + `role-room` + `showcase` + `evendi` i 40 moduler. Alle pushet til `origin/claude/check-git-status-BAfbj`. tsc passerer på hver. Ingen funksjonelle endringer.
 
-### Totaler
+**Sesjon 2 (2026-05-10 round 2):** Service-laget-refactor for `role-room-education-inquiries` (1 av 3 utsatte sub-clustre). 3 commits, 1 endpoint, men *betydelig* netto linje-reduksjon (-1150) fordi store helper-blokker fulgte med. Ikke pushet ennå.
+
+### Totaler (akkumulert etter sesjon 2)
 
 | Cluster | Endpoints ekstraktert | Moduler |
 |---|---|---|
 | `/api/admin-room` | 27 | 7 (komplett ✅) |
-| `/api/role-room` | 88 | 11 (~komplett, 20 utsatt) |
+| `/api/role-room` | 89 | 14 (~komplett, 19 utsatt) |
 | `/api/showcase` | 60 | 13 (komplett ✅) |
 | `/api/evendi` | 63 | 7 (komplett ✅) |
 | `_shared.ts` + commercial-access-error | foundation | 2 |
-| **TOTAL** | **238** | **40** |
+| **TOTAL** | **239** | **43** |
 
-`index.ts`: ~119,066 → ~106,871 linjer (**-12,195 linjer netto, ~10.2% reduksjon**).
+`index.ts`: ~119,066 → ~105,723 linjer (**-13,343 linjer netto, ~11.2% reduksjon**).
 
 ### Strategi-mønstre etablert (gjelder for fremtidig refaktor)
 
 - **Stateful helpers** (pool, requireAdminSession, getActiveSessionFromRequest, getVendorFromSession, requireAdminRoomAccess, isCompatAdminFeatureEnabled, getCompatAdminFeature, hasTable, getTableColumns, compatStoreGet/Set/Delete, dbCompatUserKvKey osv.) → passes via deps-objekt til hver `setupXxxRoutes()`-funksjon.
 - **Pure helpers** (asString, asNumberOrNull, asJsonbArray, asJsonbObject, readBoolean, readString, readStringArray, readNumber, readOptionalIsoDate, normalizeJsonObjectField) → bor i `backend/server/_shared.ts` og importeres direkte i alle moduler.
+- **Service-laget (etablert sesjon 2):** Når en endpoint-modul har 10+ deps trengs service-laget først. Mønster: `createXxxService(deps)`-factory returnerer hovedfunksjonene som closures over deps. Service-modulen tar inn delte index.ts-helpers via deps og kan ha interne sub-helpers + module-private state (eks. rate-limit-Map). Routes-modulen instansierer 1-N services og holder kun endpoint-handlere. Se `role-room-turnstile-service.ts` + `role-room-education-inquiry-service.ts` + `role-room-education-inquiries-routes.ts` som referanse-implementasjon.
 - **Mode-relevans:** Backend er stort sett mode-agnostic. Mode-spesifikke features styres via feature-flag (`role-room-agent-producer`) eller persona-validering (`production_team`/`content_producer`), ikke via `getActiveProfessionMode`-helper. Ingen slik helper finnes i backend per nå.
 - **Auth-mønstre:**
   - `requireAdminRoomAccess` → admin-room (produkteier-låst til daniel@creatorhubn.com)
@@ -35,29 +38,33 @@
   - `requireAdminOrDemoBypass` → admin eller demo-bypass-flag
   - åpen → mange showcase + public role-room-endpoints (eksisterende oppførsel bevart)
 
+### ⚠️ Lærdom (sesjon 2): kartlegging FØR planlegging
+
+Memory.md sin opprinnelige plan for education-inquiries var **6 commits / 4 service-moduler** basert på en liste over "21 lokale helpers". Reality (etter Explore-agent-kartlegging):
+
+- **12 av 21 helpers var faktisk education-spesifikke** (kun brukt av education-inquiries-endpointet)
+- **8 av 21 helpers var DELTE** med commercial-access, invite-requests, payments etc. (4-139 callsites utenfor education-inquiries) — kan IKKE flyttes uten større refactor
+- Linjenumrene i memory.md var utdatert (endpointet var på linje 41405, ikke 45486)
+
+**Resultat:** 3 commits / 2 service-moduler + 1 routes-modul ble den realistiske planen. De 8 delte helpers ble igjen i index.ts og passes via deps.
+
+**Regel for fremtidige sesjoner:** ALLTID kjør Explore-agent-kartlegging av callsites før du tror på memory.md sin helper-liste. Verifiser også at navn/linjenummer fortsatt stemmer.
+
 ### 🚧 UTSATT — krever service-laget-refactor før endpoint-extraction
 
-Disse 3 sub-clustrene (~20 endpoints totalt) ble vurdert under sesjonen og **utsatt** fordi endpoint-extraction alene blir ufordragelig (15-21 deps per endpoint = code-smell). Riktig tilnærming: **flytt helper-funksjonene til egne service-moduler først**, deretter ekstraktér endpoints med rene importer.
+Disse sub-clustrene ble vurdert under sesjon 1 og **utsatt** fordi endpoint-extraction alene blir ufordragelig (15-21 deps per endpoint = code-smell). Riktig tilnærming: **flytt helper-funksjonene til egne service-moduler først**, deretter ekstraktér endpoints med rene importer.
 
-#### `role-room-education-inquiries` (1 endpoint, 386 linjer)
-**Lokale helpers som må flyttes (21):**
-- `getRoleRoomRequestIpAddress`, `normalizeMailConfigValue`
-- `getRoleRoomTurnstileExpectedHostnames`, `getRoleRoomTurnstileSecretKey`, `verifyRoleRoomTurnstileToken`
-- `isRoleRoomEducationDisposableEmail`, `isRoleRoomEducationInstitutionType`, `isRoleRoomEducationSeatRange`, `isRoleRoomEducationStartWindow`
-- `readRoleRoomEducationInquirySpamState`, `recordRoleRoomEducationInquirySpamAttempt`, `registerRoleRoomEducationInquiryIpAttempt`
-- `sendRoleRoomEducationInquiryAdminEmail`, `splitRoleRoomContactName`
-- `findAdminInviteRequest`, `upsertAdminInviteRequest`
-- `lookupInviteRequestBrregCompany`, `buildInviteRequestProffAnalysis`, `upsertInviteRequestProffScreening`
-- `isValidNorwegianOrgNumber`
+#### `role-room-education-inquiries` ✅ **FERDIG (sesjon 2, 2026-05-10)**
 
-**Foreslått splitt:**
-1. `role-room-education-inquiry-service.ts` — alle education-spesifikke helpers
-2. `role-room-turnstile-service.ts` — Turnstile/Cloudflare-helpers (kan brukes andre steder)
-3. `role-room-admin-invite-service.ts` — invite-request-helpers (deles med commercial-access)
-4. `role-room-brreg-service.ts` — BRREG-lookup + Proff-analyse-helpers
-5. Endpoint-modul som importerer fra alle 4 services
+3 commits: `8b23d867` (turnstile-service), `00cd5a76` (education-inquiry-service), `e8994de1` (routes-modul + index.ts wiring).
 
-#### `role-room-projects` (10 endpoints)
+- `role-room-turnstile-service.ts` (218 l) — 3 hovedhelpers + 3 interne + konstanter. Factory tar 2 delte helpers (`normalizeMailConfigValue`, `getDefaultRoleRoomPublicOrigin`).
+- `role-room-education-inquiry-service.ts` (826 l) — 9 hovedfunksjoner + 2 interne + 5 LABEL-konstanter + 4 timing-konstanter + IP-attempt-Map. Factory tar 11 delte helpers.
+- `role-room-education-inquiries-routes.ts` (554 l) — 1 endpoint, instansierer begge services.
+
+Netto effekt på `index.ts`: −1150 linjer. tsc passerer. Ingen funksjonelle endringer.
+
+#### `role-room-projects` (10 endpoints) — fortsatt utsatt
 **Lokale helpers som må flyttes (14):**
 - Maps: `legacyOffersByProject`, `legacyContractsByProject`, `legacyProjectAgreementsByProject`
 - Helpers: `getProjectItems`, `setProjectItems`, `findByIdInProjectMap`, `findByIdInDbProjectArrays`
@@ -86,21 +93,21 @@ Disse 3 sub-clustrene (~20 endpoints totalt) ble vurdert under sesjonen og **uts
 3. Flytt checkout/manage-helpers til `role-room-billing-checkout-service.ts`
 4. Endpoint-modul importerer fra services
 
-### Anbefalt rekkefølge for fremtidig sesjon (utsatt role-room)
+### Anbefalt rekkefølge for fremtidig sesjon (gjenværende utsatt role-room)
 
-1. **Education-inquiries først** (1 endpoint, helpers er klart avgrenset, lav koblings-risiko mot resten av appen). 5 service-moduler + 1 route-modul = 6 commits.
-2. **Projects** etter (10 endpoints, helpers er mer entangled men middels risiko). 3 service-moduler + 1 route-modul = 4 commits.
-3. **Billing til slutt** (9 endpoints, høyest kompleksitet pga Stripe-state). 2-3 service-moduler + 1 route-modul = 3-4 commits.
+1. ~~Education-inquiries~~ ✅ ferdig (sesjon 2, 3 commits, faktisk antall vs estimert 6).
+2. **Projects** (10 endpoints, helpers er mer entangled — kjør Explore-agent på alle 14 helpers først for å skille education-spesifikke fra delte). Estimat: 2-3 service-moduler + 1 route-modul = 3-4 commits.
+3. **Billing** (9 endpoints, Stripe-state heavy, spredt utover hele filen). Krever særlig grundig kartlegging: webhook-handler (linje 642), Stripe-customer-resolver-helpers, plan-mapping. Estimat: 2-3 service-moduler + 1 route-modul = 3-4 commits.
 
-Total estimert: 13-14 commits for å avslutte role-room backend-extraction.
+**Lærdom fra sesjon 2:** Det opprinnelige 13-14-commit-estimatet var for høyt fordi det antok 4 service-moduler per cluster. Realistisk er 2-3 service-moduler + 1 route-modul = 3-4 commits per cluster. Resterende totalt: **6-8 commits**.
 
 ---
 
-## ⚠️ HVA SOM MANGLER — komplett status (2026-05-10)
+## ⚠️ HVA SOM MANGLER — komplett status (2026-05-10 round 2)
 
-### Backend `index.ts`: **fortsatt 106,873 linjer / 913 endpoints i 110 grupper**
+### Backend `index.ts`: **fortsatt 105,723 linjer / 912 endpoints i 110 grupper**
 
-Selv om vi har ekstraktert 238 endpoints til 40 moduler, er det fortsatt MYE igjen. Her er hva som ikke er rørt:
+Selv om vi har ekstraktert 239 endpoints til 43 moduler, er det fortsatt MYE igjen. Her er hva som ikke er rørt:
 
 #### A. Backend Fase 2 — store kluster IKKE rørt (~600+ endpoints)
 
@@ -158,9 +165,9 @@ Alle disse mangler komplett ekstraktering. Listet etter størrelse:
 
 **Pluss ~70 mindre grupper med 1-5 endpoints hver.**
 
-#### B. Backend Fase 2 — `/api/role-room` utsatt (20 endpoints)
+#### B. Backend Fase 2 — `/api/role-room` utsatt (19 endpoints)
 
-Allerede dokumentert over: `education-inquiries` (1), `projects` (10), `billing` (9). Krever service-laget-refactor først.
+Allerede dokumentert over: ~~`education-inquiries` (1)~~ ✅ ferdig sesjon 2, `projects` (10), `billing` (9). Krever service-laget-refactor først.
 
 #### C. Frontend Fase 1 — IKKE PUSHET (re-implementering trengs)
 
@@ -209,18 +216,18 @@ Migrasjon `139_role_nav_config.sql` er kjørt i Neon. Ingen kjente nye migrasjon
 - **Sterkt anbefalt:** roter Neon-passordet `npg_SM7AZYxyvK4L` som ble delt i klartekst i tidligere chat-tråd (allerede notert i sikkerhets-noter).
 - Tsc-sjekk er den eneste kvalitetsporten brukt i sesjonen. Det finnes ingen kjente integration-tester eller lint-pipeline koblet til extraction-arbeidet — fremtidige sesjoner bør vurdere å legge til automatisert end-to-end-test før de utsatte clustrene flyttes.
 
-### Estimat for resterende arbeid
+### Estimat for resterende arbeid (oppdatert sesjon 2)
 
 | Fase / område | Estimert commits | Risiko |
 |---|---|---|
-| Role-room utsatt (education+projects+billing) | 13-14 | Middels (service-refactor først) |
+| Role-room utsatt (projects+billing) | 6-8 | Middels (service-refactor først; mønster nå etablert) |
 | Backend Fase 2 — gjenstående store clustre | 50-80 | Høy (mange entangled helpers) |
 | Frontend Fase 1 re-implementering | 3 | Lav (mistet kode må gjenskapes fra spec i memory.md) |
 | Frontend Fase 3 (CastingPlannerPanel-splitt) | 10-15 | Middels-høy |
 | Frontend Fase 4 (responsiv-optimering) | 30-50 | Lav-middels per panel, men 50 paneler × ~1 commit hver |
-| **Totalt resterende** | **~100-160 commits** | |
+| **Totalt resterende** | **~95-155 commits** | |
 
-Til sammenligning: denne sesjonen leverte 40 commits / 238 endpoints. Det gjenstår **~3-4× mer arbeid** enn det som er gjort.
+Til sammenligning: sesjon 1 leverte 40 commits / 238 endpoints, sesjon 2 leverte 3 commits / 1 endpoint men med tung helper-extraction (-1150 linjer). Det gjenstår **~2-3× mer arbeid** enn det som er gjort.
 
 ---
 
@@ -404,7 +411,8 @@ export function setupXxxRoutes(deps: XxxRoutesDeps): void {
    - `role-room-projects-routes.ts` (10 endpoints — multi-line app.X-format avslørte 3 ekstra) — **utsatt 2026-05-09:** entangled med 14 module-scope helpers (legacyOffersByProject, legacyContractsByProject, legacyProjectAgreementsByProject Maps + getProjectItems/setProjectItems/findByIdInProjectMap/findByIdInDbProjectArrays/createProjectAgreementRecord/normalizeProjectAgreementStatus/dbLegacy*Key + compatStoreGet/compatStoreSet). Disse helpers brukes også av andre endpoints utenfor role-room-projects, så de kan ikke flyttes uten større refactor. Kommer tilbake til denne etter (a) helpers ekstraktert til egen modul, eller (b) større "casting-offers-contracts-agreements"-subsystem-extract som flytter helpers og endpoints sammen.
    - `role-room-casting-routes.ts` (6) — casting-funksjonalitet (lite — det meste ligger i `/api/casting`-clusteret som er separat)
    - `role-room-client-portal-routes.ts` (3) — admin-side av klient-portal (invite/list/revoke) ✅ **gjort** (commit pending push). Klient-siden (magic-link-auth via session_token) blir igjen i index.ts som /api/client/portal/*.
-   - **Restende misc:** `commercial-access` (1, linje 43640) og `education-inquiries` (1, linje 45486) blir stående i index.ts — for små for egen modul, ingen logisk gruppering med andre endpoints. Vurder å bundle med education-/marketing-modul senere.
+   - `role-room-education-inquiries-routes.ts` (1 endpoint) ✅ **gjort (sesjon 2)** (commits `8b23d867` + `00cd5a76` + `e8994de1`). Service-laget-refactor: 2 nye service-moduler (`role-room-turnstile-service.ts`, `role-room-education-inquiry-service.ts`) + 1 routes-modul. 17 delte helpers passes via deps. -1150 linjer netto i index.ts.
+   - `role-room-commercial-access-routes.ts` (1 endpoint) ✅ **gjort (sesjon 1)** (commit `01fd6f55`). Onboarding-flyt for produksjonsteam/innholdsprodusent. `ensureRoleRoomCommercialAccess` blir værende i index.ts og passes via deps.
    - `role-room-marketing-plan-routes.ts` (7) — Innholdsprodusent-mode-feature: AI-genererte markedsplaner med pillars/strategi/30-post Claude-forslag som aksepteres inn i feed-planneren ✅ **gjort** (commit pending push). Feature-flag-gated på `role-room-agent-producer`. Deps: 4 (app, pool, requireAdminSession, isCompatAdminFeatureEnabled). Importerer 5 modul-helpers direkte (checkAgentEntitlement, listInstagramConnections, marketing-plan-helpers x4 + plan-posts x4 + feed-plan x2).
    - **Mode-relevans:** `agent` og `marketing-plan` er primært Innholdsprodusent-mode; `social` har OAuth som er mode-uavhengig men feed/publishing er mode-spesifikt. Sjekk per endpoint.
 2. `showcase-*-routes.ts` (60 endpoints, ~2800 linjer 105258-108050) — **kartlagt 2026-05-10:** ~40 unike sub-segmenter, krever splitt i ~8 sub-moduler. Sub-modul-progresjon:
