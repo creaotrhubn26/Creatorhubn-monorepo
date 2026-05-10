@@ -1,6 +1,6 @@
 # memory.md — Role Room session-state, refaktor-plan og kø
 
-> Levende dokument for Claude Code-sesjoner og produkt-eier. Sist oppdatert: 2026-05-10 (round 2 — etter service-laget-refactor for education-inquiries).
+> Levende dokument for Claude Code-sesjoner og produkt-eier. Sist oppdatert: 2026-05-10 (round 3 — etter role-room-projects + billing-admin-ekstrakt).
 > Plassert i repo-rot slik at Claude Code (lokal eller web) automatisk leser den ved oppstart.
 
 ---
@@ -9,20 +9,25 @@
 
 **Sesjon 1 (2026-05-09 → tidlig 2026-05-10):** Massiv Fase 2-refaktor — 40 commits, 238 endpoints fra `admin-room` + `role-room` + `showcase` + `evendi` i 40 moduler. Alle pushet til `origin/claude/check-git-status-BAfbj`. tsc passerer på hver. Ingen funksjonelle endringer.
 
-**Sesjon 2 (2026-05-10 round 2):** Service-laget-refactor for `role-room-education-inquiries` (1 av 3 utsatte sub-clustre). 3 commits, 1 endpoint, men *betydelig* netto linje-reduksjon (-1150) fordi store helper-blokker fulgte med. Ikke pushet ennå.
+**Sesjon 2 (2026-05-10 round 2):** Service-laget-refactor for `role-room-education-inquiries` (1 av 3 utsatte sub-clustre). 3 commits, 1 endpoint, men *betydelig* netto linje-reduksjon (-1150) fordi store helper-blokker fulgte med. Pushet og merget inn i PR #3.
 
-### Totaler (akkumulert etter sesjon 2)
+**Sesjon 3 (2026-05-10 round 3):** Service-laget-refactor for `role-room-projects` (2 av 3 utsatte sub-clustre) + delvis `role-room-billing-admin`. 4 commits, 10 endpoints:
+- 3 commits projects-refactor (pure helpers → `_shared.ts`, ny `role-room-live-set-service.ts`, ny `role-room-projects-routes.ts` med 8 endpoints) → -236 linjer
+- 1 commit billing-admin (2 av 9 billing-endpoints, kun reminder-tooling) → -55 linjer
+- Resten av billing utsatt: kartleggingen avdekket ~45 unike deps for full billing-extraksjon pga Stripe-state-fragmentering. Webhook er også entangled med Agent add-on. Krever større service-laget-refactor.
+
+### Totaler (akkumulert etter sesjon 3)
 
 | Cluster | Endpoints ekstraktert | Moduler |
 |---|---|---|
 | `/api/admin-room` | 27 | 7 (komplett ✅) |
-| `/api/role-room` | 89 | 14 (~komplett, 19 utsatt) |
+| `/api/role-room` | 99 | 17 (~komplett, 7 billing utsatt) |
 | `/api/showcase` | 60 | 13 (komplett ✅) |
 | `/api/evendi` | 63 | 7 (komplett ✅) |
 | `_shared.ts` + commercial-access-error | foundation | 2 |
-| **TOTAL** | **239** | **43** |
+| **TOTAL** | **249** | **46** |
 
-`index.ts`: ~119,066 → ~105,723 linjer (**-13,343 linjer netto, ~11.2% reduksjon**).
+`index.ts`: ~119,066 → ~105,432 linjer (**-13,634 linjer netto, ~11.4% reduksjon**).
 
 ### Strategi-mønstre etablert (gjelder for fremtidig refaktor)
 
@@ -38,7 +43,7 @@
   - `requireAdminOrDemoBypass` → admin eller demo-bypass-flag
   - åpen → mange showcase + public role-room-endpoints (eksisterende oppførsel bevart)
 
-### ⚠️ Lærdom (sesjon 2): kartlegging FØR planlegging
+### ⚠️ Lærdom (sesjon 2 + 3): kartlegging FØR planlegging
 
 Memory.md sin opprinnelige plan for education-inquiries var **6 commits / 4 service-moduler** basert på en liste over "21 lokale helpers". Reality (etter Explore-agent-kartlegging):
 
@@ -48,7 +53,14 @@ Memory.md sin opprinnelige plan for education-inquiries var **6 commits / 4 serv
 
 **Resultat:** 3 commits / 2 service-moduler + 1 routes-modul ble den realistiske planen. De 8 delte helpers ble igjen i index.ts og passes via deps.
 
-**Regel for fremtidige sesjoner:** ALLTID kjør Explore-agent-kartlegging av callsites før du tror på memory.md sin helper-liste. Verifiser også at navn/linjenummer fortsatt stemmer.
+**Sesjon 3 bekreftet mønsteret:**
+- Projects-cluster: memory.md sa "10 endpoints + 14 isolerte helpers" → reality var "8 endpoints under `/projects/:projectId/*` + 7 entangled `/role-room/offers|contracts|project-agreements`-endpoints + helpers DELT med `/api/casting`". Live-set Maps var likevel project-spesifikke og kunne lukkes inn i service.
+- Billing-cluster: Explore-agenten estimerte "~15 deps for full routes-modul" → reality var "~45 unike deps" pga Stripe-state-fragmentering, helt forskjellig kompleksitetsklasse fra education-inquiries og projects. Pause-bare 2 av 9 endpoints ble ekstraktert (admin-tooling).
+
+**Regler for fremtidige sesjoner:**
+1. ALLTID kjør Explore-agent-kartlegging av callsites før du tror på memory.md sin helper-liste. Verifiser også at navn/linjenummer fortsatt stemmer.
+2. EFTER kartlegging — les selve endpointene grundig før du committer scope. Dep-count fra første-iterasjons-kartlegging kan være sterkt undervurdert (Explore-agenten ser ikke alle helpers brukt inne i en handler ved første gjennomgang).
+3. Hvis dep-count overstiger ~20 for en single routes-modul, splitt enten endpoints i flere mindre moduler eller utsett til service-laget kan ekstrakteres samlet.
 
 ### 🚧 UTSATT — krever service-laget-refactor før endpoint-extraction
 
@@ -64,50 +76,59 @@ Disse sub-clustrene ble vurdert under sesjon 1 og **utsatt** fordi endpoint-extr
 
 Netto effekt på `index.ts`: −1150 linjer. tsc passerer. Ingen funksjonelle endringer.
 
-#### `role-room-projects` (10 endpoints) — fortsatt utsatt
-**Lokale helpers som må flyttes (14):**
-- Maps: `legacyOffersByProject`, `legacyContractsByProject`, `legacyProjectAgreementsByProject`
-- Helpers: `getProjectItems`, `setProjectItems`, `findByIdInProjectMap`, `findByIdInDbProjectArrays`
-- Factory/normalizers: `createProjectAgreementRecord`, `normalizeProjectAgreementStatus`
-- Key generators: `dbLegacyOffersKey`, `dbLegacyContractsKey`, `dbLegacyProjectAgreementsKey`
-- Plus: `compatStoreGet`, `compatStoreSet` (allerede passes via deps i andre moduler)
+#### `role-room-projects` ✅ **FERDIG (sesjon 3, 2026-05-10)**
 
-**Foreslått splitt:**
-1. `role-room-legacy-project-store.ts` — alle Maps + getProjectItems/setProjectItems/findByIdInProjectMap/findByIdInDbProjectArrays
-2. `role-room-project-agreements-service.ts` — createProjectAgreementRecord + normalizeProjectAgreementStatus
-3. `role-room-project-keys.ts` — dbLegacy*Key-funksjoner (eller behold inline)
-4. Endpoint-modul (`role-room-projects-routes.ts`) som importerer fra service-modulene
+3 commits: `78ef3727` (3 pure helpers → `_shared.ts`), `6c7904aa` (`role-room-live-set-service.ts` — Maps + getters/setters/clearProjectState), `111d4981` (`role-room-projects-routes.ts` + index.ts wiring).
 
-#### `role-room-billing` (9 endpoints)
-**Karakteristikk:** Endpoints spredt fra linje 642 (webhook) til 45000+, Stripe-state heavy.
+8 endpoints under `/api/role-room/projects/:projectId/*` flyttet. Kartleggingen avslørte at memory.md var feil om dep-isolasjon — Maps for offers/contracts/project-agreements er DELT med `/api/casting` og 7 andre `/api/role-room`-endpoints, så de ble værende i index.ts og passes via deps. Live-set Maps (sessions + events) er prosjekt-spesifikke og ble lukket inn i service-modulen, med `clearProjectState`-metode for casting DELETE-handler.
 
-**Lokale dependencies som må karlegges:**
-- Stripe-klient + webhook-secret (env-config)
-- Customer-resolution (`resolveStripeCustomerForRoleRoomCheckout`)
-- Plan-mapping + checkout-session-builder
-- Subscription-state-tracking (Webhooks fra Stripe)
+Netto effekt på `index.ts`: −236 linjer. tsc passerer. Ingen funksjonelle endringer.
 
-**Foreslått splitt:**
-1. Først: kartlegg alle Stripe-helpers brukt av disse 9 endpoints
-2. Flytt webhook-handler-logikken til en egen `role-room-billing-webhook.ts`-service
-3. Flytt checkout/manage-helpers til `role-room-billing-checkout-service.ts`
-4. Endpoint-modul importerer fra services
+#### `role-room-billing` — DELVIS FERDIG (sesjon 3): 2 av 9 endpoints
 
-### Anbefalt rekkefølge for fremtidig sesjon (gjenværende utsatt role-room)
+1 commit ferdig (sesjon 3): `7cffef27` (`role-room-billing-admin-routes.ts`) — 2 admin-tooling-endpoints (`reminders/status` + `reminders/trigger`) med 10 enkle deps.
 
-1. ~~Education-inquiries~~ ✅ ferdig (sesjon 2, 3 commits, faktisk antall vs estimert 6).
-2. **Projects** (10 endpoints, helpers er mer entangled — kjør Explore-agent på alle 14 helpers først for å skille education-spesifikke fra delte). Estimat: 2-3 service-moduler + 1 route-modul = 3-4 commits.
-3. **Billing** (9 endpoints, Stripe-state heavy, spredt utover hele filen). Krever særlig grundig kartlegging: webhook-handler (linje 642), Stripe-customer-resolver-helpers, plan-mapping. Estimat: 2-3 service-moduler + 1 route-modul = 3-4 commits.
+**Gjenstår 7 av 9 endpoints (utsatt — krever større service-laget-refactor):**
+
+| Endpoint | Linje (etter sesjon 3) | Kompleksitet |
+|---|---|---|
+| `POST /billing/webhook` | 691 | Entangled med Agent add-on checkout-handler; kan IKKE flyttes alene |
+| `POST /billing/checkout-session` | 39174 | Bruker Stripe Checkout API + ensureRoleRoomCommercialAccess + writeRoleRoomCommercialCheckoutSessionRecord + 5 buildRoleRoom*Url-helpers |
+| `GET /billing/session-status` | 39705 | Bruker syncRoleRoomCommercialStripeCheckoutSession + readRoleRoomCommercialCheckoutSessionRecord + getRoleRoomCommercialInviteRequestsForBillingRecord + getRoleRoomCommercialActivationStatus |
+| `GET /billing/account` | 39782 | Bruker resolveRoleRoomCommercialAccountForRequest (127 linjer, gjør inline Stripe API-kall) + 5 sms/whatsapp-billing-helpers + getRoleRoomCommercialActivationStatus + toAdminString |
+| `POST /billing/manage` | 39945 | Bruker resolveRoleRoomCommercialAccountForRequest + buildRoleRoomBillingReturnUrl |
+| `POST /billing/retry-payment` | 40006 | Bruker resolveRoleRoomCommercialAccountForRequest + syncRoleRoomCommercialStripeInvoice + markRoleRoomCommercialCheckoutRecordPending + sendRoleRoomCommercialPaymentFailedEmail |
+| `GET /billing/activate` | 40179 | 15+ helpers: findRoleRoomCommercialInviteByActivationToken, parseRoleRoomCommercialAccessSnapshot, hashRoleRoomActivationToken, normalizeRoleRoomCommercialPersona, getRoleRoomCommercialPlan, ensureInviteRequestAccessProvisioning, buildRoleRoomCommercialInviteMessage, updateRoleRoomCommercialInviteRecord, ROLE_ROOM_ACTIVATED_JOURNEY_STATUS, m.fl. |
+
+**Grunner til utsettelse:**
+- ~45 unike deps for full routes-modul (vs ~17 for education-inquiries og ~10 for projects-routes). Helt annen kompleksitetsklasse.
+- `resolveRoleRoomCommercialAccountForRequest` er 127 linjer med inline Stripe API-kall — vanskelig å trekke ut uten regresjon.
+- `getRoleRoomCommercialActivationStatus` har 21+ callsites globalt utenfor billing.
+- Webhook ruterer både Role Room commercial OG Agent add-on; må refaktoreres samtidig som agent-handler.
+
+**Riktig tilnærming for senere:** Service-laget-refactor som ekstraherer 3 service-moduler samtidig:
+1. `role-room-billing-checkout-service.ts` — checkout-session-builder + record-state-helpers
+2. `role-room-billing-account-service.ts` — resolveRoleRoomCommercialAccountForRequest + Stripe-customer-helpers
+3. `role-room-billing-activation-service.ts` — activate-token-flyt
+Deretter routes-modul som orkesterer. Estimert 4-5 commits, høy risiko (Stripe-flyt-regresjon ville bli dyrt i prod).
+
+### Anbefalt rekkefølge for fremtidig sesjon
+
+1. ~~Education-inquiries~~ ✅ ferdig (sesjon 2, 3 commits).
+2. ~~Projects~~ ✅ ferdig (sesjon 3, 3 commits).
+3. ~~Billing-admin~~ ✅ delvis ferdig (sesjon 3, 1 commit, 2 av 9 endpoints).
+4. **Billing (resten) — utsatt** til en dedikert sesjon med integrasjons-tester. Krever service-laget-refactor med 3 service-moduler.
+5. **Større clustre fremover:** `/api/casting` (59 endpoints — kjernefeature for Produksjonsteam-mode), `/api/admin` (51), `/api/projects` (56). Casting er mest verdi-impactende neste.
 
 **Lærdom fra sesjon 2:** Det opprinnelige 13-14-commit-estimatet var for høyt fordi det antok 4 service-moduler per cluster. Realistisk er 2-3 service-moduler + 1 route-modul = 3-4 commits per cluster. Resterende totalt: **6-8 commits**.
 
 ---
 
-## ⚠️ HVA SOM MANGLER — komplett status (2026-05-10 round 2)
+## ⚠️ HVA SOM MANGLER — komplett status (2026-05-10 round 3)
 
-### Backend `index.ts`: **fortsatt 105,723 linjer / 912 endpoints i 110 grupper**
+### Backend `index.ts`: **fortsatt 105,432 linjer / 902 endpoints i 110 grupper**
 
-Selv om vi har ekstraktert 239 endpoints til 43 moduler, er det fortsatt MYE igjen. Her er hva som ikke er rørt:
+Selv om vi har ekstraktert 249 endpoints til 46 moduler, er det fortsatt MYE igjen. Her er hva som ikke er rørt:
 
 #### A. Backend Fase 2 — store kluster IKKE rørt (~600+ endpoints)
 
@@ -165,9 +186,9 @@ Alle disse mangler komplett ekstraktering. Listet etter størrelse:
 
 **Pluss ~70 mindre grupper med 1-5 endpoints hver.**
 
-#### B. Backend Fase 2 — `/api/role-room` utsatt (19 endpoints)
+#### B. Backend Fase 2 — `/api/role-room` utsatt (7 endpoints)
 
-Allerede dokumentert over: ~~`education-inquiries` (1)~~ ✅ ferdig sesjon 2, `projects` (10), `billing` (9). Krever service-laget-refactor først.
+Allerede dokumentert over: ~~`education-inquiries` (1)~~ ✅ ferdig sesjon 2, ~~`projects` (10)~~ ✅ ferdig sesjon 3, `billing` (7 av 9 gjenstår — 2 er ferdig). Resten av billing krever større service-laget-refactor.
 
 #### C. Frontend Fase 1 — IKKE PUSHET (re-implementering trengs)
 
@@ -216,18 +237,18 @@ Migrasjon `139_role_nav_config.sql` er kjørt i Neon. Ingen kjente nye migrasjon
 - **Sterkt anbefalt:** roter Neon-passordet `npg_SM7AZYxyvK4L` som ble delt i klartekst i tidligere chat-tråd (allerede notert i sikkerhets-noter).
 - Tsc-sjekk er den eneste kvalitetsporten brukt i sesjonen. Det finnes ingen kjente integration-tester eller lint-pipeline koblet til extraction-arbeidet — fremtidige sesjoner bør vurdere å legge til automatisert end-to-end-test før de utsatte clustrene flyttes.
 
-### Estimat for resterende arbeid (oppdatert sesjon 2)
+### Estimat for resterende arbeid (oppdatert sesjon 3)
 
 | Fase / område | Estimert commits | Risiko |
 |---|---|---|
-| Role-room utsatt (projects+billing) | 6-8 | Middels (service-refactor først; mønster nå etablert) |
+| Role-room billing (resten av 7 endpoints) | 4-5 | **Høy** (Stripe-state, ~45 deps, webhook-entanglement med Agent) |
 | Backend Fase 2 — gjenstående store clustre | 50-80 | Høy (mange entangled helpers) |
 | Frontend Fase 1 re-implementering | 3 | Lav (mistet kode må gjenskapes fra spec i memory.md) |
 | Frontend Fase 3 (CastingPlannerPanel-splitt) | 10-15 | Middels-høy |
 | Frontend Fase 4 (responsiv-optimering) | 30-50 | Lav-middels per panel, men 50 paneler × ~1 commit hver |
 | **Totalt resterende** | **~95-155 commits** | |
 
-Til sammenligning: sesjon 1 leverte 40 commits / 238 endpoints, sesjon 2 leverte 3 commits / 1 endpoint men med tung helper-extraction (-1150 linjer). Det gjenstår **~2-3× mer arbeid** enn det som er gjort.
+Til sammenligning: sesjon 1 leverte 40 commits / 238 endpoints, sesjon 2 leverte 3 commits / 1 endpoint, sesjon 3 leverte 4 commits / 10 endpoints. Det gjenstår **~2-3× mer arbeid** enn det som er gjort.
 
 ---
 
