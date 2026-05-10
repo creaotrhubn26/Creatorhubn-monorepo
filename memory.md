@@ -191,7 +191,9 @@ export function setupXxxRoutes(deps: XxxRoutesDeps): void {
    - Gjenstår: collections (6), items (4), client-selections (3), smart-albums (2), pricing (2), client-session (2), categories+day-categories+profession (4), batch-operations (2), analytics (2), watermark/upload-media/update-metadata/toggle-favorite/sync-google-photos/quick-transform/showcases/settings/sets/send-overage-email/portfolios/move-images/link-project/import-google-photos/enhancement-presets/enhance-photo/email/delete-images/crop/copy-images/comments/client-submissions/calculate-selection-price/bulk-upload/bulk-download/archive-images (~37 misc image-ops). **Foreslått gruppering:** items (CRUD + comments), collections, categories, client (portal/sessions/submissions/selections), image-ops (bulk + transformations), google-photos, misc.
 
 3. `admin-routes.ts` (51) — eventuelt splittes
-4. `evendi-routes.ts` (50)
+4. `evendi-*-routes.ts` (~63 endpoints, ikke 50 som memory.md sa) — kartlagt 2026-05-10: 39 unike sub-segmenter. Sub-modul-progresjon:
+   - `evendi-planning-routes.ts` (9) — bryllups-planlegging med sync mellom Evendi (klient-app) og fotograf-tidslinje ✅ **gjort** (commit pending push). Deps: 3 (app, pool, resolveCoupleId). Død helper `mapPlanningTimeline` slettet.
+   - Gjenstår: weather-location (6), offers (4)+contracts (2), important-people (4)+couple (3)+coordinators (1)+contacts (1) = people (9), conversations (3), bridges (~10), delivery-* (~7), m.fl. singletons.
 5. `projects-routes.ts` (48)
 6. `casting-routes.ts` (48)
 7. `story-arc-routes.ts` (40)
