@@ -86,13 +86,141 @@ Disse 3 sub-clustrene (~20 endpoints totalt) ble vurdert under sesjonen og **uts
 3. Flytt checkout/manage-helpers til `role-room-billing-checkout-service.ts`
 4. Endpoint-modul importerer fra services
 
-### Anbefalt rekkefølge for fremtidig sesjon
+### Anbefalt rekkefølge for fremtidig sesjon (utsatt role-room)
 
 1. **Education-inquiries først** (1 endpoint, helpers er klart avgrenset, lav koblings-risiko mot resten av appen). 5 service-moduler + 1 route-modul = 6 commits.
 2. **Projects** etter (10 endpoints, helpers er mer entangled men middels risiko). 3 service-moduler + 1 route-modul = 4 commits.
 3. **Billing til slutt** (9 endpoints, høyest kompleksitet pga Stripe-state). 2-3 service-moduler + 1 route-modul = 3-4 commits.
 
-Total estimert: 13-14 commits for å avslutte Fase 2 backend-extraction.
+Total estimert: 13-14 commits for å avslutte role-room backend-extraction.
+
+---
+
+## ⚠️ HVA SOM MANGLER — komplett status (2026-05-10)
+
+### Backend `index.ts`: **fortsatt 106,873 linjer / 913 endpoints i 110 grupper**
+
+Selv om vi har ekstraktert 238 endpoints til 40 moduler, er det fortsatt MYE igjen. Her er hva som ikke er rørt:
+
+#### A. Backend Fase 2 — store kluster IKKE rørt (~600+ endpoints)
+
+Alle disse mangler komplett ekstraktering. Listet etter størrelse:
+
+| Cluster | Endpoints | Notater |
+|---|---|---|
+| `/api/casting` | 59 | Roller, manuskripter, role-pool, candidate-pool, acts, calendar, dialogue. **Hovedfeature for Produksjonsteam-mode.** Sannsynligvis sub-splitt i 5-7 moduler. |
+| `/api/projects` | 56 | Mest under `/projects/:projectId/*` (worklog, billing, timeline, stages). Sub-splitt nødvendig. |
+| `/api/admin` | 51 | users (10), features (6), analytics (5), refund-requests (3), seo-projects (2), activity-feed (2), system, smoke-tests. Sub-splitt: admin-users, admin-features, admin-analytics, admin-misc. |
+| `/api/story-arc` | 42 | v2 dominant (18 endpoints), auto-monitor (7), auto-edit (4). Story-arc er kjerne-feature. |
+| `/api/community` | 32 | Diskusjons-forum, posts, comments, reactions. Sub-splitt etter sub-domener. |
+| `/api/price-administration` | 30 | Plan-administrasjon. Trolig kohesivt. |
+| `/api/split-sheets` | 27 | Music split-sheets (composer-credits). Kohesivt cluster. |
+| `/api/equipment` | 25 | Equipment-inventory, brands, marketplace. Sub-splitt mulig. |
+| `/api/analytics` | 24 | Analytics-aggregat på tvers. Trolig kohesivt. |
+| `/api/business` | 23 | Business-profil + plan-data. |
+| `/api/contracts` | 22 | Contract CRUD + signering. Tett koblet til Google Drive. |
+| `/api/user` | 20 | User CRUD + settings. Auth-tett. |
+| `/api/quotes` | 19 | Quote-system (tilbud). |
+| `/api/universal-crm` | 18 | CRM-funksjonalitet. |
+| `/api/academy` | 18 | Academy/course-features. |
+| `/api/pricing` | 17 | Pricing-config. |
+| `/api/photographer` | 16 | Photographer-spesifikt (profession-vertikal). |
+| `/api/client` | 14 | Client-portal-relaterte. Klient-side av prøvegallerier. |
+| `/api/inspirations` | 11 | Inspiration-board. |
+| `/api/cms` | 11 | CMS for landingssider. |
+| `/api/platform` | 10 | Platform-config + features. |
+| `/api/auth` | 10 | Auth-flows (login, signup, OAuth-bridges). |
+| `/api/audio` | 10 | Audio-relaterte (musikk-settings). |
+| `/api/wedding` | 9 | Wedding-timeline + planning. |
+| `/api/payments` | 9 | Payment-handling (separat fra role-room/billing). |
+| `/api/file-management` | 9 | File upload/storage. |
+| `/api/external-data` | 9 | External data lookups. |
+| `/api/seo-bot` | 8 | SEO-bot crawling. |
+| `/api/google-photos` | 8 | Google Photos OAuth + albums (delvis dekket av showcase-google-photos). |
+| `/api/deliveries` | 8 | Delivery-tracking (separat fra evendi-delivery). |
+| `/api/davinci-resolve` | 8 | DaVinci Resolve-integrasjon. |
+| `/api/video` | 7 | Video-relaterte. |
+| `/api/vendor-types` | 7 | Vendor-type-config. |
+| `/api/sales` | 7 | Sales-flow. |
+| `/api/orchestration` | 7 | Orkestrering av tjenester. |
+| `/api/meeting-notes` | 7 | Møtenotat-funksjonalitet. |
+| `/api/invite-requests` | 7 | Invite-request-system (delt med commercial-access). |
+| `/api/audio-settings` | 7 | Audio-konfig. |
+| `/api/video-analysis` | 6 | Video-analyse. |
+| `/api/universal-vendor-showcase` | 6 | Vendor-showcase (separat fra showcase-cluster). |
+| `/api/submissions` | 6 | Generelle submissions. |
+| `/api/google-wallet` | 6 | Google Wallet-integrasjon. |
+| `/api/google` | 6 | Generell Google-integrasjon. |
+| `/api/branding` | 6 | Branding-config. |
+| `/api/audio-enhancement` | 6 | Audio-forbedring (AI). |
+| `/api/ai` | 6 | Generelle AI-endpoints. |
+| `/api/accounting` | 6 | Regnskapsintegrasjon (Tripletex etc.). |
+
+**Pluss ~70 mindre grupper med 1-5 endpoints hver.**
+
+#### B. Backend Fase 2 — `/api/role-room` utsatt (20 endpoints)
+
+Allerede dokumentert over: `education-inquiries` (1), `projects` (10), `billing` (9). Krever service-laget-refactor først.
+
+#### C. Frontend Fase 1 — IKKE PUSHET (re-implementering trengs)
+
+Per den eldre seksjonen "🚧 IKKE PUSHET — venter på re-implementering" øverst i fila:
+
+| Fil | Hva ble gjort | Status |
+|---|---|---|
+| `DashboardPanel.tsx` (38KB) | Stat-kort hover-only/press/empty-hint, 3-col Hurtighandlinger, Casting-fremdrift icon-box, Bolt-ikon header, Kanban-skeleton, sectionGap, aria-regions | Mistet i `git reset --hard` (commit `fffb2b5` aldri pushet). Trenger re-apply. |
+| `StoryLogicPanel.tsx` (168KB) | Mobile header, START_MODES emoji→MUI-ikoner (💡→Lightbulb, 🎭→TheaterComedy, 🧠→Psychology), strukturert Paper, inline-emoji→MUI | Samme — borderline størrelse for én MCP-write. |
+| `CastingPlannerPanel.tsx` (737KB) — Ny rolle-dialog | DialogActions column-reverse, full-bredde knapper på mobil, lukkeknapp 44x44, safe-area-padding | Krever splitt-først pga. størrelse (Fase 3). |
+
+#### D. Frontend Fase 3 — CastingPlannerPanel-splitt (helt urørt)
+
+**Mål:** `CastingPlannerPanel.tsx` (737KB) → < 100KB orkestrator + N SubPanel-filer.
+
+**Foreslått splitt** under `frontend/client/src/components/role-room/components/casting/`:
+- `RolesSubPanel.tsx`
+- `CandidatesSubPanel.tsx`
+- `CrewSubPanel.tsx`
+- `ScheduleSubPanel.tsx`
+- `RoleEditDialog.tsx` (Ny rolle-modal)
+- `CandidateEditDialog.tsx`
+- `LocationsSubPanel.tsx`
+- `PropsSubPanel.tsx`
+- `ShotListSubPanel.tsx`
+- (m.fl. — kartlegges ved oppstart)
+
+**Mode-relevans:** SubPanels kan trenge mode-awareness (eks. `CrewSubPanel` for Produksjonsteam vs. minimal versjon for Innholdsprodusent). Separat axis fra `useEffectiveTabsForRole`.
+
+#### E. Frontend Fase 4 — responsiv-optimering av alle paneler (helt urørt)
+
+**Mål:** Alle ~50 paneler i Role Room rendres optimalt på iPhone, iPad portrait, iPad landscape, MacBook, desktop.
+
+**Test-matrise:** 4 modes × 4 viewports = **16 kombinasjoner per panel**.
+
+Felles patterns dokumentert i seksjonen "Fase 4" under (WCAG 2.2 44x44 touch-target, `@media (hover: hover)`, `WebkitTapHighlightColor: transparent`, breakpoints, safe-area, m.fl.).
+
+**Rekkefølge:** DashboardPanel først (vises ved oppstart) → core-flyt (Roles/Candidates/Crew SubPanel) → AuditionSchedulePanel → mobile-only-views → KanbanPanel → StoryLogicPanel → StoryStructurePanel → resten alfabetisk.
+
+#### F. Database / migrasjoner
+
+Migrasjon `139_role_nav_config.sql` er kjørt i Neon. Ingen kjente nye migrasjoner trengs umiddelbart. Følg med på endringer i de utsatte clustrene (kan trenge nye tabeller/kolonner).
+
+#### G. Sikkerhet / observability
+
+- **Sterkt anbefalt:** roter Neon-passordet `npg_SM7AZYxyvK4L` som ble delt i klartekst i tidligere chat-tråd (allerede notert i sikkerhets-noter).
+- Tsc-sjekk er den eneste kvalitetsporten brukt i sesjonen. Det finnes ingen kjente integration-tester eller lint-pipeline koblet til extraction-arbeidet — fremtidige sesjoner bør vurdere å legge til automatisert end-to-end-test før de utsatte clustrene flyttes.
+
+### Estimat for resterende arbeid
+
+| Fase / område | Estimert commits | Risiko |
+|---|---|---|
+| Role-room utsatt (education+projects+billing) | 13-14 | Middels (service-refactor først) |
+| Backend Fase 2 — gjenstående store clustre | 50-80 | Høy (mange entangled helpers) |
+| Frontend Fase 1 re-implementering | 3 | Lav (mistet kode må gjenskapes fra spec i memory.md) |
+| Frontend Fase 3 (CastingPlannerPanel-splitt) | 10-15 | Middels-høy |
+| Frontend Fase 4 (responsiv-optimering) | 30-50 | Lav-middels per panel, men 50 paneler × ~1 commit hver |
+| **Totalt resterende** | **~100-160 commits** | |
+
+Til sammenligning: denne sesjonen leverte 40 commits / 238 endpoints. Det gjenstår **~3-4× mer arbeid** enn det som er gjort.
 
 ---
 
