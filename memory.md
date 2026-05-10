@@ -1,7 +1,100 @@
 # memory.md — Role Room session-state, refaktor-plan og kø
 
-> Levende dokument for Claude Code-sesjoner og produkt-eier. Sist oppdatert: 2026-05-09 (etter funding-ekstrakt).
+> Levende dokument for Claude Code-sesjoner og produkt-eier. Sist oppdatert: 2026-05-10 (etter omfattende Fase 2-sesjon).
 > Plassert i repo-rot slik at Claude Code (lokal eller web) automatisk leser den ved oppstart.
+
+---
+
+## 🚀 SESSIONS-OPPSUMMERING (2026-05-09 til 2026-05-10)
+
+**Massiv Fase 2-refaktor utført over én lang sesjon. Alle 40 commits pushet til `origin/claude/check-git-status-BAfbj`. tsc passerer på hver. Ingen funksjonelle endringer.**
+
+### Totaler
+
+| Cluster | Endpoints ekstraktert | Moduler |
+|---|---|---|
+| `/api/admin-room` | 27 | 7 (komplett ✅) |
+| `/api/role-room` | 88 | 11 (~komplett, 20 utsatt) |
+| `/api/showcase` | 60 | 13 (komplett ✅) |
+| `/api/evendi` | 63 | 7 (komplett ✅) |
+| `_shared.ts` + commercial-access-error | foundation | 2 |
+| **TOTAL** | **238** | **40** |
+
+`index.ts`: ~119,066 → ~106,871 linjer (**-12,195 linjer netto, ~10.2% reduksjon**).
+
+### Strategi-mønstre etablert (gjelder for fremtidig refaktor)
+
+- **Stateful helpers** (pool, requireAdminSession, getActiveSessionFromRequest, getVendorFromSession, requireAdminRoomAccess, isCompatAdminFeatureEnabled, getCompatAdminFeature, hasTable, getTableColumns, compatStoreGet/Set/Delete, dbCompatUserKvKey osv.) → passes via deps-objekt til hver `setupXxxRoutes()`-funksjon.
+- **Pure helpers** (asString, asNumberOrNull, asJsonbArray, asJsonbObject, readBoolean, readString, readStringArray, readNumber, readOptionalIsoDate, normalizeJsonObjectField) → bor i `backend/server/_shared.ts` og importeres direkte i alle moduler.
+- **Mode-relevans:** Backend er stort sett mode-agnostic. Mode-spesifikke features styres via feature-flag (`role-room-agent-producer`) eller persona-validering (`production_team`/`content_producer`), ikke via `getActiveProfessionMode`-helper. Ingen slik helper finnes i backend per nå.
+- **Auth-mønstre:**
+  - `requireAdminRoomAccess` → admin-room (produkteier-låst til daniel@creatorhubn.com)
+  - `requireAdminSession` → admin-rolle bredere (admin/owner/super_admin)
+  - `getVendorFromSession` → token-basert vendor-tilgang (Bearer + vendor-lookup)
+  - `getActiveSessionFromRequest` + activeSessions-Map (via lambda) → fleksibel session-tilgang
+  - `requireAdminOrDemoBypass` → admin eller demo-bypass-flag
+  - åpen → mange showcase + public role-room-endpoints (eksisterende oppførsel bevart)
+
+### 🚧 UTSATT — krever service-laget-refactor før endpoint-extraction
+
+Disse 3 sub-clustrene (~20 endpoints totalt) ble vurdert under sesjonen og **utsatt** fordi endpoint-extraction alene blir ufordragelig (15-21 deps per endpoint = code-smell). Riktig tilnærming: **flytt helper-funksjonene til egne service-moduler først**, deretter ekstraktér endpoints med rene importer.
+
+#### `role-room-education-inquiries` (1 endpoint, 386 linjer)
+**Lokale helpers som må flyttes (21):**
+- `getRoleRoomRequestIpAddress`, `normalizeMailConfigValue`
+- `getRoleRoomTurnstileExpectedHostnames`, `getRoleRoomTurnstileSecretKey`, `verifyRoleRoomTurnstileToken`
+- `isRoleRoomEducationDisposableEmail`, `isRoleRoomEducationInstitutionType`, `isRoleRoomEducationSeatRange`, `isRoleRoomEducationStartWindow`
+- `readRoleRoomEducationInquirySpamState`, `recordRoleRoomEducationInquirySpamAttempt`, `registerRoleRoomEducationInquiryIpAttempt`
+- `sendRoleRoomEducationInquiryAdminEmail`, `splitRoleRoomContactName`
+- `findAdminInviteRequest`, `upsertAdminInviteRequest`
+- `lookupInviteRequestBrregCompany`, `buildInviteRequestProffAnalysis`, `upsertInviteRequestProffScreening`
+- `isValidNorwegianOrgNumber`
+
+**Foreslått splitt:**
+1. `role-room-education-inquiry-service.ts` — alle education-spesifikke helpers
+2. `role-room-turnstile-service.ts` — Turnstile/Cloudflare-helpers (kan brukes andre steder)
+3. `role-room-admin-invite-service.ts` — invite-request-helpers (deles med commercial-access)
+4. `role-room-brreg-service.ts` — BRREG-lookup + Proff-analyse-helpers
+5. Endpoint-modul som importerer fra alle 4 services
+
+#### `role-room-projects` (10 endpoints)
+**Lokale helpers som må flyttes (14):**
+- Maps: `legacyOffersByProject`, `legacyContractsByProject`, `legacyProjectAgreementsByProject`
+- Helpers: `getProjectItems`, `setProjectItems`, `findByIdInProjectMap`, `findByIdInDbProjectArrays`
+- Factory/normalizers: `createProjectAgreementRecord`, `normalizeProjectAgreementStatus`
+- Key generators: `dbLegacyOffersKey`, `dbLegacyContractsKey`, `dbLegacyProjectAgreementsKey`
+- Plus: `compatStoreGet`, `compatStoreSet` (allerede passes via deps i andre moduler)
+
+**Foreslått splitt:**
+1. `role-room-legacy-project-store.ts` — alle Maps + getProjectItems/setProjectItems/findByIdInProjectMap/findByIdInDbProjectArrays
+2. `role-room-project-agreements-service.ts` — createProjectAgreementRecord + normalizeProjectAgreementStatus
+3. `role-room-project-keys.ts` — dbLegacy*Key-funksjoner (eller behold inline)
+4. Endpoint-modul (`role-room-projects-routes.ts`) som importerer fra service-modulene
+
+#### `role-room-billing` (9 endpoints)
+**Karakteristikk:** Endpoints spredt fra linje 642 (webhook) til 45000+, Stripe-state heavy.
+
+**Lokale dependencies som må karlegges:**
+- Stripe-klient + webhook-secret (env-config)
+- Customer-resolution (`resolveStripeCustomerForRoleRoomCheckout`)
+- Plan-mapping + checkout-session-builder
+- Subscription-state-tracking (Webhooks fra Stripe)
+
+**Foreslått splitt:**
+1. Først: kartlegg alle Stripe-helpers brukt av disse 9 endpoints
+2. Flytt webhook-handler-logikken til en egen `role-room-billing-webhook.ts`-service
+3. Flytt checkout/manage-helpers til `role-room-billing-checkout-service.ts`
+4. Endpoint-modul importerer fra services
+
+### Anbefalt rekkefølge for fremtidig sesjon
+
+1. **Education-inquiries først** (1 endpoint, helpers er klart avgrenset, lav koblings-risiko mot resten av appen). 5 service-moduler + 1 route-modul = 6 commits.
+2. **Projects** etter (10 endpoints, helpers er mer entangled men middels risiko). 3 service-moduler + 1 route-modul = 4 commits.
+3. **Billing til slutt** (9 endpoints, høyest kompleksitet pga Stripe-state). 2-3 service-moduler + 1 route-modul = 3-4 commits.
+
+Total estimert: 13-14 commits for å avslutte Fase 2 backend-extraction.
+
+---
 
 ---
 
