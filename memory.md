@@ -172,7 +172,11 @@ export function setupXxxRoutes(deps: XxxRoutesDeps): void {
 
 **🎉 Hele agent-clusteret (19 endpoints, 3 sub-moduler) ferdig.**
 
-   - `role-room-whatsapp-routes.ts` (18 endpoints) — Meta WhatsApp Business API (webhook, config CRUD, health, group, team-invite, test-send, inbox, create-template, by-project, resend) ✅ **gjort** (commit pending push). Importerer fra 4 eksterne moduler (whatsapp-config-service, whatsapp-events-service, casting-team-whatsapp-invite-service, instagram-webhook for verifyMetaWebhookSignature). Deps: 4 (app, pool, requireAdminSession, requireAdminOrDemoBypass).
+   - `role-room-whatsapp-routes.ts` (18 endpoints) — Meta WhatsApp Business API ✅ **gjort** (commit `9702a788`). Deps: 4.
+   - `role-room-social-routes.ts` (16 endpoints) — non-Meta sosiale plattformer (linkedin, youtube, tiktok) + generelle /social/* (inbox, publish, analytics, metrics, health, agent-insights, access-request) ✅ **gjort** (commit `64af8cd4`). 9 eksterne moduler. Deps: 4.
+   - `role-room-social-meta-routes.ts` (16 endpoints) — Meta-plattformer (instagram + facebook): OAuth, publish, webhooks, deauthorize, data-deletion (GDPR/Meta App Review-compliant) ✅ **gjort** (commit pending push). 6 eksterne moduler (instagram-oauth, instagram-publish, instagram-webhook, social-events, instagram-deauth, instagram-image-upload + agent-entitlements). Deps: 4.
+
+**🎉 Hele social-clusteret (32 endpoints, 2 sub-moduler) ferdig.**
    - `role-room-whatsapp-routes.ts` (15) — WhatsApp messaging
    - `role-room-social-routes.ts` (8 social + 8 instagram + 4 tiktok + 4 facebook + 2 youtube + 2 linkedin = 28) — sosiale OAuth/posting
    - `role-room-billing-routes.ts` (9 endpoints — webhook ved linje 642 + 8 ved linje 43672-45392) — **utsatt 2026-05-09:** ekstremt spredt utover hele filen, krever Stripe-state og webhook-secrets. Kommer tilbake når subsystemet kan ekstrakteres samlet med Stripe-customer-resolver-helpers.
