@@ -367,6 +367,7 @@ import { setupRoleRoomCommercialAccessRoutes } from "./role-room-commercial-acce
 import { setupRoleRoomEducationInquiriesRoutes } from "./role-room-education-inquiries-routes";
 import { createRoleRoomLiveSetService } from "./role-room-live-set-service";
 import { setupRoleRoomProjectsRoutes } from "./role-room-projects-routes";
+import { setupRoleRoomBillingAdminRoutes } from "./role-room-billing-admin-routes";
 import {
   asString,
   asNumberOrNull,
@@ -39170,6 +39171,25 @@ setupRoleRoomProjectsRoutes({
   liveSetService,
 });
 
+// ── Role Room billing admin — flyttet til ./role-room-billing-admin-routes.ts
+//   2 admin-tooling-endpoints under /api/role-room/billing/reminders/*:
+//   status + manuell trigger av sweep. Resten av billing (checkout,
+//   session-status, account, manage, retry-payment, activate, webhook)
+//   blir værende i index.ts inntil Stripe-state-fragmenteringen kan
+//   håndteres samlet via en service-laget-refactor.
+setupRoleRoomBillingAdminRoutes({
+  app,
+  requireAdminSession,
+  readRoleRoomCommercialReminderStatus,
+  runRoleRoomCommercialReminderSweep,
+  isRoleRoomReminderRunnerEnabled,
+  ROLE_ROOM_REMINDER_INTERVAL_MS,
+  ROLE_ROOM_PAYMENT_REMINDER_HOURS,
+  ROLE_ROOM_ACTIVATION_REMINDER_HOURS,
+  ROLE_ROOM_PAYMENT_REMINDER_REPEAT_HOURS,
+  ROLE_ROOM_ACTIVATION_REMINDER_REPEAT_HOURS,
+});
+
 app.post("/api/role-room/billing/checkout-session", async (req, res) => {
   try {
     const stripe = getRoleRoomStripeClient();
@@ -39336,62 +39356,6 @@ app.post("/api/role-room/billing/checkout-session", async (req, res) => {
   }
 });
 
-app.get("/api/role-room/billing/reminders/status", async (req, res) => {
-  if (!requireAdminSession(req, res)) {
-    return;
-  }
-
-  try {
-    const status = await readRoleRoomCommercialReminderStatus();
-    return res.json({
-      success: true,
-      enabled: isRoleRoomReminderRunnerEnabled(),
-      intervalMinutes: Math.round(ROLE_ROOM_REMINDER_INTERVAL_MS / 60000),
-      paymentReminderHours: ROLE_ROOM_PAYMENT_REMINDER_HOURS,
-      activationReminderHours: ROLE_ROOM_ACTIVATION_REMINDER_HOURS,
-      repeatPaymentReminderHours: ROLE_ROOM_PAYMENT_REMINDER_REPEAT_HOURS,
-      repeatActivationReminderHours: ROLE_ROOM_ACTIVATION_REMINDER_REPEAT_HOURS,
-      status:
-        status || {
-          reason: "manual",
-          startedAt: null,
-          finishedAt: null,
-          isRunning: false,
-          paymentCandidates: 0,
-          paymentRemindersSent: 0,
-          activationCandidates: 0,
-          activationRemindersSent: 0,
-          failures: 0,
-          skipped: 0,
-          notes: [],
-        },
-    });
-  } catch (error) {
-    console.error("Error reading Role Room reminder status:", error);
-    return res.status(500).json({
-      error: "Kunne ikke lese reminder-status for The Role Room.",
-    });
-  }
-});
-
-app.post("/api/role-room/billing/reminders/trigger", async (req, res) => {
-  if (!requireAdminSession(req, res)) {
-    return;
-  }
-
-  try {
-    const summary = await runRoleRoomCommercialReminderSweep("manual");
-    return res.json({
-      success: true,
-      summary,
-    });
-  } catch (error) {
-    console.error("Error triggering Role Room reminder sweep:", error);
-    return res.status(500).json({
-      error: "Kunne ikke trigge reminder-sweep for The Role Room.",
-    });
-  }
-});
 
 // ── role-room/casting/* — flyttet til ./role-room-casting-routes.ts
 //   reminder-sweep + sms/whatsapp-invoice-sweep, alle admin-tooling.
