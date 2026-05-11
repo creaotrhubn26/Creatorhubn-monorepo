@@ -376,6 +376,10 @@ import { setupCastingManuscriptsRoutes } from "./casting-manuscripts-routes";
 import { setupCastingProjectsRoutes } from "./casting-projects-routes";
 import { createCastingManuscriptRevisionsService } from "./casting-manuscript-revisions-service.js";
 import {
+  createScopedAuthMiddleware,
+  parseAuthMode,
+} from "./_shared-auth.js";
+import {
   asString,
   asNumberOrNull,
   asJsonbArray,
@@ -37423,6 +37427,21 @@ setupRoleRoomBillingAdminRoutes({
   ROLE_ROOM_PAYMENT_REMINDER_REPEAT_HOURS,
   ROLE_ROOM_ACTIVATION_REMINDER_REPEAT_HOURS,
 });
+
+// ── Casting auth-middleware (F4 wiring) ───────────────────────────────
+//   Påvirker ALLE /api/casting/*-endpoints. Mode styres av env:
+//     - open    : default, ingen check (eksisterende oppførsel)
+//     - log     : logger unauth requests for å vurdere enforcement-impact
+//     - enforce : 401 hvis ingen session
+//   Endre `CASTING_AUTH_MODE` env-var uten kode-endring for å rulle ut.
+app.use(
+  "/api/casting",
+  createScopedAuthMiddleware({
+    getActiveSessionFromRequest,
+    authMode: parseAuthMode(process.env.CASTING_AUTH_MODE),
+    scope: "casting",
+  }),
+);
 
 // ── Casting pools — flyttet til ./casting-pools-routes.ts
 //   11 endpoints under /api/casting/{candidate-pool,role-pool,candidates,roles}/*.

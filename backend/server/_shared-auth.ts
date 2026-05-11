@@ -100,3 +100,34 @@ export function parseAuthMode(value: string | undefined): AuthMode {
   if (value === "log" || value === "enforce") return value;
   return "open";
 }
+
+/**
+ * Bygger en Express-middleware som anvender requireScopedAccess på alle
+ * requests under en path-prefix. Klassisk `(req, res, next)`-signatur.
+ *
+ * I open/log-modi: alltid `next()` (request går videre). I enforce-mode:
+ * 401-respons hvis ingen session — `next()` ikke kalt.
+ *
+ * Setter `req.scopedSession` til parsert session (kan være null) for at
+ * handlere skal kunne lese den uten gjenfetching.
+ *
+ * @example
+ *   app.use("/api/casting", createScopedAuthMiddleware({
+ *     getActiveSessionFromRequest, authMode: parseAuthMode(process.env.CASTING_AUTH_MODE), scope: "casting"
+ *   }));
+ */
+export function createScopedAuthMiddleware(
+  deps: AuthCheckDeps,
+): express.RequestHandler {
+  return function scopedAuthMiddleware(req, res, next) {
+    const result = requireScopedAccess(req, res, deps);
+    if (!result.proceed) {
+      // 401 allerede sendt — IKKE next()
+      return;
+    }
+    // Fest session på request for handlerne (best-effort — kan være null).
+    (req as express.Request & { scopedSession?: AuthSession | null }).scopedSession =
+      result.session;
+    next();
+  };
+}
