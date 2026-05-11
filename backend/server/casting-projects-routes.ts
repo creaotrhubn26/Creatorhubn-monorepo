@@ -92,6 +92,7 @@ import {
 } from "./_shared";
 import type { CastingManuscriptsService } from "./casting-manuscripts-service";
 import type { RoleRoomLiveSetService } from "./role-room-live-set-service";
+import { newEntityId } from "./_shared-ids.js";
 
 export interface CastingProjectsRoutesDeps {
   app: express.Application;
@@ -714,7 +715,7 @@ export function setupCastingProjectsRoutes(
         const id =
           typeof payload.id === "string" && payload.id.trim()
             ? payload.id
-            : `shot-list-${Date.now()}`;
+            : newEntityId("shot-list");
         const next = [...current];
         const idx = next.findIndex((item) => item.id === id);
         const shotList = {
@@ -870,7 +871,7 @@ export function setupCastingProjectsRoutes(
       const eventId =
         typeof payload.id === "string" && payload.id.trim()
           ? payload.id
-          : `calendar-event-${Date.now()}`;
+          : newEntityId("calendar-event");
       const event = {
         id: eventId,
         project_id: projectId,
@@ -1095,7 +1096,7 @@ export function setupCastingProjectsRoutes(
         const id =
           typeof payload.id === "string" && payload.id.trim()
             ? payload.id
-            : `snapshot-${Date.now()}`;
+            : newEntityId("snapshot");
         const snapshot = {
           ...payload,
           id,

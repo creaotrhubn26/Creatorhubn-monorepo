@@ -59,6 +59,7 @@ import {
   getProjectItems,
   setProjectItems,
 } from "./_shared";
+import { newEntityId } from "./_shared-ids.js";
 
 export interface CastingAgreementsRoutesDeps {
   app: express.Application;
@@ -160,7 +161,7 @@ export function setupCastingAgreementsRoutes(
       res.status(400).json({ error: "projectId and candidateId are required" });
       return;
     }
-    const offerId = `offer-${Date.now()}`;
+    const offerId = newEntityId("offer");
     const offer = {
       id: offerId,
       project_id: projectId,
@@ -227,7 +228,7 @@ export function setupCastingAgreementsRoutes(
       res.status(400).json({ error: "projectId and candidateId are required" });
       return;
     }
-    const contractId = `contract-${Date.now()}`;
+    const contractId = newEntityId("contract");
     const contract = {
       id: contractId,
       project_id: projectId,

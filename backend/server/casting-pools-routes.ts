@@ -40,6 +40,7 @@
  */
 
 import type express from "express";
+import { newEntityId } from "./_shared-ids.js";
 
 export interface CastingPoolsRoutesDeps {
   app: express.Application;
@@ -99,7 +100,7 @@ export function setupCastingPoolsRoutes(deps: CastingPoolsRoutesDeps): void {
     const candidateId =
       typeof payload.id === "string" && payload.id.trim()
         ? payload.id
-        : `pool-candidate-${Date.now()}`;
+        : newEntityId("pool-candidate");
     const now = new Date().toISOString();
     const current = legacyCandidatePool.get(candidateId) || {};
     const candidate = {
@@ -140,7 +141,7 @@ export function setupCastingPoolsRoutes(deps: CastingPoolsRoutesDeps): void {
       return;
     }
     legacyCandidatePool.set(poolCandidateId, poolCandidate);
-    const candidateId = `candidate-${Date.now()}`;
+    const candidateId = newEntityId("candidate");
     res.status(201).json({ success: true, candidateId });
   });
 
@@ -162,7 +163,7 @@ export function setupCastingPoolsRoutes(deps: CastingPoolsRoutesDeps): void {
     }
     res
       .status(201)
-      .json({ success: true, candidateId: `candidate-copy-${Date.now()}` });
+      .json({ success: true, candidateId: newEntityId("candidate-copy") });
   });
 
   app.post("/api/casting/candidates/save-to-pool", async (req, res) => {
@@ -172,7 +173,7 @@ export function setupCastingPoolsRoutes(deps: CastingPoolsRoutesDeps): void {
       res.status(400).json({ success: false, error: "candidateId is required" });
       return;
     }
-    const poolCandidateId = `pool-candidate-${Date.now()}`;
+    const poolCandidateId = newEntityId("pool-candidate");
     const now = new Date().toISOString();
     legacyCandidatePool.set(poolCandidateId, {
       id: poolCandidateId,
@@ -215,7 +216,7 @@ export function setupCastingPoolsRoutes(deps: CastingPoolsRoutesDeps): void {
     const roleId =
       typeof payload.id === "string" && payload.id.trim()
         ? payload.id
-        : `pool-role-${Date.now()}`;
+        : newEntityId("pool-role");
     const now = new Date().toISOString();
     const current = legacyRolePool.get(roleId) || {};
     const role = {
@@ -254,7 +255,7 @@ export function setupCastingPoolsRoutes(deps: CastingPoolsRoutesDeps): void {
       return;
     }
     legacyRolePool.set(poolRoleId, poolRole);
-    res.status(201).json({ success: true, roleId: `role-${Date.now()}` });
+    res.status(201).json({ success: true, roleId: newEntityId("role") });
   });
 
   app.post("/api/casting/roles/save-to-pool", async (req, res) => {
@@ -263,7 +264,7 @@ export function setupCastingPoolsRoutes(deps: CastingPoolsRoutesDeps): void {
       res.status(400).json({ success: false, error: "roleId is required" });
       return;
     }
-    const poolRoleId = `pool-role-${Date.now()}`;
+    const poolRoleId = newEntityId("pool-role");
     const now = new Date().toISOString();
     legacyRolePool.set(poolRoleId, {
       id: poolRoleId,

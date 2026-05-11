@@ -77,6 +77,7 @@
 import type express from "express";
 
 import type { CastingManuscriptsService } from "./casting-manuscripts-service";
+import { newEntityId } from "./_shared-ids.js";
 
 export interface CastingManuscriptsRoutesDeps {
   app: express.Application;
@@ -141,7 +142,7 @@ export function setupCastingManuscriptsRoutes(
       const manuscriptId =
         typeof payload.id === "string" && payload.id.trim()
           ? payload.id
-          : `manuscript-${Date.now()}`;
+          : newEntityId("manuscript");
       const now = new Date().toISOString();
       const existing = (await manuscriptsService.getManuscript(manuscriptId)) || {};
       const projectId = readProjectId(
@@ -240,7 +241,7 @@ export function setupCastingManuscriptsRoutes(
       const sceneId =
         typeof payload.id === "string" && payload.id.trim()
           ? payload.id
-          : `scene-${Date.now()}`;
+          : newEntityId("scene");
       const existingIndex = current.findIndex((scene) => scene?.id === sceneId);
       const existing = existingIndex >= 0 ? current[existingIndex] : null;
       const now = new Date().toISOString();
@@ -294,7 +295,7 @@ export function setupCastingManuscriptsRoutes(
       const dialogueId =
         typeof payload.id === "string" && payload.id.trim()
           ? payload.id
-          : `dialogue-${Date.now()}`;
+          : newEntityId("dialogue");
       const existingIndex = current.findIndex((line) => line?.id === dialogueId);
       const existing = existingIndex >= 0 ? current[existingIndex] : null;
       const now = new Date().toISOString();
@@ -371,7 +372,7 @@ export function setupCastingManuscriptsRoutes(
       const revisionId =
         typeof payload.id === "string" && payload.id.trim()
           ? payload.id
-          : `revision-${Date.now()}`;
+          : newEntityId("revision");
       const existingIndex = current.findIndex(
         (revision) => revision?.id === revisionId,
       );
@@ -425,7 +426,7 @@ export function setupCastingManuscriptsRoutes(
       const actId =
         typeof payload.id === "string" && payload.id.trim()
           ? payload.id
-          : `act-${Date.now()}`;
+          : newEntityId("act");
       const existingIndex = current.findIndex((act) => act?.id === actId);
       const existing = existingIndex >= 0 ? current[existingIndex] : null;
       const now = new Date().toISOString();
