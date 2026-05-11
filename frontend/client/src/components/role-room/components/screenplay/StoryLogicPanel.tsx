@@ -98,6 +98,8 @@ import {
   FIELD_EXAMPLES,
   GENRE_TONE_PRESETS,
   GENRE_EMOTION_PRESETS,
+  nbLabel,
+  getFieldLabelNb,
 } from './storyLogic/constants';
 import {
   TROLL_DEMO_STATE,
@@ -297,10 +299,6 @@ const START_MODES: { id: StartMode; label: string; Icon: SvgIconComponent; iconC
 // nye felt — Vitest-tester i ../validators/storyValidation.test.ts dekker
 // edge cases.
 
-function nbLabel(value: string, labels: Record<string, string>): string {
-  return labels[value] || value;
-}
-
 function normalizeLegacyLookup(value: string): string {
   return value
     .toLowerCase()
@@ -309,35 +307,6 @@ function normalizeLegacyLookup(value: string): string {
     .replace(/[^a-z0-9æøå\-'\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-}
-
-function getFieldLabelNb(fieldId: string): string {
-  const map: Record<string, string> = {
-    corePremise: 'Kjernepremiss',
-    genre: 'Sjanger',
-    subGenre: 'Undersjanger',
-    tone: 'Tone',
-    targetAudience: 'Målgruppe',
-    audienceAge: 'Aldersgruppe',
-    whyNow: 'Hvorfor nå',
-    uniqueAngle: 'Unik vinkel',
-    marketComparables: 'Markedssammenligninger',
-    protagonist: 'Hovedperson',
-    protagonistTrait: 'Definerende trekk',
-    goal: 'Mål',
-    antagonisticForce: 'Antagonistisk kraft',
-    stakes: 'Konsekvenser',
-    fullLogline: 'Komplett logline',
-    centralTheme: 'Sentralt tema',
-    themeStatement: 'Temapåstand',
-    protagonistFlaw: 'Protagonistens kjernefeil',
-    flawOrigin: 'Opprinnelse til feil',
-    whatMustChange: 'Hva må endres',
-    transformationArc: 'Transformasjonsbue',
-    emotionalJourney: 'Emosjonell reise',
-    moralArgument: 'Moralsk argument',
-  };
-  return map[fieldId] || fieldId;
 }
 
 const LEGACY_TROLL_TEXT_NB_MAP: Record<string, string> = {

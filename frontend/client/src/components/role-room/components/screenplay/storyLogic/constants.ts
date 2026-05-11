@@ -180,6 +180,54 @@ export const EMOTION_LABELS_NB: Record<string, string> = {
 };
 
 // ----------------------------------------------------------------------------
+// Field-id → nb-NO display label (brukes i ValidationDisplay og av validators
+// for nextBestAction-meldinger)
+// ----------------------------------------------------------------------------
+
+export const FIELD_LABELS_NB: Record<string, string> = {
+  corePremise: 'Kjernepremiss',
+  genre: 'Sjanger',
+  subGenre: 'Undersjanger',
+  tone: 'Tone',
+  targetAudience: 'Målgruppe',
+  audienceAge: 'Aldersgruppe',
+  whyNow: 'Hvorfor nå',
+  uniqueAngle: 'Unik vinkel',
+  marketComparables: 'Markedssammenligninger',
+  protagonist: 'Hovedperson',
+  protagonistTrait: 'Definerende trekk',
+  goal: 'Mål',
+  antagonisticForce: 'Antagonistisk kraft',
+  stakes: 'Konsekvenser',
+  fullLogline: 'Komplett logline',
+  centralTheme: 'Sentralt tema',
+  themeStatement: 'Temapåstand',
+  protagonistFlaw: 'Protagonistens kjernefeil',
+  flawOrigin: 'Opprinnelse til feil',
+  whatMustChange: 'Hva må endres',
+  transformationArc: 'Transformasjonsbue',
+  emotionalJourney: 'Emosjonell reise',
+  moralArgument: 'Moralsk argument',
+};
+
+/**
+ * Looker upp et felt-id → norsk visningsnavn. Returnerer feltet selv ved miss
+ * (fallback til id-string).
+ */
+export function getFieldLabelNb(fieldId: string): string {
+  return FIELD_LABELS_NB[fieldId] || fieldId;
+}
+
+/**
+ * Generisk lookup-helper: returner labels[value] eller value som fallback.
+ * Brukes i hele StoryLogicPanel for å konvertere kanonisk engelsk verdi
+ * (genre/tone/emotion/audience-age) til norsk visningstekst.
+ */
+export function nbLabel(value: string, labels: Record<string, string>): string {
+  return labels[value] || value;
+}
+
+// ----------------------------------------------------------------------------
 // Legacy migration maps — for konverter eldre lagrede states ved load
 // ----------------------------------------------------------------------------
 
