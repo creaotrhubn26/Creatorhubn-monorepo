@@ -370,6 +370,7 @@ import { setupRoleRoomProjectsRoutes } from "./role-room-projects-routes";
 import { setupRoleRoomBillingAdminRoutes } from "./role-room-billing-admin-routes";
 import { setupCastingPoolsRoutes } from "./casting-pools-routes";
 import { setupCastingMiscRoutes } from "./casting-misc-routes";
+import { setupCastingAgreementsRoutes } from "./casting-agreements-routes";
 import {
   asString,
   asNumberOrNull,
@@ -18664,260 +18665,6 @@ function createProjectAgreementRecord(
     updated_at: new Date().toISOString(),
   };
 }
-
-// Offers + Contracts endpoints (shared for /api/casting and /api/role-room consumers)
-app.get("/api/casting/projects/:projectId/offers", async (req, res) => {
-  const projectId = req.params.projectId;
-  const dbOffers = await compatStoreGet<any[]>(dbLegacyOffersKey(projectId));
-  if (Array.isArray(dbOffers)) {
-    setProjectItems(legacyOffersByProject, projectId, dbOffers);
-    res.json({ offers: dbOffers });
-    return;
-  }
-  res.json({ offers: getProjectItems(legacyOffersByProject, projectId) });
-});
-
-app.get("/api/casting/projects/:projectId/contracts", async (req, res) => {
-  const projectId = req.params.projectId;
-  const dbContracts = await compatStoreGet<any[]>(
-    dbLegacyContractsKey(projectId),
-  );
-  if (Array.isArray(dbContracts)) {
-    setProjectItems(legacyContractsByProject, projectId, dbContracts);
-    res.json({ contracts: dbContracts });
-    return;
-  }
-  res.json({ contracts: getProjectItems(legacyContractsByProject, projectId) });
-});
-
-app.get(
-  "/api/casting/projects/:projectId/project-agreements",
-  async (req, res) => {
-    const projectId = req.params.projectId;
-    const dbAgreements = await compatStoreGet<any[]>(
-      dbLegacyProjectAgreementsKey(projectId),
-    );
-    if (Array.isArray(dbAgreements)) {
-      setProjectItems(
-        legacyProjectAgreementsByProject,
-        projectId,
-        dbAgreements,
-      );
-      res.json({ agreements: dbAgreements });
-      return;
-    }
-    res.json({
-      agreements: getProjectItems(legacyProjectAgreementsByProject, projectId),
-    });
-  },
-);
-
-app.post("/api/casting/offers", async (req, res) => {
-  const payload = req.body || {};
-  const projectId =
-    typeof payload.projectId === "string" ? payload.projectId : "";
-  const candidateId =
-    typeof payload.candidateId === "string" ? payload.candidateId : "";
-  if (!projectId || !candidateId) {
-    res.status(400).json({ error: "projectId and candidateId are required" });
-    return;
-  }
-  const offerId = `offer-${Date.now()}`;
-  const offer = {
-    id: offerId,
-    project_id: projectId,
-    candidate_id: candidateId,
-    role_id: payload.roleId || null,
-    offer_date: new Date().toISOString(),
-    response_deadline: payload.responseDeadline || null,
-    status: "pending",
-    compensation: payload.compensation || null,
-    terms: payload.terms || null,
-    notes: payload.notes || null,
-  };
-  const current = getProjectItems(legacyOffersByProject, projectId);
-  const next = [...current, offer];
-  setProjectItems(legacyOffersByProject, projectId, next);
-  await compatStoreSet(dbLegacyOffersKey(projectId), next);
-  res.status(201).json({ offerId });
-});
-
-app.put("/api/casting/offers/:offerId/respond", async (req, res) => {
-  let location = findByIdInProjectMap(
-    legacyOffersByProject,
-    req.params.offerId,
-  );
-  if (!location) {
-    const dbLocation = await findByIdInDbProjectArrays(
-      "casting:offers:",
-      req.params.offerId,
-    );
-    if (dbLocation) {
-      setProjectItems(
-        legacyOffersByProject,
-        dbLocation.projectId,
-        dbLocation.items,
-      );
-      location = { projectId: dbLocation.projectId, index: dbLocation.index };
-    }
-  }
-  if (!location) {
-    res.status(404).json({ error: "Offer not found" });
-    return;
-  }
-  const current = getProjectItems(legacyOffersByProject, location.projectId);
-  const status = req.body?.status === "declined" ? "declined" : "accepted";
-  current[location.index] = {
-    ...current[location.index],
-    status,
-    response_date: new Date().toISOString(),
-  };
-  setProjectItems(legacyOffersByProject, location.projectId, current);
-  await compatStoreSet(dbLegacyOffersKey(location.projectId), current);
-  res.json({ ok: true });
-});
-
-app.post("/api/casting/contracts", async (req, res) => {
-  const payload = req.body || {};
-  const projectId =
-    typeof payload.projectId === "string" ? payload.projectId : "";
-  const candidateId =
-    typeof payload.candidateId === "string" ? payload.candidateId : "";
-  if (!projectId || !candidateId) {
-    res.status(400).json({ error: "projectId and candidateId are required" });
-    return;
-  }
-  const contractId = `contract-${Date.now()}`;
-  const contract = {
-    id: contractId,
-    project_id: projectId,
-    candidate_id: candidateId,
-    offer_id: payload.offerId || null,
-    role_id: payload.roleId || null,
-    contract_type: payload.contractType || null,
-    start_date: payload.startDate || null,
-    end_date: payload.endDate || null,
-    compensation: payload.compensation || null,
-    terms: payload.terms || null,
-    status: "draft",
-    signed_date: null,
-  };
-  const current = getProjectItems(legacyContractsByProject, projectId);
-  const next = [...current, contract];
-  setProjectItems(legacyContractsByProject, projectId, next);
-  await compatStoreSet(dbLegacyContractsKey(projectId), next);
-  res.status(201).json({ contractId });
-});
-
-app.put("/api/casting/contracts/:contractId/sign", async (req, res) => {
-  let location = findByIdInProjectMap(
-    legacyContractsByProject,
-    req.params.contractId,
-  );
-  if (!location) {
-    const dbLocation = await findByIdInDbProjectArrays(
-      "casting:contracts:",
-      req.params.contractId,
-    );
-    if (dbLocation) {
-      setProjectItems(
-        legacyContractsByProject,
-        dbLocation.projectId,
-        dbLocation.items,
-      );
-      location = { projectId: dbLocation.projectId, index: dbLocation.index };
-    }
-  }
-  if (!location) {
-    res.status(404).json({ error: "Contract not found" });
-    return;
-  }
-  const current = getProjectItems(legacyContractsByProject, location.projectId);
-  current[location.index] = {
-    ...current[location.index],
-    status: "signed",
-    signed_date: new Date().toISOString(),
-  };
-  setProjectItems(legacyContractsByProject, location.projectId, current);
-  await compatStoreSet(dbLegacyContractsKey(location.projectId), current);
-  res.json({ ok: true });
-});
-
-app.post("/api/casting/project-agreements", async (req, res) => {
-  const agreement = createProjectAgreementRecord(req.body || {});
-  if (!agreement) {
-    res
-      .status(400)
-      .json({
-        error:
-          "projectId, title, counterpartyType and counterpartyName are required",
-      });
-    return;
-  }
-  const current = getProjectItems(
-    legacyProjectAgreementsByProject,
-    agreement.project_id,
-  );
-  const next = [...current, agreement];
-  setProjectItems(legacyProjectAgreementsByProject, agreement.project_id, next);
-  await compatStoreSet(
-    dbLegacyProjectAgreementsKey(agreement.project_id),
-    next,
-  );
-  res.status(201).json({ agreementId: agreement.id });
-});
-
-app.put(
-  "/api/casting/project-agreements/:agreementId/status",
-  async (req, res) => {
-    let location = findByIdInProjectMap(
-      legacyProjectAgreementsByProject,
-      req.params.agreementId,
-    );
-    if (!location) {
-      const dbLocation = await findByIdInDbProjectArrays(
-        "casting:project-agreements:",
-        req.params.agreementId,
-      );
-      if (dbLocation) {
-        setProjectItems(
-          legacyProjectAgreementsByProject,
-          dbLocation.projectId,
-          dbLocation.items,
-        );
-        location = { projectId: dbLocation.projectId, index: dbLocation.index };
-      }
-    }
-    if (!location) {
-      res.status(404).json({ error: "Agreement not found" });
-      return;
-    }
-    const current = getProjectItems(
-      legacyProjectAgreementsByProject,
-      location.projectId,
-    );
-    const nextStatus = normalizeProjectAgreementStatus(req.body?.status);
-    current[location.index] = {
-      ...current[location.index],
-      status: nextStatus,
-      signed_date:
-        nextStatus === "signed"
-          ? new Date().toISOString()
-          : (current[location.index]?.signed_date ?? null),
-      updated_at: new Date().toISOString(),
-    };
-    setProjectItems(
-      legacyProjectAgreementsByProject,
-      location.projectId,
-      current,
-    );
-    await compatStoreSet(
-      dbLegacyProjectAgreementsKey(location.projectId),
-      current,
-    );
-    res.json({ ok: true });
-  },
-);
 
 app.post("/api/role-room/offers", async (req, res) => {
   const payload = req.body || {};
@@ -38885,6 +38632,24 @@ setupCastingMiscRoutes({
   app,
   compatStoreGet,
   compatStoreSet,
+});
+
+// ── Casting agreements — flyttet til ./casting-agreements-routes.ts
+//   9 endpoints: offers + contracts + project-agreements (3 GET + 5 POST/PUT).
+//   Maps deles med /api/role-room (samme referanser passes via deps).
+setupCastingAgreementsRoutes({
+  app,
+  compatStoreGet,
+  compatStoreSet,
+  legacyOffersByProject,
+  legacyContractsByProject,
+  legacyProjectAgreementsByProject,
+  dbLegacyOffersKey,
+  dbLegacyContractsKey,
+  dbLegacyProjectAgreementsKey,
+  findByIdInDbProjectArrays,
+  createProjectAgreementRecord,
+  normalizeProjectAgreementStatus,
 });
 
 app.post("/api/role-room/billing/checkout-session", async (req, res) => {
