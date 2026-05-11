@@ -57,7 +57,9 @@ import {
   ArrowForward as ArrowForwardIcon,
   GpsFixed as GpsFixedIcon,
   ReportProblem as ContradictionIcon,
+  TheaterComedy as TheaterComedyIcon,
 } from '@mui/icons-material';
+import type { SvgIconComponent } from '@mui/icons-material';
 import jsPDF from 'jspdf';
 import { useBrandingSettings } from '../../hooks/useBrandingSettings';
 import { storyLogicService, type StoryLogicSyncMeta } from '../../services/storyLogicService';
@@ -263,10 +265,12 @@ const STORY_TEMPLATES: StoryTemplate[] = [
 
 // Start-with modes for non-linear entry (#10)
 type StartMode = 'idea' | 'character' | 'theme';
-const START_MODES: { id: StartMode; label: string; icon: string; description: string; initialPhase: number }[] = [
-  { id: 'idea', label: 'Start med idé', icon: '💡', description: 'Jeg har et konsept eller premiss', initialPhase: 0 },
-  { id: 'character', label: 'Start med karakter', icon: '🎭', description: 'Jeg har en karakter i tankene', initialPhase: 1 },
-  { id: 'theme', label: 'Start med tema', icon: '🧠', description: 'Jeg vet budskapet først', initialPhase: 2 },
+// Icon-konfig matchende memory.md-spec (emoji → MUI):
+//   💡 → Lightbulb, 🎭 → TheaterComedy, 🧠 → Psychology
+const START_MODES: { id: StartMode; label: string; Icon: SvgIconComponent; iconColor: string; description: string; initialPhase: number }[] = [
+  { id: 'idea',      label: 'Start med idé',     Icon: LightbulbIcon,    iconColor: '#fbbf24', description: 'Jeg har et konsept eller premiss', initialPhase: 0 },
+  { id: 'character', label: 'Start med karakter', Icon: TheaterComedyIcon, iconColor: '#f472b6', description: 'Jeg har en karakter i tankene',   initialPhase: 1 },
+  { id: 'theme',     label: 'Start med tema',    Icon: PsychologyIcon,   iconColor: '#a78bfa', description: 'Jeg vet budskapet først',           initialPhase: 2 },
 ];
 
 const PHASE_META: Array<{ key: StoryPhaseKey; index: number; title: string }> = [
@@ -1458,7 +1462,7 @@ const ValidationDisplay: React.FC<ValidationDisplayProps> = ({ result, title, on
           border: '1px solid rgba(255,255,255,0.08)',
         }}>
           <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
-            <Typography sx={{ fontSize: '1.1rem', mt: 0.25 }}>🔍</Typography>
+            <GpsFixedIcon sx={{ fontSize: '1.1rem', color: '#60a5fa', mt: 0.25 }} aria-hidden />
             <Box sx={{ flex: 1 }}>
               <Typography variant="caption" sx={{ color: '#9ca3af', fontWeight: 600, letterSpacing: 0.5 }}>
                 STØRSTE MULIGHET
@@ -1506,7 +1510,7 @@ const ValidationDisplay: React.FC<ValidationDisplayProps> = ({ result, title, on
                       border: '1px solid rgba(255,255,255,0.05)',
                     }}
                   >
-                    <Typography sx={{ fontSize: '0.85rem', mt: 0.1 }}>💡</Typography>
+                    <TipsIcon sx={{ fontSize: '0.95rem', color: '#fbbf24', mt: 0.1 }} aria-hidden />
                     <Box sx={{ flex: 1 }}>
                       <Typography variant="body2" sx={{ color: '#d4d4d8' }}>{w.message}</Typography>
                       <Typography variant="caption" sx={{ color: '#6b7280' }}>{w.impact}</Typography>
@@ -2574,28 +2578,34 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
             Hvor vil du starte?
           </Typography>
           <Box sx={starterCardsGridSx}>
-            {START_MODES.map((mode) => (
-              <Button
-                key={mode.id}
-                variant="outlined"
-                onClick={() => handleStartMode(mode.id)}
-                sx={{
-                  borderColor: 'rgba(255,255,255,0.15)',
-                  color: '#d4d4d8',
-                  textTransform: 'none',
-                  flexDirection: 'column',
-                  alignItems: 'flex-start',
-                  justifyContent: 'flex-start',
-                  width: '100%',
-                  minHeight: 92,
-                  px: 2, py: 1.5,
-                  '&:hover': { borderColor: '#60a5fa', bgcolor: 'rgba(59,130,246,0.05)' },
-                }}
-              >
-                <Typography sx={{ fontSize: '1.2rem', mb: 0.5 }}>{mode.icon} {mode.label}</Typography>
-                <Typography variant="caption" sx={{ color: '#6b7280' }}>{mode.description}</Typography>
-              </Button>
-            ))}
+            {START_MODES.map((mode) => {
+              const Icon = mode.Icon;
+              return (
+                <Button
+                  key={mode.id}
+                  variant="outlined"
+                  onClick={() => handleStartMode(mode.id)}
+                  sx={{
+                    borderColor: 'rgba(255,255,255,0.15)',
+                    color: '#d4d4d8',
+                    textTransform: 'none',
+                    flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    justifyContent: 'flex-start',
+                    width: '100%',
+                    minHeight: 92,
+                    px: 2, py: 1.5,
+                    '&:hover': { borderColor: '#60a5fa', bgcolor: 'rgba(59,130,246,0.05)' },
+                  }}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                    <Icon sx={{ fontSize: '1.4rem', color: mode.iconColor }} />
+                    <Typography sx={{ fontSize: '1rem', fontWeight: 600 }}>{mode.label}</Typography>
+                  </Box>
+                  <Typography variant="caption" sx={{ color: '#6b7280' }}>{mode.description}</Typography>
+                </Button>
+              );
+            })}
           </Box>
           <Button
             size="small"
@@ -3114,9 +3124,10 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
 
           {/* Reality Check Prompt — concept (#6) */}
           {conceptValidation.score >= 20 && conceptValidation.score < 70 && (
-            <Box sx={{ mt: 2, p: 2, bgcolor: 'rgba(139,92,246,0.06)', borderRadius: 2, borderLeft: '3px solid rgba(139,92,246,0.3)' }}>
+            <Box sx={{ mt: 2, p: 2, bgcolor: 'rgba(139,92,246,0.06)', borderRadius: 2, borderLeft: '3px solid rgba(139,92,246,0.3)', display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+              <PsychologyIcon sx={{ fontSize: '1rem', color: '#a78bfa', mt: 0.25, flexShrink: 0 }} aria-hidden />
               <Typography variant="caption" sx={{ color: '#a78bfa', fontStyle: 'italic' }}>
-                🧠 {conceptRealityPrompt}
+                {conceptRealityPrompt}
               </Typography>
             </Box>
           )}
@@ -3377,9 +3388,10 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
 
           {/* Reality Check Prompt — logline (#6) */}
           {loglineValidation.score >= 20 && loglineValidation.score < 70 && (
-            <Box sx={{ mt: 2, p: 2, bgcolor: 'rgba(139,92,246,0.06)', borderRadius: 2, borderLeft: '3px solid rgba(139,92,246,0.3)' }}>
+            <Box sx={{ mt: 2, p: 2, bgcolor: 'rgba(139,92,246,0.06)', borderRadius: 2, borderLeft: '3px solid rgba(139,92,246,0.3)', display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+              <PsychologyIcon sx={{ fontSize: '1rem', color: '#a78bfa', mt: 0.25, flexShrink: 0 }} aria-hidden />
               <Typography variant="caption" sx={{ color: '#a78bfa', fontStyle: 'italic' }}>
-                🧠 {loglineRealityPrompt}
+                {loglineRealityPrompt}
               </Typography>
             </Box>
           )}
@@ -3685,9 +3697,10 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
 
           {/* Reality Check Prompt — theme (#6) */}
           {themeValidation.score >= 20 && themeValidation.score < 70 && (
-            <Box sx={{ mt: 2, p: 2, bgcolor: 'rgba(139,92,246,0.06)', borderRadius: 2, borderLeft: '3px solid rgba(139,92,246,0.3)' }}>
+            <Box sx={{ mt: 2, p: 2, bgcolor: 'rgba(139,92,246,0.06)', borderRadius: 2, borderLeft: '3px solid rgba(139,92,246,0.3)', display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+              <PsychologyIcon sx={{ fontSize: '1rem', color: '#a78bfa', mt: 0.25, flexShrink: 0 }} aria-hidden />
               <Typography variant="caption" sx={{ color: '#a78bfa', fontStyle: 'italic' }}>
-                🧠 {themeRealityPrompt}
+                {themeRealityPrompt}
               </Typography>
             </Box>
           )}
