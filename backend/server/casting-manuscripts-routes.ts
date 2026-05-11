@@ -79,6 +79,13 @@ import type express from "express";
 import { setEtagHeader } from "./_shared-concurrency.js";
 import type { CastingManuscriptRevisionsService } from "./casting-manuscript-revisions-service.js";
 import type { CastingManuscriptsService } from "./casting-manuscripts-service";
+import {
+  exportFdx,
+  exportFountain,
+  parseFdx,
+  parseFountain,
+  type ParsedScreenplay,
+} from "./casting-screenplay-formats.js";
 import { newEntityId } from "./_shared-ids.js";
 
 export interface CastingManuscriptsRoutesDeps {
@@ -501,6 +508,168 @@ export function setupCastingManuscriptsRoutes(
       } catch (error) {
         console.error("Error restoring revision:", error);
         res.status(500).json({ error: "Could not restore revision" });
+      }
+    },
+  );
+
+  // ── Screenplay format import/export (F7) ──────────────────────────
+  //
+  // Adresserer pain point fra screenplay-marked: ingen interop mellom
+  // Final Draft (FDX), Highland/WriterDuet (Fountain) og våre interne
+  // entiteter. To nye endpoints — begge stateless (parsing/emitting i
+  // module, ingen direkte oppdatering av manuscripts-service).
+  //
+  // Klienten kan kalle import, motta ParsedScreenplay, og selv beslutte
+  // om/hvordan å persistere via eksisterende /scenes + /dialogue-endpoints.
+
+  app.post(
+    "/api/casting/manuscripts/:manuscriptId/import",
+    async (req, res) => {
+      try {
+        const contentType =
+          (req.headers["content-type"] ?? "").toString().toLowerCase();
+        const rawBody =
+          typeof req.body === "string"
+            ? req.body
+            : req.body && typeof req.body === "object" && "text" in req.body
+              ? String((req.body as Record<string, unknown>).text ?? "")
+              : "";
+
+        if (!rawBody.trim()) {
+          res.status(400).json({
+            error:
+              "Tom payload. Send body som rå tekst (text/vnd.fountain eller application/xml) eller JSON med 'text'-felt.",
+          });
+          return;
+        }
+
+        let parsed: ParsedScreenplay;
+        if (contentType.includes("xml") || rawBody.trim().startsWith("<")) {
+          parsed = parseFdx(rawBody);
+        } else {
+          parsed = parseFountain(rawBody);
+        }
+
+        res.json({
+          manuscriptId: req.params.manuscriptId,
+          format: contentType.includes("xml") ? "fdx" : "fountain",
+          parsed,
+          scenesCount: parsed.scenes.length,
+          dialogueCount: parsed.scenes.reduce(
+            (sum, scene) => sum + scene.dialogue.length,
+            0,
+          ),
+          notice:
+            "Endpoint er stateless — klient er ansvarlig for å lagre via /scenes og /dialogue ved behov.",
+        });
+      } catch (error) {
+        console.error("Error importing screenplay:", error);
+        res.status(500).json({ error: "Could not parse screenplay input" });
+      }
+    },
+  );
+
+  app.get(
+    "/api/casting/manuscripts/:manuscriptId/export",
+    async (req, res) => {
+      try {
+        const format =
+          typeof req.query.format === "string"
+            ? req.query.format.toLowerCase()
+            : "fountain";
+        if (format !== "fountain" && format !== "fdx") {
+          res.status(400).json({
+            error: "format må være 'fountain' eller 'fdx'",
+          });
+          return;
+        }
+
+        // Hent state fra service-laget og bygg ParsedScreenplay
+        const manuscriptId = req.params.manuscriptId;
+        const manuscript = await manuscriptsService.getManuscript(manuscriptId);
+        const scenes = await manuscriptsService.getScenes(manuscriptId);
+        const dialogue = await manuscriptsService.getDialogue(manuscriptId);
+
+        // Klienter lagrer scenes som flate entiteter. For roundtrip-eksport
+        // grupperes dialog i scenes når payload har sceneId-link; ellers
+        // bundles alt under en default-scene basert på første scene-heading.
+        const parsedSceneMap = new Map<string, {
+          heading: string;
+          action: string[];
+          dialogue: ParsedScreenplay["scenes"][number]["dialogue"];
+        }>();
+
+        for (const scene of scenes) {
+          const id = typeof scene.id === "string" ? scene.id : "unknown";
+          parsedSceneMap.set(id, {
+            heading:
+              typeof scene.heading === "string" && scene.heading
+                ? scene.heading
+                : typeof scene.title === "string"
+                  ? scene.title
+                  : id,
+            action: Array.isArray(scene.action)
+              ? (scene.action as string[])
+              : typeof scene.action === "string"
+                ? [scene.action]
+                : [],
+            dialogue: [],
+          });
+        }
+
+        for (const line of dialogue) {
+          const sceneId =
+            typeof line.sceneId === "string"
+              ? line.sceneId
+              : typeof line.scene_id === "string"
+                ? line.scene_id
+                : null;
+          const character =
+            typeof line.character === "string" ? line.character : "UNKNOWN";
+          const text = typeof line.text === "string" ? line.text : "";
+          const parenthetical =
+            typeof line.parenthetical === "string" && line.parenthetical
+              ? line.parenthetical
+              : undefined;
+          const dlg = { character, text, parenthetical };
+          if (sceneId && parsedSceneMap.has(sceneId)) {
+            parsedSceneMap.get(sceneId)!.dialogue.push(dlg);
+          } else {
+            // Ingen scene-link: opprett (eller bruk) en standardscene.
+            const fallbackKey = "__unlinked__";
+            if (!parsedSceneMap.has(fallbackKey)) {
+              parsedSceneMap.set(fallbackKey, {
+                heading: "UNTITLED",
+                action: [],
+                dialogue: [],
+              });
+            }
+            parsedSceneMap.get(fallbackKey)!.dialogue.push(dlg);
+          }
+        }
+
+        const screenplay: ParsedScreenplay = {
+          title:
+            (manuscript && typeof manuscript.title === "string"
+              ? manuscript.title
+              : undefined) ?? undefined,
+          author:
+            (manuscript && typeof manuscript.author === "string"
+              ? manuscript.author
+              : undefined) ?? undefined,
+          scenes: Array.from(parsedSceneMap.values()),
+        };
+
+        if (format === "fdx") {
+          res.setHeader("Content-Type", "application/xml; charset=utf-8");
+          res.send(exportFdx(screenplay));
+        } else {
+          res.setHeader("Content-Type", "text/vnd.fountain; charset=utf-8");
+          res.send(exportFountain(screenplay));
+        }
+      } catch (error) {
+        console.error("Error exporting screenplay:", error);
+        res.status(500).json({ error: "Could not export screenplay" });
       }
     },
   );
