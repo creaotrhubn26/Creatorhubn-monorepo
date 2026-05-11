@@ -76,7 +76,11 @@
 
 import type express from "express";
 
-import { setEtagHeader } from "./_shared-concurrency.js";
+import {
+  checkIfMatch,
+  sendPreconditionFailed,
+  setEtagHeader,
+} from "./_shared-concurrency.js";
 import type { CastingManuscriptRevisionsService } from "./casting-manuscript-revisions-service.js";
 import type { CastingManuscriptsService } from "./casting-manuscripts-service";
 import {
@@ -202,6 +206,14 @@ export function setupCastingManuscriptsRoutes(
       const manuscriptId = req.params.manuscriptId;
       const existing =
         (await manuscriptsService.getManuscript(manuscriptId)) || {};
+      // F1 enforcement: hvis klient sender If-Match med stale version → 412.
+      // Klienter som IKKE sender header passerer uendret (backwards-compat).
+      const currentVersion =
+        typeof existing.version === "number" ? existing.version : undefined;
+      const ifMatchCheck = checkIfMatch(req, currentVersion);
+      if (!ifMatchCheck.matches) {
+        return sendPreconditionFailed(res, currentVersion);
+      }
       const payload = req.body && typeof req.body === "object" ? req.body : {};
       const now = new Date().toISOString();
       const projectId = readProjectId(
@@ -231,7 +243,18 @@ export function setupCastingManuscriptsRoutes(
 
   app.delete("/api/casting/manuscripts/:manuscriptId", async (req, res) => {
     try {
-      await manuscriptsService.clearManuscriptState(req.params.manuscriptId);
+      const manuscriptId = req.params.manuscriptId;
+      // F1 enforcement: hvis klient sender If-Match med stale version → 412.
+      const existing = await manuscriptsService.getManuscript(manuscriptId);
+      const currentVersion =
+        existing && typeof existing.version === "number"
+          ? existing.version
+          : undefined;
+      const ifMatchCheck = checkIfMatch(req, currentVersion);
+      if (!ifMatchCheck.matches) {
+        return sendPreconditionFailed(res, currentVersion);
+      }
+      await manuscriptsService.clearManuscriptState(manuscriptId);
       res.json({ ok: true });
     } catch (error) {
       console.error("Error deleting manuscript:", error);
