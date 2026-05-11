@@ -77,12 +77,18 @@
 import type express from "express";
 
 import { setEtagHeader } from "./_shared-concurrency.js";
+import type { CastingManuscriptRevisionsService } from "./casting-manuscript-revisions-service.js";
 import type { CastingManuscriptsService } from "./casting-manuscripts-service";
 import { newEntityId } from "./_shared-ids.js";
 
 export interface CastingManuscriptsRoutesDeps {
   app: express.Application;
   manuscriptsService: CastingManuscriptsService;
+  /**
+   * Service for revisjons-historikk (diff/restore-API). Trenger
+   * manuscriptsService internt for å lese/skrive revisions-array.
+   */
+  revisionsService: CastingManuscriptRevisionsService;
 }
 
 /**
@@ -119,7 +125,7 @@ function readProjectId(payload: any, fallback = ""): string {
 export function setupCastingManuscriptsRoutes(
   deps: CastingManuscriptsRoutesDeps,
 ): void {
-  const { app, manuscriptsService } = deps;
+  const { app, manuscriptsService, revisionsService } = deps;
 
   // ── Manuscripts ────────────────────────────────────────────────────
 
@@ -410,6 +416,94 @@ export function setupCastingManuscriptsRoutes(
       res.status(500).json({ error: "Could not save revision" });
     }
   });
+
+  // ── Revisions: diff/restore-API (F6) ──────────────────────────────
+  //
+  // 3 nye endpoints adresserer pain point fra screenplay-marked:
+  // versjons-historikk + diff + restore er minimum-feature i Final Draft,
+  // Fade In og WriterDuet men har ofte buggy implementasjon. Vi bruker
+  // RFC 6902 JSON Patch som diff-format (standardisert, lett å rendre
+  // i frontend).
+
+  app.get(
+    "/api/casting/manuscripts/:manuscriptId/revisions/:revisionId",
+    async (req, res) => {
+      try {
+        const revision = await revisionsService.getRevisionById(
+          req.params.manuscriptId,
+          req.params.revisionId,
+        );
+        if (!revision) {
+          res.status(404).json({ error: "Revision not found" });
+          return;
+        }
+        res.json(revision);
+      } catch (error) {
+        console.error("Error fetching revision:", error);
+        res.status(500).json({ error: "Could not fetch revision" });
+      }
+    },
+  );
+
+  app.get(
+    "/api/casting/manuscripts/:manuscriptId/revisions/diff",
+    async (req, res) => {
+      try {
+        const fromId =
+          typeof req.query.from === "string" ? req.query.from.trim() : "";
+        const toId =
+          typeof req.query.to === "string" ? req.query.to.trim() : "";
+        if (!fromId || !toId) {
+          res
+            .status(400)
+            .json({ error: "Query params 'from' og 'to' er påkrevd." });
+          return;
+        }
+        const diff = await revisionsService.diffRevisions(
+          req.params.manuscriptId,
+          fromId,
+          toId,
+        );
+        if (!diff) {
+          res
+            .status(404)
+            .json({ error: "En eller begge revisjoner finnes ikke." });
+          return;
+        }
+        res.json(diff);
+      } catch (error) {
+        console.error("Error diffing revisions:", error);
+        res.status(500).json({ error: "Could not compute diff" });
+      }
+    },
+  );
+
+  app.post(
+    "/api/casting/manuscripts/:manuscriptId/restore-revision/:revisionId",
+    async (req, res) => {
+      try {
+        const result = await revisionsService.restoreRevision(
+          req.params.manuscriptId,
+          req.params.revisionId,
+        );
+        if (!result) {
+          res.status(404).json({
+            error: "Kilde-revisjonen finnes ikke (eller manuscript-en mangler).",
+          });
+          return;
+        }
+        setEtagHeader(res, result.manuscript);
+        res.json({
+          success: true,
+          markerRevisionId: result.markerRevisionId,
+          manuscript: result.manuscript,
+        });
+      } catch (error) {
+        console.error("Error restoring revision:", error);
+        res.status(500).json({ error: "Could not restore revision" });
+      }
+    },
+  );
 
   // ── Acts ───────────────────────────────────────────────────────────
 

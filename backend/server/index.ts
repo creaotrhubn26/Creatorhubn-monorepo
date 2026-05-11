@@ -374,6 +374,7 @@ import { setupCastingAgreementsRoutes } from "./casting-agreements-routes";
 import { createCastingManuscriptsService } from "./casting-manuscripts-service";
 import { setupCastingManuscriptsRoutes } from "./casting-manuscripts-routes";
 import { setupCastingProjectsRoutes } from "./casting-projects-routes";
+import { createCastingManuscriptRevisionsService } from "./casting-manuscript-revisions-service.js";
 import {
   asString,
   asNumberOrNull,
@@ -15531,6 +15532,11 @@ const manuscriptsService = createCastingManuscriptsService({
   compatStoreSet,
   compatStoreDelete,
   compatStoreListByPrefix,
+});
+
+// Revisions-service for diff/restore-API. Avhenger av manuscriptsService.
+const manuscriptRevisionsService = createCastingManuscriptRevisionsService({
+  manuscriptsService,
 });
 
 function dbLegacyStoryLogicKey(projectId: string): string {
@@ -37465,6 +37471,7 @@ setupCastingAgreementsRoutes({
 setupCastingManuscriptsRoutes({
   app,
   manuscriptsService,
+  revisionsService: manuscriptRevisionsService,
 });
 
 // ── Casting projects — flyttet til ./casting-projects-routes.ts
