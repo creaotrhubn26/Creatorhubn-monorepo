@@ -15142,10 +15142,24 @@ async function ensureLegacyCompatTable(): Promise<boolean> {
   return legacyCompatTableReadyPromise;
 }
 
-async function compatStoreGet<T>(storeKey: string): Promise<T | null> {
+// ── Compat-store laget ─────────────────────────────────────────────────
+//
+// Compat-store-helpers aksepterer optional `executor` (Pool eller PoolClient).
+// Når en PoolClient gis (fra compatStoreTransaction), kjøres queries innenfor
+// transaksjonen. Default = pool (auto-commit per query).
+//
+// Begge interfaces eksponerer `query`-metoden med samme signatur, så
+// helperne kan ta `PgQueryRunner = pg.Pool | pg.PoolClient`.
+
+type PgQueryRunner = Pick<typeof pool, "query">;
+
+async function compatStoreGet<T>(
+  storeKey: string,
+  executor: PgQueryRunner = pool,
+): Promise<T | null> {
   if (!(await ensureLegacyCompatTable())) return null;
   try {
-    const result = await pool.query(
+    const result = await executor.query(
       `SELECT store_value FROM ${LEGACY_COMPAT_TABLE_NAME} WHERE store_key = $1 LIMIT 1`,
       [storeKey],
     );
@@ -15163,11 +15177,12 @@ async function compatStoreGet<T>(storeKey: string): Promise<T | null> {
 async function compatStoreSet(
   storeKey: string,
   storeValue: unknown,
+  executor: PgQueryRunner = pool,
 ): Promise<void> {
   if (!(await ensureLegacyCompatTable())) return;
   try {
     const serialized = JSON.stringify(storeValue ?? null) ?? "null";
-    await pool.query(
+    await executor.query(
       `INSERT INTO ${LEGACY_COMPAT_TABLE_NAME} (store_key, store_value, updated_at)
        VALUES ($1, $2::jsonb, NOW())
        ON CONFLICT (store_key)
@@ -15184,10 +15199,13 @@ async function compatStoreSet(
   }
 }
 
-async function compatStoreDelete(storeKey: string): Promise<void> {
+async function compatStoreDelete(
+  storeKey: string,
+  executor: PgQueryRunner = pool,
+): Promise<void> {
   if (!(await ensureLegacyCompatTable())) return;
   try {
-    await pool.query(
+    await executor.query(
       `DELETE FROM ${LEGACY_COMPAT_TABLE_NAME} WHERE store_key = $1`,
       [storeKey],
     );
@@ -15196,10 +15214,13 @@ async function compatStoreDelete(storeKey: string): Promise<void> {
   }
 }
 
-async function compatStoreDeleteByPrefix(prefix: string): Promise<void> {
+async function compatStoreDeleteByPrefix(
+  prefix: string,
+  executor: PgQueryRunner = pool,
+): Promise<void> {
   if (!(await ensureLegacyCompatTable())) return;
   try {
-    await pool.query(
+    await executor.query(
       `DELETE FROM ${LEGACY_COMPAT_TABLE_NAME} WHERE store_key LIKE $1`,
       [`${prefix}%`],
     );
@@ -15210,10 +15231,11 @@ async function compatStoreDeleteByPrefix(prefix: string): Promise<void> {
 
 async function compatStoreListByPrefix<T>(
   prefix: string,
+  executor: PgQueryRunner = pool,
 ): Promise<Array<{ key: string; value: T }>> {
   if (!(await ensureLegacyCompatTable())) return [];
   try {
-    const result = await pool.query(
+    const result = await executor.query(
       `SELECT store_key, store_value
        FROM ${LEGACY_COMPAT_TABLE_NAME}
        WHERE store_key LIKE $1
@@ -15231,6 +15253,71 @@ async function compatStoreListByPrefix<T>(
       error,
     });
     return [];
+  }
+}
+
+/**
+ * Transaksjons-kontekst gitt til callback'en i compatStoreTransaction.
+ * Inneholder samme operasjoner som standalone compat-helpers, men alle
+ * kjører innenfor samme pg-transaksjon. Hvis callback'en kaster, blir
+ * ALT rollet tilbake.
+ */
+interface CompatStoreTransactionContext {
+  get<T>(storeKey: string): Promise<T | null>;
+  set(storeKey: string, storeValue: unknown): Promise<void>;
+  delete(storeKey: string): Promise<void>;
+  deleteByPrefix(prefix: string): Promise<void>;
+  listByPrefix<T>(prefix: string): Promise<Array<{ key: string; value: T }>>;
+}
+
+/**
+ * Kjør en eller flere compat-store-operasjoner som en pg-transaksjon.
+ *
+ * Brukes for atomic cascade-delete der enten ALT eller INGENTING skal
+ * lykkes. Hvis callback'en kaster, ROLLBACK kjøres og feilen kastes
+ * videre. Ved suksess COMMIT.
+ *
+ * Eksempel:
+ *   await compatStoreTransaction(async (tx) => {
+ *     await tx.delete("project:123");
+ *     await tx.deleteByPrefix("scenes:123:");
+ *   });
+ *
+ * NB: Lange transaksjoner låser rader/tabellen — hold callback'en KORT.
+ * For best-effort-cleanup-jobber (f.eks. favorites-prefix-delete) er det
+ * tryggere å IKKE bruke transaksjon (kan abortere viktige writes).
+ */
+async function compatStoreTransaction<T>(
+  callback: (tx: CompatStoreTransactionContext) => Promise<T>,
+): Promise<T> {
+  if (!(await ensureLegacyCompatTable())) {
+    throw new Error("compat-store unavailable — cannot start transaction");
+  }
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const tx: CompatStoreTransactionContext = {
+      get: <U>(storeKey: string) => compatStoreGet<U>(storeKey, client),
+      set: (storeKey: string, storeValue: unknown) =>
+        compatStoreSet(storeKey, storeValue, client),
+      delete: (storeKey: string) => compatStoreDelete(storeKey, client),
+      deleteByPrefix: (prefix: string) =>
+        compatStoreDeleteByPrefix(prefix, client),
+      listByPrefix: <U>(prefix: string) =>
+        compatStoreListByPrefix<U>(prefix, client),
+    };
+    const result = await callback(tx);
+    await client.query("COMMIT");
+    return result;
+  } catch (error) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (rollbackError) {
+      console.error("compatStoreTransaction ROLLBACK failed:", rollbackError);
+    }
+    throw error;
+  } finally {
+    client.release();
   }
 }
 
