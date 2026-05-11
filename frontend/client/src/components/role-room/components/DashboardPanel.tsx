@@ -241,6 +241,23 @@ function DashboardPanelInner({
     ].map(s => ({ ...s, count: counts[s.status] || 0 }));
   }, [candidates]);
 
+  // Rolle-stage-skeleton: speiler casting-listevisning (Åpen / Casting / Besatt).
+  // Klikkbare → navigerer til Roller-tab (index 2).
+  const roleStages = useMemo(() => {
+    const counts = roles.reduce<Record<string, number>>((acc, r) => {
+      const key = r.status === 'casting' ? 'casting'
+        : r.status === 'filled' ? 'filled'
+        : 'open'; // default: open-bucket dekker også "open" og udefinert
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {});
+    return [
+      { status: 'open',    label: 'Åpen',    color: '#a78bfa', tabIndex: 2 },
+      { status: 'casting', label: 'Casting', color: '#fbbf24', tabIndex: 2 },
+      { status: 'filled',  label: 'Besatt',  color: '#10b981', tabIndex: 2 },
+    ].map(s => ({ ...s, count: counts[s.status] || 0 }));
+  }, [roles]);
+
   const statCards = [
     { title: 'Roller totalt', value: stats.totalRoles, color: '#f48fb1', icon: RolesIcon, tabIndex: 2 },
     { title: 'Åpne roller', value: stats.openRoles, color: '#10b981', icon: RolesIcon, tabIndex: 2 },
@@ -560,6 +577,216 @@ function DashboardPanelInner({
           </Grid>
         ))}
       </Grid>
+
+      {/* Rolle-fremdrift — speiler casting-listevisning (Åpen / Casting / Besatt)
+        *
+        * 3 stage-kort i samme stil som kandidat-skeleton under, men kompakte
+        * og horisontalt fordelt (eqv. på desktop, scroll på mobil).
+        */}
+      <Card
+        sx={{
+          bgcolor: 'rgba(255,255,255,0.03)',
+          border: '1px solid rgba(255,255,255,0.1)',
+          mb: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
+        }}
+        aria-labelledby="role-progress-heading"
+        role="region"
+      >
+        <CardContent sx={{ p: { xs: 2, sm: 3, md: 2.5, lg: 3, xl: 3.5 } }}>
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: { xs: 1, sm: 1.5 },
+              mb: { xs: 2, sm: 2.5 },
+            }}
+          >
+            <Box
+              sx={{
+                width: { xs: 36, sm: 42 },
+                height: { xs: 36, sm: 42 },
+                borderRadius: 1.5,
+                bgcolor: 'rgba(244, 143, 177, 0.15)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              <RolesIcon
+                sx={{ color: '#f48fb1', fontSize: { xs: 20, sm: 24 } }}
+              />
+            </Box>
+            <Typography
+              id="role-progress-heading"
+              variant="h6"
+              sx={{
+                color: '#fff',
+                fontWeight: 600,
+                fontSize: { xs: '1rem', sm: '1.125rem', md: '1.05rem', lg: '1.15rem', xl: '1.25rem' },
+                flex: 1,
+              }}
+            >
+              Rolle-fremdrift
+            </Typography>
+            {stats.totalRoles > 0 && (
+              <Chip
+                label={`${stats.filledRoles}/${stats.totalRoles} besatt`}
+                size="small"
+                sx={{
+                  bgcolor: 'rgba(16,185,129,0.15)',
+                  color: '#10b981',
+                  height: { xs: 22, sm: 26 },
+                  fontSize: { xs: '0.7rem', sm: '0.8rem' },
+                  fontWeight: 600,
+                }}
+              />
+            )}
+          </Box>
+
+          <Box
+            role="list"
+            aria-label="Roller per status"
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: {
+                xs: 'repeat(3, minmax(110px, 1fr))',
+                sm: 'repeat(3, 1fr)',
+              },
+              gap: { xs: 1, sm: 1.25, md: 1.5 },
+            }}
+          >
+            {roleStages.map((stage) => {
+              const isEmpty = stage.count === 0;
+              return (
+                <Box
+                  key={stage.status}
+                  role="listitem"
+                  onClick={() => onNavigateToTab(stage.tabIndex)}
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      onNavigateToTab(stage.tabIndex);
+                    }
+                  }}
+                  sx={{
+                    border: `1px solid ${stage.color}30`,
+                    borderRadius: 2,
+                    overflow: 'hidden',
+                    cursor: 'pointer',
+                    bgcolor: 'rgba(0,0,0,0.2)',
+                    transition: 'all 0.2s',
+                    '@media (hover: hover)': {
+                      '&:hover': {
+                        transform: 'translateY(-2px)',
+                        boxShadow: `0 4px 12px ${stage.color}33`,
+                        borderColor: `${stage.color}60`,
+                      },
+                    },
+                    '&:active': {
+                      transform: 'scale(0.98)',
+                    },
+                    WebkitTapHighlightColor: 'transparent',
+                    ...focusVisibleStyles,
+                  }}
+                >
+                  <Box
+                    sx={{
+                      bgcolor: `${stage.color}15`,
+                      borderBottom: `1px solid ${stage.color}25`,
+                      px: 1.25,
+                      py: 0.875,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 0.75,
+                      minHeight: 36,
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: '50%',
+                        bgcolor: stage.color,
+                        flexShrink: 0,
+                      }}
+                    />
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        flex: 1,
+                        color: stage.color,
+                        fontWeight: 600,
+                        fontSize: { xs: '0.7rem', sm: '0.75rem' },
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {stage.label}
+                    </Typography>
+                    <Box
+                      sx={{
+                        minWidth: 24,
+                        height: 20,
+                        px: 0.75,
+                        borderRadius: 10,
+                        bgcolor: isEmpty ? 'rgba(255,255,255,0.08)' : `${stage.color}30`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          color: isEmpty ? 'rgba(255,255,255,0.4)' : stage.color,
+                          fontWeight: 700,
+                          fontSize: '0.7rem',
+                        }}
+                      >
+                        {stage.count}
+                      </Typography>
+                    </Box>
+                  </Box>
+                  <Box
+                    sx={{
+                      minHeight: { xs: 56, sm: 72 },
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      p: 1,
+                    }}
+                  >
+                    {isEmpty ? (
+                      <AddIcon
+                        aria-hidden
+                        sx={{
+                          fontSize: { xs: 24, sm: 28 },
+                          color: 'rgba(255,255,255,0.18)',
+                        }}
+                      />
+                    ) : (
+                      <Typography
+                        variant="h4"
+                        sx={{
+                          color: stage.color,
+                          fontWeight: 700,
+                          fontSize: { xs: '1.5rem', sm: '1.875rem' },
+                          lineHeight: 1,
+                        }}
+                      >
+                        {stage.count}
+                      </Typography>
+                    )}
+                  </Box>
+                </Box>
+              );
+            })}
+          </Box>
+        </CardContent>
+      </Card>
 
       {/* Casting-fremdrift — Kanban-skeleton + progress-strip
         *
