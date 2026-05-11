@@ -52,18 +52,21 @@
 
 | # | Feature | Status | Commit(s) |
 |---|---|---|---|
-| F1 | Optimistic concurrency control (version + ETag + If-Match) | ⚙️ Foundation ferdig — Fase C-enforcement gjenstår | c866803d |
+| F1 | Optimistic concurrency control (version + ETag + If-Match) | ✅ Ferdig (incl. enforcement) | c866803d + 15e1072f |
 | F2 | DB-transaksjoner på cascade-delete | ✅ Ferdig | 66c55746 + 5738314a |
 | F3 | UUID istedenfor Date.now() | ✅ Ferdig | 21f94e38 |
-| F4 | Auth-validering (log-mode først) | ⚙️ Helper klart — Fase C-enforcement gjenstår | a42b7423 |
-| F5 | Idempotency-keys (opt-in) | ⚙️ Middleware klart — wiring per-cluster gjenstår | fdb470dc |
+| F4 | Auth-validering (3-fase rollout via env) | ✅ Ferdig (wired, default=open) | a42b7423 + 183b98f1 |
+| F5 | Idempotency-keys (opt-in) | ✅ Ferdig (wired på POST/PUT/PATCH) | fdb470dc + 2273501c |
 | F6 | Versjons-historikk-API (revisions diff+restore) | ✅ Ferdig | 029f0430 |
 | F7 | Fountain/FDX import/export | ✅ Ferdig | fb7bc01a |
 
-**Fase C (gjenstår — krever frontend-koordinering):**
-- F1 enforcement: returner 412 på If-Match-mismatch (etter log-only-rollout)
-- F4 enforcement: blokker uautoriserte requests
-- F5 wiring: aktivér middleware på enkelt-endpoints (krever product-design hvilke)
+🎉 **Alle 7 features fullført (inkl. Fase C-wiring)** per 2026-05-11. Default-oppførsel er backwards-compat — produksjon kan rulles ut via env-flag uten kode-endring:
+
+| Env-var | Default | Effekt ved aktivering |
+|---|---|---|
+| `CASTING_AUTH_MODE` | `open` | `log` → logger unauth; `enforce` → 401 ved unauth |
+| `Idempotency-Key`-header | (klient sender) | Opt-in pr request — cached respons i 24t |
+| `If-Match`-header | (klient sender) | 412 ved stale version-mismatch |
 
 **Infrastruktur etablert som modul-set (alle med Vitest-tester):**
 - `_shared-ids.ts` (+ test) — UUID-helper (7 tester)
