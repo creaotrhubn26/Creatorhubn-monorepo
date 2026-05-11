@@ -1,6 +1,6 @@
 # memory.md — Role Room session-state, refaktor-plan og kø
 
-> Levende dokument for Claude Code-sesjoner og produkt-eier. Sist oppdatert: 2026-05-10 (round 3 — etter role-room-projects + billing-admin-ekstrakt).
+> Levende dokument for Claude Code-sesjoner og produkt-eier. Sist oppdatert: 2026-05-11 (round 4 — komplett casting + 4 robusthet-features).
 > Plassert i repo-rot slik at Claude Code (lokal eller web) automatisk leser den ved oppstart.
 
 ---
@@ -11,12 +11,28 @@
 
 **Sesjon 2 (2026-05-10 round 2):** Service-laget-refactor for `role-room-education-inquiries` (1 av 3 utsatte sub-clustre). 3 commits, 1 endpoint, men *betydelig* netto linje-reduksjon (-1150) fordi store helper-blokker fulgte med. Pushet og merget inn i PR #3.
 
+**Sesjon 4 (2026-05-11):** Komplett `/api/casting`-ekstraksjon (59 endpoints i 6 nye moduler) + 4 av 7 robusthet-features research-informert fra REST API best-practices + screenplay-software pain-points. 11 commits totalt:
+
+*Casting-extraksjon (6 commits):*
+- ce6e3e72 — casting-pools-routes (11 endpoints)
+- 1ab486ce — casting-misc-routes (7 endpoints: health+favorites+demo)
+- 99abaa4d — casting-agreements-routes (9 endpoints)
+- 607caa43 — casting-manuscripts-service + routes (17 endpoints)
+- 568bd22f — casting-projects-routes (15 endpoints) → casting ferdig
+
+*Robusthet-features (5 commits):*
+- 21f94e38 — **F3** UUID-baserte IDs (kollisjons-sikkerhet, 17 callsites)
+- 66c55746 — **F2** compatStoreTransaction API (transaksjons-wrapper)
+- 5738314a — **F2** wire transaksjon i casting-projects DELETE-cascade
+- c866803d — **F1** version+ETag foundation (ingen 412-enforcement ennå)
+- fdb470dc — **F5** idempotency-key middleware (opt-in)
+
 **Sesjon 3 (2026-05-10 round 3):** Service-laget-refactor for `role-room-projects` (2 av 3 utsatte sub-clustre) + delvis `role-room-billing-admin`. 4 commits, 10 endpoints:
 - 3 commits projects-refactor (pure helpers → `_shared.ts`, ny `role-room-live-set-service.ts`, ny `role-room-projects-routes.ts` med 8 endpoints) → -236 linjer
 - 1 commit billing-admin (2 av 9 billing-endpoints, kun reminder-tooling) → -55 linjer
 - Resten av billing utsatt: kartleggingen avdekket ~45 unike deps for full billing-extraksjon pga Stripe-state-fragmentering. Webhook er også entangled med Agent add-on. Krever større service-laget-refactor.
 
-### Totaler (akkumulert etter sesjon 3)
+### Totaler (akkumulert etter sesjon 4)
 
 | Cluster | Endpoints ekstraktert | Moduler |
 |---|---|---|
@@ -24,10 +40,35 @@
 | `/api/role-room` | 99 | 17 (~komplett, 7 billing utsatt) |
 | `/api/showcase` | 60 | 13 (komplett ✅) |
 | `/api/evendi` | 63 | 7 (komplett ✅) |
-| `_shared.ts` + commercial-access-error | foundation | 2 |
-| **TOTAL** | **249** | **46** |
+| `/api/casting` | 59 | 6 (komplett ✅) |
+| `_shared.ts` + foundation-moduler | foundation | 6 |
+| **TOTAL** | **308** | **56** |
 
-`index.ts`: ~119,066 → ~105,432 linjer (**-13,634 linjer netto, ~11.4% reduksjon**).
+`index.ts`: ~119,066 → ~103,667 linjer (**-15,399 linjer netto, ~12.9% reduksjon**).
+
+### Robusthet-features (research-informert, sesjon 4)
+
+7-features-plan basert på pain points fra screenplay/casting-software-marked + REST API best-practices (RFC 7232, Stripe/Azure REST Guidelines):
+
+| # | Feature | Status | Commit(s) |
+|---|---|---|---|
+| F1 | Optimistic concurrency control (version + ETag + If-Match) | ⚙️ Foundation gjort (ingen enforcement) | c866803d |
+| F2 | DB-transaksjoner på cascade-delete | ✅ Ferdig | 66c55746 + 5738314a |
+| F3 | UUID istedenfor Date.now() | ✅ Ferdig | 21f94e38 |
+| F4 | Auth-validering (log-mode først) | ⏳ Planlagt | — |
+| F5 | Idempotency-keys (opt-in) | ⚙️ Middleware klart (ikke wired ennå) | fdb470dc |
+| F6 | Versjons-historikk-API (revisions diff+restore) | ⏳ Planlagt | — |
+| F7 | Fountain/FDX import/export | ⏳ Planlagt | — |
+
+**Fase C (gjenstår — krever frontend-koordinering):**
+- F1 enforcement: returner 412 på If-Match-mismatch (etter log-only-rollout)
+- F4 enforcement: blokker uautoriserte requests
+
+**Infrastruktur etablert som modul-set:**
+- `_shared-ids.ts` (+ test) — UUID-helper
+- `_shared-concurrency.ts` (+ test) — version/ETag/If-Match helpers
+- `_shared-idempotency.ts` (+ test) — idempotency middleware
+- Compat-store-laget utvidet med `compatStoreTransaction`
 
 ### Strategi-mønstre etablert (gjelder for fremtidig refaktor)
 
