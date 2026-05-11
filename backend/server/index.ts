@@ -375,6 +375,7 @@ import { createCastingManuscriptsService } from "./casting-manuscripts-service";
 import { setupCastingManuscriptsRoutes } from "./casting-manuscripts-routes";
 import { setupCastingProjectsRoutes } from "./casting-projects-routes";
 import { createCastingManuscriptRevisionsService } from "./casting-manuscript-revisions-service.js";
+import { setupAdminFeaturesRoutes } from "./admin-features-routes";
 import {
   createScopedAuthMiddleware,
   parseAuthMode,
@@ -30682,153 +30683,18 @@ app.get("/api/client/portal/marketing-plan", async (req, res) => {
 //   events-debug, inbox, create-template.
 setupRoleRoomWhatsAppRoutes({ app, pool, requireAdminSession, requireAdminOrDemoBypass });
 
-
-
-app.get("/api/admin/features", (req, res) => {
-  const features = ensureCompatAdminFeatures();
-  res.json(features);
-});
-
-app.patch("/api/admin/features/:featureId", (req, res) => {
-  const features = ensureCompatAdminFeatures();
-  const featureId = req.params.featureId;
-  const existing = compatAdminFeaturesStore.get(featureId);
-  if (!existing) {
-    return res.status(404).json({ success: false, error: "Feature not found" });
-  }
-
-  const now = new Date().toISOString();
-  const updates = (
-    req.body && typeof req.body === "object"
-      ? (req.body as Record<string, unknown>)
-      : {}
-  ) as Record<string, unknown>;
-
-  const nextEnabled =
-    typeof updates.isEnabled === "boolean"
-      ? updates.isEnabled
-      : typeof updates.enabled === "boolean"
-        ? updates.enabled
-        : existing.isEnabled;
-
-  const updated: CompatAdminFeature = {
-    ...existing,
-    ...updates,
-    isEnabled: nextEnabled,
-    enabled: nextEnabled,
-    lastModified: now,
-    modifiedBy: compatResolveUserId(req),
-    version: existing.version + 1,
-    metadata: isRecord(updates.metadata) ? updates.metadata : existing.metadata,
-  };
-
-  compatAdminFeaturesStore.set(featureId, updated);
-  void compatStoreSet(dbCompatAdminFeatureKey(featureId), updated);
-  res.json(updated);
-});
-
-app.post("/api/admin/features/:featureId/toggle", (req, res) => {
-  ensureCompatAdminFeatures();
-  const featureId = req.params.featureId;
-  const existing = compatAdminFeaturesStore.get(featureId);
-  if (!existing) {
-    return res.status(404).json({ success: false, error: "Feature not found" });
-  }
-
-  const now = new Date().toISOString();
-  const toggled: CompatAdminFeature = {
-    ...existing,
-    isEnabled: !existing.isEnabled,
-    enabled: !existing.enabled,
-    lastModified: now,
-    modifiedBy: compatResolveUserId(req),
-    version: existing.version + 1,
-  };
-  compatAdminFeaturesStore.set(featureId, toggled);
-  void compatStoreSet(dbCompatAdminFeatureKey(featureId), toggled);
-  res.json({ success: true, feature: toggled });
-});
-
-app.post("/api/admin/features/category/:category/toggle", (req, res) => {
-  const category = req.params.category;
-  const enable =
-    typeof req.body?.enabled === "boolean" ? req.body.enabled : undefined;
-  const now = new Date().toISOString();
-  const modifiedBy = compatResolveUserId(req);
-
-  const updated = ensureCompatAdminFeatures()
-    .filter((feature) => feature.category === category)
-    .map((feature) => {
-      const isEnabled =
-        typeof enable === "boolean" ? enable : !feature.isEnabled;
-      const nextFeature: CompatAdminFeature = {
-        ...feature,
-        isEnabled,
-        enabled: isEnabled,
-        lastModified: now,
-        modifiedBy,
-        version: feature.version + 1,
-      };
-      compatAdminFeaturesStore.set(nextFeature.id, nextFeature);
-      void compatStoreSet(dbCompatAdminFeatureKey(nextFeature.id), nextFeature);
-      return nextFeature;
-    });
-
-  res.json({ success: true, updatedCount: updated.length, features: updated });
-});
-
-app.post("/api/admin/features/bulk-update", (req, res) => {
-  ensureCompatAdminFeatures();
-  const updates = Array.isArray(req.body?.updates) ? req.body.updates : [];
-  const now = new Date().toISOString();
-  const modifiedBy = compatResolveUserId(req);
-  const changed: CompatAdminFeature[] = [];
-
-  updates.forEach((entry: unknown) => {
-    if (!entry || typeof entry !== "object") {
-      return;
-    }
-    const id = readString((entry as Record<string, unknown>).id);
-    const partial = (entry as Record<string, unknown>).updates;
-    if (!id || !isRecord(partial)) {
-      return;
-    }
-
-    const current = compatAdminFeaturesStore.get(id);
-    if (!current) {
-      return;
-    }
-
-    const nextEnabled =
-      typeof partial.isEnabled === "boolean"
-        ? partial.isEnabled
-        : typeof partial.enabled === "boolean"
-          ? partial.enabled
-          : current.isEnabled;
-
-    const next: CompatAdminFeature = {
-      ...current,
-      ...partial,
-      isEnabled: nextEnabled,
-      enabled: nextEnabled,
-      lastModified: now,
-      modifiedBy,
-      version: current.version + 1,
-      metadata: isRecord(partial.metadata)
-        ? partial.metadata
-        : current.metadata,
-    };
-    compatAdminFeaturesStore.set(id, next);
-    void compatStoreSet(dbCompatAdminFeatureKey(id), next);
-    changed.push(next);
-  });
-
-  res.json({ success: true, updated: changed.length, features: changed });
-});
-
-app.post("/api/admin/features/initialize", (req, res) => {
-  const features = ensureCompatAdminFeatures();
-  res.json({ success: true, features, initialized: features.length });
+// ── Admin features — flyttet til ./admin-features-routes.ts
+//   6 endpoints under /api/admin/features/*. Map (compatAdminFeaturesStore)
+//   blir værende i index.ts (delt med role-room feature-gating).
+//   NB: Endpointene mangler auth — kjent gap, fikses i egen security-commit.
+setupAdminFeaturesRoutes({
+  app,
+  ensureCompatAdminFeatures,
+  compatAdminFeaturesStore,
+  compatStoreSet,
+  dbCompatAdminFeatureKey,
+  compatResolveUserId,
+  isRecord,
 });
 
 // DaVinci Resolve compatibility endpoints
