@@ -42,6 +42,8 @@
 
 import type { Pool } from "pg";
 
+import { bumpVersion } from "./_shared-concurrency.js";
+
 type JsonBlob = Record<string, any>;
 
 export interface ManuscriptLocation {
@@ -77,11 +79,13 @@ export interface CastingManuscriptsService {
   getRevisions(manuscriptId: string): Promise<JsonBlob[]>;
 
   // ── Writes (Map + DB) ────────────────────────────────────────────
-  replaceManuscript(manuscriptId: string, manuscript: JsonBlob): Promise<void>;
-  replaceScenes(manuscriptId: string, scenes: JsonBlob[]): Promise<void>;
-  replaceDialogue(manuscriptId: string, dialogue: JsonBlob[]): Promise<void>;
-  replaceActs(manuscriptId: string, acts: JsonBlob[]): Promise<void>;
-  replaceRevisions(manuscriptId: string, revisions: JsonBlob[]): Promise<void>;
+  // Returnerer persistert (versjons-bumpet) entity slik at routes kan
+  // returnere den til klient med korrekt ETag-header.
+  replaceManuscript(manuscriptId: string, manuscript: JsonBlob): Promise<JsonBlob>;
+  replaceScenes(manuscriptId: string, scenes: JsonBlob[]): Promise<JsonBlob[]>;
+  replaceDialogue(manuscriptId: string, dialogue: JsonBlob[]): Promise<JsonBlob[]>;
+  replaceActs(manuscriptId: string, acts: JsonBlob[]): Promise<JsonBlob[]>;
+  replaceRevisions(manuscriptId: string, revisions: JsonBlob[]): Promise<JsonBlob[]>;
 
   // ── Lookups (find-by-id, prøver Map først, så DB) ────────────────
   findDialogueLocation(dialogueId: string): Promise<ManuscriptLocation | null>;
@@ -311,44 +315,70 @@ export function createCastingManuscriptsService(
 
   // ── Public API: Writes ────────────────────────────────────────────
 
+  /**
+   * Bumper manuscript-master-version. Brukes også av sub-entitet-writes
+   * (scenes/dialogue/acts/revisions) — én version-line per manuscript
+   * sikrer at klienter kan cache hele manuscript-bundle med én ETag.
+   */
+  async function bumpManuscriptVersion(manuscriptId: string): Promise<void> {
+    const existing = await getManuscript(manuscriptId);
+    if (!existing) return; // ingen manuscript = ingen version å bumpe
+    const next = { ...existing, version: bumpVersion(existing) };
+    legacyManuscripts.set(manuscriptId, next);
+    await compatStoreSet(dbLegacyManuscriptKey(manuscriptId), next);
+  }
+
   async function replaceManuscript(
     manuscriptId: string,
     manuscript: JsonBlob,
-  ): Promise<void> {
-    legacyManuscripts.set(manuscriptId, manuscript);
-    await compatStoreSet(dbLegacyManuscriptKey(manuscriptId), manuscript);
+  ): Promise<JsonBlob> {
+    const existing = legacyManuscripts.get(manuscriptId);
+    const versioned = { ...manuscript, version: bumpVersion(existing) };
+    legacyManuscripts.set(manuscriptId, versioned);
+    await compatStoreSet(dbLegacyManuscriptKey(manuscriptId), versioned);
+    return versioned;
   }
 
   async function replaceScenes(
     manuscriptId: string,
     scenes: JsonBlob[],
-  ): Promise<void> {
+  ): Promise<JsonBlob[]> {
     legacyScenesByManuscript.set(manuscriptId, scenes);
     await compatStoreSet(dbLegacyScenesKey(manuscriptId), scenes);
+    // Bumper manuscript-master-version for sub-entitet-mutasjoner — sikrer
+    // at klienter med cached manuscript-bundle invaliderer ved scene-edit.
+    await bumpManuscriptVersion(manuscriptId);
+    return scenes;
   }
 
   async function replaceDialogue(
     manuscriptId: string,
     dialogue: JsonBlob[],
-  ): Promise<void> {
+  ): Promise<JsonBlob[]> {
     legacyDialogueByManuscript.set(manuscriptId, dialogue);
     await compatStoreSet(dbLegacyDialogueKey(manuscriptId), dialogue);
+    await bumpManuscriptVersion(manuscriptId);
+    return dialogue;
   }
 
   async function replaceActs(
     manuscriptId: string,
     acts: JsonBlob[],
-  ): Promise<void> {
+  ): Promise<JsonBlob[]> {
     legacyActsByManuscript.set(manuscriptId, acts);
     await compatStoreSet(dbLegacyActsKey(manuscriptId), acts);
+    await bumpManuscriptVersion(manuscriptId);
+    return acts;
   }
 
   async function replaceRevisions(
     manuscriptId: string,
     revisions: JsonBlob[],
-  ): Promise<void> {
+  ): Promise<JsonBlob[]> {
     legacyRevisionsByManuscript.set(manuscriptId, revisions);
     await compatStoreSet(dbLegacyRevisionsKey(manuscriptId), revisions);
+    await bumpManuscriptVersion(manuscriptId);
+    return revisions;
   }
 
   // ── Public API: Lookups ───────────────────────────────────────────

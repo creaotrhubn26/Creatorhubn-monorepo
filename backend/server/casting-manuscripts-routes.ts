@@ -76,6 +76,7 @@
 
 import type express from "express";
 
+import { setEtagHeader } from "./_shared-concurrency.js";
 import type { CastingManuscriptsService } from "./casting-manuscripts-service";
 import { newEntityId } from "./_shared-ids.js";
 
@@ -158,8 +159,12 @@ export function setupCastingManuscriptsRoutes(
         createdAt: existing.createdAt || now,
         updatedAt: now,
       };
-      await manuscriptsService.replaceManuscript(manuscriptId, manuscript);
-      res.status(201).json(manuscript);
+      const stored = await manuscriptsService.replaceManuscript(
+        manuscriptId,
+        manuscript,
+      );
+      setEtagHeader(res, stored);
+      res.status(201).json(stored);
     } catch (error) {
       console.error("Error creating manuscript:", error);
       res.status(500).json({ error: "Could not create manuscript" });
@@ -171,6 +176,7 @@ export function setupCastingManuscriptsRoutes(
       const manuscript = await manuscriptsService.getManuscript(
         req.params.manuscriptId,
       );
+      setEtagHeader(res, manuscript);
       res.json(manuscript);
     } catch (error) {
       console.error("Error fetching manuscript:", error);
@@ -198,8 +204,12 @@ export function setupCastingManuscriptsRoutes(
         createdAt: existing.createdAt || now,
         updatedAt: now,
       };
-      await manuscriptsService.replaceManuscript(manuscriptId, manuscript);
-      res.json(manuscript);
+      const stored = await manuscriptsService.replaceManuscript(
+        manuscriptId,
+        manuscript,
+      );
+      setEtagHeader(res, stored);
+      res.json(stored);
     } catch (error) {
       console.error("Error updating manuscript:", error);
       res.status(500).json({ error: "Could not update manuscript" });
