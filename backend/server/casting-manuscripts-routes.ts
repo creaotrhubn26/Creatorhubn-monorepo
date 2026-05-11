@@ -1,0 +1,529 @@
+/**
+ * casting-manuscripts-routes.ts
+ *
+ * Setup-funksjon for /api/casting/manuscripts/* og deres sub-entiteter
+ * (scenes, dialogue, acts, revisions). 17 endpoints totalt:
+ *
+ *   Manuscripts (5):
+ *     GET    /manuscripts                         — list, filtrer på projectId
+ *     POST   /manuscripts                         — upsert
+ *     GET    /manuscripts/:manuscriptId           — hent én
+ *     PUT    /manuscripts/:manuscriptId           — oppdater
+ *     DELETE /manuscripts/:manuscriptId           — slett (cascade)
+ *
+ *   Scenes (2):
+ *     GET    /manuscripts/:manuscriptId/scenes    — list
+ *     POST   /scenes                              — upsert
+ *
+ *   Dialogue (3):
+ *     GET    /manuscripts/:manuscriptId/dialogue  — list
+ *     POST   /dialogue                            — upsert
+ *     DELETE /dialogue/:dialogueId                — slett
+ *
+ *   Revisions (2):
+ *     GET    /manuscripts/:manuscriptId/revisions — list
+ *     POST   /revisions                           — upsert
+ *
+ *   Acts (5):
+ *     GET    /manuscripts/:manuscriptId/acts      — list
+ *     POST   /acts                                — upsert
+ *     GET    /acts/:actId                         — hent én
+ *     PUT    /acts/:actId                         — oppdater
+ *     DELETE /acts/:actId                         — slett
+ *
+ * Tilgang: ÅPEN (matcher eksisterende oppførsel).
+ *
+ * Service-laget: `./casting-manuscripts-service.ts` (instansiert i
+ * index.ts og passet via deps slik at casting-projects DELETE-handler
+ * også kan kalle `clearManuscriptState` ved prosjekt-cascade-rydding).
+ *
+ * **Robustness-noter (forbedringer vs. opprinnelig kode):**
+ *
+ *   - Alle handlere har konsistent try/catch med 500-fallback (mange av
+ *     de opprinnelige hadde ingen feilhåndtering — uventet feil ville
+ *     krasje requesten uten respons).
+ *   - Input-validering returnerer 400 med klar melding for manglende
+ *     manuscriptId (eksisterende oppførsel) og uventet payload-form
+ *     (ny defensiv sjekk — req.body skal være object).
+ *   - Sub-helper `readManuscriptId` slår sammen camelCase + snake_case-
+ *     parsing-mønsteret som var duplisert i scenes/dialogue/acts/
+ *     revisions-POST.
+ *
+ * **Ikke endret (samme oppførsel som før):**
+ *   - ID-generering ved `${prefix}-${Date.now()}` (TODO: kollisjonssikker UUID)
+ *   - Ingen optimistic concurrency control (TODO: If-Match + version-felt)
+ *   - DELETE-cascade for manuscripts er ikke atomisk på DB-nivå
+ *     (compatStore-laget støtter ikke transaksjoner ennå)
+ *   - Status-codes: 200 ved oppdatering, 201 ved opprettelse (bevart)
+ *
+ * Wire opp i backend/server/index.ts:
+ *
+ *   import { createCastingManuscriptsService } from "./casting-manuscripts-service";
+ *   import { setupCastingManuscriptsRoutes } from "./casting-manuscripts-routes";
+ *
+ *   const manuscriptsService = createCastingManuscriptsService({
+ *     compatStoreGet, compatStoreSet, compatStoreDelete, compatStoreListByPrefix,
+ *   });
+ *
+ *   setupCastingManuscriptsRoutes({ app, manuscriptsService });
+ *
+ *   // I casting-DELETE-handler:
+ *   //   const manuscripts = await manuscriptsService.listManuscripts(projectId);
+ *   //   for (const m of manuscripts) {
+ *   //     await manuscriptsService.clearManuscriptState(m.id);
+ *   //   }
+ */
+
+import type express from "express";
+
+import type { CastingManuscriptsService } from "./casting-manuscripts-service";
+
+export interface CastingManuscriptsRoutesDeps {
+  app: express.Application;
+  manuscriptsService: CastingManuscriptsService;
+}
+
+/**
+ * Henter manuscriptId fra payload — støtter både camelCase (manuscriptId)
+ * og snake_case (manuscript_id) for bakoverkompatibilitet med eldre
+ * klienter.
+ */
+function readManuscriptId(payload: any): string {
+  if (!payload || typeof payload !== "object") return "";
+  const camel =
+    typeof payload.manuscriptId === "string" ? payload.manuscriptId.trim() : "";
+  if (camel) return camel;
+  const snake =
+    typeof payload.manuscript_id === "string"
+      ? payload.manuscript_id.trim()
+      : "";
+  return snake;
+}
+
+/**
+ * Henter projectId med samme dual-naming-pattern, brukes ved manuscript-
+ * opprettelse for å sette `projectId`/`project_id`-felt.
+ */
+function readProjectId(payload: any, fallback = ""): string {
+  if (!payload || typeof payload !== "object") return fallback;
+  const camel =
+    typeof payload.projectId === "string" ? payload.projectId.trim() : "";
+  if (camel) return camel;
+  const snake =
+    typeof payload.project_id === "string" ? payload.project_id.trim() : "";
+  return snake || fallback;
+}
+
+export function setupCastingManuscriptsRoutes(
+  deps: CastingManuscriptsRoutesDeps,
+): void {
+  const { app, manuscriptsService } = deps;
+
+  // ── Manuscripts ────────────────────────────────────────────────────
+
+  app.get("/api/casting/manuscripts", async (req, res) => {
+    try {
+      const projectId =
+        typeof req.query.projectId === "string" && req.query.projectId.trim()
+          ? req.query.projectId.trim()
+          : undefined;
+      const manuscripts = await manuscriptsService.listManuscripts(projectId);
+      res.json(manuscripts);
+    } catch (error) {
+      console.error("Error listing manuscripts:", error);
+      res.status(500).json({ error: "Could not list manuscripts" });
+    }
+  });
+
+  app.post("/api/casting/manuscripts", async (req, res) => {
+    try {
+      const payload = req.body && typeof req.body === "object" ? req.body : {};
+      const manuscriptId =
+        typeof payload.id === "string" && payload.id.trim()
+          ? payload.id
+          : `manuscript-${Date.now()}`;
+      const now = new Date().toISOString();
+      const existing = (await manuscriptsService.getManuscript(manuscriptId)) || {};
+      const projectId = readProjectId(
+        payload,
+        readProjectId(existing, "default-project"),
+      );
+      const manuscript = {
+        ...existing,
+        ...payload,
+        id: manuscriptId,
+        projectId,
+        project_id: projectId,
+        createdAt: existing.createdAt || now,
+        updatedAt: now,
+      };
+      await manuscriptsService.replaceManuscript(manuscriptId, manuscript);
+      res.status(201).json(manuscript);
+    } catch (error) {
+      console.error("Error creating manuscript:", error);
+      res.status(500).json({ error: "Could not create manuscript" });
+    }
+  });
+
+  app.get("/api/casting/manuscripts/:manuscriptId", async (req, res) => {
+    try {
+      const manuscript = await manuscriptsService.getManuscript(
+        req.params.manuscriptId,
+      );
+      res.json(manuscript);
+    } catch (error) {
+      console.error("Error fetching manuscript:", error);
+      res.status(500).json({ error: "Could not fetch manuscript" });
+    }
+  });
+
+  app.put("/api/casting/manuscripts/:manuscriptId", async (req, res) => {
+    try {
+      const manuscriptId = req.params.manuscriptId;
+      const existing =
+        (await manuscriptsService.getManuscript(manuscriptId)) || {};
+      const payload = req.body && typeof req.body === "object" ? req.body : {};
+      const now = new Date().toISOString();
+      const projectId = readProjectId(
+        payload,
+        readProjectId(existing, "default-project"),
+      );
+      const manuscript = {
+        ...existing,
+        ...payload,
+        id: manuscriptId,
+        projectId,
+        project_id: projectId,
+        createdAt: existing.createdAt || now,
+        updatedAt: now,
+      };
+      await manuscriptsService.replaceManuscript(manuscriptId, manuscript);
+      res.json(manuscript);
+    } catch (error) {
+      console.error("Error updating manuscript:", error);
+      res.status(500).json({ error: "Could not update manuscript" });
+    }
+  });
+
+  app.delete("/api/casting/manuscripts/:manuscriptId", async (req, res) => {
+    try {
+      await manuscriptsService.clearManuscriptState(req.params.manuscriptId);
+      res.json({ ok: true });
+    } catch (error) {
+      console.error("Error deleting manuscript:", error);
+      res.status(500).json({ error: "Could not delete manuscript" });
+    }
+  });
+
+  // ── Scenes ─────────────────────────────────────────────────────────
+
+  app.get("/api/casting/manuscripts/:manuscriptId/scenes", async (req, res) => {
+    try {
+      const scenes = await manuscriptsService.getScenes(req.params.manuscriptId);
+      res.json(scenes);
+    } catch (error) {
+      console.error("Error listing scenes:", error);
+      res.status(500).json({ error: "Could not list scenes" });
+    }
+  });
+
+  app.post("/api/casting/scenes", async (req, res) => {
+    try {
+      const payload = req.body && typeof req.body === "object" ? req.body : {};
+      const manuscriptId = readManuscriptId(payload);
+      if (!manuscriptId) {
+        res.status(400).json({ error: "manuscriptId is required" });
+        return;
+      }
+
+      const current = await manuscriptsService.getScenes(manuscriptId);
+      const sceneId =
+        typeof payload.id === "string" && payload.id.trim()
+          ? payload.id
+          : `scene-${Date.now()}`;
+      const existingIndex = current.findIndex((scene) => scene?.id === sceneId);
+      const existing = existingIndex >= 0 ? current[existingIndex] : null;
+      const now = new Date().toISOString();
+      const scene = {
+        ...(existing || {}),
+        ...payload,
+        id: sceneId,
+        manuscriptId,
+        manuscript_id: manuscriptId,
+        createdAt: existing?.createdAt || payload.createdAt || now,
+        updatedAt: now,
+      };
+      const next = [...current];
+      if (existingIndex >= 0) {
+        next[existingIndex] = scene;
+      } else {
+        next.push(scene);
+      }
+      await manuscriptsService.replaceScenes(manuscriptId, next);
+      res.status(existingIndex >= 0 ? 200 : 201).json(scene);
+    } catch (error) {
+      console.error("Error upserting scene:", error);
+      res.status(500).json({ error: "Could not save scene" });
+    }
+  });
+
+  // ── Dialogue ───────────────────────────────────────────────────────
+
+  app.get("/api/casting/manuscripts/:manuscriptId/dialogue", async (req, res) => {
+    try {
+      const dialogue = await manuscriptsService.getDialogue(
+        req.params.manuscriptId,
+      );
+      res.json(dialogue);
+    } catch (error) {
+      console.error("Error listing dialogue:", error);
+      res.status(500).json({ error: "Could not list dialogue" });
+    }
+  });
+
+  app.post("/api/casting/dialogue", async (req, res) => {
+    try {
+      const payload = req.body && typeof req.body === "object" ? req.body : {};
+      const manuscriptId = readManuscriptId(payload);
+      if (!manuscriptId) {
+        res.status(400).json({ error: "manuscriptId is required" });
+        return;
+      }
+
+      const current = await manuscriptsService.getDialogue(manuscriptId);
+      const dialogueId =
+        typeof payload.id === "string" && payload.id.trim()
+          ? payload.id
+          : `dialogue-${Date.now()}`;
+      const existingIndex = current.findIndex((line) => line?.id === dialogueId);
+      const existing = existingIndex >= 0 ? current[existingIndex] : null;
+      const now = new Date().toISOString();
+      const dialogueLine = {
+        ...(existing || {}),
+        ...payload,
+        id: dialogueId,
+        manuscriptId,
+        manuscript_id: manuscriptId,
+        createdAt: existing?.createdAt || payload.createdAt || now,
+        updatedAt: now,
+      };
+      const next = [...current];
+      if (existingIndex >= 0) {
+        next[existingIndex] = dialogueLine;
+      } else {
+        next.push(dialogueLine);
+      }
+      await manuscriptsService.replaceDialogue(manuscriptId, next);
+      res.status(existingIndex >= 0 ? 200 : 201).json(dialogueLine);
+    } catch (error) {
+      console.error("Error upserting dialogue:", error);
+      res.status(500).json({ error: "Could not save dialogue" });
+    }
+  });
+
+  app.delete("/api/casting/dialogue/:dialogueId", async (req, res) => {
+    try {
+      const dialogueId = req.params.dialogueId;
+      const location =
+        await manuscriptsService.findDialogueLocation(dialogueId);
+      if (!location) {
+        // Eksisterende oppførsel: 200 OK selv om id ikke finnes
+        res.json({ ok: true });
+        return;
+      }
+      const current = await manuscriptsService.getDialogue(location.manuscriptId);
+      const next = current.filter((item) => item?.id !== dialogueId);
+      await manuscriptsService.replaceDialogue(location.manuscriptId, next);
+      res.json({ ok: true });
+    } catch (error) {
+      console.error("Error deleting dialogue:", error);
+      res.status(500).json({ error: "Could not delete dialogue" });
+    }
+  });
+
+  // ── Revisions ──────────────────────────────────────────────────────
+
+  app.get(
+    "/api/casting/manuscripts/:manuscriptId/revisions",
+    async (req, res) => {
+      try {
+        const revisions = await manuscriptsService.getRevisions(
+          req.params.manuscriptId,
+        );
+        res.json(revisions);
+      } catch (error) {
+        console.error("Error listing revisions:", error);
+        res.status(500).json({ error: "Could not list revisions" });
+      }
+    },
+  );
+
+  app.post("/api/casting/revisions", async (req, res) => {
+    try {
+      const payload = req.body && typeof req.body === "object" ? req.body : {};
+      const manuscriptId = readManuscriptId(payload);
+      if (!manuscriptId) {
+        res.status(400).json({ error: "manuscriptId is required" });
+        return;
+      }
+
+      const current = await manuscriptsService.getRevisions(manuscriptId);
+      const revisionId =
+        typeof payload.id === "string" && payload.id.trim()
+          ? payload.id
+          : `revision-${Date.now()}`;
+      const existingIndex = current.findIndex(
+        (revision) => revision?.id === revisionId,
+      );
+      const existing = existingIndex >= 0 ? current[existingIndex] : null;
+      const now = new Date().toISOString();
+      const revision = {
+        ...(existing || {}),
+        ...payload,
+        id: revisionId,
+        manuscriptId,
+        manuscript_id: manuscriptId,
+        createdAt: existing?.createdAt || payload.createdAt || now,
+        updatedAt: now,
+      };
+      const next = [...current];
+      if (existingIndex >= 0) {
+        next[existingIndex] = revision;
+      } else {
+        next.push(revision);
+      }
+      await manuscriptsService.replaceRevisions(manuscriptId, next);
+      res.status(existingIndex >= 0 ? 200 : 201).json(revision);
+    } catch (error) {
+      console.error("Error upserting revision:", error);
+      res.status(500).json({ error: "Could not save revision" });
+    }
+  });
+
+  // ── Acts ───────────────────────────────────────────────────────────
+
+  app.get("/api/casting/manuscripts/:manuscriptId/acts", async (req, res) => {
+    try {
+      const acts = await manuscriptsService.getActs(req.params.manuscriptId);
+      res.json(acts);
+    } catch (error) {
+      console.error("Error listing acts:", error);
+      res.status(500).json({ error: "Could not list acts" });
+    }
+  });
+
+  app.post("/api/casting/acts", async (req, res) => {
+    try {
+      const payload = req.body && typeof req.body === "object" ? req.body : {};
+      const manuscriptId = readManuscriptId(payload);
+      if (!manuscriptId) {
+        res.status(400).json({ error: "manuscriptId is required" });
+        return;
+      }
+
+      const current = await manuscriptsService.getActs(manuscriptId);
+      const actId =
+        typeof payload.id === "string" && payload.id.trim()
+          ? payload.id
+          : `act-${Date.now()}`;
+      const existingIndex = current.findIndex((act) => act?.id === actId);
+      const existing = existingIndex >= 0 ? current[existingIndex] : null;
+      const now = new Date().toISOString();
+      const act = {
+        ...(existing || {}),
+        ...payload,
+        id: actId,
+        manuscriptId,
+        manuscript_id: manuscriptId,
+        createdAt: existing?.createdAt || payload.createdAt || now,
+        updatedAt: now,
+      };
+      const next = [...current];
+      if (existingIndex >= 0) {
+        next[existingIndex] = act;
+      } else {
+        next.push(act);
+      }
+      await manuscriptsService.replaceActs(manuscriptId, next);
+      res.status(existingIndex >= 0 ? 200 : 201).json(act);
+    } catch (error) {
+      console.error("Error upserting act:", error);
+      res.status(500).json({ error: "Could not save act" });
+    }
+  });
+
+  app.get("/api/casting/acts/:actId", async (req, res) => {
+    try {
+      const actId = req.params.actId;
+      const location = await manuscriptsService.findActLocation(actId);
+      if (!location) {
+        res.json(null);
+        return;
+      }
+      const acts = await manuscriptsService.getActs(location.manuscriptId);
+      res.json(acts[location.index] || null);
+    } catch (error) {
+      console.error("Error fetching act:", error);
+      res.status(500).json({ error: "Could not fetch act" });
+    }
+  });
+
+  app.put("/api/casting/acts/:actId", async (req, res) => {
+    try {
+      const actId = req.params.actId;
+      const payload = req.body && typeof req.body === "object" ? req.body : {};
+      const location = await manuscriptsService.findActLocation(actId);
+      const manuscriptIdFromPayload = readManuscriptId(payload);
+      const manuscriptId = location?.manuscriptId || manuscriptIdFromPayload;
+      if (!manuscriptId) {
+        res.status(400).json({ error: "manuscriptId is required" });
+        return;
+      }
+
+      const acts = await manuscriptsService.getActs(manuscriptId);
+      const existingIndex = location
+        ? location.index
+        : acts.findIndex((act) => act?.id === actId);
+      const existing = existingIndex >= 0 ? acts[existingIndex] : null;
+      const now = new Date().toISOString();
+      const act = {
+        ...(existing || {}),
+        ...payload,
+        id: actId,
+        manuscriptId,
+        manuscript_id: manuscriptId,
+        createdAt: existing?.createdAt || payload.createdAt || now,
+        updatedAt: now,
+      };
+      const next = [...acts];
+      if (existingIndex >= 0) {
+        next[existingIndex] = act;
+      } else {
+        next.push(act);
+      }
+      await manuscriptsService.replaceActs(manuscriptId, next);
+      res.json(act);
+    } catch (error) {
+      console.error("Error updating act:", error);
+      res.status(500).json({ error: "Could not update act" });
+    }
+  });
+
+  app.delete("/api/casting/acts/:actId", async (req, res) => {
+    try {
+      const actId = req.params.actId;
+      const location = await manuscriptsService.findActLocation(actId);
+      if (!location) {
+        res.json({ ok: true });
+        return;
+      }
+      const acts = await manuscriptsService.getActs(location.manuscriptId);
+      const next = acts.filter((act) => act?.id !== actId);
+      await manuscriptsService.replaceActs(location.manuscriptId, next);
+      res.json({ ok: true });
+    } catch (error) {
+      console.error("Error deleting act:", error);
+      res.status(500).json({ error: "Could not delete act" });
+    }
+  });
+}

@@ -371,6 +371,8 @@ import { setupRoleRoomBillingAdminRoutes } from "./role-room-billing-admin-route
 import { setupCastingPoolsRoutes } from "./casting-pools-routes";
 import { setupCastingMiscRoutes } from "./casting-misc-routes";
 import { setupCastingAgreementsRoutes } from "./casting-agreements-routes";
+import { createCastingManuscriptsService } from "./casting-manuscripts-service";
+import { setupCastingManuscriptsRoutes } from "./casting-manuscripts-routes";
 import {
   asString,
   asNumberOrNull,
@@ -14233,11 +14235,6 @@ type LegacyStoryLogicEntry = {
 
 const legacySettingsStore = new Map<string, LegacySettingEntry>();
 const legacyCastingProjects = new Map<string, any>();
-const legacyManuscripts = new Map<string, any>();
-const legacyScenesByManuscript = new Map<string, any[]>();
-const legacyDialogueByManuscript = new Map<string, any[]>();
-const legacyRevisionsByManuscript = new Map<string, any[]>();
-const legacyActsByManuscript = new Map<string, any[]>();
 const legacyShotListsByProject = new Map<string, any[]>();
 const legacyCalendarEventsByProject = new Map<string, any[]>();
 const legacyTeamDashboardSnapshotsByProject = new Map<string, any[]>();
@@ -15458,25 +15455,15 @@ const liveSetService = createRoleRoomLiveSetService({
   dbLegacyLiveSetEventsKey,
 });
 
-function dbLegacyManuscriptKey(manuscriptId: string): string {
-  return `casting:manuscript:${manuscriptId}`;
-}
-
-function dbLegacyScenesKey(manuscriptId: string): string {
-  return `casting:scenes:${manuscriptId}`;
-}
-
-function dbLegacyDialogueKey(manuscriptId: string): string {
-  return `casting:dialogue:${manuscriptId}`;
-}
-
-function dbLegacyRevisionsKey(manuscriptId: string): string {
-  return `casting:revisions:${manuscriptId}`;
-}
-
-function dbLegacyActsKey(manuscriptId: string): string {
-  return `casting:acts:${manuscriptId}`;
-}
+// Service-instans deles mellom casting-manuscripts-routes-modulen og
+// casting-projects DELETE-handler (rydder manuskript-state cascade ved
+// prosjekt-DELETE).
+const manuscriptsService = createCastingManuscriptsService({
+  compatStoreGet,
+  compatStoreSet,
+  compatStoreDelete,
+  compatStoreListByPrefix,
+});
 
 function dbLegacyStoryLogicKey(projectId: string): string {
   return `project:story-logic:${projectId}`;
@@ -17343,551 +17330,6 @@ async function getLegacyTeamSnapshots(projectId: string): Promise<any[]> {
   return legacyTeamDashboardSnapshotsByProject.get(projectId) || [];
 }
 
-function readManuscriptProjectId(source: any, fallback = ""): string {
-  if (!source || typeof source !== "object") return fallback;
-  const fromCamel =
-    typeof source.projectId === "string" ? source.projectId.trim() : "";
-  if (fromCamel) return fromCamel;
-  const fromSnake =
-    typeof source.project_id === "string" ? source.project_id.trim() : "";
-  if (fromSnake) return fromSnake;
-  return fallback;
-}
-
-async function listLegacyManuscripts(projectId?: string): Promise<any[]> {
-  const dbRows = await compatStoreListByPrefix<any>("casting:manuscript:");
-  if (dbRows.length > 0) {
-    legacyManuscripts.clear();
-    for (const row of dbRows) {
-      const manuscript = row.value;
-      const manuscriptId =
-        typeof manuscript?.id === "string" ? manuscript.id : "";
-      if (!manuscriptId || !manuscript || typeof manuscript !== "object")
-        continue;
-      legacyManuscripts.set(manuscriptId, manuscript);
-    }
-  }
-
-  const manuscripts = Array.from(legacyManuscripts.values()).filter(
-    (manuscript) => manuscript && typeof manuscript === "object",
-  );
-
-  if (!projectId) {
-    return manuscripts;
-  }
-
-  return manuscripts.filter(
-    (manuscript) => readManuscriptProjectId(manuscript) === projectId,
-  );
-}
-
-async function getLegacyManuscript(manuscriptId: string): Promise<any | null> {
-  const dbManuscript = await compatStoreGet<any>(
-    dbLegacyManuscriptKey(manuscriptId),
-  );
-  if (dbManuscript && typeof dbManuscript === "object") {
-    legacyManuscripts.set(manuscriptId, dbManuscript);
-    return dbManuscript;
-  }
-  return legacyManuscripts.get(manuscriptId) || null;
-}
-
-async function getLegacyManuscriptItems(
-  source: Map<string, any[]>,
-  dbKey: string,
-  manuscriptId: string,
-): Promise<any[]> {
-  const dbItems = await compatStoreGet<any[]>(dbKey);
-  if (Array.isArray(dbItems)) {
-    source.set(manuscriptId, dbItems);
-    return dbItems;
-  }
-  return source.get(manuscriptId) || [];
-}
-
-async function getLegacyScenes(manuscriptId: string): Promise<any[]> {
-  return getLegacyManuscriptItems(
-    legacyScenesByManuscript,
-    dbLegacyScenesKey(manuscriptId),
-    manuscriptId,
-  );
-}
-
-async function getLegacyDialogue(manuscriptId: string): Promise<any[]> {
-  return getLegacyManuscriptItems(
-    legacyDialogueByManuscript,
-    dbLegacyDialogueKey(manuscriptId),
-    manuscriptId,
-  );
-}
-
-async function getLegacyRevisions(manuscriptId: string): Promise<any[]> {
-  return getLegacyManuscriptItems(
-    legacyRevisionsByManuscript,
-    dbLegacyRevisionsKey(manuscriptId),
-    manuscriptId,
-  );
-}
-
-async function getLegacyActs(manuscriptId: string): Promise<any[]> {
-  return getLegacyManuscriptItems(
-    legacyActsByManuscript,
-    dbLegacyActsKey(manuscriptId),
-    manuscriptId,
-  );
-}
-
-function findByIdInManuscriptMap(
-  source: Map<string, any[]>,
-  id: string,
-): { manuscriptId: string; index: number } | null {
-  for (const [manuscriptId, items] of source.entries()) {
-    const index = items.findIndex((item) => item?.id === id);
-    if (index >= 0) {
-      return { manuscriptId, index };
-    }
-  }
-  return null;
-}
-
-async function findByIdInDbManuscriptArrays(
-  prefix: string,
-  id: string,
-): Promise<{ manuscriptId: string; index: number; items: any[] } | null> {
-  const rows = await compatStoreListByPrefix<any[]>(prefix);
-  for (const row of rows) {
-    if (!Array.isArray(row.value)) continue;
-    const index = row.value.findIndex((item) => item?.id === id);
-    if (index < 0) continue;
-    const manuscriptId = row.key.slice(prefix.length);
-    if (!manuscriptId) continue;
-    return {
-      manuscriptId,
-      index,
-      items: row.value,
-    };
-  }
-  return null;
-}
-
-app.get("/api/casting/manuscripts", async (req, res) => {
-  const projectId =
-    typeof req.query.projectId === "string" && req.query.projectId.trim()
-      ? req.query.projectId.trim()
-      : undefined;
-  const manuscripts = await listLegacyManuscripts(projectId);
-  res.json(manuscripts);
-});
-
-app.post("/api/casting/manuscripts", async (req, res) => {
-  const payload = req.body || {};
-  const manuscriptId =
-    typeof payload.id === "string" && payload.id.trim()
-      ? payload.id
-      : `manuscript-${Date.now()}`;
-  const now = new Date().toISOString();
-  const existing = (await getLegacyManuscript(manuscriptId)) || {};
-  const projectId = readManuscriptProjectId(
-    payload,
-    readManuscriptProjectId(existing, "default-project"),
-  );
-  const manuscript = {
-    ...existing,
-    ...payload,
-    id: manuscriptId,
-    projectId,
-    project_id: projectId,
-    createdAt: existing.createdAt || now,
-    updatedAt: now,
-  };
-  legacyManuscripts.set(manuscriptId, manuscript);
-  await compatStoreSet(dbLegacyManuscriptKey(manuscriptId), manuscript);
-  res.status(201).json(manuscript);
-});
-
-app.get("/api/casting/manuscripts/:manuscriptId", async (req, res) => {
-  const manuscript = await getLegacyManuscript(req.params.manuscriptId);
-  res.json(manuscript);
-});
-
-app.put("/api/casting/manuscripts/:manuscriptId", async (req, res) => {
-  const manuscriptId = req.params.manuscriptId;
-  const existing = (await getLegacyManuscript(manuscriptId)) || {};
-  const payload = req.body || {};
-  const now = new Date().toISOString();
-  const projectId = readManuscriptProjectId(
-    payload,
-    readManuscriptProjectId(existing, "default-project"),
-  );
-  const manuscript = {
-    ...existing,
-    ...payload,
-    id: manuscriptId,
-    projectId,
-    project_id: projectId,
-    createdAt: existing.createdAt || now,
-    updatedAt: now,
-  };
-  legacyManuscripts.set(manuscriptId, manuscript);
-  await compatStoreSet(dbLegacyManuscriptKey(manuscriptId), manuscript);
-  res.json(manuscript);
-});
-
-app.delete("/api/casting/manuscripts/:manuscriptId", async (req, res) => {
-  const manuscriptId = req.params.manuscriptId;
-  legacyManuscripts.delete(manuscriptId);
-  legacyScenesByManuscript.delete(manuscriptId);
-  legacyDialogueByManuscript.delete(manuscriptId);
-  legacyRevisionsByManuscript.delete(manuscriptId);
-  legacyActsByManuscript.delete(manuscriptId);
-  await Promise.all([
-    compatStoreDelete(dbLegacyManuscriptKey(manuscriptId)),
-    compatStoreDelete(dbLegacyScenesKey(manuscriptId)),
-    compatStoreDelete(dbLegacyDialogueKey(manuscriptId)),
-    compatStoreDelete(dbLegacyRevisionsKey(manuscriptId)),
-    compatStoreDelete(dbLegacyActsKey(manuscriptId)),
-  ]);
-  res.json({ ok: true });
-});
-
-app.get("/api/casting/manuscripts/:manuscriptId/scenes", async (req, res) => {
-  const scenes = await getLegacyScenes(req.params.manuscriptId);
-  res.json(scenes);
-});
-
-app.post("/api/casting/scenes", async (req, res) => {
-  const payload = req.body || {};
-  const manuscriptId =
-    typeof payload.manuscriptId === "string" && payload.manuscriptId.trim()
-      ? payload.manuscriptId
-      : typeof payload.manuscript_id === "string" &&
-          payload.manuscript_id.trim()
-        ? payload.manuscript_id
-        : "";
-  if (!manuscriptId) {
-    res.status(400).json({ error: "manuscriptId is required" });
-    return;
-  }
-
-  const current = await getLegacyScenes(manuscriptId);
-  const sceneId =
-    typeof payload.id === "string" && payload.id.trim()
-      ? payload.id
-      : `scene-${Date.now()}`;
-  const existingIndex = current.findIndex((scene) => scene?.id === sceneId);
-  const existing = existingIndex >= 0 ? current[existingIndex] : null;
-  const now = new Date().toISOString();
-  const scene = {
-    ...(existing || {}),
-    ...payload,
-    id: sceneId,
-    manuscriptId,
-    manuscript_id: manuscriptId,
-    createdAt: existing?.createdAt || payload.createdAt || now,
-    updatedAt: now,
-  };
-  const next = [...current];
-  if (existingIndex >= 0) {
-    next[existingIndex] = scene;
-  } else {
-    next.push(scene);
-  }
-  legacyScenesByManuscript.set(manuscriptId, next);
-  await compatStoreSet(dbLegacyScenesKey(manuscriptId), next);
-  res.status(existingIndex >= 0 ? 200 : 201).json(scene);
-});
-
-app.get("/api/casting/manuscripts/:manuscriptId/dialogue", async (req, res) => {
-  const dialogue = await getLegacyDialogue(req.params.manuscriptId);
-  res.json(dialogue);
-});
-
-app.post("/api/casting/dialogue", async (req, res) => {
-  const payload = req.body || {};
-  const manuscriptId =
-    typeof payload.manuscriptId === "string" && payload.manuscriptId.trim()
-      ? payload.manuscriptId
-      : typeof payload.manuscript_id === "string" &&
-          payload.manuscript_id.trim()
-        ? payload.manuscript_id
-        : "";
-  if (!manuscriptId) {
-    res.status(400).json({ error: "manuscriptId is required" });
-    return;
-  }
-
-  const current = await getLegacyDialogue(manuscriptId);
-  const dialogueId =
-    typeof payload.id === "string" && payload.id.trim()
-      ? payload.id
-      : `dialogue-${Date.now()}`;
-  const existingIndex = current.findIndex((line) => line?.id === dialogueId);
-  const existing = existingIndex >= 0 ? current[existingIndex] : null;
-  const now = new Date().toISOString();
-  const dialogueLine = {
-    ...(existing || {}),
-    ...payload,
-    id: dialogueId,
-    manuscriptId,
-    manuscript_id: manuscriptId,
-    createdAt: existing?.createdAt || payload.createdAt || now,
-    updatedAt: now,
-  };
-  const next = [...current];
-  if (existingIndex >= 0) {
-    next[existingIndex] = dialogueLine;
-  } else {
-    next.push(dialogueLine);
-  }
-  legacyDialogueByManuscript.set(manuscriptId, next);
-  await compatStoreSet(dbLegacyDialogueKey(manuscriptId), next);
-  res.status(existingIndex >= 0 ? 200 : 201).json(dialogueLine);
-});
-
-app.delete("/api/casting/dialogue/:dialogueId", async (req, res) => {
-  const dialogueId = req.params.dialogueId;
-  let location = findByIdInManuscriptMap(
-    legacyDialogueByManuscript,
-    dialogueId,
-  );
-  if (!location) {
-    const dbLocation = await findByIdInDbManuscriptArrays(
-      "casting:dialogue:",
-      dialogueId,
-    );
-    if (dbLocation) {
-      legacyDialogueByManuscript.set(dbLocation.manuscriptId, dbLocation.items);
-      location = {
-        manuscriptId: dbLocation.manuscriptId,
-        index: dbLocation.index,
-      };
-    }
-  }
-
-  if (!location) {
-    res.json({ ok: true });
-    return;
-  }
-
-  const current = await getLegacyDialogue(location.manuscriptId);
-  const next = current.filter((item) => item?.id !== dialogueId);
-  legacyDialogueByManuscript.set(location.manuscriptId, next);
-  await compatStoreSet(dbLegacyDialogueKey(location.manuscriptId), next);
-  res.json({ ok: true });
-});
-
-app.get(
-  "/api/casting/manuscripts/:manuscriptId/revisions",
-  async (req, res) => {
-    const revisions = await getLegacyRevisions(req.params.manuscriptId);
-    res.json(revisions);
-  },
-);
-
-app.post("/api/casting/revisions", async (req, res) => {
-  const payload = req.body || {};
-  const manuscriptId =
-    typeof payload.manuscriptId === "string" && payload.manuscriptId.trim()
-      ? payload.manuscriptId
-      : typeof payload.manuscript_id === "string" &&
-          payload.manuscript_id.trim()
-        ? payload.manuscript_id
-        : "";
-  if (!manuscriptId) {
-    res.status(400).json({ error: "manuscriptId is required" });
-    return;
-  }
-
-  const current = await getLegacyRevisions(manuscriptId);
-  const revisionId =
-    typeof payload.id === "string" && payload.id.trim()
-      ? payload.id
-      : `revision-${Date.now()}`;
-  const existingIndex = current.findIndex(
-    (revision) => revision?.id === revisionId,
-  );
-  const existing = existingIndex >= 0 ? current[existingIndex] : null;
-  const now = new Date().toISOString();
-  const revision = {
-    ...(existing || {}),
-    ...payload,
-    id: revisionId,
-    manuscriptId,
-    manuscript_id: manuscriptId,
-    createdAt: existing?.createdAt || payload.createdAt || now,
-    updatedAt: now,
-  };
-  const next = [...current];
-  if (existingIndex >= 0) {
-    next[existingIndex] = revision;
-  } else {
-    next.push(revision);
-  }
-  legacyRevisionsByManuscript.set(manuscriptId, next);
-  await compatStoreSet(dbLegacyRevisionsKey(manuscriptId), next);
-  res.status(existingIndex >= 0 ? 200 : 201).json(revision);
-});
-
-app.get("/api/casting/manuscripts/:manuscriptId/acts", async (req, res) => {
-  const acts = await getLegacyActs(req.params.manuscriptId);
-  res.json(acts);
-});
-
-app.post("/api/casting/acts", async (req, res) => {
-  const payload = req.body || {};
-  const manuscriptId =
-    typeof payload.manuscriptId === "string" && payload.manuscriptId.trim()
-      ? payload.manuscriptId
-      : typeof payload.manuscript_id === "string" &&
-          payload.manuscript_id.trim()
-        ? payload.manuscript_id
-        : "";
-  if (!manuscriptId) {
-    res.status(400).json({ error: "manuscriptId is required" });
-    return;
-  }
-
-  const current = await getLegacyActs(manuscriptId);
-  const actId =
-    typeof payload.id === "string" && payload.id.trim()
-      ? payload.id
-      : `act-${Date.now()}`;
-  const existingIndex = current.findIndex((act) => act?.id === actId);
-  const existing = existingIndex >= 0 ? current[existingIndex] : null;
-  const now = new Date().toISOString();
-  const act = {
-    ...(existing || {}),
-    ...payload,
-    id: actId,
-    manuscriptId,
-    manuscript_id: manuscriptId,
-    createdAt: existing?.createdAt || payload.createdAt || now,
-    updatedAt: now,
-  };
-  const next = [...current];
-  if (existingIndex >= 0) {
-    next[existingIndex] = act;
-  } else {
-    next.push(act);
-  }
-  legacyActsByManuscript.set(manuscriptId, next);
-  await compatStoreSet(dbLegacyActsKey(manuscriptId), next);
-  res.status(existingIndex >= 0 ? 200 : 201).json(act);
-});
-
-app.get("/api/casting/acts/:actId", async (req, res) => {
-  const actId = req.params.actId;
-  let location = findByIdInManuscriptMap(legacyActsByManuscript, actId);
-  if (!location) {
-    const dbLocation = await findByIdInDbManuscriptArrays(
-      "casting:acts:",
-      actId,
-    );
-    if (dbLocation) {
-      legacyActsByManuscript.set(dbLocation.manuscriptId, dbLocation.items);
-      location = {
-        manuscriptId: dbLocation.manuscriptId,
-        index: dbLocation.index,
-      };
-    }
-  }
-
-  if (!location) {
-    res.json(null);
-    return;
-  }
-
-  const acts = await getLegacyActs(location.manuscriptId);
-  res.json(acts[location.index] || null);
-});
-
-app.put("/api/casting/acts/:actId", async (req, res) => {
-  const actId = req.params.actId;
-  const payload = req.body || {};
-  let location = findByIdInManuscriptMap(legacyActsByManuscript, actId);
-  if (!location) {
-    const dbLocation = await findByIdInDbManuscriptArrays(
-      "casting:acts:",
-      actId,
-    );
-    if (dbLocation) {
-      legacyActsByManuscript.set(dbLocation.manuscriptId, dbLocation.items);
-      location = {
-        manuscriptId: dbLocation.manuscriptId,
-        index: dbLocation.index,
-      };
-    }
-  }
-
-  const manuscriptIdFromPayload =
-    typeof payload.manuscriptId === "string" && payload.manuscriptId.trim()
-      ? payload.manuscriptId
-      : typeof payload.manuscript_id === "string" &&
-          payload.manuscript_id.trim()
-        ? payload.manuscript_id
-        : "";
-
-  const manuscriptId = location?.manuscriptId || manuscriptIdFromPayload;
-  if (!manuscriptId) {
-    res.status(400).json({ error: "manuscriptId is required" });
-    return;
-  }
-
-  const acts = await getLegacyActs(manuscriptId);
-  const existingIndex = location
-    ? location.index
-    : acts.findIndex((act) => act?.id === actId);
-  const existing = existingIndex >= 0 ? acts[existingIndex] : null;
-  const now = new Date().toISOString();
-  const act = {
-    ...(existing || {}),
-    ...payload,
-    id: actId,
-    manuscriptId,
-    manuscript_id: manuscriptId,
-    createdAt: existing?.createdAt || payload.createdAt || now,
-    updatedAt: now,
-  };
-  const next = [...acts];
-  if (existingIndex >= 0) {
-    next[existingIndex] = act;
-  } else {
-    next.push(act);
-  }
-  legacyActsByManuscript.set(manuscriptId, next);
-  await compatStoreSet(dbLegacyActsKey(manuscriptId), next);
-  res.json(act);
-});
-
-app.delete("/api/casting/acts/:actId", async (req, res) => {
-  const actId = req.params.actId;
-  let location = findByIdInManuscriptMap(legacyActsByManuscript, actId);
-  if (!location) {
-    const dbLocation = await findByIdInDbManuscriptArrays(
-      "casting:acts:",
-      actId,
-    );
-    if (dbLocation) {
-      legacyActsByManuscript.set(dbLocation.manuscriptId, dbLocation.items);
-      location = {
-        manuscriptId: dbLocation.manuscriptId,
-        index: dbLocation.index,
-      };
-    }
-  }
-
-  if (!location) {
-    res.json({ ok: true });
-    return;
-  }
-
-  const acts = await getLegacyActs(location.manuscriptId);
-  const next = acts.filter((act) => act?.id !== actId);
-  legacyActsByManuscript.set(location.manuscriptId, next);
-  await compatStoreSet(dbLegacyActsKey(location.manuscriptId), next);
-  res.json({ ok: true });
-});
-
 const ROLE_ROOM_PROTECTED_DEMO_PROJECT_IDS = new Set([
   "content-producer-demo-2026",
   "troll-project-2026",
@@ -18184,18 +17626,21 @@ app.delete("/api/casting/projects/:projectId", async (req, res) => {
   if (rejectProtectedLegacyCastingDemoWrite(res, projectId, "deleteProject")) {
     return;
   }
-  const manuscriptsForProject = await listLegacyManuscripts(projectId);
-
-  for (const manuscript of manuscriptsForProject) {
-    const manuscriptId =
-      typeof manuscript?.id === "string" ? manuscript.id : "";
-    if (!manuscriptId) continue;
-    legacyManuscripts.delete(manuscriptId);
-    legacyScenesByManuscript.delete(manuscriptId);
-    legacyDialogueByManuscript.delete(manuscriptId);
-    legacyRevisionsByManuscript.delete(manuscriptId);
-    legacyActsByManuscript.delete(manuscriptId);
-  }
+  // manuscriptsService rydder ALT manuskript-state (Map + DB) per manuscriptId.
+  // Cascade-delete er parallellisert via Promise.allSettled (én feilet
+  // delete aborterer ikke hele cascade).
+  const manuscriptsForProject =
+    await manuscriptsService.listManuscripts(projectId);
+  await Promise.allSettled(
+    manuscriptsForProject
+      .map((manuscript) =>
+        typeof manuscript?.id === "string" ? manuscript.id : "",
+      )
+      .filter((id): id is string => Boolean(id))
+      .map((manuscriptId) =>
+        manuscriptsService.clearManuscriptState(manuscriptId),
+      ),
+  );
 
   legacyCastingProjects.delete(projectId);
   legacyShotListsByProject.delete(projectId);
@@ -18205,18 +17650,6 @@ app.delete("/api/casting/projects/:projectId", async (req, res) => {
   legacyContractsByProject.delete(projectId);
   legacyProjectAgreementsByProject.delete(projectId);
   liveSetService.clearProjectState(projectId);
-  const manuscriptDeletes = manuscriptsForProject.flatMap((manuscript) => {
-    const manuscriptId =
-      typeof manuscript?.id === "string" ? manuscript.id : "";
-    if (!manuscriptId) return [];
-    return [
-      compatStoreDelete(dbLegacyManuscriptKey(manuscriptId)),
-      compatStoreDelete(dbLegacyScenesKey(manuscriptId)),
-      compatStoreDelete(dbLegacyDialogueKey(manuscriptId)),
-      compatStoreDelete(dbLegacyRevisionsKey(manuscriptId)),
-      compatStoreDelete(dbLegacyActsKey(manuscriptId)),
-    ];
-  });
 
   await Promise.all([
     compatStoreDelete(dbLegacyCastingProjectKey(projectId)),
@@ -18229,7 +17662,6 @@ app.delete("/api/casting/projects/:projectId", async (req, res) => {
     compatStoreDelete(dbLegacyLiveSetSessionsKey(projectId)),
     compatStoreDelete(dbLegacyLiveSetEventsKey(projectId)),
     compatStoreDeleteByPrefix(`casting:favorites:${projectId}::`),
-    ...manuscriptDeletes,
   ]);
   res.status(204).end();
 });
@@ -38650,6 +38082,16 @@ setupCastingAgreementsRoutes({
   findByIdInDbProjectArrays,
   createProjectAgreementRecord,
   normalizeProjectAgreementStatus,
+});
+
+// ── Casting manuscripts — flyttet til ./casting-manuscripts-routes.ts
+//   17 endpoints: manuscripts (5) + scenes (2) + dialogue (3) +
+//   revisions (2) + acts (5). Service eier 5 in-memory Maps internt og
+//   eksponerer reads/replaces/clearManuscriptState (sistnevnte brukes
+//   av casting-projects DELETE-cascade).
+setupCastingManuscriptsRoutes({
+  app,
+  manuscriptsService,
 });
 
 app.post("/api/role-room/billing/checkout-session", async (req, res) => {
