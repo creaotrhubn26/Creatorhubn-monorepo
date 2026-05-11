@@ -48,27 +48,38 @@
 
 ### Robusthet-features (research-informert, sesjon 4)
 
-7-features-plan basert på pain points fra screenplay/casting-software-marked + REST API best-practices (RFC 7232, Stripe/Azure REST Guidelines):
+7-features-plan basert på pain points fra screenplay/casting-software-marked + REST API best-practices (RFC 7232, RFC 6902, Stripe/Azure REST Guidelines):
 
 | # | Feature | Status | Commit(s) |
 |---|---|---|---|
-| F1 | Optimistic concurrency control (version + ETag + If-Match) | ⚙️ Foundation gjort (ingen enforcement) | c866803d |
+| F1 | Optimistic concurrency control (version + ETag + If-Match) | ⚙️ Foundation ferdig — Fase C-enforcement gjenstår | c866803d |
 | F2 | DB-transaksjoner på cascade-delete | ✅ Ferdig | 66c55746 + 5738314a |
 | F3 | UUID istedenfor Date.now() | ✅ Ferdig | 21f94e38 |
-| F4 | Auth-validering (log-mode først) | ⏳ Planlagt | — |
-| F5 | Idempotency-keys (opt-in) | ⚙️ Middleware klart (ikke wired ennå) | fdb470dc |
-| F6 | Versjons-historikk-API (revisions diff+restore) | ⏳ Planlagt | — |
-| F7 | Fountain/FDX import/export | ⏳ Planlagt | — |
+| F4 | Auth-validering (log-mode først) | ⚙️ Helper klart — Fase C-enforcement gjenstår | a42b7423 |
+| F5 | Idempotency-keys (opt-in) | ⚙️ Middleware klart — wiring per-cluster gjenstår | fdb470dc |
+| F6 | Versjons-historikk-API (revisions diff+restore) | ✅ Ferdig | 029f0430 |
+| F7 | Fountain/FDX import/export | ✅ Ferdig | fb7bc01a |
 
 **Fase C (gjenstår — krever frontend-koordinering):**
 - F1 enforcement: returner 412 på If-Match-mismatch (etter log-only-rollout)
 - F4 enforcement: blokker uautoriserte requests
+- F5 wiring: aktivér middleware på enkelt-endpoints (krever product-design hvilke)
 
-**Infrastruktur etablert som modul-set:**
-- `_shared-ids.ts` (+ test) — UUID-helper
-- `_shared-concurrency.ts` (+ test) — version/ETag/If-Match helpers
-- `_shared-idempotency.ts` (+ test) — idempotency middleware
+**Infrastruktur etablert som modul-set (alle med Vitest-tester):**
+- `_shared-ids.ts` (+ test) — UUID-helper (7 tester)
+- `_shared-concurrency.ts` (+ test) — version/ETag/If-Match helpers (13 tester)
+- `_shared-idempotency.ts` (+ test) — idempotency middleware (14 tester)
+- `_shared-auth.ts` (+ test) — 3-fase auth (8 tester)
+- `casting-manuscript-revisions-service.ts` — diff/restore via fast-json-patch
+- `casting-screenplay-formats.ts` (+ test) — Fountain/FDX parsers/emitters (12 tester)
 - Compat-store-laget utvidet med `compatStoreTransaction`
+- Totalt 54 nye unit-tester, alle grønne.
+
+**Industri-standarder implementert:**
+- RFC 7232 (HTTP Conditional Requests) — ETag/If-Match
+- RFC 6902 (JSON Patch) — diff-format for revisjons-historikk
+- Fountain (https://fountain.io) — markdown screenplay
+- FDX (Final Draft XML) — industri-standard 2008+
 
 ### Strategi-mønstre etablert (gjelder for fremtidig refaktor)
 
