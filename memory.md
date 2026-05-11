@@ -1,6 +1,6 @@
 # memory.md — Role Room session-state, refaktor-plan og kø
 
-> Levende dokument for Claude Code-sesjoner og produkt-eier. Sist oppdatert: 2026-05-11 (round 4 — komplett casting + 4 robusthet-features).
+> Levende dokument for Claude Code-sesjoner og produkt-eier. Sist oppdatert: 2026-05-11 (round 5 — admin-cluster delvis ekstraktert + Fase C ferdig).
 > Plassert i repo-rot slik at Claude Code (lokal eller web) automatisk leser den ved oppstart.
 
 ---
@@ -11,7 +11,22 @@
 
 **Sesjon 2 (2026-05-10 round 2):** Service-laget-refactor for `role-room-education-inquiries` (1 av 3 utsatte sub-clustre). 3 commits, 1 endpoint, men *betydelig* netto linje-reduksjon (-1150) fordi store helper-blokker fulgte med. Pushet og merget inn i PR #3.
 
-**Sesjon 4 (2026-05-11):** Komplett `/api/casting`-ekstraksjon (59 endpoints i 6 nye moduler) + 4 av 7 robusthet-features research-informert fra REST API best-practices + screenplay-software pain-points. 11 commits totalt:
+**Sesjon 5 (2026-05-11 round 5):** Fase C komplett (F1/F4/F5 enforcement + wiring) + delvis admin-cluster-ekstraksjon (5 av 6 admin-routes-moduler, 39 av 51 endpoints). 8 commits:
+
+*Fase C enforcement (3 commits):*
+- 15e1072f — F1 enforcement: 412 ved If-Match-mismatch på PUT/DELETE manuscripts
+- 183b98f1 — F4 wiring: auth-middleware på /api/casting (env-flag-styrt)
+- 2273501c — F5 wiring: idempotency-middleware på casting POST/PUT/PATCH
+- dc11696a — memory.md oppdatering
+
+*Admin-cluster (5 commits, 40 av 51 endpoints):*
+- c3b4afb8 — **admin-features-routes** (6 endpoints: feature-toggles + bulk-update)
+- 5fd567e6 — **admin-refund-requests-routes** (4 endpoints: list/approve/reject + notification)
+- 8e9615cd — **admin-stats-routes** (5 endpoints: platform/profession-stats, dashboard, email-conversion, academy)
+- c1e8d2ae — **admin-dashboard-routes** (15 endpoints: activity-feed/export + 5 analytics + audit/system/integrations/security/automations + crm/billing/pending-counts)
+- cc06c04b — **admin-users-routes** (10 endpoints: CRUD + approve + impersonate + payment-status + recently-approved)
+
+**Sesjon 4 (2026-05-11 round 4):** Komplett `/api/casting`-ekstraksjon (59 endpoints i 6 nye moduler) + 4 av 7 robusthet-features research-informert fra REST API best-practices + screenplay-software pain-points. 11 commits totalt:
 
 *Casting-extraksjon (6 commits):*
 - ce6e3e72 — casting-pools-routes (11 endpoints)
@@ -32,7 +47,7 @@
 - 1 commit billing-admin (2 av 9 billing-endpoints, kun reminder-tooling) → -55 linjer
 - Resten av billing utsatt: kartleggingen avdekket ~45 unike deps for full billing-extraksjon pga Stripe-state-fragmentering. Webhook er også entangled med Agent add-on. Krever større service-laget-refactor.
 
-### Totaler (akkumulert etter sesjon 4)
+### Totaler (akkumulert etter sesjon 5)
 
 | Cluster | Endpoints ekstraktert | Moduler |
 |---|---|---|
@@ -41,10 +56,33 @@
 | `/api/showcase` | 60 | 13 (komplett ✅) |
 | `/api/evendi` | 63 | 7 (komplett ✅) |
 | `/api/casting` | 59 | 6 (komplett ✅) |
+| `/api/admin` | 40 | 5 (~80%, 11 misc-endpoints gjenstår) |
 | `_shared.ts` + foundation-moduler | foundation | 6 |
-| **TOTAL** | **308** | **56** |
+| **TOTAL** | **348** | **61** |
 
-`index.ts`: ~119,066 → ~103,667 linjer (**-15,399 linjer netto, ~12.9% reduksjon**).
+`index.ts`: ~119,066 → ~102,172 linjer (**-16,894 linjer netto, ~14.2% reduksjon**).
+
+### 🚧 Admin-cluster — gjenstående 11 endpoints (utsatt til neste sesjon)
+
+5 av 5 hovedmoduler er ferdig. Gjenstår diverse misc-endpoints spredt utover index.ts:
+
+| Endpoint | Linje (etter sesjon 5) | Auth | Anbefalt destinasjon |
+|---|---|---|---|
+| `GET /api/admin/gdpr-settings` | ~30654 | ✅ | admin-misc-routes.ts |
+| `GET /api/admin/profession-types` | ~30662 | ❌ ÅPEN | admin-misc-routes.ts |
+| `POST /api/admin/log-interaction` | ~30851 | ❌ ÅPEN | admin-misc-routes.ts |
+| `GET /api/admin/users/:id/accounting-integration` | ~28772 | ✅ | admin-misc-routes.ts (gjenværende user-helper) |
+| `PUT /api/admin/users/:id/accounting-integration` | ~28794 | ✅ | admin-misc-routes.ts |
+| `GET /api/admin/proff/company/:organizationNumber` | ~49918 | ✅ | admin-misc-routes.ts |
+| `GET /api/admin/smoke-tests/evendi` | ~58198 | ✅ | admin-misc-routes.ts |
+| `POST /api/admin/profession-trends` | ~93366 | ❌ ÅPEN | admin-seo-routes.ts |
+| `POST /api/admin/apply-seo-fixes` | ~93393 | ❌ ÅPEN | admin-seo-routes.ts |
+| `GET /api/admin/seo-projects` | ~93431 | ❌ ÅPEN | admin-seo-routes.ts |
+| `POST /api/admin/seo-projects` | ~93450 | ❌ ÅPEN | admin-seo-routes.ts |
+
+**⚠️ SIKKERHETS-GAP:** 8 endpoints mangler `requireAdminSession`-guard (4 features + 4 SEO + log-interaction + profession-types). Ekstraktert AS-IS (ingen funksjonell endring per refaktor-prinsippet). **Bør lukkes i egen security-commit** før produksjons-rollout.
+
+**Estimat for gjenstående admin-arbeid:** 1-2 commits (admin-misc + admin-seo), ~30-45 minutter.
 
 ### Robusthet-features (research-informert, sesjon 4)
 
