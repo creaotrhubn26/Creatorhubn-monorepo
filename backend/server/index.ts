@@ -380,6 +380,10 @@ import {
   parseAuthMode,
 } from "./_shared-auth.js";
 import {
+  ensureIdempotencyTable,
+  idempotencyMiddleware,
+} from "./_shared-idempotency.js";
+import {
   asString,
   asNumberOrNull,
   asJsonbArray,
@@ -37442,6 +37446,27 @@ app.use(
     scope: "casting",
   }),
 );
+
+// ── Casting idempotency-middleware (F5 wiring) ────────────────────────
+//   Opt-in via `Idempotency-Key`-header (Stripe-stil). Aktiveres KUN på
+//   POST/PUT-requests (read-operasjoner trenger ikke idempotency). Hvis
+//   klienten ikke sender header, er middleware no-op.
+//
+//   Tabell `idempotency_keys_v1` opprettes idempotent ved oppstart.
+ensureIdempotencyTable(pool).catch((error) => {
+  console.warn("ensureIdempotencyTable failed at startup:", error);
+});
+const castingIdempotencyMiddleware = idempotencyMiddleware({
+  pool,
+  scope: "casting",
+});
+app.use("/api/casting", (req, res, next) => {
+  // Idempotency er kun relevant for skrive-operasjoner.
+  if (req.method === "POST" || req.method === "PUT" || req.method === "PATCH") {
+    return castingIdempotencyMiddleware(req, res, next);
+  }
+  next();
+});
 
 // ── Casting pools — flyttet til ./casting-pools-routes.ts
 //   11 endpoints under /api/casting/{candidate-pool,role-pool,candidates,roles}/*.
