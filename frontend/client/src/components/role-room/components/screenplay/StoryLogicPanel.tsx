@@ -70,6 +70,17 @@ import {
   containsLegacyProducerDemoMarker,
   isRoleRoomDemoSeedAllowed,
 } from '../../constants/producerDemo';
+import type {
+  ConceptData,
+  LoglineData,
+  ThemeData,
+  PhaseLocks,
+  StoryVersion,
+  StoryLogicState,
+  ValidationWarning,
+  CoachingTip,
+  ValidationResult,
+} from './storyLogic/types';
 
 // ============================================================================
 // Energy-Aware UX Helpers
@@ -280,93 +291,13 @@ const PHASE_META: Array<{ key: StoryPhaseKey; index: number; title: string }> = 
 ];
 
 // ============================================================================
-// Types & Interfaces
+// Types & Interfaces — ekstraktert til ./storyLogic/types.ts
 // ============================================================================
-
-interface ConceptData {
-  corePremise: string;
-  genre: string;
-  subGenre: string;
-  tone: string[];
-  targetAudience: string;
-  audienceAge: string;
-  whyNow: string;
-  uniqueAngle: string;
-  marketComparables: string;
-}
-
-interface LoglineData {
-  protagonist: string;
-  protagonistTrait: string;
-  goal: string;
-  antagonisticForce: string;
-  stakes: string;
-  fullLogline: string;
-  loglineScore: number;
-}
-
-interface ThemeData {
-  centralTheme: string;
-  themeStatement: string;
-  protagonistFlaw: string;
-  flawOrigin: string;
-  whatMustChange: string;
-  transformationArc: string;
-  emotionalJourney: string[];
-  moralArgument: string;
-}
-
-interface PhaseLocks {
-  concept: boolean;
-  logline: boolean;
-  theme: boolean;
-}
-
-interface StoryVersion {
-  id: string;
-  label: string;
-  timestamp: string;
-  snapshot: string; // JSON-stringified state snapshot
-}
-
-interface StoryLogicState {
-  concept: ConceptData;
-  logline: LoglineData;
-  theme: ThemeData;
-  currentPhase: number;
-  phaseStatus: {
-    concept: 'incomplete' | 'weak' | 'ready';
-    logline: 'incomplete' | 'weak' | 'ready';
-    theme: 'incomplete' | 'weak' | 'ready';
-  };
-  lastSaved: string | null;
-  locks: PhaseLocks;
-  versions: StoryVersion[];
-}
-
-interface ValidationWarning {
-  message: string;
-  fieldId: string;
-  impact: string;
-  pointsLost: number;
-}
-
-interface CoachingTip {
-  example: string;
-  template: string;
-  avoid: string;
-}
-
-interface ValidationResult {
-  isValid: boolean;
-  score: number;
-  warnings: ValidationWarning[];
-  suggestions: string[];
-  affirmations: string[];
-  coaching: CoachingTip[];
-  contradictions: string[];
-  nextBestAction: string | null;
-}
+//
+// Pure type/interface-definisjoner brukt på tvers av StoryLogicPanel og
+// kommende fase-komponenter. Verifiser tsc før commit hvis du legger til
+// nye felt — Vitest-tester i ../validators/storyValidation.test.ts dekker
+// edge cases.
 
 // ============================================================================
 // Constants
