@@ -90,7 +90,10 @@ import {
   getProjectItems,
   setProjectItems,
 } from "./_shared";
-import type { CastingManuscriptsService } from "./casting-manuscripts-service";
+import type {
+  CastingManuscriptsService,
+  CompatStoreTransactionContext,
+} from "./casting-manuscripts-service";
 import type { RoleRoomLiveSetService } from "./role-room-live-set-service";
 import { newEntityId } from "./_shared-ids.js";
 
@@ -103,6 +106,13 @@ export interface CastingProjectsRoutesDeps {
   compatStoreListByPrefix: <T>(
     prefix: string,
   ) => Promise<Array<{ key: string; value: T }>>;
+  /**
+   * Transaksjons-wrapper for atomic cascade-DELETE. Hvis callback'en
+   * kaster, blir ALT som ble skrevet innenfor transaksjonen ROLLBACKet.
+   */
+  compatStoreTransaction: <T>(
+    callback: (tx: CompatStoreTransactionContext) => Promise<T>,
+  ) => Promise<T>;
   manuscriptsService: CastingManuscriptsService;
   liveSetService: RoleRoomLiveSetService;
   // Delt state med /api/role-room (eies i index.ts)
@@ -132,6 +142,7 @@ export function setupCastingProjectsRoutes(
     compatStoreDelete,
     compatStoreDeleteByPrefix,
     compatStoreListByPrefix,
+    compatStoreTransaction,
     manuscriptsService,
     liveSetService,
     legacyOffersByProject,
@@ -626,22 +637,46 @@ export function setupCastingProjectsRoutes(
         return;
       }
 
-      // manuscriptsService rydder ALT manuskript-state (Map + DB) per manuscriptId.
-      // Cascade-delete er parallellisert via Promise.allSettled (én feilet
-      // delete aborterer ikke hele cascade).
+      // Liste manuskripter FØR transaksjon (read-only) — bruker den senere
+      // for tx-baserte DB-deletes av sub-state.
       const manuscriptsForProject =
         await manuscriptsService.listManuscripts(projectId);
-      await Promise.allSettled(
-        manuscriptsForProject
-          .map((manuscript: any) =>
-            typeof manuscript?.id === "string" ? manuscript.id : "",
-          )
-          .filter((id: string): id is string => Boolean(id))
-          .map((manuscriptId: string) =>
-            manuscriptsService.clearManuscriptState(manuscriptId),
-          ),
-      );
+      const manuscriptIds = manuscriptsForProject
+        .map((manuscript: any) =>
+          typeof manuscript?.id === "string" ? manuscript.id : "",
+        )
+        .filter((id: string): id is string => Boolean(id));
 
+      // **Atomic phase**: alle prosjekt-scope-deletes i én transaksjon.
+      // Hvis NOE feiler innenfor blokken, ALT rollbackes. Adresserer pain
+      // point med partial-state ved cascade-feil.
+      //
+      // NB: Favorites-prefix-delete LIGGER UTENFOR transaksjonen — det er
+      // best-effort-cleanup som ikke skal kunne abortere hoved-slettingen.
+      await compatStoreTransaction(async (tx) => {
+        // Sub-state per manuskript (tx-aware via service)
+        await Promise.all(
+          manuscriptIds.map((manuscriptId) =>
+            manuscriptsService.clearManuscriptState(manuscriptId, { tx }),
+          ),
+        );
+        // 9 prosjekt-scope-keys
+        await Promise.all([
+          tx.delete(dbLegacyCastingProjectKey(projectId)),
+          tx.delete(dbLegacyShotListsKey(projectId)),
+          tx.delete(dbLegacyCalendarEventsKey(projectId)),
+          tx.delete(dbLegacyTeamSnapshotsKey(projectId)),
+          tx.delete(dbLegacyOffersKey(projectId)),
+          tx.delete(dbLegacyContractsKey(projectId)),
+          tx.delete(dbLegacyProjectAgreementsKey(projectId)),
+          tx.delete(dbLegacyLiveSetSessionsKey(projectId)),
+          tx.delete(dbLegacyLiveSetEventsKey(projectId)),
+        ]);
+      });
+
+      // After-commit phase: in-memory Maps. Hvis transaksjonen rolled back,
+      // havner vi i catch-block og state er konsistent (DB har data, Maps
+      // også — vi nådde aldri hit).
       legacyCastingProjects.delete(projectId);
       legacyShotListsByProject.delete(projectId);
       legacyCalendarEventsByProject.delete(projectId);
@@ -651,21 +686,20 @@ export function setupCastingProjectsRoutes(
       legacyProjectAgreementsByProject.delete(projectId);
       liveSetService.clearProjectState(projectId);
 
-      await Promise.all([
-        compatStoreDelete(dbLegacyCastingProjectKey(projectId)),
-        compatStoreDelete(dbLegacyShotListsKey(projectId)),
-        compatStoreDelete(dbLegacyCalendarEventsKey(projectId)),
-        compatStoreDelete(dbLegacyTeamSnapshotsKey(projectId)),
-        compatStoreDelete(dbLegacyOffersKey(projectId)),
-        compatStoreDelete(dbLegacyContractsKey(projectId)),
-        compatStoreDelete(dbLegacyProjectAgreementsKey(projectId)),
-        compatStoreDelete(dbLegacyLiveSetSessionsKey(projectId)),
-        compatStoreDelete(dbLegacyLiveSetEventsKey(projectId)),
-        compatStoreDeleteByPrefix(`casting:favorites:${projectId}::`),
-      ]);
+      // Best-effort: favorites-rydding (utenfor transaksjon — kan svikte
+      // uten å komprometere hoved-slettingen).
+      await compatStoreDeleteByPrefix(
+        `casting:favorites:${projectId}::`,
+      ).catch((error) => {
+        console.warn(
+          "casting:favorites prefix-delete failed (non-critical):",
+          { projectId, error },
+        );
+      });
+
       res.status(204).end();
     } catch (error) {
-      console.error("Error deleting casting project:", error);
+      console.error("Error deleting casting project (transaction rolled back):", error);
       res.status(500).json({ error: "Could not delete project" });
     }
   });

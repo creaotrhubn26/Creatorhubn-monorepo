@@ -37479,6 +37479,7 @@ setupCastingProjectsRoutes({
   compatStoreDelete,
   compatStoreDeleteByPrefix,
   compatStoreListByPrefix,
+  compatStoreTransaction,
   manuscriptsService,
   liveSetService,
   legacyOffersByProject,

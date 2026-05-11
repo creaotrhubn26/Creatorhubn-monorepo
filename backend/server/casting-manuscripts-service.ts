@@ -93,11 +93,34 @@ export interface CastingManuscriptsService {
    *   - In-memory Maps (manuscript + scenes + dialogue + acts + revisions)
    *   - DB-rader for samme 5 nøkler
    *
-   * Bruker Promise.allSettled internt — én feilet DB-delete aborterer
-   * ikke hele cascade. Brukes av casting-projects DELETE for prosjekt-
-   * scope opprydding.
+   * Default-modus (uten `tx`): Promise.allSettled — én feilet DB-delete
+   * aborterer ikke hele cascade. Brukes av direkte DELETE /manuscripts/:id.
+   *
+   * Transaksjonell modus (med `tx`): Promise.all — én feilet DB-delete
+   * propagerer feilen slik at den ytre transaksjonen kan ROLLBACK.
+   * Brukes av casting-projects DELETE-cascade for atomicity.
+   *
+   * NB: Map-mutasjon skjer ALLTID før DB-write. Hvis transaksjonen
+   * rollbackes, kan in-memory Maps være ute-av-sync. Cache rebuilder seg
+   * ved neste read fra compat-store (eventually consistent).
    */
-  clearManuscriptState(manuscriptId: string): Promise<void>;
+  clearManuscriptState(
+    manuscriptId: string,
+    options?: { tx?: CompatStoreTransactionContext },
+  ): Promise<void>;
+}
+
+/**
+ * Snitt for tx-objektet som passes til clearManuscriptState når den
+ * kjøres inne i en pg-transaksjon. Matcher signaturen til
+ * `CompatStoreTransactionContext` i index.ts.
+ */
+export interface CompatStoreTransactionContext {
+  get<T>(storeKey: string): Promise<T | null>;
+  set(storeKey: string, storeValue: unknown): Promise<void>;
+  delete(storeKey: string): Promise<void>;
+  deleteByPrefix(prefix: string): Promise<void>;
+  listByPrefix<T>(prefix: string): Promise<Array<{ key: string; value: T }>>;
 }
 
 export function createCastingManuscriptsService(
@@ -344,27 +367,41 @@ export function createCastingManuscriptsService(
 
   // ── Public API: Cascade ───────────────────────────────────────────
 
-  async function clearManuscriptState(manuscriptId: string): Promise<void> {
+  async function clearManuscriptState(
+    manuscriptId: string,
+    options?: { tx?: CompatStoreTransactionContext },
+  ): Promise<void> {
     legacyManuscripts.delete(manuscriptId);
     legacyScenesByManuscript.delete(manuscriptId);
     legacyDialogueByManuscript.delete(manuscriptId);
     legacyActsByManuscript.delete(manuscriptId);
     legacyRevisionsByManuscript.delete(manuscriptId);
 
-    const results = await Promise.allSettled([
-      compatStoreDelete(dbLegacyManuscriptKey(manuscriptId)),
-      compatStoreDelete(dbLegacyScenesKey(manuscriptId)),
-      compatStoreDelete(dbLegacyDialogueKey(manuscriptId)),
-      compatStoreDelete(dbLegacyActsKey(manuscriptId)),
-      compatStoreDelete(dbLegacyRevisionsKey(manuscriptId)),
-    ]);
+    const keys = [
+      dbLegacyManuscriptKey(manuscriptId),
+      dbLegacyScenesKey(manuscriptId),
+      dbLegacyDialogueKey(manuscriptId),
+      dbLegacyActsKey(manuscriptId),
+      dbLegacyRevisionsKey(manuscriptId),
+    ];
 
+    if (options?.tx) {
+      // Transaksjonell modus: la feil propagere så ytre transaksjon ROLLBACK.
+      const tx = options.tx;
+      await Promise.all(keys.map((key) => tx.delete(key)));
+      return;
+    }
+
+    // Default: best-effort. Én feilet delete aborterer ikke de andre.
+    const results = await Promise.allSettled(
+      keys.map((key) => compatStoreDelete(key)),
+    );
     for (const result of results) {
       if (result.status === "rejected") {
-        console.error(
-          "clearManuscriptState: compat-store-delete failed",
-          { manuscriptId, error: result.reason },
-        );
+        console.error("clearManuscriptState: compat-store-delete failed", {
+          manuscriptId,
+          error: result.reason,
+        });
       }
     }
   }
