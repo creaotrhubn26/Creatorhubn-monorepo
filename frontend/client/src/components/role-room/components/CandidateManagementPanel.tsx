@@ -3239,7 +3239,6 @@ function CandidateManagementPanelInner({
                   />
                 </TableCell>
                 <TableCell sx={{ color: '#fff', py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>Favoritt</TableCell>
-                <TableCell sx={{ color: '#fff', py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>Bilde</TableCell>
                 <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
                   <TableSortLabel
                     active={sortField === 'name'}
@@ -3247,7 +3246,7 @@ function CandidateManagementPanelInner({
                     onClick={() => handleSort('name')}
                     sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: '#b86bff' } }}
                   >
-                    Navn
+                    Kandidat
                   </TableSortLabel>
                 </TableCell>
                 <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
@@ -3260,7 +3259,6 @@ function CandidateManagementPanelInner({
                     Status
                   </TableSortLabel>
                 </TableCell>
-                <TableCell sx={{ color: '#fff', py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>Kontakt</TableCell>
                 <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
                   <TableSortLabel
                     active={sortField === 'roles'}
@@ -3319,54 +3317,85 @@ function CandidateManagementPanelInner({
                       </Tooltip>
                     </Box>
                   </TableCell>
+                  {/* Kombinert KANDIDAT-kolonne — foto + navn + email + telefon (matcher design) */}
                   <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
-                    <Avatar
-                      src={candidate.photos?.[0]}
-                      alt={candidate.name}
-                      sx={{
-                        width: { xs: 36, sm: 40, md: 38, lg: 44, xl: 52 },
-                        height: { xs: 36, sm: 40, md: 38, lg: 44, xl: 52 },
-                        bgcolor: `${getStatusColor(candidate.status)}20`,
-                        '& .MuiAvatar-img': {
-                          objectPosition: getCandidatePhotoObjectPosition(candidate, 0),
-                        },
-                      }}
-                    >
-                      <PersonIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 22, xl: 26 }, color: getStatusColor(candidate.status) }} />
-                    </Avatar>
-                  </TableCell>
-                  <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
-                    <Typography sx={{ color: '#fff', fontWeight: 600, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>{candidate.name}</Typography>
-                  </TableCell>
-                  <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
-                    <Chip
-                      label={getStatusLabel(candidate.status)}
-                      size="small"
-                      sx={{ bgcolor: `${getStatusColor(candidate.status)}20`, color: getStatusColor(candidate.status), fontWeight: 600, fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' }, height: { xs: 22, sm: 24, md: 23, lg: 26, xl: 30 } }}
-                    />
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, minWidth: 0 }}>
+                      <Avatar
+                        src={candidate.photos?.[0]}
+                        alt={candidate.name}
+                        sx={{
+                          width: { xs: 36, sm: 40, md: 38, lg: 44, xl: 52 },
+                          height: { xs: 36, sm: 40, md: 38, lg: 44, xl: 52 },
+                          bgcolor: `${getStatusColor(candidate.status)}20`,
+                          flexShrink: 0,
+                          '& .MuiAvatar-img': {
+                            objectPosition: getCandidatePhotoObjectPosition(candidate, 0),
+                          },
+                        }}
+                      >
+                        <PersonIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 22, xl: 26 }, color: getStatusColor(candidate.status) }} />
+                      </Avatar>
+                      <Stack spacing={0.25} sx={{ minWidth: 0, flex: 1 }}>
+                        <Typography
+                          sx={{
+                            color: '#fff',
+                            fontWeight: 600,
+                            fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {candidate.name}
+                        </Typography>
+                        {contactInfo.email && (
+                          <Typography
+                            variant="caption"
+                            sx={{
+                              color: 'rgba(255,255,255,0.6)',
+                              fontSize: { xs: '0.7rem', sm: '0.72rem', md: '0.7rem', lg: '0.76rem', xl: '0.85rem' },
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {contactInfo.email}
+                          </Typography>
+                        )}
+                        {contactInfo.phone && (
+                          <Typography
+                            variant="caption"
+                            sx={{
+                              color: 'rgba(255,255,255,0.6)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 0.4,
+                              fontSize: { xs: '0.7rem', sm: '0.72rem', md: '0.7rem', lg: '0.76rem', xl: '0.85rem' },
+                            }}
+                          >
+                            {contactInfo.phone}
+                            {!/^\+?\d[\d\s\-()]{6,18}$/.test(String(contactInfo.phone).trim()) && (
+                              <Tooltip title="Telefonnummer er ikke i gyldig format — WhatsApp/SMS kan ikke leveres">
+                                <WarningAmberIcon sx={{ fontSize: 13, color: '#fbbf24' }} />
+                              </Tooltip>
+                            )}
+                            {!/^\+/.test(String(contactInfo.phone).trim()) && /^\d/.test(String(contactInfo.phone).trim()) && (
+                              <Tooltip title="Mangler landskode (+47, …) — WhatsApp/SMS krever internasjonalt format">
+                                <WarningAmberIcon sx={{ fontSize: 13, color: '#fbbf24' }} />
+                              </Tooltip>
+                            )}
+                          </Typography>
+                        )}
+                      </Stack>
+                    </Box>
                   </TableCell>
                   <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
                     <Stack spacing={0.5}>
-                      {contactInfo.email && (
-                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', display: 'flex', alignItems: 'center', gap: 0.5, fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>
-                          <EmailIcon sx={{ fontSize: { xs: 12, sm: 14, md: 13, lg: 15, xl: 18 } }} /> {contactInfo.email}
-                        </Typography>
-                      )}
-                      {contactInfo.phone && (
-                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', display: 'flex', alignItems: 'center', gap: 0.5, fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>
-                          <PhoneIcon sx={{ fontSize: { xs: 12, sm: 14, md: 13, lg: 15, xl: 18 } }} /> {contactInfo.phone}
-                          {!/^\+?\d[\d\s\-()]{6,18}$/.test(String(contactInfo.phone).trim()) && (
-                            <Tooltip title="Telefonnummer er ikke i gyldig format — WhatsApp/SMS kan ikke leveres til denne kandidaten">
-                              <WarningAmberIcon sx={{ fontSize: 13, color: '#fbbf24', ml: 0.4 }} />
-                            </Tooltip>
-                          )}
-                          {!/^\+/.test(String(contactInfo.phone).trim()) && /^\d/.test(String(contactInfo.phone).trim()) && (
-                            <Tooltip title="Mangler landskode (+47, +1, …) — WhatsApp/SMS krever internasjonalt format">
-                              <WarningAmberIcon sx={{ fontSize: 13, color: '#fbbf24', ml: 0.4 }} />
-                            </Tooltip>
-                          )}
-                        </Typography>
-                      )}
+                      <Chip
+                        label={getStatusLabel(candidate.status)}
+                        size="small"
+                        sx={{ bgcolor: `${getStatusColor(candidate.status)}20`, color: getStatusColor(candidate.status), fontWeight: 600, fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' }, height: { xs: 22, sm: 24, md: 23, lg: 26, xl: 30 } }}
+                      />
                       {(() => {
                         const prefs = (candidate.reminderPrefs ?? candidate.reminder_prefs) as
                           | {
