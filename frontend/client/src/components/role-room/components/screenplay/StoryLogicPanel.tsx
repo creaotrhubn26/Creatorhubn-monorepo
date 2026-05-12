@@ -122,6 +122,10 @@ import {
 } from './storyLogic/legacyText';
 import { PhaseHeader } from './storyLogic/components/PhaseHeader';
 import { ValidationDisplay } from './storyLogic/components/ValidationDisplay';
+import { WritingFlowBadge } from './storyLogic/components/WritingFlowBadge';
+import { ConfidenceDeltaToast } from './storyLogic/components/ConfidenceDeltaToast';
+import { useWritingFlow } from './storyLogic/hooks/useWritingFlow';
+import { useConfidenceDelta } from './storyLogic/hooks/useConfidenceDelta';
 
 // ============================================================================
 // Energy-Aware UX Helpers
@@ -611,6 +615,12 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
   const loglineValidation = useMemo(() => validateLogline(state.logline), [state.logline]);
   const themeValidation = useMemo(() => validateTheme(state.theme), [state.theme]);
 
+  // Skrive-flyt: følger rytmen og spawner mikro-belønninger ved progress
+  const writingFlow = useWritingFlow();
+  const conceptDelta = useConfidenceDelta(conceptValidation.score);
+  const loglineDelta = useConfidenceDelta(loglineValidation.score);
+  const themeDelta = useConfidenceDelta(themeValidation.score);
+
   const validationResults = useMemo(() => ({
     concept: conceptValidation.score >= 70 ? 'ready' as const : conceptValidation.score >= 40 ? 'weak' as const : 'incomplete' as const,
     logline: loglineValidation.score >= 70 ? 'ready' as const : loglineValidation.score >= 40 ? 'weak' as const : 'incomplete' as const,
@@ -789,6 +799,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
 
   // Update concept field
   const updateConcept = (field: keyof ConceptData, value: string | string[]) => {
+    writingFlow.onActivity();
     setState(prev => ({
       ...prev,
       concept: { ...prev.concept, [field]: value },
@@ -797,6 +808,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
 
   // Update logline field
   const updateLogline = (field: keyof LoglineData, value: string | number) => {
+    writingFlow.onActivity();
     setState(prev => ({
       ...prev,
       logline: { ...prev.logline, [field]: value },
@@ -805,6 +817,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
 
   // Update theme field
   const updateTheme = (field: keyof ThemeData, value: string | string[]) => {
+    writingFlow.onActivity();
     setState(prev => ({
       ...prev,
       theme: { ...prev.theme, [field]: value },
@@ -1190,6 +1203,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                 }}
               />
             </Tooltip>
+            <WritingFlowBadge state={writingFlow.state} secondsInFlow={writingFlow.secondsInFlow} />
           </Box>
         </Box>
         <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
@@ -1798,7 +1812,12 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
             </Box>
           </Box>
 
-          {showValidation && <ValidationDisplay result={conceptValidation} title="Konsept" onJumpToField={jumpToField} />}
+          {showValidation && (
+            <Box sx={{ position: 'relative' }}>
+              <ConfidenceDeltaToast event={conceptDelta} />
+              <ValidationDisplay result={conceptValidation} title="Konsept" onJumpToField={jumpToField} />
+            </Box>
+          )}
 
           <Box
             sx={{
@@ -2062,7 +2081,12 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
             </Box>
           </Box>
 
-          {showValidation && <ValidationDisplay result={loglineValidation} title="Logline" onJumpToField={jumpToField} />}
+          {showValidation && (
+            <Box sx={{ position: 'relative' }}>
+              <ConfidenceDeltaToast event={loglineDelta} />
+              <ValidationDisplay result={loglineValidation} title="Logline" onJumpToField={jumpToField} />
+            </Box>
+          )}
 
           <Box
             sx={{
@@ -2372,7 +2396,12 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
             </Box>
           </Box>
 
-          {showValidation && <ValidationDisplay result={themeValidation} title="Tema" onJumpToField={jumpToField} />}
+          {showValidation && (
+            <Box sx={{ position: 'relative' }}>
+              <ConfidenceDeltaToast event={themeDelta} />
+              <ValidationDisplay result={themeValidation} title="Tema" onJumpToField={jumpToField} />
+            </Box>
+          )}
 
           <Box
             sx={{
