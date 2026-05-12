@@ -108,6 +108,8 @@ import {
   PostAdd as PostDeptIcon,
   Palette as ArtDeptIcon,
   Checkroom as WardrobeDeptIcon,
+  Brush as MakeupHairDeptIcon,
+  LocalShipping as TransportDeptIcon,
   Category as OtherDeptIcon,
   WhatsApp as WhatsAppIcon,
 } from '@mui/icons-material';
@@ -217,9 +219,9 @@ const formatCrewNoteTimestamp = (value: unknown): string => {
 };
 
 // ─── Department config ────────────────────────────────────────────────────────
-type DeptKey = 'production' | 'camera' | 'lighting' | 'sound' | 'post' | 'art' | 'wardrobe' | 'other';
+type DeptKey = 'production' | 'camera' | 'lighting' | 'sound' | 'post' | 'art' | 'wardrobe' | 'makeup_hair' | 'transport' | 'other';
 
-const DEPT_ORDER: DeptKey[] = ['production', 'camera', 'lighting', 'sound', 'post', 'art', 'wardrobe', 'other'];
+const DEPT_ORDER: DeptKey[] = ['production', 'camera', 'lighting', 'sound', 'post', 'art', 'wardrobe', 'makeup_hair', 'transport', 'other'];
 
 const DEPT_LABELS: Record<DeptKey, string> = {
   production: 'Produksjon',
@@ -229,6 +231,8 @@ const DEPT_LABELS: Record<DeptKey, string> = {
   post: 'Post',
   art: 'Art / Design',
   wardrobe: 'Kostyme',
+  makeup_hair: 'Sminke & Hår',
+  transport: 'Transport',
   other: 'Annet',
 };
 
@@ -240,6 +244,8 @@ const DEPT_COLORS: Record<DeptKey, string> = {
   post: '#f59e0b',
   art: '#ec4899',
   wardrobe: '#a78bfa',
+  makeup_hair: '#fb7185',
+  transport: '#22d3ee',
   other: '#64748b',
 };
 
@@ -251,6 +257,8 @@ const DEPT_ICONS: Record<DeptKey, React.ElementType> = {
   post: PostDeptIcon,
   art: ArtDeptIcon,
   wardrobe: WardrobeDeptIcon,
+  makeup_hair: MakeupHairDeptIcon,
+  transport: TransportDeptIcon,
   other: OtherDeptIcon,
 };
 
@@ -264,7 +272,7 @@ const ROLE_TO_DEPT: Record<CrewRole, DeptKey> = {
   sound_engineer: 'sound', audio_mixer: 'sound',
   video_editor: 'post', colorist: 'post', vfx_artist: 'post', motion_graphics: 'post',
   production_designer: 'art',
-  makeup_artist: 'other', wardrobe: 'wardrobe', stylist: 'wardrobe',
+  makeup_artist: 'makeup_hair', wardrobe: 'wardrobe', stylist: 'wardrobe',
   collaborator: 'other', other: 'other',
 };
 
