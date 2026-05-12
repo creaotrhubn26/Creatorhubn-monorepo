@@ -833,22 +833,31 @@ function AuditionSchedulePanelInner({
 
   // Statistics – use server counts when hook is live (accurate, includes pool)
   const statistics = useMemo(() => {
+    // Server-aggregert + lokal fallback. confirmed + awaitingCallback (Bekreftet
+    // + Callbacks) matcher 5-kort design — beregnes alltid lokalt siden
+    // serverCounts ikke eksponerer dem direkte (tilbakefall til 0 hvis
+    // serverCounts er aktiv men det lokale datasettet er tomt).
+    const confirmedLocal = schedules.filter((s) => s.status === 'confirmed').length;
+    const callbacksLocal = schedules.filter((s) => s.status === 'awaiting_callback').length;
     if (serverCounts) {
       return {
         total:     serverCounts.total,
         scheduled: serverCounts.scheduled,
         completed: serverCounts.completed,
         cancelled: serverCounts.cancelled,
-        upcoming:  serverCounts.today,   // 'today' maps to upcoming scheduled today
+        upcoming:  serverCounts.today,
         favorites: serverCounts.favorites,
+        confirmed: confirmedLocal,
+        awaitingCallback: callbacksLocal,
       };
     }
-    // Fallback: compute from prop data
     return {
       total:     schedules.length,
       scheduled: schedules.filter((schedule) => schedule.status === 'scheduled').length,
       completed: schedules.filter((schedule) => schedule.status === 'completed').length,
       cancelled: schedules.filter((schedule) => schedule.status === 'cancelled').length,
+      confirmed: confirmedLocal,
+      awaitingCallback: callbacksLocal,
       upcoming:  schedules.filter((schedule) => {
         if (schedule.status !== 'scheduled') return false;
         const ms = scheduleTimeMs.get(schedule.id);
@@ -1886,6 +1895,7 @@ function AuditionSchedulePanelInner({
             border: `1px solid ${roleBorder}`,
           }}
         >
+          {/* 5-kort-rad matcher audition-design: Totalt/Planlagt/Bekreftet/Callbacks/Fullført */}
           <Box sx={{ textAlign: 'center', p: 1 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
               <AuditionsIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: roleTabAccent }} />
@@ -1895,38 +1905,31 @@ function AuditionSchedulePanelInner({
           </Box>
           <Box sx={{ textAlign: 'center', p: 1 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
-              <CalendarIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#46d9ff' }} />
+              <CalendarIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#9ca3af' }} />
             </Box>
-            <Typography variant="h4" sx={{ color: '#46d9ff', fontWeight: 700 }}>{statistics.upcoming}</Typography>
-            <Typography variant="caption" sx={{ color: roleTextMuted }}>Kommende</Typography>
-          </Box>
-          <Box sx={{ textAlign: 'center', p: 1 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
-              <AuditionsIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#46d9ff' }} />
-            </Box>
-            <Typography variant="h4" sx={{ color: '#46d9ff', fontWeight: 700 }}>{statistics.scheduled}</Typography>
+            <Typography variant="h4" sx={{ color: '#9ca3af', fontWeight: 700 }}>{statistics.scheduled}</Typography>
             <Typography variant="caption" sx={{ color: roleTextMuted }}>Planlagt</Typography>
           </Box>
           <Box sx={{ textAlign: 'center', p: 1 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
               <AuditionsIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#10b981' }} />
             </Box>
-            <Typography variant="h4" sx={{ color: '#10b981', fontWeight: 700 }}>{statistics.completed}</Typography>
-            <Typography variant="caption" sx={{ color: roleTextMuted }}>Fullført</Typography>
+            <Typography variant="h4" sx={{ color: '#10b981', fontWeight: 700 }}>{statistics.confirmed}</Typography>
+            <Typography variant="caption" sx={{ color: roleTextMuted }}>Bekreftet</Typography>
           </Box>
           <Box sx={{ textAlign: 'center', p: 1 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
-              <AuditionsIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#ef4444' }} />
+              <AuditionsIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#22d3ee' }} />
             </Box>
-            <Typography variant="h4" sx={{ color: '#ef4444', fontWeight: 700 }}>{statistics.cancelled}</Typography>
-            <Typography variant="caption" sx={{ color: roleTextMuted }}>Kansellert</Typography>
+            <Typography variant="h4" sx={{ color: '#22d3ee', fontWeight: 700 }}>{statistics.awaitingCallback}</Typography>
+            <Typography variant="caption" sx={{ color: roleTextMuted }}>Callbacks</Typography>
           </Box>
           <Box sx={{ textAlign: 'center', p: 1 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
               <StarIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#ffc107' }} />
             </Box>
-            <Typography variant="h4" sx={{ color: '#ffc107', fontWeight: 700 }}>{statistics.favorites}</Typography>
-            <Typography variant="caption" sx={{ color: roleTextMuted }}>Favoritter</Typography>
+            <Typography variant="h4" sx={{ color: '#ffc107', fontWeight: 700 }}>{statistics.completed}</Typography>
+            <Typography variant="caption" sx={{ color: roleTextMuted }}>Fullført</Typography>
           </Box>
         </Box>
       </Collapse>
