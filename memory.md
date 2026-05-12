@@ -19,9 +19,10 @@ Audit av 7 paneler mot produkt-eiers design-screenshots. Hver fane har konkret g
 | **Utvelgelse** | `CastingPlannerPanel.tsx:9521-10634` | (del av 16618) | 🟡 gap-analyse ferdig (sub-agent) | Søkefelt + batch-multivalg + sticky bottom-bar "SEND TIL FINAL SELECTION" + checkbox/favoritt/dato/video-overlay/kommentar-teller |
 | **Kalender** | `ProductionCalendarPanel.tsx` | 1487 | ✅ MÅNED-mode + stats-bar + ✅ Crew Gantt-mode | UKE/DAG-mode-render |
 | **Team** (CrewManagement) | `CrewManagementPanel.tsx` | 5866 | ✅ +2 avdelinger + ✅ 6-stat-kort | #3 status-filter-pills, #4 venstre sidebar, #6 bunn TILGJENGELIGHET-grid |
-| **Utstyr** | `EquipmentManagementPanel.tsx` | 10 105 | ✅ 5-stat-pill + ✅ favoritt-stjerne + ✅ lokasjon-filter + ✅ sort-dropdown + ✅ pagination | Dynamisk status-chip-dato, konsolider 9→4 action-ikoner, subtittel-format |
+| **Utstyr** | `EquipmentManagementPanel.tsx` | 10 105 | ✅ 5-stat-pill + ✅ favoritt-stjerne + ✅ lokasjon-filter + ✅ sort-dropdown + ✅ pagination + ✅ subtittel-format | Dynamisk status-chip-dato, konsolider 9→4 action-ikoner |
 | **Rekvisitter** | `PropManagementPanel.tsx` | 3044 | 🟡 har favoritt + delvis stat-kort | Samme som Utstyr: pagination, lokasjon-filter, sort-dropdown |
-| **Lokasjon** | `LocationManagementPanel.tsx` | 7290 | ✅ "Tøm filtre" + ✅ fasilitets-ikon-rad på kort | Filter "Alle fasiliteter"/"Alle regioner"/"Kapasitet"/"Med koordinater" som dropdowns |
+| **Lokasjon** | `LocationManagementPanel.tsx` | 7290 | ✅ "Tøm filtre" + ✅ fasilitets-ikon-rad + ✅ Fasiliteter-filter + ✅ Kart-status-filter (utfalls-språk) | "Alle regioner" + "Kapasitet"-filter, adresse-autocomplete (Kartverket), auto-geocode-on-save, map-thumbnail på kort |
+| **Lokasjonanalyse** | `LocationAnalysisDialog.tsx` + `locationAnalysisService.ts` | 3182 + 100 | ✅ Cache (5min) + ✅ Abort + ✅ Timeout + ✅ Retry + ✅ Brukerfeedback-banner | — |
 | **Crew kalender** (Gantt) | `calendar/CrewCalendarView.tsx` (new) | 412 | ✅ wired inn i ProductionCalendarPanel | Røde linker mellom tilhørende events (multi-day), real-time-stempel "Oppdatert for X min siden", sidebar-stats |
 
 ### Detaljerte gap-lister per fane
