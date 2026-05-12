@@ -85,6 +85,7 @@ import {
   AddPhotoAlternate as AddPhotoIcon,
   UploadFile as UploadFileIcon,
   HelpOutline as HelpIcon,
+  CompareArrows as CompareArrowsIcon,
   LocalParking as ParkingIcon,
   Wifi as WifiIcon,
   Power as PowerIcon,
@@ -118,6 +119,7 @@ import { LocationManagementGuide } from './production/LocationManagementGuide';
 import { useToast } from './ToastStack';
 import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
 import locationPng from './icons/Keep/roleroom_location.png';
+import { VerifyLocationDialog } from './VerifyLocationDialog';
 import { getRoleLabel, isTechnicalCrewMember as isTechnicalCrewMemberFromShared } from './shared/technicalCrew';
 import GlobalMentionHelper from './shared/GlobalMentionHelper';
 import { useAuth } from '../../../hooks/useAuth';
@@ -657,6 +659,8 @@ export function LocationManagementPanel({
   const [filterFacility, setFilterFacility] = useState<string>('all');
   const [filterCoordinates, setFilterCoordinates] = useState<'all' | 'with' | 'without'>('all');
   const [filterRegion, setFilterRegion] = useState<string>('all');
+  // Verifiserings-dialog (Kartverket-diff). Trigges fra ⋯-meny eller knapp per kort.
+  const [verifyingLocation, setVerifyingLocation] = useState<Location | null>(null);
   // Adresse-autocomplete-state (Kartverket Geonorge-API).
   // Lar brukeren søke på navn/adresse-tekst og auto-fyller koordinater i
   // bakgrunnen — koordinater eksponeres aldri direkte for brukeren.
@@ -6507,23 +6511,50 @@ export function LocationManagementPanel({
                         </Box>
                       </Box>
                     </Box>
-                    <IconButton
-                      onClick={() => toggleFavorite(location.id)}
-                      aria-label={favorites.has(location.id) ? 'Fjern favoritt' : 'Legg til favoritt'}
-                      sx={{
-                        color: favorites.has(location.id) ? '#ffc107' : 'rgba(255,255,255,0.3)',
-                        bgcolor: favorites.has(location.id) ? 'rgba(251,191,36,0.12)' : 'transparent',
-                        minWidth: TOUCH_TARGET_SIZE,
-                        minHeight: TOUCH_TARGET_SIZE,
-                        borderRadius: 1.75,
-                        '&:hover': {
-                          bgcolor: favorites.has(location.id) ? 'rgba(251,191,36,0.22)' : 'rgba(255,255,255,0.08)',
-                        },
-                        ...focusVisibleStyles,
-                      }}
-                    >
-                      {favorites.has(location.id) ? <StarIcon sx={{ fontSize: { xs: 20, sm: 24, md: 22, lg: 26, xl: 30 } }} /> : <StarBorderIcon sx={{ fontSize: { xs: 20, sm: 24, md: 22, lg: 26, xl: 30 } }} />}
-                    </IconButton>
+                    <Stack direction="row" spacing={0.5} alignItems="center">
+                      {location.address?.trim() && (
+                        <Tooltip title="Verifiser adresse mot Kartverket" arrow>
+                          <IconButton
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setVerifyingLocation(location);
+                            }}
+                            aria-label={`Verifiser ${location.name} mot Kartverket`}
+                            sx={{
+                              color: 'rgba(168,85,247,0.7)',
+                              bgcolor: 'transparent',
+                              minWidth: TOUCH_TARGET_SIZE,
+                              minHeight: TOUCH_TARGET_SIZE,
+                              borderRadius: 1.75,
+                              '&:hover': {
+                                bgcolor: 'rgba(168,85,247,0.12)',
+                                color: '#c4b5fd',
+                              },
+                              ...focusVisibleStyles,
+                            }}
+                          >
+                            <CompareArrowsIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 22, xl: 26 } }} />
+                          </IconButton>
+                        </Tooltip>
+                      )}
+                      <IconButton
+                        onClick={() => toggleFavorite(location.id)}
+                        aria-label={favorites.has(location.id) ? 'Fjern favoritt' : 'Legg til favoritt'}
+                        sx={{
+                          color: favorites.has(location.id) ? '#ffc107' : 'rgba(255,255,255,0.3)',
+                          bgcolor: favorites.has(location.id) ? 'rgba(251,191,36,0.12)' : 'transparent',
+                          minWidth: TOUCH_TARGET_SIZE,
+                          minHeight: TOUCH_TARGET_SIZE,
+                          borderRadius: 1.75,
+                          '&:hover': {
+                            bgcolor: favorites.has(location.id) ? 'rgba(251,191,36,0.22)' : 'rgba(255,255,255,0.08)',
+                          },
+                          ...focusVisibleStyles,
+                        }}
+                      >
+                        {favorites.has(location.id) ? <StarIcon sx={{ fontSize: { xs: 20, sm: 24, md: 22, lg: 26, xl: 30 } }} /> : <StarBorderIcon sx={{ fontSize: { xs: 20, sm: 24, md: 22, lg: 26, xl: 30 } }} />}
+                      </IconButton>
+                    </Stack>
                   </Box>
                 </Box>
 
@@ -7728,6 +7759,30 @@ export function LocationManagementPanel({
           </Button>
         </DialogActions>
       </Dialog>
+
+      <VerifyLocationDialog
+        open={Boolean(verifyingLocation)}
+        location={verifyingLocation}
+        onClose={() => setVerifyingLocation(null)}
+        onApply={async (locationId, updates) => {
+          // Robust update: oppdater både server og lokal state. Hvis server-call
+          // feiler, vises eksisterende showError-toast; lokal state oppdateres
+          // ikke før serveren bekrefter.
+          const existing = locations.find((l) => l.id === locationId);
+          if (!existing) return;
+          const merged: Location = { ...existing, ...updates };
+          try {
+            await castingService.saveLocation(projectId, merged);
+            setLocations((prev) => prev.map((l) => (l.id === locationId ? merged : l)));
+            showSuccess('Lokasjonen oppdatert med Kartverket-data', 3000);
+          } catch (err) {
+            showError(
+              err instanceof Error ? err.message : 'Kunne ikke lagre Kartverket-oppdateringer',
+              4000,
+            );
+          }
+        }}
+      />
     </Box>
   );
 }
