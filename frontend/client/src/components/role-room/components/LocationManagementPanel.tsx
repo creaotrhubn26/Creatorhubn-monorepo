@@ -665,6 +665,61 @@ export function LocationManagementPanel({
   >([]);
   const [addressSuggestionsLoading, setAddressSuggestionsLoading] = useState(false);
   const [addressQuery, setAddressQuery] = useState('');
+
+  // Nylig brukte adresser — lokal cache av de siste 20 valgte adressene
+  // for å gi raskere flyt for innholdsprodusenter som lager flere prosjekter
+  // på samme lokasjoner. Versjonert localStorage-key for kompatibilitet ved
+  // fremtidige shape-endringer.
+  type RecentAddress = {
+    address: string;
+    municipality: string;
+    county: string;
+    postalCode: string;
+    coordinates: { lat: number; lng: number };
+    usedAt: number;
+  };
+  const RECENT_ADDRESSES_KEY = `roleroom_recent_addresses_v1_${projectId}`;
+  const RECENT_ADDRESSES_MAX = 20;
+  const [recentAddresses, setRecentAddresses] = useState<RecentAddress[]>([]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(RECENT_ADDRESSES_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return;
+      const cleaned = parsed
+        .filter((e: unknown): e is RecentAddress =>
+          typeof e === 'object' && e !== null
+          && typeof (e as RecentAddress).address === 'string'
+          && (e as RecentAddress).address.length > 0,
+        )
+        .slice(0, RECENT_ADDRESSES_MAX);
+      setRecentAddresses(cleaned);
+    } catch {
+      /* graceful fallback ved corrupt JSON / localStorage utilgjengelig */
+    }
+  }, [RECENT_ADDRESSES_KEY]);
+
+  const rememberRecentAddress = useCallback(
+    (entry: Omit<RecentAddress, 'usedAt'>) => {
+      if (!entry.address?.trim()) return;
+      setRecentAddresses((prev) => {
+        const deduped = prev.filter((r) => r.address !== entry.address);
+        const next: RecentAddress[] = [{ ...entry, usedAt: Date.now() }, ...deduped].slice(
+          0,
+          RECENT_ADDRESSES_MAX,
+        );
+        try {
+          localStorage.setItem(RECENT_ADDRESSES_KEY, JSON.stringify(next));
+        } catch {
+          /* quota exceeded / private mode — ikke kritisk */
+        }
+        return next;
+      });
+    },
+    [RECENT_ADDRESSES_KEY],
+  );
   const [sortField, setSortField] = useState<SortField>('name');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
@@ -7210,10 +7265,28 @@ export function LocationManagementPanel({
               <Autocomplete
                 freeSolo
                 fullWidth
-                options={addressSuggestions}
+                options={(() => {
+                  // Når brukeren ikke har skrevet noe: vis recent addresses
+                  // (raskere flyt for innholdsprodusenter med flere prosjekter
+                  // på samme lokasjoner). Når brukeren skriver: vis Kartverket-
+                  // forslag som vanlig. Krever at recent-objektene har samme
+                  // shape som addressSuggestions for renderOption-konsistens.
+                  if (addressQuery.trim().length < 2 && recentAddresses.length > 0) {
+                    return recentAddresses.map((r) => ({
+                      address: r.address,
+                      municipality: r.municipality,
+                      county: r.county,
+                      postalCode: r.postalCode,
+                      coordinates: r.coordinates,
+                      _recent: true as const,
+                    }));
+                  }
+                  return addressSuggestions;
+                })()}
                 loading={addressSuggestionsLoading}
                 filterOptions={(x) => x}
                 getOptionLabel={(option) => typeof option === 'string' ? option : option.address}
+                groupBy={(option) => typeof option !== 'string' && (option as { _recent?: boolean })._recent ? 'Nylig brukt' : 'Forslag fra Kartverket'}
                 value={formData.address || ''}
                 noOptionsText={
                   addressQuery.trim().length < 2
@@ -7259,6 +7332,14 @@ export function LocationManagementPanel({
                       postalCode: value.postalCode || undefined,
                       name: prev.name?.trim() ? prev.name : value.address,
                     }));
+                    // Lagre i recent-list for fremtidige raskere oppslag
+                    rememberRecentAddress({
+                      address: value.address,
+                      municipality: value.municipality || '',
+                      county: value.county || '',
+                      postalCode: value.postalCode || '',
+                      coordinates: value.coordinates,
+                    });
                   } else if (typeof value === 'string') {
                     setFormData((prev) => ({ ...prev, address: value }));
                   }
