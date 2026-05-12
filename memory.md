@@ -14,15 +14,15 @@ Audit av 7 paneler mot produkt-eiers design-screenshots. Hver fane har konkret g
 | Fane | Fil | Linjer | Status | Neste steg |
 |---|---|---|---|---|
 | **Roller** (RoleManagementPanel) | `RoleManagementPanel.tsx` | 3979 | ✅ roletype-fargekoding + status-snarvei-chips ferdig | Audit på nytt mot evt. ny screenshot |
-| **Kandidater** | `CandidateManagementPanel.tsx` | 4512 | ✅ rolle-type-fargekoding + Sist oppdatert-kolonne | #2 AUDITIONS-count, #4 kollaps KANDIDAT-kolonne, #5 ⋮-meny |
-| **Audition** | `AuditionSchedulePanel.tsx` | 4148 | 🟡 gap-analyse ferdig (sub-agent) | Restrukturer tabell-kolonner til AUDITION/ROLLER/DATO/STATUS/TEAM/KANDIDATER/ACTIONS; legg til AvatarGroup + pagination |
+| **Kandidater** | `CandidateManagementPanel.tsx` | 4512 | ✅ rolle-type-farger + Sist oppdatert + KANDIDAT-kolonne kollaps | #2 AUDITIONS-count (krever data-prop), #5 ⋮-meny |
+| **Audition** | `AuditionSchedulePanel.tsx` | 4148 | ✅ 5-stat-kort matching design | Restrukturer tabell-kolonner (3 map-call-steder må koordineres) + AvatarGroup + pagination |
 | **Utvelgelse** | `CastingPlannerPanel.tsx:9521-10634` | (del av 16618) | 🟡 gap-analyse ferdig (sub-agent) | Søkefelt + batch-multivalg + sticky bottom-bar "SEND TIL FINAL SELECTION" + checkbox/favoritt/dato/video-overlay/kommentar-teller |
-| **Kalender** | `ProductionCalendarPanel.tsx` | 1487 | ✅ MÅNED-mode + stats-bar + MonthHeader ferdig | UKE/DAG-mode-render, crew Gantt-mode |
+| **Kalender** | `ProductionCalendarPanel.tsx` | 1487 | ✅ MÅNED-mode + stats-bar + ✅ Crew Gantt-mode | UKE/DAG-mode-render |
 | **Team** (CrewManagement) | `CrewManagementPanel.tsx` | 5866 | ✅ +2 avdelinger + ✅ 6-stat-kort | #3 status-filter-pills, #4 venstre sidebar, #6 bunn TILGJENGELIGHET-grid |
-| **Utstyr** | `EquipmentManagementPanel.tsx` | 10 105 | ✅ 5-stat-pill-rad (av 6) | Pagination, lokasjon-filter, favoritt-stjerne, dynamisk status-chip-dato, konsolider 9→4 action-ikoner |
+| **Utstyr** | `EquipmentManagementPanel.tsx` | 10 105 | ✅ 5-stat-pill + ✅ favoritt-stjerne + ✅ lokasjon-filter + ✅ sort-dropdown + ✅ pagination | Dynamisk status-chip-dato, konsolider 9→4 action-ikoner, subtittel-format |
 | **Rekvisitter** | `PropManagementPanel.tsx` | 3044 | 🟡 har favoritt + delvis stat-kort | Samme som Utstyr: pagination, lokasjon-filter, sort-dropdown |
-| **Lokasjon** | `LocationManagementPanel.tsx` | 7290 | ✅ "Tøm filtre"-link | Filter "Alle fasiliteter"/"Alle regioner"/"Kapasitet"/"Med koordinater", fasilitets-ikon-rad på kort |
-| **Crew kalender** (Gantt) | *Eksisterer ikke* | — | ❌ helt ny modus | Crew som rader, dager som kolonner, event-blokker per crew, røde linker mellom tilhørende events |
+| **Lokasjon** | `LocationManagementPanel.tsx` | 7290 | ✅ "Tøm filtre" + ✅ fasilitets-ikon-rad på kort | Filter "Alle fasiliteter"/"Alle regioner"/"Kapasitet"/"Med koordinater" som dropdowns |
+| **Crew kalender** (Gantt) | `calendar/CrewCalendarView.tsx` (new) | 412 | ✅ wired inn i ProductionCalendarPanel | Røde linker mellom tilhørende events (multi-day), real-time-stempel "Oppdatert for X min siden", sidebar-stats |
 
 ### Detaljerte gap-lister per fane
 
