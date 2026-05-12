@@ -13,6 +13,7 @@ import { rolePoolService, type PoolRole } from "../services/rolePoolService";
 import { RoleRoomEmptyState } from "./icons/RoleRoomEmptyState";
 import castingDirectorPng from "./icons/Keep/roleroom_casting_director.png";
 import { ROLE_WORKFLOW_ORDER, getRoleWorkflowMeta, type RoleWorkflowStatus } from "../config/roleWorkflow";
+import { getRoleTypeMeta } from "../config/roleType";
 import { emitRoleSyncEvent, onRoleSyncEvent } from "../services/roleSyncEvents";
 import { roleQueryKeys } from "../services/roleQueryKeys";
 
@@ -3007,19 +3008,25 @@ function RoleManagementPanelInner({
                       </Typography>
                     </Box>
                     
-                    {poolRole.roleType && (
-                      <Chip
-                        label={poolRole.roleType}
-                        size="small"
-                        sx={{
-                          height: 20,
-                          fontSize: '0.7rem',
-                          mb: 1,
-                          bgcolor: roleTabAccentSoft,
-                          color: roleTabAccent,
-                        }}
-                      />
-                    )}
+                    {poolRole.roleType && (() => {
+                      const meta = getRoleTypeMeta(poolRole.roleType);
+                      return (
+                        <Chip
+                          label={meta.label || poolRole.roleType}
+                          size="small"
+                          sx={{
+                            height: 20,
+                            fontSize: '0.7rem',
+                            mb: 1,
+                            bgcolor: `${meta.color}22`,
+                            color: meta.color,
+                            border: `1px solid ${meta.color}55`,
+                            fontWeight: 600,
+                            letterSpacing: 0.3,
+                          }}
+                        />
+                      );
+                    })()}
                     
                     {poolRole.description && (
                       <Typography 
