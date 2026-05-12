@@ -15,6 +15,16 @@
 import type { StoryPhaseKey } from './types';
 
 // ----------------------------------------------------------------------------
+// Mentor-tone status labels (#3 energy-aware) — ingen "Error" eller "Incomplete"
+// ----------------------------------------------------------------------------
+
+export const STATUS_LABELS: Record<string, string> = {
+  incomplete: 'Ikke tydelig ennå',
+  weak: 'La oss spisse dette',
+  ready: 'Klar',
+};
+
+// ----------------------------------------------------------------------------
 // Genre / sub-genre / tone / audience age — canonical keys (english)
 // ----------------------------------------------------------------------------
 
