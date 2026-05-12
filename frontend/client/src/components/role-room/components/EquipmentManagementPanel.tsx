@@ -5229,13 +5229,13 @@ export function EquipmentManagementPanel({
                     {eq.name}
                   </Typography>
                   
-                  {eq.brand && (
-                    <Typography variant="body2" sx={{ 
-                      color: 'rgba(255,255,255,0.87)', 
+                  {(eq.category || eq.brand) && (
+                    <Typography variant="body2" sx={{
+                      color: 'rgba(255,255,255,0.65)',
                       mb: 1.5,
                       fontSize: '0.8rem',
                     }}>
-                      {eq.brand} {eq.model && `• ${eq.model}`}
+                      {[eq.category, eq.brand].filter(Boolean).join(' • ')}
                     </Typography>
                   )}
                   
