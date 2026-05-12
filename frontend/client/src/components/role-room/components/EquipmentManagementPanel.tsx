@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useId, useRef, useCallback, type ChangeEvent, type DragEvent, type SyntheticEvent, type HTMLAttributes } from "react";
 import { Box, Alert, Autocomplete, Typography, Button, IconButton, Card, CardContent, CardMedia, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Chip, Stack, Grid, Tooltip, Collapse, FormControl, FormControlLabel, InputLabel, Select, MenuItem, Switch, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TableSortLabel, Paper, useTheme, useMediaQuery, Grow, InputAdornment, LinearProgress, CircularProgress, Tabs, Tab, ImageList, ImageListItem, ImageListItemBar, Divider, Rating } from "@mui/material";
-import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, Search as SearchIcon, FilterList as FilterIcon, ViewModule as GridViewIcon, ViewList as TableViewIcon, Close as CloseIcon, Cancel as CancelIcon, Save as SaveIcon, Image as ImageIcon, Person as PersonIcon, Warning as WarningIcon, CheckCircle as CheckCircleIcon, Schedule as ScheduleIcon, Block as BlockIcon, Refresh as RefreshIcon, ContentCopy as CopyIcon, Bookmark as BookmarkIcon, ShoppingCart as ShoppingCartIcon, OpenInNew as OpenInNewIcon, PlaylistAdd as PlaylistAddIcon, Star as StarIcon, CloudUpload as CloudUploadIcon, Link as LinkIcon, PhotoLibrary as PhotoLibraryIcon, Movie as MovieIcon, History as HistoryIcon, CalendarToday as CalendarTodayIcon, QrCode as QrCodeIcon, QrCodeScanner as QrCodeScannerIcon, Inventory2 as Inventory2Icon, FileDownload as DownloadIcon, FileUpload as UploadIcon, FileCopy as DuplicateIcon, SelectAll as SelectAllIcon, CheckBox as CheckboxIcon, CheckBoxOutlineBlank as CheckboxOutlineIcon, Public as PublicIcon, Lock as LockIcon, Assignment as CheckOutIcon, AssignmentReturn as CheckInIcon, Summarize as ReportIcon, WifiOff as OfflineIcon, Sync as SyncIcon, AssignmentLate as MissingItemIcon, TrendingUp as TrendingUpIcon, Update as UpdateIcon, Newspaper as NewspaperIcon, AttachMoney as AttachMoneyIcon } from "@mui/icons-material";
+import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, Search as SearchIcon, FilterList as FilterIcon, ViewModule as GridViewIcon, ViewList as TableViewIcon, Close as CloseIcon, Cancel as CancelIcon, Save as SaveIcon, Image as ImageIcon, Person as PersonIcon, Warning as WarningIcon, CheckCircle as CheckCircleIcon, Schedule as ScheduleIcon, Block as BlockIcon, Refresh as RefreshIcon, ContentCopy as CopyIcon, Bookmark as BookmarkIcon, ShoppingCart as ShoppingCartIcon, OpenInNew as OpenInNewIcon, PlaylistAdd as PlaylistAddIcon, Star as StarIcon, CloudUpload as CloudUploadIcon, Link as LinkIcon, PhotoLibrary as PhotoLibraryIcon, Movie as MovieIcon, History as HistoryIcon, CalendarToday as CalendarTodayIcon, QrCode as QrCodeIcon, QrCodeScanner as QrCodeScannerIcon, Inventory2 as Inventory2Icon, FileDownload as DownloadIcon, FileUpload as UploadIcon, FileCopy as DuplicateIcon, SelectAll as SelectAllIcon, CheckBox as CheckboxIcon, CheckBoxOutlineBlank as CheckboxOutlineIcon, Public as PublicIcon, Lock as LockIcon, Assignment as CheckOutIcon, AssignmentReturn as CheckInIcon, Summarize as ReportIcon, WifiOff as OfflineIcon, Sync as SyncIcon, AssignmentLate as MissingItemIcon, TrendingUp as TrendingUpIcon, Update as UpdateIcon, Newspaper as NewspaperIcon, AttachMoney as AttachMoneyIcon, Build as MaintenanceIcon, Warehouse as WarehouseIcon } from "@mui/icons-material";
 import { EquipmentIcon as BuildIcon, LocationsIcon as LocationIcon, PropsIcon } from "./icons/CastingIcons";
 import netflixWordmark from "../../../assets/brands/netflix-wordmark.svg";
 import { useQuery } from "@tanstack/react-query";
@@ -4342,6 +4342,89 @@ export function EquipmentManagementPanel({
           </Box>
         </Box>
       )}
+
+      {/* 5-stat-pill-rad — designet i screenshot */}
+      {equipment.length > 0 && (() => {
+        const totalItems = equipment.length;
+        const availableCount = equipment.filter((eq) => eq.status === 'available').length;
+        const reservedCount = equipment.filter((eq) => eq.status === 'in_use').length;
+        const maintenanceCount = equipment.filter((eq) => eq.status === 'maintenance').length;
+        const inStockCount = Math.max(0, totalItems - reservedCount - maintenanceCount);
+        const statPills: Array<{
+          icon: React.ReactNode;
+          count: number | string;
+          label: string;
+          color: string;
+          bg: string;
+        }> = [
+          { icon: <Inventory2Icon />, count: totalItems, label: 'Totalt utstyr', color: '#a78bfa', bg: 'rgba(167,139,250,0.14)' },
+          { icon: <CheckCircleIcon />, count: availableCount, label: 'Tilgjengelig nå', color: '#10b981', bg: 'rgba(16,185,129,0.14)' },
+          { icon: <ScheduleIcon />, count: reservedCount, label: 'Reservert', color: '#f59e0b', bg: 'rgba(245,158,11,0.14)' },
+          { icon: <MaintenanceIcon />, count: maintenanceCount, label: 'På vedlikehold', color: '#ef4444', bg: 'rgba(239,68,68,0.14)' },
+          { icon: <WarehouseIcon />, count: inStockCount, label: 'På lager', color: '#60a5fa', bg: 'rgba(96,165,250,0.14)' },
+        ];
+        return (
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(3, 1fr)', md: 'repeat(5, 1fr)' },
+              gap: 1.25,
+              mb: 2,
+              px: 1,
+            }}
+          >
+            {statPills.map((pill) => (
+              <Box
+                key={pill.label}
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1.25,
+                  px: 1.5,
+                  py: 1.25,
+                  borderRadius: 1.5,
+                  bgcolor: pill.bg,
+                  border: `1px solid ${pill.color}33`,
+                }}
+              >
+                <Box
+                  sx={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: 36,
+                    height: 36,
+                    borderRadius: 1,
+                    bgcolor: `${pill.color}22`,
+                    color: pill.color,
+                    flexShrink: 0,
+                    '& svg': { fontSize: 20 },
+                  }}
+                >
+                  {pill.icon}
+                </Box>
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography sx={{ color: '#fff', fontSize: '1.25rem', fontWeight: 700, lineHeight: 1 }}>
+                    {pill.count}
+                  </Typography>
+                  <Typography
+                    sx={{
+                      color: 'rgba(255,255,255,0.65)',
+                      fontSize: '0.7rem',
+                      lineHeight: 1.3,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {pill.label}
+                  </Typography>
+                </Box>
+              </Box>
+            ))}
+          </Box>
+        );
+      })()}
 
       {/* Compact Stats Bar */}
       {equipment.length > 0 && (
