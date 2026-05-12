@@ -124,6 +124,7 @@ import { PhaseHeader } from './storyLogic/components/PhaseHeader';
 import { ValidationDisplay } from './storyLogic/components/ValidationDisplay';
 import { WritingFlowBadge } from './storyLogic/components/WritingFlowBadge';
 import { ConfidenceDeltaToast } from './storyLogic/components/ConfidenceDeltaToast';
+import { AutoSaveBadge } from './storyLogic/components/AutoSaveBadge';
 import { useWritingFlow } from './storyLogic/hooks/useWritingFlow';
 import { useConfidenceDelta } from './storyLogic/hooks/useConfidenceDelta';
 
@@ -1181,15 +1182,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
               Valider historiefundamentet før du begynner å skrive
             </Typography>
             {/* Save status indicator (#5) */}
-            <Chip
-              size="small"
-              label={saveStatus === 'saved' ? 'Lagret' : saveStatus === 'saving' ? 'Lagrer…' : saveStatus === 'unsaved' ? 'Ulagret' : 'Frakoblet'}
-              sx={{
-                height: 20, fontSize: '0.65rem',
-                bgcolor: saveStatus === 'saved' ? 'rgba(16,185,129,0.15)' : saveStatus === 'saving' ? 'rgba(59,130,246,0.15)' : saveStatus === 'unsaved' ? 'rgba(245,158,11,0.15)' : 'rgba(239,68,68,0.15)',
-                color: saveStatus === 'saved' ? '#10b981' : saveStatus === 'saving' ? '#60a5fa' : saveStatus === 'unsaved' ? '#f59e0b' : '#ef4444',
-              }}
-            />
+            <AutoSaveBadge status={saveStatus} lastSavedAt={state.lastSaved} />
             <Tooltip title={syncMeta?.lastError || 'Story Logic er bundet til server og prosjekt-session.'}>
               <Chip
                 size="small"
