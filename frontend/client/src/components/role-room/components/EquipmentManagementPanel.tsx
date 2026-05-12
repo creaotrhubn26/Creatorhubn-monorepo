@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useId, useRef, useCallback, type ChangeEvent, type DragEvent, type SyntheticEvent, type HTMLAttributes } from "react";
 import { Box, Alert, Autocomplete, Typography, Button, IconButton, Card, CardContent, CardMedia, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Chip, Stack, Grid, Tooltip, Collapse, FormControl, FormControlLabel, InputLabel, Select, MenuItem, Switch, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TableSortLabel, Paper, useTheme, useMediaQuery, Grow, InputAdornment, LinearProgress, CircularProgress, Tabs, Tab, ImageList, ImageListItem, ImageListItemBar, Divider, Rating } from "@mui/material";
-import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, Search as SearchIcon, FilterList as FilterIcon, ViewModule as GridViewIcon, ViewList as TableViewIcon, Close as CloseIcon, Cancel as CancelIcon, Save as SaveIcon, Image as ImageIcon, Person as PersonIcon, Warning as WarningIcon, CheckCircle as CheckCircleIcon, Schedule as ScheduleIcon, Block as BlockIcon, Refresh as RefreshIcon, ContentCopy as CopyIcon, Bookmark as BookmarkIcon, ShoppingCart as ShoppingCartIcon, OpenInNew as OpenInNewIcon, PlaylistAdd as PlaylistAddIcon, Star as StarIcon, CloudUpload as CloudUploadIcon, Link as LinkIcon, PhotoLibrary as PhotoLibraryIcon, Movie as MovieIcon, History as HistoryIcon, CalendarToday as CalendarTodayIcon, QrCode as QrCodeIcon, QrCodeScanner as QrCodeScannerIcon, Inventory2 as Inventory2Icon, FileDownload as DownloadIcon, FileUpload as UploadIcon, FileCopy as DuplicateIcon, SelectAll as SelectAllIcon, CheckBox as CheckboxIcon, CheckBoxOutlineBlank as CheckboxOutlineIcon, Public as PublicIcon, Lock as LockIcon, Assignment as CheckOutIcon, AssignmentReturn as CheckInIcon, Summarize as ReportIcon, WifiOff as OfflineIcon, Sync as SyncIcon, AssignmentLate as MissingItemIcon, TrendingUp as TrendingUpIcon, Update as UpdateIcon, Newspaper as NewspaperIcon, AttachMoney as AttachMoneyIcon, Build as MaintenanceIcon, Warehouse as WarehouseIcon } from "@mui/icons-material";
+import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, Search as SearchIcon, FilterList as FilterIcon, ViewModule as GridViewIcon, ViewList as TableViewIcon, Close as CloseIcon, Cancel as CancelIcon, Save as SaveIcon, Image as ImageIcon, Person as PersonIcon, Warning as WarningIcon, CheckCircle as CheckCircleIcon, Schedule as ScheduleIcon, Block as BlockIcon, Refresh as RefreshIcon, ContentCopy as CopyIcon, Bookmark as BookmarkIcon, ShoppingCart as ShoppingCartIcon, OpenInNew as OpenInNewIcon, PlaylistAdd as PlaylistAddIcon, Star as StarIcon, StarBorder as StarBorderIcon, CloudUpload as CloudUploadIcon, Link as LinkIcon, PhotoLibrary as PhotoLibraryIcon, Movie as MovieIcon, History as HistoryIcon, CalendarToday as CalendarTodayIcon, QrCode as QrCodeIcon, QrCodeScanner as QrCodeScannerIcon, Inventory2 as Inventory2Icon, FileDownload as DownloadIcon, FileUpload as UploadIcon, FileCopy as DuplicateIcon, SelectAll as SelectAllIcon, CheckBox as CheckboxIcon, CheckBoxOutlineBlank as CheckboxOutlineIcon, Public as PublicIcon, Lock as LockIcon, Assignment as CheckOutIcon, AssignmentReturn as CheckInIcon, Summarize as ReportIcon, WifiOff as OfflineIcon, Sync as SyncIcon, AssignmentLate as MissingItemIcon, TrendingUp as TrendingUpIcon, Update as UpdateIcon, Newspaper as NewspaperIcon, AttachMoney as AttachMoneyIcon, Build as MaintenanceIcon, Warehouse as WarehouseIcon } from "@mui/icons-material";
 import { EquipmentIcon as BuildIcon, LocationsIcon as LocationIcon, PropsIcon } from "./icons/CastingIcons";
 import netflixWordmark from "../../../assets/brands/netflix-wordmark.svg";
 import { useQuery } from "@tanstack/react-query";
@@ -923,6 +923,62 @@ export function EquipmentManagementPanel({
   const [bulkNewStatus, setBulkNewStatus] = useState<Equipment['status']>('available');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+
+  // Favoritter — samme persistens-mønster som PropManagementPanel.
+  // favoritesApi.get/set lagrer til DB; localStorage er fallback hvis API
+  // er nede. Reload på projectId-bytte slik at hvert prosjekt har sin egen
+  // favoritt-liste.
+  const [favorites, setFavorites] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const { favoritesApi } = await import('../services/castingApiService');
+        const dbFavorites = await favoritesApi.get(projectId, 'equipment');
+        if (cancelled) return;
+        if (dbFavorites.length > 0) {
+          setFavorites(new Set(dbFavorites));
+          return;
+        }
+      } catch (error) {
+        console.warn('Equipment favorites: DB-oppslag feilet, faller tilbake til localStorage', error);
+      }
+      const saved = localStorage.getItem(`equipment-favorites-${projectId}`);
+      if (!cancelled && saved) {
+        try {
+          setFavorites(new Set(JSON.parse(saved)));
+        } catch {
+          /* ignore corrupt JSON */
+        }
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [projectId]);
+
+  useEffect(() => {
+    const save = async () => {
+      localStorage.setItem(`equipment-favorites-${projectId}`, JSON.stringify([...favorites]));
+      try {
+        const { favoritesApi } = await import('../services/castingApiService');
+        await favoritesApi.set(projectId, 'equipment', [...favorites]);
+      } catch (error) {
+        console.warn('Equipment favorites: DB-lagring feilet (localStorage er fortsatt oppdatert)', error);
+      }
+    };
+    if (favorites.size > 0 || localStorage.getItem(`equipment-favorites-${projectId}`)) {
+      save();
+    }
+  }, [favorites, projectId]);
+
+  const toggleEquipmentFavorite = useCallback((equipmentId: string) => {
+    setFavorites((prev) => {
+      const next = new Set(prev);
+      if (next.has(equipmentId)) next.delete(equipmentId);
+      else next.add(equipmentId);
+      return next;
+    });
+  }, []);
 
   // Catalog bridge — browse manufacturer catalog and import items into this project
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
@@ -4886,27 +4942,66 @@ export function EquipmentManagementPanel({
                 },
               }}>
                 {/* Selection checkbox */}
-                <Box sx={{ 
-                  position: 'absolute', 
-                  top: 8, 
-                  left: 8, 
+                <Box sx={{
+                  position: 'absolute',
+                  top: 8,
+                  left: 8,
                   zIndex: 10,
                 }}>
                   <IconButton
                     size="small"
                     onClick={(e) => { e.stopPropagation(); toggleSelectEquipment(eq.id); }}
                     aria-label={selectedEquipmentIds.has(eq.id) ? `Fjern markering for ${eq.name}` : `Velg ${eq.name}`}
-                    sx={{ 
+                    sx={{
                       bgcolor: selectedEquipmentIds.has(eq.id) ? '#9333ea' : 'rgba(0,0,0,0.5)',
                       backdropFilter: 'blur(4px)',
                       '&:hover': { bgcolor: selectedEquipmentIds.has(eq.id) ? '#c084fc' : 'rgba(0,0,0,0.7)' },
                     }}
                   >
-                    {selectedEquipmentIds.has(eq.id) 
+                    {selectedEquipmentIds.has(eq.id)
                       ? <CheckboxIcon sx={{ fontSize: 18, color: '#fff' }} />
                       : <CheckboxOutlineIcon sx={{ fontSize: 18, color: 'rgba(255,255,255,0.87)' }} />
                     }
                   </IconButton>
+                </Box>
+                {/* Favoritt-stjerne top-right (toggle, persisteres til DB + localStorage) */}
+                <Box
+                  sx={{
+                    position: 'absolute',
+                    top: 8,
+                    right: 8,
+                    zIndex: 10,
+                  }}
+                >
+                  <Tooltip
+                    title={favorites.has(eq.id) ? `Fjern ${eq.name} fra favoritter` : `Marker ${eq.name} som favoritt`}
+                  >
+                    <IconButton
+                      size="small"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleEquipmentFavorite(eq.id);
+                      }}
+                      aria-label={favorites.has(eq.id) ? `Fjern ${eq.name} fra favoritter` : `Marker ${eq.name} som favoritt`}
+                      sx={{
+                        bgcolor: 'rgba(0,0,0,0.5)',
+                        backdropFilter: 'blur(4px)',
+                        color: favorites.has(eq.id) ? '#fbbf24' : 'rgba(255,255,255,0.5)',
+                        transition: 'transform 160ms ease-out, color 160ms ease-out',
+                        '&:hover': {
+                          bgcolor: 'rgba(0,0,0,0.7)',
+                          color: favorites.has(eq.id) ? '#fcd34d' : '#fbbf24',
+                          transform: 'scale(1.08)',
+                        },
+                      }}
+                    >
+                      {favorites.has(eq.id) ? (
+                        <StarIcon sx={{ fontSize: 18 }} />
+                      ) : (
+                        <StarBorderIcon sx={{ fontSize: 18 }} />
+                      )}
+                    </IconButton>
+                  </Tooltip>
                 </Box>
                 {/* Equipment Image with overlay */}
                 <Box sx={{ position: 'relative', overflow: 'hidden' }}>
