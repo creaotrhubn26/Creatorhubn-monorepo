@@ -718,6 +718,7 @@ export function EquipmentManagementPanel({
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [locationFilter, setLocationFilter] = useState<string>('all');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [workspaceView, setWorkspaceView] = useState<WorkspaceView>('standard');
   const [proViewFocus, setProViewFocus] = useState<EquipmentProFocus>('all');
@@ -3523,7 +3524,11 @@ export function EquipmentManagementPanel({
     if (statusFilter !== 'all') {
       filtered = filtered.filter(eq => eq.status === statusFilter);
     }
-    
+
+    if (locationFilter !== 'all') {
+      filtered = filtered.filter(eq => eq.primary_location_id === locationFilter);
+    }
+
     filtered.sort((a, b) => {
       // Treat quantity as a number so that 0 sorts correctly (not as falsy empty string)
       if (sortField === 'quantity') {
@@ -3541,7 +3546,7 @@ export function EquipmentManagementPanel({
     });
     
     return filtered;
-  }, [equipment, searchQuery, categoryFilter, statusFilter, sortField, sortDirection]);
+  }, [equipment, searchQuery, categoryFilter, statusFilter, locationFilter, sortField, sortDirection]);
 
   // Categories for filter dropdown: combines equipment categories + custom categories
   const categories = useMemo(() => {
@@ -4821,7 +4826,37 @@ export function EquipmentManagementPanel({
               ))}
             </Select>
           </FormControl>
-          {(searchQuery || categoryFilter !== 'all' || statusFilter !== 'all') && (
+          <FormControl size="small" sx={{ minWidth: 160 }}>
+            <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Lokasjon</InputLabel>
+            <Select
+              value={locationFilter}
+              onChange={(e) => setLocationFilter(e.target.value)}
+              label="Lokasjon"
+              sx={{
+                color: '#fff',
+                bgcolor: 'rgba(0,0,0,0.2)',
+                borderRadius: 2,
+                '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
+                '&:hover fieldset': { borderColor: 'rgba(147,51,234,0.3)' },
+              }}
+              MenuProps={{
+                PaperProps: {
+                  sx: { background: 'linear-gradient(160deg, rgba(2,6,23,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' },
+                },
+              }}
+            >
+              <MenuItem value="all">Alle lokasjoner</MenuItem>
+              {locations.map((loc) => (
+                <MenuItem key={loc.id} value={loc.id}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <LocationIcon sx={{ fontSize: 14, color: 'rgba(147,51,234,0.7)' }} />
+                    {loc.name}
+                  </Box>
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          {(searchQuery || categoryFilter !== 'all' || statusFilter !== 'all' || locationFilter !== 'all') && (
             <Button
               variant="text"
               size="small"
@@ -4873,7 +4908,7 @@ export function EquipmentManagementPanel({
           <Chip
             label="Nullstill"
             size="small"
-            onClick={() => { setSearchQuery(''); setCategoryFilter('all'); setStatusFilter('all'); }}
+            onClick={() => { setSearchQuery(''); setCategoryFilter('all'); setStatusFilter('all'); setLocationFilter('all'); }}
             sx={{ bgcolor: 'transparent', color: 'rgba(255,255,255,0.5)', borderColor: 'rgba(255,255,255,0.15)', border: '1px solid', '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' }, cursor: 'pointer' }}
           />
         </Box>
