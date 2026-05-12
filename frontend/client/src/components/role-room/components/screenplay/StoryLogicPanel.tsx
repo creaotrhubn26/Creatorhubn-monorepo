@@ -628,6 +628,25 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
     theme: themeValidation.score >= 70 ? 'ready' as const : themeValidation.score >= 40 ? 'weak' as const : 'incomplete' as const,
   }), [conceptValidation.score, loglineValidation.score, themeValidation.score]);
 
+  // Cmd/Ctrl+Enter: gå til neste fase når aktiv fase er 'ready'. Sparer mus +
+  // gir momentum-følelsen brukeren forventer fra polerte skriveverktøy.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key !== 'Enter') return;
+      const phases = ['concept', 'logline', 'theme'] as const;
+      const current = expandedPhase;
+      if (current < 0 || current > 2) return;
+      const currentStatus = validationResults[phases[current]];
+      if (currentStatus !== 'ready') return;
+      if (current >= 2) return;
+      e.preventDefault();
+      setExpandedPhase(current + 1);
+      setState(prev => ({ ...prev, currentPhase: current + 1 }));
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [expandedPhase, validationResults]);
+
   // Update validation status - only when memoized results change
   useEffect(() => {
     setState(prev => {
@@ -1170,7 +1189,33 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
   };
 
   return (
-    <Box sx={{ height: '100%', overflow: 'auto', p: 2 }}>
+    <Box
+      sx={{
+        height: '100%',
+        overflow: 'auto',
+        p: 2,
+        // Glatt felt-fokus-glow på alle TextField/Select i hele panelet —
+        // mentor-blå outline + dempet skygge ved focus, smooth transition
+        // for skrive-flyt-følelse uten å være distraherende.
+        '& .MuiOutlinedInput-root': {
+          transition: 'box-shadow 220ms ease-out, border-color 220ms ease-out',
+          '& fieldset': {
+            transition: 'border-color 220ms ease-out',
+          },
+          '&.Mui-focused fieldset': {
+            borderColor: '#60a5fa',
+            borderWidth: '1.5px',
+          },
+          '&.Mui-focused': {
+            boxShadow: '0 0 0 4px rgba(96,165,250,0.16)',
+          },
+        },
+        // Scroll-margin slik at jumpToField-feltet ikke ender helt øverst
+        '& [data-storylogic-field]': {
+          scrollMarginTop: '88px',
+        },
+      }}
+    >
       {/* Header */}
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
         <Box>
