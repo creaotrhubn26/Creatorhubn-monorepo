@@ -729,6 +729,9 @@ export function EquipmentManagementPanel({
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [locationFilter, setLocationFilter] = useState<string>('all');
+  // Pagination — 324 elementer uten paginering er reell perf-issue
+  const [page, setPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<20 | 40 | 80>(20);
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [workspaceView, setWorkspaceView] = useState<WorkspaceView>('standard');
   const [proViewFocus, setProViewFocus] = useState<EquipmentProFocus>('all');
@@ -3566,6 +3569,22 @@ export function EquipmentManagementPanel({
     return filtered;
   }, [equipment, searchQuery, categoryFilter, statusFilter, locationFilter, sortField, sortDirection]);
 
+  // Reset til side 1 når filtere endres så brukeren ikke ender opp på
+  // en tom side etter aggressiv filtrering.
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery, categoryFilter, statusFilter, locationFilter, sortField, sortDirection, pageSize]);
+
+  // Pagination-derivat: total sider og current page-slice.
+  const totalPages = Math.max(1, Math.ceil(filteredEquipment.length / pageSize));
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  const paginationStart = (safePage - 1) * pageSize;
+  const paginationEnd = Math.min(filteredEquipment.length, paginationStart + pageSize);
+  const pagedEquipment = useMemo(
+    () => filteredEquipment.slice(paginationStart, paginationEnd),
+    [filteredEquipment, paginationStart, paginationEnd],
+  );
+
   // Categories for filter dropdown: combines equipment categories + custom categories
   const categories = useMemo(() => {
     const equipmentCats = new Set(
@@ -5005,7 +5024,7 @@ export function EquipmentManagementPanel({
               </Box>
             </Grid>
           ) : (
-            filteredEquipment.map((eq, index) => {
+            pagedEquipment.map((eq, index) => {
               const warehouseTotals = warehouseStockByItem[eq.id];
               return (
                 <Grid item xs={12} sm={6} md={4} lg={3} key={eq.id}>
@@ -5540,7 +5559,7 @@ export function EquipmentManagementPanel({
               </TableRow>
             </TableHead>
             <TableBody>
-              {filteredEquipment.map((eq) => {
+              {pagedEquipment.map((eq) => {
                 const warehouseTotals = warehouseStockByItem[eq.id];
                 return (
                 <TableRow 
@@ -5782,6 +5801,108 @@ export function EquipmentManagementPanel({
             </TableBody>
           </Table>
         </TableContainer>
+      )}
+
+      {/* Pagination-rad — vises kun når flere enn én side eksisterer */}
+      {filteredEquipment.length > 0 && (
+        <Box
+          sx={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 1.5,
+            mt: 2,
+            px: 1,
+          }}
+        >
+          <Typography sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.85rem' }}>
+            Viser {filteredEquipment.length === 0 ? 0 : paginationStart + 1}–{paginationEnd} av {filteredEquipment.length} elementer
+          </Typography>
+
+          {totalPages > 1 && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <IconButton
+                size="small"
+                disabled={safePage <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                aria-label="Forrige side"
+                sx={{ color: safePage <= 1 ? 'rgba(255,255,255,0.25)' : '#fff' }}
+              >
+                <Box component="span" sx={{ fontSize: '1.2rem', lineHeight: 1 }}>‹</Box>
+              </IconButton>
+              {(() => {
+                const pages: Array<number | 'ellipsis'> = [];
+                const showEllipsisLeft = safePage > 3;
+                const showEllipsisRight = safePage < totalPages - 2;
+                pages.push(1);
+                if (showEllipsisLeft) pages.push('ellipsis');
+                for (let p = Math.max(2, safePage - 1); p <= Math.min(totalPages - 1, safePage + 1); p += 1) {
+                  pages.push(p);
+                }
+                if (showEllipsisRight) pages.push('ellipsis');
+                if (totalPages > 1) pages.push(totalPages);
+                return pages.map((p, idx) =>
+                  p === 'ellipsis' ? (
+                    <Typography key={`ell-${idx}`} sx={{ color: 'rgba(255,255,255,0.4)', px: 0.5 }}>
+                      …
+                    </Typography>
+                  ) : (
+                    <Button
+                      key={p}
+                      size="small"
+                      onClick={() => setPage(p)}
+                      sx={{
+                        minWidth: 32,
+                        height: 32,
+                        px: 1,
+                        bgcolor: safePage === p ? '#9333ea' : 'transparent',
+                        color: safePage === p ? '#fff' : 'rgba(255,255,255,0.7)',
+                        fontWeight: safePage === p ? 700 : 500,
+                        '&:hover': { bgcolor: safePage === p ? '#a855f7' : 'rgba(147,51,234,0.18)' },
+                      }}
+                    >
+                      {p}
+                    </Button>
+                  ),
+                );
+              })()}
+              <IconButton
+                size="small"
+                disabled={safePage >= totalPages}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                aria-label="Neste side"
+                sx={{ color: safePage >= totalPages ? 'rgba(255,255,255,0.25)' : '#fff' }}
+              >
+                <Box component="span" sx={{ fontSize: '1.2rem', lineHeight: 1 }}>›</Box>
+              </IconButton>
+            </Box>
+          )}
+
+          <FormControl size="small" sx={{ minWidth: 120 }}>
+            <Select
+              value={pageSize}
+              onChange={(e) => setPageSize(Number(e.target.value) as 20 | 40 | 80)}
+              sx={{
+                color: '#fff',
+                bgcolor: 'rgba(0,0,0,0.2)',
+                borderRadius: 2,
+                '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
+                '&:hover fieldset': { borderColor: 'rgba(147,51,234,0.3)' },
+                '& .MuiSelect-select': { py: 0.5, fontSize: '0.85rem' },
+              }}
+              MenuProps={{
+                PaperProps: {
+                  sx: { background: 'linear-gradient(160deg, rgba(2,6,23,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' },
+                },
+              }}
+            >
+              <MenuItem value={20}>20 per side</MenuItem>
+              <MenuItem value={40}>40 per side</MenuItem>
+              <MenuItem value={80}>80 per side</MenuItem>
+            </Select>
+          </FormControl>
+        </Box>
       )}
 
         </Box>{/* end main content column */}
