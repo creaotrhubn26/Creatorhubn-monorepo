@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useId, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useId, useRef, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -656,11 +656,12 @@ export function LocationManagementPanel({
   const [filterType, setFilterType] = useState<Location['type'] | 'all'>('all');
   const [filterFacility, setFilterFacility] = useState<string>('all');
   const [filterCoordinates, setFilterCoordinates] = useState<'all' | 'with' | 'without'>('all');
+  const [filterRegion, setFilterRegion] = useState<string>('all');
   // Adresse-autocomplete-state (Kartverket Geonorge-API).
   // Lar brukeren søke på navn/adresse-tekst og auto-fyller koordinater i
   // bakgrunnen — koordinater eksponeres aldri direkte for brukeren.
   const [addressSuggestions, setAddressSuggestions] = useState<
-    Array<{ address: string; municipality: string; postalCode: string; coordinates: { lat: number; lng: number } }>
+    Array<{ address: string; municipality: string; county: string; postalCode: string; coordinates: { lat: number; lng: number } }>
   >([]);
   const [addressSuggestionsLoading, setAddressSuggestionsLoading] = useState(false);
   const [addressQuery, setAddressQuery] = useState('');
@@ -952,6 +953,31 @@ export function LocationManagementPanel({
     return labels[facility] || facility;
   };
 
+  /**
+   * Returnerer regional label for filtrering. Prioritert kilde:
+   *   1. loc.county (fylke) — fra autocomplete-data via Kartverket
+   *   2. loc.municipality (kommune) — fra autocomplete-data via Kartverket
+   *   3. Heuristisk parsing av poststed fra address-streng (siste komma-del)
+   *   4. tom streng (vises som "Ukjent")
+   *
+   * Brukes både for å bygge dropdown-listen og for å filtrere.
+   */
+  const getLocationRegion = useCallback((loc: Location): string => {
+    const county = (loc.county as string | undefined)?.trim();
+    if (county) return county;
+    const municipality = (loc.municipality as string | undefined)?.trim();
+    if (municipality) return municipality;
+    if (loc.address) {
+      // "Karl Johans gate 5, 0154 Oslo" → "Oslo"
+      const parts = loc.address.split(',').map((p) => p.trim()).filter(Boolean);
+      const last = parts[parts.length - 1] || '';
+      // Fjern postnummer (4-sifret tall) hvis det leder
+      const noPostal = last.replace(/^\d{4}\s+/, '').trim();
+      if (noPostal) return noPostal;
+    }
+    return '';
+  }, []);
+
   // Kompakt ikon per fasilitet — brukt i kort-pill-rad som matcher design.
   // Returnerer null for ukjente fasiliteter slik at de filtreres ut av
   // ikon-raden (de vises fortsatt som tekst-chip i den utvidede listen).
@@ -1003,6 +1029,12 @@ export function LocationManagementPanel({
       });
     }
 
+    // Region-filter (fylke/kommune/poststed): bruker samme extractor som
+    // dropdown-listen, så filter-match alltid stemmer
+    if (filterRegion !== 'all') {
+      result = result.filter((loc) => getLocationRegion(loc) === filterRegion);
+    }
+
     // Sort - favorites first
     result.sort((a, b) => {
       const aFav = favorites.has(a.id) ? 0 : 1;
@@ -1028,7 +1060,18 @@ export function LocationManagementPanel({
     });
 
     return result;
-  }, [locations, searchQuery, filterType, filterFacility, filterCoordinates, sortField, sortDirection, favorites]);
+  }, [locations, searchQuery, filterType, filterFacility, filterCoordinates, filterRegion, sortField, sortDirection, favorites, getLocationRegion]);
+
+  // Bygg unik liste av regioner som finnes i nåværende locations (sortert
+  // alfabetisk). Filtreres så bare regioner med ≥ 1 location vises.
+  const availableRegions = useMemo<string[]>(() => {
+    const set = new Set<string>();
+    locations.forEach((loc) => {
+      const region = getLocationRegion(loc);
+      if (region) set.add(region);
+    });
+    return [...set].sort((a, b) => a.localeCompare(b, 'nb'));
+  }, [locations, getLocationRegion]);
 
   // Statistics
   const stats = useMemo(() => {
@@ -3499,13 +3542,39 @@ export function LocationManagementPanel({
             </Select>
           </FormControl>
 
-          {(filterType !== 'all' || filterFacility !== 'all' || filterCoordinates !== 'all' || searchQuery || sortField !== 'name' || sortDirection !== 'asc') && (
+          {/* Region/fylke-filter — bygger valg fra eksisterende locations.
+              Bruker getLocationRegion-helper (fylke → kommune → poststed-fallback) */}
+          {availableRegions.length > 0 && (
+            <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 150, md: 135, lg: 150, xl: 180 } }}>
+              <InputLabel sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>Område</InputLabel>
+              <Select
+                value={filterRegion}
+                onChange={(e) => setFilterRegion(String(e.target.value))}
+                label="Område"
+                sx={{
+                  color: '#fff',
+                  minHeight: { xs: 40, sm: 44, md: 48, lg: 52, xl: 60 },
+                  fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
+                  height: { xs: 36, sm: 40, md: 42, lg: 48, xl: 60 },
+                  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
+                }}
+              >
+                <MenuItem value="all">Alle områder</MenuItem>
+                {availableRegions.map((region) => (
+                  <MenuItem key={region} value={region}>{region}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
+
+          {(filterType !== 'all' || filterFacility !== 'all' || filterCoordinates !== 'all' || filterRegion !== 'all' || searchQuery || sortField !== 'name' || sortDirection !== 'asc') && (
             <Button
               variant="text"
               onClick={() => {
                 setFilterType('all');
                 setFilterFacility('all');
                 setFilterCoordinates('all');
+                setFilterRegion('all');
                 setSearchQuery('');
                 setSortField('name');
                 setSortDirection('asc');
@@ -7182,6 +7251,12 @@ export function LocationManagementPanel({
                       ...prev,
                       address: value.address,
                       coordinates: value.coordinates,
+                      // Persist administrative felt — brukes til regional
+                      // filtrering (Vestlandet/Østlandet/etc.) uten å eksponere
+                      // dem som egne input-felt for brukeren.
+                      municipality: value.municipality || undefined,
+                      county: value.county || undefined,
+                      postalCode: value.postalCode || undefined,
                       name: prev.name?.trim() ? prev.name : value.address,
                     }));
                   } else if (typeof value === 'string') {
