@@ -101732,6 +101732,43 @@ app.use("/api/lightroom-routes", lightroomRouter);
 // location pickers, so a 404 here floods the console. Proxy the public
 // Geonorge APIs and fall back to an empty result on failure.
 
+// Adresse-autocomplete: returnerer flere kandidat-matches istedenfor kun
+// top-1. Brukes av LocationManagementPanel address-input for å skjule
+// koordinater bak en navn-basert autocomplete-UX.
+app.get("/api/external-data/kartverket/address-search", async (req, res) => {
+  const query = String(req.query.q || "").trim();
+  const rawLimit = Number.parseInt(String(req.query.limit || "10"), 10);
+  const limit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(20, rawLimit)) : 10;
+  if (!query || query.length < 2) {
+    return res.json({ success: true, suggestions: [] });
+  }
+  try {
+    const url = `https://ws.geonorge.no/adresser/v1/sok?sok=${encodeURIComponent(query)}&fuzzy=true&treffPerSide=${limit}`;
+    const upstream = await fetch(url, { headers: { Accept: "application/json" } });
+    if (!upstream.ok) {
+      return res.json({ success: false, error: `Upstream ${upstream.status}`, suggestions: [] });
+    }
+    const payload = await upstream.json();
+    const suggestions = (Array.isArray(payload?.adresser) ? payload.adresser : []).map((a: any) => ({
+      address: `${a.adressetekst || ""}${a.poststed ? `, ${a.poststed}` : ""}`.trim(),
+      adressetekst: a.adressetekst || "",
+      poststed: a.poststed || "",
+      postalCode: a.postnummer || "",
+      municipality: a.kommunenavn || "",
+      county: a.fylkesnavn || "",
+      coordinates: {
+        lat: a.representasjonspunkt?.lat ?? 0,
+        lng: a.representasjonspunkt?.lon ?? 0,
+      },
+      propertyId: a.matrikkelId ? String(a.matrikkelId) : "",
+    }));
+    return res.json({ success: true, suggestions });
+  } catch (error) {
+    console.warn("Kartverket address-search proxy failed:", error);
+    return res.json({ success: false, error: "Upstream failure", suggestions: [] });
+  }
+});
+
 app.get("/api/external-data/kartverket/address/:address", async (req, res) => {
   const address = String(req.params.address || "").trim();
   if (!address) {

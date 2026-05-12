@@ -11,6 +11,8 @@ import {
   DialogContent,
   DialogActions,
   TextField,
+  Autocomplete,
+  CircularProgress,
   Select,
   MenuItem,
   FormControl,
@@ -654,6 +656,14 @@ export function LocationManagementPanel({
   const [filterType, setFilterType] = useState<Location['type'] | 'all'>('all');
   const [filterFacility, setFilterFacility] = useState<string>('all');
   const [filterCoordinates, setFilterCoordinates] = useState<'all' | 'with' | 'without'>('all');
+  // Adresse-autocomplete-state (Kartverket Geonorge-API).
+  // Lar brukeren søke på navn/adresse-tekst og auto-fyller koordinater i
+  // bakgrunnen — koordinater eksponeres aldri direkte for brukeren.
+  const [addressSuggestions, setAddressSuggestions] = useState<
+    Array<{ address: string; municipality: string; postalCode: string; coordinates: { lat: number; lng: number } }>
+  >([]);
+  const [addressSuggestionsLoading, setAddressSuggestionsLoading] = useState(false);
+  const [addressQuery, setAddressQuery] = useState('');
   const [sortField, setSortField] = useState<SortField>('name');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
@@ -737,6 +747,41 @@ export function LocationManagementPanel({
   useEffect(() => {
     setProPageSize(24);
   }, [searchQuery, filterType, sortField, sortDirection, proPreset, operationalFilter]);
+
+  // Adresse-autocomplete: debounced 300ms-fetch til Kartverket.
+  // Cancel-flagg via AbortController hindrer race-betingelser når brukeren
+  // skriver raskt. Cache (60s) ligger i ExternalDataService.
+  useEffect(() => {
+    const trimmed = addressQuery.trim();
+    if (trimmed.length < 2) {
+      setAddressSuggestions([]);
+      setAddressSuggestionsLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    setAddressSuggestionsLoading(true);
+    const handle = setTimeout(async () => {
+      try {
+        const results = await externalDataService.searchKartverketAddressSuggestions(trimmed, {
+          limit: 10,
+          signal: controller.signal,
+        });
+        if (!controller.signal.aborted) {
+          setAddressSuggestions(results);
+          setAddressSuggestionsLoading(false);
+        }
+      } catch {
+        if (!controller.signal.aborted) {
+          setAddressSuggestions([]);
+          setAddressSuggestionsLoading(false);
+        }
+      }
+    }, 300);
+    return () => {
+      clearTimeout(handle);
+      controller.abort();
+    };
+  }, [addressQuery]);
 
   // Selection state for bulk operations
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -7093,32 +7138,91 @@ export function LocationManagementPanel({
             />
 
             <Box>
-              <TextField
-                label="Adresse"
+              <Autocomplete
+                freeSolo
                 fullWidth
+                options={addressSuggestions}
+                loading={addressSuggestionsLoading}
+                filterOptions={(x) => x}
+                getOptionLabel={(option) => typeof option === 'string' ? option : option.address}
                 value={formData.address || ''}
-                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <AddressIcon sx={{ color: 'rgba(255,255,255,0.87)', fontSize: 20 }} />
-                    </InputAdornment>
-                  ),
+                onInputChange={(_event, value) => {
+                  setFormData({ ...formData, address: value });
+                  setAddressQuery(value);
                 }}
-                sx={{
-                  mb: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 },
-                  '& .MuiOutlinedInput-root': {
-                    color: '#fff',
-                    minHeight: { xs: 40, sm: 44, md: 48, lg: 52, xl: 60 },
-                    fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
-                    '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
-                    '& input': {
-                      py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 },
+                onChange={(_event, value) => {
+                  // Brukeren valgte et autocomplete-forslag — auto-fyll
+                  // koordinater + administrative data SILENT (uten å vise lat/lng)
+                  if (value && typeof value !== 'string') {
+                    setFormData((prev) => ({
+                      ...prev,
+                      address: value.address,
+                      coordinates: value.coordinates,
+                    }));
+                  } else if (typeof value === 'string') {
+                    setFormData((prev) => ({ ...prev, address: value }));
+                  }
+                }}
+                renderOption={(props, option) => (
+                  <Box component="li" {...props} key={`${option.address}-${option.postalCode}`}>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                      <Typography sx={{ color: '#fff', fontSize: '0.9rem', fontWeight: 500 }}>
+                        {option.address}
+                      </Typography>
+                      {option.municipality && (
+                        <Typography sx={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.72rem' }}>
+                          {option.postalCode} {option.municipality}
+                        </Typography>
+                      )}
+                    </Box>
+                  </Box>
+                )}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Adresse"
+                    placeholder="Begynn å skrive adresse — vi henter forslag fra Kartverket"
+                    InputProps={{
+                      ...params.InputProps,
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <AddressIcon sx={{ color: 'rgba(255,255,255,0.87)', fontSize: 20 }} />
+                        </InputAdornment>
+                      ),
+                      endAdornment: (
+                        <>
+                          {addressSuggestionsLoading && (
+                            <CircularProgress size={16} sx={{ color: '#a855f7', mr: 1 }} />
+                          )}
+                          {params.InputProps.endAdornment}
+                        </>
+                      ),
+                    }}
+                    sx={{
+                      mb: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 },
+                      '& .MuiOutlinedInput-root': {
+                        color: '#fff',
+                        minHeight: { xs: 40, sm: 44, md: 48, lg: 52, xl: 60 },
+                        fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
+                        '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
+                        '& input': {
+                          py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 },
+                        },
+                      },
+                      '& .MuiInputLabel-root': {
+                        color: 'rgba(255,255,255,0.87)',
+                        fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
+                      },
+                    }}
+                  />
+                )}
+                componentsProps={{
+                  paper: {
+                    sx: {
+                      bgcolor: 'rgba(15,23,42,0.98)',
+                      border: '1px solid rgba(168,85,247,0.3)',
+                      backdropFilter: 'blur(8px)',
                     },
-                  },
-                  '& .MuiInputLabel-root': { 
-                    color: 'rgba(255,255,255,0.87)',
-                    fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                   },
                 }}
               />
