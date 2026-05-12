@@ -42,7 +42,17 @@ const formatEquipmentNoteTimestamp = (value: unknown): string => {
 
 const OPEN_PROP_CREATE_MODAL_EVENT = 'role-room:open-prop-create-modal';
 
-type SortField = 'name' | 'category' | 'status' | 'condition' | 'quantity';
+type SortField = 'name' | 'category' | 'status' | 'condition' | 'quantity' | 'created_at' | 'updated_at';
+
+const SORT_FIELD_LABELS: Record<SortField, string> = {
+  name: 'Navn',
+  category: 'Kategori',
+  status: 'Status',
+  condition: 'Tilstand',
+  quantity: 'Antall',
+  created_at: 'Lagt til',
+  updated_at: 'Sist endret',
+};
 type SortDirection = 'asc' | 'desc';
 type ViewMode = 'grid' | 'table';
 type WorkspaceView = 'standard' | 'pro';
@@ -3536,6 +3546,14 @@ export function EquipmentManagementPanel({
         const bNum = typeof b.quantity === 'number' ? b.quantity : 0;
         return sortDirection === 'asc' ? aNum - bNum : bNum - aNum;
       }
+      // Dato-felter: parse ISO-strenger til timestamps, robust mot null/empty
+      if (sortField === 'created_at' || sortField === 'updated_at') {
+        const aRaw = a[sortField] as string | null | undefined;
+        const bRaw = b[sortField] as string | null | undefined;
+        const aTs = aRaw ? new Date(aRaw).getTime() : 0;
+        const bTs = bRaw ? new Date(bRaw).getTime() : 0;
+        return sortDirection === 'asc' ? aTs - bTs : bTs - aTs;
+      }
       let aVal: string = (a[sortField] as string | undefined) ?? '';
       let bVal: string = (b[sortField] as string | undefined) ?? '';
       aVal = aVal.toLowerCase();
@@ -4854,6 +4872,41 @@ export function EquipmentManagementPanel({
                   </Box>
                 </MenuItem>
               ))}
+            </Select>
+          </FormControl>
+          <FormControl size="small" sx={{ minWidth: 180 }}>
+            <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Sorter</InputLabel>
+            <Select
+              value={`${sortField}:${sortDirection}`}
+              onChange={(e) => {
+                const raw = String(e.target.value);
+                const [field, dir] = raw.split(':') as [SortField, 'asc' | 'desc'];
+                setSortField(field);
+                setSortDirection(dir);
+              }}
+              label="Sorter"
+              sx={{
+                color: '#fff',
+                bgcolor: 'rgba(0,0,0,0.2)',
+                borderRadius: 2,
+                '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
+                '&:hover fieldset': { borderColor: 'rgba(147,51,234,0.3)' },
+              }}
+              MenuProps={{
+                PaperProps: {
+                  sx: { background: 'linear-gradient(160deg, rgba(2,6,23,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' },
+                },
+              }}
+            >
+              <MenuItem value="updated_at:desc">Nyeste først</MenuItem>
+              <MenuItem value="updated_at:asc">Eldste først</MenuItem>
+              <MenuItem value="created_at:desc">Sist lagt til</MenuItem>
+              <MenuItem value="name:asc">Navn A→Å</MenuItem>
+              <MenuItem value="name:desc">Navn Å→A</MenuItem>
+              <MenuItem value="category:asc">Kategori A→Å</MenuItem>
+              <MenuItem value="status:asc">Status</MenuItem>
+              <MenuItem value="quantity:desc">Antall (flest først)</MenuItem>
+              <MenuItem value="quantity:asc">Antall (færrest først)</MenuItem>
             </Select>
           </FormControl>
           {(searchQuery || categoryFilter !== 'all' || statusFilter !== 'all' || locationFilter !== 'all') && (
