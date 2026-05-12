@@ -897,25 +897,53 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
   const municipalityName = useMemo(() => extractMunicipalityName(location?.address), [location?.address]);
 
   // ── Live analyse via Kartverket + kommune-permit-database ────────────
+  // Bruker AbortController for å kansellere in-flight kall ved adresse-bytte,
+  // explicit loading/error-state for brukerens trygghet, og bypasses-cache-
+  // retry-funksjon for når noe feiler.
   const [permitAnalysis, setPermitAnalysis] = useState<LocationPermitAnalysis | null>(null);
+  const [permitAnalysisLoading, setPermitAnalysisLoading] = useState(false);
+  const [permitAnalysisError, setPermitAnalysisError] = useState<string | null>(null);
+  const [permitAnalysisRefreshKey, setPermitAnalysisRefreshKey] = useState(0);
+
   useEffect(() => {
-    let cancelled = false;
     if (!location?.address) {
       setPermitAnalysis(null);
+      setPermitAnalysisLoading(false);
+      setPermitAnalysisError(null);
       return;
     }
+    const controller = new AbortController();
+    setPermitAnalysisLoading(true);
+    setPermitAnalysisError(null);
     void (async () => {
       try {
-        const result = await analyzeLocationApi(location.address!);
-        if (!cancelled) setPermitAnalysis(result);
+        const result = await analyzeLocationApi(location.address!, {
+          signal: controller.signal,
+          bypassCache: permitAnalysisRefreshKey > 0,
+        });
+        if (!controller.signal.aborted) {
+          setPermitAnalysis(result);
+          setPermitAnalysisLoading(false);
+        }
       } catch (err) {
-        // Stille fallback — beholder regex-basert kommune-extraction
+        // AbortError = bevisst kansellering (ny adresse, dialog lukket) — ikke vis feilmelding
+        if (controller.signal.aborted) return;
         console.warn('[LocationAnalysisDialog] analyzeLocation failed:', err);
-        if (!cancelled) setPermitAnalysis(null);
+        setPermitAnalysis(null);
+        setPermitAnalysisLoading(false);
+        setPermitAnalysisError(
+          err instanceof Error && err.message
+            ? err.message
+            : 'Kunne ikke hente Kartverket/kommune-data. Sjekk nett-tilkobling.',
+        );
       }
     })();
-    return () => { cancelled = true; };
-  }, [location?.address]);
+    return () => { controller.abort(); };
+  }, [location?.address, permitAnalysisRefreshKey]);
+
+  const retryPermitAnalysis = useCallback(() => {
+    setPermitAnalysisRefreshKey((k) => k + 1);
+  }, []);
 
   const inferredOperations = useMemo<PermitOperationFlags>(() => {
     if (!location) {
@@ -2071,6 +2099,63 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                       ))}
                     </Box>
                   </Box>
+
+                  {/* Live-analyse status-banner (Kartverket + kommune-database) */}
+                  {(permitAnalysisLoading || permitAnalysisError) && (
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 1,
+                        px: 1.5,
+                        py: 1,
+                        mb: 1,
+                        borderRadius: 1.5,
+                        bgcolor: permitAnalysisError ? 'rgba(251,191,36,0.10)' : 'rgba(96,165,250,0.10)',
+                        border: `1px solid ${permitAnalysisError ? 'rgba(251,191,36,0.32)' : 'rgba(96,165,250,0.32)'}`,
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
+                        {permitAnalysisLoading ? (
+                          <CircularProgress size={14} sx={{ color: '#60a5fa' }} />
+                        ) : (
+                          <WarningIcon sx={{ fontSize: 16, color: '#fbbf24' }} />
+                        )}
+                        <Typography
+                          sx={{
+                            color: permitAnalysisError ? '#fcd34d' : '#93c5fd',
+                            fontSize: '0.78rem',
+                            fontWeight: 500,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                          }}
+                        >
+                          {permitAnalysisLoading
+                            ? 'Henter Kartverket-data og kommunens tillatelsesregister …'
+                            : permitAnalysisError}
+                        </Typography>
+                      </Box>
+                      {permitAnalysisError && (
+                        <Button
+                          size="small"
+                          onClick={retryPermitAnalysis}
+                          startIcon={<RefreshIcon sx={{ fontSize: 14 }} />}
+                          sx={{
+                            color: '#fbbf24',
+                            fontSize: '0.72rem',
+                            fontWeight: 600,
+                            textTransform: 'none',
+                            minHeight: 28,
+                            px: 1.25,
+                            '&:hover': { bgcolor: 'rgba(251,191,36,0.15)' },
+                          }}
+                        >
+                          Prøv igjen
+                        </Button>
+                      )}
+                    </Box>
+                  )}
 
                   <Box
                     sx={{
