@@ -2140,11 +2140,22 @@ function RoleManagementPanelInner({
             }}
           >
             <Chip size="small" label="J/K: Naviger" sx={{ bgcolor: roleSurfaceMuted, color: roleTextMuted, border: `1px solid ${roleBorder}` }} />
-            <Chip size="small" label="1: Utkast" sx={{ bgcolor: roleSurfaceMuted, color: roleTextMuted, border: `1px solid ${roleBorder}` }} />
-            <Chip size="small" label="2: Åpen" sx={{ bgcolor: roleSurfaceMuted, color: roleTextMuted, border: `1px solid ${roleBorder}` }} />
-            <Chip size="small" label="3: Casting" sx={{ bgcolor: roleSurfaceMuted, color: roleTextMuted, border: `1px solid ${roleBorder}` }} />
-            <Chip size="small" label="4: Besatt" sx={{ bgcolor: roleSurfaceMuted, color: roleTextMuted, border: `1px solid ${roleBorder}` }} />
-            <Chip size="small" label="5: Kansellert" sx={{ bgcolor: roleSurfaceMuted, color: roleTextMuted, border: `1px solid ${roleBorder}` }} />
+            {(['draft', 'open', 'casting', 'filled', 'cancelled'] as const).map((s, i) => {
+              const meta = getRoleWorkflowMeta(s);
+              return (
+                <Chip
+                  key={s}
+                  size="small"
+                  label={`${i + 1}: ${meta.label}`}
+                  sx={{
+                    bgcolor: `${meta.color}1f`,
+                    color: meta.color,
+                    border: `1px solid ${meta.color}66`,
+                    fontWeight: 500,
+                  }}
+                />
+              );
+            })}
             <Chip size="small" label="Enter: Rediger" sx={{ bgcolor: roleSurfaceMuted, color: roleTextMuted, border: `1px solid ${roleBorder}` }} />
             <Chip size="small" label=".: Hurtighandlinger" sx={{ bgcolor: roleSurfaceMuted, color: roleTextMuted, border: `1px solid ${roleBorder}` }} />
             <Chip size="small" label="Cmd/Ctrl+K: Kommando" sx={{ bgcolor: roleSurfaceMuted, color: roleTextMuted, border: `1px solid ${roleBorder}` }} />
