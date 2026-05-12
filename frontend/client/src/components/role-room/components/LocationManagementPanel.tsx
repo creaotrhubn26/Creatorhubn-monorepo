@@ -3432,13 +3432,14 @@ export function LocationManagementPanel({
             </Select>
           </FormControl>
 
-          {/* Koordinat-filter */}
+          {/* Kart-status-filter — utfalls-fokusert språk istedenfor "har koordinater".
+              Normale brukere tenker "klar til å vises på kart", ikke i lat/lng. */}
           <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 150, md: 135, lg: 150, xl: 180 } }}>
-            <InputLabel sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>Koordinater</InputLabel>
+            <InputLabel sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>Kart-status</InputLabel>
             <Select
               value={filterCoordinates}
               onChange={(e) => setFilterCoordinates(e.target.value as 'all' | 'with' | 'without')}
-              label="Koordinater"
+              label="Kart-status"
               sx={{
                 color: '#fff',
                 minHeight: { xs: 40, sm: 44, md: 48, lg: 52, xl: 60 },
@@ -3448,8 +3449,8 @@ export function LocationManagementPanel({
               }}
             >
               <MenuItem value="all">Alle</MenuItem>
-              <MenuItem value="with">Med koordinater</MenuItem>
-              <MenuItem value="without">Uten koordinater</MenuItem>
+              <MenuItem value="with">Kart-verifisert</MenuItem>
+              <MenuItem value="without">Trenger adresse-verifisering</MenuItem>
             </Select>
           </FormControl>
 
