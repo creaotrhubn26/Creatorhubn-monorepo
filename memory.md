@@ -18,10 +18,10 @@ Audit av 7 paneler mot produkt-eiers design-screenshots. Hver fane har konkret g
 | **Audition** | `AuditionSchedulePanel.tsx` | 4148 | 🟡 gap-analyse ferdig (sub-agent) | Restrukturer tabell-kolonner til AUDITION/ROLLER/DATO/STATUS/TEAM/KANDIDATER/ACTIONS; legg til AvatarGroup + pagination |
 | **Utvelgelse** | `CastingPlannerPanel.tsx:9521-10634` | (del av 16618) | 🟡 gap-analyse ferdig (sub-agent) | Søkefelt + batch-multivalg + sticky bottom-bar "SEND TIL FINAL SELECTION" + checkbox/favoritt/dato/video-overlay/kommentar-teller |
 | **Kalender** | `ProductionCalendarPanel.tsx` | 1487 | ✅ MÅNED-mode + stats-bar + MonthHeader ferdig | UKE/DAG-mode-render, crew Gantt-mode |
-| **Team** (CrewManagement) | `CrewManagementPanel.tsx` | 5866 | ✅ +2 avdelinger (Sminke & Hår + Transport) | #2 6-stat-rad, #3 status-filter-pills, #4 venstre sidebar, #6 bunn TILGJENGELIGHET-grid |
-| **Utstyr** | `EquipmentManagementPanel.tsx` | 10 105 | 🟡 gap-analyse ferdig (sub-agent) | Pagination, lokasjon-filter, 6-stat-kort, favoritt-stjerne, dynamisk status-chip-dato, konsolider 9→4 action-ikoner |
+| **Team** (CrewManagement) | `CrewManagementPanel.tsx` | 5866 | ✅ +2 avdelinger + ✅ 6-stat-kort | #3 status-filter-pills, #4 venstre sidebar, #6 bunn TILGJENGELIGHET-grid |
+| **Utstyr** | `EquipmentManagementPanel.tsx` | 10 105 | ✅ 5-stat-pill-rad (av 6) | Pagination, lokasjon-filter, favoritt-stjerne, dynamisk status-chip-dato, konsolider 9→4 action-ikoner |
 | **Rekvisitter** | `PropManagementPanel.tsx` | 3044 | 🟡 har favoritt + delvis stat-kort | Samme som Utstyr: pagination, lokasjon-filter, sort-dropdown |
-| **Lokasjon** | `LocationManagementPanel.tsx` | 7290 | 🟡 kort-gap-analyse | Filter "Alle fasiliteter"/"Alle regioner"/"Kapasitet"/"Med koordinater", "Tøm filtre"-link, fasilitets-ikon-rad på kort |
+| **Lokasjon** | `LocationManagementPanel.tsx` | 7290 | ✅ "Tøm filtre"-link | Filter "Alle fasiliteter"/"Alle regioner"/"Kapasitet"/"Med koordinater", fasilitets-ikon-rad på kort |
 | **Crew kalender** (Gantt) | *Eksisterer ikke* | — | ❌ helt ny modus | Crew som rader, dager som kolonner, event-blokker per crew, røde linker mellom tilhørende events |
 
 ### Detaljerte gap-lister per fane
