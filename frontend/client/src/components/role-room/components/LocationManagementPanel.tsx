@@ -120,6 +120,7 @@ import { useToast } from './ToastStack';
 import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
 import locationPng from './icons/Keep/roleroom_location.png';
 import { VerifyLocationDialog } from './VerifyLocationDialog';
+import { LocationMapThumbnail } from './LocationMapThumbnail';
 import { getRoleLabel, isTechnicalCrewMember as isTechnicalCrewMemberFromShared } from './shared/technicalCrew';
 import GlobalMentionHelper from './shared/GlobalMentionHelper';
 import { useAuth } from '../../../hooks/useAuth';
@@ -6584,19 +6585,30 @@ export function LocationManagementPanel({
                         border: '1px solid rgba(168,85,247,0.25)',
                       }}
                     >
-                      <Box
-                        sx={{
-                          width: { xs: 40, sm: 44, md: 42, lg: 50, xl: 58 },
-                          height: { xs: 40, sm: 44, md: 42, lg: 50, xl: 58 },
-                          borderRadius: 1.5,
-                          bgcolor: 'rgba(168,85,247,0.25)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                      >
-                        <LocationIcon sx={{ fontSize: { xs: 20, sm: 24, md: 22, lg: 26, xl: 30 }, color: '#c4b5fd' }} />
-                      </Box>
+                      {/* Map-thumbnail erstatter den abstrakte LocationIcon-boksen
+                          når koordinater finnes — bruker ser HVOR, ikke bare et symbol */}
+                      {location.coordinates?.lat && location.coordinates?.lng ? (
+                        <LocationMapThumbnail
+                          coordinates={location.coordinates}
+                          width={58}
+                          height={58}
+                          label={`Kartvisning av ${location.name}`}
+                        />
+                      ) : (
+                        <Box
+                          sx={{
+                            width: { xs: 40, sm: 44, md: 42, lg: 50, xl: 58 },
+                            height: { xs: 40, sm: 44, md: 42, lg: 50, xl: 58 },
+                            borderRadius: 1.5,
+                            bgcolor: 'rgba(168,85,247,0.25)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <LocationIcon sx={{ fontSize: { xs: 20, sm: 24, md: 22, lg: 26, xl: 30 }, color: '#c4b5fd' }} />
+                        </Box>
+                      )}
                       <Box sx={{ flex: 1, minWidth: 0 }}>
                         <Typography
                           sx={{
