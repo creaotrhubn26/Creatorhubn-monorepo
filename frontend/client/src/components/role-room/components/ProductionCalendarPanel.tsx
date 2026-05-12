@@ -63,6 +63,9 @@ import globalTagService from '../services/globalTagService';
 import GlobalMentionHelper from './shared/GlobalMentionHelper';
 import { getRoleLabel } from './shared/technicalCrew';
 import { alpha } from '@mui/material/styles';
+import { MonthGridView } from './calendar/MonthGridView';
+import { CalendarMonthHeader } from './calendar/CalendarMonthHeader';
+import { CalendarStatsBar } from './calendar/CalendarStatsBar';
 
 interface Candidate {
   id: string;
@@ -258,7 +261,11 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
   const [selectedCrew, setSelectedCrew] = useState<string[]>([]);
   const [selectedEquipment, setSelectedEquipment] = useState<string[]>([]);
   const [notes, setNotes] = useState('');
-  const [viewMode, setViewMode] = useState<'list' | 'week'>('list');
+  const [viewMode, setViewMode] = useState<'list' | 'week' | 'month' | 'day'>('month');
+  const [calendarMonth, setCalendarMonth] = useState<Date>(() => {
+    const today = new Date();
+    return new Date(today.getFullYear(), today.getMonth(), 1);
+  });
   const [candidates, setCandidates] = useState<Candidate[]>(propCandidates || []);
   const [crew, setCrew] = useState<Crew[]>(propCrew || []);
   const [locations, setLocations] = useState<Location[]>(propLocations || []);
@@ -909,7 +916,33 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
         ))}
       </Box>
 
-      {events.length === 0 ? (
+      <CalendarMonthHeader
+        monthDate={calendarMonth}
+        viewMode={viewMode === 'list' ? 'month' : (viewMode as 'month' | 'week' | 'day')}
+        onMonthChange={setCalendarMonth}
+        onViewModeChange={(mode) => setViewMode(mode)}
+      />
+
+      {viewMode === 'month' ? (
+        <MonthGridView
+          monthDate={calendarMonth}
+          events={events}
+          eventTypeConfig={{
+            audition: { label: 'Audition', color: '#f59e0b', icon: <TheatersIcon /> },
+            selection: { label: 'Utvelgelse', color: '#22d3ee', icon: <HowToRegIcon /> },
+            fitting: { label: 'Kostyme/Fitting', color: '#ec4899', icon: <CheckroomIcon /> },
+            rehearsal: { label: 'Prøve', color: '#8b5cf6', icon: <GroupsIcon /> },
+            shooting: { label: 'Opptak', color: '#10b981', icon: <MovieIcon /> },
+            general: { label: 'Generelt', color: '#6b7280', icon: <EventIcon /> },
+          }}
+          onAddEventForDate={(date) => {
+            setStartTime(`${date.toISOString().slice(0, 10)}T09:00`);
+            setEndTime(`${date.toISOString().slice(0, 10)}T17:00`);
+            handleOpenDialog();
+          }}
+          onEditEvent={(event) => handleOpenDialog(event)}
+        />
+      ) : events.length === 0 ? (
         <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.1)', color: '#60a5fa' }}>
           Ingen hendelser planlagt. Klikk "Ny hendelse" for å legge til opptak, prøver, eller andre produksjonshendelser.
         </Alert>
@@ -1052,6 +1085,8 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
           ))}
         </Box>
       )}
+
+      <CalendarStatsBar events={events} />
 
       <Dialog
         open={dialogOpen}
