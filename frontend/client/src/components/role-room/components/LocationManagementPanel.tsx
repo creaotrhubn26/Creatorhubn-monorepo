@@ -83,6 +83,13 @@ import {
   AddPhotoAlternate as AddPhotoIcon,
   UploadFile as UploadFileIcon,
   HelpOutline as HelpIcon,
+  LocalParking as ParkingIcon,
+  Wifi as WifiIcon,
+  Power as PowerIcon,
+  Wc as WcIcon,
+  Restaurant as CateringIcon,
+  Checkroom as DressingRoomsIcon,
+  MoreHoriz as MoreFacilityIcon,
 } from '@mui/icons-material';
 import {
   MapContainer,
@@ -896,6 +903,21 @@ export function LocationManagementPanel({
       dressing_rooms: 'Garderober',
     };
     return labels[facility] || facility;
+  };
+
+  // Kompakt ikon per fasilitet — brukt i kort-pill-rad som matcher design.
+  // Returnerer null for ukjente fasiliteter slik at de filtreres ut av
+  // ikon-raden (de vises fortsatt som tekst-chip i den utvidede listen).
+  const getFacilityIcon = (facility: string): React.ReactNode => {
+    switch (facility) {
+      case 'parking': return <ParkingIcon sx={{ fontSize: 14 }} />;
+      case 'wifi': return <WifiIcon sx={{ fontSize: 14 }} />;
+      case 'power': return <PowerIcon sx={{ fontSize: 14 }} />;
+      case 'restrooms': return <WcIcon sx={{ fontSize: 14 }} />;
+      case 'catering': return <CateringIcon sx={{ fontSize: 14 }} />;
+      case 'dressing_rooms': return <DressingRoomsIcon sx={{ fontSize: 14 }} />;
+      default: return null;
+    }
   };
 
   // Filter and sort locations
@@ -6191,6 +6213,52 @@ export function LocationManagementPanel({
                               border: `1px solid ${typeColor}60`,
                             }}
                           />
+                          {Array.isArray(location.facilities) && location.facilities.length > 0 && (
+                            <Box sx={{ display: 'inline-flex', gap: 0.5, alignItems: 'center' }}>
+                              {location.facilities
+                                .map((fac) => ({ key: fac, icon: getFacilityIcon(fac), label: getFacilityLabel(fac) }))
+                                .filter((entry) => entry.icon !== null)
+                                .slice(0, 4)
+                                .map((entry) => (
+                                  <Tooltip key={entry.key} title={entry.label} arrow>
+                                    <Box
+                                      sx={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        width: 26,
+                                        height: 22,
+                                        borderRadius: 1,
+                                        bgcolor: 'rgba(147,51,234,0.18)',
+                                        color: '#c4b5fd',
+                                        border: '1px solid rgba(147,51,234,0.32)',
+                                      }}
+                                    >
+                                      {entry.icon}
+                                    </Box>
+                                  </Tooltip>
+                                ))}
+                              {location.facilities.filter((fac) => getFacilityIcon(fac) !== null).length > 4 && (
+                                <Tooltip title={`+${location.facilities.filter((fac) => getFacilityIcon(fac) !== null).length - 4} fasiliteter til`} arrow>
+                                  <Box
+                                    sx={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      width: 26,
+                                      height: 22,
+                                      borderRadius: 1,
+                                      bgcolor: 'rgba(255,255,255,0.08)',
+                                      color: 'rgba(255,255,255,0.65)',
+                                      border: '1px solid rgba(255,255,255,0.15)',
+                                    }}
+                                  >
+                                    <MoreFacilityIcon sx={{ fontSize: 14 }} />
+                                  </Box>
+                                </Tooltip>
+                              )}
+                            </Box>
+                          )}
                           {location.capacity && (
                             <Chip
                               icon={<GroupIcon sx={{ fontSize: { xs: 12, sm: 14, md: 13, lg: 15, xl: 18 }, color: 'rgba(255,255,255,0.7) !important' }} />}
