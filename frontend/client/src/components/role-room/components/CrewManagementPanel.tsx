@@ -1587,6 +1587,9 @@ export function CrewManagementPanel({
     const roleCount: Record<string, number> = {};
     let totalRate = 0;
     let availableCount = 0;
+    let pendingCount = 0;
+    let invitedCount = 0;
+    let confirmedCount = 0;
     const assignedTodaySet = new Set(
       crewAssignments
         .filter(a => a.shootDayDate === todayStr && a.assignmentStatus === 'assigned')
@@ -1597,15 +1600,25 @@ export function CrewManagementPanel({
       roleCount[member.role] = (roleCount[member.role] || 0) + 1;
       if (member.rate) totalRate += member.rate;
       if (isAvailableNow(member)) availableCount++;
+      if (member.status === 'pending') pendingCount++;
+      else if (member.status === 'invited') invitedCount++;
+      else if (member.status === 'confirmed') confirmedCount++;
     });
 
     const conflicts = detectConflicts(crewAssignments);
+
+    // Opptatt = bekreftet + tildelt i dag (eller fra crewAssignments) — folk som er bundet opp
+    const busyCount = assignedTodaySet.size;
 
     return {
       total: crewMembers.length,
       roleCount,
       totalDailyRate: totalRate,
       availableNow: availableCount,
+      pendingCount,
+      invitedCount,
+      confirmedCount,
+      busyCount,
       assignedToday: assignedTodaySet.size,
       totalConflicts: conflicts.length,
     };
@@ -3380,17 +3393,58 @@ export function CrewManagementPanel({
         <LinearProgress sx={{ mx: 0, height: 2, bgcolor: 'rgba(184,107,255,0.1)', '& .MuiLinearProgress-bar': { bgcolor: roleTabAccent } }} />
       )}
 
-      {/* ── STATS BAR ── */}
+      {/* ── STATS BAR (6 fargekodete kort som matcher team-fane-design) ── */}
       <Collapse in={showStats && crewMembers.length > 0}>
-        <Box sx={{ mx: 2, mb: 1, p: 1.5, bgcolor: roleTabAccentSoft, borderRadius: 2, border: `1px solid ${roleBorder}`, display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(90px,1fr))', gap: 1.5 }}>
+        <Box
+          sx={{
+            mx: 2,
+            mb: 1.5,
+            display: 'grid',
+            gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(3, 1fr)', md: 'repeat(6, 1fr)' },
+            gap: 1.25,
+          }}
+        >
           {[
-            { label: 'Totalt', value: stats.total, color: '#ffffff' },
-            { label: 'Tilgjengelig', value: stats.availableNow, color: '#ffffff' },
-            { label: 'Fast honorar', value: `${stats.totalDailyRate.toLocaleString('nb-NO')} kr`, color: '#ffffff' },
-          ].map(s => (
-            <Box key={s.label} sx={{ textAlign: 'center' }}>
-              <Typography sx={{ color: s.color, fontWeight: 700, fontSize: { xs: '1.2rem', sm: '1.5rem' } }}>{s.value}</Typography>
-              <Typography sx={{ color: '#ffffff', fontSize: 11 }}>{s.label}</Typography>
+            { label: 'Totalt medlemmer', value: stats.total, color: '#a78bfa', bg: 'rgba(167,139,250,0.14)' },
+            { label: 'Tilgjengelige nå', value: stats.availableNow, color: '#10b981', bg: 'rgba(16,185,129,0.14)' },
+            { label: 'Opptatt', value: stats.busyCount, color: '#f59e0b', bg: 'rgba(245,158,11,0.14)' },
+            { label: 'Venter på svar', value: stats.pendingCount, color: '#c084fc', bg: 'rgba(192,132,252,0.14)' },
+            { label: 'Invitert', value: stats.invitedCount, color: '#60a5fa', bg: 'rgba(96,165,250,0.14)' },
+            { label: 'Total est. kostnad', value: `${stats.totalDailyRate.toLocaleString('nb-NO')} kr`, color: '#22d3ee', bg: 'rgba(34,211,238,0.14)' },
+          ].map((s) => (
+            <Box
+              key={s.label}
+              sx={{
+                px: 1.5,
+                py: 1.25,
+                borderRadius: 1.5,
+                bgcolor: s.bg,
+                border: `1px solid ${s.color}33`,
+              }}
+            >
+              <Typography
+                sx={{
+                  color: s.color,
+                  fontWeight: 700,
+                  fontSize: { xs: '1.25rem', sm: '1.4rem' },
+                  lineHeight: 1.1,
+                }}
+              >
+                {s.value}
+              </Typography>
+              <Typography
+                sx={{
+                  color: 'rgba(255,255,255,0.7)',
+                  fontSize: '0.72rem',
+                  fontWeight: 500,
+                  mt: 0.25,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {s.label}
+              </Typography>
             </Box>
           ))}
         </Box>
