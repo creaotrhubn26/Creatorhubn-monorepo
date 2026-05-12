@@ -7146,18 +7146,43 @@ export function LocationManagementPanel({
                 filterOptions={(x) => x}
                 getOptionLabel={(option) => typeof option === 'string' ? option : option.address}
                 value={formData.address || ''}
+                noOptionsText={
+                  addressQuery.trim().length < 2
+                    ? 'Begynn å skrive minst 2 tegn …'
+                    : addressSuggestionsLoading
+                      ? 'Henter forslag fra Kartverket …'
+                      : 'Finner ikke adressen i Kartverket — fortsett med fri tekst'
+                }
+                loadingText="Henter forslag fra Kartverket …"
                 onInputChange={(_event, value) => {
-                  setFormData({ ...formData, address: value });
+                  // Når brukeren editerer adresse-feltet manuelt: bli kvitt
+                  // tidligere koordinater siden de ikke lenger nødvendigvis
+                  // peker på riktig sted. Trygt — coordinates settes om
+                  // igjen ved nytt valg fra dropdown.
+                  setFormData((prev) => {
+                    const sameAddress = prev.address === value;
+                    if (sameAddress) {
+                      return { ...prev, address: value };
+                    }
+                    const { coordinates: _drop, ...rest } = prev;
+                    void _drop;
+                    return { ...rest, address: value };
+                  });
                   setAddressQuery(value);
                 }}
                 onChange={(_event, value) => {
                   // Brukeren valgte et autocomplete-forslag — auto-fyll
-                  // koordinater + administrative data SILENT (uten å vise lat/lng)
+                  // koordinater + administrative data SILENT (uten å vise lat/lng).
+                  // Smart auto-fill av navn: hvis Navn-feltet er tomt, prefill
+                  // med adressetekst slik at brukeren ikke trenger å skrive den
+                  // to ganger. Bruker kan overstyre om de vil ha et annet navn
+                  // ("TV2-studio" istedenfor "Karl Johans gate 5").
                   if (value && typeof value !== 'string') {
                     setFormData((prev) => ({
                       ...prev,
                       address: value.address,
                       coordinates: value.coordinates,
+                      name: prev.name?.trim() ? prev.name : value.address,
                     }));
                   } else if (typeof value === 'string') {
                     setFormData((prev) => ({ ...prev, address: value }));
@@ -7244,9 +7269,32 @@ export function LocationManagementPanel({
                 {validatingAddress ? 'Validerer...' : 'Valider adresse'}
               </Button>
               {formData.coordinates && (
-                <Typography variant="caption" sx={{ color: '#a855f7', display: 'block', mt: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.75, xl: 1 }, fontSize: { xs: '0.75rem', sm: '0.8125rem', md: '0.78125rem', lg: '0.875rem', xl: '1rem' } }}>
-                  Koordinater: {formData.coordinates.lat.toFixed(6)}, {formData.coordinates.lng.toFixed(6)}
-                </Typography>
+                <Box
+                  sx={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 0.5,
+                    mt: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.75, xl: 1 },
+                    px: 1,
+                    py: 0.4,
+                    borderRadius: 999,
+                    bgcolor: 'rgba(16,185,129,0.14)',
+                    border: '1px solid rgba(16,185,129,0.36)',
+                    color: '#6ee7b7',
+                  }}
+                >
+                  <CheckIcon sx={{ fontSize: 14 }} />
+                  <Typography
+                    component="span"
+                    sx={{
+                      fontSize: { xs: '0.7rem', sm: '0.74rem', md: '0.72rem', lg: '0.78rem', xl: '0.85rem' },
+                      fontWeight: 600,
+                      letterSpacing: 0.2,
+                    }}
+                  >
+                    Kart-verifisert
+                  </Typography>
+                </Box>
               )}
             </Box>
 
