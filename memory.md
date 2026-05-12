@@ -1,7 +1,108 @@
 # memory.md — Role Room session-state, refaktor-plan og kø
 
-> Levende dokument for Claude Code-sesjoner og produkt-eier. Sist oppdatert: 2026-05-11 (round 5 — admin-cluster delvis ekstraktert + Fase C ferdig).
+> Levende dokument for Claude Code-sesjoner og produkt-eier. Sist oppdatert: 2026-05-12 (sesjon — StoryLogic-splitt 8 commits + skrive-flyt-mikroint. + 7 Role Room UX-fane-audits).
 > Plassert i repo-rot slik at Claude Code (lokal eller web) automatisk leser den ved oppstart.
+
+---
+
+## 🆕 ROLE ROOM UX GAP-ANALYSE (sesjon 2026-05-12)
+
+Audit av 7 paneler mot produkt-eiers design-screenshots. Hver fane har konkret gap-liste + filer + linjer + prioritert handlingsliste. Inkrementelt arbeid pågår.
+
+### Status per fane
+
+| Fane | Fil | Linjer | Status | Neste steg |
+|---|---|---|---|---|
+| **Roller** (RoleManagementPanel) | `RoleManagementPanel.tsx` | 3979 | ✅ roletype-fargekoding + status-snarvei-chips ferdig | Audit på nytt mot evt. ny screenshot |
+| **Kandidater** | `CandidateManagementPanel.tsx` | 4512 | ✅ rolle-type-fargekoding + Sist oppdatert-kolonne | #2 AUDITIONS-count, #4 kollaps KANDIDAT-kolonne, #5 ⋮-meny |
+| **Audition** | `AuditionSchedulePanel.tsx` | 4148 | 🟡 gap-analyse ferdig (sub-agent) | Restrukturer tabell-kolonner til AUDITION/ROLLER/DATO/STATUS/TEAM/KANDIDATER/ACTIONS; legg til AvatarGroup + pagination |
+| **Utvelgelse** | `CastingPlannerPanel.tsx:9521-10634` | (del av 16618) | 🟡 gap-analyse ferdig (sub-agent) | Søkefelt + batch-multivalg + sticky bottom-bar "SEND TIL FINAL SELECTION" + checkbox/favoritt/dato/video-overlay/kommentar-teller |
+| **Kalender** | `ProductionCalendarPanel.tsx` | 1487 | ✅ MÅNED-mode + stats-bar + MonthHeader ferdig | UKE/DAG-mode-render, crew Gantt-mode |
+| **Team** (CrewManagement) | `CrewManagementPanel.tsx` | 5866 | ✅ +2 avdelinger (Sminke & Hår + Transport) | #2 6-stat-rad, #3 status-filter-pills, #4 venstre sidebar, #6 bunn TILGJENGELIGHET-grid |
+| **Utstyr** | `EquipmentManagementPanel.tsx` | 10 105 | 🟡 gap-analyse ferdig (sub-agent) | Pagination, lokasjon-filter, 6-stat-kort, favoritt-stjerne, dynamisk status-chip-dato, konsolider 9→4 action-ikoner |
+| **Rekvisitter** | `PropManagementPanel.tsx` | 3044 | 🟡 har favoritt + delvis stat-kort | Samme som Utstyr: pagination, lokasjon-filter, sort-dropdown |
+| **Lokasjon** | `LocationManagementPanel.tsx` | 7290 | 🟡 kort-gap-analyse | Filter "Alle fasiliteter"/"Alle regioner"/"Kapasitet"/"Med koordinater", "Tøm filtre"-link, fasilitets-ikon-rad på kort |
+| **Crew kalender** (Gantt) | *Eksisterer ikke* | — | ❌ helt ny modus | Crew som rader, dager som kolonner, event-blokker per crew, røde linker mellom tilhørende events |
+
+### Detaljerte gap-lister per fane
+
+#### Kandidater (gjenstår)
+- **#2 [VIKTIG]** AUDITIONS-kolonne — krever audition-data-prop fra parent
+- **#4 [VIKTIG]** Kollaps Bilde+Navn+Kontakt → én KANDIDAT-kolonne (~45 min)
+- **#5 [VIKTIG]** Konsolidér 4 action-knapper → ⋮-meny (~60 min)
+- **#7 [NICE]** Sortable SIST OPPDATERT-header
+
+#### Audition (sub-agent-funn)
+- **[KRITISK]** Tabell-kolonneoppsett matcher ikke design (`AuditionSchedulePanel.tsx:2980-3149`). Design er audition-sentrert (1 rad = 1 audition), kode er kandidat-sentrert (1 rad = 1 kandidat). Krever ny data-shape med `auditionTitle`/`projectName`/`teamMembers[]`/`candidateCount`/`candidateTotal`
+- **[KRITISK]** AvatarGroup for TEAM-kolonne mangler helt (ingen `AvatarGroup`-bruk)
+- **[KRITISK]** "KANDIDATER X/Y"-kolonne mangler (kun 1 avatar per rad i dag)
+- **[VIKTIG]** Stat-kort: legg til Bekreftet + Callbacks, fjern Kommende + Kansellert (5-kort design)
+- **[VIKTIG]** `<Pagination>` med sidenummer (i dag kun "Viser X av Y"-tekst)
+- **[NICE]** Rolle-type-chip-fargevariant per type (i dag uniform cyan)
+
+#### Utvelgelse (sub-agent-funn)
+- **[KRITISK]** Søkefelt "Filtrer kandidater… (trykk / for å fokusere)" mangler helt (`CastingPlannerPanel.tsx:9639`)
+- **[KRITISK]** Batch-multivalg-state + sticky bottom-bar "N valgt" + "SEND TIL FINAL SELECTION" mangler
+- **[KRITISK]** Checkbox top-left + favoritt-stjerne top-right på kort mangler
+- **[VIKTIG]** Sort-dropdown, grid/list-toggle, "Flere filtre"-knapp mangler
+- **[VIKTIG]** Video-overlay ▶ MM:SS på bilde mangler, kommentar-teller mangler, subtittel-format "Rolletype – Kjønn (alder-range)" mangler, dato mangler, fargekodet rolletype-chip mangler
+- **[NICE]** Score-badge plassering (nederst-høyre med fargegradient 92→70)
+
+#### Team (gjenstår)
+- **#2 [VIKTIG]** 6-stat-kort på topp (Totalt/Tilgjengelige nå/Opptatt/Venter på svar/Invitert/Total est. kostnad) — i dag 3 stat-kort i Collapse
+- **#3 [VIKTIG]** Top status-filter-pills-rad (Alle/Bekreftet/Venter/Invitert/Tilgjengelig/Utilgjengelig)
+- **#4 [VIKTIG]** Venstre sidebar "ROLLER & AVDELINGER" med count-badges + "+ LEGG TIL ROLLE"-knapp
+- **#5 [VIKTIG]** Tom-state-CTA "+ LEGG TIL DITT FØRSTE MEDLEM" (dashed-border container)
+- **#6 [VIKTIG]** Bunn-rad "TILGJENGELIGHET" med uke-velger + 7-dag-aggregat-grid
+- **#7 [NICE]** IMPORTER-knapp ved siden av "LEGG TIL MEDLEM"
+- **#8 [NICE]** Total est. kostnad-kort med wallet-ikon
+
+#### Utstyr (sub-agent-funn)
+- **#1 [KRITISK]** 6-stat-pill-rad — bygges over `equipmentProInsights` (L4185-4209) + ny `totalValue`-aggregering. Erstatt Compact Stats Bar L4346-4396
+- **#2 [KRITISK]** Pagination + "X per side" dropdown + "Viser N-M av X" — ny `page`/`pageSize`-state, slice før map ved L4744
+- **#3 [KRITISK]** Lokasjons-filter-dropdown — ny `locationFilter`-state nær L719, ny `<FormControl>` ved L4654, filter-clause i `useMemo` L3488. Data finnes (`locations` L775)
+- **#4 [KRITISK]** Sort-dropdown "Sorter: Nyeste først" — utvid SortField L45 med `'created_at'|'updated_at'`, render dropdown ved L3757
+- **#5 [VIKTIG]** Filter-rad alltid synlig — fjern `Collapse`-wrapper L4589 eller invertér
+- **#6 [VIKTIG]** Subtittel-format — endre L4953 fra `{brand} • {model}` → `{category} • {brand}`
+- **#7 [VIKTIG]** Konsolider 9 action-ikoner → 4 + ⋯-meny (L5060-5217)
+- **#8 [VIKTIG]** Status-chip med kontekst-dato ("Reservert til 12. mai") — krever booking-lookup ved render (L4872-4888)
+- **#9 [VIKTIG]** Favoritt-stjerne på utstyrs-kort — kopier mønster fra PropManagementPanel L409/L991/L1582
+- **#10 [NICE]** Søk-placeholder utvidet til match design
+- **#11 [NICE]** "Flere filtre" mega-dropdown
+- **#12 [NICE]** Total est. verdi-kort — krever `purchase_price`-felt på Equipment-modellen (sjekk backend først)
+- **#13 [NICE]** Synkronisere PropManagementPanel mot samme design (parallell oppgradering)
+
+#### Lokasjon (gjenstår)
+- **[VIKTIG]** "Alle fasiliteter"-filter (amenities-dropdown) mangler
+- **[VIKTIG]** "Alle regioner"-filter (region-dropdown) mangler
+- **[VIKTIG]** "Kapasitet"-filter (range-slider) mangler
+- **[VIKTIG]** "Med koordinater"-filter (i dag stat-kort, ikke filter)
+- **[VIKTIG]** "Tøm filtre"-link
+- **[VIKTIG]** Fasilitets-ikon-rad på hvert kort (4 ikoner: wifi/parking/lighting/etc.)
+
+#### Kalender (gjenstår)
+- UKE-mode dedikert render-komponent
+- DAG-mode dedikert render-komponent
+- Crew Gantt-mode (helt ny modus — crew som rader, dager som kolonner, røde linker mellom tilhørende events)
+
+### Integrasjons-strategi (drøftet 2026-05-12)
+
+Kalenderen er sentrum. Skal koble inn ALLE eksisterende Role Room-features (Stripe droppet). Lag-modell:
+
+1. **Data IN**: AuditionSchedulePanel → calendar audition-events; RoleManagementPanel `casting`-status → auto-foreslå audition; CrewAvailabilityDrawer → shooting-foreslag; CastingShotListPanel → opptak-events; Producer Project Planning → milepæler; StoryLogicPanel → manus-deadlines
+2. **Actions UT**: Equipment auto-block, CallSheetGenerator (én knapp på shooting-event), ConsentManagementPanel-status-flagg, WhatsApp/SMS/E-post-påminnelser, ProjectAgreement-lås, Google Drive-mappe per opptaksdag, **Google Meet (nytt — sjekkes nærmere)**
+3. **Cross-navigation**: klikk event → åpne riktig fane filtrert til denne konteksten
+4. **Smart automation** (Claude Opus 4.7): foreslå-opptaksrekkefølge, konflikt-løsing, daglig-brief, risiko-flagg
+
+### Sub-agent-resultater fra denne sesjonen
+
+- ✅ `a410df57a0e1333f2` — Audition + Utvelgelse-audit (~1000 ord rapport)
+- ✅ `a24a4222c05e3ad41` — Utstyr-audit (~600 ord rapport)
+- ❌ `ac10ec25fe0619915` — Backend StoryLogic AI-prompts: blokkert av Write-permission
+- ❌ `a22b52282dcc4dec6` — Native.no-konkurranseanalyse: blokkert av WebFetch
+- ❌ `a6df2ff756d0be94e`, `a80a525f4eb4739a0`, `a77a89600709c27f6` (tidligere fra StoryLogic-arbeidet): alle blokkert av Write/mkdir
+
+**Lærdom om sub-agenter:** Read-only audit-oppgaver fungerer; Write-oppgaver mot worktree blokkeres i denne sandbox-konfigen. Bygg lokalt eller dispatch agenter kun til read-only-arbeid.
 
 ---
 
