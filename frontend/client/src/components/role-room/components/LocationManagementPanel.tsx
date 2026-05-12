@@ -652,6 +652,8 @@ export function LocationManagementPanel({
   // Search, filter, sort state
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<Location['type'] | 'all'>('all');
+  const [filterFacility, setFilterFacility] = useState<string>('all');
+  const [filterCoordinates, setFilterCoordinates] = useState<'all' | 'with' | 'without'>('all');
   const [sortField, setSortField] = useState<SortField>('name');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
@@ -941,6 +943,21 @@ export function LocationManagementPanel({
       result = result.filter((loc) => loc.type === filterType);
     }
 
+    // Facility filter: behold kun lokasjoner med valgt fasilitet i listen
+    if (filterFacility !== 'all') {
+      result = result.filter((loc) =>
+        Array.isArray(loc.facilities) && loc.facilities.includes(filterFacility),
+      );
+    }
+
+    // Koordinat-filter: 'with' = må ha koordinater, 'without' = må mangle
+    if (filterCoordinates !== 'all') {
+      result = result.filter((loc) => {
+        const hasCoords = Boolean(loc.coordinates?.lat && loc.coordinates?.lng);
+        return filterCoordinates === 'with' ? hasCoords : !hasCoords;
+      });
+    }
+
     // Sort - favorites first
     result.sort((a, b) => {
       const aFav = favorites.has(a.id) ? 0 : 1;
@@ -966,7 +983,7 @@ export function LocationManagementPanel({
     });
 
     return result;
-  }, [locations, searchQuery, filterType, sortField, sortDirection, favorites]);
+  }, [locations, searchQuery, filterType, filterFacility, filterCoordinates, sortField, sortDirection, favorites]);
 
   // Statistics
   const stats = useMemo(() => {
@@ -3393,11 +3410,56 @@ export function LocationManagementPanel({
             </Select>
           </FormControl>
 
-          {(filterType !== 'all' || searchQuery || sortField !== 'name' || sortDirection !== 'asc') && (
+          {/* Fasilitets-filter — bygger valgmuligheter fra commonFacilities */}
+          <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 150, md: 135, lg: 150, xl: 180 } }}>
+            <InputLabel sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>Fasiliteter</InputLabel>
+            <Select
+              value={filterFacility}
+              onChange={(e) => setFilterFacility(String(e.target.value))}
+              label="Fasiliteter"
+              sx={{
+                color: '#fff',
+                minHeight: { xs: 40, sm: 44, md: 48, lg: 52, xl: 60 },
+                fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
+                height: { xs: 36, sm: 40, md: 42, lg: 48, xl: 60 },
+                '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
+              }}
+            >
+              <MenuItem value="all">Alle fasiliteter</MenuItem>
+              {commonFacilities.map((fac) => (
+                <MenuItem key={fac} value={fac}>{getFacilityLabel(fac)}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          {/* Koordinat-filter */}
+          <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 150, md: 135, lg: 150, xl: 180 } }}>
+            <InputLabel sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>Koordinater</InputLabel>
+            <Select
+              value={filterCoordinates}
+              onChange={(e) => setFilterCoordinates(e.target.value as 'all' | 'with' | 'without')}
+              label="Koordinater"
+              sx={{
+                color: '#fff',
+                minHeight: { xs: 40, sm: 44, md: 48, lg: 52, xl: 60 },
+                fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
+                height: { xs: 36, sm: 40, md: 42, lg: 48, xl: 60 },
+                '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
+              }}
+            >
+              <MenuItem value="all">Alle</MenuItem>
+              <MenuItem value="with">Med koordinater</MenuItem>
+              <MenuItem value="without">Uten koordinater</MenuItem>
+            </Select>
+          </FormControl>
+
+          {(filterType !== 'all' || filterFacility !== 'all' || filterCoordinates !== 'all' || searchQuery || sortField !== 'name' || sortDirection !== 'asc') && (
             <Button
               variant="text"
               onClick={() => {
                 setFilterType('all');
+                setFilterFacility('all');
+                setFilterCoordinates('all');
                 setSearchQuery('');
                 setSortField('name');
                 setSortDirection('asc');
