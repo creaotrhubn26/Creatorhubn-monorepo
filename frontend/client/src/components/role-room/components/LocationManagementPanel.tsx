@@ -3371,23 +3371,27 @@ export function LocationManagementPanel({
             </Select>
           </FormControl>
 
-          {(filterType !== 'all' || searchQuery) && (
+          {(filterType !== 'all' || searchQuery || sortField !== 'name' || sortDirection !== 'asc') && (
             <Button
               variant="text"
               onClick={() => {
                 setFilterType('all');
                 setSearchQuery('');
+                setSortField('name');
+                setSortDirection('asc');
               }}
-              sx={{ 
-                color: '#9333ea', 
+              aria-label="Tøm alle aktive filtre og sortering"
+              sx={{
+                color: '#9333ea',
                 minHeight: TOUCH_TARGET_SIZE,
                 fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                 px: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
                 py: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
-                ...focusVisibleStyles 
+                fontWeight: 600,
+                ...focusVisibleStyles,
               }}
             >
-              Nullstill
+              Tøm filtre
             </Button>
           )}
         </Box>
