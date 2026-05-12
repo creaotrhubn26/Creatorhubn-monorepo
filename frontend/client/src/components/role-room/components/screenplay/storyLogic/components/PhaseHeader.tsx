@@ -14,7 +14,7 @@
  * ThemePhase) når split-arbeidet fortsetter.
  */
 
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Box, Typography, Chip, Tooltip } from '@mui/material';
 import {
   Psychology as PsychologyIcon,
@@ -35,7 +35,13 @@ export interface PhaseHeaderProps {
   locked: boolean;
   onToggleLock: () => void;
   nextBestAction: string | null;
+  /** Vises som hint-chip når status er 'ready' (typisk siste fase eller eksplisitt deaktivert) */
+  showAdvanceShortcutHint?: boolean;
 }
+
+const IS_MAC =
+  typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
+const SHORTCUT_LABEL = IS_MAC ? '⌘ ↵' : 'Ctrl ↵';
 
 const STATUS_COLORS = {
   incomplete: '#9ca3af',
@@ -52,12 +58,28 @@ export const PhaseHeader: React.FC<PhaseHeaderProps> = ({
   locked,
   onToggleLock,
   nextBestAction,
+  showAdvanceShortcutHint = true,
 }) => {
   const statusIcons = {
     incomplete: <PsychologyIcon fontSize="small" />,
     weak: <AutoAwesomeIcon fontSize="small" />,
     ready: <CheckIcon fontSize="small" />,
   };
+
+  // Feiringsanimasjon ved overgang til 'ready' — mikro-belønning for å
+  // ha gjort fasen ferdig. Aktiveres kun ved transitionen (ikke vedvarende
+  // mens status er ready).
+  const prevStatus = useRef<typeof status>(status);
+  const [celebrating, setCelebrating] = useState(false);
+  useEffect(() => {
+    if (prevStatus.current !== 'ready' && status === 'ready') {
+      setCelebrating(true);
+      const t = setTimeout(() => setCelebrating(false), 1_400);
+      prevStatus.current = status;
+      return () => clearTimeout(t);
+    }
+    prevStatus.current = status;
+  }, [status]);
 
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2, width: '100%' }}>
@@ -88,7 +110,16 @@ export const PhaseHeader: React.FC<PhaseHeaderProps> = ({
             sx={{
               bgcolor: `${STATUS_COLORS[status]}15`,
               color: STATUS_COLORS[status],
+              transition: 'transform 240ms ease-out, box-shadow 240ms ease-out',
+              transform: celebrating ? 'scale(1.08)' : 'scale(1)',
+              boxShadow: celebrating ? `0 0 0 6px ${STATUS_COLORS[status]}22, 0 4px 12px ${STATUS_COLORS[status]}44` : 'none',
+              animation: celebrating ? 'storylogic-phase-ready-pulse 1.4s ease-out' : 'none',
               '& .MuiChip-icon': { color: STATUS_COLORS[status] },
+              '@keyframes storylogic-phase-ready-pulse': {
+                '0%': { boxShadow: `0 0 0 0 ${STATUS_COLORS[status]}66` },
+                '60%': { boxShadow: `0 0 0 12px ${STATUS_COLORS[status]}00` },
+                '100%': { boxShadow: `0 0 0 0 ${STATUS_COLORS[status]}00` },
+              },
             }}
           />
           {locked && (
@@ -115,6 +146,33 @@ export const PhaseHeader: React.FC<PhaseHeaderProps> = ({
                 cursor: 'default',
               }}
             />
+          )}
+          {status === 'ready' && !locked && showAdvanceShortcutHint && (
+            <Tooltip title="Gå videre til neste fase" arrow>
+              <Box
+                component="span"
+                sx={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 0.5,
+                  px: 0.75,
+                  py: 0.25,
+                  borderRadius: 999,
+                  bgcolor: 'rgba(16,185,129,0.10)',
+                  color: '#6ee7b7',
+                  fontSize: '0.65rem',
+                  fontWeight: 600,
+                  letterSpacing: 0.5,
+                  border: '1px solid rgba(16,185,129,0.25)',
+                  fontFamily: 'inherit',
+                }}
+              >
+                <Box component="kbd" sx={{ fontFamily: 'inherit', fontSize: '0.7rem', fontWeight: 700 }}>
+                  {SHORTCUT_LABEL}
+                </Box>
+                neste
+              </Box>
+            </Tooltip>
           )}
         </Box>
         <Typography variant="body2" sx={{ color: '#9ca3af' }}>

@@ -2194,6 +2194,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
             locked={state.locks.theme}
             onToggleLock={() => togglePhaseLock('theme')}
             nextBestAction={state.phaseStatus.theme !== 'ready' && !state.locks.theme ? themeValidation.nextBestAction : null}
+            showAdvanceShortcutHint={false}
           />
         </AccordionSummary>
         <AccordionDetails>
