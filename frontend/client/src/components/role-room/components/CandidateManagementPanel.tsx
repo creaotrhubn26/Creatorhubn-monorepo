@@ -208,6 +208,8 @@ const LIGHTING_PRESETS: LightingPreset[] = [
   },
 ];
 import type { Candidate, ContactInfo, Role } from '../models/casting';
+import { getRoleTypeMeta } from '../config/roleType';
+import { formatRelativeNb } from '../utils/formatRelativeNb';
 import { castingService } from '../services/castingService';
 import { castingToSceneService } from '../services/castingToSceneService';
 import { getCandidatePhotoObjectPosition } from '../utils/candidatePhotoFocalPoint';
@@ -3269,6 +3271,7 @@ function CandidateManagementPanelInner({
                     Roller
                   </TableSortLabel>
                 </TableCell>
+                <TableCell sx={{ color: '#fff', py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>Sist oppdatert</TableCell>
                 <TableCell align="right" sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>Handlinger</TableCell>
               </TableRow>
             </TableHead>
@@ -3417,13 +3420,42 @@ function CandidateManagementPanelInner({
                   </TableCell>
                   <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                      {assignedRoles.slice(0, 2).map(roleId => (
-                        <Chip key={roleId} label={getRoleName(roleId)} size="small" sx={{ bgcolor: 'rgba(0,212,255,0.2)', color: '#00d4ff', fontSize: { xs: '0.65rem', sm: '0.7rem', md: '0.68rem', lg: '0.75rem', xl: '0.85rem' }, height: { xs: 20, sm: 22, md: 21, lg: 24, xl: 28 } }} />
-                      ))}
+                      {assignedRoles.slice(0, 2).map(roleId => {
+                        const role = safeRoles.find(r => r.id === roleId);
+                        const meta = getRoleTypeMeta((role?.roleType ?? role?.role_type) as string | undefined);
+                        return (
+                          <Chip
+                            key={roleId}
+                            label={getRoleName(roleId)}
+                            size="small"
+                            sx={{
+                              bgcolor: `${meta.color}22`,
+                              color: meta.color,
+                              border: `1px solid ${meta.color}55`,
+                              fontWeight: 600,
+                              fontSize: { xs: '0.65rem', sm: '0.7rem', md: '0.68rem', lg: '0.75rem', xl: '0.85rem' },
+                              height: { xs: 20, sm: 22, md: 21, lg: 24, xl: 28 },
+                            }}
+                            title={meta.canonical !== 'unknown' && meta.label ? meta.label : undefined}
+                          />
+                        );
+                      })}
                       {assignedRoles.length > 2 && (
                         <Chip label={`+${assignedRoles.length - 2}`} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.65rem', sm: '0.7rem', md: '0.68rem', lg: '0.75rem', xl: '0.85rem' }, height: { xs: 20, sm: 22, md: 21, lg: 24, xl: 28 } }} />
                       )}
                     </Box>
+                  </TableCell>
+                  <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        color: 'rgba(255,255,255,0.72)',
+                        fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' },
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {formatRelativeNb(candidate.updatedAt ?? candidate.updated_at) || '—'}
+                    </Typography>
                   </TableCell>
                   <TableCell align="right" sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
                     <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 0.5 }}>
